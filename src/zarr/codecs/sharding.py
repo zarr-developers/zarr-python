@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, MutableMapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, NamedTuple
@@ -425,6 +425,15 @@ class ShardingCodec(
 ):
     """Sharding codec.
 
+    Inner chunks are laid out on a semi-regular grid within each shard:
+    `chunk_shape` gives the nominal spacing and does not need to evenly divide
+    the shard shape. The number of inner chunks per dimension is the ceiling
+    division of the shard shape by `chunk_shape`, and chunks that straddle the
+    shard boundary are clipped — they are encoded and stored at their clipped
+    shape (`sharding_indexed` spec version 1.1). Version 1.0 implementations
+    reject a `chunk_shape` that does not evenly divide the shard shape, so
+    arrays relying on clipping are not readable by them.
+
     `subchunk_write_order` controls the physical order of subchunks within a shard. It is a
     write-time setting only: it is not stored in array metadata, so reopening a sharded array
     does not recover it (the setting reverts to the `morton` default per codec instance).
@@ -470,6 +479,7 @@ class ShardingCodec(
         object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
         object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
         object.__setattr__(self, "_shard_index_size", lru_cache()(self._shard_index_size))
+        object.__setattr__(self, "_inner_grid", lru_cache()(self._inner_grid))
         object.__setattr__(
             self, "_get_inner_chunk_transform", lru_cache()(self._get_inner_chunk_transform)
         )
@@ -496,6 +506,7 @@ class ShardingCodec(
         object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
         object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
         object.__setattr__(self, "_shard_index_size", lru_cache()(self._shard_index_size))
+        object.__setattr__(self, "_inner_grid", lru_cache()(self._inner_grid))
         object.__setattr__(
             self, "_get_inner_chunk_transform", lru_cache()(self._get_inner_chunk_transform)
         )
@@ -595,24 +606,13 @@ class ShardingCodec(
             raise ValueError(
                 "The shard's `chunk_shape` and array's `shape` need to have the same number of dimensions."
             )
-        if isinstance(chunk_grid, RegularChunkGridMetadata):
-            edges_per_dim: tuple[tuple[int, ...], ...] = tuple((s,) for s in chunk_grid.chunk_shape)
-        elif isinstance(chunk_grid, RectilinearChunkGridMetadata):
-            edges_per_dim = tuple(
-                (s,) if isinstance(s, int) else s for s in chunk_grid.chunk_shapes
-            )
-        else:
+        if not isinstance(chunk_grid, (RegularChunkGridMetadata, RectilinearChunkGridMetadata)):
             raise TypeError(
                 f"Sharding is only compatible with regular and rectilinear chunk grids, "
                 f"got {type(chunk_grid)}"
             )
-        for i, (edges, inner) in enumerate(zip(edges_per_dim, self.chunk_shape, strict=False)):
-            for edge in set(edges):
-                if edge % inner != 0:
-                    raise ValueError(
-                        f"Chunk edge length {edge} in dimension {i} is not "
-                        f"divisible by the shard's inner chunk size {inner}."
-                    )
+        # `chunk_shape` does not need to evenly divide the shard shape: inner
+        # chunks are clipped by the shard shape (sharding_indexed v1.1).
 
     def _get_inner_chunk_transform(self, shard_spec: ArraySpec) -> Any:
         """The synchronous transform for the inner codec chain.
@@ -694,18 +694,17 @@ class ShardingCodec(
         See TODO: make issue for handling subchunk parallelism
         """
         shard_shape = shard_spec.shape
-        chunk_shape = self.chunk_shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
-        chunk_spec = self._get_chunk_spec(shard_spec)
+        get_chunk_spec = self._make_chunk_spec_getter(shard_spec)
         inner_transform = self._get_inner_chunk_transform(shard_spec)
 
         indexer = BasicIndexer(
             tuple(slice(0, s) for s in shard_shape),
             shape=shard_shape,
-            chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
+            chunk_grid=self._inner_grid(shard_shape),
         )
 
-        out = chunk_spec.prototype.nd_buffer.empty(
+        out = shard_spec.prototype.nd_buffer.empty(
             shape=shard_shape,
             dtype=shard_spec.dtype.to_native_dtype(),
             order=shard_spec.order,
@@ -724,7 +723,7 @@ class ShardingCodec(
             decode_and_scatter_chunk(
                 shard_dict.get(chunk_coords),
                 out,
-                chunk_spec=chunk_spec,
+                chunk_spec=get_chunk_spec(chunk_coords),
                 chunk_selection=chunk_selection,
                 out_selection=out_selection,
                 drop_axes=(),
@@ -764,13 +763,13 @@ class ShardingCodec(
         """
         shard_shape = shard_spec.shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
-        chunk_spec = self._get_chunk_spec(shard_spec)
+        get_chunk_spec = self._make_chunk_spec_getter(shard_spec)
         inner_transform = self._get_inner_chunk_transform(shard_spec)
 
         indexer = BasicIndexer(
             tuple(slice(0, s) for s in shard_shape),
             shape=shard_shape,
-            chunk_grid=ChunkGrid.from_sizes(shard_shape, self.chunk_shape),
+            chunk_grid=self._inner_grid(shard_shape),
         )
 
         # Key order here is immaterial; _encode_shard_dict_sync lays the present
@@ -782,7 +781,9 @@ class ShardingCodec(
         for chunk_coords, _chunk_selection, out_selection, _ in indexer:
             # None = chunk normalized to missing (see encode_or_elide_chunk)
             shard_builder[chunk_coords] = encode_or_elide_chunk(
-                shard_array[out_selection], chunk_spec, inner_transform.encode_chunk
+                shard_array[out_selection],
+                get_chunk_spec(chunk_coords),
+                inner_transform.encode_chunk,
             )
 
         return self._encode_shard_dict_sync(
@@ -812,7 +813,7 @@ class ShardingCodec(
         inner chunks, and rewrites the whole shard.
         """
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
-        chunk_spec = self._get_chunk_spec(shard_spec)
+        get_chunk_spec = self._make_chunk_spec_getter(shard_spec)
         inner_transform = self._get_inner_chunk_transform(shard_spec)
 
         indexer, value = self._get_shard_indexer_and_value(selection, shard_spec, value)
@@ -846,18 +847,21 @@ class ShardingCodec(
         # the canonical merge_and_encode_chunk (None = normalized to missing).
         #
         # Scalar fast path: when the written value is a scalar broadcast, every
-        # *complete* inner chunk is byte-for-byte identical — same fill, same
-        # empty-check, same encoded bytes. Compute that outcome once and reuse it
-        # for all complete chunks instead of re-merging, re-checking, and
-        # re-encoding tens of thousands of identical chunks. Incomplete (edge)
-        # chunks still merge against their own existing data individually.
+        # *complete* inner chunk of the nominal shape is byte-for-byte identical
+        # — same fill, same empty-check, same encoded bytes. Compute that
+        # outcome once and reuse it for all such chunks instead of re-merging,
+        # re-checking, and re-encoding tens of thousands of identical chunks.
+        # Chunks clipped by the shard boundary have a different shape (and thus
+        # different encoded bytes), so they are excluded from the memo, as are
+        # incomplete chunks, which merge against their own existing data.
         # `_sentinel` distinguishes "not computed yet" from a memoized `None`
         # (an empty chunk).
         _sentinel = object()
         scalar_complete_result: Buffer | object | None = _sentinel
 
         for chunk_coords, chunk_sel, out_sel, is_complete_chunk in indexer:
-            if is_scalar and is_complete_chunk:
+            chunk_spec = get_chunk_spec(chunk_coords)
+            if is_scalar and is_complete_chunk and chunk_spec.shape == self.chunk_shape:
                 if scalar_complete_result is _sentinel:
                     scalar_complete_result = merge_and_encode_chunk(
                         None,
@@ -990,18 +994,17 @@ class ShardingCodec(
         shard_spec: ArraySpec,
     ) -> NDBuffer:
         shard_shape = shard_spec.shape
-        chunk_shape = self.chunk_shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
-        chunk_spec = self._get_chunk_spec(shard_spec)
+        get_chunk_spec = self._make_chunk_spec_getter(shard_spec)
 
         indexer = BasicIndexer(
             tuple(slice(0, s) for s in shard_shape),
             shape=shard_shape,
-            chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
+            chunk_grid=self._inner_grid(shard_shape),
         )
 
         # setup output array
-        out = chunk_spec.prototype.nd_buffer.empty(
+        out = shard_spec.prototype.nd_buffer.empty(
             shape=shard_shape,
             dtype=shard_spec.dtype.to_native_dtype(),
             order=shard_spec.order,
@@ -1017,7 +1020,7 @@ class ShardingCodec(
             [
                 (
                     _ShardingByteGetter(shard_dict, chunk_coords),
-                    chunk_spec,
+                    get_chunk_spec(chunk_coords),
                     chunk_selection,
                     out_selection,
                     is_complete_shard,
@@ -1036,14 +1039,13 @@ class ShardingCodec(
         shard_spec: ArraySpec,
     ) -> NDBuffer | None:
         shard_shape = shard_spec.shape
-        chunk_shape = self.chunk_shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
-        chunk_spec = self._get_chunk_spec(shard_spec)
+        get_chunk_spec = self._make_chunk_spec_getter(shard_spec)
 
         indexer = get_indexer(
             selection,
             shape=shard_shape,
-            chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
+            chunk_grid=self._inner_grid(shard_shape),
         )
 
         # setup output array
@@ -1062,14 +1064,14 @@ class ShardingCodec(
             # read entire shard
             shard_dict_maybe = await self._load_full_shard_maybe(
                 byte_getter=byte_getter,
-                prototype=chunk_spec.prototype,
+                prototype=shard_spec.prototype,
                 chunks_per_shard=chunks_per_shard,
             )
         else:
             # read some chunks within the shard
             shard_dict_maybe = await self._load_partial_shard_maybe(
                 byte_getter,
-                chunk_spec.prototype,
+                shard_spec.prototype,
                 chunks_per_shard,
                 all_chunk_coords,
                 max_gap_bytes=shard_spec.config.sharding_coalesce_max_gap_bytes,
@@ -1085,7 +1087,7 @@ class ShardingCodec(
             [
                 (
                     _ShardingByteGetter(shard_dict, chunk_coords),
-                    chunk_spec,
+                    get_chunk_spec(chunk_coords),
                     chunk_selection,
                     out_selection,
                     is_complete_shard,
@@ -1162,7 +1164,7 @@ class ShardingCodec(
         # The byte-order handling below lacks the structured-dtype branch of
         # `BytesCodec._decode_sync` (which applies `newbyteorder` to multi-byte
         # struct fields), so structured dtypes must take the per-chunk path.
-        if isinstance(shard_spec.dtype, Struct):
+        if isinstance(shard_spec.dtype, Struct) or not self._is_evenly_divided(shard_spec.shape):
             return None
 
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
@@ -1255,15 +1257,14 @@ class ShardingCodec(
           the inner chunks the selection touches, fetch those, and decode.
         """
         shard_shape = shard_spec.shape
-        chunk_shape = self.chunk_shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
-        chunk_spec = self._get_chunk_spec(shard_spec)
+        get_chunk_spec = self._make_chunk_spec_getter(shard_spec)
         inner_transform = self._get_inner_chunk_transform(shard_spec)
 
         indexer = get_indexer(
             selection,
             shape=shard_shape,
-            chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
+            chunk_grid=self._inner_grid(shard_shape),
         )
 
         out = shard_spec.prototype.nd_buffer.empty(
@@ -1277,7 +1278,7 @@ class ShardingCodec(
 
         # Read just the inner chunks we need.
         if self._is_total_shard(all_chunk_coords, chunks_per_shard):
-            shard_bytes = byte_getter.get_sync(prototype=chunk_spec.prototype)
+            shard_bytes = byte_getter.get_sync(prototype=shard_spec.prototype)
             if shard_bytes is None:
                 return None
             bulk = self._decode_full_shard_bulk_if_uncompressed(shard_bytes, shard_spec, indexer)
@@ -1294,7 +1295,7 @@ class ShardingCodec(
             # / #3004). Returns None if the shard is absent.
             partial = self._load_partial_shard_maybe_sync(
                 byte_getter,
-                chunk_spec.prototype,
+                shard_spec.prototype,
                 chunks_per_shard,
                 all_chunk_coords,
                 max_gap_bytes=shard_spec.config.sharding_coalesce_max_gap_bytes,
@@ -1310,7 +1311,7 @@ class ShardingCodec(
             decode_and_scatter_chunk(
                 shard_dict.get(chunk_coords),
                 out,
-                chunk_spec=chunk_spec,
+                chunk_spec=get_chunk_spec(chunk_coords),
                 chunk_selection=chunk_selection,
                 out_selection=out_selection,
                 drop_axes=(),
@@ -1327,15 +1328,14 @@ class ShardingCodec(
         shard_spec: ArraySpec,
     ) -> Buffer | None:
         shard_shape = shard_spec.shape
-        chunk_shape = self.chunk_shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
-        chunk_spec = self._get_chunk_spec(shard_spec)
+        get_chunk_spec = self._make_chunk_spec_getter(shard_spec)
 
         indexer = list(
             BasicIndexer(
                 tuple(slice(0, s) for s in shard_shape),
                 shape=shard_shape,
-                chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
+                chunk_grid=self._inner_grid(shard_shape),
             )
         )
         shard_builder = dict.fromkeys(lexicographic_order_coords(chunks_per_shard))
@@ -1344,7 +1344,7 @@ class ShardingCodec(
             [
                 (
                     _ShardingByteSetter(shard_builder, chunk_coords),
-                    chunk_spec,
+                    get_chunk_spec(chunk_coords),
                     chunk_selection,
                     out_selection,
                     is_complete_shard,
@@ -1368,7 +1368,7 @@ class ShardingCodec(
         shard_spec: ArraySpec,
     ) -> None:
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
-        chunk_spec = self._get_chunk_spec(shard_spec)
+        get_chunk_spec = self._make_chunk_spec_getter(shard_spec)
 
         indexer, shard_array = self._get_shard_indexer_and_value(selection, shard_spec, shard_array)
 
@@ -1377,7 +1377,7 @@ class ShardingCodec(
         else:
             shard_reader = await self._load_full_shard_maybe(
                 byte_getter=byte_setter,
-                prototype=chunk_spec.prototype,
+                prototype=shard_spec.prototype,
                 chunks_per_shard=chunks_per_shard,
             )
             shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
@@ -1390,7 +1390,7 @@ class ShardingCodec(
             [
                 (
                     _ShardingByteSetter(shard_dict, chunk_coords),
-                    chunk_spec,
+                    get_chunk_spec(chunk_coords),
                     chunk_selection,
                     out_selection,
                     is_complete_shard,
@@ -1457,7 +1457,7 @@ class ShardingCodec(
         indexer = get_indexer(
             selection,
             shape=shard_shape,
-            chunk_grid=ChunkGrid.from_sizes(shard_shape, self.chunk_shape),
+            chunk_grid=self._inner_grid(shard_shape),
         )
         if (
             isinstance(indexer, CoordinateIndexer)
@@ -1470,12 +1470,12 @@ class ShardingCodec(
     def _is_total_shard(
         self, all_chunk_coords: set[tuple[int, ...]], chunks_per_shard: tuple[int, ...]
     ) -> bool:
-        # `all_chunk_coords` comes from an indexer over this shard's chunk grid, so
-        # it is always a subset of that grid (`validate` requires the shard shape to
-        # be divisible by the inner chunk shape, so the indexer cannot produce an
-        # out-of-grid coordinate). A subset whose size equals the grid's is the
-        # whole grid, so the count check alone proves totality — no need to build
-        # and membership-test the full coordinate set on this hot path.
+        # `all_chunk_coords` comes from an indexer over this shard's inner chunk
+        # grid (`_inner_grid`, which covers the whole shard via ceiling
+        # division), so it is always a subset of that grid. A subset whose size
+        # equals the grid's is the whole grid, so the count check alone proves
+        # totality — no need to build and membership-test the full coordinate
+        # set on this hot path.
         return len(all_chunk_coords) == product(chunks_per_shard)
 
     def _is_complete_shard_write(
@@ -1585,15 +1585,54 @@ class ShardingCodec(
             prototype=shard_spec.prototype,
         )
 
+    def _inner_grid(self, shard_shape: tuple[int, ...]) -> ChunkGrid:
+        """The semi-regular grid of inner chunks within one shard.
+
+        Inner chunks are spaced at `chunk_shape` intervals and clipped by the
+        shard shape: the grid shape is the ceiling division of the shard shape
+        by `chunk_shape`, and chunks straddling the shard boundary are stored
+        at their clipped shape. Memoized via instance-local `lru_cache`.
+        """
+        return ChunkGrid.from_sizes(shard_shape, self.chunk_shape)
+
+    def _is_evenly_divided(self, shard_shape: tuple[int, ...]) -> bool:
+        """True when every inner chunk of a shard has the full `chunk_shape`."""
+        return all(s % c == 0 for s, c in zip(shard_shape, self.chunk_shape, strict=False))
+
+    def _make_chunk_spec_getter(
+        self, shard_spec: ArraySpec
+    ) -> Callable[[tuple[int, ...]], ArraySpec]:
+        """Per-inner-chunk `ArraySpec` lookup for one shard.
+
+        Inner chunks clipped by the shard boundary are encoded at their clipped
+        shape, so their spec differs from the nominal `chunk_shape` spec.
+        Within one getter, chunks with the nominal shape all share one spec
+        object, which keeps per-spec caches downstream (e.g.
+        `ChunkTransform._resolve_specs`) effective. Note that `_get_chunk_spec`
+        is not cached (see #3054), so the nominal spec here is NOT the same
+        object as one obtained from a separate `_get_chunk_spec` call — callers
+        must compare specs by shape, not identity.
+        """
+        nominal = self._get_chunk_spec(shard_spec)
+        if self._is_evenly_divided(shard_spec.shape):
+            return lambda chunk_coords: nominal
+        grid = self._inner_grid(shard_spec.shape)
+        specs: dict[tuple[int, ...], ArraySpec] = {nominal.shape: nominal}
+
+        def get_spec(chunk_coords: tuple[int, ...]) -> ArraySpec:
+            chunk = grid[chunk_coords]
+            assert chunk is not None, f"chunk coords {chunk_coords} outside the inner grid"
+            shape = chunk.shape
+            spec = specs.get(shape)
+            if spec is None:
+                spec = replace(nominal, shape=shape)
+                specs[shape] = spec
+            return spec
+
+        return get_spec
+
     def _get_chunks_per_shard(self, shard_spec: ArraySpec) -> tuple[int, ...]:
-        return tuple(
-            s // c
-            for s, c in zip(
-                shard_spec.shape,
-                self.chunk_shape,
-                strict=False,
-            )
-        )
+        return self._inner_grid(shard_spec.shape).grid_shape
 
     def _shard_index_byte_range(
         self, chunks_per_shard: tuple[int, ...]

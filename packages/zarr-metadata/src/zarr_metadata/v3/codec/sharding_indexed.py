@@ -27,8 +27,10 @@ class ShardingIndexedCodecConfiguration(TypedDict):
     """
     Configuration for the Zarr v3 `sharding_indexed` codec.
 
-    `chunk_shape` is the shape of inner chunks along each dimension;
-    it must evenly divide the shard shape.
+    `chunk_shape` is the shape of inner chunks along each dimension. It does
+    not need to evenly divide the shard shape: inner chunks are clipped by the
+    shard shape (`sharding_indexed` spec version 1.1; version 1.0 required
+    `chunk_shape` to evenly divide the shard shape).
 
     `codecs` is the codec pipeline applied to each inner chunk; exactly
     one array-to-bytes codec is required.

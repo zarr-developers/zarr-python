@@ -6,7 +6,6 @@ import warnings
 from asyncio import gather
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from itertools import starmap
 from logging import getLogger
 from typing import (
     TYPE_CHECKING,
@@ -43,6 +42,7 @@ from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.chunk_grids import (
     SHARDED_INNER_CHUNK_MAX_BYTES,
     ChunkGrid,
+    FixedDimension,
     _is_auto,
     _is_keep,
     _is_rectilinear_chunks,
@@ -197,6 +197,25 @@ def _chunk_sizes_from_shape(
         nchunks = ceildiv(s, c)
         sizes = tuple(min(c, s - i * c) for i in range(nchunks))
         result.append(sizes)
+    return tuple(result)
+
+
+def _inner_chunk_sizes_from_outer(
+    outer_chunk_sizes: tuple[tuple[int, ...], ...], inner_chunk_shape: tuple[int, ...]
+) -> tuple[tuple[int, ...], ...]:
+    """Compute dask-style inner (sub-shard) chunk sizes from outer chunk sizes.
+
+    The inner chunk grid restarts at every shard boundary and inner chunks are
+    clipped by the shard shape, so along each dimension the sizes are the
+    ceiling partition of each outer chunk's data size by the inner chunk size,
+    concatenated across the outer chunks.
+    """
+    result: list[tuple[int, ...]] = []
+    for outer_sizes, c in zip(outer_chunk_sizes, inner_chunk_shape, strict=True):
+        sizes: list[int] = []
+        for outer_size in outer_sizes:
+            sizes.extend(min(c, outer_size - i * c) for i in range(ceildiv(outer_size, c)))
+        result.append(tuple(sizes))
     return tuple(result)
 
 
@@ -900,7 +919,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ((20, 20),)
         """
         if (sharding_codec := _sharding_codec(self.metadata)) is not None:
-            return _chunk_sizes_from_shape(self.shape, sharding_codec.chunk_shape)
+            return _inner_chunk_sizes_from_outer(
+                self._chunk_grid.chunk_sizes, sharding_codec.chunk_shape
+            )
         return self._chunk_grid.chunk_sizes
 
     @property
@@ -1143,9 +1164,20 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             The number of chunks along each dimension.
         """
         if (sharding_codec := _sharding_codec(self.metadata)) is not None:
-            # When sharding, count inner chunks across the whole array
+            # The inner grid restarts at every shard boundary.
             chunk_shape = sharding_codec.chunk_shape
-            return tuple(starmap(ceildiv, zip(self.shape, chunk_shape, strict=True)))
+            counts: list[int] = []
+            for dimension, inner in zip(self._chunk_grid.dimensions, chunk_shape, strict=True):
+                if isinstance(dimension, FixedDimension):
+                    full, remainder = divmod(dimension.extent, dimension.size)
+                    counts.append(full * ceildiv(dimension.size, inner) + ceildiv(remainder, inner))
+                else:
+                    counts.append(
+                        sum(
+                            ceildiv(dimension.data_size(i), inner) for i in range(dimension.nchunks)
+                        )
+                    )
+            return tuple(counts)
         return self._chunk_grid.grid_shape
 
     @property
@@ -4117,7 +4149,7 @@ type SerializerLike = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
 
 
 class ShardsConfigParam(TypedDict):
-    shape: tuple[int, ...]
+    shape: Sequence[int | Sequence[int]]
     index_location: IndexLocation | None
 
 
@@ -5467,7 +5499,10 @@ async def _nchunks_initialized(
         # Uniform shard shape: the exact chunk count per shard is a single
         # multiply, O(1) after the storage listing.
         chunks_per_shard = product(
-            tuple(a // b for a, b in zip(meta.chunk_grid.chunk_shape, inner_chunks, strict=True))
+            tuple(
+                ceildiv(a, b)
+                for a, b in zip(meta.chunk_grid.chunk_shape, inner_chunks, strict=True)
+            )
         )
         return (await _nshards_initialized(array)) * chunks_per_shard
     # Rectilinear shard grid: the chunk count varies per shard, so decode the
@@ -5478,7 +5513,7 @@ async def _nchunks_initialized(
         spec = grid[meta.chunk_key_encoding.decode_chunk_key(key)]
         if spec is not None:
             total += product(
-                tuple(s // c for s, c in zip(spec.codec_shape, inner_chunks, strict=True))
+                tuple(ceildiv(s, c) for s, c in zip(spec.codec_shape, inner_chunks, strict=True))
             )
     return total
 

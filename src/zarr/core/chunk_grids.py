@@ -960,6 +960,7 @@ def resolve_outer_and_inner_chunks(
     # Extract the flat chunk shape (uniform size per dimension) for arithmetic.
     chunk_shape_flat = chunks.chunk_shape
 
+    shard_flat: tuple[int | Sequence[int], ...]
     if _is_auto(shard_shape):
         warnings.warn(
             "Automatic shard shape inference is experimental and may change without notice.",
