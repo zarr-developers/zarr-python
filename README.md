@@ -50,3 +50,4 @@ In addition to the primary `zarr` implementation, this repository contains other
 - [`zarr-metadata`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata): Tools for Zarr metadata. Install with `pip install zarr-metadata`.
 - [`zarr-indexing`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-indexing): Tools for lazily indexing chunked arrays. Install with `pip install zarr-indexing`.
 - [`zarr-http-server`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-http-server): An HTTP server implementation targeting Zarr data. Install with `pip install zarr-http-server`.
+- [`zarr-chunk-key-encoding`](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-chunk-key-encoding): Chunk key encodings for Zarr v3 arrays. Install with `pip install zarr-chunk-key-encoding`.

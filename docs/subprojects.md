@@ -42,4 +42,16 @@ without taking on `zarr` as a dependency.
     pip install zarr-http-server
     ```
 
+- [:material-key:{ .lg .middle } __zarr-chunk-key-encoding__](https://zarr.readthedocs.io/projects/zarr-chunk-key-encoding/)
+
+    ---
+
+    Chunk key encodings for Zarr v3 arrays: the spec-defined `default` and
+    `v2` encodings, grid-bounded encodings with finite key sets, and strict
+    decoding of a store key back to a chunk grid index.
+
+    ```bash
+    pip install zarr-chunk-key-encoding
+    ```
+
 </div>

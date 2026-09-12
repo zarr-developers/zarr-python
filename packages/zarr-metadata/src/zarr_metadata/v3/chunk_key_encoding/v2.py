@@ -17,6 +17,8 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
+from zarr_metadata._common import JSONValue
+
 V2_CHUNK_KEY_ENCODING_NAME: Final = "v2"
 """The `name` field value of the v2 chunk key encoding."""
 
@@ -33,7 +35,7 @@ V2_CHUNK_KEY_ENCODING_SEPARATOR: Final = ("/", ".")
 """Tuple of permitted values for the `separator` field of the v2 chunk key encoding."""
 
 
-class V2ChunkKeyEncodingConfiguration(TypedDict):
+class V2ChunkKeyEncodingConfiguration(TypedDict, extra_items=JSONValue):
     """Configuration for the v2 chunk key encoding.
 
     `separator` is optional and defaults to `"."` per spec.
@@ -42,7 +44,7 @@ class V2ChunkKeyEncodingConfiguration(TypedDict):
     separator: NotRequired[V2ChunkKeyEncodingSeparator]
 
 
-class V2ChunkKeyEncodingObject(TypedDict):
+class V2ChunkKeyEncodingObject(TypedDict, extra_items=JSONValue):
     """v2-compatibility chunk key encoding metadata in object form."""
 
     name: V2ChunkKeyEncodingName

@@ -11,6 +11,8 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
+from zarr_metadata._common import JSONValue
+
 DEFAULT_CHUNK_KEY_ENCODING_NAME: Final = "default"
 """The `name` field value of the default chunk key encoding."""
 
@@ -27,7 +29,7 @@ DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR: Final = ("/", ".")
 """Tuple of permitted values for the `separator` field of the default chunk key encoding."""
 
 
-class DefaultChunkKeyEncodingConfiguration(TypedDict):
+class DefaultChunkKeyEncodingConfiguration(TypedDict, extra_items=JSONValue):
     """Configuration for the default chunk key encoding.
 
     `separator` is optional and defaults to `"/"` per spec.
@@ -36,7 +38,7 @@ class DefaultChunkKeyEncodingConfiguration(TypedDict):
     separator: NotRequired[DefaultChunkKeyEncodingSeparator]
 
 
-class DefaultChunkKeyEncodingObject(TypedDict):
+class DefaultChunkKeyEncodingObject(TypedDict, extra_items=JSONValue):
     """Default chunk key encoding metadata in object form."""
 
     name: DefaultChunkKeyEncodingName

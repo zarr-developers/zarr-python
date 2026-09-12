@@ -1,0 +1,108 @@
+name: zarr-chunk-key-encoding
+
+# The oldest supported Python runs the package's complete local gate through
+# `just check`; the compatibility matrix adds test coverage on newer Pythons.
+# Tool versions are explicit here and in the package configuration so an
+# unrelated tool release cannot change a run.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/zarr-chunk-key-encoding/**'
+      - '.github/workflows/zarr-chunk-key-encoding.yml'
+      # The parity suite compares against zarr's own chunk key encodings, and
+      # the package builds on the zarr-metadata types, so changes to either can
+      # break this suite.
+      - 'packages/zarr-metadata/**'
+      - 'src/zarr/**'
+  pull_request:
+    paths:
+      - 'packages/zarr-chunk-key-encoding/**'
+      - '.github/workflows/zarr-chunk-key-encoding.yml'
+      # The parity suite compares against zarr's own chunk key encodings, and
+      # the package builds on the zarr-metadata types, so changes to either can
+      # break this suite.
+      - 'packages/zarr-metadata/**'
+      - 'src/zarr/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: just check py=3.11
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/zarr-chunk-key-encoding
+    env:
+      UV_PYTHON: '3.11'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: '1.58.0'
+      - name: Set up Python 3.11 and 3.12
+        run: uv python install 3.11 3.12
+      - name: Run the complete package gate
+        run: just check
+
+  test:
+    name: pytest py=${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: packages/zarr-chunk-key-encoding
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13', '3.14']
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: '1.58.0'
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+      - name: Run pytest
+        run: just test
+
+  zarr-chunk-key-encoding-complete:
+    name: zarr-chunk-key-encoding complete
+    needs: [check, test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check failure
+        if: |
+          contains(needs.*.result, 'failure') ||
+          contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - name: Success
+        run: echo Success!
