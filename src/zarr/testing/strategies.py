@@ -85,7 +85,7 @@ _field_titles = st.text(
 
 def _leaf_zdtypes(cls: type[ZDType[TBaseDType, TBaseScalar]]) -> SearchStrategy[ZDType[Any, Any]]:
     """
-    A strategy for instances of a single non-struct ``ZDType`` class, drawing each constructor
+    A strategy for instances of a single non-struct `ZDType` class, drawing each constructor
     parameter the class declares from its valid range.
     """
     params = {f.name for f in dataclasses.fields(cls)}
@@ -104,7 +104,7 @@ def _leaf_zdtypes(cls: type[ZDType[TBaseDType, TBaseScalar]]) -> SearchStrategy[
 
 def _normalize_generic_scale_factor(zdtype: Any) -> Any:
     """
-    NumPy's generic time unit carries no scale factor, so only ``scale_factor=1`` has a native
+    NumPy's generic time unit carries no scale factor, so only `scale_factor=1` has a native
     representation for it.
     """
     if zdtype.unit == "generic":
@@ -115,7 +115,7 @@ def _normalize_generic_scale_factor(zdtype: Any) -> Any:
 def _struct_zdtypes(
     children: SearchStrategy[ZDType[Any, Any]],
 ) -> SearchStrategy[ZDType[Any, Any]]:
-    """A strategy for ``Struct`` instances whose field data types are drawn from ``children``."""
+    """A strategy for `Struct` instances whose field data types are drawn from `children`."""
 
     @st.composite
     def _draw(draw: st.DrawFn) -> ZDType[Any, Any]:
@@ -129,7 +129,7 @@ def _struct_zdtypes(
 
 def zdtypes(*, max_leaves: int = 6) -> SearchStrategy[ZDType[Any, Any]]:
     """
-    A strategy for instances of every registered ``ZDType`` class, including ``Struct`` with
+    A strategy for instances of every registered `ZDType` class, including `Struct` with
     arbitrarily nested fields.
 
     Struct fields are restricted to fixed-size data types, since the Zarr struct data type cannot
@@ -153,10 +153,10 @@ def structured_dtypes(
     """
     A strategy for native NumPy structured dtypes, flat or nested.
 
-    With ``allow_unrepresentable=False`` (the default) every dtype is packed, has plain field names
+    With `allow_unrepresentable=False` (the default) every dtype is packed, has plain field names
     and scalar fields, so it can be represented by the Zarr struct data type. With
-    ``allow_unrepresentable=True`` the strategy also injects the NumPy features that the Zarr
-    struct data type cannot record: field titles, subarray fields and ``align=True`` layouts.
+    `allow_unrepresentable=True` the strategy also injects the NumPy features that the Zarr
+    struct data type cannot record: field titles, subarray fields and `align=True` layouts.
     Each is injected independently at random, so most draws carry at least one and some carry
     none.
     """

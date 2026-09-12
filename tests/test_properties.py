@@ -421,7 +421,7 @@ def test_zdtype_native_roundtrip(zdtype: ZDType[Any, Any]) -> None:
 def test_structured_dtype_never_silently_changes(dtype: np.dtype[np.void]) -> None:
     """
     For any native structured dtype, including ones with field titles, subarray fields or
-    aligned layouts, resolving a Zarr data type either raises ``ValueError`` or yields a data type
+    aligned layouts, resolving a Zarr data type either raises `ValueError` or yields a data type
     whose native form is exactly the input: same field names, offsets and itemsize.
 
     This is the property that the silent-corruption bugs in structured dtype handling violated:

@@ -34,21 +34,21 @@ def _check_representable(dtype: np.dtype[np.void]) -> str | None:
     """
     Check whether a structured NumPy dtype can be represented by the Zarr struct data type.
 
-    The Zarr struct metadata records only ``(name, dtype)`` pairs and reconstructs the native
-    dtype by packing those fields contiguously (see ``Structured.to_native_dtype``). Anything
+    The Zarr struct metadata records only `(name, dtype)` pairs and reconstructs the native
+    dtype by packing those fields contiguously (see `Structured.to_native_dtype`). Anything
     NumPy allows beyond that is lost on the round trip and would silently change how stored
     bytes are interpreted. This function rejects three such features, recursing into nested
     fields so that a problem inside a nested field dtype is caught even when the outer dtype
     is fine:
 
-    - field titles, e.g. ``np.dtype([(("title", "name"), "i4")])``
-    - subarray fields, e.g. ``np.dtype([("name", "i4", (2,))])``
-    - non-default field layouts, e.g. ``np.dtype(..., align=True)`` or explicit offsets
+    - field titles, e.g. `np.dtype([(("title", "name"), "i4")])`
+    - subarray fields, e.g. `np.dtype([("name", "i4", (2,))])`
+    - non-default field layouts, e.g. `np.dtype(..., align=True)` or explicit offsets
 
     Returns
     -------
     str | None
-        ``None`` if the dtype is representable, otherwise a short description of the problem.
+        `None` if the dtype is representable, otherwise a short description of the problem.
     """
     names = dtype.names
     fields = dtype.fields
@@ -249,7 +249,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
                     "structured dtype without titles, subarray fields, align=True or explicit "
                     "offsets instead."
                 )
-            # Iterate over ``names`` rather than ``fields``: the ``fields`` mapping also
+            # Iterate over `names` rather than `fields`: the `fields` mapping also
             # contains an entry for every field title, which would duplicate titled fields.
             for key in dtype.names:  # type: ignore[union-attr]
                 dtype_wrapped = get_data_type_from_native_dtype(dtype.fields[key][0])  # type: ignore[index]

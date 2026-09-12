@@ -292,8 +292,8 @@ def test_packed_structured_dtype_round_trips(
     A packed (default-layout) structured dtype, flat or nested, round-trips unchanged through
     both the JSON form and the native form.
 
-    Nested dtypes are the regression case: ``Struct.to_json(zarr_format=2)`` emits a nested
-    field as ``[name, [[sub, dt], ...]]``, and the inner V2 type guard used to reject that form,
+    Nested dtypes are the regression case: `Struct.to_json(zarr_format=2)` emits a nested
+    field as `[name, [[sub, dt], ...]]`, and the inner V2 type guard used to reject that form,
     so Zarr wrote V2 metadata it could not read back.
     """
     zdtype = Struct.from_native_dtype(dtype)
@@ -339,7 +339,7 @@ def test_padded_structured_dtype_raises(dtype: np.dtype[np.void]) -> None:
     Structured dtypes with non-default (padded / aligned / explicitly offset) field layouts must
     fail loudly rather than silently dropping the padding.
 
-    The Zarr struct metadata records only ``(name, dtype)`` pairs and re-packs fields
+    The Zarr struct metadata records only `(name, dtype)` pairs and re-packs fields
     contiguously on read, so a padded dtype would round-trip to a different itemsize and
     silently misinterpret stored chunk bytes.
     """
@@ -349,7 +349,7 @@ def test_padded_structured_dtype_raises(dtype: np.dtype[np.void]) -> None:
 
 def test_titled_structured_dtype_raises() -> None:
     """
-    A structured dtype with a field title must be rejected. NumPy's ``fields`` mapping lists the
+    A structured dtype with a field title must be rejected. NumPy's `fields` mapping lists the
     title as an extra key, so a titled field used to be read back as two separate fields.
     """
     dtype = np.dtype([(("title", "f0"), "i4"), ("g", "f8")])
