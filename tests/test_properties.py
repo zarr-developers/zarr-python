@@ -34,6 +34,7 @@ from zarr.testing.strategies import (
     sharded_arrays,
     simple_arrays,
     stores,
+    transposed_sharding_chains,
     zarr_formats,
 )
 
@@ -496,3 +497,51 @@ def test_chunks_param_from_rectilinear_bare_int_roundtrip() -> None:
             dtype="uint8",
         )
         assert dst.metadata.chunk_grid == grid  # type: ignore[union-attr]
+
+
+@given(data=st.data())
+@pytest.mark.filterwarnings(
+    "ignore:Combining a `sharding_indexed` codec:zarr.errors.ZarrUserWarning"
+)
+def test_transposed_sharding_chain_validation(data: st.DataObject) -> None:
+    """A chain with a transpose ahead of a sharding codec is accepted exactly
+    when the sharding codec's chunk shape divides the *transposed* chunk, and an
+    accepted chain round-trips its data and its persisted metadata.
+
+    Every codec must be validated against the chunk spec it sees at encode
+    time. Validating the sharding codec against the array's untransposed chunk
+    grid instead accepts chains whose inner chunks do not tile the transposed
+    chunk; such an array is created without error and then silently reads back
+    wrong data.
+    """
+    from zarr.storage import MemoryStore
+
+    # At least two axes, so that a permuted order can change the chunk shape.
+    shape = data.draw(
+        npst.array_shapes(min_dims=2, max_dims=3, min_side=1, max_side=8), label="shape"
+    )
+    chunks, filters, serializer, valid = data.draw(transposed_sharding_chains(shape=shape))
+    dtype = data.draw(st.sampled_from([np.dtype("uint8"), np.dtype("int32"), np.dtype("float64")]))
+    nparray = data.draw(numpy_arrays(shapes=st.just(shape), dtype=dtype), label="array data")
+
+    def build() -> zarr.Array:
+        return zarr.create_array(
+            MemoryStore(),
+            shape=shape,
+            chunks=chunks,
+            dtype=dtype,
+            filters=filters,
+            serializer=serializer,
+            compressors=None,
+        )
+
+    if not valid:
+        with pytest.raises(ValueError, match="not divisible"):
+            build()
+        return
+    zarray = build()
+    zarray[:] = nparray
+    assert_array_equal(zarray[:], nparray)
+    reopened = zarr.open_array(zarray.store, mode="r")
+    assert reopened.metadata == zarray.metadata
+    assert_array_equal(reopened[:], nparray)
