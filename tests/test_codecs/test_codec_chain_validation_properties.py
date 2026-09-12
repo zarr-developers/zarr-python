@@ -1,22 +1,15 @@
 """Property-based tests for codec-chain validation with shape-changing codecs.
 
-Two invariants are tested against explicit oracles:
-
-1. Acceptance implies round-trip: any reshape+transpose chain that metadata
-   validation accepts must encode and decode data losslessly (and its metadata
-   must survive JSON serialization), while a transpose order of the wrong rank
-   must be rejected.
-
-2. For a rectilinear grid followed by a shape-changing codec and a
-   size-sensitive codec (sharding), acceptance must exactly equal the oracle
-   "every chunk shape in the grid, transformed by the chain, satisfies the
-   size constraint" — not just the largest chunk (see
-   ``evolve_and_validate_codecs``).
+Acceptance implies round-trip: any reshape+transpose chain that metadata
+validation accepts must encode and decode data losslessly (and its metadata
+must survive JSON serialization), while a transpose order of the wrong rank
+must be rejected. A fill-changing inner codec must be validated against the
+actual fill value. (Transpose ahead of sharding, regular and nested, is
+covered by `test_transposed_sharding_chain_validation` in `test_properties.py`.)
 """
 
 from __future__ import annotations
 
-import itertools
 import math
 from typing import TYPE_CHECKING
 
@@ -27,9 +20,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 import zarr
-from zarr.codecs import ShardingCodec, TransposeCodec
-from zarr.core.dtype import Int32
-from zarr.core.metadata.v3 import ArrayV3Metadata, RectilinearChunkGridMetadata
+from zarr.codecs import TransposeCodec
+from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.registry import _codec_registries, register_codec
 
 from .test_codec_chain_validation import ReshapeCodec
@@ -127,63 +119,6 @@ def test_wrong_rank_transpose_after_reshape_rejected(
             dtype="i4",
             filters=[ReshapeCodec(shape=target), TransposeCodec(order=order)],
         )
-
-
-@st.composite
-def rectilinear_transpose_sharding_cases(
-    draw: st.DrawFn,
-) -> tuple[tuple[int | tuple[int, ...], ...], tuple[int, ...], tuple[int, ...]]:
-    """(rectilinear chunk_shapes, transpose order, inner shard shape)."""
-    ndim = draw(st.integers(min_value=2, max_value=3))
-    chunk_shapes: list[int | tuple[int, ...]] = []
-    for _ in range(ndim):
-        edges = draw(st.lists(st.integers(min_value=1, max_value=6), min_size=1, max_size=3))
-        # exercise the bare-int (uniform edge) spelling as well
-        if len(edges) == 1 and draw(st.booleans()):
-            chunk_shapes.append(edges[0])
-        else:
-            chunk_shapes.append(tuple(edges))
-    order = tuple(draw(st.permutations(range(ndim))))
-    inner = tuple(draw(st.integers(min_value=1, max_value=6)) for _ in range(ndim))
-    return tuple(chunk_shapes), order, inner
-
-
-@settings(deadline=None)
-@given(case=rectilinear_transpose_sharding_cases())
-def test_rectilinear_transpose_sharding_matches_oracle(
-    case: tuple[tuple[int | tuple[int, ...], ...], tuple[int, ...], tuple[int, ...]],
-) -> None:
-    """transpose-then-shard over a rectilinear grid is accepted exactly when
-    every transposed chunk shape is divisible by the inner shard shape."""
-    chunk_shapes, order, inner = case
-    per_dim = tuple((e,) if isinstance(e, int) else e for e in chunk_shapes)
-    oracle_ok = all(
-        all(chunk[order[i]] % inner[i] == 0 for i in range(len(inner)))
-        for chunk in itertools.product(*per_dim)
-    )
-    # array shape: bare-int (uniform) edges cover any extent; explicit edge
-    # lists must sum to at least the extent.
-    shape = tuple(e if isinstance(e, int) else sum(e) for e in chunk_shapes)
-
-    def build() -> ArrayV3Metadata:
-        return ArrayV3Metadata(
-            shape=shape,
-            data_type=Int32(),
-            chunk_grid=RectilinearChunkGridMetadata(chunk_shapes=chunk_shapes),
-            chunk_key_encoding={"name": "default"},
-            fill_value=0,
-            codecs=(TransposeCodec(order=order), ShardingCodec(chunk_shape=inner)),
-            attributes=None,
-            dimension_names=None,
-        )
-
-    with zarr.config.set({"array.rectilinear_chunks": True}):
-        if oracle_ok:
-            meta = build()
-            assert ArrayV3Metadata.from_dict(meta.to_dict()) == meta
-        else:
-            with pytest.raises(ValueError, match="not\\s+divisible"):
-                build()
 
 
 @given(offset=st.integers(min_value=1, max_value=254), sharded=st.booleans())
