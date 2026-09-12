@@ -1105,6 +1105,8 @@ def from_array(
     fill_value : Any, optional
         Fill value for the array.
         If not specified, defaults to the fill value of the data array.
+        Pass `None` explicitly to use the default scalar of the data type
+        (Zarr format 3) or a null fill value (Zarr format 2) instead.
     order : {"C", "F"}, optional
         The memory order of the array (default is "C").
         For Zarr format 2, this parameter sets the memory order of the array.
@@ -1117,7 +1119,11 @@ def from_array(
         If not specified, defaults to the zarr format of the data array.
     attributes : dict, optional
         Attributes for the array.
-        If not specified, defaults to the attributes of the data array.
+        If not specified, the source Zarr array's attributes are deep-copied so
+        nested containers are independent. Deeply nested attributes can raise
+        `RecursionError` during copying even if they can be stored and reopened;
+        the threshold depends on Python's recursion limit and the current call stack.
+        Pass an empty dict to create the array with no attributes.
     chunk_key_encoding : ChunkKeyEncoding, optional
         A specification of how the chunk keys are represented in storage.
         For Zarr format 3, the default is `{"name": "default", "separator": "/"}}`.

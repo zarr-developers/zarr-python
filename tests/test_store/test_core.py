@@ -4,9 +4,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 import pytest
+from packaging.version import parse as parse_version
 
 import zarr
 from zarr import Group
+from zarr.abc.store import Store
 from zarr.core.buffer import cpu
 from zarr.core.common import ZARR_JSON, AccessModeLiteral, ZarrFormat
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath, ZipStore
@@ -14,6 +16,7 @@ from zarr.storage._common import (
     _contains_node_v3,
     contains_array,
     contains_group,
+    make_store,
     make_store_path,
 )
 from zarr.storage._utils import (
@@ -246,6 +249,50 @@ async def test_make_store_path_fsspec() -> None:
 async def test_make_store_path_storage_options_raises(store_like: StoreLike) -> None:
     with pytest.raises(TypeError, match="storage_options"):
         await make_store_path(store_like, storage_options={"foo": "bar"})
+
+
+# universal-pathlib 0.2.x emits this from its own subclass registry when a local UPath is built.
+@pytest.mark.filterwarnings(
+    "ignore:Detected a customized `__new__` method in subclass:DeprecationWarning"
+)
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("memory://bucket/foo.zarr", FsspecStore),
+        ("s3://bucket/foo.zarr", FsspecStore),
+        ("file://{tmp}/foo.zarr", LocalStore),
+        ("{tmp}/foo.zarr", LocalStore),
+    ],
+)
+async def test_make_store_upath(url: str, expected: type[Store], tmp_path: Path) -> None:
+    """
+    A remote UPath becomes an FsspecStore, and a local one becomes a LocalStore, so that
+    UPath("/data") and Path("/data") agree. See https://github.com/zarr-developers/zarr-python/issues/4244.
+    """
+    upath = pytest.importorskip("upath")
+    fsspec = pytest.importorskip("fsspec")
+    if url.startswith("s3://"):
+        pytest.importorskip("s3fs")
+    if url.startswith("memory://") and parse_version(fsspec.__version__) < parse_version(
+        "2024.12.0"
+    ):
+        # MemoryFileSystem is synchronous, so it can only be used once fsspec is new enough to
+        # supply AsyncFileSystemWrapper.
+        pytest.skip("No AsyncFileSystemWrapper")
+    store = await make_store(upath.UPath(url.format(tmp=tmp_path)))
+    assert isinstance(store, expected)
+    if isinstance(store, LocalStore):
+        # The local branch rebuilds the root from the UPath, so a mangled path would still
+        # produce a LocalStore. Pin the root down too, since "file://{tmp}" has no leading
+        # slash on Windows.
+        assert store.root == tmp_path / "foo.zarr"
+
+
+async def test_make_store_upath_storage_options_raises() -> None:
+    """A UPath carries its own storage options, so a separate mapping is ambiguous."""
+    upath = pytest.importorskip("upath")
+    with pytest.raises(TypeError, match="storage_options"):
+        await make_store(upath.UPath("memory://bucket/foo.zarr"), storage_options={"foo": "bar"})
 
 
 async def test_unsupported() -> None:

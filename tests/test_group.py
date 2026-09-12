@@ -60,8 +60,9 @@ if TYPE_CHECKING:
     import pathlib
     from collections.abc import Callable
 
+    from zarr.core.array import ShardsLike
     from zarr.core.buffer.core import Buffer
-    from zarr.core.common import JSON, ZarrFormat
+    from zarr.core.common import JSON, ChunksLike, ZarrFormat
     from zarr.core.dtype import ZDType, ZDTypeLike
 
 
@@ -783,21 +784,35 @@ async def test_group_update_attributes_async(store: Store, zarr_format: ZarrForm
 
 
 @pytest.mark.parametrize("name", ["a", "/a"])
+@pytest.mark.parametrize(
+    "chunks",
+    [(2, 2), [2, 2], np.array([2, 2]), (np.int64(2), np.int64(2))],
+    ids=["tuple", "list", "array", "numpy-scalars"],
+)
+@pytest.mark.parametrize(
+    "shards",
+    [None, (4, 4), [4, 4], np.array([4, 4]), (np.int64(4), np.int64(4))],
+    ids=["none", "tuple", "list", "array", "numpy-scalars"],
+)
 def test_group_create_array(
     store: Store,
     zarr_format: ZarrFormat,
     overwrite: bool,
     name: str,
+    chunks: ChunksLike,
+    shards: ShardsLike | None,
 ) -> None:
     """
-    Test `Group.from_store`
+    Test `Group.create_array`
     """
+    if zarr_format == 2 and shards is not None:
+        pytest.skip("Zarr format 2 does not support sharding")
     group = Group.from_store(store, zarr_format=zarr_format)
     shape = (10, 10)
     dtype = "uint8"
     data = np.arange(np.prod(shape)).reshape(shape).astype(dtype)
 
-    array = group.create_array(name=name, shape=shape, dtype=dtype)
+    array = group.create_array(name=name, shape=shape, dtype=dtype, chunks=chunks, shards=shards)
     array[:] = data
 
     if not overwrite:
@@ -807,6 +822,8 @@ def test_group_create_array(
 
     assert array.path == normalize_path(name)
     assert array.name == f"/{array.path}"
+    assert array.chunks == (2, 2)
+    np.testing.assert_array_equal(array.shards, shards)
     assert array.shape == shape
     assert array.dtype == np.dtype(dtype)
     assert np.array_equal(array[:], data)

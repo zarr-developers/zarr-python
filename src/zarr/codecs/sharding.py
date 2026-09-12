@@ -57,6 +57,7 @@ from zarr.core.dtype.npy.structured import Struct
 from zarr.core.indexing import (
     BasicIndexer,
     ChunkProjection,
+    CoordinateIndexer,
     SelectorTuple,
     SliceDimIndexer,
     _lexicographic_order,
@@ -397,6 +398,25 @@ class _ShardReader(ShardMapping):
                 result[coords] = None
 
         return result
+
+
+def _drops_only_unit_axes(shape: tuple[int, ...], full: tuple[int, ...]) -> bool:
+    """Return whether ``shape`` is ``full`` with zero or more length-1 axes removed.
+
+    ``(2, 2)`` is ``(2, 1, 2)`` minus its unit axis, and ``(1, 2)`` is
+    ``(1, 2, 1)`` minus its last; ``(2, 2)`` is not ``(4,)``, and
+    ``(3, 2, 1)`` is not ``(3, 2)`` because it adds an axis.
+    """
+    remaining = iter(full)
+    for size in shape:
+        for full_size in remaining:
+            if full_size == size:
+                break
+            if full_size != 1:
+                return False
+        else:
+            return False
+    return all(full_size == 1 for full_size in remaining)
 
 
 @dataclass(frozen=True)
@@ -791,18 +811,11 @@ class ShardingCodec(
         Loads the existing shard, merges the written region into the affected
         inner chunks, and rewrites the whole shard.
         """
-        shard_shape = shard_spec.shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
         chunk_spec = self._get_chunk_spec(shard_spec)
         inner_transform = self._get_inner_chunk_transform(shard_spec)
 
-        indexer = list(
-            get_indexer(
-                selection,
-                shape=shard_shape,
-                chunk_grid=ChunkGrid.from_sizes(shard_shape, self.chunk_shape),
-            )
-        )
+        indexer, value = self._get_shard_indexer_and_value(selection, shard_spec, value)
 
         is_complete = self._is_complete_shard_write(indexer, chunks_per_shard)
 
@@ -1354,18 +1367,10 @@ class ShardingCodec(
         selection: SelectorTuple,
         shard_spec: ArraySpec,
     ) -> None:
-        shard_shape = shard_spec.shape
-        chunk_shape = self.chunk_shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
         chunk_spec = self._get_chunk_spec(shard_spec)
 
-        indexer = list(
-            get_indexer(
-                selection,
-                shape=shard_shape,
-                chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
-            )
-        )
+        indexer, shard_array = self._get_shard_indexer_and_value(selection, shard_spec, shard_array)
 
         if self._is_complete_shard_write(indexer, chunks_per_shard):
             shard_dict = dict.fromkeys(lexicographic_order_coords(chunks_per_shard))
@@ -1422,6 +1427,45 @@ class ShardingCodec(
         return self._assemble_shard(
             index_bytes, buffers, buffer_prototype, chunks_per_shard=chunks_per_shard
         )
+
+    def _get_shard_indexer_and_value(
+        self, selection: SelectorTuple, shard_spec: ArraySpec, value: NDBuffer
+    ) -> tuple[list[ChunkProjection], NDBuffer]:
+        """Index ``selection`` over the inner chunk grid, flattening ``value`` to match.
+
+        ``get_indexer`` classifies a tuple of integer arrays as a coordinate
+        selection, and a ``CoordinateIndexer`` addresses the value buffer as
+        1-D. An ``OrthogonalIndexer`` with two or more array-indexed axes hands
+        down an ``np.ix_`` tuple, so ``sel_shape`` is N-D, while the caller
+        shaped ``value`` like the orthogonal result: the broadcast shape minus
+        the integer-indexed axes, which ``np.ix_`` keeps as length-1 axes. That
+        value has the element count and C order of the flattened projections,
+        so ravel it.
+
+        Only that value shape is ravelled. A mask or coordinate selection
+        arrives with a 1-D ``sel_shape`` and a value that must already be flat,
+        and an orthogonal value with an axis the selection does not have is
+        invalid. Both are left alone so the write fails the same way it does
+        on an unsharded array; the shard-level selection alone cannot tell
+        orthogonal from mask indexing, the value shape can. Scalars pass
+        through and are broadcast downstream.
+
+        The partial-decode paths apply the inverse reshape, to
+        ``indexer.sel_shape``, on the way out.
+        """
+        shard_shape = shard_spec.shape
+        indexer = get_indexer(
+            selection,
+            shape=shard_shape,
+            chunk_grid=ChunkGrid.from_sizes(shard_shape, self.chunk_shape),
+        )
+        if (
+            isinstance(indexer, CoordinateIndexer)
+            and len(value.shape) > 1
+            and _drops_only_unit_axes(value.shape, indexer.sel_shape)
+        ):
+            value = value.reshape(indexer.shape)
+        return list(indexer), value
 
     def _is_total_shard(
         self, all_chunk_coords: set[tuple[int, ...]], chunks_per_shard: tuple[int, ...]

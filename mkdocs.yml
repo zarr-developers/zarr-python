@@ -102,6 +102,7 @@ nav:
       - 'zarr-metadata ↪': https://zarr.readthedocs.io/projects/zarr-metadata/
       - 'zarr-indexing ↪': https://zarr.readthedocs.io/projects/zarr-indexing/
   - release-notes.md
+  - roadmap.md
   - contributing.md
   - Blog:
     - blog/index.md
@@ -199,6 +200,7 @@ plugins:
             - https://docs.xarray.dev/en/stable/objects.inv
             - https://numpy.org/doc/stable/objects.inv
             - https://numcodecs.readthedocs.io/en/stable/objects.inv
+            - https://msgspec.dev/objects.inv
             - https://developmentseed.org/obstore/latest/objects.inv
             - https://filesystem-spec.readthedocs.io/en/latest/objects.inv
             - https://requests.readthedocs.io/en/latest/objects.inv
@@ -220,7 +222,6 @@ plugins:
         'search.html.md': 'index.md'
         'tutorial.md': 'user-guide/installation.md'
         'getting-started.md': 'quick-start.md'
-        'roadmap.md': 'https://zarr.readthedocs.io/en/v3.0.8/developers/roadmap.html'
         'installation.md': 'user-guide/installation.md'
         'release.md': 'release-notes.md'
         'about.html.md': 'index.md'

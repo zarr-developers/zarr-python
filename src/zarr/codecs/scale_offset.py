@@ -355,15 +355,18 @@ class ScaleOffset(ArrayArrayCodec):
                 f"scale_offset codec only supports integer and floating-point data types. "
                 f"Got {dtype}."
             )
-        if self.scale == 0:
-            raise ValueError("scale_offset scale must be non-zero.")
+        parsed: dict[str, Any] = {}
         for name, value in [("offset", self.offset), ("scale", self.scale)]:
             try:
-                dtype.from_json_scalar(value, zarr_format=3)
+                parsed[name] = dtype.from_json_scalar(value, zarr_format=3)
             except (TypeError, ValueError, OverflowError) as e:
                 raise ValueError(
                     f"scale_offset {name} value {value!r} is not representable in dtype {native}."
                 ) from e
+        # ``scale`` may be given as a string, and no string is ever ``== 0``, so this has to
+        # compare the parsed scalar rather than the value as supplied.
+        if parsed["scale"] == 0:
+            raise ValueError("scale_offset scale must be non-zero.")
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         zdtype = chunk_spec.dtype

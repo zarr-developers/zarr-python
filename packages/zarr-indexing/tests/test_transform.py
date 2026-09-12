@@ -764,6 +764,32 @@ class TestIndexTransformVindex:
 
 
 @pytest.mark.parametrize("mode", ["oindex", "vindex"])
+@pytest.mark.parametrize("as_list", [False, True])
+@pytest.mark.parametrize("value", [2**63, 2**64 - 1])
+def test_direct_advanced_index_rejects_unsigned_overflow(
+    mode: str, as_list: bool, value: int
+) -> None:
+    """Narrowing must not turn huge positive coordinates into valid negative ones."""
+    transform = IndexTransform.identity(
+        IndexDomain(inclusive_min=(np.iinfo(np.intp).min,), exclusive_max=(0,))
+    )
+    selector = [value] if as_list else np.array([value], dtype=np.uint64)
+    with pytest.raises(OverflowError, match="outside np.intp range"):
+        getattr(transform, mode)[selector]
+
+
+@pytest.mark.parametrize("mode", ["oindex", "vindex"])
+@pytest.mark.parametrize("dtype", ["intp", "uint8", "uint64"])
+def test_direct_advanced_index_preserves_valid_coordinates(mode: str, dtype: str) -> None:
+    transform = IndexTransform.from_shape((5,))
+    selector = np.array([3, 0, 3], dtype=dtype)
+    selector.flags.writeable = False
+    result = getattr(transform, mode)[selector]
+    np.testing.assert_array_equal(result.apply_many(np.arange(3).reshape(3, 1)), [[3], [0], [3]])
+    np.testing.assert_array_equal(selector, [3, 0, 3])
+
+
+@pytest.mark.parametrize("mode", ["oindex", "vindex"])
 def test_direct_advanced_index_rejects_float_arrays(mode: str) -> None:
     helper = getattr(IndexTransform.from_shape((5,)), mode)
     with pytest.raises(IndexError, match="integer or boolean"):
