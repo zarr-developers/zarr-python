@@ -43,6 +43,7 @@ class TestDateTime64(_TestTimeBase):
     valid_json_v3 = (
         {"name": "numpy.datetime64", "configuration": {"unit": "ns", "scale_factor": 10}},
         {"name": "numpy.datetime64", "configuration": {"unit": "us", "scale_factor": 1}},
+        {"name": "numpy.datetime64", "configuration": {"unit": "generic", "scale_factor": 1}},
     )
     invalid_json_v2 = (
         "datetime64",
@@ -93,6 +94,7 @@ class TestTimeDelta64(_TestTimeBase):
     valid_json_v3 = (
         {"name": "numpy.timedelta64", "configuration": {"unit": "ns", "scale_factor": 10}},
         {"name": "numpy.timedelta64", "configuration": {"unit": "us", "scale_factor": 1}},
+        {"name": "numpy.timedelta64", "configuration": {"unit": "generic", "scale_factor": 1}},
     )
     invalid_json_v2 = (
         "timedelta64",
@@ -164,6 +166,39 @@ def test_time_scale_factor_too_high() -> None:
         DateTime64(scale_factor=scale_factor)
     with pytest.raises(ValueError, match=msg):
         TimeDelta64(scale_factor=scale_factor)
+
+
+def test_time_generic_unit_rejects_scale_factor() -> None:
+    """
+    Test that the 'generic' unit with a scale factor other than 1 raises a ValueError.
+
+    NumPy's generic time unit has no scale, so ``np.dtype("M8[2generic]")`` silently drops
+    the 2 and the value would not survive ``to_native_dtype`` or the Zarr V2 dtype string.
+    """
+    scale_factor = 2
+    msg = f"The 'generic' unit does not take a scale factor, got scale_factor={scale_factor}."
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        DateTime64(unit="generic", scale_factor=scale_factor)
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        TimeDelta64(unit="generic", scale_factor=scale_factor)
+
+
+@pytest.mark.parametrize("cls", [DateTime64, TimeDelta64])
+def test_time_microsecond_alias_normalized(cls: type[DateTime64 | TimeDelta64]) -> None:
+    """
+    Test that the 'μs' unit is stored as NumPy's 'us' spelling.
+
+    The two spellings are equivalent, but NumPy only ever reports 'us', so an instance
+    that kept 'μs' would compare unequal to itself after a trip through NumPy. Stored
+    metadata may still spell the unit 'μs' and reads back as the normalized instance.
+    """
+    zdtype = cls(unit="μs", scale_factor=3)
+    assert zdtype.unit == "us"
+    assert zdtype == cls(unit="us", scale_factor=3)
+    assert cls.from_native_dtype(zdtype.to_native_dtype()) == zdtype
+    json_v3 = {"name": cls._zarr_v3_name, "configuration": {"unit": "μs", "scale_factor": 3}}
+    assert cls.from_json(json_v3, zarr_format=3) == zdtype
+    assert zdtype.to_json(zarr_format=3)["configuration"]["unit"] == "us"
 
 
 @pytest.mark.parametrize("unit", get_args(DateTimeUnit))

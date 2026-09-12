@@ -233,6 +233,18 @@ class TimeDTypeBase[
             raise ValueError(f"scale_factor must be < 2147483648, got {self.scale_factor}.")
         if self.unit not in get_args(DateTimeUnit):
             raise ValueError(f"unit must be one of {get_args(DateTimeUnit)}, got {self.unit!r}.")
+        if self.unit == "μs":
+            # NumPy spells the microsecond unit "us" and resolves "μs" to it, so an
+            # instance built with "μs" would not round-trip through to_native_dtype().
+            # Store the NumPy spelling; "μs" stays accepted as input and in stored metadata.
+            object.__setattr__(self, "unit", "us")
+        if self.unit == "generic" and self.scale_factor != 1:
+            # NumPy's generic (unit-less) time type carries no scale, so a scale factor
+            # other than 1 is silently dropped by np.dtype and by the Zarr V2 dtype string.
+            raise ValueError(
+                f"The 'generic' unit does not take a scale factor, got scale_factor={self.scale_factor}. "
+                "Use scale_factor=1 with the 'generic' unit."
+            )
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
