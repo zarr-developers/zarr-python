@@ -37,6 +37,10 @@ def checked_affine(
     NumPy performs fixed-width arithmetic. The common representable case then
     uses an ``np.intp`` fast path whose multiplication and addition were proven
     safe; cancellation cases use exact object arithmetic.
+
+    The identity affine (``offset == 0 and stride == 1``) of an array whose
+    dtype fits ``np.intp`` cannot overflow and is returned re-typed without a
+    scan; `ArrayMap.__post_init__` normalizes every index array through it.
     """
     offset = int(offset)
     stride = int(stride)
@@ -49,8 +53,11 @@ def checked_affine(
     if coordinates.size == 0:
         return np.empty(coordinates.shape, dtype=np.intp)
 
-    coordinate_min = int(np.min(coordinates))
-    coordinate_max = int(np.max(coordinates))
+    if offset == 0 and stride == 1 and np.can_cast(coordinates.dtype, np.intp):
+        return np.asarray(coordinates, dtype=np.intp)
+
+    coordinate_min = int(coordinates.min())
+    coordinate_max = int(coordinates.max())
     product_at_min = stride * coordinate_min
     product_at_max = stride * coordinate_max
     mapped_at_min = offset + product_at_min

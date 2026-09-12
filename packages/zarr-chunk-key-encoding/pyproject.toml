@@ -49,6 +49,7 @@ Documentation = "https://zarr-chunk-key-encoding.readthedocs.io/"
 
 [dependency-groups]
 test = [
+    "hypothesis==6.167.1",
     "pyright==1.1.411",
     "pytest==9.1.1",
 ]

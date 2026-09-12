@@ -61,3 +61,25 @@ def test_json_parity(separator: Separator, chunk_coords: tuple[int, ...]) -> Non
         V2ChunkKeyEncoding(separator=separator).to_json()
         == zarr_cke.V2ChunkKeyEncoding(separator=separator).to_dict()
     )
+
+
+@pytest.mark.parametrize("encoding_type", [DefaultChunkKeyEncoding, V2ChunkKeyEncoding])
+@pytest.mark.parametrize("dtype", ["uint8", "uint16", "uint32", "uint64"])
+def test_unsigned_coordinate_bounds(
+    encoding_type: type[DefaultChunkKeyEncoding | V2ChunkKeyEncoding], dtype: str
+) -> None:
+    """NumPy unsigned coordinates are normalized without signed narrowing."""
+    import numpy as np
+
+    from zarr_chunk_key_encoding import ChunkKeyDecodeError, InvalidChunkCoordsError
+
+    limit = int(np.iinfo(dtype).max)
+    coordinates = np.array([limit], dtype=dtype)
+    encoding = encoding_type()
+    bounded = encoding.to_bounded((limit + 1,))
+    assert bounded.decode(bounded.encode(coordinates)) == (limit,)
+    too_small = encoding.to_bounded((limit,))
+    with pytest.raises(InvalidChunkCoordsError):
+        too_small.encode(coordinates)
+    with pytest.raises(ChunkKeyDecodeError):
+        too_small.decode(encoding.encode(coordinates))
