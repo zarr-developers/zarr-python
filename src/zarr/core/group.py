@@ -1358,10 +1358,9 @@ class AsyncGroup:
             ``max_depth=None`` to include all nodes, and some positive integer
             to consider children within that many levels of the root Group.
         use_consolidated_for_children : bool, default True
-            Whether to use the consolidated metadata of child groups loaded
-            from the store. Note that this only affects groups loaded from the
-            store. If the current Group already has consolidated metadata, it
-            will always be used.
+            Whether to use consolidated metadata when listing members. If
+            `False`, members are listed from the store even when this group
+            or any child group already has consolidated metadata loaded.
 
         Returns
         -------
@@ -1414,7 +1413,7 @@ class AsyncGroup:
         else:
             raise ValueError(f"Unknown Zarr format: {self.metadata.zarr_format}")
 
-        if self.metadata.consolidated_metadata is not None:
+        if self.metadata.consolidated_metadata is not None and use_consolidated_for_children:
             members = self._members_consolidated(max_depth=max_depth)
             for member in members:
                 yield member
@@ -1431,8 +1430,12 @@ class AsyncGroup:
             raise ValueError(msg)
         # enforce a concurrency limit by passing a semaphore to all the recursive functions
         semaphore = asyncio.Semaphore(config.get("async.concurrency"))
+        group = self
+        if not use_consolidated_for_children and self.metadata.consolidated_metadata is not None:
+            # getitem also consults consolidated metadata, so bypass it for this traversal.
+            group = replace(self, metadata=replace(self.metadata, consolidated_metadata=None))
         async for member in _iter_members_deep(
-            self,
+            group,
             max_depth=max_depth,
             skip_keys=skip_keys,
             semaphore=semaphore,
@@ -2086,20 +2089,26 @@ class Group(SyncMixin):
     async def update_attributes_async(self, new_attributes: dict[str, Any]) -> Group:
         """Update the attributes of this group.
 
+        New attributes are merged into the existing ones, as in
+        `Group.update_attributes`. Unlike that method, this returns a new
+        `Group` and leaves this one unchanged.
+
         Examples
         --------
         >>> async def example():
         ...     import zarr
         ...
         ...     group = zarr.group()
-        ...     new_group = await group.update_attributes_async({"foo": "bar"})
+        ...     group = group.update_attributes({"foo": "bar"})
+        ...     new_group = await group.update_attributes_async({"baz": "qux"})
         ...     return new_group.attrs.asdict()
 
         >>> import asyncio
         >>> asyncio.run(example())
-        {'foo': 'bar'}
+        {'foo': 'bar', 'baz': 'qux'}
         """
-        new_metadata = replace(self.metadata, attributes=new_attributes)
+        merged = {**self.metadata.attributes, **new_attributes}
+        new_metadata = replace(self.metadata, attributes=merged)
 
         # Write new metadata
         to_save = new_metadata.to_buffer_dict(default_buffer_prototype())
@@ -2237,10 +2246,9 @@ class Group(SyncMixin):
             ``max_depth=None`` to include all nodes, and some positive integer
             to consider children within that many levels of the root Group.
         use_consolidated_for_children : bool, default True
-            Whether to use the consolidated metadata of child groups loaded
-            from the store. Note that this only affects groups loaded from the
-            store. If the current Group already has consolidated metadata, it
-            will always be used.
+            Whether to use consolidated metadata when listing members. If
+            `False`, members are listed from the store even when this group
+            or any child group already has consolidated metadata loaded.
 
         Returns
         -------
@@ -2249,7 +2257,12 @@ class Group(SyncMixin):
         value: AsyncArray or AsyncGroup
             The AsyncArray or AsyncGroup that is a child of ``self``.
         """
-        _members = self._sync_iter(self._async_group.members(max_depth=max_depth))
+        _members = self._sync_iter(
+            self._async_group.members(
+                max_depth=max_depth,
+                use_consolidated_for_children=use_consolidated_for_children,
+            )
+        )
 
         return tuple((kv[0], _parse_async_node(kv[1])) for kv in _members)
 
@@ -3446,10 +3459,9 @@ async def _iter_members_deep(
     semaphore : asyncio.Semaphore | None
         An optional semaphore to use for concurrency control.
     use_consolidated_for_children : bool, default True
-        Whether to use the consolidated metadata of child groups loaded
-        from the store. Note that this only affects groups loaded from the
-        store. If the current Group already has consolidated metadata, it
-        will always be used.
+        Whether to use consolidated metadata when listing members. If
+        `False`, members are listed from the store even when this group
+        or any child group already has consolidated metadata loaded.
 
     Yields
     ------
@@ -3478,7 +3490,11 @@ async def _iter_members_deep(
         if is_group and do_recursion:
             node = cast("AsyncGroup", node)
             to_recurse[name] = _iter_members_deep(
-                node, max_depth=new_depth, skip_keys=skip_keys, semaphore=semaphore
+                node,
+                max_depth=new_depth,
+                skip_keys=skip_keys,
+                semaphore=semaphore,
+                use_consolidated_for_children=use_consolidated_for_children,
             )
 
     for prefix, subgroup_iter in to_recurse.items():
