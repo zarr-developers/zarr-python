@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypeGuard, cast, overload
 
 import numpy as np
+from numpy.lib.recfunctions import repack_fields
 
 from zarr.core.common import NamedConfig
 from zarr.core.dtype.common import (
@@ -22,12 +25,49 @@ from zarr.core.dtype.npy.common import (
     check_json_str,
 )
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-from zarr.errors import DataTypeValidationError
+from zarr.errors import DataTypeValidationError, ZarrUserWarning
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
 
 StructuredScalarLike = list[object] | tuple[object, ...] | bytes | int
+
+# The root of the zarr package, used to attribute layout warnings to the caller outside zarr.
+_ZARR_PACKAGE_ROOT = str(Path(__file__).parents[3])
+
+
+def _check_representable(dtype: np.dtype[np.void]) -> str | None:
+    """
+    Check for field features that the Zarr struct data type cannot represent.
+
+    The Zarr struct metadata records only `(name, dtype)` pairs and reconstructs the native
+    dtype by packing those fields contiguously (see `Structured.to_native_dtype`). Padding
+    can be removed while preserving field values, but titles and subarray fields would lose
+    field information. This function rejects those features, including in nested fields:
+
+    - field titles, e.g. `np.dtype([(("title", "name"), "i4")])`
+    - subarray fields, e.g. `np.dtype([("name", "i4", (2,))])`
+
+    Returns
+    -------
+    str | None
+        `None` if the dtype is representable, otherwise a short description of the problem.
+    """
+    names = dtype.names
+    fields = dtype.fields
+    if names is None or fields is None:  # pragma: no cover - only called on structured dtypes
+        return None
+    for name in names:
+        field_dtype, _offset, *title = fields[name]
+        if title:
+            return f"field {name!r} has a title ({title[0]!r})"
+        if field_dtype.subdtype is not None:
+            return f"field {name!r} is a subarray with shape {field_dtype.shape}"
+        if field_dtype.names is not None:
+            reason = _check_representable(field_dtype)
+            if reason is not None:
+                return f"within field {name!r}: {reason}"
+    return None
 
 
 class StructuredJSON_V2(DTypeConfig_V2[StructuredName_V2, None]):
@@ -175,6 +215,15 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
         DataTypeValidationError
             If the input data type is not an instance of np.dtypes.VoidDType with a non-null
             ``fields`` attribute.
+        ValueError
+            If the input is a structured dtype that this data type cannot represent faithfully:
+            one with field titles or subarray fields.
+
+        Warns
+        -----
+        ZarrUserWarning
+            If a non-default field layout is converted to a packed layout. Field values are
+            preserved when writing arrays, but offsets and itemsize may change.
 
         Notes
         -----
@@ -185,10 +234,40 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
         fields: list[tuple[str, ZDType[TBaseDType, TBaseScalar]]] = []
         if cls._check_native_dtype(dtype):
-            # fields of a structured numpy dtype are either 2-tuples or 3-tuples. we only
-            # care about the first element in either case.
-            for key, (dtype_instance, *_) in dtype.fields.items():  # type: ignore[union-attr]
-                dtype_wrapped = get_data_type_from_native_dtype(dtype_instance)
+            reason = _check_representable(dtype)
+            if reason is not None:
+                # NOTE: this is a ValueError rather than a DataTypeValidationError on purpose.
+                # The data type registry suppresses DataTypeValidationError (treating it as
+                # "this dtype does not match"), but a dtype with an unrepresentable feature
+                # *does* match this dtype class -- it simply cannot be represented faithfully --
+                # so we must raise an error the registry propagates to the caller.
+                raise ValueError(
+                    f"Cannot serialize the structured data type {dtype}: {reason}. The Zarr "
+                    "struct data type records only field names and field data types, so a "
+                    "field title or a subarray shape has no representation in the metadata. "
+                    "Use a structured dtype without titles or subarray fields instead."
+                )
+            # Repack once, at the top level, before resolving the fields. Nested fields then
+            # reach the registry already packed, so a padded nested field warns exactly once,
+            # here, rather than once per level of nesting.
+            packed = cast("np.dtype[np.void]", repack_fields(dtype, recurse=True))
+            if packed != dtype:
+                warnings.warn(
+                    "The structured dtype is converted to a packed field layout. "
+                    "Field values are preserved when writing arrays, but field offsets and "
+                    "itemsize may change. To pack explicitly, use "
+                    "numpy.lib.recfunctions.repack_fields(data, recurse=True).",
+                    ZarrUserWarning,
+                    # Attribute the warning to the first frame outside the zarr package, since
+                    # the depth of the call chain that leads here varies by entry point. This
+                    # reaches the caller for direct uses of the dtype API; the synchronous array
+                    # API runs on the event loop thread, where no caller frame is available.
+                    skip_file_prefixes=(_ZARR_PACKAGE_ROOT,),
+                )
+            # Iterate over `names` rather than `fields`: the `fields` mapping also
+            # contains an entry for every field title, which would duplicate titled fields.
+            for key in packed.names:  # type: ignore[union-attr]
+                dtype_wrapped = get_data_type_from_native_dtype(packed.fields[key][0])  # type: ignore[index]
                 fields.append((key, dtype_wrapped))
 
             return cls(fields=tuple(fields))
