@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
+import io
+import os
 import pathlib
 import re
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
 
 import zarr
+import zarr.storage._local
 from zarr import create_array
 from zarr.core.buffer import Buffer, cpu
 from zarr.storage import LocalStore
@@ -14,10 +21,119 @@ from zarr.storage._local import _atomic_write
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import assert_bytes_equal
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+_LOCAL_STORE_FILE = zarr.storage._local.__file__
+_ASYNC_CODE_FLAGS = inspect.CO_COROUTINE | inspect.CO_ASYNC_GENERATOR
+
+# The syscall-level entry points that every pathlib / os.path / shutil helper used by
+# LocalStore bottoms out in. Patching these, rather than each Path method, catches a
+# blocking call no matter which helper made it.
+_FILESYSTEM_CALLS: tuple[tuple[Any, str], ...] = (
+    (os, "stat"),
+    (os, "lstat"),
+    (os, "scandir"),
+    (os, "listdir"),
+    (os, "mkdir"),
+    (os, "rmdir"),
+    (os, "unlink"),
+    (os, "remove"),
+    (os, "link"),
+    (os, "rename"),
+    (os, "replace"),
+    (io, "open"),
+)
+
+
+@dataclass
+class _FilesystemCalls:
+    """What the patched filesystem entry points saw from LocalStore code during one test."""
+
+    off_loop: set[tuple[str, str]] = field(default_factory=set)
+    """``(outermost LocalStore function, op)`` pairs made from a thread with no running loop."""
+    on_loop: list[str] = field(default_factory=list)
+    """Calls made on an event loop's thread from inside a LocalStore coroutine: violations."""
+
+    def record(self, op: str) -> None:
+        frame = inspect.currentframe()
+        innermost = outermost = None
+        while frame is not None:
+            if frame.f_code.co_filename == _LOCAL_STORE_FILE:
+                if innermost is None:
+                    innermost = frame
+                outermost = frame
+            frame = frame.f_back
+        if outermost is None or innermost is None:
+            return  # not LocalStore's doing (pytest, tmp_path, the test body, ...)
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # A worker thread, such as the one asyncio.to_thread uses: blocking is fine here.
+            self.off_loop.add((outermost.f_code.co_name, op))
+            return
+        if not outermost.f_code.co_flags & _ASYNC_CODE_FLAGS:
+            return  # a synchronous LocalStore method: its caller chose to block the loop
+        site = (
+            f"LocalStore.{outermost.f_code.co_name} called {op} at _local.py:{innermost.f_lineno}"
+        )
+        if site not in self.on_loop:
+            self.on_loop.append(site)
+
 
 class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
     store_cls = LocalStore
     buffer_cls = cpu.Buffer
+
+    @pytest.fixture(autouse=True)
+    def filesystem_calls(self, monkeypatch: pytest.MonkeyPatch) -> Iterator[_FilesystemCalls]:
+        """Fail if any LocalStore coroutine does filesystem I/O on the event loop thread.
+
+        Every async method must hand its filesystem work to ``asyncio.to_thread``;
+        doing it inline stalls every other task sharing the loop.
+        """
+        calls = _FilesystemCalls()
+
+        def patch(module: Any, name: str) -> None:
+            original = getattr(module, name)
+
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                calls.record(f"{module.__name__}.{name}")
+                return original(*args, **kwargs)
+
+            monkeypatch.setattr(module, name, wrapper)
+
+        for module, name in _FILESYSTEM_CALLS:
+            patch(module, name)
+        yield calls
+        assert not calls.on_loop, "filesystem calls on the event loop thread:\n" + "\n".join(
+            calls.on_loop
+        )
+
+    async def test_filesystem_calls_are_observed(
+        self, store: LocalStore, filesystem_calls: _FilesystemCalls
+    ) -> None:
+        """The detector must actually see LocalStore's I/O, or its silence means nothing."""
+        await store.set("foo", self.buffer_cls.from_bytes(b"x"))
+        await store.get("foo")
+        assert ("_put", "io.open") in filesystem_calls.off_loop
+        assert ("_get", "io.open") in filesystem_calls.off_loop
+
+    async def test_concurrent_lazy_open(self, store_not_open: LocalStore) -> None:
+        """Concurrent first calls on an unopened store all succeed.
+
+        Opening now suspends (the root check runs in a thread), so every caller that
+        finds the store closed races to open it; none of them may hit
+        ``Store._open``'s "already open" error.
+        """
+        data = self.buffer_cls.from_bytes(b"x")
+        keys = [f"k{i}" for i in range(8)]
+        await asyncio.gather(
+            store_not_open.get("missing"), *(store_not_open.set(k, data) for k in keys)
+        )
+        assert store_not_open._is_open
+        for key in keys:
+            assert_bytes_equal(await store_not_open.get(key), data)
 
     async def get(self, store: LocalStore, key: str) -> Buffer:
         return self.buffer_cls.from_bytes((store.root / key).read_bytes())
