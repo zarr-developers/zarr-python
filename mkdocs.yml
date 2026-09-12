@@ -25,6 +25,7 @@ nav:
       - user-guide/extending.md
       - user-guide/gpu.md
       - user-guide/consolidated_metadata.md
+      - user-guide/consolidated_metadata_format.md
       - user-guide/experimental.md
       - user-guide/v3_migration.md
       - user-guide/glossary.md
