@@ -169,3 +169,53 @@ def test_validator_and_factory_agree(data_type: str, fill_value: int) -> None:
         factory_accepts = True
 
     assert validator_accepts == factory_accepts
+
+
+@pytest.mark.parametrize("position", ["data_type", "cast_value"])
+@pytest.mark.parametrize("name", ["numpy.datetime64", "numpy.timedelta64"])
+@given(
+    depth=st.integers(min_value=0, max_value=4),
+    scale=st.integers(min_value=-1, max_value=2**31),
+)
+def test_nested_time_data_types_obey_scale_factor_constraints(
+    position: str, name: str, depth: int, scale: int
+) -> None:
+    """Embedding a known dtype must not bypass its composition rules."""
+    data_type: object = {
+        "name": name,
+        "configuration": {"unit": "s", "scale_factor": scale},
+    }
+    fill_value: object = 0
+    nested_loc: tuple[str | int, ...] = ("configuration", "scale_factor")
+    for _ in range(depth):
+        data_type = {
+            "name": "struct",
+            "configuration": {"fields": ({"name": "value", "data_type": data_type},)},
+        }
+        fill_value = {"value": fill_value}
+        nested_loc = ("configuration", "fields", 0, "data_type", *nested_loc)
+    document: dict[str, object] = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (1,),
+        "data_type": data_type,
+        "fill_value": fill_value,
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
+        "chunk_key_encoding": "default",
+        "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
+    }
+    if position == "cast_value":
+        document["data_type"] = "uint8"
+        document["fill_value"] = 0
+        document["codecs"] = (
+            {"name": "cast_value", "configuration": {"data_type": data_type}},
+            {"name": "bytes", "configuration": {"endian": "little"}},
+        )
+        loc = ("codecs", 0, "configuration", "data_type", *nested_loc)
+    else:
+        loc = ("data_type", *nested_loc)
+    problems = validate_array_metadata_v3(document)
+    if 1 <= scale < 2**31:
+        assert problems == ()
+    else:
+        assert any(problem.loc == loc for problem in problems)

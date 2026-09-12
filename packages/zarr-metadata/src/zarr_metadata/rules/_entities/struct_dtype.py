@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, cast
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.rules._engine import as_string_mapping
-from zarr_metadata.rules._registry import entity_rule
+from zarr_metadata.rules._registry import entity_rule, run_entity_rules
 from zarr_metadata.v3._extension_points import DATA_TYPE
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_NAME_PATTERN
 from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE_NAME
@@ -43,6 +43,26 @@ _FIXED_SIZE_NAMES = frozenset(
     }
 )
 _VARIABLE_SIZE_NAMES = frozenset({"bytes", "string"})
+
+
+@entity_rule(_ARRAY_V3, DATA_TYPE, STRUCT_DATA_TYPE_NAME)
+def field_data_types_obey_their_rules(
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+) -> tuple[ValidationProblem, ...]:
+    """Apply every known data type's rules inside struct fields, recursively."""
+    problems: list[ValidationProblem] = []
+    for index, field in enumerate(cast("tuple[object, ...]", configuration["fields"])):
+        field_mapping = as_string_mapping(field)
+        if field_mapping is not None:
+            problems.extend(
+                run_entity_rules(
+                    DATA_TYPE,
+                    field_mapping.get("data_type"),
+                    document,
+                    ("fields", index, "data_type"),
+                )
+            )
+    return tuple(problems)
 
 
 def _field_names(configuration: Mapping[str, object]) -> tuple[tuple[int, str], ...]:

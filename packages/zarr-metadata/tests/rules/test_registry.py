@@ -40,7 +40,6 @@ from zarr_metadata.v3._shape import modelled_entities
 _RULE_FREE = frozenset(
     {
         (CODECS, "blosc"),
-        (CODECS, "cast_value"),
         (CODECS, "crc32c"),
         (CODECS, "scale_offset"),
         (CODECS, "zstd"),
