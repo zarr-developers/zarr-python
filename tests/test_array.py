@@ -14,11 +14,13 @@ import numcodecs
 import numpy as np
 import numpy.typing as npt
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from packaging.version import Version
 
 import zarr.api.asynchronous
 import zarr.api.synchronous as sync_api
-from tests.conftest import skip_object_dtype
+from tests.conftest import json_attributes, skip_object_dtype
 from zarr import Array, Group
 from zarr.abc.store import Store
 from zarr.codecs import (
@@ -32,6 +34,7 @@ from zarr.core.array import (
     AsyncArray,
     CompressorsLike,
     FiltersLike,
+    ShardsLike,
     _iter_chunk_coords,
     _iter_chunk_regions,
     _iter_shard_coords,
@@ -53,7 +56,7 @@ from zarr.core.chunk_grids import (
     resolve_outer_and_inner_chunks,
 )
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
-from zarr.core.common import JSON, ZarrFormat, ceildiv
+from zarr.core.common import JSON, ChunksLike, ZarrFormat, ceildiv
 from zarr.core.dtype import (
     DateTime64,
     Float32,
@@ -487,17 +490,22 @@ async def test_nbytes_stored_async() -> None:
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_update_attrs(zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("depth", [0, 1, 8, 32, 65, 100])
+@settings(max_examples=20, deadline=None)
+@given(data=st.data())
+def test_update_attrs(zarr_format: ZarrFormat, depth: int, data: st.DataObject) -> None:
     # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
     store = MemoryStore()
     arr = zarr.create_array(
         store=store, shape=(5,), chunks=(5,), dtype="f8", zarr_format=zarr_format
     )
-    arr.attrs["foo"] = "bar"
-    assert arr.attrs["foo"] == "bar"
+    attributes = data.draw(json_attributes(depth=depth))
+    for key, value in attributes.items():
+        arr.attrs[key] = value
+    assert dict(arr.attrs) == attributes
 
     arr2 = zarr.open_array(store=store, zarr_format=zarr_format)
-    assert arr2.attrs["foo"] == "bar"
+    assert dict(arr2.attrs) == attributes
 
 
 @pytest.mark.parametrize(("chunks", "shards"), [((2, 2), None), ((2, 2), (4, 4))])
@@ -1091,7 +1099,7 @@ def test_auto_partition_auto_shards(
                 shard_shape="auto",
                 item_size=dtype.itemsize,
             )
-    auto_shards = tuple(dim[0] for dim in outer_chunks)
+    auto_shards = outer_chunks.chunk_shape
     assert auto_shards == expected_shards
 
 
@@ -1106,7 +1114,7 @@ def test_auto_partition_auto_shards_with_auto_chunks_should_be_close_to_1MiB() -
     chunks_normalized = guess_chunks(
         array_shape, item_size, max_bytes=SHARDED_INNER_CHUNK_MAX_BYTES
     )
-    chunk_shape = tuple(dim[0] for dim in chunks_normalized)
+    chunk_shape = chunks_normalized.chunk_shape
     chunk_bytes = np.prod(chunk_shape) * item_size
     assert chunk_bytes <= SHARDED_INNER_CHUNK_MAX_BYTES
     assert chunk_bytes > SHARDED_INNER_CHUNK_MAX_BYTES // 4  # should be in the right ballpark
@@ -1123,19 +1131,29 @@ def test_auto_partition_auto_shards_with_auto_chunks_should_be_close_to_1MiB() -
                 item_size=item_size,
             )
     assert inner is not None
-    shard_shape = tuple(dim[0] for dim in outer_chunks)
+    shard_shape = outer_chunks.chunk_shape
     # Shard dimensions must be multiples of chunk dimensions
     assert all(s % c == 0 for s, c in zip(shard_shape, chunk_shape, strict=True))
 
 
-def test_chunks_and_shards() -> None:
+@pytest.mark.parametrize(
+    "chunks",
+    [(5, 5), [5, 5], np.array([5, 5]), (np.int64(5), np.int64(5))],
+    ids=["tuple", "list", "array", "numpy-scalars"],
+)
+@pytest.mark.parametrize(
+    "shards",
+    [(10, 10), [10, 10], np.array([10, 10]), (np.int64(10), np.int64(10))],
+    ids=["tuple", "list", "array", "numpy-scalars"],
+)
+def test_chunks_and_shards(chunks: ChunksLike, shards: ShardsLike) -> None:
     store = StorePath(MemoryStore())
     shape = (100, 100)
-    chunks = (5, 5)
-    shards = (10, 10)
+    expected_chunks = normalize_chunks_nd(chunks, shape).chunk_shape
+    expected_shards = normalize_chunks_nd(shards, shape).chunk_shape
 
     arr_v3 = zarr.create_array(store=store / "v3", shape=shape, chunks=chunks, dtype="i4")
-    assert arr_v3.chunks == chunks
+    assert arr_v3.chunks == expected_chunks
     assert arr_v3.shards is None
 
     arr_v3_sharding = zarr.create_array(
@@ -1145,13 +1163,13 @@ def test_chunks_and_shards() -> None:
         shards=shards,
         dtype="i4",
     )
-    assert arr_v3_sharding.chunks == chunks
-    assert arr_v3_sharding.shards == shards
+    assert arr_v3_sharding.chunks == expected_chunks
+    assert arr_v3_sharding.shards == expected_shards
 
     arr_v2 = zarr.create_array(
         store=store / "v2", shape=shape, chunks=chunks, zarr_format=2, dtype="i4"
     )
-    assert arr_v2.chunks == chunks
+    assert arr_v2.chunks == expected_chunks
     assert arr_v2.shards is None
 
 
@@ -1757,14 +1775,26 @@ async def test_creation_from_other_zarr_format(
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
 @pytest.mark.parametrize("store2", ["local", "memory", "zip"], indirect=["store2"])
 @pytest.mark.parametrize("src_chunks", [(40, 10), (11, 50)])
-@pytest.mark.parametrize("new_chunks", [(40, 10), (11, 50)])
+@pytest.mark.parametrize(
+    "new_chunks", [(40, 10), (11, 50), [40, 10], np.array([11, 50]), (np.int64(40), np.int64(10))]
+)
+@pytest.mark.parametrize(
+    "new_shards",
+    [None, (440, 100), [440, 100], np.array([440, 100]), (np.int64(440), np.int64(100))],
+    ids=["none", "tuple", "list", "array", "numpy-scalars"],
+)
+@pytest.mark.parametrize("source_as_numpy", [False, True], ids=["zarr", "numpy"])
 async def test_from_array(
     store: Store,
     store2: Store,
     src_chunks: tuple[int, int],
-    new_chunks: tuple[int, int],
+    new_chunks: ChunksLike,
+    new_shards: ShardsLike | None,
+    source_as_numpy: bool,
     zarr_format: ZarrFormat,
 ) -> None:
+    if zarr_format == 2 and new_shards is not None:
+        pytest.skip("Zarr format 2 does not support sharding")
     src_fill_value = 2
     src_dtype = np.dtype("uint8")
     src_attributes = None
@@ -1776,6 +1806,7 @@ async def test_from_array(
         store=store,
         fill_value=src_fill_value,
         attributes=src_attributes,
+        zarr_format=zarr_format,
     )
     src[:] = np.arange(1000).reshape((100, 10))
 
@@ -1783,18 +1814,39 @@ async def test_from_array(
     new_attributes: dict[str, JSON] = {"foo": "bar"}
 
     result = zarr.from_array(
-        data=src,
+        data=np.asarray(src) if source_as_numpy else src,
         store=store2,
         chunks=new_chunks,
+        shards=new_shards,
         fill_value=new_fill_value,
         attributes=new_attributes,
+        zarr_format=zarr_format,
     )
 
     np.testing.assert_array_equal(result[:], src[:])
     assert result.fill_value == new_fill_value
     assert result.dtype == src_dtype
     assert result.attrs == new_attributes
-    assert result.chunks == new_chunks
+    np.testing.assert_array_equal(result.chunks, new_chunks)
+    np.testing.assert_array_equal(result.shards, new_shards)
+
+
+@pytest.mark.parametrize("zdtype", zdtype_examples, ids=str)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+def test_from_array_preserves_dtype(zdtype: ZDType[Any, Any], zarr_format: ZarrFormat) -> None:
+    source = zarr.create_array({}, shape=(4,), chunks=(2,), dtype=zdtype, zarr_format=zarr_format)
+    expected = source[:]
+    source[:] = expected
+
+    result = zarr.from_array({}, data=source)
+
+    assert result.dtype == source.dtype
+    assert result._async_array._zdtype == source._async_array._zdtype
+    np.testing.assert_array_equal(result[:], expected)
+    reopened = zarr.open_array(result.store, mode="r")
+    assert reopened._async_array._zdtype == source._async_array._zdtype
+    np.testing.assert_array_equal(reopened[:], expected)
 
 
 @pytest.mark.parametrize("store", ["local"], indirect=True)
@@ -1829,7 +1881,7 @@ async def test_from_array_arraylike(
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=True)
 def test_from_array_keeps_fill_value_and_attributes(store: Store, zarr_format: ZarrFormat) -> None:
     """`from_array` defaults to the fill value and attributes of the source array."""
-    attributes: dict[str, JSON] = {"units": "K"}
+    attributes: dict[str, JSON] = {"units": "K", "nested": {"x": [1]}, "tags": ["a"]}
     src = zarr.create_array(
         store,
         name="src",
@@ -1844,6 +1896,18 @@ def test_from_array_keeps_fill_value_and_attributes(store: Store, zarr_format: Z
     result = zarr.from_array({}, data=src)
     assert result.fill_value == 42
     assert dict(result.attrs) == attributes
+
+    # The copied attributes must not alias the source's nested containers.
+    nested = result.attrs["nested"]
+    assert isinstance(nested, dict)
+    nested_x = nested["x"]
+    assert isinstance(nested_x, list)
+    nested_x.append(99)
+    tags = result.attrs["tags"]
+    assert isinstance(tags, list)
+    tags.append("b")
+    assert src.attrs["nested"] == {"x": [1]}
+    assert src.attrs["tags"] == ["a"]
 
     # A metadata-only copy must read back the source's fill value, not the dtype default.
     meta_only = zarr.from_array({}, data=src, write_data=False)
@@ -2449,3 +2513,15 @@ async def test_create_array_chunks_3d(
     shape = (10, 12, 15)
     arr = await create_array(store={}, shape=shape, chunks=chunk_input, dtype="float64")
     assert arr.write_chunk_sizes == expected
+
+
+async def test_create_array_huge_chunk_count() -> None:
+    """Array creation must be O(1) in the number of chunks per dimension.
+
+    With `shape=(2**62,)` and `chunks=(1,)` this dimension has 2**62 chunks;
+    materializing one entry per chunk would raise ("array is too big").
+    Companion to the indexing-time fix from gh-4174.
+    """
+    arr = await create_array(store={}, shape=(2**62,), chunks=(1,), dtype="int32")
+    assert arr.shape == (2**62,)
+    assert arr.chunks == (1,)
