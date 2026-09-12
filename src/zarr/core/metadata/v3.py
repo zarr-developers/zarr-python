@@ -34,7 +34,7 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
-from zarr.core.json_parse import parse_field, validate_json_value
+from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
@@ -83,8 +83,12 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
                 # configuration surfaces as a KeyError. Convert it: a bare KeyError escaping
                 # metadata parsing is swallowed by the array-then-group fallback in
                 # `zarr.api.asynchronous.open`, which then reports an unrelated group error.
+                # The KeyError may carry no arguments (`raise KeyError`), and it may come from
+                # an internal lookup rather than the configuration mapping itself, so name the
+                # key only when there is one and don't claim it was a missing configuration key.
+                key_text = f" {e.args[0]!r}" if e.args else ""
                 raise MetadataValidationError(
-                    f"Invalid configuration for codec {name_parsed!r}: missing key {e.args[0]!r}."
+                    f"KeyError{key_text} while parsing the configuration for codec {name_parsed!r}."
                 ) from e
 
     return out
@@ -673,7 +677,9 @@ class ArrayV3Metadata(Metadata):
             chunk_grid=_data_typed["chunk_grid"],  # type: ignore[arg-type]
             chunk_key_encoding=_data_typed["chunk_key_encoding"],  # type: ignore[arg-type]
             codecs=_data_typed["codecs"],
-            attributes=validate_json_value(_data_typed.get("attributes", {})),  # type: ignore[arg-type]
+            # Attribute values are arbitrary JSON, so they have no field-specific
+            # schema to validate. `__init__` checks the outer dict via `parse_attributes`.
+            attributes=_data_typed.get("attributes", {}),  # type: ignore[arg-type]
             dimension_names=_data_typed.get("dimension_names", None),
             fill_value=fill_value_parsed,
             data_type=data_type,

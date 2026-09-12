@@ -13,6 +13,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 from hypothesis import HealthCheck, Verbosity, settings
+from hypothesis import strategies as st
 
 import zarr.registry
 from zarr import AsyncGroup, config
@@ -294,6 +295,33 @@ settings.register_profile(
 )
 
 settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "default"))
+
+
+@st.composite
+def json_attributes(draw: st.DrawFn, *, depth: int) -> dict[str, JSON]:
+    """Generate JSON attribute dictionaries with additional nested object/array layers."""
+    keys = st.text(max_size=8)
+    scalars = (
+        st.none()
+        | st.booleans()
+        | st.integers()
+        | st.floats(allow_nan=False, allow_infinity=False)
+        | st.text(max_size=8)
+    )
+    values = st.recursive(
+        scalars,
+        lambda children: (
+            st.lists(children, max_size=3) | st.dictionaries(keys, children, max_size=3)
+        ),
+        max_leaves=8,
+    )
+    attributes: dict[str, JSON] = draw(st.dictionaries(keys, values, max_size=3))
+    if depth:
+        value: JSON = attributes
+        for is_object in draw(st.lists(st.booleans(), min_size=depth, max_size=depth)):
+            value = {draw(keys): value} if is_object else [value]
+        attributes = {draw(keys): value}
+    return attributes
 
 
 # TODO: uncomment these overrides when we can get mypy to accept them

@@ -1,4 +1,5 @@
-from typing import Any
+import contextlib
+from typing import Any, Literal, cast
 
 import numpy as np
 import pytest
@@ -87,6 +88,10 @@ def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
         (False, (100, 50), (100, 50)),
         # sentinel values
         (-1, (100,), (100,)),
+        # False and -1 on a zero-length axis clamp to chunk size 1 (chunk sizes must be positive)
+        (False, (0,), (1,)),
+        (False, (0, 4), (1, 4)),
+        (-1, (4, 0), (4, 1)),
         # zero-length dimensions preserve the declared chunk size
         (10, (0,), (10,)),
         ((5, 10), (0, 100), (5, 10)),
@@ -362,24 +367,66 @@ def test_create_0d_array_auto_shards_with_target_shard_size() -> None:
     assert arr.shards == ()
 
 
+@pytest.mark.parametrize("chunks", [-1, False], ids=["minus-one", "false"])
+@pytest.mark.parametrize("shape", [(0,), (0, 4), (4, 0)], ids=["1d", "2d-lead", "2d-trail"])
 @pytest.mark.parametrize(
-    "target_shard_size_bytes",
-    [None, 128 * 1024 * 1024],
-    ids=["no-budget", "budget"],
+    ("zarr_format", "shards", "target_shard_size_bytes"),
+    [
+        (2, None, None),
+        (3, None, None),
+        (3, "auto", None),
+        (3, "auto", 128 * 1024 * 1024),
+    ],
+    ids=["v2", "v3", "v3-auto-shards", "v3-auto-shards-budget"],
 )
-def test_create_zero_length_array_full_span_chunks_auto_shards(
+def test_create_zero_length_array_full_span_chunks(
+    chunks: int | bool,
+    shape: tuple[int, ...],
+    zarr_format: Literal[2, 3],
+    shards: Literal["auto"] | None,
     target_shard_size_bytes: int | None,
 ) -> None:
-    """`chunks=-1` on a zero-length axis with shards="auto" must neither hang nor raise.
+    """`chunks=-1` and `chunks=False` on a zero-length axis must resolve to chunk size 1.
 
-    The -1 sentinel used to resolve to chunk size 0 on zero-length axes, which broke
-    every sharding code path: a ZeroDivisionError without a shard size budget, and an
-    infinite loop with one (https://github.com/zarr-developers/zarr-python/issues/4304).
+    Both spellings mean "one chunk covering the whole axis". They used to resolve to chunk
+    size 0 on zero-length axes, which broke every downstream path differently: a ValueError
+    from the Zarr format 3 chunk grid metadata, a ZeroDivisionError with shards="auto", an
+    infinite loop with a shard size budget (https://github.com/zarr-developers/zarr-python/issues/4304),
+    and invalid `chunks: [0]` metadata for Zarr format 2 that silently corrupted reads after
+    a resize.
     """
-    with (
-        zarr.config.set({"array.target_shard_size_bytes": target_shard_size_bytes}),
-        pytest.warns(ZarrUserWarning, match="Automatic shard shape inference is experimental"),
-    ):
-        arr = zarr.create_array(store={}, shape=(0,), dtype="int64", chunks=-1, shards="auto")
-    assert arr.chunks == (1,)
-    assert arr.shards == (1,)
+    expected_chunks = tuple(max(s, 1) for s in shape)
+    warns = (
+        pytest.warns(ZarrUserWarning, match="Automatic shard shape inference is experimental")
+        if shards == "auto"
+        else contextlib.nullcontext()
+    )
+    with zarr.config.set({"array.target_shard_size_bytes": target_shard_size_bytes}), warns:
+        arr = zarr.create_array(
+            store={},
+            shape=shape,
+            dtype="int64",
+            chunks=chunks,
+            shards=shards,
+            zarr_format=zarr_format,
+        )
+    assert arr.chunks == expected_chunks
+    assert arr.shards == (expected_chunks if shards == "auto" else None)
+
+    # The stored chunk grid must be the clamped shape, whichever format wrote it.
+    meta = cast(dict[str, Any], arr.metadata.to_dict())
+    if zarr_format == 2:
+        assert meta["chunks"] == expected_chunks
+    else:
+        assert meta["chunk_grid"]["configuration"]["chunk_shape"] == expected_chunks
+
+    # The array must remain usable: grow the empty axis and round-trip data through it.
+    axis = shape.index(0)
+    grown = tuple(2 if s == 0 else s for s in shape)
+    arr.append(np.full(grown, 7, dtype="int64"), axis=axis)
+    assert arr.shape == grown
+    np.testing.assert_array_equal(arr[...], np.full(grown, 7, dtype="int64"))
+    resized = tuple(3 if s == 0 else s for s in shape)
+    arr.resize(resized)
+    assert arr.shape == resized
+    assert int(np.asarray(arr[...]).sum()) == 7 * np.prod(grown)
