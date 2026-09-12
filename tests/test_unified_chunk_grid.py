@@ -149,9 +149,9 @@ def test_rectilinear_feature_flag_enabled() -> None:
         (10, 100, 1, 10, 10, 10, 10),
         (10, 100, 9, 10, 10, 10, 90),
         (10, 95, 9, 10, 10, 5, 90),  # boundary chunk
-        (0, 0, None, 0, None, None, None),  # zero-size
+        (10, 0, None, 0, None, None, None),  # zero-extent: no chunks, size still >= 1
     ],
-    ids=["start", "middle", "end", "boundary", "zero-size"],
+    ids=["start", "middle", "end", "boundary", "zero-extent"],
 )
 def test_fixed_dimension(
     size: int,
@@ -190,11 +190,21 @@ def test_fixed_dimension_indices_to_chunks() -> None:
 
 @pytest.mark.parametrize(
     ("size", "extent", "match"),
-    [(-1, 100, "must be >= 0"), (10, -1, "must be >= 0")],
-    ids=["negative-size", "negative-extent"],
+    [
+        (-1, 100, "size must be >= 1"),
+        (0, 100, "size must be >= 1"),
+        (0, 0, "size must be >= 1"),
+        (10, -1, "extent must be >= 0"),
+    ],
+    ids=["negative-size", "zero-size", "zero-size-zero-extent", "negative-extent"],
 )
-def test_fixed_dimension_rejects_negative(size: int, extent: int, match: str) -> None:
-    """FixedDimension raises ValueError for negative size or extent"""
+def test_fixed_dimension_rejects_invalid(size: int, extent: int, match: str) -> None:
+    """FixedDimension raises ValueError for a size below 1 or a negative extent.
+
+    A chunk edge length of 0 is never valid, whatever the extent: the metadata layer
+    requires every chunk edge length to be >= 1, and the in-memory model enforces the
+    same invariant so the two can never disagree.
+    """
     with pytest.raises(ValueError, match=match):
         FixedDimension(size=size, extent=extent)
 
@@ -1421,46 +1431,27 @@ def test_edge_case_chunk_grid_boundary_shape() -> None:
 # -- Zero-size and zero-extent --
 
 
-@pytest.mark.parametrize(
-    ("size", "extent"),
-    [(0, 0), (0, 5), (10, 0)],
-    ids=["zero-size-zero-extent", "zero-size-nonzero-extent", "zero-extent-nonzero-size"],
-)
-def test_edge_case_zero_size_or_extent(size: int, extent: int) -> None:
-    """FixedDimension with zero size or extent has zero chunks and getitem returns None"""
-    d = FixedDimension(size=size, extent=extent)
+@pytest.mark.parametrize("size", [1, 10], ids=["size-1", "size-10"])
+def test_fixed_dimension_zero_extent(size: int) -> None:
+    """A zero-length axis has zero chunks and behaves like an empty grid.
+
+    The extent may be 0 even though the chunk size may not: `ceildiv(0, size)` is 0,
+    so there is nothing to look up, and the vectorized index mapping of an empty index
+    array is empty.
+    """
+    d = FixedDimension(size=size, extent=0)
     assert d.nchunks == 0
+    assert d.ngridcells == 0
+    assert d.data_size(0) == 0
+    assert d.with_extent(0) == d
+    assert d.with_extent(3) == FixedDimension(size=size, extent=3)
+    empty = np.array([], dtype=np.intp)
+    np.testing.assert_array_equal(d.indices_to_chunks(empty), empty)
+    with pytest.raises(IndexError):
+        d.index_to_chunk(0)
     g = ChunkGrid(dimensions=(d,))
     assert g[0] is None
-
-
-def test_edge_case_zero_size_data_and_indices() -> None:
-    """FixedDimension(size=0) handles data_size, index_to_chunk, and indices_to_chunks safely."""
-    d = FixedDimension(size=0, extent=0)
-    # Zero-sized chunks have zero data
-    assert d.data_size(0) == 0
-    # Vectorized lookup maps every index to chunk 0 (avoids division by zero)
-    indices = np.array([0, 0, 0], dtype=np.intp)
-    np.testing.assert_array_equal(d.indices_to_chunks(indices), np.zeros(3, dtype=np.intp))
-
-
-def test_edge_case_zero_size_nonzero_extent_index() -> None:
-    """FixedDimension(size=0, extent>0) maps valid indices to chunk 0 without dividing by zero."""
-    d = FixedDimension(size=0, extent=5)
-    assert d.nchunks == 0
-    # index_to_chunk avoids division by zero and returns 0
-    assert d.index_to_chunk(0) == 0
-    assert d.index_to_chunk(4) == 0
-
-
-def test_edge_case_zero_size_data_and_index() -> None:
-    """FixedDimension(size=0) returns zero for data_size and maps indices to chunk 0."""
-    d = FixedDimension(size=0, extent=0)
-    # data_size returns 0 for a zero-sized chunk
-    assert d.data_size(0) == 0
-    # vectorized indices_to_chunks returns zeros
-    indices = np.array([0, 0, 0], dtype=np.intp)
-    np.testing.assert_array_equal(d.indices_to_chunks(indices), np.zeros(3, dtype=np.intp))
+    assert list(g) == []
 
 
 # -- 0-d grid --

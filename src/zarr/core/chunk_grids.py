@@ -47,22 +47,24 @@ is not `None`. Explicit chunk sizes are not affected by this value.
 @dataclass(frozen=True)
 class FixedDimension:
     """Uniform chunk size. Boundary chunks contain less data but are
-    encoded at full size by the codec pipeline."""
+    encoded at full size by the codec pipeline.
 
-    size: int  # chunk edge length (>= 0)
-    extent: int  # array dimension length
+    The chunk edge length is always at least 1, matching the invariant the
+    metadata layer enforces for every stored chunk grid. The extent may be 0:
+    a zero-length axis simply has zero chunks (``ceildiv(0, size) == 0``).
+    """
+
+    size: int  # chunk edge length (>= 1)
+    extent: int  # array dimension length (>= 0)
     nchunks: int = field(init=False, repr=False)
     ngridcells: int = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        if self.size < 0:
-            raise ValueError(f"FixedDimension size must be >= 0, got {self.size}")
+        if self.size < 1:
+            raise ValueError(f"FixedDimension size must be >= 1, got {self.size}")
         if self.extent < 0:
             raise ValueError(f"FixedDimension extent must be >= 0, got {self.extent}")
-        if self.size == 0:
-            n = 0
-        else:
-            n = ceildiv(self.extent, self.size)
+        n = ceildiv(self.extent, self.size)
         object.__setattr__(self, "nchunks", n)
         object.__setattr__(self, "ngridcells", n)
 
@@ -71,8 +73,6 @@ class FixedDimension:
             raise IndexError(f"Negative index {idx} is not allowed")
         if idx >= self.extent:
             raise IndexError(f"Index {idx} is out of bounds for extent {self.extent}")
-        if self.size == 0:
-            return 0
         return idx // self.size
 
     def chunk_offset(self, chunk_ix: int) -> int:
@@ -97,8 +97,6 @@ class FixedDimension:
         Does not validate *chunk_ix* — callers must ensure it is in
         ``[0, nchunks)``. Use ``ChunkGrid.__getitem__`` for safe access.
         """
-        if self.size == 0:
-            return 0
         return max(0, min(self.size, self.extent - chunk_ix * self.size))
 
     @property
@@ -112,8 +110,6 @@ class FixedDimension:
         return (self.size,)
 
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
-        if self.size == 0:
-            return np.zeros_like(indices)
         return indices // self.size
 
     def with_extent(self, new_extent: int) -> FixedDimension:
@@ -660,6 +656,20 @@ class ChunkLayout(NamedTuple):
     inner: ChunkLayout | None = None
 
 
+def _full_span_chunk_size(span: int) -> int:
+    """The edge length of one chunk covering an entire axis of length *span*.
+
+    This is *the* definition of "one chunk spans the axis" for a possibly
+    zero-length axis. Chunk edge lengths must be at least 1 (the invariant
+    shared by `FixedDimension`, `VaryingDimension` and the stored chunk grid
+    metadata), so a zero-length axis gets chunk size 1 and zero chunks. Every
+    spelling that derives a chunk size from a span — ``chunks=-1``,
+    ``chunks=False``, ``chunks="auto"``, ``shards="auto"`` — must route
+    through this helper rather than clamping on its own.
+    """
+    return max(span, 1)
+
+
 def _guess_regular_chunks(
     shape: tuple[int, ...] | int,
     typesize: int,
@@ -697,11 +707,10 @@ def _guess_regular_chunks(
         shape = (shape,)
 
     if typesize == 0:
-        return shape
+        return tuple(_full_span_chunk_size(s) for s in shape)
 
     ndims = len(shape)
-    # require chunks to have non-zero length for all dimensions
-    chunks = np.maximum(np.array(shape, dtype="=f8"), 1)
+    chunks = np.array([_full_span_chunk_size(s) for s in shape], dtype="=f8")
 
     # Determine the optimal chunk size in bytes using a PyTables expression.
     # This is kept as a float.
@@ -744,13 +753,21 @@ def normalize_chunks_1d(chunks: int | Iterable[object], span: int) -> DimensionG
     the span, and the uniform form is O(1) in the number of chunks — a
     dimension with `2**62` chunks must not materialize one entry per chunk.
 
-    `-1` means "one chunk covering the entire span."
+    `-1` means "one chunk covering the entire span" (see `_full_span_chunk_size`
+    for what that means on a zero-length span).
     Explicit chunk size lists must sum to the span exactly and always produce
     `VaryingDimension`, even when the sizes happen to be uniform: the input
     syntax declares the grid kind, so a per-chunk list is preserved as a
     rectilinear dimension rather than silently collapsed to a regular one,
     which would change how the dimension grows on resize. For scalar sizes
     the last chunk may overhang the span.
+
+    The one exception to the sum rule is a zero-length span: no list of
+    positive edges can sum to 0, so any non-empty list is accepted verbatim
+    and the edges describe the chunks the axis will grow into on `append` /
+    `resize`. This is the same state a rectilinear axis reaches when it is
+    resized down to 0 — `VaryingDimension` allows trailing edges beyond the
+    extent — so creating at length 0 and shrinking to 0 are indistinguishable.
     """
     # `numbers.Integral` rather than `int` so that numpy integer scalars (which are not
     # `int` subclasses) take the uniform-chunk path instead of being treated as a sequence.
@@ -761,9 +778,7 @@ def normalize_chunks_1d(chunks: int | Iterable[object], span: int) -> DimensionG
         if chunk_size < -1 or chunk_size == 0:
             raise ValueError(f"Chunk size must be positive or -1, got {chunk_size}")
         if chunk_size == -1:
-            # A zero-length span still gets chunk size 1 (chunk sizes must be positive),
-            # matching the auto-chunking clamp in _guess_regular_chunks.
-            return FixedDimension(size=max(span, 1), extent=span)
+            return FixedDimension(size=_full_span_chunk_size(span), extent=span)
         return FixedDimension(size=chunk_size, extent=span)
     else:
         try:
@@ -788,7 +803,9 @@ def normalize_chunks_1d(chunks: int | Iterable[object], span: int) -> DimensionG
         ints: list[int] = [int(c) for c in chunk_list]  # type: ignore[call-overload]
         if any(c <= 0 for c in ints):
             raise ValueError(f"All chunk sizes must be positive, got {ints}")
-        if sum(ints) != span:
+        # A zero-length span cannot be covered by positive edges; the edges are the
+        # chunks the axis will grow into, exactly as after ``resize(0)``.
+        if span > 0 and sum(ints) != span:
             raise ValueError(f"Chunk sizes {ints} do not sum to span {span}")
         return VaryingDimension(ints, extent=span)
 
@@ -829,7 +846,7 @@ def normalize_chunks_nd(
         )
 
     # handle no chunking: one chunk covering every axis. Routed through the -1 sentinel so
-    # the zero-length-axis clamp lives in one place (normalize_chunks_1d).
+    # the zero-length-axis rule lives in one place (_full_span_chunk_size).
     if chunks is False:
         chunks = -1
 
@@ -884,8 +901,10 @@ def _guess_num_chunks_per_axis_shard(
     In other words the shard would be a (2,2,2) grid of (2,2,2) chunks
     i.e., prod(chunk_shape) * (returned_val ** len(chunk_shape)) * item_size = 256 bytes.
 
-    Degenerate chunk shapes — a 0-dimensional shape, or one containing a zero-length
-    axis — return 1, as the search loop's stopping conditions can never be met.
+    Degenerate inputs — a 0-dimensional chunk shape, or a zero-byte chunk (``item_size``
+    of 0; chunk edge lengths themselves are always at least 1) — return 1, as the
+    search loop's stopping conditions can never be met. A zero-length *array* axis
+    needs no special case: the array-bound check fails immediately for it.
 
     Parameters
     ----------
@@ -906,8 +925,8 @@ def _guess_num_chunks_per_axis_shard(
     if max_bytes < bytes_per_chunk:
         return 1
     num_axes = len(chunk_shape)
-    # For a 0-dimensional chunk shape or one with a zero-length axis, both loop
-    # conditions below are constant, so the loop would never terminate.
+    # For a 0-dimensional chunk shape or a zero-byte chunk, both loop conditions
+    # below are constant, so the loop would never terminate.
     if num_axes == 0 or bytes_per_chunk == 0:
         return 1
     chunks_per_shard = 1

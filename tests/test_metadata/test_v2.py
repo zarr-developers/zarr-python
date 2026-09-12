@@ -309,6 +309,36 @@ def test_from_dict_extra_fields() -> None:
     assert result == expected
 
 
+@pytest.mark.parametrize(
+    ("shape", "chunks", "expected"),
+    [((0,), (0,), (1,)), ((4, 0), (4, 0), (4, 1)), ((0, 0), (0, 0), (1, 1))],
+)
+def test_zero_chunk_edge_on_empty_axis_normalized(
+    shape: tuple[int, ...], chunks: tuple[int, ...], expected: tuple[int, ...]
+) -> None:
+    """A stored chunk edge of 0 on a zero-length axis is read as 1, with a warning.
+
+    zarr-python 2.x wrote `chunks: [0]` for such an axis (`chunks=False` or
+    `chunks=(0,)`), and those documents must stay readable. Left at 0, a later resize
+    read uninitialised memory; normalizing to 1 gives the axis the same grid every other
+    "one chunk spans the axis" spelling produces.
+    """
+    with pytest.warns(ZarrUserWarning, match="chunk edge length 0 on a zero-length axis"):
+        meta = ArrayV2Metadata(
+            shape=shape, dtype=Float64(), chunks=chunks, fill_value=0.0, order="C"
+        )
+    assert meta.chunks == expected
+
+
+@pytest.mark.parametrize(("shape", "chunks"), [((5,), (0,)), ((4, 3), (4, 0))])
+def test_zero_chunk_edge_with_data_rejected(
+    shape: tuple[int, ...], chunks: tuple[int, ...]
+) -> None:
+    """A chunk edge of 0 on an axis that has data is invalid metadata."""
+    with pytest.raises(ValueError, match="chunk edge length must be >= 1"):
+        ArrayV2Metadata(shape=shape, dtype=Float64(), chunks=chunks, fill_value=0.0, order="C")
+
+
 def test_eq_nan_fill_value() -> None:
     """Two metadata objects with an identical NaN fill_value compare equal.
 
