@@ -30,6 +30,51 @@ if TYPE_CHECKING:
 StructuredScalarLike = list[object] | tuple[object, ...] | bytes | int
 
 
+def _check_representable(dtype: np.dtype[np.void]) -> str | None:
+    """
+    Check whether a structured NumPy dtype can be represented by the Zarr struct data type.
+
+    The Zarr struct metadata records only ``(name, dtype)`` pairs and reconstructs the native
+    dtype by packing those fields contiguously (see ``Structured.to_native_dtype``). Anything
+    NumPy allows beyond that is lost on the round trip and would silently change how stored
+    bytes are interpreted. This function rejects three such features, recursing into nested
+    fields so that a problem inside a nested field dtype is caught even when the outer dtype
+    is fine:
+
+    - field titles, e.g. ``np.dtype([(("title", "name"), "i4")])``
+    - subarray fields, e.g. ``np.dtype([("name", "i4", (2,))])``
+    - non-default field layouts, e.g. ``np.dtype(..., align=True)`` or explicit offsets
+
+    Returns
+    -------
+    str | None
+        ``None`` if the dtype is representable, otherwise a short description of the problem.
+    """
+    names = dtype.names
+    fields = dtype.fields
+    if names is None or fields is None:  # pragma: no cover - only called on structured dtypes
+        return None
+    for name in names:
+        field_dtype, _offset, *title = fields[name]
+        if title:
+            return f"field {name!r} has a title ({title[0]!r})"
+        if field_dtype.subdtype is not None:
+            return f"field {name!r} is a subarray with shape {field_dtype.shape}"
+        if field_dtype.names is not None:
+            reason = _check_representable(field_dtype)
+            if reason is not None:
+                return f"within field {name!r}: {reason}"
+    # NumPy dtype equality compares field offsets and itemsize, so rebuilding the dtype from
+    # its (name, dtype) pairs and comparing detects any padding, alignment or explicit offsets.
+    repacked = np.dtype([(name, fields[name][0]) for name in names])
+    if repacked != dtype:
+        return (
+            "it uses a non-default field layout (e.g. it was created with align=True, or has "
+            "explicit field offsets or padding)"
+        )
+    return None
+
+
 class StructuredJSON_V2(DTypeConfig_V2[StructuredName_V2, None]):
     """
     A wrapper around the JSON representation of the ``Structured`` data type in Zarr V2.
@@ -175,6 +220,10 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
         DataTypeValidationError
             If the input data type is not an instance of np.dtypes.VoidDType with a non-null
             ``fields`` attribute.
+        ValueError
+            If the input is a structured dtype that this data type cannot represent faithfully:
+            one with field titles, subarray fields, or a non-default (aligned, padded or
+            explicitly offset) field layout.
 
         Notes
         -----
@@ -185,10 +234,25 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
         fields: list[tuple[str, ZDType[TBaseDType, TBaseScalar]]] = []
         if cls._check_native_dtype(dtype):
-            # fields of a structured numpy dtype are either 2-tuples or 3-tuples. we only
-            # care about the first element in either case.
-            for key, (dtype_instance, *_) in dtype.fields.items():  # type: ignore[union-attr]
-                dtype_wrapped = get_data_type_from_native_dtype(dtype_instance)
+            reason = _check_representable(dtype)
+            if reason is not None:
+                # NOTE: this is a ValueError rather than a DataTypeValidationError on purpose.
+                # The data type registry suppresses DataTypeValidationError (treating it as
+                # "this dtype does not match"), but a dtype with an unrepresentable feature
+                # *does* match this dtype class -- it simply cannot be represented faithfully --
+                # so we must raise an error the registry propagates to the caller.
+                raise ValueError(
+                    f"Cannot serialize the structured data type {dtype}: {reason}. The Zarr "
+                    "struct data type records only field names and field data types, and "
+                    "fields are always packed contiguously on read, so serializing this dtype "
+                    "would silently change how the stored bytes are interpreted. Use a packed "
+                    "structured dtype without titles, subarray fields, align=True or explicit "
+                    "offsets instead."
+                )
+            # Iterate over ``names`` rather than ``fields``: the ``fields`` mapping also
+            # contains an entry for every field title, which would duplicate titled fields.
+            for key in dtype.names:  # type: ignore[union-attr]
+                dtype_wrapped = get_data_type_from_native_dtype(dtype.fields[key][0])  # type: ignore[index]
                 fields.append((key, dtype_wrapped))
 
             return cls(fields=tuple(fields))

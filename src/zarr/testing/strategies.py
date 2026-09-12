@@ -1,3 +1,4 @@
+import dataclasses
 import itertools
 import math
 import sys
@@ -27,7 +28,11 @@ from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array import Array, CompressorsLike, SerializerLike
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.common import JSON, AccessModeLiteral, ZarrFormat
-from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.dtype import data_type_registry, get_data_type_from_native_dtype
+from zarr.core.dtype.common import HasItemSize
+from zarr.core.dtype.npy.common import DATETIME_UNIT
+from zarr.core.dtype.npy.structured import Struct
+from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
 from zarr.core.sync import sync
@@ -68,6 +73,122 @@ def dtypes() -> st.SearchStrategy[np.dtype[Any]]:
         | npst.datetime64_dtypes(endianness="=")
         | npst.timedelta64_dtypes(endianness="=")
     )
+
+
+_field_names = st.text(
+    alphabet=st.characters(min_codepoint=97, max_codepoint=122), min_size=1, max_size=4
+)
+_field_titles = st.text(
+    alphabet=st.characters(min_codepoint=65, max_codepoint=90), min_size=1, max_size=4
+)
+
+
+def _leaf_zdtypes(cls: type[ZDType[TBaseDType, TBaseScalar]]) -> SearchStrategy[ZDType[Any, Any]]:
+    """
+    A strategy for instances of a single non-struct ``ZDType`` class, drawing each constructor
+    parameter the class declares from its valid range.
+    """
+    params = {f.name for f in dataclasses.fields(cls)}
+    kwargs: dict[str, SearchStrategy[Any]] = {}
+    if "endianness" in params:
+        kwargs["endianness"] = st.sampled_from(["little", "big"])
+    if "length" in params:
+        kwargs["length"] = st.integers(min_value=1, max_value=16)
+    if "unit" in params:
+        # The constructor normalizes the "μs" alias to "us", so every unit is safe to draw, but
+        # the generic unit only accepts scale_factor=1, so the scale factor depends on the unit.
+        return st.sampled_from(DATETIME_UNIT).flatmap(
+            lambda unit: st.builds(
+                cls,
+                unit=st.just(unit),
+                scale_factor=st.just(1)
+                if unit == "generic"
+                else st.integers(min_value=1, max_value=2**31 - 1),
+                **kwargs,
+            )
+        )
+    return st.builds(cls, **kwargs)
+
+
+def _struct_zdtypes(
+    children: SearchStrategy[ZDType[Any, Any]],
+) -> SearchStrategy[ZDType[Any, Any]]:
+    """A strategy for ``Struct`` instances whose field data types are drawn from ``children``."""
+
+    @st.composite
+    def _draw(draw: st.DrawFn) -> ZDType[Any, Any]:
+        num_fields = draw(st.integers(min_value=1, max_value=4))
+        # suffix with the index so that names are unique without filtering
+        names = [f"{draw(_field_names)}{i}" for i in range(num_fields)]
+        return Struct(fields=tuple((name, draw(children)) for name in names))
+
+    return _draw()
+
+
+def zdtypes(*, max_leaves: int = 6) -> SearchStrategy[ZDType[Any, Any]]:
+    """
+    A strategy for instances of every registered ``ZDType`` class, including ``Struct`` with
+    arbitrarily nested fields.
+
+    Struct fields are restricted to fixed-size data types, since the Zarr struct data type cannot
+    hold variable-length fields.
+    """
+    leaf_classes = [cls for cls in data_type_registry.contents.values() if cls is not Struct]
+    leaves = st.one_of([_leaf_zdtypes(cls) for cls in leaf_classes])
+    fixed_size_leaves = st.one_of(
+        [_leaf_zdtypes(cls) for cls in leaf_classes if issubclass(cls, HasItemSize)]
+    )
+    structs = st.recursive(fixed_size_leaves, _struct_zdtypes, max_leaves=max_leaves).filter(
+        lambda dt: isinstance(dt, Struct)
+    )
+    return leaves | structs
+
+
+@st.composite
+def structured_dtypes(
+    draw: st.DrawFn, *, allow_unrepresentable: bool = False, max_depth: int = 3
+) -> np.dtype[np.void]:
+    """
+    A strategy for native NumPy structured dtypes, flat or nested.
+
+    With ``allow_unrepresentable=False`` (the default) every dtype is packed, has plain field names
+    and scalar fields, so it can be represented by the Zarr struct data type. With
+    ``allow_unrepresentable=True`` the strategy also injects the NumPy features that the Zarr
+    struct data type cannot record: field titles, subarray fields and ``align=True`` layouts.
+    Each is injected independently at random, so most draws carry at least one and some carry
+    none.
+    """
+    fixed_size_leaves = st.one_of(
+        [
+            _leaf_zdtypes(cls)
+            for cls in data_type_registry.contents.values()
+            if cls is not Struct and issubclass(cls, HasItemSize)
+        ]
+    )
+
+    def build(depth: int) -> np.dtype[np.void]:
+        num_fields = draw(st.integers(min_value=1, max_value=4))
+        # suffix with the index so that names and titles are unique without filtering; titles
+        # draw from a different alphabet so they never collide with names either
+        names = [f"{draw(_field_names)}{i}" for i in range(num_fields)]
+        titles = [f"{draw(_field_titles)}{i}" for i in range(num_fields)]
+        specs: list[tuple[Any, Any]] = []
+        for name, title in zip(names, titles, strict=True):
+            field_dtype: Any
+            if depth < max_depth and draw(st.booleans()):
+                field_dtype = build(depth + 1)
+            else:
+                field_dtype = draw(fixed_size_leaves).to_native_dtype()
+            key: Any = name
+            if allow_unrepresentable and draw(st.booleans()):
+                key = (title, name)
+            if allow_unrepresentable and draw(st.booleans()):
+                field_dtype = (field_dtype, draw(npst.array_shapes(max_dims=2, max_side=3)))
+            specs.append((key, field_dtype))
+        align = allow_unrepresentable and draw(st.booleans())
+        return np.dtype(specs, align=align)
+
+    return build(0)
 
 
 def v3_dtypes() -> st.SearchStrategy[np.dtype[Any]]:
