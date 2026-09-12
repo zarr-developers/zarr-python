@@ -3,9 +3,11 @@ from __future__ import annotations
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypeGuard, cast, overload
 
 import numpy as np
+from numpy.lib.recfunctions import repack_fields
 
 from zarr.core.common import NamedConfig
 from zarr.core.dtype.common import (
@@ -29,6 +31,9 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
 
 StructuredScalarLike = list[object] | tuple[object, ...] | bytes | int
+
+# The root of the zarr package, used to attribute layout warnings to the caller outside zarr.
+_ZARR_PACKAGE_ROOT = str(Path(__file__).parents[3])
 
 
 def _check_representable(dtype: np.dtype[np.void]) -> str | None:
@@ -238,28 +243,34 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
                 # so we must raise an error the registry propagates to the caller.
                 raise ValueError(
                     f"Cannot serialize the structured data type {dtype}: {reason}. The Zarr "
-                    "struct data type records only field names and field data types, and "
-                    "fields are always packed contiguously on read, so serializing this dtype "
-                    "would silently change how the stored bytes are interpreted. Use a packed "
-                    "structured dtype without titles or subarray fields instead."
+                    "struct data type records only field names and field data types, so a "
+                    "field title or a subarray shape has no representation in the metadata. "
+                    "Use a structured dtype without titles or subarray fields instead."
                 )
-            # Iterate over `names` rather than `fields`: the `fields` mapping also
-            # contains an entry for every field title, which would duplicate titled fields.
-            for key in dtype.names:  # type: ignore[union-attr]
-                dtype_wrapped = get_data_type_from_native_dtype(dtype.fields[key][0])  # type: ignore[index]
-                fields.append((key, dtype_wrapped))
-
-            result = cls(fields=tuple(fields))
-            if result.to_native_dtype() != dtype:
+            # Repack once, at the top level, before resolving the fields. Nested fields then
+            # reach the registry already packed, so a padded nested field warns exactly once,
+            # here, rather than once per level of nesting.
+            packed = cast("np.dtype[np.void]", repack_fields(dtype, recurse=True))
+            if packed != dtype:
                 warnings.warn(
                     "The structured dtype is converted to a packed field layout. "
                     "Field values are preserved when writing arrays, but field offsets and "
                     "itemsize may change. To pack explicitly, use "
                     "numpy.lib.recfunctions.repack_fields(data, recurse=True).",
                     ZarrUserWarning,
-                    stacklevel=2,
+                    # Attribute the warning to the first frame outside the zarr package, since
+                    # the depth of the call chain that leads here varies by entry point. This
+                    # reaches the caller for direct uses of the dtype API; the synchronous array
+                    # API runs on the event loop thread, where no caller frame is available.
+                    skip_file_prefixes=(_ZARR_PACKAGE_ROOT,),
                 )
-            return result
+            # Iterate over `names` rather than `fields`: the `fields` mapping also
+            # contains an entry for every field title, which would duplicate titled fields.
+            for key in packed.names:  # type: ignore[union-attr]
+                dtype_wrapped = get_data_type_from_native_dtype(packed.fields[key][0])  # type: ignore[index]
+                fields.append((key, dtype_wrapped))
+
+            return cls(fields=tuple(fields))
         raise DataTypeValidationError(
             f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
         )

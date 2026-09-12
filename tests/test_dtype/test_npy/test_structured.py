@@ -344,13 +344,17 @@ def test_padded_structured_dtype_warns_and_preserves_values(
     """
     Preserve the existing conversion of padded records to packed records, with a warning.
     The layout changes, but field values must survive writing and reopening the array.
+
+    The warning is emitted exactly once, even for padding inside a nested field.
     """
     data = np.ones(3, dtype=dtype)
     data["a"] = [1, 2, 3]
     expected = repack_fields(data, recurse=True)
     store = zarr.storage.MemoryStore()
-    with pytest.warns(ZarrUserWarning, match="packed.*layout"):
+    with pytest.warns(ZarrUserWarning, match="packed.*layout") as record:
         zarr.create_array(store, data=data, chunks=(2,), zarr_format=zarr_format)
+    layout_warnings = [w for w in record if issubclass(w.category, ZarrUserWarning)]
+    assert len(layout_warnings) == 1
     reopened = zarr.open_array(store)
     assert reopened.dtype == expected.dtype
     assert reopened.dtype.itemsize == expected.dtype.itemsize
