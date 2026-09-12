@@ -314,6 +314,19 @@ class GpuMemoryStore(MemoryStore):
         gpu_value = value if isinstance(value, gpu.Buffer) else gpu.Buffer.from_buffer(value)
         await super().set(key, gpu_value, byte_range=byte_range)
 
+    def set_sync(self, key: str, value: Buffer) -> None:
+        # docstring inherited
+        self._check_writable()
+        assert isinstance(key, str)
+        if not isinstance(value, Buffer):
+            raise TypeError(
+                f"GpuMemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
+        # Convert to gpu.Buffer, mirroring `set` above: every value in this store's
+        # backing dict must be a gpu.Buffer, regardless of which API wrote it.
+        gpu_value = value if isinstance(value, gpu.Buffer) else gpu.Buffer.from_buffer(value)
+        super().set_sync(key, gpu_value)
+
 
 # -----------------------------------------------------------------------------
 # ManagedMemoryStore and its registry
@@ -572,6 +585,26 @@ class ManagedMemoryStore(MemoryStore):
 
     # Override MemoryStore methods to use path prefix and check process
 
+    def get_sync(
+        self,
+        key: str,
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        # docstring inherited
+        return super().get_sync(
+            _join_paths([self.path, key]), prototype=prototype, byte_range=byte_range
+        )
+
+    def set_sync(self, key: str, value: Buffer) -> None:
+        # docstring inherited
+        super().set_sync(_join_paths([self.path, key]), value)
+
+    def delete_sync(self, key: str) -> None:
+        # docstring inherited
+        super().delete_sync(_join_paths([self.path, key]))
+
     async def get(
         self,
         key: str,
@@ -583,14 +616,9 @@ class ManagedMemoryStore(MemoryStore):
             _join_paths([self.path, key]), prototype=prototype, byte_range=byte_range
         )
 
-    async def get_partial_values(
-        self,
-        prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRequest | None]],
-    ) -> list[Buffer | None]:
-        # docstring inherited
-        key_ranges = [(_join_paths([self.path, key]), byte_range) for key, byte_range in key_ranges]
-        return await super().get_partial_values(prototype, key_ranges)
+    # get_partial_values is intentionally NOT overridden here: MemoryStore.get_partial_values
+    # dispatches per-key through `self.get`, which already resolves to the override above.
+    # Re-prefixing the keys here as well would apply `self.path` twice.
 
     async def exists(self, key: str) -> bool:
         # docstring inherited

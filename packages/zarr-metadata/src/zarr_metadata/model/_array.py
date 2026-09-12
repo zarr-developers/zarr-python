@@ -6,7 +6,7 @@ import copy
 import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Final, Literal, TypeAlias, cast
+from typing import TYPE_CHECKING, Literal, TypeAlias, cast
 
 from typing_extensions import TypedDict, Unpack
 
@@ -22,27 +22,27 @@ from zarr_metadata.model._validation import (
     parse_array_metadata_v3,
     parse_metadata_field_v3,
 )
+from zarr_metadata.v2.array import ZARR_V2_ARRAY_METADATA_STORE_KEY
+from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
+from zarr_metadata.v3.array import ZARR_V3_ARRAY_METADATA_STORE_KEY
 
 if TYPE_CHECKING:
     from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
     from zarr_metadata.v2.array import (
         ZarrV2ArrayDimensionSeparator,
         ZarrV2ArrayMetadataJSON,
+        ZarrV2ArrayMetadataStoreKey,
         ZarrV2ArrayOrder,
         ZarrV2DataTypeMetadata,
     )
+    from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
     from zarr_metadata.v2.codec import ZarrV2CodecMetadata
     from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
-    from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON, ZarrV3ExtensionField
-
-ZarrV3ArrayMetadataStoreKey = Literal["zarr.json"]
-ARRAY_METADATA_STORE_KEY_V3: Final[ZarrV3ArrayMetadataStoreKey] = "zarr.json"
-
-ZarrV2ArrayMetadataStoreKey = Literal[".zarray"]
-ARRAY_METADATA_STORE_KEY_V2: Final[ZarrV2ArrayMetadataStoreKey] = ".zarray"
-
-ZarrV2AttributesStoreKey = Literal[".zattrs"]
-ATTRIBUTES_STORE_KEY_V2: Final[ZarrV2AttributesStoreKey] = ".zattrs"
+    from zarr_metadata.v3.array import (
+        ZarrV3ArrayMetadataJSON,
+        ZarrV3ArrayMetadataStoreKey,
+        ZarrV3ExtensionField,
+    )
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -319,12 +319,12 @@ class ZarrV3ArrayMetadata:
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV3ArrayMetadata:
-        return cls.from_json(load_store_json(mapping, ARRAY_METADATA_STORE_KEY_V3))
+        return cls.from_json(load_store_json(mapping, ZARR_V3_ARRAY_METADATA_STORE_KEY))
 
     def to_key_value(
         self, *, indent: int | str | None = None
     ) -> Mapping[ZarrV3ArrayMetadataStoreKey, bytes]:
-        return {ARRAY_METADATA_STORE_KEY_V3: dump_store_json(self.to_json(), indent=indent)}
+        return {ZARR_V3_ARRAY_METADATA_STORE_KEY: dump_store_json(self.to_json(), indent=indent)}
 
 
 class ZarrV2ArrayMetadataPartial(TypedDict, total=False):
@@ -464,7 +464,7 @@ class ZarrV2ArrayMetadata:
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV2ArrayMetadata:
-        zarray_raw = cast("object", load_store_json(mapping, ARRAY_METADATA_STORE_KEY_V2))
+        zarray_raw = cast("object", load_store_json(mapping, ZARR_V2_ARRAY_METADATA_STORE_KEY))
         if not isinstance(zarray_raw, Mapping):
             return cls.from_json(zarray_raw)
         zarray = cast("Mapping[str, object]", zarray_raw)
@@ -478,8 +478,8 @@ class ZarrV2ArrayMetadata:
                     )
                 ]
             )
-        if ATTRIBUTES_STORE_KEY_V2 in mapping:
-            zattrs = cast("object", load_store_json(mapping, ATTRIBUTES_STORE_KEY_V2))
+        if ZARR_V2_ATTRIBUTES_STORE_KEY in mapping:
+            zattrs = cast("object", load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY))
             return cls.from_json({**zarray, "attributes": zattrs})
         return cls.from_json(zarray)
 
@@ -491,8 +491,8 @@ class ZarrV2ArrayMetadata:
         # when attributes are set (even empty) — UNSET emits no file.
         zarray = {k: v for k, v in self.to_json().items() if k != "attributes"}
         out: dict[ZarrV2ArrayMetadataStoreKey | ZarrV2AttributesStoreKey, bytes] = {
-            ARRAY_METADATA_STORE_KEY_V2: dump_store_json(zarray, indent=indent)
+            ZARR_V2_ARRAY_METADATA_STORE_KEY: dump_store_json(zarray, indent=indent)
         }
         if self.attributes is not UNSET:
-            out[ATTRIBUTES_STORE_KEY_V2] = dump_store_json(self.attributes, indent=indent)
+            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = dump_store_json(self.attributes, indent=indent)
         return out

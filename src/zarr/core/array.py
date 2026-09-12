@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import copy
 import math
 import warnings
 from asyncio import gather
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from itertools import starmap
 from logging import getLogger
 from typing import (
     TYPE_CHECKING,
@@ -42,8 +42,10 @@ from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.chunk_grids import (
     SHARDED_INNER_CHUNK_MAX_BYTES,
     ChunkGrid,
+    FixedDimension,
+    _is_auto,
+    _is_keep,
     _is_rectilinear_chunks,
-    as_regular_shape,
     guess_chunks,
     normalize_chunks_nd,
     resolve_outer_and_inner_chunks,
@@ -101,7 +103,6 @@ from zarr.core.indexing import (
     Selection,
     VIndex,
     _iter_grid,
-    _iter_regions,
     check_fields,
     check_no_multi_fields,
     is_pure_fancy_indexing,
@@ -126,6 +127,8 @@ from zarr.core.metadata.v2 import (
 )
 from zarr.core.metadata.v3 import (
     ChunkGridMetadata,
+    RectilinearChunkGridMetadata,
+    RegularChunkGridMetadata,
     create_chunk_grid_metadata,
     parse_node_type_array,
 )
@@ -154,13 +157,13 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import CodecPipeline
     from zarr.abc.store import Store
-    from zarr.codecs.sharding import IndexLocation
+    from zarr.codecs.sharding import IndexLocation, ShardingCodec
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.storage import StoreLike
     from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
 
 
-# Array and AsyncArray are defined in the base ``zarr`` namespace
+# Array and AsyncArray are defined in the base `zarr` namespace
 __all__ = [
     "DEFAULT_FILL_VALUE",
     "create_codec_pipeline",
@@ -247,8 +250,13 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
             pass
 
     if isinstance(metadata, ArrayV3Metadata):
+        # The pipeline built here is a throwaway: `evolve_from_array_spec` below
+        # reconstructs codecs against the evolved spec. `from_codecs` is the
+        # chain's first construction, so its advisory warnings (e.g. sharding's
+        # "disables partial reads" warning) fire here; `evolve_from_array_spec`
+        # re-splits the same already-warned-about chain via
+        # `codecs_from_list_unchecked`, so it does not re-emit them.
         pipeline = get_pipeline_class().from_codecs(metadata.codecs)
-        from zarr.core.metadata.v3 import RegularChunkGridMetadata
 
         # Use the regular chunk shape if available, otherwise use a
         # placeholder. The ChunkTransform is shape-agnostic — the actual
@@ -349,8 +357,8 @@ async def _prepare_overwrite(
     """
     Prepare a store path for writing a new node.
 
-    If ``overwrite`` is true and the store supports deletes, any existing node at
-    ``store_path`` is deleted. Otherwise, the absence of an existing node is enforced
+    If `overwrite` is true and the store supports deletes, any existing node at
+    `store_path` is deleted. Otherwise, the absence of an existing node is enforced
     (raising if one is present).
     """
     if overwrite and store_path.store.supports_deletes:
@@ -536,7 +544,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 outer_chunks = guess_chunks(shape, item_size)
             else:
                 outer_chunks = normalize_chunks_nd(_raw, shape)
-            _chunks = as_regular_shape(outer_chunks)
+            _chunks = outer_chunks.chunk_shape
 
             if order is None:
                 order_parsed = config_parsed.order
@@ -861,10 +869,12 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     @property
     def chunks(self) -> tuple[int, ...]:
         """Returns the chunk shape of the Array.
-        If sharding is used the inner chunk shape is returned.
+        If sharding is used the inner chunk shape is returned, which is defined
+        for any chunk grid (inner chunks are always regular).
 
-        Only defined for arrays using a regular chunk grid.
-        If array uses a rectilinear chunk grid, `NotImplementedError` is raised.
+        Otherwise, only defined for arrays using a regular chunk grid: for a
+        non-sharded array with a rectilinear chunk grid, `NotImplementedError`
+        is raised. Use `read_chunk_sizes` for general access.
 
         Returns
         -------
@@ -880,10 +890,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Boundary chunks that extend past the array shape are clipped, so
         the last size along a dimension may be smaller than the declared
-        chunk size.  This matches the dask ``Array.chunks`` convention.
+        chunk size.  This matches the dask `Array.chunks` convention.
 
         When sharding is used, returns the inner chunk sizes.
-        Otherwise, returns the outer chunk sizes (same as ``write_chunk_sizes``).
+        Otherwise, returns the outer chunk sizes (same as `write_chunk_sizes`).
 
         Returns
         -------
@@ -893,20 +903,25 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
+        Without sharding, `read_chunk_sizes` and `write_chunk_sizes` are the same:
+
         >>> arr = zarr.create_array({}, dtype="i1", shape=(100, 80), chunks=(30, 40))
         >>> arr.read_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
+
+        For a sharded array the two differ: reads are efficient at inner-chunk
+        granularity, while writes go to storage one shard at a time:
+
+        >>> sharded = zarr.create_array({}, dtype="i1", shape=(40,), chunks=(10,), shards=(20,))
+        >>> sharded.read_chunk_sizes
+        ((10, 10, 10, 10),)
+        >>> sharded.write_chunk_sizes
+        ((20, 20),)
         """
-
-        from zarr.codecs.sharding import ShardingCodec
-
-        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
-        if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
-            # The inner chunk grid restarts at every shard boundary (inner
-            # chunks are clipped by the shard shape), so derive the sizes from
-            # the outer chunk sizes rather than the array shape alone.
-            inner_chunk_shape = codecs[0].chunk_shape
-            return _inner_chunk_sizes_from_outer(self._chunk_grid.chunk_sizes, inner_chunk_shape)
+        if (sharding_codec := _sharding_codec(self.metadata)) is not None:
+            return _inner_chunk_sizes_from_outer(
+                self._chunk_grid.chunk_sizes, sharding_codec.chunk_shape
+            )
         return self._chunk_grid.chunk_sizes
 
     @property
@@ -916,7 +931,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Always returns the outer chunk sizes, regardless of sharding.
         Boundary chunks that extend past the array shape are clipped, so
         the last size along a dimension may be smaller than the declared
-        chunk size.  This matches the dask ``Array.chunks`` convention.
+        chunk size.  This matches the dask `Array.chunks` convention.
 
         Returns
         -------
@@ -926,10 +941,20 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
-        >>> import zarr.storage
+        Without sharding, `write_chunk_sizes` and `read_chunk_sizes` are the same:
+
         >>> arr = zarr.create_array({}, dtype="i1", shape=(100, 80), chunks=(30, 40))
         >>> arr.write_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
+
+        For a sharded array the two differ: writes go to storage one shard at a
+        time, while reads are efficient at inner-chunk granularity:
+
+        >>> sharded = zarr.create_array({}, dtype="i1", shape=(40,), chunks=(10,), shards=(20,))
+        >>> sharded.write_chunk_sizes
+        ((20, 20),)
+        >>> sharded.read_chunk_sizes
+        ((10, 10, 10, 10),)
         """
 
         return self._chunk_grid.chunk_sizes
@@ -939,8 +964,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """Returns the shard shape of the Array.
         Returns None if sharding is not used.
 
-        Only defined for arrays using a regular chunk grid.
-        If array uses a rectilinear chunk grid, `NotImplementedError` is raised.
+        Only defined when the shard grid is regular: for a sharded array with a
+        rectilinear chunk grid, `NotImplementedError` is raised. Use
+        `write_chunk_sizes` for general access.
 
         Returns
         -------
@@ -1137,20 +1163,21 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[int, ...]
             The number of chunks along each dimension.
         """
-        # TODO: refactor — extract a sharding_codec property on ArrayV3Metadata
-        # to replace the repeated `len == 1 and isinstance` pattern.
-        from zarr.codecs.sharding import ShardingCodec
-
-        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
-        if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
-            # When sharding, count inner chunks across the whole array. The
-            # inner chunk grid restarts at every shard boundary (inner chunks
-            # are clipped by the shard shape), so count per outer chunk.
-            chunk_shape = codecs[0].chunk_shape
-            return tuple(
-                sum(ceildiv(outer_size, c) for outer_size in outer_sizes)
-                for outer_sizes, c in zip(self._chunk_grid.chunk_sizes, chunk_shape, strict=True)
-            )
+        if (sharding_codec := _sharding_codec(self.metadata)) is not None:
+            # The inner grid restarts at every shard boundary.
+            chunk_shape = sharding_codec.chunk_shape
+            counts: list[int] = []
+            for dimension, inner in zip(self._chunk_grid.dimensions, chunk_shape, strict=True):
+                if isinstance(dimension, FixedDimension):
+                    full, remainder = divmod(dimension.extent, dimension.size)
+                    counts.append(full * ceildiv(dimension.size, inner) + ceildiv(remainder, inner))
+                else:
+                    counts.append(
+                        sum(
+                            ceildiv(dimension.data_size(i), inner) for i in range(dimension.nchunks)
+                        )
+                    )
+            return tuple(counts)
         return self._chunk_grid.grid_shape
 
     @property
@@ -1165,11 +1192,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         tuple[int, ...]
             The shape of the shard grid for this array.
         """
-        if self.shards is None:
-            shard_shape = self.chunks
-        else:
-            shard_shape = self.shards
-        return tuple(starmap(ceildiv, zip(self.shape, shard_shape, strict=True)))
+        # The stored chunk grid is the shard grid when sharding is used, the
+        # chunk grid otherwise. Works for regular and rectilinear grids alike.
+        return self._chunk_grid.grid_shape
 
     @property
     def nchunks(self) -> int:
@@ -1233,10 +1258,13 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         Calculate the number of chunks that have been initialized in storage.
 
-        This value is calculated as the product of the number of initialized shards and the number
-        of chunks per shard. For arrays that do not use sharding, the number of chunks per shard is
-        effectively 1, and in that case the number of chunks initialized is the same as the number
-        of stored objects associated with an array.
+        This value is calculated as the sum of the number of chunks in every initialized shard
+        (shard sizes can vary when the shard grid is rectilinear). Each initialized shard is
+        counted at its full declared size, so for an edge shard that extends beyond the array
+        extent this includes chunks that lie entirely outside the array, and the result can
+        exceed `nchunks`. For arrays that do not use sharding, each stored object holds one
+        chunk, so the number of chunks initialized is the same as the number of stored objects
+        associated with an array.
 
         Returns
         -------
@@ -1460,7 +1488,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         -----
         This value is calculated by multiplying the number of elements in the array and the size
         of each element, the latter of which is determined by the dtype of the array.
-        For this reason, ``nbytes`` will likely be inaccurate for arrays with variable-length
+        For this reason, `nbytes` will likely be inaccurate for arrays with variable-length
         dtypes. It is not possible to determine the size of an array with variable-length elements
         from the shape and dtype alone.
         """
@@ -1843,14 +1871,27 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def _info(
         self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
     ) -> Any:
-        chunk_shape = self.chunks if self._chunk_grid.is_regular else None
+        rectilinear_grid = _stored_rectilinear_grid_or_none(self.metadata)
+        sharded = _sharding_codec(self.metadata) is not None
+        # `.chunks` (the inner chunk shape when sharded) is undefined only for a
+        # non-sharded rectilinear grid, which ArrayInfo renders as "<variable>";
+        # `.shards` is undefined for a rectilinear shard grid, where the
+        # "<variable>" sentinel keeps the array rendered as sharded.
+        chunk_shape = self.chunks if (rectilinear_grid is None or sharded) else None
+        shard_shape: tuple[int, ...] | Literal["<variable>"] | None
+        if rectilinear_grid is None:
+            shard_shape = self.shards
+        elif sharded:
+            shard_shape = "<variable>"
+        else:
+            shard_shape = None
         return ArrayInfo(
             _zarr_format=self.metadata.zarr_format,
             _data_type=self._zdtype,
             _fill_value=self.metadata.fill_value,
             _shape=self.shape,
             _order=self.order,
-            _shard_shape=self.shards,
+            _shard_shape=shard_shape,
             _chunk_shape=chunk_shape,
             _read_only=self.read_only,
             _compressors=self.compressors,
@@ -2044,10 +2085,12 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     @property
     def chunks(self) -> tuple[int, ...]:
         """Returns a tuple of integers describing the length of each dimension of a chunk of the array.
-        If sharding is used the inner chunk shape is returned.
+        If sharding is used the inner chunk shape is returned, which is defined
+        for any chunk grid (inner chunks are always regular).
 
-        Only defined for arrays using a regular chunk grid.
-        If array uses a rectilinear chunk grid, `NotImplementedError` is raised.
+        Otherwise, only defined for arrays using a regular chunk grid: for a
+        non-sharded array with a rectilinear chunk grid, `NotImplementedError`
+        is raised. Use `read_chunk_sizes` for general access.
 
         Returns
         -------
@@ -2062,10 +2105,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Boundary chunks that extend past the array shape are clipped, so
         the last size along a dimension may be smaller than the declared
-        chunk size.  This matches the dask ``Array.chunks`` convention.
+        chunk size.  This matches the dask `Array.chunks` convention.
 
         When sharding is used, returns the inner chunk sizes.
-        Otherwise, returns the outer chunk sizes (same as ``write_chunk_sizes``).
+        Otherwise, returns the outer chunk sizes (same as `write_chunk_sizes`).
 
         Returns
         -------
@@ -2075,10 +2118,21 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
+        Without sharding, `read_chunk_sizes` and `write_chunk_sizes` are the same:
+
         >>> import zarr
         >>> arr = zarr.create_array({}, dtype="i1", shape=(100, 80), chunks=(30, 40))
         >>> arr.read_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
+
+        For a sharded array the two differ: reads are efficient at inner-chunk
+        granularity, while writes go to storage one shard at a time:
+
+        >>> sharded = zarr.create_array({}, dtype="i1", shape=(40,), chunks=(10,), shards=(20,))
+        >>> sharded.read_chunk_sizes
+        ((10, 10, 10, 10),)
+        >>> sharded.write_chunk_sizes
+        ((20, 20),)
         """
         return self.async_array.read_chunk_sizes
 
@@ -2089,7 +2143,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Always returns the outer chunk sizes, regardless of sharding.
         Boundary chunks that extend past the array shape are clipped, so
         the last size along a dimension may be smaller than the declared
-        chunk size.  This matches the dask ``Array.chunks`` convention.
+        chunk size.  This matches the dask `Array.chunks` convention.
 
         Returns
         -------
@@ -2099,10 +2153,21 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Examples
         --------
+        Without sharding, `write_chunk_sizes` and `read_chunk_sizes` are the same:
+
         >>> import zarr
         >>> arr = zarr.create_array({}, dtype="i1", shape=(100, 80), chunks=(30, 40))
         >>> arr.write_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
+
+        For a sharded array the two differ: writes go to storage one shard at a
+        time, while reads are efficient at inner-chunk granularity:
+
+        >>> sharded = zarr.create_array({}, dtype="i1", shape=(40,), chunks=(10,), shards=(20,))
+        >>> sharded.write_chunk_sizes
+        ((20, 20),)
+        >>> sharded.read_chunk_sizes
+        ((10, 10, 10, 10),)
         """
         return self.async_array.write_chunk_sizes
 
@@ -2111,8 +2176,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """Returns a tuple of integers describing the length of each dimension of a shard of the array.
         Returns None if sharding is not used.
 
-        Only defined for arrays using a regular chunk grid.
-        If array uses a rectilinear chunk grid, `NotImplementedError` is raised.
+        Only defined when the shard grid is regular: for a sharded array with a
+        rectilinear chunk grid, `NotImplementedError` is raised. Use
+        `write_chunk_sizes` for general access.
 
         Returns
         -------
@@ -2202,7 +2268,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return self.async_array.filters
 
     @property
-    def serializer(self) -> None | ArrayBytesCodec:
+    def serializer(self) -> ArrayBytesCodec | None:
         """
         Array-to-bytes codec to use for serializing the chunks into bytes.
         """
@@ -2307,7 +2373,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         -----
         This value is calculated by multiplying the number of elements in the array and the size
         of each element, the latter of which is determined by the dtype of the array.
-        For this reason, ``nbytes`` will likely be inaccurate for arrays with variable-length
+        For this reason, `nbytes` will likely be inaccurate for arrays with variable-length
         dtypes. It is not possible to determine the size of an array with variable-length elements
         from the shape and dtype alone.
         """
@@ -2318,10 +2384,14 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         Calculate the number of chunks that have been initialized in storage.
 
-        This value is calculated as the product of the number of initialized shards and the number of
-        chunks per shard. For arrays that do not use sharding, the number of chunks per shard is effectively 1,
-        and in that case the number of chunks initialized is the same as the number of stored objects associated with an
-        array. For a direct count of the number of initialized stored objects, see ``nshards_initialized``.
+        This value is calculated as the sum of the number of chunks in every initialized shard
+        (shard sizes can vary when the shard grid is rectilinear). Each initialized shard is
+        counted at its full declared size, so for an edge shard that extends beyond the array
+        extent this includes chunks that lie entirely outside the array, and the result can
+        exceed `nchunks`. For arrays that do not use sharding, each stored object holds one
+        chunk, so the number of chunks initialized is the same as the number of stored objects
+        associated with an array. For a direct count of the number of initialized stored
+        objects, see `nshards_initialized`.
 
         Returns
         -------
@@ -4001,7 +4071,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         Returns all the information about an array, including information from the Store.
 
-        In addition to the statically known information like ``name`` and ``zarr_format``,
+        In addition to the statically known information like `name` and `zarr_format`,
         this includes additional information like the size of the array in bytes and
         the number of chunks written.
 
@@ -4079,11 +4149,17 @@ type SerializerLike = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
 
 
 class ShardsConfigParam(TypedDict):
-    shape: tuple[int, ...]
+    shape: Sequence[int | Sequence[int]]
     index_location: IndexLocation | None
 
 
-type ShardsLike = tuple[int, ...] | Sequence[Sequence[int]] | ShardsConfigParam | Literal["auto"]
+type ShardsLike = (
+    tuple[int, ...]
+    | Sequence[int | Sequence[int]]
+    | ChunkGridMetadata
+    | ShardsConfigParam
+    | Literal["auto"]
+)
 
 
 async def from_array(
@@ -4093,7 +4169,7 @@ async def from_array(
     write_data: bool = True,
     name: str | None = None,
     chunks: ChunksLike | Literal["auto", "keep"] = "keep",
-    shards: ShardsLike | None | Literal["keep"] = "keep",
+    shards: ShardsLike | Literal["keep"] | None = "keep",
     filters: FiltersLike | Literal["keep"] = "keep",
     compressors: CompressorsLike | Literal["keep"] = "keep",
     serializer: SerializerLike | Literal["keep"] = "keep",
@@ -4119,10 +4195,10 @@ async def from_array(
         The array to copy.
     write_data : bool, default True
         Whether to copy the data from the input array to the new array.
-        If ``write_data`` is ``False``, the new array will be created with the same metadata as the
+        If `write_data` is `False`, the new array will be created with the same metadata as the
         input array, but without any data.
     name : str or None, optional
-        The name of the array within the store. If ``name`` is ``None``, the array will be located
+        The name of the array within the store. If `name` is `None`, the array will be located
         at the root of the store.
     chunks : tuple[int, ...] or Sequence[Sequence[int]] or "auto" or "keep", optional
         Chunk shape of the array.
@@ -4133,7 +4209,7 @@ async def from_array(
         - tuple[int, ...]: A tuple of integers representing the chunk shape (regular grid).
         - Sequence[Sequence[int]]: Per-dimension chunk edge lists (rectilinear grid).
           Rectilinear chunk grids are experimental and must be explicitly enabled
-          with ``zarr.config.set({'array.rectilinear_chunks': True})`` while the
+          with `zarr.config.set({'array.rectilinear_chunks': True})` while the
           feature is stabilizing.
 
         If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
@@ -4158,16 +4234,16 @@ async def from_array(
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
         order of your filters is consistent with the behavior of each filter.
 
-        The default value of ``"keep"`` instructs Zarr to infer ``filters`` from ``data``.
-        If that inference is not possible, Zarr will fall back to the behavior specified by ``"auto"``,
+        The default value of `"keep"` instructs Zarr to infer `filters` from `data`.
+        If that inference is not possible, Zarr will fall back to the behavior specified by `"auto"`,
         which is to choose default filters based on the data type of the array and the Zarr format specified.
-        For all data types in Zarr V3, and most data types in Zarr V2, the default filters are the empty tuple ``()``.
+        For all data types in Zarr V3, and most data types in Zarr V2, the default filters are the empty tuple `()`.
         The only cases where default filters are not empty is when the Zarr format is 2, and the
         data type is a variable-length data type like [`zarr.dtype.VariableLengthUTF8`][] or
         [`zarr.dtype.VariableLengthUTF8`][]. In these cases, the default filters is a tuple with a
         single element which is a codec specific to that particular data type.
 
-        To create an array with no filters, provide an empty iterable or the value ``None``.
+        To create an array with no filters, provide an empty iterable or the value `None`.
     compressors : Iterable[Codec] or "auto" or "keep", optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
@@ -4184,39 +4260,45 @@ async def from_array(
         - "auto": Automatically determine the compressors based on the array's dtype.
         - "keep": Retain the compressors of the input array if it is a zarr Array.
 
-        If no ``compressors`` are provided, defaults to "keep" if data is a zarr Array, otherwise "auto".
+        If no `compressors` are provided, defaults to "keep" if data is a zarr Array, otherwise "auto".
     serializer : dict[str, JSON] | ArrayBytesCodec or "auto" or "keep", optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
 
         Following values are supported:
 
-        - dict[str, JSON]: A dict representation of an ``ArrayBytesCodec``.
-        - ArrayBytesCodec: An instance of ``ArrayBytesCodec``.
+        - dict[str, JSON]: A dict representation of an `ArrayBytesCodec`.
+        - ArrayBytesCodec: An instance of `ArrayBytesCodec`.
         - "auto": a default serializer will be used. These defaults can be changed by modifying the value of
-          ``array.v3_default_serializer`` in [`zarr.config`][zarr.config].
+          `array.v3_default_serializer` in [`zarr.config`][zarr.config].
         - "keep": Retain the serializer of the input array if it is a zarr Array.
 
     fill_value : Any, optional
         Fill value for the array.
         If not specified, defaults to the fill value of the data array.
+        Pass `None` explicitly to use the default scalar of the data type
+        (Zarr format 3) or a null fill value (Zarr format 2) instead.
     order : {"C", "F"}, optional
         The memory order of the array (default is "C").
         For Zarr format 2, this parameter sets the memory order of the array.
         For Zarr format 3, this parameter is deprecated, because memory order
         is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
-        order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
+        order for Zarr format 3 arrays is via the `config` parameter, e.g. `{'config': 'C'}`.
         If not specified, defaults to the memory order of the data array.
     zarr_format : {2, 3}, optional
         The zarr format to use when saving.
         If not specified, defaults to the zarr format of the data array.
     attributes : dict, optional
         Attributes for the array.
-        If not specified, defaults to the attributes of the data array.
+        If not specified, the source Zarr array's attributes are deep-copied so
+        nested containers are independent. Deeply nested attributes can raise
+        `RecursionError` during copying even if they can be stored and reopened;
+        the threshold depends on Python's recursion limit and the current call stack.
+        Pass an empty dict to create the array with no attributes.
     chunk_key_encoding : ChunkKeyEncoding, optional
         A specification of how the chunk keys are represented in storage.
-        For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
-        For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
+        For Zarr format 3, the default is `{"name": "default", "separator": "/"}}`.
+        For Zarr format 2, the default is `{"name": "v2", "separator": "."}}`.
         If not specified and the data array has the same zarr format as the target array,
         the chunk key encoding of the data array is used.
     dimension_names : Iterable[str | None] | None
@@ -4297,6 +4379,7 @@ async def from_array(
         zarr_format,
         chunk_key_encoding,
         dimension_names,
+        attributes,
     ) = _parse_keep_array_attr(
         data=data,
         chunks=chunks,
@@ -4309,6 +4392,7 @@ async def from_array(
         zarr_format=zarr_format,
         chunk_key_encoding=chunk_key_encoding,
         dimension_names=dimension_names,
+        attributes=attributes,
     )
     if not hasattr(data, "dtype") or not hasattr(data, "shape"):
         data = np.array(data)
@@ -4316,7 +4400,8 @@ async def from_array(
     result = await init_array(
         store_path=store_path,
         shape=data.shape,
-        dtype=data.dtype,
+        # A native object dtype cannot identify the source's Zarr data type.
+        dtype=data._async_array._zdtype if isinstance(data, Array) else data.dtype,
         chunks=chunks,
         shards=shards,
         filters=filters,
@@ -4394,7 +4479,7 @@ async def init_array(
         Chunk shape of the array.
         If not specified, default are guessed based on the shape and dtype.
     shards : tuple[int, ...], optional
-        Shard shape of the array. The default value of ``None`` results in no sharding at all.
+        Shard shape of the array. The default value of `None` results in no sharding at all.
     filters : Iterable[Codec] | Literal["auto"], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
         chunk to bytes.
@@ -4406,26 +4491,26 @@ async def init_array(
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
         order of your filters is consistent with the behavior of each filter.
 
-        The default value of ``"auto"`` instructs Zarr to use a default based on the data
+        The default value of `"auto"` instructs Zarr to use a default based on the data
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
         [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
         the default filters contains a single element which is a codec specific to that particular data type.
 
-        To create an array with no filters, provide an empty iterable or the value ``None``.
+        To create an array with no filters, provide an empty iterable or the value `None`.
     compressors : Iterable[Codec] | Literal["auto"], optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
 
-        The default value of ``"auto"`` instructs Zarr to use a default of [`zarr.codecs.ZstdCodec`][].
+        The default value of `"auto"` instructs Zarr to use a default of [`zarr.codecs.ZstdCodec`][].
 
-        To create an array with no compressors, provide an empty iterable or the value ``None``.
+        To create an array with no compressors, provide an empty iterable or the value `None`.
     serializer : dict[str, JSON] | ArrayBytesCodec | Literal["auto"], optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
 
-        The default value of ``"auto"`` instructs Zarr to use a default codec based on the data type of the array.
+        The default value of `"auto"` instructs Zarr to use a default codec based on the data type of the array.
         For most data types this default codec is [`zarr.codecs.BytesCodec`][].
         For [`zarr.dtype.VariableLengthUTF8`][], the default codec is [`zarr.codecs.VlenUTF8Codec`][].
         For [`zarr.dtype.VariableLengthBytes`][], the default codec is [`zarr.codecs.VlenBytesCodec`][].
@@ -4436,17 +4521,17 @@ async def init_array(
         For Zarr format 2, this parameter sets the memory order of the array.
         For Zarr format 3, this parameter is deprecated, because memory order
         is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
-        order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
-        If no ``order`` is provided, a default order will be used.
-        This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][zarr.config].
+        order for Zarr format 3 arrays is via the `config` parameter, e.g. `{'config': 'C'}`.
+        If no `order` is provided, a default order will be used.
+        This default can be changed by modifying the value of `array.order` in [`zarr.config`][zarr.config].
     zarr_format : {2, 3}, optional
         The zarr format to use when saving.
     attributes : dict, optional
         Attributes for the array.
     chunk_key_encoding : ChunkKeyEncodingLike, optional
         A specification of how the chunk keys are represented in storage.
-        For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
-        For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
+        For Zarr format 3, the default is `{"name": "default", "separator": "/"}}`.
+        For Zarr format 2, the default is `{"name": "v2", "separator": "."}}`.
     dimension_names : Iterable[str], optional
         The names of the dimensions (default is None).
         Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
@@ -4454,7 +4539,7 @@ async def init_array(
         Whether to overwrite an array with the same name in the store, if one exists.
     config : ArrayConfigLike or None, default=None
         Configuration for this array.
-        If  ``None``, the default array runtime configuration will be used. This default
+        If  `None`, the default array runtime configuration will be used. This default
         is stored in the global configuration object.
 
     Returns
@@ -4488,9 +4573,9 @@ async def init_array(
                 "chunks=(inner_size, ...), shards=[[shard_sizes], ...]"
             )
 
-    # Normalize the user's chunks into canonical ChunksTuple form
+    # Normalize the user's chunks into a canonical ChunkGrid
 
-    if chunks == "auto":
+    if _is_auto(chunks):
         max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
         chunks_normalized = guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
     else:
@@ -4531,7 +4616,7 @@ async def init_array(
         meta = AsyncArray._create_metadata_v2(
             shape=shape_parsed,
             dtype=zdtype,
-            chunks=as_regular_shape(outer_chunks),
+            chunks=outer_chunks.chunk_shape,
             dimension_separator=chunk_key_encoding_parsed.separator,
             fill_value=fill_value,
             order=order_parsed,
@@ -4547,10 +4632,20 @@ async def init_array(
             dtype=zdtype,
         )
         sub_codecs = cast("tuple[Codec, ...]", (*array_array, array_bytes, *bytes_bytes))
-        grid = create_chunk_grid_metadata(outer_chunks)
+        # A stored chunk grid passed as chunks= / shards= (e.g. by the "keep"
+        # path of from_array) becomes the stored grid verbatim, so the new
+        # array preserves the source grid exactly — including trailing edges
+        # beyond the extent left behind by a shrinking resize, and bare-int
+        # shorthand dimensions.
+        if isinstance(shards, ChunkGridMetadata):
+            grid = shards
+        elif shards is None and isinstance(chunks, ChunkGridMetadata):
+            grid = chunks
+        else:
+            grid = create_chunk_grid_metadata(outer_chunks)
         codecs_out: tuple[Codec, ...]
         if inner is not None:
-            inner_chunks_flat = as_regular_shape(inner.outer_chunks)
+            inner_chunks_flat = inner.outer_chunks.chunk_shape
             index_location: IndexLocation = "end"
             if isinstance(shards, dict):
                 index_location = cast("IndexLocation", shards.get("index_location", "end"))
@@ -4616,24 +4711,24 @@ async def create_array(
         [storage documentation in the user guide][user-guide-store-like]
         for a description of all valid StoreLike values.
     name : str or None, optional
-        The name of the array within the store. If ``name`` is ``None``, the array will be located
+        The name of the array within the store. If `name` is `None`, the array will be located
         at the root of the store.
     shape : ShapeLike, optional
-        Shape of the array. Must be ``None`` if ``data`` is provided.
+        Shape of the array. Must be `None` if `data` is provided.
     dtype : ZDTypeLike | None
-        Data type of the array. Must be ``None`` if ``data`` is provided.
+        Data type of the array. Must be `None` if `data` is provided.
     data : np.ndarray, optional
         Array-like data to use for initializing the array. If this parameter is provided, the
-        ``shape`` and ``dtype`` parameters must be ``None``.
+        `shape` and `dtype` parameters must be `None`.
     chunks : tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"], default="auto"
         Chunk shape of the array.
         If chunks is "auto", a chunk shape is guessed based on the shape of the array and the dtype.
         A nested list of per-dimension edge sizes creates a rectilinear grid.
         Rectilinear chunk grids are experimental and must be explicitly enabled
-        with ``zarr.config.set({'array.rectilinear_chunks': True})`` while the
+        with `zarr.config.set({'array.rectilinear_chunks': True})` while the
         feature is stabilizing.
     shards : tuple[int, ...], optional
-        Shard shape of the array. The default value of ``None`` results in no sharding at all.
+        Shard shape of the array. The default value of `None` results in no sharding at all.
     filters : Iterable[Codec] | Literal["auto"], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
         chunk to bytes.
@@ -4646,35 +4741,35 @@ async def create_array(
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
         order of your filters is consistent with the behavior of each filter.
 
-        The default value of ``"auto"`` instructs Zarr to use a default based on the data
+        The default value of `"auto"` instructs Zarr to use a default based on the data
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
         [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
         the default filters contains a single element which is a codec specific to that particular data type.
 
-        To create an array with no filters, provide an empty iterable or the value ``None``.
+        To create an array with no filters, provide an empty iterable or the value `None`.
     compressors : Iterable[Codec], optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
 
         For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
         returns another bytestream. Multiple compressors may be provided for Zarr format 3.
-        If no ``compressors`` are provided, a default set of compressors will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_compressors``
+        If no `compressors` are provided, a default set of compressors will be used.
+        These defaults can be changed by modifying the value of `array.v3_default_compressors`
         in [`zarr.config`][zarr.config].
-        Use ``None`` to omit default compressors.
+        Use `None` to omit default compressors.
 
         For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
         be provided for Zarr format 2.
-        If no ``compressor`` is provided, a default compressor will be used.
+        If no `compressor` is provided, a default compressor will be used.
         in [`zarr.config`][zarr.config].
-        Use ``None`` to omit the default compressor.
+        Use `None` to omit the default compressor.
     serializer : dict[str, JSON] | ArrayBytesCodec, optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-        If no ``serializer`` is provided, a default serializer will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_serializer``
+        If no `serializer` is provided, a default serializer will be used.
+        These defaults can be changed by modifying the value of `array.v3_default_serializer`
         in [`zarr.config`][zarr.config].
     fill_value : Any, optional
         Fill value for the array.
@@ -4683,17 +4778,17 @@ async def create_array(
         For Zarr format 2, this parameter sets the memory order of the array.
         For Zarr format 3, this parameter is deprecated, because memory order
         is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
-        order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
-        If no ``order`` is provided, a default order will be used.
-        This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][zarr.config].
+        order for Zarr format 3 arrays is via the `config` parameter, e.g. `{'config': 'C'}`.
+        If no `order` is provided, a default order will be used.
+        This default can be changed by modifying the value of `array.order` in [`zarr.config`][zarr.config].
     zarr_format : {2, 3}, optional
         The zarr format to use when saving.
     attributes : dict, optional
         Attributes for the array.
     chunk_key_encoding : ChunkKeyEncodingLike, optional
         A specification of how the chunk keys are represented in storage.
-        For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
-        For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
+        For Zarr format 3, the default is `{"name": "default", "separator": "/"}}`.
+        For Zarr format 2, the default is `{"name": "v2", "separator": "."}}`.
     dimension_names : Iterable[str], optional
         The names of the dimensions (default is None).
         Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
@@ -4702,13 +4797,13 @@ async def create_array(
         Ignored otherwise.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
-        If ``True``, all existing paths in the store will be deleted.
+        If `True`, all existing paths in the store will be deleted.
     config : ArrayConfigLike, optional
         Runtime configuration for the array.
     write_data : bool
-        If a pre-existing array-like object was provided to this function via the ``data`` parameter
-        then ``write_data`` determines whether the values in that array-like object should be
-        written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
+        If a pre-existing array-like object was provided to this function via the `data` parameter
+        then `write_data` determines whether the values in that array-like object should be
+        written to the Zarr array created by this function. If `write_data` is `False`, then the
         array will be left empty.
 
     Returns
@@ -4781,10 +4876,39 @@ async def create_array(
         )
 
 
+def _sharding_codec(metadata: ArrayMetadata) -> ShardingCodec | None:
+    """The array's sharding codec, or None if the array is not sharded.
+
+    Zarr format 2 arrays are never sharded.
+    """
+    if isinstance(metadata, ArrayV3Metadata):
+        return metadata.sharding_codec
+    return None
+
+
+def _stored_rectilinear_grid_or_none(
+    metadata: ArrayMetadata,
+) -> RectilinearChunkGridMetadata | None:
+    """The *stored* rectilinear chunk grid, or None if the stored grid is regular
+    (in which case `.chunks` and `.shards` are defined).
+
+    Dispatches on the stored metadata, not the runtime ``ChunkGrid``: the
+    runtime grid collapses a rectilinear dimension whose edges happen to be
+    uniform to a ``FixedDimension`` as an optimization, so it can report regular
+    for an array whose stored metadata — and therefore `.chunks` — is
+    rectilinear. Zarr format 2 grids are always regular.
+    """
+    if isinstance(metadata, ArrayV3Metadata) and isinstance(
+        metadata.chunk_grid, RectilinearChunkGridMetadata
+    ):
+        return metadata.chunk_grid
+    return None
+
+
 def _parse_keep_array_attr(
     data: AnyArray | npt.ArrayLike,
     chunks: ChunksLike | Literal["auto", "keep"],
-    shards: ShardsLike | None | Literal["keep"],
+    shards: ShardsLike | Literal["keep"] | None,
     filters: FiltersLike | Literal["keep"],
     compressors: CompressorsLike | Literal["keep"],
     serializer: SerializerLike | Literal["keep"],
@@ -4793,6 +4917,7 @@ def _parse_keep_array_attr(
     zarr_format: ZarrFormat | None,
     chunk_key_encoding: ChunkKeyEncodingLike | None,
     dimension_names: DimensionNamesLike,
+    attributes: dict[str, JSON] | None,
 ) -> tuple[
     ChunksLike | Literal["auto"],
     ShardsLike | None,
@@ -4804,15 +4929,34 @@ def _parse_keep_array_attr(
     ZarrFormat,
     ChunkKeyEncodingLike | None,
     DimensionNamesLike,
+    dict[str, JSON] | None,
 ]:
+    # chunks / shards may be numpy arrays, so their sentinel checks go through the
+    # isinstance-guarded helpers rather than a bare ``==`` against the string.
     if isinstance(data, Array):
-        if chunks == "keep":
-            if data._chunk_grid.is_regular:
+        rectilinear_grid = _stored_rectilinear_grid_or_none(data.metadata)
+        sharded = _sharding_codec(data.metadata) is not None
+        if _is_keep(chunks):
+            if rectilinear_grid is None or sharded:
+                # `.chunks` is the inner chunk shape when sharding is used, and
+                # inner chunks are regular whatever the shape of the shard grid.
                 chunks = data.chunks
             else:
-                chunks = data.write_chunk_sizes
-        if shards == "keep":
-            shards = data.shards if data._chunk_grid.is_regular else None
+                # Pass the stored grid through as-is: it is O(ndim), not
+                # O(nchunks), and init_array stores it verbatim, so the copy
+                # preserves the grid exactly — bare-int shorthand dimensions,
+                # and trailing edges beyond the extent left behind by a
+                # shrinking resize.
+                chunks = rectilinear_grid
+        if _is_keep(shards):
+            if rectilinear_grid is None:
+                shards = data.shards
+            elif sharded:
+                # The stored grid is the shard grid; init_array accepts it as
+                # the `shards=` parameter and stores it verbatim.
+                shards = rectilinear_grid
+            else:
+                shards = None
         if zarr_format is None:
             zarr_format = data.metadata.zarr_format
         if filters == "keep":
@@ -4830,7 +4974,7 @@ def _parse_keep_array_attr(
                 serializer = cast("SerializerLike", data.serializer)
             else:
                 serializer = "auto"
-        if fill_value is None:
+        if fill_value is DEFAULT_FILL_VALUE:
             fill_value = data.fill_value
 
         if data.metadata.zarr_format == 2 and zarr_format == 3 and data.order == "F":
@@ -4851,10 +4995,14 @@ def _parse_keep_array_attr(
                 chunk_key_encoding = data.metadata.chunk_key_encoding
         if dimension_names is None and data.metadata.zarr_format == 3:
             dimension_names = data.metadata.dimension_names
+        if attributes is None:
+            # Deep copy so nested containers are not shared between the source
+            # array's in-memory metadata and the new array's.
+            attributes = copy.deepcopy(dict(data.attrs))
     else:
-        if chunks == "keep":
+        if _is_keep(chunks):
             chunks = "auto"
-        if shards == "keep":
+        if _is_keep(shards):
             shards = None
         if zarr_format is None:
             zarr_format = 3
@@ -4877,6 +5025,7 @@ def _parse_keep_array_attr(
         zarr_format,
         chunk_key_encoding,
         dimension_names,
+        attributes,
     )
 
 
@@ -4906,7 +5055,7 @@ def default_compressors_v3(dtype: ZDType[Any, Any]) -> tuple[BytesBytesCodec, ..
     """
     Given a data type, return the default compressors for that data type.
 
-    This is just a tuple containing ``ZstdCodec``
+    This is just a tuple containing `ZstdCodec`
     """
     return (ZstdCodec(),)
 
@@ -4915,12 +5064,12 @@ def default_serializer_v3(dtype: ZDType[Any, Any]) -> ArrayBytesCodec:
     """
     Given a data type, return the default serializer for that data type.
 
-    The default serializer for most data types is the ``BytesCodec``, which may or may not be
+    The default serializer for most data types is the `BytesCodec`, which may or may not be
     parameterized with an endianness, depending on whether the data type has endianness. Variable
-    length strings and variable length bytes have hard-coded serializers -- ``VLenUTF8Codec`` and
-    ``VLenBytesCodec``, respectively.
+    length strings and variable length bytes have hard-coded serializers -- `VLenUTF8Codec` and
+    `VLenBytesCodec`, respectively.
 
-    Structured data types with multi-byte fields use ``BytesCodec`` with little-endian encoding.
+    Structured data types with multi-byte fields use `BytesCodec` with little-endian encoding.
     """
     serializer: ArrayBytesCodec = BytesCodec(endian=None)
 
@@ -4944,7 +5093,7 @@ def default_filters_v2(dtype: ZDType[Any, Any]) -> tuple[Numcodec] | None:
     Given a data type, return the default filters for that data type.
 
     For data types that require an object codec, namely variable length data types,
-    this is a tuple containing the object codec. Otherwise it's ``None``.
+    this is a tuple containing the object codec. Otherwise it's `None`.
     """
     if isinstance(dtype, HasObjectCodec):
         if dtype.object_codec_id == "vlen-bytes":
@@ -4965,7 +5114,7 @@ def default_compressor_v2(dtype: ZDType[Any, Any]) -> Numcodec:
     """
     Given a data type, return the default compressors for that data type.
 
-    This is just the numcodecs ``Zstd`` codec.
+    This is just the numcodecs `Zstd` codec.
     """
     from numcodecs import Zstd
 
@@ -5122,7 +5271,7 @@ def _parse_data_params(
     dtype: ZDTypeLike | None,
 ) -> tuple[np.ndarray[Any, np.dtype[Any]] | None, ShapeLike, ZDTypeLike]:
     """
-    Ensure an array-like ``data`` parameter is consistent with the ``dtype`` and ``shape``
+    Ensure an array-like `data` parameter is consistent with the `dtype` and `shape`
     parameters.
     """
     if data is None:
@@ -5282,14 +5431,10 @@ def _iter_shard_regions(
         A tuple of slice objects representing the region spanned by each shard in the selection or chunk
         when no shards are present.
     """
-    if array.shards is None:
-        shard_shape = array.chunks
-    else:
-        shard_shape = array.shards
-
-    return _iter_regions(
-        array.shape, shard_shape, origin=origin, selection_shape=selection_shape, trim_excess=True
-    )
+    # The stored chunk grid always describes the write regions: the shard grid
+    # when sharding is used, the chunk grid otherwise. Iterating it directly
+    # works for regular and rectilinear grids alike.
+    return array._chunk_grid.iter_chunk_regions(origin=origin, selection_shape=selection_shape)
 
 
 def _iter_chunk_regions(
@@ -5327,10 +5472,13 @@ async def _nchunks_initialized(
     """
     Calculate the number of chunks that have been initialized in storage.
 
-    This value is calculated as the product of the number of initialized shards and the number
-    of chunks per shard. For arrays that do not use sharding, the number of chunks per shard is
-    effectively 1, and in that case the number of chunks initialized is the same as the number
-    of stored objects associated with an array.
+    This value is calculated as the sum of the number of chunks in every initialized shard
+    (shard sizes can vary when the shard grid is rectilinear). Each initialized shard is
+    counted at its full declared size, so for an edge shard that extends beyond the array
+    extent this includes chunks that lie entirely outside the array, and the result can
+    exceed `nchunks`. For arrays that do not use sharding, each stored object holds one
+    chunk, so the number of chunks initialized is the same as the number of stored objects
+    associated with an array.
 
     Parameters
     ----------
@@ -5342,15 +5490,32 @@ async def _nchunks_initialized(
     nchunks_initialized : int
         The number of chunks that have been initialized.
     """
-    if array.shards is None:
-        chunks_per_shard = 1
-    else:
-        # Inner chunks are clipped by the shard shape, so the count per shard
-        # is the ceiling division of the shard shape by the chunk shape.
+    meta = array.metadata
+    if not isinstance(meta, ArrayV3Metadata) or meta.sharding_codec is None:
+        return await _nshards_initialized(array)
+    # `.chunks` is the inner chunk shape, which is defined for any sharded array.
+    inner_chunks = array.chunks
+    if isinstance(meta.chunk_grid, RegularChunkGridMetadata):
+        # Uniform shard shape: the exact chunk count per shard is a single
+        # multiply, O(1) after the storage listing.
         chunks_per_shard = product(
-            tuple(ceildiv(a, b) for a, b in zip(array.shards, array.chunks, strict=True))
+            tuple(
+                ceildiv(a, b)
+                for a, b in zip(meta.chunk_grid.chunk_shape, inner_chunks, strict=True)
+            )
         )
-    return (await _nshards_initialized(array)) * chunks_per_shard
+        return (await _nshards_initialized(array)) * chunks_per_shard
+    # Rectilinear shard grid: the chunk count varies per shard, so decode the
+    # initialized keys and sum each shard's own count.
+    grid = array._chunk_grid
+    total = 0
+    for key in await _shards_initialized(array):
+        spec = grid[meta.chunk_key_encoding.decode_chunk_key(key)]
+        if spec is not None:
+            total += product(
+                tuple(ceildiv(s, c) for s, c in zip(spec.codec_shape, inner_chunks, strict=True))
+            )
+    return total
 
 
 async def _nshards_initialized(

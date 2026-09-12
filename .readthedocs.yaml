@@ -5,6 +5,18 @@ build:
   tools:
     python: "3.12"
   jobs:
+    post_checkout:
+      # Cancel pull request builds whose changes are confined to the packages
+      # that have their own Read the Docs projects. Exit code 183 cancels the
+      # build and reports success to the Git provider. Scoped to PR builds
+      # ("external" versions) because origin/main is only a meaningful diff
+      # base there. Read the Docs strips shell quoting from commands, so the
+      # exclude pathspecs must use the quote-free :! form, not ':(exclude)'.
+      - |
+        if [ "$READTHEDOCS_VERSION_TYPE" = "external" ] && git diff --quiet origin/main -- :!packages/zarr-metadata :!packages/zarr-indexing;
+        then
+          exit 183;
+        fi
     install:
       - pip install --upgrade pip
       - pip install .[remote] --group docs

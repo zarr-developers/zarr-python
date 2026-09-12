@@ -10,8 +10,6 @@ if you have not installed it yet.
 To get started, you can create a simple Zarr array:
 
 ```python exec="true" session="quickstart"
-import shutil
-shutil.rmtree('data', ignore_errors=True)
 import numpy as np
 from pprint import pprint
 import io
@@ -34,7 +32,8 @@ z = zarr.create_array(
     store="data/example-1.zarr",
     shape=(100, 100),
     chunks=(10, 10),
-    dtype="f4"
+    dtype="f4",
+    overwrite=True,
 )
 
 # Assign data to the array
@@ -58,6 +57,7 @@ z = zarr.create_array(
     shape=(100, 100),
     chunks=(10, 10),
     dtype="f4",
+    overwrite=True,
     compressors=zarr.codecs.BloscCodec(
         cname="zstd",
         clevel=3,
@@ -79,7 +79,7 @@ Zarr allows you to create hierarchical groups, similar to directories:
 ```python exec="true" session="quickstart" source="above" result="ansi"
 
 # Create nested groups and add arrays
-root = zarr.group("data/example-3.zarr")
+root = zarr.group("data/example-3.zarr", overwrite=True)
 foo = root.create_group(name="foo")
 bar = root.create_array(
     name="bar", shape=(100, 10), chunks=(10, 10), dtype="f4"
@@ -104,7 +104,7 @@ Suppose we want to copy existing groups and arrays into a new storage backend:
 ```python exec="true" session="quickstart" source="above" result="code"
 
 # Create nested groups and add arrays
-root = zarr.group("data/example-4.zarr", attributes={'name': 'root'})
+root = zarr.group("data/example-4.zarr", attributes={'name': 'root'}, overwrite=True)
 foo = root.create_group(name="foo")
 bar = root.create_array(
     name="bar", shape=(100, 10), chunks=(10, 10), dtype="f4"
@@ -164,8 +164,8 @@ print(z[:])
 ```
 
 Zarr also integrates seamlessly with cloud object storage such as Amazon S3 and Google
-Cloud Storage using external libraries like [s3fs](https://s3fs.readthedocs.io) or
-[gcsfs](https://gcsfs.readthedocs.io). Remote storage support requires the `remote`
+Cloud Storage using external libraries like [s3fs](https://s3fs.readthedocs.io/en/latest/) or
+[gcsfs](https://gcsfs.readthedocs.io/en/latest/). Remote storage support requires the `remote`
 optional dependencies (`pip install "zarr[remote]"`) as well as a filesystem library
 for your storage service, such as `s3fs` for S3:
 

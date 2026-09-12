@@ -20,10 +20,13 @@ import numpy as np
 from typing_extensions import ReadOnly
 
 from zarr.core.config import config as zarr_config
+from zarr.core.json_parse import convert, parse_field
 from zarr.errors import ZarrRuntimeWarning
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
+
+    from zarr.core.metadata.v3 import ChunkGridMetadata
 
 
 ZARR_JSON = "zarr.json"
@@ -34,7 +37,12 @@ ZMETADATA_V2_JSON = ".zmetadata"
 
 BytesLike = bytes | bytearray | memoryview
 ShapeLike = Iterable[int | np.integer[Any]] | int | np.integer[Any]
-ChunksLike = ShapeLike | Iterable[Iterable[int]]
+# Per-dimension chunk specs may mix a bare int (uniform chunk size, the
+# rectilinear spec's step-size shorthand) with explicit edge-length sequences.
+# A stored chunk grid (`ChunkGridMetadata`) is also accepted and is used
+# verbatim, under the tolerant stored-metadata validation rules (e.g. trailing
+# edges beyond the array extent, as left behind by a shrinking resize).
+type ChunksLike = ShapeLike | Iterable[int | Iterable[int]] | ChunkGridMetadata
 # For backwards compatibility
 ChunkCoords = tuple[int, ...]
 ZarrFormat = Literal[2, 3]
@@ -93,26 +101,26 @@ def concurrent_iter[T: tuple[Any, ...], V](
     items: Iterable[T],
     func: Callable[..., Awaitable[V]],
     limit: int | None = None,
-) -> Iterator[asyncio.Task[V]]:
+) -> list[asyncio.Task[V]]:
     """Launch `func(*item)` for each item concurrently, returning the tasks.
 
     When `limit` is set, no more than `limit` calls are in flight at once.
     Tasks are returned in input order; callers that want completion order
     should wrap the result in `asyncio.as_completed`.
 
-    Note on `ensure_future`: when the result is passed to `asyncio.gather` or
-    `asyncio.as_completed`, those already wrap awaitables into tasks, so the
-    `ensure_future` here is redundant. It matters for callers that iterate and
-    await tasks one at a time — without eager scheduling, each coroutine would
-    only start when individually awaited, serializing the work and defeating
-    the semaphore. It also makes the return type honest (real `Task`s support
-    `.cancel()`, `.done()`, callbacks) rather than bare coroutines.
+    Every task is scheduled (via `ensure_future`) before this function
+    returns, not on first iteration of the result. That matters for callers
+    that await the returned tasks one at a time — without eager scheduling,
+    each coroutine would only start when individually awaited, serializing
+    the work and defeating the semaphore. It also makes the return type
+    honest (real `Task`s support `.cancel()`, `.done()`, callbacks) rather
+    than bare coroutines.
 
     See https://docs.python.org/3/library/asyncio-task.html#coroutines:
     "Note that simply calling a coroutine will not schedule it to be executed:"
     """
     if limit is None:
-        return (asyncio.ensure_future(func(*item)) for item in items)
+        return [asyncio.ensure_future(func(*item)) for item in items]
 
     sem = asyncio.Semaphore(limit)
 
@@ -120,7 +128,7 @@ def concurrent_iter[T: tuple[Any, ...], V](
         async with sem:
             return await func(*item)
 
-    return (asyncio.ensure_future(run(item)) for item in items)
+    return [asyncio.ensure_future(run(item)) for item in items]
 
 
 async def concurrent_map[T: tuple[Any, ...], V](
@@ -147,12 +155,13 @@ def parse_enum[E: Enum](data: object, cls: type[E]) -> E:
 
 
 def parse_name(data: JSON, expected: str | None = None) -> str:
-    if isinstance(data, str):
-        if expected is None or data == expected:
-            return data
-        raise ValueError(f"Expected '{expected}'. Got {data} instead.")
-    else:
-        raise TypeError(f"Expected a string, got an instance of {type(data)}.")
+    try:
+        data = cast("str", convert(data, str))
+    except (ValueError, TypeError) as exc:
+        raise TypeError(f"Expected a string, got an instance of {type(data)}.") from exc
+    if expected is None or data == expected:
+        return data
+    raise ValueError(f"Expected '{expected}'. Got {data} instead.")
 
 
 def parse_configuration(data: JSON) -> JSON:
@@ -227,15 +236,11 @@ def parse_fill_value(data: Any) -> Any:
 
 
 def parse_order(data: Any) -> Literal["C", "F"]:
-    if data in ("C", "F"):
-        return cast("Literal['C', 'F']", data)
-    raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
+    return cast("Literal['C', 'F']", parse_field(data, Literal["C", "F"], "order"))
 
 
 def parse_bool(data: Any) -> bool:
-    if isinstance(data, bool):
-        return data
-    raise ValueError(f"Expected bool, got {data} instead.")
+    return cast("bool", convert(data, bool))
 
 
 def parse_int(data: Any) -> int:

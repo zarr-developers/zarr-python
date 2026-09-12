@@ -6,12 +6,11 @@ import copy
 import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Final, Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from typing_extensions import TypedDict, Unpack
 
 from zarr_metadata.model._array import (
-    ATTRIBUTES_STORE_KEY_V2,
     ZarrV3ArrayMetadata,
     must_understand_subset,
 )
@@ -28,28 +27,20 @@ from zarr_metadata.model._validation import (
     validate_consolidated_metadata_v3,
     validate_json,
 )
+from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
+from zarr_metadata.v2.consolidated import ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY
+from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY
+from zarr_metadata.v3.consolidated import ZARR_V3_CONSOLIDATED_METADATA_KEY
+from zarr_metadata.v3.group import ZARR_V3_GROUP_METADATA_STORE_KEY
 
 if TYPE_CHECKING:
     from zarr_metadata._common import JSONValue
-    from zarr_metadata.model._array import ZarrV2AttributesStoreKey
-    from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
+    from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
+    from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataStoreKey
+    from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON, ZarrV2GroupMetadataStoreKey
     from zarr_metadata.v3.array import ZarrV3ExtensionField
     from zarr_metadata.v3.consolidated import ZarrV3ConsolidatedMetadataJSON
-    from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
-
-ZarrV3GroupMetadataStoreKey = Literal["zarr.json"]
-GROUP_METADATA_STORE_KEY_V3: Final[ZarrV3GroupMetadataStoreKey] = "zarr.json"
-
-ZarrV2GroupMetadataStoreKey = Literal[".zgroup"]
-GROUP_METADATA_STORE_KEY_V2: Final[ZarrV2GroupMetadataStoreKey] = ".zgroup"
-
-ZarrV2ConsolidatedMetadataStoreKey = Literal[".zmetadata"]
-CONSOLIDATED_METADATA_STORE_KEY_V2: Final[ZarrV2ConsolidatedMetadataStoreKey] = ".zmetadata"
-
-# The key under which consolidated metadata is embedded in a v3 group document.
-# This is a reference-implementation convention (not a spec artifact), stored
-# as an extension field on the group's `zarr.json`.
-CONSOLIDATED_METADATA_KEY_V3: Final = "consolidated_metadata"
+    from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON, ZarrV3GroupMetadataStoreKey
 
 
 class ZarrV3GroupMetadataPartial(TypedDict, total=False):
@@ -88,7 +79,7 @@ class ZarrV3GroupMetadata:
     extra_fields: dict[str, ZarrV3ExtensionField]
 
     def __post_init__(self) -> None:
-        reserved = GROUP_METADATA_STANDARD_KEYS_V3 | {CONSOLIDATED_METADATA_KEY_V3}
+        reserved = GROUP_METADATA_STANDARD_KEYS_V3 | {ZARR_V3_CONSOLIDATED_METADATA_KEY}
         if set(self.extra_fields.keys()).intersection(reserved):
             raise MetadataValidationError(
                 [
@@ -134,7 +125,7 @@ class ZarrV3GroupMetadata:
             out["attributes"] = copy.deepcopy(self.attributes)
         if self.consolidated_metadata is not UNSET:
             # Consolidated metadata is a known non-core top-level JSON field.
-            out[CONSOLIDATED_METADATA_KEY_V3] = cast(
+            out[ZARR_V3_CONSOLIDATED_METADATA_KEY] = cast(
                 "ZarrV3ExtensionField", self.consolidated_metadata.to_json()
             )
         for key, value in self.extra_fields.items():
@@ -145,7 +136,7 @@ class ZarrV3GroupMetadata:
     def from_json(cls, data: object) -> ZarrV3GroupMetadata:
         parsed = parse_group_metadata_v3(arrays_to_tuples(data))
         # Cast for narrowing across standard and arbitrary extra TypedDict items.
-        consolidated_raw = cast("object", parsed.get(CONSOLIDATED_METADATA_KEY_V3, UNSET))
+        consolidated_raw = cast("object", parsed.get(ZARR_V3_CONSOLIDATED_METADATA_KEY, UNSET))
         consolidated: ZarrV3ConsolidatedMetadata | UNSET
         if consolidated_raw is UNSET or consolidated_raw is None:
             # consolidated_metadata: null was written by a historical
@@ -162,7 +153,8 @@ class ZarrV3GroupMetadata:
             {
                 k: v
                 for k, v in parsed.items()
-                if k not in GROUP_METADATA_STANDARD_KEYS_V3 and k != CONSOLIDATED_METADATA_KEY_V3
+                if k not in GROUP_METADATA_STANDARD_KEYS_V3
+                and k != ZARR_V3_CONSOLIDATED_METADATA_KEY
             },
         )
         return cls(
@@ -185,12 +177,12 @@ class ZarrV3GroupMetadata:
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV3GroupMetadata:
-        return cls.from_json(load_store_json(mapping, GROUP_METADATA_STORE_KEY_V3))
+        return cls.from_json(load_store_json(mapping, ZARR_V3_GROUP_METADATA_STORE_KEY))
 
     def to_key_value(
         self, *, indent: int | str | None = None
     ) -> Mapping[ZarrV3GroupMetadataStoreKey, bytes]:
-        return {GROUP_METADATA_STORE_KEY_V3: dump_store_json(self.to_json(), indent=indent)}
+        return {ZARR_V3_GROUP_METADATA_STORE_KEY: dump_store_json(self.to_json(), indent=indent)}
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -322,7 +314,7 @@ class ZarrV2GroupMetadata:
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV2GroupMetadata:
-        zgroup_raw = cast("object", load_store_json(mapping, GROUP_METADATA_STORE_KEY_V2))
+        zgroup_raw = cast("object", load_store_json(mapping, ZARR_V2_GROUP_METADATA_STORE_KEY))
         if not isinstance(zgroup_raw, Mapping):
             return cls.from_json(zgroup_raw)
         zgroup = cast("Mapping[str, object]", zgroup_raw)
@@ -336,8 +328,8 @@ class ZarrV2GroupMetadata:
                     )
                 ]
             )
-        if ATTRIBUTES_STORE_KEY_V2 in mapping:
-            zattrs = cast("object", load_store_json(mapping, ATTRIBUTES_STORE_KEY_V2))
+        if ZARR_V2_ATTRIBUTES_STORE_KEY in mapping:
+            zattrs = cast("object", load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY))
             return cls.from_json({**zgroup, "attributes": zattrs})
         return cls.from_json(zgroup)
 
@@ -349,10 +341,10 @@ class ZarrV2GroupMetadata:
         # when attributes are set (even empty) — UNSET emits no file.
         zgroup = {k: v for k, v in self.to_json().items() if k != "attributes"}
         out: dict[ZarrV2GroupMetadataStoreKey | ZarrV2AttributesStoreKey, bytes] = {
-            GROUP_METADATA_STORE_KEY_V2: dump_store_json(zgroup, indent=indent)
+            ZARR_V2_GROUP_METADATA_STORE_KEY: dump_store_json(zgroup, indent=indent)
         }
         if self.attributes is not UNSET:
-            out[ATTRIBUTES_STORE_KEY_V2] = dump_store_json(self.attributes, indent=indent)
+            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = dump_store_json(self.attributes, indent=indent)
         return out
 
 
@@ -434,9 +426,11 @@ class ZarrV2ConsolidatedMetadata:
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV2ConsolidatedMetadata:
-        return cls.from_json(load_store_json(mapping, CONSOLIDATED_METADATA_STORE_KEY_V2))
+        return cls.from_json(load_store_json(mapping, ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY))
 
     def to_key_value(
         self, *, indent: int | str | None = None
     ) -> Mapping[ZarrV2ConsolidatedMetadataStoreKey, bytes]:
-        return {CONSOLIDATED_METADATA_STORE_KEY_V2: dump_store_json(self.to_json(), indent=indent)}
+        return {
+            ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY: dump_store_json(self.to_json(), indent=indent)
+        }

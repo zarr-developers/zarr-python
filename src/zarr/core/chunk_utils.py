@@ -238,7 +238,7 @@ class ChunkTransform:
     )
 
     def __post_init__(self) -> None:
-        from zarr.core.codec_pipeline import codecs_from_list
+        from zarr.core.codec_pipeline import codecs_from_list_unchecked
 
         # _codec_supports_sync, not a bare isinstance check: a codec can satisfy
         # the SupportsSyncCodec protocol structurally yet be unable to run
@@ -253,7 +253,11 @@ class ChunkTransform:
                 f"All codecs must implement SupportsSyncCodec. The following do not: {names}"
             )
 
-        aa, ab, bb = codecs_from_list(list(self.codecs))
+        # `ChunkTransform` is built from a codec chain that already went
+        # through `codecs_from_list` when the owning pipeline was constructed
+        # (see `FusedCodecPipeline.evolve_from_array_spec`), so re-splitting it
+        # here must not re-emit that chain's advisory warnings.
+        aa, ab, bb = codecs_from_list_unchecked(list(self.codecs))
         # SupportsSyncCodec was verified above; the cast is purely for mypy.
         self._aa_codecs = cast("tuple[SupportsSyncCodec[NDBuffer, NDBuffer], ...]", tuple(aa))
         self._ab_codec = cast("SupportsSyncCodec[NDBuffer, Buffer]", ab)

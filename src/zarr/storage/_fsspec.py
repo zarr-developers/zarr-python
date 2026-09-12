@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import warnings
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any
@@ -51,10 +50,10 @@ def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
         # Already an async instance of an async filesystem, nothing to do
         return fs
     if fs.async_impl:
-        # Convert sync instance of an async fs to an async instance
-        fs_dict = json.loads(fs.to_json())
-        fs_dict["asynchronous"] = True
-        return fsspec.AbstractFileSystem.from_json(json.dumps(fs_dict))
+        # Convert sync instance of an async fs to an async instance. Reuse the original
+        # constructor arguments rather than round-tripping through JSON, since storage
+        # options may hold objects that are not JSON-serializable (e.g. credentials).
+        return type(fs)(*fs.storage_args, **{**fs.storage_options, "asynchronous": True})
 
     if fsspec_version < parse_version("2024.12.0"):
         raise ImportError(
@@ -172,8 +171,12 @@ class FsspecStore(Store):
         -------
         FsspecStore
         """
+        # A UPath hands back a filesystem in whatever mode it was constructed with, which is
+        # synchronous unless the caller passed asynchronous=True. Route it through _make_async so
+        # that sync-mode instances of async filesystems are re-created in async mode, and
+        # genuinely synchronous filesystems are wrapped.
         return cls(
-            fs=upath.fs,
+            fs=_make_async(upath.fs),
             path=upath.path.rstrip("/"),
             read_only=read_only,
             allowed_exceptions=allowed_exceptions,

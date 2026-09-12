@@ -24,6 +24,7 @@ from zarr.core import sync_group
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
+from zarr.core.dtype import Float64, Int32
 from zarr.core.dtype.common import unpack_dtype_json
 from zarr.core.dtype.npy.int import UInt8
 from zarr.core.group import (
@@ -59,8 +60,10 @@ if TYPE_CHECKING:
     import pathlib
     from collections.abc import Callable
 
+    from zarr.core.array import ShardsLike
     from zarr.core.buffer.core import Buffer
-    from zarr.core.common import JSON, ZarrFormat
+    from zarr.core.common import JSON, ChunksLike, ZarrFormat
+    from zarr.core.dtype import ZDType, ZDTypeLike
 
 
 @pytest.fixture(params=["local", "memory", "zip"])
@@ -781,21 +784,35 @@ async def test_group_update_attributes_async(store: Store, zarr_format: ZarrForm
 
 
 @pytest.mark.parametrize("name", ["a", "/a"])
+@pytest.mark.parametrize(
+    "chunks",
+    [(2, 2), [2, 2], np.array([2, 2]), (np.int64(2), np.int64(2))],
+    ids=["tuple", "list", "array", "numpy-scalars"],
+)
+@pytest.mark.parametrize(
+    "shards",
+    [None, (4, 4), [4, 4], np.array([4, 4]), (np.int64(4), np.int64(4))],
+    ids=["none", "tuple", "list", "array", "numpy-scalars"],
+)
 def test_group_create_array(
     store: Store,
     zarr_format: ZarrFormat,
     overwrite: bool,
     name: str,
+    chunks: ChunksLike,
+    shards: ShardsLike | None,
 ) -> None:
     """
-    Test `Group.from_store`
+    Test `Group.create_array`
     """
+    if zarr_format == 2 and shards is not None:
+        pytest.skip("Zarr format 2 does not support sharding")
     group = Group.from_store(store, zarr_format=zarr_format)
     shape = (10, 10)
     dtype = "uint8"
     data = np.arange(np.prod(shape)).reshape(shape).astype(dtype)
 
-    array = group.create_array(name=name, shape=shape, dtype=dtype)
+    array = group.create_array(name=name, shape=shape, dtype=dtype, chunks=chunks, shards=shards)
     array[:] = data
 
     if not overwrite:
@@ -805,6 +822,8 @@ def test_group_create_array(
 
     assert array.path == normalize_path(name)
     assert array.name == f"/{array.path}"
+    assert array.chunks == (2, 2)
+    np.testing.assert_array_equal(array.shards, shards)
     assert array.shape == shape
     assert array.dtype == np.dtype(dtype)
     assert np.array_equal(array[:], data)
@@ -1437,6 +1456,29 @@ async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
     _ = await root.create_group("bar")
     with pytest.raises(TypeError, match="Incompatible object"):
         await root.require_array("bar", shape=(10,), dtype="int8")
+
+
+@pytest.mark.parametrize(
+    ("dtype", "expected"),
+    [
+        (Int32(), Int32()),
+        (np.dtype("int32"), Int32()),
+        ("int32", Int32()),
+        (None, Float64()),
+    ],
+    ids=["zdtype", "numpy", "str", "none"],
+)
+async def test_require_array_zdtype(
+    store: Store, zarr_format: ZarrFormat, dtype: ZDTypeLike | None, expected: ZDType[Any, Any]
+) -> None:
+    """An existing array can be required with a ZDType, as well as a string, a NumPy dtype,
+    or None. See https://github.com/zarr-developers/zarr-python/issues/3377
+    """
+    root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
+    await root.create_array("foo", shape=(10,), dtype=expected)
+
+    foo = await root.require_array("foo", shape=(10,), dtype=dtype, exact=True)
+    assert foo._zdtype == expected
 
 
 @pytest.mark.parametrize("consolidate", [True, False])

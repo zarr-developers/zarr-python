@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from unittest.mock import AsyncMock
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 
+import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
@@ -24,8 +26,10 @@ from zarr.core.buffer import Buffer as ABCBuffer
 from zarr.core.buffer import NDBuffer, default_buffer_prototype
 from zarr.core.buffer.cpu import Buffer
 from zarr.core.buffer.cpu import NDBuffer as CPUNDBuffer
+from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.config import config
 from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.indexing import BasicIndexer
 from zarr.storage._common import StorePath
 from zarr.storage._memory import MemoryStore
 
@@ -910,3 +914,231 @@ async def test_load_partial_shard_explicit_kwargs_passthrough(
     kwargs = store_mock.get_ranges.call_args.kwargs
     assert kwargs["max_gap_bytes"] == 12345
     assert kwargs["max_coalesced_bytes"] == 67890
+
+
+# ============================================================================
+# Bulk full-shard decode: identity-read gating and dtype gating
+# ============================================================================
+
+_FUSED_PIPELINE = "zarr.core.codec_pipeline.FusedCodecPipeline"
+
+
+def _fused_uncompressed_array(
+    index_location: Literal["start", "end"],
+) -> tuple[Any, npt.NDArray[np.int32]]:
+    """Sharded `(8, 8)` array whose inner chain is a bare BytesCodec (no crc),
+    one shard covering the whole array, filled with `arange` data. Callers must
+    be inside a config context selecting the fused pipeline."""
+    shards: ShardsConfigParam = {"shape": (8, 8), "index_location": index_location}
+    arr = zarr.create_array(
+        store=MemoryStore(),
+        shape=(8, 8),
+        chunks=(2, 2),
+        shards=shards,
+        dtype="int32",
+        compressors=None,
+        filters=None,
+        fill_value=0,
+        config={"write_empty_chunks": True},
+    )
+    ref = np.arange(64, dtype="int32").reshape(8, 8)
+    arr[:] = ref
+    return arr, ref
+
+
+def _spy_on_bulk_decode(monkeypatch: pytest.MonkeyPatch) -> list[bool]:
+    """Record, per call, whether `_decode_full_shard_bulk_if_uncompressed`
+    engaged (returned non-None)."""
+    engaged: list[bool] = []
+    orig = ShardingCodec._decode_full_shard_bulk_if_uncompressed
+
+    def spy(self: ShardingCodec, shard_bytes: Any, shard_spec: Any, indexer: Any) -> Any:
+        result = orig(self, shard_bytes, shard_spec, indexer)
+        engaged.append(result is not None)
+        return result
+
+    monkeypatch.setattr(ShardingCodec, "_decode_full_shard_bulk_if_uncompressed", spy)
+    return engaged
+
+
+_PERM_8 = np.array([7, 2, 5, 0, 3, 6, 1, 4])
+_DUP_8 = np.array([0, 0, 1, 2, 3, 4, 5, 6])
+
+
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize(
+    ("read", "expected", "expect_bulk"),
+    [
+        pytest.param(lambda a: a[:], lambda r: r, True, id="full-slice"),
+        pytest.param(lambda a: a[...], lambda r: r, True, id="ellipsis"),
+        pytest.param(
+            lambda a: a[_PERM_8, :], lambda r: r[_PERM_8, :], False, id="fancy-permutation"
+        ),
+        pytest.param(lambda a: a[_DUP_8, :], lambda r: r[_DUP_8, :], False, id="fancy-duplicates"),
+        pytest.param(
+            lambda a: a.oindex[_PERM_8, :],
+            lambda r: r[_PERM_8, :],
+            False,
+            id="oindex-permutation",
+        ),
+        pytest.param(
+            lambda a: a.oindex[_DUP_8, :], lambda r: r[_DUP_8, :], False, id="oindex-duplicates"
+        ),
+        pytest.param(lambda a: a[1:7, :], lambda r: r[1:7, :], False, id="subset-slice"),
+    ],
+)
+def test_bulk_decode_engagement_and_correctness(
+    monkeypatch: pytest.MonkeyPatch,
+    index_location: Literal["start", "end"],
+    read: Any,
+    expected: Any,
+    expect_bulk: bool,
+) -> None:
+    """Under the fused pipeline on an uncompressed crc-free shard, the bulk
+    whole-shard decode fires exactly for identity full reads — and every read
+    returns what numpy returns. The engagement assertions keep the correctness
+    half non-vacuous: a gate that simply disabled the fast path would pass the
+    value checks but fail here."""
+    engaged = _spy_on_bulk_decode(monkeypatch)
+    with config.set({"codec_pipeline.path": _FUSED_PIPELINE}):
+        arr, ref = _fused_uncompressed_array(index_location)
+        engaged.clear()
+        np.testing.assert_array_equal(read(arr), expected(ref))
+    if expect_bulk:
+        assert len(engaged) > 0, "bulk fast path was never reached for a full read"
+        assert all(engaged), "bulk fast path did not engage for a full read"
+    else:
+        assert not any(engaged), "bulk fast path engaged for a non-identity selection"
+
+
+@pytest.mark.parametrize("index_location", ["start", "end"])
+def test_multi_shard_permutation_read(index_location: Literal["start", "end"]) -> None:
+    """A row permutation crossing shard boundaries must return permuted data
+    under the fused pipeline (each shard sees a gather selection whose shape
+    coincides with the shard shape)."""
+    shards: ShardsConfigParam = {"shape": (8, 8), "index_location": index_location}
+    with config.set({"codec_pipeline.path": _FUSED_PIPELINE}):
+        arr = zarr.create_array(
+            store=MemoryStore(),
+            shape=(16, 16),
+            chunks=(2, 2),
+            shards=shards,
+            dtype="int32",
+            compressors=None,
+            filters=None,
+            fill_value=0,
+            config={"write_empty_chunks": True},
+        )
+        ref = np.arange(256, dtype="int32").reshape(16, 16)
+        arr[:] = ref
+        perm = np.array([9, 3, 12, 0, 15, 6, 10, 1, 14, 5, 8, 2, 13, 7, 11, 4])
+        np.testing.assert_array_equal(arr[perm, :8], ref[perm, :8])
+        np.testing.assert_array_equal(arr.oindex[perm, :8], ref[perm, :8])
+
+
+def _dense_shard_blob(
+    codec: ShardingCodec, data: np.ndarray[Any, np.dtype[Any]], chunk_len: int
+) -> Buffer:
+    """Hand-assemble a dense `index_location="end"` shard blob for 1-D `data`:
+    natural-order chunk payloads followed by the encoded index."""
+    n_chunks = data.shape[0] // chunk_len
+    chunk_nbytes = chunk_len * data.dtype.itemsize
+    index = _ShardIndex.create_empty((n_chunks,))
+    for i in range(n_chunks):
+        index.set_chunk_slice((i,), slice(i * chunk_nbytes, (i + 1) * chunk_nbytes))
+    index_bytes = codec._encode_shard_index_sync(index)
+    return Buffer.from_bytes(data.tobytes() + index_bytes.to_bytes())
+
+
+def _identity_indexer(shape: tuple[int, ...], chunk_shape: tuple[int, ...]) -> BasicIndexer:
+    return BasicIndexer(
+        tuple(slice(0, s) for s in shape),
+        shape=shape,
+        chunk_grid=ChunkGrid.from_sizes(shape, chunk_shape),
+    )
+
+
+def _spec_for(data: np.ndarray[Any, np.dtype[Any]]) -> ArraySpec:
+    zdt = get_data_type_from_native_dtype(data.dtype)
+    return ArraySpec(
+        shape=data.shape,
+        dtype=zdt,
+        fill_value=zdt.cast_scalar(0),
+        config=ArrayConfig(order="C", write_empty_chunks=True),
+        prototype=default_buffer_prototype(),
+    )
+
+
+def test_bulk_decode_declines_structured_dtype() -> None:
+    """The bulk path has no structured-dtype byte-order handling (the `Struct`
+    branch of `BytesCodec._decode_sync`), so it must decline structured specs.
+    The plain-dtype control on an identically constructed blob proves the
+    decline comes from the dtype gate, not from a malformed blob."""
+    codec = ShardingCodec(chunk_shape=(2,), codecs=[BytesCodec(endian="little")])
+
+    # control: same construction with a plain dtype engages the bulk path
+    plain = np.arange(4, dtype="<i4")
+    bulk = codec._decode_full_shard_bulk_if_uncompressed(
+        _dense_shard_blob(codec, plain, 2), _spec_for(plain), _identity_indexer((4,), (2,))
+    )
+    assert bulk is not None
+    np.testing.assert_array_equal(bulk.as_numpy_array(), plain)
+
+    struct_data = np.zeros(4, dtype=np.dtype([("a", "<i4"), ("b", "<f8")]))
+    struct_data["a"] = np.arange(4)
+    result = codec._decode_full_shard_bulk_if_uncompressed(
+        _dense_shard_blob(codec, struct_data, 2),
+        _spec_for(struct_data),
+        _identity_indexer((4,), (2,)),
+    )
+    assert result is None
+
+
+# ============================================================================
+# _ShardIndex.is_dense: offsets must tile the data section exactly
+# ============================================================================
+
+
+@pytest.mark.parametrize("chunks_per_shard", [(4,), (2, 2)])
+@pytest.mark.parametrize("data_section_start", [0, 32])
+@pytest.mark.parametrize("layout_order", ["natural", "reversed"])
+def test_shard_index_is_dense_accepts_tiling_layouts(
+    chunks_per_shard: tuple[int, ...], data_section_start: int, layout_order: str
+) -> None:
+    """`is_dense` accepts every layout whose fixed-size payloads exactly tile
+    the data section, wherever that section starts and in whatever order the
+    chunks were laid out."""
+    chunk_len = 24
+    n = int(np.prod(chunks_per_shard))
+    slots = np.arange(n)
+    if layout_order == "reversed":
+        slots = slots[::-1]
+    offsets = data_section_start + slots * chunk_len
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    for coord, off in zip(np.ndindex(chunks_per_shard), offsets, strict=True):
+        index.set_chunk_slice(tuple(coord), slice(int(off), int(off) + chunk_len))
+    assert index.is_dense(chunk_len, data_section_start=data_section_start) is True
+
+
+def test_shard_index_is_dense_rejects_overlapping_offsets() -> None:
+    """Unique but overlapping offsets (second payload starts inside the first)
+    are not dense."""
+    chunk_len = 24
+    index = _ShardIndex.create_empty((2,))
+    index.set_chunk_slice((0,), slice(0, chunk_len))
+    index.set_chunk_slice((1,), slice(12, 12 + chunk_len))
+    assert index.is_dense(chunk_len, data_section_start=0) is False
+
+
+def test_shard_index_is_dense_rejects_out_of_range_offsets() -> None:
+    """An offset outside the data section (here: chunk 0 pointing into an
+    `index_location="start"` index region) is not dense, even though offsets
+    are unique and non-overlapping."""
+    chunk_len = 24
+    data_section_start = 16
+    index = _ShardIndex.create_empty((2,))
+    index.set_chunk_slice((0,), slice(0, chunk_len))
+    index.set_chunk_slice(
+        (1,), slice(data_section_start + chunk_len, data_section_start + 2 * chunk_len)
+    )
+    assert index.is_dense(chunk_len, data_section_start=data_section_start) is False

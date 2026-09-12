@@ -23,7 +23,7 @@ from zarr.abc.store import (
     RangeByteRequest,
     Store,
     SuffixByteRequest,
-    SupportsGetSync,
+    _store_supports_sync_io,
 )
 from zarr.codecs._deprecated_enum import _coerce_enum_input, _DeprecatedStrEnumMeta
 from zarr.codecs.bytes import BytesCodec
@@ -53,10 +53,13 @@ from zarr.core.common import (
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype.common import HasEndianness
 from zarr.core.dtype.npy.int import UInt64
+from zarr.core.dtype.npy.structured import Struct
 from zarr.core.indexing import (
     BasicIndexer,
     ChunkProjection,
+    CoordinateIndexer,
     SelectorTuple,
+    SliceDimIndexer,
     _lexicographic_order,
     colexicographic_order_coords,
     get_indexer,
@@ -107,6 +110,32 @@ SUBCHUNK_WRITE_ORDER: Final[tuple[str, str, str, str]] = (
     "lexicographic",
     "colexicographic",
 )
+
+
+def _is_identity_full_read(indexer: Any, shard_shape: tuple[int, ...]) -> bool:
+    """True when `indexer` selects every element of a `shard_shape` array in
+    natural order: one whole-dimension, step-1 `SliceDimIndexer` per dimension.
+
+    Structural on purpose, not `isinstance(indexer, BasicIndexer)`: a full
+    `arr[:]` read reaches the shard as an `OrthogonalIndexer`, so a type gate
+    would silently disable the bulk fast path for the most common case. Any
+    gather (integer-array / boolean / coordinate selection), subset, strided,
+    or integer-scalar selection fails the per-dimension check — output shape
+    alone is not enough, because a reordering or duplicating selection can have
+    the same shape as the shard while requiring `chunk_selection` /
+    `out_selection` to be honored.
+    """
+    dim_indexers = getattr(indexer, "dim_indexers", None)
+    if dim_indexers is None or len(dim_indexers) != len(shard_shape):
+        return False
+    return all(
+        isinstance(dim_indexer, SliceDimIndexer)
+        and dim_indexer.dim_len == dim_len
+        and dim_indexer.start == 0
+        and dim_indexer.stop == dim_len
+        and dim_indexer.step == 1
+        for dim_indexer, dim_len in zip(dim_indexers, shard_shape, strict=True)
+    )
 
 
 def _parse_index_location(data: object) -> IndexLocation:
@@ -192,12 +221,17 @@ class _ShardIndex(NamedTuple):
     def get_full_chunk_map(self) -> npt.NDArray[np.bool_]:
         return np.not_equal(self.offsets_and_lengths[..., 0], MAX_UINT_64)
 
-    def is_dense(self, chunk_byte_length: int) -> bool:
-        """True when every chunk is present, fixed-length, and uniquely placed.
+    def is_dense(self, chunk_byte_length: int, *, data_section_start: int) -> bool:
+        """True when the chunk payloads exactly tile the shard's data section.
 
-        Used to gate the vectorized whole-shard decode: a dense fixed-size shard
-        is a regular grid of equal-length payloads, so it can be reshaped/scattered
-        in bulk rather than decoded chunk-by-chunk.
+        Every chunk must be present with length `chunk_byte_length`, and the
+        sorted offsets must be exactly `data_section_start + i * chunk_byte_length`
+        for `i` in `0..n_chunks-1`: no gaps, no overlaps, and nothing outside the
+        data section (a corrupt index could otherwise point chunks into the
+        index region or out of the blob). Used to gate the vectorized
+        whole-shard decode: a dense fixed-size shard is a regular grid of
+        equal-length payloads, so it can be reshaped/scattered in bulk rather
+        than decoded chunk-by-chunk.
         """
         offsets = self.offsets_and_lengths[..., 0].reshape(-1)
         lengths = self.offsets_and_lengths[..., 1].reshape(-1)
@@ -207,8 +241,10 @@ class _ShardIndex(NamedTuple):
         # all the same fixed length
         if not bool(np.all(lengths == chunk_byte_length)):
             return False
-        # offsets unique (no two chunks share a slot)
-        return int(np.unique(offsets).size) == int(offsets.size)
+        expected = np.uint64(data_section_start) + np.arange(
+            offsets.size, dtype=np.uint64
+        ) * np.uint64(chunk_byte_length)
+        return bool(np.array_equal(np.sort(offsets), expected))
 
     def get_chunk_slice(self, chunk_coords: tuple[int, ...]) -> tuple[int, int] | None:
         localized_chunk = self._localize_chunk(chunk_coords)
@@ -362,6 +398,25 @@ class _ShardReader(ShardMapping):
                 result[coords] = None
 
         return result
+
+
+def _drops_only_unit_axes(shape: tuple[int, ...], full: tuple[int, ...]) -> bool:
+    """Return whether ``shape`` is ``full`` with zero or more length-1 axes removed.
+
+    ``(2, 2)`` is ``(2, 1, 2)`` minus its unit axis, and ``(1, 2)`` is
+    ``(1, 2, 1)`` minus its last; ``(2, 2)`` is not ``(4,)``, and
+    ``(3, 2, 1)`` is not ``(3, 2)`` because it adds an axis.
+    """
+    remaining = iter(full)
+    for size in shape:
+        for full_size in remaining:
+            if full_size == size:
+                break
+            if full_size != 1:
+                return False
+        else:
+            return False
+    return all(full_size == 1 for full_size in remaining)
 
 
 @dataclass(frozen=True)
@@ -757,18 +812,11 @@ class ShardingCodec(
         Loads the existing shard, merges the written region into the affected
         inner chunks, and rewrites the whole shard.
         """
-        shard_shape = shard_spec.shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
         get_chunk_spec = self._make_chunk_spec_getter(shard_spec)
         inner_transform = self._get_inner_chunk_transform(shard_spec)
 
-        indexer = list(
-            get_indexer(
-                selection,
-                shape=shard_shape,
-                chunk_grid=self._inner_grid(shard_shape),
-            )
-        )
+        indexer, value = self._get_shard_indexer_and_value(selection, shard_spec, value)
 
         is_complete = self._is_complete_shard_write(indexer, chunks_per_shard)
 
@@ -809,7 +857,7 @@ class ShardingCodec(
         # `_sentinel` distinguishes "not computed yet" from a memoized `None`
         # (an empty chunk).
         _sentinel = object()
-        scalar_complete_result: Buffer | None | object = _sentinel
+        scalar_complete_result: Buffer | object | None = _sentinel
 
         for chunk_coords, chunk_sel, out_sel, is_complete_chunk in indexer:
             chunk_spec = get_chunk_spec(chunk_coords)
@@ -1088,8 +1136,12 @@ class ShardingCodec(
           dtype/endian view with no reordering. A trailing crc32c is NOT accepted
           (the bulk path can't verify per-chunk checksums, so crc shards keep the
           per-chunk path's corruption detection);
+        - the data type is not structured (the byte-order handling below has no
+          `Struct` branch);
+        - `indexer` is an identity full-shard read (`_is_identity_full_read`);
         - the stored index is dense (every chunk present, equal fixed length,
-          contiguous) so the data section is a regular grid of chunk payloads.
+          exactly tiling the data section) so the data section is a regular
+          grid of chunk payloads.
 
         Chunk positions are read from the stored index, so this is correct for
         any `subchunk_write_order` (morton / lexicographic / colexicographic /
@@ -1109,12 +1161,10 @@ class ShardingCodec(
             return None
         ab_codec = self.codecs[0]
 
-        # Inner chunks clipped by the shard boundary (chunk_shape not evenly
-        # dividing the shard shape) have variable payload sizes; the bulk path
-        # assumes a uniform payload per chunk, so those shards take the
-        # per-chunk path. (The blob-length and is_dense checks below would also
-        # reject them, but the gate makes the precondition explicit.)
-        if not self._is_evenly_divided(shard_spec.shape):
+        # The byte-order handling below lacks the structured-dtype branch of
+        # `BytesCodec._decode_sync` (which applies `newbyteorder` to multi-byte
+        # struct fields), so structured dtypes must take the per-chunk path.
+        if isinstance(shard_spec.dtype, Struct) or not self._is_evenly_divided(shard_spec.shape):
             return None
 
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
@@ -1123,21 +1173,17 @@ class ShardingCodec(
         if n_chunks == 0:
             return None
 
-        # Only valid for a plain contiguous full-shard read, where each chunk
-        # lands at its natural grid position. The `sel_shape` check is
-        # load-bearing: a gather indexer (CoordinateIndexer, from vindex / an
-        # oindex with an integer-array selection) reorders points and exposes
-        # `sel_shape`, but its `.shape` is the FLATTENED point count, which can
-        # equal the shard shape by coincidence (trivially in 1-D). Gating on
-        # shape alone lets such a selection through, and the bulk path then
-        # returns the shard in natural order, silently dropping the reordering.
-        # A contiguous full read (BasicIndexer, or a non-gathering
-        # OrthogonalIndexer from `arr[:]`) has no `sel_shape` and is served here.
-        # Anything that gathers must fall through to the per-chunk path so
+        # Only valid for an identity full-shard read, where each chunk lands at
+        # its natural grid position. The per-dimension check is load-bearing:
+        # a gather selection (an `OrthogonalIndexer` with an integer-array or
+        # boolean dimension, from `arr[perm, :]` / `arr.oindex[...]`, or a
+        # `CoordinateIndexer` from vindex) can have an output `.shape` equal to
+        # the shard shape while reordering or duplicating points — serving it
+        # from the bulk path would return the shard in natural order, silently
+        # dropping the reordering. Anything that is not a full-slice-per-
+        # dimension read falls through to the per-chunk path so
         # chunk_selection / out_selection are honored.
-        if getattr(indexer, "sel_shape", None) is not None:
-            return None
-        if tuple(indexer.shape) != tuple(shard_spec.shape):
+        if not _is_identity_full_read(indexer, shard_spec.shape):
             return None
         chunk_byte_length = self._inner_chunk_byte_length(chunk_spec)
 
@@ -1151,7 +1197,8 @@ class ShardingCodec(
         else:
             index_bytes = shard_bytes[-shard_index_size:]
         index = self._decode_shard_index_sync(index_bytes, chunks_per_shard)
-        if not index.is_dense(chunk_byte_length):
+        data_section_start = shard_index_size if self.index_location == "start" else 0
+        if not index.is_dense(chunk_byte_length, data_section_start=data_section_start):
             return None
 
         # --- bulk reconstruct ---
@@ -1236,9 +1283,9 @@ class ShardingCodec(
                 return None
             bulk = self._decode_full_shard_bulk_if_uncompressed(shard_bytes, shard_spec, indexer)
             if bulk is not None:
-                # The bulk path only fires for a contiguous full-shard read (it
-                # returns None for any gather indexer that exposes `sel_shape`),
-                # so the result is already shard-shaped — no reshape needed.
+                # The bulk path only fires for an identity full-shard read
+                # (`_is_identity_full_read`), so the result is already
+                # shard-shaped and in natural order — no reshape needed.
                 return bulk
             shard_reader = self._shard_reader_from_bytes_sync(shard_bytes, chunks_per_shard)
             shard_dict: ShardMapping = shard_reader
@@ -1320,17 +1367,10 @@ class ShardingCodec(
         selection: SelectorTuple,
         shard_spec: ArraySpec,
     ) -> None:
-        shard_shape = shard_spec.shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
         get_chunk_spec = self._make_chunk_spec_getter(shard_spec)
 
-        indexer = list(
-            get_indexer(
-                selection,
-                shape=shard_shape,
-                chunk_grid=self._inner_grid(shard_shape),
-            )
-        )
+        indexer, shard_array = self._get_shard_indexer_and_value(selection, shard_spec, shard_array)
 
         if self._is_complete_shard_write(indexer, chunks_per_shard):
             shard_dict = dict.fromkeys(lexicographic_order_coords(chunks_per_shard))
@@ -1387,6 +1427,45 @@ class ShardingCodec(
         return self._assemble_shard(
             index_bytes, buffers, buffer_prototype, chunks_per_shard=chunks_per_shard
         )
+
+    def _get_shard_indexer_and_value(
+        self, selection: SelectorTuple, shard_spec: ArraySpec, value: NDBuffer
+    ) -> tuple[list[ChunkProjection], NDBuffer]:
+        """Index ``selection`` over the inner chunk grid, flattening ``value`` to match.
+
+        ``get_indexer`` classifies a tuple of integer arrays as a coordinate
+        selection, and a ``CoordinateIndexer`` addresses the value buffer as
+        1-D. An ``OrthogonalIndexer`` with two or more array-indexed axes hands
+        down an ``np.ix_`` tuple, so ``sel_shape`` is N-D, while the caller
+        shaped ``value`` like the orthogonal result: the broadcast shape minus
+        the integer-indexed axes, which ``np.ix_`` keeps as length-1 axes. That
+        value has the element count and C order of the flattened projections,
+        so ravel it.
+
+        Only that value shape is ravelled. A mask or coordinate selection
+        arrives with a 1-D ``sel_shape`` and a value that must already be flat,
+        and an orthogonal value with an axis the selection does not have is
+        invalid. Both are left alone so the write fails the same way it does
+        on an unsharded array; the shard-level selection alone cannot tell
+        orthogonal from mask indexing, the value shape can. Scalars pass
+        through and are broadcast downstream.
+
+        The partial-decode paths apply the inverse reshape, to
+        ``indexer.sel_shape``, on the way out.
+        """
+        shard_shape = shard_spec.shape
+        indexer = get_indexer(
+            selection,
+            shape=shard_shape,
+            chunk_grid=self._inner_grid(shard_shape),
+        )
+        if (
+            isinstance(indexer, CoordinateIndexer)
+            and len(value.shape) > 1
+            and _drops_only_unit_axes(value.shape, indexer.sel_shape)
+        ):
+            value = value.reshape(indexer.shape)
+        return list(indexer), value
 
     def _is_total_shard(
         self, all_chunk_coords: set[tuple[int, ...]], chunks_per_shard: tuple[int, ...]
@@ -1725,7 +1804,7 @@ class ShardingCodec(
 
         shard_dict: ShardMutableMapping = {}
         store = byte_getter.store if hasattr(byte_getter, "store") else None
-        if isinstance(store, Store) and isinstance(store, SupportsGetSync):
+        if isinstance(store, Store) and _store_supports_sync_io(store):
             # External store: coalesce via get_ranges_sync (mirrors get_ranges).
             byte_ranges = [byte_range for _, byte_range in chunk_coord_byte_ranges]
             try:

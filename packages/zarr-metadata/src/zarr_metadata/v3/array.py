@@ -1,7 +1,7 @@
 """Zarr v3 array metadata types."""
 
 from collections.abc import Mapping
-from typing import Literal, NotRequired, TypeAlias
+from typing import Final, Literal, NotRequired, TypeAlias
 
 from typing_extensions import TypedDict
 
@@ -75,8 +75,21 @@ class ZarrV3ArrayMetadataJSONPartial(TypedDict, total=False, extra_items=ZarrV3E
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 
+ZarrV3ArrayMetadataStoreKey = Literal["zarr.json"]
+"""Literal type of the store key holding a v3 array's metadata document."""
+
+ZARR_V3_ARRAY_METADATA_STORE_KEY: Final[ZarrV3ArrayMetadataStoreKey] = "zarr.json"
+"""The store key a v3 array's metadata document is persisted under.
+
+v3 uses one key for both node types; the document's `node_type` field
+distinguishes an array from a group.
+"""
+
+
 __all__ = [
+    "ZARR_V3_ARRAY_METADATA_STORE_KEY",
     "ZarrV3ArrayMetadataJSON",
     "ZarrV3ArrayMetadataJSONPartial",
+    "ZarrV3ArrayMetadataStoreKey",
     "ZarrV3ExtensionField",
 ]

@@ -63,7 +63,8 @@ def _data(shape: tuple[int]) -> np.ndarray:
     noise_level = 1
     pattern = (np.sin(np.linspace(0, 2 * np.pi, period)) * 50 + 128).round().astype(np.uint8)
     data = np.tile(pattern, int(np.ceil(n / period)))[:n].astype(np.int16)
-    data += np.random.randint(-noise_level, noise_level + 1, size=n, dtype=np.int16)
+    rng = np.random.default_rng(0)
+    data += rng.integers(-noise_level, noise_level + 1, size=n, dtype=np.int16)
     return np.clip(data, 0, 255).astype(np.uint8)
 
 
@@ -189,7 +190,7 @@ def test_read_array(
     get_data: Callable[[tuple[int]], np.ndarray | int],
 ) -> None:
     """
-    Test the time required to fill an array with a single value
+    Test the time required to read the entirety of an array
     """
     arr = create_array(
         bench_store,
