@@ -2433,6 +2433,52 @@ async def test_iter_members_deep_use_consolidated_flag_propagates(
     )
 
 
+@pytest.mark.filterwarnings("ignore:Consolidated metadata")
+@pytest.mark.parametrize("use_consolidated", [True, False])
+@pytest.mark.parametrize("max_depth", [0, None])
+@pytest.mark.parametrize("api", ["sync", "async"])
+async def test_members_stale_consolidated_metadata(
+    zarr_format: ZarrFormat, use_consolidated: bool, max_depth: int | None, api: str
+) -> None:
+    """Disabling consolidation reads fresh members and metadata at every depth."""
+    root = zarr.group(zarr_format=zarr_format)
+    a = root.create_group("a", attributes={"version": 1})
+    b = a.create_group("b")
+    b.create_group("c")
+    zarr.consolidate_metadata(root.store, path="a/b")
+    consolidated = zarr.consolidate_metadata(root.store)
+
+    a.update_attributes({"version": 2})
+    root.create_group("new")
+    b.create_group("new")
+
+    if api == "sync":
+        members = dict(
+            consolidated.members(
+                max_depth=max_depth, use_consolidated_for_children=use_consolidated
+            )
+        )
+    else:
+        members = {
+            name: node
+            async for name, node in consolidated._async_group.members(
+                max_depth=max_depth, use_consolidated_for_children=use_consolidated
+            )
+        }
+
+    expected = {"a"}
+    if max_depth is None:
+        expected |= {"a/b", "a/b/c"}
+    if not use_consolidated:
+        expected.add("new")
+        if max_depth is None:
+            expected.add("a/b/new")
+    assert set(members) == expected
+    assert members["a"].metadata.attributes == {"version": 1 if use_consolidated else 2}
+    # Opting out for one traversal must not discard the caller's cache.
+    assert consolidated.metadata.consolidated_metadata is not None
+
+
 async def test_update_attributes_async_merges(store: Store, zarr_format: ZarrFormat) -> None:
     """B12 — Group.update_attributes_async must merge, not overwrite.
 

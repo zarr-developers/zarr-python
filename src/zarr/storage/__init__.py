@@ -34,7 +34,7 @@ class VerboseModule(ModuleType):
             warnings.warn(
                 "setting zarr.storage.default_compressor is deprecated, use "
                 "the `compressors` argument to zarr.create_array() instead "
-                "e.g. zarr.create_array(..., compressors=[numcodecs.Zstd()])",
+                "e.g. zarr.create_array(..., zarr_format=2, compressors=[numcodecs.Zstd()])",
                 ZarrDeprecationWarning,
                 stacklevel=1,
             )

@@ -1430,8 +1430,12 @@ class AsyncGroup:
             raise ValueError(msg)
         # enforce a concurrency limit by passing a semaphore to all the recursive functions
         semaphore = asyncio.Semaphore(config.get("async.concurrency"))
+        group = self
+        if not use_consolidated_for_children and self.metadata.consolidated_metadata is not None:
+            # getitem also consults consolidated metadata, so bypass it for this traversal.
+            group = replace(self, metadata=replace(self.metadata, consolidated_metadata=None))
         async for member in _iter_members_deep(
-            self,
+            group,
             max_depth=max_depth,
             skip_keys=skip_keys,
             semaphore=semaphore,
