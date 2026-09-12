@@ -7,7 +7,6 @@ with Zarr-Python, and for people who need to know exactly what Zarr-Python
 puts on disk. For an introduction to *using* consolidated metadata from
 Python, see [Consolidated metadata](consolidated_metadata.md).
 
-
 The key words "MUST", "MUST NOT", "SHOULD", "SHOULD NOT", and "MAY" in this
 document are to be interpreted as described in
 [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
@@ -189,13 +188,16 @@ does, and normalises such entries to the empty marker when nesting.
 ### Key order
 
 `metadata` is a JSON object and therefore unordered in principle. Since
-Zarr-Python 3.1.1 the writer sorts keys deterministically so that the same
-hierarchy always serialises to byte-identical output:
+Zarr-Python 3.1.1 the writer sorts keys as follows:
 
 1. Primarily by **depth**, ascending, where depth is the number of `/`
    characters in the path.
 2. Secondarily by the path string after Unicode NFKC normalisation and
    case-folding (`unicodedata.normalize("NFKC", key).casefold()`), ascending.
+
+Paths whose normalised, case-folded forms are equal retain their input order.
+This ordering alone therefore does not guarantee byte-identical output for
+every hierarchy.
 
 Readers MUST NOT depend on key order. In particular, keys sharing a parent are
 not guaranteed to be adjacent, and Zarr-Python's reader groups by parent
@@ -437,7 +439,7 @@ This is what `AsyncGroup.open` does with the `use_consolidated` argument.
 | `None` (default)   | Use it.                       | Read children from the store. |
 | `True`             | Use it.                       | Raise `ValueError`. |
 | `False`            | Ignore it.                    | Read children from the store. |
-| `str` (format 2 only) | As `None`, but look for the document at that key instead of `.zmetadata`. | |
+| Non-empty `str` (format 2 only) | Use the document at that key instead of `.zmetadata`. | Raise `ValueError`. |
 
 If the store reports `supports_consolidated_metadata == False`, `None` is
 treated as `False`, and `True` raises.
