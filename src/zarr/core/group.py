@@ -2089,8 +2089,9 @@ class Group(SyncMixin):
     async def update_attributes_async(self, new_attributes: dict[str, Any]) -> Group:
         """Update the attributes of this group.
 
-        Existing attributes are preserved; `new_attributes` are merged on top
-        of them (same semantics as `Group.update_attributes`).
+        New attributes are merged into the existing ones, as in
+        `Group.update_attributes`. Unlike that method, this returns a new
+        `Group` and leaves this one unchanged.
 
         Examples
         --------

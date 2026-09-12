@@ -2391,46 +2391,46 @@ def test_open_array_as_group():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.filterwarnings("ignore:Consolidated metadata")
 async def test_iter_members_deep_use_consolidated_flag_propagates(
     store: Store, zarr_format: ZarrFormat
 ) -> None:
     """B11 — _iter_members_deep must pass use_consolidated_for_children on recursion.
 
-    Build root/a/b/c, consolidate at a/b so that a/b carries stale
-    consolidated metadata, then iterate root with
-    use_consolidated_for_children=False and assert that the grandchild
-    group (a/b) has consolidated_metadata=None during iteration — meaning
-    the fresh-read path was taken rather than the cached one.
+    Build root/a/b, consolidate at a/b, then create a/b/c so that a/b's
+    consolidated metadata is stale. Listing root with
+    use_consolidated_for_children=False must read a/b fresh from the store and
+    therefore find a/b/c. Before the fix, the recursion into "a" defaulted the
+    flag back to True, so a/b was loaded with its stale consolidated metadata
+    and a/b/c was dropped.
+
+    Only Zarr format 3 can exhibit the bug: v3 stores consolidated metadata
+    inline in the child's `zarr.json`, while v2 keeps it in a separate
+    `.zmetadata` that child lookups never read. The v2 cases are no-regression
+    checks.
     """
     root = zarr.group(store=store, zarr_format=zarr_format)
-    a = root.create_group("a")
-    ab = a.create_group("b")
-    ab.create_group("c")
+    root.create_group("a/b")
 
-    # Consolidate so that a/b.metadata.consolidated_metadata is populated.
     if isinstance(store, ZipStore):
         with pytest.warns(UserWarning, match="Duplicate name"):
-            zarr.consolidate_metadata(store=store, zarr_format=zarr_format)
+            zarr.consolidate_metadata(store=store, path="a/b", zarr_format=zarr_format)
     else:
-        zarr.consolidate_metadata(store=store, zarr_format=zarr_format)
+        zarr.consolidate_metadata(store=store, path="a/b", zarr_format=zarr_format)
 
-    root = zarr.open_consolidated(store=store, zarr_format=zarr_format)
+    # Now a/b's consolidated metadata is stale: it does not know about c.
+    root.create_group("a/b/c")
 
-    # Collect members yielded by the deep iterator without using consolidated
-    # metadata for children.
     members: dict[str, Group | Array] = dict(
         root.members(max_depth=None, use_consolidated_for_children=False)
     )
 
-    # The "a/b" entry must have been stripped of its consolidated_metadata.
-    ab_node = members.get("a/b")
-    assert ab_node is not None
-    assert isinstance(ab_node, Group)
-    assert ab_node.metadata.consolidated_metadata is None, (
-        "consolidated_metadata must be cleared when use_consolidated_for_children=False "
-        "propagates to recursive calls (B11)"
+    assert set(members) == {"a", "a/b", "a/b/c"}, (
+        "a/b/c must be found when use_consolidated_for_children=False propagates "
+        "to recursive calls (B11)"
     )
+    ab_node = members["a/b"]
+    assert isinstance(ab_node, Group)
+    assert ab_node.metadata.consolidated_metadata is None
 
 
 @pytest.mark.filterwarnings("ignore:Consolidated metadata")
