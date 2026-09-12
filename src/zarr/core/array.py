@@ -43,6 +43,8 @@ from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.chunk_grids import (
     SHARDED_INNER_CHUNK_MAX_BYTES,
     ChunkGrid,
+    _is_auto,
+    _is_keep,
     _is_rectilinear_chunks,
     guess_chunks,
     normalize_chunks_nd,
@@ -4256,7 +4258,10 @@ async def from_array(
         If not specified, defaults to the zarr format of the data array.
     attributes : dict, optional
         Attributes for the array.
-        If not specified, defaults to the attributes of the data array.
+        If not specified, the source Zarr array's attributes are deep-copied so
+        nested containers are independent. Deeply nested attributes can raise
+        `RecursionError` during copying even if they can be stored and reopened;
+        the threshold depends on Python's recursion limit and the current call stack.
         Pass an empty dict to create the array with no attributes.
     chunk_key_encoding : ChunkKeyEncoding, optional
         A specification of how the chunk keys are represented in storage.
@@ -4363,7 +4368,8 @@ async def from_array(
     result = await init_array(
         store_path=store_path,
         shape=data.shape,
-        dtype=data.dtype,
+        # A native object dtype cannot identify the source's Zarr data type.
+        dtype=data._async_array._zdtype if isinstance(data, Array) else data.dtype,
         chunks=chunks,
         shards=shards,
         filters=filters,
@@ -4537,7 +4543,7 @@ async def init_array(
 
     # Normalize the user's chunks into a canonical ChunkGrid
 
-    if chunks == "auto":
+    if _is_auto(chunks):
         max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
         chunks_normalized = guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
     else:
@@ -4893,10 +4899,12 @@ def _parse_keep_array_attr(
     DimensionNamesLike,
     dict[str, JSON] | None,
 ]:
+    # chunks / shards may be numpy arrays, so their sentinel checks go through the
+    # isinstance-guarded helpers rather than a bare ``==`` against the string.
     if isinstance(data, Array):
         rectilinear_grid = _stored_rectilinear_grid_or_none(data.metadata)
         sharded = _sharding_codec(data.metadata) is not None
-        if chunks == "keep":
+        if _is_keep(chunks):
             if rectilinear_grid is None or sharded:
                 # `.chunks` is the inner chunk shape when sharding is used, and
                 # inner chunks are regular whatever the shape of the shard grid.
@@ -4908,7 +4916,7 @@ def _parse_keep_array_attr(
                 # and trailing edges beyond the extent left behind by a
                 # shrinking resize.
                 chunks = rectilinear_grid
-        if shards == "keep":
+        if _is_keep(shards):
             if rectilinear_grid is None:
                 shards = data.shards
             elif sharded:
@@ -4960,9 +4968,9 @@ def _parse_keep_array_attr(
             # array's in-memory metadata and the new array's.
             attributes = copy.deepcopy(dict(data.attrs))
     else:
-        if chunks == "keep":
+        if _is_keep(chunks):
             chunks = "auto"
-        if shards == "keep":
+        if _is_keep(shards):
             shards = None
         if zarr_format is None:
             zarr_format = 3
