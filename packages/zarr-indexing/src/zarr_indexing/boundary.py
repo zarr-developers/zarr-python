@@ -210,11 +210,9 @@ def split_scalar_axes(
     scalar with the advanced indices for the purpose of placing the broadcast
     result, so the two disagree when a scalar and an index array are separated:
     `a[0, ..., [1, 2]]` has shape `(2, 3)` for a `(2, 3, 4)` array, where
-    `a[0][..., [1, 2]]` has shape `(3, 2)`. The earlier claim here that they
-    always agree rested on `a[0, [1, 2], :]`, where the indices are adjacent and
-    they happen to. Scalar-first is the documented dialect (see the `lazy_array`
-    module docstring) — the divergence is deliberate, and this note exists so
-    that the correct end is not "fixed" later.
+    `a[0][..., [1, 2]]` has shape `(3, 2)`. Scalar-first processing is the
+    wrapper's indexing dialect; it does not implement NumPy's full advanced-axis
+    placement rules.
 
     Parameters
     ----------
