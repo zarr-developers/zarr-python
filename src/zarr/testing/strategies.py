@@ -153,8 +153,7 @@ def structured_dtypes(
 
     With ``allow_unrepresentable=False`` (the default) every dtype is packed, has plain field names
     and scalar fields, so it can be represented by the Zarr struct data type. With
-    ``allow_unrepresentable=True`` the strategy also injects the NumPy features that the Zarr
-    struct data type cannot record: field titles, subarray fields and ``align=True`` layouts.
+    ``allow_unrepresentable=True`` the strategy also injects NumPy features rejected by this implementation: field titles, subarray fields and ``align=True`` layouts.
     Each is injected independently at random, so most draws carry at least one and some carry
     none.
     """

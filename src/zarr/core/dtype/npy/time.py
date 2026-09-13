@@ -239,8 +239,8 @@ class TimeDTypeBase[
             # Store the NumPy spelling; "μs" stays accepted as input and in stored metadata.
             object.__setattr__(self, "unit", "us")
         if self.unit == "generic" and self.scale_factor != 1:
-            # NumPy's generic (unit-less) time type carries no scale, so a scale factor
-            # other than 1 is silently dropped by np.dtype and by the Zarr V2 dtype string.
+            # NumPy retains the generic scale internally, but dtype.str omits it.
+            # This restriction prevents loss through the Zarr V2 dtype string.
             raise ValueError(
                 f"The 'generic' unit does not take a scale factor, got scale_factor={self.scale_factor}. "
                 "Use scale_factor=1 with the 'generic' unit."

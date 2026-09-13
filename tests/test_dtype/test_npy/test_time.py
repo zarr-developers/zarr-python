@@ -172,8 +172,8 @@ def test_time_generic_unit_rejects_scale_factor() -> None:
     """
     Test that the 'generic' unit with a scale factor other than 1 raises a ValueError.
 
-    NumPy's generic time unit has no scale, so ``np.dtype("M8[2generic]")`` silently drops
-    the 2 and the value would not survive ``to_native_dtype`` or the Zarr V2 dtype string.
+    NumPy retains the scale in ``np.dtype("M8[2generic]")``, but its ``dtype.str``
+    representation omits it. This implementation rejects it to avoid loss through V2 JSON.
     """
     scale_factor = 2
     msg = f"The 'generic' unit does not take a scale factor, got scale_factor={scale_factor}."

@@ -51,7 +51,8 @@ def numpy_timedelta64_configuration(
     integer. Raises ValueError if `value` does not have exactly the keys `unit`
     and `scale_factor`, if `unit` is not a `NumpyTimeUnit`, if `scale_factor` is
     outside `[1, 2**31 - 1]`, or if the `"generic"` unit is combined with a
-    `scale_factor` other than 1 (NumPy's generic time type has no scale).
+    `scale_factor` other than 1 (an implementation restriction to avoid scale
+    loss through NumPy dtype strings, not a stated V3 format constraint).
     """
     unit, scale_factor = numpy_time_configuration(value)
     return {"unit": unit, "scale_factor": scale_factor}

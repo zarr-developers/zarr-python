@@ -32,9 +32,9 @@ StructuredScalarLike = list[object] | tuple[object, ...] | bytes | int
 
 def _check_representable(dtype: np.dtype[np.void]) -> str | None:
     """
-    Check whether a structured NumPy dtype can be represented by the Zarr struct data type.
+    Check whether this implementation preserves a structured NumPy dtype.
 
-    The Zarr struct metadata records only ``(name, dtype)`` pairs and reconstructs the native
+    This implementation records only ``(name, dtype)`` pairs and reconstructs the native
     dtype by packing those fields contiguously (see ``Structured.to_native_dtype``). Anything
     NumPy allows beyond that is lost on the round trip and would silently change how stored
     bytes are interpreted. This function rejects three such features, recursing into nested
@@ -44,6 +44,9 @@ def _check_representable(dtype: np.dtype[np.void]) -> str | None:
     - field titles, e.g. ``np.dtype([(("title", "name"), "i4")])``
     - subarray fields, e.g. ``np.dtype([("name", "i4", (2,))])``
     - non-default field layouts, e.g. ``np.dtype(..., align=True)`` or explicit offsets
+
+    These are implementation restrictions. In particular, Zarr V2 supports subarray
+    field descriptors; this implementation does not preserve them.
 
     Returns
     -------
