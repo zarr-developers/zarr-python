@@ -32,7 +32,7 @@ _executor: ThreadPoolExecutor | None = None  # global executor placeholder
 
 
 class SyncError(Exception):
-    """Internal: raised by `sync` when called from within a running event loop.
+    """Internal: raised by `sync` when called on its target event loop's thread.
 
     The public `run` wrapper translates this to `RuntimeError` (matching
     `asyncio.run`); downstream code should not catch `SyncError` directly.
@@ -170,11 +170,11 @@ def run[T](
     loop: asyncio.AbstractEventLoop | None = None,
     timeout: float | None = None,
 ) -> T:
-    """Run a coroutine to completion on a zarr-managed event loop and return its result.
+    """Run a coroutine to completion on the target event loop and return its result.
 
     This is the supported bridge for running zarr's asynchronous API
     (`AsyncArray`, `AsyncGroup`, and their methods) from synchronous code. It
-    runs `coro` on an event loop managed by zarr, blocking the calling thread
+    runs `coro` on Zarr's managed loop unless `loop` is provided, blocking the calling thread
     until the coroutine finishes, then returns its result (or re-raises any
     exception the coroutine raised).
 
@@ -211,24 +211,24 @@ def run[T](
     Raises
     ------
     RuntimeError
-        If called from within a running event loop on the calling thread. In
-        an async context, `await` the async API directly instead. (This
-        mirrors `asyncio.run`, which raises `RuntimeError` for the same
-        misuse.)
+        If called from the target event loop's thread. A different running
+        loop on the calling thread does not prevent dispatch, but that
+        thread is blocked until dispatch finishes. In async code, prefer
+        awaiting the async API directly.
     TimeoutError
         If `coro` does not finish within `timeout` seconds.
 
     Notes
     -----
-    `zarr.run` commits to this signature and to running coroutines on a
-    zarr-managed loop. It does not commit to *how* that loop is managed (a
+    By default, `zarr.run` runs coroutines on a Zarr-managed loop. It does
+    not commit to *how* that loop is managed (a
     process-global loop, a dedicated thread, etc.); those internals may change.
     """
     try:
         return sync(coro, loop=loop, timeout=timeout)
     except SyncError as e:
         raise RuntimeError(
-            "zarr.run cannot be called from within a running event loop. "
+            "zarr.run cannot be called from its target event loop's thread. "
             "In an async context, await the async API directly."
         ) from e
 

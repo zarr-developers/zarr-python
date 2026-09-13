@@ -205,11 +205,10 @@ def test_run_timeout() -> None:
 
 
 @pytest.mark.filterwarnings("ignore:coroutine.*was never awaited")
-def test_run_raises_runtimeerror_inside_running_loop() -> None:
-    """Calling `zarr.run` from within a running loop raises `RuntimeError`.
+def test_run_raises_runtimeerror_inside_target_loop() -> None:
+    """Calling `zarr.run` from its target loop's thread raises `RuntimeError`.
 
-    This mirrors `asyncio.run`'s behavior for the same misuse, and hides the
-    internal `SyncError` from the public surface.
+    The internal `SyncError` is hidden from the public surface.
     """
 
     def inner() -> str:
@@ -226,7 +225,7 @@ def test_run_raises_runtimeerror_inside_running_loop() -> None:
         run(outer())
 
 
-def test_run_inside_running_loop_does_not_leak_syncerror() -> None:
+def test_run_inside_target_loop_does_not_leak_syncerror() -> None:
     """The internal `SyncError` is not surfaced to callers of `zarr.run`."""
 
     def inner() -> str:
@@ -240,6 +239,18 @@ def test_run_inside_running_loop_does_not_leak_syncerror() -> None:
     # SyncError is preserved as the cause but is not the raised type.
     assert not isinstance(excinfo.value, SyncError)
     assert isinstance(excinfo.value.__cause__, SyncError)
+
+
+async def test_run_from_different_running_loop() -> None:
+    """A calling-thread loop distinct from the target loop permits dispatch."""
+    calling_loop = asyncio.get_running_loop()
+
+    async def identify_loop() -> asyncio.AbstractEventLoop:
+        return asyncio.get_running_loop()
+
+    target_loop = run(identify_loop())
+    assert target_loop is not calling_loop
+    assert target_loop is _get_loop()
 
 
 def test_run_composes_with_gather() -> None:

@@ -42,8 +42,9 @@ Zarr-Python provides both synchronous and asynchronous APIs:
 
 To run the asynchronous API from synchronous code, use `zarr.run`, which
 executes a coroutine to completion on a Zarr-managed event loop and returns
-its result. It raises `RuntimeError` if called from within a running event
-loop (in that case, `await` the async API directly instead).
+its result. It raises `RuntimeError` when called from the target event loop's
+thread. Calls from a different running loop block the calling thread; prefer
+awaiting the async API directly in async code.
 
 ## Abstract Base Classes
 
