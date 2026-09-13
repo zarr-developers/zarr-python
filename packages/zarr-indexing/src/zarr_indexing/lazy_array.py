@@ -30,9 +30,10 @@ into the final buffer or an owned temporary for fancy placement.
 
 The part view's transform directly addresses its raw wrapped array. The paired
 projection deliberately retains the chunk-local frame. Parent materialization
-passes both in `ReadContext`; calling `part.view.result()` directly uses an
-unpartitioned context with `projection=None`. Readers that require the projection
-should be used through the parent `result(parts=parts)` path.
+passes both in `ReadContext`, as does independent `part.result()` execution.
+Calling `part.view.result()` resolves the general view without its partition
+record and therefore uses `projection=None`. Use `part.result()` when scheduling
+partition reads.
 
 The partitioning is discovered from the wrapped array at construction — first
 `read_chunk_sizes` (zarr's clipped per-axis sizes, sharding-aware), then
@@ -410,8 +411,8 @@ class Partition:
 
     Yielded by [`LazyArray.parts`][zarr_indexing.lazy_array.LazyArray.parts].
     The parts of a view tile it exactly and disjointly: assembling every
-    `view.result()` at its `out_selection` reproduces the whole view's
-    `result()` for readers supporting contexts without projections. Parts can be
+    `part.result()` at its `out_selection` reproduces the whole view's
+    `result()`, with the same reader context on both execution paths. Parts can be
     resolved concurrently when the source and reader permit it.
     Derived parts retain the same reader object; a shared stateful reader owns
     synchronization for concurrent calls.
@@ -452,12 +453,12 @@ class Partition:
     view
         A `LazyArray` covering exactly the cells of the view that live in this
         box. Its transform directly addresses its raw wrapped `array`; only the
-        projection's `chunk_transform` is chunk-local. Resolving the view reads
-        the box once through its selected reader. Named `view` rather than
+        projection's `chunk_transform` is chunk-local. Use `Partition.result()` to read
+        with this partition's projection through the selected reader. Named `view` rather than
         `array` because `LazyArray.array` is the opposite thing — the raw
         wrapped source — and the two sat next to each other meaning inverses.
     out_selection
-        Where `view.result()` belongs in an array of the whole view's shape — a
+        Where `Partition.result()` belongs in an array of the whole view's shape — a
         NumPy index tuple with one entry per dimension of the view, usable
         directly as `out[part.out_selection] = ...`.
     is_complete
@@ -476,7 +477,7 @@ class Partition:
     >>> view = LazyArray.from_numpy(source).with_parts((2, 2))
     >>> out = np.empty(view.shape, dtype=view.dtype)
     >>> for part in view.parts():
-    ...     out[part.out_selection] = part.view.result()
+    ...     out[part.out_selection] = part.result()
     >>> bool((out == source).all())
     True
     """
@@ -496,6 +497,34 @@ class Partition:
     def is_complete(self) -> bool:
         """Whether the projection proves it covers the entire selected cell."""
         return self.projection.coverage == "full"
+
+    def result(self) -> Any:
+        """Materialize this partition with its existing projection.
+
+        Returns
+        -------
+        numpy.ndarray
+            The selected values in fresh system memory, with this part's view
+            shape and dtype. Assign the result at `out_selection` to assemble
+            the parent view. The reader receives the same global transform and
+            chunk projection as in parent materialization.
+
+        Notes
+        -----
+        This uses the part's reader and source without replanning. Backend
+        exceptions propagate unchanged. Concurrent calls require a source and
+        reader that support concurrent access.
+        """
+        # Share the view allocator so independent reads preserve masked-array output.
+        out = self.view._output_buffer(self.view.shape)  # pyright: ignore[reportPrivateUsage]
+        if math.prod(self.view.shape) != 0:
+            _invoke_reader(
+                self.view.reader,
+                self.view.array,
+                ReadContext(self.view.transform, self.projection),
+                out,
+            )
+        return out
 
 
 def _validate_prepared_parts(parts: Sequence[Partition], out_shape: tuple[int, ...]) -> None:
@@ -1011,8 +1040,8 @@ class LazyArray:
 
         Yields one [`Partition`][zarr_indexing.lazy_array.Partition] per box the
         view actually touches. The parts tile the view exactly and disjointly,
-        and each carries a `LazyArray` that can be resolved on its own: in
-        another thread, in another order, or not at all. Those views share this
+        and each can be resolved with `Partition.result()`: in another thread,
+        in another order, or not at all. Those views share this
         view's reader, and `LazyArray` does not serialize calls, so a stateful
         reader must synchronize its own mutable state.
 

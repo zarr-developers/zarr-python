@@ -51,7 +51,7 @@ advanced = LazyArray.from_numpy(image).with_parts((3, 4)).lazy.oindex[[4, 1, 1],
 ADVANCED_EXPECTED = image[[4, 1, 1]][:, 2:6]
 ADVANCED_RESULT = np.empty_like(ADVANCED_EXPECTED)
 for part in advanced.parts():
-    ADVANCED_RESULT[part.out_selection] = part.view.result()
+    ADVANCED_RESULT[part.out_selection] = part.result()
 
 np.testing.assert_array_equal(ADVANCED_RESULT, ADVANCED_EXPECTED)
 # --8<-- [end:advanced-projection]

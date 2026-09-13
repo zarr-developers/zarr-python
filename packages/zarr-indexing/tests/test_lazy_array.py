@@ -1266,10 +1266,12 @@ class ReturningReader:
         return np.empty(context.transform.domain.shape, dtype=source.dtype)
 
 
-def test_result_rejects_a_reader_that_returns_a_value() -> None:
+@pytest.mark.parametrize("independent", [False, True])
+def test_result_rejects_a_reader_that_returns_a_value(independent: bool) -> None:
     view = LazyArray(reference()).with_reader(ReturningReader())
+    target = next(view.parts()) if independent else view
     with pytest.raises(TypeError, match="must return None"):
-        view.result()
+        target.result()
 
 
 class BufferRecordingReader(RecordingReader):
@@ -1332,15 +1334,18 @@ def test_fancy_part_placement_uses_owned_dense_temporaries() -> None:
     assert any(reader.owns_data)
 
 
-def test_reader_exception_propagates_unchanged() -> None:
+@pytest.mark.parametrize("independent", [False, True])
+def test_reader_exception_propagates_unchanged(independent: bool) -> None:
     error = RuntimeError("backend failed")
 
     class FailingReader:
         def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
             raise error
 
+    view = LazyArray(reference()).with_reader(FailingReader())
+    target = next(view.parts()) if independent else view
     with pytest.raises(RuntimeError) as caught:
-        LazyArray(reference()).with_reader(FailingReader()).result()
+        target.result()
     assert caught.value is error
 
 

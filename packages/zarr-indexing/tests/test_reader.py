@@ -210,8 +210,46 @@ def test_successful_transform_contract_across_planning_readers_and_lazy_array(
         np.testing.assert_array_equal(out, expected_values)
 
     if lazy_selection is not None:
-        view = lazy_selection(LazyArray.from_numpy(source_data).with_parts(chunk_shape))
-        np.testing.assert_array_equal(view.result(), expected_values)
+        reader = ProjectionRequiredReader()
+        view = lazy_selection(
+            LazyArray.from_numpy(source_data).with_parts(chunk_shape).with_reader(reader)
+        )
+        parts = tuple(view.parts())
+        np.testing.assert_array_equal(view.result(parts=parts), expected_values)
+        parent_contexts = tuple(reader.contexts)
+        reader.contexts.clear()
+        assembled = np.empty(view.shape, dtype=view.dtype)
+        for part in reversed(parts):
+            values = part.result()
+            assert not np.shares_memory(values, source_data)
+            assert values.dtype == expected_values.dtype
+            assembled[part.out_selection] = values
+        np.testing.assert_array_equal(assembled, expected_values)
+        assert tuple(reversed(reader.contexts)) == parent_contexts
+
+
+class ProjectionRequiredReader:
+    """Read through chunk-local coordinates so losing the projection breaks execution."""
+
+    def __init__(self) -> None:
+        self.contexts: list[ReadContext] = []
+
+    def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
+        projection = context.projection
+        assert projection is not None
+        self.contexts.append(context)
+        for position, cell in zip(
+            np.ndindex(out.shape),
+            _domain_coordinates(projection.chunk_transform.domain),
+            strict=True,
+        ):
+            local = projection.chunk_transform.apply(cell)
+            global_position = tuple(
+                coord + origin
+                for coord, origin in zip(local, projection.chunk_domain.inclusive_min, strict=True)
+            )
+            assert context.transform.apply(position) == global_position
+            out[position] = source[global_position]
 
 
 def _domain_coordinates(domain: IndexDomain) -> list[tuple[int, ...]]:

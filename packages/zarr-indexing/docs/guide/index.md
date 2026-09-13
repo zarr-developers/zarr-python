@@ -390,8 +390,9 @@ Within one `Partition`, the frames divide: `Partition.view.transform` is a
 different, global transform — it maps the part view directly into the raw
 wrapped source — while only `Partition.projection.chunk_transform` uses
 zero-origin chunk-local coordinates. Parent assembly passes both frames to
-the reader. Direct `part.view.result()` calls supply the global transform
-with `projection=None`.
+the reader. Independently scheduled `part.result()` calls supply the same
+context. Calling `part.view.result()` instead resolves the view without the
+partition record, so its context has `projection=None`.
 
 | Projection field | What its output coordinates mean |
 | --- | --- |

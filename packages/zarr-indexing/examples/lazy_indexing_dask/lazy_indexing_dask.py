@@ -66,7 +66,7 @@ def test_parts_as_tasks(source: zarr.Array) -> None:
     # places the returned blocks sequentially.
     @dask.delayed
     def read(part: object) -> np.ndarray:
-        return part.view.result()
+        return part.result()
 
     blocks = dask.compute(*[read(part) for part in parts], scheduler="threads")
 
