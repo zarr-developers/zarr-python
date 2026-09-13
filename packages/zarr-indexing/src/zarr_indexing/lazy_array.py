@@ -871,9 +871,6 @@ class LazyArray:
         [`with_parts_per_axis`][zarr_indexing.lazy_array.LazyArray.with_parts_per_axis],
         and to read in one pass see
         [`unpartitioned`][zarr_indexing.lazy_array.LazyArray.unpartitioned].
-        The three were one parameter whose meaning was decided by inspecting the
-        type of what it was given, which left no way to ask for one of them and
-        be told when you had spelled it wrong.
 
         Parameters
         ----------

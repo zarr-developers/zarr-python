@@ -194,15 +194,12 @@ class ArrayMap:
     """Multiplier applied to each `index_array` value before `offset` is added."""
 
     def __post_init__(self) -> None:
-        """Own the index array and expose it read-only.
+        """Own an immutable snapshot of the integer index coordinates.
 
-        A map is frozen, but the array inside it was not: reaching through a
-        view's transform to `index_array[0] = 9` silently changed what the view
-        returned, in a package whose whole contract is that a view is a
-        description of a read and resolving it twice answers alike. Owning the
-        array also prevents the caller from changing the contents behind the
-        read-only view, which would invalidate this value object's hash.
-        """
+        The snapshot is backed by immutable bytes, so callers cannot modify it
+        or re-enable its WRITEABLE flag. Changes to the supplied array do not
+        change the map's coordinates or hash. This freezes the coordinate
+        mapping, not the source values read through it."""
         # Immutable bytes are the ultimate owner so callers cannot re-enable
         # the WRITEABLE flag, as they can on a read-only array that owns its
         # allocation. `asarray` also accepts the NumPy scalars that reach here
@@ -222,14 +219,10 @@ class ArrayMap:
         )
 
     def _with_affine(self, offset: int, stride: int) -> ArrayMap:
-        """This map's coordinates under a different affine adjustment.
+        """Return a map with a different affine adjustment.
 
-        The frozen index array is shared rather than copied: it is already
-        owned by immutable bytes and read-only, so the ownership invariant
-        `__post_init__` establishes holds for the new map too. Chunk
-        resolution translates every restricted map once per chunk, and
-        re-copying the array there dominated the cost of small selections.
-        """
+        Share the immutable index array while replacing the offset and stride.
+        This preserves coordinate ownership without copying the array."""
         new = object.__new__(ArrayMap)
         object.__setattr__(new, "index_array", self.index_array)
         object.__setattr__(new, "offset", offset)
@@ -237,14 +230,10 @@ class ArrayMap:
         return new
 
     def __eq__(self, other: object) -> bool:
-        """Value equality, comparing index arrays element-wise.
+        """Compare offset, stride, array shape, and index values.
 
-        The generated `__eq__` compares them with `==`, whose result for two
-        arrays is an array — so asking whether two maps are equal raised
-        `ValueError: the truth value of an array ... is ambiguous`. `frozen=True`
-        reads as a promise that a value can be compared and hashed, and this is
-        what makes good on it.
-        """
+        Return a scalar boolean for another ArrayMap and NotImplemented for
+        other types."""
         if not isinstance(other, ArrayMap):
             return NotImplemented
         return (
@@ -255,11 +244,10 @@ class ArrayMap:
         )
 
     def __hash__(self) -> int:
-        """Hashed by the array's contents, so equal maps hash alike.
+        """Hash the offset, stride, array shape, and index bytes.
 
-        The generated `__hash__` hashed the ndarray itself, which is unhashable;
-        a map could therefore not go in a set, or key a cache.
-        """
+        The immutable coordinate snapshot keeps the hash stable, and equal
+        maps have equal hashes."""
         return hash(
             (
                 self.offset,
