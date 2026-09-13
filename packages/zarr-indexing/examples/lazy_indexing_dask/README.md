@@ -7,11 +7,11 @@ ways of deferring an indexing operation.
 The example shows how to:
 
 - Pass a `LazyArray` — over a Zarr array or over a view of one — to
-  `dask.array.from_array`
+  `dask.array.from_array` with `name=False` to bypass source tokenization
 - Build one Dask task per partition from `parts()`, compute them in parallel, and
   place each result with the partition's `out_selection`
 - Read `is_complete` to inspect coverage of a partition cell
-- Inspect `__dask_tokenize__` for the example's equal source/selection pairs;
+- Inspect `__dask_tokenize__` for equal NumPy source/selection pairs;
   token equality can support task deduplication but does not promise persistent caching
 - Measure what a task graph costs for indexing-only work, against composing the
   same selections into one transform

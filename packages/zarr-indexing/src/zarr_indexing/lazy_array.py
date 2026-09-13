@@ -137,6 +137,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import mmap
 import operator
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -543,12 +544,12 @@ def _wrapped_token(array: Any) -> Any:
             "name=False to bypass content tokenization."
         )
         raise TypeError(msg)
-    base = array.base
-    while isinstance(base, np.ndarray):
-        if isinstance(base, np.memmap):
+    base: Any = array.base
+    while isinstance(base, (np.ndarray, memoryview, mmap.mmap)):
+        if isinstance(base, (np.memmap, mmap.mmap)):
             msg = "Memory-mapped sources require an explicit __dask_tokenize__ hook."
             raise TypeError(msg)
-        base = base.base
+        base = base.obj if isinstance(base, memoryview) else base.base
     return (
         "numpy.ndarray",
         array.shape,
@@ -1226,8 +1227,9 @@ class LazyArray:
 
         Plain NumPy arrays without object fields are hashed in full on each
         call, with time and temporary memory proportional to their byte size.
-        Memory-mapped arrays, subclasses, object arrays, and foreign sources
-        require an explicit source `__dask_tokenize__` hook; unsupported sources
+        Known NumPy/mmap backing is rejected through ndarray base and
+        memoryview object chains; arbitrary buffer provenance is not inferred.
+        Array subclasses, object arrays, and foreign sources require a source `__dask_tokenize__` hook; unsupported sources
         raise `TypeError`. Hooks own determinism, versioning, and any I/O, and
         hook exceptions propagate. Installing Dask does not change this policy.
 

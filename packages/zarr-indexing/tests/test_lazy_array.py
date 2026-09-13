@@ -2715,3 +2715,23 @@ def test_numpy_token_includes_shape_dtype_and_logical_contents(data: np.ndarray[
     assert token != LazyArray(data.reshape((*data.shape, 1))).__dask_tokenize__()
     if data.dtype.kind == "i":
         assert token != LazyArray(data.astype("f8")).__dask_tokenize__()
+
+
+@pytest.mark.parametrize("through_memoryview", [False, True])
+def test_token_rejects_mmap_buffer(tmp_path: Any, through_memoryview: bool) -> None:
+    import mmap
+
+    path = tmp_path / "mapped.bin"
+    path.write_bytes(bytes(16))
+    with path.open("r+b") as file:
+        mapped = mmap.mmap(file.fileno(), 16)
+        buffer = memoryview(mapped) if through_memoryview else mapped
+        data = np.frombuffer(buffer, dtype="i4")
+        try:
+            with pytest.raises(TypeError, match="__dask_tokenize__"):
+                LazyArray(data).__dask_tokenize__()
+        finally:
+            del data
+            if isinstance(buffer, memoryview):
+                buffer.release()
+            mapped.close()

@@ -254,8 +254,10 @@ tokens; changes to numeric contents are visible on the next tokenization call.
 
 Other sources must define an explicit `__dask_tokenize__` hook. This includes
 object arrays (also structured object fields), array subclasses, memory-mapped
-arrays, and remote arrays. The wrapper does not convert or serialize those
-sources to discover their values. Unsupported sources raise `TypeError`, and
+arrays, and remote arrays. Known `numpy.memmap` and `mmap.mmap` backing is
+rejected through ndarray base and memoryview object chains. Arbitrary buffer
+provenance cannot be inferred from a plain ndarray. The wrapper does not
+convert or serialize unsupported sources to discover their values. Unsupported sources raise `TypeError`, and
 exceptions from explicit hooks propagate. Installing Dask does not change this
 policy. A hook must describe the source's values or immutable version, and owns
 its determinism and any I/O it performs.
