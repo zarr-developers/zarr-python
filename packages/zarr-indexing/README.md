@@ -35,7 +35,7 @@ Key types:
 The base package depends on NumPy and the standard library; its optional testing
 module also requires Hypothesis. The package does not import `zarr`. It is developed
 in the [zarr-python](https://github.com/zarr-developers/zarr-python) repository,
-and its integration tests exercise Zarr chunk grids. Installing it does not
+and its examples include reading Zarr arrays through Dask. Installing it does not
 replace Zarr's indexing implementation.
 
 ## Installation

@@ -5,10 +5,9 @@
 default:
     @just --list
 
-# Nothing here imports `zarr`; the suite runs against the repo-root
-# environment so it shares the parent project's pinned test toolchain
-# (hypothesis, ruff, pyright). The repo is not a uv workspace, so this package
-# is layered in as an editable overlay — the same invocation CI uses.
+# The suite runs against the root test environment, which also supplies
+# Zarr for the Dask example. This package is layered in as an editable
+# overlay, using the same test invocation as CI.
 # Run the test suite; extra args are passed to pytest
 test *args:
     uv run --project ../.. --group test --with-editable . python -m pytest tests src/zarr_indexing {{ args }}

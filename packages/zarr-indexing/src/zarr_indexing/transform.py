@@ -1241,7 +1241,7 @@ def _intersect_general(
 
     # Scatter bookkeeping with row-major input-domain strides. Broadcast
     # coordinates below are positional; residual coordinates remain literal.
-    # `_correlated_cell_transform` removes their origins before unraveling.
+    # These are not uniformly zero-origin flat indices for nonzero domains.
     #
     # Each surviving point is a flat index into the broadcast block; unravel it
     # to per-axis coordinates so the buffer stride of each broadcast axis is

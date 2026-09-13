@@ -1,1 +1,1 @@
-Validate signed and unsigned positional indices before conversion, reject invalid wire index-array values and unrepresentable normalized bounds/ranks, and raise an explicit error for unsupported intersections sharing an affine and lookup input axis instead of returning incorrect coordinates.
+Reject invalid wire index-array values and unrepresentable normalized bounds/ranks, and raise an explicit error for unsupported intersections sharing an affine and lookup input axis instead of returning incorrect coordinates.

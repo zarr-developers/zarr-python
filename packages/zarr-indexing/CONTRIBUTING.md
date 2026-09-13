@@ -15,9 +15,9 @@ just docs-serve  # serve the docs site locally
 Run them from this directory, or from the repository root as
 `just packages/zarr-indexing/<recipe>`.
 
-The test recipe runs against the workspace-root environment, because the
-chunk-resolution tests exercise this package against `zarr`'s chunk grids and
-`zarr` is deliberately not a dependency of this package.
+The test recipe layers this package into the repository-root environment.
+Chunk-resolution tests use this package’s own grids; the Dask example also
+uses `zarr`, which is not a dependency of the base indexing package.
 
 ## License
 

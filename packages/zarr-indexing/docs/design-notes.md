@@ -48,9 +48,11 @@ about the deliberately matching semantics:
   components within a mixed request. Both derive the per-chunk transforms
   from the partition ([the guide](guide/index.md#a-plan-is-a-product-of-per-axis-tables)
   shows the tables). TensorStore keeps strided sets implicit, while this
-  library materializes their per-axis rows for vectorized consumers. Diagonals are rejected here; supporting them needs a strided set per
-  *input* dimension spanning every storage axis that reads it, TensorStore's
-  representation.
+  library materializes their per-axis rows for vectorized consumers. Pure
+  affine diagonals need grouping by input dimension; mixed affine/index-array
+  dependencies need joint partitioning. TensorStore classifies a connected
+  component containing index-array edges as an index-array set
+  ([source](https://github.com/google/tensorstore/blob/66b2ce5290fa2ec5c8019682391421062ce767a2/tensorstore/internal/grid_partition.h#L58-L67)).
 
 Four deliberate differences:
 
@@ -282,13 +284,11 @@ broadcast singletons to retain those dependencies.
 
 Some current limits are:
 
-- **Affine diagonals.** A hand-built transform in which two output maps read
-  one input dimension — two slice maps, or a slice map and an orthogonal index
-  array — is rejected at planning with `ValueError`; a correlated index array
-  varying over a dimension a slice map also reads is rejected with
-  `NotImplementedError`. No selection dialect produces either. Supporting them
-  needs a strided set per *input* dimension spanning all dependent storage
-  axes, TensorStore's connected-component representation.
+- **Shared affine dependencies.** Planning rejects two affine output maps
+  sharing an input axis with `ValueError`. An index array sharing a varying
+  input axis with an affine map takes the general classification and raises
+  `NotImplementedError`. Pure affine diagonals would need grouping dependent
+  storage axes by input dimension; mixed components need joint partitioning.
 - **Finite explicit bounds only.** `IndexDomain` has no implicit or unbounded
   dimensions; the message layer will normalize a body with `"-inf"`/`"+inf"`
   bounds, but the engine layer refuses to lower one into a transform.

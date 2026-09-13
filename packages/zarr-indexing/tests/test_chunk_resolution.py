@@ -782,7 +782,7 @@ def test_mixed_affine_array_dependency_is_rejected() -> None:
         IndexDomain.from_shape((4,)), (DimensionMap(0), ArrayMap(np.array([3, 2, 1, 0])))
     )
     grids = dimension_grids_from_chunks((2, 2), shape=(4, 4))
-    with pytest.raises(ValueError, match="read input axis 0"):
+    with pytest.raises(NotImplementedError, match="also bound by a slice map"):
         list(plan_chunks(transform, grids))
 
 
