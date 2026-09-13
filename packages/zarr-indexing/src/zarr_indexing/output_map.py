@@ -56,13 +56,10 @@ def _array_map_dependency_axes(index_array: np.ndarray[Any, Any]) -> tuple[int, 
     Normalized `ArrayMap` index arrays carry the full input rank of their
     enclosing transform: an axis the array varies over has its full size, while
     an axis the array is independent of is a singleton (size 1). The dependency
-    axes are therefore exactly the axes of size 2 or more. An orthogonal
-    (`oindex`) array depends on a single axis; a vectorized (`vindex`) array
-    depends on all of the (shared) broadcast axes.
-
-    A size-**0** axis carries no dependency either: the array has no values to
-    vary, so an empty selection stays the flavor it was made as rather than
-    reading as correlated with every other axis.
+    axes are therefore exactly the axes of size 2 or more. This is structural:
+    values are not inspected for constant or repeated coordinates. An array
+    with shape `(0, 2)` is empty but still reports axis 1; the zero-size axis
+    itself is not reported.
     """
     return tuple(axis for axis, size in enumerate(index_array.shape) if size > 1)
 
@@ -76,8 +73,9 @@ class ConstantMap:
 
     Examples
     --------
-    Every input cell maps to the same output coordinate — the NumPy analogy
-    is a broadcast (`np.broadcast_to(5, (3,))`), not an index:
+    Every input cell maps to the same output coordinate, like broadcasting
+    coordinate 5 with `np.broadcast_to(5, (3,))`. Repeated fancy indices can
+    also describe these coordinates, using an explicit list:
 
     >>> from zarr_indexing.domain import IndexDomain
     >>> from zarr_indexing.transform import IndexTransform
@@ -154,11 +152,11 @@ class ArrayMap:
     the result. Arises from fancy indexing (e.g., `arr[[5, 1, 1]]` or boolean
     masks).
 
-    Freshly constructed maps are normalized to the **full input rank** of their
-    enclosing transform: `index_array` has the enclosing domain's rank, sized
+    A map used in a transform must have its **full input rank**:
+    `index_array` has the enclosing domain's rank, sized
     fully on the axes it varies over and singleton (size 1) elsewhere. The
     shape is the single source of truth for what the map depends on — its
-    **dependency axes** are exactly its non-singleton axes (see
+    **dependency axes** are exactly its axes of size greater than one (see
     `_array_map_dependency_axes`) — and it distinguishes the two
     flavors of multi-array fancy indexing:
 
@@ -273,11 +271,12 @@ class ArrayMap:
 
     @property
     def dependency_axes(self) -> tuple[int, ...]:
-        """Every input axis this map varies over: its non-singleton axes.
+        """Structural dependency axes: axes of size greater than one.
 
-        One axis means orthogonal, several mean correlated, and none means
-        the map is degenerate — the shape is the single source of truth for
-        all three.
+        Axes of size greater than one are reported, regardless of coordinate
+        values or a zero-size axis elsewhere. Whether the whole transform is
+        orthogonal also depends on how other maps use these axes; a single
+        map's shape does not establish independence.
 
         Examples
         --------
@@ -302,7 +301,7 @@ class ArrayMap:
         -------
         int or None
             The axis the map varies over, or `None` when it varies over no input
-            axis at all — an empty map, or a hand-built all-singleton one. `None`
+            axis of size greater than one, such as an all-singleton map. `None`
             is a valid result, not an error; such maps resolve through the
             pointwise (general) path.
 
@@ -366,9 +365,9 @@ class ArrayMap:
 def output_index_map_from_json(data: OutputIndexMapJSON) -> OutputIndexMap:
     """Construct the output map a canonical wire form names.
 
-    The wire form is a tagged union — `index_array`, then `input_dimension`,
-    else constant — so loading it dispatches to the right kind here rather
-    than on any one of them.
+    The wire form is structurally discriminated: the presence of `index_array`
+    selects an array map, `input_dimension` selects a dimension map, and
+    neither selects a constant map.
 
     Examples
     --------

@@ -1274,3 +1274,15 @@ def test_index_array_structure_classifies_the_three_shapes() -> None:
         ),
     )
     assert diagonal.index_array_structure == "general"
+
+
+@pytest.mark.parametrize("array_first", [False, True])
+def test_intersect_rejects_array_and_affine_shared_input_axis(array_first: bool) -> None:
+    """Joint filtering of affine and lookup coordinates must not return extra cells."""
+    affine = DimensionMap(0)
+    lookup = ArrayMap(np.array([0, 3, 1, 2]))
+    output = (lookup, affine) if array_first else (affine, lookup)
+    transform = IndexTransform(IndexDomain.from_shape((4,)), output)
+    output_domain = IndexDomain((0, 1), (2, 4)) if array_first else IndexDomain((1, 0), (4, 2))
+    with pytest.raises(NotImplementedError, match="also bound by a slice map"):
+        transform.intersect(output_domain)

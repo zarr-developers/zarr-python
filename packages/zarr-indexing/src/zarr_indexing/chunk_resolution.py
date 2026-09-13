@@ -89,7 +89,9 @@ class ChunkProjection:
         Mapping from the shared synthetic domain to request coordinates.
     coverage
         Whether the request is proven to cover the whole grid cell exactly
-        once. Fancy selections are conservatively ``"unknown"``.
+        once. Projections retaining ArrayMaps or survivor arrays are
+        conservatively ``"unknown"``. A singleton fancy selection can simplify
+        to a ConstantMap and receive a proven ``"full"`` or ``"partial"`` result.
 
     Examples
     --------

@@ -139,10 +139,11 @@ class IndexDomain:
         )
 
     def contains_domain(self, other: IndexDomain) -> bool:
-        """Whether every coordinate of `other` lies inside this domain.
+        """Whether `other` has the same rank and bounds enclosed by this domain.
 
-        An empty `other` within this domain's bounds is contained. A rank
-        mismatch returns `False` rather than raising.
+        Empty domains are still checked by their bounds: an empty `other`
+        located outside this domain returns `False`, unlike empty-set
+        containment. A rank mismatch returns `False` rather than raising.
         """
         if other.ndim != self.ndim:
             return False

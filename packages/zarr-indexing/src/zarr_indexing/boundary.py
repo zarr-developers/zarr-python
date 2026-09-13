@@ -132,8 +132,8 @@ def _expanded_axis_walk(entries: tuple[Any, ...], ndim: int, mode: SelectionMode
     """The starting axis each entry addresses, with an ellipsis expanded.
 
     The returned list has one entry per element of `entries`; the value for an
-    `Ellipsis` (or a `newaxis`) is the axis it starts at, which is also the axis
-    the following entry resumes from once the skipped axes are accounted for.
+    `Ellipsis` (or a `newaxis`) is the axis it starts at. The following entry
+    advances past the ellipsis's skipped axes; a `newaxis` consumes no axis.
     """
     for sel in entries:
         if is_bool_scalar(sel):
