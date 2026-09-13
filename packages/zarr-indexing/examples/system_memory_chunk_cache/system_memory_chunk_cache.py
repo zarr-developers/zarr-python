@@ -329,7 +329,7 @@ class SystemMemoryChunkCache:
 
     def _read(self, key: Any, *, orthogonal: bool) -> np.ndarray[Any, Any]:
         self.reader.projection_uses.clear()
-        lazy = self._lazy.lazy
+        lazy = self._lazy
         view = lazy.oindex[key] if orthogonal else lazy[key]
         # One prepared tuple is the request plan: queue its chunks and defer
         # eviction during the request, then hand the

@@ -1,6 +1,6 @@
 # Visual guide
 
-The whole model in one sentence: indexing through `LazyArray.lazy` builds a
+The whole model in one sentence: indexing through `LazyArray` builds a
 view, chunk planning partitions its coordinates, and `result()` materializes
 the view. This page follows one familiar NumPy selection, `source[2:5]`,
 through those stages.
@@ -38,7 +38,7 @@ make the correspondence explicit: those result coordinates receive values
 `12`, `13`, and `14` from source coordinates `2`, `3`, and `4`.
 
 The wrapper below gives the same familiar selection a lazy spelling. Indexing
-through `.lazy` creates `view`; the last line asks for its values and checks the
+with `[...]` creates `view`; the last line asks for its values and checks the
 observable NumPy result.
 
 ```python
@@ -105,7 +105,7 @@ different questions:
 | Surface | Meaning of an integer index | Meaning of `-1` |
 | --- | --- | --- |
 | `IndexDomain` and `IndexTransform` | A literal coordinate in the current domain | The actual address `-1`, if the domain contains it |
-| `LazyArray.lazy` | A NumPy-style position in the current view | The last position, normalized before it reaches the transform algebra |
+| `LazyArray` | A NumPy-style position in the current view | The last position, normalized before it reaches the transform algebra |
 
 `LazyArray` uses positions because it is an array-like wrapper: each derived
 view starts at position zero and negative indices wrap exactly as they do in
@@ -216,11 +216,10 @@ description; the assertion's call to `result()` is the first operation in the
 example that materializes the selected data.
 
 !!! warning "Stop here: the materialization boundary"
-    Indexing through `.lazy[...]` composes a selection without reading source values.
+    Indexing through `[...]` composes a selection without reading source values.
     These operations request values:
 
     - `result()`
-    - eager indexing of the wrapper: `view[...]`
     - `numpy.asarray(view)` and NumPy operations that convert the view
       (`numpy.add(view, 1)` does so; `numpy.shape(view)` and `numpy.ndim(view)`
       can use metadata without reading values)
@@ -231,11 +230,14 @@ example that materializes the selected data.
     Python arithmetic such as `view + 1` raises `TypeError` instead: this
     wrapper defers indexing, not a general compute graph.
 
-    Nor does it write. There is no `__setitem__`, so `view[...] = values`
-    raises `TypeError` too, and a wrapped source needs no `__setitem__` of
-    its own. A consumer that writes plans the selection with `plan_chunks`
-    and performs its own read-modify-write, keeping chunk atomicity and
-    concurrent-writer policy on the backend's side of the boundary.
+    Iteration yields lazy first-axis views; call `result()` on each to read it.
+
+    `view.write(values)` writes through the composed transform to the original
+    writable source, synchronously, and returns `None`. `view[key] = values`
+    writes the selected sub-view in the same way. These calls do not create
+    futures or transactions. Read-only sources remain usable for reads;
+    writes require source assignment support. Storage atomicity and concurrent
+    writer coordination remain the backend's responsibility.
 
 ## An index defines a result array {#an-index-defines-a-result-array}
 
@@ -407,7 +409,7 @@ rank one and source rank two.
 
 ### Order and duplicates need the request-side projection
 
-Orthogonal indexing (`.lazy.oindex`) applies each axis's indexer
+Orthogonal indexing (`.oindex`) applies each axis's indexer
 independently, like `numpy.ix_` — an outer product; the
 [pattern reference](patterns.md) develops the dialects. It can visit source
 cells in an order that does not match chunk order, and it can visit one

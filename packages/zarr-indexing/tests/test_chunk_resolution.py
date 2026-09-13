@@ -943,7 +943,7 @@ def test_independent_components_scatter_through_lazy_array(reader_kind: str) -> 
     b = np.array([5, 1, 3])[:, None]
     c = np.array([6, 0, 6, 2])[None, :]
     wrapped = LazyArray.from_numpy(source) if reader_kind == "numpy" else LazyArray(source)
-    view = wrapped.with_parts((2, 3, 2, 2)).lazy.vindex[a, b, c, ...]
+    view = wrapped.with_parts((2, 3, 2, 2)).vindex[a, b, c, ...]
     assert (
         len(
             plan_chunks(view.transform, dimension_grids_from_chunks((2, 3, 2, 2), source.shape))

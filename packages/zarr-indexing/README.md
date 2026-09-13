@@ -11,8 +11,8 @@ materializes them on request; the transform algebra itself performs no source I/
 
 Key types:
 
-- `LazyArray` — wraps a system-memory/basic-indexing source and adds a `.lazy`
-  accessor: `LazyArray.from_numpy(numpy_array).lazy[10:50, ::2].lazy.oindex[[3, 1, 1], :]`
+- `LazyArray` — wraps a system-memory/basic-indexing source with lazy indexing:
+  `LazyArray.from_numpy(numpy_array)[10:50, ::2].oindex[[3, 1, 1], :]`
   composes a transform and returns a new view without reading data, and
   `result()` materializes it into owned system memory. `LazyArray(source)` uses
   the basic reader; `from_numpy` selects `numpy_reader`, which currently uses

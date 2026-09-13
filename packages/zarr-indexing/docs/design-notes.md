@@ -157,13 +157,13 @@ arr = zarr.create_array({}, shape=(100, 80), chunks=(30, 40), dtype="int32")
 arr[:] = np.arange(8000).reshape(100, 80)
 lazy = LazyArray(arr)
 
-slab = lazy.lazy[10:50, ::4]
+slab = lazy[10:50, ::4]
 slab.is_box            # True
 slab.bounding_box()    # ((10, 50), (0, 77))
 slab.strides()         # (1, 4)
 slab.shape             # (40, 20)
 
-gather = lazy.lazy.oindex[[90, 3, 3], :]
+gather = lazy.oindex[[90, 3, 3], :]
 gather.is_box          # False
 gather.bounding_box()  # ((3, 91), (0, 80))
 gather.strides()       # None
@@ -270,7 +270,7 @@ explicitly with `translate_domain_to` for NumPy-shaped coordinates.
 Supported fancy selections compose across already-fancy views: a second `oindex`/`vindex`/mask
 step may land on any axis of an already-fancy view, including axes an existing
 index array merely broadcasts along, so
-`lazy.oindex[[2, 0], :].lazy.oindex[:, [1, 3]]` selects the outer product it
+`lazy.oindex[[2, 0], :].oindex[:, [1, 3]]` selects the outer product it
 spells. An array-carrying transform is composed — the new selection is applied
 to an identity transform over the current domain and chained on with `compose`,
 which evaluates the existing lookup tables at the new coordinates — rather than

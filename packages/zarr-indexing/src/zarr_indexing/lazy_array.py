@@ -2,18 +2,18 @@
 
 `LazyArray` wraps a source with `shape`, `dtype`, and basic integer/slice
 `__getitem__`, whose reads can be lowered through NumPy system memory. It adds
-a `.lazy` accessor whose indexing operations build up an
+indexing operations that build up an
 [`IndexTransform`](transform.md) instead of reading data:
 
 ```python
-view = LazyArray(source).lazy[10:50, ::2].lazy.oindex[[3, 1, 1], :]
+view = LazyArray(source)[10:50, ::2].oindex[[3, 1, 1], :]
 view.shape          # known without touching the data
 values = view.result()
 ```
 
 Selection construction does not read source values: `result()`, `__array__`,
-and eager `__getitem__` perform reads. Source tokenization is delegated to
-Dask and may inspect source values. `.lazy` operations inspect
+and scalar conversions perform reads. Source tokenization is delegated to
+Dask and may inspect source values. Indexing operations inspect
 selection metadata and may copy or process supplied index arrays. Composition
 does not accumulate wrapper layers: a view of a view is still a single transform
 and retains its reader.
@@ -122,9 +122,9 @@ Python's arithmetic *operators* do not: `view + 1` raises `TypeError`, because
 the wrapper defines no arithmetic dunders and an `int` has nothing to dispatch
 to. Both facts follow from the same intent — laziness here applies to indexing,
 not to building a deferred compute graph — and a `LazyArray` is not a drop-in
-for arithmetic on a large array either way. Use `.lazy[...]` to narrow the view
-first, or pass the wrapper to `dask.array.from_array` so that dask owns the
-compute graph.
+for arithmetic on a large array either way. Use `[...]` to narrow the view
+first, or pass `EagerArrayAdapter(view)` to `dask.array.from_array` so that
+Dask owns the compute graph.
 
 Ownership
 ---------
@@ -530,7 +530,7 @@ class LazyArray:
     """A lazily-indexable view over a system-memory/basic-indexing source.
 
     Wrapping neither copies nor reads the wrapped array at construction time.
-    Indexing through `.lazy` composes an `IndexTransform` and returns another
+    Indexing composes an `IndexTransform` and returns another
     `LazyArray`; `result()` materializes.
 
     Selections use the **positional NumPy dialect** and reads are broken up
@@ -540,12 +540,9 @@ class LazyArray:
     dialect differs from low-level literal transforms and which NumPy operations
     materialize the view.
 
-    This wrapper describes **reads**. It defines no `__setitem__`, so
-    assigning into a view raises `TypeError`. Writing belongs to the
-    consumer: plan the selection with
-    [`plan_chunks`][zarr_indexing.chunk_resolution.plan_chunks] and own the
-    read-modify-write, since chunk atomicity and concurrent-writer policy are
-    the backend's to decide, not an indexing plan's.
+    Selection is lazy; `result()` reads and `write(values)` writes synchronously.
+    Assignment is shorthand for selecting a view and calling its `write` method.
+    The source owns storage errors and concurrency; writes are not transactional.
 
     Parameters
     ----------
@@ -562,7 +559,7 @@ class LazyArray:
     --------
     >>> import numpy as np
     >>> source = np.arange(12).reshape(3, 4)
-    >>> view = LazyArray.from_numpy(source).with_parts((2, 2)).lazy[1:, ::2]
+    >>> view = LazyArray.from_numpy(source).with_parts((2, 2))[1:, ::2]
     >>> view.shape
     (2, 2)
     >>> view.result()
@@ -705,7 +702,7 @@ class LazyArray:
         --------
         >>> import numpy as np
         >>> array = LazyArray.from_numpy(np.arange(12).reshape(3, 4))
-        >>> (array.lazy[1:, ::2].is_box, array.lazy.oindex[[2, 0], :].is_box)
+        >>> (array[1:, ::2].is_box, array.oindex[[2, 0], :].is_box)
         (True, False)
         """
         return not any(isinstance(m, ArrayMap) for m in self._transform.output)
@@ -741,11 +738,11 @@ class LazyArray:
         --------
         >>> import numpy as np
         >>> array = LazyArray.from_numpy(np.arange(12).reshape(3, 4))
-        >>> array.lazy[1:, ::2].bounding_box()
+        >>> array[1:, ::2].bounding_box()
         ((1, 3), (0, 3))
-        >>> array.lazy.oindex[[2, 0], :].bounding_box()
+        >>> array.oindex[[2, 0], :].bounding_box()
         ((0, 3), (0, 4))
-        >>> array.lazy[1:1].bounding_box() is None
+        >>> array[1:1].bounding_box() is None
         True
         """
         if self.size == 0:
@@ -798,11 +795,11 @@ class LazyArray:
         --------
         >>> import numpy as np
         >>> array = LazyArray.from_numpy(np.arange(24).reshape(4, 6))
-        >>> (array.lazy[1:, ::2].bounding_box(), array.lazy[1:, ::2].strides())
+        >>> (array[1:, ::2].bounding_box(), array[1:, ::2].strides())
         (((1, 4), (0, 5)), (1, 2))
-        >>> array.lazy[2, ::3].strides()
+        >>> array[2, ::3].strides()
         (1, 3)
-        >>> array.lazy.oindex[[2, 0], :].strides() is None
+        >>> array.oindex[[2, 0], :].strides() is None
         True
         """
         if not self.is_box:
@@ -951,7 +948,7 @@ class LazyArray:
         --------
         >>> import numpy as np
         >>> view = LazyArray.from_numpy(np.arange(12).reshape(3, 4)).with_parts((2, 2))
-        >>> part = next(view.lazy[:, 1:].parts())
+        >>> part = next(view[:, 1:].parts())
         >>> (part.base_coords, part.view.shape, part.is_complete)
         ((0, 0), (2, 1), False)
         """
@@ -974,12 +971,14 @@ class LazyArray:
     # -- indexing -----------------------------------------------------------
 
     @property
-    def lazy(self) -> _LazyIndexer:
-        """Lazy indexing: `lazy[...]`, `lazy.oindex[...]`, `lazy.vindex[...]`.
+    def oindex(self) -> _LazyOIndex:
+        """Build a view using orthogonal (outer-product) indexing."""
+        return _LazyOIndex(self._select)
 
-        Each returns a new `LazyArray` view; no data is read.
-        """
-        return _LazyIndexer(self._select)
+    @property
+    def vindex(self) -> _LazyVIndex:
+        """Build a view using vectorized coordinate or mask indexing."""
+        return _LazyVIndex(self._select)
 
     def _select(self, selection: Any, mode: SelectionMode) -> LazyArray:
         transform = self._transform
@@ -1000,14 +999,30 @@ class LazyArray:
             composed = transform.select(literal, mode)
         return LazyArray._derive(self._array, composed, self._parts, self._reader)
 
-    def __getitem__(self, selection: Any) -> Any:
-        """Read a basic selection eagerly, like `numpy.ndarray.__getitem__`.
+    def __getitem__(self, selection: Any) -> LazyArray:
+        """Build a basic integer/slice view without reading source values."""
+        return self._select(selection, "basic")
 
-        Reads here are eager, not lazy, so that a `LazyArray` works as a duck
-        array for consumers (dask's `from_array`, `numpy.asarray`) that expect
-        indexing to produce data. Use `.lazy[...]` for the lazy form.
+    def __setitem__(self, selection: Any, values: Any) -> None:
+        """Select a basic view and synchronously write its values."""
+        self[selection].write(values)
+
+    def write(self, values: Any) -> None:
+        """Synchronously write broadcastable values through this view.
+
+        The source must support integer/slice assignment. Values are copied
+        before mutation, including when they alias the source. Writes follow
+        C-order view coordinates; the last occurrence wins for repeated source
+        coordinates. Partitioning and the read adapter do not affect writes.
+
+        Affine selections use a basic assignment where possible; other views
+        use one scalar assignment per selected element. Backend errors propagate
+        and may leave a partially written source. This method does not provide
+        transactions, concurrency control, or asynchronous execution.
         """
-        return self._select(selection, "basic").result()
+        from zarr_indexing.writer import write_into
+
+        write_into(self._array, self._transform, values)
 
     def result(self, *, parts: Sequence[Partition] | None = None) -> Any:
         """Materialize this view.
@@ -1162,8 +1177,8 @@ class LazyArray:
             raise TypeError("len() of unsized object")
         return self.shape[0]
 
-    def __iter__(self) -> Iterator[Any]:
-        """Iterate eagerly over the first axis, like a NumPy array.
+    def __iter__(self) -> Iterator[LazyArray]:
+        """Iterate over lazy first-axis views without reading source values.
 
         The rank check happens in `__iter__` itself rather than in the
         generator, so `iter(view)` on a zero-rank view raises immediately as
@@ -1196,35 +1211,8 @@ class LazyArray:
         return f"<LazyArray {' '.join(described)}>"
 
 
-class _LazyIndexer:
-    """The `.lazy` accessor: builds views instead of reading data.
-
-    Holds the owning view's bound `_select` rather than the view itself, so the
-    accessor classes never reach into another object's internals.
-    """
-
-    __slots__ = ("_select",)
-
-    def __init__(self, select: SelectFn) -> None:
-        self._select = select
-
-    def __getitem__(self, selection: Any) -> LazyArray:
-        """Basic (integer / slice / ellipsis) indexing, lazily."""
-        return self._select(selection, "basic")
-
-    @property
-    def oindex(self) -> _LazyOIndex:
-        """Orthogonal (outer-product) indexing, lazily."""
-        return _LazyOIndex(self._select)
-
-    @property
-    def vindex(self) -> _LazyVIndex:
-        """Vectorized (coordinate / mask) indexing, lazily."""
-        return _LazyVIndex(self._select)
-
-
 class _LazyOIndex:
-    """`lazy.oindex[...]` — one selection per axis, combined as an outer product."""
+    """`view.oindex[...]` — one selection per axis, combined as an outer product."""
 
     __slots__ = ("_select",)
 
@@ -1234,9 +1222,12 @@ class _LazyOIndex:
     def __getitem__(self, selection: Any) -> LazyArray:
         return self._select(selection, "orthogonal")
 
+    def __setitem__(self, selection: Any, values: Any) -> None:
+        self[selection].write(values)
+
 
 class _LazyVIndex:
-    """`lazy.vindex[...]` — correlated coordinate arrays, or a single mask."""
+    """`view.vindex[...]` — correlated coordinate arrays, or a single mask."""
 
     __slots__ = ("_select",)
 
@@ -1245,3 +1236,6 @@ class _LazyVIndex:
 
     def __getitem__(self, selection: Any) -> LazyArray:
         return self._select(selection, "vectorized")
+
+    def __setitem__(self, selection: Any, values: Any) -> None:
+        self[selection].write(values)
