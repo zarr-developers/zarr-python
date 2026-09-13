@@ -1,7 +1,8 @@
 """Resolve a `SelectionRequest` against a zarrista array.
 
-Reads go through `zarr_indexing.LazyArray`, which grafts the whole NumPy
-indexing dialect onto a backend that natively offers only step-1 boxes.
+Reads go through `zarr_indexing.LazyArray`, which resolves the engine's supported
+selections over a backend that natively offers only step-1 boxes. Request
+normalization and indexing-planner limits still apply.
 
 Writes have no `LazyArray` equivalent — it describes reads only — so they are
 resolved here, in two tiers:

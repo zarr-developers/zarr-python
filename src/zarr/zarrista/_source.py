@@ -6,9 +6,10 @@ step-1 slices, and `Ellipsis`, ndim-preserving. That is precisely the contract
 smallest enclosing ascending unit-step slab plus a residual applied in memory —
 so the two compose with no translation beyond `shape`/`dtype` plumbing.
 
-Wrapping the array this way is what gives the engine the full NumPy dialect
-(orthogonal, vectorized, masks, negative steps, composition) over a backend
-that natively offers only boxes.
+Wrapping the array this way lets the engine resolve supported orthogonal,
+coordinate, mask, and strided selections through the indexing planner over a
+backend that natively offers only boxes. The engine's request normalization and
+planner limits still apply; this is not a claim of full NumPy indexing support.
 """
 
 from __future__ import annotations
@@ -36,15 +37,15 @@ def tensor_to_numpy(decoded: Any) -> npt.NDArray[Any]:
 
     `zarrista.Tensor` is a union of four layouts. `FixedLengthTensor` and
     `VariableLengthTensor` both export via `to_numpy()`. The two `Optional*`
-    layouts carry a validity mask and convert to `numpy.ma.MaskedArray`, which
-    has no zarr-python equivalent, so they are refused rather than silently
-    losing the mask.
+    layouts carry a validity mask and convert to `numpy.ma.MaskedArray`. This
+    engine does not currently support preserving those validity masks, so it
+    refuses these layouts rather than silently losing the mask.
     """
     type_name = type(decoded).__name__
     if type_name in ("OptionalFixedLengthTensor", "OptionalVariableLengthTensor"):
         raise NotImplementedError(
-            f"zarrista returned a {type_name}; masked layouts have no zarr-python "
-            "equivalent, so this array cannot be served by the zarrista engine"
+            f"zarrista returned a {type_name}; preserving validity masks is not "
+            "supported by the zarrista engine"
         )
     return cast("npt.NDArray[Any]", decoded.to_numpy())
 
