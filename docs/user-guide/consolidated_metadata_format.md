@@ -7,6 +7,12 @@ with Zarr-Python, and for people who need to know exactly what Zarr-Python
 puts on disk. For an introduction to *using* consolidated metadata from
 Python, see [Consolidated metadata](consolidated_metadata.md).
 
+This is an implementation reference and interoperability guidance, not an
+adopted Zarr specification. The quoted proposal is identified separately from
+Zarr-Python behavior. Writer recommendations below express this document's
+interoperability guidance; they do not imply that the Zarr specification has
+adopted those requirements.
+
 The key words "MUST", "MUST NOT", "SHOULD", "SHOULD NOT", and "MAY" in this
 document are to be interpreted as described in
 [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
