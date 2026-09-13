@@ -387,12 +387,9 @@ def test_builtin_readers_share_transform_affine_overflow(reader_name: str) -> No
 
 
 def test_empty_domain_composed_fancy_transform_reads_as_empty() -> None:
-    """An ArrayMap composed over an empty domain resolves like any other map.
+    """An empty composed domain reads as empty for every built-in reader.
 
-    The composed map is legitimately empty along the vanished axis; the
-    resolvers used to fail reshaping it instead of noticing that an empty
-    domain selects nothing.
-    """
+    Empty index arrays are valid when the domain selects no elements."""
     source_data = np.arange(6).reshape(2, 3)
     view = LazyArray.from_numpy(source_data).lazy.oindex[slice(0, 0), np.array([2, 1, 2, 0])]
     transform = view.lazy.oindex[slice(None), np.array([1, 3, 1])].transform

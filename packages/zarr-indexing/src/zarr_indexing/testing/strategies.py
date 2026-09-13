@@ -70,16 +70,11 @@ def _basic_entry(size: int) -> st.SearchStrategy[Any]:
 
 
 def _orthogonal_entry(size: int) -> st.SearchStrategy[Any]:
-    """One axis of an `oindex` selection.
+    """Generate one axis of an orthogonal selection.
 
-    The slices carry a step and are free to stop early. Drawing them as
-    `slice(start, size)` alone meant no strided or reversed slice ever reached
-    `oindex`, and no orthogonal selection ever stopped short of the axis end.
-
-    An empty coordinate list is drawn too. It selects nothing, which is legal
-    and is exactly the shape that lost its axis on the way through JSON — but
-    with `min_size=1` no fancy selection was ever empty.
-    """
+    Include scalar coordinates, coordinate lists, boolean masks, and slices
+    with positive or negative steps and varying endpoints. Empty coordinate
+    lists and all-False masks exercise selections with zero-length axes."""
     coordinate = st.integers(-size, size - 1)
     return st.one_of(
         coordinate,
@@ -119,13 +114,10 @@ def masks(draw: st.DrawFn, shape: tuple[int, ...]) -> np.ndarray[Any, np.dtype[n
 
 
 def empty_masks(shape: tuple[int, ...]) -> st.SearchStrategy[np.ndarray[Any, np.dtype[np.bool_]]]:
-    """The all-False mask over `shape` — a fancy selection that empties the view.
+    """Generate an all-False mask with the given shape.
 
-    Split out from `masks`, which forces a cell True so a chain has something
-    left to index at the next step. Drawn on its own because an empty fancy
-    selection is a shape the code paths treat separately, and nothing generated
-    one.
-    """
+    This selects no elements. Unlike masks(), which includes a True cell,
+    this strategy exercises empty fancy selections."""
     return st.just(np.zeros(shape, dtype=np.bool_))
 
 
