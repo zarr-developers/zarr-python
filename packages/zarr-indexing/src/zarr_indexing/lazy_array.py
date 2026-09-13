@@ -1197,7 +1197,7 @@ class LazyArray:
             # back process memory dressed as data. The parts are disjoint by
             # contract, so counting the cells each addresses is enough:
             # a gap alone undercounts and an overlap alone overcounts. This
-            # count cannot detect a compensating gap and overlap; disjointness
+            # count cannot detect a compensating gap and overlap; absence of overlap
             # still relies on the planner contract.
             if prepared_parts is not None:
                 raise ValueError(

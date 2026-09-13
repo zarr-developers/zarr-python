@@ -91,9 +91,8 @@ the dense box becomes exactly one backend call. Both regimes go through
 For affine selections, `basic_reader` uses positive-step slices and applies
 reversal or layout changes in memory. Fancy selections can require reading a
 cover containing unselected values. The source must accept the emitted steps.
-For a source that accepts only unit steps, use `slice(start, stop, 1)` with
-[`unit_step_reader`][zarr_indexing.reader.UnitStepReader] for such a source
-and every key it receives is an ascending unit-step slice per axis, with
+Use [`unit_step_reader`][zarr_indexing.reader.UnitStepReader] for a source that
+accepts only unit steps. Every key it receives is an ascending unit-step slice per axis, with
 strides, reversals, and gathers applied to the in-memory block instead:
 
 ```python
@@ -206,13 +205,12 @@ decoded chunks. Every read delta follows directly from the viewport request:
 | 4 | `image[1:5, 2]` | `(0, 0)` | `(0, 0)`, `(1, 0)` | The evicted chunk is reloaded while the required ready chunk is retained. |
 | 5 | `image[3:5, 4:6]` | `(1, 1)` fails; no repeated read; `(1, 1)` succeeds after retry | `(0, 0)`, `(1, 1)` | Failure is retained until explicit retry; the repaired source then returns `[[28, 29], [36, 37]]`. |
 
-Chunks required by an active request are pinned through assembly, so a request
-may temporarily span more chunks than the steady-state capacity. Capacity is
-counted in decoded chunks—not records or bytes—and eviction occurs only after
-all requested values have been placed. Because pinning and materialization use
-the same prepared tuple, those lifecycle decisions cannot drift from the parts
-that are actually read, and the cache never has to infer or reconstruct a
-projection.
+The example defers eviction until a successful outermost request finishes, so
+it can temporarily exceed capacity during assembly. Capacity counts decoded
+chunks, not bytes, event records, or temporary arrays. Failed requests skip
+that eviction step. The example assumes an unchanged source and one source/grid
+per reader; it does not implement invalidation or synchronization for concurrent
+requests. The prepared tuple supplies the projections used for each read.
 
 The event log makes the failure boundary equally explicit:
 

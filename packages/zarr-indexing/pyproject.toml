@@ -100,8 +100,8 @@ target-version = "py312"
 
 [tool.ruff.lint.per-file-ignores]
 # Chunk discovery and __dask_tokenize__ deliberately catch Exception: a
-# foreign source's attributes may fail arbitrarily and discovery must degrade
-# to "no information"; a token call must never raise. Configured here (not as
+# foreign source's attributes or token hooks may fail, so these paths provide
+# fallback metadata or tokens when ordinary exceptions occur. Configured here (not as
 # noqa comments) because different ruff versions
 # have differed on whether these rules fire; RUF100 can remove unused noqa comments.
 "src/zarr_indexing/lazy_array.py" = ["BLE001", "S110"]
@@ -133,13 +133,8 @@ include = [
 enableExperimentalFeatures = true
 typeCheckingMode = "strict"
 pythonVersion = "3.12"
-# This strict config was written for zarr-metadata's JSON/dataclass-shaped
-# code. zarr-indexing is numpy-heavy, and numpy's stubs return partially
-# unknown types (e.g. `ndarray[Unknown, Unknown]`, `dtype[Unknown]`) even for
-# fully-typed call sites, so the reportUnknown* family below cannot reasonably
-# be satisfied here. Downgraded to warnings (not silenced) rather than
-# disabled outright, and CI (which only fails the pyright job on errors, not
-# warnings) still surfaces them for visibility.
+# Partially unknown types from NumPy stubs are reported as warnings. CI's
+# pyright invocation fails on errors, while retaining these warnings in its output.
 reportUnknownVariableType = "warning"
 reportUnknownArgumentType = "warning"
 reportUnknownMemberType = "warning"

@@ -16,7 +16,7 @@ visual guide owns the mechanics of
 ## Relationship to TensorStore
 
 The core is [TensorStore's](https://google.github.io/tensorstore/index_space.html)
-index-transform model, reimplemented in Python against NumPy. The visual guide
+index-transform model, implemented here in Python against NumPy. The visual guide
 introduces the shared model in
 [Coordinates are addresses](guide/index.md#coordinates-are-addresses) and
 [Lazy views compose](guide/index.md#lazy-views-compose); the comparison here is
