@@ -363,8 +363,8 @@ def test_padded_structured_dtype_warns_and_preserves_values(
 
 def test_titled_structured_dtype_raises() -> None:
     """
-    A structured dtype with a field title must be rejected. NumPy's `fields` mapping lists the
-    title as an extra key, so a titled field used to be read back as two separate fields.
+    The current conversion rejects titles rather than treating their aliases as extra fields.
+    NumPy's `fields` mapping lists a string title as an extra key.
     """
     dtype = np.dtype([(("title", "f0"), "i4"), ("g", "f8")])
     with pytest.raises(ValueError, match="field 'f0' has a title"):
@@ -373,8 +373,8 @@ def test_titled_structured_dtype_raises() -> None:
 
 def test_subarray_structured_dtype_raises() -> None:
     """
-    A structured dtype with a subarray field must be rejected. The subarray dtype used to be
-    resolved as raw bytes, silently dropping its shape and element type.
+    The current conversion rejects subarrays rather than resolving them as raw bytes and
+    dropping their shape and element type. V2's support for subarray metadata is separate.
     """
     dtype = np.dtype([("f0", "i4", (2,))])
     with pytest.raises(ValueError, match="field 'f0' is a subarray"):

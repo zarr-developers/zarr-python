@@ -129,11 +129,11 @@ def _struct_zdtypes(
 
 def zdtypes(*, max_leaves: int = 6) -> SearchStrategy[ZDType[Any, Any]]:
     """
-    A strategy for instances of every registered `ZDType` class, including `Struct` with
-    arbitrarily nested fields.
+    Generate instances of the built-in registered `ZDType` classes, including nested `Struct`.
 
-    Struct fields are restricted to fixed-size data types, since the Zarr struct data type cannot
-    hold variable-length fields.
+    Struct fields are restricted to fixed-size data types, as required by the V3 `struct`
+    extension. This strategy samples bounded lengths and normalized datetime units/scales;
+    it does not cover every valid instance or arbitrary third-party dtype constructors.
     """
     leaf_classes = [cls for cls in data_type_registry.contents.values() if cls is not Struct]
     leaves = st.one_of([_leaf_zdtypes(cls) for cls in leaf_classes])
@@ -148,17 +148,16 @@ def zdtypes(*, max_leaves: int = 6) -> SearchStrategy[ZDType[Any, Any]]:
 
 @st.composite
 def structured_dtypes(
-    draw: st.DrawFn, *, allow_unrepresentable: bool = False, max_depth: int = 3
+    draw: st.DrawFn, *, allow_extended: bool = False, max_depth: int = 3
 ) -> np.dtype[np.void]:
     """
     A strategy for native NumPy structured dtypes, flat or nested.
 
-    With `allow_unrepresentable=False` (the default) every dtype is packed, has plain field names
-    and scalar fields, so it can be represented by the Zarr struct data type. With
-    `allow_unrepresentable=True` the strategy also injects the NumPy features that the Zarr
-    struct data type cannot record: field titles, subarray fields and `align=True` layouts.
-    Each is injected independently at random, so most draws carry at least one and some carry
-    none.
+    With `allow_extended=False` (the default), generate packed fields without titles or
+    subarray shapes. With `allow_extended=True`, also generate field titles, subarray fields,
+    and `align=True` layouts, independently. The current native dtype conversion rejects
+    titles and subarray fields and accepts padding with a warning. These are implementation
+    behaviors, not restrictions imposed by the V2 format.
     """
     fixed_size_leaves = st.one_of(
         [
@@ -182,12 +181,12 @@ def structured_dtypes(
             else:
                 field_dtype = draw(fixed_size_leaves).to_native_dtype()
             key: Any = name
-            if allow_unrepresentable and draw(st.booleans()):
+            if allow_extended and draw(st.booleans()):
                 key = (title, name)
-            if allow_unrepresentable and draw(st.booleans()):
+            if allow_extended and draw(st.booleans()):
                 field_dtype = (field_dtype, draw(npst.array_shapes(max_dims=2, max_side=3)))
             specs.append((key, field_dtype))
-        align = allow_unrepresentable and draw(st.booleans())
+        align = allow_extended and draw(st.booleans())
         return np.dtype(specs, align=align)
 
     return build(0)

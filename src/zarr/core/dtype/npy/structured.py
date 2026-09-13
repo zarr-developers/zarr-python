@@ -36,14 +36,13 @@ StructuredScalarLike = list[object] | tuple[object, ...] | bytes | int
 _ZARR_PACKAGE_ROOT = str(Path(__file__).parents[3])
 
 
-def _check_representable(dtype: np.dtype[np.void]) -> str | None:
+def _unsupported_field_feature(dtype: np.dtype[np.void]) -> str | None:
     """
-    Check for field features that the Zarr struct data type cannot represent.
+    Check for field features unsupported by this implementation's native dtype conversion.
 
-    The Zarr struct metadata records only `(name, dtype)` pairs and reconstructs the native
-    dtype by packing those fields contiguously (see `Structured.to_native_dtype`). Padding
-    can be removed while preserving field values, but titles and subarray fields would lose
-    field information. This function rejects those features, including in nested fields:
+    `Structured.fields` stores `(name, ZDType)` pairs and `to_native_dtype` packs them
+    contiguously. This conversion does not preserve NumPy field titles or subarray shapes.
+    Reject those features, including in nested fields, rather than silently losing them:
 
     - field titles, e.g. `np.dtype([(("title", "name"), "i4")])`
     - subarray fields, e.g. `np.dtype([("name", "i4", (2,))])`
@@ -51,7 +50,12 @@ def _check_representable(dtype: np.dtype[np.void]) -> str | None:
     Returns
     -------
     str | None
-        `None` if the dtype is representable, otherwise a short description of the problem.
+        `None` if these field features are supported, otherwise a description of the problem.
+
+    Notes
+    -----
+    This is an implementation limitation, not a statement about the V2 format, which has
+    an encoding for subarray fields.
     """
     names = dtype.names
     fields = dtype.fields
@@ -64,7 +68,7 @@ def _check_representable(dtype: np.dtype[np.void]) -> str | None:
         if field_dtype.subdtype is not None:
             return f"field {name!r} is a subarray with shape {field_dtype.shape}"
         if field_dtype.names is not None:
-            reason = _check_representable(field_dtype)
+            reason = _unsupported_field_feature(field_dtype)
             if reason is not None:
                 return f"within field {name!r}: {reason}"
     return None
@@ -216,8 +220,8 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             If the input data type is not an instance of np.dtypes.VoidDType with a non-null
             ``fields`` attribute.
         ValueError
-            If the input is a structured dtype that this data type cannot represent faithfully:
-            one with field titles or subarray fields.
+            If the input has field titles or subarray fields, which this implementation's
+            native dtype conversion does not support.
 
         Warns
         -----
@@ -234,18 +238,17 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
         fields: list[tuple[str, ZDType[TBaseDType, TBaseScalar]]] = []
         if cls._check_native_dtype(dtype):
-            reason = _check_representable(dtype)
+            reason = _unsupported_field_feature(dtype)
             if reason is not None:
                 # NOTE: this is a ValueError rather than a DataTypeValidationError on purpose.
                 # The data type registry suppresses DataTypeValidationError (treating it as
-                # "this dtype does not match"), but a dtype with an unrepresentable feature
+                # "this dtype does not match"), but a dtype with an unsupported field feature
                 # *does* match this dtype class -- it simply cannot be represented faithfully --
                 # so we must raise an error the registry propagates to the caller.
                 raise ValueError(
-                    f"Cannot serialize the structured data type {dtype}: {reason}. The Zarr "
-                    "struct data type records only field names and field data types, so a "
-                    "field title or a subarray shape has no representation in the metadata. "
-                    "Use a structured dtype without titles or subarray fields instead."
+                    f"Cannot convert the structured data type {dtype}: {reason}. "
+                    "Zarr-Python's current structured dtype conversion does not support "
+                    "field titles or subarray fields."
                 )
             # Repack once, at the top level, before resolving the fields. Nested fields then
             # reach the registry already packed, so a padded nested field warns exactly once,

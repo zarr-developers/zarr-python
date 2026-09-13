@@ -380,8 +380,8 @@ def _struct_depth(zdtype: ZDType[Any, Any]) -> int:
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 def test_zdtype_json_roundtrip(zdtype: ZDType[Any, Any], zarr_format: int) -> None:
     """
-    Every registered data type, including arbitrarily nested structs, survives a round trip
-    through its JSON form for both Zarr formats.
+    Generated built-in data types, including nested structs, round-trip through their JSON
+    forms for both Zarr formats within the strategy's documented parameter ranges.
 
     Zarr format 3 data type names do not carry endianness (the bytes codec does), so for that
     format the JSON form is compared instead of the data type instance.
@@ -399,8 +399,8 @@ def test_zdtype_json_roundtrip(zdtype: ZDType[Any, Any], zarr_format: int) -> No
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 def test_zdtype_native_roundtrip(zdtype: ZDType[Any, Any]) -> None:
     """
-    Every registered data type survives a round trip through its native NumPy dtype, and its
-    reported item size matches the native dtype's itemsize.
+    Generated built-in data types round-trip through their native NumPy dtypes within the
+    strategy's parameter ranges, and reported item sizes match native dtype itemsizes.
 
     The NumPy object dtype is shared by several Zarr data types, so resolving it is ambiguous by
     design and must raise instead.
@@ -419,21 +419,35 @@ def test_zdtype_native_roundtrip(zdtype: ZDType[Any, Any]) -> None:
         assert zdtype.item_size == native.itemsize
 
 
-@given(dtype=structured_dtypes(allow_unrepresentable=True))
+def _extended_descr_features(descr: list[Any]) -> set[str]:
+    """Classify NumPy's serialized field records independently of Zarr's dtype conversion."""
+    features = set()
+    for field in descr:
+        if isinstance(field[0], tuple):
+            features.add("title")
+        if len(field) == 3:
+            features.add("subarray")
+        if isinstance(field[1], list):
+            features.update(_extended_descr_features(field[1]))
+    return features
+
+
+@given(dtype=structured_dtypes(allow_extended=True))
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 def test_structured_dtype_never_silently_changes(dtype: np.dtype[np.void]) -> None:
     """
-    For any native structured dtype, including ones with field titles, subarray fields or
-    aligned layouts, resolution either rejects unsupported field features or preserves the
-    fields in a packed layout. Any layout change must emit a warning.
+    Generated structured dtypes with titles or subarrays are rejected by the current
+    conversion. Other generated dtypes preserve their fields, warning on layout changes.
     """
-    try:
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always", ZarrUserWarning)
-            zdtype = get_data_type_from_native_dtype(dtype)
-    except ValueError:
+    unsupported_features = _extended_descr_features(dtype.descr)
+    if unsupported_features:
+        with pytest.raises(ValueError, match="|".join(sorted(unsupported_features))):
+            get_data_type_from_native_dtype(dtype)
         event("outcome=rejected")
         return
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ZarrUserWarning)
+        zdtype = get_data_type_from_native_dtype(dtype)
     event("outcome=accepted")
     native = zdtype.to_native_dtype()
     assert native == repack_fields(dtype, recurse=True)
