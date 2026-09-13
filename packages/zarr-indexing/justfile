@@ -22,7 +22,7 @@ test-tensorstore *args:
     uv run --project ../.. --group test --with-editable . --with 'tensorstore>=0.1.84' python -m pytest tests/test_ndsel_tensorstore.py tests/test_tensorstore_parity.py {{ args }}
 
 # Lint with the same invocation CI uses. Ruff is pinned to the repo-wide
-# version (see pyproject.toml [dependency-groups] docs); bump together.
+# version in the root .pre-commit-config.yaml; bump together.
 lint:
     uvx ruff@0.16.0 check .
 
@@ -30,7 +30,8 @@ lint:
 typecheck:
     uv run --group test --with pyright pyright
 
-# Run everything CI runs for this package
+# Run these checks with the locally selected interpreter and dependencies;
+# CI also exercises its configured Python-version matrix
 check: lint typecheck test test-tensorstore docs-check
 
 # Preview the changelog that the next release would generate

@@ -5,9 +5,9 @@ Composable, lazy coordinate transforms for Zarr array indexing.
 Documentation: <https://zarr-indexing.readthedocs.io/>
 
 This package implements TensorStore-inspired index transforms. The core idea:
-every indexing operation (slicing, fancy indexing, etc.) produces a coordinate
-mapping from user space to storage space. These mappings compose lazily — no
-I/O until you explicitly read or write.
+each supported indexing operation (slicing, fancy indexing, etc.) produces a coordinate
+mapping from user space to storage space. These mappings compose without reading selected source values. `LazyArray`
+materializes them on request; the transform algebra itself performs no source I/O.
 
 Key types:
 
@@ -32,9 +32,11 @@ Key types:
   dimension can depend on the input
 - `compose` — chain two transforms into one
 
-The package depends only on NumPy and the standard library; it does not import
-`zarr`. It is developed in the [zarr-python](https://github.com/zarr-developers/zarr-python)
-repository and consumed by `zarr` to resolve array indexing operations.
+The base package depends on NumPy and the standard library; its optional testing
+module also requires Hypothesis. The package does not import `zarr`. It is developed
+in the [zarr-python](https://github.com/zarr-developers/zarr-python) repository,
+and its integration tests exercise Zarr chunk grids. Installing it does not
+replace Zarr's indexing implementation.
 
 ## Installation
 

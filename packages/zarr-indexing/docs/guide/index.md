@@ -216,12 +216,17 @@ description; the assertion's call to `result()` is the first operation in the
 example that materializes the selected data.
 
 !!! warning "Stop here: the materialization boundary"
-    Indexing through `.lazy[...]` never reads. These do:
+    Indexing through `.lazy[...]` composes a selection without reading source values.
+    These operations request values:
 
     - `result()`
     - eager indexing of the wrapper: `view[...]`
-    - `numpy.asarray(view)`, or passing the view to any NumPy function
-      (`numpy.add(view, 1)` converts, and therefore materializes, the view)
+    - `numpy.asarray(view)` and NumPy operations that convert the view
+      (`numpy.add(view, 1)` does so; `numpy.shape(view)` and `numpy.ndim(view)`
+      can use metadata without reading values)
+
+    Dask tokenization may also inspect values, depending on the wrapped source
+    and tokenization path.
 
     Python arithmetic such as `view + 1` raises `TypeError` instead: this
     wrapper defers indexing, not a general compute graph.
