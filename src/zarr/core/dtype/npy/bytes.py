@@ -1327,7 +1327,8 @@ class Bytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
 
     Wraps the NumPy "object" data type. Scalars for this data type are instances of ``bytes``.
 
-    This data type inherits from `VariableLengthBytes` for backwards compatibility.
+    This data type accepts the legacy ``variable_length_bytes`` name when reading
+    Zarr V3 metadata. It is a separate class from `VariableLengthBytes`.
 
     Attributes
     ----------
@@ -1369,13 +1370,13 @@ class Bytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
 
         Returns
         -------
-        VariableLengthBytes
-            An instance of VariableLengthBytes.
+        Bytes
+            An instance of Bytes.
 
         Raises
         ------
         DataTypeValidationError
-            If the dtype is not compatible with VariableLengthBytes.
+            If the dtype is not compatible with Bytes.
         """
         if cls._check_native_dtype(dtype):
             return cls()
@@ -1385,7 +1386,7 @@ class Bytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
 
     def to_native_dtype(self) -> np.dtypes.ObjectDType:
         """
-        Create a NumPy object dtype from this VariableLengthBytes ZDType.
+        Create a NumPy object dtype from this Bytes ZDType.
 
         Returns
         -------
@@ -1549,7 +1550,7 @@ class Bytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
 
     def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str:
         """
-        Convert a scalar to a JSON-serializable tuple of integers.
+        Convert a scalar to a JSON-serializable base64-encoded string.
 
         This method encodes the given scalar as bytes and then
         encodes the bytes as a base64-encoded string.
