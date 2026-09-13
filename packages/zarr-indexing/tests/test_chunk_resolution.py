@@ -989,10 +989,22 @@ def test_component_dependency_graph_matches_pointwise_oracle(
     """
     origin = tuple(data.draw(st.integers(-4, 4)) for _ in shape)
     output_rank = data.draw(st.integers(1, 5))
-    maps = []
-    grids = []
+    affine_axes = {axis for axis in range(len(shape)) if data.draw(st.booleans())}
+    maps: list[ArrayMap | ConstantMap | DimensionMap] = [
+        DimensionMap(
+            axis, offset=data.draw(st.integers(-3, 3)), stride=data.draw(st.integers(-2, 2))
+        )
+        for axis in sorted(affine_axes)
+    ]
     for _ in range(output_rank):
-        dependencies = data.draw(st.lists(st.booleans(), min_size=len(shape), max_size=len(shape)))
+        if data.draw(st.booleans()):
+            maps.append(ConstantMap(data.draw(st.integers(-3, 3))))
+            continue
+        # Reserve affine axes for one DimensionMap each. Unsupported shared
+        # affine dependencies are exercised explicitly in the error properties.
+        dependencies = [
+            axis not in affine_axes and data.draw(st.booleans()) for axis in range(len(shape))
+        ]
         array_shape = tuple(
             size if dependent else 1 for size, dependent in zip(shape, dependencies, strict=True)
         )
@@ -1006,7 +1018,7 @@ def test_component_dependency_graph_matches_pointwise_oracle(
                 stride=data.draw(st.integers(-2, 2)),
             )
         )
-        grids.append(SignedGrid(data.draw(st.integers(1, 3)), data.draw(st.integers(-3, 3))))
+    grids = [SignedGrid(data.draw(st.integers(1, 3)), data.draw(st.integers(-3, 3))) for _ in maps]
     transform = IndexTransform(
         IndexDomain(origin, tuple(lo + size for lo, size in zip(origin, shape, strict=True))),
         tuple(maps),
