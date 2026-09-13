@@ -104,8 +104,8 @@ def _leaf_zdtypes(cls: type[ZDType[TBaseDType, TBaseScalar]]) -> SearchStrategy[
 
 def _normalize_generic_scale_factor(zdtype: Any) -> Any:
     """
-    NumPy's generic time unit carries no scale factor, so only `scale_factor=1` has a native
-    representation for it.
+    NumPy retains generic scale factors internally, but its dtype string omits them.
+    Use `scale_factor=1` so the generated dtype survives Zarr V2 string serialization.
     """
     if zdtype.unit == "generic":
         return dataclasses.replace(zdtype, scale_factor=1)
