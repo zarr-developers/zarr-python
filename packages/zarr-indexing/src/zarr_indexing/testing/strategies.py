@@ -1,8 +1,8 @@
 """Hypothesis strategies for the selections `LazyArray` accepts.
 
 Each strategy takes the shape of the array being indexed and generates one
-selection for it — an index tuple with one entry per axis, in the spelling its
-mode expects. They are the generators behind
+selection for it, in the spelling its mode expects. Some vectorized selections
+use a partial coordinate tuple or a mask with an ellipsis. They are the generators behind
 [`ChainedIndexingStateMachine`][zarr_indexing.testing.stateful.ChainedIndexingStateMachine]
 and are exported on their own for a project that has its own test harness and
 wants only the hard part.
@@ -16,8 +16,9 @@ def test_my_array_slices_like_numpy(selection):
     assert_array_equal(my_array[selection], reference[selection])
 ```
 
-Every axis of `shape` must be non-empty: a selection over an axis of extent 0
-has no coordinates to draw. Filter or narrow the shape before calling.
+Coordinate-drawing strategies require non-empty axes; vectorized selections
+also require positive rank. The `empty_masks` strategy can generate a mask
+for an empty shape because it does not draw element coordinates.
 
 Requires the `testing` extra (`pip install zarr-indexing[testing]`).
 """
@@ -151,8 +152,7 @@ def slice_selections(shape: tuple[int, ...]) -> st.SearchStrategy[tuple[Any, ...
     """Selections of slices alone, for the `oindex` spelling that carries no coordinates.
 
     Such a step is not a fancy selection — it narrows the view's own axes and
-    composes like basic indexing — so it is legal after a fancy step, where
-    genuine coordinates are not. The starts reach past the origin, which is what
+    composes like basic indexing. The starts reach past the origin, which is what
     distinguishes a step that walks an existing index array's dependency axes
     from one that walks its broadcast singletons.
     """

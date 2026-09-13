@@ -347,9 +347,8 @@ def _index_array_body(index_array: Any, rank: int = 1, extent: int = 2) -> Index
         ([True, False], "bool"),
         (["a", "b"], "str"),
         # Not lists at all, so they are turned away before their content is
-        # looked at: a bare string would be iterated into characters, and a bare
-        # integer would become a rank-0 array and then a length-1 map, so a
-        # document naming no cells would select one.
+        # looked at: the wire representation requires a nested array rather
+        # than a scalar string or integer.
         ("abc", "must be an array of integers"),
         (5, "must be an array of integers"),
         ([None, None], "object"),
