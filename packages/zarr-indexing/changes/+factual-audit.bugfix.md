@@ -1,1 +1,1 @@
-Reject invalid wire index-array values and unrepresentable normalized bounds/ranks, and raise an explicit error for unsupported intersections sharing an affine and lookup input axis instead of returning incorrect coordinates.
+Reject invalid wire index-array values and unrepresentable normalized bounds/ranks, and raise an explicit error for unsupported intersections sharing an affine and lookup input axis instead of returning incorrect coordinates. Group negative chunk-coordinate tuples without merging distinct chunks.

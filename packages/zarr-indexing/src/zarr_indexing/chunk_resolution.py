@@ -30,10 +30,10 @@ A projection is one row of each table combined. Independent strided tables
 resolve each axis separately rather than walking their Cartesian product.
 Index-array tables also scan and group lookup points, sorting them when
 needed. Projection rows are materialized only on request, and a consumer may
-read the tables directly instead. Two output maps that read one input axis through a `DimensionMap`
-(a diagonal, which no selection produces) have no factored form and are
-rejected with `ValueError`; a correlated index array varying over an axis a
-`DimensionMap` also reads is rejected with `NotImplementedError`.
+read the tables directly instead. This planner does not support affine maps
+sharing input axes: two affine maps sharing an axis raise `ValueError`, while
+an index array varying over an axis also read by an affine map raises
+`NotImplementedError`.
 """
 
 from __future__ import annotations
