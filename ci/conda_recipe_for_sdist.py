@@ -6,7 +6,7 @@ Usage:
 
 The `zarr` sdist contents are an allowlist (see `[tool.hatch.build.targets.sdist]`
 in pyproject.toml), so the failure mode to guard against is shipping too little.
-conda-forge is the consumer most exposed to that: it builds from the sdist rather
+conda-forge is one consumer exposed to that: it builds from the sdist rather
 than the wheel, and runs our test suite from a directory holding only what its
 recipe copies out of the tarball.
 
@@ -16,11 +16,11 @@ sdist we just built. Everything that makes the check meaningful (the test files,
 the pytest invocation, `pip_check`, `license_file`) comes from the feedstock
 unmodified.
 
-Note that only the parts of the recipe that identify *which* tarball to build are
-touched. The feedstock's `requirements:` are regenerated from our pyproject.toml
-by grayskull on each version bump (`bot: inspection: update-grayskull` in its
-conda-forge.yml), so they already track this repo; the `tests:` block is
-hand-maintained there and is exactly what we want to run verbatim.
+The script updates the version and hash and replaces the source mapping with
+the local archive URL. Requirements and tests come from the fetched recipe.
+That recipe can lag this development branch; passing this check establishes
+compatibility with this recipe snapshot and build environment, not every conda
+configuration or future feedstock revision.
 """
 
 import hashlib

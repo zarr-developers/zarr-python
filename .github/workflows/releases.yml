@@ -82,7 +82,7 @@ jobs:
       - name: Check sdist contents
         run: python ci/check_sdist_contents.py dist
 
-  # conda-forge is the consumer most exposed to a missing file: it builds from
+  # conda-forge is one consumer exposed to a missing file: it builds from
   # the sdist rather than the wheel, and runs our suite from a directory holding
   # only what its recipe copies out of the tarball. Run the real recipe rather
   # than a copy of it -- a copy would go stale the moment the feedstock changed,
@@ -92,8 +92,8 @@ jobs:
   # is ~10 minutes whether or not conda is involved, and it depends on a fetch
   # from conda-forge/zarr-feedstock, so a recipe change there would redden
   # unrelated PRs. On `push` to main it still catches a bad merge within
-  # minutes, attributed to one commit, and it gates `upload_pypi` so no release
-  # can publish an sdist conda cannot consume.
+  # minutes, attributed to one commit. It gates `upload_pypi` on success with
+  # the fetched recipe and this Linux build environment.
   #
   # To run it against a branch before merging, use `workflow_dispatch`. Note
   # that dispatch only offers branches of the repository it runs in, so for a
