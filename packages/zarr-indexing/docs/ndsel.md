@@ -108,7 +108,8 @@ and `output_index_map_from_json` therefore raise `NdselError("invalid_json", ...
 when bounds differ from `["-inf", "+inf"]`. This includes one-sided constraints,
 empty and singleton arrays, and zero-stride maps. Omitted or explicitly unbounded
 bounds remain supported. Use the message layer to preserve constrained documents
-for consumers that support them; lowering never silently discards a constraint.
+for consumers that support them; lowering never silently discards an index-array
+constraint.
 
 A canonical body carrying a
 `"-inf"` or `"+inf"` bound cannot be lowered — an `IndexDomain` addresses a

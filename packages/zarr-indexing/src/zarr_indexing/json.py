@@ -135,8 +135,9 @@ class OutputIndexMapJSON(TypedDict, total=False):
     index_array_bounds: list[IndexValueJSON]
     """Wire bounds on index-array values; `["-inf", "+inf"]` if unconstrained.
 
-    The engine currently discards this field on load and does not enforce
-    finite bounds against the array values. Serialization emits unconstrained bounds.
+    The message layer preserves these inclusive constraints on raw index values.
+    Engine lowering rejects bounds other than `["-inf", "+inf"]`; serialization
+    emits unconstrained bounds for non-degenerate array maps.
     """
 
 
