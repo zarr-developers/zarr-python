@@ -14,6 +14,9 @@ wire's structurally discriminated union back to the right kind. This module is w
 
 The engine lowering rules include:
 
+- **Unconstrained index arrays.** Only omitted `index_array_bounds` or
+  `["-inf", "+inf"]` can be lowered. Other constraints raise `NdselError`
+  rather than being lost during serialization or map operations.
 - **Finite bounds.** An `IndexDomain` addresses a finite array, so a canonical
   body carrying a `"-inf"`/`"+inf"` bound cannot be lowered; `from_json` raises.
 - **Implicit bounds lower by value.** The `[n]`-bracket implicit/explicit flag

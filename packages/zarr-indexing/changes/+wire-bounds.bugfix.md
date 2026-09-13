@@ -1,0 +1,1 @@
+Reject constrained `index_array_bounds` when lowering JSON to an engine transform or output map, instead of silently dropping the constraint. Message normalization continues to preserve bounds for consumers that support them.

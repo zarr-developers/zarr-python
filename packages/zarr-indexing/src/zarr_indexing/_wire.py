@@ -20,6 +20,20 @@ if TYPE_CHECKING:
     from zarr_indexing.json import BoundJSON
 
 
+def check_index_array_bounds(bounds: list[int | str], where: str) -> None:
+    """Reject constraints the engine cannot retain through map operations.
+
+    Bounds constrain raw index values before offset/stride are applied. Even
+    currently valid values do not justify silently erasing a wire constraint.
+    """
+    if bounds != ["-inf", "+inf"]:
+        raise NdselError(
+            "invalid_json",
+            f"{where}.index_array_bounds {bounds!r} is unsupported by the engine; "
+            'only omitted bounds or ["-inf", "+inf"] can be lowered',
+        )
+
+
 def lower_bound(bound: BoundJSON, where: str) -> int:
     """Lower a canonical bound to a finite integer, rejecting infinities.
 
