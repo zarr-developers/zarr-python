@@ -708,7 +708,7 @@ print(f"After append:  shape={z.shape}, chunk_sizes={z.write_chunk_sizes}")
 ```
 
 A rectilinear array can also be created with a zero-length dimension: because no
-list of positive chunk sizes can sum to 0, the chunk sizes given for such a
+non-empty list of positive chunk sizes can sum to 0, the chunk sizes given for such a
 dimension are stored as-is and describe the chunks the dimension will grow into
 on `append` or `resize` — the same state as resizing an existing rectilinear
 dimension down to 0.

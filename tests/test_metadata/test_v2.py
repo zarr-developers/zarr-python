@@ -318,10 +318,9 @@ def test_zero_chunk_edge_on_empty_axis_normalized(
 ) -> None:
     """A stored chunk edge of 0 on a zero-length axis is read as 1, with a warning.
 
-    zarr-python 2.x wrote `chunks: [0]` for such an axis (`chunks=False` or
-    `chunks=(0,)`), and those documents must stay readable. Left at 0, a later resize
-    read uninitialised memory; normalizing to 1 gives the axis the same grid every other
-    "one chunk spans the axis" spelling produces.
+    This checks the compatibility policy for legacy metadata: the in-memory
+    chunk size becomes positive while the extent remains zero. It does not
+    test historical reader behavior or perform array I/O.
     """
     with pytest.warns(ZarrUserWarning, match="chunk edge length 0 on a zero-length axis"):
         meta = ArrayV2Metadata(
@@ -331,10 +330,10 @@ def test_zero_chunk_edge_on_empty_axis_normalized(
 
 
 @pytest.mark.parametrize(("shape", "chunks"), [((5,), (0,)), ((4, 3), (4, 0))])
-def test_zero_chunk_edge_with_data_rejected(
+def test_zero_chunk_edge_with_positive_extent_rejected(
     shape: tuple[int, ...], chunks: tuple[int, ...]
 ) -> None:
-    """A chunk edge of 0 on an axis that has data is invalid metadata."""
+    """A chunk edge of 0 on a positive-length axis is rejected."""
     with pytest.raises(ValueError, match="chunk edge length must be >= 1"):
         ArrayV2Metadata(shape=shape, dtype=Float64(), chunks=chunks, fill_value=0.0, order="C")
 

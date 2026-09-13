@@ -762,8 +762,8 @@ def normalize_chunks_1d(chunks: int | Iterable[object], span: int) -> DimensionG
     which would change how the dimension grows on resize. For scalar sizes
     the last chunk may overhang the span.
 
-    The one exception to the sum rule is a zero-length span: no list of
-    positive edges can sum to 0, so any non-empty list is accepted verbatim
+    The one exception to the sum rule is a zero-length span: no non-empty list of
+    positive edges can sum to 0, so a non-empty list of positive integers is retained
     and the edges describe the chunks the axis will grow into on `append` /
     `resize`. This is the same state a rectilinear axis reaches when it is
     resized down to 0 — `VaryingDimension` allows trailing edges beyond the
