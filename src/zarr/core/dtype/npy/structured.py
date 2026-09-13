@@ -255,8 +255,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
                 warnings.warn(
                     "The structured dtype is converted to a packed field layout. "
                     "Field values are preserved when writing arrays, but field offsets and "
-                    "itemsize may change. To pack explicitly, use "
-                    "numpy.lib.recfunctions.repack_fields(data, recurse=True).",
+                    "itemsize may change.",
                     ZarrUserWarning,
                     # Attribute the warning to the first frame outside the zarr package, since
                     # the depth of the call chain that leads here varies by entry point. This

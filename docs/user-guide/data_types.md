@@ -90,8 +90,6 @@ element is a Zarr V2 data type specification. This representation supports recur
 Zarr stores structured fields in a packed layout. NumPy arrays with alignment, padding,
 or explicit field offsets remain accepted, with a `ZarrUserWarning`: writing preserves
 field values, but the stored dtype's offsets and itemsize may differ from the input.
-To make this conversion explicit, use
-`numpy.lib.recfunctions.repack_fields(data, recurse=True)` before creating the array.
 Field titles and subarray fields, including those inside nested structures, are rejected
 because their field information cannot be represented. These rules apply to both Zarr formats.
 
