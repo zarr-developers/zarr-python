@@ -103,7 +103,8 @@ class BasicReader:
 
     Each transform is decomposed into the smallest enclosing positive-slice
     slab and a residual transform. The slab is read once with basic indexing,
-    so fancy or negative-step selections may over-read, and the residual is
+    so fancy selections may over-read. Reversals read their selected coordinates
+    in ascending order without requiring a negative source slice. The residual is
     then lowered through NumPy system-memory operations into the supplied
     buffer.
 
@@ -132,12 +133,13 @@ class BasicReader:
 
 
 class NumPyReader:
-    """Reader optimized for NumPy system-memory arrays.
+    """Explicit reader for NumPy system-memory arrays.
 
     This is the reader selected by
     [`LazyArray.from_numpy`][zarr_indexing.lazy_array.LazyArray.from_numpy]. It
     applies the complete transform with NumPy operations and is applicable to
-    `numpy.ndarray` sources, including `numpy.ma.MaskedArray`.
+    `numpy.ndarray` sources, including `numpy.ma.MaskedArray`. Its current
+    implementation uses the same slab and residual path as `BasicReader`.
 
     Examples
     --------
@@ -166,12 +168,13 @@ class UnitStepReader:
     unit-step slab and a residual transform, so the source only ever receives
     `slice(start, stop, 1)` on every axis — the one form an API without
     general strided reads (an FFI binding, an HTTP range endpoint) supports.
-    `BasicReader` instead pushes strided and reversed slices down, which
-    reads less but asks more of the source.
+    `BasicReader` instead requests positive-stride slices for both forward and
+    reversed affine selections, then reverses in memory when needed.
 
     The residual lowering applies strides, reversals, and gathers to the
-    in-memory block, so a strided selection over-reads its cover by the
-    stride factor. Partitioning the wrapping
+    in-memory block. For n selected points at positive spacing k on one axis,
+    the cover contains (n - 1) * k + 1 elements when n is nonzero; its over-read
+    ratio approaches k for long selections. Partitioning the wrapping
     [`LazyArray`][zarr_indexing.lazy_array.LazyArray] (`with_parts`) bounds
     each cover by a part.
 
@@ -489,8 +492,8 @@ def _push_slice_for_dimension_map(
     """The positive-step slice covering a `DimensionMap`, and its block-local map.
 
     A negative step is read forwards and reversed by the residual: a source is
-    only ever asked for a slice that walks upwards, which is the one form every
-    array-like agrees on.
+    only asked for positive-stride slices. Supporting those slices is part of
+    this reader's source contract.
     """
     d = m.input_dimension
     lo = transform.domain.inclusive_min[d]
@@ -524,9 +527,8 @@ def _push_unit_slice_for_dimension_map(
 
     Strides and reversals stay in the residual: the source is only ever asked
     for a contiguous ascending slice, and the original stride is replayed
-    against the in-memory block. The cover therefore over-reads a strided
-    selection by its stride factor, which is the price of a source that
-    accepts nothing but `slice(start, stop, 1)`.
+    against the in-memory block. The cover may include unselected elements;
+    for n distinct points at spacing k it has (n - 1) * k + 1 elements.
     """
     d = m.input_dimension
     lo = transform.domain.inclusive_min[d]

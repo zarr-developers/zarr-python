@@ -370,7 +370,7 @@ def test_empty_domain_composed_fancy_transform_reads_as_empty() -> None:
 
 
 def test_unit_step_reader_reads_through_lazy_array() -> None:
-    """The full dialect resolves through a source that only accepts unit-step slices.
+    """The parametrized selections resolve through a unit-step-only source.
 
     `UnitStepOnlySource` asserts the shape of every key it receives, so each
     selection here also proves no strided, descending, or non-slice key

@@ -62,7 +62,8 @@ def test_parts_as_tasks(source: zarr.Array) -> None:
     print(f"{len(parts)} parts for a {view.shape} view of a {source.shape} array")
 
     # A partition carries a sub-view to resolve and where its result belongs, so
-    # the reads are independent and the placement needs no coordination.
+    # reads can run concurrently with this source and reader; assembly below
+    # places the returned blocks sequentially.
     @dask.delayed
     def read(part: object) -> np.ndarray:
         return part.view.result()
@@ -75,38 +76,35 @@ def test_parts_as_tasks(source: zarr.Array) -> None:
     assert np.array_equal(result, source[5:35, 3:27])
 
     # `is_complete` reports whether a partition covers its whole partition of
-    # the base array, which a writer uses to choose between overwriting a chunk
-    # and reading it first.
+    # the base array. A writer also needs storage-unit alignment, value-order,
+    # and concurrency checks before using coverage to skip a read.
     complete = [part.box for part in parts if part.is_complete]
     print(f"{len(complete)} of {len(parts)} parts cover their chunk completely")
 
 
 def test_tokenize(source: zarr.Array) -> None:
-    """Deterministic tokens let Dask cache and deduplicate work."""
+    """Check token equality for these unchanged source and selection pairs."""
     lazy = LazyArray(source)
 
-    # Two wrappers over the same array and the same selection are the same task
-    # to Dask, whether or not they are the same Python object.
+    # These wrappers have equal tokens despite being different Python objects.
+    # Source mutation and token hooks affect whether cached results remain valid.
     assert tokenize(lazy) == tokenize(LazyArray(source))
     assert tokenize(lazy.lazy[0:10]) == tokenize(LazyArray(source).lazy[0:10])
 
     # Different selections are different tasks.
     assert tokenize(lazy.lazy[0:10]) != tokenize(lazy.lazy[10:20])
 
-    # Selections that describe the same region are the same task, however they
-    # were composed.
+    # These two slice chains serialize to the same transform and token.
     assert tokenize(lazy.lazy[0:20].lazy[5:10]) == tokenize(lazy.lazy[5:10])
 
 
 def test_indexing_only_workload() -> None:
     """Compare an accumulating task graph with a fused transform.
 
-    Dask records each indexing operation as another graph layer, and slices the
-    chunk grid to build it, so composing selections costs time proportional to
-    the number of selections and the number of chunks. `LazyArray` composes each
-    selection into the single transform it already holds, so the cost of
-    composing does not grow with the depth of the chain, and reading resolves
-    that one transform rather than walking a graph.
+    This measures repeated leading slices at several depths. LazyArray retains
+    one composed transform, but the loop still performs each selection. Dask's
+    graph construction and execution costs depend on graph optimizations and
+    chunk layout; these measurements do not establish general complexity bounds.
 
     Timings are printed rather than asserted, since they depend on the machine.
     """
