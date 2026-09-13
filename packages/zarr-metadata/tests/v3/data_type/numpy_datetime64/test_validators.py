@@ -16,6 +16,11 @@ VALID = [
     ({"unit": "ns", "scale_factor": 1}, {"unit": "ns", "scale_factor": 1}),
     ({"unit": "s", "scale_factor": 10}, {"unit": "s", "scale_factor": 10}),
     ({"unit": "generic", "scale_factor": 1}, {"unit": "generic", "scale_factor": 1}),
+    ({"unit": "generic", "scale_factor": 2}, {"unit": "generic", "scale_factor": 2}),
+    (
+        {"unit": "generic", "scale_factor": 2**31 - 1},
+        {"unit": "generic", "scale_factor": 2**31 - 1},
+    ),
     ({"unit": "us", "scale_factor": 2}, {"unit": "us", "scale_factor": 2}),
     ({"unit": "μs", "scale_factor": 2}, {"unit": "us", "scale_factor": 2}),
     ({"unit": "Y", "scale_factor": 2**31 - 1}, {"unit": "Y", "scale_factor": 2**31 - 1}),
@@ -59,8 +64,3 @@ def test_scale_factor_not_an_integer(scale_factor: object) -> None:
 def test_scale_factor_out_of_range(scale_factor: int) -> None:
     with pytest.raises(ValueError, match=r"Expected 'scale_factor' in \[1, 2147483647\]"):
         numpy_datetime64_configuration({"unit": "s", "scale_factor": scale_factor})
-
-
-def test_generic_unit_rejects_scale_factor() -> None:
-    with pytest.raises(ValueError, match="'generic' unit does not take a scale factor"):
-        numpy_datetime64_configuration({"unit": "generic", "scale_factor": 2})

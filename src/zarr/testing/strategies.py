@@ -95,18 +95,9 @@ def _leaf_zdtypes(cls: type[ZDType[TBaseDType, TBaseScalar]]) -> SearchStrategy[
     if "length" in params:
         kwargs["length"] = st.integers(min_value=1, max_value=16)
     if "unit" in params:
-        # The constructor normalizes the "μs" alias to "us", so every unit is safe to draw, but
-        # the generic unit only accepts scale_factor=1, so the scale factor depends on the unit.
-        return st.sampled_from(DATETIME_UNIT).flatmap(
-            lambda unit: st.builds(
-                cls,
-                unit=st.just(unit),
-                scale_factor=st.just(1)
-                if unit == "generic"
-                else st.integers(min_value=1, max_value=2**31 - 1),
-                **kwargs,
-            )
-        )
+        # The constructor normalizes the microsecond alias; all units accept a scale.
+        kwargs["unit"] = st.sampled_from(DATETIME_UNIT)
+        kwargs["scale_factor"] = st.integers(min_value=1, max_value=2**31 - 1)
     return st.builds(cls, **kwargs)
 
 

@@ -63,10 +63,7 @@ def numpy_time_configuration(value: Mapping[str, object]) -> tuple[NumpyTimeUnit
     Raises TypeError if `unit` is not a string or `scale_factor` is not an
     integer. Raises ValueError if the object has keys other than exactly `unit`
     and `scale_factor`, if `unit` is not a `NumpyTimeUnit`, if `scale_factor` is
-    outside `[1, MAX_NUMPY_TIME_SCALE_FACTOR]`, or if the unit is `"generic"`
-    with a `scale_factor` other than 1. The generic-scale restriction is an
-    implementation policy: NumPy retains that scale internally, but its dtype
-    string omits it. The V3 extension specification does not state this restriction.
+    outside `[1, MAX_NUMPY_TIME_SCALE_FACTOR]`.
     """
     keys = frozenset(value)
     if keys != _CONFIGURATION_KEYS:
@@ -83,10 +80,6 @@ def numpy_time_configuration(value: Mapping[str, object]) -> tuple[NumpyTimeUnit
     if not 1 <= scale_factor <= MAX_NUMPY_TIME_SCALE_FACTOR:
         raise ValueError(
             f"Expected 'scale_factor' in [1, {MAX_NUMPY_TIME_SCALE_FACTOR}], got {scale_factor}"
-        )
-    if unit == "generic" and scale_factor != 1:
-        raise ValueError(
-            f"The 'generic' unit does not take a scale factor, got scale_factor={scale_factor}"
         )
     return unit, scale_factor
 

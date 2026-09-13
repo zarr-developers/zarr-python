@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import re
-from typing import get_args
+from typing import TYPE_CHECKING, get_args
 
 import numpy as np
 import pytest
 
+import zarr
 from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype.npy.common import DateTimeUnit
 from zarr.core.dtype.npy.time import DateTime64, TimeDelta64, datetime_from_int
+
+if TYPE_CHECKING:
+    from zarr.core.common import ZarrFormat
 
 
 class _TestTimeBase(BaseTestZDType):
@@ -168,19 +172,33 @@ def test_time_scale_factor_too_high() -> None:
         TimeDelta64(scale_factor=scale_factor)
 
 
-def test_time_generic_unit_rejects_scale_factor() -> None:
-    """
-    Test that the 'generic' unit with a scale factor other than 1 raises a ValueError.
-
-    NumPy retains the scale in ``np.dtype("M8[2generic]")``, but its ``dtype.str``
-    representation omits it. This implementation rejects it to avoid loss through V2 JSON.
-    """
-    scale_factor = 2
-    msg = f"The 'generic' unit does not take a scale factor, got scale_factor={scale_factor}."
-    with pytest.raises(ValueError, match=re.escape(msg)):
-        DateTime64(unit="generic", scale_factor=scale_factor)
-    with pytest.raises(ValueError, match=re.escape(msg)):
-        TimeDelta64(unit="generic", scale_factor=scale_factor)
+@pytest.mark.parametrize("cls", [DateTime64, TimeDelta64])
+@pytest.mark.parametrize("unit", get_args(DateTimeUnit))
+@pytest.mark.parametrize("scale_factor", [1, 2, 2**31 - 1])
+@pytest.mark.parametrize("byteorder", ["<", ">"])
+def test_time_dtype_roundtrip(
+    cls: type[DateTime64 | TimeDelta64],
+    unit: DateTimeUnit,
+    scale_factor: int,
+    byteorder: str,
+) -> None:
+    """Native and JSON conversions must preserve temporal parameters, including generic scale."""
+    kind = "M8" if cls is DateTime64 else "m8"
+    native = np.dtype(f"{byteorder}{kind}[{scale_factor}{unit}]")
+    expected_unit = "us" if unit == "μs" else unit
+    dtype = cls.from_native_dtype(native)
+    assert (dtype.unit, dtype.scale_factor) == (expected_unit, scale_factor)
+    restored_native = dtype.to_native_dtype()
+    assert np.datetime_data(restored_native) == (expected_unit, scale_factor)
+    assert restored_native == native
+    json_v2 = dtype.to_json(zarr_format=2)
+    assert np.datetime_data(np.dtype(json_v2["name"])) == (expected_unit, scale_factor)
+    assert cls.from_json(json_v2, zarr_format=2) == dtype
+    json_v3 = dtype.to_json(zarr_format=3)
+    assert json_v3["configuration"]["unit"] == expected_unit
+    assert json_v3["configuration"]["scale_factor"] == scale_factor
+    restored_v3 = cls.from_json(json_v3, zarr_format=3)
+    assert np.datetime_data(restored_v3.to_native_dtype()) == (expected_unit, scale_factor)
 
 
 @pytest.mark.parametrize("cls", [DateTime64, TimeDelta64])
@@ -210,3 +228,41 @@ def test_datetime_from_int(unit: DateTimeUnit, scale_factor: int, value: int) ->
     """
     expected = np.int64(value).view(f"datetime64[{scale_factor}{unit}]")
     assert datetime_from_int(value, unit=unit, scale_factor=scale_factor) == expected
+
+
+@pytest.mark.parametrize("unit", ["generic", "us"])
+@pytest.mark.parametrize("kind", ["M8", "m8"])
+@pytest.mark.parametrize("byteorder", ["<", ">"])
+@pytest.mark.parametrize("scale_factor", [1, 2, 2**31 - 1])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("structured", [False, True])
+@pytest.mark.filterwarnings("ignore::zarr.errors.UnstableSpecificationWarning")
+@pytest.mark.filterwarnings(
+    "ignore:The 'generic' unit for NumPy timedelta is deprecated:DeprecationWarning"
+)
+def test_generic_time_array_roundtrip(
+    unit: str,
+    kind: str,
+    byteorder: str,
+    scale_factor: int,
+    zarr_format: ZarrFormat,
+    structured: bool,
+) -> None:
+    """Persist counts and generic scale through metadata, chunk IO, and output allocation."""
+    leaf = np.dtype(f"{byteorder}{kind}[{scale_factor}{unit}]")
+    dtype = np.dtype([("time", leaf)]) if structured else leaf
+    counts = np.array([0, 1, -2, 100], dtype=f"{byteorder}i8")
+    data = counts.view(dtype)
+    array = zarr.create_array(
+        store={}, data=data, chunks=2, zarr_format=zarr_format, compressors=None
+    )
+    array.resize((6,))
+    reopened = zarr.open_array(array.store, mode="r")
+    result = np.asarray(reopened[:])
+    values = result["time"] if structured else result
+    assert np.datetime_data(values.dtype) == (unit, scale_factor)
+    np.testing.assert_array_equal(values[:4].view(values.dtype.byteorder + "i8"), counts)
+    expected_fill = 0 if structured else -(2**63)
+    np.testing.assert_array_equal(
+        values[4:].view(values.dtype.byteorder + "i8"), [expected_fill, expected_fill]
+    )

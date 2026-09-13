@@ -238,3 +238,32 @@ def test_empty(
         assert result.flags.c_contiguous  # type: ignore[attr-defined]
     else:
         assert result.flags.f_contiguous  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("kind", ["M8", "m8"])
+@pytest.mark.parametrize("byteorder", ["<", ">"])
+@pytest.mark.parametrize("scale_factor", [2, 2**31 - 1])
+@pytest.mark.parametrize("fill_value", [None, 0, "NaT"])
+@pytest.mark.parametrize("order", ["C", "F"])
+@pytest.mark.filterwarnings(
+    "ignore:The 'generic' unit for NumPy timedelta is deprecated:DeprecationWarning"
+)
+def test_cpu_generic_time_allocation(
+    kind: str,
+    byteorder: str,
+    scale_factor: int,
+    fill_value: int | str | None,
+    order: Literal["C", "F"],
+) -> None:
+    """Both allocation paths retain generic scale even when NumPy drops it."""
+    dtype = np.dtype(f"{byteorder}{kind}[{scale_factor}generic]")
+    empty = cpu.NDBuffer.empty((2, 3), dtype=dtype, order=order)
+    filled = cpu.NDBuffer.create(shape=(2, 3), dtype=dtype, order=order, fill_value=fill_value)
+    for buffer in (empty, filled):
+        assert buffer.dtype == dtype
+        array = buffer.as_numpy_array()
+        assert array.flags.c_contiguous if order == "C" else array.flags.f_contiguous
+    expected = -(2**63) if fill_value == "NaT" else 0
+    np.testing.assert_array_equal(
+        filled.as_numpy_array().view(dtype.byteorder + "i8"), np.full((2, 3), expected)
+    )
