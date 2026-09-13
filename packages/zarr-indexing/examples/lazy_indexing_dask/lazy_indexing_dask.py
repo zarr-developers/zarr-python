@@ -41,13 +41,14 @@ def test_from_array(source: zarr.Array) -> None:
 
     # `from_array` needs `shape`, `dtype`, and `__getitem__`, which the wrapper
     # provides. Each Dask block reads its own region through the wrapper.
-    array = da.from_array(lazy, chunks=(10, 10))
+    # Zarr has no source token hook: request a fresh Dask graph name.
+    array = da.from_array(lazy, chunks=(10, 10), name=False)
     print(array)
     assert np.array_equal(array.compute(scheduler="threads"), source[:])
 
     # A view works the same way, and its shape is the shape of the selection.
     view = LazyArray(source).lazy[5:35, 3:27]
-    array = da.from_array(view, chunks=(10, 10))
+    array = da.from_array(view, chunks=(10, 10), name=False)
     assert array.shape == (30, 24)
     assert np.array_equal(array.compute(scheduler="threads"), source[5:35, 3:27])
 
@@ -82,8 +83,9 @@ def test_parts_as_tasks(source: zarr.Array) -> None:
     print(f"{len(complete)} of {len(parts)} parts cover their chunk completely")
 
 
-def test_tokenize(source: zarr.Array) -> None:
+def test_tokenize() -> None:
     """Check token equality for these unchanged source and selection pairs."""
+    source = np.arange(40 * 30).reshape(40, 30)
     lazy = LazyArray(source)
 
     # These wrappers have equal tokens despite being different Python objects.

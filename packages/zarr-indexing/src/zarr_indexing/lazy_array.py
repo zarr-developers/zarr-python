@@ -12,8 +12,8 @@ values = view.result()
 ```
 
 Selection construction does not read source values: `result()`, `__array__`,
-and eager `__getitem__` perform reads. Tokenization can also read or hash source
-data, depending on the source and tokenization path. `.lazy` operations inspect
+and eager `__getitem__` perform reads. Tokenization hashes plain NumPy source
+data or delegates to an explicit source hook. `.lazy` operations inspect
 selection metadata and may copy or process supplied index arrays. Composition
 does not accumulate wrapper layers: a view of a view is still a single transform
 and retains its reader.
@@ -138,7 +138,6 @@ import hashlib
 import json
 import math
 import operator
-import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, cast
@@ -172,10 +171,6 @@ if TYPE_CHECKING:
     SelectFn = Callable[[Any, SelectionMode], "LazyArray"]
 
 __all__ = ["LazyArray", "Partition"]
-
-# Above this declared byte count, the no-Dask token fallback adds a fresh UUID
-# instead of digesting contents. See `_wrapped_token`.
-_TOKEN_DIGEST_LIMIT = 1 << 20
 
 
 def _invoke_reader(
@@ -531,58 +526,35 @@ def _validate_prepared_parts(parts: Sequence[Partition], out_shape: tuple[int, .
 
 
 def _wrapped_token(array: Any) -> Any:
-    """A token for the wrapped array.
+    """Identify supported source contents without converting foreign arrays.
 
-    In order of preference: the array's own `__dask_tokenize__`;
-    `dask.base.tokenize` when dask is importable (imported lazily — this package
-    never requires it); otherwise a local fallback that digests the contents of
-    a small array.
-
-    Tokens can differ depending on whether Dask is available and on the source
-    hook. This fallback does not provide a portable content identifier.
-
-    Above `_TOKEN_DIGEST_LIMIT`, or when conversion is unavailable, the local
-    fallback adds a fresh UUID on each call, so repeated calls normally differ.
-    The returned tuple is still equal to itself. Below the limit, conversion
-    can read the source, and the hash is of its NumPy buffer bytes. Object-array
-    buffer bytes contain object references, not a recursive content snapshot.
+    Explicit hooks own their versioning, determinism, and I/O contract. Plain
+    NumPy arrays without object fields are hashed in full on every call. Other
+    sources must provide a hook; neither serialization nor identity is a safe
+    substitute for a source's value/version contract.
     """
     hook = getattr(array, "__dask_tokenize__", None)
     if hook is not None:
-        try:
-            return hook()
-        # A failing source hook falls through to the remaining tokenization paths.
-        except Exception:  # pragma: no cover - a hook that refuses to run
-            pass
-    try:
-        # dask is an optional peer, never a dependency of this package, so it is
-        # imported here and its absence is ordinary.
-        from dask.base import tokenize  # pyright: ignore[reportMissingImports]
-    except ImportError:
-        pass
-    else:
-        return tokenize(array)
-
-    shape = tuple(int(s) for s in getattr(array, "shape", ()))
-    dtype = getattr(array, "dtype", None)
-    structural = (type(array).__qualname__, shape, str(dtype))
-    # A fresh identifier per call when contents cannot be identified. It
-    # is the shape and dtype that would otherwise be mistaken for an identity,
-    # so they are kept alongside it for a reader looking at a graph.
-    unidentified = (*structural, "unidentified", uuid.uuid4().hex)
-
-    # Decide whether to digest the contents from the *declared* size. Measuring
-    # it by converting first would read the whole array — a multi-gigabyte store
-    # pulled into memory by a token call, which is the opposite of the point.
-    itemsize = getattr(dtype, "itemsize", None)
-    if not isinstance(itemsize, int) or itemsize * math.prod(shape) > _TOKEN_DIGEST_LIMIT:
-        return unidentified
-    try:
-        contents = np.ascontiguousarray(array)
-    # Failed NumPy conversion leaves this source unidentified.
-    except Exception:
-        return unidentified
-    return (*structural, hashlib.sha256(contents.tobytes()).hexdigest())
+        return hook()
+    if type(array) is not np.ndarray or array.dtype.hasobject:
+        msg = (
+            "Tokenization requires a source __dask_tokenize__ hook or a plain "
+            "NumPy ndarray without object fields. For Dask from_array, use "
+            "name=False to bypass content tokenization."
+        )
+        raise TypeError(msg)
+    base = array.base
+    while isinstance(base, np.ndarray):
+        if isinstance(base, np.memmap):
+            msg = "Memory-mapped sources require an explicit __dask_tokenize__ hook."
+            raise TypeError(msg)
+        base = base.base
+    return (
+        "numpy.ndarray",
+        array.shape,
+        repr(array.dtype),
+        hashlib.sha256(array.tobytes(order="C")).hexdigest(),
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -1252,10 +1224,18 @@ class LazyArray:
         tokens produce equal tokens; arbitrary semantically equivalent mappings
         are not guaranteed to serialize identically.
 
-        Source tokenization can read or hash data and need not be deterministic
-        on every fallback path; see `_wrapped_token`. The reader and partitioning
-        are omitted under the contract that they preserve values. Cache users
-        must also account for source mutation and the source's token semantics.
+        Plain NumPy arrays without object fields are hashed in full on each
+        call, with time and temporary memory proportional to their byte size.
+        Memory-mapped arrays, subclasses, object arrays, and foreign sources
+        require an explicit source `__dask_tokenize__` hook; unsupported sources
+        raise `TypeError`. Hooks own determinism, versioning, and any I/O, and
+        hook exceptions propagate. Installing Dask does not change this policy.
+
+        The reader and partitioning are omitted under the contract that they
+        preserve values. A token describes the source at tokenization time;
+        mutation after graph construction does not invalidate existing Dask
+        keys. Concurrent mutation during hashing is unsupported. This method
+        does not provide a persistent cache identity or a source snapshot.
         """
         canonical = json.dumps(self._transform.to_json(), sort_keys=True)
         return (

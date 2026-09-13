@@ -1,0 +1,1 @@
+Define an explicit source token contract: hash plain NumPy arrays without object fields, delegate source hooks and propagate their errors, and reject unsupported sources without converting or serializing them. Remove optional-Dask and per-call UUID fallbacks. Document hashing costs, mutation limits, and `name=False` for Dask wrapping opaque sources.
