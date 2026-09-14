@@ -56,6 +56,52 @@ def _points(domain: IndexDomain) -> list[tuple[int, ...]]:
     ]
 
 
+@pytest.mark.parametrize("shape", [(4,), (2, 2)])
+@pytest.mark.parametrize(
+    "coordinates",
+    [
+        [(-1, 0), (0, -1), (-1, 0), (0, 0)],
+        [(-2, -1), (-1, -2), (-2, -2), (-1, -1)],
+        [(0, 1), (1, 0), (0, 1), (0, 0)],
+        [(-(2**63), 0), (0, -(2**63)), (-1, -1), (0, 0)],
+    ],
+)
+def test_correlated_plan_with_signed_chunk_ids(
+    shape: tuple[int, ...], coordinates: list[tuple[int, int]]
+) -> None:
+    """Shared-axis lookups group distinct signed chunk tuples without collisions."""
+
+    class SignedUnitGrid:
+        def index_to_chunk(self, index: int) -> int:
+            return index
+
+        def indices_to_chunks(self, indices: Any) -> Any:
+            return indices
+
+        def chunk_offset(self, chunk: int) -> int:
+            return chunk
+
+        def chunk_size(self, chunk: int) -> int:
+            return 1
+
+    values = np.array(coordinates, dtype=np.intp)
+    transform = IndexTransform(
+        IndexDomain.from_shape(shape),
+        tuple(ArrayMap(values[:, axis].reshape(shape)) for axis in range(2)),
+    )
+    plan = plan_chunks(transform, (SignedUnitGrid(), SignedUnitGrid()))
+    expected_chunks = sorted(set(coordinates))
+    assert [tuple(row) for row in plan.partition().chunk_coords()] == expected_chunks
+    seen = []
+    for projection in plan:
+        for point in _points(projection.chunk_transform.domain):
+            assert _storage_of(projection.chunk_transform, point) == (0, 0)
+            request_point = _storage_of(projection.cell_transform, point)
+            assert _storage_of(transform, request_point) == projection.chunk_coords
+            seen.append(request_point)
+    assert sorted(seen) == sorted(_points(transform.domain))
+
+
 def test_basic_plan_is_reiterable_and_projects_both_spaces() -> None:
     """A plan can be revisited without losing either side of each projection."""
     transform = IndexTransform.from_shape((6,))[1:6]
@@ -782,7 +828,7 @@ def test_mixed_affine_array_dependency_is_rejected() -> None:
         IndexDomain.from_shape((4,)), (DimensionMap(0), ArrayMap(np.array([3, 2, 1, 0])))
     )
     grids = dimension_grids_from_chunks((2, 2), shape=(4, 4))
-    with pytest.raises(ValueError, match="read input axis 0"):
+    with pytest.raises(NotImplementedError, match="also bound by a slice map"):
         list(plan_chunks(transform, grids))
 
 

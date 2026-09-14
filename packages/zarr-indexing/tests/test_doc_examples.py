@@ -72,7 +72,7 @@ PATTERN_NAMESPACE: dict[str, Any] = runpy.run_path(str(DOC_SNIPPETS_DIR / "index
 PATTERN_CASES: tuple[dict[str, Any], ...] = PATTERN_NAMESPACE["PATTERN_CASES"]
 CACHE_NAMESPACE: dict[str, Any] = runpy.run_path(str(CACHE_EXAMPLE))
 
-# The documented pattern matrix must keep covering every selection family.
+# The documented pattern matrix must keep its listed selection families.
 REQUIRED_PATTERNS = {
     "basic-slice",
     "integer-axis-removal",
@@ -133,7 +133,7 @@ def test_documentation_example_executes(example: Path) -> None:
 
 @pytest.mark.parametrize("script", CLI_EXAMPLES, ids=lambda path: path.stem)
 def test_cli_example_runs_as_a_subprocess(script: Path) -> None:
-    """The CLI examples exit 0 when run the way their READMEs instruct."""
+    """CLI examples exit 0 with this test environment's installed dependencies."""
     if "dask" in script.stem:
         pytest.importorskip("dask.array")
     completed = subprocess.run(
