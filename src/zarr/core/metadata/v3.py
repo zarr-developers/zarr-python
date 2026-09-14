@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import itertools
 import json
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
 
 from typing_extensions import TypedDict
 
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BaseCodec, BytesBytesCodec, Codec
 from zarr.abc.metadata import Metadata
 from zarr.core._json import json_to_buffer
 from zarr.core.array_spec import ArrayConfig, ArraySpec
@@ -132,15 +132,15 @@ def representative_chunk_shape(chunk_grid: ChunkGridMetadata) -> tuple[int, ...]
     Regular grids have exactly one chunk shape. Rectilinear grids have many;
     the largest edge along each dimension is used. This is only suitable where
     a single shape is structurally required (rank checks, codec evolution);
-    size-sensitive validation must consider every distinct chunk shape, see
-    `_distinct_chunk_shapes`.
+    size-sensitive validation must cover every chunk size, either through the
+    factored grid or by streaming `_distinct_chunk_shapes`.
     """
     if isinstance(chunk_grid, RegularChunkGridMetadata):
         return chunk_grid.chunk_shape
     return tuple(s if isinstance(s, int) else max(s) for s in chunk_grid.chunk_shapes)
 
 
-def _distinct_chunk_shapes(chunk_grid: ChunkGridMetadata) -> list[tuple[int, ...]]:
+def _distinct_chunk_shapes(chunk_grid: ChunkGridMetadata) -> Iterator[tuple[int, ...]]:
     """Every distinct chunk shape occurring in `chunk_grid`.
 
     For a rectilinear grid every combination of per-dimension distinct edges
@@ -148,11 +148,23 @@ def _distinct_chunk_shapes(chunk_grid: ChunkGridMetadata) -> list[tuple[int, ...
     edge along every other), so this is the full cross product.
     """
     if isinstance(chunk_grid, RegularChunkGridMetadata):
-        return [chunk_grid.chunk_shape]
+        yield chunk_grid.chunk_shape
+        return
     per_dim = (
         (s,) if isinstance(s, int) else tuple(dict.fromkeys(s)) for s in chunk_grid.chunk_shapes
     )
-    return list(itertools.product(*per_dim))
+    yield from itertools.product(*per_dim)
+
+
+def _resolved_chunk_specs(
+    chunk_grid: ChunkGridMetadata, spec: ArraySpec, codecs: tuple[Codec, ...]
+) -> Iterator[ArraySpec]:
+    """Stream chunk specs through a codec prefix without storing the cross product."""
+    for shape in _distinct_chunk_shapes(chunk_grid):
+        current = replace(spec, shape=shape)
+        for codec in codecs:
+            current = codec.resolve_metadata(current)
+        yield current
 
 
 def evolve_and_validate_codecs(
@@ -162,59 +174,76 @@ def evolve_and_validate_codecs(
     chunk_grid: ChunkGridMetadata,
     chunk_spec: ArraySpec,
 ) -> tuple[Codec, ...]:
-    """Evolve and validate a codec chain, threading the chunk spec.
+    """Evolve and validate codecs while preserving factored chunk geometry.
 
-    Each codec is evolved and validated against the chunk spec produced by the
-    previous codec's `resolve_metadata`, the same spec it will see at
-    encode/decode time, not against the array-level metadata. Earlier
-    array->array codecs may change the dtype (`cast_value`) or the shape and
-    even the rank of a chunk (the `reshape` extension codec, which the spec
-    explicitly allows to be followed by `transpose`).
+    Codecs with the default identity metadata resolver retain the grid.
+    CastValue and ScaleOffset also retain its geometry; TransposeCodec permutes
+    the dimensions of both the shape and grid. These paths resolve one spec per
+    codec and validate the grid directly, without enumerating chunk combinations.
+    Only the exact built-in classes use specialized geometry rules; overridden
+    metadata resolvers must use the general path.
 
-    `shape` and `chunk_grid` are the array-level values passed to
-    `Codec.validate`. They are handed unchanged to every codec until one
-    changes the shape of any chunk; from then on the array-level values are no
-    longer meaningful for the remaining codecs. Because `validate` checks may
-    be size-sensitive (sharding divisibility), every *distinct* chunk shape of
-    the grid is threaded through `resolve_metadata` and validated
-    individually; for a rectilinear grid, a single representative shape would
-    not be sound: an inner chunk size that divides the largest chunk need not
-    divide the others. Each threaded shape is presented to `validate` as a
-    regular grid of that shape, the only shape-related facts that survive a
-    per-chunk transformation.
+    Arbitrary metadata resolvers stream each distinct chunk spec. Validation
+    uses the array geometry until a chunk shape changes, then each resolved
+    shape is validated as a regular grid. Full specs retain per-chunk dtype and
+    fill values. Prefixes are replayed for subsequent codecs rather than cached:
+    this bounds memory but may still require combinatorial work for arbitrary
+    transforms. Evolution uses one representative spec to produce one chain.
 
-    `chunk_spec` (built from the representative chunk shape) is threaded
-    separately as the single spec used for codec evolution and dtype tracking,
-    since evolution must produce one codec chain.
-
-    Per-codec `validate` runs before `resolve_metadata`, since the latter
-    may rely on invariants the former checks (e.g. `cast_value` rejects
-    complex source dtypes that would otherwise crash `_do_cast`).
+    Validation precedes metadata resolution, whose implementation may require
+    the validated dtype and geometry. Each codec is evolved only once here.
     """
+    from zarr.codecs.cast_value import CastValue
+    from zarr.codecs.scale_offset import ScaleOffset
+    from zarr.codecs.transpose import TransposeCodec
+
     out: list[Codec] = []
     spec = chunk_spec
-    threaded = _distinct_chunk_shapes(chunk_grid)
+    grid = chunk_grid
+    validation_shape = shape
+    fallback_grid: ChunkGridMetadata | None = None
+    fallback_spec = chunk_spec
+    fallback_codecs: tuple[Codec, ...] = ()
     shapes_changed = False
     for codec in codecs:
         evolved = codec.evolve_from_array_spec(spec)
-        # The array-level shape and grid are handed to validate until a codec
-        # changes chunk shapes; from then on each distinct chunk shape is
-        # validated as its own regular grid.
-        if shapes_changed:
-            for s in threaded:
-                evolved.validate(
-                    shape=s, dtype=spec.dtype, chunk_grid=RegularChunkGridMetadata(chunk_shape=s)
-                )
+        preserves_shape = type(evolved).resolve_metadata is BaseCodec.resolve_metadata or type(
+            evolved
+        ) in (CastValue, ScaleOffset)
+        if fallback_grid is None and (preserves_shape or type(evolved) is TransposeCodec):
+            evolved.validate(shape=validation_shape, dtype=spec.dtype, chunk_grid=grid)
+            spec = evolved.resolve_metadata(spec)
+            if type(evolved) is TransposeCodec:
+                order = evolved.order
+                validation_shape = tuple(validation_shape[d] for d in order)
+                if isinstance(grid, RegularChunkGridMetadata):
+                    grid = RegularChunkGridMetadata(
+                        chunk_shape=tuple(grid.chunk_shape[d] for d in order)
+                    )
+                else:
+                    grid = RectilinearChunkGridMetadata(
+                        chunk_shapes=tuple(grid.chunk_shapes[d] for d in order)
+                    )
         else:
-            evolved.validate(shape=shape, dtype=spec.dtype, chunk_grid=chunk_grid)
+            if fallback_grid is None:
+                fallback_grid, fallback_spec = grid, spec
+            changed = False
+            for current in _resolved_chunk_specs(fallback_grid, fallback_spec, fallback_codecs):
+                evolved.validate(
+                    shape=current.shape if shapes_changed else validation_shape,
+                    dtype=current.dtype,
+                    chunk_grid=(
+                        RegularChunkGridMetadata(chunk_shape=current.shape)
+                        if shapes_changed
+                        else grid
+                    ),
+                )
+                resolved = evolved.resolve_metadata(current)
+                changed |= resolved.shape != current.shape
+            shapes_changed |= changed
+            fallback_codecs += (evolved,)
+            spec = evolved.resolve_metadata(spec)
         out.append(evolved)
-        resolved = list(
-            dict.fromkeys(evolved.resolve_metadata(replace(spec, shape=s)).shape for s in threaded)
-        )
-        if resolved != threaded:
-            shapes_changed = True
-        threaded = resolved
-        spec = evolved.resolve_metadata(spec)
     return tuple(out)
 
 

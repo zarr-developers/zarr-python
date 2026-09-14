@@ -186,3 +186,75 @@ def test_rectilinear_every_chunk_shape_validated() -> None:
         pytest.raises(ValueError, match="not\\s+divisible"),
     ):
         _rectilinear_transpose_sharding_metadata((5, 3))
+
+
+@pytest.mark.parametrize("rank", [4, 12])
+@pytest.mark.parametrize("chain", ["bytes", "scale-offset", "transpose-sharding"])
+def test_factored_validation_does_not_visit_chunk_combinations(
+    rank: int, chain: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Common codec chains resolve specs independently of the chunk cross product."""
+    from zarr.abc.codec import BaseCodec
+    from zarr.codecs.scale_offset import ScaleOffset
+
+    calls = 0
+    original = BaseCodec.resolve_metadata
+
+    def counted(self: Any, spec: ArraySpec) -> ArraySpec:
+        nonlocal calls
+        calls += 1
+        assert calls <= 10, "metadata validation enumerated chunk combinations"
+        return original(self, spec)
+
+    monkeypatch.setattr(BaseCodec, "resolve_metadata", counted)
+    codecs: tuple[Any, ...]
+    if chain == "bytes":
+        codecs = (BytesCodec(),)
+    elif chain == "scale-offset":
+        codecs = (ScaleOffset(offset=0), BytesCodec())
+    else:
+        codecs = (
+            TransposeCodec(order=tuple(reversed(range(rank)))),
+            ShardingCodec(chunk_shape=(1,) * rank),
+        )
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        ArrayV3Metadata(
+            shape=(3,) * rank,
+            data_type=Int32(),
+            chunk_grid=RectilinearChunkGridMetadata(chunk_shapes=((1, 2),) * rank),
+            chunk_key_encoding={"name": "default"},
+            fill_value=0,
+            codecs=codecs,
+            attributes={},
+            dimension_names=None,
+        )
+    assert calls <= 10
+
+
+def test_arbitrary_shape_validation_stops_at_first_invalid_chunk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failing arbitrary transform does not consume all chunk combinations."""
+    import itertools
+
+    original_product = itertools.product
+
+    def guarded_product(*args: Any) -> Iterator[tuple[int, ...]]:
+        yield next(original_product(*args))
+        raise AssertionError("consumed combinations after the first invalid chunk")
+
+    monkeypatch.setattr(itertools, "product", guarded_product)
+    with (
+        zarr.config.set({"array.rectilinear_chunks": True}),
+        pytest.raises(ValueError, match="cannot reshape a chunk"),
+    ):
+        ArrayV3Metadata(
+            shape=(3, 3),
+            data_type=Int32(),
+            chunk_grid=RectilinearChunkGridMetadata(chunk_shapes=((1, 2), (1, 2))),
+            chunk_key_encoding={"name": "default"},
+            fill_value=0,
+            codecs=(ReshapeCodec(shape=(4,)), BytesCodec()),
+            attributes={},
+            dimension_names=None,
+        )
