@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, get_args
 import numpy as np
 import pytest
 
+from tests.conftest import Expect
 from zarr.core.common import (
     ANY_ACCESS_MODE,
     AccessModeLiteral,
@@ -35,27 +36,40 @@ def test_ceildiv(a: float, b: float, expected: int) -> None:
 
 
 @pytest.mark.parametrize(
-    ("a", "b", "expected"),
+    "case",
     [
-        (0, 3, 0),
-        (7, 3, 3),
-        (9, 3, 3),
-        (-7, 3, -2),
-        (7, -3, -2),
-        (-7, -3, 3),
-        (2**62 - 1, 1, 2**62 - 1),
-        (2**62 + 1, 2, 2**61 + 1),
-        (2**60 + 3, 1, 2**60 + 3),
-        (np.int64(2**62 - 1), np.int64(1), 2**62 - 1),
-        (np.int64(-(2**63)), np.int64(-1), 2**63),
-        (np.uint64(2**64 - 1), np.uint64(2), 2**63),
+        Expect(input=(0, 3), output=0, id="zero"),
+        Expect(input=(7, 3), output=3, id="round-up"),
+        Expect(input=(9, 3), output=3, id="exact"),
+        Expect(input=(-7, 3), output=-2, id="negative-numerator"),
+        Expect(input=(7, -3), output=-2, id="negative-divisor"),
+        Expect(input=(-7, -3), output=3, id="both-negative"),
+        Expect(input=(2**62 - 1, 1), output=2**62 - 1, id="large-exact"),
+        Expect(input=(2**62 + 1, 2), output=2**61 + 1, id="large-round-up"),
+        Expect(input=(2**60 + 3, 1), output=2**60 + 3, id="large-low-bits"),
+        Expect(
+            input=(np.int64(2**62 - 1), np.int64(1)),
+            output=2**62 - 1,
+            id="numpy-signed",
+        ),
+        Expect(
+            input=(np.int64(-(2**63)), np.int64(-1)),
+            output=2**63,
+            id="numpy-signed-minimum",
+        ),
+        Expect(
+            input=(np.uint64(2**64 - 1), np.uint64(2)),
+            output=2**63,
+            id="numpy-unsigned-maximum",
+        ),
     ],
+    ids=lambda case: case.id,
 )
-def test_ceildiv_int(a: int, b: int, expected: int) -> None:
+def test_ceildiv_int(case: Expect[tuple[int, int], int]) -> None:
     from zarr.core.common import ceildiv_int
 
-    result = ceildiv_int(a, b)
-    assert result == expected
+    result = ceildiv_int(*case.input)
+    assert result == case.output
     assert isinstance(result, int)
 
 
