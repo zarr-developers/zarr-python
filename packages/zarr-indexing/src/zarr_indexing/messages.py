@@ -556,7 +556,7 @@ def _normalize_output_map(raw: Any, where: str) -> dict[str, Any]:
     if has_index_array:
         stride = _check_int(raw["stride"], f"{where}.stride") if "stride" in raw else 1
         bounds = (
-            _check_index_array_bounds(raw["index_array_bounds"], where)
+            validate_index_array_bounds(raw["index_array_bounds"], where)
             if "index_array_bounds" in raw
             else ["-inf", "+inf"]
         )
@@ -585,7 +585,8 @@ def _normalize_output_map(raw: Any, where: str) -> dict[str, Any]:
     return {"offset": offset}
 
 
-def _check_index_array_bounds(value: Any, where: str) -> list[int | str]:
+def validate_index_array_bounds(value: Any, where: str) -> list[int | str]:
+    """Validate the syntax and ordering of an inclusive index-array interval."""
     if not isinstance(value, list) or len(value) != 2:
         raise NdselError(
             "invalid_json",

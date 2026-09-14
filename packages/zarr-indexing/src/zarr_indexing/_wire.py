@@ -2,9 +2,9 @@
 
 Package-private: the types that serialize themselves (`IndexDomain`,
 `IndexTransform`, the output map kinds) all need these, so they cannot live in
-any one of them, and they are not API. The three engine constraints named in
-[`zarr_indexing.json`][zarr_indexing.json] — finite bounds, implicit bounds
-lowering by value, integer `index_array` content — are enforced here.
+any one of them, and they are not API. Domain bounds, index-array bounds,
+implicit bounds lowering by value, and integer `index_array` content are
+handled here, as described in [`zarr_indexing.json`][zarr_indexing.json].
 """
 
 from __future__ import annotations
@@ -13,11 +13,35 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from zarr_indexing.messages import NdselError
+from zarr_indexing.messages import NdselError, validate_index_array_bounds
 
 if TYPE_CHECKING:
     from zarr_indexing.domain import IndexDomain
     from zarr_indexing.json import BoundJSON
+
+
+def check_index_array_bounds(array: np.ndarray[Any, Any], bounds: Any, where: str) -> None:
+    """Validate every raw index value against an inclusive interval.
+
+    Validate interval syntax even for empty arrays. Once checked, immutable
+    index coordinates need no retained constraint. Use Python integer extrema
+    to avoid overflow or floating-point rounding at integer limits.
+    """
+    lo, hi = validate_index_array_bounds(bounds, where)
+    if array.size == 0 or (lo == "-inf" and hi == "+inf"):
+        return
+    minimum, maximum = int(array.min()), int(array.max())
+    if (
+        lo == "+inf"
+        or hi == "-inf"
+        or (isinstance(lo, int) and minimum < lo)
+        or (isinstance(hi, int) and maximum > hi)
+    ):
+        raise NdselError(
+            "invalid_json",
+            f"{where}.index_array values [{minimum}, {maximum}] are outside "
+            f"index_array_bounds {bounds!r}",
+        )
 
 
 def lower_bound(bound: BoundJSON, where: str) -> int:
