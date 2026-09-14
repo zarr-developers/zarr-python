@@ -47,12 +47,28 @@ def lower_index_array(raw: Any, where: str) -> np.ndarray[Any, np.dtype[np.intp]
     and 0. Strings raise here rather than leaking NumPy's own conversion error.
     """
     if not isinstance(raw, list):
-        # A bare integer would become a rank-0 array and then be widened into a
-        # length-1 map, so a document that names no cells would select one.
+        # The wire representation requires a nested array, not a scalar.
         raise NdselError(
             "invalid_json",
             f"{where} must be an array of integers, got {raw!r}",
         )
+    # Validate before NumPy inference can coerce mixed booleans to integers or
+    # conversion to intp can wrap unsigned coordinates.
+    limits = np.iinfo(np.intp)
+    pending = [raw]
+    while pending:
+        for value in pending.pop():
+            if isinstance(value, list):
+                pending.append(value)
+            elif isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+                dtype = np.asarray(value).dtype.name
+                raise NdselError(
+                    "invalid_json", f"{where} must hold integers, got {dtype}: {value!r}"
+                )
+            elif not limits.min <= value <= limits.max:
+                raise NdselError(
+                    "invalid_json", f"{where} coordinate {value} is outside intp range"
+                )
     try:
         arr = np.asarray(raw)
     except (TypeError, ValueError) as exc:
@@ -88,16 +104,17 @@ def full_rank_index_array(
 ) -> np.ndarray[Any, np.dtype[np.intp]]:
     """Give an incoming `index_array` the input rank the engine requires.
 
-    ndsel leaves index-array rank unvalidated, so a conformant producer may send
-    an array of lower rank that broadcasts against the domain. A non-empty one
-    is aligned to the *trailing* input dimensions, which is how NumPy broadcasts
-    and how a producer omitting leading singletons means it to be read.
+    ndsel intends index arrays to have the input rank, but defers validating
+    that constraint. This engine also accepts lower-rank arrays, aligning them
+    to the *trailing* input dimensions as in NumPy broadcasting. This extension
+    does not imply other ndsel consumers accept the same document.
 
     An empty array is a different matter: `[]` is the only spelling of every
     empty shape once the leading axis is the zero-length one, so the axis it
-    varies over cannot be read off it. It is recovered from the domain, which
-    can only be empty on the axis in question — and rejected when the domain
-    leaves that ambiguous. This package never emits such a document (an empty
+    varies over cannot be read off it. When ranks differ, this engine recovers
+    a shape with the domain's single empty axis and singleton axes elsewhere;
+    it rejects recovery if the domain has zero or multiple empty axes.
+    This package never emits such a document (an empty
     map is degenerate and collapses to a constant, as TensorStore's does), so
     this path exists for external producers alone.
     """

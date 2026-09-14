@@ -10,9 +10,9 @@ The example shows how to:
   `dask.array.from_array`
 - Build one Dask task per partition from `parts()`, compute them in parallel, and
   place each result with the partition's `out_selection`
-- Read `is_complete` to tell which partitions cover a stored chunk completely
-- Rely on `__dask_tokenize__`, so that equal selections produce equal tokens and
-  Dask can cache and deduplicate the work
+- Read `is_complete` to inspect coverage of a partition cell
+- Inspect `__dask_tokenize__` for the example's equal source/selection pairs;
+  token equality can support task deduplication but does not promise persistent caching
 - Measure what a task graph costs for indexing-only work, against composing the
   same selections into one transform
 
@@ -25,15 +25,16 @@ is discovered from the wrapped array and is independent of Dask's blocks.
 If Dask is doing arithmetic across chunks, reductions, rechunking, or distributed
 execution, it is the right tool, and its task graph is what makes that work.
 
-If Dask is used *only* to defer indexing — take a view now, read it later, with
-no computation in between — then the graph is overhead. Dask slices the chunk
-grid on every indexing operation and records another layer, so composing
-selections costs time proportional to both the depth of the chain and the number
-of chunks in the array, and reading walks what was accumulated. `LazyArray`
-composes each selection into the single transform it already holds, so composing
-is independent of the depth of the chain, and reading enumerates only the
-partitions the selection touches. The last test in this example prints both, and
-the gap widens with the number of chunks and the number of selections.
+For indexing-only workloads, graph construction and scheduling can be an
+additional cost. The example measures repeated leading slices and reports graph
+layers and timings for the selected Dask version. It does not establish general
+complexity bounds or a guaranteed speedup: Dask can optimize graphs, and costs
+depend on the selection, chunk layout, and scheduler.
+
+`LazyArray` stores one composed transform rather than retaining a wrapper for
+each prior selection. Applying a chain still costs work for every operation;
+index-array composition may process arrays whose size depends on earlier
+selections. Reading also incurs partition planning and source I/O.
 
 ## Running the Example
 

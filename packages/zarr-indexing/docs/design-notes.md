@@ -16,7 +16,7 @@ visual guide owns the mechanics of
 ## Relationship to TensorStore
 
 The core is [TensorStore's](https://google.github.io/tensorstore/index_space.html)
-index-transform model, reimplemented in Python against NumPy. The visual guide
+index-transform model, implemented here in Python against NumPy. The visual guide
 introduces the shared model in
 [Coordinates are addresses](guide/index.md#coordinates-are-addresses) and
 [Lazy views compose](guide/index.md#lazy-views-compose); the comparison here is
@@ -28,13 +28,14 @@ about the deliberately matching semantics:
 - **Slice semantics.** Slice bounds are literal domain coordinates: no
   clamping, no negative wrapping, non-empty intervals must be contained in the
   domain, and a strided slice's domain origin is `trunc(start/step)` rounded
-  toward zero. Every one of those rules was executed against tensorstore 0.1.84
-  and is pinned in `tests/test_tensorstore_parity.py`.
-- **The wire format.** A canonical [ndsel](ndsel.md) transform body is,
-  field-for-field, a TensorStore `IndexTransform` minus the `kind`
-  discriminator, and `tests/test_ndsel_tensorstore.py` loads our bodies into
-  `tensorstore.IndexTransform(json=...)` and round-trips them back through our
-  engine layer.
+  toward zero. `tests/test_tensorstore_parity.py` compares the enumerated cases with
+  TensorStore when that optional dependency is installed.
+- **The wire format.** [ndsel](ndsel.md) uses TensorStore's domain and
+  output-map field names for transform bodies, with an additional `kind`
+  discriminator. `tests/test_ndsel_tensorstore.py` checks interoperability for
+  the tested cases. Their validation rules differ, and loading and
+  re-emitting a message through the engine can normalize or discard metadata;
+  see [lowering to a transform](ndsel.md#lowering-to-a-transform).
 - **Chunk partitioning.** Both factor a transform over a grid before visiting
   any cell, rather than intersecting the whole transform with each chunk.
   TensorStore's `IndexTransformGridPartition` holds strided sets and index
@@ -47,17 +48,19 @@ about the deliberately matching semantics:
   components within a mixed request. Both derive the per-chunk transforms
   from the partition ([the guide](guide/index.md#a-plan-is-a-product-of-per-axis-tables)
   shows the tables). TensorStore keeps strided sets implicit, while this
-  library materializes their per-axis rows for vectorized consumers. Diagonals are rejected here; supporting them needs a strided set per
-  *input* dimension spanning every storage axis that reads it, TensorStore's
-  representation.
+  library materializes their per-axis rows for vectorized consumers. Pure
+  affine diagonals need grouping by input dimension; mixed affine/index-array
+  dependencies need joint partitioning. TensorStore classifies a connected
+  component containing index-array edges as an index-array set
+  ([source](https://github.com/google/tensorstore/blob/66b2ce5290fa2ec5c8019682391421062ce767a2/tensorstore/internal/grid_partition.h#L58-L67)).
 
 Four deliberate differences:
 
 | | TensorStore | `zarr-indexing` |
 | --- | --- | --- |
-| Dialect | One strict dialect everywhere: literal coordinates, no negative wrapping | The algebra keeps that dialect; each public boundary picks its own. [`LazyArray`](api/lazy_array.md) speaks positional NumPy, `zarr.Array.lazy` speaks literal. [`zarr_indexing.boundary`](api/boundary.md) is the translation |
+| Dialect | Coordinate indices are literal; negative coordinates do not wrap | The algebra keeps that dialect; each public boundary picks its own. [`LazyArray`](api/lazy_array.md) speaks positional NumPy, `IndexTransform` speaks literal. [`zarr_indexing.boundary`](api/boundary.md) is the translation |
 | Scheduling | An internal C++ scheduler owns concurrency and chunk ordering | [`parts()`](api/lazy_array.md) exposes the partition structure so the caller's own scheduler — dask, a thread pool, a task queue — drives it |
-| Wire format | Implementation-defined JSON, specified by what the implementation accepts | [ndsel](ndsel.md) is spec-first, with a vendored language-agnostic conformance corpus every implementation runs |
+| Wire format | [Documented JSON schema](https://google.github.io/tensorstore/index_space.html#index-transform) | [ndsel](ndsel.md) is spec-first, with a vendored conformance corpus exercised by this implementation |
 | Backends | A driver ecosystem (zarr, N5, neuroglancer, GCS, …) built into the library | No drivers. The default reader needs `shape`, `dtype`, basic integer/slice indexing, and selected slabs convertible to NumPy system memory; other backends use explicit custom readers. A device reader owns transfer into the supplied system-memory output |
 
 The mechanics of a
@@ -74,19 +77,18 @@ and caller-supplied grid; it does not own reads, writes, buffers, locks, or
 scheduling. Zarr can therefore plan reads against an inner codec-chunk grid and
 writes against an atomic shard grid; napari or dask can turn the same
 projections into tasks without putting a dask dependency in this package.
-`coverage` is relative to that selected grid: `full` proves a blind replacement
-safe, `partial` proves it is not, and `unknown` conservatively covers fancy
-selections whose duplicates would require additional work to classify.
+`coverage` describes selection coverage relative to that grid. A `full`
+classification can help a writer avoid reading old values, but does not by
+itself prove that a write is safe: encoding requirements, conflicts, duplicate
+semantics, and concurrency remain consumer responsibilities. `unknown` means
+the planner has not established complete or partial coverage.
 
-The comparison also runs the other way. TensorStore is a mature, heavily
-optimized C++ system whose performance this library cannot approach. Independent strided planning
-here is per axis, but each materialized `ChunkProjection` is
-Python-level bookkeeping over NumPy — two domains, two transforms and the
-projection itself — so the per-part overhead of the object view is
-significant; a consumer that reads the partition's tables directly pays no
-per-chunk object construction. This library is small and depends on nothing beyond
-NumPy, so the algebra can be adopted by a Python project that wants the model
-without the C++ runtime.
+This implementation performs Python-level bookkeeping over NumPy. This page
+provides no benchmark establishing a general performance ordering against
+TensorStore; costs depend on the selection and execution backend.
+
+The partition tables can be consumed without constructing a `ChunkProjection`
+for each chunk. Materializing projections adds Python object construction.
 
 ## Bounding-box selections vs query selections
 
@@ -102,11 +104,11 @@ and the coordinates it touches form a regular lattice. Basic indexing produces
 one, and composing basic indexing with basic indexing keeps one.
 
 **A query** is a transform with at least one `ArrayMap` — an explicit lookup
-table of coordinates. It costs `O(n)` to store, it has no locality (the
-coordinates may repeat, reverse, or scatter arbitrarily), and intersecting it
-with a region means scanning it. `oindex`, `vindex`, and boolean masks all
-produce one, and once an axis is a query, subsequent basic indexing cannot make
-it a box again. A second query composes onto any axis of an existing one —
+table of coordinates. Its stored coordinate arrays cost space proportional to their stored size.
+Coordinates may repeat or scatter, but can also be contiguous and local.
+Current query-resolution paths inspect these arrays. Fancy indexing can produce
+a query, but singleton or constant selections can collapse to `ConstantMap`;
+subsequent indexing can therefore make a query affine again. A second query composes onto any axis of an existing one —
 including the axes it merely broadcasts along — by evaluating the existing
 lookup tables at the new coordinates.
 
@@ -116,9 +118,10 @@ planning and materialization.
 
 [ndsel](ndsel.md) encodes the same split in its message kinds: `point`, `box`,
 and `slice` desugar to constant and affine output maps and are always boxes;
-`points` desugars to `index_array` maps, and a `transform` body is a box
-exactly when none of its output maps carries an `index_array`. A consumer can
-therefore classify a selection off the wire without materializing anything:
+`points` desugars to `index_array` maps. A transform without index-array maps
+is a box in the engine’s structural classification. Loading can further
+simplify degenerate index arrays to constants, so an arbitrary incoming body
+with `index_array` fields need not remain a query. For example:
 
 ```python
 from zarr_indexing import IndexTransform
@@ -134,16 +137,13 @@ gather.to_json()["output"][0]
 #  'index_array_bounds': ['-inf', '+inf']}
 ```
 
-The distinction matters to consumers of a selection. A box can be tiled into
-rectangular dask chunks or passed to a viewer or tile server that only accepts
-rectangles; a query cannot, and has to be resolved into a gather. A box can also
-be served as a single strided slab read, but the read has to be strided: reading
-its bounding box and discarding the rest transfers proportionally more data as
-soon as any stride exceeds 1. The two also behave differently under
-partitioning: a box touches a regularly-spaced run of parts, in increasing
-order, each at most once — a stride larger than a part's extent skips parts
-outright, so the run is not contiguous — while a query can touch any subset of
-them, in any order, more than once.
+The representation helps a consumer choose a lowering strategy. Independent
+affine axes can often be read with slices plus reversal, permutation, or
+broadcasting. Arbitrary affine maps can also express diagonals, so the absence
+of `ArrayMap` alone is not proof of a rectangular slab. Queries may be lowered
+through gathers or covers, and can sometimes simplify to slices. Chunk plans
+group selected coordinates by chunk while preserving result placement; repeated
+coordinates do not imply repeated visits to the same chunk.
 
 [`LazyArray`](api/lazy_array.md) exposes the category directly:
 
@@ -173,16 +173,20 @@ gather.shape           # (3, 80)
 `bounding_box()` is defined for both: it is the hull, the smallest interval per
 storage dimension containing every coordinate the selection reaches.
 `strides()` is defined only for a box and gives the step per dimension.
-Together the two describe a box selection completely.
+These summaries omit traversal direction, input-axis correspondence, and
+result layout. For example, forward and reversed views have identical bounds
+and stride magnitudes but different ordered results. Use the transform for the
+complete selection.
 
-Both are needed, because a box is dense in its hull only when every stride is
-1. The slab above spans a 40x77 hull over the 40x20 cells it selects, so a
+For independent axes with multiple selected coordinates, a stride magnitude
+greater than one leaves gaps in the hull. Singleton axes are an exception,
+and a query can also cover every cell of its hull. The slab above spans a 40x77 hull over the 40x20 cells it selects, so a
 consumer that issued one rectangular read of the hull and discarded the rest
 would transfer 3.85x the data. A query's hull is looser still and carries no
 stride at all: 88 rows of hull over three selected rows. An empty *box* touches
 no coordinate to report an interval around, so `bounding_box()` is `None` while
 `strides()` still answers — the step is a property of the selection's shape, not
-of the region it reaches. Only a query returns `None` from both.
+of the region it reaches. An empty query returns `None` from both.
 
 There is deliberately no separate `BoxView` type today. A statically-typed
 rectangular-only view is a plausible next step, but it should be introduced by
@@ -248,8 +252,8 @@ could accept and finishing the rest elsewhere. A reader lowers the complete
 transform and can compose through delegation instead. This resembles
 [zarrita.js store extensions](https://zarrita.dev/packages/zarrita.html), where
 storage-specific behavior is an explicit extension point rather than an
-inferred array capability. The implementation remains independently authored:
-no code is shared with TensorStore, xarray, or zarrita.js.
+inferred array capability. This is an architectural analogy, not a claim of API or implementation
+compatibility.
 
 ## Current scope
 
@@ -263,7 +267,7 @@ re-bases every view to origin 0, so the positional dialect never exposes it; a
 caller working with `IndexTransform` directly will see it, and re-bases
 explicitly with `translate_domain_to` for NumPy-shaped coordinates.
 
-Fancy selections compose without restriction: a second `oindex`/`vindex`/mask
+Supported fancy selections compose across already-fancy views: a second `oindex`/`vindex`/mask
 step may land on any axis of an already-fancy view, including axes an existing
 index array merely broadcasts along, so
 `lazy.oindex[[2, 0], :].lazy.oindex[:, [1, 3]]` selects the outer product it
@@ -273,29 +277,26 @@ which evaluates the existing lookup tables at the new coordinates — rather tha
 rewritten in place. Resolution classifies the result by structure
 (`index_array_structure`): pure per-axis outer products keep the orthogonal
 resolvers, and everything else — correlated maps, mixtures, index arrays
-sharing an input axis (a diagonal gather, reachable only by hand-building a
-transform) — takes the general reader/intersection path. Chunk planning
+sharing an input axis (as in paired vectorized coordinates) — takes the general reader/intersection path. Chunk planning
 factors index arrays into connected dependency components before flattening,
 so independent groups do not expand one another. Vectorized selection preserves
 broadcast singletons to retain those dependencies.
 
-Three limits remain, all intentional and all expected to be lifted:
+Some current limits are:
 
-- **Affine diagonals.** A hand-built transform in which two output maps read
-  one input dimension — two slice maps, or a slice map and an orthogonal index
-  array — is rejected at planning with `ValueError`; a correlated index array
-  varying over a dimension a slice map also reads is rejected with
-  `NotImplementedError`. No selection dialect produces either. Supporting them
-  needs a strided set per *input* dimension spanning all dependent storage
-  axes, TensorStore's connected-component representation. *Planned.*
+- **Shared affine dependencies.** Planning rejects two affine output maps
+  sharing an input axis with `ValueError`. An index array sharing a varying
+  input axis with an affine map takes the general classification and raises
+  `NotImplementedError`. Pure affine diagonals would need grouping dependent
+  storage axes by input dimension; mixed components need joint partitioning.
 - **Finite explicit bounds only.** `IndexDomain` has no implicit or unbounded
   dimensions; the message layer will normalize a body with `"-inf"`/`"+inf"`
   bounds, but the engine layer refuses to lower one into a transform.
-  TensorStore supports both. *Planned.*
+  TensorStore supports both.
 - **Labels are carried, not propagated.** `IndexDomain` holds optional
   dimension labels and the wire format round-trips them, but indexing
   operations build new domains without them, so a label does not survive a
-  slice. *Planned.*
+  slice.
 
 ## Selection to chunk operations
 

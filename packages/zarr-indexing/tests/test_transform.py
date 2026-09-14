@@ -1142,15 +1142,10 @@ class TestIntersectArrayMapClassification:
 
 
 class TestDerivedMapDependency:
-    """A map's `input_dimension` must describe the array it is built with.
+    """Derived map dependencies follow the index array's shape.
 
-    Three separate failures came from one stale value: a vectorized index applied
-    to an orthogonal map makes it correlated, but the old dependency was carried
-    onto the new array anyway. Readers fall back to that field when the shape
-    alone cannot say, so the wrong axis was believed much later — by a scatter
-    that filed positions under it, which is why the answer depended on how the
-    read was partitioned.
-    """
+    Vectorized and orthogonal composition must preserve the selected values
+    and their placement for each partitioning."""
 
     def test_a_vindex_over_a_fancy_view_is_marked_correlated(self) -> None:
         base = np.arange(6)
@@ -1191,12 +1186,7 @@ class TestDerivedMapDependency:
 
 
 def test_an_orthogonal_step_over_a_correlated_view_is_an_outer_product() -> None:
-    """`oindex` after `vindex` means the outer product, not a joint gather.
-
-    The reindexing applied its index tuple positionally, which is NumPy's
-    *vectorized* rule, so two arrays collapsed into one axis and the result came
-    back a rank short of what was asked for.
-    """
+    """Orthogonal indexing after vectorized indexing selects an outer product."""
     base = np.arange(14).reshape(7, 2)
     view = LazyArray(base).lazy.vindex[
         np.array([[5, 5], [1, 2], [0, 4]]), np.array([[1, 1], [1, 0], [1, 0]])
@@ -1213,12 +1203,7 @@ def test_an_orthogonal_step_over_a_correlated_view_is_an_outer_product() -> None
 def test_an_index_array_value_just_outside_the_domain_is_refused(
     value: int, description: str
 ) -> None:
-    """The bound checks are probed at the boundary, not comfortably past it.
-
-    Both were only ever exercised from well outside the domain, so relaxing
-    either by one — `lo - 1` instead of `lo` — went unnoticed while letting a
-    view read a cell it does not address.
-    """
+    """Reject the coordinate below the lower bound and the exclusive upper bound."""
     transform = IndexTransform.from_shape((12,))[2:10]
     with pytest.raises(BoundsCheckError, match="out of bounds"):
         transform.oindex[np.array([value, 3])]
@@ -1274,3 +1259,15 @@ def test_index_array_structure_classifies_the_three_shapes() -> None:
         ),
     )
     assert diagonal.index_array_structure == "general"
+
+
+@pytest.mark.parametrize("array_first", [False, True])
+def test_intersect_rejects_array_and_affine_shared_input_axis(array_first: bool) -> None:
+    """Joint filtering of affine and lookup coordinates must not return extra cells."""
+    affine = DimensionMap(0)
+    lookup = ArrayMap(np.array([0, 3, 1, 2]))
+    output = (lookup, affine) if array_first else (affine, lookup)
+    transform = IndexTransform(IndexDomain.from_shape((4,)), output)
+    output_domain = IndexDomain((0, 1), (2, 4)) if array_first else IndexDomain((1, 0), (4, 2))
+    with pytest.raises(NotImplementedError, match="also bound by a slice map"):
+        transform.intersect(output_domain)
