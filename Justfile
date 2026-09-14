@@ -138,3 +138,11 @@ lint *args:
 [doc("Check that uv.lock is in sync with pyproject.toml")]
 lock-check:
     uv lock --check
+
+[doc("Check changelog entry filenames (pass a directory to check, default: changes/)")]
+check-changelogs *dir:
+    uv run --no-sync python ci/check_changelog_entries.py {{dir}}
+
+[doc("Report unlinked types in the built docs (run `just docs-build` first)")]
+check-doc-links *args:
+    uv run --no-sync python ci/check_unlinked_types.py {{args}}
