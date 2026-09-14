@@ -99,9 +99,8 @@ extend = "../../pyproject.toml"
 target-version = "py312"
 
 [tool.ruff.lint.per-file-ignores]
-# Chunk discovery and __dask_tokenize__ deliberately catch Exception: a
-# foreign source's attributes or token hooks may fail, so these paths provide
-# fallback metadata or tokens when ordinary exceptions occur. Configured here (not as
+# Chunk discovery deliberately catches Exception: a foreign source's
+# attributes may fail, so this path provides fallback metadata. Configured here (not as
 # noqa comments) because different ruff versions
 # have differed on whether these rules fire; RUF100 can remove unused noqa comments.
 "src/zarr_indexing/lazy_array.py" = ["BLE001", "S110"]
