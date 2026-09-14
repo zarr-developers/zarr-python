@@ -22,7 +22,8 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.core.chunk_grids import FixedDimension
-from zarr.core.common import ceildiv, product
+from zarr.core.common import ceildiv as ceildiv  # noqa: PLC0414 - preserve the existing export
+from zarr.core.common import ceildiv_int, product
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.errors import (
@@ -206,7 +207,7 @@ def _iter_regions(
     # ((slice(0, 1, 1), slice(0, 2, 1)), (slice(1, 2, 1), slice(0, 2, 1)))
     ```
     """
-    grid_shape = tuple(itertools.starmap(ceildiv, zip(domain_shape, region_shape, strict=True)))
+    grid_shape = tuple(itertools.starmap(ceildiv_int, zip(domain_shape, region_shape, strict=True)))
     for grid_position in _iter_grid(
         grid_shape=grid_shape, origin=origin, selection_shape=selection_shape, order=order
     ):
@@ -414,7 +415,7 @@ class SliceDimIndexer:
 
         object.__setattr__(self, "dim_len", dim_len)
         object.__setattr__(self, "dim_grid", dim_grid)
-        object.__setattr__(self, "nitems", max(0, ceildiv((stop - start), step)))
+        object.__setattr__(self, "nitems", max(0, ceildiv_int((stop - start), step)))
         object.__setattr__(self, "nchunks", dim_grid.nchunks)
 
     def __iter__(self) -> Iterator[ChunkDimProjection]:
@@ -440,7 +441,7 @@ class SliceDimIndexer:
                 if remainder:
                     dim_chunk_sel_start += self.step - remainder
                 # compute number of previous items, provides offset into output array
-                dim_out_offset = ceildiv((dim_offset - self.start), self.step)
+                dim_out_offset = ceildiv_int((dim_offset - self.start), self.step)
             else:
                 # selection starts within current chunk
                 dim_chunk_sel_start = self.start - dim_offset
@@ -454,7 +455,7 @@ class SliceDimIndexer:
                 dim_chunk_sel_stop = self.stop - dim_offset
 
             dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop, self.step)
-            dim_chunk_nitems = ceildiv((dim_chunk_sel_stop - dim_chunk_sel_start), self.step)
+            dim_chunk_nitems = ceildiv_int((dim_chunk_sel_stop - dim_chunk_sel_start), self.step)
 
             # If there are no elements on the selection within this chunk, then skip
             if dim_chunk_nitems == 0:
