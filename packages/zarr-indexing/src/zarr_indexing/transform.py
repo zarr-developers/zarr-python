@@ -793,7 +793,10 @@ class IndexTransform:
         that omitted fields — identity `output`, default bounds and labels —
         are filled and validated, then lowered to the engine representation.
         Lower-rank `index_array`s are widened to the full input rank on the way
-        in.
+        in. Every supplied raw index value is checked against the inclusive
+        `index_array_bounds` before offset, stride, or map simplification.
+        Out-of-bounds values raise `NdselError` immediately, even if a later
+        selection would avoid them. Validated immutable maps do not retain bounds.
 
         Examples
         --------
@@ -805,6 +808,7 @@ class IndexTransform:
         True
         """
         from zarr_indexing._wire import (
+            check_index_array_bounds,
             full_rank_index_array,
             lower_bound,
             lower_index_array,
@@ -841,6 +845,7 @@ class IndexTransform:
             if "index_array" in om:
                 where = f"output[{i}]"
                 arr = lower_index_array(om["index_array"], f"{where}.index_array")
+                check_index_array_bounds(arr, om["index_array_bounds"], where)
                 # ndsel leaves index-array rank unvalidated, so an external
                 # producer may send an array of lower rank that broadcasts
                 # against the domain. Widen it here, on the way in, so every

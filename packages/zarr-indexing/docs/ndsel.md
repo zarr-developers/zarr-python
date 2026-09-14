@@ -99,8 +99,22 @@ assert t.to_json() == canonical
 map kind has a `to_json`; `output_index_map_from_json` dispatches the wire's
 structurally discriminated union back to the right kind. Exact JSON equality
 in this example is not a general round-trip guarantee: implicit flags are
-removed, finite `index_array_bounds` are not retained or enforced by the
-engine, and degenerate array maps are collapsed.
+removed and degenerate array maps are collapsed.
+
+`index_array_bounds` constrains raw index-array values before the map's offset
+and stride are applied. Both `IndexTransform.from_json` and
+`output_index_map_from_json` validate every supplied value against the inclusive
+bounds when loading. Finite and one-sided bounds are supported; omitted bounds
+and `["-inf", "+inf"]` impose no additional constraint. Values outside the
+bounds raise `NdselError("invalid_json", ...)`, including in singleton arrays
+and zero-stride maps. Empty arrays satisfy any well-formed, ordered bounds.
+
+Validation is eager: an invalid entry rejects the entire map even if a later
+selection would avoid that entry. After validation the engine owns immutable
+index coordinates, so it need not retain the bounds; serialization emits
+unbounded constraints for non-degenerate maps. Message normalization preserves
+the original bounds without checking array contents. This implementation does
+not defer bounds errors until individual positions are accessed.
 
 A canonical body carrying a
 `"-inf"` or `"+inf"` bound cannot be lowered — an `IndexDomain` addresses a
