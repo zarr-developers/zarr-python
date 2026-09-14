@@ -20,6 +20,7 @@ from tests.conftest import Expect, ExpectFail
 from zarr import Array
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_grids import ChunkGrid
+from zarr.core.common import ceildiv_int
 from zarr.core.indexing import (
     BasicSelection,
     CoordinateIndexer,
@@ -31,7 +32,6 @@ from zarr.core.indexing import (
     _ArrayIndexingOrder,
     _iter_grid,
     _iter_regions,
-    ceildiv,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
@@ -2451,7 +2451,7 @@ def test_iter_regions(
         origin_parsed = origin
     if selection_shape is None:
         selection_shape_parsed = tuple(
-            ceildiv(ds, rs) - o
+            ceildiv_int(ds, rs) - o
             for ds, o, rs in zip(domain_shape, origin_parsed, region_shape, strict=True)
         )
     else:

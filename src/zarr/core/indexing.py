@@ -22,7 +22,6 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.core.chunk_grids import FixedDimension
-from zarr.core.common import ceildiv as ceildiv  # noqa: PLC0414 - preserve the existing export
 from zarr.core.common import ceildiv_int, product
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata

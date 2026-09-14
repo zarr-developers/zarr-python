@@ -28,7 +28,6 @@ from zarr.core.common import (
     ceildiv_int,
     parse_shapelike,
 )
-from zarr.core.common import ceildiv as ceildiv  # noqa: PLC0414 - preserve the existing export
 from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:

@@ -74,7 +74,6 @@ from zarr.core.common import (
     parse_shapelike,
     product,
 )
-from zarr.core.common import ceildiv as ceildiv  # noqa: PLC0414 - preserve the existing export
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
     Structured,
