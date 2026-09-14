@@ -103,6 +103,7 @@ def test_config_defaults_set() -> None:
                 },
                 "buffer": "zarr.buffer.cpu.Buffer",
                 "ndbuffer": "zarr.buffer.cpu.NDBuffer",
+                "store": {"local": {"tmp_dir": None}},
             }
         ]
     )

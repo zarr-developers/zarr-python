@@ -154,6 +154,7 @@ config = Config(
             },
             "buffer": "zarr.buffer.cpu.Buffer",
             "ndbuffer": "zarr.buffer.cpu.NDBuffer",
+            "store": {"local": {"tmp_dir": None}},
         }
     ],
     deprecations=deprecations,
