@@ -34,7 +34,7 @@ class RecordingReader:
         self.calls = []
 
     def read_into(self, source, context, out, /):
-        self.calls.append((source, context, out))
+        self.calls.append((source, context, out.shape, out.dtype))
         self.inner.read_into(source, context, out)
 
 
@@ -44,7 +44,8 @@ view = LazyArray.from_numpy(array).with_reader(outer)
 values = view.result()
 ```
 
-Both wrappers observe the same three objects, in outer-to-inner order. This
+Both wrappers observe the same arguments, in outer-to-inner order, and log
+output metadata without retaining the output buffer. This
 delegation pattern supports policies such as logging and caching without
 library-defined wrapper primitives.
 

@@ -182,7 +182,7 @@ class SystemMemoryChunkReader:
 
     @contextmanager
     def request(self, required: tuple[ChunkCoords, ...]) -> Iterator[None]:
-        """Prepare every part and defer eviction until one request completes."""
+        """Prepare parts; evict after the outermost request succeeds, not on failure."""
         self._prepare(required)
         self._requests += 1
         try:
@@ -331,7 +331,8 @@ class SystemMemoryChunkCache:
         self.reader.projection_uses.clear()
         lazy = self._lazy.lazy
         view = lazy.oindex[key] if orthogonal else lazy[key]
-        # One prepared tuple is the request plan: pin from it, then hand the
+        # One prepared tuple is the request plan: queue its chunks and defer
+        # eviction during the request, then hand the
         # same owned parts back to LazyArray for assembly without replanning.
         parts = tuple(view.parts())
         required = tuple(dict.fromkeys(part.base_coords for part in parts))

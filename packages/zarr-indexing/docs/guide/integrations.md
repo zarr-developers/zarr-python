@@ -3,8 +3,9 @@
 For the complete path from indexing syntax to chunk coordinates, local selectors,
 and result positions, start with [From a selection to chunk operations](selection-flow.md).
 
-This package supplies indexing plans. It does **not** supply scheduling,
-caching, codecs, or async orchestration. A consumer decides when projections
+The core package supplies indexing plans and synchronous readers. It does not
+provide a general scheduler, codec pipeline, or async execution engine. A
+synchronous cache is included as an example. A consumer decides when projections
 run, how decoded chunks are obtained, and where completed values are retained.
 An `IndexTransform` says which source values belong in a result; a `Reader`
 lowers that complete transform for one backend. The reader does not choose
@@ -61,21 +62,21 @@ afterward, so accessing a row does not recalculate every point.
 
 ## One slab read or many part reads
 
-A backend with its own native subset read — a Rust or C zarr implementation,
-a database, an HTTP range endpoint — resolves a **dense box** (`is_box` with
-every stride 1) best as a single read: hand it the whole selection and let it
-dispatch to chunks, decode in parallel, and partial-decode shards on its own
-side of the boundary. Splitting that read along this library's partitioning
-only adds round-trips. Every **other** selection — a strided box, an `oindex`
-or `vindex` gather — is where the partitioning earns its keep. The **cover**
-of a read is the smallest step-1 slab enclosing every coordinate it needs;
-partitioned, each part's cover is bounded by that part's box, so a sparse
-selection can never force one read of its whole bounding hull (the smallest
-rectangle containing every selected coordinate — a thousand rows for the two
-of `oindex[[0, 999]]`).
+A backend with an efficient native subset operation may benefit from receiving
+one complete dense selection so it can choose its own chunk dispatch. Other
+backends may benefit from partitioning, including for strided or fancy
+selections. The tradeoff depends on the backend, chunk layout, latency, memory,
+and selection; a single read is not universally fastest.
+
+A read's **cover** is the smallest unit-step slab enclosing its coordinates.
+With this package's basic readers, partitioning limits each source read to the
+part's selected cover. This may reduce over-reading, but a partition that spans
+the source can still require the entire hull. Custom readers choose their own
+source operations under the reader contract.
 
 The composed view carries enough to make that call at materialization time,
-and re-partitioning is a pure setter, so the policy is three lines:
+and `with_parts()` returns a view with a new partitioning. This example uses
+unit strides as a sufficient condition for its independently mapped selections:
 
 ```python
 --8<-- "snippets/integrations.py:dense-box-repartition"
@@ -87,20 +88,19 @@ the dense box becomes exactly one backend call. Both regimes go through
 
 ### Sources that accept only unit-step slices
 
-The default `basic_reader` pushes strided and descending selections down as
-positive-step slices, which reads the minimum but assumes the source accepts
-any step. Many backends do not: FFI bindings and range requests often
-support nothing but `slice(start, stop, 1)`. Select
-[`unit_step_reader`][zarr_indexing.reader.UnitStepReader] for such a source
-and every key it receives is an ascending unit-step slice per axis, with
+For affine selections, `basic_reader` uses positive-step slices and applies
+reversal or layout changes in memory. Fancy selections can require reading a
+cover containing unselected values. The source must accept the emitted steps.
+Use [`unit_step_reader`][zarr_indexing.reader.UnitStepReader] for a source that
+accepts only unit steps. Every key it receives is an ascending unit-step slice per axis, with
 strides, reversals, and gathers applied to the in-memory block instead:
 
 ```python
 view = LazyArray(source).with_reader(unit_step_reader)
 ```
 
-A strided selection then over-reads its cover by the stride factor, which the
-partitioning above bounds by one part.
+For strided selections, the ratio of cover cells to selected cells depends on
+stride, length, and endpoint alignment. Partitioning can reduce that cover.
 
 ## napari-like consumer
 
@@ -205,13 +205,12 @@ decoded chunks. Every read delta follows directly from the viewport request:
 | 4 | `image[1:5, 2]` | `(0, 0)` | `(0, 0)`, `(1, 0)` | The evicted chunk is reloaded while the required ready chunk is retained. |
 | 5 | `image[3:5, 4:6]` | `(1, 1)` fails; no repeated read; `(1, 1)` succeeds after retry | `(0, 0)`, `(1, 1)` | Failure is retained until explicit retry; the repaired source then returns `[[28, 29], [36, 37]]`. |
 
-Chunks required by an active request are pinned through assembly, so a request
-may temporarily span more chunks than the steady-state capacity. Capacity is
-counted in decoded chunks—not records or bytes—and eviction occurs only after
-all requested values have been placed. Because pinning and materialization use
-the same prepared tuple, those lifecycle decisions cannot drift from the parts
-that are actually read, and the cache never has to infer or reconstruct a
-projection.
+The example defers eviction until a successful outermost request finishes, so
+it can temporarily exceed capacity during assembly. Capacity counts decoded
+chunks, not bytes, event records, or temporary arrays. Failed requests skip
+that eviction step. The example assumes an unchanged source and one source/grid
+per reader; it does not implement invalidation or synchronization for concurrent
+requests. The prepared tuple supplies the projections used for each read.
 
 The event log makes the failure boundary equally explicit:
 
@@ -244,3 +243,14 @@ that implementation or reproduce its full worker/GPU lifecycle.
 ·
 **API:** [API reference](../api/index.md)
 </nav>
+
+## Dask tokenization
+
+`LazyArray.__dask_tokenize__()` combines Dask's token for the wrapped source
+with the serialized view transform. Dask owns source hashing, registered
+normalizers, custom source hooks, and deterministic-token requirements.
+Tokenization may read or hash source values. Dask is optional for indexing
+and reading, but required when requesting a Dask token.
+
+The reader and partitioning are omitted because they must preserve values.
+Changing a source after graph construction does not update existing Dask keys.

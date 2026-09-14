@@ -14,8 +14,9 @@ The example shows how to:
 - Declare a partitioning with `with_parts()`, iterate it with `parts()`, and
   assemble a result from the partitions
 
-`LazyArray` wraps any object exposing `shape`, `dtype`, and `__getitem__`, so the
-same API applies to a Zarr array, and the partitioning is then discovered from
+`LazyArray` wraps compatible sources exposing `shape`, `dtype`, and basic
+slicing whose results can be converted to NumPy system memory. This includes
+a Zarr array, and the partitioning is then discovered from
 the array's chunks. The Dask example covers that case.
 
 ## Running the Example
