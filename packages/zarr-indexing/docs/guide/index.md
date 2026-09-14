@@ -216,12 +216,17 @@ description; the assertion's call to `result()` is the first operation in the
 example that materializes the selected data.
 
 !!! warning "Stop here: the materialization boundary"
-    Indexing through `.lazy[...]` never reads. These do:
+    Indexing through `.lazy[...]` composes a selection without reading source values.
+    These operations request values:
 
     - `result()`
     - eager indexing of the wrapper: `view[...]`
-    - `numpy.asarray(view)`, or passing the view to any NumPy function
-      (`numpy.add(view, 1)` converts, and therefore materializes, the view)
+    - `numpy.asarray(view)` and NumPy operations that convert the view
+      (`numpy.add(view, 1)` does so; `numpy.shape(view)` and `numpy.ndim(view)`
+      can use metadata without reading values)
+
+    Dask tokenization may also inspect values, depending on the wrapped source
+    and tokenization path.
 
     Python arithmetic such as `view + 1` raises `TypeError` instead: this
     wrapper defers indexing, not a general compute graph.
@@ -384,8 +389,9 @@ each bundles a sub-view of the request (`.view`), that chunk's projection
 Within one `Partition`, the frames divide: `Partition.view.transform` is a
 different, global transform — it maps the part view directly into the raw
 wrapped source — while only `Partition.projection.chunk_transform` uses
-zero-origin chunk-local coordinates. Readers receive both so the global
-source address and the local planning frame cannot be confused.
+zero-origin chunk-local coordinates. Parent assembly passes both frames to
+the reader. Direct `part.view.result()` calls supply the global transform
+with `projection=None`.
 
 | Projection field | What its output coordinates mean |
 | --- | --- |

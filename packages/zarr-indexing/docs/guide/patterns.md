@@ -302,10 +302,11 @@ so they equal the zero-origin models after `translate_domain_to`:
 --8<-- "snippets/indexing_patterns.py:indexing-patterns"
 ```
 
-`LazyArray` adds nothing to these semantics: it is a regular array-like API
-whose `.lazy`, `.lazy.oindex`, and `.lazy.vindex` accessors compile the same
-dialects to the same transforms — the only difference is the return type, a
-view instead of an array. The test suite holds the wrapper to this matrix.
+`LazyArray` exposes the transform machinery through a positional array-like
+API. Its `.lazy`, `.lazy.oindex`, and `.lazy.vindex` accessors return views and
+normalize positions before composition. This boundary differs from the literal
+coordinate semantics of `IndexTransform`, as the following table shows. The
+executable matrix checks the documented cases, not every possible NumPy expression.
 
 ## Positions vs literal coordinates
 
