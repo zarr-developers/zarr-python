@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 import numbers
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from functools import lru_cache
 from types import EllipsisType
@@ -20,7 +20,6 @@ from typing import (
 
 import numpy as np
 import numpy.typing as npt
-from typing_extensions import deprecated
 
 from zarr.core.chunk_grids import FixedDimension
 from zarr.core.common import ceildiv, product
@@ -31,7 +30,6 @@ from zarr.errors import (
     BoundsCheckError,
     NegativeStepError,
     VindexInvalidSelectionError,
-    ZarrDeprecationWarning,
 )
 
 if TYPE_CHECKING:
@@ -773,7 +771,10 @@ class IntArrayDimIndexer:
     order: Order
     dim_sel: npt.NDArray[np.intp]
     dim_out_sel: npt.NDArray[np.intp]
+    # Dense compatibility arrays are populated on first access, not during indexing.
+    chunk_nitems: npt.NDArray[np.intp] = field(repr=False)
     dim_chunk_ixs: npt.NDArray[np.intp]
+    chunk_nitems_cumsum: npt.NDArray[np.intp] = field(repr=False)
     # end offset of each occupied chunk's run of selected items, aligned with dim_chunk_ixs
     chunk_run_ends: npt.NDArray[np.intp]
 
@@ -847,41 +848,29 @@ class IntArrayDimIndexer:
         object.__setattr__(self, "dim_chunk_ixs", dim_chunk_ixs)
         object.__setattr__(self, "chunk_run_ends", chunk_run_ends)
 
-    @property
-    @deprecated(
-        "IntArrayDimIndexer.chunk_nitems is deprecated: it materializes a dense array with "
-        "one entry per chunk along the dimension. Use dim_chunk_ixs and chunk_run_ends, "
-        "which cover only the occupied chunks.",
-        category=ZarrDeprecationWarning,
-    )
-    def chunk_nitems(self) -> npt.NDArray[np.intp]:
+    def __getattr__(self, name: str) -> npt.NDArray[np.intp]:
+        if name not in ("chunk_nitems", "chunk_nitems_cumsum"):
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
         dense = np.zeros(self.nchunks, dtype=np.intp)
         dense[self.dim_chunk_ixs] = np.diff(self.chunk_run_ends, prepend=0)
+        if name == "chunk_nitems_cumsum":
+            np.cumsum(dense, out=dense)
+        object.__setattr__(self, name, dense)
         return dense
-
-    @property
-    @deprecated(
-        "IntArrayDimIndexer.chunk_nitems_cumsum is deprecated: it materializes a dense array "
-        "with one entry per chunk along the dimension. Use dim_chunk_ixs and chunk_run_ends, "
-        "which cover only the occupied chunks.",
-        category=ZarrDeprecationWarning,
-    )
-    def chunk_nitems_cumsum(self) -> npt.NDArray[np.intp]:
-        dense = np.zeros(self.nchunks, dtype=np.intp)
-        dense[self.dim_chunk_ixs] = np.diff(self.chunk_run_ends, prepend=0)
-        return np.cumsum(dense)
 
     def __iter__(self) -> Iterator[ChunkDimProjection]:
         g = self.dim_grid
+        dense_cumsum = self.__dict__.get("chunk_nitems_cumsum")
 
         for i, dim_chunk_ix in enumerate(self.dim_chunk_ixs):
             dim_out_sel: slice | npt.NDArray[np.intp]
             # find region in output
-            if i == 0:
-                start = 0
+            if dense_cumsum is None:
+                start = 0 if i == 0 else self.chunk_run_ends[i - 1]
+                stop = self.chunk_run_ends[i]
             else:
-                start = self.chunk_run_ends[i - 1]
-            stop = self.chunk_run_ends[i]
+                start = 0 if dim_chunk_ix == 0 else dense_cumsum[dim_chunk_ix - 1]
+                stop = dense_cumsum[dim_chunk_ix]
             if self.order == Order.INCREASING:
                 dim_out_sel = slice(start, stop)
             else:
@@ -1219,6 +1208,8 @@ class CoordinateIndexer(Indexer):
     sel_shape: tuple[int, ...]
     selection: CoordinateSelectionNormalized
     sel_sort: npt.NDArray[np.intp] | None
+    # Exclude the lazy dense field from repr to keep inspection sparse.
+    chunk_nitems_cumsum: npt.NDArray[np.intp] = field(repr=False)
     cdata_shape: tuple[int, ...]
     # end offset of each occupied chunk's run of selected points, aligned with chunk_rixs
     chunk_run_ends: npt.NDArray[np.intp]
@@ -1379,27 +1370,27 @@ class CoordinateIndexer(Indexer):
         object.__setattr__(self, "shape", shape)
         object.__setattr__(self, "drop_axes", ())
 
-    @property
-    @deprecated(
-        "CoordinateIndexer.chunk_nitems_cumsum is deprecated: it materializes a dense array "
-        "with one entry per chunk in the array. Use chunk_rixs and chunk_run_ends, which "
-        "cover only the occupied chunks.",
-        category=ZarrDeprecationWarning,
-    )
-    def chunk_nitems_cumsum(self) -> npt.NDArray[np.intp]:
+    def __getattr__(self, name: str) -> npt.NDArray[np.intp]:
+        if name != "chunk_nitems_cumsum":
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
         dense = np.zeros(product(self.cdata_shape), dtype=np.intp)
         dense[self.chunk_rixs] = np.diff(self.chunk_run_ends, prepend=0)
-        return np.cumsum(dense)
+        np.cumsum(dense, out=dense)
+        object.__setattr__(self, name, dense)
+        return dense
 
     def __iter__(self) -> Iterator[ChunkProjection]:
+        dense_cumsum = self.__dict__.get("chunk_nitems_cumsum")
         # iterate over chunks
         for i in range(len(self.chunk_rixs)):
             chunk_coords = tuple(m[i] for m in self.chunk_mixs)
-            if i == 0:
-                start = 0
+            if dense_cumsum is None:
+                start = 0 if i == 0 else self.chunk_run_ends[i - 1]
+                stop = self.chunk_run_ends[i]
             else:
-                start = self.chunk_run_ends[i - 1]
-            stop = self.chunk_run_ends[i]
+                chunk_rix = self.chunk_rixs[i]
+                start = 0 if chunk_rix == 0 else dense_cumsum[chunk_rix - 1]
+                stop = dense_cumsum[chunk_rix]
             out_selection: slice | npt.NDArray[np.intp]
             if self.sel_sort is None:
                 out_selection = slice(start, stop)

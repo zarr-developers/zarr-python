@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import itertools
+import warnings
 from collections import Counter
+from dataclasses import asdict
+from dataclasses import fields as dataclass_fields
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -22,6 +25,7 @@ from zarr.core.indexing import (
     CoordinateIndexer,
     CoordinateSelection,
     IntArrayDimIndexer,
+    MaskIndexer,
     OrthogonalSelection,
     Selection,
     _ArrayIndexingOrder,
@@ -1339,24 +1343,64 @@ def test_coordinate_indexer_1d_sparse_selection_uses_general_path(
     assert tuple(projection.chunk_coords for projection in projections) == ((0,), (99,))
 
 
-def test_deprecated_dense_indexer_attributes() -> None:
-    """`chunk_nitems` / `chunk_nitems_cumsum` keep their original dense per-chunk semantics
-    for external code that introspected indexers, but warn: they allocate O(nchunks) and the
-    indexers no longer use them internally (see gh-4174)."""
-    chunk_grid = ChunkGrid.from_sizes((20,), (3,))  # 7 chunks
+@pytest.mark.parametrize("kind", ["coordinate", "coordinate-fast", "integer", "mask"])
+def test_lazy_dense_indexer_attributes(kind: str) -> None:
+    """Dense compatibility arrays are lazy, cached, mutable, and warning-free."""
+    grid = ChunkGrid.from_sizes((20,), (3,))
     coords = np.array([1, 4, 4, 19])
-    expected_nitems = np.bincount(coords // 3, minlength=7)
+    if kind == "coordinate-fast":
+        coords = np.repeat(coords, 100)
+    elif kind == "mask":
+        coords = np.unique(coords)
+    indexer = (
+        IntArrayDimIndexer(coords, 20, grid._dimensions[0])
+        if kind == "integer"
+        else CoordinateIndexer((coords,), (20,), grid)
+    )
+    if kind == "mask":
+        mask = np.zeros(20, dtype=bool)
+        mask[coords] = True
+        indexer = MaskIndexer((mask,), (20,), grid)
+    expected_counts = np.bincount(coords // 3, minlength=7)
+    expected = {"chunk_nitems_cumsum": np.cumsum(expected_counts)}
+    if kind == "integer":
+        expected["chunk_nitems"] = expected_counts
 
-    indexer = CoordinateIndexer((coords,), (20,), chunk_grid)
-    with pytest.warns(zarr.errors.ZarrDeprecationWarning):
-        assert_array_equal(indexer.chunk_nitems_cumsum, np.cumsum(expected_nitems))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        tuple(indexer)
+        repr(indexer)
+        assert all(name not in vars(indexer) for name in expected)
+        assert set(expected) <= {f.name for f in dataclass_fields(indexer)}
+        for name, values in expected.items():
+            dense = getattr(indexer, name)
+            assert_array_equal(dense, values)
+            assert getattr(indexer, name) is dense
+            assert_array_equal(asdict(indexer)[name], values)
+            dense[0] = 123
+            assert getattr(indexer, name)[0] == 123
+        # Iteration respects edits to the materialized cumulative offsets.
+        cumulative = indexer.chunk_nitems_cumsum
+        cumulative[:] = expected["chunk_nitems_cumsum"]
+        cumulative[-1] = cumulative[-2]
+        final = tuple(indexer)[-1]
+        output = (
+            final.dim_out_sel if isinstance(indexer, IntArrayDimIndexer) else final.out_selection
+        )
+        assert output == slice(cumulative[-2], cumulative[-2])
 
-    (dim_grid,) = chunk_grid._dimensions
-    dim_indexer = IntArrayDimIndexer(coords, 20, dim_grid)
-    with pytest.warns(zarr.errors.ZarrDeprecationWarning):
-        assert_array_equal(dim_indexer.chunk_nitems, expected_nitems)
-    with pytest.warns(zarr.errors.ZarrDeprecationWarning):
-        assert_array_equal(dim_indexer.chunk_nitems_cumsum, np.cumsum(expected_nitems))
+
+@pytest.mark.parametrize("kind", ["coordinate", "integer"])
+def test_indexer_unknown_attribute(kind: str) -> None:
+    grid = ChunkGrid.from_sizes((20,), (3,))
+    coords = np.array([1, 4, 19])
+    indexer = (
+        IntArrayDimIndexer(coords, 20, grid._dimensions[0])
+        if kind == "integer"
+        else CoordinateIndexer((coords,), (20,), grid)
+    )
+    with pytest.raises(AttributeError, match="missing_attribute"):
+        _ = indexer.missing_attribute
 
 
 def test_sparse_selections_on_arrays_with_many_chunks(store: StorePath) -> None:
