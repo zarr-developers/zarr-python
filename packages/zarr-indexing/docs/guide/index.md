@@ -225,8 +225,8 @@ example that materializes the selected data.
       (`numpy.add(view, 1)` does so; `numpy.shape(view)` and `numpy.ndim(view)`
       can use metadata without reading values)
 
-    Dask tokenization hashes plain NumPy data or delegates to a source hook.
-    Other sources require [an explicit hook or Dask naming opt-out](integrations.md#dask-tokenization-and-source-mutation).
+    Dask tokenization may also inspect values, depending on the wrapped source
+    and tokenization path.
 
     Python arithmetic such as `view + 1` raises `TypeError` instead: this
     wrapper defers indexing, not a general compute graph.

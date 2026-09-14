@@ -244,39 +244,13 @@ that implementation or reproduce its full worker/GPU lifecycle.
 **API:** [API reference](../api/index.md)
 </nav>
 
-## Dask tokenization and source mutation
+## Dask tokenization
 
-`LazyArray.__dask_tokenize__()` combines the serialized transform with a source
-value token. Supported plain NumPy arrays are hashed in full on every call,
-including large arrays. Structured fields are hashed separately, excluding
-padding; overlapping fields are each visited. Time scales with the bytes
-visited, and temporary memory with the largest field buffer. Equal dtype
-representations, shapes, field bytes in C order, and serialized transforms have
-equal tokens. This is byte equality within fields, so signed zeros and distinct
-NaN bit patterns can produce different tokens despite numerical equivalence.
+`LazyArray.__dask_tokenize__()` combines Dask's token for the wrapped source
+with the serialized view transform. Dask owns source hashing, registered
+normalizers, custom source hooks, and deterministic-token requirements.
+Tokenization may read or hash source values. Dask is optional for indexing
+and reading, but required when requesting a Dask token.
 
-Other sources must define an explicit `__dask_tokenize__` hook. This includes
-object arrays (also structured object fields), array subclasses, memory-mapped
-arrays, and remote arrays. Dtype metadata and non-string field titles also
-require a source hook, including in nested field and subarray dtypes: they can
-contain arbitrary Python objects with no guaranteed value-based representation.
-Known `numpy.memmap` and `mmap.mmap` backing is
-rejected through ndarray base and memoryview object chains. Arbitrary buffer
-provenance cannot be inferred from a plain ndarray. The wrapper does not
-convert or serialize unsupported sources to discover their values. Unsupported sources raise `TypeError`, and
-exceptions from explicit hooks propagate. Installing Dask does not change this
-policy. A hook must describe the source's values or immutable version, and owns
-its determinism and any I/O it performs.
-
-For an opaque source such as a Zarr array, use
-`dask.array.from_array(view, chunks=..., name=False)` to request a fresh graph
-name without content tokenization. This opts out of content-based task sharing.
-See Dask's [from_array documentation](https://docs.dask.org/en/stable/generated/dask.array.from_array.html)
-and [tokenization contract](https://docs.dask.org/en/stable/custom-collections.html#implementing-deterministic-hashing).
-
-Tokens describe values at tokenization time, not a snapshot. Mutating a source
-after building a graph does not update existing Dask keys or invalidate cached
-results. Concurrent mutation during hashing is unsupported. Applications must
-manage source lifetimes and versions; these tokens are not persistent cache
-identities. Readers and partitioning are omitted because they must preserve
-values.
+The reader and partitioning are omitted because they must preserve values.
+Changing a source after graph construction does not update existing Dask keys.

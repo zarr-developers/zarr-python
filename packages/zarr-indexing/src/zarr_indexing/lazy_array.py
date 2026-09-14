@@ -12,8 +12,8 @@ values = view.result()
 ```
 
 Selection construction does not read source values: `result()`, `__array__`,
-and eager `__getitem__` perform reads. Tokenization hashes plain NumPy source
-data or delegates to an explicit source hook. `.lazy` operations inspect
+and eager `__getitem__` perform reads. Source tokenization is delegated to
+Dask and may inspect source values. `.lazy` operations inspect
 selection metadata and may copy or process supplied index arrays. Composition
 does not accumulate wrapper layers: a view of a view is still a single transform
 and retains its reader.
@@ -137,7 +137,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import mmap
 import operator
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -519,66 +518,6 @@ def _validate_prepared_parts(parts: Sequence[Partition], out_shape: tuple[int, .
         raise ValueError("prepared parts do not tile the view exactly") from error
     if addressed != math.prod(out_shape) or not np.all(coverage):
         raise ValueError("prepared parts do not tile the view exactly")
-
-
-# --------------------------------------------------------------------------- #
-# Tokenization
-# --------------------------------------------------------------------------- #
-
-
-def _validate_token_dtype(dtype: np.dtype[Any]) -> None:
-    """Require dtype attributes with a deterministic, value-based representation."""
-    if dtype.metadata is not None:
-        raise TypeError("Dtype metadata requires an explicit source __dask_tokenize__ hook.")
-    if dtype.subdtype is not None:
-        _validate_token_dtype(dtype.subdtype[0])
-    if dtype.fields is not None:
-        for field in dtype.fields.values():
-            if len(field) == 3 and type(field[2]) is not str:
-                raise TypeError(
-                    "Non-string field titles require an explicit source __dask_tokenize__ hook."
-                )
-            _validate_token_dtype(field[0])
-
-
-def _numpy_values_token(array: np.ndarray[Any, Any]) -> Any:
-    """Hash field values in C order, excluding structured padding bytes."""
-    if array.dtype.fields is not None:
-        return tuple(_numpy_values_token(array[name]) for name in array.dtype.names or ())
-    return hashlib.sha256(array.tobytes(order="C")).hexdigest()
-
-
-def _wrapped_token(array: Any) -> Any:
-    """Identify supported source contents without converting foreign arrays.
-
-    Explicit hooks own their versioning, determinism, and I/O contract.
-    Supported plain NumPy arrays are hashed field by field on every call. Other
-    sources must provide a hook; neither serialization nor identity is a safe
-    substitute for a source's value/version contract.
-    """
-    hook = getattr(array, "__dask_tokenize__", None)
-    if hook is not None:
-        return hook()
-    if type(array) is not np.ndarray or array.dtype.hasobject:
-        msg = (
-            "Tokenization requires a source __dask_tokenize__ hook or a plain "
-            "NumPy ndarray without object fields. For Dask from_array, use "
-            "name=False to bypass content tokenization."
-        )
-        raise TypeError(msg)
-    base: Any = array.base
-    while isinstance(base, (np.ndarray, memoryview, mmap.mmap)):
-        if isinstance(base, (np.memmap, mmap.mmap)):
-            msg = "Memory-mapped sources require an explicit __dask_tokenize__ hook."
-            raise TypeError(msg)
-        base = base.obj if isinstance(base, memoryview) else base.base
-    _validate_token_dtype(array.dtype)
-    return (
-        "numpy.ndarray",
-        array.shape,
-        repr(array.dtype),
-        _numpy_values_token(array),
-    )
 
 
 # --------------------------------------------------------------------------- #
@@ -1245,27 +1184,18 @@ class LazyArray:
         tokens produce equal tokens; arbitrary semantically equivalent mappings
         are not guaranteed to serialize identically.
 
-        Supported plain NumPy arrays are hashed in full on each call. Structured
-        fields are hashed separately, excluding padding; overlapping fields
-        are each visited. Time scales with the bytes visited, and temporary
-        memory with the largest field buffer. Dtype metadata and non-string
-        field titles require an explicit source hook, including in nested dtypes.
-        Known NumPy/mmap backing is rejected through ndarray base and
-        memoryview object chains; arbitrary buffer provenance is not inferred.
-        Array subclasses, object arrays, and foreign sources require a source `__dask_tokenize__` hook; unsupported sources
-        raise `TypeError`. Hooks own determinism, versioning, and any I/O, and
-        hook exceptions propagate. Installing Dask does not change this policy.
-
-        The reader and partitioning are omitted under the contract that they
-        preserve values. A token describes the source at tokenization time;
-        mutation after graph construction does not invalidate existing Dask
-        keys. Concurrent mutation during hashing is unsupported. This method
-        does not provide a persistent cache identity or a source snapshot.
+        Dask tokenizes the wrapped source using its normal dispatch and
+        determinism policy. This may read or hash source values. Dask is
+        imported only when this method is called and is otherwise optional.
+        The reader and partitioning are omitted because they must preserve
+        values. Mutating a source does not update keys in existing Dask graphs.
         """
+        from dask.base import tokenize  # pyright: ignore[reportMissingImports]
+
         canonical = json.dumps(self._transform.to_json(), sort_keys=True)
         return (
             type(self).__qualname__,
-            _wrapped_token(self._array),
+            tokenize(self._array),
             hashlib.sha256(canonical.encode()).hexdigest(),
         )
 

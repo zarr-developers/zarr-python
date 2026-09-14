@@ -28,9 +28,8 @@ you want its values:
 ```
 
 Composing these selections does not read source values; the example reads them
-at `result()`. Construction inspects source metadata. Dask tokenization hashes
-plain NumPy data or delegates to an explicit source hook; other sources need
-[a naming opt-out or source hook](guide/integrations.md#dask-tokenization-and-source-mutation). [Lazy views compose](guide/index.md#lazy-views-compose) shows how
+at `result()`. Construction inspects source metadata, and Dask tokenization can
+inspect source values. [Lazy views compose](guide/index.md#lazy-views-compose) shows how
 the chain stays one description, and where the materialization boundary is.
 
 ## Learn more
