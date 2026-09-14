@@ -27,12 +27,13 @@ if TYPE_CHECKING:
 _LOCAL_STORE_FILE = zarr.storage._local.__file__
 _ASYNC_CODE_FLAGS = inspect.CO_COROUTINE | inspect.CO_ASYNC_GENERATOR
 
-# The syscall-level entry points that every pathlib / os.path / shutil helper used by
-# LocalStore bottoms out in. Patching these, rather than each Path method, catches a
-# blocking call no matter which helper made it.
+# The syscall-level entry points that pathlib / os.path / shutil helpers bottom out in.
+# Patching these, rather than each Path method, catches a blocking call no matter which
+# helper made it. The list is deliberately wider than what LocalStore uses today.
 _FILESYSTEM_CALLS: tuple[tuple[Any, str], ...] = (
     (os, "stat"),
     (os, "lstat"),
+    (os, "access"),
     (os, "scandir"),
     (os, "listdir"),
     (os, "mkdir"),
@@ -42,6 +43,9 @@ _FILESYSTEM_CALLS: tuple[tuple[Any, str], ...] = (
     (os, "link"),
     (os, "rename"),
     (os, "replace"),
+    (os, "utime"),
+    (os, "open"),
+    (os, "fsync"),
     (io, "open"),
 )
 

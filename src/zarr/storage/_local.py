@@ -118,7 +118,7 @@ def _delete_dir(path: Path, prefix: str) -> None:
 
 
 def _list_files(root: Path, prefix: str) -> list[str]:
-    """Keys (paths relative to ``root``, POSIX style) of every file under ``root / prefix``."""
+    """Keys (paths relative to `root`, POSIX style) of every file under `root / prefix`."""
     to_strip = root.as_posix() + "/"
     return [p.as_posix().removeprefix(to_strip) for p in (root / prefix).rglob("*") if p.is_file()]
 
@@ -227,6 +227,8 @@ class LocalStore(Store):
             # Concurrent lazy opens (every `set` of a `set_many`, say) all pass the check
             # above and each verifies the root, which is idempotent; only the first may
             # flip the flag, since `Store._open` refuses to open an open store.
+            # Note this calls `Store._open` directly, so a subclass's `_open` override is
+            # bypassed on the lazy-open path.
             if not self._is_open:
                 await super()._open()
 
