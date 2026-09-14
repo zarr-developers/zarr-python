@@ -27,6 +27,16 @@ if TYPE_CHECKING:
 _LOCAL_STORE_FILE = zarr.storage._local.__file__
 _ASYNC_CODE_FLAGS = inspect.CO_COROUTINE | inspect.CO_ASYNC_GENERATOR
 
+try:
+    import coverage as _coverage
+except ImportError:  # pragma: no cover
+    _COVERAGE_DIR = None
+else:
+    # coverage.py canonicalizes a source file's path (os.path.realpath, hence os.lstat) the
+    # first time its tracer sees code from that file, and it does so on whatever thread is
+    # running that code. Such calls carry coverage's own frames and are not LocalStore's.
+    _COVERAGE_DIR = os.path.dirname(_coverage.__file__) + os.sep
+
 # The syscall-level entry points that pathlib / os.path / shutil helpers bottom out in.
 # Patching these, rather than each Path method, catches a blocking call no matter which
 # helper made it. The list is deliberately wider than what LocalStore uses today.
@@ -63,6 +73,8 @@ class _FilesystemCalls:
         frame = inspect.currentframe()
         innermost = outermost = None
         while frame is not None:
+            if _COVERAGE_DIR is not None and frame.f_code.co_filename.startswith(_COVERAGE_DIR):
+                return  # the coverage tracer resolving a filename, not LocalStore doing I/O
             if frame.f_code.co_filename == _LOCAL_STORE_FILE:
                 if innermost is None:
                     innermost = frame
@@ -88,6 +100,14 @@ class _FilesystemCalls:
 class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
     store_cls = LocalStore
     buffer_cls = cpu.Buffer
+
+    async def test_delete_dir_on_a_file_raises(self, tmp_path: pathlib.Path) -> None:
+        """`delete_dir` refuses a prefix that names a file rather than a directory."""
+        store = await LocalStore.open(tmp_path)
+        await store.set("file", self.buffer_cls.from_bytes(b"x"))
+        with pytest.raises(ValueError, match="that is a file"):
+            await store.delete_dir("file")
+        assert await store.exists("file")
 
     @pytest.fixture(autouse=True)
     def filesystem_calls(self, monkeypatch: pytest.MonkeyPatch) -> Iterator[_FilesystemCalls]:
