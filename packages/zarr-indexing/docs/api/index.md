@@ -25,12 +25,11 @@ and the wire format built on top of it.
 - [`zarr_indexing.domain`](domain.md) — `IndexDomain`, a rectangular region of
   integer coordinates with an explicit (possibly non-zero) origin
 - [`zarr_indexing.output_map`](output_map.md) — `ConstantMap`, `DimensionMap`,
-  and `ArrayMap`: three representations of a set of integer coordinates, one
-  per storage dimension
+  and `ArrayMap`: three coordinate mappings that preserve order and duplicates,
+  one per storage dimension
 - [`zarr_indexing.transform`](transform.md) — `IndexTransform`, which pairs a
   domain with output maps, plus the indexing (`[...]`, `.oindex`, `.vindex`),
-  `intersect`, and `translate` operations, and `selection_to_transform`
-  transforms into one
+  `intersect`, `translate`, and `compose` operations, and `selection_to_transform`
 
 **Chunk resolution**
 

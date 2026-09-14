@@ -82,12 +82,10 @@ class IndexDomain:
     def _unchecked(
         cls, inclusive_min: tuple[int, ...], exclusive_max: tuple[int, ...]
     ) -> IndexDomain:
-        """Build an unlabeled domain from bounds the caller has already established.
+        """Build an unlabeled domain from validated bounds.
 
-        Skips `__post_init__`. For internal producers that derive bounds from an
-        already-valid domain — chunk resolution builds two domains per chunk,
-        and re-validating them was a measurable share of a plan's cost.
-        """
+        Skip __post_init__; internal callers must ensure equal bound lengths
+        and inclusive_min <= exclusive_max in every dimension."""
         domain = object.__new__(cls)
         object.__setattr__(domain, "inclusive_min", inclusive_min)
         object.__setattr__(domain, "exclusive_max", exclusive_max)
@@ -139,10 +137,11 @@ class IndexDomain:
         )
 
     def contains_domain(self, other: IndexDomain) -> bool:
-        """Whether every coordinate of `other` lies inside this domain.
+        """Whether `other` has the same rank and bounds enclosed by this domain.
 
-        An empty `other` within this domain's bounds is contained. A rank
-        mismatch returns `False` rather than raising.
+        Empty domains are still checked by their bounds: an empty `other`
+        located outside this domain returns `False`, unlike empty-set
+        containment. A rank mismatch returns `False` rather than raising.
         """
         if other.ndim != self.ndim:
             return False
@@ -209,13 +208,9 @@ class IndexDomain:
         Raises
         ------
         BoundsCheckError
-            If a bound lies outside this domain. A slice bound used to be
-            clamped instead, so `narrow(slice(-3, None))` on `[0, 10)` quietly
-            returned the whole axis — reading as the NumPy spelling of "the last
-            three" and answering with something else — and `narrow(slice(20,
-            30))` returned a domain its own parent did not contain. The rest of
-            the algebra states no clamping and no negative wrapping as an
-            invariant and enforces it; this is the one place that did not.
+            If an integer index or explicit slice bound lies outside this domain.
+            Bounds are checked as literal coordinates, without clamping or
+            negative-index wrapping.
         """
         normalized = _normalize_selection(selection, self.ndim)
         new_inclusive_min: list[int] = []

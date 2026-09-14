@@ -151,7 +151,7 @@ markdown_extensions:
   - pymdownx.snippets:
       # The package root is last so docs/release-notes.md can include the
       # towncrier-managed CHANGELOG.md without moving it out of the package
-      # root, where PyPI and GitHub readers expect it.
+      # root, where it is distributed and linked from the package metadata.
       base_path: [docs, examples, .]
       # Fail the build on an unresolvable include or missing region instead
       # of silently rendering nothing. tests/test_doc_examples.py mirrors

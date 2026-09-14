@@ -347,9 +347,8 @@ def _index_array_body(index_array: Any, rank: int = 1, extent: int = 2) -> Index
         ([True, False], "bool"),
         (["a", "b"], "str"),
         # Not lists at all, so they are turned away before their content is
-        # looked at: a bare string would be iterated into characters, and a bare
-        # integer would become a rank-0 array and then a length-1 map, so a
-        # document naming no cells would select one.
+        # looked at: the wire representation requires a nested array rather
+        # than a scalar string or integer.
         ("abc", "must be an array of integers"),
         (5, "must be an array of integers"),
         ([None, None], "object"),
@@ -357,12 +356,7 @@ def _index_array_body(index_array: Any, rank: int = 1, extent: int = 2) -> Index
     ids=["floats", "mixed", "bools", "strings", "string", "scalar", "nulls"],
 )
 def test_a_non_integer_index_array_is_rejected(index_array: Any, detail: str) -> None:
-    """An `index_array` addresses output coordinates, so it must be integral.
-
-    Lowering a float array silently truncated it (`[0.9, 1.9]` selected cells 0
-    and 1), a bool array coerced to 0/1, and a string array leaked a raw NumPy
-    `ValueError` from the middle of the conversion.
-    """
+    """Index arrays require integer coordinates and reject float, bool, and string dtypes."""
     with pytest.raises(NdselError) as excinfo:
         IndexTransform.from_json(_index_array_body(index_array))
     assert excinfo.value.reason == "invalid_json"
@@ -547,13 +541,7 @@ def test_an_ambiguous_empty_index_array_is_rejected() -> None:
     ids=["float", "string", "bool", "non-string-label", "out-of-range"],
 )
 def test_a_malformed_domain_document_is_rejected(document: Any, reason: str, detail: str) -> None:
-    """The domain loader validates what the message layer validates.
-
-    Reading the keys directly was a second, undefended way into the same
-    objects: a bare `int()` truncated `3.9` to 3, coerced `"3"` and `True`, and
-    let a non-string label into a `tuple[str, ...]` — each building a domain
-    that was not the document's, and re-dumping as a different document.
-    """
+    """The domain loader enforces coordinate types, integer bounds, and string labels."""
     with pytest.raises(NdselError) as excinfo:
         IndexDomain.from_json(document)
     assert excinfo.value.reason == reason

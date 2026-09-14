@@ -5,8 +5,7 @@ the *declaration* of an array indexing expression from the result of that expres
 
 Developed for use in [`zarr`](https://zarr.readthedocs.io).
 
-Inspired by [TensorStore](https://google.github.io/tensorstore/), which pioneered
-the approach used here.
+Inspired by [TensorStore's index-transform model](https://google.github.io/tensorstore/index_space.html).
 
 
 ## Install
@@ -28,8 +27,9 @@ you want its values:
 --8<-- "snippets/canonical_slice.py:landing-quickstart"
 ```
 
-Nothing is read until the `result()` call, however many selections are
-composed. [Lazy views compose](guide/index.md#lazy-views-compose) shows how
+Composing these selections does not read source values; the example reads them
+at `result()`. Construction inspects source metadata, and Dask tokenization can
+inspect source values. [Lazy views compose](guide/index.md#lazy-views-compose) shows how
 the chain stays one description, and where the materialization boundary is.
 
 ## Learn more
