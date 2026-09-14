@@ -63,7 +63,7 @@ def test_box_and_query_selections() -> None:
     data = np.arange(12 * 8).reshape(12, 8)
     lazy = LazyArray.from_numpy(data)
 
-    # A box selection is built from slices and integers alone. It is described
+    # This box selection is built from slices and integers. It is described
     # completely by an interval and a step per dimension, so a consumer can
     # serve it as one strided read.
     box = lazy.lazy[2:10, ::2]
@@ -81,7 +81,8 @@ def test_box_and_query_selections() -> None:
     assert query.strides() is None
     assert query.bounding_box() == ((1, 10), (0, 8))
 
-    # Composing a box onto a query keeps it a query.
+    # This slice retains an index-array map, so this particular view stays a query.
+    # Singleton gathers and later scalar indexing can instead collapse to a box.
     assert not query.lazy[0:2, 0:2].is_box
 
 

@@ -276,11 +276,7 @@ def test_array_map_dependent_axis_reports_no_axis() -> None:
 
 
 def test_scalar_on_a_fancy_axis_collapses_to_a_constant() -> None:
-    """The degenerate-collapse rule: an all-singleton ArrayMap becomes a ConstantMap.
-
-    Without it the map keeps an `input_dimension` naming an axis the integer
-    index just removed, which after renumbering aliases a different axis.
-    """
+    """Scalar selection collapses an all-singleton ArrayMap to a ConstantMap."""
     view = IndexTransform.from_shape((7, 5)).oindex[np.array([3, 1]), slice(None)][0]
     assert view.output[0] == ConstantMap(offset=3)
     assert isinstance(view.output[1], DimensionMap)
@@ -926,13 +922,10 @@ def test_a_boolean_mask_composes_onto_a_fancy_view() -> None:
 
 
 def test_an_ellipsis_only_vindex_step_preserves_a_correlated_gather() -> None:
-    """Regression: a slice-only vindex step misread correlated maps as orthogonal.
+    """Ellipsis-only vectorized selection preserves correlated coordinates.
 
-    `vindex[...]` (and `vindex[..., scalar]`, whose remainder after the scalar
-    is split off is ellipsis-only) used to stamp each correlated map with its
-    block axis as an orthogonal binding. Two "orthogonal" maps then shared one
-    input axis, and the partition walk rejected its own transform mid-read.
-    """
+    This also applies after scalar indices have been split off. The selected
+    values must agree across partitionings."""
     base = np.arange(16).reshape(4, 4)
 
     for parts in (None, (2, 2), (4, 4), (1, 3)):
@@ -1783,6 +1776,7 @@ def test_nonfirst_partition_transform_directly_addresses_its_array() -> None:
 
 
 def test_partition_token_encodes_its_public_global_transform() -> None:
+    pytest.importorskip("dask.base")
     source = np.arange(8)
     base = LazyArray.from_numpy(source)
     partition_view = list(base.with_parts((4,)).parts())[1].view
@@ -1914,6 +1908,7 @@ def test_with_parts_validates_strictly(parts: Any, match: str) -> None:
 
 def test_dask_token_is_deterministic_and_discriminating() -> None:
     """Same data and same view token alike; a different selection differs."""
+    pytest.importorskip("dask.base")
     data = reference()
     base = LazyArray(data)
     assert base.__dask_tokenize__() == LazyArray(reference()).__dask_tokenize__()
@@ -1930,6 +1925,7 @@ def test_dask_token_is_deterministic_and_discriminating() -> None:
 
 
 def test_reader_and_partitioning_do_not_change_dask_identity() -> None:
+    pytest.importorskip("dask.base")
     base = LazyArray(reference())
     token = base.__dask_tokenize__()
     assert base.with_reader(numpy_reader).__dask_tokenize__() == token
@@ -2007,7 +2003,6 @@ def test_pickle_round_trip() -> None:
     view = LazyArray(reference()).with_parts((2, 2, 2)).lazy[1:6, ::2].lazy.oindex[[3, 0, 0], :, :]
     restored = pickle.loads(pickle.dumps(view))
     assert restored.shape == view.shape
-    assert restored.__dask_tokenize__() == view.__dask_tokenize__()
     np.testing.assert_array_equal(np.asarray(restored.result()), np.asarray(view.result()))
 
 
@@ -2017,7 +2012,7 @@ def test_pickle_round_trip() -> None:
 
 
 def test_dask_from_array_roundtrip() -> None:
-    """A `LazyArray` is a drop-in dask source — no translation ceremony."""
+    """Dask can tokenize and read a wrapper over a Zarr source."""
     da = pytest.importorskip("dask.array")
     source = make_source("zarr")
 
@@ -2435,42 +2430,11 @@ def test_a_masked_source_keeps_its_mask_under_every_partitioning(parts: Any) -> 
 
 @pytest.mark.parametrize("parts", [None, (2, 2), (3, 4)])
 def test_a_masked_source_keeps_its_mask_when_the_view_is_empty(parts: Any) -> None:
-    """An empty result is still a result, and its type must not depend on the parts.
-
-    An empty view is answered without reading the source at all, and that
-    shortcut reached for the array namespace's own `empty` — which knows nothing
-    about masks — so an unpartitioned empty view came back a plain array while
-    the same view partitioned came back masked. No cells either way, so nothing
-    about the values changed; the caller just got a different type depending on
-    how the read had been divided.
-    """
+    """Empty views of masked sources return masked arrays for every partitioning."""
     data = np.ma.masked_greater(np.arange(12).reshape(3, 4), 7)
     got = repartition(LazyArray(data), parts).lazy[:, 2:2].result()
     assert isinstance(got, np.ma.MaskedArray), parts
     assert np.asarray(got).shape == (3, 0), parts
-
-
-def test_a_large_array_without_dask_refuses_to_claim_equality(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Above the digest limit the fallback must miss a cache rather than lie.
-
-    Two arrays differing in one element used to token identically, because the
-    fallback described the shape and dtype and gave up on the contents.
-    """
-    import sys
-
-    monkeypatch.setitem(sys.modules, "dask.base", None)
-    big = np.zeros(1 << 19, dtype=np.int64)
-    other = big.copy()
-    other[0] = 1
-
-    assert LazyArray(big).__dask_tokenize__() != LazyArray(other).__dask_tokenize__()
-    assert LazyArray(big).__dask_tokenize__() != LazyArray(big).__dask_tokenize__()
-
-    # Below the limit the contents are digested, so equal data still tokens alike.
-    small = np.zeros(8, dtype=np.int64)
-    assert LazyArray(small).__dask_tokenize__() == LazyArray(small.copy()).__dask_tokenize__()
 
 
 # ---------------------------------------------------------------------------
@@ -2521,15 +2485,7 @@ def test_a_zero_chunk_on_a_nonempty_axis_is_still_rejected() -> None:
 def test_the_coverage_count_agrees_with_numpy_for_reversed_selections(
     selection: tuple[Any, ...],
 ) -> None:
-    """The safety net behind `result()`'s coverage assertion, checked on its own.
-
-    `_out_selection_cell_count` sizes a partition's `out_selection` without
-    materializing it, and `result()` trusts that count to decide whether the
-    walk covered the view. Nothing pinned it for a reversed slice, so dropping
-    its `start <= stop` guard — or wrapping the subtraction in `abs()` — left
-    the suite green. A net nobody tests only matters once something else breaks,
-    which is exactly when it needs to be right.
-    """
+    """Coverage counts match NumPy selection sizes for reversed slices."""
     data = reference()
     view = LazyArray(data).with_parts((2, 2, 2)).lazy[selection]
     out_shape = view.shape
@@ -2556,26 +2512,14 @@ def test_the_coverage_count_agrees_with_numpy_for_reversed_selections(
 def test_the_coverage_count_matches_numpy_for_intervals_the_fast_path_declines(
     selection: tuple[Any, ...], out_shape: tuple[int, ...], expected: int
 ) -> None:
-    """The guard on `result()`'s safety net, exercised where the walk cannot reach it.
-
-    A partition walk only ever produces concrete forward in-bounds intervals, so
-    the guard that keeps everything else off the subtraction fast path is not
-    reachable through `parts()` at all — which is why removing it left the whole
-    suite green. It is the net's own contract, so it is checked directly.
-    """
+    """Coverage counts match NumPy for intervals outside the subtraction fast path."""
     counted = _out_selection_cell_count(selection, out_shape)
     assert counted == np.empty(out_shape)[selection].size
     assert counted == expected
 
 
 def test_a_zero_dimensional_index_array_drops_its_axis_like_a_scalar() -> None:
-    """`a[np.array(2), :]` is `a[2, :]` in NumPy, and now here too.
-
-    Only Python and NumPy integers counted as scalars, so a 0-d array fell
-    through to the fancy path and was widened into a length-1 index array —
-    keeping an axis NumPy drops. That was a third answer, agreeing with neither
-    NumPy nor eager zarr, which rejects it.
-    """
+    """Zero-dimensional integer arrays drop axes in orthogonal and vectorized selections."""
     data = np.arange(20).reshape(4, 5)
     for mode, expected in (
         ("oindex", data[np.array(2), :]),
@@ -2591,12 +2535,7 @@ def test_a_zero_dimensional_index_array_drops_its_axis_like_a_scalar() -> None:
 
 
 def test_a_multidimensional_array_in_an_orthogonal_selection_is_refused() -> None:
-    """The rule belongs to the selection, so the message speaks its vocabulary.
-
-    Left to the engine, this surfaced as a rank complaint about an `index_array`
-    the caller never wrote — the transform layer's words for a mistake made two
-    layers above it.
-    """
+    """Reject multidimensional orthogonal index arrays with a selection-level error."""
     with pytest.raises(IndexError, match="must be 1-dimensional"):
         LazyArray(np.arange(20).reshape(4, 5)).lazy.oindex[[[0, 1], [2, 3]], slice(None)]
 
@@ -2611,13 +2550,7 @@ def test_with_parts_rejects_a_bare_integer() -> None:
 
 
 def test_fancy_composition_over_an_empty_axis() -> None:
-    """Regression: composing fancy steps over an empty axis stays unpinned.
-
-    The empty-domain branch of `compose` produces index arrays that are
-    singleton on every non-empty axis; pinning one to an axis it merely
-    broadcasts along made a later basic step index a size-1 axis positionally
-    and raise, deep inside a legal chain.
-    """
+    """Fancy composition over an empty axis preserves shape through later selections."""
     base = np.empty((3, 0, 6), dtype=np.int64)
     view = LazyArray(base).lazy.oindex[[2, 1], :, [5, 0, 3]]
     assert view.shape == (2, 0, 3)
@@ -2626,3 +2559,63 @@ def test_fancy_composition_over_an_empty_axis() -> None:
     scalar = composed.lazy.vindex[..., np.array(1)]
     assert scalar.shape == (2, 0)
     assert np.asarray(scalar.result()).shape == (2, 0)
+
+
+@pytest.mark.parametrize("kind", ["numpy", "object", "masked", "registered", "hook"])
+def test_source_token_uses_dask_policy(kind: str) -> None:
+    dask_base = pytest.importorskip("dask.base")
+
+    class RegisteredArray(ForeignArray):
+        pass
+
+    class VersionedArray(ForeignArray):
+        def __dask_tokenize__(self) -> Any:
+            return ("versioned-source", 1)
+
+    dask_base.normalize_token.register(RegisteredArray, lambda source: ("registered-source", 1))
+    data = np.arange(4)
+    sources = {
+        "numpy": data,
+        "object": data.astype(object),
+        "masked": np.ma.masked_greater(data, 2),
+        "registered": RegisteredArray(data, None),
+        "hook": VersionedArray(data, None),
+    }
+    source = sources[kind]
+    assert LazyArray(source).__dask_tokenize__()[1] == dask_base.tokenize(source)
+
+
+def test_source_token_preserves_dask_determinism_requirement() -> None:
+    dask_base = pytest.importorskip("dask.base")
+    dask_tokenize = pytest.importorskip("dask.tokenize")
+
+    class UnserializableArray(ForeignArray):
+        def __reduce_ex__(self, protocol: int) -> Any:
+            raise TypeError("cannot serialize source")
+
+    source = UnserializableArray(np.arange(4), None)
+    for value in (source, LazyArray(source)):
+        with pytest.raises(dask_tokenize.TokenizationError):
+            dask_base.tokenize(value, ensure_deterministic=True)
+
+
+def test_source_token_preserves_hook_failure() -> None:
+    pytest.importorskip("dask.base")
+
+    class RefusingArray(ForeignArray):
+        def __dask_tokenize__(self) -> Any:
+            raise RuntimeError("source version unavailable")
+
+    with pytest.raises(RuntimeError, match="source version unavailable"):
+        LazyArray(RefusingArray(np.arange(4), None)).__dask_tokenize__()
+
+
+def test_dask_is_only_required_for_tokenization(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+
+    monkeypatch.setitem(sys.modules, "dask.base", None)
+    data = np.arange(4)
+    view = LazyArray(data).lazy[1:]
+    np.testing.assert_array_equal(view.result(), data[1:])
+    with pytest.raises(ModuleNotFoundError):
+        view.__dask_tokenize__()
