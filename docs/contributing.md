@@ -80,18 +80,33 @@ git remote add upstream git@github.com:zarr-developers/zarr-python.git
 
 ### Creating a development environment
 
-To work with the Zarr source code, it is recommended to use [hatch](https://hatch.pypa.io/latest/index.html) to create and manage development environments. Hatch will automatically install all Zarr dependencies using the same versions as are used by the core developers and continuous integration services. Assuming you have a Python 3 interpreter already installed, and you have cloned the Zarr source code and your current working directory is the root of the repository, you can do something like the following:
+The root `Justfile` defines development and CI commands. [just](https://just.systems/)
+runs these commands, while [Hatch](https://hatch.pypa.io/latest/index.html) manages
+the Python environments declared in `pyproject.toml`. Install the task tools and uv (used by the lint and lock commands):
 
 ```bash
-pip install hatch
-hatch env show  # list all available environments
+pip install hatch==1.16.5 rust-just==1.58.0 uv
+just                 # list available commands
+just envs            # list Python environments
+just setup           # create the default test environment
+just test
 ```
 
-To verify that your development environment is working, you can run the unit tests for one of the test environments, e.g.:
+Test recipes default to `test.py3.12-optional`. Set `HATCH_ENV` to select a different
+interpreter or dependency set, just as CI does. On Windows, run these commands in
+Git Bash.
 
 ```bash
-hatch env run --env test.py3.12-optional run
+HATCH_ENV=test.py3.13-minimal just test
+HATCH_ENV=min_deps just coverage
+HATCH_ENV=upstream just coverage
+HATCH_ENV=gputest.py3.12 just gpu
+just test tests/test_array.py -k 'resize and not async'
 ```
+
+Arguments after the recipe name are forwarded to the underlying tool. Use
+`just --show test` to inspect a command. Package-specific commands live in the
+`justfile` inside each package directory; run `just` there to list them.
 
 ### Creating a branch
 
@@ -128,7 +143,7 @@ Again, any conflicts need to be resolved before submitting a pull request.
 Zarr includes a suite of unit tests. The simplest way to run the unit tests is to activate your development environment (see [creating a development environment](#creating-a-development-environment) above) and invoke:
 
 ```bash
-hatch env run --env test.py3.12-optional run
+just test
 ```
 
 All tests are automatically run via GitHub Actions for every pull request and must pass before code can be accepted. Test coverage is also collected automatically via the Codecov service.
@@ -137,46 +152,36 @@ All tests are automatically run via GitHub Actions for every pull request and mu
 
 All code must conform to the PEP8 standard. Regarding line length, lines up to 100 characters are allowed, although please try to keep under 90 wherever possible.
 
-`Zarr` uses a set of git hooks managed by [`prek`](https://github.com/j178/prek), a fast, Rust-based pre-commit hook manager that is fully compatible with `.pre-commit-config.yaml` files. `prek` can be installed locally by running:
-
-```bash
-uv tool install prek
-```
-
-or:
-
-```bash
-pip install prek
-```
+`Zarr` uses a set of git hooks managed by [`prek`](https://github.com/j178/prek), a fast, Rust-based pre-commit hook manager compatible with `.pre-commit-config.yaml`. The just recipes use `uvx` to run prek, installing it on demand.
 
 The hooks can be installed locally by running:
 
 ```bash
-prek install
+just hooks-install
 ```
 
 This will run the checks every time a commit is created locally. The checks will by default only run on the files modified by a commit, but the checks can be triggered for all the files by running:
 
 ```bash
-prek run --all-files
+just lint
 ```
 
 You can also run hooks only for files in a specific directory:
 
 ```bash
-prek run --directory src/zarr
+just hooks run --directory src/zarr
 ```
 
 Or run hooks for files changed in the last commit:
 
 ```bash
-prek run --last-commit
+just hooks run --last-commit
 ```
 
 To list all available hooks:
 
 ```bash
-prek list
+just hooks list
 ```
 
 If you would like to skip the failing checks and push the code for further discussion, use the `--no-verify` option with `git commit`.
@@ -188,7 +193,7 @@ If you would like to skip the failing checks and push the code for further discu
 Zarr strives to maintain 100% test coverage under the latest Python stable release. Both unit tests and docstring doctests are included when computing coverage. Running:
 
 ```bash
-hatch env run --env test.py3.12-optional run-coverage
+just coverage
 ```
 
 will automatically run the test suite with coverage and produce an XML coverage report. This should be 100% before code can be accepted into the main code base.
@@ -196,7 +201,7 @@ will automatically run the test suite with coverage and produce an XML coverage 
 You can also generate an HTML coverage report by running:
 
 ```bash
-hatch env run --env test.py3.12-optional run-coverage-html
+just coverage-html
 ```
 
 When submitting a pull request, coverage will also be collected across all supported Python versions via the Codecov service, and will be reported back within the pull request. Codecov coverage must also be 100% before code can be accepted.
@@ -210,15 +215,17 @@ Zarr uses mkdocs for documentation, hosted on readthedocs.org. Documentation is 
 The documentation can be built locally by running:
 
 ```bash
-hatch --env docs run build
+just docs-build
 ```
+
+`just docs-check` also runs the documentation source checks used in CI.
 
 The resulting built documentation will be available in the `site` folder.
 
-Hatch can also be used to serve continuously updating version of the documentation during development at [http://127.0.0.1:8000/](http://127.0.0.1:8000/). This can be done by running:
+`just docs-serve` serves a continuously updating version of the documentation during development at [http://127.0.0.1:8000/](http://127.0.0.1:8000/). This can be done by running:
 
 ```bash
-hatch --env docs run serve
+just docs-serve
 ```
 
 #### Adding executable code blocks in the documentation
@@ -320,10 +327,10 @@ Sometimes, you may want the documentation to build quicker. You can disable code
 
 ### Changelog
 
-zarr-python uses [towncrier](https://towncrier.readthedocs.io/en/stable/tutorial.html) to manage release notes. Most pull requests should include at least one news fragment describing the changes. To add a release note, you'll need the GitHub issue or pull request number and the type of your change (`feature`, `bugfix`, `doc`, `removal`, `misc`). With that, run `towncrier create` with your development environment, which will prompt you for the issue number, change type, and the news text:
+zarr-python uses [towncrier](https://towncrier.readthedocs.io/en/stable/tutorial.html) to manage release notes. Most pull requests should include at least one news fragment describing the changes. To add a release note, you'll need the GitHub issue or pull request number and the type of your change (`feature`, `bugfix`, `doc`, `removal`, `misc`). With that, run `just changelog` with your development environment, which will prompt you for the issue number, change type, and the news text:
 
 ```bash
-towncrier create
+just changelog
 ```
 
 Alternatively, you can manually create the files in the `changes` directory using the naming convention `{issue-number}.{change-type}.md`.
@@ -437,6 +444,15 @@ Features in `zarr.experimental` carry no stability guarantees. They may be chang
 Zarr uses [pytest-benchmark](https://pytest-benchmark.readthedocs.io/en/latest/) for running
 performance benchmarks as part of our test suite. The benchmarks are found in `tests/benchmarks`.
 By default pytest is configured to run these benchmarks as plain tests (i.e., no benchmarking). To run
-a benchmark with timing measurements, use the `--benchmark-enable` when invoking `pytest`.
+a benchmark with timing measurements, run `just benchmark`. Pass pytest arguments
+to select benchmarks, for example `just benchmark -k test_morton_order`.
 
 The benchmarks are run as part of the continuous integration suite through [codspeed](https://app.codspeed.io/zarr-developers/zarr-python).
+
+## Building distributions and maintaining dependencies
+
+Run `just build` to produce a source distribution and wheel in `dist/`.
+Use `just lock-check` to check the dependency lockfile, or `just lock` to update it.
+`just typecheck` runs the type checker independently of the other lint hooks.
+Preview release notes with `just changelog-draft`; use `just check-changelogs`
+to validate fragment names, optionally passing a package's `changes/` directory.

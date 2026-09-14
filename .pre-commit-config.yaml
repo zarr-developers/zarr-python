@@ -48,7 +48,7 @@ repos:
       - id: mypy
         name: mypy
         language: system
-        entry: uv run --frozen mypy
+        entry: just typecheck
         pass_filenames: false
         always_run: true
         types_or: [python, pyi]

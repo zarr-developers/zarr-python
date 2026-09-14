@@ -31,10 +31,12 @@ jobs:
       uses: pypa/hatch@f647ed70d49adb885f53a27d1c7f5bdaeacf2c60
       with:
         version: '1.16.5'
+    - name: Install just
+      run: python -m pip install rust-just==1.58.0
     - name: Run the benchmarks
       uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
       env:
         ZARR_BENCHMARK_CLEAR_CACHE: '1'
       with:
           mode: walltime
-          run: hatch run test.py3.12-minimal:pytest tests/benchmarks --codspeed
+          run: HATCH_ENV=test.py3.12-minimal just benchmark-codspeed

@@ -30,4 +30,9 @@ jobs:
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
-      - uses: j178/prek-action@4e14d07f9231acabce116ccfca13b13dd9755ece # v3.0.0
+      - name: Install just
+        run: uv tool install rust-just==1.58.0
+      - name: Check justfile formatting
+        run: just just-check
+      - name: Lint
+        run: just lint

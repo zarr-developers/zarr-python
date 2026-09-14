@@ -19,15 +19,15 @@ build:
         fi
     install:
       - pip install --upgrade pip
-      - pip install .[remote] --group docs
+      - pip install hatch==1.16.5 rust-just==1.58.0
     pre_build:
       - |
         if [ "$READTHEDOCS_VERSION_TYPE" != "tag" ];
         then
-          towncrier build --version Unreleased --yes;
+          just changelog-build --version Unreleased --yes;
         fi
     build:
         html:
-          - mkdocs build --strict --site-dir $READTHEDOCS_OUTPUT/html
+          - just docs-build --site-dir $READTHEDOCS_OUTPUT/html
 mkdocs:
   configuration: mkdocs.yml

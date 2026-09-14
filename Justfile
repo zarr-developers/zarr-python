@@ -1,148 +1,136 @@
-# zarr-python developer task runner (https://github.com/casey/just).
-#
-# `just` is a thin verb-runner over uv; uv owns the environments. Each recipe is
-# the single source of truth for a dev/CI task — CI calls the same recipes (via
-# `uvx --from rust-just just <recipe>`), so local and CI behavior cannot drift.
-#
-# Install just:  uv tool install rust-just   (or `brew install just`, `cargo install just`)
-# List recipes:  just         (or `just --list`)
-#
-# The matrix lives in GitHub Actions; pass the Python version via UV_PYTHON
-# (setup-uv sets it from `python-version`). Locally, override per call, e.g.
-#   UV_PYTHON=3.13 just test-optional
+# Development and CI verbs live here; Hatch owns Python environments in pyproject.toml.
+# Install: pip install hatch==1.16.5 rust-just==1.58.0 uv
+# Select test dependencies/interpreter: HATCH_ENV=test.py3.13-minimal just test
+# On Windows, use Git Bash (the same shell used by the test workflow).
+set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
+set windows-shell := ["bash", "-eu", "-o", "pipefail", "-c"]
+set positional-arguments
 
-# Extras + groups that make up the "optional" (full integration) test environment.
-optional_deps := "--extra remote --extra optional --extra cli --extra cast-value-rs --group remote-tests"
+hatch_env := env("HATCH_ENV", "test.py3.12-optional")
 
-[private]
+# List available recipes
 default:
     @just --list
 
-[doc("Run the unit tests with the minimal dependency set")]
-test-minimal *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uv sync --locked --no-default-groups --group test
-    if [ -n "${CI:-}" ]; then uv pip list; fi
-    uv run --no-sync coverage run --source=src -m pytest --ignore tests/benchmarks \
-        --junitxml=junit.xml -o junit_family=legacy {{args}}
-    uv run --no-sync coverage xml
+# List available Python environments
+envs:
+    hatch env show
 
-[doc("Run the unit tests with the full (optional) integration dependency set")]
-test-optional *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uv sync --locked --no-default-groups --group test {{optional_deps}}
-    if [ -n "${CI:-}" ]; then uv pip list; fi
-    uv run --no-sync coverage run --source=src -m pytest --ignore tests/benchmarks \
-        --junitxml=junit.xml -o junit_family=legacy {{args}}
-    uv run --no-sync coverage xml
+# Create the selected Python environment and list its installed packages
+setup:
+    hatch env create {{ quote(hatch_env) }}
+    just list-env
 
-[doc("Generate an HTML coverage report (optional deps); open htmlcov/index.html")]
+# List packages in the selected Python environment
+list-env:
+    hatch run {{ quote(hatch_env) }}:pip list
+
+# Run unit tests; pass pytest arguments, e.g. just test -k 'array and resize'
+test *args:
+    hatch run {{ quote(hatch_env) }}:pytest --ignore tests/benchmarks "$@"
+
+# Run unit tests and write coverage.xml and junit.xml
+coverage *args:
+    hatch run {{ quote(hatch_env) }}:coverage run --source=src -m pytest --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy "$@"
+    hatch run {{ quote(hatch_env) }}:coverage xml
+
+# Run unit tests and generate an HTML coverage report
 coverage-html *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uv sync --locked --no-default-groups --group test {{optional_deps}}
-    uv run --no-sync coverage run --source=src -m pytest --ignore tests/benchmarks {{args}}
-    uv run --no-sync coverage html
+    hatch run {{ quote(hatch_env) }}:coverage run --source=src -m pytest --ignore tests/benchmarks "$@"
+    hatch run {{ quote(hatch_env) }}:coverage html
 
-[doc("Run the slow Hypothesis property tests")]
+# Serve the HTML coverage report (default port 8000)
+coverage-serve *args:
+    hatch run {{ quote(hatch_env) }}:python -m http.server -d htmlcov "$@"
+
+# Run slow Hypothesis tests and write coverage.xml
 hypothesis *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uv sync --locked --no-default-groups --group test {{optional_deps}}
-    if [ -n "${CI:-}" ]; then uv pip list; fi
-    uv run --no-sync coverage run --source=src -m pytest -nauto --run-slow-hypothesis \
-        tests/test_properties.py tests/test_store/test_stateful* {{args}}
-    uv run --no-sync coverage xml
+    hatch run {{ quote(hatch_env) }}:coverage run --source=src -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* "$@"
+    hatch run {{ quote(hatch_env) }}:coverage xml
 
-[doc("Validate executable code blocks in the docs (tests/test_docs.py)")]
+# Validate executable documentation code blocks
 doctest *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uv sync --locked --no-default-groups --extra remote --group remote-tests
-    if [ -n "${CI:-}" ]; then uv pip list; fi
-    uv run --no-sync --with pytest-examples pytest tests/test_docs.py -v {{args}}
+    hatch run doctest:pytest tests/test_docs.py -v "$@"
 
-[doc("Run the benchmark suite (minimal deps)")]
+# Run the benchmark suite
 benchmark *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uv sync --locked --no-default-groups --group test
-    uv run --no-sync pytest --benchmark-enable tests/benchmarks {{args}}
+    hatch run {{ quote(hatch_env) }}:pytest --benchmark-enable tests/benchmarks "$@"
 
-[doc("Run the tests against the lowest supported direct dependency versions")]
-min_deps *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # uv derives the floors from the `>=` constraints in pyproject.toml.
-    uv sync --resolution lowest-direct --no-default-groups \
-        --group test --group remote-tests --extra remote --extra optional
-    if [ -n "${CI:-}" ]; then uv pip list; fi
-    uv run --no-sync coverage run --source=src -m pytest --ignore tests/benchmarks \
-        --junitxml=junit.xml -o junit_family=legacy {{args}}
-    uv run --no-sync coverage xml
+# Run benchmarks under CodSpeed
+benchmark-codspeed *args:
+    hatch run {{ quote(hatch_env) }}:pytest tests/benchmarks --codspeed "$@"
 
-[doc("Run the tests against bleeding-edge (nightly + git main) dependencies")]
-upstream *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uv sync --no-default-groups --group test --group remote-tests --extra remote
-    uv pip install --prerelease=allow \
-        --index https://pypi.anaconda.org/scientific-python-nightly-wheels/simple/ \
-        --extra-index-url https://pypi.org/simple/ \
-        numpy \
-        "packaging @ git+https://github.com/pypa/packaging" \
-        "numcodecs @ git+https://github.com/zarr-developers/numcodecs" \
-        "s3fs @ git+https://github.com/fsspec/s3fs" \
-        "universal_pathlib @ git+https://github.com/fsspec/universal_pathlib" \
-        "typing_extensions @ git+https://github.com/python/typing_extensions" \
-        "donfig @ git+https://github.com/pytroll/donfig" \
-        "obstore @ git+https://github.com/developmentseed/obstore@main#subdirectory=obstore"
-    if [ -n "${CI:-}" ]; then uv pip list; fi
-    uv run --no-sync coverage run --source=src -m pytest --ignore tests/benchmarks \
-        --junitxml=junit.xml -o junit_family=legacy {{args}}
-    uv run --no-sync coverage xml
-
-[doc("Run the GPU tests (requires CUDA + a GPU); `pytest -m gpu`")]
+# Run GPU tests with coverage (default environment: gputest.py3.12)
 gpu *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uv sync --locked --no-default-groups --group test --extra gpu --extra optional
-    uv pip install pytest-examples
-    if [ -n "${CI:-}" ]; then uv pip list; fi
-    uv run --no-sync coverage run --source=src -m pytest -m gpu --ignore tests/benchmarks \
-        --junitxml=junit.xml -o junit_family=legacy {{args}}
-    uv run --no-sync coverage xml
+    HATCH_ENV={{ quote(env("HATCH_ENV", "gputest.py3.12")) }} just coverage -m gpu "$@"
 
-[doc("Build the documentation (strict: warnings are errors)")]
+# Build documentation (warnings are errors)
 docs-build *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uv sync --locked --no-default-groups --extra remote --group docs
-    DISABLE_MKDOCS_2_WARNING=true NO_MKDOCS_2_WARNING=true \
-        uv run --no-sync mkdocs build --strict {{args}}
+    hatch run docs:mkdocs build --strict "$@"
 
-[doc("Serve the documentation locally with live reload at http://0.0.0.0:8000/")]
+# Serve documentation with live reload
 docs-serve *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uv sync --locked --no-default-groups --extra remote --group docs
-    DISABLE_MKDOCS_2_WARNING=true NO_MKDOCS_2_WARNING=true \
-        uv run --no-sync mkdocs serve --watch src {{args}}
+    hatch run docs:mkdocs serve --watch src "$@"
 
-[doc("Run all pre-commit hooks (ruff, codespell, mypy, repo-review, ...)")]
+# Check that every public export has API documentation
+check-doc-exports *args:
+    hatch run docs:python ci/check_documented_exports.py docs/api "$@"
+
+# Check documentation source conventions
+lint-docs *args:
+    hatch run docs:python ci/lint_docs.py "$@"
+
+# Report unlinked types in built documentation
+check-doc-links *args:
+    hatch run docs:python ci/check_unlinked_types.py "$@"
+
+# Run source documentation checks followed by a strict build
+docs-check: check-doc-exports lint-docs docs-build
+
+# Run all pre-commit hooks (ruff, codespell, mypy, repo-review, ...)
 lint *args:
-    prek run --all-files {{args}}
+    uvx prek run --all-files "$@"
 
-[doc("Check that uv.lock is in sync with pyproject.toml")]
+# Run hooks with a custom selection, e.g. just hooks run --last-commit
+hooks +args:
+    uvx prek "$@"
+
+# Install local pre-commit hooks
+hooks-install:
+    uvx prek install
+
+# Type-check the library using the locked tooling environment
+typecheck *args:
+    uv run --frozen mypy "$@"
+
+# Check that uv.lock is in sync with pyproject.toml
 lock-check:
     uv lock --check
 
-[doc("Check changelog entry filenames (pass a directory to check, default: changes/)")]
-check-changelogs *dir:
-    uv run --no-sync python ci/check_changelog_entries.py {{dir}}
+# Update the dependency lockfile
+lock *args:
+    uv lock "$@"
 
-[doc("Report unlinked types in the built docs (run `just docs-build` first)")]
-check-doc-links *args:
-    uv run --no-sync python ci/check_unlinked_types.py {{args}}
+# Build the source distribution and wheel
+build *args:
+    hatch build "$@"
+
+# Create a changelog fragment (interactive without arguments)
+changelog *args:
+    hatch run docs:towncrier create "$@"
+
+# Preview the next release's changelog
+changelog-draft *args:
+    hatch run docs:towncrier build --draft --version Unreleased "$@"
+
+# Build release notes; pass --version and --yes when preparing a release
+changelog-build *args:
+    hatch run docs:towncrier build "$@"
+
+# Check changelog filenames (default: changes/; accepts a package changes directory)
+check-changelogs *args:
+    hatch run dev:python ci/check_changelog_entries.py "$@"
+
+# Check recipe formatting
+just-check:
+    just --fmt --check
