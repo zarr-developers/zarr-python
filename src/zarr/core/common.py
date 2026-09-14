@@ -95,9 +95,8 @@ def product(tup: tuple[int, ...]) -> int:
 def ceildiv(a: float, b: float) -> int:
     """Ceiling of ``a / b``.
 
-    Integer inputs are divided exactly: ``math.ceil(a / b)`` goes through a float and
-    loses precision above ``2**53``, so e.g. ``ceildiv(2**62 - 1, 1)`` came out as
-    ``2**62``. Chunk counts of large arrays depend on this being exact.
+    When both inputs are integers, use exact integer arithmetic. Otherwise, return
+    ``math.ceil(a / b)``. A zero numerator returns zero.
     """
     if a == 0:
         return 0
