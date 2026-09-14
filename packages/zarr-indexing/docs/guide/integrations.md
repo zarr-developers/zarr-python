@@ -247,14 +247,20 @@ that implementation or reproduce its full worker/GPU lifecycle.
 ## Dask tokenization and source mutation
 
 `LazyArray.__dask_tokenize__()` combines the serialized transform with a source
-value token. For plain NumPy arrays without object fields, it hashes all bytes
-on every call, including large arrays. Time and temporary memory are linear in
-source byte size. Equal supported contents and serialized transforms have equal
-tokens; changes to numeric contents are visible on the next tokenization call.
+value token. Supported plain NumPy arrays are hashed in full on every call,
+including large arrays. Structured fields are hashed separately, excluding
+padding; overlapping fields are each visited. Time scales with the bytes
+visited, and temporary memory with the largest field buffer. Equal dtype
+representations, shapes, field bytes in C order, and serialized transforms have
+equal tokens. This is byte equality within fields, so signed zeros and distinct
+NaN bit patterns can produce different tokens despite numerical equivalence.
 
 Other sources must define an explicit `__dask_tokenize__` hook. This includes
 object arrays (also structured object fields), array subclasses, memory-mapped
-arrays, and remote arrays. Known `numpy.memmap` and `mmap.mmap` backing is
+arrays, and remote arrays. Dtype metadata and non-string field titles also
+require a source hook, including in nested field and subarray dtypes: they can
+contain arbitrary Python objects with no guaranteed value-based representation.
+Known `numpy.memmap` and `mmap.mmap` backing is
 rejected through ndarray base and memoryview object chains. Arbitrary buffer
 provenance cannot be inferred from a plain ndarray. The wrapper does not
 convert or serialize unsupported sources to discover their values. Unsupported sources raise `TypeError`, and

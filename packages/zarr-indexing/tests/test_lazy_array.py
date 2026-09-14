@@ -2671,6 +2671,46 @@ def test_numpy_token_includes_shape_dtype_and_logical_contents(data: np.ndarray[
         assert token != LazyArray(data.astype("f8")).__dask_tokenize__()
 
 
+@pytest.mark.parametrize("nested", [False, True])
+def test_numpy_token_ignores_structured_padding(nested: bool) -> None:
+    dtype = np.dtype({"names": ["x"], "formats": ["i1"], "offsets": [0], "itemsize": 4})
+    if nested:
+        dtype = np.dtype([("records", dtype, (2,))])
+    left = np.zeros(3, dtype=dtype)
+    right = np.full(3 * dtype.itemsize, 255, dtype="u1").view(dtype)
+    right[...] = left
+    np.testing.assert_array_equal(left, right)
+    assert left.tobytes() != right.tobytes()
+    token = LazyArray(left).__dask_tokenize__()
+    assert token == LazyArray(right).__dask_tokenize__()
+    if nested:
+        right["records"]["x"][0, 0] = 1
+    else:
+        right["x"][0] = 1
+    assert token != LazyArray(right).__dask_tokenize__()
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_token_rejects_dtype_metadata(nested: bool) -> None:
+    dtype = np.dtype("i4", metadata={"unit": "m"})
+    if nested:
+        dtype = np.dtype([("values", dtype, (2,))])
+    with pytest.raises(TypeError, match="metadata"):
+        LazyArray(np.zeros(2, dtype=dtype)).__dask_tokenize__()
+
+
+def test_token_rejects_non_string_field_titles() -> None:
+    dtype = np.dtype([((42, "value"), "i4")])
+    with pytest.raises(TypeError, match="titles"):
+        LazyArray(np.zeros(2, dtype=dtype)).__dask_tokenize__()
+
+
+def test_token_rejects_variable_width_strings() -> None:
+    data = np.asarray(["a" * 100], dtype=np.dtypes.StringDType())
+    with pytest.raises(TypeError, match="__dask_tokenize__"):
+        LazyArray(data).__dask_tokenize__()
+
+
 @pytest.mark.parametrize("through_memoryview", [False, True])
 def test_token_rejects_mmap_buffer(tmp_path: Any, through_memoryview: bool) -> None:
     import mmap

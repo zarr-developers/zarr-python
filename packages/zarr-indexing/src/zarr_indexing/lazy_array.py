@@ -526,11 +526,33 @@ def _validate_prepared_parts(parts: Sequence[Partition], out_shape: tuple[int, .
 # --------------------------------------------------------------------------- #
 
 
+def _validate_token_dtype(dtype: np.dtype[Any]) -> None:
+    """Require dtype attributes with a deterministic, value-based representation."""
+    if dtype.metadata is not None:
+        raise TypeError("Dtype metadata requires an explicit source __dask_tokenize__ hook.")
+    if dtype.subdtype is not None:
+        _validate_token_dtype(dtype.subdtype[0])
+    if dtype.fields is not None:
+        for field in dtype.fields.values():
+            if len(field) == 3 and type(field[2]) is not str:
+                raise TypeError(
+                    "Non-string field titles require an explicit source __dask_tokenize__ hook."
+                )
+            _validate_token_dtype(field[0])
+
+
+def _numpy_values_token(array: np.ndarray[Any, Any]) -> Any:
+    """Hash field values in C order, excluding structured padding bytes."""
+    if array.dtype.fields is not None:
+        return tuple(_numpy_values_token(array[name]) for name in array.dtype.names or ())
+    return hashlib.sha256(array.tobytes(order="C")).hexdigest()
+
+
 def _wrapped_token(array: Any) -> Any:
     """Identify supported source contents without converting foreign arrays.
 
-    Explicit hooks own their versioning, determinism, and I/O contract. Plain
-    NumPy arrays without object fields are hashed in full on every call. Other
+    Explicit hooks own their versioning, determinism, and I/O contract.
+    Supported plain NumPy arrays are hashed field by field on every call. Other
     sources must provide a hook; neither serialization nor identity is a safe
     substitute for a source's value/version contract.
     """
@@ -550,11 +572,12 @@ def _wrapped_token(array: Any) -> Any:
             msg = "Memory-mapped sources require an explicit __dask_tokenize__ hook."
             raise TypeError(msg)
         base = base.obj if isinstance(base, memoryview) else base.base
+    _validate_token_dtype(array.dtype)
     return (
         "numpy.ndarray",
         array.shape,
         repr(array.dtype),
-        hashlib.sha256(array.tobytes(order="C")).hexdigest(),
+        _numpy_values_token(array),
     )
 
 
@@ -1222,8 +1245,11 @@ class LazyArray:
         tokens produce equal tokens; arbitrary semantically equivalent mappings
         are not guaranteed to serialize identically.
 
-        Plain NumPy arrays without object fields are hashed in full on each
-        call, with time and temporary memory proportional to their byte size.
+        Supported plain NumPy arrays are hashed in full on each call. Structured
+        fields are hashed separately, excluding padding; overlapping fields
+        are each visited. Time scales with the bytes visited, and temporary
+        memory with the largest field buffer. Dtype metadata and non-string
+        field titles require an explicit source hook, including in nested dtypes.
         Known NumPy/mmap backing is rejected through ndarray base and
         memoryview object chains; arbitrary buffer provenance is not inferred.
         Array subclasses, object arrays, and foreign sources require a source `__dask_tokenize__` hook; unsupported sources

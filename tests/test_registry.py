@@ -51,7 +51,7 @@ def unregistered_v2_codec(monkeypatch: pytest.MonkeyPatch) -> str:
     [
         ("n5_default", ("zarr-n5",)),
         ("gribberish", ("gribberish",)),
-        ("imagecodecs_jpeg2k", ("virtual-tiff",)),
+        ("imagecodecs_jpeg2k", ("imagecodecs-zarr", "virtual-tiff")),
         ("omfiles.pfor", ("omfiles",)),
         ("any-numcodecs.array-array", ("zarr-any-numcodecs",)),
         ("totally-made-up", ()),
@@ -81,7 +81,10 @@ def test_packages_for_numcodec_v2(name: str, expected: tuple[str, ...]) -> None:
 
 def test_packages_for_codec_is_format_specific() -> None:
     """The same name can mean different packages in each format's registry."""
-    assert _packages_for_codec("imagecodecs_jpeg2k", zarr_format=3) == ("virtual-tiff",)
+    assert _packages_for_codec("imagecodecs_jpeg2k", zarr_format=3) == (
+        "imagecodecs-zarr",
+        "virtual-tiff",
+    )
     assert _packages_for_codec("imagecodecs_jpeg2k", zarr_format=2) == ("imagecodecs-numcodecs",)
     # `crc32c` is a codec zarr implements in format 3, so only format 2 gets a hint for it.
     assert _packages_for_codec("crc32c", zarr_format=3) == ()
@@ -270,15 +273,36 @@ def test_get_numcodec_non_mapping_input_still_raises_value_error(data: object) -
         get_numcodec(data)  # type: ignore[arg-type]
 
 
-def test_imagecodecs_prefix_does_not_over_match_in_zarr_format_3() -> None:
-    """virtual-tiff provides 15 of the 81 `imagecodecs_*` names; the rest must get no hint.
-
-    Recommending virtual-tiff for a name it does not provide is worse than saying nothing.
-    """
-    assert _packages_for_codec("imagecodecs_jpeg2k", zarr_format=3) == ("virtual-tiff",)
-    for name in ("imagecodecs_jpegls", "imagecodecs_avif", "imagecodecs_blosc"):
-        assert _packages_for_codec(name, zarr_format=3) == ()
-        assert _packages_for_codec(name, zarr_format=2) == ("imagecodecs-numcodecs",)
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("imagecodecs_jpeg2k", ("imagecodecs-zarr", "virtual-tiff")),
+        ("imagecodecs_jpeg8", ("virtual-tiff",)),
+        ("imagecodecs_jetraw", ("virtual-tiff",)),
+        ("imagecodecs_jpegls", ("imagecodecs-zarr",)),
+        ("imagecodecs_avif", ("imagecodecs-zarr",)),
+        ("imagecodecs_blosc", ("imagecodecs-zarr",)),
+        ("imagecodecs_lzma", ("imagecodecs-zarr",)),
+        ("imagecodecs_wavpack", ("imagecodecs-zarr",)),
+        ("imagecodecs_zstd1", ("imagecodecs-zarr",)),
+        ("imagecodecs_not_a_codec", ()),
+    ],
+)
+def test_missing_imagecodec_reports_packages(
+    name: str, expected: tuple[str, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Missing imagecodecs name their providers without guessing from the prefix."""
+    monkeypatch.setitem(zarr.registry._codec_registries, name, zarr.registry.Registry())
+    message = (
+        f"An implementation for codec {name!r} is not available. Register one explicitly "
+        f"using the codec registry (see {_ZARR_CODEC_DOCS_URL}), or install a Python package "
+        "that registers a codec implementation with zarr."
+    )
+    if expected:
+        message += f" Known packages supporting this codec: {', '.join(expected)}."
+    with pytest.raises(UnknownCodecError) as excinfo:
+        get_codec_class(name)
+    assert str(excinfo.value) == message
 
 
 def test_resolve_codec_reports_missing_codec() -> None:
