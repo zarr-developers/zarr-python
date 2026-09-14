@@ -62,7 +62,7 @@ class FixedDimension:
         if self.size == 0:
             n = 0
         else:
-            n = -(-self.extent // self.size)
+            n = ceildiv(self.extent, self.size)
         object.__setattr__(self, "nchunks", n)
         object.__setattr__(self, "ngridcells", n)
 

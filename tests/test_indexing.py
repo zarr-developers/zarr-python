@@ -19,6 +19,7 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.indexing import (
     BasicSelection,
+    BoolArrayDimIndexer,
     CoordinateIndexer,
     CoordinateSelection,
     IntArrayDimIndexer,
@@ -1358,6 +1359,15 @@ def test_deprecated_dense_indexer_attributes() -> None:
     with pytest.warns(zarr.errors.ZarrDeprecationWarning):
         assert_array_equal(dim_indexer.chunk_nitems_cumsum, np.cumsum(expected_nitems))
 
+    mask = np.zeros(20, dtype=bool)
+    mask[np.unique(coords)] = True
+    expected_mask_nitems = np.bincount(np.unique(coords) // 3, minlength=7)
+    bool_indexer = BoolArrayDimIndexer(mask, 20, dim_grid)
+    with pytest.warns(zarr.errors.ZarrDeprecationWarning):
+        assert_array_equal(bool_indexer.chunk_nitems, expected_mask_nitems)
+    with pytest.warns(zarr.errors.ZarrDeprecationWarning):
+        assert_array_equal(bool_indexer.chunk_nitems_cumsum, np.cumsum(expected_mask_nitems))
+
 
 def test_sparse_selections_on_arrays_with_many_chunks(store: StorePath) -> None:
     """Coordinate and orthogonal selections must scale with the number of selected points,
@@ -1387,6 +1397,13 @@ def test_sparse_selections_on_arrays_with_many_chunks(store: StorePath) -> None:
         vals = np.arange(1, len(coords) + 1, dtype="int32")
         z.set_orthogonal_selection((np.array(coords), 0), vals)
         assert_array_equal(z.get_orthogonal_selection((np.array(coords), 0)), vals)
+    # an orthogonal boolean selection along an axis with 2**22 chunks: the mask itself is
+    # O(dim_len), but the indexer must not add a per-chunk pass on top of it
+    mask = np.zeros(2**22, dtype=bool)
+    mask[[3, 5, 6, 2**22 - 1]] = True
+    vals = np.array([1, 2, 3, 4], dtype="int32")
+    z.set_orthogonal_selection((mask, 0), vals)
+    assert_array_equal(z.get_orthogonal_selection((mask, 0)), vals)
 
 
 def test_coordinate_indexer_many_chunks() -> None:

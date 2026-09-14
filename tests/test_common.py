@@ -10,6 +10,7 @@ import pytest
 from zarr.core.common import (
     ANY_ACCESS_MODE,
     AccessModeLiteral,
+    ceildiv,
     concurrent_iter,
     parse_bool,
     parse_int,
@@ -22,6 +23,27 @@ from zarr.core.config import parse_indexing_order
 
 if TYPE_CHECKING:
     from typing import Any, Literal
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "expected"),
+    [
+        (0, 3, 0),
+        (7, 3, 3),
+        (9, 3, 3),
+        (2**62 - 1, 1, 2**62 - 1),
+        (2**62 + 1, 2, 2**61 + 1),
+        (2**60 + 3, 1, 2**60 + 3),
+        (np.int64(2**62 - 1), np.int64(1), 2**62 - 1),
+        (7.5, 2, 4),
+    ],
+)
+def test_ceildiv(a: float, b: float, expected: int) -> None:
+    """Integer inputs divide exactly, beyond the 2**53 range where float division rounds;
+    float inputs keep the ceil-of-quotient semantics."""
+    result = ceildiv(a, b)
+    assert result == expected
+    assert isinstance(result, int)
 
 
 @pytest.mark.parametrize("data", [(0, 0, 0, 0), (1, 3, 4, 5, 6), (2, 4)])

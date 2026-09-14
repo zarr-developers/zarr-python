@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import numbers
 import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum
@@ -92,8 +93,21 @@ def product(tup: tuple[int, ...]) -> int:
 
 
 def ceildiv(a: float, b: float) -> int:
+    """Ceiling of ``a / b``.
+
+    Integer inputs are divided exactly: ``math.ceil(a / b)`` goes through a float and
+    loses precision above ``2**53``, so e.g. ``ceildiv(2**62 - 1, 1)`` came out as
+    ``2**62``. Chunk counts of large arrays depend on this being exact.
+    """
     if a == 0:
         return 0
+    # Widen to ``object`` for the check: mypy models ``int`` as a ``float`` and does not
+    # know that it satisfies ``Integral``, so it would consider this branch unreachable.
+    a_obj: object = a
+    b_obj: object = b
+    if isinstance(a_obj, numbers.Integral) and isinstance(b_obj, numbers.Integral):
+        a_int, b_int = int(a_obj), int(b_obj)
+        return -(-a_int // b_int)
     return math.ceil(a / b)
 
 
