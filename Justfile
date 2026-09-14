@@ -134,3 +134,15 @@ check-changelogs *args:
 # Check recipe formatting
 just-check:
     just --fmt --check
+
+# Run a zarr-metadata recipe, or list its recipes with no arguments
+zarr-metadata *args:
+    just --justfile packages/zarr-metadata/justfile "$@"
+
+# Run a zarr-indexing recipe, or list its recipes with no arguments
+zarr-indexing *args:
+    just --justfile packages/zarr-indexing/justfile "$@"
+
+# Run a zarr-http-server recipe, or list its recipes with no arguments
+zarr-http-server *args:
+    just --justfile packages/zarr-http-server/justfile "$@"

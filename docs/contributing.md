@@ -106,7 +106,18 @@ just test tests/test_array.py -k 'resize and not async'
 
 Arguments after the recipe name are forwarded to the underlying tool. Use
 `just --show test` to inspect a command. Package-specific commands live in the
-`justfile` inside each package directory; run `just` there to list them.
+`justfile` inside each package directory. The root recipes delegate to these files,
+so you can also run package commands from the repository root:
+
+```bash
+just zarr-metadata              # list this package's recipes
+just zarr-metadata test
+just zarr-indexing test-tensorstore
+just zarr-http-server docs-check
+```
+
+The package justfile sets the working directory and defines the command and its
+environment. Root recipes forward arguments without duplicating those definitions.
 
 ### Creating a branch
 
