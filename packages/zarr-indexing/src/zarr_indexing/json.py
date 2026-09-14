@@ -14,9 +14,9 @@ wire's structurally discriminated union back to the right kind. This module is w
 
 The engine lowering rules include:
 
-- **Unconstrained index arrays.** Only omitted `index_array_bounds` or
-  `["-inf", "+inf"]` can be lowered. Other constraints raise `NdselError`
-  rather than being lost during serialization or map operations.
+- **Validated index arrays.** Raw index values must satisfy the inclusive
+  `index_array_bounds` before offset and stride are applied. Lowering checks
+  all supplied values eagerly; validated immutable maps need not retain bounds.
 - **Finite bounds.** An `IndexDomain` addresses a finite array, so a canonical
   body carrying a `"-inf"`/`"+inf"` bound cannot be lowered; `from_json` raises.
 - **Implicit bounds lower by value.** The `[n]`-bracket implicit/explicit flag
@@ -136,8 +136,8 @@ class OutputIndexMapJSON(TypedDict, total=False):
     """Wire bounds on index-array values; `["-inf", "+inf"]` if unconstrained.
 
     The message layer preserves these inclusive constraints on raw index values.
-    Engine lowering rejects bounds other than `["-inf", "+inf"]`; serialization
-    emits unconstrained bounds for non-degenerate array maps.
+    Engine lowering validates all values eagerly before offset and stride.
+    Serialization emits unconstrained bounds for validated non-degenerate maps.
     """
 
 

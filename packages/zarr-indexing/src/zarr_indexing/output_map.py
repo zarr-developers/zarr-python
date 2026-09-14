@@ -357,8 +357,9 @@ def output_index_map_from_json(data: OutputIndexMapJSON) -> OutputIndexMap:
     selects an array map, `input_dimension` selects a dimension map, and
     neither selects a constant map.
 
-    Array maps with `index_array_bounds` other than `["-inf", "+inf"]` raise
-    `NdselError`, because the engine cannot retain those constraints.
+    Validate every raw index value against the inclusive `index_array_bounds`
+    before applying offset and stride. Out-of-bounds values raise `NdselError`
+    at load time. Validated immutable maps do not retain the bounds.
 
     Examples
     --------
@@ -370,9 +371,10 @@ def output_index_map_from_json(data: OutputIndexMapJSON) -> OutputIndexMap:
     from zarr_indexing._wire import check_index_array_bounds, lower_index_array
 
     if "index_array" in data:
-        check_index_array_bounds(data.get("index_array_bounds", ["-inf", "+inf"]), "output")
+        array = lower_index_array(data["index_array"], "index_array")
+        check_index_array_bounds(array, data.get("index_array_bounds", ["-inf", "+inf"]), "output")
         return ArrayMap(
-            index_array=lower_index_array(data["index_array"], "index_array"),
+            index_array=array,
             offset=data.get("offset", 0),
             stride=data.get("stride", 1),
         )

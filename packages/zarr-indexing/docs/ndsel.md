@@ -102,14 +102,19 @@ in this example is not a general round-trip guarantee: implicit flags are
 removed and degenerate array maps are collapsed.
 
 `index_array_bounds` constrains raw index-array values before the map's offset
-and stride are applied. The message layer preserves these bounds, but the
-engine cannot retain them through map operations. Both `IndexTransform.from_json`
-and `output_index_map_from_json` therefore raise `NdselError("invalid_json", ...)`
-when bounds differ from `["-inf", "+inf"]`. This includes one-sided constraints,
-empty and singleton arrays, and zero-stride maps. Omitted or explicitly unbounded
-bounds remain supported. Use the message layer to preserve constrained documents
-for consumers that support them; lowering never silently discards an index-array
-constraint.
+and stride are applied. Both `IndexTransform.from_json` and
+`output_index_map_from_json` validate every supplied value against the inclusive
+bounds when loading. Finite and one-sided bounds are supported; omitted bounds
+and `["-inf", "+inf"]` impose no additional constraint. Values outside the
+bounds raise `NdselError("invalid_json", ...)`, including in singleton arrays
+and zero-stride maps. Empty arrays satisfy any well-formed, ordered bounds.
+
+Validation is eager: an invalid entry rejects the entire map even if a later
+selection would avoid that entry. After validation the engine owns immutable
+index coordinates, so it need not retain the bounds; serialization emits
+unbounded constraints for non-degenerate maps. Message normalization preserves
+the original bounds without checking array contents. This implementation does
+not defer bounds errors until individual positions are accessed.
 
 A canonical body carrying a
 `"-inf"` or `"+inf"` bound cannot be lowered — an `IndexDomain` addresses a
