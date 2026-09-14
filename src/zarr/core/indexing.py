@@ -629,10 +629,10 @@ class BoolArrayDimIndexer:
     dim_grid: DimensionGrid
     nchunks: int
 
-    chunk_nitems: npt.NDArray[Any]
-    chunk_nitems_cumsum: npt.NDArray[Any]
     nitems: int
     dim_chunk_ixs: npt.NDArray[np.intp]
+    # end offset of each occupied chunk's run of selected items, aligned with dim_chunk_ixs
+    chunk_run_ends: npt.NDArray[np.intp]
 
     def __init__(
         self,
@@ -653,33 +653,51 @@ class BoolArrayDimIndexer:
         g = dim_grid
         nchunks = g.nchunks
 
-        # precompute number of selected items for each chunk
-        chunk_nitems = np.zeros(nchunks, dtype="i8")
-        for dim_chunk_ix in range(nchunks):
-            dim_offset = g.chunk_offset(dim_chunk_ix)
-            chunk_len = g.data_size(dim_chunk_ix)
-            chunk_nitems[dim_chunk_ix] = np.count_nonzero(
-                dim_sel[dim_offset : dim_offset + chunk_len]
-            )
-        chunk_nitems_cumsum = np.cumsum(chunk_nitems)
-        nitems = chunk_nitems_cumsum[-1]
-        dim_chunk_ixs = np.nonzero(chunk_nitems)[0]
+        # The selected positions are already in increasing order, so their chunk ids are
+        # non-decreasing and the occupied chunks with their run ends follow in O(nitems).
+        # The previous per-chunk count loop was O(nchunks) in both time and memory (gh-4174).
+        sel_positions = np.nonzero(dim_sel)[0]
+        dim_chunk_ixs, chunk_run_ends = sorted_run_ends(g.indices_to_chunks(sel_positions))
+        nitems = int(sel_positions.size)
 
         # store attributes
         object.__setattr__(self, "dim_sel", dim_sel)
         object.__setattr__(self, "dim_len", dim_len)
         object.__setattr__(self, "dim_grid", dim_grid)
         object.__setattr__(self, "nchunks", nchunks)
-        object.__setattr__(self, "chunk_nitems", chunk_nitems)
-        object.__setattr__(self, "chunk_nitems_cumsum", chunk_nitems_cumsum)
         object.__setattr__(self, "nitems", nitems)
         object.__setattr__(self, "dim_chunk_ixs", dim_chunk_ixs)
+        object.__setattr__(self, "chunk_run_ends", chunk_run_ends)
+
+    @property
+    @deprecated(
+        "BoolArrayDimIndexer.chunk_nitems is deprecated: it materializes a dense array with "
+        "one entry per chunk along the dimension. Use dim_chunk_ixs and chunk_run_ends, "
+        "which cover only the occupied chunks.",
+        category=ZarrDeprecationWarning,
+    )
+    def chunk_nitems(self) -> npt.NDArray[np.intp]:
+        dense = np.zeros(self.nchunks, dtype=np.intp)
+        dense[self.dim_chunk_ixs] = np.diff(self.chunk_run_ends, prepend=0)
+        return dense
+
+    @property
+    @deprecated(
+        "BoolArrayDimIndexer.chunk_nitems_cumsum is deprecated: it materializes a dense array "
+        "with one entry per chunk along the dimension. Use dim_chunk_ixs and chunk_run_ends, "
+        "which cover only the occupied chunks.",
+        category=ZarrDeprecationWarning,
+    )
+    def chunk_nitems_cumsum(self) -> npt.NDArray[np.intp]:
+        dense = np.zeros(self.nchunks, dtype=np.intp)
+        dense[self.dim_chunk_ixs] = np.diff(self.chunk_run_ends, prepend=0)
+        return np.cumsum(dense)
 
     def __iter__(self) -> Iterator[ChunkDimProjection]:
         g = self.dim_grid
 
         # iterate over chunks with at least one item
-        for dim_chunk_ix in self.dim_chunk_ixs:
+        for i, dim_chunk_ix in enumerate(self.dim_chunk_ixs):
             # find region in chunk
             dim_offset = g.chunk_offset(dim_chunk_ix)
             chunk_len = g.data_size(dim_chunk_ix)
@@ -693,11 +711,11 @@ class BoolArrayDimIndexer:
                 dim_chunk_sel = tmp
 
             # find region in output
-            if dim_chunk_ix == 0:
+            if i == 0:
                 start = 0
             else:
-                start = self.chunk_nitems_cumsum[dim_chunk_ix - 1]
-            stop = self.chunk_nitems_cumsum[dim_chunk_ix]
+                start = self.chunk_run_ends[i - 1]
+            stop = self.chunk_run_ends[i]
             dim_out_sel = slice(start, stop)
             is_complete_chunk = False  # TODO
 
