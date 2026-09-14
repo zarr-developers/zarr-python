@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from hypothesis import assume, given
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 import zarr_indexing
@@ -955,25 +955,125 @@ def test_independent_components_scatter_through_lazy_array(reader_kind: str) -> 
     np.testing.assert_array_equal(view.result(), source[a, b, c, :])
 
 
-@given(data=st.data())
-def test_component_dependency_graph_matches_pointwise_oracle(data: st.DataObject) -> None:
-    shape = tuple(data.draw(st.lists(st.integers(1, 3), min_size=0, max_size=3)))
+class SignedGrid:
+    """An unbounded grid with translated boundaries and signed chunk identifiers."""
+
+    def __init__(self, size: int, origin: int) -> None:
+        self.size = size
+        self.origin = origin
+
+    def index_to_chunk(self, index: int) -> int:
+        return (index - self.origin) // self.size
+
+    def indices_to_chunks(
+        self, indices: np.ndarray[Any, np.dtype[np.intp]]
+    ) -> np.ndarray[Any, np.dtype[np.intp]]:
+        return (indices - self.origin) // self.size
+
+    def chunk_offset(self, chunk: int) -> int:
+        return self.origin + chunk * self.size
+
+    def chunk_size(self, chunk: int) -> int:
+        return self.size
+
+
+@settings(max_examples=300)
+@given(data=st.data(), shape=st.lists(st.integers(0, 3), min_size=0, max_size=3))
+def test_component_dependency_graph_matches_pointwise_oracle(
+    data: st.DataObject, shape: list[int]
+) -> None:
+    """Catch lost duplicates, signed chunk collisions, and incorrect request origins.
+
+    Enumerate the transform's small domain directly: no planner intersection,
+    grouping, or dependency helpers contribute to the expected mapping.
+    """
+    origin = tuple(data.draw(st.integers(-4, 4)) for _ in shape)
     output_rank = data.draw(st.integers(1, 5))
-    maps = []
+    affine_axes = {axis for axis in range(len(shape)) if data.draw(st.booleans())}
+    maps: list[ArrayMap | ConstantMap | DimensionMap] = [
+        DimensionMap(
+            axis, offset=data.draw(st.integers(-3, 3)), stride=data.draw(st.integers(-2, 2))
+        )
+        for axis in sorted(affine_axes)
+    ]
     for _ in range(output_rank):
-        dependencies = data.draw(st.lists(st.booleans(), min_size=len(shape), max_size=len(shape)))
+        if data.draw(st.booleans()):
+            maps.append(ConstantMap(data.draw(st.integers(-3, 3))))
+            continue
+        # Reserve affine axes for one DimensionMap each. Unsupported shared
+        # affine dependencies are exercised explicitly in the error properties.
+        dependencies = [
+            axis not in affine_axes and data.draw(st.booleans()) for axis in range(len(shape))
+        ]
         array_shape = tuple(
             size if dependent else 1 for size, dependent in zip(shape, dependencies, strict=True)
         )
         count = int(np.prod(array_shape))
-        values = data.draw(st.lists(st.integers(0, 3), min_size=count, max_size=count))
-        maps.append(ArrayMap(np.array(values, dtype=np.intp).reshape(array_shape)))
-    transform = IndexTransform(IndexDomain.from_shape(shape), tuple(maps))
-    grids = dimension_grids_from_chunks((2,) * output_rank, (4,) * output_rank)
-    partition = plan_chunks(transform, grids).partition()
+        # A small value range produces repeated storage points at distinct request positions.
+        values = data.draw(st.lists(st.integers(-2, 2), min_size=count, max_size=count))
+        maps.append(
+            ArrayMap(
+                np.array(values, dtype=np.intp).reshape(array_shape),
+                offset=data.draw(st.integers(-3, 3)),
+                stride=data.draw(st.integers(-2, 2)),
+            )
+        )
+    grids = [SignedGrid(data.draw(st.integers(1, 3)), data.draw(st.integers(-3, 3))) for _ in maps]
+    transform = IndexTransform(
+        IndexDomain(origin, tuple(lo + size for lo, size in zip(origin, shape, strict=True))),
+        tuple(maps),
+    )
+    expected = {point: _storage_of(transform, point) for point in _points(transform.domain)}
+    expected_chunks = {
+        tuple(grid.index_to_chunk(value) for grid, value in zip(grids, storage, strict=True))
+        for storage in expected.values()
+    }
+    partition = plan_chunks(transform, tuple(grids)).partition()
     rows = list(partition)
     _check_projections(transform, rows)
+    assert {row.chunk_coords for row in rows} == expected_chunks
+    assert len(rows) == len(expected_chunks)
     assert partition.chunk_coords().tolist() == [list(row.chunk_coords) for row in rows]
+    reconstructed = []
+    for row in rows:
+        assert row.chunk_domain.inclusive_min == tuple(
+            grid.chunk_offset(chunk) for grid, chunk in zip(grids, row.chunk_coords, strict=True)
+        )
+        for cell in _points(row.cell_transform.domain):
+            request = _storage_of(row.cell_transform, cell)
+            storage = tuple(
+                local + grid.chunk_offset(chunk)
+                for local, grid, chunk in zip(
+                    _storage_of(row.chunk_transform, cell), grids, row.chunk_coords, strict=True
+                )
+            )
+            reconstructed.append((request, storage))
+    # A list comparison retains multiplicity: repeating one position cannot hide a missing one.
+    assert sorted(reconstructed) == sorted(expected.items())
+
+
+@given(origin=st.integers(-4, 4), size=st.integers(2, 5), stride=st.sampled_from([-2, -1, 1, 2]))
+def test_generated_shared_affine_dependency_is_rejected(
+    origin: int, size: int, stride: int
+) -> None:
+    transform = IndexTransform(
+        IndexDomain((origin,), (origin + size,)),
+        (DimensionMap(0, stride=stride), DimensionMap(0, offset=3)),
+    )
+    with pytest.raises(ValueError, match="read input axis 0"):
+        list(plan_chunks(transform, (SignedGrid(2, -1), SignedGrid(3, 1))))
+
+
+@given(origin=st.integers(-4, 4), size=st.integers(2, 5), stride=st.sampled_from([-2, -1, 1, 2]))
+def test_generated_mixed_affine_array_dependency_is_rejected(
+    origin: int, size: int, stride: int
+) -> None:
+    transform = IndexTransform(
+        IndexDomain((origin,), (origin + size,)),
+        (DimensionMap(0, stride=stride), ArrayMap(np.zeros(size, dtype=np.intp))),
+    )
+    with pytest.raises(NotImplementedError, match="also bound by a slice map"):
+        list(plan_chunks(transform, (SignedGrid(2, -1), SignedGrid(3, 1))))
 
 
 @pytest.mark.parametrize("stride", [0, 1, 2, -2])
