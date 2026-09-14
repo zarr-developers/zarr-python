@@ -25,9 +25,10 @@ from typing_extensions import TypeIs
 import zarr
 from zarr.core.common import (
     ShapeLike,
-    ceildiv,
+    ceildiv_int,
     parse_shapelike,
 )
+from zarr.core.common import ceildiv as ceildiv  # noqa: PLC0414 - preserve the existing export
 from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
@@ -62,7 +63,7 @@ class FixedDimension:
         if self.size == 0:
             n = 0
         else:
-            n = ceildiv(self.extent, self.size)
+            n = ceildiv_int(self.extent, self.size)
         object.__setattr__(self, "nchunks", n)
         object.__setattr__(self, "ngridcells", n)
 
@@ -465,7 +466,9 @@ class ChunkGrid:
                 if (
                     edges_list[0] > 0
                     and all(e == edges_list[0] for e in edges_list)
-                    and (extent == edge_sum or len(edges_list) == ceildiv(extent, edges_list[0]))
+                    and (
+                        extent == edge_sum or len(edges_list) == ceildiv_int(extent, edges_list[0])
+                    )
                 ):
                     dims.append(FixedDimension(size=edges_list[0], extent=extent))
                 else:

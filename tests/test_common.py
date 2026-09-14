@@ -27,23 +27,44 @@ if TYPE_CHECKING:
 
 @pytest.mark.parametrize(
     ("a", "b", "expected"),
+    [(0, 0, 0), (7, 3, 3), (7.5, 2, 4), (2**62 - 1, 1, 2**62)],
+)
+def test_ceildiv(a: float, b: float, expected: int) -> None:
+    """The original helper retains its floating-point division behavior."""
+    assert ceildiv(a, b) == expected
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "expected"),
     [
         (0, 3, 0),
         (7, 3, 3),
         (9, 3, 3),
+        (-7, 3, -2),
+        (7, -3, -2),
+        (-7, -3, 3),
         (2**62 - 1, 1, 2**62 - 1),
         (2**62 + 1, 2, 2**61 + 1),
         (2**60 + 3, 1, 2**60 + 3),
         (np.int64(2**62 - 1), np.int64(1), 2**62 - 1),
-        (7.5, 2, 4),
+        (np.int64(-(2**63)), np.int64(-1), 2**63),
+        (np.uint64(2**64 - 1), np.uint64(2), 2**63),
     ],
 )
-def test_ceildiv(a: float, b: float, expected: int) -> None:
-    """Integer inputs divide exactly, beyond the 2**53 range where float division rounds;
-    float inputs keep the ceil-of-quotient semantics."""
-    result = ceildiv(a, b)
+def test_ceildiv_int(a: int, b: int, expected: int) -> None:
+    from zarr.core.common import ceildiv_int
+
+    result = ceildiv_int(a, b)
     assert result == expected
     assert isinstance(result, int)
+
+
+@pytest.mark.parametrize("numerator", [0, 1])
+def test_ceildiv_int_zero_divisor(numerator: int) -> None:
+    from zarr.core.common import ceildiv_int
+
+    with pytest.raises(ZeroDivisionError):
+        ceildiv_int(numerator, 0)
 
 
 @pytest.mark.parametrize("data", [(0, 0, 0, 0), (1, 3, 4, 5, 6), (2, 4)])

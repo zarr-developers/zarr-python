@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import math
-import numbers
 import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum
@@ -93,21 +92,15 @@ def product(tup: tuple[int, ...]) -> int:
 
 
 def ceildiv(a: float, b: float) -> int:
-    """Ceiling of ``a / b``.
-
-    When both inputs are integers, use exact integer arithmetic. Otherwise, return
-    ``math.ceil(a / b)``. A zero numerator returns zero.
-    """
+    """Ceiling of ``a / b`` using floating-point division; zero when ``a`` is zero."""
     if a == 0:
         return 0
-    # Widen to ``object`` for the check: mypy models ``int`` as a ``float`` and does not
-    # know that it satisfies ``Integral``, so it would consider this branch unreachable.
-    a_obj: object = a
-    b_obj: object = b
-    if isinstance(a_obj, numbers.Integral) and isinstance(b_obj, numbers.Integral):
-        a_int, b_int = int(a_obj), int(b_obj)
-        return -(-a_int // b_int)
     return math.ceil(a / b)
+
+
+def ceildiv_int(a: int, b: int) -> int:
+    """Ceiling of integer division using exact Python integer arithmetic."""
+    return -(-int(a) // int(b))
 
 
 def concurrent_iter[T: tuple[Any, ...], V](
