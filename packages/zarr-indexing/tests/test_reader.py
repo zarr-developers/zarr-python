@@ -220,12 +220,33 @@ def test_successful_transform_contract_across_planning_readers_and_lazy_array(
         reader.contexts.clear()
         assembled = np.empty(view.shape, dtype=view.dtype)
         for part in reversed(parts):
-            values = part.result()
+            values = part.view.result()
             assert not np.shares_memory(values, source_data)
             assert values.dtype == expected_values.dtype
             assembled[part.out_selection] = values
         np.testing.assert_array_equal(assembled, expected_values)
-        assert tuple(reversed(reader.contexts)) == parent_contexts
+        for independent, parent in zip(reversed(reader.contexts), parent_contexts, strict=True):
+            assert independent.transform == parent.transform
+            assert independent.projection is not None
+            assert parent.projection is not None
+            assert independent.projection.chunk_coords == parent.projection.chunk_coords
+            assert independent.projection.chunk_domain == parent.projection.chunk_domain
+            assert independent.projection.chunk_transform == parent.projection.chunk_transform
+        for candidate in (view, view.unpartitioned()):
+            np.testing.assert_array_equal(candidate.result(), expected_values)
+        for part in parts:
+            assert part.view.base_shape == source_data.shape
+            for child in part.view.parts():
+                np.testing.assert_array_equal(child.view.result(), part.view.result())
+            reverse = (slice(None, None, -1),) * part.view.ndim
+            np.testing.assert_array_equal(
+                part.view.lazy[reverse].result(), part.view.result()[reverse]
+            )
+            for candidate in (
+                part.view.unpartitioned(),
+                part.view.with_parts((1,) * source_data.ndim),
+            ):
+                np.testing.assert_array_equal(candidate.result(), part.view.result())
 
 
 class ProjectionRequiredReader:

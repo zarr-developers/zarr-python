@@ -12,8 +12,9 @@ ownership.
 `Reader.read_into(source, context, out)` receives a `ReadContext` whose
 `transform` maps zero-origin output-buffer coordinates to global coordinates in
 `source`, with `context.transform.domain.shape == out.shape`. Its optional
-`projection` is the existing plan for a partitioned read. Both parent
-assembly and independent `Partition.result()` calls supply that projection. The projection's
+`projection` describes one planned read. `LazyArray.result()` always supplies
+it, including for partition views and unpartitioned reads. Direct callers of
+the reader protocol may omit it when their reader supports that. The projection's
 `chunk_transform` remains chunk-local, its `cell_transform` describes result
 placement, and its `chunk_domain` describes the grid cell. The global read
 transform and the projection's chunk transform deliberately use different

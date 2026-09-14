@@ -105,7 +105,7 @@ def test_parts() -> None:
     # parts and placing them is what `result()` does.
     assembled = np.empty(view.shape, dtype=view.dtype)
     for part in parts:
-        assembled[part.out_selection] = part.result()
+        assembled[part.out_selection] = part.view.result()
     assert np.array_equal(assembled, view.result())
 
     # The partitioning is a read strategy, so a different one gives the same data.

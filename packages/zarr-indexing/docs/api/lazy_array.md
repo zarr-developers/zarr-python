@@ -21,8 +21,10 @@ coordinates into its raw `Partition.view.array`, including for non-first
 partitions. `Partition.projection.chunk_transform` intentionally stays local to
 the selected chunk. During parent materialization (`view.result(parts=parts)`) the reader receives
 both frames in one `ReadContext`: the public global transform in `context.transform` and the
-same local plan in `context.projection`. Use `part.result()` to execute a
-partition independently with both frames. Direct `part.view.result()` calls
-resolve the general view with no projection.
+local plan in `context.projection`. Every view retains the source grid and plans
+its reads, so `part.view.result()` also supplies both frames. Its projection's
+result placement is relative to that part view, rather than the parent output.
+Further indexing and repartitioning use the same source-global coordinate frame.
+Even `unpartitioned()` reads carry a projection for the single source-wide cell.
 
 ::: zarr_indexing.lazy_array

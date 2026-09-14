@@ -1212,7 +1212,8 @@ def test_reader_wrappers_forward_the_read_contract_unchanged() -> None:
     outer_call, inner_call = events
     assert outer_call[1] is inner_call[1] is data
     assert outer_call[2] is inner_call[2]
-    assert outer_call[3] is inner_call[3] is result
+    assert outer_call[3] is inner_call[3]
+    assert np.shares_memory(outer_call[3], result)
     np.testing.assert_array_equal(result, data[1:6:2, ::-1, 1])
 
 
@@ -1262,7 +1263,7 @@ class ReturningReader:
 @pytest.mark.parametrize("independent", [False, True])
 def test_result_rejects_a_reader_that_returns_a_value(independent: bool) -> None:
     view = LazyArray(reference()).with_reader(ReturningReader())
-    target = next(view.parts()) if independent else view
+    target = next(view.parts()).view if independent else view
     with pytest.raises(TypeError, match="must return None"):
         target.result()
 
@@ -1336,7 +1337,7 @@ def test_reader_exception_propagates_unchanged(independent: bool) -> None:
             raise error
 
     view = LazyArray(reference()).with_reader(FailingReader())
-    target = next(view.parts()) if independent else view
+    target = next(view.parts()).view if independent else view
     with pytest.raises(RuntimeError) as caught:
         target.result()
     assert caught.value is error
@@ -2426,11 +2427,17 @@ def test_numpy_matrix_is_refused() -> None:
 @pytest.mark.parametrize("parts", [None, (2, 2), (1, 4), (3, 4)])
 def test_a_masked_source_keeps_its_mask_under_every_partitioning(parts: Any) -> None:
     data = np.ma.masked_greater(np.arange(12).reshape(3, 4), 7)
-    got = repartition(LazyArray(data), parts).lazy[:, 1:].result()
+    view = repartition(LazyArray(data), parts).lazy[:, 1:]
+    got = view.result()
     expected = data[:, 1:]
     assert isinstance(got, np.ma.MaskedArray), parts
     np.testing.assert_array_equal(np.ma.getmaskarray(got), np.ma.getmaskarray(expected))
     np.testing.assert_array_equal(np.ma.filled(got, 0), np.ma.filled(expected, 0))
+    assembled = np.ma.masked_all(view.shape, dtype=view.dtype)
+    for part in view.parts():
+        assembled[part.out_selection] = part.view.result()
+    np.testing.assert_array_equal(np.ma.getmaskarray(assembled), np.ma.getmaskarray(expected))
+    np.testing.assert_array_equal(np.ma.filled(assembled, 0), np.ma.filled(expected, 0))
 
 
 @pytest.mark.parametrize("parts", [None, (2, 2), (3, 4)])
