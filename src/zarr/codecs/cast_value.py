@@ -377,6 +377,12 @@ class CastValue(ArrayArrayCodec):
 
         return replace(chunk_spec, dtype=target_zdtype, fill_value=new_fill)
 
+    def resolve_chunk_grid(
+        self, *, shape: tuple[int, ...], chunk_grid: ChunkGridMetadata
+    ) -> tuple[tuple[int, ...], ChunkGridMetadata]:
+        """Casting changes the data type and fill value, never the chunk shape."""
+        return shape, chunk_grid
+
     def _encode_sync(
         self,
         chunk_array: NDBuffer,

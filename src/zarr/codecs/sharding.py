@@ -1597,14 +1597,28 @@ class ShardingCodec(
         )
 
     def _get_chunks_per_shard(self, shard_spec: ArraySpec) -> tuple[int, ...]:
-        return tuple(
-            s // c
-            for s, c in zip(
-                shard_spec.shape,
-                self.chunk_shape,
-                strict=False,
+        """The number of inner chunks along each axis of a shard.
+
+        Every encode, decode and size computation goes through here, so this is
+        also the run-time divisibility check. Metadata validation cannot always
+        establish divisibility for every shard: after a codec that maps chunk
+        shapes without declaring a chunk grid on a rectilinear grid, only one
+        representative shard is checked (see
+        `zarr.core.metadata.v3.evolve_and_validate_codecs`). Without this check
+        a non-dividing shard would be floor-divided and read or written with the
+        wrong layout, silently corrupting data.
+        """
+        if len(shard_spec.shape) != len(self.chunk_shape) or any(
+            s % c != 0 for s, c in zip(shard_spec.shape, self.chunk_shape, strict=True)
+        ):
+            raise ValueError(
+                f"A shard of shape {shard_spec.shape} is not divisible by the shard's inner "
+                f"chunk shape {self.chunk_shape}. Metadata validation checks this for "
+                "every shard only when each codec before the sharding codec declares its "
+                "chunk grid (`resolve_chunk_grid`); otherwise it is detected here, when "
+                "such a shard is first encoded or decoded."
             )
-        )
+        return tuple(s // c for s, c in zip(shard_spec.shape, self.chunk_shape, strict=True))
 
     def _shard_index_byte_range(
         self, chunks_per_shard: tuple[int, ...]
