@@ -17,6 +17,7 @@ The tests below pin both sides of that trade-off.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Self, cast
 
@@ -151,6 +152,37 @@ def test_rank_changing_chain_roundtrip(shards: tuple[int, ...] | None) -> None:
     reloaded = zarr.open_array(a.store, mode="r")
     assert reloaded.metadata == a.metadata
     assert np.array_equal(reloaded[:], data)
+
+
+@pytest.mark.parametrize(
+    "chunks",
+    [(2, 4), [[2, 2], 4], [[2, 2], [4]]],
+    ids=["regular", "rectilinear-mixed", "rectilinear-explicit"],
+)
+def test_pipeline_evolves_against_representative_chunk(
+    chunks: tuple[int, ...] | list[Any],
+) -> None:
+    """The codec pipeline is evolved against the same representative chunk shape
+    that metadata validation used, for regular and rectilinear grids alike. A
+    reshape whose size matches every (2, 4) chunk but not a placeholder chunk
+    must be accepted at array creation, and the evolved pipeline must carry the
+    codecs metadata validation produced."""
+    data = np.arange(16, dtype="i4").reshape(4, 4)
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        a = zarr.create_array(
+            {},
+            shape=(4, 4),
+            chunks=chunks,
+            dtype="i4",
+            filters=[ReshapeCodec(shape=(8,))],
+            compressors=None,
+        )
+    pipeline = a._async_array.codec_pipeline
+    assert isinstance(pipeline, Iterable)
+    assert isinstance(a.metadata, ArrayV3Metadata)
+    assert tuple(pipeline) == a.metadata.codecs
+    a[:] = data
+    assert np.array_equal(a[:], data)
 
 
 def _metadata(codecs: tuple[Any, ...], chunk_shape: tuple[int, ...] = CHUNKS) -> ArrayV3Metadata:

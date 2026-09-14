@@ -131,6 +131,7 @@ from zarr.core.metadata.v3 import (
     RegularChunkGridMetadata,
     create_chunk_grid_metadata,
     parse_node_type_array,
+    representative_chunk_shape,
 )
 from zarr.core.sync import sync
 from zarr.errors import (
@@ -239,15 +240,15 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
         # `codecs_from_list_unchecked`, so it does not re-emit them.
         pipeline = get_pipeline_class().from_codecs(metadata.codecs)
 
-        # Use the regular chunk shape if available, otherwise use a
-        # placeholder. The ChunkTransform is shape-agnostic — the actual
-        # chunk shape is passed per-call at decode/encode time.
-        if isinstance(metadata.chunk_grid, RegularChunkGridMetadata):
-            chunk_shape = metadata.chunk_grid.chunk_shape
-        else:
-            chunk_shape = (1,) * len(metadata.shape)
+        # Evolve against the same representative chunk shape that
+        # `ArrayV3Metadata.__init__` used, so a codec whose `resolve_metadata`
+        # depends on the chunk shape (reshape, sharding's inner chain) sees a
+        # real chunk rather than a placeholder that metadata validation never
+        # saw. Only evolution is shape-sensitive: the resulting ChunkTransform
+        # is shape-agnostic — the actual chunk shape is passed per call at
+        # decode/encode time.
         chunk_spec = ArraySpec(
-            shape=chunk_shape,
+            shape=representative_chunk_shape(metadata.chunk_grid),
             dtype=metadata.data_type,
             fill_value=metadata.fill_value,
             config=ArrayConfig.from_dict({}),
