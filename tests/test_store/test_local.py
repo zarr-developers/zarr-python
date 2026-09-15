@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
@@ -10,9 +11,12 @@ import zarr
 from zarr import create_array
 from zarr.core.buffer import Buffer, cpu
 from zarr.storage import LocalStore
-from zarr.storage._local import _atomic_write
+from zarr.storage._local import _RETRY_DELAYS, _atomic_write, _move_with_retry
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import assert_bytes_equal
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
@@ -164,3 +168,84 @@ def test_atomic_write_exclusive_preexisting(tmp_path: pathlib.Path) -> None:
             f.write(b"abc")
     assert path.read_bytes() == b"xyz"
     assert list(path.parent.iterdir()) == [path]  # no temp files
+
+
+def _oserror(winerror: int) -> OSError:
+    """An OSError shaped like the one a failed MoveFileEx produces."""
+    error = OSError(13, "Access is denied")
+    error.winerror = winerror  # type: ignore[attr-defined]
+    return error
+
+
+def _flaky_move(failures: int, error: OSError) -> Callable[[pathlib.Path, pathlib.Path], None]:
+    """A move that raises ``error`` the first ``failures`` times it is called."""
+    attempts = 0
+
+    def move(src: pathlib.Path, dst: pathlib.Path) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts <= failures:
+            raise error
+        src.replace(dst)
+
+    move.attempts = lambda: attempts  # type: ignore[attr-defined]
+    return move
+
+
+@pytest.mark.parametrize("winerror", [5, 32])
+@pytest.mark.parametrize("failures", [1, 2, 3])
+def test_move_with_retry_recovers(tmp_path: pathlib.Path, winerror: int, failures: int) -> None:
+    """A destination that is briefly busy is retried, not reported."""
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    src.write_bytes(b"abc")
+    move = _flaky_move(failures, _oserror(winerror))
+
+    _move_with_retry(src, dst, move)
+
+    assert dst.read_bytes() == b"abc"
+    assert move.attempts() == failures + 1  # type: ignore[attr-defined]
+
+
+def test_move_with_retry_gives_up(tmp_path: pathlib.Path) -> None:
+    """A destination that never frees still raises, after a bounded wait."""
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    src.write_bytes(b"abc")
+    move = _flaky_move(len(_RETRY_DELAYS), _oserror(5))
+
+    with pytest.raises(OSError, match="Access is denied"):
+        _move_with_retry(src, dst, move)
+
+    assert move.attempts() == len(_RETRY_DELAYS)  # type: ignore[attr-defined]
+    assert not dst.exists()
+
+
+@pytest.mark.parametrize("winerror", [2, 3, 183, None])
+def test_move_with_retry_does_not_retry_other_errors(
+    tmp_path: pathlib.Path, winerror: int | None
+) -> None:
+    """Only a busy destination is transient; everything else fails at once.
+
+    183 is the case that matters: ``ERROR_ALREADY_EXISTS`` is how the
+    ``exclusive`` path reports that a node is already there, and retrying it
+    would overwrite what ``_safe_move`` refused to touch.
+    """
+    src = tmp_path / "src"
+    dst = tmp_path / "dst"
+    src.write_bytes(b"abc")
+    error = OSError(17, "boom")
+    if winerror is not None:
+        error.winerror = winerror  # type: ignore[attr-defined]
+    move = _flaky_move(1, error)
+
+    with pytest.raises(OSError, match="boom"):
+        _move_with_retry(src, dst, move)
+
+    assert move.attempts() == 1  # type: ignore[attr-defined]
+
+
+def test_retry_delays_are_bounded() -> None:
+    """A stuck destination must not turn a fast failure into a long hang."""
+    assert sum(_RETRY_DELAYS) < 1.0
+    assert _RETRY_DELAYS[0] == 0.0  # the original attempt is not delayed
