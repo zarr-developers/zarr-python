@@ -69,7 +69,7 @@ from zarr.core.common import (
     ZarrFormat,
     _default_zarr_format,
     _warn_order_kwarg,
-    ceildiv,
+    ceildiv_int,
     concurrent_map,
     parse_shapelike,
     product,
@@ -194,7 +194,7 @@ def _chunk_sizes_from_shape(
     """Compute dask-style chunk sizes from an array shape and uniform chunk shape."""
     result: list[tuple[int, ...]] = []
     for s, c in zip(array_shape, chunk_shape, strict=True):
-        nchunks = ceildiv(s, c)
+        nchunks = ceildiv_int(s, c)
         sizes = tuple(min(c, s - i * c) for i in range(nchunks))
         result.append(sizes)
     return tuple(result)
@@ -1145,7 +1145,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if (sharding_codec := _sharding_codec(self.metadata)) is not None:
             # When sharding, count inner chunks across the whole array
             chunk_shape = sharding_codec.chunk_shape
-            return tuple(starmap(ceildiv, zip(self.shape, chunk_shape, strict=True)))
+            return tuple(starmap(ceildiv_int, zip(self.shape, chunk_shape, strict=True)))
         return self._chunk_grid.grid_shape
 
     @property
