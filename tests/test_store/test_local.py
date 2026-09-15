@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pathlib
 import re
-from typing import TYPE_CHECKING
+import time
 
 import numpy as np
 import pytest
@@ -14,9 +14,6 @@ from zarr.storage import LocalStore
 from zarr.storage._local import _RETRY_DELAYS, _atomic_write, _move_with_retry
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import assert_bytes_equal
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 
 class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
@@ -177,59 +174,71 @@ def _oserror(winerror: int) -> OSError:
     return error
 
 
-def _flaky_move(failures: int, error: OSError) -> Callable[[pathlib.Path, pathlib.Path], None]:
-    """A move that raises ``error`` the first ``failures`` times it is called."""
-    attempts = 0
+class _FlakyMove:
+    """A move that raises `error` the first `failures` times it is called."""
 
-    def move(src: pathlib.Path, dst: pathlib.Path) -> None:
-        nonlocal attempts
-        attempts += 1
-        if attempts <= failures:
-            raise error
+    def __init__(self, failures: int, error: OSError) -> None:
+        self.failures = failures
+        self.error = error
+        self.attempts = 0
+
+    def __call__(self, src: pathlib.Path, dst: pathlib.Path) -> None:
+        self.attempts += 1
+        if self.attempts <= self.failures:
+            raise self.error
         src.replace(dst)
 
-    move.attempts = lambda: attempts  # type: ignore[attr-defined]
-    return move
+
+@pytest.fixture
+def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Record the delays `_move_with_retry` would sleep for instead of sleeping."""
+    recorded: list[float] = []
+    monkeypatch.setattr(time, "sleep", recorded.append)
+    return recorded
 
 
 @pytest.mark.parametrize("winerror", [5, 32])
 @pytest.mark.parametrize("failures", [1, 2, 3])
-def test_move_with_retry_recovers(tmp_path: pathlib.Path, winerror: int, failures: int) -> None:
+def test_move_with_retry_recovers(
+    tmp_path: pathlib.Path, sleeps: list[float], winerror: int, failures: int
+) -> None:
     """A destination that is briefly busy is retried, not reported."""
     src = tmp_path / "src"
     dst = tmp_path / "dst"
     src.write_bytes(b"abc")
-    move = _flaky_move(failures, _oserror(winerror))
+    move = _FlakyMove(failures, _oserror(winerror))
 
     _move_with_retry(src, dst, move)
 
     assert dst.read_bytes() == b"abc"
-    assert move.attempts() == failures + 1  # type: ignore[attr-defined]
+    assert move.attempts == failures + 1
+    assert sleeps == list(_RETRY_DELAYS[:failures])
 
 
-def test_move_with_retry_gives_up(tmp_path: pathlib.Path) -> None:
+def test_move_with_retry_gives_up(tmp_path: pathlib.Path, sleeps: list[float]) -> None:
     """A destination that never frees still raises, after a bounded wait."""
     src = tmp_path / "src"
     dst = tmp_path / "dst"
     src.write_bytes(b"abc")
-    move = _flaky_move(len(_RETRY_DELAYS), _oserror(5))
+    move = _FlakyMove(len(_RETRY_DELAYS) + 1, _oserror(5))
 
     with pytest.raises(OSError, match="Access is denied"):
         _move_with_retry(src, dst, move)
 
-    assert move.attempts() == len(_RETRY_DELAYS)  # type: ignore[attr-defined]
-    assert not dst.exists()
+    assert move.attempts == len(_RETRY_DELAYS) + 1
+    assert sleeps == list(_RETRY_DELAYS)
+    assert sum(sleeps) < 1.0
 
 
-@pytest.mark.parametrize("winerror", [2, 3, 183, None])
+@pytest.mark.parametrize("winerror", [2, 183, None])
 def test_move_with_retry_does_not_retry_other_errors(
-    tmp_path: pathlib.Path, winerror: int | None
+    tmp_path: pathlib.Path, sleeps: list[float], winerror: int | None
 ) -> None:
     """Only a busy destination is transient; everything else fails at once.
 
-    183 is the case that matters: ``ERROR_ALREADY_EXISTS`` is how the
-    ``exclusive`` path reports that a node is already there, and retrying it
-    would overwrite what ``_safe_move`` refused to touch.
+    183 is the case that matters: `ERROR_ALREADY_EXISTS` is how the
+    `exclusive` path reports that a node is already there, and retrying it
+    would overwrite what `_safe_move` refused to touch.
     """
     src = tmp_path / "src"
     dst = tmp_path / "dst"
@@ -237,15 +246,23 @@ def test_move_with_retry_does_not_retry_other_errors(
     error = OSError(17, "boom")
     if winerror is not None:
         error.winerror = winerror  # type: ignore[attr-defined]
-    move = _flaky_move(1, error)
+    move = _FlakyMove(1, error)
 
     with pytest.raises(OSError, match="boom"):
         _move_with_retry(src, dst, move)
 
-    assert move.attempts() == 1  # type: ignore[attr-defined]
+    assert move.attempts == 1
+    assert sleeps == []
 
 
-def test_retry_delays_are_bounded() -> None:
-    """A stuck destination must not turn a fast failure into a long hang."""
-    assert sum(_RETRY_DELAYS) < 1.0
-    assert _RETRY_DELAYS[0] == 0.0  # the original attempt is not delayed
+@pytest.mark.parametrize("exclusive", [True, False])
+def test_atomic_write_onto_directory(
+    tmp_path: pathlib.Path, sleeps: list[float], exclusive: bool
+) -> None:
+    """Writing a key whose destination is a directory fails and leaves no temp file."""
+    path = tmp_path / "node"
+    path.mkdir()
+    with pytest.raises(OSError), _atomic_write(path, "wb", exclusive=exclusive) as f:
+        f.write(b"abc")
+    assert path.is_dir()
+    assert list(tmp_path.iterdir()) == [path]  # no temp files

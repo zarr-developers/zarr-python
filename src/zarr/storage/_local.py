@@ -59,15 +59,19 @@ else:
         os.unlink(src)
 
 
-# Windows error codes meaning the destination could not be superseded *right
-# now*, as opposed to a permission problem that will not clear. Replacing a name
-# that was itself replaced moments earlier intermittently fails this way, with no
-# second process and no open handle involved, and a retry clears it in well under
-# a millisecond. Zarr v2 hit the same thing and fixed it in #698.
+# Windows error codes that MoveFileEx reports when the destination could not be
+# superseded. Replacing a name that was itself replaced moments earlier
+# intermittently fails this way with no second process and no open handle
+# involved, and a retry clears it in well under a millisecond. Zarr v2 hit the
+# same thing and fixed it in #698.
+#
+# ERROR_ACCESS_DENIED is also what Windows reports for conditions that will not
+# clear (the destination is a directory, is read-only, or is ACL-denied). Those
+# are retried too and surface the same error after the bounded delay below.
 #
 # Nothing else is retried. In particular the FileExistsError that the exclusive
 # path relies on to report an existing node is ERROR_ALREADY_EXISTS (183), so it
-# is excluded here by construction and still propagates on the first attempt.
+# still propagates on the first attempt.
 _TRANSIENT_WINERRORS = frozenset(
     {
         5,  # ERROR_ACCESS_DENIED
@@ -75,35 +79,29 @@ _TRANSIENT_WINERRORS = frozenset(
     }
 )
 
-# Delay before each successive attempt; the leading 0.0 is the original attempt.
-# Measured on Windows 11 over 20,000 replaces onto an existing destination: 720
-# failed with no retry and none with, 475 of those clearing on the second attempt
-# and the worst on the fourth. The tail is headroom for a busier machine, and the
-# whole sequence sums to under a second so a genuine failure still surfaces
-# promptly.
-_RETRY_DELAYS = (0.0, 0.001, 0.005, 0.02, 0.05, 0.2)
+# Delay before each retry. The sequence sums to well under a second so that a
+# genuine failure still surfaces promptly; in practice most transient failures
+# clear on the first retry.
+_RETRY_DELAYS = (0.001, 0.005, 0.02, 0.05, 0.2)
 
 
 def _move_with_retry(tmp_path: Path, path: Path, move: Callable[[Path, Path], object]) -> None:
-    """Run ``move(tmp_path, path)``, retrying while the destination is busy.
+    """Run `move(tmp_path, path)`, retrying while the destination is busy.
 
     This is a single attempt on every platform but Windows, without needing to
-    test for one: only ``winerror`` values are ever retried, and off Windows an
-    ``OSError`` does not carry one.
+    test for one: only `winerror` values are ever retried, and off Windows an
+    `OSError` does not carry one.
     """
-    last_error: OSError
     for delay in _RETRY_DELAYS:
-        if delay:
-            time.sleep(delay)
         try:
             move(tmp_path, path)
         except OSError as e:
             if getattr(e, "winerror", None) not in _TRANSIENT_WINERRORS:
                 raise
-            last_error = e
+            time.sleep(delay)
         else:
             return
-    raise last_error
+    move(tmp_path, path)
 
 
 @contextlib.contextmanager
