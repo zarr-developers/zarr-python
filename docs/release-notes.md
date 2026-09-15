@@ -156,7 +156,7 @@
 - Clarify the difference between `zarr.load` and `zarr.open` in their docstrings.
   `load` eagerly reads data into an in-memory array, while `open` returns a
   lazy `Array` or `Group` backed by the store, with `See Also` cross-references
-  linking the two. ([#3984](https://github.com/zarr-developers/zarr-python/pull/3984))
+  linking the two. ([31817c68](https://github.com/zarr-developers/zarr-python/commit/31817c68))
 - Updated the custom dtype example in `examples/custom_dtype/custom_dtype.py` to
   use only the public API, eliminating all non-public imports, illustrating what
   users should do.
