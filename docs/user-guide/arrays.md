@@ -5,8 +5,6 @@
 Zarr has several functions for creating arrays. For example:
 
 ```python exec="true" session="arrays"
-import shutil
-shutil.rmtree('data', ignore_errors=True)
 import numpy as np
 ```
 
@@ -84,7 +82,7 @@ persistence of data between sessions. To do this, we can change the store
 argument to point to a filesystem path:
 
 ```python exec="true" session="arrays" source="above"
-z1 = zarr.create_array(store='data/example-1.zarr', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
+z1 = zarr.create_array(store='data/example-1.zarr', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32', overwrite=True)
 ```
 
 The array above will store its configuration metadata and all compressed chunk
@@ -112,12 +110,13 @@ print(np.all(z1[:] == z2[:]))
 
 If you are just looking for a fast and convenient way to save NumPy arrays to
 disk then load back into memory later, the functions
-[`zarr.save`][] and [`zarr.load`][] may be
-useful. E.g.:
+[`zarr.save`][], [`zarr.save_array`][] and [`zarr.load`][] may be
+useful. `zarr.save` refuses to replace an array that already exists at the
+path; `zarr.save_array` accepts `mode="w"` to do so. E.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 a = np.arange(10)
-zarr.save('data/example-2.zarr', a)
+zarr.save_array('data/example-2.zarr', a, mode="w")
 print(zarr.load('data/example-2.zarr'))
 ```
 
@@ -130,7 +129,7 @@ A Zarr array can be resized, which means that any of its dimensions can be
 increased or decreased in length. For example:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-z = zarr.create_array(store='data/example-3.zarr', shape=(10000, 10000), dtype='int32', chunks=(1000, 1000))
+z = zarr.create_array(store='data/example-3.zarr', shape=(10000, 10000), dtype='int32', chunks=(1000, 1000), overwrite=True)
 z[:] = 42
 print(f"Original shape: {z.shape}")
 z.resize((20000, 10000))
@@ -146,7 +145,7 @@ used to append data to any axis. E.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 a = np.arange(10000000, dtype='int32').reshape(10000, 1000)
-z = zarr.create_array(store='data/example-4.zarr', shape=a.shape, dtype=a.dtype, chunks=(1000, 100))
+z = zarr.create_array(store='data/example-4.zarr', shape=a.shape, dtype=a.dtype, chunks=(1000, 100), overwrite=True)
 z[:] = a
 print(f"Original shape: {z.shape}")
 z.append(a)
@@ -199,7 +198,7 @@ print(arr_f.config)
 
 A number of different compressors can be used with Zarr. Zarr includes Blosc,
 Zstandard and Gzip compressors. Additional compressors are available through
-a separate package called [NumCodecs](https://numcodecs.readthedocs.io/) which provides various
+a separate package called [NumCodecs](https://numcodecs.readthedocs.io/en/stable/) which provides various
 compressor libraries including LZ4, Zlib, BZ2 and LZMA.
 Different compressors can be provided via the `compressors` keyword
 argument accepted by all array creation functions. For example:
@@ -207,7 +206,7 @@ argument accepted by all array creation functions. For example:
 ```python exec="true" session="arrays" source="above" result="ansi"
 compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=3, shuffle='bitshuffle')
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
-z = zarr.create_array(store='data/example-5.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
+z = zarr.create_array(store='data/example-5.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors, overwrite=True)
 z[:] = data
 print(z.compressors)
 ```
@@ -242,7 +241,7 @@ compressor.
 To create an array without any compression, set `compressors=None`:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-z_no_compress = zarr.create_array(store='data/example-uncompressed.zarr', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32', compressors=None)
+z_no_compress = zarr.create_array(store='data/example-uncompressed.zarr', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32', compressors=None, overwrite=True)
 print(f"Compressors: {z_no_compress.compressors}")
 ```
 
@@ -251,12 +250,12 @@ here is an array using Gzip compression, level 1:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
-z = zarr.create_array(store='data/example-6.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=zarr.codecs.GzipCodec(level=1))
+z = zarr.create_array(store='data/example-6.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=zarr.codecs.GzipCodec(level=1), overwrite=True)
 z[:] = data
 print(f"Compressors: {z.compressors}")
 ```
 
-Here is an example using LZMA from [NumCodecs](https://numcodecs.readthedocs.io/) with a custom filter pipeline including LZMA's
+Here is an example using LZMA from [NumCodecs](https://numcodecs.readthedocs.io/en/stable/) with a custom filter pipeline including LZMA's
 built-in delta filter:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
@@ -266,7 +265,7 @@ from zarr.codecs.numcodecs import LZMA
 lzma_filters = [dict(id=lzma.FILTER_DELTA, dist=4), dict(id=lzma.FILTER_LZMA2, preset=1)]
 compressors = LZMA(filters=lzma_filters)
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
-z = zarr.create_array(store='data/example-7.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
+z = zarr.create_array(store='data/example-7.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors, overwrite=True)
 print(f"Compressors: {z.compressors}")
 ```
 
@@ -291,11 +290,11 @@ from zarr.codecs.numcodecs import Delta
 filters = [Delta(dtype='int32')]
 compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=1, shuffle='shuffle')
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
-z = zarr.create_array(store='data/example-9.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), filters=filters, compressors=compressors)
+z = zarr.create_array(store='data/example-9.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), filters=filters, compressors=compressors, overwrite=True)
 print(z.info_complete())
 ```
 
-For more information about available filter codecs, see the [Numcodecs](https://numcodecs.readthedocs.io/) documentation.
+For more information about available filter codecs, see the [Numcodecs](https://numcodecs.readthedocs.io/en/stable/) documentation.
 
 ## Advanced indexing
 
@@ -316,7 +315,7 @@ coordinates. E.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(10) ** 2
-z = zarr.create_array(store='data/example-10.zarr', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store='data/example-10.zarr', shape=data.shape, dtype=data.dtype, overwrite=True)
 z[:] = data
 print(z[:])
 print(z.get_coordinate_selection([2, 5]))
@@ -334,7 +333,7 @@ e.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
-z = zarr.create_array(store='data/example-11.zarr', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store='data/example-11.zarr', shape=data.shape, dtype=data.dtype, overwrite=True)
 z[:] = data
 print(z[:])
 ```
@@ -378,7 +377,7 @@ Items can also be extracted by providing a Boolean mask. E.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(10) ** 2
-z = zarr.create_array(store='data/example-12.zarr', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store='data/example-12.zarr', shape=data.shape, dtype=data.dtype, overwrite=True)
 z[:] = data
 print(z[:])
 ```
@@ -399,7 +398,7 @@ Here's a multidimensional example:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
-z = zarr.create_array(store='data/example-13.zarr', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store='data/example-13.zarr', shape=data.shape, dtype=data.dtype, overwrite=True)
 z[:] = data
 print(z[:])
 ```
@@ -442,7 +441,7 @@ example, this allows selecting a subset of rows and/or columns from a
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
-z = zarr.create_array(store='data/example-14.zarr', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store='data/example-14.zarr', shape=data.shape, dtype=data.dtype, overwrite=True)
 z[:] = data
 print(z[:])
 ```
@@ -470,7 +469,7 @@ For convenience, the orthogonal indexing functionality is also available via the
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
-z = zarr.create_array(store='data/example-15.zarr', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store='data/example-15.zarr', shape=data.shape, dtype=data.dtype, overwrite=True)
 z[:] = data
 print(z.oindex[[0, 2], :])  # select first and third rows
 ```
@@ -496,7 +495,7 @@ orthogonal indexing is also available directly on the array:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
-z = zarr.create_array(store='data/example-16.zarr', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store='data/example-16.zarr', shape=data.shape, dtype=data.dtype, overwrite=True)
 z[:] = data
 print(np.all(z.oindex[[0, 2], :] == z[[0, 2], :]))
 ```
@@ -509,7 +508,7 @@ a subset of chunk aligned rows and/or columns from a 2-dimensional array. E.g.:
 
 ```python exec="true" session="arrays" source="above"
 data = np.arange(100).reshape(10, 10)
-z = zarr.create_array(store='data/example-17.zarr', shape=data.shape, dtype=data.dtype, chunks=(3, 3))
+z = zarr.create_array(store='data/example-17.zarr', shape=data.shape, dtype=data.dtype, chunks=(3, 3), overwrite=True)
 z[:] = data
 ```
 
@@ -542,7 +541,7 @@ print(z.blocks[0, 1:3])
 Data can also be modified. Let's start by a simple 2D array:
 
 ```python exec="true" session="arrays" source="above"
-z = zarr.create_array(store='data/example-18.zarr', shape=(6, 6), dtype=int, chunks=(2, 2))
+z = zarr.create_array(store='data/example-18.zarr', shape=(6, 6), dtype=int, chunks=(2, 2), overwrite=True)
 ```
 
 Set data for a selection of items:
@@ -585,7 +584,7 @@ performance guide.
 Sharded arrays can be created by providing the `shards` parameter to [`zarr.create_array`][].
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-a = zarr.create_array('data/example-20.zarr', shape=(10000, 10000), shards=(1000, 1000), chunks=(100, 100), dtype='uint8')
+a = zarr.create_array('data/example-20.zarr', shape=(10000, 10000), shards=(1000, 1000), chunks=(100, 100), dtype='uint8', overwrite=True)
 a[:] = (np.arange(10000 * 10000) % 256).astype('uint8').reshape(10000, 10000)
 print(a.info_complete())
 ```
@@ -674,8 +673,12 @@ z_regular = zarr.create_array(
 print(z_regular.write_chunk_sizes)
 ```
 
-Note that the `.chunks` property is only available for regular chunk grids. For
-rectilinear arrays, use `.write_chunk_sizes` (or `.read_chunk_sizes`) instead.
+Note that the `.chunks` property is not available for non-sharded rectilinear
+arrays, since there is no single uniform chunk shape — use `.write_chunk_sizes`
+(or `.read_chunk_sizes`) instead. Sharded arrays always have `.chunks`: it
+returns the inner chunk shape, which is always regular — the sharding codec
+requires a single uniform inner chunk shape, so only the shard boundaries can
+be rectilinear (see [Rectilinear shard boundaries](#rectilinear-shard-boundaries)).
 
 ### Resizing and appending
 
@@ -745,6 +748,17 @@ print(z[50:70, 40:60])
 
 Note that rectilinear inner chunks with sharding are not supported — only the
 shard boundaries can be rectilinear.
+
+For such arrays, `.chunks` returns the (regular) inner chunk shape, while
+`.shards` raises `NotImplementedError` since there is no single uniform shard
+shape — use `.write_chunk_sizes` for the per-dimension shard sizes. `.info`
+reports the shard shape as `<variable>`:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+print(f"chunks={z.chunks}")
+print(f"shard sizes={z.write_chunk_sizes}")
+print(z.info)
+```
 
 ### Metadata format
 

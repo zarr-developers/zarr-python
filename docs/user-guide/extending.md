@@ -14,6 +14,7 @@ in the following ways:
     [numcodecs.registry.register_codec](https://numcodecs.readthedocs.io/en/stable/registry.html#numcodecs.registry.register_codec).
 
 There are three types of codecs in Zarr:
+
 - array-to-array
 - array-to-bytes
 - bytes-to-bytes
@@ -61,6 +62,13 @@ all codecs registered via the entrypoint mechanism in installed packages.
 New codecs need to have their own unique identifier. To avoid naming collisions, it is
 strongly recommended to prefix the codec identifier with a unique name. For example,
 the codecs from `numcodecs` are prefixed with `numcodecs.`, e.g. `numcodecs.delta`.
+
+If someone opens an array that uses your codec without your package installed, Zarr raises
+[`zarr.errors.UnknownCodecError`][] explaining how to register an implementation. Zarr also
+keeps a small table of codec names and the published packages that provide them, and names
+those packages in that error. Once your package is on PyPI, please open a pull request adding
+it to the codec-package tables in `src/zarr/registry.py`, so that users get a message telling them
+exactly what to install.
 
 !!! note
     Note that the extension mechanism for the Zarr format 3 is still under development.

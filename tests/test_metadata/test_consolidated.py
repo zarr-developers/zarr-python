@@ -111,12 +111,10 @@ class TestConsolidated:
         group = await zarr.api.asynchronous.open_consolidated(
             store=memory_store, zarr_format=zarr_format
         )
-        raw = await group.getitem("raw")
-        assert isinstance(raw, zarr.AsyncGroup)
+        raw = await group.get_group("raw")
         assert raw.metadata.consolidated_metadata is not None
 
-        varm = await raw.getitem("varm")
-        assert isinstance(varm, zarr.AsyncGroup)
+        varm = await raw.get_group("varm")
         assert varm.metadata.consolidated_metadata == ConsolidatedMetadata(metadata={})
 
     async def test_open_consolidated_false_raises(self) -> None:
@@ -770,8 +768,7 @@ class TestConsolidated:
             await zarr.api.asynchronous.consolidate_metadata(memory_store)
 
         group = await zarr.api.asynchronous.open_group(store=memory_store)
-        subgroup = await group.getitem("/a")
-        assert isinstance(subgroup, AsyncGroup)
+        subgroup = await group.get_group("/a")
         members = [x async for x in subgroup.keys()]  # noqa: SIM118
         assert members == ["b"]
 
@@ -842,3 +839,65 @@ async def test_open_group_in_non_consolidating_stores() -> None:
     # Opening a group with use_consolidated=True should fail
     with pytest.raises(ValueError, match="doesn't support consolidated metadata"):
         await AsyncGroup.open(memory_store, use_consolidated=True)
+
+
+@pytest.mark.parametrize(
+    "order",
+    [
+        # keys grouped by parent, the order zarr-python used to write before it
+        # started sorting the persisted keys
+        ["a", "b", "a/x", "a/y", "b/x", "b/y"],
+        # sibling subtrees interleaved, which is what the (depth, casefold) sort
+        # produces for names differing only by case
+        ["a", "b", "a/x", "b/x", "a/y", "b/y"],
+        # reversed, to cover a parent appearing after its children in the mapping
+        ["b/y", "b/x", "a/y", "a/x", "b", "a"],
+    ],
+)
+def test_flat_to_nested_is_order_independent(order: list[str]) -> None:
+    """The persisted key order is arbitrary, so nesting must not depend on it."""
+    group_metadata: dict[str, JSON] = {"zarr_format": 3, "node_type": "group", "attributes": {}}
+    consolidated = ConsolidatedMetadata.from_dict(
+        {
+            "kind": "inline",
+            "must_understand": False,
+            "metadata": dict.fromkeys(order, group_metadata),
+        }
+    )
+
+    assert sorted(consolidated.metadata) == ["a", "b"]
+    for name in ("a", "b"):
+        child = consolidated.metadata[name]
+        assert isinstance(child, GroupMetadata)
+        assert child.consolidated_metadata is not None
+        assert sorted(child.consolidated_metadata.metadata) == ["x", "y"]
+
+
+async def test_consolidated_metadata_case_differing_siblings(memory_store: Store) -> None:
+    """Sibling nodes whose names differ only by case each keep their own children.
+
+    Regression test for https://github.com/zarr-developers/zarr-python/issues/4226
+    """
+    root = await zarr.api.asynchronous.create_group(store=memory_store)
+    for name in ("Study", "study"):
+        child = await root.create_group(f"obs/{name}")
+        await child.create_array(name="categories", shape=(2,), dtype="uint8")
+        await child.create_array(name="codes", shape=(2,), dtype="uint8")
+
+    with pytest.warns(
+        ZarrUserWarning,
+        match="Consolidated metadata is currently not part in the Zarr format 3 specification.",
+    ):
+        await consolidate_metadata(memory_store)
+
+    consolidated = await open_consolidated(store=memory_store)
+    result = sorted([key async for key, _ in consolidated.members(max_depth=None)])
+    assert result == [
+        "obs",
+        "obs/Study",
+        "obs/Study/categories",
+        "obs/Study/codes",
+        "obs/study",
+        "obs/study/categories",
+        "obs/study/codes",
+    ]

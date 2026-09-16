@@ -18,7 +18,7 @@ Crc32cCodecName = Literal["crc32c"]
 """Literal type of the `name` field of the `crc32c` codec."""
 
 
-class Empty(TypedDict, closed=True):  # type: ignore[call-arg]
+class Empty(TypedDict, closed=True):
     """An empty mapping"""
 
 

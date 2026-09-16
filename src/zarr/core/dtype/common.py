@@ -52,7 +52,7 @@ StructuredName_V2 = Sequence["str | StructuredName_V2"]
 DTypeName_V2 = StructuredName_V2 | str
 
 
-class DTypeConfig_V2[TDTypeNameV2: DTypeName_V2, TObjectCodecID: None | str](TypedDict):
+class DTypeConfig_V2[TDTypeNameV2: DTypeName_V2, TObjectCodecID: str | None](TypedDict):
     name: ReadOnly[TDTypeNameV2]
     object_codec_id: ReadOnly[TObjectCodecID]
 

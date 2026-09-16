@@ -20,6 +20,7 @@ print('foo' in root.attrs)
 ```python exec="true" session="attributes" source="above" result="ansi"
 print(root.attrs['foo'])
 ```
+
 ```python exec="true" session="attributes" source="above" result="ansi"
 print(sorted(z.attrs))
 ```
@@ -52,6 +53,14 @@ print(sorted(z.attrs))
 
 Internally Zarr uses JSON to store array and group attributes, so attribute
 values must be JSON serializable.
+
+When copying a Zarr array with [`zarr.from_array`][], its attributes are
+deep-copied by default so nested dictionaries and lists are independent of the
+source. Deeply nested attributes can raise `RecursionError` during this copy,
+even when the source array can be stored and reopened successfully. The threshold
+depends on Python's recursion limit and the current call stack; it is not a fixed
+Zarr nesting limit. Pass `attributes={}` if the copy should omit attributes, or
+provide an explicit attribute dictionary to replace the inherited attributes.
 
 When working with hierarchies that contain many arrays and groups, reading the
 attributes of each node separately can be slow. See

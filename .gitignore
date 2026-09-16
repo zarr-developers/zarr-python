@@ -92,5 +92,9 @@ tests/.hypothesis
 zarr/version.py
 zarr.egg-info/
 
+# Local agent / planning notes (not versioned)
+.claude/
+CLAUDE.md
+docs/superpowers/
 # zarr-metadata package lockfile (a library, not an app)
 packages/zarr-metadata/uv.lock

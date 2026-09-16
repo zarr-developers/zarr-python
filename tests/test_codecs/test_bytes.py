@@ -33,29 +33,50 @@ if TYPE_CHECKING:
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-@pytest.mark.parametrize("input_dtype", [">u2", "<u2"])
+@pytest.mark.parametrize(
+    "input_dtype",
+    [
+        ">u2",
+        "<u2",
+        [("flux", ">f4"), ("mask", ">i4")],
+        [("flux", "<f4"), ("mask", "<i4")],
+    ],
+    ids=["big-scalar", "little-scalar", "big-struct", "little-struct"],
+)
 @pytest.mark.parametrize("store_endian", ["big", "little"])
 async def test_endian(
     store: Store,
-    input_dtype: Literal[">u2", "<u2"],
+    input_dtype: str | list[tuple[str, str]],
     store_endian: Literal["big", "little"],
 ) -> None:
     """
     The `bytes` codec stores multi-byte data in the byte order configured on the
     codec, regardless of the input array's byte order, and reads it back to the
-    original values. The input-dtype/store-endian cross-product exercises the
-    encode-side byteswap (input byte order != store byte order) and the no-op
-    case alike. Compression is disabled so the stored chunk is the codec's raw
-    output and its byte layout can be asserted directly.
+    original values. For structured dtypes this applies to every multi-byte
+    field, per the `struct` data type spec; the struct cases guard against the
+    endianness bugs from
+    https://github.com/zarr-developers/zarr-python/issues/4141, where the
+    encode path never byte-swapped struct fields (numpy reports byteorder '|'
+    for void dtypes) and the decode path ignored the codec's endian entirely.
+    The input-dtype/store-endian cross-product exercises the encode-side
+    byteswap (input byte order != store byte order) and the no-op case alike.
+    Compression is disabled so the stored chunk is the codec's raw output and
+    its byte layout can be asserted directly.
     """
-    data = np.arange(0, 256, dtype=input_dtype).reshape((16, 16))
+    dtype = np.dtype(input_dtype)
+    if dtype.fields is None:
+        data = np.arange(0, 256, dtype=dtype).reshape((16, 16))
+    else:
+        data = np.zeros((16, 16), dtype=dtype)
+        data["flux"] = np.arange(0, 256).reshape((16, 16))
+        data["mask"] = np.arange(256, 512).reshape((16, 16))
     path = "endian"
     spath = StorePath(store, path)
     a = await zarr.api.asynchronous.create_array(
         spath,
         shape=data.shape,
         chunks=(16, 16),
-        dtype="uint16",
+        dtype=dtype,
         fill_value=0,
         compressors=None,
         serializer=BytesCodec(endian=store_endian),
@@ -66,8 +87,7 @@ async def test_endian(
     # The stored chunk is laid out in the byte order configured on the codec.
     stored = await store.get(f"{path}/c/0/0", prototype=default_buffer_prototype())
     assert stored is not None
-    expected_dtype = ">u2" if store_endian == "big" else "<u2"
-    assert stored.to_bytes() == data.astype(expected_dtype).tobytes()
+    assert stored.to_bytes() == data.astype(dtype.newbyteorder(store_endian)).tobytes()
 
     # ... and the data reads back to the original values.
     readback_data = await _AsyncArrayProxy(a)[:, :].get()
@@ -78,9 +98,27 @@ def test_bytes_codec_supports_sync() -> None:
     assert isinstance(BytesCodec(), SupportsSyncCodec)
 
 
-def test_bytes_codec_sync_roundtrip() -> None:
-    codec = BytesCodec()
-    arr = np.arange(100, dtype="float64")
+@pytest.mark.parametrize("endian", ENDIAN)
+@pytest.mark.parametrize(
+    "native_dtype",
+    [np.dtype("float64"), np.dtype(">u2"), np.dtype([("a", ">f4"), ("b", "<i4")])],
+    ids=["native-scalar", "big-scalar", "mixed-endian-struct"],
+)
+def test_bytes_codec_sync_roundtrip(endian: EndianLiteral, native_dtype: np.dtype[Any]) -> None:
+    """
+    The synchronous encode/decode path round-trips data, and the two byte
+    orders involved are independent: the codec's `endian` configuration governs
+    only the stored byte layout (every multi-byte value, including struct
+    fields, is laid out in the codec's byte order regardless of the input
+    array's byte order), while the decoded buffer's byte order is governed by
+    the array's data type regardless of the codec's. The mixed-endian struct
+    case pins that per-field byte order of the in-memory dtype survives a
+    roundtrip through a single stored byte order.
+    """
+    if native_dtype.fields is None:
+        arr = np.arange(100, dtype=native_dtype)
+    else:
+        arr = np.array([(1.5, 2), (3.5, 4), (5.5, 6), (7.5, 8)], dtype=native_dtype)
     zdtype = get_data_type_from_native_dtype(arr.dtype)
     spec = ArraySpec(
         shape=arr.shape,
@@ -91,11 +129,14 @@ def test_bytes_codec_sync_roundtrip() -> None:
     )
     nd_buf: NDBuffer = default_buffer_prototype().nd_buffer.from_numpy_array(arr)
 
-    codec = codec.evolve_from_array_spec(spec)
+    codec = BytesCodec(endian=endian).evolve_from_array_spec(spec)
 
     encoded = codec._encode_sync(nd_buf, spec)
     assert encoded is not None
+    assert encoded.to_bytes() == arr.astype(native_dtype.newbyteorder(endian)).tobytes()
+
     decoded = codec._decode_sync(encoded, spec)
+    assert decoded.dtype == zdtype.to_native_dtype()
     np.testing.assert_array_equal(arr, decoded.as_numpy_array())
 
 
