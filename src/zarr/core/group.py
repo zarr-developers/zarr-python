@@ -526,12 +526,11 @@ class AsyncGroup:
             (``.zmetadata`` by default). Specify the custom key as ``use_consolidated``
             to load consolidated metadata from a non-default key.
         _pre_fetched_metadata : _MetadataDocs or None, default None
-            Private. The ``zarr.json`` and ``.zattrs`` documents for this path,
-            already read by the caller, to use instead of reading them again. Only
-            consulted when ``zarr_format`` is None, so the caller must have read
-            both keys unconditionally; a `zarr_format=None` array probe does.
-            `zarr.api.asynchronous.open` passes what it read while looking for an
-            array before falling back to opening a group.
+            Private. Metadata documents for this path that the caller already
+            read, to use instead of reading them again. Only the ``zarr.json``
+            and ``.zattrs`` entries are consulted, and only when ``zarr_format``
+            is None. `zarr.api.asynchronous.open` passes what it read while
+            looking for an array before falling back to opening a group.
         """
         store_path = await make_store_path(store)
         if not store_path.store.supports_consolidated_metadata:
@@ -572,7 +571,16 @@ class AsyncGroup:
             if zarr_json_bytes is None:
                 raise FileNotFoundError(store_path)
         elif zarr_format is None:
-            if _pre_fetched_metadata is None:
+            pre_fetched = _pre_fetched_metadata or {}
+            if "zarr_json" in pre_fetched and "zattrs" in pre_fetched:
+                # the caller already read these; only read what is still missing
+                zarr_json_bytes = pre_fetched["zarr_json"]
+                zattrs_bytes = pre_fetched["zattrs"]
+                zgroup_bytes, maybe_consolidated_metadata_bytes = await asyncio.gather(
+                    (store_path / ZGROUP_JSON).get(),
+                    (store_path / str(consolidated_key)).get(),
+                )
+            else:
                 (
                     zarr_json_bytes,
                     zgroup_bytes,
@@ -582,13 +590,6 @@ class AsyncGroup:
                     (store_path / ZARR_JSON).get(),
                     (store_path / ZGROUP_JSON).get(),
                     (store_path / ZATTRS_JSON).get(),
-                    (store_path / str(consolidated_key)).get(),
-                )
-            else:
-                zarr_json_bytes = _pre_fetched_metadata.zarr_json
-                zattrs_bytes = _pre_fetched_metadata.zattrs
-                zgroup_bytes, maybe_consolidated_metadata_bytes = await asyncio.gather(
-                    (store_path / ZGROUP_JSON).get(),
                     (store_path / str(consolidated_key)).get(),
                 )
             if zarr_json_bytes is not None and zgroup_bytes is not None:

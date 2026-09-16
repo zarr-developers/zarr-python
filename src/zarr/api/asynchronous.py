@@ -403,15 +403,13 @@ async def open(
                 return AsyncArray(
                     store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
                 )
-        # There is no array here, so open a group instead. The probe already read
-        # `zarr.json` and `.zattrs`, two of the four keys the group open reads, so
-        # hand those over rather than pay for them twice. That only holds when the
-        # format still has to be detected; an explicit format reads a smaller set.
+        # There is no array here, so open a group instead, handing over what the
+        # probe already read so the group open doesn't pay for the same keys twice.
         return await open_group(
             store=store_path,
             zarr_format=zarr_format,
             mode=mode,
-            _pre_fetched_metadata=probe.docs if zarr_format is None else None,
+            _pre_fetched_metadata=probe.docs,
             **kwargs,
         )
 
@@ -850,9 +848,9 @@ async def open_group(
         (`.zmetadata` by default). Specify the custom key as `use_consolidated`
         to load consolidated metadata from a non-default key.
     _pre_fetched_metadata : _MetadataDocs or None, default None
-        Private. The `zarr.json` and `.zattrs` documents for this path, already
-        read by the caller, to use instead of reading them again. Only consulted
-        when `zarr_format` is None and the group is opened rather than created.
+        Private. Metadata documents for this path that the caller already read,
+        to use instead of reading them again. Only consulted when `zarr_format`
+        is None and the group is opened rather than created.
         [`zarr.api.asynchronous.open`][zarr.api.asynchronous.open] passes what it
         read while looking for an array before falling back to opening a group.
 

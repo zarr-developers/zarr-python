@@ -545,9 +545,9 @@ def open_group(
         (`.zmetadata` by default). Specify the custom key as `use_consolidated`
         to load consolidated metadata from a non-default key.
     _pre_fetched_metadata : _MetadataDocs or None, default None
-        Private. The `zarr.json` and `.zattrs` documents for this path, already
-        read by the caller, to use instead of reading them again. Only consulted
-        when `zarr_format` is None and the group is opened rather than created.
+        Private. Metadata documents for this path that the caller already read,
+        to use instead of reading them again. Only consulted when `zarr_format`
+        is None and the group is opened rather than created.
         [`zarr.api.asynchronous.open`][zarr.api.asynchronous.open] passes what it
         read while looking for an array before falling back to opening a group.
 
