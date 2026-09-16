@@ -529,8 +529,10 @@ class AsyncGroup:
             Private. Metadata documents for this path that the caller already
             read, to use instead of reading them again. Only the ``zarr.json``
             and ``.zattrs`` entries are consulted, and only when ``zarr_format``
-            is None. `zarr.api.asynchronous.open` passes what it read while
-            looking for an array before falling back to opening a group.
+            is None; a ``zarr.json`` in hand also settles the format before any
+            further read, so a format 3 group costs no reads at all here.
+            `zarr.api.asynchronous.open` passes what it read while looking for
+            an array before falling back to opening a group.
         """
         store_path = await make_store_path(store)
         if not store_path.store.supports_consolidated_metadata:
@@ -571,27 +573,30 @@ class AsyncGroup:
             if zarr_json_bytes is None:
                 raise FileNotFoundError(store_path)
         elif zarr_format is None:
+            # A consolidated document is only worth reading if it might be used.
+            want_consolidated = use_consolidated or use_consolidated is None
             pre_fetched = _pre_fetched_metadata or {}
             if "zarr_json" in pre_fetched and "zattrs" in pre_fetched:
-                # the caller already read these; only read what is still missing
+                # The caller already read these, and they settle the format before
+                # anything else is read: a zarr.json means format 3, which has no
+                # use for .zgroup or a consolidated document.
                 zarr_json_bytes = pre_fetched["zarr_json"]
                 zattrs_bytes = pre_fetched["zattrs"]
-                zgroup_bytes, maybe_consolidated_metadata_bytes = await asyncio.gather(
-                    (store_path / ZGROUP_JSON).get(),
-                    (store_path / str(consolidated_key)).get(),
-                )
+                zgroup_bytes = maybe_consolidated_metadata_bytes = None
+                if zarr_json_bytes is None:
+                    paths = [store_path / ZGROUP_JSON]
+                    if want_consolidated:
+                        paths.append(store_path / consolidated_key)
+                    zgroup_bytes, *rest = await asyncio.gather(*[path.get() for path in paths])
+                    maybe_consolidated_metadata_bytes = rest[0] if rest else None
             else:
-                (
-                    zarr_json_bytes,
-                    zgroup_bytes,
-                    zattrs_bytes,
-                    maybe_consolidated_metadata_bytes,
-                ) = await asyncio.gather(
-                    (store_path / ZARR_JSON).get(),
-                    (store_path / ZGROUP_JSON).get(),
-                    (store_path / ZATTRS_JSON).get(),
-                    (store_path / str(consolidated_key)).get(),
+                paths = [store_path / ZARR_JSON, store_path / ZGROUP_JSON, store_path / ZATTRS_JSON]
+                if want_consolidated:
+                    paths.append(store_path / consolidated_key)
+                zarr_json_bytes, zgroup_bytes, zattrs_bytes, *rest = await asyncio.gather(
+                    *[path.get() for path in paths]
                 )
+                maybe_consolidated_metadata_bytes = rest[0] if rest else None
             if zarr_json_bytes is not None and zgroup_bytes is not None:
                 # warn and favor v3
                 msg = f"Both zarr.json (Zarr format 3) and .zgroup (Zarr format 2) metadata objects exist at {store_path}. Zarr format 3 will be used."

@@ -1413,21 +1413,27 @@ class _CountingStore(WrapperStore[Store]):
 @pytest.mark.filterwarnings("ignore:Consolidated metadata")
 @pytest.mark.parametrize(
     ("zarr_format", "use_consolidated"),
-    [(2, False), (2, True), (2, "custom"), (3, False), (3, True)],
+    [(2, None), (2, False), (2, True), (2, "custom"), (3, None), (3, False), (3, True)],
 )
 @pytest.mark.parametrize("mode", ["r", "r+", "a"])
 @pytest.mark.parametrize("path", ["", "parent/child"])
-async def test_open_group_fallback_reads_each_key_once(
-    zarr_format: ZarrFormat, use_consolidated: bool | str, mode: AccessModeLiteral, path: str
+async def test_open_group_fallback_reads_only_what_it_needs(
+    zarr_format: ZarrFormat,
+    use_consolidated: bool | str | None,
+    mode: AccessModeLiteral,
+    path: str,
 ) -> None:
-    """`open` falling back to a group reads no key twice, and opens the same group as before.
+    """`open` falling back to a group reads each key at most once, and only the keys it needs.
 
-    The array probe and the group open read an overlapping set of keys, so the
-    probe hands over what it read. That has to leave the resulting group -- its
-    format, path, attributes, read-only-ness and consolidated metadata --
-    exactly as it was when both read the store independently.
+    The array lookup reads `zarr.json`, `.zarray` and `.zattrs` and hands them to
+    the group open, which then knows the format: a format 3 group needs nothing
+    more, a format 2 group needs `.zgroup` plus the consolidated document when
+    that might be used. The resulting group -- its format, path, attributes,
+    read-only-ness and consolidated metadata -- has to be exactly what it was when
+    both read the store independently.
     """
     store = _CountingStore(MemoryStore())
+    prefix = f"{path}/" if path else ""
     await zarr.api.asynchronous.open_group(
         store, path=path, attributes={"key": "value"}, zarr_format=zarr_format
     )
@@ -1435,7 +1441,6 @@ async def test_open_group_fallback_reads_each_key_once(
         await zarr.api.asynchronous.consolidate_metadata(store, path=path)
         if isinstance(use_consolidated, str):
             # move the consolidated document to the non-default key
-            prefix = f"{path}/" if path else ""
             metadata = await store.get(prefix + ".zmetadata", default_buffer_prototype())
             assert metadata is not None
             await store.set(prefix + use_consolidated, metadata)
@@ -1451,7 +1456,15 @@ async def test_open_group_fallback_reads_each_key_once(
     assert group.attrs == {"key": "value"}
     assert group.store.read_only == (mode == "r")
     assert (group.metadata.consolidated_metadata is not None) == bool(use_consolidated)
-    assert [key for key, count in store.get_counts.items() if count > 1] == []
+
+    expected_keys = {"zarr.json", ".zarray", ".zattrs"}
+    if zarr_format == 2:
+        expected_keys.add(".zgroup")
+        if use_consolidated is not False:
+            expected_keys.add(
+                ".zmetadata" if isinstance(use_consolidated, bool | None) else use_consolidated
+            )
+    assert store.get_counts == {prefix + key: 1 for key in expected_keys}
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
