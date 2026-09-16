@@ -30,9 +30,10 @@ into the final buffer or an owned temporary for fancy placement.
 
 The part view's transform directly addresses its raw wrapped array. The paired
 projection deliberately retains the chunk-local frame. Parent materialization
-passes both in `ReadContext`; calling `part.view.result()` directly uses an
-unpartitioned context with `projection=None`. Readers that require the projection
-should be used through the parent `result(parts=parts)` path.
+passes both in `ReadContext`. Every view retains the source's partitioning and
+plans its own reads, including views obtained from partitions. Calling
+`part.view.result()` therefore supplies the reader with the selected chunk's
+projection as well. Output placement is relative to the view being executed.
 
 The partitioning is discovered from the wrapped array at construction — first
 `read_chunk_sizes` (zarr's clipped per-axis sizes, sharding-aware), then
@@ -405,8 +406,8 @@ class Partition:
 
     Yielded by [`LazyArray.parts`][zarr_indexing.lazy_array.LazyArray.parts].
     The parts of a view tile it exactly and disjointly: assembling every
-    `view.result()` at its `out_selection` reproduces the whole view's
-    `result()` for readers supporting contexts without projections. Parts can be
+    `part.view.result()` at its `out_selection` reproduces the whole view's
+    `result()`. Each view plans its reads using the retained source grid. Parts can be
     resolved concurrently when the source and reader permit it.
     Derived parts retain the same reader object; a shared stateful reader owns
     synchronization for concurrent calls.
@@ -447,8 +448,8 @@ class Partition:
     view
         A `LazyArray` covering exactly the cells of the view that live in this
         box. Its transform directly addresses its raw wrapped `array`; only the
-        projection's `chunk_transform` is chunk-local. Resolving the view reads
-        the box once through its selected reader. Named `view` rather than
+        projection's `chunk_transform` is chunk-local. The view retains the source
+        grid and reader and can be read or indexed like any other view. Named `view` rather than
         `array` because `LazyArray.array` is the opposite thing — the raw
         wrapped source — and the two sat next to each other meaning inverses.
     out_selection
@@ -569,7 +570,7 @@ class LazyArray:
            [ 8, 10]])
     """
 
-    __slots__ = ("_array", "_part_owner", "_parts", "_reader", "_transform", "_window")
+    __slots__ = ("_array", "_part_owner", "_parts", "_reader", "_transform")
 
     def __init__(self, array: _WrappedArray) -> None:
         """Wrap `array` without reading it; parameters are documented on the class.
@@ -590,7 +591,6 @@ class LazyArray:
             )
         shape = tuple(int(s) for s in array.shape)
         self._array = array
-        self._window: tuple[slice, ...] | None = None
         self._transform = IndexTransform.from_shape(shape)
         self._parts = _discover_parts(array, shape)
         self._reader = basic_reader
@@ -611,7 +611,6 @@ class LazyArray:
         array: _WrappedArray,
         transform: IndexTransform,
         parts: tuple[DimensionGrid, ...] | None,
-        window: tuple[slice, ...] | None,
         reader: Reader,
     ) -> LazyArray:
         """Build a wrapper sharing `array` but carrying a new transform or partitioning."""
@@ -621,7 +620,6 @@ class LazyArray:
         # view's first element is at position 0 whatever it was sliced from.
         view._transform = transform.translate_domain_to((0,) * transform.input_rank)
         view._parts = parts
-        view._window = window
         view._reader = reader
         view._part_owner = _PartOwner()
         return view
@@ -629,9 +627,7 @@ class LazyArray:
     @property
     def _base_shape(self) -> tuple[int, ...]:
         """The shape of what this wrapper treats as its base array."""
-        if self._window is None:
-            return tuple(int(s) for s in self._array.shape)
-        return tuple(s.stop - s.start for s in self._window)
+        return tuple(int(s) for s in self._array.shape)
 
     # -- array-like surface -------------------------------------------------
 
@@ -645,11 +641,8 @@ class LazyArray:
         """The shape the partitioning is expressed in — not this view's shape.
 
         `with_parts` and `with_parts_per_axis` describe boxes of the array being
-        read, not of the view reading it, so a narrowed view still partitions
-        the extents named here. For a part's own `array`, this is the part's
-        box, which is why the same call means different sizes there. Without
-        somewhere to read it, the frame in force could only be inferred from an
-        error message.
+        read, not of the view reading it. All derived views, including partition
+        views, retain the full source shape as their partitioning frame.
         """
         return self._base_shape
 
@@ -691,7 +684,6 @@ class LazyArray:
             self._array,
             self._transform,
             self._parts,
-            self._window,
             reader,
         )
 
@@ -920,9 +912,8 @@ class LazyArray:
     def unpartitioned(self) -> LazyArray:
         """Return the same view, read in one pass.
 
-        `result()` still allocates its owned output buffer first, then calls the
-        reader once with the whole projected transform. `parts()` still yields a
-        single part covering everything.
+        The source is treated as a single grid cell. Nonempty reads still pass
+        its projection to the reader; empty reads make no reader calls.
 
         Returns
         -------
@@ -932,7 +923,7 @@ class LazyArray:
         return self._with_grids(None)
 
     def _with_grids(self, grids: tuple[DimensionGrid, ...] | None) -> LazyArray:
-        return LazyArray._derive(self._array, self._transform, grids, self._window, self._reader)
+        return LazyArray._derive(self._array, self._transform, grids, self._reader)
 
     def parts(self) -> Iterator[Partition]:
         """Iterate the base partitioning, projected through this view.
@@ -943,8 +934,8 @@ class LazyArray:
 
         Yields one [`Partition`][zarr_indexing.lazy_array.Partition] per box the
         view actually touches. The parts tile the view exactly and disjointly,
-        and each carries a `LazyArray` that can be resolved on its own: in
-        another thread, in another order, or not at all. Those views share this
+        and each view can be resolved with `part.view.result()`: in another thread,
+        in another order, or not at all. Those views share this
         view's reader, and `LazyArray` does not serialize calls, so a stateful
         reader must synchronize its own mutable state.
 
@@ -964,48 +955,16 @@ class LazyArray:
         >>> (part.base_coords, part.view.shape, part.is_complete)
         ((0, 0), (2, 1), False)
         """
-        base_shape = self._base_shape
-        grids = self._parts if self._parts is not None else _whole_array_grids(base_shape)
-        rank = len(base_shape)
-
-        if self._window is None:
-            plan_transform = self._transform
-        else:
-            plan_transform = self._transform.translate(tuple(-item.start for item in self._window))
-
-        for projection in plan_chunks(plan_transform, grids):
-            base_coords = projection.chunk_coords
-            local = projection.chunk_transform
-            origin = tuple(grid.chunk_offset(c) for grid, c in zip(grids, base_coords, strict=True))
-            extent = tuple(grid.data_size(c) for grid, c in zip(grids, base_coords, strict=True))
-            if origin == (0,) * rank and extent == base_shape:
-                # The part is the whole base: lowering directly against the
-                # source beats materializing a block that is the source.
-                window = self._window
-            elif self._window is None:
-                window = tuple(slice(o, o + e) for o, e in zip(origin, extent, strict=True))
-            else:
-                window = tuple(
-                    slice(w.start + o, w.start + o + e)
-                    for w, o, e in zip(self._window, origin, extent, strict=True)
-                )
-            # The global box, computed from the origin directly rather than from
-            # `window`: a part covering the whole base carries no window (so
-            # nothing is pre-materialized) but still sits somewhere concrete.
-            if self._window is None:
-                global_origin = origin
-            else:
-                global_origin = tuple(
-                    w.start + o for w, o in zip(self._window, origin, strict=True)
-                )
+        grids = self._parts if self._parts is not None else _whole_array_grids(self._base_shape)
+        for projection in plan_chunks(self._transform, grids):
+            domain = projection.chunk_domain
             yield Partition(
                 projection=projection,
-                box=tuple((o, o + e) for o, e in zip(global_origin, extent, strict=True)),
+                box=tuple(zip(domain.inclusive_min, domain.exclusive_max, strict=True)),
                 view=LazyArray._derive(
                     self._array,
-                    local.translate(global_origin),
-                    None,
-                    window,
+                    projection.chunk_transform.translate(domain.inclusive_min),
+                    self._parts,
                     self._reader,
                 ),
                 out_selection=_partition_out_selection(projection.cell_transform),
@@ -1039,7 +998,7 @@ class LazyArray:
             composed = transform[literal]
         else:
             composed = transform.select(literal, mode)
-        return LazyArray._derive(self._array, composed, self._parts, self._window, self._reader)
+        return LazyArray._derive(self._array, composed, self._parts, self._reader)
 
     def __getitem__(self, selection: Any) -> Any:
         """Read a basic selection eagerly, like `numpy.ndarray.__getitem__`.
@@ -1057,6 +1016,8 @@ class LazyArray:
         partition is read through the selected reader directly into its
         rectangular destination, or into an owned dense temporary before fancy
         placement. Empty views allocate without reading the source.
+        Every reader call includes a chunk projection, even when the source is
+        treated as a single grid cell by `unpartitioned()`.
 
         Parameters
         ----------
@@ -1097,10 +1058,6 @@ class LazyArray:
         out = self._output_buffer(out_shape)
         size = math.prod(out_shape)
         if size == 0:
-            return out
-
-        if prepared_parts is None and self._parts is None:
-            _invoke_reader(self._reader, self._array, ReadContext(self._transform), out)
             return out
 
         written = 0

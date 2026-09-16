@@ -390,8 +390,10 @@ Within one `Partition`, the frames divide: `Partition.view.transform` is a
 different, global transform — it maps the part view directly into the raw
 wrapped source — while only `Partition.projection.chunk_transform` uses
 zero-origin chunk-local coordinates. Parent assembly passes both frames to
-the reader. Direct `part.view.result()` calls supply the global transform
-with `projection=None`.
+the reader. Independently scheduled `part.view.result()` calls plan against the
+same source grid and supply both frames too. Their result placement is relative
+to the part view being read. A partition view can be indexed or repartitioned
+like any other view; its base shape remains the full source shape.
 
 | Projection field | What its output coordinates mean |
 | --- | --- |

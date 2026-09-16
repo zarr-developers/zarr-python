@@ -48,7 +48,10 @@ class ReadContext:
     """Maps zero-origin output-buffer coordinates to global coordinates in the source."""
 
     projection: ChunkProjection | None = None
-    """The partition plan when this read is one part of a partitioned view, else `None`."""
+    """The read plan, always supplied by `LazyArray` execution.
+
+    Direct reader callers may omit it if their reader supports unplanned reads.
+    """
 
 
 class Reader(Protocol):
