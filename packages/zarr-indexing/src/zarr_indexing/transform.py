@@ -29,6 +29,7 @@ resolves the transform against the chunk grid via intersect + translate.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -398,43 +399,33 @@ class IndexTransform:
                 f"{self.input_rank} and {self.output_rank}"
             )
 
+        # Nothing below touches `self`, so validating and building in one pass
+        # leaves no partial state behind when a map is rejected.
         referenced: set[int] = set()
+        inverse_min: list[int] = []
+        inverse_max: list[int] = []
+        inverse_output: dict[int, OutputIndexMap] = {}
         for output_dimension, output_map in enumerate(self.output):
             if isinstance(output_map, ArrayMap):
                 raise ValueError(  # noqa: TRY004 - valid map, invalid inverse
                     f"cannot invert transform: output[{output_dimension}] is an ArrayMap"
                 )
-            if isinstance(output_map, DimensionMap):
-                if output_map.stride not in (-1, 1):
-                    raise ValueError(
-                        "cannot invert transform: DimensionMap stride must be +1 or -1, "
-                        f"got {output_map.stride} for output[{output_dimension}]"
-                    )
-                if output_map.input_dimension in referenced:
-                    raise ValueError(
-                        "cannot invert transform: input dimension "
-                        f"{output_map.input_dimension} is referenced more than once"
-                    )
-                referenced.add(output_map.input_dimension)
-
-        for input_dimension, extent in enumerate(self.domain.shape):
-            if input_dimension not in referenced and extent != 1:
-                raise ValueError(
-                    "cannot invert transform: unreferenced input dimension "
-                    f"{input_dimension} has extent {extent}, not 1"
-                )
-
-        inverse_min: list[int] = []
-        inverse_max: list[int] = []
-        inverse_output: dict[int, OutputIndexMap] = {}
-        for output_dimension, output_map in enumerate(self.output):
             if isinstance(output_map, ConstantMap):
                 inverse_min.append(output_map.offset)
                 inverse_max.append(output_map.offset + 1)
                 continue
-
-            assert isinstance(output_map, DimensionMap)
+            if output_map.stride not in (-1, 1):
+                raise ValueError(
+                    "cannot invert transform: DimensionMap stride must be +1 or -1, "
+                    f"got {output_map.stride} for output[{output_dimension}]"
+                )
             input_dimension = output_map.input_dimension
+            if input_dimension in referenced:
+                raise ValueError(
+                    "cannot invert transform: input dimension "
+                    f"{input_dimension} is referenced more than once"
+                )
+            referenced.add(input_dimension)
             lower = self.domain.inclusive_min[input_dimension]
             upper = self.domain.exclusive_max[input_dimension]
             if output_map.stride == 1:
@@ -453,9 +444,17 @@ class IndexTransform:
                     stride=-1,
                 )
 
-        for input_dimension, lower in enumerate(self.domain.inclusive_min):
-            if input_dimension not in referenced:
-                inverse_output[input_dimension] = ConstantMap(lower)
+        for input_dimension, (lower, extent) in enumerate(
+            zip(self.domain.inclusive_min, self.domain.shape, strict=True)
+        ):
+            if input_dimension in referenced:
+                continue
+            if extent != 1:
+                raise ValueError(
+                    "cannot invert transform: unreferenced input dimension "
+                    f"{input_dimension} has extent {extent}, not 1"
+                )
+            inverse_output[input_dimension] = ConstantMap(lower)
 
         return IndexTransform(
             domain=IndexDomain(tuple(inverse_min), tuple(inverse_max)),
@@ -1164,14 +1163,12 @@ def _intersect_general(
     broadcast_shape = block.broadcast_shape
 
     # Joint bounds mask over the broadcast block.
-    combined: np.ndarray[Any, np.dtype[np.bool_]] | None = None
+    combined = np.ones(math.prod(broadcast_shape), dtype=np.bool_)
     for out_dim in correlated_dims:
         storage = block.flat_storage[out_dim]
         lo = output_domain.inclusive_min[out_dim]
         hi = output_domain.exclusive_max[out_dim]
-        mask = (storage >= lo) & (storage < hi)
-        combined = mask if combined is None else (combined & mask)
-    assert combined is not None
+        combined &= (storage >= lo) & (storage < hi)
     surviving = np.flatnonzero(combined).astype(np.intp)
     if surviving.size == 0:
         return None
@@ -1222,19 +1219,18 @@ def _intersect_general(
     corr_shape = points_shape + (1,) * n_slice
     new_output: list[OutputIndexMap] = []
     for out_dim, m in enumerate(transform.output):
-        if out_dim in correlated_dims:
-            corr = cast("ArrayMap", m)
+        if isinstance(m, ArrayMap):
+            # `correlated_dims` is exactly the ArrayMap output dimensions.
             new_output.append(
                 ArrayMap(
                     index_array=corr_values[out_dim].reshape(corr_shape),
-                    offset=corr.offset,
-                    stride=corr.stride,
+                    offset=m.offset,
+                    stride=m.stride,
                 )
             )
         elif isinstance(m, ConstantMap):
             new_output.append(m)
         else:
-            assert isinstance(m, DimensionMap)
             new_output.append(
                 DimensionMap(
                     input_dimension=new_input_dim_of[m.input_dimension],
@@ -1780,7 +1776,7 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
 
     # Separate array dims and slice dims
     array_dims: list[int] = []
-    slice_dims: list[int] = []
+    slices: dict[int, slice] = {}
     arrays: list[np.ndarray[Any, np.dtype[np.intp]]] = []
 
     for i, sel in enumerate(processed):
@@ -1791,7 +1787,8 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
             array_dims.append(i)
             arrays.append(sel)
         else:
-            slice_dims.append(i)
+            slices[i] = sel
+    slice_dims = list(slices)
 
     # Determine the shared domain without expanding the index arrays: their
     # singleton axes describe independent dependencies during grid partitioning.
@@ -1800,12 +1797,10 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
     # Slice dimensions (preserved-domain literal semantics, like basic indexing)
     slice_dim_params: dict[int, tuple[int, int, int]] = {}
     slice_bounds: list[tuple[int, int]] = []
-    for old_dim in slice_dims:
-        sel = processed[old_dim]
-        assert isinstance(sel, slice)
+    for old_dim, sl in slices.items():
         lo = transform.domain.inclusive_min[old_dim]
         hi = transform.domain.exclusive_max[old_dim]
-        start, step, origin, size = _resolve_slice_ts(sel, old_dim, lo, hi)
+        start, step, origin, size = _resolve_slice_ts(sl, old_dim, lo, hi)
         slice_bounds.append((origin, origin + size))
         slice_dim_params[old_dim] = (start, step, origin)
 

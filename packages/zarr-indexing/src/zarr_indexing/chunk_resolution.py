@@ -637,7 +637,14 @@ def _strided_set(
 
 def _indexed_set(out_dim: int, m: ArrayMap, dg: DimensionGridLike) -> IndexedSet:
     dependent = m.dependent_axis
-    assert dependent is not None
+    if dependent is None:
+        # `_partition_transform` sends every map that varies over no axis down
+        # the joint (general) path; an orthogonal map always has its one axis.
+        raise RuntimeError(
+            f"output dimension {out_dim} has an index array of shape "
+            f"{m.index_array.shape} that varies over no input axis; it cannot be "
+            "partitioned as an orthogonal map"
+        )
     flat = m.index_array.reshape(-1)
     n = int(flat.size)
     storage = checked_affine(m.offset, m.stride, flat)
