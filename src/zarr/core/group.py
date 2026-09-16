@@ -3445,27 +3445,47 @@ async def read_node_metadata(
 ) -> ArrayV2Metadata | ArrayV3Metadata | GroupMetadata | None:
     """Read the metadata of the node at `path`, whichever kind and format it is.
 
-    This is the one place a node's metadata documents are read. With
-    `zarr_format` None, Zarr format 3 is tried first, and format 2 only if there
-    is no `zarr.json`; a path holding both formats is read as format 3 without a
-    second look. A format 3 node is its `zarr.json`, whose `node_type` must say
-    `array` or `group`. A format 2 node is `.zarray` or `.zgroup` (the array
-    winning if both exist) plus `.zattrs`, all read at once along with
-    `consolidated_key`, which names a consolidated-metadata document to attach
-    to a group; None reads none. Returns None if no node is found.
+    With `zarr_format` None, Zarr format 3 is tried first and format 2 only if
+    there is no `zarr.json`, so a path holding both formats is read as format 3
+    without a second look. `consolidated_key` is passed to the format 2 reader.
+    Returns None if no node is found.
     """
-    if zarr_format not in (2, 3, None):
-        msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."
-        raise MetadataValidationError(msg)
-    if zarr_format != 2:
-        zarr_json_bytes = await store.get(
-            _join_paths([path, ZARR_JSON]), prototype=default_buffer_prototype()
-        )
-        if zarr_json_bytes is not None:
-            return _build_metadata_v3(buffer_to_json_object(zarr_json_bytes))
-        if zarr_format == 3:
-            return None
+    if zarr_format == 3:
+        return await read_v3_metadata(store, path)
+    if zarr_format == 2:
+        return await read_v2_metadata(store, path, consolidated_key=consolidated_key)
+    if zarr_format is None:
+        metadata = await read_v3_metadata(store, path)
+        if metadata is None:
+            return await read_v2_metadata(store, path, consolidated_key=consolidated_key)
+        return metadata
+    msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."  # type: ignore[unreachable]
+    raise MetadataValidationError(msg)
 
+
+async def read_v3_metadata(store: Store, path: str) -> ArrayV3Metadata | GroupMetadata | None:
+    """Read the Zarr format 3 node metadata at `path`, or None if there is no `zarr.json`.
+
+    One read: the document's `node_type` says whether it is an array or a group.
+    """
+    zarr_json_bytes = await store.get(
+        _join_paths([path, ZARR_JSON]), prototype=default_buffer_prototype()
+    )
+    if zarr_json_bytes is None:
+        return None
+    return _build_metadata_v3(buffer_to_json_object(zarr_json_bytes))
+
+
+async def read_v2_metadata(
+    store: Store, path: str, *, consolidated_key: str | None = None
+) -> ArrayV2Metadata | GroupMetadata | None:
+    """Read the Zarr format 2 node metadata at `path`, or None if there is neither `.zarray` nor `.zgroup`.
+
+    One concurrent read of `.zarray`, `.zgroup`, `.zattrs` and, if given, the
+    consolidated-metadata document at `consolidated_key`. `.zarray` makes the
+    node an array and `.zgroup` a group, the array winning if both exist; a
+    consolidated document is attached to a group's metadata.
+    """
     keys = [ZARRAY_JSON, ZGROUP_JSON, ZATTRS_JSON]
     if consolidated_key is not None:
         keys.append(consolidated_key)
@@ -3517,16 +3537,16 @@ def _consolidated_metadata_from_v2_doc(doc: dict[str, JSON]) -> ConsolidatedMeta
 
 
 async def _read_metadata_v3(store: Store, path: str) -> ArrayV3Metadata | GroupMetadata:
-    """The format 3 node metadata at `path`, raising FileNotFoundError if there is none."""
-    metadata = await read_node_metadata(store, path, 3)
+    """`read_v3_metadata`, raising FileNotFoundError instead of returning None."""
+    metadata = await read_v3_metadata(store, path)
     if metadata is None:
         raise FileNotFoundError(path)
     return metadata
 
 
 async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupMetadata:
-    """The format 2 node metadata at `path`, raising FileNotFoundError if there is none."""
-    metadata = await read_node_metadata(store, path, 2)
+    """`read_v2_metadata`, raising FileNotFoundError instead of returning None."""
+    metadata = await read_v2_metadata(store, path)
     if metadata is None:
         raise FileNotFoundError(path)
     return metadata
