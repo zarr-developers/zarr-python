@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal
 
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.codecs._deprecated_enum import _coerce_enum_input, _DeprecatedStrEnumMeta
-from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import JSON, parse_named_configuration
 from zarr.core.dtype.common import HasEndianness
 from zarr.core.dtype.npy.structured import Struct
@@ -16,6 +15,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.array_spec import ArraySpec
+    from zarr.core.buffer import Buffer, NDBuffer
 
 
 EndianLiteral = Literal["little", "big"]
@@ -142,7 +142,6 @@ class BytesCodec(ArrayBytesCodec):
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
-        assert isinstance(chunk_array, NDBuffer)
         if chunk_array.dtype.itemsize > 1 and self.endian is not None:
             # Compare full dtypes rather than the top-level byteorder: numpy reports
             # byteorder '|' for structured dtypes even when their fields are

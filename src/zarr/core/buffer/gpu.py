@@ -111,7 +111,6 @@ class Buffer(core.Buffer):
         data = [cp.asanyarray(self._data)]
         for other in others:
             other_array = other.as_array_like()
-            assert other_array.dtype == np.dtype("B")
             gpu_other = Buffer(other_array)
             gpu_other_array = gpu_other.as_array_like()
             data.append(cp.asanyarray(gpu_other_array))
@@ -149,8 +148,8 @@ class NDBuffer(core.NDBuffer):
                 "Cannot use zarr.buffer.gpu.NDBuffer without cupy. Please install cupy."
             )
 
-        # assert array.ndim > 0
-        assert array.dtype != object
+        if array.dtype == object:
+            raise TypeError("zarr.buffer.gpu.NDBuffer does not support arrays with object dtype.")
         self._data = array
 
         if not hasattr(array, "__cuda_array_interface__"):

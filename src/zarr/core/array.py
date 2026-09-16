@@ -158,6 +158,7 @@ if TYPE_CHECKING:
     from zarr.abc.codec import CodecPipeline
     from zarr.abc.store import Store
     from zarr.codecs.sharding import IndexLocation, ShardingCodec
+    from zarr.core.buffer import Buffer
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.storage import StoreLike
     from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
@@ -282,6 +283,7 @@ async def get_array_metadata(
                 f"{store_path.store!r} at path {store_path.path!r}."
             )
             raise ArrayNotFoundError(msg)
+        return _array_metadata_dict_v2(zarray_bytes, zattrs_bytes)
     elif zarr_format == 3:
         zarr_json_bytes = await (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype)
         if zarr_json_bytes is None:
@@ -290,6 +292,7 @@ async def get_array_metadata(
                 f"{store_path.store!r} at path {store_path.path!r}."
             )
             raise ArrayNotFoundError(msg)
+        return _array_metadata_dict_v3(zarr_json_bytes)
     elif zarr_format is None:
         zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
             (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype),
@@ -300,35 +303,34 @@ async def get_array_metadata(
             # warn and favor v3
             msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store_path}. Zarr v3 will be used."
             warnings.warn(msg, category=ZarrUserWarning, stacklevel=1)
-        if zarr_json_bytes is None and zarray_bytes is None:
-            msg = (
-                f"Neither Zarr V3 nor Zarr V2 array metadata documents "
-                f"were found in store {store_path.store!r} at path {store_path.path!r}."
-            )
-            raise ArrayNotFoundError(msg)
-        # set zarr_format based on which keys were found
+        # favor v3 when both are present
         if zarr_json_bytes is not None:
-            zarr_format = 3
-        else:
-            zarr_format = 2
+            return _array_metadata_dict_v3(zarr_json_bytes)
+        if zarray_bytes is not None:
+            return _array_metadata_dict_v2(zarray_bytes, zattrs_bytes)
+        msg = (
+            f"Neither Zarr V3 nor Zarr V2 array metadata documents "
+            f"were found in store {store_path.store!r} at path {store_path.path!r}."
+        )
+        raise ArrayNotFoundError(msg)
     else:
         msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."  # type: ignore[unreachable]
         raise MetadataValidationError(msg)
 
-    metadata_dict: dict[str, JSON]
-    if zarr_format == 2:
-        # V2 arrays are comprised of a .zarray and .zattrs objects
-        assert zarray_bytes is not None
-        metadata_dict = buffer_to_json_object(zarray_bytes)
-        zattrs_dict = buffer_to_json_object(zattrs_bytes) if zattrs_bytes is not None else {}
-        metadata_dict["attributes"] = zattrs_dict
-    else:
-        # V3 arrays are comprised of a zarr.json object
-        assert zarr_json_bytes is not None
-        metadata_dict = buffer_to_json_object(zarr_json_bytes)
 
-        parse_node_type_array(metadata_dict.get("node_type"))
+def _array_metadata_dict_v2(zarray_bytes: Buffer, zattrs_bytes: Buffer | None) -> dict[str, JSON]:
+    """Combine a `.zarray` document and an optional `.zattrs` document into one metadata dict."""
+    metadata_dict: dict[str, JSON] = buffer_to_json_object(zarray_bytes)
+    metadata_dict["attributes"] = (
+        buffer_to_json_object(zattrs_bytes) if zattrs_bytes is not None else {}
+    )
+    return metadata_dict
 
+
+def _array_metadata_dict_v3(zarr_json_bytes: Buffer) -> dict[str, JSON]:
+    """Parse a `zarr.json` document, checking that it describes an array."""
+    metadata_dict: dict[str, JSON] = buffer_to_json_object(zarr_json_bytes)
+    parse_node_type_array(metadata_dict.get("node_type"))
     return metadata_dict
 
 
@@ -5896,7 +5898,11 @@ async def _resize(
         If False, the data in those chunks will be preserved.
     """
     new_shape = parse_shapelike(new_shape)
-    assert len(new_shape) == len(array.metadata.shape)
+    if len(new_shape) != len(array.metadata.shape):
+        raise ValueError(
+            f"The new shape must have the same number of dimensions as the array. "
+            f"Got {len(new_shape)} dimension(s), expected {len(array.metadata.shape)}."
+        )
 
     new_metadata = array.metadata.update_shape(new_shape)
     new_chunk_grid = ChunkGrid.from_metadata(new_metadata)
