@@ -395,9 +395,15 @@ ignore = [
 ]
 
 [tool.ruff.lint.extend-per-file-ignores]
-"tests/**" = ["ANN001", "ANN201", "RUF029", "S101", "SIM117", "SIM300"]
-# test-support code (store conformance suite, hypothesis strategies) asserts on purpose
-"src/zarr/testing/**" = ["S101"]
+"tests/**" = ["ANN001", "ANN201", "RUF029", "SIM117", "SIM300"]
+# S101 (no assert) is for runtime code only. Tests, examples, and test-support
+# packages (store conformance suite, hypothesis strategies) assert on purpose.
+# The globs cover the root package and every package under packages/.
+"**/tests/**" = ["S101"]
+"**/examples/**" = ["S101"]
+"**/testing/**" = ["S101"]
+# zarr-indexing still has asserts in runtime code; tracked as a separate change.
+"packages/zarr-indexing/src/**" = ["S101"]
 
 [tool.mypy]
 files = ["src", "tests"]
