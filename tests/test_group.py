@@ -47,6 +47,7 @@ from zarr.errors import (
     ContainsGroupError,
     GroupNotFoundError,
     MetadataValidationError,
+    NodeTypeValidationError,
     ZarrUserWarning,
 )
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
@@ -1110,6 +1111,14 @@ async def test_asyncgroup_open_wrong_format(
 
     with pytest.raises(FileNotFoundError):
         await AsyncGroup.open(store=store, zarr_format=zarr_format_wrong)
+
+
+def test_group_metadata_from_dict_wrong_node_type_raises() -> None:
+    """
+    A metadata document whose node_type is not 'group' cannot become GroupMetadata.
+    """
+    with pytest.raises(NodeTypeValidationError, match="node_type"):
+        GroupMetadata.from_dict({"zarr_format": 3, "node_type": "array"})
 
 
 # todo: replace the dict[str, Any] type with something a bit more specific

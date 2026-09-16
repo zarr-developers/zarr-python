@@ -34,7 +34,7 @@ class VindexInvalidSelectionError(IndexError):
     >>> import numpy as np
     >>> from zarr_indexing import LazyArray
     >>> view = LazyArray.from_numpy(np.arange(12).reshape(3, 4))
-    >>> view.lazy.vindex[np.array([0, 2]), :]
+    >>> view.vindex[np.array([0, 2]), :]
     Traceback (most recent call last):
         ...
     zarr_indexing.errors.VindexInvalidSelectionError: ...

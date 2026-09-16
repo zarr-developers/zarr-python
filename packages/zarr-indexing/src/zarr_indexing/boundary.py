@@ -13,11 +13,9 @@ literal coordinates.
 
 Note
 ----
-`zarr.Array` currently carries its own copy of this normalization, tuned to a
-different boundary contract (`Array.lazy[...]` deliberately exposes the literal
-dialect, so a view's coordinates keep their meaning across composition). This
-module is the generic, zarr-free version used by `LazyArray`; consolidating
-zarr's copy onto it is left to a follow-up.
+This module provides the positional boundary used by `LazyArray`, independently
+of Zarr's own array indexers. Direct `IndexTransform` indexing continues to use
+literal coordinates.
 """
 
 from __future__ import annotations

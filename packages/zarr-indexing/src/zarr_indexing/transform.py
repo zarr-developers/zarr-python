@@ -23,7 +23,7 @@ Key operations:
 
 The transform is the atomic unit that connects user-facing indexing to
 chunk-level I/O. A wrapper holds one — `LazyArray` starts from the identity —
-and `.lazy[...]` composes a new transform lazily rather than reading. Reading
+and `view[...]` composes a new transform lazily rather than reading. Reading
 resolves the transform against the chunk grid via intersect + translate.
 """
 
