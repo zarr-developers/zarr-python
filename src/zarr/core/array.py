@@ -298,8 +298,12 @@ class _ArrayProbe:
     """
 
     metadata: dict[str, JSON] | None = None
-    from_zarr_json: bool = False
     docs: _MetadataDocs = field(default_factory=_MetadataDocs)
+
+    @property
+    def from_zarr_json(self) -> bool:
+        """Whether `metadata` came from `zarr.json`, which wins whenever it is present."""
+        return self.docs.zarr_json is not None
 
     @property
     def is_array(self) -> bool:
@@ -309,7 +313,7 @@ class _ArrayProbe:
         return not self.from_zarr_json or self.metadata.get("node_type") == "array"
 
 
-async def _fetch_metadata_docs(
+async def _fetch_array_metadata_docs(
     store_path: StorePath, zarr_format: ZarrFormat | None
 ) -> _MetadataDocs:
     """Read the documents that could describe an array at `store_path`.
@@ -349,15 +353,13 @@ async def _probe_array_metadata(
     something else to try can do so without paying for the same reads twice. An
     invalid `zarr_format` still raises.
     """
-    docs = await _fetch_metadata_docs(store_path, zarr_format)
+    docs = await _fetch_array_metadata_docs(store_path, zarr_format)
     if docs.zarr_json is not None and docs.zarray is not None:
         # warn and favor v3
         msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store_path}. Zarr v3 will be used."
         warnings.warn(msg, category=ZarrUserWarning, stacklevel=1)
     if docs.zarr_json is not None:
-        return _ArrayProbe(
-            metadata=buffer_to_json_object(docs.zarr_json), from_zarr_json=True, docs=docs
-        )
+        return _ArrayProbe(metadata=buffer_to_json_object(docs.zarr_json), docs=docs)
     if docs.zarray is not None:
         return _ArrayProbe(metadata=_array_metadata_dict_v2(docs.zarray, docs.zattrs), docs=docs)
     return _ArrayProbe(docs=docs)
