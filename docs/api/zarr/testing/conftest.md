@@ -1,3 +1,0 @@
-## Conftest
-
-::: zarr.testing.conftest

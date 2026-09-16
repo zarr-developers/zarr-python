@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "zarr-metadata"
 dynamic = ["version"]
-description = "Spec-defined metadata types for Zarr v2 and v3."
+description = "Spec-defined metadata types, models, and validators for Zarr v2 and v3."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -32,7 +32,11 @@ classifiers = [
 ]
 keywords = ["zarr"]
 dependencies = [
-    "typing_extensions>=4.13",
+    # >=4.16: first release where `Sentinel` pickles by reference
+    # (`__reduce__` returns the sentinel's name), so `UNSET` — and any model
+    # holding it — can cross process boundaries and be deep-copied with its
+    # singleton identity intact. 4.15 and earlier refuse to pickle sentinels.
+    "typing_extensions>=4.16",
 ]
 
 [project.urls]
@@ -40,10 +44,21 @@ Homepage = "https://github.com/zarr-developers/zarr-python"
 Source = "https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata"
 Issues = "https://github.com/zarr-developers/zarr-python/issues"
 Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-metadata/CHANGELOG.md"
-Documentation = "https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-metadata/README.md"
+Documentation = "https://zarr-metadata.readthedocs.io/"
 
 [dependency-groups]
-test = ["pytest", "pydantic>=2"]
+test = ["pytest", "pydantic>=2.13", "jsonschema"]
+docs = [
+    # Pins match the zarr-python docs environment in the repo-root
+    # pyproject.toml so the two sites render with the same toolchain.
+    "mkdocs-material==9.7.7",
+    "mkdocs==1.6.1",
+    "mkdocstrings==1.0.4",
+    "mkdocstrings-python==2.0.5",
+    "griffe-inherited-docstrings==1.1.3",
+    # mkdocstrings uses ruff to format rendered signatures
+    "ruff==0.15.20",
+]
 
 [tool.hatch.version]
 source = "vcs"
@@ -56,6 +71,26 @@ raw-options = { root = "../..", git_describe_command = "git describe --dirty --t
 [tool.hatch.build.targets.wheel]
 packages = ["src/zarr_metadata"]
 
+# An allowlist, so nothing that merely happens to sit in the package directory
+# — a scratch script, a stray notebook — can ride along in a release. The list
+# keeps an sdist self-testing and self-documenting: every fixture this suite
+# reads is a JSON file sitting next to the test module that loads it, so
+# `/tests` is the whole test dependency, and `/docs` plus `/mkdocs.yml` are a
+# self-contained site (mkdocstrings reads `src`, nothing reaches outside the
+# package) so `just docs-check` runs from an unpacked sdist too. `changes/`
+# and `.readthedocs.yaml` are deliberately absent: towncrier fragments are
+# repo bookkeeping, and the RTD config addresses paths from the repo root.
+# `pyproject.toml`, `README.md` and `LICENSE.txt` are added by hatchling itself.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/docs",
+    "/mkdocs.yml",
+    "/justfile",
+    "/CHANGELOG.md",
+]
+
 [tool.ruff]
 extend = "../../pyproject.toml"
 target-version = "py311"
@@ -67,9 +102,9 @@ xfail_strict = true
 addopts = ["-ra", "--strict-config", "--strict-markers"]
 filterwarnings = [
     "error",
-    # pydantic warns about ReadOnly TypedDict items not being enforced at runtime.
-    # That's expected here — we rely on type-checker enforcement, not pydantic mutation guards.
-    "ignore::UserWarning:pydantic._internal._generate_schema",
+    # Pydantic validates these public immutable-shape TypedDicts correctly but
+    # cannot enforce the type checker's ReadOnly mutation restriction.
+    "ignore:Items? .* using the `ReadOnly` qualifier.*:UserWarning:pydantic._internal._generate_schema",
 ]
 
 [tool.numpydoc_validation]
@@ -82,6 +117,9 @@ checks = [
     "PR06",
 ]
 
+# CI pins pyright==1.1.404: later versions regress PEP 661 sentinel typing in
+# class attributes (microsoft/pyright#11115), which zarr_metadata.model._sentinel
+# relies on. Use the same pin locally; unpin when the fix lands.
 [tool.pyright]
 include = ["src"]
 enableExperimentalFeatures = true
@@ -97,5 +135,35 @@ filename = "CHANGELOG.md"
 package = "zarr_metadata"
 underlines = ["", "", ""]
 title_format = "## {version} ({project_date})"
-issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/issues/{issue})"
+issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/pull/{issue})"
 start_string = "<!-- towncrier release notes start -->\n"
+
+# Declaring any type replaces towncrier's built-in set, so all five the
+# `changes/README.md` menu offers are restated here. They are the defaults
+# verbatim except for `misc`, whose `showcontent` towncrier defaults to false:
+# a `misc` entry would render as a bare PR link, which tells a reader nothing.
+# A change worth a release note is worth a sentence, whatever its category.
+[[tool.towncrier.type]]
+directory = "feature"
+name = "Features"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "bugfix"
+name = "Bugfixes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "doc"
+name = "Improved Documentation"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "removal"
+name = "Deprecations and Removals"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "misc"
+name = "Misc"
+showcontent = true

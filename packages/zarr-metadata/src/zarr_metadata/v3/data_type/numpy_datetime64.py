@@ -14,7 +14,7 @@ NUMPY_DATETIME64_DATA_TYPE_NAME: Final = "numpy.datetime64"
 NumpyDatetime64DataTypeName = Literal["numpy.datetime64"]
 """Literal type of the `name` field of the `numpy.datetime64` data type."""
 
-DateTimeUnit = Literal[
+NumpyTimeUnit = Literal[
     "Y", "M", "W", "D", "h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as", "generic"
 ]
 """Time unit codes used by numpy.datetime64."""
@@ -32,7 +32,7 @@ class NumpyDatetime64Configuration(TypedDict):
         The multiplier relative to the unit.
     """
 
-    unit: ReadOnly[DateTimeUnit]
+    unit: ReadOnly[NumpyTimeUnit]
     scale_factor: ReadOnly[int]
 
 
@@ -52,9 +52,9 @@ or the string `"NaT"` (equivalent to the integer `-2**63`).
 
 __all__ = [
     "NUMPY_DATETIME64_DATA_TYPE_NAME",
-    "DateTimeUnit",
     "NumpyDatetime64",
     "NumpyDatetime64Configuration",
     "NumpyDatetime64DataTypeName",
     "NumpyDatetime64FillValue",
+    "NumpyTimeUnit",
 ]

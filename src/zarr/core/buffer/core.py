@@ -45,6 +45,8 @@ class ArrayLike(Protocol):
 
     def __setitem__(self, key: slice, value: Any) -> None: ...
 
+    def copy(self) -> Self: ...
+
 
 @runtime_checkable
 class NDArrayLike(Protocol):

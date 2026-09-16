@@ -2,14 +2,14 @@
 
 This module is private (underscore-prefixed) and exists to avoid circular
 imports between leaf modules and sub-package `__init__.py` re-exports.
-Public consumers should import `MetadataFieldV3` from `zarr_metadata.v3`.
+Public consumers should import `ZarrV3MetadataFieldJSON` from `zarr_metadata.v3`.
 """
 
-from zarr_metadata._common import NamedConfig
+from zarr_metadata._common import ZarrV3NamedConfigJSON
 
-MetadataFieldV3 = str | NamedConfig
+ZarrV3MetadataFieldJSON = str | ZarrV3NamedConfigJSON
 """The JSON shape of any v3 metadata extension-point entry: either a bare
-short-hand name string or a `{name, configuration}` envelope.
+short-hand name string or a `{name, configuration, must_understand}` envelope.
 
 Used for `data_type`, `chunk_grid`, `chunk_key_encoding`, individual
 codec entries, and `storage_transformers` in v3 array metadata, and for
@@ -19,5 +19,5 @@ codec.
 
 
 __all__ = [
-    "MetadataFieldV3",
+    "ZarrV3MetadataFieldJSON",
 ]

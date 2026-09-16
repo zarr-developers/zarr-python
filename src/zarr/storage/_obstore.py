@@ -267,7 +267,11 @@ async def _transform_list_dir(
     for path in chain(
         list_result["common_prefixes"], map(itemgetter("path"), list_result["objects"])
     ):
-        yield _relativize_path(path=path, prefix=prefix)
+        if prefix != "" and path == prefix:
+            continue
+        relpath = _relativize_path(path=path, prefix=prefix)
+        if relpath:
+            yield relpath
 
 
 class _BoundedRequest(TypedDict):

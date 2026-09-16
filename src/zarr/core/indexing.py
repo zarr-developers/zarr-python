@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import itertools
+import math
 import numbers
-import operator
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from functools import lru_cache, reduce
+from functools import lru_cache
 from types import EllipsisType
 from typing import (
     TYPE_CHECKING,
@@ -22,6 +22,7 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
+from zarr.core.chunk_grids import FixedDimension
 from zarr.core.common import ceildiv, product
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
@@ -511,7 +512,8 @@ def replace_ellipsis(selection: Any, shape: tuple[int, ...]) -> SelectionNormali
 
 def replace_lists(selection: SelectionNormalized) -> SelectionNormalized:
     return tuple(
-        np.asarray(dim_sel) if isinstance(dim_sel, list) else dim_sel for dim_sel in selection
+        cast("ArrayOfIntOrBool", np.asarray(dim_sel)) if isinstance(dim_sel, list) else dim_sel
+        for dim_sel in selection
     )
 
 
@@ -713,8 +715,8 @@ class Order(Enum):
 
     @staticmethod
     def check(a: npt.NDArray[Any]) -> Order:
-        diff = np.diff(a)
-        diff_positive = diff >= 0
+        # compare, don't subtract: np.diff wraps on unsigned dtypes
+        diff_positive = a[1:] >= a[:-1]
         n_diff_positive = np.count_nonzero(diff_positive)
         all_increasing = n_diff_positive == len(diff_positive)
         any_increasing = n_diff_positive > 0
@@ -727,10 +729,13 @@ class Order(Enum):
         return order
 
 
-def wraparound_indices(x: npt.NDArray[Any], dim_len: int) -> None:
+def wraparound_indices(x: npt.NDArray[Any], dim_len: int) -> npt.NDArray[Any]:
+    """Normalize negative indices, copying only when normalization is needed."""
     loc_neg = x < 0
     if np.any(loc_neg):
+        x = x.copy()
         x[loc_neg] += dim_len
+    return x
 
 
 def boundscheck_indices(x: npt.NDArray[Any], dim_len: int) -> None:
@@ -767,6 +772,11 @@ class IntArrayDimIndexer:
         dim_sel = np.asanyarray(dim_sel)
         if not is_integer_array(dim_sel, 1):
             raise IndexError("integer arrays in an orthogonal selection must be 1-dimensional only")
+        # Check unsigned values before narrowing: uint64 can wrap to a valid negative index.
+        if boundscheck and dim_sel.dtype.kind == "u":
+            boundscheck_indices(dim_sel, dim_len)
+        # uint64 promotes to float against the signed chunk offset
+        dim_sel = dim_sel.astype(np.intp, copy=False)
 
         nitems = len(dim_sel)
         g = dim_grid
@@ -774,7 +784,7 @@ class IntArrayDimIndexer:
 
         # handle wraparound
         if wraparound:
-            wraparound_indices(dim_sel, dim_len)
+            dim_sel = wraparound_indices(dim_sel, dim_len)
 
         # handle out of bounds
         if boundscheck:
@@ -1187,12 +1197,12 @@ class CoordinateIndexer(Indexer):
             cdata_shape = (1,)
         else:
             cdata_shape = tuple(g.nchunks for g in dim_grids)
-        nchunks = reduce(operator.mul, cdata_shape, 1)
+        nchunks = math.prod(cdata_shape)
 
         # some initial normalization
         selection_normalized = cast("CoordinateSelectionNormalized", ensure_tuple(selection))
         selection_normalized = tuple(
-            np.asarray([i]) if is_integer(i) else i for i in selection_normalized
+            np.asarray([i], dtype=np.intp) if is_integer(i) else i for i in selection_normalized
         )
         selection_normalized = cast(
             "CoordinateSelectionNormalized", replace_lists(selection_normalized)
@@ -1205,13 +1215,75 @@ class CoordinateIndexer(Indexer):
                 "(coordinate) array per dimension of the target array, "
                 f"got {selection!r}"
             )
-
-        # handle wraparound, boundscheck
+        # Check unsigned values before narrowing can turn an out-of-bounds value negative.
         for dim_sel, dim_len in zip(selection_normalized, shape, strict=True):
-            # handle wraparound
-            wraparound_indices(dim_sel, dim_len)
+            if dim_sel.dtype.kind == "u":
+                boundscheck_indices(dim_sel, dim_len)
+        # keep indices integral: uint64 against a signed offset promotes to float
+        selection_normalized = cast(
+            "CoordinateSelectionNormalized",
+            tuple(np.asarray(s, dtype=np.intp) for s in selection_normalized),
+        )
 
-            # handle out of bounds
+        # Optimization for a single sorted, in-bounds, 1-D integer coordinate array over a
+        # regular (fixed-size) chunk grid. The general path below makes several full passes over
+        # the flat selection. For sufficiently dense selections, locating the internal chunk
+        # boundaries with searchsorted is cheaper.
+        if len(selection_normalized) == 1:
+            (coords,) = selection_normalized
+            g0 = dim_grids[0]
+            # coords is an integer ndarray here: is_coordinate_selection() validated above, and
+            # the normalization turned ints/lists into arrays. Only the sorted-1D-over-regular-grid
+            # shape is special-cased; everything else falls through to the general path below.
+            if (
+                isinstance(g0, FixedDimension)
+                and g0.size > 0  # guard the divide below
+                and coords.ndim == 1
+                and coords.size > 0
+                and coords[0] >= 0
+                and coords[-1] < shape[0]
+                and coords[0] <= coords[-1]
+            ):
+                size = g0.size
+                first = int(coords[0]) // size
+                last = int(coords[-1]) // size
+                chunk_span = last - first + 1
+                # searchsorted does O(log n) work per chunk in the spanned range. Fall through
+                # when directly processing the coordinates is expected to be cheaper.
+                if (
+                    chunk_span * coords.size.bit_length() < coords.size
+                    and bool((coords[:-1] <= coords[1:]).all())  # sorted -> grouped by chunk
+                ):
+                    # Search only internal boundaries. Derive the first and last counts from the
+                    # selection bounds so that the boundary after the last chunk cannot overflow.
+                    if first == last:
+                        counts = np.array([coords.size], dtype=np.intp)
+                    else:
+                        edges = np.arange(first + 1, last + 1, dtype=coords.dtype) * size
+                        cuts = np.searchsorted(coords, edges)
+                        counts = np.diff(cuts, prepend=0, append=coords.size)
+                    chunk_rixs = (first + np.nonzero(counts)[0]).astype(np.intp)
+                    chunk_nitems = np.zeros(nchunks, dtype=np.intp)
+                    chunk_nitems[first : last + 1] = counts
+                    chunk_nitems_cumsum = np.cumsum(chunk_nitems)
+
+                    object.__setattr__(self, "sel_shape", coords.shape)
+                    object.__setattr__(self, "selection", (coords,))
+                    object.__setattr__(self, "sel_sort", None)
+                    object.__setattr__(self, "chunk_nitems_cumsum", chunk_nitems_cumsum)
+                    object.__setattr__(self, "chunk_rixs", chunk_rixs)
+                    object.__setattr__(self, "chunk_mixs", (chunk_rixs,))
+                    object.__setattr__(self, "dim_grids", dim_grids)
+                    object.__setattr__(self, "shape", coords.shape)
+                    object.__setattr__(self, "drop_axes", ())
+                    return
+
+        # Normalize each axis independently without modifying caller-owned index arrays.
+        selection_normalized = tuple(
+            wraparound_indices(dim_sel, dim_len)
+            for dim_sel, dim_len in zip(selection_normalized, shape, strict=True)
+        )
+        for dim_sel, dim_len in zip(selection_normalized, shape, strict=True):
             boundscheck_indices(dim_sel, dim_len)
 
         # compute chunk index for each point in the selection

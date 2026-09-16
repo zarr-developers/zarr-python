@@ -1,4 +1,5 @@
 import enum
+import math
 import pickle
 import warnings
 from typing import Any, cast, get_args
@@ -36,6 +37,64 @@ from zarr.storage import MemoryStore, StorePath, ZipStore
 
 from ..conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim
+
+
+def _reads_are_sync(store_mock: AsyncMock) -> bool:
+    """True when the partial-shard read for this store+pipeline goes through the
+    synchronous methods (get_sync / get_ranges_sync). That requires BOTH the
+    configured pipeline to be the sync (Fused) one AND the store to support sync
+    reads — a Fused read against a non-sync store (e.g. ZipStore) falls back to
+    the async path. Lets the partial-shard-read tests assert the same intent
+    against whichever method family is actually exercised."""
+    from zarr.abc.store import SupportsGetSync
+    from zarr.core.config import config
+
+    pipeline_is_sync = "Fused" in config.get("codec_pipeline.path")
+    # store_mock wraps the real store; check the wrapped class for sync support.
+    wrapped = getattr(store_mock, "_mock_wraps", store_mock)
+    return pipeline_is_sync and isinstance(wrapped, SupportsGetSync)
+
+
+def _index_read_count(store_mock: AsyncMock) -> int:
+    """Number of shard-index reads, regardless of sync/async pipeline."""
+    method = store_mock.get_sync if _reads_are_sync(store_mock) else store_mock.get
+    return int(method.call_count)
+
+
+def _range_read_count(store_mock: AsyncMock) -> int:
+    """Number of coalesced chunk-data reads, regardless of sync/async pipeline."""
+    method = store_mock.get_ranges_sync if _reads_are_sync(store_mock) else store_mock.get_ranges
+    return int(method.call_count)
+
+
+def _fail_index_read(store_mock: AsyncMock) -> None:
+    """Simulate the shard-index load returning nothing, for the active path."""
+    if _reads_are_sync(store_mock):
+        store_mock.get_sync.return_value = None
+    else:
+        store_mock.get.return_value = None
+
+
+def _fail_chunk_reads(
+    store_mock: AsyncMock, key_absent_exc: type[Exception] = FileNotFoundError
+) -> None:
+    """Simulate chunk-data loads failing (key absent), for the active path.
+
+    Async get_ranges raises a BaseExceptionGroup; the sync get_ranges_sync mirrors
+    that contract, so both inject a FileNotFoundError-bearing group."""
+    if _reads_are_sync(store_mock):
+
+        def fail_sync(key: str, byte_ranges: Any, **kwargs: Any) -> Any:
+            raise BaseExceptionGroup("chunk read failed", [key_absent_exc(key)])
+
+        store_mock.get_ranges_sync = fail_sync
+    else:
+
+        async def fail_async(key: str, byte_ranges: Any, **kwargs: Any) -> Any:
+            raise BaseExceptionGroup("chunk read failed", [key_absent_exc(key)])
+            yield  # type: ignore[unreachable]  # marks this as an async generator
+
+        store_mock.get_ranges = fail_async
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
@@ -241,18 +300,18 @@ def test_sharding_multiple_chunks_partial_shard_read(
     # for a total of 6 chunks accessed
     assert np.allclose(a[0, 22:42], np.arange(22, 42, dtype="float32"))
 
-    # 2 shard index reads via store.get() + 2 get_ranges calls (one per shard)
-    assert store_mock.get.call_count == 2
-    assert store_mock.get_ranges.call_count == 2
+    # 2 shard index reads + 2 coalesced chunk-data reads (one per shard)
+    assert _index_read_count(store_mock) == 2
+    assert _range_read_count(store_mock) == 2
 
     store_mock.reset_mock()
 
     # Reads 4 chunks from both shards along dimension 0 for a total of 8 chunks accessed
     assert np.allclose(a[:, 0], np.arange(0, data.size, array_shape[1], dtype="float32"))
 
-    # 2 shard index reads via store.get() + 2 get_ranges calls (one per shard)
-    assert store_mock.get.call_count == 2
-    assert store_mock.get_ranges.call_count == 2
+    # 2 shard index reads + 2 coalesced chunk-data reads (one per shard)
+    assert _index_read_count(store_mock) == 2
+    assert _range_read_count(store_mock) == 2
 
 
 @pytest.mark.parametrize("index_location", ["start", "end"])
@@ -288,9 +347,9 @@ def test_sharding_duplicate_read_indexes(
     indexer = [8, 8, 12, 12]
     assert np.array_equal(a[indexer], data[indexer])
 
-    # 1 shard index read via store.get() + 1 get_ranges call
-    assert store_mock.get.call_count == 1
-    assert store_mock.get_ranges.call_count == 1
+    # 1 shard index read + 1 coalesced chunk-data read
+    assert _index_read_count(store_mock) == 1
+    assert _range_read_count(store_mock) == 1
 
 
 @pytest.mark.parametrize("index_location", ["start", "end"])
@@ -379,8 +438,6 @@ def test_sharding_partial_shard_read__index_load_fails(
     fill_value = -999
 
     store_mock = AsyncMock(wraps=store, spec=store.__class__)
-    # loading the index is the first call to .get() so returning None will simulate an index load failure
-    store_mock.get.return_value = None
 
     a = zarr.create_array(
         StorePath(store_mock),
@@ -392,6 +449,10 @@ def test_sharding_partial_shard_read__index_load_fails(
         fill_value=fill_value,
     )
     a[:] = data
+
+    # Loading the index returns None -> simulate an index load failure, on
+    # whichever read method the active pipeline uses (get / get_sync).
+    _fail_index_read(store_mock)
 
     # Read from one of two chunks in a shard to test the partial shard read path
     assert a[0] == fill_value
@@ -459,16 +520,12 @@ def test_sharding_partial_shard_read__chunk_load_fails(
     a[:] = data
 
     # Set up store mock after array creation to simulate chunk load failure.
-    # Index loads still succeed (via store.get), but chunk-byte loads fail
-    # (via store.get_ranges raising BaseExceptionGroup containing FileNotFoundError —
-    # the same shape Store.get_ranges produces when a key is absent).
+    # Index loads still succeed, but chunk-byte loads fail (the coalesced range
+    # read raises a BaseExceptionGroup containing FileNotFoundError — the same
+    # shape produced when a key is absent), on whichever read method the active
+    # pipeline uses (get_ranges / get_ranges_sync).
     store_mock.reset_mock()
-
-    async def fail_chunk_reads(key: str, byte_ranges: Any, **kwargs: Any) -> Any:
-        raise BaseExceptionGroup("chunk read failed", [FileNotFoundError(key)])
-        yield  # type: ignore[unreachable]  # marks this as an async generator
-
-    store_mock.get_ranges = fail_chunk_reads
+    _fail_chunk_reads(store_mock)
 
     # Read from one of two chunks in a shard to test the partial shard read path
     assert a[0] == fill_value
@@ -676,6 +733,29 @@ async def test_delete_empty_shards(store: Store) -> None:
     chunk_bytes = await store.get(f"{path}/c/0/0", prototype=default_buffer_prototype())
     assert chunk_bytes is not None
     assert len(chunk_bytes) == 16 * 2 + 8 * 8 * 2 + 4
+
+
+def test_structured_dtype_fill_value() -> None:
+    """Sharded arrays with a structured dtype are writable and readable even though
+    the fill value is an (unhashable) ``np.void`` scalar: the sharding codec's
+    chunk-spec caches key on ``ArraySpec``, whose hash must handle void fills
+    (see https://github.com/zarr-developers/zarr-python/issues/3054)."""
+    dtype = np.dtype([("a", "i4"), ("b", "f4")])
+    arr = zarr.create_array(
+        MemoryStore(),
+        shape=(8,),
+        chunks=(2,),
+        shards=(4,),
+        dtype=dtype,
+        fill_value=(1, 2.0),
+    )
+    data = np.array([(i, i / 2) for i in range(8)], dtype=dtype)
+    arr[:4] = data[:4]
+
+    expected = np.zeros(8, dtype=dtype)
+    expected[:4] = data[:4]
+    expected[4:] = (1, 2.0)  # untouched shard reads back as the fill value
+    assert np.array_equal(arr[:], expected)
 
 
 def test_pickle() -> None:
@@ -1112,6 +1192,43 @@ def test_shard_index_get_chunk_slices_vectorized(chunks_per_shard: tuple[int, ..
     np.testing.assert_array_equal(starts[~expected_valid], MAX_UINT_64)
 
 
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@pytest.mark.parametrize(
+    "pipeline_path",
+    [
+        "zarr.core.codec_pipeline.FusedCodecPipeline",
+        "zarr.core.codec_pipeline.BatchedCodecPipeline",
+    ],
+)
+def test_sharding_vlen_inner_codec_roundtrip(pipeline_path: str) -> None:
+    """A sharded array whose inner codec chain is a variable-length codec
+    (VLenUTF8) must round-trip under either pipeline.
+
+    Regression: the Fused pipeline's bulk-decode gate calls `c.is_fixed_size`
+    on every inner codec. `is_fixed_size` is declared on the Codec ABC but had
+    no default, so codecs that don't set it (VLenUTF8/VLenBytes, numcodecs
+    wrappers) raised AttributeError on read — crashing every sharded read whose
+    inner chain included such a codec.
+    """
+    # The variable-length StringDType resolves to a VLenUTF8Codec inner chain
+    # (a fixed-width <U dtype would use BytesCodec, which has is_fixed_size).
+    data = np.array(["aa", "bbbb", "c", "dddddd", "ee", "f"], dtype=np.dtypes.StringDType())
+    with zarr.config.set({"codec_pipeline.path": pipeline_path}):
+        arr = zarr.create_array(
+            store=MemoryStore(),
+            shape=(6,),
+            chunks=(2,),
+            shards=(6,),
+            dtype=data.dtype,
+            fill_value="",
+        )
+        arr[:] = data
+        # full read (would hit the bulk-decode gate under Fused) ...
+        assert np.array_equal(arr[:], data)
+        # ... and a reordering read (partial-decode path)
+        assert np.array_equal(arr.vindex[np.array([5, 4, 3, 2, 1, 0])], data[[5, 4, 3, 2, 1, 0]])
+
+
 @pytest.mark.parametrize("chunks_per_shard", [(), (3,), (2, 3)])
 def test_shard_reader_to_dict_vectorized(chunks_per_shard: tuple[int, ...]) -> None:
     """to_dict_vectorized derives its own coords and maps present chunks to buffers, empty to None.
@@ -1146,3 +1263,77 @@ def test_shard_reader_to_dict_vectorized(chunks_per_shard: tuple[int, ...]) -> N
             assert buf.to_bytes() == present[coords]
         else:
             assert buf is None
+
+
+@pytest.mark.parametrize(
+    "pipeline_path",
+    [
+        "zarr.core.codec_pipeline.FusedCodecPipeline",
+        "zarr.core.codec_pipeline.BatchedCodecPipeline",
+    ],
+)
+@pytest.mark.parametrize("nested", [False, True], ids=["single", "nested"])
+@pytest.mark.parametrize(
+    "selection",
+    [
+        pytest.param((np.array([3, 1, 2]), np.array([0, 2])), id="2d-arr-arr"),
+        pytest.param((np.array([3, 0]), np.array([2, 0])), id="2d-arr-arr-unsorted-two-shards"),
+        pytest.param((np.array([3, 1, 2]), 1, np.array([0, 2])), id="3d-arr-int-arr"),
+        pytest.param((1, np.array([0, 2]), np.array([1, 3])), id="3d-int-arr-arr"),
+        pytest.param((np.array([3, 1]), np.array([0, 2]), 2), id="3d-arr-arr-int"),
+        pytest.param(
+            (np.array([3, 1, 2]), np.array([0, 2]), np.array([1, 3])), id="3d-arr-arr-arr"
+        ),
+        pytest.param((np.array([3]), np.array([0, 2]), 1), id="3d-arr1-arr-int"),
+    ],
+)
+def test_sharding_orthogonal_set_multiple_array_dims(
+    selection: tuple[int | npt.NDArray[np.intp], ...], nested: bool, pipeline_path: str
+) -> None:
+    """Orthogonal set with more than one array-indexed dimension.
+
+    ``OrthogonalIndexer`` converts such a chunk selection to an ``np.ix_`` tuple
+    of broadcastable arrays before handing it to the codec pipeline. The
+    sharding codec re-derives an indexer from that selection and gets a
+    ``CoordinateIndexer``, whose projections address the value buffer flat.
+    Regression test for the resulting shape mismatch on write.
+
+    An integer index alongside the arrays is the case that a shape-equality
+    guard misses: ``OrthogonalIndexer`` drops that axis from the value but
+    ``np.ix_`` keeps it as a length-1 axis in the chunk selection, so the value
+    and the re-derived indexer's ``sel_shape`` differ in rank while agreeing in
+    element count.
+
+    Parametrized over both pipelines because the partial-encode path is
+    written twice -- ``_encode_partial_single`` for ``BatchedCodecPipeline``
+    and ``_encode_partial_sync`` for ``FusedCodecPipeline``.
+    """
+    ndim = len(selection)
+    shape = (4,) * ndim
+    inner = ShardingCodec(chunk_shape=(1,) * ndim, codecs=(BytesCodec(),))
+    serializer = ShardingCodec(
+        chunk_shape=(2,) * ndim, codecs=((inner,) if nested else (BytesCodec(),))
+    )
+    base = np.arange(4**ndim, dtype="int32").reshape(shape)
+    ix = np.ix_(*(np.atleast_1d(s) for s in selection))
+    # The value is shaped like the orthogonal result: integer axes dropped.
+    value_shape = tuple(len(s) for s in selection if not isinstance(s, int))
+    value = np.arange(math.prod(value_shape), dtype="int32").reshape(value_shape) + 100
+
+    with zarr.config.set({"codec_pipeline.path": pipeline_path}):
+        a = zarr.create_array(
+            MemoryStore(),
+            shape=shape,
+            chunks=(2,) + (4,) * (ndim - 1),
+            dtype=base.dtype,
+            serializer=serializer,
+            compressors=None,
+            fill_value=0,
+        )
+        a[:] = base
+        a.oindex[selection] = value
+
+        expected = base.copy()
+        expected[ix] = value.reshape(expected[ix].shape)
+        assert np.array_equal(a[:], expected)
+        assert np.array_equal(a.oindex[selection], value)

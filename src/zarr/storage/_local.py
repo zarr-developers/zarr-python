@@ -6,6 +6,7 @@ import io
 import os
 import shutil
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal, Self
@@ -22,7 +23,7 @@ from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import AccessModeLiteral, concurrent_map
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterable, Iterator
+    from collections.abc import AsyncIterator, Callable, Iterable, Iterator
 
     from zarr.core.buffer import BufferPrototype
 
@@ -58,6 +59,51 @@ else:
         os.unlink(src)
 
 
+# Windows error codes that MoveFileEx reports when the destination could not be
+# superseded. Replacing a name that was itself replaced moments earlier
+# intermittently fails this way with no second process and no open handle
+# involved, and a retry clears it in well under a millisecond. Zarr v2 hit the
+# same thing and fixed it in #698.
+#
+# ERROR_ACCESS_DENIED is also what Windows reports for conditions that will not
+# clear (the destination is a directory, is read-only, or is ACL-denied). Those
+# are retried too and surface the same error after the bounded delay below.
+#
+# Nothing else is retried. In particular the FileExistsError that the exclusive
+# path relies on to report an existing node is ERROR_ALREADY_EXISTS (183), so it
+# still propagates on the first attempt.
+_TRANSIENT_WINERRORS = frozenset(
+    {
+        5,  # ERROR_ACCESS_DENIED
+        32,  # ERROR_SHARING_VIOLATION
+    }
+)
+
+# Delay before each retry. The sequence sums to well under a second so that a
+# genuine failure still surfaces promptly; in practice most transient failures
+# clear on the first retry.
+_RETRY_DELAYS = (0.001, 0.005, 0.02, 0.05, 0.2)
+
+
+def _move_with_retry(tmp_path: Path, path: Path, move: Callable[[Path, Path], object]) -> None:
+    """Run `move(tmp_path, path)`, retrying while the destination is busy.
+
+    This is a single attempt on every platform but Windows, without needing to
+    test for one: only `winerror` values are ever retried, and off Windows an
+    `OSError` does not carry one.
+    """
+    for delay in _RETRY_DELAYS:
+        try:
+            move(tmp_path, path)
+        except OSError as e:
+            if getattr(e, "winerror", None) not in _TRANSIENT_WINERRORS:
+                raise
+            time.sleep(delay)
+        else:
+            return
+    move(tmp_path, path)
+
+
 @contextlib.contextmanager
 def _atomic_write(
     path: Path,
@@ -69,9 +115,9 @@ def _atomic_write(
         with tmp_path.open(mode) as f:
             yield f
         if exclusive:
-            _safe_move(tmp_path, path)
+            _move_with_retry(tmp_path, path, _safe_move)
         else:
-            tmp_path.replace(path)
+            _move_with_retry(tmp_path, path, Path.replace)
     except Exception:
         tmp_path.unlink(missing_ok=True)
         raise
@@ -209,7 +255,6 @@ class LocalStore(Store):
         if prototype is None:
             prototype = default_buffer_prototype()
         self._ensure_open_sync()
-        assert isinstance(key, str)
         path = self.root / key
         try:
             return _get(path, prototype, byte_range)
@@ -219,7 +264,6 @@ class LocalStore(Store):
     def set_sync(self, key: str, value: Buffer) -> None:
         self._ensure_open_sync()
         self._check_writable()
-        assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(
                 f"LocalStore.set(): `value` must be a Buffer instance. "
@@ -248,7 +292,6 @@ class LocalStore(Store):
             prototype = default_buffer_prototype()
         if not self._is_open:
             await self._open()
-        assert isinstance(key, str)
         path = self.root / key
 
         try:
@@ -264,7 +307,6 @@ class LocalStore(Store):
         # docstring inherited
         args = []
         for key, byte_range in key_ranges:
-            assert isinstance(key, str)
             path = self.root / key
             args.append((_get, path, prototype, byte_range))
         return await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
@@ -284,7 +326,6 @@ class LocalStore(Store):
         if not self._is_open:
             await self._open()
         self._check_writable()
-        assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(
                 f"LocalStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
@@ -363,10 +404,10 @@ class LocalStore(Store):
         if isinstance(dest_root, str):
             dest_root = Path(dest_root)
         os.makedirs(dest_root.parent, exist_ok=True)
-        if os.path.exists(dest_root):
+        if dest_root.exists():
             raise FileExistsError(f"Destination root {dest_root} already exists.")
         shutil.move(self.root, dest_root)
         self.root = dest_root
 
     async def getsize(self, key: str) -> int:
-        return os.path.getsize(self.root / key)
+        return (self.root / key).stat().st_size

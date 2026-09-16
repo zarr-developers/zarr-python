@@ -14,10 +14,10 @@ BYTES_CODEC_NAME: Final = "bytes"
 BytesCodecName = Literal["bytes"]
 """Literal type of the `name` field of the `bytes` codec."""
 
-Endian = Literal["little", "big"]
+Endianness = Literal["little", "big"]
 """Literal type of byte order of multi-byte numeric data."""
 
-ENDIAN: Final = ("little", "big")
+ENDIANNESS: Final = ("little", "big")
 """Tuple of permitted values for the `endian` field of the `bytes` codec."""
 
 
@@ -28,7 +28,7 @@ class BytesCodecConfiguration(TypedDict):
     The `endian` field is required for multi-byte data types.
     """
 
-    endian: NotRequired[Endian]
+    endian: NotRequired[Endianness]
 
 
 class BytesCodecObject(TypedDict):
@@ -55,10 +55,10 @@ omit `configuration` entirely.
 
 __all__ = [
     "BYTES_CODEC_NAME",
-    "ENDIAN",
+    "ENDIANNESS",
     "BytesCodecConfiguration",
     "BytesCodecMetadata",
     "BytesCodecName",
     "BytesCodecObject",
-    "Endian",
+    "Endianness",
 ]

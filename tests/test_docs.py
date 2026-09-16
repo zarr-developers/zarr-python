@@ -12,7 +12,7 @@ with a reason, so a block can never silently skip validation.
 
 from __future__ import annotations
 
-import os
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -82,7 +82,9 @@ S3_BUCKET = "example-bucket"
 
 
 @pytest.fixture
-def docs_s3_backend(moto_server: str) -> Generator[None, None, None]:
+def docs_s3_backend(
+    moto_server: str, monkeypatch: pytest.MonkeyPatch
+) -> Generator[None, None, None]:
     """Point docs S3 examples at the shared moto server (tests/conftest.py) via a
     process-wide AWS_ENDPOINT_URL, so a block can use a bare s3:// URL with no
     storage_options (see spike in the design notes). The server lifecycle belongs to the
@@ -92,8 +94,7 @@ def docs_s3_backend(moto_server: str) -> Generator[None, None, None]:
     botocore = pytest.importorskip("botocore")
     requests = pytest.importorskip("requests")
 
-    prev_endpoint = os.environ.get("AWS_ENDPOINT_URL")
-    os.environ["AWS_ENDPOINT_URL"] = moto_server
+    monkeypatch.setenv("AWS_ENDPOINT_URL", moto_server)
 
     session = botocore.session.Session()
     client = session.create_client("s3", endpoint_url=moto_server, region_name="us-east-1")
@@ -103,15 +104,9 @@ def docs_s3_backend(moto_server: str) -> Generator[None, None, None]:
     try:
         yield
     finally:
-        # Reset moto state and restore AWS_ENDPOINT_URL; the shared server keeps running
-        # (the moto_server fixture stops it at session end).
-        try:
-            requests.post(f"{moto_server}moto-api/reset")
-        finally:
-            if prev_endpoint is None:
-                os.environ.pop("AWS_ENDPOINT_URL", None)
-            else:
-                os.environ["AWS_ENDPOINT_URL"] = prev_endpoint
+        # Reset moto state; AWS_ENDPOINT_URL is restored automatically by monkeypatch.
+        # The shared server keeps running (the moto_server fixture stops it at session end).
+        requests.post(f"{moto_server}moto-api/reset")
 
 
 def test_markers_attribute_is_parsed(tmp_path: Path) -> None:
@@ -159,6 +154,42 @@ def test_no_unvalidated_blocks() -> None:
     assert not offenders, (
         'Docs python blocks must be exec="true", test="true", or exec="false" with a '
         "reason:\n" + "\n".join(offenders)
+    )
+
+
+_DESTRUCTIVE_FS_CALL = re.compile(
+    r"shutil\.rmtree|os\.(?:remove|unlink|rmdir|removedirs)\b|\.unlink\(|\.rmdir\(|rm -rf"
+)
+
+
+def test_no_destructive_filesystem_calls() -> None:
+    """Executed docs blocks must not delete files or directories.
+
+    Every python block that runs at build (exec="true") or under this harness
+    (test="true") executes in the *process* working directory: markdown-exec runs it
+    inside the mkdocs process and pytest-examples inside the pytest process, and neither
+    changes directory to the docs tree. A relative path in a deletion call therefore
+    resolves against wherever `mkdocs build` or `pytest` was started. Two sessions used to
+    open with `shutil.rmtree('data', ignore_errors=True)` to make their examples
+    re-runnable; started from any directory that happened to contain a `data/` folder --
+    a project checkout, or `/` -- the docs build silently emptied it. The sdist ships
+    `docs/` and `tests/` and `testpaths` collects `docs/user-guide`, so that reached users
+    running the shipped test suite, not just contributors.
+
+    Make examples re-runnable by creating with `overwrite=True` (or `mode="w"`) instead,
+    which is also what a reader copy-pasting the example a second time needs."""
+    offenders: list[str] = []
+    for example in find_examples(str(DOCS_ROOT)):
+        if not _is_tested(example.prefix_settings()):
+            continue
+        rel = Path(example.path).relative_to(DOCS_ROOT)
+        for offset, line in enumerate(example.source.splitlines()):
+            if _DESTRUCTIVE_FS_CALL.search(line):
+                offenders.append(f"{rel}:{example.start_line + offset}: {line.strip()}")
+
+    assert not offenders, (
+        "Executed docs blocks must not delete files or directories (they run in the "
+        "caller's working directory); create with overwrite=True instead:\n" + "\n".join(offenders)
     )
 
 
@@ -260,7 +291,7 @@ def test_documentation_examples(
         module_globals.update(result)
 
 
-@pytest.mark.parametrize("example", find_examples(str(SOURCES_ROOT)), ids=str)
+@pytest.mark.parametrize("example", list(find_examples(str(SOURCES_ROOT))), ids=str)
 def test_docstrings(example: CodeExample, eval_example: EvalExample) -> None:
     """Test our docstring examples."""
     if example.path.name == "config.py" and "your.module" in example.source:

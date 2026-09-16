@@ -44,7 +44,7 @@ def test_docstrings_match(callable_name: str) -> None:
 @pytest.mark.parametrize(
     ("parameter_name", "array_creation_routines"),
     [
-        (
+        pytest.param(
             ("store", "path"),
             (
                 asynchronous.create_array,
@@ -54,8 +54,9 @@ def test_docstrings_match(callable_name: str) -> None:
                 zarr.AsyncGroup.create_array,
                 zarr.Group.create_array,
             ),
+            id="store-path-create_array_group",
         ),
-        (
+        pytest.param(
             (
                 "store",
                 "path",
@@ -65,8 +66,9 @@ def test_docstrings_match(callable_name: str) -> None:
                 synchronous.create,
                 zarr.Group.create,
             ),
+            id="store-path-create",
         ),
-        (
+        pytest.param(
             (
                 (
                     "filters",
@@ -87,9 +89,9 @@ def test_docstrings_match(callable_name: str) -> None:
                 zarr.AsyncGroup.create_array,
                 zarr.Group.create_array,
             ),
+            id="encoding-params-create_and_array",
         ),
     ],
-    ids=str,
 )
 def test_docstring_consistent_parameters(
     parameter_name: str, array_creation_routines: tuple[Callable[[Any], Any], ...]

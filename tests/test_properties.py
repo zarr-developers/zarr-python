@@ -15,7 +15,7 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
-from hypothesis import assume, given, settings
+from hypothesis import assume, event, given, settings
 
 from zarr.abc.store import Store
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
@@ -26,11 +26,12 @@ from zarr.testing.strategies import (
     arrays,
     basic_indices,
     block_indices,
+    block_test_arrays,
     complex_rectilinear_arrays,
-    np_array_and_chunks,
     numpy_arrays,
     orthogonal_indices,
     rectilinear_arrays,
+    sharded_arrays,
     simple_arrays,
     stores,
     zarr_formats,
@@ -119,7 +120,6 @@ def test_array_creates_implicit_groups(array):
 # this decorator removes timeout; not ideal but it should avoid intermittent CI failures
 
 
-@pytest.mark.asyncio
 @settings(deadline=None)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
@@ -146,7 +146,6 @@ async def test_basic_indexing(data: st.DataObject) -> None:
     # TODO test async setitem?
 
 
-@pytest.mark.asyncio
 @settings(deadline=None)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
@@ -156,15 +155,21 @@ async def test_basic_indexing_complex_rectilinear(data: st.DataObject) -> None:
     assert_array_equal(nparray[indexer], zarray[indexer])
 
 
-@pytest.mark.asyncio
 @given(data=st.data())
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
+    # A sharded array is drawn as its own arm: simple_arrays shards only a few
+    # percent of its draws, and the sharding codec's write path for a selection
+    # with two or more array-indexed axes (GH4284) needs real weight here. That
+    # path only exists for a value with two or more axes, hence min_dims=2.
     zarray = data.draw(
         st.one_of(
             simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
             rectilinear_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1, max_side=20)),
+            sharded_arrays(
+                shapes=npst.array_shapes(min_dims=2, max_dims=4, min_side=1, max_side=8)
+            ),
         )
     )
     nparray = zarray[:]
@@ -179,12 +184,20 @@ async def test_oindex(data: st.DataObject) -> None:
     actual = await async_zarray.oindex.getitem(zindexer)
     assert_array_equal(nparray[npindexer], actual)
 
-    # sync get
-    assume(zarray.shards is None)  # GH2834
-    for idxr in npindexer:
-        if isinstance(idxr, np.ndarray) and idxr.size != np.unique(idxr).size:
+    # sync set
+    for idxr, size in zip(zindexer, nparray.shape, strict=True):
+        if isinstance(idxr, np.ndarray) and idxr.size != np.unique(idxr % size).size:
             # behaviour of setitem with repeated indices is not guaranteed in practice
+            # Negative and positive spellings of the same index are duplicates too.
             assume(False)
+    # The sharding codec sees a coordinate selection (the GH4284 path) when the
+    # chunk selection has more than one array axis or drops an integer axis.
+    n_array_axes = sum(isinstance(idxr, np.ndarray) for idxr in zindexer)
+    coordinate_path = n_array_axes > 1 or any(isinstance(idxr, int) for idxr in zindexer)
+    event(
+        f"oindex write: {'sharded' if zarray.shards is not None else 'unsharded'}, "
+        f"{'coordinate' if coordinate_path else 'orthogonal'} chunk selection"
+    )
     new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
     nparray[npindexer] = new_data
     zarray.oindex[zindexer] = new_data
@@ -193,7 +206,6 @@ async def test_oindex(data: st.DataObject) -> None:
     # note: async oindex setitem not yet implemented
 
 
-@pytest.mark.asyncio
 @given(data=st.data())
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_vindex(data: st.DataObject) -> None:
@@ -202,6 +214,7 @@ async def test_vindex(data: st.DataObject) -> None:
         st.one_of(
             simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
             rectilinear_arrays(shapes=npst.array_shapes(max_dims=3, min_side=1, max_side=20)),
+            sharded_arrays(),
         )
     )
     nparray = zarray[:]
@@ -221,13 +234,22 @@ async def test_vindex(data: st.DataObject) -> None:
     assert_array_equal(nparray[indexer], actual)
 
     # sync set
-    # FIXME!
-    # when the indexer is such that a value gets overwritten multiple times,
-    # I think the output depends on chunking.
-    # new_data = data.draw(npst.arrays(shape=st.just(actual.shape), dtype=nparray.dtype))
-    # nparray[indexer] = new_data
-    # zarray.vindex[indexer] = new_data
-    # assert_array_equal(nparray, zarray[:])
+    # Reads preserve the supplied indices; normalize negative indices explicitly when
+    # detecting repeated points rather than relying on a read to mutate the indexer.
+    points = np.stack(
+        [
+            (idxr % size).ravel()
+            for idxr, size in zip(np.broadcast_arrays(*indexer), nparray.shape, strict=True)
+        ],
+        axis=-1,
+    )
+    if len(np.unique(points, axis=0)) != len(points):
+        # behaviour of setitem with repeated coordinates is not guaranteed in practice
+        assume(False)
+    new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
+    nparray[indexer] = new_data
+    zarray.vindex[indexer] = new_data
+    assert_array_equal(nparray, zarray[:])
 
     # note: async vindex setitem not yet implemented
 
@@ -247,7 +269,6 @@ def test_mask_indexing(data: st.DataObject) -> None:
     assert_array_equal(expected, zarray.vindex[mask])
 
     # sync set, via both interfaces
-    assume(zarray.shards is None)  # GH2834
     new_data = data.draw(numpy_arrays(shapes=st.just(expected.shape), dtype=nparray.dtype))
     nparray[mask] = new_data
     zarray.set_mask_selection(mask, new_data)
@@ -261,20 +282,13 @@ def test_mask_indexing(data: st.DataObject) -> None:
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
 def test_block_indexing(data: st.DataObject) -> None:
-    # Block indexing addresses whole chunks on a regular grid; the array-space
-    # oracle in block_indices() assumes regular, unsharded chunks, so build the
-    # array directly from a regular chunking rather than drawing one that might
-    # be rectilinear or sharded.
-    nparray, chunks = data.draw(
-        np_array_and_chunks(arrays=numpy_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
-    )
-    store = data.draw(stores)
-    zarray = zarr.create_array(store=store, shape=nparray.shape, chunks=chunks, dtype=nparray.dtype)
-    zarray[...] = nparray
+    # Block indexing addresses whole inner chunks. block_indices() builds its
+    # array-space oracle from cumulative chunk offsets, so it works for regular
+    # (uniform), rectilinear, and sharded grids alike; block_test_arrays draws
+    # across that matrix (rectilinear + sharded is unsupported and not drawn).
+    zarray, nparray = data.draw(block_test_arrays())
 
-    block_indexer, array_indexer = data.draw(
-        block_indices(chunk_grid_shape=zarray.cdata_shape, chunks=chunks)
-    )
+    block_indexer, array_indexer = data.draw(block_indices(chunk_sizes=zarray.write_chunk_sizes))
     expected = nparray[array_indexer]
 
     # sync get, via both the .blocks interface and the dedicated method
@@ -458,3 +472,27 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
         assert serialized_complex_float_is_valid(asdict_dict["fill_value"])
     elif dtype_native.kind in ("M", "m") and np.isnat(meta.fill_value):
         assert asdict_dict["fill_value"] == -9223372036854775808
+
+
+def test_chunks_param_from_rectilinear_bare_int_roundtrip() -> None:
+    """Bare-int dims in rectilinear metadata (the spec's step-size shorthand,
+    produced by a scalar dimension of a mixed chunk spec) must pass
+    through the `chunks=` conversion unchanged. Wrapping one in a
+    single-element list turns "repeat to cover the axis" into "exactly one
+    chunk" and re-creation fails the sum-to-span check."""
+    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
+    from zarr.storage import MemoryStore
+    from zarr.testing.strategies import chunks_param_from_rectilinear
+
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        src = zarr.create_array(MemoryStore(), shape=(3, 3), chunks=([1, 2], 1), dtype="uint8")
+        grid = src.metadata.chunk_grid  # type: ignore[union-attr]
+        assert isinstance(grid, RectilinearChunkGridMetadata)
+        assert grid.chunk_shapes == ((1, 2), 1)
+        dst = zarr.create_array(
+            MemoryStore(),
+            shape=src.shape,
+            chunks=chunks_param_from_rectilinear(grid),
+            dtype="uint8",
+        )
+        assert dst.metadata.chunk_grid == grid  # type: ignore[union-attr]
