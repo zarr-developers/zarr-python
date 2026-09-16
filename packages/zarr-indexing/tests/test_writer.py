@@ -265,3 +265,198 @@ def test_random_selection_chain_scatter(backend: str) -> None:
             expected.flat[identifier] = value
         view.write(values)
         np.testing.assert_array_equal(source[:], expected)
+
+
+class _ChunkTouches:
+    """Count the storage round trips a zarr array makes, one per chunk key."""
+
+    def __init__(self) -> None:
+        self.gets = 0
+        self.sets = 0
+
+    @classmethod
+    def wrap(cls, zarr: Any) -> tuple[Any, _ChunkTouches]:
+        counter = cls()
+
+        class CountingStore(zarr.storage.MemoryStore):
+            async def get(self, key: str, prototype: Any, byte_range: Any = None) -> Any:
+                counter.gets += 1
+                return await super().get(key, prototype, byte_range)
+
+            async def set(self, key: str, value: Any) -> None:
+                counter.sets += 1
+                await super().set(key, value)
+
+        return CountingStore(), counter
+
+
+@pytest.mark.parametrize("sharded", [False, True])
+@pytest.mark.parametrize("case", ["outer_rows", "vector_points", "duplicates"])
+def test_fancy_writes_touch_each_write_chunk_once(sharded: bool, case: str) -> None:
+    """Storage round trips scale with touched write chunks, not selected elements."""
+    zarr = pytest.importorskip("zarr")
+    from zarr_indexing.lazy_array import LazyArray
+
+    store, touches = _ChunkTouches.wrap(zarr)
+    kwargs: dict[str, Any] = {"chunks": (2, 2), "shards": (4, 4)} if sharded else {"chunks": (4, 4)}
+    source = zarr.create_array(store, shape=(12, 12), dtype="int64", **kwargs)
+    source[:] = 0
+    expected = np.zeros((12, 12), dtype=np.int64)
+    touches.gets = touches.sets = 0
+    view = LazyArray(source)
+    if case == "outer_rows":
+        rows = [1, 5, 11]
+        values = np.arange(3 * 12).reshape(3, 12)
+        view.oindex[rows, :] = values
+        expected[rows, :] = values
+        touched = {(r // 4, c) for r in rows for c in range(3)}
+    elif case == "vector_points":
+        rows, cols = [0, 7, 7, 11, 3], [0, 2, 9, 11, 5]
+        values = np.arange(5) + 10
+        view.vindex[rows, cols] = values
+        expected[rows, cols] = values
+        touched = {(r // 4, c // 4) for r, c in zip(rows, cols, strict=True)}
+    else:
+        view.oindex[[5, 5, 6], 2:5] = np.array([[1] * 3, [2] * 3, [3] * 3])
+        expected[5, 2:5] = 2
+        expected[6, 2:5] = 3
+        touched = {(1, 0), (1, 1)}
+    gets, sets = touches.gets, touches.sets
+    np.testing.assert_array_equal(source[:], expected)
+    assert sets == len(touched), (sets, len(touched))
+    # At most the hull read plus zarr's own partial-chunk read per cell.
+    assert gets <= 2 * len(touched), (gets, len(touched))
+
+
+def test_write_grid_prefers_write_chunk_sizes_over_chunks() -> None:
+    """A source whose write grid is coarser than its read grid is written by the write grid."""
+    from zarr_indexing.lazy_array import LazyArray
+
+    class ShardedSource:
+        chunks = ((2, 2, 2), (3, 3))
+        write_chunk_sizes = ((6,), (3, 3))
+
+        def __init__(self) -> None:
+            self.data = np.zeros((6, 6), dtype=np.int64)
+            self.shape = self.data.shape
+            self.dtype = self.data.dtype
+            self.boxes: list[tuple[slice, ...]] = []
+
+        def __getitem__(self, key: Any) -> Any:
+            return self.data[key]
+
+        def __setitem__(self, key: Any, value: Any) -> None:
+            self.boxes.append(key)
+            self.data[key] = value
+
+    source = ShardedSource()
+    LazyArray(source).oindex[[0, 5], :] = 7
+    expected = np.zeros((6, 6), dtype=np.int64)
+    expected[[0, 5], :] = 7
+    np.testing.assert_array_equal(source.data, expected)
+    # One read-modify-write per touched write cell: two column shards, each
+    # spanning all six rows, rather than the four inner chunks a read grid names.
+    assert len(source.boxes) == 2
+    assert all(box[0] == slice(0, 6) for box in source.boxes)
+
+
+def test_write_only_source_falls_back_to_element_assignment() -> None:
+    source = BasicSource(np.zeros((3, 4), dtype=np.int64))
+    transform = IndexTransform.from_shape(source.shape).oindex[[2, 0], [1, 3]]
+    write_into(source, transform, np.array([[1, 2], [3, 4]]))
+    assert len(source.calls) == 4
+    expected = np.zeros((3, 4), dtype=np.int64)
+    expected[np.ix_([2, 0], [1, 3])] = [[1, 2], [3, 4]]
+    np.testing.assert_array_equal(source.data, expected)
+
+
+def test_masked_zero_rank_affine_write_keeps_payload() -> None:
+    from zarr_indexing.lazy_array import LazyArray
+
+    source = np.ma.array([1, 2, 3])
+    LazyArray(source)[1].write(np.ma.array(7, mask=True))
+    np.testing.assert_array_equal(source.data, [1, 7, 3])
+    np.testing.assert_array_equal(np.ma.getmaskarray(source), [False, True, False])
+
+
+def test_write_rank_error_precedes_value_broadcasting() -> None:
+    source = np.zeros((3, 4), dtype=np.int64)
+    transform = IndexTransform.from_shape((3,))
+    with pytest.raises(ValueError, match="rank"):
+        write_into(source, transform, np.arange(6).reshape(2, 3))
+    np.testing.assert_array_equal(source, 0)
+
+
+def test_empty_selection_still_validates_values() -> None:
+    source = np.zeros(5, dtype=np.int64)
+    with pytest.raises(ValueError, match="broadcast"):
+        write_into(source, IndexTransform.from_shape((5,))[2:2], np.arange(3))
+    with pytest.raises(ValueError):
+        write_into(source, IndexTransform.from_shape((5,))[2:2], ["not a number"])
+    np.testing.assert_array_equal(source, 0)
+
+
+def test_gridless_readable_source_never_reads() -> None:
+    """Without a write grid the hull could be the whole array, so elements are assigned."""
+    from zarr_indexing.lazy_array import LazyArray
+
+    class ReadableSource(BasicSource):
+        def __getitem__(self, key: Any) -> Any:
+            raise AssertionError("gridless writes must not read the source")
+
+    source = ReadableSource(np.zeros((4, 4), dtype=np.int64))
+    LazyArray(source).vindex[[0, 3], [3, 0]] = [1, 2]
+    expected = np.zeros((4, 4), dtype=np.int64)
+    expected[[0, 3], [3, 0]] = [1, 2]
+    np.testing.assert_array_equal(source.data, expected)
+    assert len(source.calls) == 2
+
+
+def test_unfactorable_transform_falls_back_to_elements_on_a_gridded_source() -> None:
+    """A diagonal reads one input axis twice, which the planner rejects; it is still written."""
+
+    class GriddedSource(BasicSource):
+        chunks = ((2, 2), (2, 2))
+
+        def __getitem__(self, key: Any) -> Any:
+            return self.data[key]
+
+    source = GriddedSource(np.zeros((4, 4), dtype=np.int64))
+    diagonal = IndexTransform(IndexDomain.from_shape((4,)), (DimensionMap(0), DimensionMap(0)))
+    write_into(source, diagonal, np.arange(1, 5), write_grid=None)
+    from zarr_indexing.grid import dimension_grids_from_chunks
+
+    source.data[:] = 0
+    source.calls.clear()
+    write_into(
+        source,
+        diagonal,
+        np.arange(1, 5),
+        write_grid=dimension_grids_from_chunks(source.chunks, (4, 4)),
+    )
+    np.testing.assert_array_equal(source.data, np.diag([1, 2, 3, 4]))
+    assert len(source.calls) == 4
+
+
+def test_writes_bypass_the_reader_so_a_caching_reader_serves_stale_values() -> None:
+    """Pins the documented hazard: the reader is not invalidated by `write`."""
+    from zarr_indexing.lazy_array import LazyArray
+    from zarr_indexing.reader import ReadContext, basic_reader
+
+    class CachingReader:
+        def __init__(self) -> None:
+            self.cache: dict[tuple[Any, ...], Any] = {}
+
+        def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
+            key = (context.transform.domain.shape, str(context.transform.to_json()))
+            if key not in self.cache:
+                basic_reader.read_into(source, context, out)
+                self.cache[key] = out.copy()
+            out[...] = self.cache[key]
+
+    source = np.arange(6)
+    view = LazyArray(source).with_reader(CachingReader())[1:4]
+    np.testing.assert_array_equal(view.result(), [1, 2, 3])
+    view.write([7, 8, 9])
+    np.testing.assert_array_equal(source, [0, 7, 8, 9, 4, 5])
+    np.testing.assert_array_equal(view.result(), [1, 2, 3])

@@ -250,6 +250,25 @@ def _discover_parts(array: Any, shape: tuple[int, ...]) -> tuple[DimensionGrid, 
         return None
 
 
+def _discover_write_grid(array: Any, shape: tuple[int, ...]) -> tuple[DimensionGrid, ...] | None:
+    """Resolve the grid `array` commits writes in, or None for one whole cell.
+
+    The write grid can be coarser than the read grid: a sharded zarr array
+    decodes inner chunks but replaces whole shards, so `write_chunk_sizes` is
+    consulted before `chunks`. As with read discovery, anything unusable
+    means "no advertised grid" rather than an error.
+    """
+    declared = _read_source_attribute(array, "write_chunk_sizes")
+    if declared is None:
+        declared = _read_source_attribute(array, "chunks")
+    if declared is None:
+        return None
+    try:
+        return dimension_grids_from_chunks(declared, shape)
+    except (ValueError, TypeError):
+        return None
+
+
 def _whole_array_grids(shape: tuple[int, ...]) -> tuple[DimensionGrid, ...]:
     """A partitioning with a single part covering the whole array."""
     return tuple(FixedDimension(size=extent, extent=extent) for extent in shape)
@@ -1013,16 +1032,31 @@ class LazyArray:
         The source must support integer/slice assignment. Values are copied
         before mutation, including when they alias the source. Writes follow
         C-order view coordinates; the last occurrence wins for repeated source
-        coordinates. Partitioning and the read adapter do not affect writes.
+        coordinates.
 
-        Affine selections use a basic assignment where possible; other views
-        use one scalar assignment per selected element. Backend errors propagate
-        and may leave a partially written source. This method does not provide
+        Affine selections use one basic assignment. Other selections are
+        scattered against the source's **write grid**, discovered from
+        `write_chunk_sizes` or `chunks`: each touched cell is read once, updated
+        in memory, and written back, so the number of storage round trips is
+        bounded by the number of touched cells rather than selected elements.
+        A NumPy source receives one fancy assignment instead, and a source with
+        no advertised grid is written one element at a time without reading.
+        The read-side partitioning (`with_parts`) does not affect writes.
+
+        Writes go to the source directly and bypass the reader. A reader that
+        caches source data is not invalidated, so reading after writing through
+        such a reader may return stale values. Backend errors propagate and may
+        leave a partially written source. This method does not provide
         transactions, concurrency control, or asynchronous execution.
         """
         from zarr_indexing.writer import write_into
 
-        write_into(self._array, self._transform, values)
+        write_into(
+            self._array,
+            self._transform,
+            values,
+            write_grid=_discover_write_grid(self._array, self._base_shape),
+        )
 
     def result(self, *, parts: Sequence[Partition] | None = None) -> Any:
         """Materialize this view.
@@ -1179,6 +1213,9 @@ class LazyArray:
 
     def __iter__(self) -> Iterator[LazyArray]:
         """Iterate over lazy first-axis views without reading source values.
+
+        Each element is a `LazyArray`, not a value: call `result()` or convert
+        with NumPy before doing arithmetic on it.
 
         The rank check happens in `__iter__` itself rather than in the
         generator, so `iter(view)` on a zero-rank view raises immediately as

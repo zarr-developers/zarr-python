@@ -60,6 +60,7 @@ def test_eager_adapter_executes_selection(selection: Any) -> None:
 
 
 def test_eager_adapter_distinguishes_token_semantics() -> None:
+    pytest.importorskip("dask")
     view = LazyArray(np.arange(8))[::2]
     assert EagerArrayAdapter(view).__dask_tokenize__() != view.__dask_tokenize__()
 
