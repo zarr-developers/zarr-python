@@ -202,14 +202,14 @@ async def test_make_store_path_local(
 @pytest.mark.parametrize("store_type", [str, Path])
 @pytest.mark.parametrize("mode", ["r", "w"])
 async def test_make_store_path_zip_path(
-    tmpdir: LEGACY_PATH,
+    tmp_path: Path,
     store_type: type[str] | type[Path] | type[LocalStore],
     mode: AccessModeLiteral,
 ) -> None:
     """
     Test that make_store_path creates a ZipStore given a path ending in .zip
     """
-    zippath = Path(tmpdir) / "zarr.zip"
+    zippath = Path(tmp_path) / "zarr.zip"
     store_like = store_type(str(zippath))
 
     if mode == "r":
