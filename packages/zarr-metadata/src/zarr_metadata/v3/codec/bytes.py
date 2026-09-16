@@ -51,6 +51,8 @@ The configuration has no required keys (`endian` is conditionally required
 at runtime based on data type), so the spec's short-hand-name form is
 permitted in addition to the object form, and the object form may itself
 omit `configuration` entirely.
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/bytes/index.rst#L64-L69 ("endian: Required for data types for which endianness is applicable")
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564
 """
 
 __all__ = [

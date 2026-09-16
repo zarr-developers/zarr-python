@@ -31,6 +31,7 @@ class DefaultChunkKeyEncodingConfiguration(TypedDict):
     """Configuration for the default chunk key encoding.
 
     `separator` is optional and defaults to `"/"` per spec.
+      https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-key-encodings/default/index.rst#L27-L29
     """
 
     separator: NotRequired[DefaultChunkKeyEncodingSeparator]

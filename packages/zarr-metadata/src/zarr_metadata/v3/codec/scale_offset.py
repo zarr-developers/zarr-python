@@ -1,7 +1,7 @@
 """
 Scale-offset codec types.
 
-See https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/scale_offset
+See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md
 """
 
 from typing import Final, Literal, NotRequired
@@ -38,6 +38,7 @@ class ScaleOffsetCodecObject(TypedDict):
     `configuration` is itself optional per spec — when both `offset` and
     `scale` are at their identity defaults, the codec is a no-op and the
     entire `configuration` field may be omitted.
+      https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md#L18 and #L35
     """
 
     name: ScaleOffsetCodecName
