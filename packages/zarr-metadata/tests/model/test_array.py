@@ -865,7 +865,7 @@ def test_v2_from_key_value_rejects_zarray_attributes() -> None:
 
 
 def test_v2_from_key_value_ignores_zarray_extra_members() -> None:
-    """Other raw `.zarray` members "SHOULD be ignored by implementations"."""
+    """Other raw `.zarray` members "SHOULD be ignored by implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92)."""
     doc: dict[str, object] = dict(ZarrV2ArrayMetadata.create_default().to_json())
     doc.pop("attributes", None)
     doc["vendor_extension"] = {}
@@ -1337,7 +1337,10 @@ def test_v2_shape_and_chunks_must_have_equal_rank() -> None:
 
 
 def test_v2_filters_may_be_empty() -> None:
-    """An empty filter list is a list: the spec says "a list ... or null", with no minimum."""
+    """An empty filter list is a list: the spec says "a list ... or null", with no minimum.
+
+    https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79
+    """
     doc = dict(ZarrV2ArrayMetadata.create_default().to_json())
     doc["filters"] = ()
 
@@ -1389,7 +1392,10 @@ def test_array_zarr_format_rejects_float(
 
 
 def test_array_v2_ignores_unknown_document_member() -> None:
-    """Other .zarray keys "SHOULD NOT be present ... and SHOULD be ignored": tolerated, dropped."""
+    """Other .zarray keys "SHOULD NOT be present ... and SHOULD be ignored": tolerated, dropped.
+
+    https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92
+    """
     doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"unexpected": 1}
 
     assert validate_array_metadata_v2(doc) == []

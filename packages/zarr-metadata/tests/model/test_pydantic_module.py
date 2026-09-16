@@ -183,7 +183,7 @@ def test_array_schemas_reject_negative_dimensions() -> None:
 
 
 def test_v2_array_schema_allows_empty_filters() -> None:
-    """The v2 schema, like the runtime, takes "a list ... or null" at its word: no minimum."""
+    """The v2 schema, like the runtime, takes "a list ... or null" at its word (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79)."""
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
     doc["filters"] = []
     adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
@@ -227,7 +227,7 @@ def test_v2_schema_rejects_unknown_document_members(
 
 
 def test_v2_array_schema_allows_unknown_document_members() -> None:
-    """The v2 array document is open (other keys SHOULD be ignored), in runtime and schema."""
+    """The v2 array document is open ("SHOULD be ignored", https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), in runtime and schema."""
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
     doc["unexpected"] = 1
     adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)

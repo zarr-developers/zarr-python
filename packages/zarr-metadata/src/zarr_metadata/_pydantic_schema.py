@@ -78,8 +78,9 @@ class ZarrV2ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
     """Schema input for the merged v2 array representation.
 
     Open, like the runtime validator: the v2 spec says other keys "SHOULD NOT
-    be present ... and SHOULD be ignored by implementations" (the group
-    document's "MUST NOT" keeps `ZarrV2GroupMetadataJSON` closed).
+    be present ... and SHOULD be ignored by implementations"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92); the group document's "MUST NOT" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313) keeps
+    `ZarrV2GroupMetadataJSON` closed.
     """
 
     zarr_format: Literal[2]
