@@ -10,21 +10,26 @@ import numpy.typing as npt
 from typing_extensions import deprecated
 
 from zarr.abc.store import Store
+from zarr.core._json import buffer_to_json_object
 from zarr.core.array import (
     DEFAULT_FILL_VALUE,
     Array,
     AsyncArray,
     CompressorLike,
-    _array_metadata_from_docs,
-    _fetch_array_metadata_docs,
-    _MetadataDocs,
+    _array_metadata_dict_v2,
     create_array,
     from_array,
 )
 from zarr.core.array_spec import ArrayConfigLike, parse_array_config
 from zarr.core.buffer import NDArrayLike
+from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.common import (
     JSON,
+    ZARR_JSON,
+    ZARRAY_JSON,
+    ZATTRS_JSON,
+    ZGROUP_JSON,
+    ZMETADATA_V2_JSON,
     AccessModeLiteral,
     DimensionNamesLike,
     MemoryOrder,
@@ -37,12 +42,14 @@ from zarr.core.group import (
     AsyncGroup,
     ConsolidatedMetadata,
     GroupMetadata,
+    _resolve_use_consolidated,
     create_hierarchy,
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata
 from zarr.errors import (
     ArrayNotFoundError,
     GroupNotFoundError,
+    MetadataValidationError,
     NodeTypeValidationError,
     ZarrDeprecationWarning,
     ZarrRuntimeWarning,
@@ -394,29 +401,27 @@ async def open(
 
     # TODO: the mode check below seems wrong!
     if "shape" not in kwargs and mode in {"a", "r", "r+", "w"}:
-        # Read the array metadata documents once: if they turn out not to describe
-        # an array, the group open below reuses them instead of reading them again.
-        docs = await _fetch_array_metadata_docs(store_path, zarr_format=zarr_format)
-        try:
-            metadata_dict = _array_metadata_from_docs(docs, store_path, zarr_format)
-            # TODO: remove this cast when we fix typing for array metadata dicts
-            _metadata_dict = cast("ArrayMetadataDict", metadata_dict)
-            # for v2, the above would already have raised an exception if not an array
-            zarr_format = _metadata_dict["zarr_format"]
-            is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
-            if is_v3_array or zarr_format == 2:
-                return AsyncArray(
-                    store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
-                )
-        except (FileNotFoundError, NodeTypeValidationError):
-            pass
-        return await open_group(
-            store=store_path,
-            zarr_format=zarr_format,
-            mode=mode,
-            _pre_fetched_metadata=docs,
-            **kwargs,
+        if zarr_format not in (2, 3, None):
+            msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."
+            raise MetadataValidationError(msg)
+        # Zarr format 3 first: its one document says whether the node is an array
+        # or a group and holds everything needed to open it. Only when there is no
+        # zarr.json are the format 2 documents read, so a path holding both formats
+        # opens as format 3 without a second look.
+        use_consolidated = _resolve_use_consolidated(
+            store_path.store, kwargs.get("use_consolidated")
         )
+        config = kwargs.get("config")
+        node = None
+        if zarr_format != 2:
+            node = await _open_v3(store_path, use_consolidated=use_consolidated, config=config)
+        if node is None and zarr_format != 3:
+            node = await _open_v2(store_path, use_consolidated=use_consolidated, config=config)
+        # An existing array is returned whatever the mode; an existing group only in
+        # a read mode, since "w" means overwrite and that is open_group's business.
+        if isinstance(node, AsyncArray) or (node is not None and mode in _READ_MODES):
+            return node
+        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
     try:
         return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
@@ -425,6 +430,61 @@ async def open(
         # NodeTypeValidationError for failing to parse node metadata as an array when it's
         # actually a group
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+
+
+async def _open_v3(
+    store_path: StorePath, *, use_consolidated: bool | str | None, config: ArrayConfigLike | None
+) -> AnyAsyncArray | AsyncGroup | None:
+    """Open the Zarr format 3 node at `store_path`, or return None if there is none.
+
+    One read: `zarr.json` says whether the node is an array or a group and holds
+    everything needed to open it.
+    """
+    zarr_json_bytes = await (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype)
+    if zarr_json_bytes is None:
+        return None
+    metadata = buffer_to_json_object(zarr_json_bytes)
+    if metadata.get("node_type") == "array":
+        # TODO: remove this cast when we fix typing for array metadata dicts
+        return AsyncArray(
+            store_path=store_path, metadata=cast("ArrayMetadataDict", metadata), config=config
+        )
+    # anything else is a group, or fails to be one in GroupMetadata.from_dict
+    return AsyncGroup._from_dict_v3(store_path, metadata, use_consolidated=use_consolidated)
+
+
+async def _open_v2(
+    store_path: StorePath, *, use_consolidated: bool | str | None, config: ArrayConfigLike | None
+) -> AnyAsyncArray | AsyncGroup | None:
+    """Open the Zarr format 2 node at `store_path`, or return None if there is none.
+
+    One concurrent read of `.zarray`, `.zgroup`, `.zattrs` and, when it might be
+    used, the consolidated metadata document. `.zarray` makes the node an array
+    and `.zgroup` a group, the array winning if both are present.
+    """
+    consolidated_key = use_consolidated if isinstance(use_consolidated, str) else ZMETADATA_V2_JSON
+    keys = [ZARRAY_JSON, ZGROUP_JSON, ZATTRS_JSON]
+    if use_consolidated or use_consolidated is None:
+        keys.append(consolidated_key)
+    zarray_bytes, zgroup_bytes, zattrs_bytes, *rest = await asyncio.gather(
+        *((store_path / key).get(prototype=cpu_buffer_prototype) for key in keys)
+    )
+    if zarray_bytes is not None:
+        metadata = _array_metadata_dict_v2(zarray_bytes, zattrs_bytes)
+        # TODO: remove this cast when we fix typing for array metadata dicts
+        return AsyncArray(
+            store_path=store_path, metadata=cast("ArrayMetadataDict", metadata), config=config
+        )
+    if zgroup_bytes is None:
+        return None
+    return AsyncGroup._from_bytes_v2(
+        store_path,
+        zgroup_bytes,
+        zattrs_bytes,
+        rest[0] if rest else None,
+        use_consolidated=use_consolidated,
+        consolidated_key=consolidated_key,
+    )
 
 
 async def open_consolidated(
@@ -801,7 +861,6 @@ async def open_group(
     meta_array: Any | None = None,  # not used
     attributes: dict[str, JSON] | None = None,
     use_consolidated: bool | str | None = None,
-    _pre_fetched_metadata: _MetadataDocs | None = None,
 ) -> AsyncGroup:
     """Open a group using file-mode-like semantics.
 
@@ -852,12 +911,6 @@ async def open_group(
         Zarr format 2 allowed configuring the key storing the consolidated metadata
         (`.zmetadata` by default). Specify the custom key as `use_consolidated`
         to load consolidated metadata from a non-default key.
-    _pre_fetched_metadata : _MetadataDocs or None, default None
-        Private. Metadata documents for this path that the caller already read,
-        to use instead of reading them again. Only consulted when `zarr_format`
-        is None and the group is opened rather than created.
-        [`zarr.api.asynchronous.open`][zarr.api.asynchronous.open] passes what it
-        read while looking for an array before falling back to opening a group.
 
     Returns
     -------
@@ -881,10 +934,7 @@ async def open_group(
     try:
         if mode in _READ_MODES:
             return await AsyncGroup.open(
-                store_path,
-                zarr_format=zarr_format,
-                use_consolidated=use_consolidated,
-                _pre_fetched_metadata=_pre_fetched_metadata,
+                store_path, zarr_format=zarr_format, use_consolidated=use_consolidated
             )
     except (KeyError, FileNotFoundError):
         pass

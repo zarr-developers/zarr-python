@@ -25,7 +25,6 @@ from zarr.core.array import (
     FiltersLike,
     SerializerLike,
     ShardsLike,
-    _MetadataDocs,
     _parse_deprecated_compressor,
     create_array,
 )
@@ -84,6 +83,23 @@ if TYPE_CHECKING:
     from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
 
 logger = logging.getLogger("zarr.group")
+
+
+def _resolve_use_consolidated(
+    store: Store, use_consolidated: bool | str | None
+) -> bool | str | None:
+    """Settle `use_consolidated` against what `store` supports.
+
+    A store that can't hold consolidated metadata makes the answer False, unless
+    consolidated metadata was explicitly asked for, which is an error.
+    """
+    if store.supports_consolidated_metadata:
+        return use_consolidated
+    if use_consolidated:
+        raise ValueError(
+            f"The Zarr store in use ({type(store).__name__}) doesn't support consolidated metadata."
+        )
+    return False
 
 
 def parse_zarr_format(data: Any) -> ZarrFormat:
@@ -500,7 +516,6 @@ class AsyncGroup:
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
         use_consolidated: bool | str | None = None,
-        _pre_fetched_metadata: _MetadataDocs | None = None,
     ) -> AsyncGroup:
         """Open a new AsyncGroup
 
@@ -525,26 +540,9 @@ class AsyncGroup:
             Zarr format 2 allowed configuring the key storing the consolidated metadata
             (``.zmetadata`` by default). Specify the custom key as ``use_consolidated``
             to load consolidated metadata from a non-default key.
-        _pre_fetched_metadata : _MetadataDocs or None, default None
-            Private. Metadata documents for this path that the caller already
-            read, to use instead of reading them again. Only the ``zarr.json``
-            and ``.zattrs`` entries are consulted, and only when ``zarr_format``
-            is None; a ``zarr.json`` in hand also settles the format before any
-            further read, so a format 3 group costs no reads at all here.
-            `zarr.api.asynchronous.open` passes what it read while looking for
-            an array before falling back to opening a group.
         """
         store_path = await make_store_path(store)
-        if not store_path.store.supports_consolidated_metadata:
-            # Fail if consolidated metadata was requested but the Store doesn't support it
-            if use_consolidated:
-                store_name = type(store_path.store).__name__
-                raise ValueError(
-                    f"The Zarr store in use ({store_name}) doesn't support consolidated metadata."
-                )
-
-            # if use_consolidated was None (optional), the Store dictates it doesn't want consolidation
-            use_consolidated = False
+        use_consolidated = _resolve_use_consolidated(store_path.store, use_consolidated)
 
         consolidated_key = ZMETADATA_V2_JSON
 
@@ -573,30 +571,17 @@ class AsyncGroup:
             if zarr_json_bytes is None:
                 raise FileNotFoundError(store_path)
         elif zarr_format is None:
-            # A consolidated document is only worth reading if it might be used.
-            want_consolidated = use_consolidated or use_consolidated is None
-            pre_fetched = _pre_fetched_metadata or {}
-            if "zarr_json" in pre_fetched and "zattrs" in pre_fetched:
-                # The caller already read these, and they settle the format before
-                # anything else is read: a zarr.json means format 3, which has no
-                # use for .zgroup or a consolidated document.
-                zarr_json_bytes = pre_fetched["zarr_json"]
-                zattrs_bytes = pre_fetched["zattrs"]
-                zgroup_bytes = maybe_consolidated_metadata_bytes = None
-                if zarr_json_bytes is None:
-                    paths = [store_path / ZGROUP_JSON]
-                    if want_consolidated:
-                        paths.append(store_path / consolidated_key)
-                    zgroup_bytes, *rest = await asyncio.gather(*[path.get() for path in paths])
-                    maybe_consolidated_metadata_bytes = rest[0] if rest else None
-            else:
-                paths = [store_path / ZARR_JSON, store_path / ZGROUP_JSON, store_path / ZATTRS_JSON]
-                if want_consolidated:
-                    paths.append(store_path / consolidated_key)
-                zarr_json_bytes, zgroup_bytes, zattrs_bytes, *rest = await asyncio.gather(
-                    *[path.get() for path in paths]
-                )
-                maybe_consolidated_metadata_bytes = rest[0] if rest else None
+            (
+                zarr_json_bytes,
+                zgroup_bytes,
+                zattrs_bytes,
+                maybe_consolidated_metadata_bytes,
+            ) = await asyncio.gather(
+                (store_path / ZARR_JSON).get(),
+                (store_path / ZGROUP_JSON).get(),
+                (store_path / ZATTRS_JSON).get(),
+                (store_path / str(consolidated_key)).get(),
+            )
             if zarr_json_bytes is not None and zgroup_bytes is not None:
                 # warn and favor v3
                 msg = f"Both zarr.json (Zarr format 3) and .zgroup (Zarr format 2) metadata objects exist at {store_path}. Zarr format 3 will be used."
@@ -617,30 +602,20 @@ class AsyncGroup:
         if zarr_format == 2:
             if zgroup_bytes is None:
                 raise FileNotFoundError(store_path)
-
-            if use_consolidated and maybe_consolidated_metadata_bytes is None:
-                # the user requested consolidated metadata, but it was missing
-                raise ValueError(consolidated_key)
-
-            elif use_consolidated is False:
-                # the user explicitly opted out of consolidated_metadata.
-                # Discard anything we might have read.
-                maybe_consolidated_metadata_bytes = None
-
             return cls._from_bytes_v2(
-                store_path, zgroup_bytes, zattrs_bytes, maybe_consolidated_metadata_bytes
+                store_path,
+                zgroup_bytes,
+                zattrs_bytes,
+                maybe_consolidated_metadata_bytes,
+                use_consolidated=use_consolidated,
+                consolidated_key=consolidated_key,
             )
         else:
             # V3 groups are comprised of a zarr.json object
             if zarr_json_bytes is None:
                 raise FileNotFoundError(store_path)
-            if not isinstance(use_consolidated, bool | None):
-                raise TypeError("use_consolidated must be a bool or None for Zarr format 3.")
-
             return cls._from_bytes_v3(
-                store_path,
-                zarr_json_bytes,
-                use_consolidated=use_consolidated,
+                store_path, zarr_json_bytes, use_consolidated=use_consolidated
             )
 
     @classmethod
@@ -650,7 +625,18 @@ class AsyncGroup:
         zgroup_bytes: Buffer,
         zattrs_bytes: Buffer | None,
         consolidated_metadata_bytes: Buffer | None,
+        *,
+        use_consolidated: bool | str | None = None,
+        consolidated_key: str = ZMETADATA_V2_JSON,
     ) -> AsyncGroup:
+        if use_consolidated and consolidated_metadata_bytes is None:
+            # the user requested consolidated metadata, but it was missing
+            raise ValueError(consolidated_key)
+        elif use_consolidated is False:
+            # the user explicitly opted out of consolidated_metadata.
+            # Discard anything we might have read.
+            consolidated_metadata_bytes = None
+
         # V2 groups are comprised of a .zgroup and .zattrs objects
         zgroup = buffer_to_json_object(zgroup_bytes)
         zattrs = buffer_to_json_object(zattrs_bytes) if zattrs_bytes is not None else {}
@@ -691,9 +677,21 @@ class AsyncGroup:
         cls,
         store_path: StorePath,
         zarr_json_bytes: Buffer,
-        use_consolidated: bool | None,
+        use_consolidated: bool | str | None,
     ) -> AsyncGroup:
         group_metadata = buffer_to_json_object(zarr_json_bytes)
+        return cls._from_dict_v3(store_path, group_metadata, use_consolidated=use_consolidated)
+
+    @classmethod
+    def _from_dict_v3(
+        cls,
+        store_path: StorePath,
+        group_metadata: dict[str, JSON],
+        use_consolidated: bool | str | None,
+    ) -> AsyncGroup:
+        """Build the group from an already-parsed `zarr.json` document."""
+        if not isinstance(use_consolidated, bool | None):
+            raise TypeError("use_consolidated must be a bool or None for Zarr format 3.")
         if use_consolidated and group_metadata.get("consolidated_metadata") is None:
             msg = f"Consolidated metadata requested with 'use_consolidated=True' but not found in '{store_path.path}'."
             raise ValueError(msg)

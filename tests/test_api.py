@@ -367,9 +367,13 @@ def test_array_open_array_not_found_sync() -> None:
 def test_v2_and_v3_exist_at_same_path(store: Store) -> None:
     zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=3)
     zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=2)
+    # `open` reads only zarr.json and takes the format 3 node without a second look
+    node = zarr.open(store=store)
+    assert node.metadata.zarr_format == 3
+    # `open_array` looks at both and says so
     msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store}. Zarr v3 will be used."
     with pytest.warns(ZarrUserWarning, match=re.escape(msg)):
-        zarr.open(store=store)
+        zarr.open_array(store=store)
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1411,55 +1415,65 @@ class _CountingStore(WrapperStore[Store]):
 
 
 @pytest.mark.filterwarnings("ignore:Consolidated metadata")
+@pytest.mark.parametrize("node", ["array", "group"])
 @pytest.mark.parametrize(
     ("zarr_format", "use_consolidated"),
     [(2, None), (2, False), (2, True), (2, "custom"), (3, None), (3, False), (3, True)],
 )
 @pytest.mark.parametrize("mode", ["r", "r+", "a"])
 @pytest.mark.parametrize("path", ["", "parent/child"])
-async def test_open_group_fallback_reads_only_what_it_needs(
+async def test_open_reads_only_what_the_node_needs(
+    node: Literal["array", "group"],
     zarr_format: ZarrFormat,
     use_consolidated: bool | str | None,
     mode: AccessModeLiteral,
     path: str,
 ) -> None:
-    """`open` falling back to a group reads each key at most once, and only the keys it needs.
+    """`open` reads a format 3 node with one request and a format 2 node with one round of them.
 
-    The array lookup reads `zarr.json`, `.zarray` and `.zattrs` and hands them to
-    the group open, which then knows the format: a format 3 group needs nothing
-    more, a format 2 group needs `.zgroup` plus the consolidated document when
-    that might be used. The resulting group -- its format, path, attributes,
-    read-only-ness and consolidated metadata -- has to be exactly what it was when
-    both read the store independently.
+    Whatever it finds has to be what `open_array` or `open_group` would have
+    returned: the same format, path, attributes and read-only-ness, and for a
+    group the same consolidated metadata.
     """
     store = _CountingStore(MemoryStore())
     prefix = f"{path}/" if path else ""
-    await zarr.api.asynchronous.open_group(
-        store, path=path, attributes={"key": "value"}, zarr_format=zarr_format
-    )
-    if use_consolidated:
-        await zarr.api.asynchronous.consolidate_metadata(store, path=path)
-        if isinstance(use_consolidated, str):
-            # move the consolidated document to the non-default key
-            metadata = await store.get(prefix + ".zmetadata", default_buffer_prototype())
-            assert metadata is not None
-            await store.set(prefix + use_consolidated, metadata)
-            await store.delete(prefix + ".zmetadata")
+    if node == "array":
+        await zarr.api.asynchronous.create_array(
+            store,
+            name=path or None,
+            shape=(3,),
+            dtype="uint8",
+            attributes={"key": "value"},
+            zarr_format=zarr_format,
+        )
+    else:
+        await zarr.api.asynchronous.open_group(
+            store, path=path, attributes={"key": "value"}, zarr_format=zarr_format
+        )
+        if use_consolidated:
+            await zarr.api.asynchronous.consolidate_metadata(store, path=path)
+            if isinstance(use_consolidated, str):
+                # move the consolidated document to the non-default key
+                metadata = await store.get(prefix + ".zmetadata", default_buffer_prototype())
+                assert metadata is not None
+                await store.set(prefix + use_consolidated, metadata)
+                await store.delete(prefix + ".zmetadata")
 
     store.get_counts.clear()
-    group = await zarr.api.asynchronous.open(
+    result = await zarr.api.asynchronous.open(
         store=store, path=path, mode=mode, use_consolidated=use_consolidated
     )
-    assert isinstance(group, zarr.core.group.AsyncGroup)
-    assert group.metadata.zarr_format == zarr_format
-    assert group.path == path
-    assert group.attrs == {"key": "value"}
-    assert group.store.read_only == (mode == "r")
-    assert (group.metadata.consolidated_metadata is not None) == bool(use_consolidated)
+    assert isinstance(result, AsyncArray if node == "array" else zarr.core.group.AsyncGroup)
+    assert result.metadata.zarr_format == zarr_format
+    assert result.path == path
+    assert result.attrs == {"key": "value"}
+    assert result.store.read_only == (mode == "r")
+    if isinstance(result, zarr.core.group.AsyncGroup):
+        assert (result.metadata.consolidated_metadata is not None) == bool(use_consolidated)
 
-    expected_keys = {"zarr.json", ".zarray", ".zattrs"}
+    expected_keys = {"zarr.json"}
     if zarr_format == 2:
-        expected_keys.add(".zgroup")
+        expected_keys |= {".zarray", ".zgroup", ".zattrs"}
         if use_consolidated is not False:
             expected_keys.add(
                 ".zmetadata" if isinstance(use_consolidated, bool | None) else use_consolidated
@@ -1501,11 +1515,11 @@ async def test_open_zarr_json_without_node_type_is_a_group() -> None:
     assert group.attrs == {"k": "v"}
 
 
-async def test_open_zarr_json_with_invalid_node_type_is_not_a_group() -> None:
-    """A `zarr.json` whose `node_type` is neither array nor group does not open as a group."""
+async def test_open_zarr_json_with_invalid_node_type_raises() -> None:
+    """A `zarr.json` whose `node_type` is neither array nor group is an error, as on `main`."""
     store = MemoryStore()
     await store.set("zarr.json", cpu.Buffer.from_bytes(b'{"zarr_format": 3, "node_type": "foo"}'))
-    with pytest.raises(GroupNotFoundError):
+    with pytest.raises(GroupNotFoundError, match="is not 'group'"):
         await zarr.api.asynchronous.open(store=store, mode="r")
 
 
