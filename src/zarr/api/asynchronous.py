@@ -15,9 +15,10 @@ from zarr.core.array import (
     Array,
     AsyncArray,
     CompressorLike,
+    _MetadataDocs,
+    _probe_array_metadata,
     create_array,
     from_array,
-    get_array_metadata,
 )
 from zarr.core.array_spec import ArrayConfigLike, parse_array_config
 from zarr.core.buffer import NDArrayLike
@@ -392,20 +393,27 @@ async def open(
 
     # TODO: the mode check below seems wrong!
     if "shape" not in kwargs and mode in {"a", "r", "r+", "w"}:
-        try:
-            metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
+        probe = await _probe_array_metadata(store_path, zarr_format=zarr_format)
+        if probe.is_array:
             # TODO: remove this cast when we fix typing for array metadata dicts
-            _metadata_dict = cast("ArrayMetadataDict", metadata_dict)
-            # for v2, the above would already have raised an exception if not an array
+            _metadata_dict = cast("ArrayMetadataDict", probe.metadata)
             zarr_format = _metadata_dict["zarr_format"]
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
             if is_v3_array or zarr_format == 2:
                 return AsyncArray(
                     store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
                 )
-        except (FileNotFoundError, NodeTypeValidationError):
-            pass
-        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+        # There is no array here, so open a group instead. The probe already read
+        # `zarr.json` and `.zattrs`, two of the four keys the group open reads, so
+        # hand those over rather than pay for them twice. That only holds when the
+        # format still has to be detected; an explicit format reads a smaller set.
+        return await open_group(
+            store=store_path,
+            zarr_format=zarr_format,
+            mode=mode,
+            _pre_fetched_metadata=probe.docs if zarr_format is None else None,
+            **kwargs,
+        )
 
     try:
         return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
@@ -790,6 +798,7 @@ async def open_group(
     meta_array: Any | None = None,  # not used
     attributes: dict[str, JSON] | None = None,
     use_consolidated: bool | str | None = None,
+    _pre_fetched_metadata: _MetadataDocs | None = None,
 ) -> AsyncGroup:
     """Open a group using file-mode-like semantics.
 
@@ -840,6 +849,12 @@ async def open_group(
         Zarr format 2 allowed configuring the key storing the consolidated metadata
         (`.zmetadata` by default). Specify the custom key as `use_consolidated`
         to load consolidated metadata from a non-default key.
+    _pre_fetched_metadata : _MetadataDocs or None, default None
+        Private. The `zarr.json` and `.zattrs` documents for this path, already
+        read by the caller, to use instead of reading them again. Only consulted
+        when `zarr_format` is None and the group is opened rather than created.
+        [`zarr.api.asynchronous.open`][zarr.api.asynchronous.open] passes what it
+        read while looking for an array before falling back to opening a group.
 
     Returns
     -------
@@ -863,7 +878,10 @@ async def open_group(
     try:
         if mode in _READ_MODES:
             return await AsyncGroup.open(
-                store_path, zarr_format=zarr_format, use_consolidated=use_consolidated
+                store_path,
+                zarr_format=zarr_format,
+                use_consolidated=use_consolidated,
+                _pre_fetched_metadata=_pre_fetched_metadata,
             )
     except (KeyError, FileNotFoundError):
         pass

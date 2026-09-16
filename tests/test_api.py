@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections
 import inspect
 import re
 from typing import TYPE_CHECKING, Any
@@ -13,9 +14,11 @@ from zarr.storage._common import StorePath
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
+    from typing import Self
 
-    from zarr.abc.store import Store
-    from zarr.core.common import JSON, MemoryOrder, ZarrFormat
+    from zarr.abc.store import ByteRequest
+    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.common import JSON, AccessModeLiteral, MemoryOrder, ZarrFormat
     from zarr.types import AnyArray
 
 import contextlib
@@ -30,6 +33,7 @@ import zarr.api.asynchronous
 import zarr.api.synchronous
 import zarr.core.group
 from zarr import Array, Group
+from zarr.abc.store import Store
 from zarr.api.synchronous import (
     create,
     create_array,
@@ -42,15 +46,17 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
-from zarr.core.buffer import NDArrayLike
+from zarr.core.buffer import NDArrayLike, default_buffer_prototype
 from zarr.errors import (
     ArrayNotFoundError,
     MetadataValidationError,
+    NodeTypeValidationError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
 )
 from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
+from zarr.storage._wrapper import WrapperStore
 from zarr.testing.utils import gpu_test
 
 
@@ -1375,6 +1381,107 @@ async def test_open_falls_back_to_open_group_async(zarr_format: ZarrFormat) -> N
     assert isinstance(group, zarr.core.group.AsyncGroup)
     assert group.metadata.zarr_format == zarr_format
     assert group.attrs == {"key": "value"}
+
+
+class _CountingStore(WrapperStore[Store]):
+    """A store that records the key of every `get` it forwards."""
+
+    get_counts: collections.Counter[str]
+
+    def __init__(self, store: Store) -> None:
+        super().__init__(store)
+        self.get_counts = collections.Counter()
+
+    def _with_store(self, store: Store) -> Self:
+        # `_with_store` is how a store is re-made read-only, so the copy has to
+        # keep counting into the same tally.
+        new = type(self)(store)
+        new.get_counts = self.get_counts
+        return new
+
+    async def get(
+        self,
+        key: str,
+        prototype: BufferPrototype,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        self.get_counts[key] += 1
+        return await self._store.get(key, prototype, byte_range)
+
+
+@pytest.mark.filterwarnings("ignore:Consolidated metadata")
+@pytest.mark.parametrize(
+    ("zarr_format", "use_consolidated"),
+    [(2, False), (2, True), (2, "custom"), (3, False), (3, True)],
+)
+@pytest.mark.parametrize("mode", ["r", "r+", "a"])
+@pytest.mark.parametrize("path", ["", "parent/child"])
+async def test_open_group_fallback_reads_each_key_once(
+    zarr_format: ZarrFormat, use_consolidated: bool | str, mode: AccessModeLiteral, path: str
+) -> None:
+    """`open` falling back to a group reads no key twice, and opens the same group as before.
+
+    The array probe and the group open read an overlapping set of keys, so the
+    probe hands over what it read. That has to leave the resulting group -- its
+    format, path, attributes, read-only-ness and consolidated metadata --
+    exactly as it was when both read the store independently.
+    """
+    store = _CountingStore(MemoryStore())
+    await zarr.api.asynchronous.open_group(
+        store, path=path, attributes={"key": "value"}, zarr_format=zarr_format
+    )
+    if use_consolidated:
+        await zarr.api.asynchronous.consolidate_metadata(store, path=path)
+        if isinstance(use_consolidated, str):
+            # move the consolidated document to the non-default key
+            prefix = f"{path}/" if path else ""
+            metadata = await store.get(prefix + ".zmetadata", default_buffer_prototype())
+            assert metadata is not None
+            await store.set(prefix + use_consolidated, metadata)
+            await store.delete(prefix + ".zmetadata")
+
+    store.get_counts.clear()
+    group = await zarr.api.asynchronous.open(
+        store=store, path=path, mode=mode, use_consolidated=use_consolidated
+    )
+    assert isinstance(group, zarr.core.group.AsyncGroup)
+    assert group.metadata.zarr_format == zarr_format
+    assert group.path == path
+    assert group.attrs == {"key": "value"}
+    assert group.store.read_only == (mode == "r")
+    assert (group.metadata.consolidated_metadata is not None) == bool(use_consolidated)
+    assert [key for key, count in store.get_counts.items() if count > 1] == []
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+async def test_open_array_does_not_fall_back(zarr_format: ZarrFormat) -> None:
+    """`open` on an array still returns the array rather than falling back to a group."""
+    store = MemoryStore()
+    await zarr.api.asynchronous.create_array(
+        store, shape=(10,), dtype="uint8", zarr_format=zarr_format, attributes={"k": "v"}
+    )
+    arr = await zarr.api.asynchronous.open(store=store)
+    assert isinstance(arr, AsyncArray)
+    assert arr.metadata.zarr_format == zarr_format
+    assert arr.attrs == {"k": "v"}
+
+
+async def test_open_array_probe_invalid_zarr_format_raises() -> None:
+    """An invalid `zarr_format` is a bad request, not a missing array, so it still raises."""
+    store = MemoryStore()
+    with pytest.raises(
+        MetadataValidationError,
+        match="Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '3.0'.",
+    ):
+        await zarr.api.asynchronous.open(store=store, zarr_format="3.0")  # type: ignore[arg-type]
+
+
+async def test_async_array_open_on_group_raises_node_type() -> None:
+    """Opening a v3 group as an array still reports the node_type mismatch."""
+    store = MemoryStore()
+    await zarr.api.asynchronous.open_group(store, zarr_format=3)
+    with pytest.raises(NodeTypeValidationError, match="node_type"):
+        await AsyncArray.open(store, zarr_format=3)
 
 
 @pytest.mark.parametrize("mode", ["r", "r+", "w", "a"])

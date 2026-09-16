@@ -26,6 +26,7 @@ if TYPE_CHECKING:
         FiltersLike,
         SerializerLike,
         ShardsLike,
+        _MetadataDocs,
     )
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar
@@ -492,6 +493,7 @@ def open_group(
     meta_array: Any | None = None,  # not used in async api
     attributes: dict[str, JSON] | None = None,
     use_consolidated: bool | str | None = None,
+    _pre_fetched_metadata: _MetadataDocs | None = None,
 ) -> Group:
     """Open a group using file-mode-like semantics.
 
@@ -542,6 +544,12 @@ def open_group(
         Zarr format 2 allowed configuring the key storing the consolidated metadata
         (`.zmetadata` by default). Specify the custom key as `use_consolidated`
         to load consolidated metadata from a non-default key.
+    _pre_fetched_metadata : _MetadataDocs or None, default None
+        Private. The `zarr.json` and `.zattrs` documents for this path, already
+        read by the caller, to use instead of reading them again. Only consulted
+        when `zarr_format` is None and the group is opened rather than created.
+        [`zarr.api.asynchronous.open`][zarr.api.asynchronous.open] passes what it
+        read while looking for an array before falling back to opening a group.
 
     Returns
     -------
@@ -562,6 +570,7 @@ def open_group(
                 meta_array=meta_array,
                 attributes=attributes,
                 use_consolidated=use_consolidated,
+                _pre_fetched_metadata=_pre_fetched_metadata,
             )
         )
     )
