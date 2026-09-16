@@ -16,6 +16,10 @@ conversion needs a custom reader that transfers into the output buffer. Derived 
 reader and part views may be materialized concurrently, so stateful readers
 must synchronize their own mutable state.
 
+The key's type picks the frame: NumPy keys are relative positions, `IndexDomain`
+and `IndexTransform` keys are absolute, and every view keeps its absolute
+domain. See [the guide](../guide/index.md#the-keys-type-picks-the-frame).
+
 Every public `Partition.view.transform` directly maps that view's own domain
 coordinates into its raw `Partition.view.array`, including for non-first
 partitions; a box part's domain is a sub-domain of the parent view's literal

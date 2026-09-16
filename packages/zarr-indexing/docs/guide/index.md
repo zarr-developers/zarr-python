@@ -114,6 +114,32 @@ literal domain, as a TensorStore view does: `source[10:20]` has domain
 `[10, 20)`, and a further `[2:5]` on it has domain `[12, 15)`. A domain or
 transform key addresses those literal coordinates directly.
 
+### The key's type picks the frame {#the-keys-type-picks-the-frame}
+
+**The type of a key decides whether it is relative or absolute.** This is the
+one rule to remember about indexing a `LazyArray`:
+
+| Key type | Read as | Example |
+| --- | --- | --- |
+| slice, integer, `...`, `None`, index array, mask | **Relative**: positions in the current view, NumPy-style | `view[2:5]`, `view[-1]`, `view.oindex[[3, 1]]` |
+| `IndexDomain` | **Absolute**: coordinates of the view's domain, restricted to a box | `view[IndexDomain((12,), (15,))]` |
+| `IndexTransform` | **Absolute**: composed onto the view; the key's domain becomes the new view's domain | `view[IndexTransform.identity(view.transform.domain)[12:15]]` |
+
+No key type is valid in both readings, so a key never has two meanings. That is
+the property pandas lost with value-based `ix` dispatch and removed in favor of
+`loc` and `iloc`; TensorStore keeps it by giving each key type one fixed
+reading, and so does this wrapper. The only difference from TensorStore is
+which reading the NumPy key gets: absolute there, relative here.
+
+Whichever key produced a view, **its domain is always absolute**:
+`view.transform.domain` reports literal coordinates after `view[2:5]` exactly as
+it does after `view[IndexDomain(...)]`. The relative reading exists only at the
+moment a NumPy key is interpreted, so relative and absolute steps compose freely.
+
+```python
+--8<-- "snippets/key_types.py:key-types"
+```
+
 ### A transform points from the request to the source
 
 An `IndexTransform` records how every coordinate in a request finds its source

@@ -85,9 +85,16 @@ for a box. These describe storage coordinates, not the full result layout or
 traversal order. A query can fill its hull, and a singleton box can fill its hull
 even when its recorded stride exceeds one.
 
-The positional dialect
-----------------------
-Selections on `LazyArray` are **positional, NumPy-style**: index 0 is the first
+Relative keys, absolute domain
+------------------------------
+**The type of a key decides whether it is relative or absolute.** NumPy keys
+(slices, integers, `...`, `None`, index arrays, masks) are positions relative to
+the current view. An `IndexDomain` key names absolute coordinates of the view's
+domain, and an `IndexTransform` key composes onto the view. No key type has two
+readings, and whichever key produced a view, `view.transform.domain` is
+absolute. See the guide section "The key's type picks the frame".
+
+Selections with NumPy keys are **positional, NumPy-style**: index 0 is the first
 element of the current view, `-1` is the last, boolean masks must match the
 view's shape, integer coordinates are bounds-checked, and slices are clipped
 to the view's extent.
