@@ -51,7 +51,7 @@ def unregistered_v2_codec(monkeypatch: pytest.MonkeyPatch) -> str:
     [
         ("n5_default", ("zarr-n5",)),
         ("gribberish", ("gribberish",)),
-        ("imagecodecs_jpeg2k", ("virtual-tiff",)),
+        ("imagecodecs_jpeg2k", ("imagecodecs-zarr", "virtual-tiff")),
         ("omfiles.pfor", ("omfiles",)),
         ("any-numcodecs.array-array", ("zarr-any-numcodecs",)),
         ("totally-made-up", ()),
@@ -81,7 +81,10 @@ def test_packages_for_numcodec_v2(name: str, expected: tuple[str, ...]) -> None:
 
 def test_packages_for_codec_is_format_specific() -> None:
     """The same name can mean different packages in each format's registry."""
-    assert _packages_for_codec("imagecodecs_jpeg2k", zarr_format=3) == ("virtual-tiff",)
+    assert _packages_for_codec("imagecodecs_jpeg2k", zarr_format=3) == (
+        "imagecodecs-zarr",
+        "virtual-tiff",
+    )
     assert _packages_for_codec("imagecodecs_jpeg2k", zarr_format=2) == ("imagecodecs-numcodecs",)
     # `crc32c` is a codec zarr implements in format 3, so only format 2 gets a hint for it.
     assert _packages_for_codec("crc32c", zarr_format=3) == ()
@@ -270,15 +273,36 @@ def test_get_numcodec_non_mapping_input_still_raises_value_error(data: object) -
         get_numcodec(data)  # type: ignore[arg-type]
 
 
-def test_imagecodecs_prefix_does_not_over_match_in_zarr_format_3() -> None:
-    """virtual-tiff provides 15 of the 81 `imagecodecs_*` names; the rest must get no hint.
-
-    Recommending virtual-tiff for a name it does not provide is worse than saying nothing.
-    """
-    assert _packages_for_codec("imagecodecs_jpeg2k", zarr_format=3) == ("virtual-tiff",)
-    for name in ("imagecodecs_jpegls", "imagecodecs_avif", "imagecodecs_blosc"):
-        assert _packages_for_codec(name, zarr_format=3) == ()
-        assert _packages_for_codec(name, zarr_format=2) == ("imagecodecs-numcodecs",)
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("imagecodecs_jpeg2k", ("imagecodecs-zarr", "virtual-tiff")),
+        ("imagecodecs_jpeg8", ("virtual-tiff",)),
+        ("imagecodecs_jetraw", ("virtual-tiff",)),
+        ("imagecodecs_jpegls", ("imagecodecs-zarr",)),
+        ("imagecodecs_avif", ("imagecodecs-zarr",)),
+        ("imagecodecs_blosc", ("imagecodecs-zarr",)),
+        ("imagecodecs_lzma", ("imagecodecs-zarr",)),
+        ("imagecodecs_wavpack", ("imagecodecs-zarr",)),
+        ("imagecodecs_zstd1", ("imagecodecs-zarr",)),
+        ("imagecodecs_not_a_codec", ()),
+    ],
+)
+def test_missing_imagecodec_reports_packages(
+    name: str, expected: tuple[str, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Missing imagecodecs name their providers without guessing from the prefix."""
+    monkeypatch.setitem(zarr.registry._codec_registries, name, zarr.registry.Registry())
+    message = (
+        f"An implementation for codec {name!r} is not available. Register one explicitly "
+        f"using the codec registry (see {_ZARR_CODEC_DOCS_URL}), or install a Python package "
+        "that registers a codec implementation with zarr."
+    )
+    if expected:
+        message += f" Known packages supporting this codec: {', '.join(expected)}."
+    with pytest.raises(UnknownCodecError) as excinfo:
+        get_codec_class(name)
+    assert str(excinfo.value) == message
 
 
 def test_resolve_codec_reports_missing_codec() -> None:
@@ -352,23 +376,82 @@ def test_parse_codecs_with_unregistered_config_pin_raises_bad_config_error() -> 
             parse_codecs([{"name": "bytes"}])
 
 
-def test_parse_codecs_converts_keyerror_from_from_dict(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A codec whose from_dict indexes a malformed config must not leak a KeyError.
+@pytest.fixture
+def keyerror_codec(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> str:
+    """Register a codec whose ``from_dict`` raises a KeyError and return its name.
 
-    A bare KeyError out of metadata parsing is caught by the array-then-group fallback in
-    `zarr.api.asynchronous.open`, which then reports an unrelated group error.
+    Parametrize indirectly with the KeyError's args tuple: ``("required_option",)`` for a
+    codec that indexes its configuration directly, ``()`` for a bare ``raise KeyError``.
     """
     from zarr.codecs import BytesCodec
-    from zarr.errors import MetadataValidationError
     from zarr.registry import register_codec
 
-    class PickyCodec(BytesCodec):
-        @classmethod
-        def from_dict(cls, data: object) -> PickyCodec:
-            data["configuration"]["required_option"]  # type: ignore[index]
-            return cls()
+    keyerror_args: tuple[object, ...] = request.param
 
-    monkeypatch.setitem(zarr.registry._codec_registries, "test_picky", zarr.registry.Registry())
-    register_codec("test_picky", PickyCodec)
-    with pytest.raises(MetadataValidationError, match="test_picky.*required_option"):
-        parse_codecs([{"name": "test_picky", "configuration": {}}])
+    class KeyErrorCodec(BytesCodec):
+        @classmethod
+        def from_dict(cls, data: object) -> KeyErrorCodec:
+            raise KeyError(*keyerror_args)
+
+    name = "test_keyerror"
+    monkeypatch.setitem(zarr.registry._codec_registries, name, zarr.registry.Registry())
+    register_codec(name, KeyErrorCodec)
+    return name
+
+
+@pytest.mark.parametrize(
+    ("keyerror_codec", "expected_message"),
+    [
+        (
+            ("required_option",),
+            "KeyError 'required_option' while parsing the configuration for codec 'test_keyerror'.",
+        ),
+        ((), "KeyError while parsing the configuration for codec 'test_keyerror'."),
+    ],
+    indirect=["keyerror_codec"],
+    ids=["with_key", "argless"],
+)
+def test_parse_codecs_converts_keyerror_from_from_dict(
+    keyerror_codec: str, expected_message: str
+) -> None:
+    """A KeyError out of a codec's from_dict becomes a MetadataValidationError naming the codec.
+
+    A bare KeyError out of metadata parsing is caught by the array-then-group fallback in
+    `zarr.api.asynchronous.open`, which then reports an unrelated group error. The KeyError
+    may carry no arguments, in which case the message simply omits the key.
+    """
+    from zarr.errors import MetadataValidationError
+
+    with pytest.raises(MetadataValidationError) as excinfo:
+        parse_codecs([{"name": keyerror_codec, "configuration": {}}])
+    assert str(excinfo.value) == expected_message
+    assert isinstance(excinfo.value.__cause__, KeyError)
+
+
+@pytest.mark.parametrize("keyerror_codec", [()], indirect=True, ids=["argless"])
+async def test_open_with_argless_keyerror_codec_raises_value_error(keyerror_codec: str) -> None:
+    """`zarr.open` on an array whose codec raises a bare KeyError reports the codec, not IndexError.
+
+    An argless KeyError must propagate as a MetadataValidationError naming the codec.
+    Opening still fails because the codec configuration could not be parsed.
+    """
+    from zarr.errors import MetadataValidationError
+
+    store = MemoryStore()
+    metadata = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": [4],
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [4]}},
+        "chunk_key_encoding": {"name": "default"},
+        "data_type": "float64",
+        "fill_value": 0.0,
+        "codecs": [{"name": keyerror_codec}],
+        "attributes": {},
+    }
+    await store.set(
+        "zarr.json",
+        default_buffer_prototype().buffer.from_bytes(json.dumps(metadata).encode()),
+    )
+    with pytest.raises(MetadataValidationError, match=keyerror_codec):
+        zarr.open(store=store, mode="r")

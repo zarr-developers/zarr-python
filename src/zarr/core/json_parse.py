@@ -5,7 +5,7 @@ Most JSON metadata validation is delegated to
 needs (``Literal`` membership, ``int``/``bool`` strictness, list-to-tuple,
 ``TypedDict`` with ``NotRequired``). ``convert`` is a thin wrapper that
 translates [`msgspec.ValidationError`][msgspec.ValidationError] into the
-``TypeError`` the rest of the codebase already raises.
+``ValueError`` the rest of the codebase already raises.
 
 msgspec cannot handle two things in Zarr's metadata types:
 
@@ -13,24 +13,17 @@ msgspec cannot handle two things in Zarr's metadata types:
   schema-build time, and
 * PEP 728 ``extra_items=`` extension fields, which it silently drops.
 
-``validate_json_value`` is the small hand-written fallback for the first of
-those. See https://github.com/zarr-developers/zarr-python/issues/3285.
+User-defined attributes are left to the JSON reader and writer rather than
+recursively validated here. See https://github.com/zarr-developers/zarr-python/issues/3285.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, Final, cast, get_origin
+from typing import Any, get_origin
 
 import msgspec
 
-if TYPE_CHECKING:
-    from zarr.core.common import JSON
-
-__all__ = ["MAX_JSON_DEPTH", "convert", "parse_field", "validate_json_value"]
-
-MAX_JSON_DEPTH: Final = 64
-"""Maximum nesting depth accepted by ``validate_json_value``."""
+__all__ = ["convert", "parse_field"]
 
 
 def _type_name(type_: Any) -> str:
@@ -75,29 +68,3 @@ def parse_field(
         raise error(
             f"Failed to parse input for {field!r}: expected {_type_name(type_)}, got {data!r}."
         ) from exc
-
-
-def validate_json_value(value: object, *, max_depth: int = MAX_JSON_DEPTH, _depth: int = 0) -> JSON:
-    """Check that ``value`` is a JSON value and return it unchanged.
-
-    msgspec cannot build a schema for Zarr's recursive ``JSON`` / ``JSONValue``
-    aliases, so this covers the fields typed that way (``attributes``,
-    ``fill_value``, extension-field values). Unlike the previous per-field
-    parsers it also enforces ``max_depth``: a pathologically nested document
-    could otherwise exhaust the interpreter stack.
-    """
-    if _depth > max_depth:
-        raise ValueError(f"JSON value nesting exceeds the maximum depth of {max_depth}.")
-    if value is None or isinstance(value, (bool, int, float, str)):
-        return cast("JSON", value)
-    if isinstance(value, (list, tuple)):
-        for item in value:
-            validate_json_value(item, max_depth=max_depth, _depth=_depth + 1)
-        return cast("JSON", value)
-    if isinstance(value, Mapping):
-        for key, item in value.items():
-            if not isinstance(key, str):
-                raise TypeError(f"JSON object keys must be str, got {type(key).__name__}.")
-            validate_json_value(item, max_depth=max_depth, _depth=_depth + 1)
-        return cast("JSON", value)
-    raise TypeError(f"Value {value!r} is not a valid JSON value.")

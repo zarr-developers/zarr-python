@@ -26,13 +26,14 @@ so each axis is resolved once against its grid into a table:
 - `JointSet` — one connected index-array component. Arrays sharing input
   axes are grouped together; independent components remain separate tables.
 
-A projection is one row of each table combined. Building the tables costs the
-sum of the touched chunks per axis rather than their product, rows are
-materialized only on request, and a consumer may read the tables directly
-instead. Two output maps that read one input axis through a `DimensionMap`
-(a diagonal, which no selection produces) have no factored form and are
-rejected with `ValueError`; a correlated index array varying over an axis a
-`DimensionMap` also reads is rejected with `NotImplementedError`.
+A projection is one row of each table combined. Independent strided tables
+resolve each axis separately rather than walking their Cartesian product.
+Index-array tables also scan and group lookup points, sorting them when
+needed. Projection rows are materialized only on request, and a consumer may
+read the tables directly instead. This planner does not support affine maps
+sharing input axes: two affine maps sharing an axis raise `ValueError`, while
+an index array varying over an axis also read by an affine map raises
+`NotImplementedError`.
 """
 
 from __future__ import annotations
@@ -89,7 +90,9 @@ class ChunkProjection:
         Mapping from the shared synthetic domain to request coordinates.
     coverage
         Whether the request is proven to cover the whole grid cell exactly
-        once. Fancy selections are conservatively ``"unknown"``.
+        once. Projections retaining ArrayMaps or survivor arrays are
+        conservatively ``"unknown"``. A singleton fancy selection can simplify
+        to a ConstantMap and receive a proven ``"full"`` or ``"partial"`` result.
 
     Examples
     --------
@@ -678,12 +681,13 @@ def _chunk_keys(
     n = int(chunk_ids[0].size)
     if len(chunk_ids) == 1:
         return np.asarray(chunk_ids[0], dtype=np.intp)
-    # Mixed-radix key with the first dimension most significant.
+    # Mixed-radix key with the first dimension most significant. Negative
+    # chunk ids do not fit these zero-based digits; group their tuples directly.
     keys = np.zeros(n, dtype=np.intp)
     multiplier = 1
     for ids in reversed(chunk_ids):
         radix = int(ids.max()) + 1
-        if multiplier * radix >= 2**62:
+        if int(ids.min()) < 0 or multiplier * radix >= 2**62:
             stacked = np.stack([np.asarray(i, dtype=np.intp).ravel() for i in chunk_ids], axis=1)
             _, inverse = np.unique(stacked, axis=0, return_inverse=True)
             return np.asarray(inverse, dtype=np.intp).reshape(-1)
