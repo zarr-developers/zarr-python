@@ -677,6 +677,16 @@ class TestInfo:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_resize_wrong_ndim_raises(store: MemoryStore, zarr_format: ZarrFormat) -> None:
+    """
+    Resizing to a shape with a different number of dimensions is a ValueError.
+    """
+    z = zarr.create(shape=(10, 10), chunks=(5, 5), dtype="i4", store=store, zarr_format=zarr_format)
+    with pytest.raises(ValueError, match="same number of dimensions"):
+        z.resize((20,))
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_resize_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     z = zarr.create(
         shape=105, chunks=10, dtype="i4", fill_value=0, store=store, zarr_format=zarr_format
