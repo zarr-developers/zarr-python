@@ -361,6 +361,7 @@ extend-select = [
     "RET",  # flake8-return
     "RSE",  # flake8-raise
     "RUF",
+    "S101", # flake8-bandit: no assert in runtime code
     "SIM",  # flake8-simplify
     "SLOT", # flake8-slots
     "TC",  # flake8-type-checking
@@ -394,7 +395,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.extend-per-file-ignores]
-"tests/**" = ["ANN001", "ANN201", "RUF029", "SIM117", "SIM300"]
+"tests/**" = ["ANN001", "ANN201", "RUF029", "S101", "SIM117", "SIM300"]
+# test-support code (store conformance suite, hypothesis strategies) asserts on purpose
+"src/zarr/testing/**" = ["S101"]
 
 [tool.mypy]
 files = ["src", "tests"]
