@@ -850,19 +850,29 @@ def test_v2_from_key_value_remerges_zattrs() -> None:
     assert model.shape == (10,)
 
 
-@pytest.mark.parametrize("extra_key", ["attributes", "vendor_extension"])
-def test_v2_from_key_value_rejects_zarray_extra_members(extra_key: str) -> None:
-    """Raw `.zarray` documents reject every non-spec member."""
+def test_v2_from_key_value_rejects_zarray_attributes() -> None:
+    """A raw `.zarray` document must not carry `attributes`: they live in `.zattrs`."""
     doc: dict[str, object] = dict(ZarrV2ArrayMetadata.create_default().to_json())
     doc.pop("attributes", None)
-    doc[extra_key] = {}
+    doc["attributes"] = {}
 
     with pytest.raises(MetadataValidationError) as exc_info:
         ZarrV2ArrayMetadata.from_key_value({".zarray": json.dumps(doc).encode()})
 
     assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
-        ((extra_key,), "invalid_value")
+        (("attributes",), "invalid_value")
     ]
+
+
+def test_v2_from_key_value_ignores_zarray_extra_members() -> None:
+    """Other raw `.zarray` members "SHOULD be ignored by implementations"."""
+    doc: dict[str, object] = dict(ZarrV2ArrayMetadata.create_default().to_json())
+    doc.pop("attributes", None)
+    doc["vendor_extension"] = {}
+
+    model = ZarrV2ArrayMetadata.from_key_value({".zarray": json.dumps(doc).encode()})
+
+    assert "vendor_extension" not in model.to_json()
 
 
 def test_v2_zattrs_presence_round_trips() -> None:
@@ -1326,16 +1336,13 @@ def test_v2_shape_and_chunks_must_have_equal_rank() -> None:
         ZarrV2ArrayMetadata.from_key_value({".zarray": json.dumps(doc).encode()})
 
 
-def test_v2_filters_must_be_nonempty_when_present() -> None:
-    """A non-null v2 filter sequence contains one or more codec configurations."""
+def test_v2_filters_may_be_empty() -> None:
+    """An empty filter list is a list: the spec says "a list ... or null", with no minimum."""
     doc = dict(ZarrV2ArrayMetadata.create_default().to_json())
     doc["filters"] = ()
 
-    assert [(p.loc, p.kind) for p in validate_array_metadata_v2(doc)] == [
-        (("filters",), "invalid_value")
-    ]
-    with pytest.raises(MetadataValidationError, match="at least one filter"):
-        ZarrV2ArrayMetadata.from_key_value({".zarray": json.dumps(doc).encode()})
+    assert validate_array_metadata_v2(doc) == []
+    assert ZarrV2ArrayMetadata.from_key_value({".zarray": json.dumps(doc).encode()}).filters == ()
 
 
 def test_v2_dimension_separator_literal_enforced() -> None:
@@ -1381,13 +1388,12 @@ def test_array_zarr_format_rejects_float(
     assert [(p.loc, p.kind) for p in validate(document)] == [(("zarr_format",), "invalid_value")]
 
 
-def test_array_v2_rejects_unknown_document_member() -> None:
-    """The closed v2 merged-document shape rejects undeclared members."""
+def test_array_v2_ignores_unknown_document_member() -> None:
+    """Other .zarray keys "SHOULD NOT be present ... and SHOULD be ignored": tolerated, dropped."""
     doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"unexpected": 1}
 
-    assert [(p.loc, p.kind) for p in validate_array_metadata_v2(doc)] == [
-        (("unexpected",), "invalid_value")
-    ]
+    assert validate_array_metadata_v2(doc) == []
+    assert "unexpected" not in ZarrV2ArrayMetadata.from_json(doc).to_json()
 
 
 def test_array_v3_from_json_materializes_abstract_containers() -> None:

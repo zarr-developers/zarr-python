@@ -38,7 +38,7 @@ class ZarrV3MandatoryNamedConfigJSON(TypedDict, closed=True):
 ZarrV3MetadataFieldJSON = str | ZarrV3NamedConfigJSON
 ZarrV3MandatoryMetadataFieldJSON = str | ZarrV3MandatoryNamedConfigJSON
 ZarrV3CodecPipelineJSON = Annotated[tuple[ZarrV3MetadataFieldJSON, ...], Field(min_length=1)]
-ZarrV2FilterPipelineJSON = Annotated[tuple[ZarrV2CodecMetadata, ...], Field(min_length=1)]
+ZarrV2FilterPipelineJSON = tuple[ZarrV2CodecMetadata, ...]
 
 
 class ZarrV3ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
@@ -74,8 +74,13 @@ class ZarrV3GroupMetadataJSON(TypedDict, extra_items=JSONValue):
     consolidated_metadata: NotRequired[ZarrV3ConsolidatedMetadataJSON | None]
 
 
-class ZarrV2ArrayMetadataJSON(TypedDict, closed=True):
-    """Schema input for the closed, merged v2 array representation."""
+class ZarrV2ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
+    """Schema input for the merged v2 array representation.
+
+    Open, like the runtime validator: the v2 spec says other keys "SHOULD NOT
+    be present ... and SHOULD be ignored by implementations" (the group
+    document's "MUST NOT" keeps `ZarrV2GroupMetadataJSON` closed).
+    """
 
     zarr_format: Literal[2]
     shape: tuple[NonNegativeInt, ...]

@@ -182,12 +182,14 @@ def test_array_schemas_reject_negative_dimensions() -> None:
         _assert_runtime_and_schema_reject(field_type, doc)
 
 
-def test_v2_array_schema_rejects_empty_filters() -> None:
-    """The v2 schema mirrors the runtime one-or-more filter rule."""
+def test_v2_array_schema_allows_empty_filters() -> None:
+    """The v2 schema, like the runtime, takes "a list ... or null" at its word: no minimum."""
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
     doc["filters"] = []
+    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
 
-    _assert_runtime_and_schema_reject(zmp.ZarrV2ArrayMetadata, doc)
+    assert adapter.validate_python(doc).filters == ()
+    assert Draft202012Validator(adapter.json_schema()).is_valid(doc)
 
 
 @pytest.mark.parametrize("field", ["data_type", "chunk_grid", "chunk_key_encoding"])
@@ -210,7 +212,6 @@ def test_metadata_field_schema_rejects_unknown_members() -> None:
 @pytest.mark.parametrize(
     ("field_type", "source"),
     [
-        (zmp.ZarrV2ArrayMetadata, V2_ARRAY_DOC),
         (zmp.ZarrV2GroupMetadata, V2_GROUP_DOC),
         (zmp.ZarrV2ConsolidatedMetadata, V2_CONSOLIDATED_DOC),
     ],
@@ -223,6 +224,16 @@ def test_v2_schema_rejects_unknown_document_members(
     doc["unexpected"] = 1
 
     _assert_runtime_and_schema_reject(field_type, doc)
+
+
+def test_v2_array_schema_allows_unknown_document_members() -> None:
+    """The v2 array document is open (other keys SHOULD be ignored), in runtime and schema."""
+    doc = json.loads(json.dumps(V2_ARRAY_DOC))
+    doc["unexpected"] = 1
+    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
+
+    assert "unexpected" not in adapter.validate_python(doc).to_json()
+    assert Draft202012Validator(adapter.json_schema()).is_valid(doc)
 
 
 def test_v3_array_schema_allows_unknown_extension_fields() -> None:
