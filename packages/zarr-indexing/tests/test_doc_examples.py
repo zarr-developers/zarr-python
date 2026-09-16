@@ -35,6 +35,7 @@ import pytest
 import zarr_indexing
 import zarr_indexing.lazy_array as lazy_array_module
 from zarr_indexing import IndexTransform, LazyArray, ReadContext
+from zarr_indexing.domain import IndexDomain
 
 DOCS = Path(__file__).parents[1] / "docs"
 PACKAGE_ROOT = DOCS.parent
@@ -264,8 +265,9 @@ def test_documented_partition_transform_is_global_and_projection_is_chunk_local(
     source = np.arange(8)
     part = tuple(LazyArray.from_numpy(source).with_parts((4,)).parts())[1]
 
-    assert part.view.transform.apply((0,)) == (4,)
-    assert part.view.array[part.view.transform.apply((0,))] == 4
+    assert part.view.transform.domain == IndexDomain((4,), (8,))
+    assert part.view.transform.apply((4,)) == (4,)
+    assert part.view.array[part.view.transform.apply((4,))] == 4
     assert part.projection.chunk_transform.apply((0,)) == (0,)
 
 

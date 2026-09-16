@@ -29,6 +29,7 @@ from zarr_indexing import (
     EagerArrayAdapter,
     EdgeDimensionGrid,
     FixedDimension,
+    IndexDomain,
     IndexTransform,
     LazyArray,
     ReadContext,
@@ -1757,9 +1758,13 @@ def test_nonfirst_partition_transform_directly_addresses_its_array() -> None:
     part = list(LazyArray.from_numpy(source).with_parts((4,)).parts())[1]
 
     assert part.box == ((4, 8),)
-    assert part.view.transform.apply((0,)) == (4,)
-    assert part.view.array[part.view.transform.apply((0,))] == 4
+    # A box part keeps the request's literal coordinates, so its domain says
+    # where it sits; the transform addresses the raw source from there.
+    assert part.view.transform.domain == IndexDomain((4,), (8,))
+    assert part.view.transform.apply((4,)) == (4,)
+    assert part.view.array[part.view.transform.apply((4,))] == 4
     assert part.view.result()[0] == 4
+    assert part.view[0].result() == 4
     assert part.projection.chunk_transform.apply((0,)) == (0,)
 
 
@@ -2133,15 +2138,16 @@ def test_reversed_box_reports_a_positive_stride(source: LazyArray) -> None:
     assert reversed_view.bounding_box() == ((0, 7), (0, 5), (0, 4))
 
 
-def test_a_reversed_view_is_re_based_to_origin_zero() -> None:
-    """The literal domain of a reversal is negative; the positional dialect hides it."""
+def test_a_reversed_view_keeps_its_negative_literal_domain() -> None:
+    """The literal domain of a reversal is negative; positional keys hide it."""
     view = make_source("numpy-whole")[::-1]
-    # The algebra's own answer keeps the source frame.
+    # The algebra's answer keeps the source frame, and so does the wrapper.
     assert IndexTransform.from_shape(SHAPE)[::-1].domain.inclusive_min[0] == -6
-    # The wrapper re-bases, so positions start at 0 as NumPy expects.
-    assert view.transform.domain.inclusive_min == (0, 0, 0)
+    assert view.transform.domain.inclusive_min == (-6, 0, 0)
     assert view.shape == SHAPE
     np.testing.assert_array_equal(np.asarray(view.result()), reference()[::-1])
+    # Position 0 is still the first element, whatever the domain says.
+    np.testing.assert_array_equal(view[0].result(), reference()[-1])
 
 
 def test_zero_step_is_rejected() -> None:

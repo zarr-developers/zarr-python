@@ -263,9 +263,10 @@ than a silently empty selection. One consequence: a negative step normally
 produces a negative domain origin. Reversing a length-20 zero-origin axis gives
 the domain `[-19, 1)`, because the result stays anchored to the source
 coordinate frame and a reversing map traverses that frame backwards. `LazyArray`
-re-bases every view to origin 0, so the positional dialect never exposes it; a
-caller working with `IndexTransform` directly will see it, and re-bases
-explicitly with `translate_domain_to` for NumPy-shaped coordinates.
+views keep that literal domain, so `view.transform.domain` shows it; positional
+keys are normalized against the domain's origin, so the NumPy dialect never
+requires typing it. A caller wanting zero-origin coordinates re-bases
+explicitly with `translate_domain_to`.
 
 Supported fancy selections compose across already-fancy views: a second `oindex`/`vindex`/mask
 step may land on any axis of an already-fancy view, including axes an existing

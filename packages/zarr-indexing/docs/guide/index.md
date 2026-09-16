@@ -105,11 +105,14 @@ different questions:
 | Surface | Meaning of an integer index | Meaning of `-1` |
 | --- | --- | --- |
 | `IndexDomain` and `IndexTransform` | A literal coordinate in the current domain | The actual address `-1`, if the domain contains it |
-| `LazyArray` | A NumPy-style position in the current view | The last position, normalized before it reaches the transform algebra |
+| `LazyArray` with a NumPy key | A NumPy-style position in the current view | The last position, normalized against the domain's origin before it reaches the transform algebra |
+| `LazyArray` with an `IndexDomain` or `IndexTransform` key | A literal coordinate in the view's domain | The actual address `-1`, if the domain contains it |
 
-`LazyArray` uses positions because it is an array-like wrapper: each derived
-view starts at position zero and negative indices wrap exactly as they do in
-NumPy. The lower-level domain and transform types keep literal coordinates.
+`LazyArray` reads NumPy keys as positions because it is an array-like wrapper:
+negative indices wrap exactly as they do in NumPy. The view itself keeps its
+literal domain, as a TensorStore view does: `source[10:20]` has domain
+`[10, 20)`, and a further `[2:5]` on it has domain `[12, 15)`. A domain or
+transform key addresses those literal coordinates directly.
 
 ### A transform points from the request to the source
 
@@ -209,7 +212,7 @@ metadata is ready to inspect:
 | Available without reading | Value in this example |
 | --- | --- |
 | `composed.shape` | `(2,)` |
-| `composed.transform` | One transform mapping request `i` to source `3 - i` |
+| `composed.transform` | One transform over the literal domain `[-3, -1)`, mapping request `i` to source `-i` |
 
 Neither property needs source values. Composition works only on the coordinate
 description; the assertion's call to `result()` is the first operation in the

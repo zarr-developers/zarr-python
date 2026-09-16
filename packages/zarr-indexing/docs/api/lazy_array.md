@@ -16,9 +16,10 @@ conversion needs a custom reader that transfers into the output buffer. Derived 
 reader and part views may be materialized concurrently, so stateful readers
 must synchronize their own mutable state.
 
-Every public `Partition.view.transform` directly maps that view's zero-origin
+Every public `Partition.view.transform` directly maps that view's own domain
 coordinates into its raw `Partition.view.array`, including for non-first
-partitions. `Partition.projection.chunk_transform` intentionally stays local to
+partitions; a box part's domain is a sub-domain of the parent view's literal
+domain. `Partition.projection.chunk_transform` intentionally stays local to
 the selected chunk. During parent materialization (`view.result(parts=parts)`) the reader receives
 both frames in one `ReadContext`: the public global transform in `context.transform` and the
 local plan in `context.projection`. Every view retains the source grid and plans

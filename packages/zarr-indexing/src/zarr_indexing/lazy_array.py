@@ -92,10 +92,16 @@ element of the current view, `-1` is the last, boolean masks must match the
 view's shape, integer coordinates are bounds-checked, and slices are clipped
 to the view's extent.
 
-This differs from the low-level `IndexTransform` literal-coordinate dialect:
-a transform can retain a nonzero domain origin, while `LazyArray` re-zeroes
-positions on each derived view. The current main Zarr `Array` does not expose
-this wrapper as an `Array.lazy` attribute; use `LazyArray(array)` explicitly.
+The dialect governs how a *key* is read, not what a view remembers. A derived
+view keeps its **literal domain**, as a TensorStore view does: `a[10:20]` has
+domain `[10, 20)` and `a[10:20][2:5]` has domain `[12, 15)`, while `a[10:20][0]`
+still names the first element because positional keys are normalized against
+the domain's origin. The literal frame is reachable through `view.transform`,
+and directly through the two literal keys: an `IndexDomain` restricts the view
+to those coordinates, and an `IndexTransform` composes onto it. A reversed view
+carries a negative origin, as in TensorStore, because a reversing map traverses
+the source frame backwards. The current main Zarr `Array` does not expose this
+wrapper as an `Array.lazy` attribute; use `LazyArray(array)` explicitly.
 
 Scalar integers drop axes. Non-boolean objects implementing `SupportsIndex`
 are accepted as scalar indices and in slice bounds; `__int__` alone is not enough.
@@ -140,7 +146,7 @@ import json
 import math
 import operator
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import numpy as np
@@ -154,6 +160,8 @@ from zarr_indexing.chunk_resolution import (
     ChunkProjection,
     plan_chunks,
 )
+from zarr_indexing.domain import IndexDomain
+from zarr_indexing.errors import BoundsCheckError
 from zarr_indexing.grid import DimensionGrid, FixedDimension, dimension_grids_from_chunks
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.reader import (
@@ -277,6 +285,20 @@ def _whole_array_grids(shape: tuple[int, ...]) -> tuple[DimensionGrid, ...]:
 # --------------------------------------------------------------------------- #
 # The lowering engine
 # --------------------------------------------------------------------------- #
+
+
+def _pure_translation(transform: IndexTransform) -> tuple[int, ...] | None:
+    """The per-axis shift when `transform` only translates its zero-origin domain, else None."""
+    if transform.output_rank != transform.input_rank or any(
+        transform.domain.inclusive_min[i] != 0 for i in range(transform.input_rank)
+    ):
+        return None
+    shift: list[int] = []
+    for axis, m in enumerate(transform.output):
+        if not (isinstance(m, DimensionMap) and m.input_dimension == axis and m.stride == 1):
+            return None
+        shift.append(m.offset)
+    return tuple(shift)
 
 
 def _is_identity_transform(transform: IndexTransform, shape: tuple[int, ...]) -> bool:
@@ -451,9 +473,11 @@ class Partition:
     projection
         The source-independent description of this part. Its paired
         `chunk_transform` and `cell_transform` share one compact synthetic
-        domain, mapping each selected cell to chunk-local storage and request
-        coordinates respectively. This is the authoritative placement model;
-        `base_coords` and `is_complete` are conveniences derived from it.
+        domain, mapping each selected cell to chunk-local storage coordinates
+        and to positions in this view's zero-origin result buffer respectively.
+        (The planner's own projections place cells in the request's literal
+        domain; `parts()` re-bases them.) This is the authoritative placement
+        model; `base_coords` and `is_complete` are conveniences derived from it.
     base_coords
         Which box of the base partitioning this is, one coordinate per dimension
         of the wrapped array.
@@ -467,8 +491,12 @@ class Partition:
     view
         A `LazyArray` covering exactly the cells of the view that live in this
         box. Its transform directly addresses its raw wrapped `array`; only the
-        projection's `chunk_transform` is chunk-local. The view retains the source
-        grid and reader and can be read or indexed like any other view. Named `view` rather than
+        projection's `chunk_transform` is chunk-local. A box part keeps the
+        request's literal coordinates, so its domain is a sub-domain of the
+        parent view's; a part placed by index arrays has a fresh zero-origin
+        domain, and `out_selection` is the placement in both cases. The view
+        retains the source grid and reader and can be read or indexed like any
+        other view. Named `view` rather than
         `array` because `LazyArray.array` is the opposite thing — the raw
         wrapped source — and the two sat next to each other meaning inverses.
     out_selection
@@ -632,9 +660,10 @@ class LazyArray:
         """Build a wrapper sharing `array` but carrying a new transform or partitioning."""
         view = cls.__new__(cls)
         view._array = array
-        # Views re-zero their coordinate system: the positional dialect means a
-        # view's first element is at position 0 whatever it was sliced from.
-        view._transform = transform.translate_domain_to((0,) * transform.input_rank)
+        # The domain keeps its literal coordinates, as TensorStore's does: a
+        # slice of `[10, 20)` remembers that it is `[10, 20)`. Positional keys
+        # are normalized against that origin at selection time instead.
+        view._transform = transform
         view._parts = parts
         view._reader = reader
         view._part_owner = _PartOwner()
@@ -972,17 +1001,25 @@ class LazyArray:
         ((0, 0), (2, 1), False)
         """
         grids = self._parts if self._parts is not None else _whole_array_grids(self._base_shape)
-        for projection in plan_chunks(self._transform, grids):
-            domain = projection.chunk_domain
+        to_buffer = tuple(-o for o in self._transform.domain.inclusive_min)
+        for planned in plan_chunks(self._transform, grids):
+            domain = planned.chunk_domain
+            part_transform = planned.chunk_transform.translate(domain.inclusive_min)
+            placement = _pure_translation(planned.cell_transform)
+            if placement is not None:
+                # A box part sits at a fixed offset in the request, so its view
+                # keeps the request's literal coordinates: its domain is a
+                # sub-domain of this view's, and placement is readable from it.
+                part_transform = part_transform.translate_domain_by(placement)
+            # The planner places cells in the request's literal domain; the
+            # partition places them in this view's zero-origin result buffer.
+            projection = replace(
+                planned, cell_transform=planned.cell_transform.translate(to_buffer)
+            )
             yield Partition(
                 projection=projection,
                 box=tuple(zip(domain.inclusive_min, domain.exclusive_max, strict=True)),
-                view=LazyArray._derive(
-                    self._array,
-                    projection.chunk_transform.translate(domain.inclusive_min),
-                    self._parts,
-                    self._reader,
-                ),
+                view=LazyArray._derive(self._array, part_transform, self._parts, self._reader),
                 out_selection=_partition_out_selection(projection.cell_transform),
                 _owner=self._part_owner,
             )
@@ -1007,7 +1044,6 @@ class LazyArray:
             scalar_selection, selection = split_scalar_axes(selection, transform.domain, mode)
             if scalar_selection is not None:
                 transform = transform.select(scalar_selection, "basic")
-                transform = transform.translate_domain_to((0,) * transform.input_rank)
         literal = normalize_positional_selection(selection, transform.domain, mode)
         if mode == "basic":
             # IndexTransform's basic path includes NumPy's `None`/newaxis.
@@ -1019,8 +1055,50 @@ class LazyArray:
         return LazyArray._derive(self._array, composed, self._parts, self._reader)
 
     def __getitem__(self, selection: Any) -> LazyArray:
-        """Build a basic integer/slice view without reading source values."""
+        """Build a view without reading source values.
+
+        A NumPy key (integers, slices, ellipsis, `None`) is **positional**:
+        `view[0]` is the first element and `view[-1]` the last, whatever
+        literal coordinates the view's domain carries. An `IndexDomain` key
+        is **literal**, restricting the view to those coordinates of its
+        domain, and an `IndexTransform` key composes onto the view, mapping
+        the key's domain into the view's domain. These are the two ways
+        TensorStore's `__getitem__` addresses a view, offered here without
+        changing what a NumPy key means.
+        """
+        if isinstance(selection, IndexDomain):
+            return self._select_domain(selection)
+        if isinstance(selection, IndexTransform):
+            return self._select_transform(selection)
         return self._select(selection, "basic")
+
+    def _select_domain(self, domain: IndexDomain) -> LazyArray:
+        """Restrict the view to a literal sub-domain of its own domain."""
+        if domain.ndim != self._transform.input_rank:
+            raise ValueError(
+                f"domain rank {domain.ndim} does not match view rank {self._transform.input_rank}"
+            )
+        own = self._transform.domain
+        for axis, (lo, hi) in enumerate(
+            zip(domain.inclusive_min, domain.exclusive_max, strict=True)
+        ):
+            # Stricter than a literal slice, which admits an empty interval
+            # anywhere: a domain key names coordinates of this view's domain.
+            if lo < own.inclusive_min[axis] or hi > own.exclusive_max[axis]:
+                raise BoundsCheckError(
+                    f"domain [{lo}, {hi}) on dimension {axis} is outside the view's domain "
+                    f"[{own.inclusive_min[axis]}, {own.exclusive_max[axis]})"
+                )
+        literal = tuple(
+            slice(lo, hi) for lo, hi in zip(domain.inclusive_min, domain.exclusive_max, strict=True)
+        )
+        return LazyArray._derive(self._array, self._transform[literal], self._parts, self._reader)
+
+    def _select_transform(self, transform: IndexTransform) -> LazyArray:
+        """Compose a literal transform onto the view, as TensorStore's `store[transform]`."""
+        return LazyArray._derive(
+            self._array, transform.compose(self._transform), self._parts, self._reader
+        )
 
     def __setitem__(self, selection: Any, values: Any) -> None:
         """Select a basic view and synchronously write its values."""
