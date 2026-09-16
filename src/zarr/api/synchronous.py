@@ -203,7 +203,8 @@ def open(
         (fail if exists).
         If the store is read-only, the default is 'r'; otherwise, it is 'a'.
     zarr_format : {2, 3, None}, optional
-        The zarr format to use when saving.
+        The Zarr format of the node. None opens whichever format is found,
+        trying Zarr format 3 first, and creates the default format.
     path : str or None, optional
         The path within the store to open.
     storage_options : dict
@@ -224,6 +225,14 @@ def open(
 
     Notes
     -----
+    What `open` opens or creates follows two rules. If `shape` is given, the
+    call describes an array and behaves as [`open_array`][zarr.open_array] with
+    the same arguments. Otherwise, in the modes that read ('r', 'r+' and 'a'),
+    the node at `path` is opened whichever kind it is; when there is none, 'r'
+    and 'r+' raise [`NodeNotFoundError`][zarr.errors.NodeNotFoundError] and 'a'
+    creates a group. The modes that only create ('w' and 'w-') create a group,
+    'w' replacing whatever is at `path` and 'w-' failing if anything is.
+
     `open` returns a lazy [`Array`][zarr.Array] or [`Group`][zarr.Group] backed by
     the store, so data is read and written incrementally. Use [`load`][zarr.load]
     instead when you want the data eagerly read into an in-memory array (a

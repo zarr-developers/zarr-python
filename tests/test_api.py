@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import collections
 import inspect
-import re
 from typing import TYPE_CHECKING, Any
 
 import zarr.codecs
@@ -49,8 +48,10 @@ from zarr.api.synchronous import (
 from zarr.core.buffer import NDArrayLike, cpu, default_buffer_prototype
 from zarr.errors import (
     ArrayNotFoundError,
-    GroupNotFoundError,
+    ContainsArrayError,
+    ContainsGroupError,
     MetadataValidationError,
+    NodeNotFoundError,
     NodeTypeValidationError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
@@ -367,13 +368,9 @@ def test_array_open_array_not_found_sync() -> None:
 def test_v2_and_v3_exist_at_same_path(store: Store) -> None:
     zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=3)
     zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=2)
-    # `open` reads only zarr.json and takes the format 3 node without a second look
-    node = zarr.open(store=store)
-    assert node.metadata.zarr_format == 3
-    # `open_array` looks at both and says so
-    msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store}. Zarr v3 will be used."
-    with pytest.warns(ZarrUserWarning, match=re.escape(msg)):
-        zarr.open_array(store=store)
+    # only zarr.json is read, and the format 3 node is taken without a second look
+    assert zarr.open(store=store).metadata.zarr_format == 3
+    assert zarr.open_array(store=store).metadata.zarr_format == 3
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1504,31 +1501,106 @@ async def test_open_invalid_zarr_format_raises() -> None:
         await zarr.api.asynchronous.open(store=store, zarr_format="3.0")  # type: ignore[arg-type]
 
 
-async def test_open_zarr_json_without_node_type_is_a_group() -> None:
-    """A `zarr.json` with no `node_type` opens as a group, as `GroupMetadata.from_dict` allows."""
+async def test_open_zarr_json_without_node_type_raises() -> None:
+    """A format 3 document must say what it is: no `node_type` is a validation error."""
     store = MemoryStore()
     await store.set(
         "zarr.json", cpu.Buffer.from_bytes(b'{"zarr_format": 3, "attributes": {"k": "v"}}')
     )
-    group = await zarr.api.asynchronous.open(store=store, mode="r")
-    assert isinstance(group, zarr.core.group.AsyncGroup)
-    assert group.attrs == {"k": "v"}
-
-
-async def test_open_zarr_json_with_invalid_node_type_raises() -> None:
-    """A `zarr.json` whose `node_type` is neither array nor group is an error, as on `main`."""
-    store = MemoryStore()
-    await store.set("zarr.json", cpu.Buffer.from_bytes(b'{"zarr_format": 3, "node_type": "foo"}'))
-    with pytest.raises(GroupNotFoundError, match="is not 'group'"):
+    with pytest.raises(NodeTypeValidationError, match="Required key 'node_type' is missing"):
         await zarr.api.asynchronous.open(store=store, mode="r")
 
 
-async def test_async_array_open_on_group_raises_node_type() -> None:
-    """Opening a v3 group as an array still reports the node_type mismatch."""
+async def test_open_zarr_json_with_invalid_node_type_raises() -> None:
+    """A `node_type` that is neither array nor group is a validation error, not a missing node."""
     store = MemoryStore()
-    await zarr.api.asynchronous.open_group(store, zarr_format=3)
-    with pytest.raises(NodeTypeValidationError, match="node_type"):
-        await AsyncArray.open(store, zarr_format=3)
+    await store.set("zarr.json", cpu.Buffer.from_bytes(b'{"zarr_format": 3, "node_type": "foo"}'))
+    with pytest.raises(NodeTypeValidationError, match="Expected 'array' or 'group'. Got 'foo'"):
+        await zarr.api.asynchronous.open(store=store, mode="r")
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+async def test_async_array_open_on_group_raises_contains_group(zarr_format: ZarrFormat) -> None:
+    """Opening a group as an array says a group is there, rather than that nothing is."""
+    store = MemoryStore()
+    await zarr.api.asynchronous.open_group(store, zarr_format=zarr_format)
+    with pytest.raises(ContainsGroupError, match="A group exists in store"):
+        await AsyncArray.open(store, zarr_format=zarr_format)
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+async def test_async_group_open_on_array_raises_contains_array(zarr_format: ZarrFormat) -> None:
+    """Opening an array as a group says an array is there, rather than that nothing is."""
+    store = MemoryStore()
+    await zarr.api.asynchronous.create_array(
+        store, shape=(3,), dtype="uint8", zarr_format=zarr_format
+    )
+    with pytest.raises(ContainsArrayError, match="An array exists in store"):
+        await zarr.core.group.AsyncGroup.open(store, zarr_format=zarr_format)
+
+
+@pytest.mark.parametrize("mode", ["r", "a"])
+def test_open_group_on_array_raises_contains_array(mode: AccessModeLiteral) -> None:
+    store = MemoryStore()
+    zarr.create_array(store, shape=(3,), dtype="uint8")
+    with pytest.raises(ContainsArrayError, match="An array exists in store"):
+        zarr.open_group(store, mode=mode)
+
+
+@pytest.mark.parametrize("mode", ["r", "a"])
+def test_open_array_on_group_raises_contains_group(mode: AccessModeLiteral) -> None:
+    store = MemoryStore()
+    zarr.create_group(store)
+    with pytest.raises(ContainsGroupError, match="A group exists in store"):
+        zarr.open_array(store, mode=mode)
+
+
+def _expected_open_outcome(
+    existing: str, mode: str, shape: tuple[int, ...] | None
+) -> type[Array[Any] | Group | Exception]:
+    """The contract of `open`, as a table: what comes back for what is there, the mode, and `shape`."""
+    if mode == "w-" and existing != "nothing":
+        return FileExistsError
+    if mode == "w":
+        return Array if shape else Group
+    if existing == "nothing":
+        if mode in ("r", "r+"):
+            return ArrayNotFoundError if shape else NodeNotFoundError
+        return Array if shape else Group
+    if shape:
+        return Array if existing == "array" else ContainsGroupError
+    return Array if existing == "array" else Group
+
+
+@pytest.mark.parametrize("existing", ["nothing", "array", "group"])
+@pytest.mark.parametrize("mode", ["r", "r+", "a", "w", "w-"])
+@pytest.mark.parametrize("shape", [None, (3,)], ids=["no shape", "shape"])
+def test_open_mode_contract(
+    existing: str, mode: AccessModeLiteral, shape: tuple[int, ...] | None
+) -> None:
+    """`open` follows its two rules for every mode, whatever is at the path, with and without `shape`.
+
+    With `shape` the call describes an array. Without it, the reading modes open
+    whatever node is there and 'a' creates a group when there is none; the
+    creating modes make a group, 'w' over whatever is there and 'w-' only over
+    nothing. An opened node keeps its attributes; a created one has none.
+    """
+    store = MemoryStore()
+    if existing == "array":
+        zarr.create_array(store, shape=(3,), dtype="uint8", attributes={"old": True})
+    elif existing == "group":
+        zarr.create_group(store, attributes={"old": True})
+    kwargs: dict[str, Any] = {} if shape is None else {"shape": shape, "dtype": "uint8"}
+    expected = _expected_open_outcome(existing, mode, shape)
+
+    if issubclass(expected, Exception):
+        with pytest.raises(expected):
+            zarr.open(store=store, mode=mode, **kwargs)
+        return
+    node = zarr.open(store=store, mode=mode, **kwargs)
+    assert isinstance(node, expected)
+    opened = existing != "nothing" and mode in ("r", "r+", "a")
+    assert node.attrs.get("old") is (True if opened else None)
 
 
 @pytest.mark.parametrize("mode", ["r", "r+", "w", "a"])

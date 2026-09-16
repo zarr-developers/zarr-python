@@ -1547,6 +1547,7 @@ def test_open_mutable_mapping_sync():
 
 
 async def test_open_ambiguous_node():
+    """A path holding both formats opens as Zarr format 3, without reading or warning about the other."""
     zarr_json_bytes = default_buffer_prototype().buffer.from_bytes(
         json.dumps({"zarr_format": 3, "node_type": "group"}).encode("utf-8")
     )
@@ -1554,11 +1555,8 @@ async def test_open_ambiguous_node():
         json.dumps({"zarr_format": 2}).encode("utf-8")
     )
     store: dict[str, Buffer] = {"zarr.json": zarr_json_bytes, ".zgroup": zgroup_bytes}
-    with pytest.warns(
-        ZarrUserWarning,
-        match=r"Both zarr\.json \(Zarr format 3\) and \.zgroup \(Zarr format 2\) metadata objects exist at",
-    ):
-        await AsyncGroup.open(store, zarr_format=None)
+    group = await AsyncGroup.open(store, zarr_format=None)
+    assert group.metadata.zarr_format == 3
 
 
 class TestConsolidated:
