@@ -243,3 +243,20 @@ that implementation or reproduce its full worker/GPU lifecycle.
 ·
 **API:** [API reference](../api/index.md)
 </nav>
+
+## Dask tokenization
+
+`LazyArray.__dask_tokenize__()` combines Dask's token for the wrapped source
+with the serialized view transform. Dask owns source hashing, registered
+normalizers, custom source hooks, and deterministic-token requirements.
+Tokenization may read or hash source values. Dask is optional for indexing
+and reading, but required when requesting a Dask token.
+
+The reader and partitioning are omitted because they must preserve values.
+Changing a source after graph construction does not update existing Dask keys.
+
+For consumers that require eager indexing, such as `dask.array.from_array`,
+wrap the view in `EagerArrayAdapter` (importable from `zarr_indexing`). The
+adapter materializes each indexed block while the wrapped view keeps lazy
+indexing, and its token derives from the view's. See Dask's [from_array
+documentation](https://docs.dask.org/en/stable/generated/dask.array.from_array.html).
