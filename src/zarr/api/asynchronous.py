@@ -394,7 +394,7 @@ async def open(
     # TODO: the mode check below seems wrong!
     if "shape" not in kwargs and mode in {"a", "r", "r+", "w"}:
         probe = await _probe_array_metadata(store_path, zarr_format=zarr_format)
-        if probe.is_array:
+        if probe.node_type == "array":
             # TODO: remove this cast when we fix typing for array metadata dicts
             _metadata_dict = cast("ArrayMetadataDict", probe.metadata)
             zarr_format = _metadata_dict["zarr_format"]

@@ -46,7 +46,7 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
-from zarr.core.buffer import NDArrayLike, default_buffer_prototype
+from zarr.core.buffer import NDArrayLike, cpu, default_buffer_prototype
 from zarr.errors import (
     ArrayNotFoundError,
     MetadataValidationError,
@@ -1474,6 +1474,25 @@ async def test_open_array_probe_invalid_zarr_format_raises() -> None:
         match="Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '3.0'.",
     ):
         await zarr.api.asynchronous.open(store=store, zarr_format="3.0")  # type: ignore[arg-type]
+
+
+async def test_open_zarr_json_without_node_type_is_a_group() -> None:
+    """A `zarr.json` with no `node_type` opens as a group, as `GroupMetadata.from_dict` allows."""
+    store = MemoryStore()
+    await store.set(
+        "zarr.json", cpu.Buffer.from_bytes(b'{"zarr_format": 3, "attributes": {"k": "v"}}')
+    )
+    group = await zarr.api.asynchronous.open(store=store, mode="r")
+    assert isinstance(group, zarr.core.group.AsyncGroup)
+    assert group.attrs == {"k": "v"}
+
+
+async def test_open_zarr_json_with_invalid_node_type_raises() -> None:
+    """A `zarr.json` whose `node_type` is neither array nor group is an error, not a fallback."""
+    store = MemoryStore()
+    await store.set("zarr.json", cpu.Buffer.from_bytes(b'{"zarr_format": 3, "node_type": "foo"}'))
+    with pytest.raises(NodeTypeValidationError, match="Expected 'array' or 'group'. Got 'foo'"):
+        await zarr.api.asynchronous.open(store=store, mode="r")
 
 
 async def test_async_array_open_on_group_raises_node_type() -> None:
