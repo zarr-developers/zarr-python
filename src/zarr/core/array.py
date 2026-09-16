@@ -138,7 +138,6 @@ from zarr.errors import (
     ArrayNotFoundError,
     ChunkNotFoundError,
     MetadataValidationError,
-    NodeTypeValidationError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
 )
@@ -284,26 +283,6 @@ class _MetadataDocs(TypedDict):
     zattrs: NotRequired[Buffer | None]
 
 
-@dataclass(frozen=True, kw_only=True)
-class _ArrayProbe:
-    """What a search for array metadata at a path turned up.
-
-    `node_type` is what the metadata document found there describes: an array, a
-    group, or None when there is no such document. A `.zarray` always means
-    an array. A `zarr.json` means whatever its `node_type` says, with a missing
-    `node_type` read as a group, the same leniency `GroupMetadata.from_dict`
-    applies. `metadata` is the document itself, or None when `node_type` is.
-
-    `docs` holds the documents the probe read, for a caller that goes on to open
-    a group at the same path: `zarr.json` and `.zattrs` are keys the group open
-    would otherwise read a second time.
-    """
-
-    node_type: Literal["array", "group"] | None = None
-    metadata: dict[str, JSON] | None = None
-    docs: _MetadataDocs = field(default_factory=_MetadataDocs)
-
-
 async def _fetch_array_metadata_docs(
     store_path: StorePath, zarr_format: ZarrFormat | None
 ) -> _MetadataDocs:
@@ -334,17 +313,16 @@ async def _fetch_array_metadata_docs(
         raise MetadataValidationError(msg)
 
 
-async def _probe_array_metadata(
-    store_path: StorePath, zarr_format: ZarrFormat | None = 3
-) -> _ArrayProbe:
-    """Look for array metadata at `store_path`, reporting a miss instead of raising.
+def _array_metadata_from_docs(
+    docs: _MetadataDocs, store_path: StorePath, zarr_format: ZarrFormat | None
+) -> dict[str, JSON]:
+    """Interpret `docs`, as read by `_fetch_array_metadata_docs`, as array metadata.
 
-    This is [`get_array_metadata`][zarr.core.array.get_array_metadata] without
-    the exceptions for "there is no array here", so that a caller which has
-    something else to try can do so without paying for the same reads twice. An
-    invalid `zarr_format` still raises.
+    `zarr.json` wins when both formats are present. Raises `ArrayNotFoundError`
+    when there is no array metadata document and `NodeTypeValidationError` when
+    the `zarr.json` found describes something other than an array. `store_path`
+    and `zarr_format` only shape the error messages.
     """
-    docs = await _fetch_array_metadata_docs(store_path, zarr_format)
     zarr_json_bytes = docs.get("zarr_json")
     zarray_bytes = docs.get("zarray")
     if zarr_json_bytes is not None and zarray_bytes is not None:
@@ -352,40 +330,27 @@ async def _probe_array_metadata(
         msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store_path}. Zarr v3 will be used."
         warnings.warn(msg, category=ZarrUserWarning, stacklevel=1)
     if zarr_json_bytes is not None:
-        metadata = buffer_to_json_object(zarr_json_bytes)
-        node_type = metadata.get("node_type")
-        if node_type == "array":
-            return _ArrayProbe(node_type="array", metadata=metadata, docs=docs)
-        if node_type in ("group", None):
-            return _ArrayProbe(node_type="group", metadata=metadata, docs=docs)
-        msg = f"Invalid value for 'node_type'. Expected 'array' or 'group'. Got {node_type!r}."
-        raise NodeTypeValidationError(msg)
+        return _array_metadata_dict_v3(zarr_json_bytes)
     if zarray_bytes is not None:
-        metadata = _array_metadata_dict_v2(zarray_bytes, docs.get("zattrs"))
-        return _ArrayProbe(node_type="array", metadata=metadata, docs=docs)
-    return _ArrayProbe(docs=docs)
+        return _array_metadata_dict_v2(zarray_bytes, docs.get("zattrs"))
+    if zarr_format is None:
+        msg = (
+            f"Neither Zarr V3 nor Zarr V2 array metadata documents "
+            f"were found in store {store_path.store!r} at path {store_path.path!r}."
+        )
+    else:
+        msg = (
+            f"A Zarr V{zarr_format} array metadata document was not found in store "
+            f"{store_path.store!r} at path {store_path.path!r}."
+        )
+    raise ArrayNotFoundError(msg)
 
 
 async def get_array_metadata(
     store_path: StorePath, zarr_format: ZarrFormat | None = 3
 ) -> dict[str, JSON]:
-    probe = await _probe_array_metadata(store_path, zarr_format=zarr_format)
-    if probe.metadata is None:
-        if zarr_format is None:
-            msg = (
-                f"Neither Zarr V3 nor Zarr V2 array metadata documents "
-                f"were found in store {store_path.store!r} at path {store_path.path!r}."
-            )
-        else:
-            msg = (
-                f"A Zarr V{zarr_format} array metadata document was not found in store "
-                f"{store_path.store!r} at path {store_path.path!r}."
-            )
-        raise ArrayNotFoundError(msg)
-    if probe.node_type != "array":
-        # raise the same error the document's own `node_type` value would produce
-        parse_node_type_array(probe.metadata.get("node_type"))
-    return probe.metadata
+    docs = await _fetch_array_metadata_docs(store_path, zarr_format=zarr_format)
+    return _array_metadata_from_docs(docs, store_path, zarr_format)
 
 
 def _array_metadata_dict_v2(zarray_bytes: Buffer, zattrs_bytes: Buffer | None) -> dict[str, JSON]:
@@ -394,6 +359,13 @@ def _array_metadata_dict_v2(zarray_bytes: Buffer, zattrs_bytes: Buffer | None) -
     metadata_dict["attributes"] = (
         buffer_to_json_object(zattrs_bytes) if zattrs_bytes is not None else {}
     )
+    return metadata_dict
+
+
+def _array_metadata_dict_v3(zarr_json_bytes: Buffer) -> dict[str, JSON]:
+    """Parse a `zarr.json` document, checking that it describes an array."""
+    metadata_dict: dict[str, JSON] = buffer_to_json_object(zarr_json_bytes)
+    parse_node_type_array(metadata_dict.get("node_type"))
     return metadata_dict
 
 

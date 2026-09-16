@@ -49,6 +49,7 @@ from zarr.api.synchronous import (
 from zarr.core.buffer import NDArrayLike, cpu, default_buffer_prototype
 from zarr.errors import (
     ArrayNotFoundError,
+    GroupNotFoundError,
     MetadataValidationError,
     NodeTypeValidationError,
     ZarrDeprecationWarning,
@@ -1466,7 +1467,7 @@ async def test_open_array_does_not_fall_back(zarr_format: ZarrFormat) -> None:
     assert arr.attrs == {"k": "v"}
 
 
-async def test_open_array_probe_invalid_zarr_format_raises() -> None:
+async def test_open_invalid_zarr_format_raises() -> None:
     """An invalid `zarr_format` is a bad request, not a missing array, so it still raises."""
     store = MemoryStore()
     with pytest.raises(
@@ -1487,11 +1488,11 @@ async def test_open_zarr_json_without_node_type_is_a_group() -> None:
     assert group.attrs == {"k": "v"}
 
 
-async def test_open_zarr_json_with_invalid_node_type_raises() -> None:
-    """A `zarr.json` whose `node_type` is neither array nor group is an error, not a fallback."""
+async def test_open_zarr_json_with_invalid_node_type_is_not_a_group() -> None:
+    """A `zarr.json` whose `node_type` is neither array nor group does not open as a group."""
     store = MemoryStore()
     await store.set("zarr.json", cpu.Buffer.from_bytes(b'{"zarr_format": 3, "node_type": "foo"}'))
-    with pytest.raises(NodeTypeValidationError, match="Expected 'array' or 'group'. Got 'foo'"):
+    with pytest.raises(GroupNotFoundError):
         await zarr.api.asynchronous.open(store=store, mode="r")
 
 

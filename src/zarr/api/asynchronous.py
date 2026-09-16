@@ -15,8 +15,9 @@ from zarr.core.array import (
     Array,
     AsyncArray,
     CompressorLike,
+    _array_metadata_from_docs,
+    _fetch_array_metadata_docs,
     _MetadataDocs,
-    _probe_array_metadata,
     create_array,
     from_array,
 )
@@ -393,23 +394,27 @@ async def open(
 
     # TODO: the mode check below seems wrong!
     if "shape" not in kwargs and mode in {"a", "r", "r+", "w"}:
-        probe = await _probe_array_metadata(store_path, zarr_format=zarr_format)
-        if probe.node_type == "array":
+        # Read the array metadata documents once: if they turn out not to describe
+        # an array, the group open below reuses them instead of reading them again.
+        docs = await _fetch_array_metadata_docs(store_path, zarr_format=zarr_format)
+        try:
+            metadata_dict = _array_metadata_from_docs(docs, store_path, zarr_format)
             # TODO: remove this cast when we fix typing for array metadata dicts
-            _metadata_dict = cast("ArrayMetadataDict", probe.metadata)
+            _metadata_dict = cast("ArrayMetadataDict", metadata_dict)
+            # for v2, the above would already have raised an exception if not an array
             zarr_format = _metadata_dict["zarr_format"]
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
             if is_v3_array or zarr_format == 2:
                 return AsyncArray(
                     store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
                 )
-        # There is no array here, so open a group instead, handing over what the
-        # probe already read so the group open doesn't pay for the same keys twice.
+        except (FileNotFoundError, NodeTypeValidationError):
+            pass
         return await open_group(
             store=store_path,
             zarr_format=zarr_format,
             mode=mode,
-            _pre_fetched_metadata=probe.docs,
+            _pre_fetched_metadata=docs,
             **kwargs,
         )
 
