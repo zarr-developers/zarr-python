@@ -70,6 +70,7 @@ from zarr.core.metadata.v3 import (
     ChunkGridMetadata,
     RectilinearChunkGridMetadata,
     RegularChunkGridMetadata,
+    evolve_and_validate_codecs,
     parse_codecs,
 )
 from zarr.registry import get_ndbuffer_class, get_pipeline_class
@@ -559,13 +560,20 @@ class ShardingCodec(
         }
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        """Thread the spec through the inner chain.
+        """Thread the spec through the inner chain, evolving and validating it.
 
         Each codec is evolved against the spec produced by the previous one.
         Evolving every codec against the same unthreaded spec is the bug shape that
         strips `BytesCodec.endian` behind a dtype-changing codec — and this
         method runs on the real array-creation path, baking the damaged chain
         into the evolved instance before the transform builders ever run.
+
+        The inner chain is validated here rather than in `validate`, because
+        only the array spec carries the fill value some inner codecs need to
+        resolve their metadata (e.g. `scale_offset`); `validate` only has the
+        geometry and dtype. Inner codecs see chunks of `chunk_shape`, so that
+        is the shape and (regular) grid they are validated against, threaded
+        through any shape-changing inner codec as at the top level.
 
         Parameters
         ----------
@@ -576,10 +584,13 @@ class ShardingCodec(
         -------
             This codec with the evolved code chain.
         """
-        from zarr.core.chunk_utils import evolve_codecs
-
-        shard_spec = self._get_chunk_spec(array_spec)
-        evolved_codecs = evolve_codecs(self.codecs, shard_spec)
+        chunk_spec = self._get_chunk_spec(array_spec)
+        evolved_codecs = evolve_and_validate_codecs(
+            self.codecs,
+            shape=self.chunk_shape,
+            chunk_grid=RegularChunkGridMetadata(chunk_shape=self.chunk_shape),
+            chunk_spec=chunk_spec,
+        )
         if evolved_codecs != self.codecs:
             return replace(self, codecs=evolved_codecs)
         return self
@@ -1586,14 +1597,28 @@ class ShardingCodec(
         )
 
     def _get_chunks_per_shard(self, shard_spec: ArraySpec) -> tuple[int, ...]:
-        return tuple(
-            s // c
-            for s, c in zip(
-                shard_spec.shape,
-                self.chunk_shape,
-                strict=False,
+        """The number of inner chunks along each axis of a shard.
+
+        Every encode, decode and size computation goes through here, so this is
+        also the run-time divisibility check. Metadata validation cannot always
+        establish divisibility for every shard: after a codec that maps chunk
+        shapes without declaring a chunk grid on a rectilinear grid, only one
+        representative shard is checked (see
+        `zarr.core.metadata.v3.evolve_and_validate_codecs`). Without this check
+        a non-dividing shard would be floor-divided and read or written with the
+        wrong layout, silently corrupting data.
+        """
+        if len(shard_spec.shape) != len(self.chunk_shape) or any(
+            s % c != 0 for s, c in zip(shard_spec.shape, self.chunk_shape, strict=True)
+        ):
+            raise ValueError(
+                f"A shard of shape {shard_spec.shape} is not divisible by the shard's inner "
+                f"chunk shape {self.chunk_shape}. Metadata validation checks this for "
+                "every shard only when each codec before the sharding codec declares its "
+                "chunk grid (`resolve_chunk_grid`); otherwise it is detected here, when "
+                "such a shard is first encoded or decoded."
             )
-        )
+        return tuple(s // c for s, c in zip(shard_spec.shape, self.chunk_shape, strict=True))
 
     def _shard_index_byte_range(
         self, chunks_per_shard: tuple[int, ...]
