@@ -6,16 +6,19 @@ index it without reading data.
 The example shows how to:
 
 - Wrap a NumPy array and read the forwarded `shape`, `dtype`, and `ndim`
-- Compose selections through `.lazy[...]`, `.lazy.oindex[...]`, and
-  `.lazy.vindex[...]`, and materialize the composed view once with `result()`
+- Compose selections through `[...]`, `.oindex[...]`, and
+  `.vindex[...]`, and materialize the composed view once with `result()`
+- Iterate lazy row views and write through a composed view with `write(values)`
+  or indexed assignment; writes finish synchronously on the original source
 - Tell a box selection (slices and integers, described by an interval and a step
   per dimension) from a query selection (points gathered through an index array)
   using `is_box`, `bounding_box()`, and `strides()`
 - Declare a partitioning with `with_parts()`, iterate it with `parts()`, and
   assemble a result from the partitions
 
-`LazyArray` wraps any object exposing `shape`, `dtype`, and `__getitem__`, so the
-same API applies to a Zarr array, and the partitioning is then discovered from
+`LazyArray` wraps compatible sources exposing `shape`, `dtype`, and basic
+slicing whose results can be converted to NumPy system memory. This includes
+a Zarr array, and the partitioning is then discovered from
 the array's chunks. The Dask example covers that case.
 
 ## Running the Example

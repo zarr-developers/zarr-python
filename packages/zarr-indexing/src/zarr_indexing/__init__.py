@@ -14,7 +14,7 @@ Key types:
 - `IndexTransform.compose` — chain two transforms into one
 
 `LazyArray` wraps a system-memory/basic-indexing source and gives it deferred
-indexing through `.lazy[...]`, yielding its reads as `Partition`s. Other
+indexing through `view[...]`, yielding its reads as `Partition`s. Other
 backends use an explicit `Reader` adapter.
 
 `plan_chunks` projects a transform through a caller-selected chunk grid without
@@ -39,6 +39,7 @@ from zarr_indexing.chunk_resolution import (
     plan_chunks,
 )
 from zarr_indexing.domain import IndexDomain
+from zarr_indexing.eager import EagerArrayAdapter
 from zarr_indexing.errors import BoundsCheckError, VindexInvalidSelectionError
 from zarr_indexing.grid import (
     ChunkGrid,
@@ -93,6 +94,7 @@ __all__ = [
     "DimensionGrid",
     "DimensionGridLike",
     "DimensionMap",
+    "EagerArrayAdapter",
     "EdgeDimensionGrid",
     "FixedDimension",
     "GridPartition",
