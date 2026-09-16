@@ -88,7 +88,7 @@ layouts: tuple[Layout, ...] = (
     Layout(shape=(1_000_000_000,), chunks=(100_000,), shards=(100_000 * 100,)),
 )
 
-_PIPELINE_SETTINGS = {
+_PIPELINE_SETTINGS: dict[str, dict[str, str | int | None]] = {
     "batched": {"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"},
     "fused_full_threaded": {
         "codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline",
