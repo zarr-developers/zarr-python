@@ -35,3 +35,6 @@ jobs:
 
       - name: Check zarr-http-server changelog entries
         run: uv run --no-sync python ci/check_changelog_entries.py packages/zarr-http-server/changes
+
+      - name: Check zarr-chunk-key-encoding changelog entries
+        run: uv run --no-sync python ci/check_changelog_entries.py packages/zarr-chunk-key-encoding/changes
