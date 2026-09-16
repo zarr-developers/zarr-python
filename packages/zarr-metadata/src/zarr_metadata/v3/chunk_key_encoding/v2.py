@@ -37,6 +37,7 @@ class V2ChunkKeyEncodingConfiguration(TypedDict):
     """Configuration for the v2 chunk key encoding.
 
     `separator` is optional and defaults to `"."` per spec.
+      https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-key-encodings/v2/index.rst#L27-L29
     """
 
     separator: NotRequired[V2ChunkKeyEncodingSeparator]

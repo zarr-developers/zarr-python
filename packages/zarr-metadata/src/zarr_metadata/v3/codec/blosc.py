@@ -50,6 +50,8 @@ BloscCodecMetadata = BloscCodecObject
 The configuration has multiple required keys (`cname`, `clevel`, `shuffle`,
 `blocksize`), so only the object form is valid; the short-hand-name form
 is not permitted by the spec for this codec.
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/blosc/index.rst#L57-L98 (configuration parameters)
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564 (short-hand names only "if no configuration metadata is required")
 """
 
 __all__ = [

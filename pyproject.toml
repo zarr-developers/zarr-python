@@ -406,8 +406,6 @@ ignore = [
 "**/tests/**" = ["S101"]
 "**/examples/**" = ["S101"]
 "**/testing/**" = ["S101"]
-# zarr-indexing still has asserts in runtime code; tracked as a separate change.
-"packages/zarr-indexing/src/**" = ["S101"]
 
 [tool.mypy]
 files = ["src", "tests"]
