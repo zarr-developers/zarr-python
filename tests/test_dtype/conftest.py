@@ -1,5 +1,6 @@
 # Generate a collection of zdtype instances for use in testing.
 import warnings
+from collections import Counter
 from typing import Any
 
 import numpy as np
@@ -64,4 +65,19 @@ def pytest_generate_tests(metafunc: Any) -> None:
     for fixture_name in metafunc.fixturenames:
         if hasattr(metafunc.cls, fixture_name):
             params = getattr(metafunc.cls, fixture_name)
-            metafunc.parametrize(fixture_name, params, scope="class", ids=str)
+            metafunc.parametrize(
+                fixture_name, params, scope="class", ids=_unique_ids([str(p) for p in params])
+            )
+
+
+def _unique_ids(ids: list[str]) -> list[str]:
+    """Suffix repeated ids with their positional index so every id is unique.
+
+    Distinct parameters can stringify identically: for example `np.dtype("i")` and
+    `np.dtype("<i4")` both render as `int32` on little-endian platforms, but they are
+    deliberately distinct test cases. Pytest used to deduplicate colliding ids silently;
+    `strict_parametrization_ids` makes them a collection error, so we disambiguate
+    explicitly. Ids that are already unique are left untouched.
+    """
+    counts = Counter(ids)
+    return [f"{id_}-{idx}" if counts[id_] > 1 else id_ for idx, id_ in enumerate(ids)]

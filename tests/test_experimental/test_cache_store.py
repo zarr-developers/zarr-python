@@ -1036,3 +1036,40 @@ class TestCacheStore:
         # Key is gone from source
         result = await cached_store.get("key", proto)
         assert result is None
+
+
+def test_cache_store_opts_out_of_sync_io() -> None:
+    """`CacheStore` must not advertise sync IO capability.
+
+    Its caching logic lives only in the async `get`/`set`/`delete` overrides,
+    while the inherited `WrapperStore` sync methods delegate straight to the
+    source store. If the fused codec pipeline took the sync fast path, writes
+    and deletes would bypass the cache and later async reads would serve stale
+    entries. The opt-out forces sync-capable consumers onto the async path,
+    which keeps the cache coherent.
+    """
+    from zarr.abc.store import _store_supports_sync_io
+    from zarr.storage import MemoryStore
+
+    cached = CacheStore(MemoryStore(), cache_store=MemoryStore())
+    assert _store_supports_sync_io(cached) is False
+
+
+async def test_cache_coherent_after_fused_pipeline_write() -> None:
+    """Writing through the fused pipeline must not leave stale cache entries."""
+    import numpy as np
+
+    import zarr
+    from zarr.core.config import config as zarr_config
+    from zarr.storage import MemoryStore
+
+    source = MemoryStore()
+    cached = CacheStore(source, cache_store=MemoryStore())
+    with zarr_config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}):
+        arr = zarr.create_array(cached, shape=(8,), chunks=(8,), dtype="int32", fill_value=0)
+        arr[:] = np.arange(8, dtype="int32")
+        np.testing.assert_array_equal(arr[:], np.arange(8))
+        # Overwrite, then read back through the same cached handle: the read
+        # must observe the overwrite, not a cached copy of the first write.
+        arr[:] = np.arange(100, 108, dtype="int32")
+        np.testing.assert_array_equal(arr[:], np.arange(100, 108))

@@ -4,7 +4,7 @@ import json
 import warnings
 from collections.abc import Iterable, Sequence
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.numcodec import Numcodec, _is_numcodec
@@ -14,7 +14,7 @@ from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
 
 if TYPE_CHECKING:
-    from typing import Literal, Self
+    from typing import Self
 
     import numpy.typing as npt
 
@@ -41,6 +41,7 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config, parse_indexing_order
+from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
 
 
@@ -120,7 +121,7 @@ class ArrayV2Metadata(Metadata):
     def chunk_grid(self) -> ChunkGrid:
         """Backwards-compatible chunk grid property.
 
-        .. deprecated::
+        !!! warning "Deprecated"
             Access the chunk grid via the array layer instead.
             This property will be removed in a future release.
         """
@@ -278,9 +279,7 @@ def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
 
 
 def parse_zarr_format(data: object) -> Literal[2]:
-    if data == 2:
-        return 2
-    raise ValueError(f"Invalid value. Expected 2. Got {data}.")
+    return cast("Literal[2]", parse_field(data, Literal[2], "zarr_format"))
 
 
 def parse_filters(data: object) -> tuple[Numcodec, ...] | None:

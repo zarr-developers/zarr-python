@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, cast
 
+import numpy as np
+
 from zarr.core.common import (
     MemoryOrder,
     parse_bool,
@@ -132,7 +134,7 @@ def parse_array_config(data: ArrayConfigLike | None) -> ArrayConfig:
         return ArrayConfig.from_dict(data)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class ArraySpec:
     shape: tuple[int, ...]
     dtype: ZDType[TBaseDType, TBaseScalar]
@@ -156,6 +158,24 @@ class ArraySpec:
         object.__setattr__(self, "fill_value", fill_value_parsed)
         object.__setattr__(self, "config", config)
         object.__setattr__(self, "prototype", prototype)
+
+    def _key(self) -> tuple[object, ...]:
+        """Returns the tuple used for equality/hash identity."""
+        fill_value = self.fill_value
+        if isinstance(fill_value, np.generic):
+            # fill_values should be byte-identical, otherwise they correspond to different values in memory / on disk.
+            # Importantly, this ensures np.nan == np.nan, NaT == NaT, and -0.0 != 0.0.
+            # It also fixes np.void fill_values being unhashable (#3054).
+            fill_value = fill_value.tobytes()
+        return (self.shape, self.dtype, fill_value, self.config, self.prototype)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ArraySpec):
+            return NotImplemented
+        return self._key() == other._key()
+
+    def __hash__(self) -> int:
+        return hash(self._key())
 
     @property
     def ndim(self) -> int:

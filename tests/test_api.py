@@ -79,7 +79,7 @@ def test_create(memory_store: Store) -> None:
         z = create(shape=(400.5, 100), store=store, overwrite=True)  # type: ignore[arg-type]
 
     # create array with float chunk shape
-    with pytest.raises(TypeError, match="'float' object is not iterable"):
+    with pytest.raises(TypeError, match="Chunk specification must be an integer or an iterable"):
         z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore[arg-type]
 
 
@@ -166,6 +166,53 @@ async def test_array_like_creation(
     assert new_arr.chunks == expect_chunks
     assert new_arr.dtype == expect_dtype
     assert np.all(Array(new_arr)[:] == expect_fill)
+
+
+@pytest.mark.parametrize("mode_kwargs", [{}, {"mode": None}])
+async def test_open_like_creates_array_by_default(
+    zarr_format: ZarrFormat, mode_kwargs: dict[str, None]
+) -> None:
+    ref_arr = zarr.create_array(
+        store={},
+        shape=(11, 12),
+        dtype="uint8",
+        chunks=(11, 12),
+        zarr_format=zarr_format,
+        fill_value=100,
+    )
+
+    new_arr = await zarr.api.asynchronous.open_like(
+        ref_arr,
+        path="foo",
+        store={},
+        zarr_format=zarr_format,
+        **mode_kwargs,
+    )
+
+    assert new_arr.shape == ref_arr.shape
+    assert new_arr.chunks == ref_arr.chunks
+    assert new_arr.dtype == ref_arr.dtype
+    assert np.all(Array(new_arr)[:] == ref_arr.fill_value)
+
+
+async def test_open_like_default_mode_rejects_read_only_store(
+    zarr_format: ZarrFormat,
+) -> None:
+    ref_arr = zarr.create_array(
+        store={},
+        shape=(11, 12),
+        dtype="uint8",
+        chunks=(11, 12),
+        zarr_format=zarr_format,
+    )
+
+    with pytest.raises(ValueError, match="Store is read-only but mode is 'a'"):
+        await zarr.api.asynchronous.open_like(
+            ref_arr,
+            path="foo",
+            store=MemoryStore(read_only=True),
+            zarr_format=zarr_format,
+        )
 
 
 # TODO: parametrize over everything this function takes
@@ -372,7 +419,7 @@ async def test_open_group_unspecified_version(tmp_path: Path, zarr_format: ZarrF
 @pytest.mark.parametrize("n_args", [10, 1, 0])
 @pytest.mark.parametrize("n_kwargs", [10, 1, 0])
 @pytest.mark.parametrize("path", [None, "some_path"])
-def test_save(store: Store, n_args: int, n_kwargs: int, path: None | str) -> None:
+def test_save(store: Store, n_args: int, n_kwargs: int, path: str | None) -> None:
     data = np.arange(10)
     args = [np.arange(10) for _ in range(n_args)]
     kwargs = {f"arg_{i}": data for i in range(n_kwargs)}

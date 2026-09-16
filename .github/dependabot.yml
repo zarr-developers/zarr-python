@@ -31,14 +31,3 @@ updates:
           - "*"
     cooldown:
       default-days: 7
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    target-branch: "support/v2"
-    schedule:
-      interval: "weekly"
-    groups:
-      actions:
-        patterns:
-          - "*"
-    cooldown:
-      default-days: 7

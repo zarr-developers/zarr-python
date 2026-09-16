@@ -12,6 +12,7 @@ with a reason, so a block can never silently skip validation.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -156,6 +157,42 @@ def test_no_unvalidated_blocks() -> None:
     )
 
 
+_DESTRUCTIVE_FS_CALL = re.compile(
+    r"shutil\.rmtree|os\.(?:remove|unlink|rmdir|removedirs)\b|\.unlink\(|\.rmdir\(|rm -rf"
+)
+
+
+def test_no_destructive_filesystem_calls() -> None:
+    """Executed docs blocks must not delete files or directories.
+
+    Every python block that runs at build (exec="true") or under this harness
+    (test="true") executes in the *process* working directory: markdown-exec runs it
+    inside the mkdocs process and pytest-examples inside the pytest process, and neither
+    changes directory to the docs tree. A relative path in a deletion call therefore
+    resolves against wherever `mkdocs build` or `pytest` was started. Two sessions used to
+    open with `shutil.rmtree('data', ignore_errors=True)` to make their examples
+    re-runnable; started from any directory that happened to contain a `data/` folder --
+    a project checkout, or `/` -- the docs build silently emptied it. The sdist ships
+    `docs/` and `tests/` and `testpaths` collects `docs/user-guide`, so that reached users
+    running the shipped test suite, not just contributors.
+
+    Make examples re-runnable by creating with `overwrite=True` (or `mode="w"`) instead,
+    which is also what a reader copy-pasting the example a second time needs."""
+    offenders: list[str] = []
+    for example in find_examples(str(DOCS_ROOT)):
+        if not _is_tested(example.prefix_settings()):
+            continue
+        rel = Path(example.path).relative_to(DOCS_ROOT)
+        for offset, line in enumerate(example.source.splitlines()):
+            if _DESTRUCTIVE_FS_CALL.search(line):
+                offenders.append(f"{rel}:{example.start_line + offset}: {line.strip()}")
+
+    assert not offenders, (
+        "Executed docs blocks must not delete files or directories (they run in the "
+        "caller's working directory); create with overwrite=True instead:\n" + "\n".join(offenders)
+    )
+
+
 def test_test_only_blocks_come_last() -> None:
     """A conservative placement convention: a test="true"-only block must come after every
     exec="true" block in the same file.
@@ -254,7 +291,7 @@ def test_documentation_examples(
         module_globals.update(result)
 
 
-@pytest.mark.parametrize("example", find_examples(str(SOURCES_ROOT)), ids=str)
+@pytest.mark.parametrize("example", list(find_examples(str(SOURCES_ROOT))), ids=str)
 def test_docstrings(example: CodeExample, eval_example: EvalExample) -> None:
     """Test our docstring examples."""
     if example.path.name == "config.py" and "your.module" in example.source:

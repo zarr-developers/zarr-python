@@ -249,16 +249,31 @@ def test_uint64_encode_rejects_underflow() -> None:
         arr[:] = np.array([100, 50, 200], dtype="uint64")
 
 
-def test_rejects_zero_scale() -> None:
-    """scale=0 is rejected (destroys data and breaks decode division)."""
+@pytest.mark.parametrize(
+    ("dtype", "scale"),
+    [
+        ("int32", 0),
+        ("int32", "0"),
+        ("float64", 0.0),
+        ("float64", "0.0"),
+        ("float64", "0x0000000000000000"),
+    ],
+    ids=["int-numeric", "int-string", "float-numeric", "float-string", "float-hex"],
+)
+def test_rejects_zero_scale(dtype: str, scale: object) -> None:
+    """scale=0 is rejected (destroys data and breaks decode division).
+
+    A string ``scale`` is a documented input, so every spelling of zero has to be
+    rejected the same way as the numeric one.
+    """
 
     with pytest.raises(ValueError, match="scale must be non-zero"):
         zarr.create_array(
             store={},
             shape=(10,),
-            dtype="int32",
+            dtype=dtype,
             chunks=(10,),
-            filters=[ScaleOffset(offset=0, scale=0)],
+            filters=[ScaleOffset(offset=0, scale=scale)],
             compressors=None,
             fill_value=0,
         )

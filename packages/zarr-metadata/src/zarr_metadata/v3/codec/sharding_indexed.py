@@ -8,7 +8,7 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.v3._common import MetadataV3
+from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 
 SHARDING_INDEXED_CODEC_NAME: Final = "sharding_indexed"
 """The `name` field value of the `sharding_indexed` codec."""
@@ -40,8 +40,8 @@ class ShardingIndexedCodecConfiguration(TypedDict):
     """
 
     chunk_shape: tuple[int, ...]
-    codecs: tuple[MetadataV3, ...]
-    index_codecs: tuple[MetadataV3, ...]
+    codecs: tuple[ZarrV3MetadataFieldJSON, ...]
+    index_codecs: tuple[ZarrV3MetadataFieldJSON, ...]
     index_location: NotRequired[ShardingIndexLocation]
 
 

@@ -1,11 +1,13 @@
 ---
-title: testing
+title: zarr.testing
 ---
+
+# zarr.testing
 
 See the following sub-modules:
 
-- [buffer](./buffer.md)
-- [stateful](./stateful.md)
-- [store](./store.md)
-- [strategies](./strategies.md)
-- [utils](./utils.md)
+- [zarr.testing.buffer](./buffer.md)
+- [zarr.testing.stateful](./stateful.md)
+- [zarr.testing.store](./store.md)
+- [zarr.testing.strategies](./strategies.md)
+- [zarr.testing.utils](./utils.md)
