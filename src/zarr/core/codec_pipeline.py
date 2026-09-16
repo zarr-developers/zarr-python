@@ -5,7 +5,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from itertools import batched, chain, pairwise
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 from warnings import warn
 
 from zarr.abc.codec import (
@@ -397,9 +397,8 @@ async def _async_write_fallback(
     sync IO / sync transform is unavailable).
     """
 
-    if use_sync := (
-        isinstance(pipeline, FusedCodecPipeline) and pipeline.sync_transform is not None
-    ):
+    sync_transform = pipeline.sync_transform if isinstance(pipeline, FusedCodecPipeline) else None
+    if sync_transform is not None:
         # Read each chunk's existing bytes (skipping complete chunks) and decode
         # as fetches complete, overlapping the sync decode with in-flight reads.
         chunk_array_decoded: Iterable[NDBuffer | None] = await _fetch_and_decode_as_completed(
@@ -407,7 +406,7 @@ async def _async_write_fallback(
                 (None if is_complete_chunk else byte_setter, chunk_spec)
                 for byte_setter, chunk_spec, _, _, is_complete_chunk in batch
             ],
-            pipeline.sync_transform,
+            sync_transform,
         )
     else:
 
@@ -460,9 +459,7 @@ async def _async_write_fallback(
         for chunk_array, (_, chunk_spec, *_) in zip(chunk_array_merged, batch, strict=False)
     ]
 
-    if use_sync:
-        sync_transform = cast(FusedCodecPipeline, pipeline).sync_transform
-        assert sync_transform is not None
+    if sync_transform is not None:
         await _encode_and_write_as_completed(
             [
                 (byte_setter, chunk_array, chunk_spec)
@@ -709,9 +706,12 @@ class BatchedCodecPipeline(CodecPipeline):
         self,
         batch_info: Iterable[tuple[ByteGetter, SelectorTuple, ArraySpec]],
     ) -> Iterable[NDBuffer | None]:
-        assert self.supports_partial_decode
-        assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin)
-        return await self.array_bytes_codec.decode_partial(batch_info)
+        codec = self.array_bytes_codec
+        if not self.supports_partial_decode or not isinstance(
+            codec, ArrayBytesCodecPartialDecodeMixin
+        ):
+            raise ValueError("This codec pipeline does not support partial decoding.")
+        return await codec.decode_partial(batch_info)
 
     async def encode_batch(
         self,
@@ -744,9 +744,12 @@ class BatchedCodecPipeline(CodecPipeline):
         self,
         batch_info: Iterable[tuple[ByteSetter, NDBuffer, SelectorTuple, ArraySpec]],
     ) -> None:
-        assert self.supports_partial_encode
-        assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialEncodeMixin)
-        await self.array_bytes_codec.encode_partial(batch_info)
+        codec = self.array_bytes_codec
+        if not self.supports_partial_encode or not isinstance(
+            codec, ArrayBytesCodecPartialEncodeMixin
+        ):
+            raise ValueError("This codec pipeline does not support partial encoding.")
+        await codec.encode_partial(batch_info)
 
     async def read_batch(
         self,
@@ -1117,8 +1120,12 @@ class FusedCodecPipeline(CodecPipeline):
         the read selection. Otherwise the pipeline fetches the full
         blob and decodes the whole chunk.
         """
-        assert self.sync_transform is not None
         transform = self.sync_transform
+        if transform is None:
+            raise RuntimeError(
+                "This codec pipeline contains codecs without synchronous support; "
+                "use the async read/write path instead."
+            )
 
         batch = list(batch_info)
         if not batch:
@@ -1193,8 +1200,12 @@ class FusedCodecPipeline(CodecPipeline):
         the full write cycle — reading existing data, merging, encoding,
         and writing — matching the async `BatchedCodecPipeline` path.
         """
-        assert self.sync_transform is not None
         transform = self.sync_transform
+        if transform is None:
+            raise RuntimeError(
+                "This codec pipeline contains codecs without synchronous support; "
+                "use the async read/write path instead."
+            )
 
         batch = list(batch_info)
         if not batch:
@@ -1294,9 +1305,9 @@ class FusedCodecPipeline(CodecPipeline):
         # inner-chunk byte ranges (coalesced via get_ranges), matching
         # BatchedCodecPipeline. Without this, the whole-shard _async_read_fallback
         # below would over-read and diverge from the batched pipeline's IO.
-        if self.supports_partial_decode:
-            assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin)
-            chunk_array_batch = await self.array_bytes_codec.decode_partial(
+        codec = self.array_bytes_codec
+        if self.supports_partial_decode and isinstance(codec, ArrayBytesCodecPartialDecodeMixin):
+            chunk_array_batch = await codec.decode_partial(
                 [
                     (byte_getter, chunk_selection, chunk_spec)
                     for byte_getter, chunk_spec, chunk_selection, *_ in batch
