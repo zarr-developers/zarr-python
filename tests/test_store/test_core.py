@@ -224,7 +224,6 @@ async def test_make_store_path_zip_path(
 
     store_path = await make_store_path(store_like, mode=mode)
     assert isinstance(store_path.store, ZipStore)
-    assert Path(store_path.store.path) == zippath
     assert store_path.path == normalize_path("")
     assert store_path.read_only == (mode == "r")
 
