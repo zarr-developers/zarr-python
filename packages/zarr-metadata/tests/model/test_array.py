@@ -180,6 +180,7 @@ def test_json_value_type_accepts_json_shapes() -> None:
 def test_string_nan_fill_value_roundtrips() -> None:
     # Non-finite floats are represented as the spec strings ("NaN", "Infinity",
     # "-Infinity") by the caller — the metadata layer does not interpret dtypes.
+    #   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L63-L79
     # The string form round-trips cleanly under default dataclass equality,
     # unlike a raw float('nan') (which is an invalid fill_value the caller must
     # not pass).
@@ -1648,7 +1649,10 @@ def test_must_understand_fields_partition() -> None:
     """must_understand_fields contains every extra field not explicitly waived
     with must_understand: false, including implicitly-true and non-mapping
     fields, so a reader can discharge the spec's fail-to-open duty by
-    subtracting the extensions it recognizes."""
+    subtracting the extensions it recognizes.
+
+    https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1575-L1578
+    """
     model = ZarrV3ArrayMetadata.create_default(
         extra_fields={
             "ext_a": {"name": "a", "must_understand": False},
@@ -1674,7 +1678,10 @@ def test_dimension_names_null_field_rejected() -> None:
     """A dimension_names field whose VALUE is null is invalid: the spec permits
     null as an element (an unnamed dimension), never as the field value — "not
     specified" is spelled by omitting the key. Consumers bridging from an
-    in-memory None sentinel must drop the key, not write null."""
+    in-memory None sentinel must drop the key, not write null.
+
+    https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L635-L638
+    """
     doc = dict(ZarrV3ArrayMetadata.create_default().to_json()) | {"dimension_names": None}
     problems = validate_array_metadata_v3(doc)
     assert [(p.loc, p.kind) for p in problems] == [(("dimension_names",), "invalid_type")]
