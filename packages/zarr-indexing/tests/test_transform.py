@@ -1149,11 +1149,7 @@ class TestDerivedMapDependency:
 
     def test_a_vindex_over_a_fancy_view_is_marked_correlated(self) -> None:
         base = np.arange(6)
-        view = (
-            LazyArray(base)
-            .lazy.oindex[np.array([0, 1])]
-            .lazy.vindex[np.array([[0, 1, 0], [1, 0, 1]])]
-        )
+        view = LazyArray(base).oindex[np.array([0, 1])].vindex[np.array([[0, 1, 0], [1, 0, 1]])]
         np.testing.assert_array_equal(
             np.asarray(view.result()), base[[0, 1]][[[0, 1, 0], [1, 0, 1]]]
         )
@@ -1162,7 +1158,7 @@ class TestDerivedMapDependency:
         base = np.arange(36).reshape(6, 6)
 
         def build(array: LazyArray) -> LazyArray:
-            return array.lazy.oindex[np.array([-3, -6, -4]), -4].lazy.vindex[np.array([[-2, -3]])]
+            return array.oindex[np.array([-3, -6, -4]), -4].vindex[np.array([[-2, -3]])]
 
         unpartitioned = np.asarray(build(LazyArray(base)).result())
         partitioned = np.asarray(build(LazyArray(base).with_parts((3, 3))).result())
@@ -1188,10 +1184,10 @@ class TestDerivedMapDependency:
 def test_an_orthogonal_step_over_a_correlated_view_is_an_outer_product() -> None:
     """Orthogonal indexing after vectorized indexing selects an outer product."""
     base = np.arange(14).reshape(7, 2)
-    view = LazyArray(base).lazy.vindex[
+    view = LazyArray(base).vindex[
         np.array([[5, 5], [1, 2], [0, 4]]), np.array([[1, 1], [1, 0], [1, 0]])
     ]
-    result = np.asarray(view.lazy.oindex[np.array([1, 1, 0]), np.array([1, 1, 0, 1])].result())
+    result = np.asarray(view.oindex[np.array([1, 1, 0]), np.array([1, 1, 0, 1])].result())
     assert result.shape == (3, 4)
     np.testing.assert_array_equal(result, np.array([[4, 4, 3, 4], [4, 4, 3, 4], [11, 11, 11, 11]]))
 

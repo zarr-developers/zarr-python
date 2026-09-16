@@ -1,13 +1,13 @@
 # Lazy Indexing with Dask
 
 This example demonstrates how to use `zarr_indexing.LazyArray` with Dask, both as
-an array Dask can wrap and as a source of independent tasks, and compares the two
+an explicitly adapted array Dask can wrap and as a source of independent tasks, and compares the two
 ways of deferring an indexing operation.
 
 The example shows how to:
 
-- Pass a `LazyArray` — over a Zarr array or over a view of one — to
-  `dask.array.from_array`
+- Wrap a `LazyArray` — over a Zarr array or over a view of one — in
+  `EagerArrayAdapter` and pass the adapter to `dask.array.from_array`
 - Build one Dask task per partition from `parts()`, compute them in parallel, and
   place each result with the partition's `out_selection`
 - Read `is_complete` to inspect coverage of a partition cell
@@ -16,9 +16,14 @@ The example shows how to:
 - Measure what a task graph costs for indexing-only work, against composing the
   same selections into one transform
 
-A `LazyArray` exposes no `chunks` attribute, so `dask.array.from_array` chooses
+The adapter exposes no `chunks` attribute, so `dask.array.from_array` chooses
 its own block size unless one is given. The partitioning that `parts()` reports
 is discovered from the wrapped array and is independent of Dask's blocks.
+
+`LazyArray[...]` returns another lazy view. `EagerArrayAdapter(view)[...]`
+returns materialized values, providing the block reads Dask expects. Import
+both classes from `zarr_indexing`. Use the adapter for `from_array`; passing
+a lazy view directly is not a reliable integration.
 
 ## Choosing Between Them
 

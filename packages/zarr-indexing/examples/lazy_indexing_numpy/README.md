@@ -6,8 +6,10 @@ index it without reading data.
 The example shows how to:
 
 - Wrap a NumPy array and read the forwarded `shape`, `dtype`, and `ndim`
-- Compose selections through `.lazy[...]`, `.lazy.oindex[...]`, and
-  `.lazy.vindex[...]`, and materialize the composed view once with `result()`
+- Compose selections through `[...]`, `.oindex[...]`, and
+  `.vindex[...]`, and materialize the composed view once with `result()`
+- Iterate lazy row views and write through a composed view with `write(values)`
+  or indexed assignment; writes finish synchronously on the original source
 - Tell a box selection (slices and integers, described by an interval and a step
   per dimension) from a query selection (points gathered through an index array)
   using `is_box`, `bounding_box()`, and `strides()`

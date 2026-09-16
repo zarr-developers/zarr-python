@@ -20,7 +20,7 @@ pip install zarr-indexing
 
 ## Quickstart
 
-Wrap an array, compose a lazy view through `.lazy`, and call `result()` when
+Wrap an array, compose a lazy view with `view[...]`, and call `result()` when
 you want its values:
 
 ```python
