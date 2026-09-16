@@ -56,6 +56,7 @@ from zarr.errors import (
     ContainsGroupError,
     GroupNotFoundError,
     MetadataValidationError,
+    NodeTypeValidationError,
     ZarrUserWarning,
 )
 from zarr.storage import StoreLike, StorePath
@@ -372,7 +373,11 @@ class GroupMetadata(Metadata):
                     ZATTRS_JSON: self.attributes,
                 }
                 consolidated_metadata = self.consolidated_metadata.to_dict()["metadata"]
-                assert isinstance(consolidated_metadata, dict)
+                if not isinstance(consolidated_metadata, dict):
+                    raise TypeError(
+                        "Expected consolidated metadata to serialize to a dict, "
+                        f"got {type(consolidated_metadata).__name__}."
+                    )
                 for k, v in consolidated_metadata.items():
                     attrs = v.pop("attributes", {})
                     d[f"{k}/{ZATTRS_JSON}"] = attrs
@@ -412,7 +417,11 @@ class GroupMetadata(Metadata):
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
         data = dict(data)
-        assert data.pop("node_type", None) in ("group", None)
+        node_type = data.pop("node_type", None)
+        if node_type not in ("group", None):
+            raise NodeTypeValidationError(
+                f"Invalid value for 'node_type'. Expected 'group' or None. Got {node_type!r}."
+            )
         consolidated_metadata = data.pop("consolidated_metadata", None)
         if consolidated_metadata:
             data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(consolidated_metadata)
@@ -583,8 +592,8 @@ class AsyncGroup:
             raise MetadataValidationError(msg)
 
         if zarr_format == 2:
-            # this is checked above, asserting here for mypy
-            assert zgroup_bytes is not None
+            if zgroup_bytes is None:
+                raise FileNotFoundError(store_path)
 
             if use_consolidated and maybe_consolidated_metadata_bytes is None:
                 # the user requested consolidated metadata, but it was missing
@@ -600,7 +609,8 @@ class AsyncGroup:
             )
         else:
             # V3 groups are comprised of a zarr.json object
-            assert zarr_json_bytes is not None
+            if zarr_json_bytes is None:
+                raise FileNotFoundError(store_path)
             if not isinstance(use_consolidated, bool | None):
                 raise TypeError("use_consolidated must be a bool or None for Zarr format 3.")
 
@@ -741,9 +751,6 @@ class AsyncGroup:
         # getitem, in the special case where we have consolidated metadata.
         # Note that this is a regular def (non async) function.
         # This shouldn't do any additional I/O.
-
-        # the caller needs to verify this!
-        assert self.metadata.consolidated_metadata is not None
 
         # we support nested getitems like group/subgroup/array
         indexers = normalize_path(key).split("/")
@@ -1049,7 +1056,6 @@ class AsyncGroup:
                     raise TypeError(
                         f"Incompatible object ({item.__class__.__name__}) already exists"
                     )
-                assert isinstance(item, AsyncGroup)  # make mypy happy
                 grp = item
             except KeyError:
                 grp = await self.create_group(name)
