@@ -69,7 +69,7 @@ SUCCESSFUL_CONTRACT_CASES = (
         np.zeros((1, 0), dtype=np.intp),
         np.array([[3]], dtype=np.intp),
         np.array(3),
-        lambda array: array.lazy[3],
+        lambda array: array[3],
         id="constant",
     ),
     pytest.param(
@@ -79,7 +79,7 @@ SUCCESSFUL_CONTRACT_CASES = (
         np.array([[0], [1], [2], [3]], dtype=np.intp),
         np.array([[1], [3], [5], [7]], dtype=np.intp),
         np.array([1, 3, 5, 7]),
-        lambda array: array.lazy[1:8:2],
+        lambda array: array[1:8:2],
         id="positive-affine",
     ),
     pytest.param(
@@ -89,7 +89,7 @@ SUCCESSFUL_CONTRACT_CASES = (
         np.array([[-3], [-2], [-1], [0]], dtype=np.intp),
         np.array([[7], [5], [3], [1]], dtype=np.intp),
         np.array([7, 5, 3, 1]),
-        lambda array: array.lazy[::-2],
+        lambda array: array[::-2],
         id="negative-affine",
     ),
     pytest.param(
@@ -102,7 +102,7 @@ SUCCESSFUL_CONTRACT_CASES = (
         np.array([[0], [1], [2]], dtype=np.intp),
         np.array([[2], [2], [2]], dtype=np.intp),
         np.array([2, 2, 2]),
-        lambda array: array.lazy.oindex[[2, 2, 2]],
+        lambda array: array.oindex[[2, 2, 2]],
         id="zero-affine",
     ),
     pytest.param(
@@ -112,7 +112,7 @@ SUCCESSFUL_CONTRACT_CASES = (
         np.array([[0, 0], [0, 1], [1, 0], [1, 1], [2, 0], [2, 1]], dtype=np.intp),
         np.array([[3, 4], [3, 0], [1, 4], [1, 0], [1, 4], [1, 0]], dtype=np.intp),
         np.array([[19, 15], [9, 5], [9, 5]]),
-        lambda array: array.lazy.oindex[[3, 1, 1], [4, 0]],
+        lambda array: array.oindex[[3, 1, 1], [4, 0]],
         id="orthogonal-array",
     ),
     pytest.param(
@@ -122,7 +122,7 @@ SUCCESSFUL_CONTRACT_CASES = (
         np.array([[0], [1], [2]], dtype=np.intp),
         np.array([[3, 4], [1, 0], [1, 4]], dtype=np.intp),
         np.array([19, 5, 9]),
-        lambda array: array.lazy.vindex[[3, 1, 1], [4, 0, 4]],
+        lambda array: array.vindex[[3, 1, 1], [4, 0, 4]],
         id="correlated-array",
     ),
     pytest.param(
@@ -145,7 +145,7 @@ SUCCESSFUL_CONTRACT_CASES = (
         np.empty((0, 1), dtype=np.intp),
         np.empty((0, 1), dtype=np.intp),
         np.array([], dtype=np.intp),
-        lambda array: array.lazy[2:2],
+        lambda array: array[2:2],
         id="empty",
     ),
 )
@@ -239,9 +239,7 @@ def test_successful_transform_contract_across_planning_readers_and_lazy_array(
             for child in part.view.parts():
                 np.testing.assert_array_equal(child.view.result(), part.view.result())
             reverse = (slice(None, None, -1),) * part.view.ndim
-            np.testing.assert_array_equal(
-                part.view.lazy[reverse].result(), part.view.result()[reverse]
-            )
+            np.testing.assert_array_equal(part.view[reverse].result(), part.view.result()[reverse])
             for candidate in (
                 part.view.unpartitioned(),
                 part.view.with_parts((1,) * source_data.ndim),
@@ -412,8 +410,8 @@ def test_empty_domain_composed_fancy_transform_reads_as_empty() -> None:
 
     Empty index arrays are valid when the domain selects no elements."""
     source_data = np.arange(6).reshape(2, 3)
-    view = LazyArray.from_numpy(source_data).lazy.oindex[slice(0, 0), np.array([2, 1, 2, 0])]
-    transform = view.lazy.oindex[slice(None), np.array([1, 3, 1])].transform
+    view = LazyArray.from_numpy(source_data).oindex[slice(0, 0), np.array([2, 1, 2, 0])]
+    transform = view.oindex[slice(None), np.array([1, 3, 1])].transform
     assert transform.domain.shape == (0, 3)
 
     for reader, source in (
@@ -433,12 +431,12 @@ def test_unit_step_reader_reads_through_lazy_array() -> None:
     reached the source — partitioned and unpartitioned alike.
     """
     selections: tuple[Callable[[LazyArray], LazyArray], ...] = (
-        lambda v: v.lazy[1:5, ::2, ::-1],
-        lambda v: v.lazy[5:1:-2, None, 3, ::3],
-        lambda v: v.lazy.oindex[[3, 0, 3], ::-2, [7, 7]],
-        lambda v: v.lazy.vindex[np.array([[0, 5]]), np.array([[6], [0]]), 2],
-        lambda v: v.lazy[2:2, :, ::-1],
-        lambda v: v.lazy[::5, 6, 1:8:4],
+        lambda v: v[1:5, ::2, ::-1],
+        lambda v: v[5:1:-2, None, 3, ::3],
+        lambda v: v.oindex[[3, 0, 3], ::-2, [7, 7]],
+        lambda v: v.vindex[np.array([[0, 5]]), np.array([[6], [0]]), 2],
+        lambda v: v[2:2, :, ::-1],
+        lambda v: v[::5, 6, 1:8:4],
     )
     for select in selections:
         for parts in (None, (2, 3, 8), (6, 7, 1)):

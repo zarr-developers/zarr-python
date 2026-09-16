@@ -35,6 +35,7 @@ import pytest
 import zarr_indexing
 import zarr_indexing.lazy_array as lazy_array_module
 from zarr_indexing import IndexTransform, LazyArray, ReadContext
+from zarr_indexing.domain import IndexDomain
 
 DOCS = Path(__file__).parents[1] / "docs"
 PACKAGE_ROOT = DOCS.parent
@@ -203,9 +204,9 @@ def test_indexing_pattern_matrix_matches_numpy(case: dict[str, Any]) -> None:
     image = PATTERN_NAMESPACE["image"]
     lazy = LazyArray.from_numpy(image)
     accessor = {
-        "basic": lazy.lazy,
-        "oindex": lazy.lazy.oindex,
-        "vindex": lazy.lazy.vindex,
+        "basic": lazy,
+        "oindex": lazy.oindex,
+        "vindex": lazy.vindex,
     }[case["mode"]]
     view = accessor[case["selection"]]
     result = view.result()
@@ -242,7 +243,7 @@ def test_default_source_contract_converts_basic_selected_slabs_to_system_memory(
             return self.data[key].tolist()
 
     source = ListSlabSource()
-    result = LazyArray(source).with_parts((2, 3)).lazy.oindex[[3, 1, 1], 1:5:2].result()
+    result = LazyArray(source).with_parts((2, 3)).oindex[[3, 1, 1], 1:5:2].result()
 
     np.testing.assert_array_equal(result, np.array([[16, 18], [6, 8], [6, 8]]))
     assert len(source.keys) > 0
@@ -251,7 +252,7 @@ def test_default_source_contract_converts_basic_selected_slabs_to_system_memory(
 
 def test_coordinate_array_example_preserves_order_and_duplicates() -> None:
     """Coordinate arrays are ordered sequences, not mathematical sets."""
-    view = LazyArray.from_numpy(np.arange(6)).with_parts((2,)).lazy.oindex[[4, 1, 1, 3]]
+    view = LazyArray.from_numpy(np.arange(6)).with_parts((2,)).oindex[[4, 1, 1, 3]]
 
     np.testing.assert_array_equal(view.result(), np.array([4, 1, 1, 3]))
     assembled = np.empty(view.shape, dtype=view.dtype)
@@ -264,8 +265,9 @@ def test_documented_partition_transform_is_global_and_projection_is_chunk_local(
     source = np.arange(8)
     part = tuple(LazyArray.from_numpy(source).with_parts((4,)).parts())[1]
 
-    assert part.view.transform.apply((0,)) == (4,)
-    assert part.view.array[part.view.transform.apply((0,))] == 4
+    assert part.view.transform.domain == IndexDomain((4,), (8,))
+    assert part.view.transform.apply((4,)) == (4,)
+    assert part.view.array[part.view.transform.apply((4,))] == 4
     assert part.projection.chunk_transform.apply((0,)) == (0,)
 
 
@@ -378,7 +380,7 @@ def test_chunk_cache_reader_resolves_a_transform_from_cached_chunks() -> None:
     reader_type = CACHE_NAMESPACE["SystemMemoryChunkReader"]
     source = source_type(np.arange(48).reshape(6, 8), chunks=(3, 4))
     reader = reader_type(capacity=2)
-    view = LazyArray(source).with_reader(reader).lazy[1:5, 2]
+    view = LazyArray(source).with_reader(reader)[1:5, 2]
     parts = tuple(view.parts())
     out = np.empty(view.shape, dtype=source.dtype)
     for part in parts:

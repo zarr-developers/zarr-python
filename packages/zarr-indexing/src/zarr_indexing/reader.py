@@ -45,13 +45,25 @@ class ReadContext:
     """
 
     transform: IndexTransform
-    """Maps zero-origin output-buffer coordinates to global coordinates in the source."""
+    """Maps zero-origin output-buffer coordinates to global coordinates in the source.
+
+    A transform carrying a literal (nonzero-origin) domain, such as a view's,
+    is re-based to origin zero on construction: readers address the buffer
+    they fill, so the origin is fixed here rather than by every caller.
+    """
 
     projection: ChunkProjection | None = None
     """The read plan, always supplied by `LazyArray` execution.
 
     Direct reader callers may omit it if their reader supports unplanned reads.
     """
+
+    def __post_init__(self) -> None:
+        origin = self.transform.domain.inclusive_min
+        if any(origin):
+            object.__setattr__(
+                self, "transform", self.transform.translate_domain_to((0,) * len(origin))
+            )
 
 
 class Reader(Protocol):
@@ -88,7 +100,8 @@ class Reader(Protocol):
         to global coordinates in `source`, and its domain shape equals
         `out.shape`. `context.projection`, when present, is the corresponding
         partition plan: its `chunk_transform` is chunk-local, its
-        `cell_transform` describes result placement, and its `chunk_domain`
+        `cell_transform` places cells in the zero-origin result buffer of the
+        view that planned the read, and its `chunk_domain`
         describes the grid cell. Fill every cell in place, preserving the
         transform's exact values, order, and dtype, then return `None`. Do not
         replace or retain `out`; it may be a strided writable view rather than

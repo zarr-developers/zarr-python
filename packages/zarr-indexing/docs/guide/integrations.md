@@ -254,3 +254,9 @@ and reading, but required when requesting a Dask token.
 
 The reader and partitioning are omitted because they must preserve values.
 Changing a source after graph construction does not update existing Dask keys.
+
+For consumers that require eager indexing, such as `dask.array.from_array`,
+wrap the view in `EagerArrayAdapter` (importable from `zarr_indexing`). The
+adapter materializes each indexed block while the wrapped view keeps lazy
+indexing, and its token derives from the view's. See Dask's [from_array
+documentation](https://docs.dask.org/en/stable/generated/dask.array.from_array.html).

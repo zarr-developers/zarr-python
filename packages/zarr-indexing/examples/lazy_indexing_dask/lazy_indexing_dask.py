@@ -24,7 +24,7 @@ import pytest
 import zarr
 from dask.base import tokenize
 
-from zarr_indexing import LazyArray
+from zarr_indexing import EagerArrayAdapter, LazyArray
 
 
 @pytest.fixture
@@ -36,25 +36,25 @@ def source() -> zarr.Array:
 
 
 def test_from_array(source: zarr.Array) -> None:
-    """Hand a LazyArray to `dask.array.from_array`."""
+    """Adapt lazy selections for `dask.array.from_array`."""
     lazy = LazyArray(source)
 
-    # `from_array` needs `shape`, `dtype`, and `__getitem__`, which the wrapper
-    # provides. Each Dask block reads its own region through the wrapper.
-    array = da.from_array(lazy, chunks=(10, 10))
+    # `from_array` expects eager block indexing, which `EagerArrayAdapter`
+    # provides. Each Dask block reads its own region through the adapter.
+    array = da.from_array(EagerArrayAdapter(lazy), chunks=(10, 10))
     print(array)
     assert np.array_equal(array.compute(scheduler="threads"), source[:])
 
     # A view works the same way, and its shape is the shape of the selection.
-    view = LazyArray(source).lazy[5:35, 3:27]
-    array = da.from_array(view, chunks=(10, 10))
+    view = LazyArray(source)[5:35, 3:27]
+    array = da.from_array(EagerArrayAdapter(view), chunks=(10, 10))
     assert array.shape == (30, 24)
     assert np.array_equal(array.compute(scheduler="threads"), source[5:35, 3:27])
 
 
 def test_parts_as_tasks(source: zarr.Array) -> None:
     """Build one task per partition and compute them in parallel."""
-    view = LazyArray(source).lazy[5:35, 3:27]
+    view = LazyArray(source)[5:35, 3:27]
 
     # The partitioning is discovered from the wrapped array's chunks, so each
     # partition of the view lies within one stored chunk.
@@ -89,13 +89,13 @@ def test_tokenize(source: zarr.Array) -> None:
     # These wrappers have equal tokens despite being different Python objects.
     # Source mutation and token hooks affect whether cached results remain valid.
     assert tokenize(lazy) == tokenize(LazyArray(source))
-    assert tokenize(lazy.lazy[0:10]) == tokenize(LazyArray(source).lazy[0:10])
+    assert tokenize(lazy[0:10]) == tokenize(LazyArray(source)[0:10])
 
     # Different selections are different tasks.
-    assert tokenize(lazy.lazy[0:10]) != tokenize(lazy.lazy[10:20])
+    assert tokenize(lazy[0:10]) != tokenize(lazy[10:20])
 
     # These two slice chains serialize to the same transform and token.
-    assert tokenize(lazy.lazy[0:20].lazy[5:10]) == tokenize(lazy.lazy[5:10])
+    assert tokenize(lazy[0:20][5:10]) == tokenize(lazy[5:10])
 
 
 def test_indexing_only_workload() -> None:
@@ -119,13 +119,13 @@ def test_indexing_only_workload() -> None:
     def lazy_chain(depth: int) -> LazyArray:
         view = LazyArray.from_numpy(data)
         for _ in range(depth):
-            view = view.lazy[1:]
+            view = view[1:]
         return view
 
     # Read once through each path first, so the timings below exclude the cost
     # of importing and initializing the machinery.
     dask_chain(1)[:2].compute(scheduler="synchronous")
-    lazy_chain(1).lazy[:2].result()
+    lazy_chain(1)[:2].result()
 
     header = (
         f"{'selections':>10} {'dask compose':>13} {'dask read':>10} {'layers':>7}"
@@ -146,7 +146,7 @@ def test_indexing_only_workload() -> None:
         lazy_compose = time.perf_counter() - start
 
         start = time.perf_counter()
-        from_lazy = view.lazy[:2].result()
+        from_lazy = view[:2].result()
         lazy_read = time.perf_counter() - start
 
         # Both paths describe the same selection, so they read the same data.

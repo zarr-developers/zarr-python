@@ -48,7 +48,7 @@ and the wire format built on top of it.
 **Lazy arrays**
 
 - [`zarr_indexing.lazy_array`](lazy_array.md) — `LazyArray`, a wrapper for
-  system-memory/basic-indexing sources that adds a `.lazy` accessor for
+  system-memory/basic-indexing sources with lazy indexing for
   TensorStore-style deferred indexing, plus `Partition` and `parts()` /
   `with_parts()`, which determine the boxes a read is broken into. Device
   sources require an explicit custom reader that transfers into the supplied

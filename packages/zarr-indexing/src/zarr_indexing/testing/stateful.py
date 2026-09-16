@@ -253,11 +253,11 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
         self.chain.append((mode, selection))
         self.model = apply_selection(self.model, selection, mode)
         if mode == "basic":
-            self.view = self.view.lazy[selection]
+            self.view = self.view[selection]
         elif mode == "orthogonal":
-            self.view = self.view.lazy.oindex[selection]
+            self.view = self.view.oindex[selection]
         else:
-            self.view = self.view.lazy.vindex[selection]
+            self.view = self.view.vindex[selection]
 
     # -- rules --------------------------------------------------------------
 
