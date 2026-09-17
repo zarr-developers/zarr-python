@@ -59,10 +59,11 @@ jobs:
         working-directory: xarray
         run: uv pip install --no-deps ..
 
+      # Keep the branch override: syncing xarray would reinstall zarr from PyPI.
       - name: Show versions
         working-directory: xarray
         run: |
-          uv run python -c "
+          uv run --no-sync python -c "
           import zarr; print(f'zarr {zarr.__version__}')
           import xarray; print(f'xarray {xarray.__version__}')
           "
@@ -70,7 +71,7 @@ jobs:
       - name: Run xarray zarr backend tests
         working-directory: xarray
         run: |
-          uv run python -m pytest --no-header -q \
+          uv run --no-sync python -m pytest --no-header -q \
             xarray/tests/test_backends.py \
             xarray/tests/test_backends_api.py \
             xarray/tests/test_backends_datatree.py
