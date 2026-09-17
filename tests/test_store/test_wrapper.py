@@ -167,3 +167,17 @@ def test_wrapper_delete_sync_without_inner_sync_raises(tmp_path: Any) -> None:
     store = WrapperStore(ZipStore(tmp_path / "store.zip", mode="w"))
     with pytest.raises(TypeError, match="does not support synchronous delete"):
         store.delete_sync("key")
+
+
+def test_wrapper_forwards_supports_consolidated_metadata() -> None:
+    """A wrapper answers for the store it wraps: one that can't hold consolidated metadata stays that way wrapped."""
+    from zarr.storage import MemoryStore
+    from zarr.storage._wrapper import WrapperStore
+
+    class NoConsolidated(MemoryStore):
+        @property
+        def supports_consolidated_metadata(self) -> bool:
+            return False
+
+    assert WrapperStore(MemoryStore()).supports_consolidated_metadata is True
+    assert WrapperStore(NoConsolidated()).supports_consolidated_metadata is False

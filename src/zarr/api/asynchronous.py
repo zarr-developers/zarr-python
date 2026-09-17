@@ -402,15 +402,20 @@ async def open(
             mode = "a"
     store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
+    # `config` is an array's; it applies to an array opened or created here and is
+    # not something a group takes
+    config = kwargs.pop("config", None)
     if "shape" in kwargs:
         # the call describes an array
-        return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+        return await open_array(
+            store=store_path, zarr_format=zarr_format, mode=mode, config=config, **kwargs
+        )
     if mode in _READ_MODES:
         node = await _open_node(
             store_path,
             zarr_format=zarr_format,
             use_consolidated=kwargs.get("use_consolidated"),
-            config=kwargs.get("config"),
+            config=config,
         )
         if node is not None:
             return node

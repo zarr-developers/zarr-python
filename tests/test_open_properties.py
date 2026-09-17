@@ -116,6 +116,8 @@ class _Scenario:
     use_consolidated: bool | str | None
     """Only passed without `shape`; a str is the key the consolidated document is stored at."""
     attributes: dict[str, Any]
+    supports_consolidated: bool = True
+    """Whether the store says it can hold consolidated metadata."""
 
     @property
     def effective_mode(self) -> AccessModeLiteral:
@@ -174,7 +176,9 @@ def _expected(sc: _Scenario) -> Kind | type[Exception]:
         return _create_outcome(sc, "array")
     if sc.visible:
         if sc.existing == "array":
-            return "array"
+            return "array"  # whatever was asked about consolidated metadata
+        if sc.use_consolidated and not sc.supports_consolidated:
+            return ValueError  # asked of a store that can't have it
         if sc.existing_format == 3 and isinstance(sc.use_consolidated, str):
             return TypeError
         if sc.use_consolidated and not sc.consolidated:
@@ -182,6 +186,8 @@ def _expected(sc: _Scenario) -> Kind | type[Exception]:
         return "group"
     if mode != "a":
         return NodeNotFoundError
+    if sc.use_consolidated and not sc.supports_consolidated:
+        return ValueError  # open_group asks the store before it would create
     return _create_outcome(sc, "group")
 
 
@@ -201,7 +207,7 @@ def _expected_reads(sc: _Scenario) -> set[str]:
         keys = {ZARRAY_JSON, ZATTRS_JSON}
     else:
         keys = {ZARRAY_JSON, ZGROUP_JSON, ZATTRS_JSON}
-        if sc.use_consolidated is not False:
+        if sc.use_consolidated is not False and sc.supports_consolidated:
             keys.add(sc.consolidated_key)
     if sc.zarr_format is None:
         keys.add(ZARR_JSON)  # detecting the format costs the look that finds nothing
@@ -227,12 +233,25 @@ def _snapshot(store: Store) -> dict[str, bytes]:
     return sync(_read_all())
 
 
+class _NoConsolidatedMemoryStore(MemoryStore):
+    """A store that says it cannot hold consolidated metadata."""
+
+    @property
+    def supports_consolidated_metadata(self) -> bool:
+        return False
+
+
 def _build_scene(sc: _Scenario) -> _RecordingStore:
-    store = _RecordingStore(MemoryStore())
+    # the scene is built on a plain store; the store `open` sees may say it cannot
+    # hold consolidated metadata, over the same contents
+    inner = MemoryStore()
+    store = _RecordingStore(
+        inner if sc.supports_consolidated else _NoConsolidatedMemoryStore(inner._store_dict)
+    )
     prefix = f"{sc.path}/" if sc.path else ""
     if sc.existing == "array":
         zarr.create_array(
-            store,
+            inner,
             name=sc.path or None,
             shape=(3,),
             dtype="uint8",
@@ -241,18 +260,18 @@ def _build_scene(sc: _Scenario) -> _RecordingStore:
         )
     elif sc.existing == "group":
         zarr.create_group(
-            store, path=sc.path, attributes=sc.attributes, zarr_format=sc.existing_format
+            inner, path=sc.path, attributes=sc.attributes, zarr_format=sc.existing_format
         )
         if sc.consolidated:
-            zarr.consolidate_metadata(store, path=sc.path)
+            zarr.consolidate_metadata(inner, path=sc.path)
             if sc.existing_format == 2 and isinstance(sc.use_consolidated, str):
                 # the caller will ask for the document at a custom key: move it there
                 from zarr.core.buffer import default_buffer_prototype
 
-                doc = sync(store.get(prefix + ZMETADATA_V2_JSON, default_buffer_prototype()))
+                doc = sync(inner.get(prefix + ZMETADATA_V2_JSON, default_buffer_prototype()))
                 assert doc is not None
-                sync(store.set(prefix + sc.use_consolidated, doc))
-                sync(store.delete(prefix + ZMETADATA_V2_JSON))
+                sync(inner.set(prefix + sc.use_consolidated, doc))
+                sync(inner.delete(prefix + ZMETADATA_V2_JSON))
     return store
 
 
@@ -311,7 +330,7 @@ def check_open(sc: _Scenario, record: Callable[[str], None] = lambda label: None
                 use_consolidated=sc.use_consolidated,
             )
             assert (node.metadata.consolidated_metadata is not None) == (
-                sc.consolidated and sc.use_consolidated is not False
+                sc.consolidated and sc.use_consolidated is not False and sc.supports_consolidated
             )
         assert same.metadata == node.metadata
     else:
@@ -336,8 +355,8 @@ def _discrete_scenarios() -> Iterator[_Scenario]:
         *[("array", fmt, False) for fmt in (2, 3)],
         *[("group", fmt, cons) for fmt in (2, 3) for cons in (False, True)],
     ]
-    for (existing, fmt, cons), path, mode, zarr_format in itertools.product(
-        existing_nodes, ("", "outer/inner"), MODES, FORMATS
+    for (existing, fmt, cons), path, mode, zarr_format, supports in itertools.product(
+        existing_nodes, ("", "outer/inner"), MODES, FORMATS, (True, False)
     ):
         calls: list[tuple[bool, bool | str | None]] = [
             (True, None),
@@ -354,6 +373,7 @@ def _discrete_scenarios() -> Iterator[_Scenario]:
                 shape=shape,
                 use_consolidated=use_consolidated,
                 attributes={"old": True},
+                supports_consolidated=supports,
             )
 
 
@@ -362,7 +382,8 @@ def _scenario_id(sc: _Scenario) -> str:
     if sc.consolidated:
         node += "c"
     call = "shape" if sc.shape else f"uc={sc.use_consolidated}"
-    return f"{node}-{sc.path or 'root'}-mode={sc.mode}-fmt={sc.zarr_format}-{call}"
+    store = "" if sc.supports_consolidated else "-nocons"
+    return f"{node}-{sc.path or 'root'}-mode={sc.mode}-fmt={sc.zarr_format}-{call}{store}"
 
 
 @pytest.mark.parametrize("sc", list(_discrete_scenarios()), ids=_scenario_id)
@@ -394,6 +415,7 @@ def scenarios(draw: st.DrawFn) -> _Scenario:
         shape=shape,
         use_consolidated=None if shape else draw(st.none() | st.booleans() | _names),
         attributes=draw(_attributes),
+        supports_consolidated=draw(st.booleans()),
     )
 
 

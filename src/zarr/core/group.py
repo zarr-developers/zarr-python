@@ -142,24 +142,25 @@ async def _open_node(
     """The node at `store_path`, whichever kind it is, or None if there is none.
 
     For a caller that does not know what kind of node to expect. It reads the
-    node's metadata once, applies `use_consolidated` if the node is a group, and
-    builds the node. It applies no mode policy and raises nothing for a missing
+    node's metadata, each document at most once, applies `use_consolidated` if
+    the node is a group, and builds the node. It applies no mode policy and raises nothing for a missing
     node; the callers decide what those mean.
     """
-    use_consolidated = _resolve_use_consolidated(store_path.store, use_consolidated)
+    store = store_path.store
+    # A store that can't hold consolidated metadata has none to read. Whether the
+    # caller may ask for it is a question for a group, so it waits until we know.
+    consolidated_key = (
+        _v2_consolidated_key(use_consolidated) if store.supports_consolidated_metadata else None
+    )
     metadata = await read_node_metadata(
-        store_path.store,
-        store_path.path,
-        zarr_format,
-        consolidated_key=_v2_consolidated_key(use_consolidated),
+        store, store_path.path, zarr_format, consolidated_key=consolidated_key
     )
     if metadata is None:
         return None
     if isinstance(metadata, GroupMetadata):
+        use_consolidated = _resolve_use_consolidated(store, use_consolidated)
         metadata = _apply_use_consolidated(metadata, use_consolidated, store_path=store_path)
-    return _build_node(
-        store=store_path.store, path=store_path.path, metadata=metadata, config=config
-    )
+    return _build_node(store=store, path=store_path.path, metadata=metadata, config=config)
 
 
 async def _open_array(
@@ -3499,17 +3500,25 @@ async def read_node_metadata(
     raise MetadataValidationError(msg)
 
 
-async def read_v3_metadata(store: Store, path: str) -> ArrayV3Metadata | GroupMetadata | None:
-    """Read the Zarr format 3 node metadata at `path`, or None if there is no `zarr.json`.
-
-    One read: the document's `node_type` says whether it is an array or a group.
-    """
+async def _read_zarr_json(store: Store, path: str) -> dict[str, JSON] | None:
+    """The parsed `zarr.json` document at `path`, or None if there is none."""
     zarr_json_bytes = await store.get(
         _join_paths([path, ZARR_JSON]), prototype=default_buffer_prototype()
     )
     if zarr_json_bytes is None:
         return None
-    return _build_metadata_v3(buffer_to_json_object(zarr_json_bytes))
+    return buffer_to_json_object(zarr_json_bytes)
+
+
+async def read_v3_metadata(store: Store, path: str) -> ArrayV3Metadata | GroupMetadata | None:
+    """Read the Zarr format 3 node metadata at `path`, or None if there is no `zarr.json`.
+
+    One read: the document's `node_type` says whether it is an array or a group.
+    """
+    doc = await _read_zarr_json(store, path)
+    if doc is None:
+        return None
+    return _build_metadata_v3(doc)
 
 
 async def read_v2_metadata(
@@ -3609,11 +3618,18 @@ async def read_array_metadata(
         msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."
         raise MetadataValidationError(msg)
     if zarr_format != 2:
-        metadata = await read_v3_metadata(store, path)
-        if isinstance(metadata, GroupMetadata):
-            raise ContainsGroupError(f"A group exists in store {store} at path {path!r}.")
-        if metadata is not None or zarr_format == 3:
+        doc = await _read_zarr_json(store, path)
+        if doc is not None:
+            # say what is here before building it, so a broken group document
+            # still reads as "a group is here"
+            if doc.get("node_type") == "group":
+                raise ContainsGroupError(f"A group exists in store {store} at path {path!r}.")
+            metadata = _build_metadata_v3(doc)
+            if isinstance(metadata, GroupMetadata):  # pragma: no cover
+                raise ContainsGroupError(f"A group exists in store {store} at path {path!r}.")
             return metadata
+        if zarr_format == 3:
+            return None
     return await read_v2_array_metadata(store, path)
 
 
@@ -3630,11 +3646,18 @@ async def read_group_metadata(
         msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."
         raise MetadataValidationError(msg)
     if zarr_format != 2:
-        metadata = await read_v3_metadata(store, path)
-        if isinstance(metadata, ArrayV3Metadata):
-            raise ContainsArrayError(f"An array exists in store {store} at path {path!r}.")
-        if metadata is not None or zarr_format == 3:
+        doc = await _read_zarr_json(store, path)
+        if doc is not None:
+            # say what is here before building it, so a broken array document
+            # still reads as "an array is here"
+            if doc.get("node_type") == "array":
+                raise ContainsArrayError(f"An array exists in store {store} at path {path!r}.")
+            metadata = _build_metadata_v3(doc)
+            if isinstance(metadata, ArrayV3Metadata):  # pragma: no cover
+                raise ContainsArrayError(f"An array exists in store {store} at path {path!r}.")
             return metadata
+        if zarr_format == 3:
+            return None
     return await read_v2_group_metadata(store, path, consolidated_key=consolidated_key)
 
 
@@ -3730,19 +3753,6 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
             raise NodeTypeValidationError(msg)
         case _:  # pragma: no cover
             raise AssertionError("unreachable")  # pragma: no cover
-
-
-def _build_metadata_v2(
-    zarr_json: dict[str, JSON], attrs_json: dict[str, JSON]
-) -> ArrayV2Metadata | GroupMetadata:
-    """
-    Convert a dict representation of Zarr V2 metadata into the corresponding metadata class.
-    """
-    match zarr_json:
-        case {"shape": _}:
-            return ArrayV2Metadata.from_dict(zarr_json | {"attributes": attrs_json})
-        case _:  # pragma: no cover
-            return GroupMetadata.from_dict(zarr_json | {"attributes": attrs_json})
 
 
 @overload

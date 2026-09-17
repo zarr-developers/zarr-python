@@ -281,10 +281,11 @@ async def _read_array_metadata(
 async def get_array_metadata(
     store_path: StorePath, zarr_format: ZarrFormat | None = 3
 ) -> dict[str, JSON]:
-    """The array metadata document at `store_path`, as a dict.
+    """The array metadata at `store_path`, as a dict.
 
-    Prefer `AsyncArray.open`, which builds the array from the parsed metadata
-    directly; this is kept for callers that want the document.
+    The dict is the parsed metadata serialized again, so it is normalized (for
+    example, defaults filled in) rather than the stored document verbatim. Prefer
+    `AsyncArray.open`, which builds the array from the parsed metadata directly.
     """
     return (await _read_array_metadata(store_path, zarr_format)).to_dict()
 
