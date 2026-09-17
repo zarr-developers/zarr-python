@@ -230,7 +230,11 @@ class FsspecStore(Store):
         url : str
             The URL to the root of the store.
         storage_options : dict, optional
-            The options to pass to fsspec when creating the filesystem.
+            The options to pass to fsspec when creating the filesystem. The
+            filesystem is created with ``skip_instance_cache=True`` so that it
+            is not retained in fsspec's global instance cache after this store
+            is released; pass ``skip_instance_cache`` in ``storage_options`` to
+            override this and share the instance with other callers.
         read_only : bool
             Whether the store is read-only, defaults to False.
         allowed_exceptions : tuple, optional
@@ -248,7 +252,13 @@ class FsspecStore(Store):
             from fsspec.core import url_to_fs
 
         opts = storage_options or {}
-        opts = {"asynchronous": True, **opts}
+        # The filesystem created here is owned by this store: instruct fsspec not
+        # to keep it in its global instance cache, so that it is released when
+        # the store is released instead of lingering until interpreter shutdown
+        # with pending cleanup finalizers that touch dead event loops
+        # (https://github.com/zarr-developers/zarr-python/issues/4221). An
+        # explicit ``skip_instance_cache`` in ``storage_options`` wins.
+        opts = {"asynchronous": True, "skip_instance_cache": True, **opts}
 
         fs, path = url_to_fs(url, **opts)
         if not fs.async_impl:

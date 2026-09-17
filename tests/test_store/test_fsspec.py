@@ -701,3 +701,116 @@ async def test_memory_scheme() -> None:
     store = await make_store("memory://test")
     assert isinstance(store, FsspecStore)
     assert store.fs.protocol == "memory"
+
+
+def test_from_url_does_not_pin_fsspec_instance_cache() -> None:
+    """from_url() must not leave its filesystem in fsspec's instance cache.
+
+    The store owns the filesystem it creates. If fsspec retains the instance
+    in its global cache, the instance -- and any cleanup finalizers registered
+    by the backend -- survive until interpreter shutdown, where the finalizers
+    run against dead event loops (see
+    https://github.com/zarr-developers/zarr-python/issues/4221).
+    """
+    from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+    from fsspec.implementations.memory import MemoryFileSystem
+
+    before = dict(MemoryFileSystem._cache)
+    store = FsspecStore.from_url("memory://instance-cache-check")
+    assert isinstance(store.fs, AsyncFileSystemWrapper)
+    assert dict(MemoryFileSystem._cache) == before
+
+
+def test_from_url_fs_cleanup_finalizer_runs_before_interpreter_shutdown(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Regression test for
+    https://github.com/zarr-developers/zarr-python/issues/4221.
+
+    An ``FsspecStore.from_url`` filesystem used to be retained by fsspec's
+    global instance cache until interpreter shutdown. Backends that register
+    an adlfs-style cleanup finalizer (fsspec's ``sync`` bound to the event
+    loop captured at registration time) then raise
+    ``RuntimeError: Loop is not running`` from ``weakref._exitfunc`` as noise
+    on every process exit. The store must release the filesystem while the
+    process is still running, so the finalizer runs against a live loop.
+    """
+    import subprocess
+    import sys
+    import textwrap
+
+    script = tmp_path / "gh4221_repro.py"
+    script.write_text(
+        textwrap.dedent(
+            """
+            import asyncio
+            import atexit
+            import gc
+            import threading
+            import weakref
+
+            import fsspec
+            from fsspec.asyn import AsyncFileSystem, sync
+
+            sessions_closed = []
+
+
+            async def _close_session() -> None:
+                sessions_closed.append(True)
+
+
+            def _shutdown_loop(loop, thread) -> None:
+                loop.call_soon_threadsafe(loop.stop)
+                thread.join(timeout=5)
+                if not loop.is_closed():
+                    loop.close()
+
+
+            class NoisyShutdownFileSystem(AsyncFileSystem):
+                # Mimics the backend in gh-4221: an async-capable filesystem
+                # that registers an adlfs-style cleanup finalizer, with the
+                # event loop captured at registration time. The session loop
+                # is shut down by an atexit hook, so if the instance survives
+                # until interpreter shutdown, the finalizer runs against a
+                # closed loop and raises "RuntimeError: Loop is not running".
+                protocol = "noisy-shutdown"
+                async_impl = True
+
+                def __init__(self, **kwargs) -> None:
+                    kwargs.setdefault("asynchronous", True)
+                    super().__init__(**kwargs)
+                    self._session_loop = asyncio.new_event_loop()
+                    self._session_thread = threading.Thread(
+                        target=self._session_loop.run_forever, daemon=True
+                    )
+                    self._session_thread.start()
+                    # Register the finalizer before the atexit hook so that at
+                    # exit the loop is closed before weakref's exit function
+                    # runs pending finalizers.
+                    weakref.finalize(self, sync, self._session_loop, _close_session)
+                    atexit.register(_shutdown_loop, self._session_loop, self._session_thread)
+
+
+            fsspec.register_implementation("noisy-shutdown", NoisyShutdownFileSystem, clobber=True)
+
+            from zarr.storage import FsspecStore
+
+            store = FsspecStore.from_url("noisy-shutdown://store")
+            assert not NoisyShutdownFileSystem._cache, NoisyShutdownFileSystem._cache
+            del store
+            gc.collect()
+            print("OK")
+            """
+        )
+    )
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "OK" in result.stdout
+    assert "Loop is not running" not in result.stderr, result.stderr
+    assert "Traceback" not in result.stderr, result.stderr
