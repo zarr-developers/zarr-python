@@ -25,7 +25,10 @@ jobs:
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
 
       - name: Install just
-        run: uv tool install rust-just==1.58.0
+        uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+        with:
+          repo: casey/just
+          version: 1.58.0
 
       - name: Check zarr-python changelog entries
         run: just check-changelogs

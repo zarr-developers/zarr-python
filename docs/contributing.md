@@ -82,10 +82,14 @@ git remote add upstream git@github.com:zarr-developers/zarr-python.git
 
 The root `Justfile` defines development and CI commands. [just](https://just.systems/)
 runs these commands, while [Hatch](https://hatch.pypa.io/latest/index.html) manages
-the Python environments declared in `pyproject.toml`. Install the task tools and uv (several recipes run tooling through it):
+the Python environments declared in `pyproject.toml`. Install
+[uv](https://docs.astral.sh/uv/getting-started/installation/) first, then the two task
+tools. `uv tool install` puts them in their own environments, which a plain `pip install`
+cannot do on a Python that marks itself externally managed (Debian, Ubuntu, Homebrew):
 
 ```bash
-pip install hatch==1.16.5 rust-just==1.58.0 uv
+uv tool install hatch==1.16.5
+uv tool install rust-just==1.58.0   # or any option from https://just.systems/man/en/packages.html
 just                 # list available commands
 just envs            # list Python environments
 just setup           # create the default test environment
@@ -95,7 +99,8 @@ just test
 Test recipes default to `test.py3.12-optional`. Set `HATCH_ENV` to select a different
 interpreter or dependency set, just as CI does. `just gpu` reads `GPU_HATCH_ENV`
 instead, so an exported `HATCH_ENV` cannot silently send GPU tests to an
-environment built without the `gpu` feature. On Windows, run these commands in
+environment built without the `gpu` feature, and `just doctest` always runs in the
+`doctest` environment. On Windows, run these commands in
 Git Bash.
 
 ```bash
@@ -153,7 +158,7 @@ Again, any conflicts need to be resolved before submitting a pull request.
 
 ### Running the test suite
 
-Zarr includes a suite of unit tests. The simplest way to run the unit tests is to activate your development environment (see [creating a development environment](#creating-a-development-environment) above) and invoke:
+Zarr includes a suite of unit tests. The simplest way to run the unit tests is to invoke:
 
 ```bash
 just test
@@ -340,7 +345,7 @@ Sometimes, you may want the documentation to build quicker. You can disable code
 
 ### Changelog
 
-zarr-python uses [towncrier](https://towncrier.readthedocs.io/en/stable/tutorial.html) to manage release notes. Most pull requests should include at least one news fragment describing the changes. To add a release note, you'll need the GitHub issue or pull request number and the type of your change (`feature`, `bugfix`, `doc`, `removal`, `misc`). With that, run `just changelog` with your development environment, which will prompt you for the issue number, change type, and the news text:
+zarr-python uses [towncrier](https://towncrier.readthedocs.io/en/stable/tutorial.html) to manage release notes. Most pull requests should include at least one news fragment describing the changes. To add a release note, you'll need the GitHub issue or pull request number and the type of your change (`feature`, `bugfix`, `doc`, `removal`, `misc`). With that, run `just changelog`, which will prompt you for the issue number, change type, and the news text:
 
 ```bash
 just changelog
@@ -463,6 +468,9 @@ to select benchmarks, for example `just benchmark -k test_morton_order`.
 The benchmarks are run as part of the continuous integration suite through [codspeed](https://app.codspeed.io/zarr-developers/zarr-python).
 
 ## Building distributions and maintaining dependencies
+
+`just just-check` verifies that the root `Justfile` and each package `justfile` are
+formatted the way CI expects; `just --fmt` rewrites them in place if it complains.
 
 Run `just build` to produce a source distribution and wheel in `dist/`.
 Use `just lock-check` to check the dependency lockfile, or `just lock` to update it.

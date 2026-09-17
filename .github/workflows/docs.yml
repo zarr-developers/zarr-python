@@ -23,8 +23,11 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
-      - run: uv tool install hatch==1.16.5
-      - run: uv tool install rust-just==1.58.0
+      - name: Install just
+        uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+        with:
+          repo: casey/just
+          version: 1.58.0
       # Fast source-level guards that need no built site, so they run before the (slower)
       # build for a quick failure: every public export is in the API reference, and no
       # docstring/Markdown carries reStructuredText markup that MkDocs won't render.

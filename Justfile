@@ -1,5 +1,5 @@
 # Development and CI verbs live here; Hatch owns Python environments in pyproject.toml.
-# Install: pip install hatch==1.16.5 rust-just==1.58.0 uv
+# Install: uv tool install hatch==1.16.5 && uv tool install rust-just==1.58.0
 # Select test dependencies/interpreter: HATCH_ENV=test.py3.13-minimal just test
 # On Windows, use Git Bash (the same shell used by the test workflow).
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
@@ -13,6 +13,13 @@ hatch_env := env("HATCH_ENV", "test.py3.12-optional")
 gpu_env := env("GPU_HATCH_ENV", "gputest.py3.12")
 # Pinned so a prek release cannot change what CI lints without a commit here.
 prek_version := "0.5.3"
+# Documentation and changelog tooling resolves from uv.lock, not a hatch environment.
+# There is only ever one docs toolchain, so it can be locked and hash-verified, and
+# dependabot's uv ecosystem keeps it current. Hatch still owns the test environments,
+# which exist per interpreter and per dependency set and cannot live in one lockfile.
+docs_run := "uv run --frozen --group docs"
+# The hatch docs environment used to set these; they belong with the mkdocs calls now.
+mkdocs_env := "DISABLE_MKDOCS_2_WARNING=true NO_MKDOCS_2_WARNING=true"
 
 # List available recipes
 default:
@@ -71,39 +78,39 @@ gpu *args:
 
 # Build documentation (warnings are errors)
 docs-build *args:
-    hatch run docs:mkdocs build --strict "$@"
+    {{ mkdocs_env }} {{ docs_run }} mkdocs build --strict "$@"
 
 # Serve documentation with live reload
 docs-serve *args:
-    hatch run docs:mkdocs serve --watch src "$@"
+    {{ mkdocs_env }} {{ docs_run }} mkdocs serve --watch src "$@"
 
 # Check that every public export has API documentation
 check-doc-exports *args:
-    hatch run docs:python ci/check_documented_exports.py docs/api "$@"
+    {{ docs_run }} python ci/check_documented_exports.py docs/api "$@"
 
 # Check documentation source conventions
 lint-docs *args:
-    hatch run docs:python ci/lint_docs.py "$@"
+    {{ docs_run }} python ci/lint_docs.py "$@"
 
 # Report unlinked types in built documentation
 check-doc-links *args:
-    hatch run docs:python ci/check_unlinked_types.py "$@"
+    {{ docs_run }} python ci/check_unlinked_types.py "$@"
 
 # Run source documentation checks followed by a strict build
 docs-check: check-doc-exports lint-docs docs-build
 
 # Run all pre-commit hooks (ruff, codespell, mypy, repo-review, ...)
 lint *args:
-    uvx prek@{{ prek_version }} run --all-files "$@"
+    uvx prek@{{ prek_version }} run --show-diff-on-failure --color=always --all-files "$@"
 
 # Run hooks with a custom selection, e.g. just hooks run --last-commit
 hooks +args:
     uvx prek@{{ prek_version }} "$@"
 
-# Install local pre-commit hooks. prek is installed as a persistent uv tool, not run
-# through uvx: the hook shim prek writes into .git/hooks hard-codes the binary path
-# it was installed from and falls back to `prek` on PATH, and a uvx archive path
-# stops existing at the next `uv cache prune`.
+# prek is installed as a persistent uv tool rather than run through uvx: the hook shim
+# prek writes into .git/hooks hard-codes the binary path it was installed from and falls
+# back to `prek` on PATH, and a uvx archive path stops existing at the next cache prune.
+# Install local pre-commit hooks
 hooks-install:
     uv tool install prek=={{ prek_version }}
     prek install
@@ -126,15 +133,15 @@ build *args:
 
 # Create a changelog fragment (interactive without arguments)
 changelog *args:
-    hatch run docs:towncrier create "$@"
+    {{ docs_run }} towncrier create "$@"
 
 # Preview the next release's changelog
 changelog-draft *args:
-    hatch run docs:towncrier build --draft --version Unreleased "$@"
+    {{ docs_run }} towncrier build --draft --version Unreleased "$@"
 
 # Build release notes; pass --version and --yes when preparing a release
 changelog-build *args:
-    hatch run docs:towncrier build "$@"
+    {{ docs_run }} towncrier build "$@"
 
 # Check changelog filenames (default: changes/; accepts a package changes directory)
 check-changelogs *args:
@@ -143,7 +150,7 @@ check-changelogs *args:
 # Check recipe formatting of the root Justfile and every package justfile
 just-check:
     just --fmt --check
-    for f in packages/*/justfile; do just --justfile "$f" --fmt --check; done
+    shopt -s nullglob; for f in packages/*/justfile; do just --justfile "$f" --fmt --check; done
 
 # Run a zarr-metadata recipe, or list its recipes with no arguments
 zarr-metadata *args:

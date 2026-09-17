@@ -265,14 +265,6 @@ extra-dependencies = [
 [tool.hatch.envs.default]
 installer = "uv"
 
-[tool.hatch.envs.docs]
-features = ['remote']
-dependency-groups = ['docs']
-
-[tool.hatch.envs.docs.env-vars]
-DISABLE_MKDOCS_2_WARNING = "true"
-NO_MKDOCS_2_WARNING = "true"
-
 [tool.hatch.envs.doctest]
 description = "Test environment for validating executable code blocks in documentation"
 features = ['remote']

@@ -31,7 +31,10 @@ jobs:
         with:
           enable-cache: true
       - name: Install just
-        run: uv tool install rust-just==1.58.0
+        uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+        with:
+          repo: casey/just
+          version: 1.58.0
       # `uvx prek` builds each hook's environment from scratch, so cache them the
       # way the prek action used to. Keyed on the hook config: a new pinned rev or
       # a new hook is exactly when the cached environments stop being valid.
@@ -39,10 +42,14 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/prek
-          key: prek-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
-          restore-keys: |
-            prek-${{ runner.os }}-
-      - name: Check justfile formatting
-        run: just just-check
+          # Justfile is hashed too: prek_version lives there, and a bumped prek
+          # must not restore a store built by the previous one. No restore-keys
+          # fallback for the same reason.
+          key: prek-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml', 'Justfile') }}
       - name: Lint
         run: just lint
+      - name: Check justfile formatting
+        # After the linters, and never masking them: this is cosmetic, and a
+        # mis-formatted recipe should not cost someone their ruff/mypy results.
+        if: always()
+        run: just just-check
