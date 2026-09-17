@@ -27,16 +27,19 @@ jobs:
       with:
         fetch-depth: 0
         persist-credentials: false
-    - name: Set up Python
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-      with:
-        python-version: '3.12'
     - name: Install Hatch
       uses: pypa/hatch@f647ed70d49adb885f53a27d1c7f5bdaeacf2c60
       with:
         version: '1.16.5'
+    # Installed as a binary rather than with `pip install rust-just`, which would
+    # need an interpreter set up in this job. Benchmarks are only comparable across
+    # runs if the interpreter underneath them does not move: pinning a Python here
+    # measured a uniform ~13% slowdown on every benchmark, because hatch then built
+    # the environment on that interpreter instead of the runner's own.
     - name: Install just
-      run: python -m pip install rust-just==1.58.0
+      uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+      with:
+        just-version: 1.58.0
     - name: Run the benchmarks
       uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
       env:
