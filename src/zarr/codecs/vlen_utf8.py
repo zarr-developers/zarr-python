@@ -8,13 +8,13 @@ from numcodecs.vlen import VLenBytes, VLenUTF8
 
 from zarr._compat import _reshape_view
 from zarr.abc.codec import ArrayBytesCodec
-from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import JSON, parse_named_configuration
 
 if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.array_spec import ArraySpec
+    from zarr.core.buffer import Buffer, NDBuffer
 
 
 # can use a global because there are no parameters
@@ -45,11 +45,8 @@ class VLenUTF8Codec(ArrayBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> NDBuffer:
-        assert isinstance(chunk_bytes, Buffer)
-
         raw_bytes = chunk_bytes.as_array_like()
         decoded = _vlen_utf8_codec.decode(raw_bytes)
-        assert decoded.dtype == np.object_
         decoded = _reshape_view(decoded, chunk_spec.shape)
         as_string_dtype = decoded.astype(chunk_spec.dtype.to_native_dtype(), copy=False)
         return chunk_spec.prototype.nd_buffer.from_numpy_array(as_string_dtype)
@@ -66,7 +63,6 @@ class VLenUTF8Codec(ArrayBytesCodec):
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
-        assert isinstance(chunk_array, NDBuffer)
         # numcodecs vlen codecs flatten with order="A", so an F-contiguous chunk
         # would be encoded in transposed element order (gh-3558)
         return chunk_spec.prototype.buffer.from_bytes(
@@ -106,11 +102,8 @@ class VLenBytesCodec(ArrayBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> NDBuffer:
-        assert isinstance(chunk_bytes, Buffer)
-
         raw_bytes = chunk_bytes.as_array_like()
         decoded = _vlen_bytes_codec.decode(raw_bytes)
-        assert decoded.dtype == np.object_
         decoded = _reshape_view(decoded, chunk_spec.shape)
         return chunk_spec.prototype.nd_buffer.from_numpy_array(decoded)
 
@@ -126,7 +119,6 @@ class VLenBytesCodec(ArrayBytesCodec):
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
-        assert isinstance(chunk_array, NDBuffer)
         # numcodecs vlen codecs flatten with order="A", so an F-contiguous chunk
         # would be encoded in transposed element order (gh-3558)
         return chunk_spec.prototype.buffer.from_bytes(

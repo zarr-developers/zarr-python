@@ -60,9 +60,9 @@ def read_box_through_tables(
 ) -> tuple[np.ndarray[Any, Any], list[tuple[int, ...]]]:
     """Assemble a box selection from the per-axis tables, one slice per chunk.
 
-    No projection is materialized: every column read here is a NumPy array of
-    the table, and the only per-chunk Python work is building the two selector
-    tuples the copy needs.
+    No paired projection objects are materialized. The consumer reads table
+    columns, constructs selectors, and assembles each chunk contribution,
+    including axis permutation and expansion where needed.
     """
     partition = plan_chunks(
         transform, dimension_grids_from_chunks(chunks, shape=source.shape)

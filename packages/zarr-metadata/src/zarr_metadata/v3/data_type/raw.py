@@ -4,14 +4,19 @@ Zarr v3 `r<N>` raw-bytes data type (parameterised by bit count).
 The `data_type` value is a string of the form `r<N>` where `N` is a
 positive multiple of 8 (e.g. `r8`, `r16`, `r24`).
 
-See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html
+See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
+(https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L46-L47; fill value: https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L97-L99)
 """
 
 import re
 from typing import Final, NewType
 
 RawBytesDataTypeName = NewType("RawBytesDataTypeName", str)
-"""A spec-conformant `r<N>` raw-bytes name (e.g. `"r8"`, `"r16"`)."""
+"""A spec-conformant `r<N>` raw-bytes name (e.g. `"r8"`, `"r16"`).
+
+"raw bits, variable size given by *, limited to be a multiple of 8":
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L46-L47
+"""
 
 _RAW_BYTES_RE: Final = re.compile(r"^r(\d+)$")
 

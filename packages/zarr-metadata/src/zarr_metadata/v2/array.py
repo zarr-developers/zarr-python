@@ -81,8 +81,8 @@ class ZarrV2ArrayMetadataJSON(TypedDict):
     """
     Zarr v2 array metadata document, in-memory merged form.
 
-    Models the union of `.zarray` (the spec-defined fields) and `.zattrs`
-    (user attributes). On disk, attributes live in a sibling `.zattrs` file
+    Models the union of `.zarray` (the spec-defined fields, https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L51-L92)
+    and `.zattrs` (user attributes, https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L323-L330). On disk, attributes live in a sibling `.zattrs` file
     and are not part of `.zarray`; this type folds them in as the
     `attributes` field so a single TypedDict represents the complete
     in-memory state of a v2 array node. Consumers that read or write a
@@ -126,8 +126,10 @@ class ZarrV2ArrayMetadataJSONPartial(TypedDict, total=False):
     `tests/test_partial_equivalence.py` passes without special-casing those
     fields (PEP 655 explicitly permits `NotRequired` inside `total=False`).
 
-    Note: v2 array metadata has no `extra_items` setting (the v2 spec has no
-    extension-field concept), so this partial inherits the same closed shape.
+    Note: v2 array metadata has no `extra_items` setting: the v2 spec has no
+    extension-field concept, and other `.zarray` keys "SHOULD be ignored by
+    implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), so nothing beyond the spec-defined
+    fields is modeled.
 
     Drift between this type and `ZarrV2ArrayMetadataJSON` is prevented by
     `tests/test_partial_equivalence.py`.

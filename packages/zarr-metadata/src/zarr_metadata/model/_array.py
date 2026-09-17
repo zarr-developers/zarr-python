@@ -51,7 +51,7 @@ class ZarrV3NamedConfig:
 
     Bare names and missing configurations normalize to an empty configuration.
     Bare names and missing `must_understand` members normalize to the spec's
-    implicit `True` value.
+    implicit `True` value (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1573).
     """
 
     name: str
@@ -107,8 +107,8 @@ def must_understand_subset(
 ) -> dict[str, ZarrV3ExtensionField]:
     """The subset of `extra_fields` the reader is obligated to understand.
 
-    Per the v3 spec, an extension field is implicitly `must_understand: True`
-    unless it explicitly says otherwise, and an implementation MUST fail to
+    Per the v3 spec (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1578), an extension field is implicitly `must_understand:
+    True` unless it explicitly says otherwise, and an implementation MUST fail to
     open a group or array carrying fields it does not recognize that are not
     explicitly `must_understand: false`. A non-mapping field value cannot
     carry the explicit waiver, so it always requires understanding (the
@@ -310,7 +310,7 @@ class ZarrV3ArrayMetadata:
         """Extra fields the reader is obligated to understand.
 
         Everything in `extra_fields` not explicitly waived with
-        `must_understand: false` (the spec's implicit-true rule). A compliant
+        `must_understand: false` (the spec's implicit-true rule, https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1578). A compliant
         reader MUST fail to open the array if this contains any field it does
         not recognize; the model layer only partitions by obligation, since
         recognition is reader-specific.
@@ -428,7 +428,8 @@ class ZarrV2ArrayMetadata:
         `attributes` is included when set (even empty). This is not the
         on-disk `.zarray` content: a conforming `.zarray` must exclude
         `attributes` (they live in the sibling `.zattrs` file). Use
-        `to_key_value` to produce the spec-conforming split for storage.
+        `to_key_value` to produce the spec-conforming split for storage
+        (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L323-L330).
         """
         # to_json output shares no mutable state with the model: every value
         # that can hold a mutable container is deep-copied.
