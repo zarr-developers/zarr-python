@@ -195,7 +195,7 @@ async def test_open_like_creates_array_by_default(
     assert np.all(Array(new_arr)[:] == ref_arr.fill_value)
 
 
-async def test_open_like_default_mode_rejects_read_only_store(
+async def test_open_like_default_mode_on_read_only_store_raises_not_found(
     zarr_format: ZarrFormat,
 ) -> None:
     # mode "a" (open-or-create) on a read-only store serves the "open" half:

@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import dataclasses
 import sys
+import threading
+import warnings
+from importlib.metadata import EntryPoint
 from typing import TYPE_CHECKING, ClassVar
 
+import numpy as np
 import pytest
 
 import zarr
@@ -22,12 +26,14 @@ from zarr.registry import (
     register_url_adapter,
 )
 from zarr.storage import ManagedMemoryStore, MemoryStore, WrapperStore
-from zarr.storage._common import make_store, make_store_path
+from zarr.storage._common import _has_fsspec, make_store, make_store_path
 from zarr.storage._url_pipeline import is_url_pipeline, resolve_pipeline
 from zarr.storage._utils import _join_paths
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from zarr.core.common import AccessModeLiteral
 
 pytestmark = pytest.mark.usefixtures("clean_url_adapter_registry")
 
@@ -159,6 +165,152 @@ class TestRegistry:
         )
 
 
+def _fake_entry_point(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, scheme: str, module: str, source: str
+) -> EntryPoint:
+    """
+    Write `source` to an importable module and return a `zarr.url_adapters`
+    entry point for `scheme` pointing at its `Adapter` attribute.
+    """
+    (tmp_path / f"{module}.py").write_text(source)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.delitem(sys.modules, module, raising=False)
+    return EntryPoint(name=scheme, value=f"{module}:Adapter", group="zarr.url_adapters")
+
+
+_ADAPTER_SOURCE = """
+from zarr.abc.url_pipeline import AdapterResolution, URLPipelineAdapter
+from zarr.storage import MemoryStore
+{prelude}
+
+class Adapter(URLPipelineAdapter):
+    @classmethod
+    async def open_pipeline_segment(cls, segment, context):
+        return AdapterResolution(store=await MemoryStore.open(read_only=context.read_only))
+"""
+
+
+class TestEntryPointLoading:
+    """Lazy loading of `zarr.url_adapters` entry points."""
+
+    def test_adapter_import_may_resolve_other_adapters(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # an adapter module that itself resolves a URL adapter at import
+        # time must not deadlock on the registry lock
+        pending = zarr.registry._url_adapter_registry.lazy_load_list
+        pending.append(
+            _fake_entry_point(
+                tmp_path,
+                monkeypatch,
+                scheme="reentrant",
+                module="reentrant_adapter",
+                source=_ADAPTER_SOURCE.format(
+                    prelude=(
+                        "import zarr.registry\n"
+                        "try:\n"
+                        "    zarr.registry.get_url_adapter('no-such-scheme-at-import')\n"
+                        "except Exception:\n"
+                        "    pass\n"
+                    )
+                ),
+            )
+        )
+        result: list[object] = []
+        thread = threading.Thread(target=lambda: result.append(get_url_adapter("reentrant")))
+        thread.start()
+        thread.join(timeout=10)
+        assert not thread.is_alive(), "get_url_adapter deadlocked on a re-entrant lookup"
+        assert getattr(result[0], "__name__", None) == "Adapter"
+
+    def test_concurrent_loads_keep_other_schemes_pending(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # two threads resolving different schemes at once, one with a slow
+        # import, must not drop a third, unrelated pending entry point
+        pending = zarr.registry._url_adapter_registry.lazy_load_list
+        for scheme, prelude in [
+            ("slow", "import time\ntime.sleep(0.3)\n"),
+            ("quick", ""),
+            ("untouched", ""),
+        ]:
+            pending.append(
+                _fake_entry_point(
+                    tmp_path,
+                    monkeypatch,
+                    scheme=scheme,
+                    module=f"{scheme}_adapter",
+                    source=_ADAPTER_SOURCE.format(prelude=prelude),
+                )
+            )
+        threads = [
+            threading.Thread(target=get_url_adapter, args=(scheme,)) for scheme in ("slow", "quick")
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+        assert not any(thread.is_alive() for thread in threads)
+        assert "untouched" in list_url_adapter_schemes()
+        assert [e.name for e in pending] == ["untouched"]
+        assert get_url_adapter("untouched").__name__ == "Adapter"
+
+    def test_import_failure_is_wrapped_and_not_permanent(self) -> None:
+        pending = zarr.registry._url_adapter_registry.lazy_load_list
+        pending.append(
+            EntryPoint(name="broken", value="no_such_module_xyz:Adapter", group="zarr.url_adapters")
+        )
+        with pytest.raises(URLPipelineError, match="could not be loaded"):
+            get_url_adapter("broken")
+        # still advertised, so a transient failure can be retried
+        assert "broken" in list_url_adapter_schemes()
+        with pytest.raises(URLPipelineError, match="could not be loaded"):
+            get_url_adapter("broken")
+
+    def test_registered_adapter_shadows_entry_point_with_warning(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # a builtin registered under a scheme wins over a same-named entry
+        # point, which is discarded loudly rather than left pending forever
+        pending = zarr.registry._url_adapter_registry.lazy_load_list
+        pending.append(
+            _fake_entry_point(
+                tmp_path,
+                monkeypatch,
+                scheme="shadowed",
+                module="shadowed_adapter",
+                source=_ADAPTER_SOURCE.format(prelude="raise RuntimeError('must not import')\n"),
+            )
+        )
+        register_url_adapter("shadowed", NativeAdapter)
+        with pytest.warns(ZarrUserWarning, match="already registered"):
+            assert get_url_adapter("shadowed") is NativeAdapter
+        assert not any(e.name == "shadowed" for e in pending)
+        # a second lookup is silent
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert get_url_adapter("shadowed") is NativeAdapter
+
+    def test_duplicate_entry_points_warn_and_first_wins(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pending = zarr.registry._url_adapter_registry.lazy_load_list
+        for module in ("dup_first", "dup_second"):
+            pending.append(
+                _fake_entry_point(
+                    tmp_path,
+                    monkeypatch,
+                    scheme="dup",
+                    module=module,
+                    source=_ADAPTER_SOURCE.format(prelude=f"ORIGIN = {module!r}\n"),
+                )
+            )
+        with pytest.warns(ZarrUserWarning, match="multiple 'zarr.url_adapters' entry points"):
+            cls = get_url_adapter("dup")
+        assert getattr(sys.modules[cls.__module__], "ORIGIN", None) == "dup_first"
+        assert not any(e.name == "dup" for e in pending)
+
+
 class TestIsURLPipeline:
     def test_pipe_routes(self) -> None:
         assert is_url_pipeline("memory://x|demo:")
@@ -203,6 +355,8 @@ class TestResolve:
         assert isinstance(result.store, TracingStore)
         assert result.path == "inner/path"
         assert result.store.context.preceding_url == str(tmp_path)
+        assert result.store.segment.scheme == "wrap"
+        assert result.store.segment.body == "inner/path"
 
     async def test_nested_wrappers_preserve_residual_paths(self, tmp_path: Path) -> None:
         # each wrapper joins the preceding residual path with its own, so
@@ -274,6 +428,30 @@ class TestResolve:
         with pytest.raises(URLPipelineError, match="does not support read-only conversion"):
             await resolve_pipeline("memory://base|stubborn:", mode="r")
 
+    async def test_read_only_enforcement_failure_closes_store(self) -> None:
+        # the adapter's store must not leak when it cannot be made read-only
+        closed: list[bool] = []
+
+        class StubbornStore(MemoryStore):
+            def with_read_only(self, read_only: bool = False) -> MemoryStore:
+                raise NotImplementedError
+
+            def close(self) -> None:
+                closed.append(True)
+                super().close()
+
+        class StubbornAdapter(URLPipelineAdapter):
+            @classmethod
+            async def open_pipeline_segment(
+                cls, segment: PipelineSegment, context: PipelineContext
+            ) -> AdapterResolution:
+                return AdapterResolution(store=await StubbornStore.open(read_only=False))
+
+        register_url_adapter("stubborn", StubbornAdapter)
+        with pytest.raises(URLPipelineError):
+            await resolve_pipeline("memory://base|stubborn:", mode="r")
+        assert closed == [True]
+
     async def test_resolve_preceding_mode_override(self, tmp_path: Path) -> None:
         # a wrapper that only reads the preceding resource can open it
         # read-only regardless of the caller's mode
@@ -289,6 +467,34 @@ class TestResolve:
         register_url_adapter("rowrap", ReadOnlyRootWrapper)
         result = await resolve_pipeline(f"{tmp_path}|rowrap:x", mode="w")
         assert result.path == "x"
+
+    async def test_wrapper_on_local_file_root_read_only(self, tmp_path: Path) -> None:
+        # a wrapper that opens the preceding local *file* read-only gets a
+        # store rooted at that file (the mechanism a read-only zip: adapter
+        # can build on)
+        target = tmp_path / "data.bin"
+        target.write_bytes(b"payload")
+        register_url_adapter("wrap", WrapperAdapter)
+        result = await resolve_pipeline(f"{target}|wrap:", mode="r")
+        assert isinstance(result.store, TracingStore)
+        assert result.store.read_only
+
+    @pytest.mark.parametrize("mode", [None, "a", "w", "r+", "w-"])
+    @pytest.mark.xfail(
+        strict=True,
+        raises=FileExistsError,
+        reason=(
+            "known limitation: there is no file-resource primitive yet, so resolving a "
+            "local file root in a writable mode hits LocalStore's create-on-open mkdir"
+        ),
+    )
+    async def test_wrapper_on_local_file_root_writable_modes(
+        self, tmp_path: Path, mode: AccessModeLiteral | None
+    ) -> None:
+        target = tmp_path / "data.bin"
+        target.write_bytes(b"payload")
+        register_url_adapter("wrap", WrapperAdapter)
+        await resolve_pipeline(f"{target}|wrap:", mode=mode)
 
     async def test_resolve_preceding_storage_options_override(self, tmp_path: Path) -> None:
         # an adapter that consumed its namespaced keys strips them before
@@ -453,6 +659,26 @@ class TestSpecRoots:
         with pytest.raises(URLPipelineError, match="do not accept a query"):
             await resolve_pipeline(f"file:{tmp_path}?v=1|wrap:")
 
+    @pytest.mark.skipif(not _has_fsspec, reason="plain memory:// routes to fsspec only with fsspec")
+    async def test_memory_root_is_distinct_from_fsspec_memory_url(self) -> None:
+        # documented divergence: a plain memory:// URL is fsspec's in-memory
+        # filesystem when fsspec is installed, while a pipeline's memory: root
+        # is zarr's ManagedMemoryStore; the two do not share data
+        register_url_adapter("wrap", WrapperAdapter)
+        plain = await make_store("memory://distinct-store")
+        piped = await make_store("memory://distinct-store|wrap:")
+        assert not isinstance(plain, ManagedMemoryStore)
+        assert isinstance(piped, TracingStore)
+        assert isinstance(piped._store, ManagedMemoryStore)
+
+    async def test_file_root_does_not_percent_decode(self, tmp_path: Path) -> None:
+        # documented divergence from RFC 8089: consistent with LocalStore, no
+        # percent-escape is decoded, so %20 names a literal directory
+        register_url_adapter("wrap", WrapperAdapter)
+        await resolve_pipeline(f"file:{tmp_path.as_posix()}/a%20b|wrap:")
+        assert (tmp_path / "a%20b").is_dir()
+        assert not (tmp_path / "a b").exists()
+
 
 class TestMakeStoreIntegration:
     async def test_make_store_path_combines_paths(self, tmp_path: Path) -> None:
@@ -574,3 +800,72 @@ class TestMakeStoreIntegration:
         register_url_adapter("fmt2", FormatAdapter)
         group = zarr.open_group(f"{tmp_path}|fmt2:", mode="w", zarr_format=2)
         assert group.metadata.zarr_format == 2
+
+
+class TestZarrFormatMergeInCore:
+    """
+    Every make_store_path caller honors the pipeline-selected zarr format, not
+    only the top-level zarr.api functions.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _fmt2(self) -> None:
+        register_url_adapter("fmt2", FormatAdapter)
+
+    async def test_create_array(self, tmp_path: Path) -> None:
+        arr = zarr.create_array(f"{tmp_path}|fmt2:", name="x", shape=(2,), dtype="i4")
+        assert arr.metadata.zarr_format == 2
+        with pytest.raises(ValueError, match="conflicts with"):
+            zarr.create_array(f"{tmp_path}|fmt2:", name="y", shape=(2,), dtype="i4", zarr_format=3)
+
+    async def test_create_array_from_data(self, tmp_path: Path) -> None:
+        # the data path of create_array goes through from_array
+        arr = zarr.create_array(f"{tmp_path}|fmt2:", name="x", data=np.arange(3))
+        assert arr.metadata.zarr_format == 2
+        with pytest.raises(ValueError, match="conflicts with"):
+            zarr.create_array(f"{tmp_path}|fmt2:", name="y", data=np.arange(3), zarr_format=3)
+
+    async def test_from_array(self, tmp_path: Path) -> None:
+        arr = zarr.from_array(f"{tmp_path}|fmt2:", name="x", data=np.arange(3))
+        assert arr.metadata.zarr_format == 2
+
+    async def test_group_from_store(self, tmp_path: Path) -> None:
+        group = zarr.Group.from_store(f"{tmp_path}|fmt2:")
+        assert group.metadata.zarr_format == 2
+        with pytest.raises(ValueError, match="conflicts with"):
+            zarr.Group.from_store(f"{tmp_path}/other|fmt2:", zarr_format=3)
+
+    async def test_group_from_store_default_without_pipeline(self, tmp_path: Path) -> None:
+        # the default is still the configured format (3) for plain stores
+        group = zarr.Group.from_store(tmp_path)
+        assert group.metadata.zarr_format == 3
+
+    async def test_group_open(self, tmp_path: Path) -> None:
+        zarr.Group.from_store(f"{tmp_path}|fmt2:")
+        # explicit None defers to the pipeline; the default (3) conflicts
+        group = zarr.Group.open(f"{tmp_path}|fmt2:", zarr_format=None)
+        assert group.metadata.zarr_format == 2
+        with pytest.raises(ValueError, match="conflicts with"):
+            zarr.Group.open(f"{tmp_path}|fmt2:")
+
+    async def test_array_open(self, tmp_path: Path) -> None:
+        zarr.create_array(f"{tmp_path}|fmt2:", name="x", shape=(2,), dtype="i4")
+        arr = zarr.Array.open(f"{tmp_path}/x|fmt2:", zarr_format=None)
+        assert arr.metadata.zarr_format == 2
+        with pytest.raises(ValueError, match="conflicts with"):
+            zarr.Array.open(f"{tmp_path}/x|fmt2:")
+
+    async def test_open_like(self, tmp_path: Path) -> None:
+        # open_like inherits v2 filters/compressor from the reference; the
+        # pipeline supplies the format, which open_array then creates with
+        ref = zarr.create_array({}, shape=(2,), dtype="i4", zarr_format=2)
+        arr = zarr.open_like(ref, store=f"{tmp_path}|fmt2:", path="x")
+        assert arr.metadata.zarr_format == 2
+
+    async def test_deprecated_async_array_create(self, tmp_path: Path) -> None:
+        from zarr.core.array import AsyncArray
+
+        arr = await AsyncArray._create(f"{tmp_path}|fmt2:", shape=(2,), dtype="i4", zarr_format=2)
+        assert arr.metadata.zarr_format == 2
+        with pytest.raises(ValueError, match="conflicts with"):
+            await AsyncArray._create(f"{tmp_path}/o|fmt2:", shape=(2,), dtype="i4", zarr_format=3)

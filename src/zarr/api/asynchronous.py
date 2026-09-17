@@ -108,24 +108,6 @@ def _infer_overwrite(mode: AccessModeLiteral) -> bool:
     return mode in _OVERWRITE_MODES
 
 
-def _merge_pipeline_zarr_format(
-    store_path: StorePath, zarr_format: ZarrFormat | None
-) -> ZarrFormat | None:
-    """
-    Combine a zarr format selected by a URL pipeline segment (`zarr2:` /
-    `zarr3:`) with the caller's `zarr_format` argument. Explicitly
-    conflicting selections raise.
-    """
-    if store_path.zarr_format is None:
-        return zarr_format
-    if zarr_format is not None and zarr_format != store_path.zarr_format:
-        raise ValueError(
-            f"zarr_format={zarr_format} conflicts with the 'zarr{store_path.zarr_format}:' "
-            "segment of the URL pipeline"
-        )
-    return store_path.zarr_format
-
-
 def _warn_unimplemented_kwargs(kwargs: dict[str, Any]) -> None:
     """
     Emit a "not yet implemented" warning for each provided keyword argument that is not None.
@@ -407,7 +389,7 @@ async def open(
         else:
             mode = "a"
     store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
-    zarr_format = _merge_pipeline_zarr_format(store_path, zarr_format)
+    zarr_format = store_path.resolve_zarr_format(zarr_format)
 
     # TODO: the mode check below seems wrong!
     if "shape" not in kwargs and mode in {"a", "r", "r+", "w"}:
@@ -518,7 +500,7 @@ async def save_array(
 
     mode = kwargs.pop("mode", "a")
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
-    zarr_format = _merge_pipeline_zarr_format(store_path, zarr_format)
+    zarr_format = store_path.resolve_zarr_format(zarr_format)
     if zarr_format is None:
         zarr_format = _default_zarr_format()
     if np.isscalar(arr):
@@ -570,7 +552,7 @@ async def save_group(
     """
 
     store_path = await make_store_path(store, path=path, mode="w", storage_options=storage_options)
-    zarr_format = _merge_pipeline_zarr_format(store_path, zarr_format)
+    zarr_format = store_path.resolve_zarr_format(zarr_format)
 
     if zarr_format is None:
         zarr_format = _default_zarr_format()
@@ -786,7 +768,7 @@ async def create_group(
     mode: Literal["a"] = "a"
 
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
-    zarr_format = _merge_pipeline_zarr_format(store_path, zarr_format)
+    zarr_format = store_path.resolve_zarr_format(zarr_format)
     if zarr_format is None:
         zarr_format = _default_zarr_format()
 
@@ -878,7 +860,7 @@ async def open_group(
     )
 
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
-    zarr_format = _merge_pipeline_zarr_format(store_path, zarr_format)
+    zarr_format = store_path.resolve_zarr_format(zarr_format)
     if attributes is None:
         attributes = {}
 
@@ -1082,7 +1064,7 @@ async def create(
     if mode is None:
         mode = "a"
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
-    zarr_format = _merge_pipeline_zarr_format(store_path, zarr_format)
+    zarr_format = store_path.resolve_zarr_format(zarr_format)
     if zarr_format is None:
         zarr_format = _default_zarr_format()
 
@@ -1284,7 +1266,7 @@ async def open_array(
 
     mode = kwargs.pop("mode", None)
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
-    zarr_format = _merge_pipeline_zarr_format(store_path, zarr_format)
+    zarr_format = store_path.resolve_zarr_format(zarr_format)
 
     if "write_empty_chunks" in kwargs:
         _warn_write_empty_chunks_kwarg()

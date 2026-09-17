@@ -74,6 +74,36 @@ class StorePath:
     def read_only(self) -> bool:
         return self.store.read_only
 
+    def resolve_zarr_format(self, zarr_format: ZarrFormat | None) -> ZarrFormat | None:
+        """
+        Combine the zarr format selected by a URL pipeline segment (`zarr2:` /
+        `zarr3:`) with a caller-supplied `zarr_format`.
+
+        Parameters
+        ----------
+        zarr_format : ZarrFormat | None
+            The format requested by the caller, or None when unspecified.
+
+        Returns
+        -------
+        ZarrFormat | None
+            The pipeline's format when the caller did not specify one, otherwise the
+            caller's format. None when neither is set.
+
+        Raises
+        ------
+        ValueError
+            If the caller's format differs from the one selected by the pipeline.
+        """
+        if self.zarr_format is None:
+            return zarr_format
+        if zarr_format is not None and zarr_format != self.zarr_format:
+            raise ValueError(
+                f"zarr_format={zarr_format} conflicts with the 'zarr{self.zarr_format}:' "
+                "segment of the URL pipeline; pass zarr_format=None to use the pipeline's format"
+            )
+        return self.zarr_format
+
     @classmethod
     async def _create_open_instance(cls, store: Store, path: str) -> Self:
         """Helper to create and return a StorePath instance."""
@@ -492,6 +522,9 @@ async def make_store_path(
         If the StoreLike object is not one of the supported types, or if storage_options is provided but not used.
     ValueError
         If path is provided for a store that does not support it.
+    URLPipelineError
+        If `store_like` is a [URL pipeline][user-guide-url-pipelines] string that
+        cannot be resolved.
 
     See Also
     --------
