@@ -23,9 +23,8 @@ envs:
     hatch env show
 
 # Create the selected Python environment and list its installed packages
-setup:
+setup: && list-env
     hatch env create {{ quote(hatch_env) }}
-    just list-env
 
 # List packages in the selected Python environment
 list-env:
@@ -101,9 +100,13 @@ lint *args:
 hooks +args:
     uvx prek@{{ prek_version }} "$@"
 
-# Install local pre-commit hooks
+# Install local pre-commit hooks. prek is installed as a persistent uv tool, not run
+# through uvx: the hook shim prek writes into .git/hooks hard-codes the binary path
+# it was installed from and falls back to `prek` on PATH, and a uvx archive path
+# stops existing at the next `uv cache prune`.
 hooks-install:
-    uvx prek@{{ prek_version }} install
+    uv tool install prek=={{ prek_version }}
+    prek install
 
 # Type-check the library using the locked tooling environment
 typecheck *args:

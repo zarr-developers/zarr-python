@@ -82,7 +82,7 @@ git remote add upstream git@github.com:zarr-developers/zarr-python.git
 
 The root `Justfile` defines development and CI commands. [just](https://just.systems/)
 runs these commands, while [Hatch](https://hatch.pypa.io/latest/index.html) manages
-the Python environments declared in `pyproject.toml`. Install the task tools and uv (used by the lint and lock commands):
+the Python environments declared in `pyproject.toml`. Install the task tools and uv (several recipes run tooling through it):
 
 ```bash
 pip install hatch==1.16.5 rust-just==1.58.0 uv
@@ -165,7 +165,7 @@ All tests are automatically run via GitHub Actions for every pull request and mu
 
 All code must conform to the PEP8 standard. Regarding line length, lines up to 100 characters are allowed, although please try to keep under 90 wherever possible.
 
-`Zarr` uses a set of git hooks managed by [`prek`](https://github.com/j178/prek), a fast, Rust-based pre-commit hook manager compatible with `.pre-commit-config.yaml`. The just recipes use `uvx` to run prek, installing it on demand.
+`Zarr` uses a set of git hooks managed by [`prek`](https://github.com/j178/prek), a fast, Rust-based pre-commit hook manager compatible with `.pre-commit-config.yaml`. The recipes pin the prek version: `just lint` and `just hooks` run it through `uvx`, and `just hooks-install` installs it as a persistent `uv tool` so the git hook can find it on later commits.
 
 The hooks can be installed locally by running:
 
