@@ -34,14 +34,14 @@ from zarr.core.group import (
     AsyncGroup,
     ConsolidatedMetadata,
     GroupMetadata,
+    _open_array,
+    _open_group,
     _open_node,
     create_hierarchy,
 )
 from zarr.core.metadata import ArrayV2Metadata
 from zarr.errors import (
     ArrayNotFoundError,
-    ContainsArrayError,
-    ContainsGroupError,
     GroupNotFoundError,
     NodeNotFoundError,
     ZarrDeprecationWarning,
@@ -863,14 +863,11 @@ async def open_group(
 
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
     if mode in _READ_MODES:
-        node = await _open_node(
+        group = await _open_group(
             store_path, zarr_format=zarr_format, use_consolidated=use_consolidated
         )
-        if isinstance(node, AsyncGroup):
-            return node
-        if node is not None:
-            msg = f"An array exists in store {store_path.store} at path {store_path.path}."
-            raise ContainsArrayError(msg)
+        if group is not None:
+            return group
     if mode in _CREATE_MODES:
         return await AsyncGroup.from_store(
             store_path,
@@ -1269,16 +1266,10 @@ async def open_array(
         _warn_write_empty_chunks_kwarg()
 
     if mode not in _OVERWRITE_MODES:
-        # Whatever is here is what the caller gets, unless it is a group. An array
-        # has no consolidated metadata to read.
-        node = await _open_node(
-            store_path, zarr_format=zarr_format, use_consolidated=False, config=kwargs.get("config")
-        )
-        if isinstance(node, AsyncArray):
-            return node
-        if node is not None:
-            msg = f"A group exists in store {store_path.store} at path {store_path.path}."
-            raise ContainsGroupError(msg)
+        # whatever array is here is what the caller gets
+        array = await _open_array(store_path, zarr_format=zarr_format, config=kwargs.get("config"))
+        if array is not None:
+            return array
     if not store_path.read_only and mode in _CREATE_MODES:
         return await create(
             store=store_path,

@@ -50,6 +50,7 @@ from zarr.errors import (
     ArrayNotFoundError,
     ContainsArrayError,
     ContainsGroupError,
+    GroupNotFoundError,
     MetadataValidationError,
     NodeNotFoundError,
     NodeTypeValidationError,
@@ -1519,40 +1520,97 @@ async def test_open_zarr_json_with_invalid_node_type_raises() -> None:
         await zarr.api.asynchronous.open(store=store, mode="r")
 
 
+# Zarr format 3 says what a node is in the one document every opener reads, so opening
+# the wrong kind is reported as such. Zarr format 2 has a document per kind, and an
+# opener that knows what it wants reads only that kind's, so the other kind reads as
+# nothing in the read modes; the create modes still find it when they check before
+# writing.
+_WRONG_KIND_ERROR: dict[tuple[str, ZarrFormat], type[Exception]] = {
+    ("array as group", 3): ContainsArrayError,
+    ("array as group", 2): GroupNotFoundError,
+    ("group as array", 3): ContainsGroupError,
+    ("group as array", 2): ArrayNotFoundError,
+}
+
+
 @pytest.mark.parametrize("zarr_format", [2, 3])
-async def test_async_array_open_on_group_raises_contains_group(zarr_format: ZarrFormat) -> None:
-    """Opening a group as an array says a group is there, rather than that nothing is."""
+async def test_async_array_open_on_group_raises(zarr_format: ZarrFormat) -> None:
     store = MemoryStore()
     await zarr.api.asynchronous.open_group(store, zarr_format=zarr_format)
-    with pytest.raises(ContainsGroupError, match="A group exists in store"):
+    with pytest.raises(_WRONG_KIND_ERROR["group as array", zarr_format]):
         await AsyncArray.open(store, zarr_format=zarr_format)
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
-async def test_async_group_open_on_array_raises_contains_array(zarr_format: ZarrFormat) -> None:
-    """Opening an array as a group says an array is there, rather than that nothing is."""
+async def test_async_group_open_on_array_raises(zarr_format: ZarrFormat) -> None:
     store = MemoryStore()
     await zarr.api.asynchronous.create_array(
         store, shape=(3,), dtype="uint8", zarr_format=zarr_format
     )
-    with pytest.raises(ContainsArrayError, match="An array exists in store"):
+    with pytest.raises(_WRONG_KIND_ERROR["array as group", zarr_format]):
         await zarr.core.group.AsyncGroup.open(store, zarr_format=zarr_format)
 
 
+@pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("mode", ["r", "a"])
-def test_open_group_on_array_raises_contains_array(mode: AccessModeLiteral) -> None:
+def test_open_group_on_array_raises(mode: AccessModeLiteral, zarr_format: ZarrFormat) -> None:
     store = MemoryStore()
-    zarr.create_array(store, shape=(3,), dtype="uint8")
-    with pytest.raises(ContainsArrayError, match="An array exists in store"):
-        zarr.open_group(store, mode=mode)
+    zarr.create_array(store, shape=(3,), dtype="uint8", zarr_format=zarr_format)
+    expected = _WRONG_KIND_ERROR["array as group", zarr_format]
+    if mode == "a" and zarr_format == 2:
+        expected = ContainsArrayError  # found by the create step's check
+    with pytest.raises(expected):
+        zarr.open_group(store, mode=mode, zarr_format=zarr_format)
 
 
+@pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("mode", ["r", "a"])
-def test_open_array_on_group_raises_contains_group(mode: AccessModeLiteral) -> None:
+def test_open_array_on_group_raises(mode: AccessModeLiteral, zarr_format: ZarrFormat) -> None:
     store = MemoryStore()
-    zarr.create_group(store)
-    with pytest.raises(ContainsGroupError, match="A group exists in store"):
-        zarr.open_array(store, mode=mode)
+    zarr.create_group(store, zarr_format=zarr_format)
+    expected = _WRONG_KIND_ERROR["group as array", zarr_format]
+    if mode == "a" and zarr_format == 2:
+        expected = ContainsGroupError  # found by the create step's check
+    with pytest.raises(expected):
+        zarr.open_array(store, mode=mode, zarr_format=zarr_format, shape=(3,), dtype="uint8")
+
+
+@pytest.mark.parametrize("node", ["array", "group"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("given_format", [True, False], ids=["format given", "format detected"])
+async def test_open_array_and_open_group_read_only_their_kind(
+    node: Literal["array", "group"], zarr_format: ZarrFormat, given_format: bool
+) -> None:
+    """An opener that knows which kind it wants reads only that kind's documents.
+
+    A format 3 node is one read either way. A format 2 array is `.zarray` and
+    `.zattrs`; a format 2 group is `.zgroup`, `.zattrs` and `.zmetadata`. Detecting
+    the format adds the one read of `zarr.json` that finds nothing.
+    """
+    store = _CountingStore(MemoryStore())
+    if node == "array":
+        await zarr.api.asynchronous.create_array(
+            store, shape=(3,), dtype="uint8", zarr_format=zarr_format
+        )
+    else:
+        await zarr.api.asynchronous.open_group(store, zarr_format=zarr_format)
+    store.get_counts.clear()
+
+    fmt = zarr_format if given_format else None
+    if node == "array":
+        await zarr.api.asynchronous.open_array(store=store, mode="r", zarr_format=fmt)
+    else:
+        await zarr.api.asynchronous.open_group(store=store, mode="r", zarr_format=fmt)
+
+    if zarr_format == 3:
+        expected_keys = {"zarr.json"}
+    elif node == "array":
+        expected_keys = {".zarray", ".zattrs"}
+    else:
+        expected_keys = {".zgroup", ".zattrs", ".zmetadata"}
+    if zarr_format == 2 and not given_format:
+        expected_keys.add("zarr.json")
+    assert store.get_counts == dict.fromkeys(expected_keys, 1)
 
 
 def _expected_open_outcome(

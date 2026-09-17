@@ -141,8 +141,8 @@ async def _open_node(
 ) -> AnyAsyncArray | AsyncGroup | None:
     """The node at `store_path`, whichever kind it is, or None if there is none.
 
-    This is what the opening functions are built from: it reads the node's
-    metadata once, applies `use_consolidated` if the node is a group, and
+    For a caller that does not know what kind of node to expect. It reads the
+    node's metadata once, applies `use_consolidated` if the node is a group, and
     builds the node. It applies no mode policy and raises nothing for a missing
     node; the callers decide what those mean.
     """
@@ -160,6 +160,45 @@ async def _open_node(
     return _build_node(
         store=store_path.store, path=store_path.path, metadata=metadata, config=config
     )
+
+
+async def _open_array(
+    store_path: StorePath, *, zarr_format: ZarrFormat | None, config: ArrayConfigLike | None = None
+) -> AnyAsyncArray | None:
+    """The array at `store_path`, or None if there is none.
+
+    Reads only what an array needs. Raises `ContainsGroupError` for a Zarr format
+    3 group, whose one document says what it is; a format 2 group is not looked
+    for and reads as None.
+    """
+    metadata = await read_array_metadata(store_path.store, store_path.path, zarr_format)
+    if metadata is None:
+        return None
+    return _build_node(
+        store=store_path.store, path=store_path.path, metadata=metadata, config=config
+    )
+
+
+async def _open_group(
+    store_path: StorePath, *, zarr_format: ZarrFormat | None, use_consolidated: bool | str | None
+) -> AsyncGroup | None:
+    """The group at `store_path`, with `use_consolidated` applied, or None if there is none.
+
+    Reads only what a group needs. Raises `ContainsArrayError` for a Zarr format
+    3 array, whose one document says what it is; a format 2 array is not looked
+    for and reads as None.
+    """
+    use_consolidated = _resolve_use_consolidated(store_path.store, use_consolidated)
+    metadata = await read_group_metadata(
+        store_path.store,
+        store_path.path,
+        zarr_format,
+        consolidated_key=_v2_consolidated_key(use_consolidated),
+    )
+    if metadata is None:
+        return None
+    metadata = _apply_use_consolidated(metadata, use_consolidated, store_path=store_path)
+    return AsyncGroup(metadata=metadata, store_path=store_path)
 
 
 def parse_zarr_format(data: Any) -> ZarrFormat:
@@ -602,16 +641,13 @@ class AsyncGroup:
             to load consolidated metadata from a non-default key.
         """
         store_path = await make_store_path(store)
-        node = await _open_node(
+        group = await _open_group(
             store_path, zarr_format=zarr_format, use_consolidated=use_consolidated
         )
-        if node is None:
+        if group is None:
             msg = f"No group found in store {store_path.store} at path {store_path.path!r}"
             raise GroupNotFoundError(msg)
-        if not isinstance(node, AsyncGroup):
-            msg = f"An array exists in store {store_path.store} at path {store_path.path}."
-            raise ContainsArrayError(msg)
-        return node
+        return group
 
     @classmethod
     def from_dict(
@@ -3479,12 +3515,14 @@ async def read_v3_metadata(store: Store, path: str) -> ArrayV3Metadata | GroupMe
 async def read_v2_metadata(
     store: Store, path: str, *, consolidated_key: str | None = None
 ) -> ArrayV2Metadata | GroupMetadata | None:
-    """Read the Zarr format 2 node metadata at `path`, or None if there is neither `.zarray` nor `.zgroup`.
+    """Read the Zarr format 2 node metadata at `path`, not knowing which kind it is.
 
-    One concurrent read of `.zarray`, `.zgroup`, `.zattrs` and, if given, the
-    consolidated-metadata document at `consolidated_key`. `.zarray` makes the
-    node an array and `.zgroup` a group, the array winning if both exist; a
-    consolidated document is attached to a group's metadata.
+    Both kinds' documents are read in one concurrent round: `.zarray`, `.zgroup`,
+    `.zattrs` and, if given, the consolidated-metadata document at
+    `consolidated_key`. `.zarray` makes the node an array and `.zgroup` a group,
+    the array winning if both exist. A caller that knows which kind it wants
+    should use `read_v2_array_metadata` or `read_v2_group_metadata`, which read
+    only that kind's documents. Returns None if there is neither.
     """
     keys = [ZARRAY_JSON, ZGROUP_JSON, ZATTRS_JSON]
     if consolidated_key is not None:
@@ -3492,17 +3530,112 @@ async def read_v2_metadata(
     zarray_bytes, zgroup_bytes, zattrs_bytes, *rest = await asyncio.gather(
         *(store.get(_join_paths([path, key]), prototype=default_buffer_prototype()) for key in keys)
     )
-    zattrs: dict[str, JSON] = {} if zattrs_bytes is None else buffer_to_json_object(zattrs_bytes)
-    if zarray_bytes is not None:
-        return _build_metadata_v2(buffer_to_json_object(zarray_bytes), zattrs)
+    array = _v2_array_metadata(zarray_bytes, zattrs_bytes)
+    if array is not None:
+        return array
+    return _v2_group_metadata(zgroup_bytes, zattrs_bytes, rest[0] if rest else None)
+
+
+async def read_v2_array_metadata(store: Store, path: str) -> ArrayV2Metadata | None:
+    """Read the Zarr format 2 array metadata at `path`, or None if there is no `.zarray`.
+
+    One concurrent read of `.zarray` and `.zattrs`; nothing else is looked at.
+    """
+    zarray_bytes, zattrs_bytes = await asyncio.gather(
+        store.get(_join_paths([path, ZARRAY_JSON]), prototype=default_buffer_prototype()),
+        store.get(_join_paths([path, ZATTRS_JSON]), prototype=default_buffer_prototype()),
+    )
+    return _v2_array_metadata(zarray_bytes, zattrs_bytes)
+
+
+async def read_v2_group_metadata(
+    store: Store, path: str, *, consolidated_key: str | None = None
+) -> GroupMetadata | None:
+    """Read the Zarr format 2 group metadata at `path`, or None if there is no `.zgroup`.
+
+    One concurrent read of `.zgroup`, `.zattrs` and, if given, the
+    consolidated-metadata document at `consolidated_key`, which is attached to
+    the group; nothing else is looked at.
+    """
+    keys = [ZGROUP_JSON, ZATTRS_JSON]
+    if consolidated_key is not None:
+        keys.append(consolidated_key)
+    zgroup_bytes, zattrs_bytes, *rest = await asyncio.gather(
+        *(store.get(_join_paths([path, key]), prototype=default_buffer_prototype()) for key in keys)
+    )
+    return _v2_group_metadata(zgroup_bytes, zattrs_bytes, rest[0] if rest else None)
+
+
+def _v2_attributes(zattrs_bytes: Buffer | None) -> dict[str, JSON]:
+    return {} if zattrs_bytes is None else buffer_to_json_object(zattrs_bytes)
+
+
+def _v2_array_metadata(
+    zarray_bytes: Buffer | None, zattrs_bytes: Buffer | None
+) -> ArrayV2Metadata | None:
+    """Array metadata from a `.zarray` document and its `.zattrs`, or None without the former."""
+    if zarray_bytes is None:
+        return None
+    return ArrayV2Metadata.from_dict(
+        buffer_to_json_object(zarray_bytes) | {"attributes": _v2_attributes(zattrs_bytes)}
+    )
+
+
+def _v2_group_metadata(
+    zgroup_bytes: Buffer | None, zattrs_bytes: Buffer | None, consolidated_bytes: Buffer | None
+) -> GroupMetadata | None:
+    """Group metadata from a `.zgroup` document, its `.zattrs` and an optional consolidated document."""
     if zgroup_bytes is None:
         return None
-    metadata = _build_metadata_v2(buffer_to_json_object(zgroup_bytes), zattrs)
-    consolidated_bytes = rest[0] if rest else None
-    if consolidated_bytes is not None and isinstance(metadata, GroupMetadata):
-        consolidated = _consolidated_metadata_from_v2_doc(buffer_to_json_object(consolidated_bytes))
-        metadata = replace(metadata, consolidated_metadata=consolidated)
-    return metadata
+    metadata = GroupMetadata.from_dict(
+        buffer_to_json_object(zgroup_bytes) | {"attributes": _v2_attributes(zattrs_bytes)}
+    )
+    if consolidated_bytes is None:
+        return metadata
+    consolidated = _consolidated_metadata_from_v2_doc(buffer_to_json_object(consolidated_bytes))
+    return replace(metadata, consolidated_metadata=consolidated)
+
+
+async def read_array_metadata(
+    store: Store, path: str, zarr_format: ZarrFormat | None
+) -> ArrayV2Metadata | ArrayV3Metadata | None:
+    """Read the array metadata at `path`, reading only what an array needs.
+
+    Composed like `read_node_metadata`, but the format 2 step reads only the
+    array documents, so a format 2 group reads as None. A format 3 group is
+    reported with `ContainsGroupError`, since its one document says what it is.
+    """
+    if zarr_format not in (2, 3, None):
+        msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."
+        raise MetadataValidationError(msg)
+    if zarr_format != 2:
+        metadata = await read_v3_metadata(store, path)
+        if isinstance(metadata, GroupMetadata):
+            raise ContainsGroupError(f"A group exists in store {store} at path {path!r}.")
+        if metadata is not None or zarr_format == 3:
+            return metadata
+    return await read_v2_array_metadata(store, path)
+
+
+async def read_group_metadata(
+    store: Store, path: str, zarr_format: ZarrFormat | None, *, consolidated_key: str | None = None
+) -> GroupMetadata | None:
+    """Read the group metadata at `path`, reading only what a group needs.
+
+    Composed like `read_node_metadata`, but the format 2 step reads only the
+    group documents, so a format 2 array reads as None. A format 3 array is
+    reported with `ContainsArrayError`, since its one document says what it is.
+    """
+    if zarr_format not in (2, 3, None):
+        msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."
+        raise MetadataValidationError(msg)
+    if zarr_format != 2:
+        metadata = await read_v3_metadata(store, path)
+        if isinstance(metadata, ArrayV3Metadata):
+            raise ContainsArrayError(f"An array exists in store {store} at path {path!r}.")
+        if metadata is not None or zarr_format == 3:
+            return metadata
+    return await read_v2_group_metadata(store, path, consolidated_key=consolidated_key)
 
 
 def _consolidated_metadata_from_v2_doc(doc: dict[str, JSON]) -> ConsolidatedMetadata:
@@ -3556,8 +3689,8 @@ async def _read_group_metadata_v2(store: Store, path: str) -> GroupMetadata:
     """
     Read group metadata or error
     """
-    meta = await _read_metadata_v2(store=store, path=path)
-    if not isinstance(meta, GroupMetadata):
+    meta = await read_v2_group_metadata(store, path)
+    if meta is None:
         raise FileNotFoundError(f"Group metadata was not found in {store} at {path}")
     return meta
 

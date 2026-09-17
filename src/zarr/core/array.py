@@ -129,7 +129,6 @@ from zarr.core.sync import sync
 from zarr.errors import (
     ArrayNotFoundError,
     ChunkNotFoundError,
-    ContainsGroupError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
 )
@@ -266,19 +265,16 @@ async def _read_array_metadata(
 ) -> ArrayMetadata:
     """The array metadata at `store_path`.
 
-    Raises `ArrayNotFoundError` if there is no node there and
-    `ContainsGroupError` if the node is a group.
+    Raises `ArrayNotFoundError` if there is no array there and
+    `ContainsGroupError` if a Zarr format 3 group is.
     """
     # group.py imports this module, so the shared reader is imported here
-    from zarr.core.group import GroupMetadata, read_node_metadata
+    from zarr.core.group import read_array_metadata
 
-    metadata = await read_node_metadata(store_path.store, store_path.path, zarr_format)
+    metadata = await read_array_metadata(store_path.store, store_path.path, zarr_format)
     if metadata is None:
         msg = f"No array found in store {store_path.store} at path {store_path.path!r}"
         raise ArrayNotFoundError(msg)
-    if isinstance(metadata, GroupMetadata):
-        msg = f"A group exists in store {store_path.store} at path {store_path.path}."
-        raise ContainsGroupError(msg)
     return metadata
 
 
