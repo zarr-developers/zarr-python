@@ -183,6 +183,19 @@ async def resolve_pipeline(
         Options forwarded to the root sub-URL's store (and visible to
         adapters via the context). Non-dict forms are reserved for future
         per-segment configuration (one mapping per pipeline segment).
+
+    Raises
+    ------
+    URLPipelineError
+        If the URL cannot be parsed, is not a pipeline, names a scheme with
+        no registered adapter, names an adapter entry point that fails to
+        import, or has a root sub-URL that cannot be resolved.
+    TypeError
+        If `storage_options` are passed to a root that does not accept them
+        (local paths and `memory:`), as for non-pipeline stores.
+    OSError
+        Errors from opening the root resource (e.g. a missing local directory
+        in mode `"r"`) propagate unchanged, as for non-pipeline stores.
     """
     segments = parse_pipeline(url)
     if len(segments) == 1 and not _root_routes_to_adapter(segments[0].scheme):
@@ -225,13 +238,17 @@ async def _resolve(
         # the adapter to have honored context.read_only.
         try:
             read_only_store = resolution.store.with_read_only(True)
+            await read_only_store._ensure_open()
         except NotImplementedError as exc:
+            resolution.store.close()
             raise URLPipelineError(
                 f"adapter {last.scheme!r} returned a writable store for mode 'r', "
                 "and the store does not support read-only conversion via "
                 ".with_read_only()"
             ) from exc
-        await read_only_store._ensure_open()
+        except Exception:
+            resolution.store.close()
+            raise
         resolution = dataclasses.replace(resolution, store=read_only_store)
     return resolution
 

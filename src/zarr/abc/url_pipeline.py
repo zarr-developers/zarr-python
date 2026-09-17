@@ -73,10 +73,13 @@ class PipelineSegment:
         return self.raw
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class AdapterResolution:
     """
     The result of resolving a URL pipeline (or a prefix of one).
+
+    Instances are immutable but compare and hash by identity, since a
+    [`Store`][zarr.abc.store.Store] is not hashable.
 
     Attributes
     ----------
@@ -99,11 +102,13 @@ class AdapterResolution:
     zarr_format: ZarrFormat | None = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class PipelineContext:
     """
     Context handed to a [`URLPipelineAdapter`][zarr.abc.url_pipeline.URLPipelineAdapter]
     describing the pipeline to the left of its segment.
+
+    Instances are immutable but compare and hash by identity.
 
     Attributes
     ----------
@@ -186,7 +191,12 @@ class PipelineContext:
             Wrapper adapters that only read the preceding resource should
             pass `mode="r"` so the root is opened read-only and without
             create-on-open side effects, regardless of the caller's mode.
-            When omitted, the caller's mode is used.
+            When omitted, the caller's mode is used. Note that a local
+            *file* root (e.g. `data.zip|zip:`) can currently only be
+            resolved in mode `"r"`: every other mode creates a directory at
+            the root and fails with `FileExistsError`, because there is no
+            file-resource primitive yet. Writing *through* a container file
+            is therefore not supported by wrapper adapters at this time.
         storage_options : dict | None, optional
             Override the options forwarded to the preceding pipeline. An
             adapter that consumed adapter-specific keys should pass the
