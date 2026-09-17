@@ -93,14 +93,16 @@ just test
 ```
 
 Test recipes default to `test.py3.12-optional`. Set `HATCH_ENV` to select a different
-interpreter or dependency set, just as CI does. On Windows, run these commands in
+interpreter or dependency set, just as CI does. `just gpu` reads `GPU_HATCH_ENV`
+instead, so an exported `HATCH_ENV` cannot silently send GPU tests to an
+environment built without the `gpu` feature. On Windows, run these commands in
 Git Bash.
 
 ```bash
 HATCH_ENV=test.py3.13-minimal just test
 HATCH_ENV=min_deps just coverage
 HATCH_ENV=upstream just coverage
-HATCH_ENV=gputest.py3.12 just gpu
+GPU_HATCH_ENV=gputest.py3.12 just gpu
 just test tests/test_array.py -k 'resize and not async'
 ```
 

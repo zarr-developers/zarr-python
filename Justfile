@@ -7,6 +7,12 @@ set windows-shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 set positional-arguments
 
 hatch_env := env("HATCH_ENV", "test.py3.12-optional")
+# Deliberately a different variable from HATCH_ENV: `just gpu` must not inherit a
+# CPU test environment that happens to be exported in the caller's shell, which
+# would run `pytest -m gpu` against an environment built without the gpu feature.
+gpu_env := env("GPU_HATCH_ENV", "gputest.py3.12")
+# Pinned so a prek release cannot change what CI lints without a commit here.
+prek_version := "0.5.3"
 
 # List available recipes
 default:
@@ -60,9 +66,9 @@ benchmark *args:
 benchmark-codspeed *args:
     hatch run {{ quote(hatch_env) }}:pytest tests/benchmarks --codspeed "$@"
 
-# Run GPU tests with coverage (default environment: gputest.py3.12)
+# Run GPU tests with coverage; select the environment with GPU_HATCH_ENV
 gpu *args:
-    HATCH_ENV={{ quote(env("HATCH_ENV", "gputest.py3.12")) }} just coverage -m gpu "$@"
+    HATCH_ENV={{ quote(gpu_env) }} just coverage -m gpu "$@"
 
 # Build documentation (warnings are errors)
 docs-build *args:
@@ -89,15 +95,15 @@ docs-check: check-doc-exports lint-docs docs-build
 
 # Run all pre-commit hooks (ruff, codespell, mypy, repo-review, ...)
 lint *args:
-    uvx prek run --all-files "$@"
+    uvx prek@{{ prek_version }} run --all-files "$@"
 
 # Run hooks with a custom selection, e.g. just hooks run --last-commit
 hooks +args:
-    uvx prek "$@"
+    uvx prek@{{ prek_version }} "$@"
 
 # Install local pre-commit hooks
 hooks-install:
-    uvx prek install
+    uvx prek@{{ prek_version }} install
 
 # Type-check the library using the locked tooling environment
 typecheck *args:
@@ -129,11 +135,12 @@ changelog-build *args:
 
 # Check changelog filenames (default: changes/; accepts a package changes directory)
 check-changelogs *args:
-    hatch run dev:python ci/check_changelog_entries.py "$@"
+    uv run --no-project python ci/check_changelog_entries.py "$@"
 
-# Check recipe formatting
+# Check recipe formatting of the root Justfile and every package justfile
 just-check:
     just --fmt --check
+    for f in packages/*/justfile; do just --justfile "$f" --fmt --check; done
 
 # Run a zarr-metadata recipe, or list its recipes with no arguments
 zarr-metadata *args:
