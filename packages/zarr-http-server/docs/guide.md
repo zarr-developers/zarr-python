@@ -215,7 +215,7 @@ bind has no URL to report.
 
 Both app builders accept a [`CorsOptions`][zarr_http_server.CorsOptions]
 parameter to enable
-[CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) middleware for
+[CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS) middleware for
 browser-based clients:
 
 ```python

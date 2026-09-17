@@ -356,6 +356,26 @@ This policy exists to lower the cost of routine work and to help newer core deve
 
 To give the release visibility and a single place to track progress, open an issue on GitHub announcing the release using the [release checklist template](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md). The release checklist includes all steps necessary for the release.
 
+#### Read the Docs versions for subpackage releases
+
+Read the Docs creates a version for every tag in the repository, including tags for
+`zarr-python` and the subpackages. This can leave the desired public slug attached to the
+wrong tag. For example, the slug `v0.4.0` may already belong to the `zarr-python` tag
+`v0.4.0` when releasing `zarr-metadata` from `zarr_metadata-v0.4.0`.
+
+Before activating a subpackage release in Read the Docs:
+
+1. Open **Admin > Versions** for the subpackage documentation project.
+2. Find the version currently using the desired slug, such as `v0.4.0`, and change its
+   slug to an unused value, such as `xv0.4.0`.
+3. Find the version created from the subpackage tag, such as `zarr_metadata-v0.4.0`, and
+   assign it the released slug, `v0.4.0`.
+4. Verify that the release URL resolves to the subpackage tag, for example
+   `https://zarr-metadata.readthedocs.io/en/v0.4.0/`.
+
+Use the same process for `zarr-indexing` tags such as `zarr_indexing-v0.2.0` and any
+other subpackage hosted as a separate Read the Docs project.
+
 ## Compatibility and versioning policies
 
 ### Versioning

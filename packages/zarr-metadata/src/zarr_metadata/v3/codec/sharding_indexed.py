@@ -35,8 +35,10 @@ class ShardingIndexedCodecConfiguration(TypedDict):
 
     `index_codecs` is the codec pipeline applied to the shard index;
     it must be deterministic (no variable-size compression).
+      https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L147-L155
 
     `index_location` defaults to `"end"` per the spec.
+      https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L157-L161
     """
 
     chunk_shape: tuple[int, ...]
@@ -58,6 +60,8 @@ ShardingIndexedCodecMetadata = ShardingIndexedCodecObject
 The configuration has multiple required keys (`chunk_shape`, `codecs`,
 `index_codecs`), so only the object form is valid; the short-hand-name
 form is not permitted by the spec for this codec.
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L141-L155 (required members)
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564 (short-hand names only "if no configuration metadata is required")
 """
 
 __all__ = [

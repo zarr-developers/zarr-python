@@ -148,7 +148,7 @@ from pprint import pprint
 import io
 
 node_spec = {'a/b/c': GroupMetadata()}
-nodes_created = dict(create_hierarchy(store=LocalStore(root='data'), nodes=node_spec))
+nodes_created = dict(create_hierarchy(store=LocalStore(root='data'), nodes=node_spec, overwrite=True))
 # Report nodes (pprint is used for cleaner rendering in the docs)
 output = io.StringIO()
 pprint(nodes_created, stream=output, width=60)

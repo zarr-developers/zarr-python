@@ -1,7 +1,7 @@
 import itertools
 import math
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal
 
 import hypothesis.extra.numpy as npst
@@ -12,6 +12,7 @@ from hypothesis import event
 from hypothesis.strategies import SearchStrategy
 
 import zarr
+from zarr.abc.codec import Codec
 from zarr.abc.store import (
     ByteRequest,
     OffsetByteRequest,
@@ -256,6 +257,30 @@ def shard_shapes(
 
 
 @st.composite
+def _sharding_codecs(
+    draw: st.DrawFn,
+    *,
+    chunk_shape: tuple[int, ...],
+    codecs: Sequence[Codec] | None = None,
+) -> ShardingCodec:
+    """A ``ShardingCodec`` over ``chunk_shape`` with a drawn subchunk write order.
+
+    The inner codec chain is drawn from ``sharding_inner_codecs`` unless ``codecs``
+    is given, which lets a caller nest another ``ShardingCodec`` inside.
+    """
+    subchunk_write_order = draw(subchunk_write_orders)
+    inner_codecs: Sequence[Codec] = (
+        draw(sharding_inner_codecs, label="sharding inner codecs") if codecs is None else codecs
+    )
+    return ShardingCodec(
+        subchunk_write_order=subchunk_write_order,
+        codecs=inner_codecs,
+        index_codecs=[BytesCodec(), Crc32cCodec()],
+        chunk_shape=chunk_shape,
+    )
+
+
+@st.composite
 def np_array_and_chunks(
     draw: st.DrawFn,
     *,
@@ -312,36 +337,29 @@ def arrays(
     # - RegularChunkGridMetadata -> flat tuple of ints
     # - RectilinearChunkGridMetadata -> nested list of ints (triggers rectilinear path)
     # - v2 -> flat tuple of ints
-    chunks_param: tuple[int, ...] | list[list[int]]
+    chunks_param: tuple[int, ...] | list[int | list[int]]
     shard_shape = None
     dim_names = None
     if zarr_format == 3:
         chunk_grid_meta = draw(st.none() | chunk_grids(shape=nparray.shape), label="chunk grid")
         dim_names = draw(dimension_names(ndim=nparray.ndim), label="dimension names")
         if isinstance(chunk_grid_meta, RectilinearChunkGridMetadata):
-            chunks_param = [
-                list(dim) if isinstance(dim, tuple) else [dim]
-                for dim in chunk_grid_meta.chunk_shapes
-            ]
+            chunks_param = chunks_param_from_rectilinear(chunk_grid_meta)
         elif isinstance(chunk_grid_meta, RegularChunkGridMetadata):
             chunks_param = chunk_grid_meta.chunk_shape
         else:
             chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
 
-            if all(s > c > 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
+            # Any chunk that fits the array can be sharded: shard_shapes draws a
+            # whole number of chunks per axis, one inner chunk included.
+            if all(s >= c >= 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
                 shard_shape = draw(
                     st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunks_param),
                     label="shard shape",
                 )
+                event("sharded" if shard_shape is not None else "unsharded")
                 if shard_shape is not None:
-                    subchunk_write_order = draw(subchunk_write_orders)
-                    inner_codecs = draw(sharding_inner_codecs, label="sharding inner codecs")
-                    serializer = ShardingCodec(
-                        subchunk_write_order=subchunk_write_order,
-                        codecs=inner_codecs,
-                        index_codecs=[BytesCodec(), Crc32cCodec()],
-                        chunk_shape=chunks_param,
-                    )
+                    serializer = draw(_sharding_codecs(chunk_shape=chunks_param))
                     compressors_unsearched = None
     else:
         chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
@@ -402,6 +420,19 @@ def simple_arrays(
             compressors=st.sampled_from([None, "default"]),
         )
     )
+
+
+def chunks_param_from_rectilinear(
+    meta: RectilinearChunkGridMetadata,
+) -> list[int | list[int]]:
+    """Convert rectilinear chunk grid metadata into a `chunks=` argument.
+
+    Explicit edge tuples become lists. Bare ints — the spec's step-size
+    shorthand meaning "repeat to cover the axis" — pass through unchanged;
+    wrapping one in a single-element list would instead declare exactly one
+    chunk, which fails normalization whenever the axis needs more than one.
+    """
+    return [list(dim) if isinstance(dim, tuple) else dim for dim in meta.chunk_shapes]
 
 
 @st.composite
@@ -520,6 +551,83 @@ def rectilinear_arrays(
     return a
 
 
+# Sharded arrays need min_side >= 1: a shard must hold at least one chunk on every axis.
+_sharded_shapes = npst.array_shapes(max_dims=4, min_side=1, max_side=8)
+
+
+@st.composite
+def sharded_arrays(
+    draw: st.DrawFn,
+    *,
+    shapes: st.SearchStrategy[tuple[int, ...]] = _sharded_shapes,
+    nested: bool | None = None,
+) -> Any:
+    """Generate a zarr v3 array whose chunks are grouped into shards.
+
+    ``arrays`` shards only a small fraction of its draws (a v3 array with a
+    regular chunk grid, every axis larger than a chunk that is itself larger
+    than 1, and then only half the time), so a property test that must
+    exercise the sharding codec should draw from this strategy directly. Every
+    draw is sharded: the chunk shape and the shard shape (an integral number of
+    chunks per axis, possibly a single chunk) are drawn from ``shapes``, and
+    the codec's subchunk write order and inner codec chain are drawn as in
+    ``arrays``. ``shapes`` must generate shapes with at least one element on
+    every axis.
+
+    ``nested`` selects one level of recursive sharding: the drawn chunks are
+    grouped into inner shards, which are themselves grouped into the shards
+    stored in the array, so the outer ``ShardingCodec`` wraps an inner one with
+    its own subchunk write order. ``None`` (the default) draws it, so half the
+    examples nest. For a nested array ``Array.chunks`` is the inner shard shape
+    (the outer codec's chunk shape); the innermost chunk shape is the inner
+    codec's ``chunk_shape``.
+    """
+    shape = draw(shapes)
+    chunk_shape = draw(chunk_shapes(shape=shape), label="chunk shape")
+    serializer = draw(_sharding_codecs(chunk_shape=chunk_shape))
+    nest = draw(st.booleans(), label="nested sharding") if nested is None else nested
+    if nest:
+        # Each level's shard is an integral number of the level below's chunks.
+        codec_chunk_shape = draw(
+            shard_shapes(shape=shape, chunk_shape=chunk_shape), label="inner shard shape"
+        )
+        serializer = draw(_sharding_codecs(chunk_shape=codec_chunk_shape, codecs=[serializer]))
+    else:
+        codec_chunk_shape = chunk_shape
+    shard_shape = draw(
+        shard_shapes(shape=shape, chunk_shape=codec_chunk_shape), label="shard shape"
+    )
+    event("nested sharding" if nest else "single-level sharding")
+
+    nparray = draw(numpy_arrays(shapes=st.just(shape)), label="array data")
+    fill_value = draw(st.one_of([st.none(), npst.from_dtype(nparray.dtype)]))
+    dim_names = draw(dimension_names(ndim=len(shape)), label="dimension names")
+
+    # The shard is the array's chunk grid and the drawn codec is its serializer.
+    # Passing ``shards=`` instead would make ``create_array`` wrap the codec in a
+    # second ``ShardingCodec`` of the same chunk shape, hiding the drawn write
+    # order behind a default outer one.
+    a = zarr.create_array(
+        store=MemoryStore(),
+        shape=shape,
+        chunks=shard_shape,
+        dtype=nparray.dtype,
+        fill_value=fill_value,
+        dimension_names=dim_names,
+        serializer=serializer,
+        filters=None,
+        compressors=None,
+    )
+    assert a.shards == shard_shape
+    assert a.chunks == codec_chunk_shape
+    assert isinstance(a.metadata, ArrayV3Metadata)
+    (codec,) = a.metadata.codecs
+    assert isinstance(codec, ShardingCodec)
+    assert codec.subchunk_write_order == serializer.subchunk_write_order
+    a[:] = nparray
+    return a
+
+
 def is_negative_slice(idx: Any) -> bool:
     return isinstance(idx, slice) and idx.step is not None and idx.step < 0
 
@@ -572,20 +680,30 @@ def basic_indices(
 @st.composite
 def orthogonal_indices(
     draw: st.DrawFn, *, shape: tuple[int, ...]
-) -> tuple[tuple[np.ndarray[Any, Any], ...], tuple[np.ndarray[Any, Any], ...]]:
+) -> tuple[tuple[int | slice | np.ndarray[Any, Any], ...], tuple[np.ndarray[Any, Any], ...]]:
     """
     Strategy that returns
-    (1) a tuple of integer arrays used for orthogonal indexing of Zarr arrays.
-    (2) a tuple of integer arrays that can be used for equivalent indexing of numpy arrays
+    (1) a tuple of per-axis selectors (integer array, slice, or bare integer) for
+        orthogonal indexing of Zarr arrays.
+    (2) a tuple of broadcast integer arrays that index a numpy array to the same
+        result. A bare integer drops its axis, as ``oindex`` does, so it is
+        given as a 0-d array and does not contribute a result dimension.
     """
-    zindexer = []
-    npindexer = []
-    ndim = len(shape)
+    zindexer: list[int | slice | np.ndarray[Any, Any]] = []
+    kept: list[tuple[int, np.ndarray[Any, Any]]] = []
+    npindexer: dict[int, np.ndarray[Any, Any]] = {}
     for axis, size in enumerate(shape):
         if size != 0:
-            strategy = npst.integer_array_indices(
-                shape=(size,), result_shape=npst.array_shapes(min_side=1, max_side=size, max_dims=1)
-            ) | basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
+            strategy = (
+                npst.integer_array_indices(
+                    shape=(size,),
+                    result_shape=npst.array_shapes(min_side=1, max_side=size, max_dims=1),
+                )
+                | basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
+                # basic_indices(min_dims=1) never yields a bare integer, so draw
+                # one explicitly: it is the only selector that drops an axis.
+                | st.integers(min_value=-size, max_value=size - 1)
+            )
         else:
             strategy = basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
 
@@ -597,19 +715,25 @@ def orthogonal_indices(
             .filter(bool)
         )
         (idxr,) = val
-        if isinstance(idxr, int):
-            idxr = np.array([idxr])
         zindexer.append(idxr)
+        if isinstance(idxr, int):
+            npindexer[axis] = np.array(idxr)
+            continue
         if isinstance(idxr, slice):
             idxr = np.arange(*idxr.indices(size))
-        elif isinstance(idxr, (tuple, int)):
+        elif isinstance(idxr, tuple):
             idxr = np.array(idxr)
-        newshape = [1] * ndim
-        newshape[axis] = idxr.size
-        npindexer.append(idxr.reshape(newshape))
+        kept.append((axis, idxr))
+
+    for pos, (axis, idxr) in enumerate(kept):
+        newshape = [1] * len(kept)
+        newshape[pos] = idxr.size
+        npindexer[axis] = idxr.reshape(newshape)
 
     # casting the output of broadcast_arrays is needed for numpy < 2
-    return tuple(zindexer), tuple(np.broadcast_arrays(*npindexer))
+    return tuple(zindexer), tuple(
+        np.broadcast_arrays(*(npindexer[axis] for axis in range(len(shape))))
+    )
 
 
 @st.composite

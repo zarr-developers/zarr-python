@@ -390,7 +390,8 @@ async def make_store(
                 "'storage_options' is only used when the store is passed as an FSSpec URI string.",
             )
 
-    assert mode in (None, "r", "r+", "a", "w", "w-")
+    if mode is not None and mode not in ANY_ACCESS_MODE:
+        raise ValueError(f"Invalid mode: {mode}, expected one of {ANY_ACCESS_MODE}")
     _read_only = mode == "r"
 
     if isinstance(store_like, StorePath):

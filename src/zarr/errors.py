@@ -13,6 +13,7 @@ __all__ = [
     "NegativeStepError",
     "NodeTypeValidationError",
     "URLPipelineError",
+    "UnknownCodecError",
     "UnstableSpecificationWarning",
     "VindexInvalidSelectionError",
     "ZarrDeprecationWarning",

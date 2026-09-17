@@ -51,7 +51,7 @@ test = ["pytest", "pydantic>=2.13", "jsonschema"]
 docs = [
     # Pins match the zarr-python docs environment in the repo-root
     # pyproject.toml so the two sites render with the same toolchain.
-    "mkdocs-material==9.7.6",
+    "mkdocs-material==9.7.7",
     "mkdocs==1.6.1",
     "mkdocstrings==1.0.4",
     "mkdocstrings-python==2.0.5",

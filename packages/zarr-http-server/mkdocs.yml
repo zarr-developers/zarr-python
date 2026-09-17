@@ -16,7 +16,7 @@ nav:
   - guide.md
   - API Reference:
       - api/index.md
-  - Changelog: https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-http-server/CHANGELOG.md
+  - Release notes: release-notes.md
 
 watch:
   - src
@@ -98,3 +98,11 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      # The package root lets docs/release-notes.md include the
+      # towncrier-managed CHANGELOG.md without moving it out of the package
+      # root, where PyPI and GitHub readers expect it.
+      base_path: [docs, .]
+      # Fail the build on an unresolvable include instead of silently
+      # rendering nothing.
+      check_paths: true
