@@ -11,6 +11,7 @@ from zarr import create_array
 from zarr.api.asynchronous import _get_shape_chunks, _like_args, group, open
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.group import AsyncGroup
+from zarr.errors import ContainsGroupError
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -96,19 +97,17 @@ def test_like_args(
     assert _like_args(observed) == expected
 
 
-async def test_open_no_array() -> None:
+async def test_open_with_shape_on_group_raises() -> None:
     """
-    Test that zarr.api.asynchronous.open attempts to open a group when no array is found, but shape was specified in kwargs.
-    This behavior makes no sense but we should still test it.
+    With `shape` given, `open` describes an array, so a group at the path is an error rather than
+    something to fall back to.
     """
     store = {
         "zarr.json": default_buffer_prototype().buffer.from_bytes(
             json.dumps({"zarr_format": 3, "node_type": "group"}).encode("utf-8")
         )
     }
-    with pytest.raises(
-        TypeError, match=r"open_group\(\) got an unexpected keyword argument 'shape'"
-    ):
+    with pytest.raises(ContainsGroupError, match="A group exists in store"):
         await open(store=store, shape=(1,))
 
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import math
 import warnings
-from asyncio import gather
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import starmap
@@ -29,7 +28,6 @@ from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core._info import ArrayInfo
-from zarr.core._json import buffer_to_json_object
 from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArraySpec, parse_array_config
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import (
@@ -39,7 +37,6 @@ from zarr.core.buffer import (
     NDBuffer,
     default_buffer_prototype,
 )
-from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.chunk_grids import (
     SHARDED_INNER_CHUNK_MAX_BYTES,
     ChunkGrid,
@@ -59,9 +56,6 @@ from zarr.core.chunk_key_encodings import (
 )
 from zarr.core.common import (
     JSON,
-    ZARR_JSON,
-    ZARRAY_JSON,
-    ZATTRS_JSON,
     ChunksLike,
     DimensionNamesLike,
     MemoryOrder,
@@ -130,13 +124,11 @@ from zarr.core.metadata.v3 import (
     RectilinearChunkGridMetadata,
     RegularChunkGridMetadata,
     create_chunk_grid_metadata,
-    parse_node_type_array,
 )
 from zarr.core.sync import sync
 from zarr.errors import (
     ArrayNotFoundError,
     ChunkNotFoundError,
-    MetadataValidationError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
 )
@@ -158,7 +150,6 @@ if TYPE_CHECKING:
     from zarr.abc.codec import CodecPipeline
     from zarr.abc.store import Store
     from zarr.codecs.sharding import IndexLocation, ShardingCodec
-    from zarr.core.buffer import Buffer
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.storage import StoreLike
     from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
@@ -269,69 +260,34 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
     raise TypeError  # pragma: no cover
 
 
+async def _read_array_metadata(
+    store_path: StorePath, zarr_format: ZarrFormat | None
+) -> ArrayMetadata:
+    """The array metadata at `store_path`.
+
+    Raises `ArrayNotFoundError` if there is no array there and
+    `ContainsGroupError` if a Zarr format 3 group is.
+    """
+    # group.py imports this module, so the shared reader is imported here
+    from zarr.core.group import read_array_metadata
+
+    metadata = await read_array_metadata(store_path.store, store_path.path, zarr_format)
+    if metadata is None:
+        msg = f"No array found in store {store_path.store} at path {store_path.path!r}"
+        raise ArrayNotFoundError(msg)
+    return metadata
+
+
 async def get_array_metadata(
     store_path: StorePath, zarr_format: ZarrFormat | None = 3
 ) -> dict[str, JSON]:
-    if zarr_format == 2:
-        zarray_bytes, zattrs_bytes = await gather(
-            (store_path / ZARRAY_JSON).get(prototype=cpu_buffer_prototype),
-            (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype),
-        )
-        if zarray_bytes is None:
-            msg = (
-                "A Zarr V2 array metadata document was not found in store "
-                f"{store_path.store!r} at path {store_path.path!r}."
-            )
-            raise ArrayNotFoundError(msg)
-        return _array_metadata_dict_v2(zarray_bytes, zattrs_bytes)
-    elif zarr_format == 3:
-        zarr_json_bytes = await (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype)
-        if zarr_json_bytes is None:
-            msg = (
-                "A Zarr V3 array metadata document was not found in store "
-                f"{store_path.store!r} at path {store_path.path!r}."
-            )
-            raise ArrayNotFoundError(msg)
-        return _array_metadata_dict_v3(zarr_json_bytes)
-    elif zarr_format is None:
-        zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
-            (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype),
-            (store_path / ZARRAY_JSON).get(prototype=cpu_buffer_prototype),
-            (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype),
-        )
-        if zarr_json_bytes is not None and zarray_bytes is not None:
-            # warn and favor v3
-            msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store_path}. Zarr v3 will be used."
-            warnings.warn(msg, category=ZarrUserWarning, stacklevel=1)
-        # favor v3 when both are present
-        if zarr_json_bytes is not None:
-            return _array_metadata_dict_v3(zarr_json_bytes)
-        if zarray_bytes is not None:
-            return _array_metadata_dict_v2(zarray_bytes, zattrs_bytes)
-        msg = (
-            f"Neither Zarr V3 nor Zarr V2 array metadata documents "
-            f"were found in store {store_path.store!r} at path {store_path.path!r}."
-        )
-        raise ArrayNotFoundError(msg)
-    else:
-        msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."  # type: ignore[unreachable]
-        raise MetadataValidationError(msg)
+    """The array metadata at `store_path`, as a dict.
 
-
-def _array_metadata_dict_v2(zarray_bytes: Buffer, zattrs_bytes: Buffer | None) -> dict[str, JSON]:
-    """Combine a `.zarray` document and an optional `.zattrs` document into one metadata dict."""
-    metadata_dict: dict[str, JSON] = buffer_to_json_object(zarray_bytes)
-    metadata_dict["attributes"] = (
-        buffer_to_json_object(zattrs_bytes) if zattrs_bytes is not None else {}
-    )
-    return metadata_dict
-
-
-def _array_metadata_dict_v3(zarr_json_bytes: Buffer) -> dict[str, JSON]:
-    """Parse a `zarr.json` document, checking that it describes an array."""
-    metadata_dict: dict[str, JSON] = buffer_to_json_object(zarr_json_bytes)
-    parse_node_type_array(metadata_dict.get("node_type"))
-    return metadata_dict
+    The dict is the parsed metadata serialized again, so it is normalized (for
+    example, defaults filled in) rather than the stored document verbatim. Prefer
+    `AsyncArray.open`, which builds the array from the parsed metadata directly.
+    """
+    return (await _read_array_metadata(store_path, zarr_format)).to_dict()
 
 
 async def _prepare_overwrite(
@@ -813,10 +769,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ```
         """
         store_path = await make_store_path(store)
-        metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
-        # TODO: remove this cast when we have better type hints
-        _metadata_dict = cast("ArrayMetadataJSON_V3", metadata_dict)
-        return cls(store_path=store_path, metadata=_metadata_dict)
+        metadata = await _read_array_metadata(store_path, zarr_format)
+        return cls(store_path=store_path, metadata=metadata)
 
     @property
     def store(self) -> Store:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import collections
 import inspect
-import re
 from typing import TYPE_CHECKING, Any
 
 import zarr.codecs
@@ -13,9 +13,11 @@ from zarr.storage._common import StorePath
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
+    from typing import Self
 
-    from zarr.abc.store import Store
-    from zarr.core.common import JSON, MemoryOrder, ZarrFormat
+    from zarr.abc.store import ByteRequest
+    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.common import JSON, AccessModeLiteral, MemoryOrder, ZarrFormat
     from zarr.types import AnyArray
 
 import contextlib
@@ -30,6 +32,7 @@ import zarr.api.asynchronous
 import zarr.api.synchronous
 import zarr.core.group
 from zarr import Array, Group
+from zarr.abc.store import Store
 from zarr.api.synchronous import (
     create,
     create_array,
@@ -42,15 +45,21 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
-from zarr.core.buffer import NDArrayLike
+from zarr.core.buffer import NDArrayLike, cpu
 from zarr.errors import (
     ArrayNotFoundError,
+    ContainsArrayError,
+    ContainsGroupError,
+    GroupNotFoundError,
     MetadataValidationError,
+    NodeNotFoundError,
+    NodeTypeValidationError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
 )
 from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
+from zarr.storage._wrapper import WrapperStore
 from zarr.testing.utils import gpu_test
 
 
@@ -360,9 +369,9 @@ def test_array_open_array_not_found_sync() -> None:
 def test_v2_and_v3_exist_at_same_path(store: Store) -> None:
     zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=3)
     zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=2)
-    msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store}. Zarr v3 will be used."
-    with pytest.warns(ZarrUserWarning, match=re.escape(msg)):
-        zarr.open(store=store)
+    # only zarr.json is read, and the format 3 node is taken without a second look
+    assert zarr.open(store=store).metadata.zarr_format == 3
+    assert zarr.open_array(store=store).metadata.zarr_format == 3
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1375,6 +1384,358 @@ async def test_open_falls_back_to_open_group_async(zarr_format: ZarrFormat) -> N
     assert isinstance(group, zarr.core.group.AsyncGroup)
     assert group.metadata.zarr_format == zarr_format
     assert group.attrs == {"key": "value"}
+
+
+class _CountingStore(WrapperStore[Store]):
+    """A store that records the key of every `get` it forwards."""
+
+    get_counts: collections.Counter[str]
+
+    def __init__(self, store: Store) -> None:
+        super().__init__(store)
+        self.get_counts = collections.Counter()
+
+    def _with_store(self, store: Store) -> Self:
+        # `_with_store` is how a store is re-made read-only, so the copy has to
+        # keep counting into the same tally.
+        new = type(self)(store)
+        new.get_counts = self.get_counts
+        return new
+
+    async def get(
+        self,
+        key: str,
+        prototype: BufferPrototype,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        self.get_counts[key] += 1
+        return await self._store.get(key, prototype, byte_range)
+
+
+@pytest.mark.filterwarnings("ignore:Consolidated metadata")
+@pytest.mark.parametrize("node", ["array", "group"])
+@pytest.mark.parametrize(
+    ("zarr_format", "use_consolidated"),
+    [(2, None), (2, False), (2, True), (3, None), (3, False), (3, True)],
+)
+@pytest.mark.parametrize("mode", ["r", "r+", "a"])
+@pytest.mark.parametrize("path", ["", "parent/child"])
+async def test_open_reads_only_what_the_node_needs(
+    node: Literal["array", "group"],
+    zarr_format: ZarrFormat,
+    use_consolidated: bool | None,
+    mode: AccessModeLiteral,
+    path: str,
+) -> None:
+    """`open` reads a format 3 node with one request, and a format 2 node with `zarr.json` and one round.
+
+    Whatever it finds has to be what `open_array` or `open_group` would have
+    returned: the same format, path, attributes and read-only-ness, and for a
+    group the same consolidated metadata.
+    """
+    store = _CountingStore(MemoryStore())
+    prefix = f"{path}/" if path else ""
+    if node == "array":
+        await zarr.api.asynchronous.create_array(
+            store,
+            name=path or None,
+            shape=(3,),
+            dtype="uint8",
+            attributes={"key": "value"},
+            zarr_format=zarr_format,
+        )
+    else:
+        await zarr.api.asynchronous.open_group(
+            store, path=path, attributes={"key": "value"}, zarr_format=zarr_format
+        )
+        if use_consolidated:
+            await zarr.api.asynchronous.consolidate_metadata(store, path=path)
+
+    store.get_counts.clear()
+    result = await zarr.api.asynchronous.open(
+        store=store, path=path, mode=mode, use_consolidated=use_consolidated
+    )
+    assert isinstance(result, AsyncArray if node == "array" else zarr.core.group.AsyncGroup)
+    assert result.metadata.zarr_format == zarr_format
+    assert result.path == path
+    assert result.attrs == {"key": "value"}
+    assert result.store.read_only == (mode == "r")
+    if isinstance(result, zarr.core.group.AsyncGroup):
+        assert (result.metadata.consolidated_metadata is not None) == bool(use_consolidated)
+
+    expected_keys = {"zarr.json"}
+    if zarr_format == 2:
+        expected_keys |= {".zarray", ".zgroup", ".zattrs"}
+        if use_consolidated is not False:
+            expected_keys.add(".zmetadata")
+    assert store.get_counts == {prefix + key: 1 for key in expected_keys}
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+async def test_open_array_does_not_fall_back(zarr_format: ZarrFormat) -> None:
+    """`open` on an array still returns the array rather than falling back to a group."""
+    store = MemoryStore()
+    await zarr.api.asynchronous.create_array(
+        store, shape=(10,), dtype="uint8", zarr_format=zarr_format, attributes={"k": "v"}
+    )
+    arr = await zarr.api.asynchronous.open(store=store)
+    assert isinstance(arr, AsyncArray)
+    assert arr.metadata.zarr_format == zarr_format
+    assert arr.attrs == {"k": "v"}
+
+
+async def test_open_invalid_zarr_format_raises() -> None:
+    """An invalid `zarr_format` is a bad request, not a missing array, so it still raises."""
+    store = MemoryStore()
+    with pytest.raises(
+        MetadataValidationError,
+        match="Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '3.0'.",
+    ):
+        await zarr.api.asynchronous.open(store=store, zarr_format="3.0")  # type: ignore[arg-type]
+
+
+async def test_open_zarr_json_without_node_type_raises() -> None:
+    """A format 3 document must say what it is: no `node_type` is a validation error."""
+    store = MemoryStore()
+    await store.set(
+        "zarr.json", cpu.Buffer.from_bytes(b'{"zarr_format": 3, "attributes": {"k": "v"}}')
+    )
+    with pytest.raises(NodeTypeValidationError, match="Required key 'node_type' is missing"):
+        await zarr.api.asynchronous.open(store=store, mode="r")
+
+
+async def test_open_zarr_json_with_invalid_node_type_raises() -> None:
+    """A `node_type` that is neither array nor group is a validation error, not a missing node."""
+    store = MemoryStore()
+    await store.set("zarr.json", cpu.Buffer.from_bytes(b'{"zarr_format": 3, "node_type": "foo"}'))
+    with pytest.raises(NodeTypeValidationError, match="Expected 'array' or 'group'. Got 'foo'"):
+        await zarr.api.asynchronous.open(store=store, mode="r")
+
+
+# Zarr format 3 says what a node is in the one document every opener reads, so opening
+# the wrong kind is reported as such. Zarr format 2 has a document per kind, and an
+# opener that knows what it wants reads only that kind's, so the other kind reads as
+# nothing in the read modes; the create modes still find it when they check before
+# writing.
+_WRONG_KIND_ERROR: dict[tuple[str, ZarrFormat], type[Exception]] = {
+    ("array as group", 3): ContainsArrayError,
+    ("array as group", 2): GroupNotFoundError,
+    ("group as array", 3): ContainsGroupError,
+    ("group as array", 2): ArrayNotFoundError,
+}
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+async def test_async_array_open_on_group_raises(zarr_format: ZarrFormat) -> None:
+    store = MemoryStore()
+    await zarr.api.asynchronous.open_group(store, zarr_format=zarr_format)
+    with pytest.raises(_WRONG_KIND_ERROR["group as array", zarr_format]):
+        await AsyncArray.open(store, zarr_format=zarr_format)
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+async def test_async_group_open_on_array_raises(zarr_format: ZarrFormat) -> None:
+    store = MemoryStore()
+    await zarr.api.asynchronous.create_array(
+        store, shape=(3,), dtype="uint8", zarr_format=zarr_format
+    )
+    with pytest.raises(_WRONG_KIND_ERROR["array as group", zarr_format]):
+        await zarr.core.group.AsyncGroup.open(store, zarr_format=zarr_format)
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("mode", ["r", "a"])
+def test_open_group_on_array_raises(mode: AccessModeLiteral, zarr_format: ZarrFormat) -> None:
+    store = MemoryStore()
+    zarr.create_array(store, shape=(3,), dtype="uint8", zarr_format=zarr_format)
+    expected = _WRONG_KIND_ERROR["array as group", zarr_format]
+    if mode == "a" and zarr_format == 2:
+        expected = ContainsArrayError  # found by the create step's check
+    with pytest.raises(expected):
+        zarr.open_group(store, mode=mode, zarr_format=zarr_format)
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("mode", ["r", "a"])
+def test_open_array_on_group_raises(mode: AccessModeLiteral, zarr_format: ZarrFormat) -> None:
+    store = MemoryStore()
+    zarr.create_group(store, zarr_format=zarr_format)
+    expected = _WRONG_KIND_ERROR["group as array", zarr_format]
+    if mode == "a" and zarr_format == 2:
+        expected = ContainsGroupError  # found by the create step's check
+    with pytest.raises(expected):
+        zarr.open_array(store, mode=mode, zarr_format=zarr_format, shape=(3,), dtype="uint8")
+
+
+@pytest.mark.parametrize("node", ["array", "group"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("given_format", [True, False], ids=["format given", "format detected"])
+async def test_open_array_and_open_group_read_only_their_kind(
+    node: Literal["array", "group"], zarr_format: ZarrFormat, given_format: bool
+) -> None:
+    """An opener that knows which kind it wants reads only that kind's documents.
+
+    A format 3 node is one read either way. A format 2 array is `.zarray` and
+    `.zattrs`; a format 2 group is `.zgroup`, `.zattrs` and `.zmetadata`. Detecting
+    the format adds the one read of `zarr.json` that finds nothing.
+    """
+    store = _CountingStore(MemoryStore())
+    if node == "array":
+        await zarr.api.asynchronous.create_array(
+            store, shape=(3,), dtype="uint8", zarr_format=zarr_format
+        )
+    else:
+        await zarr.api.asynchronous.open_group(store, zarr_format=zarr_format)
+    store.get_counts.clear()
+
+    fmt = zarr_format if given_format else None
+    if node == "array":
+        await zarr.api.asynchronous.open_array(store=store, mode="r", zarr_format=fmt)
+    else:
+        await zarr.api.asynchronous.open_group(store=store, mode="r", zarr_format=fmt)
+
+    if zarr_format == 3:
+        expected_keys = {"zarr.json"}
+    elif node == "array":
+        expected_keys = {".zarray", ".zattrs"}
+    else:
+        expected_keys = {".zgroup", ".zattrs", ".zmetadata"}
+    if zarr_format == 2 and not given_format:
+        expected_keys.add("zarr.json")
+    assert store.get_counts == dict.fromkeys(expected_keys, 1)
+
+
+class _NoConsolidatedMemoryStore(MemoryStore):
+    """A store that says it cannot hold consolidated metadata."""
+
+    @property
+    def supports_consolidated_metadata(self) -> bool:
+        return False
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_open_use_consolidated_on_array_in_store_without_support(zarr_format: ZarrFormat) -> None:
+    """Asking for consolidated metadata is a question for a group; an array is returned regardless."""
+    store = _NoConsolidatedMemoryStore()
+    zarr.create_array(store, shape=(3,), dtype="uint8", zarr_format=zarr_format)
+    assert isinstance(zarr.open(store=store, mode="r", use_consolidated=True), Array)
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_open_use_consolidated_on_group_in_store_without_support_raises(
+    zarr_format: ZarrFormat,
+) -> None:
+    store = _NoConsolidatedMemoryStore()
+    zarr.create_group(store, zarr_format=zarr_format)
+    with pytest.raises(ValueError, match="doesn't support consolidated metadata"):
+        zarr.open(store=store, mode="r", use_consolidated=True)
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_open_group_rejects_a_str_use_consolidated(zarr_format: ZarrFormat) -> None:
+    """The consolidated-metadata key is not configurable; `use_consolidated` is a bool or None."""
+    store = MemoryStore()
+    zarr.create_group(store, zarr_format=zarr_format)
+    with pytest.raises(TypeError, match="use_consolidated must be a bool or None"):
+        zarr.open_group(store, mode="r", zarr_format=zarr_format, use_consolidated="custom")  # type: ignore[arg-type]
+
+
+def test_open_config_applies_to_arrays_only() -> None:
+    """`config` is an array's: it is applied to an array and ignored for a group, found or created."""
+    store = MemoryStore()
+    zarr.create_array(store, name="a", shape=(3,), dtype="uint8")
+    zarr.create_group(store, path="g")
+    array = zarr.open(store=store, path="a", mode="r", config={"order": "F"})
+    assert isinstance(array, Array)
+    assert array._async_array.config.order == "F"
+    assert isinstance(zarr.open(store=store, path="g", mode="r", config={"order": "F"}), Group)
+    assert isinstance(zarr.open(store=store, path="new", mode="a", config={"order": "F"}), Group)
+
+
+def test_open_array_applies_config() -> None:
+    store = MemoryStore()
+    zarr.create_array(store, shape=(3,), dtype="uint8")
+    assert zarr.open_array(store, mode="r", config={"order": "F"})._async_array.config.order == "F"
+
+
+async def test_wrong_kind_is_reported_before_the_document_is_built() -> None:
+    """A format 3 document says what it is in `node_type`; a broken document of the other kind still says so."""
+    store = MemoryStore()
+    await store.set("zarr.json", cpu.Buffer.from_bytes(b'{"zarr_format": 3, "node_type": "array"}'))
+    with pytest.raises(ContainsArrayError):
+        await zarr.api.asynchronous.open_group(store, mode="r")
+    await store.set(
+        "zarr.json",
+        cpu.Buffer.from_bytes(b'{"zarr_format": 3, "node_type": "group", "shape": [1]}'),
+    )
+    with pytest.raises(ContainsGroupError):
+        await zarr.api.asynchronous.open_array(store=store, mode="r")
+
+
+def test_open_group_missing_v2_consolidated_metadata_message() -> None:
+    store = MemoryStore()
+    zarr.create_group(store, zarr_format=2)
+    with pytest.raises(
+        ValueError, match="Consolidated metadata requested with 'use_consolidated=True'"
+    ):
+        zarr.open_group(store, mode="r", zarr_format=2, use_consolidated=True)
+
+
+async def test_open_group_malformed_v2_consolidated_document_raises() -> None:
+    store = MemoryStore()
+    await zarr.api.asynchronous.create_group(store=store, zarr_format=2)
+    await store.set(".zmetadata", cpu.Buffer.from_bytes(b'{"zarr_consolidated_format": 1}'))
+    with pytest.raises(MetadataValidationError, match="needs a 'metadata' object"):
+        await zarr.api.asynchronous.open_group(store, mode="r", zarr_format=2)
+
+
+def _expected_open_outcome(
+    existing: str, mode: str, shape: tuple[int, ...] | None
+) -> type[Array[Any] | Group | Exception]:
+    """The contract of `open`, as a table: what comes back for what is there, the mode, and `shape`."""
+    if mode == "w-" and existing != "nothing":
+        return FileExistsError
+    if mode == "w":
+        return Array if shape else Group
+    if existing == "nothing":
+        if mode in ("r", "r+"):
+            return ArrayNotFoundError if shape else NodeNotFoundError
+        return Array if shape else Group
+    if shape:
+        return Array if existing == "array" else ContainsGroupError
+    return Array if existing == "array" else Group
+
+
+@pytest.mark.parametrize("existing", ["nothing", "array", "group"])
+@pytest.mark.parametrize("mode", ["r", "r+", "a", "w", "w-"])
+@pytest.mark.parametrize("shape", [None, (3,)], ids=["no shape", "shape"])
+def test_open_mode_contract(
+    existing: str, mode: AccessModeLiteral, shape: tuple[int, ...] | None
+) -> None:
+    """`open` follows its two rules for every mode, whatever is at the path, with and without `shape`.
+
+    This is the contract in the default format; `tests/test_open_properties.py`
+    covers both formats. With `shape` the call describes an array. Without it, the reading modes open
+    whatever node is there and 'a' creates a group when there is none; the
+    creating modes make a group, 'w' over whatever is there and 'w-' only over
+    nothing. An opened node keeps its attributes; a created one has none.
+    """
+    store = MemoryStore()
+    if existing == "array":
+        zarr.create_array(store, shape=(3,), dtype="uint8", attributes={"old": True})
+    elif existing == "group":
+        zarr.create_group(store, attributes={"old": True})
+    kwargs: dict[str, Any] = {} if shape is None else {"shape": shape, "dtype": "uint8"}
+    expected = _expected_open_outcome(existing, mode, shape)
+
+    if issubclass(expected, Exception):
+        with pytest.raises(expected):
+            zarr.open(store=store, mode=mode, **kwargs)
+        return
+    node = zarr.open(store=store, mode=mode, **kwargs)
+    assert isinstance(node, expected)
+    opened = existing != "nothing" and mode in ("r", "r+", "a")
+    assert node.attrs.get("old") is (True if opened else None)
 
 
 @pytest.mark.parametrize("mode", ["r", "r+", "w", "a"])

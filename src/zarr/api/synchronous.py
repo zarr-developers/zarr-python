@@ -203,7 +203,8 @@ def open(
         (fail if exists).
         If the store is read-only, the default is 'r'; otherwise, it is 'a'.
     zarr_format : {2, 3, None}, optional
-        The zarr format to use when saving.
+        The Zarr format of the node. None opens whichever format is found,
+        trying Zarr format 3 first, and creates the default format.
     path : str or None, optional
         The path within the store to open.
     storage_options : dict
@@ -224,6 +225,14 @@ def open(
 
     Notes
     -----
+    What `open` opens or creates follows two rules. If `shape` is given, the
+    call describes an array and behaves as [`open_array`][zarr.open_array] with
+    the same arguments. Otherwise, in the modes that read ('r', 'r+' and 'a'),
+    the node at `path` is opened whichever kind it is; when there is none, 'r'
+    and 'r+' raise [`NodeNotFoundError`][zarr.errors.NodeNotFoundError] and 'a'
+    creates a group. The modes that only create ('w' and 'w-') create a group,
+    'w' replacing whatever is at `path` and 'w-' failing if anything is.
+
     `open` returns a lazy [`Array`][zarr.Array] or [`Group`][zarr.Group] backed by
     the store, so data is read and written incrementally. Use [`load`][zarr.load]
     instead when you want the data eagerly read into an in-memory array (a
@@ -491,7 +500,7 @@ def open_group(
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used in async api
     attributes: dict[str, JSON] | None = None,
-    use_consolidated: bool | str | None = None,
+    use_consolidated: bool | None = None,
 ) -> Group:
     """Open a group using file-mode-like semantics.
 
@@ -526,7 +535,7 @@ def open_group(
         to users. Use `numpy.empty(())` by default.
     attributes : dict
         A dictionary of JSON-serializable values with user-defined attributes.
-    use_consolidated : bool or str, default None
+    use_consolidated : bool, default None
         Whether to use consolidated metadata.
 
         By default, consolidated metadata is used if it's present in the
@@ -538,10 +547,6 @@ def open_group(
 
         To explicitly *not* use consolidated metadata, set `use_consolidated=False`,
         which will fall back to using the regular, non consolidated metadata.
-
-        Zarr format 2 allowed configuring the key storing the consolidated metadata
-        (`.zmetadata` by default). Specify the custom key as `use_consolidated`
-        to load consolidated metadata from a non-default key.
 
     Returns
     -------
