@@ -239,7 +239,6 @@ def _build_scene(sc: _Scenario) -> _RecordingStore:
     store = _RecordingStore(
         inner if sc.supports_consolidated else _NoConsolidatedMemoryStore(inner._store_dict)
     )
-    prefix = f"{sc.path}/" if sc.path else ""
     if sc.existing == "array":
         zarr.create_array(
             inner,
