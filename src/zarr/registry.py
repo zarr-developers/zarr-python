@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import warnings
 from collections import defaultdict
 from collections.abc import Mapping
@@ -8,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from zarr.core.config import BadConfigError, config
 from zarr.core.dtype import data_type_registry
-from zarr.errors import UnknownCodecError, ZarrUserWarning
+from zarr.errors import UnknownCodecError, URLPipelineError, ZarrUserWarning
 
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
         CodecPipeline,
     )
     from zarr.abc.numcodec import Numcodec
+    from zarr.abc.url_pipeline import URLPipelineAdapter
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.core.common import JSON, ZarrFormat
@@ -33,11 +35,14 @@ __all__ = [
     "get_codec_class",
     "get_ndbuffer_class",
     "get_pipeline_class",
+    "get_url_adapter",
+    "list_url_adapter_schemes",
     "register_buffer",
     "register_chunk_key_encoding",
     "register_codec",
     "register_ndbuffer",
     "register_pipeline",
+    "register_url_adapter",
 ]
 
 _ZARR_CODEC_DOCS_URL = "https://zarr.readthedocs.io/en/stable/user-guide/extending/#custom-codecs"
@@ -257,6 +262,7 @@ _pipeline_registry: Registry[CodecPipeline] = Registry()
 _buffer_registry: Registry[Buffer] = Registry()
 _ndbuffer_registry: Registry[NDBuffer] = Registry()
 _chunk_key_encoding_registry: Registry[ChunkKeyEncoding] = Registry()
+_url_adapter_registry: Registry[URLPipelineAdapter] = Registry()
 
 """
 The registry module is responsible for managing implementations of codecs,
@@ -303,6 +309,8 @@ def _collect_entrypoints() -> list[Registry[Any]]:
         entry_points.select(group="zarr", name="chunk_key_encoding")
     )
 
+    _url_adapter_registry.lazy_load_list.extend(entry_points.select(group="zarr.url_adapters"))
+
     _pipeline_registry.lazy_load_list.extend(entry_points.select(group="zarr.codec_pipeline"))
     _pipeline_registry.lazy_load_list.extend(
         entry_points.select(group="zarr", name="codec_pipeline")
@@ -319,6 +327,7 @@ def _collect_entrypoints() -> list[Registry[Any]]:
         _buffer_registry,
         _ndbuffer_registry,
         _chunk_key_encoding_registry,
+        _url_adapter_registry,
     ]
 
 
@@ -502,6 +511,113 @@ def get_chunk_key_encoding_class(key: str) -> type[ChunkKeyEncoding]:
             f"Chunk key encoding '{key}' not found in registered chunk key encodings: {list(_chunk_key_encoding_registry)}."
         )
     return _chunk_key_encoding_registry[key]
+
+
+def register_url_adapter(scheme: str, cls: type[URLPipelineAdapter]) -> None:
+    """
+    Register a [`URLPipelineAdapter`][zarr.abc.url_pipeline.URLPipelineAdapter]
+    class for a URL scheme.
+
+    Registering a scheme that already has an adapter replaces it and emits a
+    [`ZarrUserWarning`][zarr.errors.ZarrUserWarning].
+    """
+    key = scheme.lower()
+    previous = _url_adapter_registry.get(key)
+    if previous is not None and previous is not cls:
+        warnings.warn(
+            f"URL pipeline adapter for scheme {scheme!r} is being replaced: "
+            f"{fully_qualified_name(previous)} -> {fully_qualified_name(cls)}",
+            category=ZarrUserWarning,
+            stacklevel=2,
+        )
+    _url_adapter_registry.register(cls, key)
+
+
+def list_url_adapter_schemes() -> set[str]:
+    """
+    The set of URL schemes with a registered URL pipeline adapter.
+
+    Includes adapters advertised via not-yet-loaded `zarr.url_adapters`
+    entry points; consulting this does not import any adapter code.
+    Schemes are case-insensitive and reported lowercased.
+    """
+    return set(_url_adapter_registry) | {
+        e.name.lower() for e in _url_adapter_registry.lazy_load_list
+    }
+
+
+_url_adapter_lock = threading.Lock()
+
+
+def get_url_adapter(scheme: str) -> type[URLPipelineAdapter]:
+    """
+    Get the URL pipeline adapter class registered for `scheme`.
+
+    Loads pending `zarr.url_adapters` entry points for this scheme only, so
+    resolving one scheme never imports other providers' packages. When the
+    scheme is already registered (e.g. a builtin adapter), a same-named entry
+    point is discarded with a [`ZarrUserWarning`][zarr.errors.ZarrUserWarning];
+    when several entry points share the name, the first one wins and a
+    warning names the ones ignored.
+
+    Raises
+    ------
+    URLPipelineError
+        If no adapter is registered for the scheme, or if the entry point
+        providing it fails to import.
+    """
+    key = scheme.lower()
+    # Take the matching entry points out of the pending list under the lock,
+    # so concurrent first-time resolutions of different schemes never clobber
+    # each other's view of the list. The import itself runs *outside* the lock:
+    # it may take arbitrarily long and may itself resolve URL adapters.
+    with _url_adapter_lock:
+        registered = _url_adapter_registry.get(key)
+        pending = [e for e in _url_adapter_registry.lazy_load_list if e.name.lower() == key]
+        if pending:
+            _url_adapter_registry.lazy_load_list[:] = [
+                e for e in _url_adapter_registry.lazy_load_list if e.name.lower() != key
+            ]
+    if pending and registered is not None:
+        warnings.warn(
+            f"URL pipeline adapter for scheme {scheme!r} is already registered "
+            f"({fully_qualified_name(registered)}); ignoring entry point(s) "
+            f"{[e.value for e in pending]} of the same name",
+            category=ZarrUserWarning,
+            stacklevel=2,
+        )
+    elif pending:
+        entry_point, *duplicates = pending
+        if duplicates:
+            warnings.warn(
+                f"multiple 'zarr.url_adapters' entry points are named {entry_point.name!r}; "
+                f"using {entry_point.value!r} and ignoring {[e.value for e in duplicates]}",
+                category=ZarrUserWarning,
+                stacklevel=2,
+            )
+        try:
+            cls = entry_point.load()
+        except Exception as exc:
+            # leave the entry points discoverable so a transient import
+            # failure is not permanent
+            with _url_adapter_lock:
+                _url_adapter_registry.lazy_load_list.extend(pending)
+            raise URLPipelineError(
+                f"the 'zarr.url_adapters' entry point {entry_point.name!r} "
+                f"({entry_point.value!r}) could not be loaded: {exc!r}"
+            ) from exc
+        with _url_adapter_lock:
+            if key not in _url_adapter_registry:
+                _url_adapter_registry.register(cls, qualname=key)
+    try:
+        return _url_adapter_registry[key]
+    except KeyError:
+        registered_schemes = sorted(list_url_adapter_schemes())
+        raise URLPipelineError(
+            f"no URL pipeline adapter is registered for scheme {scheme!r}. "
+            f"Registered schemes: {registered_schemes}. Adapters are provided by "
+            "packages via the 'zarr.url_adapters' entry-point group."
+        ) from None
 
 
 _collect_entrypoints()

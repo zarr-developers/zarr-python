@@ -10,6 +10,7 @@ from zarr.storage._local import LocalStore
 from zarr.storage._logging import LoggingStore
 from zarr.storage._memory import GpuMemoryStore, ManagedMemoryStore, MemoryStore
 from zarr.storage._obstore import ObjectStore
+from zarr.storage._url_pipeline import parse_pipeline, resolve_pipeline
 from zarr.storage._wrapper import WrapperStore
 from zarr.storage._zip import ZipStore
 
@@ -25,6 +26,8 @@ __all__ = [
     "StorePath",
     "WrapperStore",
     "ZipStore",
+    "parse_pipeline",
+    "resolve_pipeline",
 ]
 
 

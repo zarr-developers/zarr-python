@@ -42,6 +42,7 @@ from zarr.core.common import (
     NodeType,
     ShapeLike,
     ZarrFormat,
+    _default_zarr_format,
     parse_shapelike,
 )
 from zarr.core.config import config
@@ -474,9 +475,12 @@ class AsyncGroup:
         *,
         attributes: dict[str, Any] | None = None,
         overwrite: bool = False,
-        zarr_format: ZarrFormat = 3,
+        zarr_format: ZarrFormat | None = None,
     ) -> AsyncGroup:
         store_path = await make_store_path(store)
+        zarr_format = store_path.resolve_zarr_format(zarr_format)
+        if zarr_format is None:
+            zarr_format = _default_zarr_format()
 
         if overwrite:
             if store_path.store.supports_deletes:
@@ -525,6 +529,7 @@ class AsyncGroup:
             to load consolidated metadata from a non-default key.
         """
         store_path = await make_store_path(store)
+        zarr_format = store_path.resolve_zarr_format(zarr_format)
         if not store_path.store.supports_consolidated_metadata:
             # Fail if consolidated metadata was requested but the Store doesn't support it
             if use_consolidated:
@@ -1816,7 +1821,7 @@ class Group(SyncMixin):
         store: StoreLike,
         *,
         attributes: dict[str, Any] | None = None,
-        zarr_format: ZarrFormat = 3,
+        zarr_format: ZarrFormat | None = None,
         overwrite: bool = False,
     ) -> Group:
         """Instantiate a group from an initialized store.
@@ -1829,8 +1834,9 @@ class Group(SyncMixin):
             for a description of all valid StoreLike values.
         attributes : dict, optional
             A dictionary of JSON-serializable values with user-defined attributes.
-        zarr_format : {2, 3}, optional
-            Zarr storage format version.
+        zarr_format : {2, 3, None}, optional
+            Zarr storage format version. If None, the format selected by a URL
+            pipeline segment is used, falling back to the configured default.
         overwrite : bool, optional
             If True, do not raise an error if the group already exists.
 
