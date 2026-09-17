@@ -554,27 +554,68 @@ def get_url_adapter(scheme: str) -> type[URLPipelineAdapter]:
     Get the URL pipeline adapter class registered for `scheme`.
 
     Loads pending `zarr.url_adapters` entry points for this scheme only, so
-    resolving one scheme never imports other providers' packages.
+    resolving one scheme never imports other providers' packages. When the
+    scheme is already registered (e.g. a builtin adapter), a same-named entry
+    point is discarded with a [`ZarrUserWarning`][zarr.errors.ZarrUserWarning];
+    when several entry points share the name, the first one wins and a
+    warning names the ones ignored.
+
+    Raises
+    ------
+    URLPipelineError
+        If no adapter is registered for the scheme, or if the entry point
+        providing it fails to import.
     """
     key = scheme.lower()
-    # The lock keeps concurrent first-time resolutions of different schemes
-    # from clobbering each other's rebuild of the pending entry-point list.
+    # Take the matching entry points out of the pending list under the lock,
+    # so concurrent first-time resolutions of different schemes never clobber
+    # each other's view of the list. The import itself runs *outside* the lock:
+    # it may take arbitrarily long and may itself resolve URL adapters.
     with _url_adapter_lock:
-        if key not in _url_adapter_registry:
-            remaining = []
-            for entry_point in _url_adapter_registry.lazy_load_list:
-                if entry_point.name.lower() == key:
-                    _url_adapter_registry.register(entry_point.load(), qualname=key)
-                else:
-                    remaining.append(entry_point)
-            _url_adapter_registry.lazy_load_list[:] = remaining
+        registered = _url_adapter_registry.get(key)
+        pending = [e for e in _url_adapter_registry.lazy_load_list if e.name.lower() == key]
+        if pending:
+            _url_adapter_registry.lazy_load_list[:] = [
+                e for e in _url_adapter_registry.lazy_load_list if e.name.lower() != key
+            ]
+    if pending and registered is not None:
+        warnings.warn(
+            f"URL pipeline adapter for scheme {scheme!r} is already registered "
+            f"({fully_qualified_name(registered)}); ignoring entry point(s) "
+            f"{[e.value for e in pending]} of the same name",
+            category=ZarrUserWarning,
+            stacklevel=2,
+        )
+    elif pending:
+        entry_point, *duplicates = pending
+        if duplicates:
+            warnings.warn(
+                f"multiple 'zarr.url_adapters' entry points are named {entry_point.name!r}; "
+                f"using {entry_point.value!r} and ignoring {[e.value for e in duplicates]}",
+                category=ZarrUserWarning,
+                stacklevel=2,
+            )
+        try:
+            cls = entry_point.load()
+        except Exception as exc:
+            # leave the entry points discoverable so a transient import
+            # failure is not permanent
+            with _url_adapter_lock:
+                _url_adapter_registry.lazy_load_list.extend(pending)
+            raise URLPipelineError(
+                f"the 'zarr.url_adapters' entry point {entry_point.name!r} "
+                f"({entry_point.value!r}) could not be loaded: {exc!r}"
+            ) from exc
+        with _url_adapter_lock:
+            if key not in _url_adapter_registry:
+                _url_adapter_registry.register(cls, qualname=key)
     try:
         return _url_adapter_registry[key]
     except KeyError:
-        registered = sorted(list_url_adapter_schemes())
+        registered_schemes = sorted(list_url_adapter_schemes())
         raise URLPipelineError(
             f"no URL pipeline adapter is registered for scheme {scheme!r}. "
-            f"Registered schemes: {registered}. Adapters are provided by "
+            f"Registered schemes: {registered_schemes}. Adapters are provided by "
             "packages via the 'zarr.url_adapters' entry-point group."
         ) from None
 
