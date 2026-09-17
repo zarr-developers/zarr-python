@@ -1,7 +1,7 @@
 """
 Cast-value codec types.
 
-See https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/cast_value
+See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md
 """
 
 from typing import Final, Literal, NotRequired
@@ -89,6 +89,8 @@ CastValueCodecMetadata = CastValueCodecObject
 
 `configuration.data_type` is required, so only the object form is valid;
 the short-hand-name form is not permitted by the spec for this codec.
+  https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md#L33-L36 and #L46-L48 (required fields)
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564 (short-hand names only "if no configuration metadata is required")
 """
 
 

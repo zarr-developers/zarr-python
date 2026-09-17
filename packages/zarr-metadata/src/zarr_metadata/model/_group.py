@@ -168,7 +168,7 @@ class ZarrV3GroupMetadata:
         """Extra fields the reader is obligated to understand.
 
         Everything in `extra_fields` not explicitly waived with
-        `must_understand: false` (the spec's implicit-true rule). A compliant
+        `must_understand: false` (the spec's implicit-true rule, https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1578). A compliant
         reader MUST fail to open the group if this contains any field it does
         not recognize; the model layer only partitions by obligation, since
         recognition is reader-specific.
@@ -299,7 +299,8 @@ class ZarrV2GroupMetadata:
         `attributes` is included when set (even empty). This is not the
         on-disk `.zgroup` content: a conforming `.zgroup` must exclude
         `attributes` (they live in the sibling `.zattrs` file). Use
-        `to_key_value` to produce the spec-conforming split for storage.
+        `to_key_value` to produce the spec-conforming split for storage
+        (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313; https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L323-L330).
         """
         # to_json output shares no mutable state with the model.
         out: ZarrV2GroupMetadataJSON = {"zarr_format": self.zarr_format}

@@ -123,8 +123,7 @@ def _write_affine(source: Any, transform: IndexTransform, broadcast: Any) -> boo
         output.input_dimension for output in transform.output if isinstance(output, DimensionMap)
     ]
     if (
-        any(isinstance(output, ArrayMap) for output in transform.output)
-        or len(set(axes)) != len(axes)
+        len(set(axes)) != len(axes)
         or any(shape[axis] != 1 for axis in range(len(shape)) if axis not in axes)
         or any(
             isinstance(output, DimensionMap) and output.stride == 0 for output in transform.output
@@ -134,19 +133,21 @@ def _write_affine(source: Any, transform: IndexTransform, broadcast: Any) -> boo
     selection: list[int | slice] = []
     reverse_axes: list[int] = []
     for output in transform.output:
+        if isinstance(output, ArrayMap):
+            # An index array is a gather, not one basic assignment.
+            return False
         if isinstance(output, ConstantMap):
             selection.append(output.offset)
+            continue
+        axis = output.input_dimension
+        start = output.offset + output.stride * transform.domain.inclusive_min[axis]
+        if output.stride < 0:
+            reverse_axes.append(axes.index(axis))
+            selection.append(
+                slice(start + output.stride * (shape[axis] - 1), start + 1, -output.stride)
+            )
         else:
-            assert isinstance(output, DimensionMap)
-            axis = output.input_dimension
-            start = output.offset + output.stride * transform.domain.inclusive_min[axis]
-            if output.stride < 0:
-                reverse_axes.append(axes.index(axis))
-                selection.append(
-                    slice(start + output.stride * (shape[axis] - 1), start + 1, -output.stride)
-                )
-            else:
-                selection.append(slice(start, start + output.stride * shape[axis], output.stride))
+            selection.append(slice(start, start + output.stride * shape[axis], output.stride))
     unused = tuple(axis for axis in range(len(shape)) if axis not in axes)
     squeezed = np.squeeze(broadcast, axis=unused)
     remaining = sorted(axes)
