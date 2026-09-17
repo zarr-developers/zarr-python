@@ -131,6 +131,12 @@ Registered adapters cannot intercept zarr's native `file:` and `memory:` root
 schemes, and fsspec's chained-URL syntax (`zip::s3://...`) keeps flowing to
 fsspec.
 
+Inside a pipeline, a `memory:` root is zarr's managed in-memory store (`memory:`,
+`memory:/` and `memory://` are equivalent, and `memory:name` selects a named store).
+When fsspec is installed, a plain `memory://name` URL *without* a `|` is still routed to
+fsspec's in-memory filesystem, which is a different store. A `file:` root must carry an
+absolute path; percent-escapes are not decoded, matching the [local store](#local-store).
+
 ## Explicit Store Creation
 
 In some cases, it may be helpful to create a store instance directly. Zarr-Python offers
