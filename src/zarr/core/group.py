@@ -85,14 +85,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger("zarr.group")
 
 
-def _resolve_use_consolidated(
-    store: Store, use_consolidated: bool | str | None
-) -> bool | str | None:
+def _resolve_use_consolidated(store: Store, use_consolidated: bool | None) -> bool | None:
     """Settle `use_consolidated` against what `store` supports.
 
     A store that can't hold consolidated metadata makes the answer False, unless
     consolidated metadata was explicitly asked for, which is an error.
     """
+    if not isinstance(use_consolidated, bool | None):
+        raise TypeError(f"use_consolidated must be a bool or None. Got {use_consolidated!r}.")
     if store.supports_consolidated_metadata:
         return use_consolidated
     if use_consolidated:
@@ -102,28 +102,17 @@ def _resolve_use_consolidated(
     return False
 
 
-def _v2_consolidated_key(use_consolidated: bool | str | None) -> str | None:
-    """The Zarr format 2 consolidated-metadata key to read for `use_consolidated`, or None for none."""
-    if use_consolidated is False:
-        return None
-    if isinstance(use_consolidated, str):
-        return use_consolidated
-    return ZMETADATA_V2_JSON
-
-
 def _apply_use_consolidated(
-    metadata: GroupMetadata, use_consolidated: bool | str | None, *, store_path: StorePath
+    metadata: GroupMetadata, use_consolidated: bool | None, *, store_path: StorePath
 ) -> GroupMetadata:
     """Enforce the caller's `use_consolidated` on freshly read group metadata.
 
-    True (or a format 2 key) requires consolidated metadata to be present; False
-    drops whatever is present; None keeps whatever is present.
+    True requires consolidated metadata to be present; False drops whatever is
+    present; None keeps whatever is present.
     """
-    if metadata.zarr_format == 3 and not isinstance(use_consolidated, bool | None):
-        raise TypeError("use_consolidated must be a bool or None for Zarr format 3.")
     if use_consolidated and metadata.consolidated_metadata is None:
         msg = (
-            f"Consolidated metadata requested with 'use_consolidated={use_consolidated!r}' "
+            "Consolidated metadata requested with 'use_consolidated=True' "
             f"but not found in '{store_path.path}'."
         )
         raise ValueError(msg)
@@ -136,7 +125,7 @@ async def _open_node(
     store_path: StorePath,
     *,
     zarr_format: ZarrFormat | None,
-    use_consolidated: bool | str | None,
+    use_consolidated: bool | None,
     config: ArrayConfigLike | None = None,
 ) -> AnyAsyncArray | AsyncGroup | None:
     """The node at `store_path`, whichever kind it is, or None if there is none.
@@ -149,11 +138,9 @@ async def _open_node(
     store = store_path.store
     # A store that can't hold consolidated metadata has none to read. Whether the
     # caller may ask for it is a question for a group, so it waits until we know.
-    consolidated_key = (
-        _v2_consolidated_key(use_consolidated) if store.supports_consolidated_metadata else None
-    )
+    consolidated = store.supports_consolidated_metadata and use_consolidated is not False
     metadata = await read_node_metadata(
-        store, store_path.path, zarr_format, consolidated_key=consolidated_key
+        store, store_path.path, zarr_format, consolidated=consolidated
     )
     if metadata is None:
         return None
@@ -181,7 +168,7 @@ async def _open_array(
 
 
 async def _open_group(
-    store_path: StorePath, *, zarr_format: ZarrFormat | None, use_consolidated: bool | str | None
+    store_path: StorePath, *, zarr_format: ZarrFormat | None, use_consolidated: bool | None
 ) -> AsyncGroup | None:
     """The group at `store_path`, with `use_consolidated` applied, or None if there is none.
 
@@ -191,10 +178,7 @@ async def _open_group(
     """
     use_consolidated = _resolve_use_consolidated(store_path.store, use_consolidated)
     metadata = await read_group_metadata(
-        store_path.store,
-        store_path.path,
-        zarr_format,
-        consolidated_key=_v2_consolidated_key(use_consolidated),
+        store_path.store, store_path.path, zarr_format, consolidated=use_consolidated is not False
     )
     if metadata is None:
         return None
@@ -615,7 +599,7 @@ class AsyncGroup:
         cls,
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
-        use_consolidated: bool | str | None = None,
+        use_consolidated: bool | None = None,
     ) -> AsyncGroup:
         """Open a new AsyncGroup
 
@@ -623,7 +607,7 @@ class AsyncGroup:
         ----------
         store : StoreLike
         zarr_format : {2, 3}, optional
-        use_consolidated : bool or str, default None
+        use_consolidated : bool, default None
             Whether to use consolidated metadata.
 
             By default, consolidated metadata is used if it's present in the
@@ -636,10 +620,6 @@ class AsyncGroup:
 
             To explicitly *not* use consolidated metadata, set ``use_consolidated=False``,
             which will fall back to using the regular, non consolidated metadata.
-
-            Zarr format 2 allowed configuring the key storing the consolidated metadata
-            (``.zmetadata`` by default). Specify the custom key as ``use_consolidated``
-            to load consolidated metadata from a non-default key.
         """
         store_path = await make_store_path(store)
         group = await _open_group(
@@ -3461,40 +3441,40 @@ async def _iter_members_deep(
 
 @overload
 async def read_node_metadata(
-    store: Store, path: str, zarr_format: Literal[3], *, consolidated_key: str | None = None
+    store: Store, path: str, zarr_format: Literal[3], *, consolidated: bool = False
 ) -> ArrayV3Metadata | GroupMetadata | None: ...
 
 
 @overload
 async def read_node_metadata(
-    store: Store, path: str, zarr_format: Literal[2], *, consolidated_key: str | None = None
+    store: Store, path: str, zarr_format: Literal[2], *, consolidated: bool = False
 ) -> ArrayV2Metadata | GroupMetadata | None: ...
 
 
 @overload
 async def read_node_metadata(
-    store: Store, path: str, zarr_format: ZarrFormat | None, *, consolidated_key: str | None = None
+    store: Store, path: str, zarr_format: ZarrFormat | None, *, consolidated: bool = False
 ) -> ArrayV2Metadata | ArrayV3Metadata | GroupMetadata | None: ...
 
 
 async def read_node_metadata(
-    store: Store, path: str, zarr_format: ZarrFormat | None, *, consolidated_key: str | None = None
+    store: Store, path: str, zarr_format: ZarrFormat | None, *, consolidated: bool = False
 ) -> ArrayV2Metadata | ArrayV3Metadata | GroupMetadata | None:
     """Read the metadata of the node at `path`, whichever kind and format it is.
 
     With `zarr_format` None, Zarr format 3 is tried first and format 2 only if
     there is no `zarr.json`, so a path holding both formats is read as format 3
-    without a second look. `consolidated_key` is passed to the format 2 reader.
-    Returns None if no node is found.
+    without a second look. `consolidated` says whether the format 2 reader also
+    reads the consolidated-metadata document. Returns None if no node is found.
     """
     if zarr_format == 3:
         return await read_v3_metadata(store, path)
     if zarr_format == 2:
-        return await read_v2_metadata(store, path, consolidated_key=consolidated_key)
+        return await read_v2_metadata(store, path, consolidated=consolidated)
     if zarr_format is None:
         metadata = await read_v3_metadata(store, path)
         if metadata is None:
-            return await read_v2_metadata(store, path, consolidated_key=consolidated_key)
+            return await read_v2_metadata(store, path, consolidated=consolidated)
         return metadata
     msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."  # type: ignore[unreachable]
     raise MetadataValidationError(msg)
@@ -3522,20 +3502,20 @@ async def read_v3_metadata(store: Store, path: str) -> ArrayV3Metadata | GroupMe
 
 
 async def read_v2_metadata(
-    store: Store, path: str, *, consolidated_key: str | None = None
+    store: Store, path: str, *, consolidated: bool = False
 ) -> ArrayV2Metadata | GroupMetadata | None:
     """Read the Zarr format 2 node metadata at `path`, not knowing which kind it is.
 
     Both kinds' documents are read in one concurrent round: `.zarray`, `.zgroup`,
-    `.zattrs` and, if given, the consolidated-metadata document at
-    `consolidated_key`. `.zarray` makes the node an array and `.zgroup` a group,
-    the array winning if both exist. A caller that knows which kind it wants
-    should use `read_v2_array_metadata` or `read_v2_group_metadata`, which read
-    only that kind's documents. Returns None if there is neither.
+    `.zattrs` and, if `consolidated`, the `.zmetadata` document. `.zarray` makes
+    the node an array and `.zgroup` a group, the array winning if both exist. A
+    caller that knows which kind it wants should use `read_v2_array_metadata` or
+    `read_v2_group_metadata`, which read only that kind's documents. Returns None
+    if there is neither.
     """
     keys = [ZARRAY_JSON, ZGROUP_JSON, ZATTRS_JSON]
-    if consolidated_key is not None:
-        keys.append(consolidated_key)
+    if consolidated:
+        keys.append(ZMETADATA_V2_JSON)
     zarray_bytes, zgroup_bytes, zattrs_bytes, *rest = await asyncio.gather(
         *(store.get(_join_paths([path, key]), prototype=default_buffer_prototype()) for key in keys)
     )
@@ -3558,17 +3538,17 @@ async def read_v2_array_metadata(store: Store, path: str) -> ArrayV2Metadata | N
 
 
 async def read_v2_group_metadata(
-    store: Store, path: str, *, consolidated_key: str | None = None
+    store: Store, path: str, *, consolidated: bool = False
 ) -> GroupMetadata | None:
     """Read the Zarr format 2 group metadata at `path`, or None if there is no `.zgroup`.
 
-    One concurrent read of `.zgroup`, `.zattrs` and, if given, the
-    consolidated-metadata document at `consolidated_key`, which is attached to
-    the group; nothing else is looked at.
+    One concurrent read of `.zgroup`, `.zattrs` and, if `consolidated`, the
+    `.zmetadata` document, which is attached to the group; nothing else is
+    looked at.
     """
     keys = [ZGROUP_JSON, ZATTRS_JSON]
-    if consolidated_key is not None:
-        keys.append(consolidated_key)
+    if consolidated:
+        keys.append(ZMETADATA_V2_JSON)
     zgroup_bytes, zattrs_bytes, *rest = await asyncio.gather(
         *(store.get(_join_paths([path, key]), prototype=default_buffer_prototype()) for key in keys)
     )
@@ -3634,7 +3614,7 @@ async def read_array_metadata(
 
 
 async def read_group_metadata(
-    store: Store, path: str, zarr_format: ZarrFormat | None, *, consolidated_key: str | None = None
+    store: Store, path: str, zarr_format: ZarrFormat | None, *, consolidated: bool = False
 ) -> GroupMetadata | None:
     """Read the group metadata at `path`, reading only what a group needs.
 
@@ -3658,7 +3638,7 @@ async def read_group_metadata(
             return metadata
         if zarr_format == 3:
             return None
-    return await read_v2_group_metadata(store, path, consolidated_key=consolidated_key)
+    return await read_v2_group_metadata(store, path, consolidated=consolidated)
 
 
 def _consolidated_metadata_from_v2_doc(doc: dict[str, JSON]) -> ConsolidatedMetadata:

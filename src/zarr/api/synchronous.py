@@ -500,7 +500,7 @@ def open_group(
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used in async api
     attributes: dict[str, JSON] | None = None,
-    use_consolidated: bool | str | None = None,
+    use_consolidated: bool | None = None,
 ) -> Group:
     """Open a group using file-mode-like semantics.
 
@@ -535,7 +535,7 @@ def open_group(
         to users. Use `numpy.empty(())` by default.
     attributes : dict
         A dictionary of JSON-serializable values with user-defined attributes.
-    use_consolidated : bool or str, default None
+    use_consolidated : bool, default None
         Whether to use consolidated metadata.
 
         By default, consolidated metadata is used if it's present in the
@@ -547,10 +547,6 @@ def open_group(
 
         To explicitly *not* use consolidated metadata, set `use_consolidated=False`,
         which will fall back to using the regular, non consolidated metadata.
-
-        Zarr format 2 allowed configuring the key storing the consolidated metadata
-        (`.zmetadata` by default). Specify the custom key as `use_consolidated`
-        to load consolidated metadata from a non-default key.
 
     Returns
     -------

@@ -5,8 +5,7 @@ and the arguments to `open`. `_expected` is the contract written as an oracle,
 independent of the implementation. `check_open` builds the scene, calls `open`,
 and checks every invariant. `test_open_option_space` walks every discrete
 combination; `test_open_properties` lets Hypothesis vary the parts that are not
-discrete (path names, attribute contents, the consolidated-metadata key) and
-shrink whatever it finds.
+discrete (path names, attribute contents) and shrink whatever it finds.
 """
 
 from __future__ import annotations
@@ -113,8 +112,8 @@ class _Scenario:
     zarr_format: ZarrFormat | None
     shape: bool
     """Whether `shape` (and `dtype`) are passed, which makes the call describe an array."""
-    use_consolidated: bool | str | None
-    """Only passed without `shape`; a str is the key the consolidated document is stored at."""
+    use_consolidated: bool | None
+    """Only passed without `shape`."""
     attributes: dict[str, Any]
     supports_consolidated: bool = True
     """Whether the store says it can hold consolidated metadata."""
@@ -131,12 +130,6 @@ class _Scenario:
     @property
     def created_format(self) -> ZarrFormat:
         return self.zarr_format or 3
-
-    @property
-    def consolidated_key(self) -> str:
-        if isinstance(self.use_consolidated, str):
-            return self.use_consolidated
-        return ZMETADATA_V2_JSON
 
 
 # ---------------------------------------------------------------------------
@@ -179,8 +172,6 @@ def _expected(sc: _Scenario) -> Kind | type[Exception]:
             return "array"  # whatever was asked about consolidated metadata
         if sc.use_consolidated and not sc.supports_consolidated:
             return ValueError  # asked of a store that can't have it
-        if sc.existing_format == 3 and isinstance(sc.use_consolidated, str):
-            return TypeError
         if sc.use_consolidated and not sc.consolidated:
             return ValueError
         return "group"
@@ -208,7 +199,7 @@ def _expected_reads(sc: _Scenario) -> set[str]:
     else:
         keys = {ZARRAY_JSON, ZGROUP_JSON, ZATTRS_JSON}
         if sc.use_consolidated is not False and sc.supports_consolidated:
-            keys.add(sc.consolidated_key)
+            keys.add(ZMETADATA_V2_JSON)
     if sc.zarr_format is None:
         keys.add(ZARR_JSON)  # detecting the format costs the look that finds nothing
     return keys
@@ -264,14 +255,6 @@ def _build_scene(sc: _Scenario) -> _RecordingStore:
         )
         if sc.consolidated:
             zarr.consolidate_metadata(inner, path=sc.path)
-            if sc.existing_format == 2 and isinstance(sc.use_consolidated, str):
-                # the caller will ask for the document at a custom key: move it there
-                from zarr.core.buffer import default_buffer_prototype
-
-                doc = sync(inner.get(prefix + ZMETADATA_V2_JSON, default_buffer_prototype()))
-                assert doc is not None
-                sync(inner.set(prefix + sc.use_consolidated, doc))
-                sync(inner.delete(prefix + ZMETADATA_V2_JSON))
     return store
 
 
@@ -358,9 +341,9 @@ def _discrete_scenarios() -> Iterator[_Scenario]:
     for (existing, fmt, cons), path, mode, zarr_format, supports in itertools.product(
         existing_nodes, ("", "outer/inner"), MODES, FORMATS, (True, False)
     ):
-        calls: list[tuple[bool, bool | str | None]] = [
+        calls: list[tuple[bool, bool | None]] = [
             (True, None),
-            *[(False, uc) for uc in (None, False, True, "custom")],
+            *[(False, uc) for uc in (None, False, True)],
         ]
         for shape, use_consolidated in calls:
             yield _Scenario(
@@ -413,7 +396,7 @@ def scenarios(draw: st.DrawFn) -> _Scenario:
         mode=draw(st.sampled_from(MODES)),
         zarr_format=draw(st.sampled_from(FORMATS)),
         shape=shape,
-        use_consolidated=None if shape else draw(st.none() | st.booleans() | _names),
+        use_consolidated=None if shape else draw(st.none() | st.booleans()),
         attributes=draw(_attributes),
         supports_consolidated=draw(st.booleans()),
     )
@@ -421,5 +404,5 @@ def scenarios(draw: st.DrawFn) -> _Scenario:
 
 @given(sc=scenarios())
 def test_open_properties(sc: _Scenario) -> None:
-    """`open` follows its contract whatever the path, the attributes, and the consolidated key."""
+    """`open` follows its contract whatever the path and the attributes."""
     check_open(sc, record=event)

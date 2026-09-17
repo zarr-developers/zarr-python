@@ -45,7 +45,7 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
-from zarr.core.buffer import NDArrayLike, cpu, default_buffer_prototype
+from zarr.core.buffer import NDArrayLike, cpu
 from zarr.errors import (
     ArrayNotFoundError,
     ContainsArrayError,
@@ -1416,14 +1416,14 @@ class _CountingStore(WrapperStore[Store]):
 @pytest.mark.parametrize("node", ["array", "group"])
 @pytest.mark.parametrize(
     ("zarr_format", "use_consolidated"),
-    [(2, None), (2, False), (2, True), (2, "custom"), (3, None), (3, False), (3, True)],
+    [(2, None), (2, False), (2, True), (3, None), (3, False), (3, True)],
 )
 @pytest.mark.parametrize("mode", ["r", "r+", "a"])
 @pytest.mark.parametrize("path", ["", "parent/child"])
 async def test_open_reads_only_what_the_node_needs(
     node: Literal["array", "group"],
     zarr_format: ZarrFormat,
-    use_consolidated: bool | str | None,
+    use_consolidated: bool | None,
     mode: AccessModeLiteral,
     path: str,
 ) -> None:
@@ -1450,12 +1450,6 @@ async def test_open_reads_only_what_the_node_needs(
         )
         if use_consolidated:
             await zarr.api.asynchronous.consolidate_metadata(store, path=path)
-            if isinstance(use_consolidated, str):
-                # move the consolidated document to the non-default key
-                metadata = await store.get(prefix + ".zmetadata", default_buffer_prototype())
-                assert metadata is not None
-                await store.set(prefix + use_consolidated, metadata)
-                await store.delete(prefix + ".zmetadata")
 
     store.get_counts.clear()
     result = await zarr.api.asynchronous.open(
@@ -1473,9 +1467,7 @@ async def test_open_reads_only_what_the_node_needs(
     if zarr_format == 2:
         expected_keys |= {".zarray", ".zgroup", ".zattrs"}
         if use_consolidated is not False:
-            expected_keys.add(
-                ".zmetadata" if isinstance(use_consolidated, bool | None) else use_consolidated
-            )
+            expected_keys.add(".zmetadata")
     assert store.get_counts == {prefix + key: 1 for key in expected_keys}
 
 
@@ -1637,6 +1629,15 @@ def test_open_use_consolidated_on_group_in_store_without_support_raises(
     zarr.create_group(store, zarr_format=zarr_format)
     with pytest.raises(ValueError, match="doesn't support consolidated metadata"):
         zarr.open(store=store, mode="r", use_consolidated=True)
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_open_group_rejects_a_str_use_consolidated(zarr_format: ZarrFormat) -> None:
+    """The consolidated-metadata key is not configurable; `use_consolidated` is a bool or None."""
+    store = MemoryStore()
+    zarr.create_group(store, zarr_format=zarr_format)
+    with pytest.raises(TypeError, match="use_consolidated must be a bool or None"):
+        zarr.open_group(store, mode="r", zarr_format=zarr_format, use_consolidated="custom")  # type: ignore[arg-type]
 
 
 def test_open_config_applies_to_arrays_only() -> None:
