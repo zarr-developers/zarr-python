@@ -100,6 +100,9 @@ print(group)
    group = zarr.open_group(UPath('s3://noaa-nwm-retro-v2-zarr-pds', anon=True), mode='r')
    ```
 
+- a [URL pipeline](#user-guide-url-pipelines) string containing `|`, such as
+  `s3://bucket/data.zip|zip:`, which is resolved through registered adapters.
+
 - a [`Store`][zarr.abc.store.Store] or [`StorePath`][zarr.storage.StorePath] -
   see explicit store creation below.
 

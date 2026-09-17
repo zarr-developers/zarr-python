@@ -112,7 +112,8 @@ class StorePath:
         FileExistsError
             If the mode is 'w-' and the store path already exists.
         ValueError
-            If the mode is "r+", "w-", or "w" and the store is read-only, or
+            If the mode is "r+", "w-", or "w" and the store is read-only, or if the
+            mode is not a valid access mode.
         """
 
         # fastpath if mode is None
@@ -342,6 +343,9 @@ async def make_store(
     - `None` = `MemoryStore` object.
     - `FSMap` = `FsspecStore` object.
     - `UPath` = `FsspecStore` object, or `LocalStore` for a local `UPath`.
+    - `str` containing `|` (or whose scheme has a registered root adapter) = the store
+      resolved by the [URL pipeline][user-guide-url-pipelines]; the pipeline must address
+      the store root (use `make_store_path` for pipelines that address a path within a store).
 
     Parameters
     ----------
@@ -368,6 +372,10 @@ async def make_store(
     """
     from zarr.storage._fsspec import FsspecStore  # circular import
 
+    if mode is not None and mode not in ANY_ACCESS_MODE:
+        raise ValueError(f"Invalid mode: {mode}, expected one of {ANY_ACCESS_MODE}")
+    _read_only = mode == "r"
+
     if isinstance(store_like, str) and is_url_pipeline(store_like):
         result = await resolve_pipeline(store_like, mode=mode, storage_options=storage_options)
         if normalize_path(result.path):
@@ -389,10 +397,6 @@ async def make_store(
                 "'storage_options' was provided but unused. "
                 "'storage_options' is only used when the store is passed as an FSSpec URI string.",
             )
-
-    if mode is not None and mode not in ANY_ACCESS_MODE:
-        raise ValueError(f"Invalid mode: {mode}, expected one of {ANY_ACCESS_MODE}")
-    _read_only = mode == "r"
 
     if isinstance(store_like, StorePath):
         # Get underlying store

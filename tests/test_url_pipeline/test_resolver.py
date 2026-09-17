@@ -505,6 +505,13 @@ class TestMakeStoreIntegration:
         store = await make_store(f"{tmp_path}|wrap:")
         assert isinstance(store, TracingStore)
 
+    async def test_make_store_rejects_invalid_mode_before_resolving(self, tmp_path: Path) -> None:
+        # an invalid mode is rejected upfront, like every other StoreLike,
+        # rather than being handed to adapters
+        register_url_adapter("wrap", WrapperAdapter)
+        with pytest.raises(ValueError, match="Invalid mode"):
+            await make_store(f"{tmp_path}|wrap:", mode="invalid")  # type: ignore[arg-type]
+
     async def test_zarr_open_end_to_end(self, tmp_path: Path) -> None:
         register_url_adapter("wrap", WrapperAdapter)
         group = zarr.open_group(f"{tmp_path}|wrap:", mode="w")
