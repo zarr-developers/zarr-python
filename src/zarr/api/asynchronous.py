@@ -403,7 +403,7 @@ async def open(
                 return AsyncArray(
                     store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
                 )
-        except (AssertionError, FileNotFoundError, NodeTypeValidationError):
+        except (FileNotFoundError, NodeTypeValidationError):
             pass
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 

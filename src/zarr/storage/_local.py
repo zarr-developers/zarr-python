@@ -255,7 +255,6 @@ class LocalStore(Store):
         if prototype is None:
             prototype = default_buffer_prototype()
         self._ensure_open_sync()
-        assert isinstance(key, str)
         path = self.root / key
         try:
             return _get(path, prototype, byte_range)
@@ -265,7 +264,6 @@ class LocalStore(Store):
     def set_sync(self, key: str, value: Buffer) -> None:
         self._ensure_open_sync()
         self._check_writable()
-        assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(
                 f"LocalStore.set(): `value` must be a Buffer instance. "
@@ -294,7 +292,6 @@ class LocalStore(Store):
             prototype = default_buffer_prototype()
         if not self._is_open:
             await self._open()
-        assert isinstance(key, str)
         path = self.root / key
 
         try:
@@ -310,7 +307,6 @@ class LocalStore(Store):
         # docstring inherited
         args = []
         for key, byte_range in key_ranges:
-            assert isinstance(key, str)
             path = self.root / key
             args.append((_get, path, prototype, byte_range))
         return await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
@@ -330,7 +326,6 @@ class LocalStore(Store):
         if not self._is_open:
             await self._open()
         self._check_writable()
-        assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(
                 f"LocalStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."

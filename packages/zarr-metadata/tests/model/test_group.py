@@ -503,7 +503,10 @@ def test_v2_consolidated_rejects_unknown_document_member() -> None:
 
 def test_group_must_understand_fields_partition() -> None:
     """The group model partitions extra fields by the spec's implicit-true rule,
-    like the array model."""
+    like the array model.
+
+    https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1573
+    """
     model = ZarrV3GroupMetadata.create_default(
         extra_fields={
             "waived": {"name": "w", "must_understand": False},

@@ -230,6 +230,14 @@ async def test_store_path_invalid_mode_raises(
         await StorePath.open(LocalStore(str(tmp_path), read_only=modes[0]), path="", mode=modes[1])  # type: ignore[arg-type]
 
 
+async def test_make_store_invalid_mode_raises() -> None:
+    """
+    Test that make_store raises ValueError for a mode outside the access-mode literals.
+    """
+    with pytest.raises(ValueError, match="Invalid mode"):
+        await make_store({}, mode="x")  # type: ignore[arg-type]
+
+
 async def test_make_store_path_invalid() -> None:
     """
     Test that invalid types raise TypeError
