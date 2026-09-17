@@ -41,6 +41,10 @@ jobs:
           enable-cache: true
       - name: Install just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          # Pin the tool, not just the action: without this the action
+          # installs whatever just is newest at run time.
+          just-version: 1.58.0
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
       # The suite imports nothing from `zarr`; it runs against the repo-root
@@ -70,6 +74,10 @@ jobs:
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       - name: Install just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          # Pin the tool, not just the action: without this the action
+          # installs whatever just is newest at run time.
+          just-version: 1.58.0
       - name: Run ruff
         # The ruff version pin lives in packages/zarr-indexing/justfile.
         run: just lint
@@ -95,6 +103,10 @@ jobs:
         run: uv sync --group test --python 3.12
       - name: Install just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          # Pin the tool, not just the action: without this the action
+          # installs whatever just is newest at run time.
+          just-version: 1.58.0
       - name: Run pyright
         # The pyright invocation lives in packages/zarr-indexing/justfile.
         run: just typecheck
@@ -116,6 +128,10 @@ jobs:
           enable-cache: true
       - name: Install just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          # Pin the tool, not just the action: without this the action
+          # installs whatever just is newest at run time.
+          just-version: 1.58.0
       - name: Build docs
         # The strict mkdocs build lives in packages/zarr-indexing/justfile.
         run: just docs-check
