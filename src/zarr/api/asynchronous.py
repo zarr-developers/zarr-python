@@ -931,11 +931,12 @@ async def create(
     dtype : str or dtype, optional
         NumPy dtype.
     compressor : Codec, optional
-        Primary compressor to compress chunk data.
+        Primary compressor to compress chunk data. This can be any numcodecs
+        codec, or a dict representation of one.
         Zarr format 2 only. Zarr format 3 arrays should use `codecs` instead.
 
-        If neither `compressor` nor `filters` are provided, the default compressor
-        [`zarr.codecs.ZstdCodec`][] is used.
+        If neither `compressor` nor `filters` are provided, chunks are compressed
+        with a default compressor, which is currently `numcodecs.Zstd`.
 
         If `compressor` is set to `None`, no compression is used.
     fill_value : Any, optional
