@@ -14,7 +14,6 @@ from typing import (
     Literal,
     NamedTuple,
     Protocol,
-    cast,
     runtime_checkable,
 )
 
@@ -332,30 +331,6 @@ def _is_keep(spec: object) -> TypeIs[Literal["keep"]]:
     See `_is_auto` for why this is not a bare ``==`` comparison.
     """
     return isinstance(spec, str) and spec == "keep"
-
-
-def _is_rectilinear_chunks(chunks: Any) -> bool:
-    """Check if chunks specifies a rectilinear grid along any dimension.
-
-    Returns True for nested sequences like [[10, 20], [5, 5]], for mixed
-    per-dimension specs like (5, [10, 20]) regardless of which dimension
-    carries the sequence, and for stored rectilinear grid metadata.
-    Returns False for flat sequences like (10, 10) or [10, 10].
-    """
-    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
-
-    if isinstance(chunks, RectilinearChunkGridMetadata):
-        return True
-    if isinstance(chunks, (str, int, ChunkGrid)):
-        return False
-    if not hasattr(chunks, "__iter__"):
-        return False
-    try:
-        return any(
-            hasattr(elem, "__iter__") and not isinstance(elem, (str, bytes, int)) for elem in chunks
-        )
-    except TypeError:
-        return False
 
 
 def is_regular_1d(dim_chunks: Sequence[int]) -> bool:
@@ -756,6 +731,8 @@ def normalize_chunks_1d(chunks: int | Iterable[object], span: int) -> DimensionG
     # `int` subclasses) take the uniform-chunk path instead of being treated as a sequence.
     # The `-1` sentinel check lives inside this branch so that numpy-array chunk
     # specifications never hit an ambiguous-truth-value error on `chunks == -1`.
+    if isinstance(chunks, np.ndarray) and chunks.ndim == 0:
+        chunks = chunks[()]
     if isinstance(chunks, numbers.Integral):
         chunk_size = int(chunks)
         if chunk_size < -1 or chunk_size == 0:
@@ -834,9 +811,16 @@ def normalize_chunks_nd(
         chunks = -1
 
     # handle 1D convenience form. bool is excluded above so this only catches actual ints.
+    if isinstance(chunks, np.ndarray) and chunks.ndim == 0:
+        chunks = chunks[()]
     if isinstance(chunks, numbers.Integral):
         chunks = tuple(int(chunks) for _ in shape)
 
+    if not hasattr(chunks, "__len__"):
+        raise TypeError(
+            f"Chunk specification must be an integer or an iterable of integers; got "
+            f"{chunks!r} of type {type(chunks).__name__}."
+        )
     # handle bad dimensionality
     if len(chunks) != len(shape):
         raise ValueError(
@@ -952,15 +936,10 @@ def resolve_outer_and_inner_chunks(
     if shard_shape is None:
         return ChunkLayout(outer_chunks=chunks)
 
-    # Rectilinear shards: normalize the nested sequence directly.
-    if _is_rectilinear_chunks(shard_shape):
-        outer = normalize_chunks_nd(shard_shape, array_shape)
-        return ChunkLayout(outer_chunks=outer, inner=ChunkLayout(outer_chunks=chunks))
-
-    # Extract the flat chunk shape (uniform size per dimension) for arithmetic.
-    chunk_shape_flat = chunks.chunk_shape
-
+    shard_spec: Any
     if _is_auto(shard_shape):
+        # Extract the flat chunk shape (uniform size per dimension) for arithmetic.
+        chunk_shape_flat = chunks.chunk_shape
         warnings.warn(
             "Automatic shard shape inference is experimental and may change without notice.",
             ZarrUserWarning,
@@ -984,11 +963,12 @@ def resolve_outer_and_inner_chunks(
                 _shards_out += (c_shape * num_chunks_per_shard_axis,)
             else:
                 _shards_out += (c_shape,)
-        shard_flat = _shards_out
+        shard_spec = _shards_out
     elif isinstance(shard_shape, dict):
-        shard_flat = tuple(shard_shape["shape"])
+        shard_spec = shard_shape["shape"]
     else:
-        shard_flat = cast("tuple[int, ...]", shard_shape)
+        shard_spec = shard_shape
 
-    outer = normalize_chunks_nd(shard_flat, array_shape)
+    # Regular and rectilinear shard specifications go through the one normalizer.
+    outer = normalize_chunks_nd(shard_spec, array_shape)
     return ChunkLayout(outer_chunks=outer, inner=ChunkLayout(outer_chunks=chunks))

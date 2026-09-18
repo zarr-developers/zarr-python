@@ -19,7 +19,6 @@ from zarr.core.chunk_grids import (
     ChunkSpec,
     FixedDimension,
     VaryingDimension,
-    _is_rectilinear_chunks,
 )
 from zarr.core.common import compress_rle, expand_rle
 from zarr.core.metadata.v3 import (
@@ -555,55 +554,6 @@ def test_expand_rle_pair_with_float_count() -> None:
     """expand_rle accepts float repeat counts that are integer-valued"""
     result = expand_rle([[10, 3.0]])  # type: ignore[list-item]
     assert result == [10, 10, 10]
-
-
-# ---------------------------------------------------------------------------
-# _is_rectilinear_chunks tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ([[10, 20], [5, 5]], True),
-        (((10, 20), (5, 5)), True),
-        ((10, 20), False),
-        ([10, 20], False),
-        (10, False),
-        ("auto", False),
-        ([], False),
-        ([[]], True),
-        (ChunkGrid.from_sizes((10,), (5,)), False),
-        (None, False),
-        (3.14, False),
-    ],
-    ids=[
-        "nested-lists",
-        "nested-tuples",
-        "flat-tuple",
-        "flat-list",
-        "single-int",
-        "string",
-        "empty-list",
-        "empty-nested-list",
-        "chunk-grid-instance",
-        "none",
-        "float",
-    ],
-)
-def test_is_rectilinear_chunks(value: Any, expected: bool) -> None:
-    """_is_rectilinear_chunks correctly identifies nested sequences as rectilinear"""
-    assert _is_rectilinear_chunks(value) is expected
-
-
-def test_is_rectilinear_chunks_handles_broken_iterable() -> None:
-    """_is_rectilinear_chunks returns False for objects that raise on iteration."""
-
-    class BrokenIter:
-        def __iter__(self) -> Any:
-            raise TypeError("cannot iterate")
-
-    assert _is_rectilinear_chunks(BrokenIter()) is False
 
 
 # ---------------------------------------------------------------------------
@@ -1209,6 +1159,73 @@ def test_mixed_chunks_gates_are_order_independent(chunks: Any) -> None:
         zarr.create_array(MemoryStore(), shape=shape, chunks=chunks, shards=(10, 10), dtype="uint8")
     with pytest.raises(ValueError, match="Zarr format 2 does not support rectilinear chunk grids"):
         zarr.create_array(MemoryStore(), shape=shape, chunks=chunks, zarr_format=2, dtype="uint8")
+
+
+@pytest.mark.parametrize(
+    ("chunks", "expected"),
+    [
+        pytest.param(np.int64(2), (2, 2), id="numpy-scalar"),
+        pytest.param(np.array(2), (2, 2), id="0-d-array"),
+        pytest.param((np.int64(5), np.int32(3)), (5, 3), id="tuple-of-numpy-ints"),
+        pytest.param(np.array([5, 3], dtype=np.uint8), (5, 3), id="1-d-array"),
+        pytest.param([np.int64(5), np.int64(3)], (5, 3), id="list-of-numpy-ints"),
+        pytest.param((np.array(5), 3), (5, 3), id="0-d-array-element"),
+        pytest.param((np.int64(-1), 3), (10, 3), id="numpy-minus-one"),
+    ],
+)
+@pytest.mark.parametrize("creator", ["create_array-v3", "create_array-v2", "create-v2"])
+def test_numpy_chunk_specs_normalize(chunks: Any, expected: tuple[int, ...], creator: str) -> None:
+    """numpy scalars, 0-d arrays, and integer arrays are accepted wherever a
+    chunk shape is, in every zarr format and creation API, and are stored as
+    plain ints. The legacy `zarr.create` v2 path used to test the spec's truth
+    value, which a numpy array does not have."""
+    store = MemoryStore()
+    if creator == "create_array-v3":
+        arr = zarr.create_array(store, shape=(10, 6), chunks=chunks, dtype="uint8")
+    elif creator == "create_array-v2":
+        arr = zarr.create_array(store, shape=(10, 6), chunks=chunks, dtype="uint8", zarr_format=2)
+    else:
+        arr = zarr.create(store=store, shape=(10, 6), chunks=chunks, dtype="uint8", zarr_format=2)
+    assert arr.chunks == expected
+    assert all(type(c) is int for c in arr.chunks)
+
+
+@pytest.mark.parametrize(
+    ("chunks", "expected"),
+    [
+        pytest.param((2, np.array([3, 3])), (2, (3, 3)), id="int-and-array-edges"),
+        pytest.param((np.int64(2), [3, 3]), (2, (3, 3)), id="numpy-int-and-list"),
+        pytest.param(np.array([[5, 5], [3, 3]]), ((5, 5), (3, 3)), id="2-d-array"),
+        pytest.param(([np.int64(5), np.int64(5)], 3), ((5, 5), 3), id="edges-of-numpy-ints"),
+    ],
+)
+def test_numpy_rectilinear_chunk_specs_normalize(
+    chunks: Any, expected: tuple[int | tuple[int, ...], ...]
+) -> None:
+    """numpy values inside a rectilinear `chunks=` spec are stored as plain ints
+    and the grid kind is decided by the normalized grid, not by duck typing."""
+    arr = zarr.create_array(MemoryStore(), shape=(10, 6), chunks=chunks, dtype="uint8")
+    assert arr.metadata.chunk_grid == RectilinearChunkGridMetadata(chunk_shapes=expected)
+
+
+@pytest.mark.parametrize(
+    "shards",
+    [np.array([10, 6]), (np.int64(10), np.int32(6)), [np.int64(10), np.int64(6)]],
+    ids=["array", "tuple-of-numpy-ints", "list-of-numpy-ints"],
+)
+def test_numpy_shard_specs_normalize(shards: Any) -> None:
+    """numpy values in `shards=` normalize like those in `chunks=`."""
+    arr = zarr.create_array(
+        MemoryStore(), shape=(10, 6), chunks=(2, 3), shards=shards, dtype="uint8"
+    )
+    assert arr.shards == (10, 6)
+    assert arr.chunks == (2, 3)
+
+
+def test_zero_dim_float_array_chunks_rejected() -> None:
+    """A 0-d array unwraps to its scalar, which must still be an integer."""
+    with pytest.raises(TypeError, match="must be an integer or an iterable of integers"):
+        zarr.create_array(MemoryStore(), shape=(10,), chunks=np.array(2.0), dtype="uint8")
 
 
 def test_from_array_keep_preserves_all_bare_int_rectilinear_grid() -> None:
