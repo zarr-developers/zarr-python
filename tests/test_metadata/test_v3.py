@@ -37,6 +37,7 @@ from zarr.errors import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from typing import Any
 
 
@@ -159,6 +160,21 @@ def test_create_chunk_grid_metadata_unknown_dimension_type() -> None:
         create_chunk_grid_metadata(grid)
 
 
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(input=(2, 3), output=(2, 3), id="python_ints"),
+        Expect(input=(np.int64(2), np.uint8(3)), output=(2, 3), id="numpy_ints"),
+    ],
+    ids=lambda case: case.id,
+)
+def test_regular_chunk_grid_normalizes_ints(case: Expect[tuple[Any, ...], tuple[int, ...]]) -> None:
+    """A regular chunk grid accepts Python and numpy integers and stores Python ints."""
+    grid = RegularChunkGridMetadata(chunk_shape=case.input)
+    assert grid.chunk_shape == case.output
+    assert all(type(c) is int for c in grid.chunk_shape)
+
+
 def test_regular_chunk_grid_rejects_edge_lists() -> None:
     """A regular chunk grid only accepts integer chunk edge lengths."""
     with pytest.raises(TypeError, match="Dimension 1: a regular chunk grid requires an integer"):
@@ -166,8 +182,11 @@ def test_regular_chunk_grid_rejects_edge_lists() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Mixed regular/rectilinear chunk grids written by zarr 3.2.x
-# https://github.com/zarr-developers/zarr-python/issues/4374
+# "regular" chunk grids whose chunk_shape contains edge lists
+#
+# zarr 3.2.0 and 3.2.1 wrote mixed specs such as (2, (5, 10, 5)) this way
+# (https://github.com/zarr-developers/zarr-python/issues/4374). The reader
+# accepts any such grid, not only the shapes 3.2.x could produce.
 # ---------------------------------------------------------------------------
 
 
@@ -189,11 +208,21 @@ def test_regular_chunk_grid_rejects_edge_lists() -> None:
             output=((1, 5), (5, 10, 5)),
             id="edges_in_every_dim",
         ),
+        Expect(
+            input=((6, 20), [2, [[5, 2], 10]]),
+            output=(2, (5, 5, 10)),
+            id="run_length_encoded_edges",
+        ),
+        Expect(
+            input=((6, 20), (2, (5, 10, 5))),
+            output=(2, (5, 10, 5)),
+            id="tuples_from_python",
+        ),
     ],
     ids=lambda case: case.id,
 )
 def test_read_mixed_regular_chunk_grid(
-    case: Expect[tuple[tuple[int, ...], list[Any]], tuple[Any, ...]],
+    case: Expect[tuple[tuple[int, ...], Sequence[Any]], tuple[Any, ...]],
 ) -> None:
     """A "regular" chunk grid whose chunk_shape lists edges is read as rectilinear."""
     shape, chunk_shape = case.input
