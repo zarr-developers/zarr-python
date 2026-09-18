@@ -45,7 +45,6 @@ from zarr.core.chunk_grids import (
     ChunkGrid,
     _is_auto,
     _is_keep,
-    _is_rectilinear_chunks,
     guess_chunks,
     normalize_chunks_nd,
     resolve_outer_and_inner_chunks,
@@ -516,17 +515,15 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 )
             if dimension_names is not None:
                 raise ValueError("dimension_names cannot be used for arrays with zarr_format 2.")
-            if _is_rectilinear_chunks(_raw_chunks):
-                raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
-
             item_size = 1
             if isinstance(dtype_parsed, HasItemSize):
                 item_size = dtype_parsed.item_size
-            _raw = chunks or chunk_shape
-            if _raw is None:
+            if _raw_chunks is None:
                 outer_chunks = guess_chunks(shape, item_size)
             else:
-                outer_chunks = normalize_chunks_nd(_raw, shape)
+                outer_chunks = normalize_chunks_nd(_raw_chunks, shape)
+            if not outer_chunks.is_regular:
+                raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
             _chunks = outer_chunks.chunk_shape
 
             if order is None:
@@ -4532,8 +4529,18 @@ async def init_array(
 
     await _prepare_overwrite(store_path, zarr_format=zarr_format, overwrite=overwrite)
 
-    # Validate rectilinear chunks constraints
-    if _is_rectilinear_chunks(chunks):
+    # Normalize the user's chunks into a canonical ChunkGrid
+
+    if _is_auto(chunks):
+        max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
+        chunks_normalized = guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
+    else:
+        chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
+
+    # Validate rectilinear chunks constraints. The normalized grid is the one
+    # judge of what the user declared; stored rectilinear metadata counts as
+    # rectilinear even when its edges happen to be uniform.
+    if isinstance(chunks, RectilinearChunkGridMetadata) or not chunks_normalized.is_regular:
         if zarr_format == 2:
             raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
         if shards is not None:
@@ -4542,14 +4549,6 @@ async def init_array(
                 "Use rectilinear shards instead: "
                 "chunks=(inner_size, ...), shards=[[shard_sizes], ...]"
             )
-
-    # Normalize the user's chunks into a canonical ChunkGrid
-
-    if _is_auto(chunks):
-        max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
-        chunks_normalized = guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
-    else:
-        chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
 
     # Resolve chunks + shards into outer_chunks (grid metadata) and
     # inner (sub-chunk structure for ShardingCodec, None if no sharding)
