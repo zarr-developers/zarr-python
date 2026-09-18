@@ -3066,32 +3066,7 @@ pytest.importorskip("hypothesis")
 import hypothesis.strategies as st
 from hypothesis import event, given, settings
 
-
-@st.composite
-def rectilinear_chunks_st(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[list[int]]:
-    """Generate valid rectilinear chunk shapes for a given array shape."""
-    chunk_shapes: list[list[int]] = []
-    for size in shape:
-        assert size > 0
-        max_chunks = min(size, 10)
-        nchunks = draw(st.integers(min_value=1, max_value=max_chunks))
-        if nchunks == 1:
-            chunk_shapes.append([size])
-        else:
-            dividers = sorted(
-                draw(
-                    st.lists(
-                        st.integers(min_value=1, max_value=size - 1),
-                        min_size=nchunks - 1,
-                        max_size=nchunks - 1,
-                        unique=True,
-                    )
-                )
-            )
-            chunk_shapes.append(
-                [a - b for a, b in zip(dividers + [size], [0] + dividers, strict=False)]
-            )
-    return chunk_shapes
+from zarr.testing.strategies import rectilinear_chunks
 
 
 @st.composite
@@ -3101,7 +3076,7 @@ def rectilinear_arrays_st(draw: st.DrawFn) -> tuple[zarr.Array[Any], np.ndarray[
 
     ndim = draw(st.integers(min_value=1, max_value=3))
     shape = draw(st.tuples(*[st.integers(min_value=2, max_value=20) for _ in range(ndim)]))
-    chunk_shapes = draw(rectilinear_chunks_st(shape=shape))
+    chunk_shapes = draw(rectilinear_chunks(shape=shape))
     event(f"ndim={ndim}, shape={shape}")
 
     a = np.arange(int(np.prod(shape)), dtype="int32").reshape(shape)

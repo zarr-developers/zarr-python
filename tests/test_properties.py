@@ -20,7 +20,9 @@ from hypothesis import assume, event, given, settings
 from zarr.abc.store import Store
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
 from zarr.core.sync import sync
+from zarr.storage import MemoryStore
 from zarr.testing.strategies import (
     array_metadata,
     arrays,
@@ -31,6 +33,8 @@ from zarr.testing.strategies import (
     numpy_arrays,
     orthogonal_indices,
     rectilinear_arrays,
+    rectilinear_chunk_shape_declarations,
+    rectilinear_chunks,
     sharded_arrays,
     simple_arrays,
     stores,
@@ -496,3 +500,60 @@ def test_chunks_param_from_rectilinear_bare_int_roundtrip() -> None:
             dtype="uint8",
         )
         assert dst.metadata.chunk_grid == grid  # type: ignore[union-attr]
+
+
+@given(data=st.data())
+def test_rectilinear_chunk_grid_declarations(data: st.DataObject) -> None:
+    """Every `chunk_shapes` declaration the rectilinear spec allows — bare-int
+    steps, edge lists written in full or run-length encoded in any grouping,
+    edges overhanging the extent — parses to its expanded edges, and the
+    re-serialized form parses back to the same grid."""
+    shape = data.draw(npst.array_shapes(max_dims=3, min_side=1, max_side=20), label="shape")
+    declaration, chunk_shapes = data.draw(
+        rectilinear_chunk_shape_declarations(shape=shape), label="declaration"
+    )
+    stored = {
+        "name": "rectilinear",
+        "configuration": {"kind": "inline", "chunk_shapes": declaration},
+    }
+    meta = RectilinearChunkGridMetadata.from_dict(stored)  # type: ignore[arg-type]
+    assert meta.chunk_shapes == chunk_shapes
+
+    serialized = json.loads(json.dumps(meta.to_dict()))
+    assert serialized["name"] == "rectilinear"
+    assert RectilinearChunkGridMetadata.from_dict(serialized) == meta
+
+    # The declaration is read correctly inside a whole stored metadata document.
+    document = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": list(shape),
+        "data_type": "uint8",
+        "chunk_grid": stored,
+        "chunk_key_encoding": {"name": "default", "configuration": {"separator": "/"}},
+        "fill_value": 0,
+        "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
+        "attributes": {},
+    }
+    assert ArrayV3Metadata.from_dict(document).chunk_grid == meta  # type: ignore[arg-type]
+
+
+@given(data=st.data())
+def test_create_array_stores_declared_rectilinear_chunks(data: st.DataObject) -> None:
+    """A `chunks=` specification mixing bare ints and edge lists in any
+    arrangement is stored as a rectilinear grid whose `chunk_shapes` are
+    exactly the specification. Checked on the stored JSON, not only the
+    in-memory metadata: zarr 3.2.x stored such grids as "regular" (gh-4374)."""
+    shape = data.draw(npst.array_shapes(max_dims=3, min_side=1, max_side=20), label="shape")
+    chunks = data.draw(rectilinear_chunks(shape=shape), label="chunks")
+    arr = zarr.create_array(MemoryStore(), shape=shape, chunks=chunks, dtype="uint8")
+
+    zarr_json = sync(arr.store.get(ZARR_JSON, prototype=default_buffer_prototype()))
+    assert zarr_json is not None
+    stored = json.loads(zarr_json.to_bytes())["chunk_grid"]
+    assert stored["name"] == "rectilinear"
+    declared = RectilinearChunkGridMetadata(
+        chunk_shapes=tuple(tuple(c) if isinstance(c, list) else c for c in chunks)
+    )
+    assert RectilinearChunkGridMetadata.from_dict(stored) == declared
+    assert arr.metadata.chunk_grid == declared
