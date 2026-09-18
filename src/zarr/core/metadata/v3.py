@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
@@ -36,7 +37,7 @@ from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
-from zarr.errors import MetadataValidationError, NodeTypeValidationError
+from zarr.errors import MetadataValidationError, NodeTypeValidationError, ZarrUserWarning
 from zarr.registry import get_codec_class
 
 if TYPE_CHECKING:
@@ -215,10 +216,19 @@ RectilinearChunkGridMetadataJSON = NamedRequiredConfig[
 def _parse_chunk_shape(chunk_shape: Iterable[int]) -> tuple[int, ...]:
     """Validate and normalize a regular chunk shape.
 
-    Delegates to ``_validate_chunk_shapes`` — a regular chunk shape is just
-    a sequence of bare ints (one per dimension), each of which must be >= 1.
+    A regular chunk shape is a sequence of bare ints (one per dimension),
+    each of which must be >= 1. Per-dimension edge lists belong to a
+    rectilinear grid and are rejected here.
     """
-    result = _validate_chunk_shapes(tuple(chunk_shape))
+    chunk_shape = tuple(chunk_shape)
+    for dim_idx, dim_spec in enumerate(chunk_shape):
+        if not isinstance(dim_spec, int):
+            raise TypeError(
+                f"Dimension {dim_idx}: a regular chunk grid requires an integer chunk "
+                f"edge length, got {dim_spec!r}. Per-dimension chunk edge lists "
+                "require a rectilinear chunk grid."
+            )
+    result = _validate_chunk_shapes(chunk_shape)
     # Regular grids only have bare ints — cast is safe after validation
     return cast(tuple[int, ...], result)
 
@@ -429,12 +439,53 @@ def parse_chunk_grid(
     if isinstance(data, (RegularChunkGridMetadata, RectilinearChunkGridMetadata)):
         return data
 
-    name, _ = parse_named_configuration(data)
+    name, configuration = parse_named_configuration(data)
     if name == "regular":
+        chunk_shape = configuration.get("chunk_shape")
+        if isinstance(chunk_shape, list | tuple) and any(
+            isinstance(dim_spec, list | tuple) for dim_spec in chunk_shape
+        ):
+            return _parse_mixed_regular_chunk_grid(chunk_shape)
         return RegularChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
     if name == "rectilinear":
         return RectilinearChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
     raise ValueError(f"Unknown chunk grid name: {name!r}")
+
+
+def _parse_mixed_regular_chunk_grid(
+    chunk_shape: Sequence[JSON],
+) -> RectilinearChunkGridMetadata:
+    """Read a "regular" chunk grid whose chunk_shape contains edge lists.
+
+    zarr 3.2.0 and 3.2.1 wrote mixed chunk specs such as ``(2, (5, 10, 5))``
+    as ``{"name": "regular", "configuration": {"chunk_shape": [2, [5, 10, 5]]}}``
+    while laying the chunks out as a rectilinear grid. That metadata is
+    invalid, but the data is intact, so it is read as the rectilinear grid
+    it describes. See https://github.com/zarr-developers/zarr-python/issues/4374.
+    """
+    if not config.get("array.rectilinear_chunks"):
+        raise ValueError(
+            f"This array's chunk grid is named 'regular' but its chunk_shape "
+            f"{list(chunk_shape)!r} lists explicit chunk edges for some dimensions. "
+            "zarr 3.2.0 and 3.2.1 wrote rectilinear chunk grids this way by mistake. "
+            "Reading it as a rectilinear chunk grid requires enabling rectilinear chunks: "
+            "zarr.config.set({'array.rectilinear_chunks': True})"
+        )
+    warnings.warn(
+        f"This array's chunk grid is named 'regular' but its chunk_shape "
+        f"{list(chunk_shape)!r} lists explicit chunk edges for some dimensions. "
+        "zarr 3.2.0 and 3.2.1 wrote rectilinear chunk grids this way by mistake. "
+        "Reading it as a rectilinear chunk grid. Re-save the array metadata "
+        "(e.g. with `array.update_attributes({})`) to store a valid rectilinear chunk grid.",
+        ZarrUserWarning,
+        stacklevel=2,
+    )
+    return RectilinearChunkGridMetadata.from_dict(
+        {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": chunk_shape},  # type: ignore[typeddict-item]
+        }
+    )
 
 
 class ArrayMetadataJSON_V3(TypedDict, extra_items=AllowedExtraField):  # type: ignore[call-arg]
