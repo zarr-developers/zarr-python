@@ -33,6 +33,8 @@ RegularChunkGridMetadata = RegularChunkGridObject
 
 `chunk_shape` is required and has no default, so only the object form is
 valid; the short-hand-name form is not permitted by the spec for this grid.
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L528-L537 ("must be an object with the names name and configuration")
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564
 """
 
 __all__ = [
