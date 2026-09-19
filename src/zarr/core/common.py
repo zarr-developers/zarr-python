@@ -12,6 +12,7 @@ from typing import (
     Literal,
     NotRequired,
     TypedDict,
+    TypeGuard,
     cast,
     overload,
 )
@@ -276,7 +277,21 @@ def _default_zarr_format() -> ZarrFormat:
     return cast("ZarrFormat", int(zarr_config.get("default_zarr_format", 3)))
 
 
-def expand_rle(data: Sequence[int | list[int]]) -> list[int]:
+def declares_chunk_edges(value: object) -> TypeGuard[Iterable[Any]]:
+    """Whether a chunk specification element declares explicit chunk edge lengths.
+
+    True for any non-integer iterable, which is the form explicit edge lengths
+    take, and False for a single integer size. The test is structural rather
+    than an exact type check: edge lengths reach us as a list parsed from JSON,
+    as a tuple from a metadata dict built in Python, or as a numpy array, and
+    all three mean the same thing.
+    """
+    if isinstance(value, int | np.integer):
+        return False
+    return isinstance(value, Iterable) and not isinstance(value, str | bytes)
+
+
+def expand_rle(data: Iterable[int | Sequence[int]]) -> list[int]:
     """Expand a mixed array of bare integers and RLE pairs.
 
     Per the rectilinear chunk grid spec, each element can be:
@@ -285,18 +300,21 @@ def expand_rle(data: Sequence[int | list[int]]) -> list[int]:
     """
     result: list[int] = []
     for item in data:
-        if isinstance(item, (int, float)) and not isinstance(item, bool):
-            val = int(item)
-            if val < 1:
-                raise ValueError(f"Chunk edge length must be >= 1, got {val}")
-            result.append(val)
-        elif isinstance(item, list) and len(item) == 2:
-            size, count = int(item[0]), int(item[1])
+        if declares_chunk_edges(item):
+            pair = tuple(item)
+            if len(pair) != 2:
+                raise ValueError(f"RLE entries must be an integer or [size, count], got {item}")
+            size, count = int(pair[0]), int(pair[1])
             if size < 1:
                 raise ValueError(f"Chunk edge length must be >= 1, got {size}")
             if count < 1:
                 raise ValueError(f"RLE repeat count must be >= 1, got {count}")
             result.extend([size] * count)
+        elif isinstance(item, int | np.integer | float) and not isinstance(item, bool):
+            val = int(item)
+            if val < 1:
+                raise ValueError(f"Chunk edge length must be >= 1, got {val}")
+            result.append(val)
         else:
             raise ValueError(f"RLE entries must be an integer or [size, count], got {item}")
     return result

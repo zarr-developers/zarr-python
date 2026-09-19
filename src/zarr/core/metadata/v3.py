@@ -27,6 +27,7 @@ from zarr.core.common import (
     NamedConfig,
     NamedRequiredConfig,
     compress_rle,
+    declares_chunk_edges,
     expand_rle,
     parse_named_configuration,
     parse_shapelike,
@@ -245,14 +246,14 @@ def _validate_chunk_shapes(
     """
     result: list[int | tuple[int, ...]] = []
     for dim_idx, dim_spec in enumerate(chunk_shapes):
-        if isinstance(dim_spec, int):
+        if isinstance(dim_spec, int | np.integer):
             if dim_spec < 1:
                 raise ValueError(
                     f"Dimension {dim_idx}: integer chunk edge length must be >= 1, got {dim_spec}"
                 )
-            result.append(dim_spec)
+            result.append(int(dim_spec))
         else:
-            edges = tuple(dim_spec)
+            edges = tuple(int(edge) for edge in dim_spec)
             if not edges:
                 raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
             bad = [i for i, e in enumerate(edges) if e < 1]
@@ -380,15 +381,16 @@ class RectilinearChunkGridMetadata(Metadata):
         raw_shapes = configuration["chunk_shapes"]
         parsed: list[int | tuple[int, ...]] = []
         for dim_spec in raw_shapes:
-            if isinstance(dim_spec, int):
+            if declares_chunk_edges(dim_spec):
+                parsed.append(tuple(expand_rle(dim_spec)))
+            elif isinstance(dim_spec, int | np.integer):
                 if dim_spec < 1:
                     raise ValueError(f"Integer chunk edge length must be >= 1, got {dim_spec}")
-                parsed.append(dim_spec)
-            elif isinstance(dim_spec, list):
-                parsed.append(tuple(expand_rle(dim_spec)))
+                parsed.append(int(dim_spec))
             else:
                 raise TypeError(
-                    f"Invalid chunk_shapes entry: expected int or list, got {type(dim_spec)}"
+                    "Invalid chunk_shapes entry: expected an integer or a sequence of "
+                    f"chunk edge lengths, got {type(dim_spec)}"
                 )
         return cls(chunk_shapes=tuple(parsed))
 
@@ -444,8 +446,10 @@ def parse_chunk_grid(
     name, configuration = parse_named_configuration(data)
     if name == "regular":
         chunk_shape = configuration.get("chunk_shape")
-        if isinstance(chunk_shape, list | tuple) and any(
-            isinstance(dim_spec, list | tuple) for dim_spec in chunk_shape
+        # The outer call asks whether chunk_shape is an iterable at all, so a
+        # malformed scalar falls through to the regular parser's own error.
+        if declares_chunk_edges(chunk_shape) and any(
+            declares_chunk_edges(dim_spec) for dim_spec in chunk_shape
         ):
             return _parse_mixed_regular_chunk_grid(chunk_shape)
         return RegularChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
@@ -455,7 +459,7 @@ def parse_chunk_grid(
 
 
 def _parse_mixed_regular_chunk_grid(
-    chunk_shape: Sequence[JSON],
+    chunk_shape: Iterable[Any],
 ) -> RectilinearChunkGridMetadata:
     """Read a "regular" chunk grid whose chunk_shape contains edge lists.
 
@@ -465,8 +469,12 @@ def _parse_mixed_regular_chunk_grid(
     invalid, but the data is intact, so it is read as the rectilinear grid
     it describes. See https://github.com/zarr-developers/zarr-python/issues/4374.
     """
-    # Tuples arrive when the metadata dict was built in Python rather than parsed from JSON.
-    chunk_shapes = [list(d) if isinstance(d, tuple) else d for d in chunk_shape]
+    # Put the dimensions in the JSON forms the rectilinear parser reads: a
+    # metadata dict built in Python holds a tuple where JSON holds a list.
+    # Elements are left alone, so `from_dict` still reports a bad one.
+    chunk_shapes: list[Any] = [
+        list(dim_spec) if declares_chunk_edges(dim_spec) else dim_spec for dim_spec in chunk_shape
+    ]
     msg = (
         f"This array's chunk grid is named 'regular' but its chunk_shape {chunk_shapes!r} "
         "lists explicit chunk edges for some dimensions. zarr 3.2.0 and 3.2.1 wrote "
@@ -486,7 +494,7 @@ def _parse_mixed_regular_chunk_grid(
     return RectilinearChunkGridMetadata.from_dict(
         {
             "name": "rectilinear",
-            "configuration": {"kind": "inline", "chunk_shapes": chunk_shapes},  # type: ignore[typeddict-item]
+            "configuration": {"kind": "inline", "chunk_shapes": chunk_shapes},
         }
     )
 

@@ -175,6 +175,29 @@ def test_regular_chunk_grid_normalizes_ints(case: Expect[tuple[Any, ...], tuple[
     assert all(type(c) is int for c in grid.chunk_shape)
 
 
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(input=(2, (5, 10, 5)), output=(2, (5, 10, 5)), id="python_values"),
+        Expect(
+            input=(np.int64(2), np.array([5, 10, 5])), output=(2, (5, 10, 5)), id="numpy_values"
+        ),
+        Expect(input=(2, [5, 10, 5]), output=(2, (5, 10, 5)), id="list_edges"),
+    ],
+    ids=lambda case: case.id,
+)
+def test_rectilinear_chunk_grid_normalizes_ints(
+    case: Expect[tuple[Any, ...], tuple[int | tuple[int, ...], ...]],
+) -> None:
+    """A rectilinear chunk grid accepts any sequence of Python or numpy integers
+    as a dimension's edges and stores Python ints in tuples."""
+    with config.set({"array.rectilinear_chunks": True}):
+        grid = RectilinearChunkGridMetadata(chunk_shapes=case.input)
+        assert grid.chunk_shapes == case.output
+    flat = [e for dim in grid.chunk_shapes for e in (dim if isinstance(dim, tuple) else (dim,))]
+    assert all(type(e) is int for e in flat)
+
+
 def test_regular_chunk_grid_rejects_edge_lists() -> None:
     """A regular chunk grid only accepts integer chunk edge lengths."""
     with pytest.raises(TypeError, match="Dimension 1: a regular chunk grid requires an integer"):
@@ -217,6 +240,11 @@ def test_regular_chunk_grid_rejects_edge_lists() -> None:
             input=((6, 20), (2, (5, 10, 5))),
             output=(2, (5, 10, 5)),
             id="tuples_from_python",
+        ),
+        Expect(
+            input=((6, 20), [2, np.array([5, 10, 5])]),
+            output=(2, (5, 10, 5)),
+            id="numpy_array_edges",
         ),
     ],
     ids=lambda case: case.id,
