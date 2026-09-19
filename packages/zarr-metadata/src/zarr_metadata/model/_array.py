@@ -61,10 +61,14 @@ class ZarrV3NamedConfig:
     def to_json(self) -> ZarrV3MetadataFieldJSON:
         if not self.configuration and self.must_understand:
             return self.name
-        out: ZarrV3NamedConfigJSON = {"name": self.name}
-        if self.configuration:
-            # to_json output shares no mutable state with the model.
-            out["configuration"] = copy.deepcopy(self.configuration)
+        # `configuration` is ReadOnly, so it is set in the literal rather than
+        # assigned afterwards. to_json output shares no mutable state with the
+        # model.
+        out: ZarrV3NamedConfigJSON = (
+            {"name": self.name, "configuration": copy.deepcopy(self.configuration)}
+            if self.configuration
+            else {"name": self.name}
+        )
         if not self.must_understand:
             out["must_understand"] = False
         return out
@@ -465,7 +469,7 @@ class ZarrV2ArrayMetadata:
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV2ArrayMetadata:
-        zarray_raw = cast("object", load_store_json(mapping, ZARR_V2_ARRAY_METADATA_STORE_KEY))
+        zarray_raw = load_store_json(mapping, ZARR_V2_ARRAY_METADATA_STORE_KEY)
         if not isinstance(zarray_raw, Mapping):
             return cls.from_json(zarray_raw)
         zarray = cast("Mapping[str, object]", zarray_raw)
@@ -480,7 +484,7 @@ class ZarrV2ArrayMetadata:
                 ]
             )
         if ZARR_V2_ATTRIBUTES_STORE_KEY in mapping:
-            zattrs = cast("object", load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY))
+            zattrs = load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY)
             return cls.from_json({**zarray, "attributes": zattrs})
         return cls.from_json(zarray)
 

@@ -4,7 +4,7 @@ Gzip codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/gzip/index.html
 """
 
-from typing import Final, Literal
+from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -15,7 +15,7 @@ GzipCodecName = Literal["gzip"]
 """Literal type of the `name` field of the `gzip` codec."""
 
 
-class GzipCodecConfiguration(TypedDict):
+class GzipCodecConfiguration(TypedDict, closed=True):
     """
     Configuration for the Zarr v3 `gzip` codec.
 
@@ -32,11 +32,12 @@ class GzipCodecConfiguration(TypedDict):
     level: int
 
 
-class GzipCodecObject(TypedDict):
+class GzipCodecObject(TypedDict, closed=True):
     """`gzip` codec metadata in object form."""
 
     name: GzipCodecName
     configuration: GzipCodecConfiguration
+    must_understand: NotRequired[bool]
 
 
 GzipCodecMetadata = GzipCodecObject

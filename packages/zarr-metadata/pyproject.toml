@@ -95,6 +95,14 @@ include = [
 extend = "../../pyproject.toml"
 target-version = "py311"
 
+[tool.ruff.lint]
+# `Any` defeats the point of a package whose product is precise types, so it
+# is banned in annotations here rather than merely discouraged. Use `object`
+# for "any value" (the caller must narrow) and the document TypedDicts where
+# the shape is known; a genuinely dynamic annotation needs an explicit noqa
+# saying why.
+extend-select = ["ANN401"]
+
 [tool.pytest.ini_options]
 minversion = "7"
 testpaths = ["tests"]
