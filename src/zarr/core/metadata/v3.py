@@ -218,11 +218,13 @@ RectilinearChunkGridMetadataJSON = NamedRequiredConfig[
 def _parse_chunk_shape(chunk_shape: Iterable[int]) -> tuple[int, ...]:
     """Validate and normalize a regular chunk shape.
 
-    A regular chunk shape is a sequence of bare ints (one per dimension),
-    each of which must be >= 1. Per-dimension edge lists belong to a
-    rectilinear grid and are rejected here.
+    A regular chunk shape is one bare int per dimension, each >= 1. Lists of
+    chunk edge lengths belong to a rectilinear chunk grid and are rejected
+    here; `_validate_chunk_shapes` is the rectilinear counterpart. The two
+    grid kinds validate separately on purpose — sharing a validator is what
+    let a rectilinear chunk shape be stored as a regular grid (gh-4374).
     """
-    normalized: list[int] = []
+    parsed: list[int] = []
     for dim_idx, dim_spec in enumerate(chunk_shape):
         if not isinstance(dim_spec, int | np.integer):
             raise TypeError(
@@ -230,10 +232,10 @@ def _parse_chunk_shape(chunk_shape: Iterable[int]) -> tuple[int, ...]:
                 f"edge length, got {dim_spec!r}. Lists of chunk edge lengths belong "
                 "to a rectilinear chunk grid."
             )
-        normalized.append(int(dim_spec))
-    result = _validate_chunk_shapes(tuple(normalized))
-    # Regular grids only have bare ints — cast is safe after validation
-    return cast(tuple[int, ...], result)
+        if dim_spec < 1:
+            raise ValueError(f"Dimension {dim_idx}: chunk size must be >= 1, got {dim_spec}")
+        parsed.append(int(dim_spec))
+    return tuple(parsed)
 
 
 def _validate_chunk_shapes(
@@ -294,7 +296,8 @@ class RegularChunkGridMetadata(Metadata):
     def from_dict(cls, data: RegularChunkGridMetadataJSON) -> Self:  # type: ignore[override]
         parse_named_configuration(data, "regular")  # validate name
         configuration = data["configuration"]
-        return cls(chunk_shape=_parse_chunk_shape(configuration["chunk_shape"]))
+        # `__post_init__` parses, so this only has to hand over the dimensions.
+        return cls(chunk_shape=tuple(configuration["chunk_shape"]))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -384,8 +387,9 @@ class RectilinearChunkGridMetadata(Metadata):
             if declares_chunk_edges(dim_spec):
                 parsed.append(tuple(expand_rle(dim_spec)))
             elif isinstance(dim_spec, int | np.integer):
-                if dim_spec < 1:
-                    raise ValueError(f"Integer chunk edge length must be >= 1, got {dim_spec}")
+                # Range checks belong to `_validate_chunk_shapes`, which
+                # `__post_init__` runs over the result and which names the
+                # offending dimension.
                 parsed.append(int(dim_spec))
             else:
                 raise TypeError(

@@ -37,7 +37,7 @@ from zarr.errors import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
     from typing import Any
 
 
@@ -196,6 +196,29 @@ def test_rectilinear_chunk_grid_normalizes_ints(
         assert grid.chunk_shapes == case.output
     flat = [e for dim in grid.chunk_shapes for e in (dim if isinstance(dim, tuple) else (dim,))]
     assert all(type(e) is int for e in flat)
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(lambda shape: RegularChunkGridMetadata(chunk_shape=shape), id="constructor"),
+        pytest.param(
+            lambda shape: RegularChunkGridMetadata.from_dict(
+                {"name": "regular", "configuration": {"chunk_shape": list(shape)}}
+            ),
+            id="from_dict",
+        ),
+    ],
+)
+@pytest.mark.parametrize("chunk_shape", [(0, 2), (2, -1)], ids=["zero", "negative"])
+def test_regular_chunk_grid_rejects_nonpositive_chunk_size(
+    build: Callable[[tuple[int, ...]], RegularChunkGridMetadata], chunk_shape: tuple[int, ...]
+) -> None:
+    """A regular chunk size below 1 is rejected, naming the dimension, whether
+    the grid is built directly or parsed from stored metadata."""
+    dim = 0 if chunk_shape[0] < 1 else 1
+    with pytest.raises(ValueError, match=f"Dimension {dim}: chunk size must be >= 1"):
+        build(chunk_shape)
 
 
 def test_regular_chunk_grid_rejects_edge_lists() -> None:

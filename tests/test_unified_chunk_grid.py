@@ -624,6 +624,22 @@ def test_serialization_error_non_regular_chunk_shape() -> None:
         grid.chunk_shape  # noqa: B018
 
 
+@pytest.mark.parametrize("chunk_shapes", [[0, [5, 5]], [[5, 5], -1]], ids=["zero", "negative"])
+def test_rectilinear_from_dict_rejects_nonpositive_bare_int(chunk_shapes: list[Any]) -> None:
+    """A bare-int dimension below 1 is rejected by the grid's own validator, which
+    names the dimension, rather than by a duplicate check in `from_dict`."""
+    dim = 0 if isinstance(chunk_shapes[0], int) else 1
+    with pytest.raises(
+        ValueError, match=f"Dimension {dim}: integer chunk edge length must be >= 1"
+    ):
+        RectilinearChunkGridMetadata.from_dict(
+            {
+                "name": "rectilinear",
+                "configuration": {"kind": "inline", "chunk_shapes": chunk_shapes},
+            }
+        )
+
+
 def test_serialization_error_zero_extent_rectilinear() -> None:
     """RectilinearChunkGridMetadata rejects empty edge tuples."""
     with pytest.raises(ValueError, match="has no chunk edges"):
