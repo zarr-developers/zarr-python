@@ -42,7 +42,7 @@ from zarr.core.common import (
 )
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.json_parse import parse_field
-from zarr.core.metadata.common import RESAVE_METADATA_HINT, parse_attributes
+from zarr.core.metadata.common import parse_attributes, parse_stored_chunk_shape
 
 
 class ArrayV2MetadataDict(TypedDict):
@@ -88,32 +88,11 @@ class ArrayV2Metadata(Metadata):
         Metadata for a Zarr format 2 array.
         """
         shape_parsed = parse_shapelike(shape)
-        chunks_parsed = parse_shapelike(chunks)
-        # Same invariant as the Zarr format 3 chunk grid metadata: every chunk edge
-        # length is at least 1. zarr-python 2.18.7, and 3.x before 3.4, can write
-        # `chunks: [0]` for a zero-length axis (e.g. `chunks=False`, `-1` or `(0,)`).
-        # Normalize that empty axis to chunk size 1 so it can use the positive-size
-        # grid model. This is a compatibility policy for legacy metadata, not a
-        # statement about every historical reader. A zero chunk size on a
-        # positive-length axis is rejected; metadata alone cannot establish
-        # whether the store contains chunk payloads.
-        normalized_chunks: list[int] = []
-        for dim_idx, (extent, chunk) in enumerate(zip(shape_parsed, chunks_parsed, strict=False)):
-            if chunk < 1:
-                if chunk < 0 or extent != 0:
-                    raise ValueError(
-                        f"Dimension {dim_idx}: chunk edge length must be >= 1, got {chunk}"
-                    )
-                warnings.warn(
-                    f"Dimension {dim_idx}: chunk edge length 0 on a zero-length axis "
-                    "(as written by zarr-python 2.x, and by 3.x before 3.4) is treated "
-                    f"as 1. {RESAVE_METADATA_HINT}",
-                    ZarrUserWarning,
-                    stacklevel=2,
-                )
-                chunk = 1
-            normalized_chunks.append(chunk)
-        chunks_parsed = tuple(normalized_chunks) + chunks_parsed[len(shape_parsed) :]
+        chunks_parsed = parse_stored_chunk_shape(
+            parse_shapelike(chunks),
+            shape_parsed,
+            legacy_writers="zarr-python 2.x, and by 3.x before 3.4",
+        )
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
@@ -136,7 +115,6 @@ class ArrayV2Metadata(Metadata):
         object.__setattr__(self, "attributes", attributes_parsed)
 
         # ensure that the metadata document is consistent
-        _ = parse_metadata(self)
 
     @property
     def ndim(self) -> int:
@@ -346,16 +324,6 @@ def parse_compressor(data: object) -> Numcodec | None:
         return get_numcodec(data)  # type: ignore[arg-type]
     msg = f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
     raise ValueError(msg)
-
-
-def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
-    if (l_chunks := len(data.chunks)) != (l_shape := len(data.shape)):
-        msg = (
-            f"The `shape` and `chunks` attributes must have the same length. "
-            f"`chunks` has length {l_chunks}, but `shape` has length {l_shape}."
-        )
-        raise ValueError(msg)
-    return data
 
 
 def get_object_codec_id(maybe_object_codecs: Sequence[JSON]) -> str | None:

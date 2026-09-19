@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import json
-import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
 
-import numpy as np
 from typing_extensions import TypedDict
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
@@ -37,8 +35,8 @@ from zarr.core.config import config
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field
-from zarr.core.metadata.common import RESAVE_METADATA_HINT, parse_attributes
-from zarr.errors import MetadataValidationError, NodeTypeValidationError, ZarrUserWarning
+from zarr.core.metadata.common import parse_attributes, parse_stored_chunk_shape
+from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
 
 if TYPE_CHECKING:
@@ -482,17 +480,12 @@ def _read_legacy_zero_chunk_sizes(
     chunk_grid: dict[str, JSON] | ChunkGridMetadata | NamedConfig[str, Any],
     shape: tuple[int, ...],
 ) -> dict[str, JSON] | ChunkGridMetadata | NamedConfig[str, Any]:
-    """Read a stored regular chunk size of 0 on a zero-length axis as 1.
+    """Check a stored regular grid's chunk shape against the array shape.
 
-    zarr-python 3.0 and 3.1 stored `chunk_shape: [0]` for an array created with
-    a zero-length axis and `chunks=(0,)` or `chunks=False` (3.0 stored `false`
-    for the latter). Chunk sizes must be at least 1, and a zero-length axis has
-    no chunks for the size to describe until the array grows, so the size is
-    read as 1 with a warning. This is the policy `ArrayV2Metadata` applies to
-    Zarr format 2 metadata. It needs the array shape, which the chunk grid
-    metadata does not carry, so it runs here rather than in the grid parser.
-    A zero chunk size on a positive-length axis is left for that parser to
-    reject.
+    zarr-python 3.0 and 3.1 stored `chunk_shape: [0]` (and 3.0 `[false]`) for
+    an array created with a zero-length axis; `parse_stored_chunk_shape`
+    decides what that means. It needs the array shape, which chunk grid
+    metadata does not carry, so this runs here rather than in the grid parser.
     """
     if not isinstance(chunk_grid, Mapping) or chunk_grid.get("name") != "regular":
         return chunk_grid
@@ -502,25 +495,10 @@ def _read_legacy_zero_chunk_sizes(
     chunk_shape = configuration.get("chunk_shape")
     if not isinstance(chunk_shape, Sequence) or isinstance(chunk_shape, str):
         return chunk_grid
-    if len(chunk_shape) != len(shape):
-        return chunk_grid  # the dimensionality check reports this
-    normalized = list(chunk_shape)
-    changed = False
-    for dim_idx, (size, extent) in enumerate(zip(chunk_shape, shape, strict=True)):
-        if isinstance(size, int | np.integer) and size == 0 and extent == 0:
-            warnings.warn(
-                f"Dimension {dim_idx}: chunk edge length {size!r} on a zero-length axis "
-                "(as written by zarr-python 3.0 and 3.1) is treated as 1. "
-                f"{RESAVE_METADATA_HINT}",
-                ZarrUserWarning,
-                stacklevel=2,
-            )
-            normalized[dim_idx] = 1
-            changed = True
-    if not changed:
-        return chunk_grid
-    corrected: dict[str, JSON] = {**configuration, "chunk_shape": normalized}
-    return {"name": "regular", "configuration": corrected}
+    parsed = parse_stored_chunk_shape(chunk_shape, shape, legacy_writers="zarr-python 3.0 and 3.1")
+    corrected: dict[str, Any] = dict(chunk_grid)
+    corrected["configuration"] = {**configuration, "chunk_shape": list(parsed)}
+    return corrected
 
 
 @dataclass(frozen=True, kw_only=True)
