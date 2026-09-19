@@ -489,6 +489,8 @@ def test_chunk_grid_iter() -> None:
     [
         ([[10, 3]], [10, 10, 10]),
         ([[10, 2], [20, 1]], [10, 10, 20]),
+        pytest.param([(10, 3)], [10, 10, 10], id="tuple-pair"),
+        pytest.param([np.int64(10), np.array([20, 2])], [10, 20, 20], id="numpy-values"),
     ],
 )
 def test_rle_expand(compressed: list[Any], expected: list[int]) -> None:
@@ -526,6 +528,8 @@ def test_rle_roundtrip() -> None:
         ([[-10, 2]], "Chunk edge length must be >= 1"),
         ([[5, 0]], "RLE repeat count must be >= 1"),
         ([[5, -1]], "RLE repeat count must be >= 1"),
+        ([(5, 2, 1)], "RLE entries must be an integer or"),
+        (["5"], "RLE entries must be an integer or"),
     ],
     ids=[
         "zero-edge",
@@ -534,6 +538,8 @@ def test_rle_roundtrip() -> None:
         "negative-rle-size",
         "zero-rle-count",
         "negative-rle-count",
+        "rle-pair-wrong-length",
+        "string-entry",
     ],
 )
 def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
@@ -616,6 +622,22 @@ def test_serialization_error_non_regular_chunk_shape() -> None:
     grid = ChunkGrid.from_sizes((60, 100), [[10, 20, 30], [25, 25, 25, 25]])
     with pytest.raises(ValueError, match="only available for regular"):
         grid.chunk_shape  # noqa: B018
+
+
+@pytest.mark.parametrize("chunk_shapes", [[0, [5, 5]], [[5, 5], -1]], ids=["zero", "negative"])
+def test_rectilinear_from_dict_rejects_nonpositive_bare_int(chunk_shapes: list[Any]) -> None:
+    """A bare-int dimension below 1 is rejected by the grid's own validator, which
+    names the dimension, rather than by a duplicate check in `from_dict`."""
+    dim = 0 if isinstance(chunk_shapes[0], int) else 1
+    with pytest.raises(
+        ValueError, match=f"Dimension {dim}: integer chunk edge length must be >= 1"
+    ):
+        RectilinearChunkGridMetadata.from_dict(
+            {
+                "name": "rectilinear",
+                "configuration": {"kind": "inline", "chunk_shapes": chunk_shapes},
+            }
+        )
 
 
 def test_serialization_error_zero_extent_rectilinear() -> None:
@@ -3002,15 +3024,57 @@ def test_iter_chunk_regions_rectilinear() -> None:
             },
             (4, (10, 20)),
         ),
+        # A metadata dict built in Python may hold tuples and numpy values
+        # where parsed JSON holds lists and ints.
+        pytest.param(
+            {
+                "name": "rectilinear",
+                "configuration": {"kind": "inline", "chunk_shapes": (4, (10, 20))},
+            },
+            (4, (10, 20)),
+            id="tuple-dims",
+        ),
+        pytest.param(
+            {
+                "name": "rectilinear",
+                "configuration": {"kind": "inline", "chunk_shapes": [((4, 3),), [10, 20]]},
+            },
+            ((4, 4, 4), (10, 20)),
+            id="tuple-rle-pair",
+        ),
+        pytest.param(
+            {
+                "name": "rectilinear",
+                "configuration": {
+                    "kind": "inline",
+                    "chunk_shapes": [np.int64(4), np.array([10, 20]), [np.array([5, 2])]],
+                },
+            },
+            (4, (10, 20), (5, 5)),
+            id="numpy-values",
+        ),
     ],
 )
 def test_rectilinear_from_dict(
     json_input: RectilinearChunkGridMetadataJSON,
     expected_chunk_shapes: tuple[int | tuple[int, ...], ...],
 ) -> None:
-    """RectilinearChunkGridMetadata.from_dict correctly parses all spec forms."""
+    """RectilinearChunkGridMetadata.from_dict correctly parses all spec forms,
+    whatever sequence type holds a dimension's edges, and stores plain ints."""
     grid = RectilinearChunkGridMetadata.from_dict(json_input)
     assert grid.chunk_shapes == expected_chunk_shapes
+    flat = [e for dim in grid.chunk_shapes for e in (dim if isinstance(dim, tuple) else (dim,))]
+    assert all(type(e) is int for e in flat)
+
+
+@pytest.mark.parametrize("dim_spec", [4.5, None, "10"], ids=["float", "none", "string"])
+def test_rectilinear_from_dict_rejects_invalid_dim_spec(dim_spec: Any) -> None:
+    """A dimension that is neither an integer nor a sequence of edges is rejected.
+    A string is iterable but is not a sequence of edges."""
+    with pytest.raises(TypeError, match="expected an integer or a sequence of chunk edge lengths"):
+        RectilinearChunkGridMetadata.from_dict(
+            {"name": "rectilinear", "configuration": {"kind": "inline", "chunk_shapes": [dim_spec]}}
+        )
 
 
 @pytest.mark.parametrize(

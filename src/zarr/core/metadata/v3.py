@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
 
+import numpy as np
 from typing_extensions import TypedDict
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
@@ -25,6 +27,7 @@ from zarr.core.common import (
     NamedConfig,
     NamedRequiredConfig,
     compress_rle,
+    declares_chunk_edges,
     expand_rle,
     parse_named_configuration,
     parse_shapelike,
@@ -36,7 +39,7 @@ from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
-from zarr.errors import MetadataValidationError, NodeTypeValidationError
+from zarr.errors import MetadataValidationError, NodeTypeValidationError, ZarrUserWarning
 from zarr.registry import get_codec_class
 
 if TYPE_CHECKING:
@@ -215,12 +218,24 @@ RectilinearChunkGridMetadataJSON = NamedRequiredConfig[
 def _parse_chunk_shape(chunk_shape: Iterable[int]) -> tuple[int, ...]:
     """Validate and normalize a regular chunk shape.
 
-    Delegates to ``_validate_chunk_shapes`` — a regular chunk shape is just
-    a sequence of bare ints (one per dimension), each of which must be >= 1.
+    A regular chunk shape is one bare int per dimension, each >= 1. Lists of
+    chunk edge lengths belong to a rectilinear chunk grid and are rejected
+    here; `_validate_chunk_shapes` is the rectilinear counterpart. The two
+    grid kinds validate separately on purpose — sharing a validator is what
+    let a rectilinear chunk shape be stored as a regular grid (gh-4374).
     """
-    result = _validate_chunk_shapes(tuple(chunk_shape))
-    # Regular grids only have bare ints — cast is safe after validation
-    return cast(tuple[int, ...], result)
+    parsed: list[int] = []
+    for dim_idx, dim_spec in enumerate(chunk_shape):
+        if not isinstance(dim_spec, int | np.integer):
+            raise TypeError(
+                f"Dimension {dim_idx}: a regular chunk grid requires an integer chunk "
+                f"edge length, got {dim_spec!r}. Lists of chunk edge lengths belong "
+                "to a rectilinear chunk grid."
+            )
+        if dim_spec < 1:
+            raise ValueError(f"Dimension {dim_idx}: chunk size must be >= 1, got {dim_spec}")
+        parsed.append(int(dim_spec))
+    return tuple(parsed)
 
 
 def _validate_chunk_shapes(
@@ -233,14 +248,14 @@ def _validate_chunk_shapes(
     """
     result: list[int | tuple[int, ...]] = []
     for dim_idx, dim_spec in enumerate(chunk_shapes):
-        if isinstance(dim_spec, int):
+        if isinstance(dim_spec, int | np.integer):
             if dim_spec < 1:
                 raise ValueError(
                     f"Dimension {dim_idx}: integer chunk edge length must be >= 1, got {dim_spec}"
                 )
-            result.append(dim_spec)
+            result.append(int(dim_spec))
         else:
-            edges = tuple(dim_spec)
+            edges = tuple(int(edge) for edge in dim_spec)
             if not edges:
                 raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
             bad = [i for i, e in enumerate(edges) if e < 1]
@@ -281,7 +296,8 @@ class RegularChunkGridMetadata(Metadata):
     def from_dict(cls, data: RegularChunkGridMetadataJSON) -> Self:  # type: ignore[override]
         parse_named_configuration(data, "regular")  # validate name
         configuration = data["configuration"]
-        return cls(chunk_shape=_parse_chunk_shape(configuration["chunk_shape"]))
+        # `__post_init__` parses, so this only has to hand over the dimensions.
+        return cls(chunk_shape=tuple(configuration["chunk_shape"]))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -368,15 +384,17 @@ class RectilinearChunkGridMetadata(Metadata):
         raw_shapes = configuration["chunk_shapes"]
         parsed: list[int | tuple[int, ...]] = []
         for dim_spec in raw_shapes:
-            if isinstance(dim_spec, int):
-                if dim_spec < 1:
-                    raise ValueError(f"Integer chunk edge length must be >= 1, got {dim_spec}")
-                parsed.append(dim_spec)
-            elif isinstance(dim_spec, list):
+            if declares_chunk_edges(dim_spec):
                 parsed.append(tuple(expand_rle(dim_spec)))
+            elif isinstance(dim_spec, int | np.integer):
+                # Range checks belong to `_validate_chunk_shapes`, which
+                # `__post_init__` runs over the result and which names the
+                # offending dimension.
+                parsed.append(int(dim_spec))
             else:
                 raise TypeError(
-                    f"Invalid chunk_shapes entry: expected int or list, got {type(dim_spec)}"
+                    "Invalid chunk_shapes entry: expected an integer or a sequence of "
+                    f"chunk edge lengths, got {type(dim_spec)}"
                 )
         return cls(chunk_shapes=tuple(parsed))
 
@@ -429,12 +447,60 @@ def parse_chunk_grid(
     if isinstance(data, (RegularChunkGridMetadata, RectilinearChunkGridMetadata)):
         return data
 
-    name, _ = parse_named_configuration(data)
+    name, configuration = parse_named_configuration(data)
     if name == "regular":
+        chunk_shape = configuration.get("chunk_shape")
+        # The outer call asks whether chunk_shape is an iterable at all, so a
+        # malformed scalar falls through to the regular parser's own error.
+        if declares_chunk_edges(chunk_shape) and any(
+            declares_chunk_edges(dim_spec) for dim_spec in chunk_shape
+        ):
+            return _parse_mixed_regular_chunk_grid(chunk_shape)
         return RegularChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
     if name == "rectilinear":
         return RectilinearChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
     raise ValueError(f"Unknown chunk grid name: {name!r}")
+
+
+def _parse_mixed_regular_chunk_grid(
+    chunk_shape: Iterable[Any],
+) -> RectilinearChunkGridMetadata:
+    """Read a "regular" chunk grid whose chunk_shape contains edge lists.
+
+    zarr 3.2.0 and 3.2.1 wrote mixed chunk specs such as ``(2, (5, 10, 5))``
+    as ``{"name": "regular", "configuration": {"chunk_shape": [2, [5, 10, 5]]}}``
+    while laying the chunks out as a rectilinear grid. That metadata is
+    invalid, but the data is intact, so it is read as the rectilinear grid
+    it describes. See https://github.com/zarr-developers/zarr-python/issues/4374.
+    """
+    # Put the dimensions in the JSON forms the rectilinear parser reads: a
+    # metadata dict built in Python holds a tuple where JSON holds a list.
+    # Elements are left alone, so `from_dict` still reports a bad one.
+    chunk_shapes: list[Any] = [
+        list(dim_spec) if declares_chunk_edges(dim_spec) else dim_spec for dim_spec in chunk_shape
+    ]
+    msg = (
+        f"This array's chunk grid is named 'regular' but its chunk_shape {chunk_shapes!r} "
+        "lists explicit chunk edges for some dimensions. zarr 3.2.0 and 3.2.1 wrote "
+        "rectilinear chunk grids this way by mistake. "
+    )
+    if not config.get("array.rectilinear_chunks"):
+        raise ValueError(
+            msg + "Reading it as a rectilinear chunk grid requires enabling rectilinear chunks: "
+            "zarr.config.set({'array.rectilinear_chunks': True})"
+        )
+    warnings.warn(
+        msg + "Reading it as a rectilinear chunk grid. Re-save the array metadata "
+        "(e.g. with `array.update_attributes({})`) to store a valid rectilinear chunk grid.",
+        ZarrUserWarning,
+        stacklevel=2,
+    )
+    return RectilinearChunkGridMetadata.from_dict(
+        {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": chunk_shapes},
+        }
+    )
 
 
 class ArrayMetadataJSON_V3(TypedDict, extra_items=AllowedExtraField):  # type: ignore[call-arg]
