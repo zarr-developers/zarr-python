@@ -463,3 +463,35 @@ def test_group_metadata_to_dict_consolidated(attributes: dict[str, Any] | None) 
             },
         },
     }
+
+
+@pytest.mark.parametrize(
+    ("shape", "chunk_shape", "expected"),
+    [
+        ((0,), [0], (1,)),
+        ((4, 0), [4, 0], (4, 1)),
+        ((0, 0), [0, 0], (1, 1)),
+        ((0,), [False], (1,)),
+    ],
+    ids=["1d", "one-empty-axis", "all-empty-axes", "json-false"],
+)
+def test_zero_chunk_size_on_empty_axis_normalized(
+    shape: tuple[int, ...], chunk_shape: list[Any], expected: tuple[int, ...]
+) -> None:
+    """A stored regular chunk size of 0 on a zero-length axis is read as 1, with a warning.
+
+    zarr-python 3.0 and 3.1 wrote this for an array created with a zero-length
+    axis; 3.0 wrote JSON `false` for `chunks=False`. This is the Zarr format 3
+    counterpart of the policy `ArrayV2Metadata` applies.
+    """
+    from zarr.core.metadata.v3 import RegularChunkGridMetadata
+    from zarr.errors import ZarrUserWarning
+
+    d = minimal_metadata_dict_v3(
+        shape=shape,
+        chunk_grid={"name": "regular", "configuration": {"chunk_shape": chunk_shape}},
+    )
+    with pytest.warns(ZarrUserWarning, match="zero-length axis"):
+        meta = ArrayV3Metadata.from_dict(d)  # type: ignore[arg-type]
+    assert isinstance(meta.chunk_grid, RegularChunkGridMetadata)
+    assert meta.chunk_grid.chunk_shape == expected

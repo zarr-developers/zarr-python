@@ -1,4 +1,7 @@
 import contextlib
+import json
+import warnings
+from pathlib import Path
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -539,6 +542,62 @@ def test_rectilinear_zero_extent_matches_resize() -> None:
         np.testing.assert_array_equal(created[...], np.arange(3))
         np.testing.assert_array_equal(resized[...], np.arange(3))
         assert created.write_chunk_sizes == resized.write_chunk_sizes == ((2, 1),)
+
+
+def _store_legacy_zero_chunk(path: Any, zarr_format: Literal[2, 3], stored: Any) -> None:
+    """Rewrite an array's stored chunk size to *stored*, as older zarr-python did."""
+    doc_name = ".zarray" if zarr_format == 2 else "zarr.json"
+    doc_path = path / doc_name
+    doc = json.loads(doc_path.read_text())
+    if zarr_format == 2:
+        doc["chunks"] = [stored]
+    else:
+        doc["chunk_grid"]["configuration"]["chunk_shape"] = [stored]
+    doc_path.write_text(json.dumps(doc))
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("stored", [0, False], ids=["zero", "false"])
+def test_legacy_zero_chunk_on_empty_axis_round_trip(
+    tmp_path: Path, zarr_format: Literal[2, 3], stored: Any
+) -> None:
+    """An empty array whose stored chunk size is 0 opens, appends without losing
+    data, and re-saves as a valid chunk size.
+
+    zarr-python wrote such metadata for an empty array until 3.4: Zarr format 2
+    through 3.3, and Zarr format 3 in 3.0 and 3.1, which also wrote JSON `false`
+    for `chunks=False`. Appending to one of these arrays used to report success
+    while writing no chunk, so the data read back as the fill value.
+    """
+    path = tmp_path / "legacy.zarr"
+    zarr.create_array(store=path, shape=(0,), chunks=(4,), dtype="int64", zarr_format=zarr_format)
+    _store_legacy_zero_chunk(path, zarr_format, stored)
+
+    with pytest.warns(ZarrUserWarning, match="zero-length axis"):
+        arr = zarr.open_array(store=path, mode="a")
+    assert arr.chunks == (1,)
+
+    arr.append(np.arange(3, dtype="int64"))
+    np.testing.assert_array_equal(zarr.open_array(store=path)[...], np.arange(3))
+
+    # The warning says to do this; it must leave metadata that reopens cleanly.
+    arr.update_attributes({})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ZarrUserWarning)
+        reopened = zarr.open_array(store=path)
+    assert reopened.chunks == (1,)
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_stored_zero_chunk_on_positive_axis_rejected(
+    tmp_path: Path, zarr_format: Literal[2, 3]
+) -> None:
+    """A stored chunk size of 0 is only tolerated on a zero-length axis."""
+    path = tmp_path / "bad.zarr"
+    zarr.create_array(store=path, shape=(5,), chunks=(4,), dtype="int64", zarr_format=zarr_format)
+    _store_legacy_zero_chunk(path, zarr_format, 0)
+    with pytest.raises(ValueError, match="must be >= 1"):
+        zarr.open_array(store=path)
 
 
 def test_normalize_chunks_1d_zero_span_accepts_any_edges() -> None:

@@ -42,7 +42,7 @@ from zarr.core.common import (
 )
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.json_parse import parse_field
-from zarr.core.metadata.common import parse_attributes
+from zarr.core.metadata.common import RESAVE_METADATA_HINT, parse_attributes
 
 
 class ArrayV2MetadataDict(TypedDict):
@@ -90,8 +90,8 @@ class ArrayV2Metadata(Metadata):
         shape_parsed = parse_shapelike(shape)
         chunks_parsed = parse_shapelike(chunks)
         # Same invariant as the Zarr format 3 chunk grid metadata: every chunk edge
-        # length is at least 1. zarr-python 2.18.7 can write `chunks: [0]` for
-        # a zero-length axis created with `chunks=False`, `-1` or `(0,)`.
+        # length is at least 1. zarr-python 2.18.7, and 3.x before 3.4, can write
+        # `chunks: [0]` for a zero-length axis (e.g. `chunks=False`, `-1` or `(0,)`).
         # Normalize that empty axis to chunk size 1 so it can use the positive-size
         # grid model. This is a compatibility policy for legacy metadata, not a
         # statement about every historical reader. A zero chunk size on a
@@ -106,7 +106,8 @@ class ArrayV2Metadata(Metadata):
                     )
                 warnings.warn(
                     f"Dimension {dim_idx}: chunk edge length 0 on a zero-length axis "
-                    "(as written by zarr-python 2.x) is treated as 1.",
+                    "(as written by zarr-python 2.x, and by 3.x before 3.4) is treated "
+                    f"as 1. {RESAVE_METADATA_HINT}",
                     ZarrUserWarning,
                     stacklevel=2,
                 )
