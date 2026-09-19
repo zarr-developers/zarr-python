@@ -1345,7 +1345,7 @@ def test_v2_filters_may_be_empty() -> None:
     doc = dict(ZarrV2ArrayMetadata.create_default().to_json())
     doc["filters"] = ()
 
-    assert validate_array_metadata_v2(doc) == []
+    assert validate_array_metadata_v2(doc) == ()
     assert ZarrV2ArrayMetadata.from_key_value({".zarray": json.dumps(doc).encode()}).filters == ()
 
 
@@ -1399,7 +1399,7 @@ def test_array_v2_ignores_unknown_document_member() -> None:
     """
     doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"unexpected": 1}
 
-    assert validate_array_metadata_v2(doc) == []
+    assert validate_array_metadata_v2(doc) == ()
     assert "unexpected" not in ZarrV2ArrayMetadata.from_json(doc).to_json()
 
 
