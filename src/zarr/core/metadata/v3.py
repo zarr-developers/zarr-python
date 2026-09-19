@@ -5,6 +5,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
 
+import numpy as np
 from typing_extensions import TypedDict
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
@@ -35,7 +36,7 @@ from zarr.core.config import config
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field
-from zarr.core.metadata.common import parse_attributes, parse_stored_chunk_shape
+from zarr.core.metadata.common import parse_attributes, parse_stored_regular_chunk_shape
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
 
@@ -476,16 +477,31 @@ ARRAY_METADATA_KEYS: Final[set[str]] = {
 }
 
 
-def _read_legacy_zero_chunk_sizes(
+def _is_regular_chunk_shape(value: object) -> TypeGuard[Sequence[int]]:
+    """Whether a stored `chunk_shape` is a regular chunk shape: a sequence of integers.
+
+    JSON `false` counts, because `bool` is an integer type.
+    """
+    return (
+        isinstance(value, Sequence)
+        and not isinstance(value, str)
+        and all(isinstance(size, int | np.integer) for size in value)
+    )
+
+
+def _parse_stored_regular_chunk_grid(
     chunk_grid: dict[str, JSON] | ChunkGridMetadata | NamedConfig[str, Any],
     shape: tuple[int, ...],
 ) -> dict[str, JSON] | ChunkGridMetadata | NamedConfig[str, Any]:
-    """Check a stored regular grid's chunk shape against the array shape.
+    """Check a stored regular chunk grid's chunk shape against the array shape.
 
-    zarr-python 3.0 and 3.1 stored `chunk_shape: [0]` (and 3.0 `[false]`) for
-    an array created with a zero-length axis; `parse_stored_chunk_shape`
-    decides what that means. It needs the array shape, which chunk grid
-    metadata does not carry, so this runs here rather than in the grid parser.
+    Only a `regular` grid whose `chunk_shape` is all integers is a regular chunk
+    shape, and only that is handed to `parse_stored_regular_chunk_shape`.
+    Anything else is not a regular chunk shape and is left for the chunk grid
+    parser: other grids define their own chunk semantics. zarr-python 3.0 and
+    3.1 stored `chunk_shape: [0]` (and 3.0 `[false]`) for an array created with
+    a zero-length axis. This runs here rather than in the grid parser because
+    it needs the array shape, which chunk grid metadata does not carry.
     """
     if not isinstance(chunk_grid, Mapping) or chunk_grid.get("name") != "regular":
         return chunk_grid
@@ -493,9 +509,11 @@ def _read_legacy_zero_chunk_sizes(
     if not isinstance(configuration, Mapping):
         return chunk_grid
     chunk_shape = configuration.get("chunk_shape")
-    if not isinstance(chunk_shape, Sequence) or isinstance(chunk_shape, str):
+    if not _is_regular_chunk_shape(chunk_shape):
         return chunk_grid
-    parsed = parse_stored_chunk_shape(chunk_shape, shape, legacy_writers="zarr-python 3.0 and 3.1")
+    parsed = parse_stored_regular_chunk_shape(
+        chunk_shape, shape, legacy_writers="zarr-python 3.0 and 3.1"
+    )
     corrected: dict[str, Any] = dict(chunk_grid)
     corrected["configuration"] = {**configuration, "chunk_shape": list(parsed)}
     return corrected
@@ -536,7 +554,7 @@ class ArrayV3Metadata(Metadata):
 
         shape_parsed = parse_shapelike(shape)
         chunk_grid_parsed = parse_chunk_grid(
-            _read_legacy_zero_chunk_sizes(chunk_grid, shape_parsed)
+            _parse_stored_regular_chunk_grid(chunk_grid, shape_parsed)
         )
         chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)

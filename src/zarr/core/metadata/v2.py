@@ -42,7 +42,7 @@ from zarr.core.common import (
 )
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.json_parse import parse_field
-from zarr.core.metadata.common import parse_attributes, parse_stored_chunk_shape
+from zarr.core.metadata.common import parse_attributes, parse_stored_regular_chunk_shape
 
 
 class ArrayV2MetadataDict(TypedDict):
@@ -88,7 +88,7 @@ class ArrayV2Metadata(Metadata):
         Metadata for a Zarr format 2 array.
         """
         shape_parsed = parse_shapelike(shape)
-        chunks_parsed = parse_stored_chunk_shape(
+        chunks_parsed = parse_stored_regular_chunk_shape(
             parse_shapelike(chunks),
             shape_parsed,
             legacy_writers="zarr-python 2.x, and by 3.x before 3.4",
