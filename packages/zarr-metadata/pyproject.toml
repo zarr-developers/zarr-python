@@ -47,7 +47,7 @@ Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/z
 Documentation = "https://zarr-metadata.readthedocs.io/"
 
 [dependency-groups]
-test = ["pytest", "pydantic>=2.13", "jsonschema"]
+test = ["pytest", "pydantic>=2.13", "jsonschema", "hypothesis"]
 docs = [
     # Pins match the zarr-python docs environment in the repo-root
     # pyproject.toml so the two sites render with the same toolchain.
@@ -94,6 +94,14 @@ include = [
 [tool.ruff]
 extend = "../../pyproject.toml"
 target-version = "py311"
+
+[tool.ruff.lint]
+# `Any` defeats the point of a package whose product is precise types, so it
+# is banned in annotations here rather than merely discouraged. Use `object`
+# for "any value" (the caller must narrow) and the document TypedDicts where
+# the shape is known; a genuinely dynamic annotation needs an explicit noqa
+# saying why.
+extend-select = ["ANN401"]
 
 [tool.pytest.ini_options]
 minversion = "7"

@@ -71,11 +71,19 @@ members that the strict model parser rejects.
 
 The model validators enforce the declared document structure and a small set
 of context-free consistency rules, including fixed format literals, finite
-JSON numbers, non-negative dimensions, non-empty v3 codec pipelines, and one
-`dimension_names` entry per array dimension. They do not interpret extension
-names or configurations, resolve codec pipelines, or decide whether a data
-type, chunk grid, codec, or storage transformer is supported. Those decisions
-belong to consumer implementations.
+JSON numbers, non-negative dimensions, and non-empty v3 codec pipelines.
+They do not interpret extension names or configurations.
+
+The composition rules (`zarr_metadata.rules`) judge the document as a whole:
+fill values against data types, codec pipeline ordering, chunk-grid
+geometry against `shape`, one `dimension_names` entry per array dimension,
+and the canonical configuration shapes of the codecs, chunk grids, chunk
+key encodings, and data types this package defines. Unknown extension names
+are left unjudged. The rules model canonical documents and are deliberately
+stricter than any given implementation: an implementation may coerce
+ambiguous input as it sees fit and then validate the canonical result.
+Nothing here decides whether a data type, chunk grid, codec, or storage
+transformer is *supported*; that belongs to consumer implementations.
 
 ## Scope
 

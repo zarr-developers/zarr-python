@@ -6,13 +6,17 @@ not depend on it, so this module is never imported by `zarr_metadata` itself.
 Each exported name is an `Annotated` field type over the corresponding core
 model class — the instances ARE the core classes, so values interoperate
 freely with non-pydantic code (equality, isinstance, nesting). Validation
-delegates to the library: a raw document routes through `from_json` (the
-single source of truth for structural validation and normalization, so
-pydantic's field-level coercion can never bypass it), an existing model
-instance passes through unchanged, and serialization emits the canonical
-document via `to_json`. `MetadataValidationError` subclasses `ValueError`,
-so a failed parse surfaces as a pydantic `ValidationError` carrying the
-loc-annotated problem messages.
+delegates to the library: a raw document is judged by `zarr_metadata.rules`
+(structure and composition together) and then normalized through
+`from_json`, so pydantic's field-level coercion can never bypass either
+layer; an existing model instance passes through unchanged, and
+serialization emits the canonical document via `to_json`.
+`MetadataValidationError` subclasses `ValueError`, so a failed parse
+surfaces as a pydantic `ValidationError` carrying the loc-annotated
+problem messages.
+
+The v2 consolidated field type and the bare metadata-field type carry no
+composition rules and are validated structurally.
 
 Usage:
 
@@ -33,6 +37,7 @@ from typing import TYPE_CHECKING, Annotated, TypeVar
 from pydantic import BeforeValidator, InstanceOf, PlainSerializer
 
 from zarr_metadata import model as _model
+from zarr_metadata import rules as _rules
 from zarr_metadata._pydantic_schema import (
     ZarrV2ArrayMetadataJSON as _ZarrV2ArrayMetadataSchema,
 )
@@ -54,17 +59,8 @@ from zarr_metadata._pydantic_schema import (
 from zarr_metadata._pydantic_schema import (
     ZarrV3MetadataFieldJSON as _ZarrV3MetadataFieldSchema,
 )
-from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON as _ZarrV2ArrayMetadataJSON
-from zarr_metadata.v2.consolidated import (
-    ZarrV2ConsolidatedMetadataJSON as _ZarrV2ConsolidatedMetadataJSON,
-)
-from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON as _ZarrV2GroupMetadataJSON
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON as _ZarrV3MetadataFieldJSON
-from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON as _ZarrV3ArrayMetadataJSON
-from zarr_metadata.v3.consolidated import (
-    ZarrV3ConsolidatedMetadataJSON as _ZarrV3ConsolidatedMetadataJSON,
-)
-from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON as _ZarrV3GroupMetadataJSON
+from zarr_metadata.model._validation import arrays_to_tuples, validate_consolidated_metadata_v3
+from zarr_metadata.rules._v3_group import consolidated_entries_problems
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -83,43 +79,75 @@ def _coerce_to(cls: type[_M], parse: Callable[[object], _M]) -> Callable[[object
     return coerce
 
 
+def _judged_by(
+    validate: Callable[[object], tuple[_model.ValidationProblem, ...]],
+    parse: Callable[[object], _M],
+) -> Callable[[object], _M]:
+    """`parse`, preceded by a whole-document judgment that raises on any problem."""
+
+    def judged(value: object) -> _M:
+        problems = validate(value)
+        if len(problems) != 0:
+            raise _model.MetadataValidationError(problems)
+        return parse(value)
+
+    return judged
+
+
+def _validate_consolidated_v3(value: object) -> tuple[_model.ValidationProblem, ...]:
+    normalized = arrays_to_tuples(value)
+    return validate_consolidated_metadata_v3(normalized) + consolidated_entries_problems(normalized)
+
+
 ZarrV3ArrayMetadata = Annotated[
     InstanceOf[_model.ZarrV3ArrayMetadata],
     BeforeValidator(
-        _coerce_to(_model.ZarrV3ArrayMetadata, _model.ZarrV3ArrayMetadata.from_json),
+        _coerce_to(
+            _model.ZarrV3ArrayMetadata,
+            _judged_by(_rules.validate_array_metadata_v3, _model.ZarrV3ArrayMetadata.from_json),
+        ),
         json_schema_input_type=_ZarrV3ArrayMetadataSchema,
     ),
-    PlainSerializer(_model.ZarrV3ArrayMetadata.to_json, return_type=_ZarrV3ArrayMetadataJSON),
+    PlainSerializer(_model.ZarrV3ArrayMetadata.to_json, return_type=_ZarrV3ArrayMetadataSchema),
 ]
 """Field type for a v3 array metadata document (`zarr.json` content)."""
 
 ZarrV2ArrayMetadata = Annotated[
     InstanceOf[_model.ZarrV2ArrayMetadata],
     BeforeValidator(
-        _coerce_to(_model.ZarrV2ArrayMetadata, _model.ZarrV2ArrayMetadata.from_json),
+        _coerce_to(
+            _model.ZarrV2ArrayMetadata,
+            _judged_by(_rules.validate_array_metadata_v2, _model.ZarrV2ArrayMetadata.from_json),
+        ),
         json_schema_input_type=_ZarrV2ArrayMetadataSchema,
     ),
-    PlainSerializer(_model.ZarrV2ArrayMetadata.to_json, return_type=_ZarrV2ArrayMetadataJSON),
+    PlainSerializer(_model.ZarrV2ArrayMetadata.to_json, return_type=_ZarrV2ArrayMetadataSchema),
 ]
 """Field type for a v2 array metadata document (merged `.zarray` + `.zattrs` form)."""
 
 ZarrV3GroupMetadata = Annotated[
     InstanceOf[_model.ZarrV3GroupMetadata],
     BeforeValidator(
-        _coerce_to(_model.ZarrV3GroupMetadata, _model.ZarrV3GroupMetadata.from_json),
+        _coerce_to(
+            _model.ZarrV3GroupMetadata,
+            _judged_by(_rules.validate_group_metadata_v3, _model.ZarrV3GroupMetadata.from_json),
+        ),
         json_schema_input_type=_ZarrV3GroupMetadataSchema,
     ),
-    PlainSerializer(_model.ZarrV3GroupMetadata.to_json, return_type=_ZarrV3GroupMetadataJSON),
+    PlainSerializer(_model.ZarrV3GroupMetadata.to_json, return_type=_ZarrV3GroupMetadataSchema),
 ]
 """Field type for a v3 group metadata document (`zarr.json` content)."""
 
 ZarrV2GroupMetadata = Annotated[
     InstanceOf[_model.ZarrV2GroupMetadata],
     BeforeValidator(
-        _coerce_to(_model.ZarrV2GroupMetadata, _model.ZarrV2GroupMetadata.from_json),
+        _coerce_to(
+            _model.ZarrV2GroupMetadata,
+            _judged_by(_rules.validate_group_metadata_v2, _model.ZarrV2GroupMetadata.from_json),
+        ),
         json_schema_input_type=_ZarrV2GroupMetadataSchema,
     ),
-    PlainSerializer(_model.ZarrV2GroupMetadata.to_json, return_type=_ZarrV2GroupMetadataJSON),
+    PlainSerializer(_model.ZarrV2GroupMetadata.to_json, return_type=_ZarrV2GroupMetadataSchema),
 ]
 """Field type for a v2 group metadata document (merged `.zgroup` + `.zattrs` form)."""
 
@@ -128,13 +156,13 @@ ZarrV3ConsolidatedMetadata = Annotated[
     BeforeValidator(
         _coerce_to(
             _model.ZarrV3ConsolidatedMetadata,
-            _model.ZarrV3ConsolidatedMetadata.from_json,
+            _judged_by(_validate_consolidated_v3, _model.ZarrV3ConsolidatedMetadata.from_json),
         ),
         json_schema_input_type=_ZarrV3ConsolidatedMetadataSchema,
     ),
     PlainSerializer(
         _model.ZarrV3ConsolidatedMetadata.to_json,
-        return_type=_ZarrV3ConsolidatedMetadataJSON,
+        return_type=_ZarrV3ConsolidatedMetadataSchema,
     ),
 ]
 """Field type for v3 inline consolidated metadata."""
@@ -150,7 +178,7 @@ ZarrV2ConsolidatedMetadata = Annotated[
     ),
     PlainSerializer(
         _model.ZarrV2ConsolidatedMetadata.to_json,
-        return_type=_ZarrV2ConsolidatedMetadataJSON,
+        return_type=_ZarrV2ConsolidatedMetadataSchema,
     ),
 ]
 """Field type for a v2 `.zmetadata` document."""
@@ -161,7 +189,7 @@ ZarrV3MetadataField = Annotated[
         _coerce_to(_model.ZarrV3NamedConfig, _model.ZarrV3NamedConfig.from_json),
         json_schema_input_type=_ZarrV3MetadataFieldSchema,
     ),
-    PlainSerializer(_model.ZarrV3NamedConfig.to_json, return_type=_ZarrV3MetadataFieldJSON),
+    PlainSerializer(_model.ZarrV3NamedConfig.to_json, return_type=_ZarrV3MetadataFieldSchema),
 ]
 """Field type for one normalized v3 metadata extension envelope."""
 

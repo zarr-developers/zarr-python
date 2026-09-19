@@ -24,21 +24,27 @@ Two layers and an optional integration:
 ## What this is for
 
 The public `TypedDict` definitions describe the static JSON shape of Zarr
-metadata. For strict, loc-aware validation of JSON loaded from disk, use the
-model parser:
+metadata. To judge JSON loaded from disk, structure and composition together,
+use the rules layer; to get a normalized document model, use the model parser:
 
 ```python
 import json
 from zarr_metadata.model import ZarrV3ArrayMetadata
+from zarr_metadata.rules import parse_array_metadata_v3
 
 with open("zarr.json", "rb") as f:
     raw = json.load(f)
 
-metadata = ZarrV3ArrayMetadata.from_json(raw)
+document = parse_array_metadata_v3(raw)  # raises with every problem found
+metadata = ZarrV3ArrayMetadata.from_json(document)
 ```
 
-The optional Pydantic integration delegates raw input to the same strict
-parser and returns the same normalized model class:
+To construct a document, the `create_*` factories in `zarr_metadata.builder`
+apply the same judgment to keyword arguments typed by the document's
+`TypedDict`.
+
+The optional Pydantic integration runs raw input through the rules layer
+and returns the same normalized model class:
 
 ```python
 from pydantic import TypeAdapter
@@ -56,11 +62,19 @@ members that the strict model parser rejects.
 
 The model validators enforce the declared document structure and a small set
 of context-free consistency rules, including fixed format literals, finite
-JSON numbers, non-negative dimensions, non-empty v3 codec pipelines, and one
-`dimension_names` entry per array dimension. They do not interpret extension
-names or configurations, resolve codec pipelines, or decide whether a data
-type, chunk grid, codec, or storage transformer is supported. Those decisions
-belong to consumer implementations.
+JSON numbers, non-negative dimensions, and non-empty v3 codec pipelines.
+They do not interpret extension names or configurations.
+
+The composition rules (`zarr_metadata.rules`) judge the document as a whole:
+fill values against data types, codec pipeline ordering, chunk-grid
+geometry against `shape`, one `dimension_names` entry per array dimension,
+and the canonical configuration shapes of the codecs, chunk grids, chunk
+key encodings, and data types this package defines. Unknown extension names
+are left unjudged. The rules model canonical documents and are deliberately
+stricter than any given implementation: an implementation may coerce
+ambiguous input as it sees fit and then validate the canonical result.
+Nothing here decides whether a data type, chunk grid, codec, or storage
+transformer is *supported*; that belongs to consumer implementations.
 
 The Pydantic integration's generated JSON Schemas express independently
 checkable document structure and field constraints, but they are not a
@@ -68,7 +82,8 @@ replacement for runtime model validation. Standard JSON Schema treats a
 mathematically integral number such as `1.0` as an integer, while the runtime
 boundary requires Python `int` values, and it cannot express arbitrary
 same-length relations such as `dimension_names` versus `shape` or v2 `chunks`
-versus `shape`. Consumers should run the model parser after schema validation.
+versus `shape`. Consumers should run the runtime validators after schema
+validation.
 
 ## Scope
 
