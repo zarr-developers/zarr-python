@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from typing_extensions import Unpack
 
@@ -92,6 +92,21 @@ def _raise_if_problems(problems: Sequence[ValidationProblem]) -> None:
         raise MetadataValidationError(problems)
 
 
+_T = TypeVar("_T")
+
+
+def _parsed_or_raise(parsed: _T | None, problems: Sequence[ValidationProblem]) -> _T:
+    """Return `parsed`, raising the collected problems if there are any.
+
+    A parse that raised contributed its problems, so `parsed` is only `None`
+    when `problems` is non-empty; the final check guards that invariant.
+    """
+    _raise_if_problems(problems)
+    if parsed is None:
+        raise RuntimeError("parser returned no document and reported no problems")
+    return parsed
+
+
 def _reject_attributes(document: Mapping[str, object]) -> tuple[ValidationProblem, ...]:
     """Problems for an `attributes` key in a strict on-disk v2 document.
 
@@ -136,9 +151,7 @@ def create_zarr_v3_array_metadata_json(
     except MetadataValidationError as error:
         problems.extend(error.problems)
     problems.extend(run_rules(ZARR_V3_ARRAY_RULES, normalized))
-    _raise_if_problems(problems)
-    assert parsed is not None
-    return parsed
+    return _parsed_or_raise(parsed, problems)
 
 
 def create_zarr_v3_group_metadata_json(
@@ -163,9 +176,7 @@ def create_zarr_v3_group_metadata_json(
     except MetadataValidationError as error:
         problems.extend(error.problems)
     problems.extend(run_rules(ZARR_V3_GROUP_RULES, normalized))
-    _raise_if_problems(problems)
-    assert parsed is not None
-    return parsed
+    return _parsed_or_raise(parsed, problems)
 
 
 def create_zarr_v3_consolidated_metadata_json(
@@ -199,9 +210,7 @@ def create_zarr_v2_array_metadata_json(
     except MetadataValidationError as error:
         problems.extend(error.problems)
     problems.extend(run_rules(ZARR_V2_ARRAY_RULES, normalized))
-    _raise_if_problems(problems)
-    assert parsed is not None
-    return parsed
+    return _parsed_or_raise(parsed, problems)
 
 
 def create_zarr_v2_group_metadata_json(
@@ -218,9 +227,7 @@ def create_zarr_v2_group_metadata_json(
         parsed = parse_group_metadata_v2(_normalized(kwargs))
     except MetadataValidationError as error:
         problems.extend(error.problems)
-    _raise_if_problems(problems)
-    assert parsed is not None
-    return parsed
+    return _parsed_or_raise(parsed, problems)
 
 
 def create_zarr_v2_zarray_json(**kwargs: Unpack[ZarrV2ZArrayJSON]) -> ZarrV2ZArrayJSON:
@@ -239,9 +246,7 @@ def create_zarr_v2_zarray_json(**kwargs: Unpack[ZarrV2ZArrayJSON]) -> ZarrV2ZArr
     except MetadataValidationError as error:
         problems.extend(error.problems)
     problems.extend(run_rules(ZARR_V2_ARRAY_RULES, normalized))
-    _raise_if_problems(problems)
-    assert parsed is not None
-    return cast("ZarrV2ZArrayJSON", parsed)
+    return cast("ZarrV2ZArrayJSON", _parsed_or_raise(parsed, problems))
 
 
 def create_zarr_v2_zgroup_json(**kwargs: Unpack[ZarrV2ZGroupJSON]) -> ZarrV2ZGroupJSON:
@@ -259,9 +264,7 @@ def create_zarr_v2_zgroup_json(**kwargs: Unpack[ZarrV2ZGroupJSON]) -> ZarrV2ZGro
         parsed = parse_group_metadata_v2(normalized)
     except MetadataValidationError as error:
         problems.extend(error.problems)
-    _raise_if_problems(problems)
-    assert parsed is not None
-    return cast("ZarrV2ZGroupJSON", parsed)
+    return cast("ZarrV2ZGroupJSON", _parsed_or_raise(parsed, problems))
 
 
 def _validate_v2_consolidated_envelope(

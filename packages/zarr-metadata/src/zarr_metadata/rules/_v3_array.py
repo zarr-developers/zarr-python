@@ -21,6 +21,7 @@ the shape and the ordering checks.
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Final, cast
 
@@ -406,11 +407,8 @@ _dispatch_codecs = document_rule(ZARR_V3_ARRAY, frozenset({"codecs"}))(
 def _rules() -> tuple[Rule, ...]:
     # Importing the entity package registers every entity's rules; done here
     # rather than at module import to keep the dependency one-directional.
-    import zarr_metadata.rules._entities as entity_rules_package
+    importlib.import_module("zarr_metadata.rules._entities")
 
-    # Imported for its registrations; referenced so the import cannot be
-    # pruned as unused by a checker or a well-meaning cleanup.
-    assert entity_rules_package is not None
     return document_rules(ZARR_V3_ARRAY)
 
 
