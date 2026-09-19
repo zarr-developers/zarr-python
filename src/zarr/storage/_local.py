@@ -131,6 +131,58 @@ def _put(path: Path, value: Buffer, exclusive: bool = False) -> int:
         return f.write(view)
 
 
+# The helpers below do the blocking filesystem work behind LocalStore's async methods.
+# Each async method runs exactly one of them via `asyncio.to_thread` so that the event
+# loop is never stalled on disk I/O; the synchronous methods call them directly.
+
+
+def _ensure_root(root: Path, *, create: bool) -> None:
+    if create:
+        root.mkdir(parents=True, exist_ok=True)
+    if not root.exists():
+        raise FileNotFoundError(f"{root} does not exist")
+
+
+def _clear(root: Path) -> None:
+    shutil.rmtree(root)
+    root.mkdir()
+
+
+def _delete(path: Path) -> None:
+    if path.is_dir():
+        shutil.rmtree(path)
+    else:
+        path.unlink(missing_ok=True)
+
+
+def _delete_dir(path: Path, prefix: str) -> None:
+    if path.is_dir():
+        shutil.rmtree(path)
+    elif path.is_file():
+        raise ValueError(f"delete_dir was passed a {prefix=!r} that is a file")
+    # A non-existent directory is a no-op; test_group:test_create_creates_parents relies on it.
+
+
+def _list_files(root: Path, prefix: str) -> list[str]:
+    """Keys (paths relative to `root`, POSIX style) of every file under `root / prefix`."""
+    to_strip = root.as_posix() + "/"
+    return [p.as_posix().removeprefix(to_strip) for p in (root / prefix).rglob("*") if p.is_file()]
+
+
+def _list_dir(base: Path) -> list[str]:
+    try:
+        return [p.name for p in base.iterdir()]
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+
+
+def _move(src: Path, dest_root: Path) -> None:
+    dest_root.parent.mkdir(parents=True, exist_ok=True)
+    if dest_root.exists():
+        raise FileExistsError(f"Destination root {dest_root} already exists.")
+    shutil.move(src, dest_root)
+
+
 class LocalStore(Store):
     """
     Store for the local file system.
@@ -211,18 +263,25 @@ class LocalStore(Store):
         return store
 
     async def _open(self, *, mode: AccessModeLiteral | None = None) -> None:
-        if not self.read_only:
-            self.root.mkdir(parents=True, exist_ok=True)
-
-        if not self.root.exists():
-            raise FileNotFoundError(f"{self.root} does not exist")
+        await asyncio.to_thread(_ensure_root, self.root, create=not self.read_only)
         return await super()._open()
+
+    async def _ensure_open(self) -> None:
+        # docstring inherited
+        if not self._is_open:
+            await asyncio.to_thread(_ensure_root, self.root, create=not self.read_only)
+            # Concurrent lazy opens (every `set` of a `set_many`, say) all pass the check
+            # above and each verifies the root, which is idempotent; only the first may
+            # flip the flag, since `Store._open` refuses to open an open store.
+            # Note this calls `Store._open` directly, so a subclass's `_open` override is
+            # bypassed on the lazy-open path.
+            if not self._is_open:
+                await super()._open()
 
     async def clear(self) -> None:
         # docstring inherited
         self._check_writable()
-        shutil.rmtree(self.root)
-        self.root.mkdir()
+        await asyncio.to_thread(_clear, self.root)
 
     def __str__(self) -> str:
         return f"file://{self.root.as_posix()}"
@@ -239,10 +298,7 @@ class LocalStore(Store):
 
     def _ensure_open_sync(self) -> None:
         if not self._is_open:
-            if not self.read_only:
-                self.root.mkdir(parents=True, exist_ok=True)
-            if not self.root.exists():
-                raise FileNotFoundError(f"{self.root} does not exist")
+            _ensure_root(self.root, create=not self.read_only)
             self._is_open = True
 
     def get_sync(
@@ -275,11 +331,7 @@ class LocalStore(Store):
     def delete_sync(self, key: str) -> None:
         self._ensure_open_sync()
         self._check_writable()
-        path = self.root / key
-        if path.is_dir():
-            shutil.rmtree(path)
-        else:
-            path.unlink(missing_ok=True)
+        _delete(self.root / key)
 
     async def get(
         self,
@@ -290,8 +342,7 @@ class LocalStore(Store):
         # docstring inherited
         if prototype is None:
             prototype = default_buffer_prototype()
-        if not self._is_open:
-            await self._open()
+        await self._ensure_open()
         path = self.root / key
 
         try:
@@ -323,8 +374,7 @@ class LocalStore(Store):
             pass
 
     async def _set(self, key: str, value: Buffer, exclusive: bool = False) -> None:
-        if not self._is_open:
-            await self._open()
+        await self._ensure_open()
         self._check_writable()
         if not isinstance(value, Buffer):
             raise TypeError(
@@ -348,24 +398,12 @@ class LocalStore(Store):
         """
         # docstring inherited
         self._check_writable()
-        path = self.root / key
-        if path.is_dir():  # TODO: support deleting directories? shutil.rmtree?
-            shutil.rmtree(path)
-        else:
-            await asyncio.to_thread(path.unlink, True)  # Q: we may want to raise if path is missing
+        await asyncio.to_thread(_delete, self.root / key)
 
     async def delete_dir(self, prefix: str) -> None:
         # docstring inherited
         self._check_writable()
-        path = self.root / prefix
-        if path.is_dir():
-            shutil.rmtree(path)
-        elif path.is_file():
-            raise ValueError(f"delete_dir was passed a {prefix=!r} that is a file")
-        else:
-            # Non-existent directory
-            # This path is tested by test_group:test_create_creates_parents for one
-            pass
+        await asyncio.to_thread(_delete_dir, self.root / prefix, prefix)
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
@@ -374,28 +412,18 @@ class LocalStore(Store):
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
-        to_strip = self.root.as_posix() + "/"
-        for p in list(self.root.rglob("*")):
-            if p.is_file():
-                yield p.as_posix().replace(to_strip, "")
+        for key in await asyncio.to_thread(_list_files, self.root, ""):
+            yield key
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
-        to_strip = self.root.as_posix() + "/"
-        prefix = prefix.rstrip("/")
-        for p in (self.root / prefix).rglob("*"):
-            if p.is_file():
-                yield p.as_posix().replace(to_strip, "")
+        for key in await asyncio.to_thread(_list_files, self.root, prefix.rstrip("/")):
+            yield key
 
     async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
-        base = self.root / prefix
-        try:
-            key_iter = base.iterdir()
-            for key in key_iter:
-                yield key.relative_to(base).as_posix()
-        except (FileNotFoundError, NotADirectoryError):
-            pass
+        for name in await asyncio.to_thread(_list_dir, self.root / prefix):
+            yield name
 
     async def move(self, dest_root: Path | str) -> None:
         """
@@ -403,11 +431,10 @@ class LocalStore(Store):
         """
         if isinstance(dest_root, str):
             dest_root = Path(dest_root)
-        os.makedirs(dest_root.parent, exist_ok=True)
-        if dest_root.exists():
-            raise FileExistsError(f"Destination root {dest_root} already exists.")
-        shutil.move(self.root, dest_root)
+        await asyncio.to_thread(_move, self.root, dest_root)
         self.root = dest_root
 
     async def getsize(self, key: str) -> int:
-        return (self.root / key).stat().st_size
+        # docstring inherited
+        stat = await asyncio.to_thread((self.root / key).stat)
+        return stat.st_size
