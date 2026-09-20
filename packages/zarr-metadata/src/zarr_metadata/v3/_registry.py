@@ -23,7 +23,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
-from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.model._validation import (
+    ValidationProblem,
+    validate_metadata_field_v3,
+)
 from zarr_metadata.v3._entity import named_configuration
 from zarr_metadata.v3._extension_points import (
     CHUNK_GRID,
@@ -109,7 +112,12 @@ class Context:
         return entity
 
     def coerce(
-        self, field: ExtensionPointField, value: object, loc: Loc = ()
+        self,
+        field: ExtensionPointField,
+        value: object,
+        loc: Loc = (),
+        *,
+        envelope_judged: bool = False,
     ) -> tuple[MetadataEntity | object, tuple[ValidationProblem, ...]]:
         """One nested entity, read in this scope.
 
@@ -121,20 +129,34 @@ class Context:
 
         `loc` prefixes the problems, so they point at where in the
         containing configuration the entity sat.
+
+        A metadata field is a metadata field wherever it appears, so the
+        envelope gets the same structural judgment here that the model
+        layer gives a top-level one -- an extra member, a `configuration`
+        that is not an object, a `must_understand` that is not a boolean.
+        `envelope_judged` says that judgment has already happened, which
+        it has for the fields of a document the model layer accepted.
         """
+        problems: list[ValidationProblem] = []
+        if not envelope_judged:
+            problems.extend(
+                ValidationProblem((*loc, *found.loc), found.message, found.kind)
+                for found in validate_metadata_field_v3(value)
+            )
         name, _, _ = named_configuration(value)
         if name is None:
             return value, (
+                *problems,
                 ValidationProblem(loc, f"expected a metadata field, got {value!r}", "invalid_type"),
             )
         entity_type = self.resolve(field, name)
         if entity_type is None:
-            return value, ()
-        entity, problems = entity_type.coerce(value, self)
-        located = tuple(
-            ValidationProblem((*loc, *found.loc), found.message, found.kind) for found in problems
+            return value, tuple(problems)
+        entity, found = entity_type.coerce(value, self)
+        problems.extend(
+            ValidationProblem((*loc, *entry.loc), entry.message, entry.kind) for entry in found
         )
-        return (value if entity is None else entity), located
+        return (value if entity is None else entity), tuple(problems)
 
 
 _CORE_CODECS: Final[dict[str, type[MetadataEntity]]] = {
@@ -204,7 +226,7 @@ CORE_AND_EXTENSIONS: Final = Context(
         CODECS: {**_CORE_CODECS, **_EXTENSION_CODECS},
         DATA_TYPE: {**_CORE_DATA_TYPES, **_EXTENSION_DATA_TYPES},
         CHUNK_GRID: {**_CORE_CHUNK_GRIDS, **_EXTENSION_CHUNK_GRIDS},
-        CHUNK_KEY_ENCODING: _CORE_CHUNK_KEY_ENCODINGS,
+        CHUNK_KEY_ENCODING: {**_CORE_CHUNK_KEY_ENCODINGS},
     }
 )
 """What the specification defines, plus what `zarr-extensions` registers."""

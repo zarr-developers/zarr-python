@@ -22,6 +22,7 @@ from zarr_metadata.v3._entity import (
     one_of,
     problem,
     sequence_of,
+    within,
 )
 from zarr_metadata.v3._parts import (
     UNKNOWN_GRID,
@@ -190,10 +191,7 @@ class ShardingIndexedCodec(CodecEntity):
         for member in ("codecs", "index_codecs"):
             for position, codec in enumerate(cast("tuple[object, ...]", getattr(self, member))):
                 if isinstance(codec, MetadataEntity):
-                    found.extend(
-                        ValidationProblem((member, position, *entry.loc), entry.message, entry.kind)
-                        for entry in codec.problems()
-                    )
+                    found.extend(within((member, position), codec.problems()))
         return tuple(found)
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:

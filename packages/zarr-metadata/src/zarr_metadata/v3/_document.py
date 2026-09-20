@@ -95,14 +95,14 @@ def read_array_v3(
         if value is None:
             read[key] = None
             continue
-        entity, found = context.coerce(field, value, (key,))
+        entity, found = context.coerce(field, value, (key,), envelope_judged=True)
         read[key] = entity
         problems.extend(found)
     codecs: list[MetadataEntity | object] = []
     entries = document.get("codecs")
     if isinstance(entries, (list, tuple)):
         for index, entry in enumerate(cast("Sequence[object]", entries)):
-            codec, found = context.coerce(CODECS, entry, ("codecs", index))
+            codec, found = context.coerce(CODECS, entry, ("codecs", index), envelope_judged=True)
             codecs.append(codec)
             problems.extend(found)
     return (

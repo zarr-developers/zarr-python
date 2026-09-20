@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, get_type_hints
 
 import pytest
 
+from zarr_metadata.rules import validate_array_metadata_v3
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS
 from zarr_metadata.v3.chunk_grid.rectilinear import (
     RectilinearChunkGrid,
@@ -212,3 +213,87 @@ def test_an_unknown_key_is_reported_without_losing_the_member() -> None:
     assert [problem.kind for problem in problems] == ["unknown_key"]
     assert codec is not None
     assert codec.scalar_map == {"encode": (), "enc": ()}
+
+
+# (a defect in a nested metadata field, the location it belongs at)
+NESTED_ENVELOPES: dict[str, tuple[dict[str, object], tuple[str | int, ...]]] = {
+    "unexpected-member": ({"name": "bytes", "typo": 1}, ("typo",)),
+    "configuration-not-an-object": ({"name": "bytes", "configuration": 42}, ("configuration",)),
+    "must-understand-not-a-boolean": (
+        {"name": "bytes", "must_understand": "no"},
+        ("must_understand",),
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    ("codec", "inner_loc"), NESTED_ENVELOPES.values(), ids=list(NESTED_ENVELOPES)
+)
+def test_a_nested_metadata_field_is_judged_like_a_top_level_one(
+    codec: dict[str, object], inner_loc: tuple[str | int, ...]
+) -> None:
+    # A metadata field is a metadata field wherever it appears. These sit
+    # inside a shard's pipeline, which only the entity layer reads, so
+    # nothing else is going to notice them.
+    document = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (8,),
+        "data_type": "uint8",
+        "fill_value": 0,
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (8,)}},
+        "chunk_key_encoding": "default",
+        "codecs": (
+            {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": (4,),
+                    "codecs": (codec,),
+                    "index_codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
+                },
+            },
+        ),
+    }
+    problems = validate_array_metadata_v3(document)  # type: ignore[arg-type]
+    assert [problem.loc for problem in problems] == [
+        ("codecs", 0, "configuration", "codecs", 0, *inner_loc)
+    ]
+
+
+def test_every_problem_location_indexes_into_the_document() -> None:
+    # Two defects in one shard, at different depths. A location that does
+    # not resolve is a location a consumer cannot use.
+    document = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (8, 8),
+        "data_type": "uint8",
+        "fill_value": 0,
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (8, 8)}},
+        "chunk_key_encoding": "default",
+        "codecs": (
+            {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": (4, 4),
+                    "codecs": (
+                        {"name": "transpose", "configuration": {"order": (0, 0)}},
+                        {"name": "bytes", "configuration": {"endian": "little"}},
+                    ),
+                    "index_codecs": ({"name": "bytes"},),
+                },
+            },
+        ),
+    }
+    problems = validate_array_metadata_v3(document)  # type: ignore[arg-type]
+    assert len(problems) == 2
+    for problem in problems:
+        node: object = document
+        for step in problem.loc:
+            if not isinstance(node, (dict, tuple)) or (isinstance(node, dict) and step not in node):
+                # A `missing_key` problem names where the key belongs, so
+                # it is allowed to run past the end of what is there. Any
+                # other kind must address a node that exists.
+                assert problem.kind == "missing_key", (problem.loc, step)
+                break
+            node = node[step]  # type: ignore[index]
