@@ -13,6 +13,7 @@ from typing_extensions import TypedDict, Unpack
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
+    CodecKind,
     MemberTypes,
     is_int,
     one_of,
@@ -122,7 +123,7 @@ class BloscCodec(CodecEntity):
     typesize: int | None = None
 
     identifier: ClassVar[str] = BLOSC_CODEC_NAME
-    kind: ClassVar[str] = "bytes_bytes"
+    kind: ClassVar[CodecKind] = "bytes_bytes"
 
     # Every member is required but `typesize`, which only means something
     # when shuffling; `problems` is where that conditional lives.

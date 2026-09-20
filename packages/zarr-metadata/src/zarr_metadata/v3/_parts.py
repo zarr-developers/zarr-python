@@ -84,32 +84,6 @@ def _uniform(lengths: Sequence[object]) -> Extents:
     )
 
 
-def _rectilinear_axis(spec: object) -> frozenset[int] | None:
-    """The lengths one rectilinear dimension's chunks take.
-
-    A bare integer is a regular step, so every chunk is that long. An
-    explicit list names them, with `[size, count]` pairs standing for
-    repeats; the distinct sizes are what any divisibility question needs.
-    """
-    step = _positive_int(spec)
-    if step is not None:
-        return frozenset({step})
-    if not isinstance(spec, tuple):
-        return None
-    lengths: set[int] = set()
-    for item in cast("tuple[object, ...]", spec):
-        size = _positive_int(item)
-        if size is None and isinstance(item, tuple):
-            pair = cast("tuple[object, ...]", item)
-            if len(pair) != 2 or _positive_int(pair[1]) is None:
-                return None
-            size = _positive_int(pair[0])
-        if size is None:
-            return None
-        lengths.add(size)
-    return frozenset(lengths) if len(lengths) != 0 else None
-
-
 @dataclass(frozen=True, slots=True)
 class ChunkGrid:
     """The division of an array into the parts a codec pipeline encodes.
