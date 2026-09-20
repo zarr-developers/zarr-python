@@ -719,3 +719,20 @@ def test_error_blosc_blocksize_is_negative() -> None:
     loc, message = _sole_problem(_with_blosc(blocksize=-1))
     assert loc == ("codecs", 1, "configuration", "blocksize")
     assert "non-negative" in message
+
+
+@pytest.mark.parametrize(
+    ("level", "valid"),
+    [(0, True), (22, True), (-131072, True), (23, False), (-131073, False), (1000, False)],
+)
+def test_zstd_level_range(level: int, valid: bool) -> None:
+    # "An integer from -131072 to 22"; 0 selects the default level.
+    document = {
+        **BASE,
+        "codecs": ("bytes", {"name": "zstd", "configuration": {"level": level, "checksum": False}}),
+    }
+    problems = validate_array_metadata_v3(document)
+    if valid:
+        assert problems == ()
+    else:
+        assert [problem.loc for problem in problems] == [("codecs", 1, "configuration", "level")]

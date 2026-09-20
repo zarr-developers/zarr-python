@@ -50,7 +50,6 @@ _RULE_FREE = frozenset(
     {
         (CODECS, "crc32c"),
         (CODECS, "scale_offset"),
-        (CODECS, "zstd"),
         (CHUNK_KEY_ENCODING, "default"),
         (CHUNK_KEY_ENCODING, "v2"),
         (DATA_TYPE, "bool"),
