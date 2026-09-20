@@ -30,7 +30,7 @@ from zarr_metadata.model._validation import arrays_to_tuples
 from zarr_metadata.rules._documents import validate_array_metadata_v3
 from zarr_metadata.v3._document import read_array_v3
 from zarr_metadata.v3._entity import MetadataEntity
-from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS
+from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -62,9 +62,9 @@ class Invalid:
             raise ValueError(msg)
 
 
-def _canonical_document(document: Mapping[str, object]) -> dict[str, object]:
+def _canonical_document(document: Mapping[str, object], context: Context) -> dict[str, object]:
     """Each entity in its own canonical spelling, and the rest as written."""
-    array, _ = read_array_v3(document, CORE_AND_EXTENSIONS)
+    array, _ = read_array_v3(document, context)
     out = dict(document)
     for key in ("data_type", "chunk_grid", "chunk_key_encoding"):
         entity = getattr(array, key)
@@ -85,7 +85,7 @@ def _canonical_document(document: Mapping[str, object]) -> dict[str, object]:
 
 
 def canonicalize_array_metadata_v3(
-    document: ZarrV3ArrayMetadataJSON,
+    document: ZarrV3ArrayMetadataJSON, *, context: Context = CORE_AND_EXTENSIONS
 ) -> Canonical[ZarrV3ArrayMetadataJSON] | Invalid:
     """`document` in canonical form, or every reason it is not valid.
 
@@ -95,14 +95,14 @@ def canonicalize_array_metadata_v3(
     is `Invalid` rather than a canonical document.
     """
     normalized = cast("ZarrV3ArrayMetadataJSON", arrays_to_tuples(document))
-    problems = validate_array_metadata_v3(normalized)
+    problems = validate_array_metadata_v3(normalized, context=context)
     if len(problems) != 0:
         return Invalid(problems)
     # Normalized first, so a document spelled with JSON arrays reaches the
     # same fixpoint as the tuple spelling. It did not: the per-field
     # simplifications test for `tuple`, and the validator was normalizing
     # on a copy the canonicalizer never saw.
-    canonical = _canonical_document(normalized)
+    canonical = _canonical_document(normalized, context)
     # The model layer's round trip normalizes the fields no entity owns.
     return Canonical(ZarrV3ArrayMetadata.from_json(canonical).to_json())
 

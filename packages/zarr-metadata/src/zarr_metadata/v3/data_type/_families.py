@@ -63,7 +63,7 @@ def byte_values(value: object, expected: int | None, loc: Loc) -> tuple[Validati
 
 
 @dataclass(frozen=True)
-class IntegerDataType(DataTypeEntity):
+class IntegerDataType(DataTypeEntity, base=True):
     """A fixed-width integer. The width is the whole difference."""
 
     bounds: ClassVar[tuple[int, int]]
@@ -80,7 +80,7 @@ class IntegerDataType(DataTypeEntity):
 
 
 @dataclass(frozen=True)
-class FloatDataType(DataTypeEntity):
+class FloatDataType(DataTypeEntity, base=True):
     """A binary float. A fill value may be a number, a named non-finite, or hex."""
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
@@ -120,7 +120,7 @@ class FloatDataType(DataTypeEntity):
 
 
 @dataclass(frozen=True)
-class ComplexDataType(DataTypeEntity):
+class ComplexDataType(DataTypeEntity, base=True):
     """A complex number: a `[real, imag]` pair of the component float type."""
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
@@ -139,7 +139,7 @@ class ComplexDataType(DataTypeEntity):
 
 
 @dataclass(frozen=True)
-class NumpyTimeDataType(DataTypeEntity):
+class NumpyTimeDataType(DataTypeEntity, base=True):
     """A numpy time scalar: a signed 64-bit count of units, or `NaT`."""
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"

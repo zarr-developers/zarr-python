@@ -94,6 +94,30 @@ class Context:
 
     entities: Mapping[ExtensionPointField, Mapping[str, type[MetadataEntity]]]
 
+    def __post_init__(self) -> None:
+        """Refuse a table whose key an entity would not answer to.
+
+        `resolve` finds a candidate by key and then asks the entity
+        whether the name is really one of its own, so a key that is not
+        the entity's `identifier` can never resolve. If the two disagree
+        -- a typo, or a rename that missed one of the two places the name
+        is written -- registration appears to succeed, validation runs,
+        and the verdict is clean. Indistinguishable from extension
+        openness, and the easiest way to ship a broken extension.
+
+        The key is the identifier, not a name a document writes: the
+        raw-bytes family registers under an invented one that `accepts`
+        deliberately refuses.
+        """
+        for field, table in self.entities.items():
+            for key, entity in table.items():
+                if key != entity.identifier:
+                    msg = (
+                        f"{entity.__name__} is registered at {field!r} under {key!r} "
+                        f"but its identifier is {entity.identifier!r}"
+                    )
+                    raise ValueError(msg)
+
     def resolve(self, field: ExtensionPointField, name: str) -> type[MetadataEntity] | None:
         """The entity `name` denotes at `field`, or None if out of scope.
 

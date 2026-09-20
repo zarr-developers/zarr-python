@@ -310,6 +310,42 @@ class MetadataEntity:
     required", so this is true exactly when some member is required.
     """
 
+    def __init_subclass__(cls, *, base: bool = False, **kwargs: object) -> None:
+        """Refuse a subclass that forgot to say what it is.
+
+        `identifier` and the per-kind class variables carry no default,
+        so a subclass omitting one type-checks cleanly and then raises
+        `AttributeError` from whichever method is reached first. Saying so
+        here makes it an import-time error in the extension's own module.
+
+        `base=True` for a class that exists to add a class variable
+        rather than to be an entity -- `CodecEntity`, `IntegerDataType`.
+        """
+        super().__init_subclass__(**kwargs)
+        if base:
+            return
+        missing = [name for name in cls.required_class_vars if not hasattr(cls, name)]
+        if len(missing) != 0:
+            msg = f"{cls.__name__} does not declare {', '.join(missing)}"
+            raise TypeError(msg)
+        # An optional member defaults to UNSET or `configuration` emits it
+        # for every instance, so the bare-name spelling becomes
+        # unreachable and a document gains a member it never wrote.
+        invented = [
+            key
+            for key, (required, _) in cls.member_types.items()
+            if not required and getattr(cls, key, UNSET) is not UNSET
+        ]
+        if len(invented) != 0:
+            msg = (
+                f"{cls.__name__} gives the optional member(s) "
+                f"{', '.join(invented)} a default other than UNSET"
+            )
+            raise TypeError(msg)
+
+    required_class_vars: ClassVar[tuple[str, ...]] = ("identifier",)
+    """Every class variable a concrete entity of this kind must declare."""
+
     @classmethod
     def accepts(cls, name: str) -> bool:
         """Whether `name` denotes this entity.
@@ -409,10 +445,11 @@ class MetadataEntity:
 
 
 @dataclass(frozen=True)
-class CodecEntity(MetadataEntity):
+class CodecEntity(MetadataEntity, base=True):
     """An entity that occupies a position in the codec pipeline."""
 
     kind: ClassVar[CodecKind]
+    required_class_vars: ClassVar[tuple[str, ...]] = ("identifier", "kind")
 
     variable_size: ClassVar[bool] = False
     """Whether this codec's output size depends on the bytes it is given.
@@ -447,7 +484,7 @@ class CodecEntity(MetadataEntity):
 
 
 @dataclass(frozen=True)
-class ChunkGridEntity(MetadataEntity):
+class ChunkGridEntity(MetadataEntity, base=True):
     """An entity that divides an array into the parts a pipeline encodes."""
 
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
@@ -469,7 +506,7 @@ class ChunkGridEntity(MetadataEntity):
 
 
 @dataclass(frozen=True)
-class DataTypeEntity(MetadataEntity):
+class DataTypeEntity(MetadataEntity, base=True):
     """An entity that says how the array's scalars are stored.
 
     Only data types answer that, and every rule that turns on it -- a
@@ -479,6 +516,7 @@ class DataTypeEntity(MetadataEntity):
     """
 
     scalar_storage: ClassVar[StorageClass]
+    required_class_vars: ClassVar[tuple[str, ...]] = ("identifier", "scalar_storage")
 
     def storage_class(self) -> StorageClass | None:
         """How one scalar occupies bytes, or None if undetermined.

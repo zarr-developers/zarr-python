@@ -31,7 +31,7 @@ from zarr_metadata.model._validation import (
 from zarr_metadata.rules._v2_array import array_problems_v2
 from zarr_metadata.rules._v3_group import group_problems_v3
 from zarr_metadata.v3._document import array_problems_v3
-from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS
+from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -51,14 +51,31 @@ def _no_semantics(document: Mapping[str, object]) -> tuple[ValidationProblem, ..
     return ()
 
 
-def _array_semantics_v3(document: Mapping[str, object]) -> tuple[ValidationProblem, ...]:
-    """The v3 array semantics, in the scope this layer chooses.
+def _array_semantics_v3(context: Context) -> _SemanticValidator:
+    """The v3 array semantics, asked in `context`.
 
     The work is `zarr_metadata.v3` asking each entity about itself and
     about the parts of the document it meets; what this layer decides is
     which entities are in scope while it asks.
     """
-    return array_problems_v3(document, CORE_AND_EXTENSIONS)
+
+    def judge(document: Mapping[str, object]) -> tuple[ValidationProblem, ...]:
+        return array_problems_v3(document, context)
+
+    return judge
+
+
+def _group_semantics_v3(context: Context) -> _SemanticValidator:
+    """The v3 group semantics, asked in `context`.
+
+    A group's only semantic content is its inline consolidated children,
+    and those are array and group documents judged in the same scope.
+    """
+
+    def judge(document: Mapping[str, object]) -> tuple[ValidationProblem, ...]:
+        return group_problems_v3(document, context)
+
+    return judge
 
 
 def _judged(
@@ -75,7 +92,9 @@ def _judged(
     return tuple(problems)
 
 
-def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
+def validate_array_metadata_v3(
+    value: object, *, context: Context = CORE_AND_EXTENSIONS
+) -> tuple[ValidationProblem, ...]:
     """Why `value` is not a valid v3 array document.
 
     Every structural problem, and every semantic problem that can be
@@ -91,10 +110,12 @@ def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
     (e.g. fresh `json.loads` output) are judged at the canonical data
     level rather than rejected for their spelling.
     """
-    return _judged(arrays_to_tuples(value), _validate_structure_v3, _array_semantics_v3)
+    return _judged(arrays_to_tuples(value), _validate_structure_v3, _array_semantics_v3(context))
 
 
-def parse_array_metadata_v3(value: object) -> ZarrV3ArrayMetadataJSON:
+def parse_array_metadata_v3(
+    value: object, *, context: Context = CORE_AND_EXTENSIONS
+) -> ZarrV3ArrayMetadataJSON:
     """Return `value` as a valid `ZarrV3ArrayMetadataJSON`, or raise.
 
     Normalizes JSON arrays to tuples, then raises a single
@@ -102,7 +123,7 @@ def parse_array_metadata_v3(value: object) -> ZarrV3ArrayMetadataJSON:
     problem found.
     """
     normalized = arrays_to_tuples(value)
-    problems = _judged(normalized, _validate_structure_v3, _array_semantics_v3)
+    problems = _judged(normalized, _validate_structure_v3, _array_semantics_v3(context))
     if len(problems) != 0:
         raise MetadataValidationError(problems)
     return cast("ZarrV3ArrayMetadataJSON", normalized)
@@ -131,20 +152,26 @@ def parse_array_metadata_v2(value: object) -> ZarrV2ArrayMetadataJSON:
     return cast("ZarrV2ArrayMetadataJSON", normalized)
 
 
-def validate_group_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
+def validate_group_metadata_v3(
+    value: object, *, context: Context = CORE_AND_EXTENSIONS
+) -> tuple[ValidationProblem, ...]:
     """Every reason `value` is not a valid v3 group document.
 
     Composition rules recurse into inline consolidated metadata, so a
     consolidated child document invalid under its own rules is reported
     here, at its path.
     """
-    return _judged(arrays_to_tuples(value), _validate_group_structure_v3, group_problems_v3)
+    return _judged(
+        arrays_to_tuples(value), _validate_group_structure_v3, _group_semantics_v3(context)
+    )
 
 
-def parse_group_metadata_v3(value: object) -> ZarrV3GroupMetadataJSON:
+def parse_group_metadata_v3(
+    value: object, *, context: Context = CORE_AND_EXTENSIONS
+) -> ZarrV3GroupMetadataJSON:
     """Return `value` as a valid `ZarrV3GroupMetadataJSON`, or raise."""
     normalized = arrays_to_tuples(value)
-    problems = _judged(normalized, _validate_group_structure_v3, group_problems_v3)
+    problems = _judged(normalized, _validate_group_structure_v3, _group_semantics_v3(context))
     if len(problems) != 0:
         raise MetadataValidationError(problems)
     return cast("ZarrV3GroupMetadataJSON", normalized)

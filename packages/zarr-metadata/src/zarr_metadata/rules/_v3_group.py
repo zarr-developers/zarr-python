@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, cast
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._document import array_problems_v3
-from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS
+from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -42,16 +42,20 @@ def _as_string_mapping(value: object) -> Mapping[str, object] | None:
     return cast("Mapping[str, object]", mapping)
 
 
-def group_problems_v3(document: Mapping[str, object]) -> tuple[ValidationProblem, ...]:
+def group_problems_v3(
+    document: Mapping[str, object], context: Context = CORE_AND_EXTENSIONS
+) -> tuple[ValidationProblem, ...]:
     """Every semantic problem in a v3 group document."""
     if "consolidated_metadata" not in document:
         return ()
     return consolidated_entries_problems(
-        document["consolidated_metadata"], ("consolidated_metadata",)
+        document["consolidated_metadata"], ("consolidated_metadata",), context
     )
 
 
-def consolidated_entries_problems(value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
+def consolidated_entries_problems(
+    value: object, loc: Loc = (), context: Context = CORE_AND_EXTENSIONS
+) -> tuple[ValidationProblem, ...]:
     """Semantic problems in an inline consolidated envelope's children.
 
     Structural validity of the envelope and its entries is the model
@@ -72,9 +76,9 @@ def consolidated_entries_problems(value: object, loc: Loc = ()) -> tuple[Validat
         entry_loc = (*loc, "metadata", path)
         node_type = node.get("node_type")
         if node_type == "array":
-            problems.extend(_prefixed(entry_loc, array_problems_v3(node, CORE_AND_EXTENSIONS)))
+            problems.extend(_prefixed(entry_loc, array_problems_v3(node, context)))
         elif node_type == "group":
-            problems.extend(_prefixed(entry_loc, group_problems_v3(node)))
+            problems.extend(_prefixed(entry_loc, group_problems_v3(node, context)))
     return tuple(problems)
 
 
