@@ -285,6 +285,11 @@ def test_field_types_reject_unknown_configuration_members() -> None:
     setting meant for a different entity, and silently accepting it means
     silently ignoring what the writer asked for. Callers who want the
     tolerant reading use `rules.validate_*` and filter `unknown_key`.
+
+    Scope: the whole-document field types run the rules layer and so
+    reject it. `ZarrV3MetadataField` judges one metadata field, carries no
+    composition rules, and accepts it — asserted below so the boundary
+    cannot move silently.
     """
     document = {
         **V3_ARRAY_DOC,
@@ -292,6 +297,12 @@ def test_field_types_reject_unknown_configuration_members() -> None:
     }
     with pytest.raises(ValidationError, match="unexpected key 'endain'"):
         TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(document)
+
+    codec = {"name": "bytes", "configuration": {"endian": "little", "endain": "big"}}
+    assert TypeAdapter(zmp.ZarrV3MetadataField).validate_python(codec).configuration == {
+        "endian": "little",
+        "endain": "big",
+    }
 
 
 def test_core_package_does_not_import_pydantic() -> None:

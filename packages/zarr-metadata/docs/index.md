@@ -92,12 +92,18 @@ Nothing here decides whether a data type, chunk grid, codec, or storage
 transformer is *supported*; that belongs to consumer implementations.
 
 An unmodelled member inside a *known* entity's `configuration` is an error
-under that strict reading, in `parse_*` and in the Pydantic field types
-alike: such a member is almost always a typo or a setting meant for a
-different entity, and accepting it silently means silently ignoring what
-the writer asked for. It carries its own `unknown_key` problem kind, so a
-consumer who wants the tolerant reading can collect problems with
-`validate_*` and filter that kind out.
+under that strict reading: such a member is almost always a typo or a
+setting meant for a different entity, and accepting it silently means
+silently ignoring what the writer asked for. It carries its own
+`unknown_key` problem kind, so a consumer who wants the tolerant reading
+can collect problems with `validate_*` and filter that kind out.
+
+Judging it is the rules layer's job, so it is `zarr_metadata.rules` and
+the whole-document Pydantic field types (which run the rules layer) that
+reject it. The model layer never interpreted entity configurations and
+still does not, so `model.parse_*` and `from_json` accept such a
+document; so does the bare `ZarrV3MetadataField` Pydantic type, which
+judges one metadata field and carries no composition rules.
 
 ## Scope
 

@@ -43,11 +43,13 @@ ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_j
   (zarr-developers/zarr-specs#270 has been open since 2023), and this
   package takes the strict reading: in practice such a member is a typo,
   or a setting meant for a different entity, and accepting it silently
-  means silently ignoring what the writer asked for. Every entry point
-  that raises rejects it, the pydantic field types included. It gets a
-  kind of its own so that a caller who wants the tolerant reading can
-  collect problems with `rules.validate_*` and filter, and so that it
-  never masks the other findings about the same entity.
+  means silently ignoring what the writer asked for. Judging it belongs
+  to the rules layer, so `rules.parse_*` and the whole-document pydantic
+  field types reject it while `model.parse_*` — which never interpreted
+  configurations — accepts it. It gets a kind of its own so that a caller
+  who wants the tolerant reading can collect problems with
+  `rules.validate_*` and filter, and so that it never masks the other
+  findings about the same entity.
 """
 
 
