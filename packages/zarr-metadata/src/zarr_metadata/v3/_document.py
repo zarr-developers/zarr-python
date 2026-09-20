@@ -26,6 +26,7 @@ from zarr_metadata.v3._entity import (
     CHUNK_KEY_ENCODING,
     CODECS,
     DATA_TYPE,
+    STORAGE_TRANSFORMERS,
     ChunkGridEntity,
     DataTypeEntity,
     ExtensionPointField,
@@ -53,6 +54,7 @@ class ArrayDocumentV3:
     chunk_grid: MetadataEntity | object
     chunk_key_encoding: MetadataEntity | object
     codecs: tuple[MetadataEntity | object, ...]
+    storage_transformers: tuple[MetadataEntity | object, ...]
 
     @property
     def parts(self) -> ArrayParts:
@@ -79,6 +81,14 @@ _SINGLE_FIELDS: Final[tuple[tuple[ExtensionPointField, str], ...]] = (
     (CHUNK_KEY_ENCODING, "chunk_key_encoding"),
 )
 
+# The two the document names as a list. Nothing models a storage
+# transformer yet, so nothing is judged there today -- but the extension
+# point is registerable, and a registered one has to be reached.
+_SEQUENCE_FIELDS: Final[tuple[tuple[ExtensionPointField, str], ...]] = (
+    (CODECS, "codecs"),
+    (STORAGE_TRANSFORMERS, "storage_transformers"),
+)
+
 
 def read_array_v3(
     document: Mapping[str, object], context: Context
@@ -98,20 +108,24 @@ def read_array_v3(
         entity, found = context.coerce(field, value, (key,), envelope_judged=True)
         read[key] = entity
         problems.extend(found)
-    codecs: list[MetadataEntity | object] = []
-    entries = document.get("codecs")
-    if isinstance(entries, (list, tuple)):
-        for index, entry in enumerate(cast("Sequence[object]", entries)):
-            codec, found = context.coerce(CODECS, entry, ("codecs", index), envelope_judged=True)
-            codecs.append(codec)
-            problems.extend(found)
+    sequences: dict[str, tuple[MetadataEntity | object, ...]] = {}
+    for field, key in _SEQUENCE_FIELDS:
+        read_entries: list[MetadataEntity | object] = []
+        entries = document.get(key)
+        if isinstance(entries, (list, tuple)):
+            for index, entry in enumerate(cast("Sequence[object]", entries)):
+                entity, found = context.coerce(field, entry, (key, index), envelope_judged=True)
+                read_entries.append(entity)
+                problems.extend(found)
+        sequences[key] = tuple(read_entries)
     return (
         ArrayDocumentV3(
             document=document,
             data_type=read["data_type"],
             chunk_grid=read["chunk_grid"],
             chunk_key_encoding=read["chunk_key_encoding"],
-            codecs=tuple(codecs),
+            codecs=sequences["codecs"],
+            storage_transformers=sequences["storage_transformers"],
         ),
         tuple(problems),
     )
@@ -124,9 +138,10 @@ def _entity_problems(array: ArrayDocumentV3) -> tuple[ValidationProblem, ...]:
         entity = getattr(array, key)
         if isinstance(entity, MetadataEntity):
             found.extend(within((key,), entity.problems()))
-    for index, codec in enumerate(array.codecs):
-        if isinstance(codec, MetadataEntity):
-            found.extend(within(("codecs", index), codec.problems()))
+    for _, key in _SEQUENCE_FIELDS:
+        for index, entity in enumerate(cast("tuple[object, ...]", getattr(array, key))):
+            if isinstance(entity, MetadataEntity):
+                found.extend(within((key, index), entity.problems()))
     return tuple(found)
 
 

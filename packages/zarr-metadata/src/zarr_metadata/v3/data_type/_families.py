@@ -86,8 +86,22 @@ class FloatDataType(DataTypeEntity):
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     hex_parser: ClassVar[Callable[[str], object]]
 
+    largest: ClassVar[float | None]
+    """The largest finite magnitude this width holds, or None for float64.
+
+    None because a Python float *is* a float64, so no literal that reaches
+    here can exceed it.
+    """
+
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         if is_integer(value) or isinstance(value, float):
+            largest = type(self).largest
+            if largest is not None and abs(value) > largest:
+                return problem(
+                    loc,
+                    f"expected a {type(self).identifier} value, got {value!r}",
+                    "invalid_value",
+                )
             return ()
         if not isinstance(value, str):
             return problem(loc, f"expected a number or string, got {value!r}", "invalid_value")

@@ -474,7 +474,11 @@ def test_unknown_configuration_member_has_its_own_kind() -> None:
         "codecs": ({"name": "bytes", "configuration": {"endian": "little", "hint": 1}},),
     }
     problems = validate_array_metadata_v3(doc)
-    assert [(p.loc, p.kind) for p in problems] == [(("codecs", 0, "configuration"), "unknown_key")]
+    # The location names the offending key, so a consumer can route the
+    # problem without parsing the message.
+    assert [(p.loc, p.kind) for p in problems] == [
+        (("codecs", 0, "configuration", "hint"), "unknown_key")
+    ]
 
 
 def test_error_known_data_type_has_invalid_configuration() -> None:
@@ -511,7 +515,7 @@ def test_unknown_member_does_not_mask_a_codec_rule() -> None:
         "codecs": ({"name": "transpose", "configuration": {"order": (5, 5), "hint": 1}}, "bytes"),
     }
     kinds = {(p.loc, p.kind) for p in validate_array_metadata_v3(doc)}
-    assert (("codecs", 0, "configuration"), "unknown_key") in kinds
+    assert (("codecs", 0, "configuration", "hint"), "unknown_key") in kinds
     assert (("codecs", 0, "configuration", "order"), "invalid_value") in kinds
 
 
@@ -521,7 +525,7 @@ def test_unknown_member_does_not_mask_a_chunk_grid_rule() -> None:
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (2,), "hint": 1}},
     }
     kinds = {(p.loc, p.kind) for p in validate_array_metadata_v3(doc)}
-    assert (("chunk_grid", "configuration"), "unknown_key") in kinds
+    assert (("chunk_grid", "configuration", "hint"), "unknown_key") in kinds
     assert (("chunk_grid", "configuration", "chunk_shape"), "invalid_value") in kinds
 
 

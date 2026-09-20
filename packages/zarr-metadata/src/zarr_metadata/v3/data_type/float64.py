@@ -87,4 +87,5 @@ class Float64DataType(FloatDataType):
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     hex_parser: ClassVar[Callable[[str], object]] = staticmethod(hex_float64)
+    largest: ClassVar[float | None] = None
     identifier: ClassVar[str] = FLOAT64_DATA_TYPE_NAME

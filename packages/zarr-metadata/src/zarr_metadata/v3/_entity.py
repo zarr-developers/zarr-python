@@ -40,6 +40,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping as _Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, TypeAlias, TypeVar, cast
 
 from typing_extensions import TypeIs
@@ -63,10 +64,15 @@ EntityT = TypeVar("EntityT", bound="MetadataEntity")
 # `Coerced[Self]` in a return annotation, and not all of them defer
 # annotation evaluation.
 Coerced: TypeAlias = tuple[EntityT | None, tuple[ValidationProblem, ...]]
-"""The entity, or None and every reason the metadata is not one.
+"""The entity if it could be built, and every problem found.
 
-A caller that only wants a verdict reads the problems; one that wants to
-go on reading the entity checks for None. Both never happen at once.
+One direction holds: no entity means at least one problem. The converse
+does not -- a survivable problem (an unknown key, an optional member of
+the wrong type) comes back *with* the entity, because the entity is
+still readable and saying so is more useful than refusing.
+
+So test `entity is None` to decide whether to go on reading, and test the
+problems to decide the verdict. They are different questions.
 """
 
 Loc: TypeAlias = "tuple[str | int, ...]"
@@ -86,6 +92,7 @@ DATA_TYPE: Final[ExtensionPointField] = "data_type"
 CHUNK_GRID: Final[ExtensionPointField] = "chunk_grid"
 CHUNK_KEY_ENCODING: Final[ExtensionPointField] = "chunk_key_encoding"
 CODECS: Final[ExtensionPointField] = "codecs"
+STORAGE_TRANSFORMERS: Final[ExtensionPointField] = "storage_transformers"
 
 StorageClass = Literal["single_byte", "multi_byte", "variable_length"]
 """How one scalar of a data type occupies bytes.
@@ -217,7 +224,9 @@ def coerce_members(
     unreadable: set[str] = set()
     for key in configuration:
         if key not in types:
-            problems.extend(problem(("configuration",), f"unexpected key {key!r}", "unknown_key"))
+            problems.extend(
+                problem(("configuration", key), f"unexpected key {key!r}", "unknown_key")
+            )
     for key, (required, check) in types.items():
         if key not in configuration:
             if required:
@@ -241,10 +250,13 @@ def coerce_members(
     return members, tuple(problems), frozenset(unreadable)
 
 
-# No `slots=True`, deliberately: it rebuilds the class, which leaves the
-# zero-argument `super()` in a subclass pointing at the class that was
-# replaced. Subclasses call `super()` to narrow `to_json` and to adjust
-# `configuration`, so slots would be a trap laid for every entity.
+# No `slots=True`, deliberately. It rebuilds the class, which on Python
+# 3.11 and 3.12 leaves the zero-argument `super()` *in that same class's
+# body* pointing at the class it replaced. Several entities call `super()`
+# to narrow `to_json` and to adjust `configuration`, so they would each
+# have to spell it `super(Cls, self)`. CPython fixed this in 3.13, so when
+# that is the floor this is worth revisiting; the memory saved is small at
+# document scale, which is why it has not been.
 @dataclass(frozen=True)
 class MetadataEntity:
     """One named entity, coerced from its metadata.
@@ -283,7 +295,7 @@ class MetadataEntity:
     an invented identifier that no real name can collide with.
     """
 
-    member_types: ClassVar[MemberTypes] = {}
+    member_types: ClassVar[MemberTypes] = MappingProxyType({})
     """The configuration members, and the type each one takes.
 
     The same keys as the configuration TypedDict, which is the same as the
@@ -414,7 +426,8 @@ class CodecEntity(MetadataEntity):
 
         `incoming` is None once the chain can no longer say what reaches
         here, and the default answer to that is nothing: declining beats
-        guessing. Locations are relative to this codec's entry.
+        guessing. Locations are relative to this codec's `configuration`,
+        as `problems`' are; an empty one lands on the codec itself.
         """
         return ()
 
@@ -536,6 +549,7 @@ __all__ = [
     "CHUNK_KEY_ENCODING",
     "CODECS",
     "DATA_TYPE",
+    "STORAGE_TRANSFORMERS",
     "ChunkGridEntity",
     "CodecEntity",
     "CodecKind",

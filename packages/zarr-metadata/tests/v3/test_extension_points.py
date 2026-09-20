@@ -54,7 +54,9 @@ def test_squatted_names_are_judged_against_the_definition_they_squat() -> None:
         "codecs": ({"name": "bytes", "configuration": {"width": 7}},),
     }
     problems = validate_array_metadata_v3(document)
-    assert [(p.loc, p.kind) for p in problems] == [(("codecs", 0, "configuration"), "unknown_key")]
+    assert [(p.loc, p.kind) for p in problems] == [
+        (("codecs", 0, "configuration", "width"), "unknown_key")
+    ]
 
 
 def test_forging_the_family_sentinel_cannot_change_a_verdict() -> None:

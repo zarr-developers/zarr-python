@@ -111,6 +111,7 @@ def canonical_chunk_shapes(
 
 
 __all__ = [
+    "RECTILINEAR_CHUNK_GRID_KIND",
     "RECTILINEAR_CHUNK_GRID_NAME",
     "RectilinearChunkGrid",
     "RectilinearChunkGridConfiguration",

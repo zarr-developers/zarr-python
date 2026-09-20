@@ -38,8 +38,12 @@ Spelled as the spec writes the family; the angle brackets keep it
 unforgeable by a real name.
 """
 
-RAW_BYTES_NAME_PATTERN: Final = re.compile(r"^r(\d+)$")
+RAW_BYTES_NAME_PATTERN: Final = re.compile(r"^r([0-9]+)$")
 """The *shape* of a raw-bytes data type name, not its validity.
+
+ASCII digits only: `\\d` would also match every other Unicode decimal, so
+`r\uff11\uff16` would be read as sixteen bits and a genuine third-party
+name spelled that way would be folded into this family.
 
 Matches every `r<N>` spelling including malformed ones (`r0`, `r12`), so
 that a misspelled member of this family is recognized as belonging to it
