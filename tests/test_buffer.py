@@ -238,3 +238,92 @@ def test_empty(
         assert result.flags.c_contiguous  # type: ignore[attr-defined]
     else:
         assert result.flags.f_contiguous  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("dtype", ["float16", "float32", "float64", "complex64", "int32"])
+@pytest.mark.parametrize("order", ["C", "F"])
+def test_all_equal_matches_full_scan(dtype: str, order: str) -> None:
+    """The blocked scan must agree with a whole-buffer comparison.
+
+    Buffers are deliberately larger than one block and not a whole number of
+    blocks, and the mismatching element is placed at the very end so an
+    early-exit bug cannot pass by luck.
+    """
+    n = (1 << 14) * 3 + 7
+    side = int(np.sqrt(n))
+    for base in (np.zeros(n, dtype=dtype), np.zeros((side, side), dtype=dtype)):
+        arr = np.asfortranarray(base) if order == "F" and base.ndim > 1 else base
+        uniform = cpu.NDBuffer.from_numpy_array(arr)
+        differs = arr.copy()
+        differs.reshape(-1)[-1] = 1
+        mixed = cpu.NDBuffer.from_numpy_array(differs)
+        for fill in (0, 0.0, 1):
+            assert uniform.all_equal(fill) == cpu.NDBuffer._compare_all(arr, fill, True)
+            assert mixed.all_equal(fill) == cpu.NDBuffer._compare_all(differs, fill, True)
+
+
+@pytest.mark.parametrize("dtype", ["float16", "float32", "float64"])
+def test_all_equal_distinguishes_negative_zero(dtype: str) -> None:
+    """Regression test for #3144: -0.0 is not the same chunk as 0.0."""
+    n = (1 << 14) * 2 + 3
+    negative = cpu.NDBuffer.from_numpy_array(np.full(n, -0.0, dtype=dtype))
+    positive = cpu.NDBuffer.from_numpy_array(np.zeros(n, dtype=dtype))
+    assert positive.all_equal(0.0)
+    assert not negative.all_equal(0.0)
+    assert negative.all_equal(-0.0)
+    assert not positive.all_equal(-0.0)
+    # a single -0.0 in an otherwise +0.0 buffer, past the first block
+    mixed_data = np.zeros(n, dtype=dtype)
+    mixed_data[-1] = np.array(-0.0, dtype=dtype)
+    assert not cpu.NDBuffer.from_numpy_array(mixed_data).all_equal(0.0)
+
+
+def test_all_equal_non_contiguous() -> None:
+    """A strided buffer cannot be flattened without copying; it must still be correct."""
+    n = (1 << 14) * 4
+    base = np.zeros(n * 2, dtype="float32")
+    strided = base[::2]
+    assert not strided.flags.c_contiguous
+    assert cpu.NDBuffer.from_numpy_array(strided).all_equal(0.0)
+    strided2 = base[::2].copy()
+    strided2[-1] = 1
+    assert not cpu.NDBuffer.from_numpy_array(strided2).all_equal(0.0)
+
+
+@pytest.mark.parametrize("fill", [0.0, np.nan, 1.0])
+def test_all_equal_strided_chunk_view(fill: float) -> None:
+    """A chunk carved out of a larger array is strided, which is the shape the
+    write path actually hands this method. Slicing the leading axis has to work
+    for those, not just for contiguous buffers."""
+    whole = np.full((512, 512), fill, dtype="float32")
+    chunk = whole[64:192, 64:192]
+    assert not chunk.flags.c_contiguous
+    assert not chunk.flags.f_contiguous
+    assert cpu.NDBuffer.from_numpy_array(chunk).all_equal(fill)
+    # a single differing element, placed last so an early exit cannot pass by luck
+    whole2 = whole.copy()
+    whole2[191, 191] = 12345.0
+    chunk2 = whole2[64:192, 64:192]
+    assert not cpu.NDBuffer.from_numpy_array(chunk2).all_equal(fill)
+    # and placed first
+    whole3 = whole.copy()
+    whole3[64, 64] = 12345.0
+    assert not cpu.NDBuffer.from_numpy_array(whole3[64:192, 64:192]).all_equal(fill)
+
+
+def test_all_equal_single_leading_row() -> None:
+    """shape[0] == 1 has no leading axis to slice; it must fall back, not break."""
+    row = np.zeros((1, (1 << 14) * 2), dtype="float32")
+    assert cpu.NDBuffer.from_numpy_array(row).all_equal(0.0)
+    row2 = row.copy(); row2[0, -1] = 1
+    assert not cpu.NDBuffer.from_numpy_array(row2).all_equal(0.0)
+
+
+def test_all_equal_nan() -> None:
+    n = (1 << 14) * 2 + 1
+    nans = cpu.NDBuffer.from_numpy_array(np.full(n, np.nan, dtype="float64"))
+    assert nans.all_equal(np.nan)
+    assert not nans.all_equal(0.0)
+    one_nan = np.zeros(n, dtype="float64")
+    one_nan[-1] = np.nan
+    assert not cpu.NDBuffer.from_numpy_array(one_nan).all_equal(0.0)
