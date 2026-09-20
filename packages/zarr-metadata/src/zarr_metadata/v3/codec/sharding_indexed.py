@@ -23,7 +23,7 @@ SHARDING_INDEX_LOCATION: Final = ("start", "end")
 """Tuple of permitted values for the `index_location` field of the `sharding_indexed` codec."""
 
 
-class ShardingIndexedCodecConfiguration(TypedDict):
+class ShardingIndexedCodecConfiguration(TypedDict, closed=True):
     """
     Configuration for the Zarr v3 `sharding_indexed` codec.
 
@@ -47,11 +47,12 @@ class ShardingIndexedCodecConfiguration(TypedDict):
     index_location: NotRequired[ShardingIndexLocation]
 
 
-class ShardingIndexedCodecObject(TypedDict):
+class ShardingIndexedCodecObject(TypedDict, closed=True):
     """`sharding_indexed` codec metadata in object form."""
 
     name: ShardingIndexedCodecName
     configuration: ShardingIndexedCodecConfiguration
+    must_understand: NotRequired[bool]
 
 
 ShardingIndexedCodecMetadata = ShardingIndexedCodecObject

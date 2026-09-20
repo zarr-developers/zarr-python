@@ -55,14 +55,14 @@ e.g. `"NaN"` and `"+Infinity"` are permitted).
 """
 
 
-class ScalarMap(TypedDict):
+class ScalarMap(TypedDict, closed=True):
     """Optional encode/decode scalar overrides for the cast_value codec."""
 
     encode: NotRequired[tuple[ScalarMapEntry, ...]]
     decode: NotRequired[tuple[ScalarMapEntry, ...]]
 
 
-class CastValueCodecConfiguration(TypedDict):
+class CastValueCodecConfiguration(TypedDict, closed=True):
     """
     Configuration for the Zarr v3 `cast_value` codec.
 
@@ -77,11 +77,12 @@ class CastValueCodecConfiguration(TypedDict):
     scalar_map: NotRequired[ScalarMap]
 
 
-class CastValueCodecObject(TypedDict):
+class CastValueCodecObject(TypedDict, closed=True):
     """`cast_value` codec metadata in object form."""
 
     name: CastValueCodecName
     configuration: CastValueCodecConfiguration
+    must_understand: NotRequired[bool]
 
 
 CastValueCodecMetadata = CastValueCodecObject

@@ -22,7 +22,7 @@ class Empty(TypedDict, closed=True):
     """An empty mapping"""
 
 
-class Crc32cCodecObject(TypedDict):
+class Crc32cCodecObject(TypedDict, closed=True):
     """`crc32c` codec metadata in object form.
 
     Per spec the codec has no configuration fields. `configuration` is
@@ -32,6 +32,7 @@ class Crc32cCodecObject(TypedDict):
 
     name: Crc32cCodecName
     configuration: NotRequired[Empty]
+    must_understand: NotRequired[bool]
 
 
 Crc32cCodecMetadata = Crc32cCodecObject | Crc32cCodecName
