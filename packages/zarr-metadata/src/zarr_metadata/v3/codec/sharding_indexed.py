@@ -133,6 +133,13 @@ def _coerce_pipeline(
     return tuple(coerced), tuple(problems)
 
 
+def _canonical_pipeline(
+    codecs: tuple[CodecEntity | Opaque, ...],
+) -> tuple[CodecEntity | Opaque, ...]:
+    """Each codec canonicalized; one out of scope is left as written."""
+    return tuple(codec.canonical() if isinstance(codec, CodecEntity) else codec for codec in codecs)
+
+
 @dataclass(frozen=True)
 class ShardingIndexedCodec(CodecEntity):
     """The `sharding_indexed` codec, coerced from its metadata.
@@ -268,6 +275,14 @@ class ShardingIndexedCodec(CodecEntity):
                     )
                 )
         return tuple(found)
+
+    def canonical(self) -> Self:
+        """Each codec of each pipeline in its own canonical form."""
+        return replace(
+            self,
+            codecs=_canonical_pipeline(self.codecs),
+            index_codecs=_canonical_pipeline(self.index_codecs),
+        )
 
     def configuration(self) -> dict[str, object]:
         """The two pipelines in their canonical spelling, entry by entry."""

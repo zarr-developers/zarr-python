@@ -220,6 +220,12 @@ class CastValueCodec(CodecEntity):
             return ()
         return within(("data_type",), self.data_type.problems())
 
+    def canonical(self) -> Self:
+        """The target data type in its own canonical form."""
+        if not isinstance(self.data_type, DataTypeEntity):
+            return self
+        return replace(self, data_type=self.data_type.canonical())
+
     def configuration(self) -> dict[str, object]:
         """The target data type in its canonical spelling."""
         members = super().configuration()

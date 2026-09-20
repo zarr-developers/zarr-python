@@ -274,6 +274,18 @@ class StructDataType(DataTypeEntity):
         )
         return tuple(found)
 
+    def canonical(self) -> Self:
+        """Each field's data type in its own canonical form."""
+        return replace(
+            self,
+            fields=tuple(
+                replace(field, data_type=field.data_type.canonical())
+                if isinstance(field.data_type, DataTypeEntity)
+                else field
+                for field in self.fields
+            ),
+        )
+
     def configuration(self) -> dict[str, object]:
         """Each field in its canonical spelling, type included."""
         return {"fields": tuple(field.to_json() for field in self.fields)}

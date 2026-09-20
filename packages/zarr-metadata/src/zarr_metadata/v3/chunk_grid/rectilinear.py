@@ -4,8 +4,8 @@ Rectilinear chunk grid (zarr-extensions).
 See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md
 """
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, cast
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, cast
 
 from typing_extensions import TypedDict
 
@@ -294,15 +294,13 @@ class RectilinearChunkGrid(ChunkGridEntity):
         """
         return ChunkGrid.derived(tuple(_axis_lengths(spec) for spec in self.chunk_shapes))
 
-    def configuration(self) -> dict[str, object]:
+    def canonical(self) -> Self:
         """Run-length encoded, which is the spelling that does not grow.
 
         Two dimension specs listing the same extents describe the same
         grid, and the encoded one stays the same size as the array grows.
         """
-        members = super().configuration()
-        members["chunk_shapes"] = canonical_chunk_shapes(self.chunk_shapes)
-        return members
+        return replace(self, chunk_shapes=canonical_chunk_shapes(self.chunk_shapes))
 
     def to_json(self) -> RectilinearChunkGridObject:
         return cast("RectilinearChunkGridObject", super().to_json())

@@ -5,7 +5,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
 """
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import ClassVar, Final, Literal, NotRequired, Self, cast
 
 from typing_extensions import TypedDict, Unpack
@@ -190,17 +190,15 @@ class BloscCodec(CodecEntity):
         """
         return cls(**configuration)
 
-    def configuration(self) -> dict[str, object]:
-        """The simplest spelling of this codec's configuration.
+    def canonical(self) -> Self:
+        """Without a `typesize` that `noshuffle` renders meaningless.
 
-        `typesize` is dropped under `noshuffle`, where the spec says of it
-        that "the value is ignored" -- so two documents differing only
-        there describe the same codec.
+        The spec says of that case that "the value is ignored", so two
+        documents differing only there describe the same codec.
         """
-        members = super().configuration()
-        if self.shuffle == BLOSC_NO_SHUFFLE:
-            members.pop("typesize", None)
-        return members
+        if self.shuffle != BLOSC_NO_SHUFFLE or self.typesize is UNSET:
+            return self
+        return replace(self, typesize=UNSET)
 
     def to_json(self) -> BloscCodecObject:
         return cast("BloscCodecObject", super().to_json())

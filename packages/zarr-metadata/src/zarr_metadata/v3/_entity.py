@@ -422,16 +422,35 @@ class MetadataEntity:
             return None, found
         return cls(must_understand=must_understand, **members), found  # type: ignore[arg-type]
 
+    def canonical(self) -> Self:
+        """This entity in the simplest form that means the same thing.
+
+        A *transformation*, asked for by `canonicalize_array_metadata_v3`
+        and by nothing else. `to_json` does not apply it, because writing
+        a document back is not the same as asking for it to be rewritten:
+        a reader that reads and writes should not change bytes it was not
+        asked to change.
+
+        Default: entities are already canonical. Override where two
+        spellings of a member mean the same -- a rectilinear dimension's
+        run-length encoding, a `typesize` that `noshuffle` ignores -- and
+        where a contained entity has its own canonical form.
+        """
+        return self
+
     def configuration(self) -> dict[str, object]:
-        """This entity's configuration, in its simplest equivalent form.
+        """This entity's configuration, as the document would write it.
+
+        Faithful to every member the entity holds: `to_json` is
+        serialization, not canonicalization, so nothing is simplified
+        here. Override only to render a member that is not already JSON,
+        such as a contained entity.
 
         Absent optional members are left out, which is what makes the
-        bare-name spelling reachable. Override to drop a member that
-        another member renders meaningless.
-
-        Absence is `UNSET`, never `None`: this package holds `None` to
-        mean a JSON `null` the document actually wrote, and `scale_offset`
-        is a real case where `null` and absent are different documents.
+        bare-name spelling reachable. Absence is `UNSET`, never `None`:
+        this package holds `None` to mean a JSON `null` the document
+        actually wrote, and `scale_offset` is a real case where `null`
+        and absent are different documents.
         """
         return {
             key: value
@@ -448,11 +467,18 @@ class MetadataEntity:
         return ()
 
     def to_json(self) -> ZarrV3MetadataFieldJSON:
-        """This entity in its simplest equivalent spelling.
+        """This entity as a document would write it.
 
-        A name alone when the name says everything, and the object form
-        otherwise. `must_understand` is omitted when true, because that is
-        the default and says nothing; an explicit false says something.
+        Faithful to every member: read a document, write it back, and the
+        members come out as they went in. Ask `canonical` first if you
+        want the simplest equivalent spelling.
+
+        What is *not* preserved is the envelope's spelling, because the
+        entity does not model it: a bare name, `{"name": x}`, and
+        `{"name": x, "configuration": {}}` all mean the same and all read
+        to the same entity, so all three write back as the bare name.
+        `must_understand` is omitted when true, which is its default; an
+        explicit false is kept, because that one says something.
 
         Subclasses narrow the return type to their own object TypedDict,
         which is the JSON form this dataclass models.

@@ -10,7 +10,7 @@ drift, because one drifting makes this fail.
 from __future__ import annotations
 
 import dataclasses
-from typing import TYPE_CHECKING, get_type_hints
+from typing import get_type_hints
 
 import pytest
 
@@ -67,9 +67,7 @@ from zarr_metadata.v3.data_type.uint8 import Uint8DataType
 from zarr_metadata.v3.data_type.uint16 import Uint16DataType
 from zarr_metadata.v3.data_type.uint32 import Uint32DataType
 from zarr_metadata.v3.data_type.uint64 import Uint64DataType
-
-if TYPE_CHECKING:
-    from zarr_metadata.v3._entity import MetadataEntity
+from zarr_metadata.v3.entity import MetadataEntity
 
 # Each registered entity, paired with the TypedDict its constructor
 # mirrors. Keyed by `<field>:<identifier>`, because an identifier is only
@@ -358,3 +356,120 @@ def test_an_unreadable_member_is_not_judged_by_its_default() -> None:
     }
     problems = validate_array_metadata_v3(document)  # type: ignore[arg-type]
     assert [problem.loc for problem in problems] == [("codecs", 1, "configuration", "shuffle")]
+
+
+# Entities whose written form and canonical form differ, or could.
+FAITHFUL: dict[str, tuple[str, object]] = {
+    "rectilinear-expanded": (
+        "chunk_grid",
+        {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": ((32, 32, 32),)},
+        },
+    ),
+    "rectilinear-encoded": (
+        "chunk_grid",
+        {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": (((32, 3),),)},
+        },
+    ),
+    "blosc-ignored-typesize": (
+        "codecs",
+        {
+            "name": "blosc",
+            "configuration": {
+                "cname": "zstd",
+                "clevel": 5,
+                "shuffle": "noshuffle",
+                "blocksize": 0,
+                "typesize": 4,
+            },
+        },
+    ),
+    "raw-bytes-padded": ("data_type", "r008"),
+    "scale-offset-explicit-null": (
+        "codecs",
+        {"name": "scale_offset", "configuration": {"offset": None}},
+    ),
+    "must-understand-false": ("codecs", {"name": "crc32c", "must_understand": False}),
+    "struct-nested": (
+        "data_type",
+        {
+            "name": "struct",
+            "configuration": {
+                "fields": ({"name": "a", "data_type": "uint8"},),
+            },
+        },
+    ),
+}
+
+
+@pytest.mark.parametrize(("field", "written"), FAITHFUL.values(), ids=list(FAITHFUL))
+def test_to_json_writes_back_what_was_read(field: str, written: object) -> None:
+    # Serialization is not canonicalization. A reader that reads a
+    # document and writes it back must not change bytes it was not asked
+    # to change -- `canonical()` is where you ask.
+    entity, problems = CORE_AND_EXTENSIONS.coerce(field, written)  # type: ignore[arg-type]
+    assert problems == ()
+    assert isinstance(entity, MetadataEntity)
+    assert entity.to_json() == written
+
+
+def test_canonical_is_what_simplifies() -> None:
+    encoded, _ = CORE_AND_EXTENSIONS.coerce(
+        "chunk_grid",
+        {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": ((32, 32, 32),)},
+        },
+    )
+    assert isinstance(encoded, MetadataEntity)
+    assert encoded.canonical().to_json() == {
+        "name": "rectilinear",
+        "configuration": {"kind": "inline", "chunk_shapes": (((32, 3),),)},
+    }
+    blosc, _ = CORE_AND_EXTENSIONS.coerce(
+        "codecs",
+        {
+            "name": "blosc",
+            "configuration": {
+                "cname": "zstd",
+                "clevel": 5,
+                "shuffle": "noshuffle",
+                "blocksize": 0,
+                "typesize": 4,
+            },
+        },
+    )
+    assert isinstance(blosc, MetadataEntity)
+    assert "typesize" not in blosc.canonical().to_json()["configuration"]  # type: ignore[index]
+
+
+def test_canonical_reaches_a_contained_entity() -> None:
+    shard, _ = CORE_AND_EXTENSIONS.coerce(
+        "codecs",
+        {
+            "name": "sharding_indexed",
+            "configuration": {
+                "chunk_shape": (4,),
+                "codecs": (
+                    {"name": "bytes", "configuration": {"endian": "little"}},
+                    {
+                        "name": "blosc",
+                        "configuration": {
+                            "cname": "zstd",
+                            "clevel": 5,
+                            "shuffle": "noshuffle",
+                            "blocksize": 0,
+                            "typesize": 4,
+                        },
+                    },
+                ),
+                "index_codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
+            },
+        },
+    )
+    assert isinstance(shard, MetadataEntity)
+    inner = shard.canonical().to_json()["configuration"]["codecs"][1]  # type: ignore[index]
+    assert "typesize" not in inner["configuration"]  # type: ignore[index]

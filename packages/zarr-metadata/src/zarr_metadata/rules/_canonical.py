@@ -8,7 +8,7 @@ every reason it is not semantically valid. Testing the literal `valid`
 field narrows to one or the other.
 
 Canonical means the simplest spelling with the same meaning, and each
-entity decides that for itself in its own `to_json`: an entity whose
+entity decides that for itself in its own `canonical`: an entity whose
 configuration carries nothing collapses to its bare name, `blosc` drops a
 `typesize` that `shuffle` renders ignored, a rectilinear dimension's chunk
 sizes run-length encode. This module only collects the answers, and the
@@ -69,10 +69,10 @@ def _canonical_document(document: Mapping[str, object], context: Context) -> dic
     for key in ("data_type", "chunk_grid", "chunk_key_encoding"):
         entity = getattr(array, key)
         if isinstance(entity, MetadataEntity):
-            out[key] = entity.to_json()
+            out[key] = entity.canonical().to_json()
     if "codecs" in out:
         out["codecs"] = tuple(
-            codec.to_json() if isinstance(codec, MetadataEntity) else codec.json
+            codec.canonical().to_json() if isinstance(codec, MetadataEntity) else codec.json
             for codec in array.codecs
         )
     names = out.get("dimension_names")
