@@ -5,10 +5,12 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal, NewType
 
-from zarr_metadata.v3._entity import DataTypeEntity, StorageClass
+from zarr_metadata.v3._entity import StorageClass
+from zarr_metadata.v3.data_type._families import FloatDataType
 
 FLOAT64_DATA_TYPE_NAME: Final = "float64"
 """The `data_type` value for the `float64` type."""
@@ -80,8 +82,9 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class Float64DataType(DataTypeEntity):
+class Float64DataType(FloatDataType):
     """The `float64` data type. The name says everything."""
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
+    hex_parser: ClassVar[Callable[[str], object]] = staticmethod(hex_float64)
     identifier: ClassVar[str] = FLOAT64_DATA_TYPE_NAME

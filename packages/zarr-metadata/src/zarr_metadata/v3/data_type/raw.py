@@ -17,10 +17,12 @@ from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
     Coerced,
     DataTypeEntity,
+    Loc,
     StorageClass,
     named_configuration,
     problem,
 )
+from zarr_metadata.v3.data_type._families import byte_values
 
 RawBytesDataTypeName = NewType("RawBytesDataTypeName", str)
 """A spec-conformant `r<N>` raw-bytes name (e.g. `"r8"`, `"r16"`).
@@ -135,3 +137,15 @@ class RawBytesDataType(DataTypeEntity):
             "ZarrV3MetadataFieldJSON",
             {"name": self.data_type_name, "must_understand": False},
         )
+
+    def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
+        """One byte value per byte of the scalar.
+
+        A malformed name says nothing about how wide the scalar is, so
+        there is no length to check against; `problems` reports the name.
+        """
+        try:
+            raw_bytes_dtype_name(self.data_type_name)
+        except ValueError:
+            return ()
+        return byte_values(value, int(self.data_type_name[1:]) // 8, loc)

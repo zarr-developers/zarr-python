@@ -7,7 +7,13 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal
 
-from zarr_metadata.v3._entity import DataTypeEntity, StorageClass
+from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.v3._entity import (
+    DataTypeEntity,
+    Loc,
+    StorageClass,
+    problem,
+)
 
 BOOL_DATA_TYPE_NAME: Final = "bool"
 """The `data_type` value for the `bool` type."""
@@ -33,3 +39,8 @@ class BoolDataType(DataTypeEntity):
 
     scalar_storage: ClassVar[StorageClass] = "single_byte"
     identifier: ClassVar[str] = BOOL_DATA_TYPE_NAME
+
+    def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
+        if not isinstance(value, bool):
+            return problem(loc, f"expected a boolean, got {value!r}", "invalid_value")
+        return ()

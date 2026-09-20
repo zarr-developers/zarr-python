@@ -241,6 +241,41 @@ class StructDataType(DataTypeEntity):
             )
         return tuple(found)
 
+    def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
+        """A fill value per field, addressed by name.
+
+        Every field needs one and nothing else may appear, because a
+        record's value is not determined otherwise. A field whose type is
+        out of scope still needs an entry -- that much is structural --
+        but what the entry holds is left unjudged.
+        """
+        if not isinstance(value, Mapping):
+            return problem(
+                loc,
+                f"expected an object of per-field fill values, got {value!r}",
+                "invalid_value",
+            )
+        fills = cast("Mapping[str, object]", value)
+        found: list[ValidationProblem] = []
+        for field in self.fields:
+            at: Loc = (*loc, field.name)
+            if field.name not in fills:
+                found.extend(
+                    problem(
+                        at, f"missing fill value for struct field {field.name!r}", "missing_key"
+                    )
+                )
+                continue
+            if not isinstance(field.data_type, DataTypeEntity):
+                continue
+            found.extend(field.data_type.fill_value_problems(fills[field.name], at))
+        declared = {field.name for field in self.fields}
+        found.extend(
+            ValidationProblem((*loc, key), f"unknown struct fill field {key!r}", "unknown_key")
+            for key in sorted(fills.keys() - declared)
+        )
+        return tuple(found)
+
     def configuration(self) -> dict[str, object]:
         """Each field in its canonical spelling, type included."""
         return {"fields": tuple(field.to_json() for field in self.fields)}

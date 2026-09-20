@@ -7,7 +7,13 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal
 
-from zarr_metadata.v3._entity import DataTypeEntity, StorageClass
+from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.v3._entity import (
+    DataTypeEntity,
+    Loc,
+    StorageClass,
+    problem,
+)
 
 STRING_DATA_TYPE_NAME: Final = "string"
 """The `data_type` value for the `string` type."""
@@ -33,3 +39,8 @@ class StringDataType(DataTypeEntity):
 
     scalar_storage: ClassVar[StorageClass] = "variable_length"
     identifier: ClassVar[str] = STRING_DATA_TYPE_NAME
+
+    def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
+        if not isinstance(value, str):
+            return problem(loc, f"expected a string, got {value!r}", "invalid_value")
+        return ()

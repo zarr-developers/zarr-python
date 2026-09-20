@@ -7,8 +7,9 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal
 
-from zarr_metadata.v3._entity import DataTypeEntity, StorageClass
-from zarr_metadata.v3.data_type.float64 import Float64FillValue
+from zarr_metadata.v3._entity import StorageClass
+from zarr_metadata.v3.data_type._families import ComplexDataType, FloatDataType
+from zarr_metadata.v3.data_type.float64 import Float64DataType, Float64FillValue
 
 COMPLEX128_DATA_TYPE_NAME: Final = "complex128"
 """The `data_type` value for the `complex128` type."""
@@ -41,8 +42,9 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class Complex128DataType(DataTypeEntity):
+class Complex128DataType(ComplexDataType):
     """The `complex128` data type. The name says everything."""
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
+    component: ClassVar[type[FloatDataType]] = Float64DataType
     identifier: ClassVar[str] = COMPLEX128_DATA_TYPE_NAME

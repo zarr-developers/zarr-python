@@ -39,7 +39,7 @@ is about blosc rather than about entities.
 from __future__ import annotations
 
 from collections.abc import Mapping as _Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, TypeAlias, TypeVar, cast
 
 from typing_extensions import TypeIs
@@ -247,7 +247,11 @@ class MetadataEntity:
     rather than a constant, a member another member renders meaningless.
     """
 
-    must_understand: bool = True
+    # Keyword-only: it is the envelope's member, not the configuration's,
+    # and it would otherwise take the first positional slot of every
+    # entity -- so `RawBytesDataType("r16")` would set this instead of
+    # the field it reads as.
+    must_understand: bool = field(default=True, kw_only=True)
 
     identifier: ClassVar[str]
     """The name this entity is registered under.
@@ -367,6 +371,15 @@ class DataTypeEntity(MetadataEntity):
         answer would be a guess, and the rules that ask decline instead.
         """
         return type(self).scalar_storage
+
+    def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
+        """Why `value` is not a fill value of this type, if it is not.
+
+        Default: nothing. A data type this package does not model accepts
+        whatever its extension says it does, and guessing would reject
+        valid documents.
+        """
+        return ()
 
 
 def named_configuration(

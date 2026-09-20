@@ -7,7 +7,8 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal
 
-from zarr_metadata.v3._entity import DataTypeEntity, StorageClass
+from zarr_metadata.v3._entity import StorageClass
+from zarr_metadata.v3.data_type._families import IntegerDataType
 
 UINT64_DATA_TYPE_NAME: Final = "uint64"
 """The `data_type` value for the `uint64` type."""
@@ -28,8 +29,9 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class Uint64DataType(DataTypeEntity):
+class Uint64DataType(IntegerDataType):
     """The `uint64` data type. The name says everything."""
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
+    bounds: ClassVar[tuple[int, int]] = (0, 18446744073709551615)
     identifier: ClassVar[str] = UINT64_DATA_TYPE_NAME

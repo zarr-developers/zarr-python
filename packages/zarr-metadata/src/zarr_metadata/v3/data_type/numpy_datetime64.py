@@ -11,13 +11,13 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
-    DataTypeEntity,
     MemberTypes,
     StorageClass,
     is_int,
     one_of,
     problem,
 )
+from zarr_metadata.v3.data_type._families import NumpyTimeDataType
 from zarr_metadata.v3.data_type.numpy_timedelta64 import (
     NUMPY_TIME_MAX_SCALE_FACTOR,
     NUMPY_TIME_UNIT,
@@ -78,7 +78,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class NumpyDatetime64DataType(DataTypeEntity):
+class NumpyDatetime64DataType(NumpyTimeDataType):
     """The `numpy.datetime64` data type, coerced from its metadata."""
 
     unit: NumpyTimeUnit = "generic"

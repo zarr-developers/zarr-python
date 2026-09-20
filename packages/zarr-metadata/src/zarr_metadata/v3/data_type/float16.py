@@ -5,10 +5,12 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal, NewType
 
-from zarr_metadata.v3._entity import DataTypeEntity, StorageClass
+from zarr_metadata.v3._entity import StorageClass
+from zarr_metadata.v3.data_type._families import FloatDataType
 
 FLOAT16_DATA_TYPE_NAME: Final = "float16"
 """The `data_type` value for the `float16` type."""
@@ -79,8 +81,9 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class Float16DataType(DataTypeEntity):
+class Float16DataType(FloatDataType):
     """The `float16` data type. The name says everything."""
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
+    hex_parser: ClassVar[Callable[[str], object]] = staticmethod(hex_float16)
     identifier: ClassVar[str] = FLOAT16_DATA_TYPE_NAME

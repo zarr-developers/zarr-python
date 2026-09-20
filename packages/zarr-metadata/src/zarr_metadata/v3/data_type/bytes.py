@@ -8,7 +8,14 @@ import re
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal, NewType
 
-from zarr_metadata.v3._entity import DataTypeEntity, StorageClass
+from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.v3._entity import (
+    DataTypeEntity,
+    Loc,
+    StorageClass,
+    problem,
+)
+from zarr_metadata.v3.data_type._families import byte_values
 
 BYTES_DATA_TYPE_NAME: Final = "bytes"
 """The `data_type` value for the variable-length `bytes` type."""
@@ -58,3 +65,15 @@ class BytesDataType(DataTypeEntity):
 
     scalar_storage: ClassVar[StorageClass] = "variable_length"
     identifier: ClassVar[str] = BYTES_DATA_TYPE_NAME
+
+    def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
+        """Base64, or an array of byte values of any length."""
+        if isinstance(value, str):
+            try:
+                base64_bytes(value)
+            except ValueError:
+                return problem(
+                    loc, f"expected standard-alphabet base64, got {value!r}", "invalid_value"
+                )
+            return ()
+        return byte_values(value, None, loc)

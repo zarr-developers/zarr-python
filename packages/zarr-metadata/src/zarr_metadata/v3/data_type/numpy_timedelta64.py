@@ -11,13 +11,13 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
-    DataTypeEntity,
     MemberTypes,
     StorageClass,
     is_int,
     one_of,
     problem,
 )
+from zarr_metadata.v3.data_type._families import NumpyTimeDataType
 
 NUMPY_TIMEDELTA64_DATA_TYPE_NAME: Final = "numpy.timedelta64"
 """The `name` field value of the `numpy.timedelta64` data type."""
@@ -98,7 +98,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class NumpyTimedelta64DataType(DataTypeEntity):
+class NumpyTimedelta64DataType(NumpyTimeDataType):
     """The `numpy.timedelta64` data type, coerced from its metadata."""
 
     unit: NumpyTimeUnit = "generic"
