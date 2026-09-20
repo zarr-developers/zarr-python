@@ -39,13 +39,15 @@ ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_j
 - `invalid_json`: bytes that do not decode as JSON.
 - `unknown_key`: a member this package does not model appears inside an
   entity whose shape it does model (e.g. an extra key in a `blosc`
-  configuration). Distinguished from `invalid_value` because the Zarr v3
-  spec does not say whether a `configuration` is closed
-  (zarr-developers/zarr-specs#270 has been open since 2023), so this is
-  the package's strict reading rather than a definite violation: a
-  document carrying one is very likely fine, just written by something
-  that models more than we do. Callers that prefer tolerance can filter
-  this kind out; the package itself never lets it mask other findings.
+  configuration). Whether a `configuration` is closed is unspecified
+  (zarr-developers/zarr-specs#270 has been open since 2023), and this
+  package takes the strict reading: in practice such a member is a typo,
+  or a setting meant for a different entity, and accepting it silently
+  means silently ignoring what the writer asked for. Every entry point
+  that raises rejects it, the pydantic field types included. It gets a
+  kind of its own so that a caller who wants the tolerant reading can
+  collect problems with `rules.validate_*` and filter, and so that it
+  never masks the other findings about the same entity.
 """
 
 

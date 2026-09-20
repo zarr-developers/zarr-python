@@ -6,7 +6,7 @@ Documentation: <https://zarr-metadata.readthedocs.io/>
 
 ## What this is
 
-Two layers and an optional integration:
+Three layers and an optional integration:
 
 - **Typed JSON shapes**: `TypedDict` definitions and `Literal` aliases for the
   JSON documents specified by the [Zarr v2](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html)
@@ -17,9 +17,13 @@ Two layers and an optional integration:
   models of whole metadata documents, with structural validators, loc-aware
   parsers, and store-key (de)serialization. A document produced by `to_json`
   shares no mutable state with the model that produced it.
+- **Composition rules** (`zarr_metadata.rules`): cross-field judgments over
+  whole documents — fill value against data type, codec pipeline ordering,
+  chunk geometry — with `validate_*` / `parse_*` entry points that apply
+  structure and composition together.
 - **Optional Pydantic integration** (`zarr_metadata.pydantic`, requires
-  Pydantic 2.13 or newer): each model as a Pydantic field type that validates
-  raw documents through the same strict parser.
+  Pydantic 2.13 or newer): each model as a Pydantic field type that runs raw
+  documents through the rules layer.
 
 ## What this is for
 
@@ -72,14 +76,24 @@ ambiguous input as it sees fit and then validate the canonical result.
 Nothing here decides whether a data type, chunk grid, codec, or storage
 transformer is *supported*; that belongs to consumer implementations.
 
+An unmodelled member inside a *known* entity's `configuration` is an error
+under that strict reading, in `parse_*` and in the Pydantic field types
+alike: such a member is almost always a typo or a setting meant for a
+different entity, and accepting it silently means silently ignoring what
+the writer asked for. It carries its own `unknown_key` problem kind, so a
+consumer who wants the tolerant reading can collect problems with
+`validate_*` and filter that kind out.
+
 The Pydantic integration's generated JSON Schemas express independently
 checkable document structure and field constraints, but they are not a
 replacement for runtime model validation. Standard JSON Schema treats a
 mathematically integral number such as `1.0` as an integer, while the runtime
 boundary requires Python `int` values, and it cannot express arbitrary
 same-length relations such as `dimension_names` versus `shape` or v2 `chunks`
-versus `shape`. Consumers should run the runtime validators after schema
-validation.
+versus `shape`. The generated schemas also leave every `configuration`
+open, so a schema-valid document can still be rejected at runtime for an
+unmodelled configuration member. Consumers should run the runtime
+validators after schema validation.
 
 ## Scope
 

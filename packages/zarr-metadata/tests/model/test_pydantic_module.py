@@ -265,6 +265,35 @@ def test_metadata_field_serializes_shorthand_and_false_object() -> None:
     ) == {"name": "optional", "must_understand": False}
 
 
+def test_field_types_apply_composition_rules() -> None:
+    """The field types judge composition, not just structure.
+
+    `fill_value: 300` is a well-formed JSON integer, so only the rules
+    layer can reject it for a `uint8` array.
+    """
+    document = {**V3_ARRAY_DOC, "data_type": "uint8", "fill_value": 300}
+    with pytest.raises(ValidationError, match="fill_value"):
+        TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(document)
+
+
+def test_field_types_reject_unknown_configuration_members() -> None:
+    """An unmodelled member of a known entity's configuration is an error.
+
+    Whether a `configuration` is closed is unspecified
+    (zarr-developers/zarr-specs#270), and this integration takes the
+    strict reading deliberately: in practice such a member is a typo or a
+    setting meant for a different codec, and silently accepting it means
+    silently ignoring what the writer asked for. Callers who want the
+    tolerant reading use `rules.validate_*` and filter `unknown_key`.
+    """
+    document = {
+        **V3_ARRAY_DOC,
+        "codecs": ({"name": "bytes", "configuration": {"endian": "little", "endain": "big"}},),
+    }
+    with pytest.raises(ValidationError, match="unexpected key 'endain'"):
+        TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(document)
+
+
 def test_core_package_does_not_import_pydantic() -> None:
     """Importing zarr_metadata (in a fresh interpreter) must not import
     pydantic: the integration is opt-in via zarr_metadata.pydantic."""
