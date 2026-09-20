@@ -3,7 +3,7 @@
 `zarr_metadata.model` checks JSON structure. This module also checks
 cross-field constraints such as fill-value compatibility, codec
 ordering, and dimension counts. Its `validate_*`, `is_*`, and `parse_*`
-functions mirror the model API; `check_*` returns `Valid[T] | Invalid`.
+functions mirror the model API.
 
 Rules target canonical metadata and may be stricter than readers that
 coerce inputs. Unknown entity names are left unjudged. Known entities
@@ -27,15 +27,6 @@ from zarr_metadata.rules._documents import (
     validate_group_metadata_v3,
 )
 from zarr_metadata.rules._engine import Rule, RuleCheck, applicable, run_rules
-from zarr_metadata.rules._result import (
-    Invalid,
-    Valid,
-    ValidationResult,
-    check_array_metadata_v2,
-    check_array_metadata_v3,
-    check_group_metadata_v2,
-    check_group_metadata_v3,
-)
 from zarr_metadata.rules._v2_array import ZARR_V2_ARRAY, ZARR_V2_ARRAY_RULES
 from zarr_metadata.rules._v3_array import ZARR_V3_ARRAY, ZARR_V3_ARRAY_RULES
 from zarr_metadata.rules._v3_group import ZARR_V3_GROUP, ZARR_V3_GROUP_RULES
@@ -47,16 +38,9 @@ __all__ = [
     "ZARR_V3_ARRAY_RULES",
     "ZARR_V3_GROUP",
     "ZARR_V3_GROUP_RULES",
-    "Invalid",
     "Rule",
     "RuleCheck",
-    "Valid",
-    "ValidationResult",
     "applicable",
-    "check_array_metadata_v2",
-    "check_array_metadata_v3",
-    "check_group_metadata_v2",
-    "check_group_metadata_v3",
     "is_array_metadata_v2",
     "is_array_metadata_v3",
     "is_group_metadata_v2",
