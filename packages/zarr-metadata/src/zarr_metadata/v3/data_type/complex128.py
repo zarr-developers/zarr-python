@@ -4,8 +4,10 @@ Zarr v3 `complex128` data type.
 See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
-from typing import Final, Literal
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal
 
+from zarr_metadata.v3._entity import MetadataEntity
 from zarr_metadata.v3.data_type.float64 import Float64FillValue
 
 COMPLEX128_DATA_TYPE_NAME: Final = "complex128"
@@ -32,6 +34,14 @@ A two-element JSON array `[real, imag]` where each component is a
 __all__ = [
     "COMPLEX128_DATA_TYPE_NAME",
     "Complex128Component",
+    "Complex128DataType",
     "Complex128DataTypeName",
     "Complex128FillValue",
 ]
+
+
+@dataclass(frozen=True)
+class Complex128DataType(MetadataEntity):
+    """The `complex128` data type. The name says everything."""
+
+    identifier: ClassVar[str] = COMPLEX128_DATA_TYPE_NAME

@@ -45,7 +45,6 @@ from typing import TYPE_CHECKING, ClassVar, Literal, TypeAlias, TypeVar, cast
 from typing_extensions import TypeIs
 
 from zarr_metadata.model._validation import ValidationProblem, is_json
-from zarr_metadata.v3._extension_points import canonical_name
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -53,7 +52,7 @@ if TYPE_CHECKING:
 
     from zarr_metadata.model._validation import ProblemKind
     from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
-    from zarr_metadata.v3._extension_points import ExtensionPointField
+    from zarr_metadata.v3._registry import Context
 
 EntityT = TypeVar("EntityT", bound="MetadataEntity")
 
@@ -198,27 +197,6 @@ def coerce_members(
         if len(found) == 0:
             members[key] = value
     return members, tuple(problems)
-
-
-@dataclass(frozen=True, slots=True)
-class Context:
-    """The entities in scope while metadata is being read.
-
-    A scope is not a property of the entities, it is a choice the reader
-    makes: judging against the specification alone, or against the
-    specification plus what `zarr-extensions` registers. The two live in
-    `zarr_metadata.v3._registry`.
-    """
-
-    entities: Mapping[ExtensionPointField, Mapping[str, type[MetadataEntity]]]
-
-    def resolve(self, field: ExtensionPointField, name: str) -> type[MetadataEntity] | None:
-        """The entity `name` denotes at `field`, or None if out of scope.
-
-        Out of scope is not an error: an unknown name may be an extension
-        this reader does not model, and openness means leaving it unjudged.
-        """
-        return self.entities.get(field, {}).get(canonical_name(field, name))
 
 
 # No `slots=True`, deliberately: it rebuilds the class, which leaves the
@@ -374,7 +352,6 @@ def named_configuration(
 __all__ = [
     "CodecKind",
     "Coerced",
-    "Context",
     "Loc",
     "MemberTypes",
     "MetadataEntity",

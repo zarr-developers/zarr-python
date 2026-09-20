@@ -4,9 +4,23 @@ Zarr `numpy.datetime64` data type (zarr-extensions).
 See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.datetime64/README.md
 """
 
-from typing import Final, Literal, NotRequired
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import ReadOnly, TypedDict
+
+from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.v3._entity import (
+    MemberTypes,
+    MetadataEntity,
+    is_int,
+    one_of,
+    problem,
+)
+from zarr_metadata.v3.data_type.numpy_timedelta64 import (
+    NUMPY_TIME_MAX_SCALE_FACTOR,
+    NUMPY_TIME_UNIT,
+)
 
 NUMPY_DATETIME64_DATA_TYPE_NAME: Final = "numpy.datetime64"
 """The `name` field value of the `numpy.datetime64` data type."""
@@ -55,7 +69,41 @@ __all__ = [
     "NUMPY_DATETIME64_DATA_TYPE_NAME",
     "NumpyDatetime64",
     "NumpyDatetime64Configuration",
+    "NumpyDatetime64DataType",
     "NumpyDatetime64DataTypeName",
     "NumpyDatetime64FillValue",
     "NumpyTimeUnit",
 ]
+
+
+@dataclass(frozen=True)
+class NumpyDatetime64DataType(MetadataEntity):
+    """The `numpy.datetime64` data type, coerced from its metadata."""
+
+    unit: NumpyTimeUnit = "generic"
+    scale_factor: int = 1
+
+    identifier: ClassVar[str] = NUMPY_DATETIME64_DATA_TYPE_NAME
+
+    configuration_required: ClassVar[bool] = True
+    member_types: ClassVar[MemberTypes] = {
+        "unit": (True, one_of(NUMPY_TIME_UNIT)),
+        "scale_factor": (True, is_int),
+    }
+
+    def problems(self) -> tuple[ValidationProblem, ...]:
+        """`scale_factor` counts units per step, so it is positive.
+
+        The upper bound is numpy's: the field is a signed 32-bit integer.
+        """
+        if not 1 <= self.scale_factor <= NUMPY_TIME_MAX_SCALE_FACTOR:
+            return problem(
+                ("scale_factor",),
+                f"expected an integer in [1, {NUMPY_TIME_MAX_SCALE_FACTOR}], "
+                f"got {self.scale_factor}",
+                "invalid_value",
+            )
+        return ()
+
+    def to_json(self) -> NumpyDatetime64:
+        return cast("NumpyDatetime64", super().to_json())

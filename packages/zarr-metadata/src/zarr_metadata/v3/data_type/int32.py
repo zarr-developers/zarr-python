@@ -4,7 +4,10 @@ Zarr v3 `int32` data type.
 See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
-from typing import Final, Literal
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal
+
+from zarr_metadata.v3._entity import MetadataEntity
 
 INT32_DATA_TYPE_NAME: Final = "int32"
 """The `data_type` value for the `int32` type."""
@@ -18,6 +21,14 @@ Int32FillValue = int
 
 __all__ = [
     "INT32_DATA_TYPE_NAME",
+    "Int32DataType",
     "Int32DataTypeName",
     "Int32FillValue",
 ]
+
+
+@dataclass(frozen=True)
+class Int32DataType(MetadataEntity):
+    """The `int32` data type. The name says everything."""
+
+    identifier: ClassVar[str] = INT32_DATA_TYPE_NAME

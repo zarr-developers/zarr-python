@@ -5,7 +5,10 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 import re
-from typing import Final, Literal, NewType
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal, NewType
+
+from zarr_metadata.v3._entity import MetadataEntity
 
 BYTES_DATA_TYPE_NAME: Final = "bytes"
 """The `data_type` value for the variable-length `bytes` type."""
@@ -42,7 +45,15 @@ Either a JSON array of integers in `[0, 255]` (one per byte), or a
 __all__ = [
     "BYTES_DATA_TYPE_NAME",
     "Base64Bytes",
+    "BytesDataType",
     "BytesDataTypeName",
     "BytesFillValue",
     "base64_bytes",
 ]
+
+
+@dataclass(frozen=True)
+class BytesDataType(MetadataEntity):
+    """The `bytes` data type. The name says everything."""
+
+    identifier: ClassVar[str] = BYTES_DATA_TYPE_NAME

@@ -4,7 +4,10 @@ Zarr v3 `uint64` data type.
 See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
-from typing import Final, Literal
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal
+
+from zarr_metadata.v3._entity import MetadataEntity
 
 UINT64_DATA_TYPE_NAME: Final = "uint64"
 """The `data_type` value for the `uint64` type."""
@@ -18,6 +21,14 @@ Uint64FillValue = int
 
 __all__ = [
     "UINT64_DATA_TYPE_NAME",
+    "Uint64DataType",
     "Uint64DataTypeName",
     "Uint64FillValue",
 ]
+
+
+@dataclass(frozen=True)
+class Uint64DataType(MetadataEntity):
+    """The `uint64` data type. The name says everything."""
+
+    identifier: ClassVar[str] = UINT64_DATA_TYPE_NAME

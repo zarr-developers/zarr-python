@@ -4,8 +4,10 @@ Zarr v3 `complex64` data type.
 See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
-from typing import Final, Literal
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal
 
+from zarr_metadata.v3._entity import MetadataEntity
 from zarr_metadata.v3.data_type.float32 import Float32FillValue
 
 COMPLEX64_DATA_TYPE_NAME: Final = "complex64"
@@ -32,6 +34,14 @@ A two-element JSON array `[real, imag]` where each component is a
 __all__ = [
     "COMPLEX64_DATA_TYPE_NAME",
     "Complex64Component",
+    "Complex64DataType",
     "Complex64DataTypeName",
     "Complex64FillValue",
 ]
+
+
+@dataclass(frozen=True)
+class Complex64DataType(MetadataEntity):
+    """The `complex64` data type. The name says everything."""
+
+    identifier: ClassVar[str] = COMPLEX64_DATA_TYPE_NAME

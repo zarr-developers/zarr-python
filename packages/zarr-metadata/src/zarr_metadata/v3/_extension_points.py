@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Final, Literal
 
-from zarr_metadata.v3.data_type.raw import RAW_BYTES_NAME_PATTERN
+from zarr_metadata.v3.data_type.raw import RAW_BYTES_FAMILY, RAW_BYTES_NAME_PATTERN
 
 ExtensionPointField = Literal[
     "data_type", "chunk_grid", "chunk_key_encoding", "codecs", "storage_transformers"
@@ -25,13 +25,6 @@ DATA_TYPE: Final[ExtensionPointField] = "data_type"
 CHUNK_GRID: Final[ExtensionPointField] = "chunk_grid"
 CHUNK_KEY_ENCODING: Final[ExtensionPointField] = "chunk_key_encoding"
 CODECS: Final[ExtensionPointField] = "codecs"
-
-RAW_BYTES_FAMILY: Final = "r<N>"
-"""Canonical key for the parameterized raw-bytes data type family.
-
-Spelled as the spec writes the family; the angle brackets keep it
-unforgeable by a real name.
-"""
 
 
 def canonical_name(field: ExtensionPointField, name: str) -> str:

@@ -4,7 +4,10 @@ Zarr v3 `int16` data type.
 See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
-from typing import Final, Literal
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal
+
+from zarr_metadata.v3._entity import MetadataEntity
 
 INT16_DATA_TYPE_NAME: Final = "int16"
 """The `data_type` value for the `int16` type."""
@@ -18,6 +21,14 @@ Int16FillValue = int
 
 __all__ = [
     "INT16_DATA_TYPE_NAME",
+    "Int16DataType",
     "Int16DataTypeName",
     "Int16FillValue",
 ]
+
+
+@dataclass(frozen=True)
+class Int16DataType(MetadataEntity):
+    """The `int16` data type. The name says everything."""
+
+    identifier: ClassVar[str] = INT16_DATA_TYPE_NAME

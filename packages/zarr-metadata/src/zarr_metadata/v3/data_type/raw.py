@@ -9,13 +9,30 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
 import re
-from typing import Final, NewType
+from dataclasses import dataclass
+from typing import ClassVar, Final, NewType, Self, cast
+
+from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+from zarr_metadata.v3._entity import (
+    Coerced,
+    MetadataEntity,
+    named_configuration,
+    problem,
+)
 
 RawBytesDataTypeName = NewType("RawBytesDataTypeName", str)
 """A spec-conformant `r<N>` raw-bytes name (e.g. `"r8"`, `"r16"`).
 
 "raw bits, variable size given by *, limited to be a multiple of 8":
   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L46-L47
+"""
+
+RAW_BYTES_FAMILY: Final = "r<N>"
+"""Canonical key for the parameterized raw-bytes data type family.
+
+Spelled as the spec writes the family; the angle brackets keep it
+unforgeable by a real name.
 """
 
 RAW_BYTES_NAME_PATTERN: Final = re.compile(r"^r(\d+)$")
@@ -51,8 +68,68 @@ A JSON array of N/8 integers in `[0, 255]` (one per byte).
 
 
 __all__ = [
+    "RAW_BYTES_FAMILY",
     "RAW_BYTES_NAME_PATTERN",
+    "RawBytesDataType",
     "RawBytesDataTypeName",
     "RawBytesFillValue",
     "raw_bytes_dtype_name",
 ]
+
+
+@dataclass(frozen=True)
+class RawBytesDataType(MetadataEntity):
+    """An `r<N>` raw-bytes data type, coerced from its metadata.
+
+    One class for the whole family, because `r8` and `r4096` differ only
+    in a number. That is why this is the one entity whose `identifier` is
+    not a name any document carries: `r<N>` is a shape, not a spelling,
+    and no real name can collide with it.
+
+    The spelling is kept rather than the bit count, so a document comes
+    back out as it went in. `r008` is a valid and distinct way of writing
+    `r8`, and canonicalizing it away is not this package's call.
+    """
+
+    data_type_name: str = "r8"
+
+    identifier: ClassVar[str] = RAW_BYTES_FAMILY
+
+    @classmethod
+    def accepts(cls, name: str) -> bool:
+        """Every `r<N>` spelling, valid or not.
+
+        A malformed member of the family is recognized as belonging to it
+        and reported as malformed, rather than passing unjudged as some
+        third party's extension.
+        """
+        return RAW_BYTES_NAME_PATTERN.fullmatch(name) is not None
+
+    @classmethod
+    def coerce(cls, value: object, context: object) -> Coerced[Self]:
+        name, configuration, must_understand = named_configuration(value)
+        if name is None or not cls.accepts(name):
+            return None, problem((), "expected an 'r<N>' raw-bytes data type")
+        if configuration is not None and len(configuration) != 0:
+            return None, problem(("configuration",), "'r<N>' takes no configuration", "unknown_key")
+        return cls(must_understand=must_understand, data_type_name=name), ()
+
+    def problems(self) -> tuple[ValidationProblem, ...]:
+        """N must be a positive multiple of 8.
+
+        "raw bits, variable size given by *, limited to be a multiple of
+        8" -- and zero bits is not a data type.
+        """
+        try:
+            raw_bytes_dtype_name(self.data_type_name)
+        except ValueError as error:
+            return problem((), str(error), "invalid_value")
+        return ()
+
+    def to_json(self) -> ZarrV3MetadataFieldJSON:
+        if self.must_understand:
+            return cast("ZarrV3MetadataFieldJSON", self.data_type_name)
+        return cast(
+            "ZarrV3MetadataFieldJSON",
+            {"name": self.data_type_name, "must_understand": False},
+        )
