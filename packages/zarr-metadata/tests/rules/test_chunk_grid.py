@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from zarr_metadata.rules import validate_array_metadata_v3
-from zarr_metadata.rules._chunk_grid import ChunkGrid, shard_index_grid
+from zarr_metadata.v3._parts import ChunkGrid, shard_index_grid
+from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -84,28 +85,31 @@ GRIDS: dict[str, tuple[object, object, object, object]] = {
 }
 
 
+def _grid_of(grid: object, shape: object) -> ChunkGrid:
+    """The grid `grid` describes over an array of `shape`.
+
+    A grid entity builds its own; one out of scope pins only the rank the
+    array shape gives it.
+    """
+    name = grid if isinstance(grid, str) else (grid or {}).get("name")  # type: ignore[union-attr]
+    entity_type = CORE_AND_EXTENSIONS.resolve("chunk_grid", name) if isinstance(name, str) else None
+    if entity_type is None:
+        return ChunkGrid.unreadable(shape)
+    entity, _ = entity_type.coerce(grid, CORE_AND_EXTENSIONS)
+    if entity is None:
+        return ChunkGrid.unreadable(shape)
+    return entity.grid(shape)  # type: ignore[attr-defined]
+
+
 @pytest.mark.parametrize(("grid", "shape", "rank", "extents"), GRIDS.values(), ids=list(GRIDS))
 def test_chunk_grid_of(grid: object, shape: object, rank: object, extents: object) -> None:
-    built = ChunkGrid.of(grid, shape)
+    built = _grid_of(grid, shape)
     assert built.rank == rank
     assert built.extents == extents
 
 
-def test_an_unmodelled_grid_is_carried_verbatim() -> None:
-    # A rule for a third-party grid can still read its own configuration.
-    grid = {"name": "mycorp.hilbert", "configuration": {"order": 3}}
-    assert ChunkGrid.of(grid, (64, 64)).metadata == grid
-
-
-def test_a_derived_grid_carries_no_metadata() -> None:
-    # Nothing may validate a grid this package invented, or report a
-    # location into one, so it must not look like a document's grid.
-    assert ChunkGrid.regular((8, 8)).metadata is None
-    assert ChunkGrid.of(REGULAR, (64, 64)).permuted((1, 0)).metadata is None
-
-
 def test_permuting_reorders_the_axes() -> None:
-    grid = ChunkGrid.of(_rectilinear(((30, 34), (32, 32))), (64, 64))
+    grid = _grid_of(_rectilinear(((30, 34), (32, 32))), (64, 64))
     assert grid.permuted((1, 0)).extents == (frozenset({32}), frozenset({30, 34}))
     # An order that is not a permutation of the rank keeps the rank only.
     assert grid.permuted((0, 1, 2)).extents is None

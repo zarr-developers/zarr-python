@@ -1,85 +1,84 @@
-"""Composition rules for v3 group metadata documents.
+"""Semantic checks for v3 group metadata documents.
 
-A group document's own fields carry no cross-field constraints, but the
-inline consolidated-metadata convention embeds whole child documents —
-and a composition-invalid child makes the consolidated view lie about
-the store. The group rule set therefore recurses: every array entry is
-judged by the v3 array rules, and every group entry (which may itself
-carry consolidated metadata) by this rule set.
+A group says almost nothing that can be wrong on its own. The one thing
+it can carry is consolidated metadata -- the child documents of a whole
+subtree, inline -- and each of those is judged exactly as it would be
+standing alone, at its own path.
+
+`consolidated_metadata` is not a declared member of the group TypedDict:
+the spec grandfathers it as a convention that "lacks the name member
+required of extension objects".
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, cast
 
-from zarr_metadata.model._validation import GROUP_METADATA_STANDARD_KEYS_V3
-from zarr_metadata.rules._engine import Rule, as_string_mapping, prefixed, run_rules
-from zarr_metadata.rules._registry import document_rule, document_rules, register_document_type
-from zarr_metadata.rules._v3_array import ZARR_V3_ARRAY_RULES
-from zarr_metadata.v3.consolidated import ZARR_V3_CONSOLIDATED_METADATA_KEY
+from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.v3._document import array_problems_v3
+from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Sequence
 
-    from zarr_metadata.model._validation import ValidationProblem
-
-
-ZARR_V3_GROUP = "zarr_v3_group"
-"""Document-type key under which this module's rules are registered."""
-
-# `consolidated_metadata` is not a declared member of the group TypedDict:
-# the spec grandfathers it as a convention that 'lacks the name member
-# required of extension objects'. It is declared here so the rule that
-# reads it passes the typo check without exempting unknown keys.
-register_document_type(
-    ZARR_V3_GROUP,
-    GROUP_METADATA_STANDARD_KEYS_V3,
-    extension_keys=frozenset({ZARR_V3_CONSOLIDATED_METADATA_KEY}),
-)
+    from zarr_metadata.v3._entity import Loc
 
 
-@document_rule(ZARR_V3_GROUP, frozenset({"consolidated_metadata"}))
-def check_consolidated_entries(document: Mapping[str, object]) -> tuple[ValidationProblem, ...]:
-    """Consolidated child documents must satisfy their own composition rules.
+def _prefixed(loc: Loc, problems: Sequence[ValidationProblem]) -> tuple[ValidationProblem, ...]:
+    """Re-base every problem's `loc` under `loc`, for a nested document."""
+    return tuple(
+        ValidationProblem((*loc, *found.loc), found.message, found.kind) for found in problems
+    )
 
-    Structural validity of the consolidated envelope and its entries is
-    the model layer's job; entries that are not interpretable as node
-    documents decline in its favor.
-    """
+
+def _as_string_mapping(value: object) -> Mapping[str, object] | None:
+    """`value` as a string-keyed mapping, or None if it is not one."""
+    if not isinstance(value, Mapping):
+        return None
+    mapping = cast("Mapping[object, object]", value)
+    if any(not isinstance(key, str) for key in mapping):
+        return None
+    return cast("Mapping[str, object]", mapping)
+
+
+def group_problems_v3(document: Mapping[str, object]) -> tuple[ValidationProblem, ...]:
+    """Every semantic problem in a v3 group document."""
+    if "consolidated_metadata" not in document:
+        return ()
     return consolidated_entries_problems(
         document["consolidated_metadata"], ("consolidated_metadata",)
     )
 
 
-def consolidated_entries_problems(
-    value: object, loc: tuple[str | int, ...] = ()
-) -> tuple[ValidationProblem, ...]:
-    """Composition problems in an inline consolidated envelope's children."""
-    consolidated = as_string_mapping(value)
+def consolidated_entries_problems(value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
+    """Semantic problems in an inline consolidated envelope's children.
+
+    Structural validity of the envelope and its entries is the model
+    layer's job; an entry that is not interpretable as a node document
+    declines in its favour.
+    """
+    consolidated = _as_string_mapping(value)
     if consolidated is None:
         return ()
-    metadata = as_string_mapping(consolidated.get("metadata"))
+    metadata = _as_string_mapping(consolidated.get("metadata"))
     if metadata is None:
         return ()
     problems: list[ValidationProblem] = []
     for path, entry in metadata.items():
-        node = as_string_mapping(entry)
+        node = _as_string_mapping(entry)
         if node is None:
             continue
         entry_loc = (*loc, "metadata", path)
         node_type = node.get("node_type")
         if node_type == "array":
-            problems.extend(prefixed(entry_loc, run_rules(ZARR_V3_ARRAY_RULES, node)))
+            problems.extend(_prefixed(entry_loc, array_problems_v3(node, CORE_AND_EXTENSIONS)))
         elif node_type == "group":
-            problems.extend(prefixed(entry_loc, run_rules(ZARR_V3_GROUP_RULES, node)))
+            problems.extend(_prefixed(entry_loc, group_problems_v3(node)))
     return tuple(problems)
 
 
-ZARR_V3_GROUP_RULES: Final[tuple[Rule, ...]] = document_rules(ZARR_V3_GROUP)
-"""The composition rule set for v3 group metadata documents."""
-
-
 __all__ = [
-    "ZARR_V3_GROUP",
-    "ZARR_V3_GROUP_RULES",
+    "consolidated_entries_problems",
+    "group_problems_v3",
 ]

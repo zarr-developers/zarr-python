@@ -302,8 +302,6 @@ _STANDALONE_VOCAB = frozenset(
         "NumpyTimedelta64",
         "ProblemKind",
         "RectilinearDimSpec",
-        "Rule",
-        "RuleCheck",
         "ScalarMap",
         "ScalarMapEntry",
         "ShardingIndexLocation",

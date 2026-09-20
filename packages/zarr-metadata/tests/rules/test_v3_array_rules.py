@@ -443,7 +443,9 @@ def test_error_consolidated_nested_group_recursion() -> None:
 def test_error_group_parse_raises() -> None:
     from zarr_metadata.rules import parse_group_metadata_v3
 
-    with pytest.raises(MetadataValidationError, match="fill_value invalid"):
+    with pytest.raises(
+        MetadataValidationError, match=r"consolidated_metadata\.metadata\.a\.fill_value"
+    ):
         parse_group_metadata_v3(
             {
                 "zarr_format": 3,
