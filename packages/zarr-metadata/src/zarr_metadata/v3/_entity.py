@@ -39,6 +39,7 @@ is about blosc rather than about entities.
 from __future__ import annotations
 
 from collections.abc import Mapping as _Mapping
+from copy import deepcopy
 from dataclasses import MISSING, Field, dataclass, fields
 from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, TypeAlias, TypeVar, cast
@@ -526,8 +527,13 @@ class MetadataEntity:
         this package holds `None` to mean a JSON `null` the document
         actually wrote, and `scale_offset` is a real case where `null`
         and absent are different documents.
+
+        Deep-copied, because a member can be an arbitrary JSON value: a
+        `scale_offset` offset may be an object, and handing the caller
+        the entity's own dict would let them mutate a frozen entity
+        through the document it returned.
         """
-        return self._members()
+        return deepcopy(self._members())
 
     value_problems: ClassVar[ValueRoutine] = staticmethod(_no_value_problems)
     """Every value among the members the spec disallows.

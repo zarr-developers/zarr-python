@@ -9,6 +9,7 @@ drift, because one drifting makes this fail.
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 from typing import get_type_hints
 
@@ -483,3 +484,44 @@ def test_error_an_explicit_null_scalar_is_refused() -> None:
     assert codec is not None
     assert not isinstance(codec, MetadataEntity)
     assert [problem.loc for problem in problems] == [("configuration", "offset")]
+
+
+# (an entity whose configuration holds a mutable JSON value)
+MUTABLE_MEMBERS: dict[str, tuple[str, object]] = {
+    "scale-offset-object": (
+        "codecs",
+        {"name": "scale_offset", "configuration": {"offset": {"a": 1}}},
+    ),
+    "cast-value-scalar-map": (
+        "codecs",
+        {
+            "name": "cast_value",
+            "configuration": {"data_type": "int8", "scalar_map": {"encode": (("NaN", 0),)}},
+        },
+    ),
+    "struct-fields": (
+        "data_type",
+        {"name": "struct", "configuration": {"fields": ({"name": "a", "data_type": "uint8"},)}},
+    ),
+}
+
+
+@pytest.mark.parametrize(("field", "written"), MUTABLE_MEMBERS.values(), ids=list(MUTABLE_MEMBERS))
+def test_to_json_shares_no_mutable_state_with_the_entity(field: str, written: object) -> None:
+    # The model layer has this test; the entity layer did not, and handed
+    # out its own dict -- so a caller mutating the document it was given
+    # mutated a frozen entity.
+    entity, problems = CORE_AND_EXTENSIONS.coerce(field, written)  # type: ignore[arg-type]
+    assert problems == ()
+    assert isinstance(entity, MetadataEntity)
+    baseline = copy.deepcopy(entity.to_json())
+    handed_out = entity.to_json()
+    configuration = handed_out["configuration"]  # type: ignore[index]
+    assert isinstance(configuration, dict)
+    for key in list(configuration):
+        value = configuration[key]
+        if isinstance(value, dict):
+            value["INJECTED"] = "boom"
+        else:
+            configuration[key] = "clobbered"
+    assert entity.to_json() == baseline
