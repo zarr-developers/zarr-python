@@ -22,6 +22,7 @@ from zarr_metadata.v3._shape import (
     blocking_problems,
     entity_configuration_keys,
     entity_name,
+    entity_required_configuration_keys,
     modelled_entities,
     validate_known_entity_metadata,
 )
@@ -56,18 +57,26 @@ class EntityRule:
     itself (e.g. `shape`), gating the rule exactly as `Rule.requires`
     does.
 
-    `reads` are the *configuration* members the check reads. A rule runs
-    only when none of them has a shape problem of its own, which is what
-    makes `configuration["level"]`-style access inside a check safe: a
-    member that is missing, or present with the wrong type, is reported
-    at `("configuration", "<member>")` by the shape validator, and the
-    rules that read it stand down while the rest still run.
+    `reads` are the *required* configuration members the check subscripts.
+    A rule runs only when none of them has a shape problem of its own,
+    which is what makes `configuration["level"]` safe: a required member
+    that is absent or ill-typed is reported at `("configuration", member)`
+    and stands the rule down, while the rest of the entity is still
+    judged. Only required members may be declared here — an optional one
+    can be absent with nothing reported, so subscripting it would raise
+    out of a validator.
+
+    `reads_optional` are modelled members the check tests for presence
+    rather than subscripting (`"endian" not in configuration`). They gate
+    the rule the same way; they are separate so that the subscript
+    guarantee above stays true by construction.
     """
 
     field: str
     entity: str
     requires: frozenset[str]
     reads: frozenset[str]
+    reads_optional: frozenset[str]
     check: EntityCheck
 
 
@@ -134,6 +143,7 @@ def entity_rule(
     entity: str,
     requires: frozenset[str] = frozenset(),
     reads: frozenset[str] = frozenset(),
+    reads_optional: frozenset[str] = frozenset(),
 ) -> Callable[[EntityCheck], EntityRule]:
     """Register a rule about one named entity within `document_type`.
 
@@ -153,15 +163,32 @@ def entity_rule(
                 f"validator in zarr_metadata.v3._shape; such a rule could never fire"
             )
             raise ValueError(msg)
-        modelled = entity_configuration_keys(field, entity)
-        unmodelled = reads - (modelled or frozenset())
+        modelled = entity_configuration_keys(field, entity) or frozenset()
+        required = entity_required_configuration_keys(field, entity) or frozenset()
+        unmodelled = (reads | reads_optional) - modelled
         if len(unmodelled) != 0:
             msg = (
-                f"entity rule {check.__name__!r} declares reads={sorted(unmodelled)}, which "
+                f"entity rule {check.__name__!r} declares {sorted(unmodelled)}, which "
                 f"{entity!r} does not model; such a member can never carry a value to read"
             )
             raise ValueError(msg)
-        rule = EntityRule(field=field, entity=entity, requires=requires, reads=reads, check=check)
+        optional = reads - required
+        if len(optional) != 0:
+            msg = (
+                f"entity rule {check.__name__!r} declares reads={sorted(optional)}, which "
+                f"{entity!r} does not require; an absent optional member is reported by "
+                f"nothing, so subscripting it would raise out of a validator. Declare it as "
+                f"reads_optional and test for presence instead."
+            )
+            raise ValueError(msg)
+        rule = EntityRule(
+            field=field,
+            entity=entity,
+            requires=requires,
+            reads=reads,
+            reads_optional=reads_optional,
+            check=check,
+        )
         _ENTITY_RULES[field, canonical_entity].append(rule)
         return rule
 
@@ -214,14 +241,16 @@ def run_entity_rules(
     if verdict is None:
         return ()
     blocking = blocking_problems(verdict)
-    # A problem at the entity or at `configuration` itself means there is no
-    # configuration to read; one at ("configuration", member) means that one
-    # member is unusable and the rules that read it must stand down, while
-    # every other rule about this entity still runs.
-    if any(len(problem.loc) < 2 for problem in blocking):
+    # Only two locations mean there is no configuration to read: the entity
+    # itself, and `configuration` as a whole. Anything else is about one
+    # member — including `must_understand`, which is part of the envelope
+    # and says nothing about whether the configuration is readable.
+    if any(problem.loc in ((), ("configuration",)) for problem in blocking):
         return ()
     unusable = frozenset(
-        str(problem.loc[1]) for problem in blocking if problem.loc[0] == "configuration"
+        str(problem.loc[1])
+        for problem in blocking
+        if len(problem.loc) >= 2 and problem.loc[0] == "configuration"
     )
     configuration = _configuration_of(value)
     if configuration is None:
@@ -230,7 +259,7 @@ def run_entity_rules(
     for rule in rules:
         if not rule.requires <= document.keys():
             continue
-        if len(rule.reads & unusable) != 0:
+        if len((rule.reads | rule.reads_optional) & unusable) != 0:
             continue
         for found in rule.check(configuration, document, incoming):
             # A rule that reports at the entity itself (an empty loc) is

@@ -645,3 +645,22 @@ def test_error_endian_message_names_the_shard_index_type() -> None:
     )
     assert loc == ("codecs", 0, "configuration", "index_codecs", 0, "configuration", "endian")
     assert "uint64" in message
+
+
+def test_error_a_malformed_must_understand_does_not_suppress_the_entity() -> None:
+    # `must_understand` is part of the envelope, not the configuration, so
+    # a bad one says nothing about whether the configuration is readable.
+    problems = validate_array_metadata_v3(
+        {
+            **BASE,
+            "codecs": (
+                {
+                    "name": "transpose",
+                    "configuration": {"order": (2, 1, 0)},
+                    "must_understand": "yes",
+                },
+                "bytes",
+            ),
+        }
+    )
+    assert ("codecs", 0, "configuration", "order") in {problem.loc for problem in problems}

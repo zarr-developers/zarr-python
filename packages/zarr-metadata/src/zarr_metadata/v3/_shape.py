@@ -647,6 +647,21 @@ def entity_configuration_keys(field: ExtensionPointField, name: str) -> frozense
     return None if shape is None else shape.config_keys
 
 
+def entity_required_configuration_keys(
+    field: ExtensionPointField, name: str
+) -> frozenset[str] | None:
+    """The configuration members `name` requires, or None if unmodelled.
+
+    A rule may subscript only these: a required member that is absent or
+    ill-typed is reported at `("configuration", member)`, which stands the
+    rule down. An optional member can be legitimately absent with no
+    problem reported, so a rule that subscripts one raises `KeyError` out
+    of a validator instead of returning a verdict.
+    """
+    shape = _ENTITY_SHAPES.get(field, {}).get(canonical_name(field, name))
+    return None if shape is None else shape.config_required
+
+
 def modelled_entities() -> frozenset[tuple[ExtensionPointField, str]]:
     """Every `(extension point, name)` with a shape validator."""
     return frozenset((field, name) for field, shapes in _ENTITY_SHAPES.items() for name in shapes)
@@ -670,6 +685,7 @@ __all__ = [
     "blocking_problems",
     "entity_configuration_keys",
     "entity_name",
+    "entity_required_configuration_keys",
     "modelled_entities",
     "validate_known_chunk_grid_metadata",
     "validate_known_codec_metadata",

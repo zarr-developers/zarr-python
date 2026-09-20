@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 _ARRAY_V3 = "zarr_v3_array"
 
 
-@entity_rule(_ARRAY_V3, CODECS, BYTES_CODEC_NAME, reads=frozenset({"endian"}))
+@entity_rule(_ARRAY_V3, CODECS, BYTES_CODEC_NAME, reads_optional=frozenset({"endian"}))
 def data_type_has_a_raw_byte_representation(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:

@@ -10,6 +10,7 @@ the registry.
 from __future__ import annotations
 
 import pkgutil
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -31,6 +32,14 @@ from zarr_metadata.v3._extension_points import (
     RAW_BYTES_FAMILY,
 )
 from zarr_metadata.v3._shape import modelled_entities
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from zarr_metadata.model._validation import ValidationProblem
+    from zarr_metadata.rules._spec import ArraySpec
+from zarr_metadata.v3.codec.bytes import BYTES_CODEC_NAME
+from zarr_metadata.v3.codec.gzip import GZIP_CODEC_NAME
 
 # Entities the package models but that carry no composition rules: their
 # canonical shape is the whole of what we can say about them. Listed by
@@ -169,3 +178,29 @@ def test_register_document_type_accepts_declared_extension_keys() -> None:
         return ()
 
     assert _uses_both.requires == frozenset({"a", "b"})
+
+
+def test_error_entity_rule_reads_an_unmodelled_member() -> None:
+    with pytest.raises(ValueError, match="does not model"):
+
+        @entity_rule(ZARR_V3_ARRAY, CODECS, GZIP_CODEC_NAME, reads=frozenset({"nosuchmember"}))
+        def _unmodelled_member(
+            configuration: Mapping[str, object],
+            document: Mapping[str, object],
+            incoming: ArraySpec,
+        ) -> tuple[ValidationProblem, ...]:  # pragma: no cover - never registered
+            return ()
+
+
+def test_error_entity_rule_reads_an_optional_member() -> None:
+    # Only a required member is safe to subscript: an absent optional one is
+    # reported by nothing, so the rule would raise out of a validator.
+    with pytest.raises(ValueError, match="reads_optional"):
+
+        @entity_rule(ZARR_V3_ARRAY, CODECS, BYTES_CODEC_NAME, reads=frozenset({"endian"}))
+        def _subscripts_an_optional_member(
+            configuration: Mapping[str, object],
+            document: Mapping[str, object],
+            incoming: ArraySpec,
+        ) -> tuple[ValidationProblem, ...]:  # pragma: no cover - never registered
+            return ()
