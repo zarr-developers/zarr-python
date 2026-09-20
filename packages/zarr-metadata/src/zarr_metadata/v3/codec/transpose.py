@@ -91,6 +91,22 @@ class TransposeCodec(CodecEntity):
             )
         return ()
 
+    def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
+        """A transpose permutes the array it receives, so ranks must agree.
+
+        Judged against what actually reaches this codec: inside a shard
+        that is the inner chunk, and after another transpose it is that
+        transpose's output.
+        """
+        rank = incoming.grid.rank if incoming is not None else None
+        if rank is None or len(self.order) == rank:
+            return ()
+        return problem(
+            ("order",),
+            f"order has {len(self.order)} entries but the incoming array has {rank} dimensions",
+            "invalid_value",
+        )
+
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:
         """The same array with its axes reordered.
 

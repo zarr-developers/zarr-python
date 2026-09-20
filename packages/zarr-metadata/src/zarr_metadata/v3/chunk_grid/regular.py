@@ -5,7 +5,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#regular-grids
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired, cast
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
 
@@ -14,9 +14,14 @@ from zarr_metadata.v3._entity import (
     ChunkGridEntity,
     MemberTypes,
     is_int,
+    problem,
     sequence_of,
 )
 from zarr_metadata.v3._parts import ChunkGrid
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
 
 REGULAR_CHUNK_GRID_NAME: Final = "regular"
 """The `name` field value of the regular chunk grid."""
@@ -85,6 +90,20 @@ class RegularChunkGrid(ChunkGridEntity):
             )
             for position, extent in enumerate(self.chunk_shape)
             if extent < 1
+        )
+
+    def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
+        """A regular grid must chunk every array dimension."""
+        if not isinstance(array_shape, (list, tuple)):
+            return ()
+        extents = tuple(cast("Sequence[object]", array_shape))
+        if len(self.chunk_shape) == len(extents):
+            return ()
+        return problem(
+            ("chunk_shape",),
+            f"chunk_shape has {len(self.chunk_shape)} entries but shape has "
+            f"{len(extents)} dimensions",
+            "invalid_value",
         )
 
     def grid(self, array_shape: object) -> ChunkGrid:

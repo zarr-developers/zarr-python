@@ -14,6 +14,7 @@ from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     Coerced,
+    DataTypeEntity,
     Loc,
     MemberTypes,
     MetadataEntity,
@@ -225,9 +226,7 @@ class CastValueCodec(CodecEntity):
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:
         """The same parts, holding the type this codec casts to."""
         data_type = self.data_type
-        if isinstance(data_type, MetadataEntity):
-            return incoming.with_data_type(data_type.to_json())
-        return incoming.with_data_type(cast(ZarrV3MetadataFieldJSON, data_type))
+        return incoming.with_data_type(data_type if isinstance(data_type, DataTypeEntity) else None)
 
     def to_json(self) -> CastValueCodecObject:
         return cast("CastValueCodecObject", super().to_json())

@@ -47,7 +47,7 @@ from typing import TYPE_CHECKING, TypeAlias, cast
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+    from zarr_metadata.v3._entity import DataTypeEntity
 
 
 Extents: TypeAlias = "tuple[frozenset[int] | None, ...]"
@@ -88,16 +88,14 @@ def _uniform(lengths: Sequence[object]) -> Extents:
 class ChunkGrid:
     """The division of an array into the parts a codec pipeline encodes.
 
-    `metadata` is the grid as the document spells it, kept so that a rule
-    for a grid this package does not model can still read its own
-    configuration. It is absent for a grid this package derived rather
-    than read — the regular grid a sharding codec imposes, or a transposed
-    grid — so nothing may validate it or report a location into it.
+    Nothing here is the metadata: a grid entity keeps its own, and what
+    reaches a codec is the division, not the spelling of it. A derived
+    grid -- the regular one a sharding codec imposes, or a transposed one
+    -- has no metadata to keep anyway.
     """
 
     rank: int | None
     extents: Extents | None
-    metadata: ZarrV3MetadataFieldJSON | None = None
 
     @classmethod
     def unreadable(cls, array_shape: object) -> ChunkGrid:
@@ -183,8 +181,9 @@ class ArrayParts:
     divide *every* chunk, which under a rectilinear grid is several
     different lengths.
 
-    `data_type` is the metadata-field value verbatim, because rules compare
-    it by name, and it is `None` where the element type is undetermined
+    `data_type` is the coerced data type, so a rule asks it what it is
+    rather than comparing names, and it is `None` where the element type
+    is undetermined
     while the array itself is not. That happens inside a shard: the inner
     grid is the sharding codec's own `chunk_shape` whatever reached it, so
     an unreadable codec upstream costs the type and not the parts. `None`
@@ -194,12 +193,12 @@ class ArrayParts:
     """
 
     grid: ChunkGrid
-    data_type: ZarrV3MetadataFieldJSON | None
+    data_type: DataTypeEntity | None
 
     def with_grid(self, grid: ChunkGrid) -> ArrayParts:
         return replace(self, grid=grid)
 
-    def with_data_type(self, data_type: ZarrV3MetadataFieldJSON | None) -> ArrayParts:
+    def with_data_type(self, data_type: DataTypeEntity | None) -> ArrayParts:
         return replace(self, data_type=data_type)
 
 

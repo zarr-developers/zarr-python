@@ -9,12 +9,16 @@ from typing import ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
 
+from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
+    DataTypeEntity,
     MemberTypes,
     one_of,
+    problem,
 )
+from zarr_metadata.v3._parts import ArrayParts
 
 BYTES_CODEC_NAME: Final = "bytes"
 """The `name` field value of the `bytes` codec."""
@@ -90,6 +94,34 @@ class BytesCodec(CodecEntity):
     kind: ClassVar[CodecKind] = "array_bytes"
 
     member_types: ClassVar[MemberTypes] = {"endian": (False, one_of(ENDIANNESS))}
+
+    def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
+        """The data type reaching here must have a raw byte representation.
+
+        A variable-length type has no fixed one, so this codec cannot
+        encode it. A multi-byte one has several orderings, so `endian` is
+        required -- and the message names the type, because inside a
+        shard's `index_codecs` the array is the shard index, whose
+        `uint64` type appears nowhere in the document.
+        """
+        data_type = incoming.data_type if incoming is not None else None
+        if not isinstance(data_type, DataTypeEntity):
+            return ()
+        storage = data_type.storage_class()
+        name = type(data_type).identifier
+        if storage == "variable_length":
+            return problem(
+                (),
+                f"bytes codec is not compatible with variable-length data_type {name!r}",
+                "invalid_value",
+            )
+        if storage == "multi_byte" and self.endian is None:
+            return problem(
+                ("endian",),
+                f"endian is required for data type {name!r}, which contains multi-byte values",
+                "missing_key",
+            )
+        return ()
 
     def to_json(self) -> BytesCodecObject | BytesCodecName:
         return cast("BytesCodecObject | BytesCodecName", super().to_json())

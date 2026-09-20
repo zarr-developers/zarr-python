@@ -5,7 +5,7 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired, cast
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
 
@@ -19,6 +19,10 @@ from zarr_metadata.v3._entity import (
     problem,
 )
 from zarr_metadata.v3._parts import ChunkGrid
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
 
 RECTILINEAR_CHUNK_GRID_NAME: Final = "rectilinear"
 """The `name` field value of the rectilinear chunk grid."""
@@ -156,6 +160,26 @@ def _is_dim_specs(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
     return tuple(found)
 
 
+def _covered_extent(spec: tuple[int | tuple[int, int], ...]) -> int | None:
+    """How much of a dimension an explicit spec covers, or None.
+
+    None when any entry is non-positive: `problems` reports that, and a
+    total computed from a nonsense entry would be nonsense too.
+    """
+    total = 0
+    for item in spec:
+        if isinstance(item, int):
+            if item < 1:
+                return None
+            total += item
+            continue
+        size, count = item
+        if size < 1 or count < 1:
+            return None
+        total += size * count
+    return total
+
+
 def _axis_lengths(spec: RectilinearDimSpec) -> frozenset[int] | None:
     """The lengths one dimension's chunks take, or None if undetermined.
 
@@ -226,6 +250,38 @@ class RectilinearChunkGrid(ChunkGridEntity):
                             "invalid_value",
                         )
                     )
+        return tuple(found)
+
+    def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
+        """One spec per dimension, and explicit specs must cover it.
+
+        A bare integer is uniform shorthand, so it covers whatever the
+        dimension turns out to be and imposes no sum; an explicit list
+        names every chunk, so the names have to add up.
+        """
+        if not isinstance(array_shape, (list, tuple)):
+            return ()
+        extents = tuple(cast("Sequence[object]", array_shape))
+        if len(self.chunk_shapes) != len(extents):
+            return problem(
+                ("chunk_shapes",),
+                f"chunk_shapes has {len(self.chunk_shapes)} entries but shape has "
+                f"{len(extents)} dimensions",
+                "invalid_value",
+            )
+        found: list[ValidationProblem] = []
+        for dim, (spec, extent) in enumerate(zip(self.chunk_shapes, extents, strict=True)):
+            if isinstance(spec, int) or not is_integer(extent):
+                continue
+            total = _covered_extent(spec)
+            if total is not None and total < extent:
+                found.extend(
+                    problem(
+                        ("chunk_shapes", dim),
+                        f"chunk sizes sum to {total} but must cover shape[{dim}] extent {extent}",
+                        "invalid_value",
+                    )
+                )
         return tuple(found)
 
     def grid(self, array_shape: object) -> ChunkGrid:

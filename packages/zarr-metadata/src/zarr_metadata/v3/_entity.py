@@ -361,6 +361,15 @@ class CodecEntity(MetadataEntity):
 
     kind: ClassVar[CodecKind]
 
+    def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
+        """Why this codec cannot be applied to the array that reaches it.
+
+        `incoming` is None once the chain can no longer say what reaches
+        here, and the default answer to that is nothing: declining beats
+        guessing. Locations are relative to this codec's entry.
+        """
+        return ()
+
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:
         """What the next codec in the chain sees, or None if undeterminable.
 
@@ -379,6 +388,14 @@ class CodecEntity(MetadataEntity):
 @dataclass(frozen=True)
 class ChunkGridEntity(MetadataEntity):
     """An entity that divides an array into the parts a pipeline encodes."""
+
+    def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
+        """Why this grid does not divide an array of `array_shape`.
+
+        Locations are relative to the grid's `configuration`. Default:
+        nothing, for a grid this package reads but has no such rule for.
+        """
+        return ()
 
     def grid(self, array_shape: object) -> ChunkGrid:
         """What this grid divides an array of `array_shape` into.
