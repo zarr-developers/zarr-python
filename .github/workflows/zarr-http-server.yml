@@ -53,11 +53,10 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
       - name: Install just
-        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
         with:
-          # Pin the tool, not just the action: without this the action
-          # installs whatever just is newest at run time.
-          just-version: 1.58.0
+          repo: casey/just
+          version: 1.58.0
       - name: Sync test dependency groups
         # The examples group carries the deps the README examples need, so the
         # test that reads a served array back with a zarr client runs here
@@ -80,11 +79,10 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
       - name: Install just
-        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
         with:
-          # Pin the tool, not just the action: without this the action
-          # installs whatever just is newest at run time.
-          just-version: 1.58.0
+          repo: casey/just
+          version: 1.58.0
       - name: Run ruff
         run: just lint
 
@@ -106,11 +104,10 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
       - name: Install just
-        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
         with:
-          # Pin the tool, not just the action: without this the action
-          # installs whatever just is newest at run time.
-          just-version: 1.58.0
+          repo: casey/just
+          version: 1.58.0
       - name: Sync test dependency group
         run: uv sync --group test --python 3.12
       - name: Run mypy
@@ -132,11 +129,10 @@ jobs:
         with:
           enable-cache: true
       - name: Install just
-        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
         with:
-          # Pin the tool, not just the action: without this the action
-          # installs whatever just is newest at run time.
-          just-version: 1.58.0
+          repo: casey/just
+          version: 1.58.0
       - name: Build docs
         run: just docs-check
 
