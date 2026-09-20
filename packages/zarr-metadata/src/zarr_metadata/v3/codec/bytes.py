@@ -10,9 +10,9 @@ from typing import ClassVar, Final, Literal, NotRequired, cast
 from typing_extensions import TypedDict
 
 from zarr_metadata.v3._entity import (
+    CodecEntity,
     CodecKind,
     MemberTypes,
-    MetadataEntity,
     one_of,
 )
 
@@ -77,7 +77,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class BytesCodec(MetadataEntity):
+class BytesCodec(CodecEntity):
     """The `bytes` codec, coerced from its metadata.
 
     `endian` is optional and absent means something: a one-byte data type

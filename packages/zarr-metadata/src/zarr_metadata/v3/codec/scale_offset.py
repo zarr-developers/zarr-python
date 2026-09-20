@@ -11,11 +11,12 @@ from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.v3._entity import (
+    CodecEntity,
     CodecKind,
     MemberTypes,
-    MetadataEntity,
     is_json_value,
 )
+from zarr_metadata.v3._parts import ArrayParts
 
 SCALE_OFFSET_CODEC_NAME: Final = "scale_offset"
 """The `name` field value of the `scale_offset` codec."""
@@ -72,7 +73,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class ScaleOffsetCodec(MetadataEntity):
+class ScaleOffsetCodec(CodecEntity):
     """The `scale_offset` codec, coerced from its metadata.
 
     Both members are optional and any JSON scalar is well-typed here; what
@@ -90,6 +91,14 @@ class ScaleOffsetCodec(MetadataEntity):
         "offset": (False, is_json_value),
         "scale": (False, is_json_value),
     }
+
+    def transition(self, incoming: ArrayParts) -> ArrayParts | None:
+        """The same array, element for element.
+
+        The registry entry removed the `astype` field, so this codec no
+        longer changes the element type -- only the values.
+        """
+        return incoming
 
     def to_json(self) -> ScaleOffsetCodecObject | ScaleOffsetCodecName:
         return cast("ScaleOffsetCodecObject | ScaleOffsetCodecName", super().to_json())

@@ -11,11 +11,12 @@ from typing_extensions import TypedDict
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
+    ChunkGridEntity,
     MemberTypes,
-    MetadataEntity,
     is_int,
     sequence_of,
 )
+from zarr_metadata.v3._parts import ChunkGrid
 
 REGULAR_CHUNK_GRID_NAME: Final = "regular"
 """The `name` field value of the regular chunk grid."""
@@ -58,7 +59,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class RegularChunkGrid(MetadataEntity):
+class RegularChunkGrid(ChunkGridEntity):
     """The `regular` chunk grid, coerced from its metadata."""
 
     chunk_shape: tuple[int, ...] = ()
@@ -85,6 +86,10 @@ class RegularChunkGrid(MetadataEntity):
             for position, extent in enumerate(self.chunk_shape)
             if extent < 1
         )
+
+    def grid(self, array_shape: object) -> ChunkGrid:
+        """One extent per axis, the same for every chunk on that axis."""
+        return ChunkGrid.regular(self.chunk_shape)
 
     def to_json(self) -> RegularChunkGridObject:
         return cast("RegularChunkGridObject", super().to_json())

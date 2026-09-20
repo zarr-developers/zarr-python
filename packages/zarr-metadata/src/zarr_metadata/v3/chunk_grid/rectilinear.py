@@ -11,13 +11,14 @@ from typing_extensions import TypedDict
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
+    ChunkGridEntity,
     Loc,
     MemberTypes,
-    MetadataEntity,
     is_integer,
     one_of,
     problem,
 )
+from zarr_metadata.v3._parts import ChunkGrid
 
 RECTILINEAR_CHUNK_GRID_NAME: Final = "rectilinear"
 """The `name` field value of the rectilinear chunk grid."""
@@ -155,8 +156,28 @@ def _is_dim_specs(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
     return tuple(found)
 
 
+def _axis_lengths(spec: RectilinearDimSpec) -> frozenset[int] | None:
+    """The lengths one dimension's chunks take, or None if undetermined.
+
+    A bare integer is a regular step, so every chunk is that long. An
+    explicit list names them, with `[size, count]` pairs standing for
+    repeats; the distinct sizes are what any divisibility question needs.
+    None for a non-positive length, which `problems` reports -- a grid
+    that does not tile answers nothing about what divides it.
+    """
+    if isinstance(spec, int):
+        return frozenset({spec}) if spec > 0 else None
+    lengths: set[int] = set()
+    for item in spec:
+        size = item if isinstance(item, int) else item[0]
+        if size < 1 or (not isinstance(item, int) and item[1] < 1):
+            return None
+        lengths.add(size)
+    return frozenset(lengths) if len(lengths) != 0 else None
+
+
 @dataclass(frozen=True)
-class RectilinearChunkGrid(MetadataEntity):
+class RectilinearChunkGrid(ChunkGridEntity):
     """The `rectilinear` chunk grid, coerced from its metadata."""
 
     kind: Literal["inline"] = "inline"
@@ -206,6 +227,15 @@ class RectilinearChunkGrid(MetadataEntity):
                         )
                     )
         return tuple(found)
+
+    def grid(self, array_shape: object) -> ChunkGrid:
+        """The distinct lengths each axis's chunks take.
+
+        Plural per axis, which is the point of a rectilinear grid: an
+        axis of `[30, 34]` gives `{30, 34}`, and anything asking about
+        divisibility has to hold for both.
+        """
+        return ChunkGrid.derived(tuple(_axis_lengths(spec) for spec in self.chunk_shapes))
 
     def configuration(self) -> dict[str, object]:
         """Run-length encoded, which is the spelling that does not grow.

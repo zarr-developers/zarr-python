@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal, TypeAlias, TypeVar, 
 from typing_extensions import TypeIs
 
 from zarr_metadata.model._validation import ValidationProblem, is_json
+from zarr_metadata.v3._parts import ChunkGrid
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -52,6 +53,7 @@ if TYPE_CHECKING:
 
     from zarr_metadata.model._validation import ProblemKind
     from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+    from zarr_metadata.v3._parts import ArrayParts
     from zarr_metadata.v3._registry import Context
 
 EntityT = TypeVar("EntityT", bound="MetadataEntity")
@@ -182,8 +184,9 @@ def _as_tuples(value: object) -> object:
     own type says tuple -- and two documents differing only in that would
     compare unequal.
     """
-    if isinstance(value, list):
-        return tuple(_as_tuples(entry) for entry in cast("list[object]", value))
+    if isinstance(value, (list, tuple)):
+        entries = cast("list[object] | tuple[object, ...]", value)
+        return tuple(_as_tuples(entry) for entry in entries)
     if isinstance(value, _Mapping):
         entries = cast("Mapping[str, object]", value)
         return {key: _as_tuples(entry) for key, entry in entries.items()}
@@ -353,6 +356,41 @@ class MetadataEntity:
 
 
 @dataclass(frozen=True)
+class CodecEntity(MetadataEntity):
+    """An entity that occupies a position in the codec pipeline."""
+
+    kind: ClassVar[CodecKind]
+
+    def transition(self, incoming: ArrayParts) -> ArrayParts | None:
+        """What the next codec in the chain sees, or None if undeterminable.
+
+        Only an array-to-array codec has anything to say: the two later
+        kinds end shape propagation by construction, one by consuming the
+        array and the other by never having had it.
+
+        The default is None, so a modelled codec that forgets to say how
+        it transforms the array stops propagation rather than silently
+        claiming to leave it alone. Failing closed here costs a judgment;
+        failing open would invent one.
+        """
+        return None
+
+
+@dataclass(frozen=True)
+class ChunkGridEntity(MetadataEntity):
+    """An entity that divides an array into the parts a pipeline encodes."""
+
+    def grid(self, array_shape: object) -> ChunkGrid:
+        """What this grid divides an array of `array_shape` into.
+
+        The array shape is a parameter because neither determines a grid
+        alone: a grid whose own metadata cannot be read still has the
+        array's rank, and rank is enough for several rules.
+        """
+        return ChunkGrid.unreadable(array_shape)
+
+
+@dataclass(frozen=True)
 class DataTypeEntity(MetadataEntity):
     """An entity that says how the array's scalars are stored.
 
@@ -415,6 +453,8 @@ __all__ = [
     "CHUNK_KEY_ENCODING",
     "CODECS",
     "DATA_TYPE",
+    "ChunkGridEntity",
+    "CodecEntity",
     "CodecKind",
     "Coerced",
     "DataTypeEntity",

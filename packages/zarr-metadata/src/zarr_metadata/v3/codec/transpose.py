@@ -11,13 +11,14 @@ from typing_extensions import TypedDict
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
+    CodecEntity,
     CodecKind,
     MemberTypes,
-    MetadataEntity,
     is_int,
     problem,
     sequence_of,
 )
+from zarr_metadata.v3._parts import ArrayParts
 
 TRANSPOSE_CODEC_NAME: Final = "transpose"
 """The `name` field value of the `transpose` codec."""
@@ -65,7 +66,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class TransposeCodec(MetadataEntity):
+class TransposeCodec(CodecEntity):
     """The `transpose` codec, coerced from its metadata."""
 
     order: tuple[int, ...] = ()
@@ -89,6 +90,15 @@ class TransposeCodec(MetadataEntity):
                 "invalid_value",
             )
         return ()
+
+    def transition(self, incoming: ArrayParts) -> ArrayParts | None:
+        """The same array with its axes reordered.
+
+        A transposed regular grid is still a regular grid, so the parts
+        survive the trip; the grid metadata does not, because it is no
+        longer the grid the document wrote.
+        """
+        return incoming.with_grid(incoming.grid.permuted(self.order))
 
     def to_json(self) -> TransposeCodecObject:
         return cast("TransposeCodecObject", super().to_json())

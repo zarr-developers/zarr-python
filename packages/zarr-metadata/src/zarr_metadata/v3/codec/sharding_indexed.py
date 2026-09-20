@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, c
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CODECS,
+    CodecEntity,
     CodecKind,
     Coerced,
     Loc,
@@ -123,7 +124,7 @@ def _coerce_pipeline(
 
 
 @dataclass(frozen=True)
-class ShardingIndexedCodec(MetadataEntity):
+class ShardingIndexedCodec(CodecEntity):
     """The `sharding_indexed` codec, coerced from its metadata.
 
     Holds two codec pipelines, so it is one of the few entities that

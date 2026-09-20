@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, c
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     DATA_TYPE,
+    CodecEntity,
     CodecKind,
     Coerced,
     Loc,
@@ -20,8 +21,10 @@ from zarr_metadata.v3._entity import (
     one_of,
     problem,
 )
+from zarr_metadata.v3._parts import ArrayParts
 
 if TYPE_CHECKING:
+    from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
     from zarr_metadata.v3._registry import Context
 
 from typing_extensions import TypedDict
@@ -172,7 +175,7 @@ def _is_data_type_field(value: object, loc: Loc) -> tuple[ValidationProblem, ...
 
 
 @dataclass(frozen=True)
-class CastValueCodec(MetadataEntity):
+class CastValueCodec(CodecEntity):
     """The `cast_value` codec, coerced from its metadata.
 
     Holds the data type it casts to, so like `sharding_indexed` it is
@@ -219,6 +222,16 @@ class CastValueCodec(MetadataEntity):
         if isinstance(data_type, MetadataEntity):
             members["data_type"] = data_type.to_json()
         return members
+
+    def transition(self, incoming: ArrayParts) -> ArrayParts | None:
+        """The same parts, holding the type this codec casts to."""
+        data_type = self.data_type
+        return incoming.with_data_type(
+            cast(
+                "ZarrV3MetadataFieldJSON",
+                data_type.to_json() if isinstance(data_type, MetadataEntity) else data_type,
+            )
+        )
 
     def to_json(self) -> CastValueCodecObject:
         return cast("CastValueCodecObject", super().to_json())

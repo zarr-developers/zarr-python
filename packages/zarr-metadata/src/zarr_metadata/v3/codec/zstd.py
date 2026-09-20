@@ -13,9 +13,9 @@ from typing_extensions import TypedDict
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
+    CodecEntity,
     CodecKind,
     MemberTypes,
-    MetadataEntity,
     is_bool,
     is_int,
     problem,
@@ -77,7 +77,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class ZstdCodec(MetadataEntity):
+class ZstdCodec(CodecEntity):
     """The `zstd` codec, coerced from its metadata."""
 
     level: int = 0

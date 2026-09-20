@@ -12,8 +12,8 @@ from typing_extensions import TypedDict, Unpack
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
+    CodecEntity,
     MemberTypes,
-    MetadataEntity,
     is_int,
     one_of,
     problem,
@@ -107,7 +107,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class BloscCodec(MetadataEntity):
+class BloscCodec(CodecEntity):
     """The `blosc` codec, coerced from its metadata.
 
     Everything blosc knows about itself: the shape its metadata takes, the
