@@ -6,8 +6,9 @@ file has to reach into a private one, the extension surface is not real.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar, Self, cast
 
 import pytest
 
@@ -24,6 +25,7 @@ from zarr_metadata.v3.entity import (
     ChunkGridEntity,
     CodecEntity,
     CodecKind,
+    Coerced,
     Context,
     DataTypeEntity,
     IntegerDataType,
@@ -32,10 +34,15 @@ from zarr_metadata.v3.entity import (
     Opaque,
     StorageClass,
     is_int,
+    named_configuration,
     problem,
 )
 
 ACME_MAX_ACCELERATION = 65537
+
+
+if TYPE_CHECKING:
+    from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 
 
 @dataclass(frozen=True)
@@ -316,3 +323,52 @@ def test_error_a_family_member_must_declare_what_the_family_left_open() -> None:
         @dataclass(frozen=True)
         class Int24DataType(IntegerDataType):  # pyright: ignore[reportUnusedClass]
             identifier: ClassVar[str] = "acme.int24"
+
+
+# A third-party *family*: one class covering a parameterized set of names,
+# the way `r<N>` covers every raw-byte width.
+ACME_FIXED_PATTERN = re.compile(r"acme\.fixed(\d+)")
+
+
+@dataclass(frozen=True)
+class AcmeFixedDataType(DataTypeEntity):
+    """`acme.fixedN`, a fixed-width type for every N."""
+
+    data_type_name: str
+
+    identifier: ClassVar[str] = "acme.fixed<N>"
+    scalar_storage: ClassVar[StorageClass] = "multi_byte"
+
+    @classmethod
+    def accepts(cls, name: str) -> bool:
+        return ACME_FIXED_PATTERN.fullmatch(name) is not None
+
+    @classmethod
+    def coerce(cls, value: object, context: object) -> Coerced[Self]:
+        name, _, _ = named_configuration(value)
+        if name is None or not cls.accepts(name):
+            return None, problem((), "expected an 'acme.fixedN' data type")
+        return cls.unchecked(data_type_name=name), ()
+
+    def to_json(self) -> ZarrV3MetadataFieldJSON:
+        return cast("ZarrV3MetadataFieldJSON", self.data_type_name)
+
+
+def test_a_third_party_can_register_a_family() -> None:
+    # One class for an unbounded set of names. Nothing in the package
+    # holds a table of spellings: the entity registers under an invented
+    # identifier and `resolve` asks it, so a family is registered exactly
+    # like a single name.
+    scope = CORE_AND_EXTENSIONS.extended_with(
+        data_type={AcmeFixedDataType.identifier: AcmeFixedDataType}
+    )
+    for name in ("acme.fixed8", "acme.fixed128"):
+        assert scope.resolve("data_type", name) is AcmeFixedDataType
+        entity, problems = scope.coerce("data_type", name)
+        assert problems == ()
+        assert isinstance(entity, AcmeFixedDataType)
+        assert entity.to_json() == name
+    # The invented identifier is not a name a document may write, and a
+    # near-miss is still nobody's.
+    assert scope.resolve("data_type", AcmeFixedDataType.identifier) is None
+    assert scope.resolve("data_type", "acme.fixed") is None

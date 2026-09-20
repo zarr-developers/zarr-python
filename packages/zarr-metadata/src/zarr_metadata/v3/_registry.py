@@ -12,10 +12,11 @@ refuse for being optional. `CORE_AND_EXTENSIONS` adds what
 `zarr-extensions` registers and this package models. A name in neither is
 not rejected — extension openness — it is simply not judged.
 
-Identifiers are the `name` the metadata carries, with one exception. Every
-`r<N>` spelling is one data-type family, so the family registers under an
-invented identifier that no real name can collide with; `canonical_name`
-folds a spelling onto it.
+Identifiers are the `name` the metadata carries, with one exception. A
+family covers many names with one class -- every `r<N>` spelling is one
+data-type family -- so it registers under an invented identifier that no
+real name can collide with, and recognizes its own names through
+`accepts`.
 """
 
 from __future__ import annotations
@@ -43,7 +44,6 @@ from zarr_metadata.v3._extension_points import (
     CHUNK_KEY_ENCODING,
     CODECS,
     DATA_TYPE,
-    canonical_name,
 )
 from zarr_metadata.v3.chunk_grid.rectilinear import RectilinearChunkGrid
 from zarr_metadata.v3.chunk_grid.regular import RegularChunkGrid
@@ -250,16 +250,23 @@ class Context:
         Out of scope is not an error: an unknown name may be an extension
         this reader does not model, and openness means leaving it unjudged.
 
-        The entity has the last word, via `accepts`. Folding is what finds
-        a candidate -- every `r<N>` spelling is tabled under one invented
-        identifier -- and the candidate is what says whether the name is
-        really one of its own. Otherwise the identifier itself would be a
-        name a document could write.
+        The entity has the last word, via `accepts`. A name that is a key
+        still has to be claimed, because a family's key is an invented
+        identifier that no document may write; and a name that is not a
+        key may still belong to a family, which is what the scan is for.
+        A third party registers one the same way, with no table of
+        spellings anywhere in this package.
         """
-        entity = self.tables()[field].get(canonical_name(field, name))
-        if entity is None or not entity.accepts(name):
-            return None
-        return entity
+        table = self.tables()[field]
+        entity = table.get(name)
+        if entity is not None:
+            return entity if entity.accepts(name) else None
+        # A family covers many names with one class, so its entry cannot
+        # be keyed by all of them; it is keyed by an invented identifier
+        # and recognizes its own. Asked only when the name is not a key,
+        # so the common case stays a lookup. First match wins, and two
+        # entities claiming one name is a scope that contradicts itself.
+        return next((candidate for candidate in table.values() if candidate.accepts(name)), None)
 
     @overload
     def coerce(
