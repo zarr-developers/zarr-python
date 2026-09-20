@@ -127,7 +127,9 @@ def test_a_rectilinear_step_is_not_expanded() -> None:
 def test_error_a_semantically_invalid_document_reports_instead() -> None:
     result = canonicalize_array_metadata_v3({**BASE, "fill_value": 999})  # type: ignore[arg-type]
     assert isinstance(result, Invalid)
-    assert any("fill_value" in problem.message for problem in result.problems)
+    # The field is the location, not part of the message: the data type
+    # says what it accepts, and the document says where it was asked.
+    assert [problem.loc for problem in result.problems] == [("fill_value",)]
 
 
 def test_error_invalid_cannot_be_empty() -> None:

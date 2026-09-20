@@ -75,6 +75,7 @@ class GzipCodec(CodecEntity):
     level: int = 5
 
     identifier: ClassVar[str] = GZIP_CODEC_NAME
+    variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "bytes_bytes"
 
     configuration_required: ClassVar[bool] = True

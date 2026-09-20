@@ -48,7 +48,7 @@ from zarr_metadata.model._validation import ValidationProblem, is_json
 from zarr_metadata.v3._parts import ChunkGrid
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Mapping, Sequence
     from typing import Self
 
     from zarr_metadata.model._validation import ProblemKind
@@ -195,17 +195,25 @@ def _as_tuples(value: object) -> object:
 
 def coerce_members(
     configuration: Mapping[str, object], types: MemberTypes
-) -> tuple[dict[str, object], tuple[ValidationProblem, ...]]:
+) -> tuple[dict[str, object], tuple[ValidationProblem, ...], bool]:
     """The members `types` declares, taken from `configuration`.
 
-    Returns what was accepted and every problem found: a missing required
-    member, a member of the wrong type, and a key the entity does not
-    declare. Only a key it does not declare is survivable -- a caller can
-    report it without abandoning the entity -- so problems are returned
-    rather than raised and the caller decides.
+    Returns what was accepted, every problem found, and whether the entity
+    is still worth building. Three kinds of problem, and they differ in
+    that last part:
+
+    - a key the entity does not declare says the value carries something
+      extra, not that it is wrong;
+    - an *optional* member of the wrong type leaves that member absent,
+      and everything else about the entity is still readable -- a bad
+      `index_location` says nothing about whether a shard's pipelines
+      are well formed, and silencing them would lose a real judgment;
+    - a *required* member missing or of the wrong type does stop it.
+      There is no honest reading of a `blosc` whose level is a string.
     """
     problems: list[ValidationProblem] = []
     members: dict[str, object] = {}
+    usable = True
     for key in configuration:
         if key not in types:
             problems.extend(problem(("configuration",), f"unexpected key {key!r}", "unknown_key"))
@@ -215,6 +223,7 @@ def coerce_members(
                 problems.extend(
                     problem(("configuration", key), f"missing required key {key!r}", "missing_key")
                 )
+                usable = False
             continue
         # Normalized before the check, so a check only ever sees the tuples
         # the TypedDicts declare -- never the lists raw JSON arrives as.
@@ -226,7 +235,9 @@ def coerce_members(
         # dropping it here would make `to_json` lose what was written.
         if all(entry.kind == "unknown_key" for entry in found):
             members[key] = value
-    return members, tuple(problems)
+        elif required:
+            usable = False
+    return members, tuple(problems), usable
 
 
 # No `slots=True`, deliberately: it rebuilds the class, which leaves the
@@ -306,10 +317,8 @@ class MetadataEntity:
                     "missing_key",
                 )
             configuration = cast("Mapping[str, object]", {})
-        members, found = coerce_members(configuration, cls.member_types)
-        # An unknown key is worth reporting but does not stop the entity
-        # from being read: every member it declares was still understood.
-        if any(entry.kind != "unknown_key" for entry in found):
+        members, found, usable = coerce_members(configuration, cls.member_types)
+        if not usable:
             return None, found
         return cls(must_understand=must_understand, **members), found  # type: ignore[arg-type]
 
@@ -360,6 +369,13 @@ class CodecEntity(MetadataEntity):
     """An entity that occupies a position in the codec pipeline."""
 
     kind: ClassVar[CodecKind]
+
+    variable_size: ClassVar[bool] = False
+    """Whether this codec's output size depends on the bytes it is given.
+
+    A compressor's does, so a shard index encoded with one has no size
+    derivable from metadata alone, and the shard cannot be read.
+    """
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         """Why this codec cannot be applied to the array that reaches it.
@@ -437,6 +453,24 @@ class DataTypeEntity(MetadataEntity):
         return ()
 
 
+def within(prefix: Loc, problems: Sequence[ValidationProblem]) -> tuple[ValidationProblem, ...]:
+    """One entity's problems, located in the document that holds it.
+
+    An entity reports relative to its own `configuration`, so that is what
+    goes between the field and the member. A problem with an empty
+    location is about the entity itself -- a malformed `r<N>` name, a
+    codec that cannot encode what reaches it -- and lands on the field.
+    """
+    return tuple(
+        ValidationProblem(
+            (*prefix, *(("configuration", *found.loc) if len(found.loc) != 0 else ())),
+            found.message,
+            found.kind,
+        )
+        for found in problems
+    )
+
+
 def named_configuration(
     value: object,
 ) -> tuple[str | None, Mapping[str, object] | None, bool]:
@@ -491,4 +525,5 @@ __all__ = [
     "one_of",
     "problem",
     "sequence_of",
+    "within",
 ]

@@ -18,6 +18,7 @@ from zarr_metadata.v3._entity import (
     MetadataEntity,
     StorageClass,
     problem,
+    within,
 )
 
 if TYPE_CHECKING:
@@ -169,7 +170,7 @@ class StructDataType(DataTypeEntity):
         for index, entry in enumerate(cast("tuple[object, ...]", struct.fields)):
             field = cast("Mapping[str, object]", entry)
             data_type, from_field = context.coerce(
-                DATA_TYPE, field["data_type"], ("fields", index, "data_type")
+                DATA_TYPE, field["data_type"], ("configuration", "fields", index, "data_type")
             )
             found.extend(from_field)
             fields.append(
@@ -235,10 +236,7 @@ class StructDataType(DataTypeEntity):
                         "invalid_value",
                     )
                 )
-            found.extend(
-                ValidationProblem((*at, "data_type", *entry.loc), entry.message, entry.kind)
-                for entry in field.data_type.problems()
-            )
+            found.extend(within((*at, "data_type"), field.data_type.problems()))
         return tuple(found)
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:

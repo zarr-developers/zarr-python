@@ -123,6 +123,7 @@ class BloscCodec(CodecEntity):
     typesize: int | None = None
 
     identifier: ClassVar[str] = BLOSC_CODEC_NAME
+    variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "bytes_bytes"
 
     # Every member is required but `typesize`, which only means something

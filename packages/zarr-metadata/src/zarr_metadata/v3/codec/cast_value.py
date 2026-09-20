@@ -21,6 +21,7 @@ from zarr_metadata.v3._entity import (
     is_json_value,
     one_of,
     problem,
+    within,
 )
 from zarr_metadata.v3._parts import ArrayParts
 
@@ -203,17 +204,16 @@ class CastValueCodec(CodecEntity):
         codec, problems = super().coerce(value, context)
         if codec is None:
             return None, problems
-        data_type, found = context.coerce(DATA_TYPE, codec.data_type, ("data_type",))
+        data_type, found = context.coerce(
+            DATA_TYPE, codec.data_type, ("configuration", "data_type")
+        )
         return replace(codec, data_type=data_type), (*problems, *found)
 
     def problems(self) -> tuple[ValidationProblem, ...]:
         """Whatever the data type being cast to says about itself."""
         if not isinstance(self.data_type, MetadataEntity):
             return ()
-        return tuple(
-            ValidationProblem(("data_type", *entry.loc), entry.message, entry.kind)
-            for entry in self.data_type.problems()
-        )
+        return within(("data_type",), self.data_type.problems())
 
     def configuration(self) -> dict[str, object]:
         """The target data type in its canonical spelling."""

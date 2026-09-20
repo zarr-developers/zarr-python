@@ -96,8 +96,17 @@ class Context:
 
         Out of scope is not an error: an unknown name may be an extension
         this reader does not model, and openness means leaving it unjudged.
+
+        The entity has the last word, via `accepts`. Folding is what finds
+        a candidate -- every `r<N>` spelling is tabled under one invented
+        identifier -- and the candidate is what says whether the name is
+        really one of its own. Otherwise the identifier itself would be a
+        name a document could write.
         """
-        return self.entities.get(field, {}).get(canonical_name(field, name))
+        entity = self.entities.get(field, {}).get(canonical_name(field, name))
+        if entity is None or not entity.accepts(name):
+            return None
+        return entity
 
     def coerce(
         self, field: ExtensionPointField, value: object, loc: Loc = ()

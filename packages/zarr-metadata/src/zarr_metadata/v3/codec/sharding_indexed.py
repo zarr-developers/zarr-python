@@ -9,6 +9,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, cast
 
 from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.v3._chain import chain_problems
 from zarr_metadata.v3._entity import (
     CODECS,
     CodecEntity,
@@ -22,6 +23,13 @@ from zarr_metadata.v3._entity import (
     problem,
     sequence_of,
 )
+from zarr_metadata.v3._parts import (
+    UNKNOWN_GRID,
+    ArrayParts,
+    ChunkGrid,
+    shard_index_grid,
+)
+from zarr_metadata.v3.data_type.uint64 import Uint64DataType
 
 if TYPE_CHECKING:
     from zarr_metadata.v3._registry import Context
@@ -138,6 +146,7 @@ class ShardingIndexedCodec(CodecEntity):
     index_location: ShardingIndexLocation | None = None
 
     identifier: ClassVar[str] = SHARDING_INDEXED_CODEC_NAME
+    variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "array_bytes"
 
     configuration_required: ClassVar[bool] = True
@@ -153,8 +162,10 @@ class ShardingIndexedCodec(CodecEntity):
         shard, problems = super().coerce(value, context)
         if shard is None:
             return None, problems
-        inner, from_inner = _coerce_pipeline(shard.codecs, context, ("codecs",))
-        index, from_index = _coerce_pipeline(shard.index_codecs, context, ("index_codecs",))
+        inner, from_inner = _coerce_pipeline(shard.codecs, context, ("configuration", "codecs"))
+        index, from_index = _coerce_pipeline(
+            shard.index_codecs, context, ("configuration", "index_codecs")
+        )
         return (
             replace(shard, codecs=inner, index_codecs=index),
             (*problems, *from_inner, *from_index),
@@ -183,6 +194,78 @@ class ShardingIndexedCodec(CodecEntity):
                         ValidationProblem((member, position, *entry.loc), entry.message, entry.kind)
                         for entry in codec.problems()
                     )
+        return tuple(found)
+
+    def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
+        """This shard against the array reaching it, and its two pipelines.
+
+        One sharding configuration encodes every chunk, so its inner
+        shape has to divide all of them. Under a rectilinear grid an axis
+        has several lengths and the inner extent must divide each; an axis
+        whose lengths are unknown declines while the others are judged.
+        """
+        found = list(self._inner_chunk_problems(incoming))
+        # Both pipelines start from this codec's own configuration and
+        # from the spec, so neither waits on what reached the codec. An
+        # unreadable codec upstream costs the element type and the
+        # enclosing extents; it does not make the inner chunk shape
+        # unknown, and the index is a `uint64` array whatever precedes it.
+        outer = incoming.grid if incoming is not None else UNKNOWN_GRID
+        found.extend(
+            chain_problems(
+                self.codecs,
+                ArrayParts(
+                    ChunkGrid.regular(self.chunk_shape),
+                    incoming.data_type if incoming is not None else None,
+                ),
+                ("codecs",),
+            )
+        )
+        found.extend(
+            chain_problems(
+                self.index_codecs,
+                ArrayParts(shard_index_grid(outer, self.chunk_shape), Uint64DataType()),
+                ("index_codecs",),
+            )
+        )
+        found.extend(
+            ValidationProblem(
+                ("index_codecs", index),
+                f"{type(codec).identifier!r} produces variable-size output; "
+                "index_codecs must be fixed-size",
+                "invalid_value",
+            )
+            for index, codec in enumerate(self.index_codecs)
+            if isinstance(codec, CodecEntity) and type(codec).variable_size
+        )
+        return tuple(found)
+
+    def _inner_chunk_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
+        """Whether the inner chunk divides every chunk this shard receives."""
+        if incoming is None or incoming.grid.rank is None:
+            return ()
+        if len(self.chunk_shape) != incoming.grid.rank:
+            return problem(
+                ("chunk_shape",),
+                f"chunk_shape has {len(self.chunk_shape)} entries but the incoming array "
+                f"has {incoming.grid.rank} dimensions",
+                "invalid_value",
+            )
+        found: list[ValidationProblem] = []
+        for position, extent in enumerate(self.chunk_shape):
+            lengths = incoming.grid.axis(position)
+            if lengths is None or extent < 1:
+                continue
+            indivisible = sorted(length for length in lengths if length % extent != 0)
+            if len(indivisible) != 0:
+                found.extend(
+                    problem(
+                        ("chunk_shape", position),
+                        f"inner chunk extent {extent} does not evenly divide the incoming "
+                        f"extent {indivisible[0]}",
+                        "invalid_value",
+                    )
+                )
         return tuple(found)
 
     def configuration(self) -> dict[str, object]:
