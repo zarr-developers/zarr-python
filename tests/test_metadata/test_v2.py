@@ -399,3 +399,26 @@ def test_structured_dtype_fill_value_serialization(
     root_group = zarr.open_group(group_path, mode="r")
     observed = root_group.metadata.consolidated_metadata.metadata["structured_dtype"].fill_value  # type: ignore[union-attr]
     assert observed == fill_value
+
+
+@pytest.mark.parametrize("dtype", ["|u1", "<u1", ">u1"])
+def test_open_uint8_dtype_aliases(tmp_path: Path, dtype: str) -> None:
+    metadata = {
+        "zarr_format": 2,
+        "shape": [3],
+        "chunks": [3],
+        "dtype": dtype,
+        "compressor": None,
+        "fill_value": 0,
+        "order": "C",
+        "filters": None,
+    }
+    metadata_path = tmp_path / ".zarray"
+    metadata_path.write_text(json.dumps(metadata))
+    (tmp_path / "0").write_bytes(bytes([0, 128, 255]))
+
+    array = zarr.open_array(tmp_path, mode="r")
+    assert array.dtype == np.dtype("uint8")
+    np.testing.assert_array_equal(array[:], np.array([0, 128, 255], dtype=np.uint8))
+    assert array.metadata.to_dict()["dtype"] == "|u1"
+    assert json.loads(metadata_path.read_text()) == metadata

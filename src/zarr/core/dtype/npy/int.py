@@ -415,7 +415,11 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
 
     dtype_cls = np.dtypes.UInt8DType
     _zarr_v3_name: ClassVar[Literal["uint8"]] = "uint8"
-    _zarr_v2_names: ClassVar[tuple[Literal["|u1"]]] = ("|u1",)
+    _zarr_v2_names: ClassVar[tuple[Literal["|u1"], Literal["<u1"], Literal[">u1"]]] = (
+        "|u1",
+        "<u1",
+        ">u1",
+    )
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
