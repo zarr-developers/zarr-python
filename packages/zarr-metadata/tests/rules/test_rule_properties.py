@@ -8,9 +8,9 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from zarr_metadata.builder import create_zarr_v3_array_metadata_json
 from zarr_metadata.model import MetadataValidationError
 from zarr_metadata.rules import (
+    parse_array_metadata_v3,
     validate_array_metadata_v2,
     validate_array_metadata_v3,
     validate_group_metadata_v2,
@@ -148,7 +148,7 @@ def test_nested_sharding_pipelines_accept_divisible_inner_chunks(exponents: list
     data_type=st.sampled_from(("int8", "uint8", "int16", "uint16", "int32", "uint32")),
     fill_value=st.integers(min_value=-(2**40), max_value=2**40),
 )
-def test_validator_and_factory_agree(data_type: str, fill_value: int) -> None:
+def test_validator_and_parser_agree(data_type: str, fill_value: int) -> None:
     document: Mapping[str, object] = {
         "zarr_format": 3,
         "node_type": "array",
@@ -162,13 +162,13 @@ def test_validator_and_factory_agree(data_type: str, fill_value: int) -> None:
     validator_accepts = validate_array_metadata_v3(document) == ()
 
     try:
-        create_zarr_v3_array_metadata_json(**document)  # type: ignore[arg-type]
+        parse_array_metadata_v3(document)
     except MetadataValidationError:
-        factory_accepts = False
+        parser_accepts = False
     else:
-        factory_accepts = True
+        parser_accepts = True
 
-    assert validator_accepts == factory_accepts
+    assert validator_accepts == parser_accepts
 
 
 @pytest.mark.parametrize("position", ["data_type", "cast_value"])

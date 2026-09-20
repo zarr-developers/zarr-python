@@ -39,10 +39,6 @@ document = parse_array_metadata_v3(raw)  # raises with every problem found
 metadata = ZarrV3ArrayMetadata.from_json(document)
 ```
 
-To construct a document, the `create_*` factories in `zarr_metadata.builder`
-apply the same judgment to keyword arguments typed by the document's
-`TypedDict`.
-
 The optional Pydantic integration runs raw input through the rules layer
 and returns the same normalized model class:
 

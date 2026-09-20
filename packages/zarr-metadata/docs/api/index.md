@@ -12,8 +12,6 @@ The package is organized to mirror the structure of the Zarr specifications:
   judgments over full documents (fill value vs. data type, codec pipeline
   ordering, chunk geometry), plus whole-document `validate`/`is`/`parse`
   trios combining structure and composition
-- [`zarr_metadata.builder`](builder.md) — validated construction:
-  one-shot `create_*` factories, one per document type
 - [`zarr_metadata.pydantic`](pydantic.md) — optional Pydantic field types
   over the models
 - [`zarr_metadata.v2`](v2.md) — `TypedDict` shapes for Zarr v2 documents
