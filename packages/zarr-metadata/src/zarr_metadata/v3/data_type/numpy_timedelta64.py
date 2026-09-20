@@ -11,8 +11,9 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
+    DataTypeEntity,
     MemberTypes,
-    MetadataEntity,
+    StorageClass,
     is_int,
     one_of,
     problem,
@@ -97,12 +98,13 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class NumpyTimedelta64DataType(MetadataEntity):
+class NumpyTimedelta64DataType(DataTypeEntity):
     """The `numpy.timedelta64` data type, coerced from its metadata."""
 
     unit: NumpyTimeUnit = "generic"
     scale_factor: int = 1
 
+    scalar_storage: ClassVar[StorageClass] = "multi_byte"
     identifier: ClassVar[str] = NUMPY_TIMEDELTA64_DATA_TYPE_NAME
 
     configuration_required: ClassVar[bool] = True

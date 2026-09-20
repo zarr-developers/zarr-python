@@ -23,6 +23,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
+from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.v3._entity import named_configuration
 from zarr_metadata.v3._extension_points import (
     CHUNK_GRID,
     CHUNK_KEY_ENCODING,
@@ -36,9 +38,11 @@ from zarr_metadata.v3.chunk_key_encoding.default import DefaultChunkKeyEncoding
 from zarr_metadata.v3.chunk_key_encoding.v2 import V2ChunkKeyEncoding
 from zarr_metadata.v3.codec.blosc import BloscCodec
 from zarr_metadata.v3.codec.bytes import BytesCodec
+from zarr_metadata.v3.codec.cast_value import CastValueCodec
 from zarr_metadata.v3.codec.crc32c import Crc32cCodec
 from zarr_metadata.v3.codec.gzip import GzipCodec
 from zarr_metadata.v3.codec.scale_offset import ScaleOffsetCodec
+from zarr_metadata.v3.codec.sharding_indexed import ShardingIndexedCodec
 from zarr_metadata.v3.codec.transpose import TransposeCodec
 from zarr_metadata.v3.codec.zstd import ZstdCodec
 from zarr_metadata.v3.data_type.bool import BoolDataType
@@ -56,6 +60,7 @@ from zarr_metadata.v3.data_type.numpy_datetime64 import NumpyDatetime64DataType
 from zarr_metadata.v3.data_type.numpy_timedelta64 import NumpyTimedelta64DataType
 from zarr_metadata.v3.data_type.raw import RawBytesDataType
 from zarr_metadata.v3.data_type.string import StringDataType
+from zarr_metadata.v3.data_type.struct import StructDataType
 from zarr_metadata.v3.data_type.uint8 import Uint8DataType
 from zarr_metadata.v3.data_type.uint16 import Uint16DataType
 from zarr_metadata.v3.data_type.uint32 import Uint32DataType
@@ -64,7 +69,7 @@ from zarr_metadata.v3.data_type.uint64 import Uint64DataType
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from zarr_metadata.v3._entity import MetadataEntity
+    from zarr_metadata.v3._entity import Loc, MetadataEntity
     from zarr_metadata.v3._extension_points import ExtensionPointField
 
 
@@ -94,15 +99,45 @@ class Context:
         """
         return self.entities.get(field, {}).get(canonical_name(field, name))
 
+    def coerce(
+        self, field: ExtensionPointField, value: object, loc: Loc = ()
+    ) -> tuple[MetadataEntity | object, tuple[ValidationProblem, ...]]:
+        """One nested entity, read in this scope.
+
+        The primitive the containing entities are built from: a `struct`
+        data type reads its fields with it, a `sharding_indexed` codec its
+        two pipelines. Returns the entity when its name is in scope, and
+        the value untouched when it is not -- an unmodelled extension is
+        left unjudged, which is what makes the format open.
+
+        `loc` prefixes the problems, so they point at where in the
+        containing configuration the entity sat.
+        """
+        name, _, _ = named_configuration(value)
+        if name is None:
+            return value, (
+                ValidationProblem(loc, f"expected a metadata field, got {value!r}", "invalid_type"),
+            )
+        entity_type = self.resolve(field, name)
+        if entity_type is None:
+            return value, ()
+        entity, problems = entity_type.coerce(value, self)
+        located = tuple(
+            ValidationProblem((*loc, *found.loc), found.message, found.kind) for found in problems
+        )
+        return (value if entity is None else entity), located
+
 
 _CORE_CODECS: Final[dict[str, type[MetadataEntity]]] = {
     BloscCodec.identifier: BloscCodec,
     BytesCodec.identifier: BytesCodec,
     Crc32cCodec.identifier: Crc32cCodec,
     GzipCodec.identifier: GzipCodec,
+    ShardingIndexedCodec.identifier: ShardingIndexedCodec,
     TransposeCodec.identifier: TransposeCodec,
 }
 _EXTENSION_CODECS: Final[dict[str, type[MetadataEntity]]] = {
+    CastValueCodec.identifier: CastValueCodec,
     ScaleOffsetCodec.identifier: ScaleOffsetCodec,
     ZstdCodec.identifier: ZstdCodec,
 }
@@ -129,6 +164,7 @@ _EXTENSION_DATA_TYPES: Final[dict[str, type[MetadataEntity]]] = {
     StringDataType.identifier: StringDataType,
     NumpyDatetime64DataType.identifier: NumpyDatetime64DataType,
     NumpyTimedelta64DataType.identifier: NumpyTimedelta64DataType,
+    StructDataType.identifier: StructDataType,
 }
 
 _CORE_CHUNK_GRIDS: Final[dict[str, type[MetadataEntity]]] = {

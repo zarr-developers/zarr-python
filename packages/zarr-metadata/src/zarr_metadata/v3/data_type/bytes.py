@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal, NewType
 
-from zarr_metadata.v3._entity import MetadataEntity
+from zarr_metadata.v3._entity import DataTypeEntity, StorageClass
 
 BYTES_DATA_TYPE_NAME: Final = "bytes"
 """The `data_type` value for the variable-length `bytes` type."""
@@ -53,7 +53,8 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class BytesDataType(MetadataEntity):
+class BytesDataType(DataTypeEntity):
     """The `bytes` data type. The name says everything."""
 
+    scalar_storage: ClassVar[StorageClass] = "variable_length"
     identifier: ClassVar[str] = BYTES_DATA_TYPE_NAME

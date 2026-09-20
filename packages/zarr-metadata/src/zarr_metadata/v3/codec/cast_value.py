@@ -4,7 +4,25 @@ Cast-value codec types.
 See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md
 """
 
-from typing import Final, Literal, NotRequired
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, cast
+
+from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.v3._entity import (
+    DATA_TYPE,
+    CodecKind,
+    Coerced,
+    Loc,
+    MemberTypes,
+    MetadataEntity,
+    is_json_value,
+    one_of,
+    problem,
+)
+
+if TYPE_CHECKING:
+    from zarr_metadata.v3._registry import Context
 
 from typing_extensions import TypedDict
 
@@ -99,8 +117,10 @@ __all__ = [
     "CAST_OUT_OF_RANGE_MODE",
     "CAST_ROUNDING_MODE",
     "CAST_VALUE_CODEC_NAME",
+    "SCALAR_MAP_KEYS",
     "CastOutOfRangeMode",
     "CastRoundingMode",
+    "CastValueCodec",
     "CastValueCodecConfiguration",
     "CastValueCodecMetadata",
     "CastValueCodecName",
@@ -108,3 +128,97 @@ __all__ = [
     "ScalarMap",
     "ScalarMapEntry",
 ]
+
+
+SCALAR_MAP_KEYS: Final = ("encode", "decode")
+"""The two directions a `scalar_map` can override, both optional."""
+
+
+def _is_scalar_map(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+    """An object of `[old, new]` pairs per direction."""
+    if not isinstance(value, Mapping):
+        return problem(loc, f"expected an object, got {value!r}")
+    mapping = cast("Mapping[str, object]", value)
+    found: list[ValidationProblem] = []
+    for key in mapping:
+        if key not in SCALAR_MAP_KEYS:
+            found.extend(problem(loc, f"unexpected key {key!r}", "unknown_key"))
+    for key in SCALAR_MAP_KEYS:
+        if key in mapping:
+            found.extend(_is_scalar_pairs(mapping[key], (*loc, key)))
+    return tuple(found)
+
+
+def _is_scalar_pairs(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+    if not isinstance(value, tuple):
+        return problem(loc, f"expected an array of [old, new] pairs, got {value!r}")
+    entries = cast("tuple[object, ...]", value)
+    found: list[ValidationProblem] = []
+    for index, entry in enumerate(entries):
+        pair = cast("tuple[object, ...]", entry) if isinstance(entry, tuple) else ()
+        if len(pair) != 2:
+            found.extend(problem((*loc, index), f"expected an [old, new] pair, got {entry!r}"))
+            continue
+        for position, scalar in enumerate(pair):
+            found.extend(is_json_value(scalar, (*loc, index, position)))
+    return tuple(found)
+
+
+def _is_data_type_field(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+    """A metadata field -- which data type it names is settled on recursion."""
+    if not isinstance(value, (str, Mapping)):
+        return problem(loc, f"expected a data type, got {value!r}")
+    return ()
+
+
+@dataclass(frozen=True)
+class CastValueCodec(MetadataEntity):
+    """The `cast_value` codec, coerced from its metadata.
+
+    Holds the data type it casts to, so like `sharding_indexed` it is
+    read in a scope rather than on its own.
+    """
+
+    data_type: MetadataEntity | object = None
+    rounding: CastRoundingMode | None = None
+    out_of_range: CastOutOfRangeMode | None = None
+    scalar_map: ScalarMap | None = None
+
+    identifier: ClassVar[str] = CAST_VALUE_CODEC_NAME
+    kind: ClassVar[CodecKind] = "array_array"
+
+    configuration_required: ClassVar[bool] = True
+    member_types: ClassVar[MemberTypes] = {
+        "data_type": (True, _is_data_type_field),
+        "rounding": (False, one_of(CAST_ROUNDING_MODE)),
+        "out_of_range": (False, one_of(CAST_OUT_OF_RANGE_MODE)),
+        "scalar_map": (False, _is_scalar_map),
+    }
+
+    @classmethod
+    def coerce(cls, value: object, context: "Context") -> Coerced[Self]:
+        codec, problems = super().coerce(value, context)
+        if codec is None:
+            return None, problems
+        data_type, found = context.coerce(DATA_TYPE, codec.data_type, ("data_type",))
+        return replace(codec, data_type=data_type), (*problems, *found)
+
+    def problems(self) -> tuple[ValidationProblem, ...]:
+        """Whatever the data type being cast to says about itself."""
+        if not isinstance(self.data_type, MetadataEntity):
+            return ()
+        return tuple(
+            ValidationProblem(("data_type", *entry.loc), entry.message, entry.kind)
+            for entry in self.data_type.problems()
+        )
+
+    def configuration(self) -> dict[str, object]:
+        """The target data type in its canonical spelling."""
+        members = super().configuration()
+        data_type = self.data_type
+        if isinstance(data_type, MetadataEntity):
+            members["data_type"] = data_type.to_json()
+        return members
+
+    def to_json(self) -> CastValueCodecObject:
+        return cast("CastValueCodecObject", super().to_json())

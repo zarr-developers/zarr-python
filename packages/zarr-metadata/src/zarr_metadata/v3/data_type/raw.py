@@ -16,7 +16,8 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
     Coerced,
-    MetadataEntity,
+    DataTypeEntity,
+    StorageClass,
     named_configuration,
     problem,
 )
@@ -78,7 +79,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class RawBytesDataType(MetadataEntity):
+class RawBytesDataType(DataTypeEntity):
     """An `r<N>` raw-bytes data type, coerced from its metadata.
 
     One class for the whole family, because `r8` and `r4096` differ only
@@ -93,6 +94,7 @@ class RawBytesDataType(MetadataEntity):
 
     data_type_name: str = "r8"
 
+    scalar_storage: ClassVar[StorageClass] = "single_byte"
     identifier: ClassVar[str] = RAW_BYTES_FAMILY
 
     @classmethod

@@ -7,7 +7,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal
 
-from zarr_metadata.v3._entity import MetadataEntity
+from zarr_metadata.v3._entity import DataTypeEntity, StorageClass
 
 INT32_DATA_TYPE_NAME: Final = "int32"
 """The `data_type` value for the `int32` type."""
@@ -28,7 +28,8 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class Int32DataType(MetadataEntity):
+class Int32DataType(DataTypeEntity):
     """The `int32` data type. The name says everything."""
 
+    scalar_storage: ClassVar[StorageClass] = "multi_byte"
     identifier: ClassVar[str] = INT32_DATA_TYPE_NAME

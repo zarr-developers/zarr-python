@@ -40,7 +40,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping as _Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, Literal, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, TypeAlias, TypeVar, cast
 
 from typing_extensions import TypeIs
 
@@ -67,6 +67,30 @@ go on reading the entity checks for None. Both never happen at once.
 """
 
 Loc: TypeAlias = "tuple[str | int, ...]"
+
+ExtensionPointField = Literal[
+    "data_type", "chunk_grid", "chunk_key_encoding", "codecs", "storage_transformers"
+]
+"""The v3 array metadata fields whose values name an extension.
+
+Here rather than in `_extension_points` because an entity that contains
+other entities has to say which point it is reading them at, and
+`_extension_points` also folds `r<N>` names -- which means importing the
+data types, which import this.
+"""
+
+DATA_TYPE: Final[ExtensionPointField] = "data_type"
+CHUNK_GRID: Final[ExtensionPointField] = "chunk_grid"
+CHUNK_KEY_ENCODING: Final[ExtensionPointField] = "chunk_key_encoding"
+CODECS: Final[ExtensionPointField] = "codecs"
+
+StorageClass = Literal["single_byte", "multi_byte", "variable_length"]
+"""How one scalar of a data type occupies bytes.
+
+`single_byte` and `multi_byte` are both fixed-size; they differ only in
+whether a byte order applies, which is what the `bytes` codec's `endian`
+member is about.
+"""
 
 CodecKind = Literal["array_array", "array_bytes", "bytes_bytes"]
 """The three pipeline positions the v3 spec sorts codecs into.
@@ -194,7 +218,10 @@ def coerce_members(
         value = _as_tuples(configuration[key])
         found = check(value, ("configuration", key))
         problems.extend(found)
-        if len(found) == 0:
+        # An unknown key says the value carries something extra, not that
+        # it is the wrong type -- so the member is still readable, and
+        # dropping it here would make `to_json` lose what was written.
+        if all(entry.kind == "unknown_key" for entry in found):
             members[key] = value
     return members, tuple(problems)
 
@@ -321,6 +348,27 @@ class MetadataEntity:
         return cast("ZarrV3MetadataFieldJSON", entry)
 
 
+@dataclass(frozen=True)
+class DataTypeEntity(MetadataEntity):
+    """An entity that says how the array's scalars are stored.
+
+    Only data types answer that, and every rule that turns on it -- a
+    `bytes` codec is pointless before a single-byte type, a struct field
+    cannot be variable-length -- asks a data type rather than consulting
+    a table of names.
+    """
+
+    scalar_storage: ClassVar[StorageClass]
+
+    def storage_class(self) -> StorageClass | None:
+        """How one scalar occupies bytes, or None if undetermined.
+
+        None only for a composite whose parts are not all in scope: an
+        answer would be a guess, and the rules that ask decline instead.
+        """
+        return type(self).scalar_storage
+
+
 def named_configuration(
     value: object,
 ) -> tuple[str | None, Mapping[str, object] | None, bool]:
@@ -350,11 +398,18 @@ def named_configuration(
 
 
 __all__ = [
+    "CHUNK_GRID",
+    "CHUNK_KEY_ENCODING",
+    "CODECS",
+    "DATA_TYPE",
     "CodecKind",
     "Coerced",
+    "DataTypeEntity",
+    "ExtensionPointField",
     "Loc",
     "MemberTypes",
     "MetadataEntity",
+    "StorageClass",
     "TypeCheck",
     "coerce_members",
     "is_bool",

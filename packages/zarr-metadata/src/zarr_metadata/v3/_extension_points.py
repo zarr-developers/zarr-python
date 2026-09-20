@@ -12,19 +12,14 @@ unknown extension. Canonical names are lookup keys and are never emitted.
 
 from __future__ import annotations
 
-from typing import Final, Literal
-
+from zarr_metadata.v3._entity import (
+    CHUNK_GRID,
+    CHUNK_KEY_ENCODING,
+    CODECS,
+    DATA_TYPE,
+    ExtensionPointField,
+)
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_FAMILY, RAW_BYTES_NAME_PATTERN
-
-ExtensionPointField = Literal[
-    "data_type", "chunk_grid", "chunk_key_encoding", "codecs", "storage_transformers"
-]
-"""The v3 array metadata fields whose values name an extension."""
-
-DATA_TYPE: Final[ExtensionPointField] = "data_type"
-CHUNK_GRID: Final[ExtensionPointField] = "chunk_grid"
-CHUNK_KEY_ENCODING: Final[ExtensionPointField] = "chunk_key_encoding"
-CODECS: Final[ExtensionPointField] = "codecs"
 
 
 def canonical_name(field: ExtensionPointField, name: str) -> str:

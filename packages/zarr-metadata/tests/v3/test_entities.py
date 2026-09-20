@@ -30,9 +30,14 @@ from zarr_metadata.v3.chunk_key_encoding.v2 import (
 )
 from zarr_metadata.v3.codec.blosc import BloscCodec, BloscCodecConfiguration
 from zarr_metadata.v3.codec.bytes import BytesCodec, BytesCodecConfiguration
+from zarr_metadata.v3.codec.cast_value import CastValueCodec, CastValueCodecConfiguration
 from zarr_metadata.v3.codec.crc32c import Crc32cCodec, Empty
 from zarr_metadata.v3.codec.gzip import GzipCodec, GzipCodecConfiguration
 from zarr_metadata.v3.codec.scale_offset import ScaleOffsetCodec, ScaleOffsetCodecConfiguration
+from zarr_metadata.v3.codec.sharding_indexed import (
+    ShardingIndexedCodec,
+    ShardingIndexedCodecConfiguration,
+)
 from zarr_metadata.v3.codec.transpose import TransposeCodec, TransposeCodecConfiguration
 from zarr_metadata.v3.codec.zstd import ZstdCodec, ZstdCodecConfiguration
 from zarr_metadata.v3.data_type.bool import BoolDataType
@@ -56,6 +61,7 @@ from zarr_metadata.v3.data_type.numpy_timedelta64 import (
 )
 from zarr_metadata.v3.data_type.raw import RawBytesDataType
 from zarr_metadata.v3.data_type.string import StringDataType
+from zarr_metadata.v3.data_type.struct import StructConfiguration, StructDataType
 from zarr_metadata.v3.data_type.uint8 import Uint8DataType
 from zarr_metadata.v3.data_type.uint16 import Uint16DataType
 from zarr_metadata.v3.data_type.uint32 import Uint32DataType
@@ -71,9 +77,11 @@ if TYPE_CHECKING:
 CONFIGURATIONS: dict[str, tuple[type[MetadataEntity], type | None]] = {
     "codecs:blosc": (BloscCodec, BloscCodecConfiguration),
     "codecs:bytes": (BytesCodec, BytesCodecConfiguration),
+    "codecs:cast_value": (CastValueCodec, CastValueCodecConfiguration),
     "codecs:crc32c": (Crc32cCodec, Empty),
     "codecs:gzip": (GzipCodec, GzipCodecConfiguration),
     "codecs:scale_offset": (ScaleOffsetCodec, ScaleOffsetCodecConfiguration),
+    "codecs:sharding_indexed": (ShardingIndexedCodec, ShardingIndexedCodecConfiguration),
     "codecs:transpose": (TransposeCodec, TransposeCodecConfiguration),
     "codecs:zstd": (ZstdCodec, ZstdCodecConfiguration),
     "chunk_grid:regular": (RegularChunkGrid, RegularChunkGridConfiguration),
@@ -99,6 +107,7 @@ CONFIGURATIONS: dict[str, tuple[type[MetadataEntity], type | None]] = {
     "data_type:complex64": (Complex64DataType, None),
     "data_type:complex128": (Complex128DataType, None),
     "data_type:bytes": (BytesDataType, None),
+    "data_type:struct": (StructDataType, StructConfiguration),
     "data_type:string": (StringDataType, None),
     # The one exception. `r<N>` is a family, so the class holds the
     # spelling that picks a member of it -- a field with no configuration
@@ -188,3 +197,18 @@ def test_an_entity_round_trips_through_its_json_form() -> None:
     assert problems == ()
     assert codec is not None
     assert codec.to_json() == original
+
+
+def test_an_unknown_key_is_reported_without_losing_the_member() -> None:
+    # The document is invalid either way, but dropping the member would
+    # make the entity describe something the document does not say.
+    codec, problems = CastValueCodec.coerce(
+        {
+            "name": "cast_value",
+            "configuration": {"data_type": "int8", "scalar_map": {"encode": (), "enc": ()}},
+        },
+        CORE_AND_EXTENSIONS,
+    )
+    assert [problem.kind for problem in problems] == ["unknown_key"]
+    assert codec is not None
+    assert codec.scalar_map == {"encode": (), "enc": ()}

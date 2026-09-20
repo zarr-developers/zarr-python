@@ -7,7 +7,7 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal
 
-from zarr_metadata.v3._entity import MetadataEntity
+from zarr_metadata.v3._entity import DataTypeEntity, StorageClass
 
 STRING_DATA_TYPE_NAME: Final = "string"
 """The `data_type` value for the `string` type."""
@@ -28,7 +28,8 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class StringDataType(MetadataEntity):
+class StringDataType(DataTypeEntity):
     """The `string` data type. The name says everything."""
 
+    scalar_storage: ClassVar[StorageClass] = "variable_length"
     identifier: ClassVar[str] = STRING_DATA_TYPE_NAME

@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal, NewType
 
-from zarr_metadata.v3._entity import MetadataEntity
+from zarr_metadata.v3._entity import DataTypeEntity, StorageClass
 
 FLOAT32_DATA_TYPE_NAME: Final = "float32"
 """The `data_type` value for the `float32` type."""
@@ -79,7 +79,8 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class Float32DataType(MetadataEntity):
+class Float32DataType(DataTypeEntity):
     """The `float32` data type. The name says everything."""
 
+    scalar_storage: ClassVar[StorageClass] = "multi_byte"
     identifier: ClassVar[str] = FLOAT32_DATA_TYPE_NAME
