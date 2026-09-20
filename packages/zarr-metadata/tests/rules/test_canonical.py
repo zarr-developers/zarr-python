@@ -81,10 +81,15 @@ def test_simplifies(overrides: dict[str, object], field: str, expected: object) 
     assert _canonical(**overrides)[field] == expected
 
 
-def test_an_explicit_must_understand_false_is_kept() -> None:
-    # `true` is the default and says nothing; `false` says something.
-    codec = {"name": "bytes", "must_understand": False}
-    assert _canonical(codecs=(codec,))["codecs"] == (codec,)
+def test_error_an_extension_point_may_not_be_declared_ignorable() -> None:
+    # `must_understand` belongs to the kind of metadata, not to a use of
+    # it, and no extension point is skippable -- so there is nothing for
+    # canonicalization to keep.
+    result = canonicalize_array_metadata_v3(
+        {**BASE, "codecs": ({"name": "bytes", "must_understand": False},)}  # type: ignore[arg-type]
+    )
+    assert isinstance(result, Invalid)
+    assert [problem.loc for problem in result.problems] == [("codecs", 0, "must_understand")]
 
 
 def test_blosc_drops_a_typesize_that_shuffle_renders_ignored() -> None:

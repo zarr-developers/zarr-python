@@ -9,7 +9,7 @@ proposed the codec, was never merged).
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal, NotRequired, cast
 
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, Unpack
 
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import ValidationProblem
@@ -17,6 +17,7 @@ from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     MemberTypes,
+    ValueRoutine,
     is_bool,
     is_int,
     problem,
@@ -77,6 +78,20 @@ __all__ = [
 ]
 
 
+def _value_problems(
+    **members: Unpack[ZstdCodecConfiguration],
+) -> tuple[ValidationProblem, ...]:
+    """zstd compression levels run -131072 to 22."""
+    level = members["level"]
+    if not ZSTD_MIN_LEVEL <= level <= ZSTD_MAX_LEVEL:
+        return problem(
+            ("level",),
+            f"expected an integer in [{ZSTD_MIN_LEVEL}, {ZSTD_MAX_LEVEL}], got {level}",
+            "invalid_value",
+        )
+    return ()
+
+
 @dataclass(frozen=True)
 class ZstdCodec(CodecEntity):
     """The `zstd` codec, coerced from its metadata."""
@@ -94,15 +109,7 @@ class ZstdCodec(CodecEntity):
         "checksum": (False, is_bool),
     }
 
-    def problems(self) -> tuple[ValidationProblem, ...]:
-        """zstd compression levels run -131072 to 22."""
-        if not ZSTD_MIN_LEVEL <= self.level <= ZSTD_MAX_LEVEL:
-            return problem(
-                ("level",),
-                f"expected an integer in [{ZSTD_MIN_LEVEL}, {ZSTD_MAX_LEVEL}], got {self.level}",
-                "invalid_value",
-            )
-        return ()
+    value_problems: ClassVar[ValueRoutine] = staticmethod(_value_problems)
 
     def to_json(self) -> ZstdCodecObject:
         return cast("ZstdCodecObject", super().to_json())

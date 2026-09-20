@@ -11,20 +11,19 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, c
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     DATA_TYPE,
-    Coerced,
     DataTypeEntity,
     Loc,
     MemberTypes,
     Opaque,
     StorageClass,
+    ValueRoutine,
     problem,
-    within,
 )
 
 if TYPE_CHECKING:
     from zarr_metadata.v3._registry import Context
 
-from typing_extensions import ReadOnly, TypedDict
+from typing_extensions import ReadOnly, TypedDict, Unpack
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
@@ -143,6 +142,58 @@ class StructFieldComponent:
         )
 
 
+class StructMembers(TypedDict):
+    """A struct's members as the entity holds them.
+
+    Not `StructConfiguration`, which describes the JSON: by the time
+    values are judged, `prepare` has read each field's data type, so
+    these are components holding entities rather than field objects.
+    """
+
+    fields: tuple[StructFieldComponent, ...]
+
+
+def _value_problems(**members: Unpack[StructMembers]) -> tuple[ValidationProblem, ...]:
+    """What a struct can judge about its own fields.
+
+    Names have to exist, be non-empty and be distinct, because a fill
+    value addresses fields by name. Field types have to be fixed-size,
+    because a record's layout is otherwise not determined. Nothing about
+    a field type's own values: it is an entity, so it exists only if
+    those are allowed.
+    """
+    fields = members["fields"]
+    found: list[ValidationProblem] = []
+    if len(fields) == 0:
+        found.extend(problem(("fields",), "expected at least one struct field", "invalid_value"))
+    seen: dict[str, int] = {}
+    for index, field in enumerate(fields):
+        at: Loc = ("fields", index)
+        if field.name == "":
+            found.extend(problem((*at, "name"), "expected a non-empty field name", "invalid_value"))
+        first = seen.setdefault(field.name, index)
+        if first != index:
+            found.extend(
+                problem(
+                    (*at, "name"),
+                    f"duplicate field name {field.name!r}, already used by field {first}",
+                    "invalid_value",
+                )
+            )
+        if (
+            isinstance(field.data_type, DataTypeEntity)
+            and field.data_type.storage_class() == "variable_length"
+        ):
+            found.extend(
+                problem(
+                    (*at, "data_type"),
+                    "struct fields must use fixed-size data types",
+                    "invalid_value",
+                )
+            )
+    return tuple(found)
+
+
 @dataclass(frozen=True)
 class StructDataType(DataTypeEntity):
     """The `struct` data type, coerced from its metadata.
@@ -160,14 +211,16 @@ class StructDataType(DataTypeEntity):
     configuration_required: ClassVar[bool] = True
     member_types: ClassVar[MemberTypes] = {"fields": (True, _is_fields)}
 
+    value_problems: ClassVar[ValueRoutine] = staticmethod(_value_problems)
+
     @classmethod
-    def coerce(cls, value: object, context: "Context") -> Coerced[Self]:
-        struct, problems = super().coerce(value, context)
-        if struct is None:
-            return None, problems
+    def prepare(
+        cls, members: dict[str, object], context: "Context"
+    ) -> tuple[dict[str, object], tuple[ValidationProblem, ...]]:
+        """Each field's data type, read in this scope."""
         fields: list[StructFieldComponent] = []
         found: list[ValidationProblem] = []
-        for index, entry in enumerate(cast("tuple[object, ...]", struct.fields)):
+        for index, entry in enumerate(cast("tuple[object, ...]", members["fields"])):
             field = cast("Mapping[str, object]", entry)
             data_type, from_field = context.coerce(
                 DATA_TYPE, field["data_type"], ("configuration", "fields", index, "data_type")
@@ -176,7 +229,7 @@ class StructDataType(DataTypeEntity):
             fields.append(
                 StructFieldComponent(name=cast("str", field["name"]), data_type=data_type)
             )
-        return replace(struct, fields=tuple(fields)), (*problems, *found)
+        return {**members, "fields": tuple(fields)}, tuple(found)
 
     def storage_class(self) -> StorageClass | None:
         """The widest class among the fields.
@@ -197,47 +250,6 @@ class StructDataType(DataTypeEntity):
             if found == "multi_byte":
                 widest = "multi_byte"
         return widest
-
-    def problems(self) -> tuple[ValidationProblem, ...]:
-        """What a struct can judge about its own fields.
-
-        Names have to exist, be non-empty and be distinct, because a fill
-        value addresses fields by name. Field types have to be fixed-size,
-        because a record's layout is otherwise not determined.
-        """
-        found: list[ValidationProblem] = []
-        if len(self.fields) == 0:
-            found.extend(
-                problem(("fields",), "expected at least one struct field", "invalid_value")
-            )
-        seen: dict[str, int] = {}
-        for index, field in enumerate(self.fields):
-            at: Loc = ("fields", index)
-            if field.name == "":
-                found.extend(
-                    problem((*at, "name"), "expected a non-empty field name", "invalid_value")
-                )
-            first = seen.setdefault(field.name, index)
-            if first != index:
-                found.extend(
-                    problem(
-                        (*at, "name"),
-                        f"duplicate field name {field.name!r}, already used by field {first}",
-                        "invalid_value",
-                    )
-                )
-            if not isinstance(field.data_type, DataTypeEntity):
-                continue
-            if field.data_type.storage_class() == "variable_length":
-                found.extend(
-                    problem(
-                        (*at, "data_type"),
-                        "struct fields must use fixed-size data types",
-                        "invalid_value",
-                    )
-                )
-            found.extend(within((*at, "data_type"), field.data_type.problems()))
-        return tuple(found)
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         """A fill value per field, addressed by name.

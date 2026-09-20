@@ -47,13 +47,15 @@ class AcmeLz4Codec(CodecEntity):
     variable_size: ClassVar[bool] = True
     member_types: ClassVar[MemberTypes] = {"acceleration": (False, is_int)}
 
-    def problems(self) -> tuple[ValidationProblem, ...]:
-        if self.acceleration is UNSET:
+    @staticmethod
+    def value_problems(**members: object) -> tuple[ValidationProblem, ...]:
+        acceleration = members.get("acceleration", UNSET)
+        if acceleration is UNSET or not isinstance(acceleration, int):
             return ()
-        if not 1 <= self.acceleration <= ACME_MAX_ACCELERATION:
+        if not 1 <= acceleration <= ACME_MAX_ACCELERATION:
             return problem(
                 ("acceleration",),
-                f"expected an integer in [1, {ACME_MAX_ACCELERATION}], got {self.acceleration}",
+                f"expected an integer in [1, {ACME_MAX_ACCELERATION}], got {acceleration}",
                 "invalid_value",
             )
         return ()
@@ -255,3 +257,17 @@ def test_a_reader_can_choose_its_own_scope() -> None:
     in_scope = ArrayDocumentV3.from_json(document, context=SCOPE).codecs[1]
     assert isinstance(in_scope, AcmeLz4Codec)
     assert in_scope.acceleration == 4
+
+
+def test_error_value_rules_must_be_value_problems() -> None:
+    # `problems` was the old name and takes an entity; an override using
+    # it would never run, and nothing else would notice.
+    with pytest.raises(TypeError, match="value rules belong in `value_problems`"):
+
+        @dataclass(frozen=True)
+        class Stale(CodecEntity):  # pyright: ignore[reportUnusedClass]
+            identifier: ClassVar[str] = "acme.stale"
+            kind: ClassVar[CodecKind] = "bytes_bytes"
+
+            def problems(self) -> tuple[ValidationProblem, ...]:
+                return ()

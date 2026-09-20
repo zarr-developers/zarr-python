@@ -15,15 +15,14 @@ from zarr_metadata.v3._entity import (
     CODECS,
     CodecEntity,
     CodecKind,
-    Coerced,
     Loc,
     MemberTypes,
     Opaque,
+    ValueRoutine,
     is_int,
     one_of,
     problem,
     sequence_of,
-    within,
 )
 from zarr_metadata.v3._parts import (
     UNKNOWN_GRID,
@@ -36,7 +35,7 @@ from zarr_metadata.v3.data_type.uint64 import Uint64DataType
 if TYPE_CHECKING:
     from zarr_metadata.v3._registry import Context
 
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, Unpack
 
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 
@@ -140,6 +139,39 @@ def _canonical_pipeline(
     return tuple(codec.canonical() if isinstance(codec, CodecEntity) else codec for codec in codecs)
 
 
+class ShardingIndexedMembers(TypedDict):
+    """A shard's members as the entity holds them.
+
+    Not `ShardingIndexedCodecConfiguration`, which describes the JSON: by
+    the time values are judged, `prepare` has read the two pipelines, so
+    these are codecs rather than the metadata fields that named them.
+    """
+
+    chunk_shape: tuple[int, ...]
+    codecs: tuple[CodecEntity | Opaque, ...]
+    index_codecs: tuple[CodecEntity | Opaque, ...]
+    index_location: NotRequired[ShardingIndexLocation]
+
+
+def _value_problems(
+    **members: Unpack[ShardingIndexedMembers],
+) -> tuple[ValidationProblem, ...]:
+    """Every inner chunk extent must be at least one element.
+
+    Nothing about the two pipelines: their codecs are entities, and an
+    entity exists only if its own values are allowed.
+    """
+    return tuple(
+        ValidationProblem(
+            ("chunk_shape", position),
+            f"expected a positive chunk extent, got {extent}",
+            "invalid_value",
+        )
+        for position, extent in enumerate(members["chunk_shape"])
+        if extent < 1
+    )
+
+
 @dataclass(frozen=True)
 class ShardingIndexedCodec(CodecEntity):
     """The `sharding_indexed` codec, coerced from its metadata.
@@ -166,43 +198,25 @@ class ShardingIndexedCodec(CodecEntity):
         "index_location": (False, one_of(SHARDING_INDEX_LOCATION)),
     }
 
+    value_problems: ClassVar[ValueRoutine] = staticmethod(_value_problems)
+
     @classmethod
-    def coerce(cls, value: object, context: "Context") -> Coerced[Self]:
-        shard, problems = super().coerce(value, context)
-        if shard is None:
-            return None, problems
-        inner, from_inner = _coerce_pipeline(shard.codecs, context, ("configuration", "codecs"))
+    def prepare(
+        cls, members: dict[str, object], context: "Context"
+    ) -> tuple[dict[str, object], tuple[ValidationProblem, ...]]:
+        """Both pipelines, read in this scope."""
+        inner, from_inner = _coerce_pipeline(
+            cast("tuple[object, ...]", members["codecs"]), context, ("configuration", "codecs")
+        )
         index, from_index = _coerce_pipeline(
-            shard.index_codecs, context, ("configuration", "index_codecs")
+            cast("tuple[object, ...]", members["index_codecs"]),
+            context,
+            ("configuration", "index_codecs"),
         )
         return (
-            replace(shard, codecs=inner, index_codecs=index),
-            (*problems, *from_inner, *from_index),
+            {**members, "codecs": inner, "index_codecs": index},
+            (*from_inner, *from_index),
         )
-
-    def problems(self) -> tuple[ValidationProblem, ...]:
-        """This shard's own values, and those of the codecs it holds.
-
-        Whether the two pipelines are well *formed* -- one array-to-bytes
-        codec, in the right order -- spans the whole chain, so the rules
-        layer asks that.
-        """
-        found: list[ValidationProblem] = [
-            ValidationProblem(
-                ("chunk_shape", position),
-                f"expected a positive chunk extent, got {extent}",
-                "invalid_value",
-            )
-            for position, extent in enumerate(self.chunk_shape)
-            if extent < 1
-        ]
-        for member in ("codecs", "index_codecs"):
-            for position, codec in enumerate(
-                cast("tuple[CodecEntity | Opaque, ...]", getattr(self, member))
-            ):
-                if isinstance(codec, CodecEntity):
-                    found.extend(within((member, position), codec.problems()))
-        return tuple(found)
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         """This shard against the array reaching it, and its two pipelines.

@@ -7,13 +7,14 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/transpose/index.html
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal, NotRequired, cast
 
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, Unpack
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     MemberTypes,
+    ValueRoutine,
     is_int,
     problem,
     sequence_of,
@@ -65,6 +66,24 @@ __all__ = [
 ]
 
 
+def _value_problems(
+    **members: Unpack[TransposeCodecConfiguration],
+) -> tuple[ValidationProblem, ...]:
+    """`order` must permute its own axes.
+
+    Whether it permutes the *array's* axes is a different question --
+    it needs the array's rank -- and the rules layer asks that one.
+    """
+    order = members["order"]
+    if sorted(order) != list(range(len(order))):
+        return problem(
+            ("order",),
+            f"expected a permutation of 0..{len(order) - 1}, got {order!r}",
+            "invalid_value",
+        )
+    return ()
+
+
 @dataclass(frozen=True)
 class TransposeCodec(CodecEntity):
     """The `transpose` codec, coerced from its metadata."""
@@ -77,19 +96,7 @@ class TransposeCodec(CodecEntity):
     configuration_required: ClassVar[bool] = True
     member_types: ClassVar[MemberTypes] = {"order": (True, sequence_of(is_int))}
 
-    def problems(self) -> tuple[ValidationProblem, ...]:
-        """`order` must permute its own axes.
-
-        Whether it permutes the *array's* axes is a different question --
-        it needs the array's rank -- and the rules layer asks that one.
-        """
-        if sorted(self.order) != list(range(len(self.order))):
-            return problem(
-                ("order",),
-                f"expected a permutation of 0..{len(self.order) - 1}, got {self.order!r}",
-                "invalid_value",
-            )
-        return ()
+    value_problems: ClassVar[ValueRoutine] = staticmethod(_value_problems)
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         """A transpose permutes the array it receives, so ranks must agree.

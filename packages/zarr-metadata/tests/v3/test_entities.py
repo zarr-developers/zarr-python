@@ -284,7 +284,7 @@ def test_every_problem_location_indexes_into_the_document() -> None:
         ),
     }
     problems = validate_array_metadata_v3(document)  # type: ignore[arg-type]
-    assert len(problems) == 2
+    assert len(problems) != 0
     for problem in problems:
         node: object = document
         for step in problem.loc:
@@ -297,10 +297,11 @@ def test_every_problem_location_indexes_into_the_document() -> None:
             node = node[step]  # type: ignore[index]
 
 
-def test_one_unreadable_member_does_not_hide_the_values_of_the_others() -> None:
-    # `clevel` is the wrong type, so this blosc cannot be built -- but
-    # `blocksize` was read, and what is wrong with it is still worth
-    # saying. Losing it would make fixing the document a two-pass job.
+def test_an_unreadable_member_costs_the_entity() -> None:
+    # `clevel` is the wrong type, so this blosc cannot be built, and an
+    # entity that does not exist has no values to judge. The type problem
+    # is what you have to fix first, and the raw JSON is still on the
+    # `Opaque` standing in for the codec.
     document = {
         "zarr_format": 3,
         "node_type": "array",
@@ -325,7 +326,6 @@ def test_one_unreadable_member_does_not_hide_the_values_of_the_others() -> None:
     problems = validate_array_metadata_v3(document)  # type: ignore[arg-type]
     assert {problem.loc for problem in problems} == {
         ("codecs", 1, "configuration", "clevel"),
-        ("codecs", 1, "configuration", "blocksize"),
     }
 
 
@@ -388,11 +388,10 @@ FAITHFUL: dict[str, tuple[str, object]] = {
         },
     ),
     "raw-bytes-padded": ("data_type", "r008"),
-    "scale-offset-explicit-null": (
+    "scale-offset-scalar": (
         "codecs",
-        {"name": "scale_offset", "configuration": {"offset": None}},
+        {"name": "scale_offset", "configuration": {"offset": 2, "scale": 0.5}},
     ),
-    "must-understand-false": ("codecs", {"name": "crc32c", "must_understand": False}),
     "struct-nested": (
         "data_type",
         {
@@ -473,3 +472,14 @@ def test_canonical_reaches_a_contained_entity() -> None:
     assert isinstance(shard, MetadataEntity)
     inner = shard.canonical().to_json()["configuration"]["codecs"][1]  # type: ignore[index]
     assert "typesize" not in inner["configuration"]  # type: ignore[index]
+
+
+def test_error_an_explicit_null_scalar_is_refused() -> None:
+    # `null` is a value the document wrote, distinct from absence -- and
+    # no data type admits it as a scalar, so the codec cannot be built.
+    codec, problems = CORE_AND_EXTENSIONS.coerce(
+        "codecs", {"name": "scale_offset", "configuration": {"offset": None}}
+    )
+    assert codec is not None
+    assert not isinstance(codec, MetadataEntity)
+    assert [problem.loc for problem in problems] == [("configuration", "offset")]

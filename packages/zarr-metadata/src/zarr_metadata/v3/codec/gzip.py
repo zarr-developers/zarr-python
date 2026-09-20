@@ -7,13 +7,14 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/gzip/index.html
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal, NotRequired, cast
 
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, Unpack
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     MemberTypes,
+    ValueRoutine,
     is_int,
     problem,
 )
@@ -68,6 +69,16 @@ __all__ = [
 ]
 
 
+def _value_problems(
+    **members: Unpack[GzipCodecConfiguration],
+) -> tuple[ValidationProblem, ...]:
+    """gzip compression levels run 0 to 9."""
+    level = members["level"]
+    if not 0 <= level <= 9:
+        return problem(("level",), f"expected an integer in [0, 9], got {level}", "invalid_value")
+    return ()
+
+
 @dataclass(frozen=True)
 class GzipCodec(CodecEntity):
     """The `gzip` codec, coerced from its metadata."""
@@ -81,13 +92,7 @@ class GzipCodec(CodecEntity):
     configuration_required: ClassVar[bool] = True
     member_types: ClassVar[MemberTypes] = {"level": (True, is_int)}
 
-    def problems(self) -> tuple[ValidationProblem, ...]:
-        """gzip compression levels run 0 to 9."""
-        if not 0 <= self.level <= 9:
-            return problem(
-                ("level",), f"expected an integer in [0, 9], got {self.level}", "invalid_value"
-            )
-        return ()
+    value_problems: ClassVar[ValueRoutine] = staticmethod(_value_problems)
 
     def to_json(self) -> GzipCodecObject:
         return cast("GzipCodecObject", super().to_json())

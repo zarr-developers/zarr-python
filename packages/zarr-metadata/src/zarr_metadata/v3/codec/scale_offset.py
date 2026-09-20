@@ -7,7 +7,7 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal, NotRequired, cast
 
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, Unpack
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.model._sentinel import UNSET
@@ -16,6 +16,7 @@ from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     MemberTypes,
+    ValueRoutine,
     is_json_value,
     problem,
 )
@@ -75,6 +76,27 @@ __all__ = [
 ]
 
 
+def _value_problems(
+    **members: Unpack[ScaleOffsetCodecConfiguration],
+) -> tuple[ValidationProblem, ...]:
+    """Each value is a scalar of the array's type, so neither is null.
+
+    The registry says each is "JSON-encoded per the input array's
+    fill-value rules", and no data type admits `null` as a fill value.
+    Which scalar it should be needs the data type, so that part is the
+    document's question, not this codec's.
+    """
+    # Each member named outright: a TypedDict indexed by a loop variable
+    # has no type, and the two are different members rather than two of
+    # a kind.
+    found: list[ValidationProblem] = []
+    if members.get("offset", UNSET) is None:
+        found.extend(problem(("offset",), "expected a scalar, got null", "invalid_value"))
+    if members.get("scale", UNSET) is None:
+        found.extend(problem(("scale",), "expected a scalar, got null", "invalid_value"))
+    return tuple(found)
+
+
 @dataclass(frozen=True)
 class ScaleOffsetCodec(CodecEntity):
     """The `scale_offset` codec, coerced from its metadata.
@@ -103,20 +125,7 @@ class ScaleOffsetCodec(CodecEntity):
         """
         return incoming
 
-    def problems(self) -> tuple[ValidationProblem, ...]:
-        """Each value is a scalar of the array's type, so neither is null.
-
-        The registry says each is "JSON-encoded per the input array's
-        fill-value rules", and no data type admits `null` as a fill value.
-        Which scalar it should be needs the data type, so that part is the
-        document's question, not this codec's.
-        """
-        return tuple(
-            found
-            for member in ("offset", "scale")
-            if getattr(self, member) is None
-            for found in problem((member,), "expected a scalar, got null", "invalid_value")
-        )
+    value_problems: ClassVar[ValueRoutine] = staticmethod(_value_problems)
 
     def to_json(self) -> ScaleOffsetCodecObject | ScaleOffsetCodecName:
         return cast("ScaleOffsetCodecObject | ScaleOffsetCodecName", super().to_json())

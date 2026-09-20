@@ -599,9 +599,12 @@ def test_error_rank_is_judged_under_a_chunk_grid_with_unknown_extents() -> None:
     assert "2 dimensions" in message
 
 
-def test_error_an_unusable_member_does_not_mask_the_rest_of_the_entity() -> None:
-    # A bad index_location says nothing about whether the inner pipelines
-    # are readable, so the pipeline problem must still be reported.
+def test_error_an_unusable_member_costs_the_entity() -> None:
+    # An entity exists only if its members are readable and its values
+    # allowed, so a bad `index_location` means there is no shard to ask
+    # about its pipelines. The JSON survives on the `Opaque` that stands
+    # in for it; what is gone is the interpretation, and the report that
+    # remains is the one that has to be fixed first.
     problems = validate_array_metadata_v3(
         {
             **BASE,
@@ -620,7 +623,6 @@ def test_error_an_unusable_member_does_not_mask_the_rest_of_the_entity() -> None
     )
     assert {problem.loc for problem in problems} == {
         ("codecs", 0, "configuration", "index_location"),
-        ("codecs", 0, "configuration", "codecs", 1),
     }
 
 

@@ -39,14 +39,18 @@ is about blosc rather than about entities.
 from __future__ import annotations
 
 from collections.abc import Mapping as _Mapping
-from dataclasses import dataclass, field
+from dataclasses import MISSING, dataclass, fields
 from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, TypeAlias, TypeVar, cast
 
 from typing_extensions import TypeIs
 
 from zarr_metadata.model._sentinel import UNSET
-from zarr_metadata.model._validation import ValidationProblem, is_json
+from zarr_metadata.model._validation import (
+    MetadataValidationError,
+    ValidationProblem,
+    is_json,
+)
 from zarr_metadata.v3._parts import ChunkGrid
 
 if TYPE_CHECKING:
@@ -254,6 +258,15 @@ def coerce_members(
     return members, tuple(problems), frozenset(unreadable)
 
 
+ValueRoutine: TypeAlias = "Callable[..., tuple[ValidationProblem, ...]]"
+"""An entity's value-space judgment, over the members it was given."""
+
+
+def _no_value_problems(**members: object) -> tuple[ValidationProblem, ...]:
+    """An entity whose types admit only valid values has nothing to add."""
+    return ()
+
+
 @dataclass(frozen=True, slots=True)
 class Opaque:
     """A metadata field this reading did not turn into an entity.
@@ -305,11 +318,21 @@ class MetadataEntity:
     rather than a constant, a member another member renders meaningless.
     """
 
-    # Keyword-only: it is the envelope's member, not the configuration's,
-    # and it would otherwise take the first positional slot of every
-    # entity -- so `RawBytesDataType("r16")` would set this instead of
-    # the field it reads as.
-    must_understand: bool = field(default=True, kw_only=True)
+    must_understand: ClassVar[bool] = True
+    """Whether a reader that does not know this entity may skip it.
+
+    A property of the *kind* of metadata, not of a use of it: a codec is
+    something you must understand, every time it appears, because
+    ignoring one gives wrong bytes. Consolidated metadata is the opposite
+    and is unconditionally skippable. Neither is a per-occurrence choice,
+    so neither is a configuration member -- which is why this is a class
+    variable and not a field.
+
+    The spec permits `must_understand: false` on a codec; this package
+    treats that as an oversight and refuses it. Where the flag does earn
+    its keep -- an unknown top-level extension field a reader really can
+    skip -- it stays per-occurrence, on `ZarrV3NamedConfig`.
+    """
 
     identifier: ClassVar[str]
     """The name this entity is registered under.
@@ -348,6 +371,15 @@ class MetadataEntity:
         super().__init_subclass__(**kwargs)
         if base:
             return
+        if "problems" in cls.__dict__:
+            # Value rules are `value_problems`, a static routine over the
+            # members. An override named `problems` is a rule that would
+            # never run, and nothing else would say so.
+            msg = (
+                f"{cls.__name__} defines `problems`; value rules belong in "
+                "`value_problems`, which takes the members rather than an entity"
+            )
+            raise TypeError(msg)
         missing = [name for name in cls.required_class_vars if not hasattr(cls, name)]
         if len(missing) != 0:
             msg = f"{cls.__name__} does not declare {', '.join(missing)}"
@@ -380,13 +412,26 @@ class MetadataEntity:
         return name == cls.identifier
 
     @classmethod
+    def prepare(
+        cls, members: dict[str, object], context: Context
+    ) -> tuple[dict[str, object], tuple[ValidationProblem, ...]]:
+        """The members, with any that are themselves entities read as such.
+
+        The seam between `coerce_members`, which knows types, and
+        `value_problems`, which knows values: a `struct` cannot ask
+        whether a field is fixed-size until that field's data type is an
+        entity. Default: nothing to convert.
+        """
+        return members, ()
+
+    @classmethod
     def coerce(cls, value: object, context: Context) -> Coerced[Self]:
         """`value` as this entity, or the reasons it is not one.
 
         `context` is the scope this reading is happening in; most entities
         have no use for it and ignore it.
         """
-        name, configuration, must_understand = named_configuration(value)
+        name, configuration, _ = named_configuration(value)
         if name is None or not cls.accepts(name):
             return None, problem((), f"expected the {cls.identifier!r} entity")
         if configuration is None:
@@ -398,29 +443,22 @@ class MetadataEntity:
                 )
             configuration = cast("Mapping[str, object]", {})
         members, found, unreadable = coerce_members(configuration, cls.member_types)
+        if len(unreadable) == 0:
+            # Before judging: a member that is itself an entity has to be
+            # one before its container's value rules can ask it anything.
+            members, nested = cls.prepare(members, context)
+            found = (*found, *nested)
         if len(unreadable) != 0:
-            # The entity cannot be built, but the members that *did* read
-            # can still be judged -- one bad member should not hide the
-            # value problems of the ones beside it. Anything the partial
-            # reading says about an unreadable member is its default
-            # talking, so those are dropped.
-            partial = cls(must_understand=must_understand, **members)  # type: ignore[arg-type]
-            found = (
-                *found,
-                # `within`, because a partial reading reports relative to
-                # the configuration and `coerce`'s caller does not insert
-                # that segment -- `coerce_members` problems already carry it.
-                *within(
-                    (),
-                    [
-                        entry
-                        for entry in partial.problems()
-                        if entry.loc[:1] not in {(key,) for key in unreadable}
-                    ],
-                ),
-            )
+            # A member that could not be read leaves a hole, and the value
+            # rules are written over a whole configuration -- blosc's
+            # `typesize` requirement reads `shuffle`. Judging around the
+            # hole would be guessing, so the type problems stand alone.
             return None, found
-        return cls(must_understand=must_understand, **members), found  # type: ignore[arg-type]
+        found = (*found, *within((), cls.value_problems(**members)))  # type: ignore[arg-type]
+        if any(entry.kind != "unknown_key" for entry in found):
+            return None, found
+        # Already asked, so do not ask again on the way in.
+        return cls.unchecked(**members), found
 
     def canonical(self) -> Self:
         """This entity in the simplest form that means the same thing.
@@ -452,19 +490,68 @@ class MetadataEntity:
         actually wrote, and `scale_offset` is a real case where `null`
         and absent are different documents.
         """
+        return self._members()
+
+    value_problems: ClassVar[ValueRoutine] = staticmethod(_no_value_problems)
+    """Every value among the members the spec disallows.
+
+    A routine rather than a method, because judging values does not need
+    an entity -- and needing one would mean an invalid one had been
+    built. Each entity supplies its own, taking
+    `Unpack[<Entity>Configuration]`: the same spelling the constructor
+    takes, receiving only the members that are present.
+
+    Typed loosely here because the base does not know any entity's
+    configuration, and saying so is the truth. Call a specific routine by
+    its own name to have the arguments checked.
+
+    Locations are relative to the entity's `configuration`.
+    """
+
+    def __post_init__(self) -> None:
+        """Refuse to exist with values the spec disallows.
+
+        So an instance is the value guarantee, not just the type one:
+        `BloscCodec(clevel=99)` raises rather than serializing a document
+        no reader will accept. `coerce` asks `value_problems` first and
+        reports, so reading a bad document still returns problems rather
+        than raising, and `unchecked` is the door for a caller that has
+        already asked.
+        """
+        found = type(self).value_problems(**self._members())
+        if len(found) != 0:
+            raise MetadataValidationError(found)
+
+    def _members(self) -> dict[str, object]:
+        """The configuration members present on this entity, unrendered.
+
+        What `value_problems` and `configuration` are both built from;
+        `configuration` may render a member that is itself an entity, and
+        `value_problems` wants it as it is.
+        """
         return {
             key: value
             for key in type(self).member_types
             if (value := getattr(self, key)) is not UNSET
         }
 
-    def problems(self) -> tuple[ValidationProblem, ...]:
-        """Every value of this entity the spec disallows.
+    @classmethod
+    def unchecked(cls, **members: object) -> Self:
+        """This entity, without asking whether its values are allowed.
 
-        Locations are relative to the entity's `configuration`. Default:
-        an entity whose type admits only valid values has nothing to add.
+        For a caller that has already asked -- `coerce` does, so that it
+        can report the answer instead of raising it. Named so that
+        choosing it is deliberate.
         """
-        return ()
+        entity = object.__new__(cls)
+        for field_ in fields(cls):
+            if field_.name in members:
+                object.__setattr__(entity, field_.name, members[field_.name])
+            elif field_.default is not MISSING:
+                object.__setattr__(entity, field_.name, field_.default)
+            elif field_.default_factory is not MISSING:  # pragma: no cover - none today
+                object.__setattr__(entity, field_.name, field_.default_factory())
+        return entity
 
     def to_json(self) -> ZarrV3MetadataFieldJSON:
         """This entity as a document would write it.
@@ -477,19 +564,19 @@ class MetadataEntity:
         entity does not model it: a bare name, `{"name": x}`, and
         `{"name": x, "configuration": {}}` all mean the same and all read
         to the same entity, so all three write back as the bare name.
-        `must_understand` is omitted when true, which is its default; an
-        explicit false is kept, because that one says something.
+        `must_understand` follows the entity's own class variable, so it
+        is omitted for everything this package models today.
 
         Subclasses narrow the return type to their own object TypedDict,
         which is the JSON form this dataclass models.
         """
         configuration = self.configuration()
-        if len(configuration) == 0 and self.must_understand:
+        if len(configuration) == 0 and type(self).must_understand:
             return cast("ZarrV3MetadataFieldJSON", type(self).identifier)
         entry: dict[str, object] = {"name": type(self).identifier}
         if len(configuration) != 0:
             entry["configuration"] = configuration
-        if not self.must_understand:
+        if not type(self).must_understand:
             entry["must_understand"] = False
         return cast("ZarrV3MetadataFieldJSON", entry)
 
@@ -650,6 +737,7 @@ __all__ = [
     "Opaque",
     "StorageClass",
     "TypeCheck",
+    "ValueRoutine",
     "coerce_members",
     "is_bool",
     "is_int",

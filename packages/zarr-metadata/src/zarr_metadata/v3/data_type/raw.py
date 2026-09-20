@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass
 from typing import ClassVar, Final, NewType, Self, cast
 
-from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
     Coerced,
@@ -84,6 +84,19 @@ __all__ = [
 ]
 
 
+def _name_problems(name: str) -> tuple[ValidationProblem, ...]:
+    """Why `name` is not a well-formed `r<N>`, if it is not.
+
+    "raw bits, variable size given by *, limited to be a multiple of 8"
+    -- and zero bits is not a data type.
+    """
+    try:
+        raw_bytes_dtype_name(name)
+    except ValueError as error:
+        return problem((), str(error), "invalid_value")
+    return ()
+
+
 @dataclass(frozen=True)
 class RawBytesDataType(DataTypeEntity):
     """An `r<N>` raw-bytes data type, coerced from its metadata.
@@ -115,7 +128,7 @@ class RawBytesDataType(DataTypeEntity):
 
     @classmethod
     def coerce(cls, value: object, context: object) -> Coerced[Self]:
-        name, configuration, must_understand = named_configuration(value)
+        name, configuration, _ = named_configuration(value)
         if name is None or not cls.accepts(name):
             return None, problem((), "expected an 'r<N>' raw-bytes data type")
         found: tuple[ValidationProblem, ...] = ()
@@ -125,27 +138,24 @@ class RawBytesDataType(DataTypeEntity):
             # its fill values are still judged. Returning nothing here let
             # a stray key hide every other problem in the document.
             found = problem(("configuration",), "'r<N>' takes no configuration", "unknown_key")
-        return cls(must_understand=must_understand, data_type_name=name), found
+        found = (*found, *_name_problems(name))
+        if any(entry.kind != "unknown_key" for entry in found):
+            return None, found
+        return cls.unchecked(data_type_name=name), found
 
-    def problems(self) -> tuple[ValidationProblem, ...]:
-        """N must be a positive multiple of 8.
+    def __post_init__(self) -> None:
+        """This family's validity is in its name, not a configuration.
 
-        "raw bits, variable size given by *, limited to be a multiple of
-        8" -- and zero bits is not a data type.
+        So the base's member-driven check has nothing to look at, and
+        this one supplies it.
         """
-        try:
-            raw_bytes_dtype_name(self.data_type_name)
-        except ValueError as error:
-            return problem((), str(error), "invalid_value")
-        return ()
+        super().__post_init__()
+        found = _name_problems(self.data_type_name)
+        if len(found) != 0:
+            raise MetadataValidationError(found)
 
     def to_json(self) -> ZarrV3MetadataFieldJSON:
-        if self.must_understand:
-            return cast("ZarrV3MetadataFieldJSON", self.data_type_name)
-        return cast(
-            "ZarrV3MetadataFieldJSON",
-            {"name": self.data_type_name, "must_understand": False},
-        )
+        return cast("ZarrV3MetadataFieldJSON", self.data_type_name)
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         """One byte value per byte of the scalar.

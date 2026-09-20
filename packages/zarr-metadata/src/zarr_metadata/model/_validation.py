@@ -522,6 +522,13 @@ def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
     problems.extend(_validate_dim_sequence(doc, "shape"))
     if "fill_value" in doc:
         problems.extend(_prefix("fill_value", validate_json(doc["fill_value"])))
+    # Every extension *point* must be understood: ignoring a codec gives
+    # wrong bytes just as surely as ignoring a data type gives wrong
+    # values. The spec names only the first three
+    # (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1578),
+    # which this package reads as an oversight rather than a licence.
+    # `must_understand: false` keeps its meaning where it has one: an
+    # unknown top-level extension *field*, which a reader really can skip.
     for key in ("data_type", "chunk_grid", "chunk_key_encoding"):
         if key in doc:
             problems.extend(
@@ -543,7 +550,17 @@ def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
                         )
                     )
                 for index, entry in enumerate(cast("Sequence[object]", entries)):
-                    problems.extend(_prefix(key, _prefix(index, validate_metadata_field_v3(entry))))
+                    problems.extend(
+                        _prefix(
+                            key,
+                            _prefix(
+                                index,
+                                validate_metadata_field_v3(
+                                    entry, allow_must_understand_false=False
+                                ),
+                            ),
+                        )
+                    )
     if "attributes" in doc:
         problems.extend(_validate_attributes(doc["attributes"]))
     if "dimension_names" in doc:

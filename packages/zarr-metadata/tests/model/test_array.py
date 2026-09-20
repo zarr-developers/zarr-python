@@ -781,11 +781,19 @@ def test_metadata_field_rejects_unknown_envelope_member() -> None:
 
 
 @pytest.mark.parametrize("field", ["codecs", "storage_transformers"])
-def test_optional_extension_points_allow_must_understand_false(field: str) -> None:
-    """Codecs and storage transformers may be explicitly ignorable."""
+def test_every_extension_point_rejects_must_understand_false(field: str) -> None:
+    """No extension point may be declared ignorable.
+
+    Ignoring a codec gives wrong bytes as surely as ignoring a data type
+    gives wrong values, so `must_understand` is a property of the kind of
+    metadata rather than a per-occurrence choice. The spec names only the
+    three required points; this package reads that as an oversight.
+    """
     doc: dict[str, object] = dict(ZarrV3ArrayMetadata.create_default().to_json())
     doc[field] = ({"name": "optional", "must_understand": False},)
-    assert validate_array_metadata_v3(doc) == ()
+    assert [problem.loc for problem in validate_array_metadata_v3(doc)] == [
+        (field, 0, "must_understand")
+    ]
 
 
 @pytest.mark.parametrize("field", ["data_type", "chunk_grid", "chunk_key_encoding"])

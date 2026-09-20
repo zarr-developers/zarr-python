@@ -14,7 +14,6 @@ from zarr_metadata.v3._entity import (
     DATA_TYPE,
     CodecEntity,
     CodecKind,
-    Coerced,
     DataTypeEntity,
     Loc,
     MemberTypes,
@@ -22,7 +21,6 @@ from zarr_metadata.v3._entity import (
     is_json_value,
     one_of,
     problem,
-    within,
 )
 from zarr_metadata.v3._parts import ArrayParts
 
@@ -205,20 +203,14 @@ class CastValueCodec(CodecEntity):
     }
 
     @classmethod
-    def coerce(cls, value: object, context: "Context") -> Coerced[Self]:
-        codec, problems = super().coerce(value, context)
-        if codec is None:
-            return None, problems
+    def prepare(
+        cls, members: dict[str, object], context: "Context"
+    ) -> tuple[dict[str, object], tuple[ValidationProblem, ...]]:
+        """The target data type, read in this scope."""
         data_type, found = context.coerce(
-            DATA_TYPE, codec.data_type, ("configuration", "data_type")
+            DATA_TYPE, members["data_type"], ("configuration", "data_type")
         )
-        return replace(codec, data_type=data_type), (*problems, *found)
-
-    def problems(self) -> tuple[ValidationProblem, ...]:
-        """Whatever the data type being cast to says about itself."""
-        if not isinstance(self.data_type, DataTypeEntity):
-            return ()
-        return within(("data_type",), self.data_type.problems())
+        return {**members, "data_type": data_type}, found
 
     def canonical(self) -> Self:
         """The target data type in its own canonical form."""

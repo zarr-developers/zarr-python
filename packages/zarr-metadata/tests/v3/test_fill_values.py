@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS
+from zarr_metadata.v3.entity import DataTypeEntity
 
 # (data type metadata, a fill value it accepts)
 ACCEPTED: dict[str, tuple[object, object]] = {
@@ -25,7 +26,6 @@ ACCEPTED: dict[str, tuple[object, object]] = {
     "bytes-base64": ("bytes", "aGk="),
     "bytes-array": ("bytes", (1, 2, 3)),
     "raw-exact-width": ("r16", (0, 255)),
-    "raw-malformed-unjudged": ("r12", "anything"),
     "time-integer": (
         {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 1}},
         -1,
@@ -90,6 +90,16 @@ def test_error_rejects(metadata: object, fill: object, reason: str) -> None:
     problems = _data_type(metadata).fill_value_problems(fill)  # type: ignore[attr-defined]
     assert problems, f"expected {fill!r} to be rejected"
     assert any(reason in problem.message for problem in problems), problems
+
+
+def test_error_a_malformed_raw_name_has_no_entity_to_ask() -> None:
+    # `r12` is not a width, so the data type does not exist and there is
+    # nothing to put a fill value to.
+    entity, problems = CORE_AND_EXTENSIONS.coerce("data_type", "r12")
+    assert not isinstance(entity, DataTypeEntity)
+    assert [problem.message for problem in problems] == [
+        "Expected 'r<N>' where N is a positive multiple of 8, got 'r12'"
+    ]
 
 
 def test_an_unmodelled_data_type_judges_nothing() -> None:

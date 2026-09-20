@@ -52,11 +52,14 @@ def _u(*lengths: int) -> tuple[frozenset[int], ...]:
 # that does not even pin the rank.
 GRIDS: dict[str, tuple[object, object, object, object]] = {
     "regular": (REGULAR, (64, 64), 2, _u(32, 32)),
-    "regular-zero-length-keeps-rank": (
+    # A zero extent is not a grid, so the entity refuses to exist and
+    # only the rank the array shape pins survives -- the same answer as
+    # for a grid this package cannot read at all.
+    "regular-zero-length-is-unreadable": (
         {"name": "regular", "configuration": {"chunk_shape": (0, 32)}},
         (64, 64),
         2,
-        (None, frozenset({32})),
+        (None, None),
     ),
     "rectilinear-uniform": (_rectilinear(((32, 32), (32, 32))), (64, 64), 2, _u(32, 32)),
     "rectilinear-uniform-rle": (_rectilinear((((32, 2),), ((32, 2),))), (64, 64), 2, _u(32, 32)),
@@ -201,23 +204,22 @@ def test_error_index_codecs_are_judged_against_the_index_rank() -> None:
     ]
 
 
-def test_error_a_bad_inner_extent_costs_that_axis_and_nothing_else() -> None:
-    # The zero is reported, and the inner pipeline is still judged against
-    # the rank the inner chunk shape declares.
+def test_error_a_bad_inner_extent_costs_the_shard() -> None:
+    # A shard with a zero inner extent is not a shard, so it does not
+    # exist and nothing inside it is interpreted. The JSON is still there
+    # on the `Opaque` that replaces it; what is gone is the reading, and
+    # the one report that matters is the one you must fix first.
     inner = _shard((0, 2))
     inner["configuration"] = {  # type: ignore[index]
         **inner["configuration"],  # type: ignore[dict-item]
         "codecs": ({"name": "transpose", "configuration": {"order": (0, 1, 2)}}, "bytes"),
     }
-    messages = [
-        problem.message
-        for problem in validate_array_metadata_v3(
-            {**BASE, "data_type": "uint16", "chunk_grid": REGULAR, "codecs": (inner,)}
-        )
+    problems = validate_array_metadata_v3(
+        {**BASE, "data_type": "uint16", "chunk_grid": REGULAR, "codecs": (inner,)}
+    )
+    assert [problem.loc for problem in problems] == [
+        ("codecs", 0, "configuration", "chunk_shape", 0)
     ]
-    assert any("positive chunk extent" in message for message in messages)
-    assert any("order has 3 entries" in message for message in messages)
-    assert any("endian is required" in message for message in messages)
 
 
 # An unmodelled codec is the ordinary case, not an exotic one: every

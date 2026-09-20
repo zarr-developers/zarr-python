@@ -7,12 +7,13 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#regular-grids
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, cast
 
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, Unpack
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ChunkGridEntity,
     MemberTypes,
+    ValueRoutine,
     is_int,
     problem,
     sequence_of,
@@ -63,6 +64,27 @@ __all__ = [
 ]
 
 
+def _value_problems(
+    **members: Unpack[RegularChunkGridConfiguration],
+) -> tuple[ValidationProblem, ...]:
+    """Every chunk extent must be at least one element.
+
+    A chunk of zero elements along an axis covers nothing, so no
+    finite number of them tiles the axis; a negative one is
+    meaningless. Whether there is one extent *per array dimension* is
+    a question for the document, and the rules layer asks it.
+    """
+    return tuple(
+        ValidationProblem(
+            ("chunk_shape", position),
+            f"expected a positive chunk extent, got {extent}",
+            "invalid_value",
+        )
+        for position, extent in enumerate(members["chunk_shape"])
+        if extent < 1
+    )
+
+
 @dataclass(frozen=True)
 class RegularChunkGrid(ChunkGridEntity):
     """The `regular` chunk grid, coerced from its metadata."""
@@ -74,23 +96,7 @@ class RegularChunkGrid(ChunkGridEntity):
     configuration_required: ClassVar[bool] = True
     member_types: ClassVar[MemberTypes] = {"chunk_shape": (True, sequence_of(is_int))}
 
-    def problems(self) -> tuple[ValidationProblem, ...]:
-        """Every chunk extent must be at least one element.
-
-        A chunk of zero elements along an axis covers nothing, so no
-        finite number of them tiles the axis; a negative one is
-        meaningless. Whether there is one extent *per array dimension* is
-        a question for the document, and the rules layer asks it.
-        """
-        return tuple(
-            ValidationProblem(
-                ("chunk_shape", position),
-                f"expected a positive chunk extent, got {extent}",
-                "invalid_value",
-            )
-            for position, extent in enumerate(self.chunk_shape)
-            if extent < 1
-        )
+    value_problems: ClassVar[ValueRoutine] = staticmethod(_value_problems)
 
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
         """A regular grid must chunk every array dimension."""

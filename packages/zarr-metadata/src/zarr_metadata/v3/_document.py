@@ -74,8 +74,9 @@ class ArrayDocumentV3:
         The type-space problems are `read_array_v3`'s, because they are
         the reasons some of this is `Opaque` rather than an entity.
         """
+        # No per-entity value problems: an entity exists only if its own
+        # values are allowed, so `read_array_v3` has already reported any.
         return (
-            *_entity_problems(self),
             *_fill_value_problems(self),
             *_grid_problems(self),
             *_dimension_names_problems(self),
@@ -183,22 +184,6 @@ def read_array_v3(
         ),
         tuple(problems),
     )
-
-
-def _entity_problems(array: ArrayDocumentV3) -> tuple[ValidationProblem, ...]:
-    """What each entity says is wrong with its own values."""
-    found: list[ValidationProblem] = []
-    for _, key in _SINGLE_FIELDS:
-        entity = getattr(array, key)
-        if isinstance(entity, MetadataEntity):
-            found.extend(within((key,), entity.problems()))
-    for _, key in _SEQUENCE_FIELDS:
-        for index, entity in enumerate(
-            cast("tuple[MetadataEntity | Opaque, ...]", getattr(array, key))
-        ):
-            if isinstance(entity, MetadataEntity):
-                found.extend(within((key, index), entity.problems()))
-    return tuple(found)
 
 
 def _fill_value_problems(array: ArrayDocumentV3) -> tuple[ValidationProblem, ...]:
