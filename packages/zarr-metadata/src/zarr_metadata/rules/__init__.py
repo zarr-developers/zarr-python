@@ -2,8 +2,8 @@
 
 `zarr_metadata.model` checks JSON structure. This module also checks
 cross-field constraints such as fill-value compatibility, codec
-ordering, and dimension counts. Its `validate_*`, `is_*`, and `parse_*`
-functions mirror the model API.
+ordering, and dimension counts. Its `validate_*` and `parse_*` functions
+mirror the model API.
 
 Rules target canonical metadata and may be stricter than readers that
 coerce inputs. Unknown entity names are left unjudged. Known entities
@@ -13,10 +13,6 @@ round-trips preserve those unmodeled members.
 """
 
 from zarr_metadata.rules._documents import (
-    is_array_metadata_v2,
-    is_array_metadata_v3,
-    is_group_metadata_v2,
-    is_group_metadata_v3,
     parse_array_metadata_v2,
     parse_array_metadata_v3,
     parse_group_metadata_v2,
@@ -41,10 +37,6 @@ __all__ = [
     "Rule",
     "RuleCheck",
     "applicable",
-    "is_array_metadata_v2",
-    "is_array_metadata_v3",
-    "is_group_metadata_v2",
-    "is_group_metadata_v3",
     "parse_array_metadata_v2",
     "parse_array_metadata_v3",
     "parse_group_metadata_v2",
