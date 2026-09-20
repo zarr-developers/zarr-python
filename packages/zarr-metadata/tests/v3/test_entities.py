@@ -163,24 +163,24 @@ def test_a_required_member_rules_out_the_bare_spelling(
 
 
 @pytest.mark.parametrize(
-    ("entity", "configuration"), CONFIGURATIONS.values(), ids=list(CONFIGURATIONS)
+    "entity", [entity for entity, _ in CONFIGURATIONS.values()], ids=list(CONFIGURATIONS)
 )
 def test_the_value_routine_takes_the_members_it_will_be_given(
-    entity: type[MetadataEntity], configuration: type | None
+    entity: type[MetadataEntity],
 ) -> None:
     # `coerce` calls it as `value_problems(**members)`, which no type can
-    # check: members is a dict built at run time. So the fourth spelling
-    # of the set is checked here. A `struct` and a `sharding_indexed`
-    # annotate a TypedDict of their own rather than the configuration --
-    # `prepare` has replaced field objects with entities by then -- but
-    # that changes the member *types*, never which members there are.
+    # check: members is a dict built at run time. So the correspondence
+    # is checked here, against the fields rather than the configuration
+    # -- `r<N>` holds a member that is not a configuration key, and a
+    # `struct` and a `sharding_indexed` annotate a TypedDict of their own
+    # because `prepare` has replaced field objects with entities by then.
+    # Neither changes which members there are.
     if entity.value_problems is MetadataEntity.value_problems:
         return
     # The annotation is `Unpack[X]`; X is what says which members.
     (members,) = get_args(get_type_hints(entity.value_problems)["members"])
     fields = {field.name for field in dataclasses.fields(entity)} - {"must_understand"}
     assert set(get_type_hints(members)) == fields
-    assert configuration is not None, "a routine with no configuration to judge"
 
 
 def test_every_registered_entity_is_checked_here() -> None:

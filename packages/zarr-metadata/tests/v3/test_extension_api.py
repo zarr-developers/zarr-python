@@ -26,6 +26,7 @@ from zarr_metadata.v3.entity import (
     CodecKind,
     Context,
     DataTypeEntity,
+    IntegerDataType,
     MemberTypes,
     MetadataEntity,
     Opaque,
@@ -275,3 +276,43 @@ def test_error_value_rules_must_be_value_problems() -> None:
 
             def problems(self) -> tuple[ValidationProblem, ...]:
                 return ()
+
+
+def test_error_an_entity_may_not_validate_in_post_init() -> None:
+    # `coerce` builds through `unchecked`, which never reaches
+    # `__post_init__`, so a rule there holds for a hand-built entity and
+    # is silently absent for every entity read from a document.
+    with pytest.raises(TypeError, match="`unchecked` does not reach"):
+
+        @dataclass(frozen=True)
+        class Eager(CodecEntity):  # pyright: ignore[reportUnusedClass]
+            identifier: ClassVar[str] = "acme.eager"
+            kind: ClassVar[CodecKind] = "bytes_bytes"
+
+            def __post_init__(self) -> None:
+                raise AssertionError
+
+
+def test_error_a_field_may_not_shadow_a_class_variable() -> None:
+    # A field of that name goes into the configuration and into the JSON,
+    # while the class variable it shadows is what the rest of the layer
+    # reads -- so the entity would claim one thing and behave as another.
+    with pytest.raises(TypeError, match="shadowing a class variable"):
+
+        @dataclass(frozen=True)
+        class Negotiable(CodecEntity):  # pyright: ignore[reportUnusedClass]
+            must_understand: bool = True  # pyright: ignore[reportIncompatibleVariableOverride]
+
+            identifier: ClassVar[str] = "acme.negotiable"
+            kind: ClassVar[CodecKind] = "bytes_bytes"
+
+
+def test_error_a_family_member_must_declare_what_the_family_left_open() -> None:
+    # `bounds` is annotated on `IntegerDataType` and bound by none of it,
+    # so every concrete integer type owes one. Nothing lists it: the
+    # requirement is read off the annotation.
+    with pytest.raises(TypeError, match="does not declare bounds"):
+
+        @dataclass(frozen=True)
+        class Int24DataType(IntegerDataType):  # pyright: ignore[reportUnusedClass]
+            identifier: ClassVar[str] = "acme.int24"

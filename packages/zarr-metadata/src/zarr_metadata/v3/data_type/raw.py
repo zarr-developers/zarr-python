@@ -12,7 +12,9 @@ import re
 from dataclasses import dataclass
 from typing import ClassVar, Final, NewType, Self, cast
 
-from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
+from typing_extensions import TypedDict, Unpack
+
+from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
     Coerced,
@@ -97,6 +99,12 @@ def _name_problems(name: str) -> tuple[ValidationProblem, ...]:
     return ()
 
 
+class RawBytesMembers(TypedDict):
+    """A raw-bytes type's members: the spelling, which carries the width."""
+
+    data_type_name: str
+
+
 @dataclass(frozen=True)
 class RawBytesDataType(DataTypeEntity):
     """An `r<N>` raw-bytes data type, coerced from its metadata.
@@ -138,21 +146,20 @@ class RawBytesDataType(DataTypeEntity):
             # its fill values are still judged. Returning nothing here let
             # a stray key hide every other problem in the document.
             found = problem(("configuration",), "'r<N>' takes no configuration", "unknown_key")
-        found = (*found, *_name_problems(name))
+        found = (*found, *cls.value_problems(data_type_name=name))
         if any(entry.kind != "unknown_key" for entry in found):
             return None, found
         return cls.unchecked(data_type_name=name), found
 
-    def __post_init__(self) -> None:
-        """This family's validity is in its name, not a configuration.
+    @staticmethod
+    def value_problems(**members: Unpack[RawBytesMembers]) -> tuple[ValidationProblem, ...]:
+        """This family's validity is in its name, not in a configuration.
 
-        So the base's member-driven check has nothing to look at, and
-        this one supplies it.
+        Which is the one place a member is not a configuration key, and
+        why `value_problems` judges the entity's fields rather than its
+        configuration: there is no configuration here to judge.
         """
-        super().__post_init__()
-        found = _name_problems(self.data_type_name)
-        if len(found) != 0:
-            raise MetadataValidationError(found)
+        return _name_problems(members["data_type_name"])
 
     def to_json(self) -> ZarrV3MetadataFieldJSON:
         return cast("ZarrV3MetadataFieldJSON", self.data_type_name)

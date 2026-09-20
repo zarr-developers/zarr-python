@@ -42,7 +42,16 @@ from collections.abc import Mapping as _Mapping
 from copy import deepcopy
 from dataclasses import MISSING, Field, dataclass, fields
 from types import MappingProxyType
-from typing import TYPE_CHECKING, ClassVar, Final, Literal, TypeAlias, TypeVar, cast
+from typing import (
+    TYPE_CHECKING,
+    ClassVar,
+    Final,
+    Literal,
+    TypeAlias,
+    TypeVar,
+    cast,
+    get_origin,
+)
 
 from typing_extensions import TypeIs
 
@@ -291,6 +300,35 @@ class Opaque:
     reason: Literal["out_of_scope", "invalid"]
 
 
+def _is_class_var(annotation: object) -> bool:
+    """Whether an annotation says `ClassVar`.
+
+    `from __future__ import annotations` leaves them as strings, so this
+    reads the text when it gets one -- the same thing `dataclasses` does,
+    and for the same reason: resolving the name needs a module namespace
+    that is not available while the class is still being built.
+    """
+    if isinstance(annotation, str):
+        stripped = annotation.strip()
+        return stripped.startswith(("ClassVar[", "ClassVar", "typing.ClassVar"))
+    return get_origin(annotation) is ClassVar
+
+
+def _declared_class_vars(cls: type) -> dict[str, type]:
+    """Every class variable annotated anywhere in `cls`'s ancestry.
+
+    Mapped to the class that annotated it, so a message can say where the
+    requirement comes from. Base first, so a redeclaration names the
+    nearest ancestor.
+    """
+    found: dict[str, type] = {}
+    for ancestor in reversed(cls.__mro__):
+        for name, annotation in vars(ancestor).get("__annotations__", {}).items():
+            if _is_class_var(annotation):
+                found[name] = ancestor
+    return found
+
+
 # No `slots=True`, deliberately. It rebuilds the class, which on Python
 # 3.11 and 3.12 leaves the zero-argument `super()` *in that same class's
 # body* pointing at the class it replaced. Several entities call `super()`
@@ -362,12 +400,12 @@ class MetadataEntity:
     """
 
     def __init_subclass__(cls, *, base: bool = False, **kwargs: object) -> None:
-        """Refuse a subclass that forgot to say what it is.
+        """Refuse a subclass that is not an entity this layer can use.
 
-        `identifier` and the per-kind class variables carry no default,
-        so a subclass omitting one type-checks cleanly and then raises
-        `AttributeError` from whichever method is reached first. Saying so
-        here makes it an import-time error in the extension's own module.
+        Every check here has the same shape: something that type-checks
+        cleanly and then goes wrong later, somewhere that will not name
+        this class. An import-time error in the extension's own module is
+        the one place the author is looking.
 
         `base=True` for a class that exists to add a class variable
         rather than to be an entity -- `CodecEntity`, `IntegerDataType`.
@@ -384,9 +422,42 @@ class MetadataEntity:
                 "`value_problems`, which takes the members rather than an entity"
             )
             raise TypeError(msg)
-        missing = [name for name in cls.required_class_vars if not hasattr(cls, name)]
+        if "__post_init__" in cls.__dict__:
+            # `coerce` builds through `unchecked`, which bypasses
+            # `__init__` and so never reaches `__post_init__`. Rules put
+            # there would hold for a hand-built entity and be silently
+            # absent for every entity read from a document -- the one
+            # direction that matters.
+            msg = (
+                f"{cls.__name__} defines `__post_init__`, which `unchecked` does "
+                "not reach; value rules belong in `value_problems`"
+            )
+            raise TypeError(msg)
+        annotated = _declared_class_vars(cls)
+        shadowed = [
+            name
+            for name in vars(cls).get("__annotations__", {})
+            if name in annotated
+            and annotated[name] is not cls
+            and not _is_class_var(vars(cls)["__annotations__"][name])
+        ]
+        if len(shadowed) != 0:
+            # A field of that name would go into `member_types`, into the
+            # configuration, and into the JSON -- while the class variable
+            # it shadows is what every other part of this layer reads.
+            msg = (
+                f"{cls.__name__} declares {', '.join(shadowed)} as a field, "
+                "shadowing a class variable of the same name"
+            )
+            raise TypeError(msg)
+        # A class variable annotated with no value anywhere in the
+        # ancestry is one the concrete entity owes: `identifier` for all
+        # of them, `kind` for a codec, `bounds` for an integer type.
+        # Derived rather than listed, so adding one to a family cannot
+        # forget to require it.
+        missing = [name for name in annotated if not hasattr(cls, name)]
         if len(missing) != 0:
-            msg = f"{cls.__name__} does not declare {', '.join(missing)}"
+            msg = f"{cls.__name__} does not declare {', '.join(sorted(missing))}"
             raise TypeError(msg)
         # A member's default decides whether the entity can exist without
         # it, so the two kinds have opposite rules. `@dataclass` has not
@@ -435,9 +506,6 @@ class MetadataEntity:
                 f"{', '.join(presumed)} a default; required members have none"
             )
             raise TypeError(msg)
-
-    required_class_vars: ClassVar[tuple[str, ...]] = ("identifier",)
-    """Every class variable a concrete entity of this kind must declare."""
 
     @classmethod
     def accepts(cls, name: str) -> bool:
@@ -532,7 +600,7 @@ class MetadataEntity:
         the entity's own dict would let them mutate a frozen entity
         through the document it returned.
         """
-        return deepcopy(self._members())
+        return deepcopy(self._configuration_members())
 
     value_problems: ClassVar[ValueRoutine] = staticmethod(_no_value_problems)
     """Every value among the members the spec disallows.
@@ -565,11 +633,24 @@ class MetadataEntity:
             raise MetadataValidationError(found)
 
     def _members(self) -> dict[str, object]:
-        """The configuration members present on this entity, unrendered.
+        """Every member this entity holds, unrendered.
 
-        What `value_problems` and `configuration` are both built from;
-        `configuration` may render a member that is itself an entity, and
-        `value_problems` wants it as it is.
+        The dataclass's own fields, which is what `value_problems`
+        judges: a member is a member whether or not the JSON spells it
+        as a configuration key. The raw-bytes family is the case that
+        separates the two -- its width lives in its name, so it has a
+        field and no configuration at all.
+        """
+        return {
+            field_.name: value
+            for field_ in fields(self)
+            if (value := getattr(self, field_.name)) is not UNSET
+        }
+
+    def _configuration_members(self) -> dict[str, object]:
+        """The members a configuration object would spell out.
+
+        `_members` minus anything the envelope carries some other way.
         """
         return {
             key: value
@@ -643,7 +724,6 @@ class CodecEntity(MetadataEntity, base=True):
     """An entity that occupies a position in the codec pipeline."""
 
     kind: ClassVar[CodecKind]
-    required_class_vars: ClassVar[tuple[str, ...]] = ("identifier", "kind")
 
     variable_size: ClassVar[bool] = False
     """Whether this codec's output size depends on the bytes it is given.
@@ -710,7 +790,6 @@ class DataTypeEntity(MetadataEntity, base=True):
     """
 
     scalar_storage: ClassVar[StorageClass]
-    required_class_vars: ClassVar[tuple[str, ...]] = ("identifier", "scalar_storage")
 
     def storage_class(self) -> StorageClass | None:
         """How one scalar occupies bytes, or None if undetermined.
