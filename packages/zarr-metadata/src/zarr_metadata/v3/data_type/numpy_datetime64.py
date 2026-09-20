@@ -99,8 +99,8 @@ def _value_problems(
 class NumpyDatetime64DataType(NumpyTimeDataType):
     """The `numpy.datetime64` data type, coerced from its metadata."""
 
-    unit: NumpyTimeUnit = "generic"
-    scale_factor: int = 1
+    unit: NumpyTimeUnit
+    scale_factor: int
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     identifier: ClassVar[str] = NUMPY_DATETIME64_DATA_TYPE_NAME

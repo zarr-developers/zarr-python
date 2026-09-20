@@ -156,10 +156,10 @@ class BloscCodec(CodecEntity):
     equivalent document.
     """
 
-    cname: BloscCName = "zstd"
-    clevel: int = 5
-    shuffle: BloscShuffle = "noshuffle"
-    blocksize: int = 0
+    cname: BloscCName
+    clevel: int
+    shuffle: BloscShuffle
+    blocksize: int
     typesize: int | UNSET = UNSET
 
     identifier: ClassVar[str] = BLOSC_CODEC_NAME

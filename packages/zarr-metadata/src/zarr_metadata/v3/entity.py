@@ -30,7 +30,9 @@ elsewhere.
 
     @dataclass(frozen=True)
     class AcmeLz4Codec(CodecEntity):
-        acceleration: int = 1
+        # A required member has no default; an optional one defaults to
+        # UNSET, so absence stays distinct from a JSON null.
+        acceleration: int | UNSET = UNSET
 
         identifier: ClassVar[str] = "acme.lz4"
         kind: ClassVar[CodecKind] = "bytes_bytes"

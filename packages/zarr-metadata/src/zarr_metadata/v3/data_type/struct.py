@@ -203,7 +203,7 @@ class StructDataType(DataTypeEntity):
     read in to make sense of them.
     """
 
-    fields: tuple[StructFieldComponent, ...] = ()
+    fields: tuple[StructFieldComponent, ...]
 
     identifier: ClassVar[str] = STRUCT_DATA_TYPE_NAME
     scalar_storage: ClassVar[StorageClass] = "single_byte"

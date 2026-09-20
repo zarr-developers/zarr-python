@@ -83,7 +83,7 @@ def _value_problems(
 class GzipCodec(CodecEntity):
     """The `gzip` codec, coerced from its metadata."""
 
-    level: int = 5
+    level: int
 
     identifier: ClassVar[str] = GZIP_CODEC_NAME
     variable_size: ClassVar[bool] = True

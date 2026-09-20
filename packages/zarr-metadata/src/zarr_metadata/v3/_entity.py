@@ -39,7 +39,7 @@ is about blosc rather than about entities.
 from __future__ import annotations
 
 from collections.abc import Mapping as _Mapping
-from dataclasses import MISSING, dataclass, fields
+from dataclasses import MISSING, Field, dataclass, fields
 from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, TypeAlias, TypeVar, cast
 
@@ -262,6 +262,10 @@ ValueRoutine: TypeAlias = "Callable[..., tuple[ValidationProblem, ...]]"
 """An entity's value-space judgment, over the members it was given."""
 
 
+_MISSING_DEFAULT: Final = object()
+"""Distinguishes "declared no default" from a default that is None or UNSET."""
+
+
 def _no_value_problems(**members: object) -> tuple[ValidationProblem, ...]:
     """An entity whose types admit only valid values has nothing to add."""
     return ()
@@ -384,18 +388,51 @@ class MetadataEntity:
         if len(missing) != 0:
             msg = f"{cls.__name__} does not declare {', '.join(missing)}"
             raise TypeError(msg)
+        # A member's default decides whether the entity can exist without
+        # it, so the two kinds have opposite rules. `@dataclass` has not
+        # run yet, so a member declared with `field(...)` is still a
+        # `Field` here and its default has to be unwrapped.
+        defaulted: dict[str, object] = {}
+        for key in cls.member_types:
+            declared: object = getattr(cls, key, _MISSING_DEFAULT)
+            if type(declared) is Field:
+                # `field(...)`, so the default is inside it rather than
+                # being the attribute. `@dataclass` has not unwrapped it
+                # yet -- this hook runs first.
+                spec = cast("Field[object]", declared)
+                declared = (
+                    _MISSING_DEFAULT
+                    if spec.default is MISSING and spec.default_factory is MISSING
+                    else spec.default
+                )
+            defaulted[key] = declared
         # An optional member defaults to UNSET or `configuration` emits it
         # for every instance, so the bare-name spelling becomes
         # unreachable and a document gains a member it never wrote.
         invented = [
             key
             for key, (required, _) in cls.member_types.items()
-            if not required and getattr(cls, key, UNSET) is not UNSET
+            if not required and defaulted[key] is not UNSET
         ]
         if len(invented) != 0:
             msg = (
                 f"{cls.__name__} gives the optional member(s) "
                 f"{', '.join(invented)} a default other than UNSET"
+            )
+            raise TypeError(msg)
+        # A required member with a default is an entity that can be built
+        # without it -- and then serializes a document nobody wrote. A
+        # conventional starting point is a `create_default` classmethod,
+        # named so that asking for one is deliberate.
+        presumed = [
+            key
+            for key, (required, _) in cls.member_types.items()
+            if required and defaulted[key] is not _MISSING_DEFAULT
+        ]
+        if len(presumed) != 0:
+            msg = (
+                f"{cls.__name__} gives the required member(s) "
+                f"{', '.join(presumed)} a default; required members have none"
             )
             raise TypeError(msg)
 
@@ -542,15 +579,30 @@ class MetadataEntity:
         For a caller that has already asked -- `coerce` does, so that it
         can report the answer instead of raising it. Named so that
         choosing it is deliberate.
+
+        Unchecked means *value*-unchecked. A member this entity does not
+        declare, or one with neither a value nor a default, is still a
+        `TypeError`: those produce an entity that cannot be repred,
+        compared or hashed, which no caller is asking for.
         """
+        declared = {field_.name: field_ for field_ in fields(cls)}
+        unknown = sorted(members.keys() - declared.keys())
+        if len(unknown) != 0:
+            msg = f"{cls.__name__} has no member(s) {', '.join(unknown)}"
+            raise TypeError(msg)
         entity = object.__new__(cls)
-        for field_ in fields(cls):
-            if field_.name in members:
-                object.__setattr__(entity, field_.name, members[field_.name])
+        for name, field_ in declared.items():
+            if name in members:
+                object.__setattr__(entity, name, members[name])
             elif field_.default is not MISSING:
-                object.__setattr__(entity, field_.name, field_.default)
+                object.__setattr__(entity, name, field_.default)
             elif field_.default_factory is not MISSING:  # pragma: no cover - none today
-                object.__setattr__(entity, field_.name, field_.default_factory())
+                object.__setattr__(entity, name, field_.default_factory())
+            else:
+                # Leaving it unset would give an entity whose `repr`,
+                # `==` and `hash` raise `AttributeError` on access.
+                msg = f"{cls.__name__} is missing a value for {name!r}"
+                raise TypeError(msg)
         return entity
 
     def to_json(self) -> ZarrV3MetadataFieldJSON:

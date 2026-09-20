@@ -88,7 +88,7 @@ def _value_problems(
 class TransposeCodec(CodecEntity):
     """The `transpose` codec, coerced from its metadata."""
 
-    order: tuple[int, ...] = ()
+    order: tuple[int, ...]
 
     identifier: ClassVar[str] = TRANSPOSE_CODEC_NAME
     kind: ClassVar[CodecKind] = "array_array"

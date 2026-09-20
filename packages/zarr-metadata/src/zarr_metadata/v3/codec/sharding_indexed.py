@@ -181,9 +181,9 @@ class ShardingIndexedCodec(CodecEntity):
     itself an entity, read the same way this one was.
     """
 
-    chunk_shape: tuple[int, ...] = ()
-    codecs: tuple[CodecEntity | Opaque, ...] = ()
-    index_codecs: tuple[CodecEntity | Opaque, ...] = ()
+    chunk_shape: tuple[int, ...]
+    codecs: tuple[CodecEntity | Opaque, ...]
+    index_codecs: tuple[CodecEntity | Opaque, ...]
     index_location: ShardingIndexLocation | UNSET = UNSET
 
     identifier: ClassVar[str] = SHARDING_INDEXED_CODEC_NAME

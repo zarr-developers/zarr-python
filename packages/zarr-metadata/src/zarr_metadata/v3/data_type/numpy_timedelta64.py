@@ -119,8 +119,8 @@ def _value_problems(
 class NumpyTimedelta64DataType(NumpyTimeDataType):
     """The `numpy.timedelta64` data type, coerced from its metadata."""
 
-    unit: NumpyTimeUnit = "generic"
-    scale_factor: int = 1
+    unit: NumpyTimeUnit
+    scale_factor: int
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     identifier: ClassVar[str] = NUMPY_TIMEDELTA64_DATA_TYPE_NAME

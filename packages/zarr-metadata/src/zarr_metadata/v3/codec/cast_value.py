@@ -174,10 +174,6 @@ def _is_data_type_field(value: object, loc: Loc) -> tuple[ValidationProblem, ...
     return ()
 
 
-_UNREAD: Final = Opaque(None, "invalid")
-"""Placeholder for `data_type`, which is required and so never defaulted."""
-
-
 @dataclass(frozen=True)
 class CastValueCodec(CodecEntity):
     """The `cast_value` codec, coerced from its metadata.
@@ -186,7 +182,7 @@ class CastValueCodec(CodecEntity):
     read in a scope rather than on its own.
     """
 
-    data_type: DataTypeEntity | Opaque = _UNREAD
+    data_type: DataTypeEntity | Opaque
     rounding: CastRoundingMode | UNSET = UNSET
     out_of_range: CastOutOfRangeMode | UNSET = UNSET
     scalar_map: ScalarMap | UNSET = UNSET

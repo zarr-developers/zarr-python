@@ -89,7 +89,7 @@ def _value_problems(
 class RegularChunkGrid(ChunkGridEntity):
     """The `regular` chunk grid, coerced from its metadata."""
 
-    chunk_shape: tuple[int, ...] = ()
+    chunk_shape: tuple[int, ...]
 
     identifier: ClassVar[str] = REGULAR_CHUNK_GRID_NAME
 

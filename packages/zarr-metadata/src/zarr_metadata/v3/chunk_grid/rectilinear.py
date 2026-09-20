@@ -244,8 +244,8 @@ def _value_problems(
 class RectilinearChunkGrid(ChunkGridEntity):
     """The `rectilinear` chunk grid, coerced from its metadata."""
 
-    kind: Literal["inline"] = "inline"
-    chunk_shapes: tuple[RectilinearDimSpec, ...] = ()
+    kind: Literal["inline"]
+    chunk_shapes: tuple[RectilinearDimSpec, ...]
 
     identifier: ClassVar[str] = RECTILINEAR_CHUNK_GRID_NAME
 

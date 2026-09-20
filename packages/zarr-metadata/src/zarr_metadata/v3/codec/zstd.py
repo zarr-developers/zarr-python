@@ -96,7 +96,7 @@ def _value_problems(
 class ZstdCodec(CodecEntity):
     """The `zstd` codec, coerced from its metadata."""
 
-    level: int = 0
+    level: int
     checksum: bool | UNSET = UNSET
 
     identifier: ClassVar[str] = ZSTD_CODEC_NAME

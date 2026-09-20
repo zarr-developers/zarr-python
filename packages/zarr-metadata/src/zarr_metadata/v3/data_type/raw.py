@@ -111,7 +111,7 @@ class RawBytesDataType(DataTypeEntity):
     `r8`, and canonicalizing it away is not this package's call.
     """
 
-    data_type_name: str = "r8"
+    data_type_name: str
 
     scalar_storage: ClassVar[StorageClass] = "single_byte"
     identifier: ClassVar[str] = RAW_BYTES_FAMILY
