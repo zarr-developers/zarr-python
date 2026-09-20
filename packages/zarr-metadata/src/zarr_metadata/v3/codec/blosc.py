@@ -5,9 +5,23 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
 """
 
 from collections.abc import Mapping
-from typing import Final, Literal, NotRequired
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal, NotRequired, Self, cast
 
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, Unpack
+
+from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.v3._entity import (
+    Coerced,
+    Context,
+    MemberTypes,
+    MetadataEntity,
+    coerce_members,
+    is_int,
+    named_configuration,
+    one_of,
+    problem,
+)
 
 BLOSC_CODEC_NAME: Final = "blosc"
 """The `name` field value of the `blosc` codec."""
@@ -93,3 +107,114 @@ __all__ = [
     "BloscShuffle",
     "canonical_configuration",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class BloscCodec(MetadataEntity):
+    """The `blosc` codec, coerced from its metadata.
+
+    Everything blosc knows about itself: the shape its metadata takes, the
+    values the spec allows in it, and the simplest spelling of an
+    equivalent document.
+    """
+
+    cname: BloscCName = "zstd"
+    clevel: int = 5
+    shuffle: BloscShuffle = "noshuffle"
+    blocksize: int = 0
+    typesize: int | None = None
+
+    identifier: ClassVar[str] = BLOSC_CODEC_NAME
+    kind: ClassVar[str] = "bytes_bytes"
+
+    # Every member is required but `typesize`, which only means something
+    # when shuffling; `problems` is where that conditional lives.
+    member_types: ClassVar[MemberTypes] = {
+        "cname": (True, one_of(BLOSC_CNAME)),
+        "clevel": (True, is_int),
+        "shuffle": (True, one_of(BLOSC_SHUFFLE)),
+        "blocksize": (True, is_int),
+        "typesize": (False, is_int),
+    }
+
+    @classmethod
+    def coerce(cls, value: object, context: Context) -> Coerced[Self]:
+        name, configuration, must_understand = named_configuration(value)
+        if name != BLOSC_CODEC_NAME:
+            return None, problem((), f"expected the {BLOSC_CODEC_NAME!r} codec")
+        if configuration is None:
+            # Required members mean the bare-name spelling says too little.
+            return None, problem(
+                ("configuration",), "blosc requires a configuration", "missing_key"
+            )
+        members, found = coerce_members(configuration, cls.member_types)
+        if any(entry.kind != "unknown_key" for entry in found):
+            return None, found
+        return cls(must_understand=must_understand, **members), found  # type: ignore[arg-type]
+
+    def problems(self) -> tuple[ValidationProblem, ...]:
+        """The value constraints the spec places on a blosc configuration."""
+        found: list[ValidationProblem] = []
+        if not 0 <= self.clevel <= 9:
+            found.extend(
+                problem(
+                    ("clevel",),
+                    f"expected an integer in [0, 9], got {self.clevel}",
+                    "invalid_value",
+                )
+            )
+        if self.blocksize < 0:
+            found.extend(
+                problem(
+                    ("blocksize",),
+                    f"expected a non-negative integer, got {self.blocksize}",
+                    "invalid_value",
+                )
+            )
+        if self.typesize is not None and self.typesize < 1:
+            found.extend(
+                problem(
+                    ("typesize",),
+                    f"expected a positive integer, got {self.typesize}",
+                    "invalid_value",
+                )
+            )
+        if self.shuffle != BLOSC_NO_SHUFFLE and self.typesize is None:
+            found.extend(
+                problem(
+                    ("typesize",),
+                    f"typesize is required when shuffle is {self.shuffle!r}",
+                    "missing_key",
+                )
+            )
+        return tuple(found)
+
+    @classmethod
+    def from_configuration(cls, **configuration: Unpack[BloscCodecConfiguration]) -> Self:
+        """This codec from its configuration members.
+
+        The configuration TypedDict unpacked *is* this constructor's
+        signature, so a caller with a well-typed configuration builds a
+        well-typed codec, and a type checker says so at the call site.
+        """
+        return cls(**configuration)
+
+    def to_json(self) -> BloscCodecObject:
+        """The simplest spelling of this codec.
+
+        `typesize` is dropped under `noshuffle`, where the spec says of it
+        that "the value is ignored" — so two documents differing only there
+        describe the same codec.
+        """
+        configuration: dict[str, object] = {
+            "cname": self.cname,
+            "clevel": self.clevel,
+            "shuffle": self.shuffle,
+            "blocksize": self.blocksize,
+        }
+        if self.typesize is not None and self.shuffle != BLOSC_NO_SHUFFLE:
+            configuration["typesize"] = self.typesize
+        entry: dict[str, object] = {"name": BLOSC_CODEC_NAME, "configuration": configuration}
+        if not self.must_understand:
+            entry["must_understand"] = False
+        return cast("BloscCodecObject", entry)
