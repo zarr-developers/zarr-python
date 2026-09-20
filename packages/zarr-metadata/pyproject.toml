@@ -125,9 +125,8 @@ checks = [
     "PR06",
 ]
 
-# CI pins pyright==1.1.404: later versions regress PEP 661 sentinel typing in
-# class attributes (microsoft/pyright#11115), which zarr_metadata.model._sentinel
-# relies on. Use the same pin locally; unpin when the fix lands.
+# The pyright version lives in the justfile, which is what CI runs; pinning it
+# keeps a pyright release from turning CI red on its own schedule.
 [tool.pyright]
 include = ["src", "tests"]
 # `tests` is a package imported as `tests.*`, which pytest resolves from the

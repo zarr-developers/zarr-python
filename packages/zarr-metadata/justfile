@@ -13,12 +13,12 @@ test *args:
 lint:
     uvx ruff check .
 
-# Pinned to the last pyright that types PEP 661 sentinels in class attributes
-# correctly; 1.1.405+ regressed (microsoft/pyright#11115). Unpin when fixed.
-pyright_version := "1.1.404"
+# Pinned so a pyright release cannot turn CI red on its own schedule. Bump it
+# deliberately: run the new version, read what it found, then move the pin.
+pyright_version := "1.1.414"
 
-# CI runs pyright on python 3.11; the pinned pyright predates 3.14, whose
-# stdlib it cannot parse, so pin the interpreter to match CI.
+# Run under the interpreter CI runs pyright under, so a version-dependent
+# stdlib or stub difference shows up here rather than only in CI.
 # Type-check the package, sources and tests alike
 typecheck:
     uv run --python 3.11 --group test --with 'pyright=={{ pyright_version }}' pyright
