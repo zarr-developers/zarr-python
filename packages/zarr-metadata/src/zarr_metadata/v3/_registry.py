@@ -23,14 +23,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal, overload
 
+from typing_extensions import TypedDict, Unpack
+
 from zarr_metadata.model._validation import (
     ValidationProblem,
     validate_metadata_field_v3,
 )
 from zarr_metadata.v3._entity import (
+    STORAGE_TRANSFORMERS,
     ChunkGridEntity,
     CodecEntity,
     DataTypeEntity,
+    MetadataEntity,
     Opaque,
     named_configuration,
 )
@@ -78,8 +82,57 @@ from zarr_metadata.v3.data_type.uint64 import Uint64DataType
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from zarr_metadata.v3._entity import Loc, MetadataEntity
+    from zarr_metadata.v3._entity import Loc
     from zarr_metadata.v3._extension_points import ExtensionPointField
+
+
+class EntityTables(TypedDict):
+    """Which entity is registered under which name, at each extension point.
+
+    Typed per point rather than as one mapping, because an entity's kind
+    is a fact about where it may be registered: a codec at `data_type`
+    would satisfy a `Mapping[str, type[MetadataEntity]]` and then fail
+    the moment anything asked it for a storage class. Spelling the
+    correspondence here is what makes `resolve`'s per-point return type
+    true rather than asserted, and what turns a misfiling into an error
+    where the table is written.
+    """
+
+    data_type: Mapping[str, type[DataTypeEntity]]
+    codecs: Mapping[str, type[CodecEntity]]
+    chunk_grid: Mapping[str, type[ChunkGridEntity]]
+    chunk_key_encoding: Mapping[str, type[MetadataEntity]]
+    storage_transformers: Mapping[str, type[MetadataEntity]]
+
+
+class PartialEntityTables(TypedDict, total=False):
+    """`EntityTables` with every point optional: what `extended_with` takes.
+
+    A reader registering a codec of its own says so and nothing else;
+    the points it does not name keep whatever the scope it extended had.
+    """
+
+    data_type: Mapping[str, type[DataTypeEntity]]
+    codecs: Mapping[str, type[CodecEntity]]
+    chunk_grid: Mapping[str, type[ChunkGridEntity]]
+    chunk_key_encoding: Mapping[str, type[MetadataEntity]]
+    storage_transformers: Mapping[str, type[MetadataEntity]]
+
+
+_ENTITY_KINDS: Final[Mapping[ExtensionPointField, type[MetadataEntity]]] = {
+    DATA_TYPE: DataTypeEntity,
+    CODECS: CodecEntity,
+    CHUNK_GRID: ChunkGridEntity,
+    CHUNK_KEY_ENCODING: MetadataEntity,
+    STORAGE_TRANSFORMERS: MetadataEntity,
+}
+"""The base every entity at a point must derive from.
+
+`EntityTables` says the same thing to the type checker, which is where a
+table written out in source is caught. This is for the one built at run
+time -- from a plugin entry point, from configuration -- where there was
+no type to check.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,10 +151,15 @@ class Context:
     specification plus what `zarr-extensions` registers.
     """
 
-    entities: Mapping[ExtensionPointField, Mapping[str, type[MetadataEntity]]]
+    entities: EntityTables
 
     def __post_init__(self) -> None:
-        """Refuse a table whose key an entity would not answer to.
+        """Refuse a table an entity does not belong in.
+
+        Two ways it can fail to. The entity may be of the wrong kind for
+        the point -- a codec under `data_type` -- which `EntityTables`
+        catches in source and this catches in a scope assembled at run
+        time. Or its key may not be its identifier.
 
         `resolve` finds a candidate by key and then asks the entity
         whether the name is really one of its own, so a key that is not
@@ -115,14 +173,76 @@ class Context:
         raw-bytes family registers under an invented one that `accepts`
         deliberately refuses.
         """
-        for field, table in self.entities.items():
+        for field, table in self.tables().items():
             for key, entity in table.items():
+                if not issubclass(entity, _ENTITY_KINDS[field]):
+                    msg = (
+                        f"{entity.__name__} is registered at {field!r}, which takes "
+                        f"{_ENTITY_KINDS[field].__name__} entities"
+                    )
+                    raise TypeError(msg)
                 if key != entity.identifier:
                     msg = (
                         f"{entity.__name__} is registered at {field!r} under {key!r} "
                         f"but its identifier is {entity.identifier!r}"
                     )
                     raise ValueError(msg)
+
+    def extended_with(self, **entities: Unpack[PartialEntityTables]) -> Context:
+        """This scope, plus entities of your own at the points named.
+
+        The merge is per point, so naming `codecs` adds codecs rather
+        than replacing the ones already in scope. A name already
+        registered is taken over by what is passed here, which is how a
+        reader substitutes its own reading of a codec the package
+        already models.
+        """
+        return Context(
+            {
+                DATA_TYPE: {**self.entities["data_type"], **entities.get("data_type", {})},
+                CODECS: {**self.entities["codecs"], **entities.get("codecs", {})},
+                CHUNK_GRID: {**self.entities["chunk_grid"], **entities.get("chunk_grid", {})},
+                CHUNK_KEY_ENCODING: {
+                    **self.entities["chunk_key_encoding"],
+                    **entities.get("chunk_key_encoding", {}),
+                },
+                STORAGE_TRANSFORMERS: {
+                    **self.entities["storage_transformers"],
+                    **entities.get("storage_transformers", {}),
+                },
+            }
+        )
+
+    def tables(self) -> Mapping[ExtensionPointField, Mapping[str, type[MetadataEntity]]]:
+        """Every point's table, under the one kind all entities share.
+
+        `entities` gives each point its own entity kind, which is the
+        point of it, and a key that is not a literal loses that. So the
+        widening is written out here, once, by hand rather than asserted
+        with a `cast`: reading each member by its own key is what makes
+        the result checked rather than promised. Anything that asks the
+        scope what is in it, rather than asking it about one point, wants
+        this.
+        """
+        return {
+            DATA_TYPE: self.entities["data_type"],
+            CODECS: self.entities["codecs"],
+            CHUNK_GRID: self.entities["chunk_grid"],
+            CHUNK_KEY_ENCODING: self.entities["chunk_key_encoding"],
+            STORAGE_TRANSFORMERS: self.entities["storage_transformers"],
+        }
+
+    @overload
+    def resolve(self, field: Literal["data_type"], name: str) -> type[DataTypeEntity] | None: ...
+
+    @overload
+    def resolve(self, field: Literal["codecs"], name: str) -> type[CodecEntity] | None: ...
+
+    @overload
+    def resolve(self, field: Literal["chunk_grid"], name: str) -> type[ChunkGridEntity] | None: ...
+
+    @overload
+    def resolve(self, field: ExtensionPointField, name: str) -> type[MetadataEntity] | None: ...
 
     def resolve(self, field: ExtensionPointField, name: str) -> type[MetadataEntity] | None:
         """The entity `name` denotes at `field`, or None if out of scope.
@@ -136,7 +256,7 @@ class Context:
         really one of its own. Otherwise the identifier itself would be a
         name a document could write.
         """
-        entity = self.entities.get(field, {}).get(canonical_name(field, name))
+        entity = self.tables()[field].get(canonical_name(field, name))
         if entity is None or not entity.accepts(name):
             return None
         return entity
@@ -234,7 +354,7 @@ class Context:
         return entity, tuple(problems)
 
 
-_CORE_CODECS: Final[dict[str, type[MetadataEntity]]] = {
+_CORE_CODECS: Final[dict[str, type[CodecEntity]]] = {
     BloscCodec.identifier: BloscCodec,
     BytesCodec.identifier: BytesCodec,
     Crc32cCodec.identifier: Crc32cCodec,
@@ -242,13 +362,13 @@ _CORE_CODECS: Final[dict[str, type[MetadataEntity]]] = {
     ShardingIndexedCodec.identifier: ShardingIndexedCodec,
     TransposeCodec.identifier: TransposeCodec,
 }
-_EXTENSION_CODECS: Final[dict[str, type[MetadataEntity]]] = {
+_EXTENSION_CODECS: Final[dict[str, type[CodecEntity]]] = {
     CastValueCodec.identifier: CastValueCodec,
     ScaleOffsetCodec.identifier: ScaleOffsetCodec,
     ZstdCodec.identifier: ZstdCodec,
 }
 
-_CORE_DATA_TYPES: Final[dict[str, type[MetadataEntity]]] = {
+_CORE_DATA_TYPES: Final[dict[str, type[DataTypeEntity]]] = {
     BoolDataType.identifier: BoolDataType,
     Int8DataType.identifier: Int8DataType,
     Int16DataType.identifier: Int16DataType,
@@ -265,7 +385,7 @@ _CORE_DATA_TYPES: Final[dict[str, type[MetadataEntity]]] = {
     Complex128DataType.identifier: Complex128DataType,
     RawBytesDataType.identifier: RawBytesDataType,
 }
-_EXTENSION_DATA_TYPES: Final[dict[str, type[MetadataEntity]]] = {
+_EXTENSION_DATA_TYPES: Final[dict[str, type[DataTypeEntity]]] = {
     BytesDataType.identifier: BytesDataType,
     StringDataType.identifier: StringDataType,
     NumpyDatetime64DataType.identifier: NumpyDatetime64DataType,
@@ -273,10 +393,10 @@ _EXTENSION_DATA_TYPES: Final[dict[str, type[MetadataEntity]]] = {
     StructDataType.identifier: StructDataType,
 }
 
-_CORE_CHUNK_GRIDS: Final[dict[str, type[MetadataEntity]]] = {
+_CORE_CHUNK_GRIDS: Final[dict[str, type[ChunkGridEntity]]] = {
     RegularChunkGrid.identifier: RegularChunkGrid,
 }
-_EXTENSION_CHUNK_GRIDS: Final[dict[str, type[MetadataEntity]]] = {
+_EXTENSION_CHUNK_GRIDS: Final[dict[str, type[ChunkGridEntity]]] = {
     RectilinearChunkGrid.identifier: RectilinearChunkGrid,
 }
 
@@ -292,6 +412,7 @@ CORE: Final = Context(
         DATA_TYPE: _CORE_DATA_TYPES,
         CHUNK_GRID: _CORE_CHUNK_GRIDS,
         CHUNK_KEY_ENCODING: _CORE_CHUNK_KEY_ENCODINGS,
+        STORAGE_TRANSFORMERS: {},
     }
 )
 """Only what the Zarr v3 specification defines."""
@@ -302,6 +423,7 @@ CORE_AND_EXTENSIONS: Final = Context(
         DATA_TYPE: {**_CORE_DATA_TYPES, **_EXTENSION_DATA_TYPES},
         CHUNK_GRID: {**_CORE_CHUNK_GRIDS, **_EXTENSION_CHUNK_GRIDS},
         CHUNK_KEY_ENCODING: {**_CORE_CHUNK_KEY_ENCODINGS},
+        STORAGE_TRANSFORMERS: {},
     }
 )
 """What the specification defines, plus what `zarr-extensions` registers."""
@@ -311,4 +433,6 @@ __all__ = [
     "CORE",
     "CORE_AND_EXTENSIONS",
     "Context",
+    "EntityTables",
+    "PartialEntityTables",
 ]

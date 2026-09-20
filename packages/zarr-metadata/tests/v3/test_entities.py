@@ -165,15 +165,16 @@ def test_a_required_member_rules_out_the_bare_spelling(
 def test_every_registered_entity_is_checked_here() -> None:
     registered = {
         f"{field}:{identifier}"
-        for field, entities in CORE_AND_EXTENSIONS.entities.items()
+        for field, entities in CORE_AND_EXTENSIONS.tables().items()
         for identifier in entities
     }
     assert registered == set(CONFIGURATIONS)
 
 
 def test_core_is_a_subset_of_core_and_extensions() -> None:
-    for field, entities in CORE.entities.items():
-        assert entities.items() <= CORE_AND_EXTENSIONS.entities[field].items()
+    both = CORE_AND_EXTENSIONS.tables()
+    for field, entities in CORE.tables().items():
+        assert entities.items() <= both[field].items()
 
 
 def test_a_name_out_of_scope_resolves_to_nothing() -> None:

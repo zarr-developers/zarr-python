@@ -303,6 +303,7 @@ _STANDALONE_VOCAB = frozenset(
         "ArrayParts",
         "ArrayDocumentV3",
         "Endianness",
+        "EntityTables",
         "Invalid",
         "HexFloat16",
         "HexFloat32",
@@ -310,6 +311,7 @@ _STANDALONE_VOCAB = frozenset(
         "JSONValue",
         "MetadataValidationError",
         "Opaque",
+        "PartialEntityTables",
         "NumpyDatetime64",
         "NumpyTimeUnit",
         "NumpyTimedelta64",
@@ -321,6 +323,7 @@ _STANDALONE_VOCAB = frozenset(
         "Struct",
         "StructField",
         "ValidationProblem",
+        "ValueRoutine",
     }
 )
 

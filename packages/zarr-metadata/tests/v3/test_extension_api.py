@@ -17,6 +17,7 @@ from zarr_metadata.rules import (
     validate_array_metadata_v3,
 )
 from zarr_metadata.v3.entity import (
+    CORE,
     CORE_AND_EXTENSIONS,
     ArrayDocumentV3,
     ArrayParts,
@@ -70,16 +71,9 @@ class AcmeFloat8DataType(DataTypeEntity):
 
 
 def _scope() -> Context:
-    entities = dict(CORE_AND_EXTENSIONS.entities)
-    return Context(
-        {
-            **entities,
-            "codecs": {**entities["codecs"], AcmeLz4Codec.identifier: AcmeLz4Codec},
-            "data_type": {
-                **entities["data_type"],
-                AcmeFloat8DataType.identifier: AcmeFloat8DataType,
-            },
-        }
+    return CORE_AND_EXTENSIONS.extended_with(
+        codecs={AcmeLz4Codec.identifier: AcmeLz4Codec},
+        data_type={AcmeFloat8DataType.identifier: AcmeFloat8DataType},
     )
 
 
@@ -163,7 +157,17 @@ def test_error_a_registry_key_must_be_the_identifier() -> None:
     # Otherwise `resolve` never finds it and the document is silently
     # waved through, indistinguishable from openness.
     with pytest.raises(ValueError, match="registered at 'codecs' under 'acme.lz-4'"):
-        Context({"codecs": {"acme.lz-4": AcmeLz4Codec}})
+        CORE.extended_with(codecs={"acme.lz-4": AcmeLz4Codec})
+
+
+def test_error_an_entity_cannot_be_registered_at_the_wrong_point() -> None:
+    # `EntityTables` says so to the type checker, which settles a scope
+    # written out in source. A scope assembled at run time -- from an
+    # entry point, from configuration -- had no type to check, and a
+    # codec under `data_type` would resolve and then be asked for a
+    # storage class it has no answer to.
+    with pytest.raises(TypeError, match="registered at 'data_type', which takes DataTypeEntity"):
+        CORE.extended_with(data_type={AcmeLz4Codec.identifier: AcmeLz4Codec})  # type: ignore[dict-item]
 
 
 def test_the_entity_layer_answers_what_a_reader_needs() -> None:
@@ -177,8 +181,8 @@ def test_the_entity_layer_answers_what_a_reader_needs() -> None:
         "chunk_grid", {"name": "regular", "configuration": {"chunk_shape": (32, 32)}}
     )
     assert problems == ()
-    assert isinstance(grid, MetadataEntity)
-    parts = ArrayParts(grid.grid((64, 64)), data_type)  # type: ignore[attr-defined]
+    assert isinstance(grid, ChunkGridEntity)
+    parts = ArrayParts(grid.grid((64, 64)), data_type)
     assert parts.grid.rank == 2
     assert parts.grid.axis(0) == frozenset({32})
 

@@ -91,6 +91,7 @@ from zarr_metadata.v3._entity import (
     Opaque,
     StorageClass,
     TypeCheck,
+    ValueRoutine,
     coerce_members,
     is_bool,
     is_int,
@@ -104,7 +105,13 @@ from zarr_metadata.v3._entity import (
     within,
 )
 from zarr_metadata.v3._parts import UNKNOWN_GRID, ArrayParts, ChunkGrid, Extents, shard_index_grid
-from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS, Context
+from zarr_metadata.v3._registry import (
+    CORE,
+    CORE_AND_EXTENSIONS,
+    Context,
+    EntityTables,
+    PartialEntityTables,
+)
 from zarr_metadata.v3.data_type._families import (
     FLOAT_SPECIALS,
     ComplexDataType,
@@ -135,6 +142,7 @@ __all__ = [
     "ComplexDataType",
     "Context",
     "DataTypeEntity",
+    "EntityTables",
     "ExtensionPointField",
     "Extents",
     "FloatDataType",
@@ -144,8 +152,10 @@ __all__ = [
     "MetadataEntity",
     "NumpyTimeDataType",
     "Opaque",
+    "PartialEntityTables",
     "StorageClass",
     "TypeCheck",
+    "ValueRoutine",
     "array_problems_v3",
     "as_sequence",
     "byte_values",
