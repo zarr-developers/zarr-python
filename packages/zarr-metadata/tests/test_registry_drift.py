@@ -14,6 +14,9 @@ import zarr_metadata.v3.chunk_grid
 import zarr_metadata.v3.chunk_key_encoding
 import zarr_metadata.v3.codec
 import zarr_metadata.v3.data_type
+from zarr_metadata.rules._storage_class import (  # pyright: ignore[reportPrivateUsage]
+    storage_class,
+)
 from zarr_metadata.rules._v3_array import (
     _check_fill_for_dtype,  # pyright: ignore[reportPrivateUsage]
 )
@@ -83,3 +86,22 @@ def test_every_data_type_has_a_fill_value_branch() -> None:
         name for name in {*dtype_names, "r8"} if _check_fill_for_dtype(name, object()) is None
     }
     assert not unjudged
+
+
+def test_every_data_type_module_has_a_storage_class() -> None:
+    # The bytes codec's endianness rule and the struct field rule both ask
+    # this question, so an unclassified data type silently disables both.
+    # `struct` classifies from its fields, so it is sampled with one; the
+    # r<N> family has no name constant and is represented by "r8".
+    dtype_names = _module_constants(zarr_metadata.v3.data_type, "_DATA_TYPE_NAME")
+    assert dtype_names, "constant scan found nothing — the naming convention moved?"
+    samples: dict[str, object] = {
+        "struct": {
+            "name": "struct",
+            "configuration": {"fields": ({"name": "a", "data_type": "uint8"},)},
+        }
+    }
+    unclassified = {
+        name for name in {*dtype_names, "r8"} if storage_class(samples.get(name, name)) is None
+    }
+    assert not unclassified
