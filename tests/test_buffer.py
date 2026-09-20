@@ -315,7 +315,8 @@ def test_all_equal_single_leading_row() -> None:
     """shape[0] == 1 has no leading axis to slice; it must fall back, not break."""
     row = np.zeros((1, (1 << 14) * 2), dtype="float32")
     assert cpu.NDBuffer.from_numpy_array(row).all_equal(0.0)
-    row2 = row.copy(); row2[0, -1] = 1
+    row2 = row.copy()
+    row2[0, -1] = 1
     assert not cpu.NDBuffer.from_numpy_array(row2).all_equal(0.0)
 
 
