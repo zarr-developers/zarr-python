@@ -47,14 +47,20 @@ from typing import (
     ClassVar,
     Final,
     Literal,
+    NotRequired,
+    Protocol,
+    Required,
     TypeAlias,
     TypeVar,
     cast,
+    get_args,
     get_origin,
+    get_type_hints,
 )
 
-from typing_extensions import TypeIs
+from typing_extensions import ReadOnly, TypeIs
 
+from zarr_metadata._common import JSONValue
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import (
     MetadataValidationError,
@@ -267,6 +273,95 @@ def coerce_members(
     return members, tuple(problems), frozenset(unreadable)
 
 
+class ConfigurationType(Protocol):
+    """What this layer reads off a configuration TypedDict.
+
+    A Protocol rather than `type`, so that what is read off it is stated
+    rather than assumed. Deliberately not `__required_keys__`: under
+    `from __future__ import annotations` a TypedDict computes that from
+    unresolved strings and reports every member required, which would
+    make an extension's optional members silently mandatory. Requiredness
+    is read from the resolved annotation instead.
+    """
+
+    __name__: str
+
+
+def _unwrap(annotation: object) -> object:
+    """An annotation without the qualifiers that are not its type.
+
+    `NotRequired` and `Required` say whether a member must be present,
+    which is the other half of a member table entry; `ReadOnly` says
+    nothing about the value at all.
+    """
+    while get_origin(annotation) in (NotRequired, Required, ReadOnly):
+        (annotation,) = get_args(annotation)
+    return annotation
+
+
+def check_for(annotation: object) -> TypeCheck | None:
+    """The check an annotation implies, or None if it implies none.
+
+    None for an annotation naming another structure -- a nested
+    TypedDict, a recursive JSON alias, a tuple of either. Reading those
+    off the annotation would be a TypedDict-to-checker compiler, which
+    is a different package; the entity declares those itself.
+    """
+    annotation = _unwrap(annotation)
+    if annotation is int:
+        return is_int
+    if annotation is bool:
+        return is_bool
+    if annotation is str:
+        return is_str
+    if annotation is JSONValue:
+        return is_json_value
+    if get_origin(annotation) is Literal:
+        # Sorted, because the order `get_args` reports is not the order
+        # the `Literal` was written in: two `Literal`s over the same
+        # values compare and hash equal, so the first one built anywhere
+        # in the process is the one every later one resolves to. The
+        # check is a membership test either way; this is so the message
+        # listing the values does not depend on import order.
+        return one_of(tuple(sorted(cast("tuple[str, ...]", get_args(annotation)))))
+    if get_origin(annotation) is tuple:
+        arguments = get_args(annotation)
+        if len(arguments) == 2 and arguments[1] is Ellipsis:
+            element = check_for(arguments[0])
+            return None if element is None else sequence_of(element)
+    return None
+
+
+def is_required(annotation: object) -> bool:
+    """Whether a configuration member must be present.
+
+    From the resolved annotation rather than the TypedDict's
+    `__required_keys__`, which is computed from unresolved strings and
+    is wrong for a module using `from __future__ import annotations`.
+    `ReadOnly` may wrap either way round, so it is peeled first.
+    """
+    while get_origin(annotation) is ReadOnly:
+        (annotation,) = get_args(annotation)
+    return get_origin(annotation) is not NotRequired
+
+
+def derive_member_types(
+    configuration: ConfigurationType,
+) -> dict[str, tuple[bool, TypeCheck]]:
+    """The member table a configuration TypedDict already describes.
+
+    Requiredness is the TypedDict's, and so is the check wherever the
+    annotation implies one. A member it does not imply one for is left
+    out, for the entity to declare.
+    """
+    derived: dict[str, tuple[bool, TypeCheck]] = {}
+    for member, annotation in get_type_hints(configuration, include_extras=True).items():
+        check = check_for(annotation)
+        if check is not None:
+            derived[member] = (is_required(annotation), check)
+    return derived
+
+
 ValueRoutine: TypeAlias = "Callable[..., tuple[ValidationProblem, ...]]"
 """An entity's value-space judgment, over the members it was given."""
 
@@ -384,19 +479,31 @@ class MetadataEntity:
     an invented identifier that no real name can collide with.
     """
 
+    configuration_type: ClassVar[ConfigurationType | None] = None
+    """The TypedDict describing this entity's `configuration` in JSON.
+
+    None for an entity that has no configuration. Everything else about
+    the members is read off it at class creation, so the JSON shape is
+    stated once: `member_types` and `configuration_required` are both
+    derived, and the constructor is held to the same keys by
+    `tests/v3/test_entities.py`.
+    """
+
     member_types: ClassVar[MemberTypes] = MappingProxyType({})
     """The configuration members, and the type each one takes.
 
-    The same keys as the configuration TypedDict, which is the same as the
-    constructor signature; `tests/v3/test_entities.py` holds the three
-    together.
+    Derived from `configuration_type`. A class declares an entry here
+    only for a member whose annotation names another structure -- a
+    nested TypedDict, a recursive JSON alias -- which is where reading
+    the check off the annotation would take a compiler.
     """
 
     configuration_required: ClassVar[bool] = False
     """Whether the bare-name spelling says too little for this entity.
 
     The spec permits a bare name "if no configuration metadata is
-    required", so this is true exactly when some member is required.
+    required", so this is true exactly when some member is required --
+    which the configuration TypedDict already says.
     """
 
     def __init_subclass__(cls, *, base: bool = False, **kwargs: object) -> None:
@@ -433,6 +540,43 @@ class MetadataEntity:
                 "not reach; value rules belong in `value_problems`"
             )
             raise TypeError(msg)
+        if "configuration_required" in vars(cls):
+            msg = (
+                f"{cls.__name__} declares `configuration_required`, which follows "
+                "from whether its configuration has a required member"
+            )
+            raise TypeError(msg)
+        if cls.configuration_type is not None:
+            # Before every guard below, because they read the table.
+            declared = dict(vars(cls).get("member_types", {}))
+            derived = derive_member_types(cls.configuration_type)
+            undeclared = sorted(
+                set(get_type_hints(cls.configuration_type)) - set(derived) - set(declared)
+            )
+            if len(undeclared) != 0:
+                msg = (
+                    f"{cls.__name__} declares no check for {', '.join(undeclared)}, "
+                    "whose annotation does not imply one"
+                )
+                raise TypeError(msg)
+            hints = get_type_hints(cls.configuration_type, include_extras=True)
+            misstated = sorted(
+                member
+                for member, (required, _) in declared.items()
+                if member in hints and required != is_required(hints[member])
+            )
+            if len(misstated) != 0:
+                # The check is the entity's to write; whether the member
+                # may be left out is the configuration's to say, and a
+                # declared entry that disagrees is the drift this
+                # derivation exists to rule out.
+                msg = (
+                    f"{cls.__name__} declares {', '.join(misstated)} with a requiredness "
+                    "its configuration does not give it"
+                )
+                raise TypeError(msg)
+            cls.member_types = {**derived, **declared}
+            cls.configuration_required = any(required for required, _ in cls.member_types.values())
         annotated = _declared_class_vars(cls)
         shadowed = [
             name

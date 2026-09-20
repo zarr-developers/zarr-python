@@ -14,9 +14,6 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
-    MemberTypes,
-    is_int,
-    one_of,
     problem,
 )
 
@@ -107,20 +104,12 @@ class BloscCodec(CodecEntity):
     typesize: int | UNSET = UNSET
 
     identifier: ClassVar[str] = BLOSC_CODEC_NAME
+    configuration_type = BloscCodecConfiguration
     variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "bytes_bytes"
 
     # Every member is required but `typesize`, which only means something
     # when shuffling; `problems` is where that conditional lives.
-    configuration_required: ClassVar[bool] = True
-
-    member_types: ClassVar[MemberTypes] = {
-        "cname": (True, one_of(BLOSC_CNAME)),
-        "clevel": (True, is_int),
-        "shuffle": (True, one_of(BLOSC_SHUFFLE)),
-        "blocksize": (True, is_int),
-        "typesize": (False, is_int),
-    }
 
     @staticmethod
     def value_problems(

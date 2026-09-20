@@ -18,10 +18,7 @@ from zarr_metadata.v3._entity import (
     Loc,
     MemberTypes,
     Opaque,
-    is_int,
-    one_of,
     problem,
-    sequence_of,
 )
 from zarr_metadata.v3._parts import (
     UNKNOWN_GRID,
@@ -167,15 +164,13 @@ class ShardingIndexedCodec(CodecEntity):
     index_location: ShardingIndexLocation | UNSET = UNSET
 
     identifier: ClassVar[str] = SHARDING_INDEXED_CODEC_NAME
+    configuration_type = ShardingIndexedCodecConfiguration
     variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "array_bytes"
 
-    configuration_required: ClassVar[bool] = True
     member_types: ClassVar[MemberTypes] = {
-        "chunk_shape": (True, sequence_of(is_int)),
         "codecs": (True, _is_field_tuple),
         "index_codecs": (True, _is_field_tuple),
-        "index_location": (False, one_of(SHARDING_INDEX_LOCATION)),
     }
 
     @staticmethod

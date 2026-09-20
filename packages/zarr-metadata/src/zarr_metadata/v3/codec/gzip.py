@@ -13,8 +13,6 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
-    MemberTypes,
-    is_int,
     problem,
 )
 
@@ -75,11 +73,9 @@ class GzipCodec(CodecEntity):
     level: int
 
     identifier: ClassVar[str] = GZIP_CODEC_NAME
+    configuration_type = GzipCodecConfiguration
     variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "bytes_bytes"
-
-    configuration_required: ClassVar[bool] = True
-    member_types: ClassVar[MemberTypes] = {"level": (True, is_int)}
 
     @staticmethod
     def value_problems(

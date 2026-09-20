@@ -19,7 +19,6 @@ from zarr_metadata.v3._entity import (
     MemberTypes,
     Opaque,
     is_json_value,
-    one_of,
     problem,
 )
 from zarr_metadata.v3._parts import ArrayParts
@@ -188,13 +187,11 @@ class CastValueCodec(CodecEntity):
     scalar_map: ScalarMap | UNSET = UNSET
 
     identifier: ClassVar[str] = CAST_VALUE_CODEC_NAME
+    configuration_type = CastValueCodecConfiguration
     kind: ClassVar[CodecKind] = "array_array"
 
-    configuration_required: ClassVar[bool] = True
     member_types: ClassVar[MemberTypes] = {
         "data_type": (True, _is_data_type_field),
-        "rounding": (False, one_of(CAST_ROUNDING_MODE)),
-        "out_of_range": (False, one_of(CAST_OUT_OF_RANGE_MODE)),
         "scalar_map": (False, _is_scalar_map),
     }
 

@@ -16,9 +16,6 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
-    MemberTypes,
-    is_bool,
-    is_int,
     problem,
 )
 
@@ -85,14 +82,9 @@ class ZstdCodec(CodecEntity):
     checksum: bool | UNSET = UNSET
 
     identifier: ClassVar[str] = ZSTD_CODEC_NAME
+    configuration_type = ZstdCodecConfiguration
     variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "bytes_bytes"
-
-    configuration_required: ClassVar[bool] = True
-    member_types: ClassVar[MemberTypes] = {
-        "level": (True, is_int),
-        "checksum": (False, is_bool),
-    }
 
     @staticmethod
     def value_problems(

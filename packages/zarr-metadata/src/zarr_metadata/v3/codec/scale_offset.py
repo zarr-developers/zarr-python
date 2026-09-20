@@ -15,8 +15,6 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
-    MemberTypes,
-    is_json_value,
     problem,
 )
 from zarr_metadata.v3._parts import ArrayParts
@@ -88,12 +86,8 @@ class ScaleOffsetCodec(CodecEntity):
     scale: JSONValue | UNSET = UNSET
 
     identifier: ClassVar[str] = SCALE_OFFSET_CODEC_NAME
+    configuration_type = ScaleOffsetCodecConfiguration
     kind: ClassVar[CodecKind] = "array_array"
-
-    member_types: ClassVar[MemberTypes] = {
-        "offset": (False, is_json_value),
-        "scale": (False, is_json_value),
-    }
 
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:
         """The same array, element for element.

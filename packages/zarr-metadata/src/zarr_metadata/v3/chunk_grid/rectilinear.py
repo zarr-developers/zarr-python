@@ -15,7 +15,6 @@ from zarr_metadata.v3._entity import (
     Loc,
     MemberTypes,
     is_integer,
-    one_of,
     problem,
 )
 from zarr_metadata.v3._parts import ChunkGrid
@@ -209,10 +208,9 @@ class RectilinearChunkGrid(ChunkGridEntity):
     chunk_shapes: tuple[RectilinearDimSpec, ...]
 
     identifier: ClassVar[str] = RECTILINEAR_CHUNK_GRID_NAME
+    configuration_type = RectilinearChunkGridConfiguration
 
-    configuration_required: ClassVar[bool] = True
     member_types: ClassVar[MemberTypes] = {
-        "kind": (True, one_of(RECTILINEAR_CHUNK_GRID_KIND)),
         "chunk_shapes": (True, _is_dim_specs),
     }
 

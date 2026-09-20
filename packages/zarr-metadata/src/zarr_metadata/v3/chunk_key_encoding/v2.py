@@ -20,9 +20,7 @@ from typing_extensions import TypedDict
 
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.v3._entity import (
-    MemberTypes,
     MetadataEntity,
-    one_of,
 )
 
 V2_CHUNK_KEY_ENCODING_NAME: Final = "v2"
@@ -85,10 +83,7 @@ class V2ChunkKeyEncoding(MetadataEntity):
     separator: V2ChunkKeyEncodingSeparator | UNSET = UNSET
 
     identifier: ClassVar[str] = V2_CHUNK_KEY_ENCODING_NAME
-
-    member_types: ClassVar[MemberTypes] = {
-        "separator": (False, one_of(V2_CHUNK_KEY_ENCODING_SEPARATOR))
-    }
+    configuration_type = V2ChunkKeyEncodingConfiguration
 
     def to_json(self) -> V2ChunkKeyEncodingObject | V2ChunkKeyEncodingName:
         return cast("V2ChunkKeyEncodingObject | V2ChunkKeyEncodingName", super().to_json())

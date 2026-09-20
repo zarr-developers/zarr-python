@@ -11,16 +11,12 @@ from typing_extensions import ReadOnly, TypedDict, Unpack
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
-    MemberTypes,
     StorageClass,
-    is_int,
-    one_of,
     problem,
 )
 from zarr_metadata.v3.data_type._families import NumpyTimeDataType
 from zarr_metadata.v3.data_type.numpy_timedelta64 import (
     NUMPY_TIME_MAX_SCALE_FACTOR,
-    NUMPY_TIME_UNIT,
 )
 
 NUMPY_DATETIME64_DATA_TYPE_NAME: Final = "numpy.datetime64"
@@ -86,12 +82,7 @@ class NumpyDatetime64DataType(NumpyTimeDataType):
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     identifier: ClassVar[str] = NUMPY_DATETIME64_DATA_TYPE_NAME
-
-    configuration_required: ClassVar[bool] = True
-    member_types: ClassVar[MemberTypes] = {
-        "unit": (True, one_of(NUMPY_TIME_UNIT)),
-        "scale_factor": (True, is_int),
-    }
+    configuration_type = NumpyDatetime64Configuration
 
     @staticmethod
     def value_problems(

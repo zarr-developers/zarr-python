@@ -13,10 +13,7 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
-    MemberTypes,
-    is_int,
     problem,
-    sequence_of,
 )
 from zarr_metadata.v3._parts import ArrayParts
 
@@ -72,10 +69,8 @@ class TransposeCodec(CodecEntity):
     order: tuple[int, ...]
 
     identifier: ClassVar[str] = TRANSPOSE_CODEC_NAME
+    configuration_type = TransposeCodecConfiguration
     kind: ClassVar[CodecKind] = "array_array"
-
-    configuration_required: ClassVar[bool] = True
-    member_types: ClassVar[MemberTypes] = {"order": (True, sequence_of(is_int))}
 
     @staticmethod
     def value_problems(

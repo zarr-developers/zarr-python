@@ -20,29 +20,25 @@ from zarr_metadata.rules import validate_array_metadata_v3
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS
 from zarr_metadata.v3.chunk_grid.rectilinear import (
     RectilinearChunkGrid,
-    RectilinearChunkGridConfiguration,
 )
-from zarr_metadata.v3.chunk_grid.regular import RegularChunkGrid, RegularChunkGridConfiguration
+from zarr_metadata.v3.chunk_grid.regular import RegularChunkGrid
 from zarr_metadata.v3.chunk_key_encoding.default import (
     DefaultChunkKeyEncoding,
-    DefaultChunkKeyEncodingConfiguration,
 )
 from zarr_metadata.v3.chunk_key_encoding.v2 import (
     V2ChunkKeyEncoding,
-    V2ChunkKeyEncodingConfiguration,
 )
-from zarr_metadata.v3.codec.blosc import BloscCodec, BloscCodecConfiguration
-from zarr_metadata.v3.codec.bytes import BytesCodec, BytesCodecConfiguration
-from zarr_metadata.v3.codec.cast_value import CastValueCodec, CastValueCodecConfiguration
-from zarr_metadata.v3.codec.crc32c import Crc32cCodec, Empty
-from zarr_metadata.v3.codec.gzip import GzipCodec, GzipCodecConfiguration
-from zarr_metadata.v3.codec.scale_offset import ScaleOffsetCodec, ScaleOffsetCodecConfiguration
+from zarr_metadata.v3.codec.blosc import BloscCodec
+from zarr_metadata.v3.codec.bytes import BytesCodec
+from zarr_metadata.v3.codec.cast_value import CastValueCodec
+from zarr_metadata.v3.codec.crc32c import Crc32cCodec
+from zarr_metadata.v3.codec.gzip import GzipCodec
+from zarr_metadata.v3.codec.scale_offset import ScaleOffsetCodec
 from zarr_metadata.v3.codec.sharding_indexed import (
     ShardingIndexedCodec,
-    ShardingIndexedCodecConfiguration,
 )
-from zarr_metadata.v3.codec.transpose import TransposeCodec, TransposeCodecConfiguration
-from zarr_metadata.v3.codec.zstd import ZstdCodec, ZstdCodecConfiguration
+from zarr_metadata.v3.codec.transpose import TransposeCodec
+from zarr_metadata.v3.codec.zstd import ZstdCodec
 from zarr_metadata.v3.data_type.bool import BoolDataType
 from zarr_metadata.v3.data_type.bytes import BytesDataType
 from zarr_metadata.v3.data_type.complex64 import Complex64DataType
@@ -55,16 +51,14 @@ from zarr_metadata.v3.data_type.int16 import Int16DataType
 from zarr_metadata.v3.data_type.int32 import Int32DataType
 from zarr_metadata.v3.data_type.int64 import Int64DataType
 from zarr_metadata.v3.data_type.numpy_datetime64 import (
-    NumpyDatetime64Configuration,
     NumpyDatetime64DataType,
 )
 from zarr_metadata.v3.data_type.numpy_timedelta64 import (
-    NumpyTimedelta64Configuration,
     NumpyTimedelta64DataType,
 )
 from zarr_metadata.v3.data_type.raw import RawBytesDataType
 from zarr_metadata.v3.data_type.string import StringDataType
-from zarr_metadata.v3.data_type.struct import StructConfiguration, StructDataType
+from zarr_metadata.v3.data_type.struct import StructDataType
 from zarr_metadata.v3.data_type.uint8 import Uint8DataType
 from zarr_metadata.v3.data_type.uint16 import Uint16DataType
 from zarr_metadata.v3.data_type.uint32 import Uint32DataType
@@ -75,97 +69,69 @@ from zarr_metadata.v3.entity import ArrayDocumentV3, MetadataEntity
 # mirrors. Keyed by `<field>:<identifier>`, because an identifier is only
 # unique within its extension point -- `bytes` is both a codec and a data
 # type.
-CONFIGURATIONS: dict[str, tuple[type[MetadataEntity], type | None]] = {
-    "codecs:blosc": (BloscCodec, BloscCodecConfiguration),
-    "codecs:bytes": (BytesCodec, BytesCodecConfiguration),
-    "codecs:cast_value": (CastValueCodec, CastValueCodecConfiguration),
-    "codecs:crc32c": (Crc32cCodec, Empty),
-    "codecs:gzip": (GzipCodec, GzipCodecConfiguration),
-    "codecs:scale_offset": (ScaleOffsetCodec, ScaleOffsetCodecConfiguration),
-    "codecs:sharding_indexed": (ShardingIndexedCodec, ShardingIndexedCodecConfiguration),
-    "codecs:transpose": (TransposeCodec, TransposeCodecConfiguration),
-    "codecs:zstd": (ZstdCodec, ZstdCodecConfiguration),
-    "chunk_grid:regular": (RegularChunkGrid, RegularChunkGridConfiguration),
-    "chunk_grid:rectilinear": (RectilinearChunkGrid, RectilinearChunkGridConfiguration),
-    "chunk_key_encoding:default": (DefaultChunkKeyEncoding, DefaultChunkKeyEncodingConfiguration),
-    "chunk_key_encoding:v2": (V2ChunkKeyEncoding, V2ChunkKeyEncodingConfiguration),
-    "data_type:numpy.datetime64": (NumpyDatetime64DataType, NumpyDatetime64Configuration),
-    "data_type:numpy.timedelta64": (NumpyTimedelta64DataType, NumpyTimedelta64Configuration),
-    # Bare entities: the name says everything, so there is no
-    # configuration TypedDict for the constructor to mirror.
-    "data_type:bool": (BoolDataType, None),
-    "data_type:int8": (Int8DataType, None),
-    "data_type:int16": (Int16DataType, None),
-    "data_type:int32": (Int32DataType, None),
-    "data_type:int64": (Int64DataType, None),
-    "data_type:uint8": (Uint8DataType, None),
-    "data_type:uint16": (Uint16DataType, None),
-    "data_type:uint32": (Uint32DataType, None),
-    "data_type:uint64": (Uint64DataType, None),
-    "data_type:float16": (Float16DataType, None),
-    "data_type:float32": (Float32DataType, None),
-    "data_type:float64": (Float64DataType, None),
-    "data_type:complex64": (Complex64DataType, None),
-    "data_type:complex128": (Complex128DataType, None),
-    "data_type:bytes": (BytesDataType, None),
-    "data_type:struct": (StructDataType, StructConfiguration),
-    "data_type:string": (StringDataType, None),
-    # The one exception. `r<N>` is a family, so the class holds the
-    # spelling that picks a member of it -- a field with no configuration
-    # member behind it, because the name carries the information.
-    "data_type:r<N>": (RawBytesDataType, None),
+# Every registered entity, keyed by `<field>:<identifier>` -- an identifier
+# is unique only within its extension point, and `bytes` is both a codec
+# and a data type. What each one's configuration is comes off the class:
+# `configuration_type` is the only place that says so, and the fields are
+# held to it below.
+ENTITIES: dict[str, type[MetadataEntity]] = {
+    "codecs:blosc": BloscCodec,
+    "codecs:bytes": BytesCodec,
+    "codecs:cast_value": CastValueCodec,
+    "codecs:crc32c": Crc32cCodec,
+    "codecs:gzip": GzipCodec,
+    "codecs:scale_offset": ScaleOffsetCodec,
+    "codecs:sharding_indexed": ShardingIndexedCodec,
+    "codecs:transpose": TransposeCodec,
+    "codecs:zstd": ZstdCodec,
+    "chunk_grid:regular": RegularChunkGrid,
+    "chunk_grid:rectilinear": RectilinearChunkGrid,
+    "chunk_key_encoding:default": DefaultChunkKeyEncoding,
+    "chunk_key_encoding:v2": V2ChunkKeyEncoding,
+    "data_type:numpy.datetime64": NumpyDatetime64DataType,
+    "data_type:numpy.timedelta64": NumpyTimedelta64DataType,
+    "data_type:bool": BoolDataType,
+    "data_type:int8": Int8DataType,
+    "data_type:int16": Int16DataType,
+    "data_type:int32": Int32DataType,
+    "data_type:int64": Int64DataType,
+    "data_type:uint8": Uint8DataType,
+    "data_type:uint16": Uint16DataType,
+    "data_type:uint32": Uint32DataType,
+    "data_type:uint64": Uint64DataType,
+    "data_type:float16": Float16DataType,
+    "data_type:float32": Float32DataType,
+    "data_type:float64": Float64DataType,
+    "data_type:complex64": Complex64DataType,
+    "data_type:complex128": Complex128DataType,
+    "data_type:bytes": BytesDataType,
+    "data_type:struct": StructDataType,
+    "data_type:string": StringDataType,
+    "data_type:r<N>": RawBytesDataType,
 }
 
 
-@pytest.mark.parametrize(
-    ("entity", "configuration"), CONFIGURATIONS.values(), ids=list(CONFIGURATIONS)
-)
-def test_the_constructor_mirrors_the_configuration(
-    entity: type[MetadataEntity], configuration: type | None
-) -> None:
-    # `must_understand` belongs to the object, not the configuration, so it
-    # is the one field the two deliberately do not share.
-    if configuration is None:
-        expected = {"data_type_name"} if entity is RawBytesDataType else set()
-        assert {field.name for field in dataclasses.fields(entity)} - {
-            "must_understand"
-        } == expected
-        return
+@pytest.mark.parametrize("entity", ENTITIES.values(), ids=list(ENTITIES))
+def test_the_constructor_mirrors_the_configuration(entity: type[MetadataEntity]) -> None:
+    # The one correspondence still written by hand, and so the one that
+    # can still drift: the member table and `configuration_required` are
+    # now read off `configuration_type`, but the dataclass fields are
+    # not. It is also what catches an entity pointing at the wrong
+    # TypedDict, since the fields would stop matching.
+    #
+    # `must_understand` belongs to the object, not the configuration, so
+    # it is the one field the two deliberately do not share.
+    configuration = entity.configuration_type
     fields = {field.name for field in dataclasses.fields(entity)} - {"must_understand"}
+    if configuration is None:
+        # `r<N>` keeps its width in its name, so it holds a member that
+        # is not a configuration key.
+        assert fields == ({"data_type_name"} if entity is RawBytesDataType else set())
+        return
     assert fields == set(get_type_hints(configuration))
 
 
-@pytest.mark.parametrize(
-    ("entity", "configuration"), CONFIGURATIONS.values(), ids=list(CONFIGURATIONS)
-)
-def test_the_member_table_mirrors_the_configuration(
-    entity: type[MetadataEntity], configuration: type | None
-) -> None:
-    # The third spelling of the same set. Which members are *required* is
-    # in the TypedDict too, so that cannot drift either.
-    if configuration is None:
-        assert entity.member_types == {}
-        return
-    assert set(entity.member_types) == set(get_type_hints(configuration))
-    required = {key for key, (needed, _) in entity.member_types.items() if needed}
-    assert required == set(configuration.__required_keys__)  # type: ignore[attr-defined]
-
-
-@pytest.mark.parametrize(
-    ("entity", "configuration"), CONFIGURATIONS.values(), ids=list(CONFIGURATIONS)
-)
-def test_a_required_member_rules_out_the_bare_spelling(
-    entity: type[MetadataEntity], configuration: type | None
-) -> None:
-    # The spec permits a bare name only "if no configuration metadata is
-    # required", so one flag follows from the other.
-    required = 0 if configuration is None else len(configuration.__required_keys__)  # type: ignore[attr-defined]
-    assert entity.configuration_required == (required != 0)
-
-
-@pytest.mark.parametrize(
-    "entity", [entity for entity, _ in CONFIGURATIONS.values()], ids=list(CONFIGURATIONS)
-)
+@pytest.mark.parametrize("entity", ENTITIES.values(), ids=list(ENTITIES))
 def test_the_value_routine_takes_the_members_it_will_be_given(
     entity: type[MetadataEntity],
 ) -> None:
@@ -190,7 +156,7 @@ def test_every_registered_entity_is_checked_here() -> None:
         for field, entities in CORE_AND_EXTENSIONS.tables().items()
         for identifier in entities
     }
-    assert registered == set(CONFIGURATIONS)
+    assert registered == set(ENTITIES)
 
 
 def test_core_is_a_subset_of_core_and_extensions() -> None:

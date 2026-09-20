@@ -24,9 +24,12 @@ elsewhere.
         else:
             codec.json, codec.reason    # 'out_of_scope': resolve it yourself
 
-**Writing an extension.** Subclass `CodecEntity`, `DataTypeEntity`,
-`ChunkGridEntity` or `MetadataEntity`, declare `identifier` and
-`member_types`, and put it in a `Context`:
+**Writing an extension.** Describe the JSON with a TypedDict, subclass
+`CodecEntity`, `DataTypeEntity`, `ChunkGridEntity` or `MetadataEntity`,
+point at the TypedDict, and add it to a scope:
+
+    class AcmeLz4Configuration(TypedDict, closed=True):
+        acceleration: NotRequired[int]
 
     @dataclass(frozen=True)
     class AcmeLz4Codec(CodecEntity):
@@ -36,13 +39,28 @@ elsewhere.
 
         identifier: ClassVar[str] = "acme.lz4"
         kind: ClassVar[CodecKind] = "bytes_bytes"
-        member_types: ClassVar[MemberTypes] = {"acceleration": (False, is_int)}
+        configuration_type = AcmeLz4Configuration
 
-    SCOPE = Context({**CORE_AND_EXTENSIONS.entities,
-                     "codecs": {**CORE_AND_EXTENSIONS.entities["codecs"],
-                                AcmeLz4Codec.identifier: AcmeLz4Codec}})
+    SCOPE = CORE_AND_EXTENSIONS.extended_with(
+        codecs={AcmeLz4Codec.identifier: AcmeLz4Codec},
+    )
 
     validate_array_metadata_v3(document, context=SCOPE)
+
+`configuration_type` is the only place the JSON shape is written. Which
+members exist, which may be left out, and how each one is type-checked
+are all read off it -- `member_types` is for the exception, a member
+whose annotation names another structure. Value rules go in a
+`value_problems` staticmethod annotated with the same TypedDict, which
+runs only once every member has the type it declared:
+
+    @staticmethod
+    def value_problems(
+        **members: Unpack[AcmeLz4Configuration],
+    ) -> tuple[ValidationProblem, ...]:
+        if "acceleration" not in members:
+            return ()
+        ...
 
 A name in no scope is not rejected -- that is what extension openness
 means -- so registering yours is how you get it judged rather than waved

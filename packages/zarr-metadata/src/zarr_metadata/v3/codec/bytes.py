@@ -15,8 +15,6 @@ from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     DataTypeEntity,
-    MemberTypes,
-    one_of,
     problem,
 )
 from zarr_metadata.v3._parts import ArrayParts
@@ -92,9 +90,8 @@ class BytesCodec(CodecEntity):
     endian: Endianness | UNSET = UNSET
 
     identifier: ClassVar[str] = BYTES_CODEC_NAME
+    configuration_type = BytesCodecConfiguration
     kind: ClassVar[CodecKind] = "array_bytes"
-
-    member_types: ClassVar[MemberTypes] = {"endian": (False, one_of(ENDIANNESS))}
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         """The data type reaching here must have a raw byte representation.

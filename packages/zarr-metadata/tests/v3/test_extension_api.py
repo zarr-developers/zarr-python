@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, Self, cast
+from typing import TYPE_CHECKING, ClassVar, NotRequired, Self, cast
 
 import pytest
+from typing_extensions import TypedDict, Unpack
 
 from zarr_metadata.model import UNSET, MetadataValidationError, ValidationProblem
 from zarr_metadata.rules import (
@@ -45,6 +46,12 @@ if TYPE_CHECKING:
     from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 
 
+class AcmeLz4Configuration(TypedDict, closed=True):
+    """The JSON shape of an `acme.lz4` configuration."""
+
+    acceleration: NotRequired[int]
+
+
 @dataclass(frozen=True)
 class AcmeLz4Codec(CodecEntity):
     """A third-party compressor."""
@@ -54,13 +61,18 @@ class AcmeLz4Codec(CodecEntity):
     identifier: ClassVar[str] = "acme.lz4"
     kind: ClassVar[CodecKind] = "bytes_bytes"
     variable_size: ClassVar[bool] = True
-    member_types: ClassVar[MemberTypes] = {"acceleration": (False, is_int)}
+    configuration_type = AcmeLz4Configuration
 
     @staticmethod
-    def value_problems(**members: object) -> tuple[ValidationProblem, ...]:
-        acceleration = members.get("acceleration", UNSET)
-        if acceleration is UNSET or not isinstance(acceleration, int):
+    def value_problems(
+        **members: Unpack[AcmeLz4Configuration],
+    ) -> tuple[ValidationProblem, ...]:
+        # No defensive narrowing: a member that failed its type check
+        # never reaches here, so asking whether it is present is enough
+        # to have an int.
+        if "acceleration" not in members:
             return ()
+        acceleration = members["acceleration"]
         if not 1 <= acceleration <= ACME_MAX_ACCELERATION:
             return problem(
                 ("acceleration",),
@@ -372,3 +384,52 @@ def test_a_third_party_can_register_a_family() -> None:
     # near-miss is still nobody's.
     assert scope.resolve("data_type", AcmeFixedDataType.identifier) is None
     assert scope.resolve("data_type", "acme.fixed") is None
+
+
+def test_error_requiredness_may_not_be_restated() -> None:
+    # It is the configuration's to say. A declared entry exists for the
+    # check, which the annotation does not imply; saying the member is
+    # required as well is the drift the derivation removes.
+    with pytest.raises(TypeError, match="requiredness its configuration does not give it"):
+
+        @dataclass(frozen=True)
+        class Insistent(CodecEntity):  # pyright: ignore[reportUnusedClass]
+            acceleration: int | UNSET = UNSET
+
+            identifier: ClassVar[str] = "acme.insistent"
+            kind: ClassVar[CodecKind] = "bytes_bytes"
+            configuration_type = AcmeLz4Configuration
+            member_types: ClassVar[MemberTypes] = {"acceleration": (True, is_int)}
+
+
+def test_error_a_member_needs_a_check_from_somewhere() -> None:
+    # An annotation naming another structure implies no check, so the
+    # entity owes one. Silently skipping the member would let anything
+    # through where the TypedDict promised a shape.
+    class Nested(TypedDict, closed=True):
+        inner: AcmeLz4Configuration
+
+    with pytest.raises(TypeError, match="declares no check for inner"):
+
+        @dataclass(frozen=True)
+        class Structured(CodecEntity):  # pyright: ignore[reportUnusedClass]
+            inner: object
+
+            identifier: ClassVar[str] = "acme.structured"
+            kind: ClassVar[CodecKind] = "bytes_bytes"
+            configuration_type = Nested
+
+
+def test_error_a_bare_name_rule_may_not_be_restated() -> None:
+    # Whether the bare spelling is legal follows from whether any member
+    # is required, which the configuration already says.
+    with pytest.raises(TypeError, match="declares `configuration_required`"):
+
+        @dataclass(frozen=True)
+        class Opinionated(CodecEntity):  # pyright: ignore[reportUnusedClass]
+            acceleration: int | UNSET = UNSET
+
+            identifier: ClassVar[str] = "acme.opinionated"
+            kind: ClassVar[CodecKind] = "bytes_bytes"
+            configuration_type = AcmeLz4Configuration
+            configuration_required: ClassVar[bool] = True

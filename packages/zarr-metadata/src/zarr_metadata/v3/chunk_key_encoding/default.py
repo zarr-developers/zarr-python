@@ -14,9 +14,7 @@ from typing_extensions import TypedDict
 
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.v3._entity import (
-    MemberTypes,
     MetadataEntity,
-    one_of,
 )
 
 DEFAULT_CHUNK_KEY_ENCODING_NAME: Final = "default"
@@ -79,10 +77,7 @@ class DefaultChunkKeyEncoding(MetadataEntity):
     separator: DefaultChunkKeyEncodingSeparator | UNSET = UNSET
 
     identifier: ClassVar[str] = DEFAULT_CHUNK_KEY_ENCODING_NAME
-
-    member_types: ClassVar[MemberTypes] = {
-        "separator": (False, one_of(DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR))
-    }
+    configuration_type = DefaultChunkKeyEncodingConfiguration
 
     def to_json(self) -> DefaultChunkKeyEncodingObject | DefaultChunkKeyEncodingName:
         return cast(

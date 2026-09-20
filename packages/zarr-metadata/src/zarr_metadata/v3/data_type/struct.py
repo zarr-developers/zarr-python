@@ -164,10 +164,12 @@ class StructDataType(DataTypeEntity):
     fields: tuple[StructFieldComponent, ...]
 
     identifier: ClassVar[str] = STRUCT_DATA_TYPE_NAME
+    configuration_type = StructConfiguration
     scalar_storage: ClassVar[StorageClass] = "single_byte"
 
-    configuration_required: ClassVar[bool] = True
-    member_types: ClassVar[MemberTypes] = {"fields": (True, _is_fields)}
+    member_types: ClassVar[MemberTypes] = {
+        "fields": (True, _is_fields),
+    }
 
     @staticmethod
     def value_problems(**members: Unpack[StructMembers]) -> tuple[ValidationProblem, ...]:

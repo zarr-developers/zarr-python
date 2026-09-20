@@ -12,10 +12,7 @@ from typing_extensions import TypedDict, Unpack
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ChunkGridEntity,
-    MemberTypes,
-    is_int,
     problem,
-    sequence_of,
 )
 from zarr_metadata.v3._parts import ChunkGrid
 
@@ -70,9 +67,7 @@ class RegularChunkGrid(ChunkGridEntity):
     chunk_shape: tuple[int, ...]
 
     identifier: ClassVar[str] = REGULAR_CHUNK_GRID_NAME
-
-    configuration_required: ClassVar[bool] = True
-    member_types: ClassVar[MemberTypes] = {"chunk_shape": (True, sequence_of(is_int))}
+    configuration_type = RegularChunkGridConfiguration
 
     @staticmethod
     def value_problems(
