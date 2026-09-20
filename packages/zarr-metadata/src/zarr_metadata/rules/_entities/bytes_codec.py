@@ -23,7 +23,7 @@ _ARRAY_V3 = "zarr_v3_array"
 def data_type_has_a_raw_byte_representation(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
-    if incoming is None:
+    if incoming is None or incoming.data_type is None:
         return ()
     shape_verdict = validate_known_entity_metadata(DATA_TYPE, incoming.data_type)
     if shape_verdict is not None and len(blocking_problems(shape_verdict)) != 0:

@@ -214,3 +214,55 @@ def test_error_a_bad_inner_extent_costs_that_axis_and_nothing_else() -> None:
     assert any("positive chunk extent" in message for message in messages)
     assert any("order has 3 entries" in message for message in messages)
     assert any("endian is required" in message for message in messages)
+
+
+# An unmodelled codec is the ordinary case, not an exotic one: every
+# `numcodecs.*` filter is one. What it costs must be only what it actually
+# obscures.
+_UNMODELLED = {
+    "name": "numcodecs.delta",
+    "configuration": {"dtype": "<u2"},
+    "must_understand": False,
+}
+
+
+def test_a_shard_behind_an_unmodelled_codec_is_still_judged() -> None:
+    # The inner grid is this codec's own `chunk_shape` and the index is a
+    # uint64 array, whatever reached the codec. Neither waits on upstream.
+    nested = {
+        "name": "sharding_indexed",
+        "configuration": {
+            "chunk_shape": (16, 16),
+            "codecs": ({"name": "transpose", "configuration": {"order": (0, 1, 2)}}, "bytes"),
+            "index_codecs": ("bytes",),
+        },
+    }
+    messages = [
+        problem.message
+        for problem in validate_array_metadata_v3(
+            {**BASE, "data_type": "uint16", "chunk_grid": REGULAR, "codecs": (_UNMODELLED, nested)}
+        )
+    ]
+    assert any("order has 3 entries" in message for message in messages)
+    assert any("uint64" in message for message in messages)
+
+
+def test_an_unusable_data_type_does_not_hide_the_geometry() -> None:
+    # `data_type` costs itself and nothing else: the grid is still readable,
+    # so a reader sees every fault at once instead of one per round trip.
+    messages = [
+        problem.message
+        for problem in validate_array_metadata_v3(
+            {**BASE, "data_type": 5, "chunk_grid": REGULAR, "codecs": (_shard((7, 7)),)}
+        )
+    ]
+    assert any("expected a metadata field" in message for message in messages)
+    assert sum("does not evenly divide" in message for message in messages) == 2
+
+
+def test_permuting_by_a_non_permutation_declines_rather_than_raising() -> None:
+    # `order` is shape-validated only as a tuple of integers, so this must
+    # not be what decides whether a validator raises IndexError.
+    grid = ChunkGrid.regular((4, 4))
+    for order in ((5, 0), (0, 0), (-1, 0)):
+        assert grid.permuted(order) == ChunkGrid(2, None)

@@ -23,7 +23,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from zarr_metadata.model._validation import ValidationProblem
-from zarr_metadata.rules._chunk_grid import ChunkGrid, shard_index_grid
+from zarr_metadata.rules._chunk_grid import UNKNOWN_GRID, ChunkGrid, shard_index_grid
 from zarr_metadata.rules._pipeline import pipeline_order_problems, shape_problems
 from zarr_metadata.rules._registry import entity_rule, run_chain_rules
 from zarr_metadata.rules._spec import ArrayParts
@@ -116,10 +116,10 @@ def inner_pipelines_are_pipelines(
     against the inner chunk, and its own transitions carry on from there.
     The `index_codecs` chain encodes the shard index: a `uint64` array of
     chunks-per-shard plus a trailing dimension of 2, derived by
-    `zarr_metadata.rules._chunk_grid.shard_index_shape`.
+    `zarr_metadata.rules._chunk_grid.shard_index_grid`.
     """
     inner = configuration["chunk_shape"]
-    if not isinstance(inner, tuple) or incoming is None:
+    if not isinstance(inner, tuple):
         inner_start: ArrayParts | None = None
         index_start: ArrayParts | None = None
     else:
@@ -128,8 +128,17 @@ def inner_pipelines_are_pipelines(
         # the chunk this codec receives, so the inner pipeline is built
         # exactly like the document's own, and the index's grid follows
         # from the two together.
-        inner_start = incoming.with_grid(ChunkGrid.regular(extents))
-        index_start = ArrayParts(shard_index_grid(incoming.grid, extents), "uint64")
+        #
+        # Both come from this codec's own configuration and from the spec,
+        # so neither waits on what reached the codec. An unreadable codec
+        # upstream costs the element type and the enclosing extents; it
+        # does not make the inner chunk shape unknown, and the index is a
+        # `uint64` array whatever happens before it.
+        outer = incoming.grid if incoming is not None else UNKNOWN_GRID
+        inner_start = ArrayParts(
+            ChunkGrid.regular(extents), incoming.data_type if incoming is not None else None
+        )
+        index_start = ArrayParts(shard_index_grid(outer, extents), "uint64")
     problems: list[ValidationProblem] = []
     for key in ("codecs", "index_codecs"):
         entries = configuration[key]

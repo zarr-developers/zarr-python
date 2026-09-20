@@ -10,11 +10,9 @@ fails here instead of staying green.
 
 from __future__ import annotations
 
-import contextlib
 import pkgutil
 from typing import TYPE_CHECKING
 
-import pytest
 from hypothesis import HealthCheck, given, settings
 
 import zarr_metadata.v3.codec
@@ -23,17 +21,25 @@ from tests.rules.strategies import (
     ARRAY_BYTES,
     BYTES_BYTES,
     codec_chains,
+    corrupted_chains,
     document,
     rank_matched_shards,
     valid_documents,
 )
-from zarr_metadata.rules import parse_array_metadata_v3, validate_array_metadata_v3
+from zarr_metadata.rules import validate_array_metadata_v3
 from zarr_metadata.v3.codec.kind import codec_kind_of_name
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-_SLOW = settings(max_examples=300, deadline=None, suppress_health_check=list(HealthCheck))
+# Drawing a codec chain and validating a document is slow per example and
+# the outer functions below run a whole @given loop of their own, so the two
+# timing checks are suppressed; nothing else is.
+_SLOW = settings(
+    max_examples=300,
+    deadline=None,
+    suppress_health_check=(HealthCheck.too_slow, HealthCheck.data_too_large),
+)
 
 
 def test_the_strategies_cover_every_codec_the_package_models() -> None:
@@ -127,24 +133,35 @@ def test_documents_valid_by_construction_are_accepted(doc: Mapping[str, object])
     assert problems == (), [problem.message for problem in problems]
 
 
-@given(valid_documents())
+@given(corrupted_chains())
 @_SLOW
-def test_the_parser_agrees_with_the_validator_on_valid_documents(
-    doc: Mapping[str, object],
+def test_an_ill_typed_configuration_member_is_reported_not_raised(
+    codecs: tuple[object, ...],
 ) -> None:
-    assert parse_array_metadata_v3(doc) is not None
+    """A member of the wrong type stands its rules down; it never crashes one.
+
+    This is the property the `reads` gate exists for, and the only generated
+    input that exercises it: `st.from_type` honours the TypedDicts, so every
+    other strategy here produces well-typed members. Without this, four
+    separate one-token changes to the gate leave the suite green while
+    `validate_*` raises `TypeError` on ordinary malformed metadata.
+    """
+    problems = validate_array_metadata_v3(document(codecs))
+    assert isinstance(problems, tuple)
 
 
-@pytest.mark.parametrize(
-    "strategy", [codec_chains(), rank_matched_shards()], ids=["chains", "shards"]
-)
-def test_no_chain_makes_the_parser_raise_anything_but_its_own_error(strategy: object) -> None:
-    from zarr_metadata.model import MetadataValidationError
+def test_the_corrupting_strategy_reaches_the_gate() -> None:
+    # It has to produce ill-typed members, or the property above is vacuous.
+    reached = [False]
 
-    @given(strategy)  # type: ignore[arg-type]
+    @given(corrupted_chains())
     @_SLOW
     def sample(codecs: tuple[object, ...]) -> None:
-        with contextlib.suppress(MetadataValidationError):
-            parse_array_metadata_v3(document(codecs))
+        if any(
+            problem.kind == "invalid_type"
+            for problem in validate_array_metadata_v3(document(codecs))
+        ):
+            reached[0] = True
 
     sample()
+    assert reached[0]

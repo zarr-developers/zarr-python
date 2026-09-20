@@ -5,6 +5,7 @@ import dataclasses
 import json
 from collections import UserDict
 from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -31,6 +32,10 @@ from zarr_metadata.model._validation import (
 )
 
 # --- ZarrV3GroupMetadata ---------------------------------------------------
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 def test_group_v3_roundtrip() -> None:
@@ -163,7 +168,9 @@ def test_group_guards_reject_noncanonical_nested_json() -> None:
     assert not is_group_metadata_v3(v3)
     assert not is_group_metadata_v2(v2)
     assert parse_group_metadata_v3(v3)["extension"] == (0, 1)
-    assert parse_group_metadata_v2(v2)["attributes"] == {"values": (0, 1)}
+    assert cast("Mapping[str, object]", parse_group_metadata_v2(v2))["attributes"] == {
+        "values": (0, 1)
+    }
 
 
 def test_group_v3_extension_fields_are_validated() -> None:

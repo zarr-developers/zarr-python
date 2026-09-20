@@ -31,16 +31,13 @@ if TYPE_CHECKING:
     from zarr_metadata.v2.array import (
         ZarrV2ArrayDimensionSeparator,
         ZarrV2ArrayMetadataJSON,
-        ZarrV2ArrayMetadataStoreKey,
         ZarrV2ArrayOrder,
         ZarrV2DataTypeMetadata,
     )
-    from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
     from zarr_metadata.v2.codec import ZarrV2CodecMetadata
     from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
     from zarr_metadata.v3.array import (
         ZarrV3ArrayMetadataJSON,
-        ZarrV3ArrayMetadataStoreKey,
         ZarrV3ExtensionField,
     )
 
@@ -325,9 +322,7 @@ class ZarrV3ArrayMetadata:
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV3ArrayMetadata:
         return cls.from_json(load_store_json(mapping, ZARR_V3_ARRAY_METADATA_STORE_KEY))
 
-    def to_key_value(
-        self, *, indent: int | str | None = None
-    ) -> Mapping[ZarrV3ArrayMetadataStoreKey, bytes]:
+    def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
         return {ZARR_V3_ARRAY_METADATA_STORE_KEY: dump_store_json(self.to_json(), indent=indent)}
 
 
@@ -488,14 +483,12 @@ class ZarrV2ArrayMetadata:
             return cls.from_json({**zarray, "attributes": zattrs})
         return cls.from_json(zarray)
 
-    def to_key_value(
-        self, *, indent: int | str | None = None
-    ) -> Mapping[ZarrV2ArrayMetadataStoreKey | ZarrV2AttributesStoreKey, bytes]:
+    def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
         # Attributes live only in the sibling `.zattrs` file; the `.zarray`
         # document must exclude them. The `.zattrs` key is present exactly
         # when attributes are set (even empty) — UNSET emits no file.
         zarray = {k: v for k, v in self.to_json().items() if k != "attributes"}
-        out: dict[ZarrV2ArrayMetadataStoreKey | ZarrV2AttributesStoreKey, bytes] = {
+        out: dict[str, bytes] = {
             ZARR_V2_ARRAY_METADATA_STORE_KEY: dump_store_json(zarray, indent=indent)
         }
         if self.attributes is not UNSET:

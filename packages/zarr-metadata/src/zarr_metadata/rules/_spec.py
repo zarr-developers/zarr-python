@@ -43,20 +43,23 @@ class ArrayParts:
     divide *every* chunk, which under a rectilinear grid is several
     different lengths.
 
-    `data_type` is never absent. The only documents that cannot supply one
-    are documents the structural layer has already rejected, so "a real
-    array whose type we do not know" is not a state worth modelling; when
-    nothing is known, there are no `ArrayParts` at all. It is the
-    metadata-field value verbatim, because rules compare it by name.
+    `data_type` is the metadata-field value verbatim, because rules compare
+    it by name, and it is `None` where the element type is undetermined
+    while the array itself is not. That happens inside a shard: the inner
+    grid is the sharding codec's own `chunk_shape` whatever reached it, so
+    an unreadable codec upstream costs the type and not the parts. `None`
+    in place of the whole value means something else again — that there is
+    no array here at all, past the array->bytes boundary or beyond a codec
+    that could have changed anything.
     """
 
     grid: ChunkGrid
-    data_type: ZarrV3MetadataFieldJSON
+    data_type: ZarrV3MetadataFieldJSON | None
 
     def with_grid(self, grid: ChunkGrid) -> ArrayParts:
         return replace(self, grid=grid)
 
-    def with_data_type(self, data_type: ZarrV3MetadataFieldJSON) -> ArrayParts:
+    def with_data_type(self, data_type: ZarrV3MetadataFieldJSON | None) -> ArrayParts:
         return replace(self, data_type=data_type)
 
 
@@ -73,7 +76,7 @@ _TRANSITIONS: Final[dict[str, SpecTransition]] = {}
 
 
 def spec_transition(codec: str) -> Callable[[SpecTransition], SpecTransition]:
-    """Register how `codec` transforms an incoming `ArraySpec`.
+    """Register how `codec` transforms the `ArrayParts` it receives.
 
     Only array->array codecs need one: array->bytes and bytes->bytes
     codecs end shape propagation by construction, so registering a

@@ -4,7 +4,7 @@ sharding pipelines/geometry, and consolidated-entry recursion."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -552,7 +552,7 @@ def test_unknown_member_survives_a_round_trip() -> None:
     }
     model = ZarrV3ArrayMetadata.from_json(json.loads(json.dumps(raw)))
     emitted = model.to_json()
-    codec = emitted["codecs"][0]
+    codec = cast("Mapping[str, Any]", emitted["codecs"][0])
     assert codec["configuration"]["numThreads"] == 4
 
 

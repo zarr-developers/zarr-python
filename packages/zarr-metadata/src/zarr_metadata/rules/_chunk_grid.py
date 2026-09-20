@@ -172,8 +172,13 @@ class ChunkGrid:
         A transposed grid is still a grid — permuting a regular one gives
         a regular one — but it is no longer the grid the document wrote,
         so the metadata does not survive the trip.
+
+        Declines on anything that is not a permutation of this grid's rank.
+        The caller checks that too and reports it, but an order is only
+        shape-validated as a tuple of integers, so this must not be the
+        thing that decides whether a validator raises `IndexError`.
         """
-        if self.extents is None or len(order) != len(self.extents):
+        if self.extents is None or sorted(order) != list(range(len(self.extents))):
             return ChunkGrid(self.rank, None)
         return ChunkGrid.derived(tuple(self.extents[axis] for axis in order))
 

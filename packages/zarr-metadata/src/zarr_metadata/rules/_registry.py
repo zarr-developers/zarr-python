@@ -332,13 +332,15 @@ def chain_initial_spec(document: Mapping[str, object]) -> ArrayParts | None:
     """What enters a document's top-level codec chain.
 
     The parts a chunk pipeline encodes are the chunks of the document's
-    chunk grid. A document whose `data_type` is not a metadata field has
-    already been rejected structurally, so there is nothing to describe.
+    chunk grid. A `data_type` that is not a metadata field has been
+    rejected structurally already, but it costs only itself: the grid is
+    still readable, and the geometry rules should still report what they
+    can rather than making the reader fix one fault to discover the rest.
     """
     data_type = document.get("data_type")
-    if entity_name(data_type) is None:
-        return None
     grid = ChunkGrid.of(document.get("chunk_grid"), document.get("shape"))
+    if entity_name(data_type) is None:
+        return ArrayParts(grid, None)
     return ArrayParts(grid, cast("ZarrV3MetadataFieldJSON", data_type))
 
 

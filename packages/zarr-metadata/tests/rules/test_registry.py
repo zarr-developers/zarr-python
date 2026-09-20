@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from zarr_metadata.model._validation import ValidationProblem
-    from zarr_metadata.rules._spec import ArraySpec
+    from zarr_metadata.rules._spec import ArrayParts
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC_NAME
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC_NAME
 
@@ -137,7 +137,11 @@ def test_error_entity_rule_requiring_an_unknown_key() -> None:
     with pytest.raises(ValueError, match="could never fire"):
 
         @entity_rule(ZARR_V3_ARRAY, CHUNK_GRID, "regular", requires=frozenset({"shapee"}))
-        def _misspelled(configuration: object, document: object) -> tuple[()]:  # pragma: no cover
+        def _misspelled(
+            configuration: Mapping[str, object],
+            document: Mapping[str, object],
+            incoming: ArrayParts | None,
+        ) -> tuple[()]:  # pragma: no cover - refused at registration
             return ()
 
 
@@ -147,7 +151,11 @@ def test_error_entity_rule_for_an_unmodelled_entity() -> None:
     with pytest.raises(ValueError, match="no shape validator"):
 
         @entity_rule(ZARR_V3_ARRAY, CHUNK_GRID, "hilbert")
-        def _unmodelled(configuration: object, document: object) -> tuple[()]:  # pragma: no cover
+        def _unmodelled(
+            configuration: Mapping[str, object],
+            document: Mapping[str, object],
+            incoming: ArrayParts | None,
+        ) -> tuple[()]:  # pragma: no cover - refused at registration
             return ()
 
 
@@ -158,7 +166,11 @@ def test_error_entity_rule_for_name_modelled_only_at_another_extension_point() -
     with pytest.raises(ValueError, match="no shape validator"):
 
         @entity_rule(ZARR_V3_ARRAY, CODECS, "regular")
-        def _wrong_extension_point(configuration: object, document: object) -> tuple[()]:
+        def _wrong_extension_point(
+            configuration: Mapping[str, object],
+            document: Mapping[str, object],
+            incoming: ArrayParts | None,
+        ) -> tuple[()]:  # pragma: no cover - refused at registration
             return ()
 
 
@@ -187,7 +199,7 @@ def test_error_entity_rule_reads_an_unmodelled_member() -> None:
         def _unmodelled_member(
             configuration: Mapping[str, object],
             document: Mapping[str, object],
-            incoming: ArraySpec,
+            incoming: ArrayParts | None,
         ) -> tuple[ValidationProblem, ...]:  # pragma: no cover - never registered
             return ()
 
@@ -201,6 +213,6 @@ def test_error_entity_rule_reads_an_optional_member() -> None:
         def _subscripts_an_optional_member(
             configuration: Mapping[str, object],
             document: Mapping[str, object],
-            incoming: ArraySpec,
+            incoming: ArrayParts | None,
         ) -> tuple[ValidationProblem, ...]:  # pragma: no cover - never registered
             return ()

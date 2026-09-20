@@ -24,8 +24,8 @@ failed parse into its own `ValidationError` with the loc-annotated problem
 messages intact.
 """
 
-from collections.abc import Mapping
-from typing import Annotated, Generic, TypeVar
+from collections.abc import Mapping, Sequence
+from typing import Annotated, Generic, TypeVar, cast
 
 import pytest
 from pydantic import (
@@ -234,8 +234,9 @@ class ArrayMetadataV3Spec(BaseModel, Generic[AttrsT]):
                 if isinstance(doc[key], str):
                     doc[key] = {"name": doc[key]}
             for key in ("codecs", "storage_transformers"):
+                entries = cast("Sequence[object]", doc.get(key, ()))
                 doc[key] = tuple(
-                    {"name": item} if isinstance(item, str) else item for item in doc.get(key, ())
+                    {"name": item} if isinstance(item, str) else item for item in entries
                 )
             doc.setdefault("attributes", {})
             return doc

@@ -5,12 +5,17 @@ need opposite inputs.
 
 `codec_chains` draws each codec with `st.from_type` over its own
 `TypedDict`, so the values are structurally plausible and almost always
-semantically wrong. That is what the rejection side wants. Crucially the
-chain is assembled by *kind* — `array->array`* `array->bytes`
-`bytes->bytes`* — because a chain in the wrong order is rejected by the
-ordering rule before any other rule runs, and a flat list of random codecs
-is in the wrong order most of the time. Ordering the chain takes the
-proportion of documents that reach a chain rule from 39% to 94%.
+semantically wrong. That is what the rejection side wants. The chain is
+assembled by *kind* — `array->array`* `array->bytes` `bytes->bytes`* —
+which guarantees an `array->bytes` codec is present: measured over 3000
+documents, an entity rule is dispatched for 100% of ordered chains and one
+reports a problem for 86%, against 78% for a flat list of the same codecs.
+Nothing short-circuits on a misordered chain, so the gain is coverage of
+the array->bytes codecs rather than avoided early exit.
+
+What this cannot reach, because `st.from_type` honours the TypedDicts
+exactly, is a configuration member of the wrong *type* —
+`corrupted_chains` exists for that.
 
 `valid_documents` builds documents that must be accepted, by construction:
 extents are drawn, then inner chunk shapes are drawn from their divisors.
@@ -27,7 +32,7 @@ configuration admits arbitrary JSON (`sharding_indexed`, `cast_value`,
 from __future__ import annotations
 
 from math import gcd
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from hypothesis import strategies as st
 
@@ -52,10 +57,13 @@ JSON_VALUES = st.recursive(
     ),
     max_leaves=5,
 )
-st.register_type_strategy(JSONValue, JSON_VALUES)
+# `JSONValue` is a `TypeAliasType`, which `register_type_strategy` does not
+# accept in its signature but does resolve at runtime — it is exactly the
+# forward reference `from_type` fails on.
+st.register_type_strategy(JSONValue, JSON_VALUES)  # type: ignore[arg-type]
 
 # The codec TypedDicts, by pipeline kind. Hand-written because there is no
-# name-to-type table to derive it from; `test_strategies.py` asserts it
+# name-to-type table to derive it from; `test_chain_properties.py` asserts it
 # covers every codec the package models.
 ARRAY_ARRAY = (TransposeCodecObject, CastValueCodecObject, ScaleOffsetCodecObject)
 ARRAY_BYTES = (BytesCodecObject, ShardingIndexedCodecObject)
@@ -173,12 +181,41 @@ def valid_documents(draw: st.DrawFn) -> dict[str, object]:
     }
 
 
+@st.composite
+def corrupted_chains(draw: st.DrawFn) -> tuple[object, ...]:
+    """A well-typed chain with one configuration member replaced by any JSON.
+
+    `st.from_type` honours the TypedDicts, so it never produces an ill-typed
+    member — and an ill-typed member is exactly what the `reads` gate exists
+    to stand rules down for. Without this, the gate that makes
+    `configuration["level"]` safe inside a rule has no generated coverage,
+    and a validator that raises `TypeError` on ordinary malformed metadata
+    looks identical to one that does not.
+    """
+    chain = list(draw(codec_chains()))
+    index = draw(st.integers(min_value=0, max_value=len(chain) - 1))
+    codec = chain[index]
+    if not isinstance(codec, dict):
+        return tuple(chain)
+    entry = cast("dict[str, object]", dict(codec))
+    configuration = entry.get("configuration")
+    if not isinstance(configuration, dict) or len(cast("dict[str, object]", configuration)) == 0:
+        return tuple(chain)
+    members = cast("dict[str, object]", dict(configuration))
+    member = draw(st.sampled_from(sorted(members)))
+    members[member] = draw(JSON_VALUES)
+    entry["configuration"] = members
+    chain[index] = entry
+    return tuple(chain)
+
+
 __all__ = [
     "ARRAY_ARRAY",
     "ARRAY_BYTES",
     "BYTES_BYTES",
     "JSON_VALUES",
     "codec_chains",
+    "corrupted_chains",
     "document",
     "rank_matched_shards",
     "valid_documents",
