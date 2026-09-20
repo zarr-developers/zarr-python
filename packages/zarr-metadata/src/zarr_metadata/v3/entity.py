@@ -39,14 +39,23 @@ through.
 
 One known friction, under mypy only. An entity's `to_json` returns its own
 object TypedDict, and mypy does not accept that where a
-`ZarrV3MetadataFieldJSON` is wanted -- it reads a TypedDict as
-`Mapping[str, object]` and never as the `Mapping[str, JSONValue]` the
-envelope declares. Putting `to_json()` output straight into a `codecs`
-list therefore needs a `cast` under mypy; pyright accepts it. Widening the
-envelope fixes mypy and costs more than it buys: with `object` the
-package's own `st.from_type` strategies stop terminating, and with `Any`
-they stop generating the ill-typed members they exist to generate. The
-narrow type is also the true one -- a configuration's values are JSON.
+`ZarrV3MetadataFieldJSON` is wanted: it reads every TypedDict as
+`Mapping[str, object]`, never as the `Mapping[str, JSONValue]` the
+envelope declares. So putting `to_json()` output straight into a `codecs`
+list needs a `cast` under mypy. Pyright accepts it.
+
+That conversion is sound here, which is why pyright is the one that is
+right. The rule mypy is applying exists because an ordinary TypedDict may
+carry extra items of types it never declared, so the union of the
+declared value types does not bound what is in the mapping. Every
+TypedDict in this package is `closed` (PEP 728), which forbids exactly
+that, and pyright implements PEP 728. Mypy does not yet -- see
+python/mypy#8994 and python/mypy#18439.
+
+The type therefore stays as it is. Widening `configuration` to
+`Mapping[str, object]` or `Mapping[str, Any]` would satisfy mypy by
+making the annotation say something false: a configuration's values are
+JSON, and that is worth more than one checker's `cast`.
 """
 
 from __future__ import annotations
