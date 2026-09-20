@@ -284,10 +284,13 @@ def test_error_bytes_requires_endian_for_multibyte_data() -> None:
 
 
 def test_error_bytes_rejects_variable_length_data_type() -> None:
+    # The problem is about the codec, not about a member of its
+    # configuration — and this codec is spelled as a bare string, so it has
+    # no `configuration` node for a loc to point into.
     loc, message = _sole_problem(
         {**BASE, "data_type": "string", "fill_value": "", "codecs": ("bytes",)}
     )
-    assert loc == ("codecs", 0, "configuration")
+    assert loc == ("codecs", 0)
     assert "not compatible" in message
 
 
@@ -551,3 +554,94 @@ def test_unknown_member_survives_a_round_trip() -> None:
     emitted = model.to_json()
     codec = emitted["codecs"][0]
     assert codec["configuration"]["numThreads"] == 4
+
+
+# -- gaps found by adversarial review ----------------------------------------
+
+
+def test_error_scale_offset_does_not_stand_down_later_rules() -> None:
+    # A no-op array->array codec used to stop spec propagation, silently
+    # switching off every rule after it.
+    loc, message = _sole_problem(
+        {
+            **BASE,
+            "data_type": "uint16",
+            "codecs": (
+                {"name": "scale_offset", "configuration": {"offset": 0, "scale": 1}},
+                "bytes",
+            ),
+        }
+    )
+    assert loc == ("codecs", 1, "configuration", "endian")
+    assert "uint16" in message
+
+
+def test_error_rank_is_judged_under_a_chunk_grid_with_unknown_extents() -> None:
+    # A rectilinear grid gives no single chunk shape, but every chunk still
+    # has the array's rank, so a rank-3 transpose over a 1-D array is a fault.
+    loc, message = _sole_problem(
+        {
+            **BASE,
+            "chunk_grid": {
+                "name": "rectilinear",
+                "configuration": {"kind": "inline", "chunk_shapes": ((2, 2), (2, 2))},
+            },
+            "codecs": ({"name": "transpose", "configuration": {"order": (0, 1, 2)}}, "bytes"),
+        }
+    )
+    assert loc == ("codecs", 0, "configuration", "order")
+    assert "2 dimensions" in message
+
+
+def test_error_an_unusable_member_does_not_mask_the_rest_of_the_entity() -> None:
+    # A bad index_location says nothing about whether the inner pipelines
+    # are readable, so the pipeline problem must still be reported.
+    problems = validate_array_metadata_v3(
+        {
+            **BASE,
+            "codecs": (
+                {
+                    "name": "sharding_indexed",
+                    "configuration": {
+                        "chunk_shape": (2, 2),
+                        "codecs": ("bytes", "bytes"),
+                        "index_codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
+                        "index_location": "middle",
+                    },
+                },
+            ),
+        }
+    )
+    assert {problem.loc for problem in problems} == {
+        ("codecs", 0, "configuration", "index_location"),
+        ("codecs", 0, "configuration", "codecs", 1),
+    }
+
+
+def test_error_a_bare_entity_reports_at_the_entity_not_a_missing_node() -> None:
+    # "bytes" has no `configuration` node, so a problem about the codec as a
+    # whole must not point into one.
+    loc, _ = _sole_problem({**BASE, "data_type": "string", "fill_value": "", "codecs": ("bytes",)})
+    assert loc == ("codecs", 0)
+
+
+def test_error_endian_message_names_the_shard_index_type() -> None:
+    # Inside index_codecs the array is the shard index, whose uint64 type
+    # appears nowhere in the document; the message has to say so.
+    loc, message = _sole_problem(
+        {
+            **BASE,
+            "codecs": (
+                {
+                    "name": "sharding_indexed",
+                    "configuration": {
+                        "chunk_shape": (2, 2),
+                        "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
+                        "index_codecs": ("bytes",),
+                    },
+                },
+            ),
+        }
+    )
+    assert loc == ("codecs", 0, "configuration", "index_codecs", 0, "configuration", "endian")
+    assert "uint64" in message

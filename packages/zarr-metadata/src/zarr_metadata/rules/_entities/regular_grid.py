@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 _ARRAY_V3 = "zarr_v3_array"
 
 
-@entity_rule(_ARRAY_V3, CHUNK_GRID, REGULAR_CHUNK_GRID_NAME)
+@entity_rule(_ARRAY_V3, CHUNK_GRID, REGULAR_CHUNK_GRID_NAME, reads=frozenset({"chunk_shape"}))
 def chunk_extents_are_positive(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:
@@ -39,7 +39,13 @@ def chunk_extents_are_positive(
     )
 
 
-@entity_rule(_ARRAY_V3, CHUNK_GRID, REGULAR_CHUNK_GRID_NAME, requires=frozenset({"shape"}))
+@entity_rule(
+    _ARRAY_V3,
+    CHUNK_GRID,
+    REGULAR_CHUNK_GRID_NAME,
+    requires=frozenset({"shape"}),
+    reads=frozenset({"chunk_shape"}),
+)
 def chunks_every_dimension(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:

@@ -44,7 +44,7 @@ def _expanded_extent(spec: Sequence[object]) -> int | None:
     return total
 
 
-@entity_rule(_ARRAY_V3, CHUNK_GRID, RECTILINEAR_CHUNK_GRID_NAME)
+@entity_rule(_ARRAY_V3, CHUNK_GRID, RECTILINEAR_CHUNK_GRID_NAME, reads=frozenset({"chunk_shapes"}))
 def chunk_extents_are_positive(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:
@@ -85,7 +85,13 @@ def chunk_extents_are_positive(
     return tuple(problems)
 
 
-@entity_rule(_ARRAY_V3, CHUNK_GRID, RECTILINEAR_CHUNK_GRID_NAME, requires=frozenset({"shape"}))
+@entity_rule(
+    _ARRAY_V3,
+    CHUNK_GRID,
+    RECTILINEAR_CHUNK_GRID_NAME,
+    requires=frozenset({"shape"}),
+    reads=frozenset({"chunk_shapes"}),
+)
 def tiles_the_array(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:

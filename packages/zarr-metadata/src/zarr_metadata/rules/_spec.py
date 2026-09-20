@@ -36,14 +36,21 @@ if TYPE_CHECKING:
 class ArraySpec:
     """The array a codec receives; a field is `None` when undetermined.
 
+    `shape` is `None` only when there is no array left to describe (past
+    the array->bytes boundary) or when nothing about it can be determined.
+    An individual *extent* may be `None` while the rank is known: every
+    chunk of an array has the array's rank, whatever the chunk grid, so a
+    grid this package cannot read still pins `len(shape)`. Rules that need
+    a rank may use one; rules that need an extent test it for `None`.
+
     `data_type` is the metadata-field value verbatim (a bare name or a
     name/configuration object) because rules compare it by name.
     """
 
-    shape: tuple[int, ...] | None
+    shape: tuple[int | None, ...] | None
     data_type: ZarrV3MetadataFieldJSON | None
 
-    def with_shape(self, shape: tuple[int, ...] | None) -> ArraySpec:
+    def with_shape(self, shape: tuple[int | None, ...] | None) -> ArraySpec:
         return replace(self, shape=shape)
 
     def with_data_type(self, data_type: ZarrV3MetadataFieldJSON | None) -> ArraySpec:

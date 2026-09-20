@@ -37,12 +37,15 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 _ARRAY_V3 = "zarr_v3_array"
+_CHUNK_SHAPE = frozenset({"chunk_shape"})
+_PIPELINES = frozenset({"chunk_shape", "codecs", "index_codecs"})
+_INDEX_CODECS = frozenset({"index_codecs"})
 _VARIABLE_SIZE_CODECS = frozenset(
     {BLOSC_CODEC_NAME, GZIP_CODEC_NAME, SHARDING_INDEXED_CODEC_NAME, ZSTD_CODEC_NAME}
 )
 
 
-@entity_rule(_ARRAY_V3, CODECS, SHARDING_INDEXED_CODEC_NAME)
+@entity_rule(_ARRAY_V3, CODECS, SHARDING_INDEXED_CODEC_NAME, reads=_CHUNK_SHAPE)
 def inner_chunk_extents_are_positive(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:
@@ -58,15 +61,16 @@ def inner_chunk_extents_are_positive(
     )
 
 
-@entity_rule(_ARRAY_V3, CODECS, SHARDING_INDEXED_CODEC_NAME)
+@entity_rule(_ARRAY_V3, CODECS, SHARDING_INDEXED_CODEC_NAME, reads=_CHUNK_SHAPE)
 def inner_chunks_tile_the_incoming_array(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:
     """The inner chunk must rank-match and evenly divide the array it receives.
 
-    Declines when the incoming shape is unknown — an unclassified codec
-    upstream, or a non-regular grid at the top level — rather than
-    guessing from the document.
+    Declines when the incoming array is unknown entirely — an unclassified
+    codec upstream — rather than guessing. A known rank with unknown
+    extents (a chunk grid this package cannot read) still supports the
+    rank check; only the divisibility check needs the extents.
     """
     if incoming.shape is None:
         return ()
@@ -89,11 +93,11 @@ def inner_chunks_tile_the_incoming_array(
             "invalid_value",
         )
         for position, (outer_extent, inner_extent) in enumerate(zip(outer, inner, strict=True))
-        if inner_extent >= 1 and outer_extent % inner_extent != 0
+        if outer_extent is not None and inner_extent >= 1 and outer_extent % inner_extent != 0
     )
 
 
-@entity_rule(_ARRAY_V3, CODECS, SHARDING_INDEXED_CODEC_NAME)
+@entity_rule(_ARRAY_V3, CODECS, SHARDING_INDEXED_CODEC_NAME, reads=_PIPELINES)
 def inner_pipelines_are_pipelines(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:
@@ -133,7 +137,7 @@ def inner_pipelines_are_pipelines(
     return tuple(problems)
 
 
-@entity_rule(_ARRAY_V3, CODECS, SHARDING_INDEXED_CODEC_NAME)
+@entity_rule(_ARRAY_V3, CODECS, SHARDING_INDEXED_CODEC_NAME, reads=_INDEX_CODECS)
 def index_codecs_have_fixed_encoded_size(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:

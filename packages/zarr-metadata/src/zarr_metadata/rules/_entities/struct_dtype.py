@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 _ARRAY_V3 = "zarr_v3_array"
 
 
-@entity_rule(_ARRAY_V3, DATA_TYPE, STRUCT_DATA_TYPE_NAME)
+@entity_rule(_ARRAY_V3, DATA_TYPE, STRUCT_DATA_TYPE_NAME, reads=frozenset({"fields"}))
 def field_data_types_obey_their_rules(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:
@@ -69,7 +69,7 @@ def _field_names(configuration: Mapping[str, object]) -> tuple[tuple[int, str], 
     return tuple(named)
 
 
-@entity_rule(_ARRAY_V3, DATA_TYPE, STRUCT_DATA_TYPE_NAME)
+@entity_rule(_ARRAY_V3, DATA_TYPE, STRUCT_DATA_TYPE_NAME, reads=frozenset({"fields"}))
 def fields_are_non_empty(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:
@@ -79,7 +79,7 @@ def fields_are_non_empty(
     return (ValidationProblem(("fields",), "expected at least one struct field", "invalid_value"),)
 
 
-@entity_rule(_ARRAY_V3, DATA_TYPE, STRUCT_DATA_TYPE_NAME)
+@entity_rule(_ARRAY_V3, DATA_TYPE, STRUCT_DATA_TYPE_NAME, reads=frozenset({"fields"}))
 def field_data_types_are_fixed_size(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:
@@ -100,7 +100,7 @@ def field_data_types_are_fixed_size(
     return tuple(problems)
 
 
-@entity_rule(_ARRAY_V3, DATA_TYPE, STRUCT_DATA_TYPE_NAME)
+@entity_rule(_ARRAY_V3, DATA_TYPE, STRUCT_DATA_TYPE_NAME, reads=frozenset({"fields"}))
 def field_names_are_non_empty(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:
@@ -114,7 +114,7 @@ def field_names_are_non_empty(
     )
 
 
-@entity_rule(_ARRAY_V3, DATA_TYPE, STRUCT_DATA_TYPE_NAME)
+@entity_rule(_ARRAY_V3, DATA_TYPE, STRUCT_DATA_TYPE_NAME, reads=frozenset({"fields"}))
 def field_names_are_unique(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:

@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 _ARRAY_V3 = "zarr_v3_array"
 
 
-@entity_rule(_ARRAY_V3, CODECS, GZIP_CODEC_NAME)
+@entity_rule(_ARRAY_V3, CODECS, GZIP_CODEC_NAME, reads=frozenset({"level"}))
 def level_is_in_range(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:

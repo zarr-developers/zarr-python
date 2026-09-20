@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 
 
-@entity_rule("zarr_v3_array", CODECS, CAST_VALUE_CODEC_NAME)
+@entity_rule("zarr_v3_array", CODECS, CAST_VALUE_CODEC_NAME, reads=frozenset({"data_type"}))
 def target_data_type_obeys_its_rules(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:

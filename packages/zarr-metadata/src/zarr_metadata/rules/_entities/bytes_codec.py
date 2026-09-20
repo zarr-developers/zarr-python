@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 _ARRAY_V3 = "zarr_v3_array"
 
 
-@entity_rule(_ARRAY_V3, CODECS, BYTES_CODEC_NAME)
+@entity_rule(_ARRAY_V3, CODECS, BYTES_CODEC_NAME, reads=frozenset({"endian"}))
 def data_type_has_a_raw_byte_representation(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:
@@ -29,8 +29,8 @@ def data_type_has_a_raw_byte_representation(
     if shape_verdict is not None and len(blocking_problems(shape_verdict)) != 0:
         return ()
     found = storage_class(incoming.data_type)
+    name = data_type_name(incoming.data_type)
     if found == "variable_length":
-        name = data_type_name(incoming.data_type)
         return (
             ValidationProblem(
                 (),
@@ -39,10 +39,12 @@ def data_type_has_a_raw_byte_representation(
             ),
         )
     if found == "multi_byte" and "endian" not in configuration:
+        # Name the type: inside a shard's `index_codecs` the array is the
+        # shard index, whose uint64 type appears nowhere in the document.
         return (
             ValidationProblem(
                 ("endian",),
-                "endian is required for a data type containing multi-byte values",
+                f"endian is required for data type {name!r}, which contains multi-byte values",
                 "missing_key",
             ),
         )

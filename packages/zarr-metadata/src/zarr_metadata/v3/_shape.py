@@ -637,6 +637,16 @@ def validate_known_entity_metadata(
     return _validate_known_entity(value, name, shape, field.replace("_", " ").rstrip("s"))
 
 
+def entity_configuration_keys(field: ExtensionPointField, name: str) -> frozenset[str] | None:
+    """Every configuration member `name` models at `field`, or None if unmodelled.
+
+    The registry checks a rule's declared `reads` against this, so a rule
+    cannot claim to read a member that does not exist.
+    """
+    shape = _ENTITY_SHAPES.get(field, {}).get(canonical_name(field, name))
+    return None if shape is None else shape.config_keys
+
+
 def modelled_entities() -> frozenset[tuple[ExtensionPointField, str]]:
     """Every `(extension point, name)` with a shape validator."""
     return frozenset((field, name) for field, shapes in _ENTITY_SHAPES.items() for name in shapes)
@@ -658,6 +668,7 @@ def blocking_problems(
 
 __all__ = [
     "blocking_problems",
+    "entity_configuration_keys",
     "entity_name",
     "modelled_entities",
     "validate_known_chunk_grid_metadata",

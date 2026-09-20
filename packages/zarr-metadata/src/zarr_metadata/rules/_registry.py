@@ -12,20 +12,19 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final, cast
+from typing import Final, cast
 
-from zarr_metadata.rules._engine import Rule, as_string_mapping, prefixed
+from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.rules._engine import Rule, as_string_mapping
 from zarr_metadata.rules._spec import NOTHING_KNOWN, ArraySpec, propagate
 from zarr_metadata.v3._extension_points import CHUNK_GRID, ExtensionPointField, canonical_name
 from zarr_metadata.v3._shape import (
     blocking_problems,
+    entity_configuration_keys,
     entity_name,
     modelled_entities,
     validate_known_entity_metadata,
 )
-
-if TYPE_CHECKING:
-    from zarr_metadata.model._validation import ValidationProblem
 
 EntityCheck = Callable[
     [Mapping[str, object], Mapping[str, object], "ArraySpec"],
@@ -56,11 +55,19 @@ class EntityRule:
     `requires` are *document* keys the check reads beyond the entity
     itself (e.g. `shape`), gating the rule exactly as `Rule.requires`
     does.
+
+    `reads` are the *configuration* members the check reads. A rule runs
+    only when none of them has a shape problem of its own, which is what
+    makes `configuration["level"]`-style access inside a check safe: a
+    member that is missing, or present with the wrong type, is reported
+    at `("configuration", "<member>")` by the shape validator, and the
+    rules that read it stand down while the rest still run.
     """
 
     field: str
     entity: str
     requires: frozenset[str]
+    reads: frozenset[str]
     check: EntityCheck
 
 
@@ -126,6 +133,7 @@ def entity_rule(
     field: ExtensionPointField,
     entity: str,
     requires: frozenset[str] = frozenset(),
+    reads: frozenset[str] = frozenset(),
 ) -> Callable[[EntityCheck], EntityRule]:
     """Register a rule about one named entity within `document_type`.
 
@@ -145,7 +153,15 @@ def entity_rule(
                 f"validator in zarr_metadata.v3._shape; such a rule could never fire"
             )
             raise ValueError(msg)
-        rule = EntityRule(field=field, entity=entity, requires=requires, check=check)
+        modelled = entity_configuration_keys(field, entity)
+        unmodelled = reads - (modelled or frozenset())
+        if len(unmodelled) != 0:
+            msg = (
+                f"entity rule {check.__name__!r} declares reads={sorted(unmodelled)}, which "
+                f"{entity!r} does not model; such a member can never carry a value to read"
+            )
+            raise ValueError(msg)
+        rule = EntityRule(field=field, entity=entity, requires=requires, reads=reads, check=check)
         _ENTITY_RULES[field, canonical_entity].append(rule)
         return rule
 
@@ -194,31 +210,54 @@ def run_entity_rules(
     rules = _ENTITY_RULES.get((field, canonical_name(field, name)))
     if rules is None or len(rules) == 0:
         return ()
-    # Entity rules read configuration members by name, so they may only run
-    # once the shape validator vouches those members exist and are typed.
-    configuration = entity_configuration(field, value)
+    verdict = validate_known_entity_metadata(field, value)
+    if verdict is None:
+        return ()
+    blocking = blocking_problems(verdict)
+    # A problem at the entity or at `configuration` itself means there is no
+    # configuration to read; one at ("configuration", member) means that one
+    # member is unusable and the rules that read it must stand down, while
+    # every other rule about this entity still runs.
+    if any(len(problem.loc) < 2 for problem in blocking):
+        return ()
+    unusable = frozenset(
+        str(problem.loc[1]) for problem in blocking if problem.loc[0] == "configuration"
+    )
+    configuration = _configuration_of(value)
     if configuration is None:
         return ()
     problems: list[ValidationProblem] = []
     for rule in rules:
         if not rule.requires <= document.keys():
             continue
-        problems.extend(
-            prefixed((*loc, "configuration"), rule.check(configuration, document, incoming))
-        )
+        if len(rule.reads & unusable) != 0:
+            continue
+        for found in rule.check(configuration, document, incoming):
+            # A rule that reports at the entity itself (an empty loc) is
+            # judging the whole entity, not a member of its configuration —
+            # and a bare-string entity has no `configuration` node to point at.
+            base = (*loc, "configuration") if len(found.loc) != 0 else loc
+            problems.append(ValidationProblem((*base, *found.loc), found.message, found.kind))
     return tuple(problems)
 
 
 def entity_configuration(field: ExtensionPointField, value: object) -> Mapping[str, object] | None:
-    """`value`'s configuration if its modelled fields are usable, else None.
+    """`value`'s configuration if every modelled field is usable, else None.
 
-    Shared by the dispatchers and by rules that reach across entities
-    (sharding's nested pipelines). `unknown_key` problems do not make an
-    entity unusable; anything else does.
+    The all-or-nothing gate `propagate` needs: a spec transition reads the
+    configuration to compute what the next codec receives, so one unusable
+    member makes the whole outgoing spec a guess. `run_entity_rules` uses
+    the finer per-member gate instead. `unknown_key` problems do not make
+    an entity unusable; anything else does.
     """
     verdict = validate_known_entity_metadata(field, value)
     if verdict is None or len(blocking_problems(verdict)) != 0:
         return None
+    return _configuration_of(value)
+
+
+def _configuration_of(value: object) -> Mapping[str, object] | None:
+    """`value`'s configuration mapping, with no judgment of its contents."""
     mapping = as_string_mapping(value)
     if mapping is None:
         # Bare-string metadata is the canonical spelling for entities whose
@@ -282,26 +321,44 @@ def run_chain_rules(
     return tuple(problems)
 
 
+def _rank_only(shape: object) -> tuple[int | None, ...] | None:
+    """A shape of the document's rank with every extent undetermined."""
+    if not isinstance(shape, tuple):
+        return None
+    dimensions = cast("tuple[object, ...]", shape)
+    if not all(isinstance(v, int) and not isinstance(v, bool) for v in dimensions):
+        return None
+    return (None,) * len(dimensions)
+
+
 def chain_initial_spec(document: Mapping[str, object]) -> ArraySpec:
     """The spec entering a document's top-level codec chain.
 
-    The array a chunk pipeline encodes is one chunk: shape from a regular
-    grid this package can read (None otherwise), data type from the
-    document. Non-positive chunk extents yield None for the shape — the
-    grid's own values rule owns that complaint, and geometry against a
-    zero extent is noise on top of it.
+    The array a chunk pipeline encodes is one chunk: extents from a
+    regular grid this package can read, data type from the document.
+
+    When the extents are unavailable — a grid this package does not model,
+    a rectilinear grid whose chunks differ, or a regular grid with a
+    non-positive extent — the rank survives them. Every chunk of an array
+    has the array's rank, so `shape` becomes a tuple of `None` of that
+    length rather than `None`, and rank rules keep working while the
+    geometry rules stand down. (Geometry against a zero extent would be
+    noise on top of the grid's own complaint; a rank mismatch is a
+    separate fault and is still worth reporting.)
     """
     from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID_NAME
 
     grid = document.get("chunk_grid")
-    chunk_shape: tuple[int, ...] | None = None
+    chunk_shape: tuple[int | None, ...] | None = None
     if entity_name(grid) == REGULAR_CHUNK_GRID_NAME:
         configuration = entity_configuration(CHUNK_GRID, grid)
         extents = configuration.get("chunk_shape") if configuration is not None else None
         if isinstance(extents, tuple):
             values = cast("tuple[object, ...]", extents)
             if all(isinstance(v, int) and not isinstance(v, bool) and v >= 1 for v in values):
-                chunk_shape = cast("tuple[int, ...]", values)
+                chunk_shape = cast("tuple[int | None, ...]", values)
+    if chunk_shape is None:
+        chunk_shape = _rank_only(document.get("shape"))
     data_type = document.get("data_type")
     if not isinstance(data_type, (str, Mapping)):
         data_type = None

@@ -31,7 +31,7 @@ def permute_shape(configuration: Mapping[str, object], incoming: ArraySpec) -> A
     return incoming.with_shape(tuple(shape[axis] for axis in order))
 
 
-@entity_rule(_ARRAY_V3, CODECS, TRANSPOSE_CODEC_NAME)
+@entity_rule(_ARRAY_V3, CODECS, TRANSPOSE_CODEC_NAME, reads=frozenset({"order"}))
 def order_is_a_permutation(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:
@@ -52,7 +52,7 @@ def order_is_a_permutation(
     )
 
 
-@entity_rule(_ARRAY_V3, CODECS, TRANSPOSE_CODEC_NAME)
+@entity_rule(_ARRAY_V3, CODECS, TRANSPOSE_CODEC_NAME, reads=frozenset({"order"}))
 def order_matches_incoming_rank(
     configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
 ) -> tuple[ValidationProblem, ...]:

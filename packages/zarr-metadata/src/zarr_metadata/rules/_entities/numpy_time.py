@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 _ARRAY_V3 = "zarr_v3_array"
 _MAX_SCALE_FACTOR = 2**31 - 1
+_SCALE_FACTOR = frozenset({"scale_factor"})
 
 
 def _scale_factor_is_in_range(
@@ -34,5 +35,9 @@ def _scale_factor_is_in_range(
     )
 
 
-entity_rule(_ARRAY_V3, DATA_TYPE, NUMPY_DATETIME64_DATA_TYPE_NAME)(_scale_factor_is_in_range)
-entity_rule(_ARRAY_V3, DATA_TYPE, NUMPY_TIMEDELTA64_DATA_TYPE_NAME)(_scale_factor_is_in_range)
+entity_rule(_ARRAY_V3, DATA_TYPE, NUMPY_DATETIME64_DATA_TYPE_NAME, reads=_SCALE_FACTOR)(
+    _scale_factor_is_in_range
+)
+entity_rule(_ARRAY_V3, DATA_TYPE, NUMPY_TIMEDELTA64_DATA_TYPE_NAME, reads=_SCALE_FACTOR)(
+    _scale_factor_is_in_range
+)

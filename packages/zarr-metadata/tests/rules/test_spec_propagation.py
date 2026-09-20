@@ -145,9 +145,10 @@ def test_unknown_codec_yields_nothing_known() -> None:
 
 def test_every_array_array_codec_registers_a_transition() -> None:
     # A modelled array->array codec with no transition is treated as
-    # unknown and stops propagation — safe, but silently weaker than
-    # intended. Make it a decision, not an omission.
-    assert set(ARRAY_ARRAY_CODEC_NAMES) <= transitions_registered() | {"scale_offset"}
+    # unknown and stops propagation, standing down every rule downstream
+    # of it. No exemptions: a codec that changes nothing registers the
+    # identity and says so.
+    assert set(ARRAY_ARRAY_CODEC_NAMES) <= transitions_registered()
 
 
 def test_error_transition_for_a_non_array_array_codec() -> None:
