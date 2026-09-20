@@ -10,11 +10,14 @@ from typing import ClassVar, Final, Literal, NotRequired, cast
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
+from zarr_metadata.model._sentinel import UNSET
+from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     MemberTypes,
     is_json_value,
+    problem,
 )
 from zarr_metadata.v3._parts import ArrayParts
 
@@ -81,8 +84,8 @@ class ScaleOffsetCodec(CodecEntity):
     is a question for the rules layer.
     """
 
-    offset: JSONValue | None = None
-    scale: JSONValue | None = None
+    offset: JSONValue | UNSET = UNSET
+    scale: JSONValue | UNSET = UNSET
 
     identifier: ClassVar[str] = SCALE_OFFSET_CODEC_NAME
     kind: ClassVar[CodecKind] = "array_array"
@@ -99,6 +102,21 @@ class ScaleOffsetCodec(CodecEntity):
         longer changes the element type -- only the values.
         """
         return incoming
+
+    def problems(self) -> tuple[ValidationProblem, ...]:
+        """Each value is a scalar of the array's type, so neither is null.
+
+        The registry says each is "JSON-encoded per the input array's
+        fill-value rules", and no data type admits `null` as a fill value.
+        Which scalar it should be needs the data type, so that part is the
+        document's question, not this codec's.
+        """
+        return tuple(
+            found
+            for member in ("offset", "scale")
+            if getattr(self, member) is None
+            for found in problem((member,), "expected a scalar, got null", "invalid_value")
+        )
 
     def to_json(self) -> ScaleOffsetCodecObject | ScaleOffsetCodecName:
         return cast("ScaleOffsetCodecObject | ScaleOffsetCodecName", super().to_json())

@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, Literal, TypeVar, cast
 
 from zarr_metadata.model._array import ZarrV3ArrayMetadata
+from zarr_metadata.model._validation import arrays_to_tuples
 from zarr_metadata.rules._documents import validate_array_metadata_v3
 from zarr_metadata.v3._document import read_array_v3
 from zarr_metadata.v3._entity import MetadataEntity
@@ -93,10 +94,15 @@ def canonicalize_array_metadata_v3(
     same way -- but the structural problems come back too, and the result
     is `Invalid` rather than a canonical document.
     """
-    problems = validate_array_metadata_v3(document)
+    normalized = cast("ZarrV3ArrayMetadataJSON", arrays_to_tuples(document))
+    problems = validate_array_metadata_v3(normalized)
     if len(problems) != 0:
         return Invalid(problems)
-    canonical = _canonical_document(document)
+    # Normalized first, so a document spelled with JSON arrays reaches the
+    # same fixpoint as the tuple spelling. It did not: the per-field
+    # simplifications test for `tuple`, and the validator was normalizing
+    # on a copy the canonicalizer never saw.
+    canonical = _canonical_document(normalized)
     # The model layer's round trip normalizes the fields no entity owns.
     return Canonical(ZarrV3ArrayMetadata.from_json(canonical).to_json())
 

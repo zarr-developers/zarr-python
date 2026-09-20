@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal, TypeAlias, TypeVar, 
 
 from typing_extensions import TypeIs
 
+from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import ValidationProblem, is_json
 from zarr_metadata.v3._parts import ChunkGrid
 
@@ -195,12 +196,12 @@ def _as_tuples(value: object) -> object:
 
 def coerce_members(
     configuration: Mapping[str, object], types: MemberTypes
-) -> tuple[dict[str, object], tuple[ValidationProblem, ...], bool]:
+) -> tuple[dict[str, object], tuple[ValidationProblem, ...], frozenset[str]]:
     """The members `types` declares, taken from `configuration`.
 
-    Returns what was accepted, every problem found, and whether the entity
-    is still worth building. Three kinds of problem, and they differ in
-    that last part:
+    Returns what was accepted, every problem found, and the names of the
+    required members that could not be read. Three kinds of problem, and
+    they differ in that last part:
 
     - a key the entity does not declare says the value carries something
       extra, not that it is wrong;
@@ -213,7 +214,7 @@ def coerce_members(
     """
     problems: list[ValidationProblem] = []
     members: dict[str, object] = {}
-    usable = True
+    unreadable: set[str] = set()
     for key in configuration:
         if key not in types:
             problems.extend(problem(("configuration",), f"unexpected key {key!r}", "unknown_key"))
@@ -223,7 +224,7 @@ def coerce_members(
                 problems.extend(
                     problem(("configuration", key), f"missing required key {key!r}", "missing_key")
                 )
-                usable = False
+                unreadable.add(key)
             continue
         # Normalized before the check, so a check only ever sees the tuples
         # the TypedDicts declare -- never the lists raw JSON arrives as.
@@ -236,8 +237,8 @@ def coerce_members(
         if all(entry.kind == "unknown_key" for entry in found):
             members[key] = value
         elif required:
-            usable = False
-    return members, tuple(problems), usable
+            unreadable.add(key)
+    return members, tuple(problems), frozenset(unreadable)
 
 
 # No `slots=True`, deliberately: it rebuilds the class, which leaves the
@@ -253,6 +254,13 @@ class MetadataEntity:
     `coerce` accepted the metadata that produced it. An optional member is
     typed `| None` with a default of `None`, so absence is representable
     and a canonical spelling can leave it out.
+
+    Frozen, so an entity of hashable members is hashable. One holding a
+    value out of scope is not, because that value is the JSON the document
+    wrote and a JSON object is a `dict` -- the same way any frozen
+    dataclass holding a list is unhashable. It cannot be an immutable
+    mapping instead: `MappingProxyType` is unhashable too, and anything
+    else stops `json.dumps` from serializing what `to_json` returns.
 
     Most subclasses declare `member_types` and nothing else: the default
     `coerce` and `to_json` are written once here against that table. The
@@ -317,8 +325,28 @@ class MetadataEntity:
                     "missing_key",
                 )
             configuration = cast("Mapping[str, object]", {})
-        members, found, usable = coerce_members(configuration, cls.member_types)
-        if not usable:
+        members, found, unreadable = coerce_members(configuration, cls.member_types)
+        if len(unreadable) != 0:
+            # The entity cannot be built, but the members that *did* read
+            # can still be judged -- one bad member should not hide the
+            # value problems of the ones beside it. Anything the partial
+            # reading says about an unreadable member is its default
+            # talking, so those are dropped.
+            partial = cls(must_understand=must_understand, **members)  # type: ignore[arg-type]
+            found = (
+                *found,
+                # `within`, because a partial reading reports relative to
+                # the configuration and `coerce`'s caller does not insert
+                # that segment -- `coerce_members` problems already carry it.
+                *within(
+                    (),
+                    [
+                        entry
+                        for entry in partial.problems()
+                        if entry.loc[:1] not in {(key,) for key in unreadable}
+                    ],
+                ),
+            )
             return None, found
         return cls(must_understand=must_understand, **members), found  # type: ignore[arg-type]
 
@@ -328,11 +356,15 @@ class MetadataEntity:
         Absent optional members are left out, which is what makes the
         bare-name spelling reachable. Override to drop a member that
         another member renders meaningless.
+
+        Absence is `UNSET`, never `None`: this package holds `None` to
+        mean a JSON `null` the document actually wrote, and `scale_offset`
+        is a real case where `null` and absent are different documents.
         """
         return {
             key: value
             for key in type(self).member_types
-            if (value := getattr(self, key)) is not None
+            if (value := getattr(self, key)) is not UNSET
         }
 
     def problems(self) -> tuple[ValidationProblem, ...]:

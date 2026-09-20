@@ -114,9 +114,14 @@ class RawBytesDataType(DataTypeEntity):
         name, configuration, must_understand = named_configuration(value)
         if name is None or not cls.accepts(name):
             return None, problem((), "expected an 'r<N>' raw-bytes data type")
+        found: tuple[ValidationProblem, ...] = ()
         if configuration is not None and len(configuration) != 0:
-            return None, problem(("configuration",), "'r<N>' takes no configuration", "unknown_key")
-        return cls(must_understand=must_understand, data_type_name=name), ()
+            # Survivable, as an unknown key is everywhere else: the name
+            # still says everything this type is, so it is still read and
+            # its fill values are still judged. Returning nothing here let
+            # a stray key hide every other problem in the document.
+            found = problem(("configuration",), "'r<N>' takes no configuration", "unknown_key")
+        return cls(must_understand=must_understand, data_type_name=name), found
 
     def problems(self) -> tuple[ValidationProblem, ...]:
         """N must be a positive multiple of 8.

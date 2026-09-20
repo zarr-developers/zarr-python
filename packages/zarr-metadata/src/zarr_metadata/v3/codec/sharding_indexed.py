@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, cast
 
+from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._chain import chain_problems
 from zarr_metadata.v3._entity import (
@@ -144,7 +145,7 @@ class ShardingIndexedCodec(CodecEntity):
     chunk_shape: tuple[int, ...] = ()
     codecs: tuple[MetadataEntity | object, ...] = ()
     index_codecs: tuple[MetadataEntity | object, ...] = ()
-    index_location: ShardingIndexLocation | None = None
+    index_location: ShardingIndexLocation | UNSET = UNSET
 
     identifier: ClassVar[str] = SHARDING_INDEXED_CODEC_NAME
     variable_size: ClassVar[bool] = True

@@ -11,6 +11,7 @@ from typing import ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
 
+from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
@@ -81,7 +82,7 @@ class ZstdCodec(CodecEntity):
     """The `zstd` codec, coerced from its metadata."""
 
     level: int = 0
-    checksum: bool | None = None
+    checksum: bool | UNSET = UNSET
 
     identifier: ClassVar[str] = ZSTD_CODEC_NAME
     variable_size: ClassVar[bool] = True

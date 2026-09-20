@@ -297,3 +297,64 @@ def test_every_problem_location_indexes_into_the_document() -> None:
                 assert problem.kind == "missing_key", (problem.loc, step)
                 break
             node = node[step]  # type: ignore[index]
+
+
+def test_one_unreadable_member_does_not_hide_the_values_of_the_others() -> None:
+    # `clevel` is the wrong type, so this blosc cannot be built -- but
+    # `blocksize` was read, and what is wrong with it is still worth
+    # saying. Losing it would make fixing the document a two-pass job.
+    document = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (4,),
+        "data_type": "uint8",
+        "fill_value": 0,
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (4,)}},
+        "chunk_key_encoding": "default",
+        "codecs": (
+            {"name": "bytes", "configuration": {"endian": "little"}},
+            {
+                "name": "blosc",
+                "configuration": {
+                    "cname": "lz4",
+                    "clevel": "five",
+                    "shuffle": "noshuffle",
+                    "blocksize": -1,
+                },
+            },
+        ),
+    }
+    problems = validate_array_metadata_v3(document)  # type: ignore[arg-type]
+    assert {problem.loc for problem in problems} == {
+        ("codecs", 1, "configuration", "clevel"),
+        ("codecs", 1, "configuration", "blocksize"),
+    }
+
+
+def test_an_unreadable_member_is_not_judged_by_its_default() -> None:
+    # `shuffle` could not be read, so it falls back to `noshuffle`, under
+    # which `typesize` means nothing. The absent `typesize` must not be
+    # reported as required -- that would be the default talking.
+    document = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (4,),
+        "data_type": "uint8",
+        "fill_value": 0,
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (4,)}},
+        "chunk_key_encoding": "default",
+        "codecs": (
+            {"name": "bytes", "configuration": {"endian": "little"}},
+            {
+                "name": "blosc",
+                "configuration": {
+                    "cname": "lz4",
+                    "clevel": 5,
+                    "shuffle": 7,
+                    "blocksize": 0,
+                },
+            },
+        ),
+    }
+    problems = validate_array_metadata_v3(document)  # type: ignore[arg-type]
+    assert [problem.loc for problem in problems] == [("codecs", 1, "configuration", "shuffle")]

@@ -9,6 +9,7 @@ from typing import ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
 
+from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
@@ -88,7 +89,7 @@ class BytesCodec(CodecEntity):
     has no byte order to state, and the spec lets such an array omit it.
     """
 
-    endian: Endianness | None = None
+    endian: Endianness | UNSET = UNSET
 
     identifier: ClassVar[str] = BYTES_CODEC_NAME
     kind: ClassVar[CodecKind] = "array_bytes"
@@ -115,7 +116,7 @@ class BytesCodec(CodecEntity):
                 f"bytes codec is not compatible with variable-length data_type {name!r}",
                 "invalid_value",
             )
-        if storage == "multi_byte" and self.endian is None:
+        if storage == "multi_byte" and self.endian is UNSET:
             return problem(
                 ("endian",),
                 f"endian is required for data type {name!r}, which contains multi-byte values",

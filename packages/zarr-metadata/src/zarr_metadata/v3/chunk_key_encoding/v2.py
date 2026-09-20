@@ -18,6 +18,7 @@ from typing import ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
 
+from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.v3._entity import (
     MemberTypes,
     MetadataEntity,
@@ -81,7 +82,7 @@ __all__ = [
 class V2ChunkKeyEncoding(MetadataEntity):
     """The `v2` chunk key encoding, coerced from its metadata."""
 
-    separator: V2ChunkKeyEncodingSeparator | None = None
+    separator: V2ChunkKeyEncodingSeparator | UNSET = UNSET
 
     identifier: ClassVar[str] = V2_CHUNK_KEY_ENCODING_NAME
 

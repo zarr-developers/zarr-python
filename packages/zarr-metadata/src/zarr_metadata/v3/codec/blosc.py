@@ -10,6 +10,7 @@ from typing import ClassVar, Final, Literal, NotRequired, Self, cast
 
 from typing_extensions import TypedDict, Unpack
 
+from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
@@ -120,7 +121,7 @@ class BloscCodec(CodecEntity):
     clevel: int = 5
     shuffle: BloscShuffle = "noshuffle"
     blocksize: int = 0
-    typesize: int | None = None
+    typesize: int | UNSET = UNSET
 
     identifier: ClassVar[str] = BLOSC_CODEC_NAME
     variable_size: ClassVar[bool] = True
@@ -157,7 +158,11 @@ class BloscCodec(CodecEntity):
                     "invalid_value",
                 )
             )
-        if self.typesize is not None and self.typesize < 1:
+        # Only where it means something: under `noshuffle` the spec says
+        # "the value is ignored" and `configuration` drops it, so judging
+        # it would let `to_json` turn an invalid codec into a valid
+        # document.
+        if self.typesize is not UNSET and self.shuffle != BLOSC_NO_SHUFFLE and self.typesize < 1:
             found.extend(
                 problem(
                     ("typesize",),
@@ -165,7 +170,7 @@ class BloscCodec(CodecEntity):
                     "invalid_value",
                 )
             )
-        if self.shuffle != BLOSC_NO_SHUFFLE and self.typesize is None:
+        if self.shuffle != BLOSC_NO_SHUFFLE and self.typesize is UNSET:
             found.extend(
                 problem(
                     ("typesize",),

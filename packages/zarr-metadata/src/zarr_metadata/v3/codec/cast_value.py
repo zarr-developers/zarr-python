@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, cast
 
+from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     DATA_TYPE,
@@ -184,9 +185,9 @@ class CastValueCodec(CodecEntity):
     """
 
     data_type: MetadataEntity | object = None
-    rounding: CastRoundingMode | None = None
-    out_of_range: CastOutOfRangeMode | None = None
-    scalar_map: ScalarMap | None = None
+    rounding: CastRoundingMode | UNSET = UNSET
+    out_of_range: CastOutOfRangeMode | UNSET = UNSET
+    scalar_map: ScalarMap | UNSET = UNSET
 
     identifier: ClassVar[str] = CAST_VALUE_CODEC_NAME
     kind: ClassVar[CodecKind] = "array_array"

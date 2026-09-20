@@ -76,7 +76,14 @@ def _judged(
 
 
 def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
-    """Every reason `value` is not a valid v3 array document.
+    """Why `value` is not a valid v3 array document.
+
+    Every structural problem, and every semantic problem that can be
+    determined. One member that cannot be read costs the *composition*
+    judgments about the entity holding it -- whether a shard's inner
+    shape divides the array it is handed cannot be answered by a shard
+    that could not be built -- so a document with two defects in one
+    configuration may need a second pass. The verdict is never affected.
 
     Structural problems (from the model layer) and semantic problems
     (from the entities themselves) are reported together. JSON arrays are
