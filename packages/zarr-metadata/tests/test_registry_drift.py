@@ -14,9 +14,7 @@ import zarr_metadata.v3.chunk_grid
 import zarr_metadata.v3.chunk_key_encoding
 import zarr_metadata.v3.codec
 import zarr_metadata.v3.data_type
-from zarr_metadata.rules._storage_class import (  # pyright: ignore[reportPrivateUsage]
-    storage_class,
-)
+from zarr_metadata.rules._storage_class import storage_class
 from zarr_metadata.rules._v3_array import (
     _check_fill_for_dtype,  # pyright: ignore[reportPrivateUsage]
 )

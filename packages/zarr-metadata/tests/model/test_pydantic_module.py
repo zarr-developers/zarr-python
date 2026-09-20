@@ -282,7 +282,7 @@ def test_field_types_reject_unknown_configuration_members() -> None:
     Whether a `configuration` is closed is unspecified
     (zarr-developers/zarr-specs#270), and this integration takes the
     strict reading deliberately: in practice such a member is a typo or a
-    setting meant for a different codec, and silently accepting it means
+    setting meant for a different entity, and silently accepting it means
     silently ignoring what the writer asked for. Callers who want the
     tolerant reading use `rules.validate_*` and filter `unknown_key`.
     """

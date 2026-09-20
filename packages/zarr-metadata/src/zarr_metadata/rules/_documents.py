@@ -9,7 +9,7 @@ narrowing.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, cast
 
 from zarr_metadata.model._validation import (
@@ -34,7 +34,7 @@ from zarr_metadata.rules._v3_array import ZARR_V3_ARRAY_RULES
 from zarr_metadata.rules._v3_group import ZARR_V3_GROUP_RULES
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from zarr_metadata.model._validation import ValidationProblem
     from zarr_metadata.rules._engine import Rule
