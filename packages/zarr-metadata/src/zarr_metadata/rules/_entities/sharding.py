@@ -23,6 +23,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.rules._chunk_grid import shard_index_shape, uniform_shape
 from zarr_metadata.rules._pipeline import pipeline_order_problems, shape_problems
 from zarr_metadata.rules._registry import entity_rule, run_chain_rules
 from zarr_metadata.rules._spec import NOTHING_KNOWN, ArraySpec
@@ -108,19 +109,20 @@ def inner_pipelines_are_pipelines(
     `codecs` chain starts from the inner chunk with the incoming data
     type; a nested shard or transpose inside it is therefore judged
     against the inner chunk, and its own transitions carry on from there.
-    The `index_codecs` chain encodes the shard index, a `uint64` array
-    whose shape this package does not compute.
+    The `index_codecs` chain encodes the shard index: a `uint64` array of
+    chunks-per-shard plus a trailing dimension of 2, derived by
+    `zarr_metadata.rules._chunk_grid.shard_index_shape`.
     """
-    inner_shape = configuration["chunk_shape"]
-    if not isinstance(inner_shape, tuple) or not all(
-        isinstance(v, int) and not isinstance(v, bool) and v >= 1
-        for v in cast("tuple[object, ...]", inner_shape)
-    ):
+    inner = configuration["chunk_shape"]
+    if not isinstance(inner, tuple):
         inner_start = NOTHING_KNOWN
+        index_start = NOTHING_KNOWN
     else:
-        # The inner pipeline encodes the inner chunk: same type as arrived
-        # here, shape of one inner chunk.
-        inner_start = incoming.with_shape(cast("tuple[int, ...]", inner_shape))
+        extents = cast("tuple[object, ...]", inner)
+        # The inner chunk shape is a regular grid over the chunk this codec
+        # receives, and the index's shape follows from the two together.
+        inner_start = incoming.with_shape(uniform_shape(extents))
+        index_start = ArraySpec(shard_index_shape(incoming.shape, extents), "uint64")
     problems: list[ValidationProblem] = []
     for key in ("codecs", "index_codecs"):
         entries = configuration[key]
@@ -132,7 +134,7 @@ def inner_pipelines_are_pipelines(
         # The index pipeline encodes the shard index, not the array: a
         # uint64 array of offsets and lengths, so e.g. the bytes codec
         # inside it still needs an endianness.
-        start = inner_start if key == "codecs" else ArraySpec(None, "uint64")
+        start = inner_start if key == "codecs" else index_start
         problems.extend(run_chain_rules(CODECS, sequence, document, (key,), start))
     return tuple(problems)
 

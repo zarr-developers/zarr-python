@@ -12,12 +12,18 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Final, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from zarr_metadata.model._validation import ValidationProblem
-from zarr_metadata.rules._engine import Rule, as_string_mapping
+from zarr_metadata.rules._chunk_grid import governed_shape
+from zarr_metadata.rules._engine import Rule
+from zarr_metadata.rules._entity import configuration_mapping, entity_configuration
 from zarr_metadata.rules._spec import NOTHING_KNOWN, ArraySpec, propagate
-from zarr_metadata.v3._extension_points import CHUNK_GRID, ExtensionPointField, canonical_name
+from zarr_metadata.v3._extension_points import ExtensionPointField, canonical_name
+
+if TYPE_CHECKING:
+    from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+
 from zarr_metadata.v3._shape import (
     blocking_problems,
     entity_configuration_keys,
@@ -252,7 +258,7 @@ def run_entity_rules(
         for problem in blocking
         if len(problem.loc) >= 2 and problem.loc[0] == "configuration"
     )
-    configuration = _configuration_of(value)
+    configuration = configuration_mapping(value)
     if configuration is None:
         return ()
     problems: list[ValidationProblem] = []
@@ -268,34 +274,6 @@ def run_entity_rules(
             base = (*loc, "configuration") if len(found.loc) != 0 else loc
             problems.append(ValidationProblem((*base, *found.loc), found.message, found.kind))
     return tuple(problems)
-
-
-def entity_configuration(field: ExtensionPointField, value: object) -> Mapping[str, object] | None:
-    """`value`'s configuration if every modelled field is usable, else None.
-
-    The all-or-nothing gate `propagate` needs: a spec transition reads the
-    configuration to compute what the next codec receives, so one unusable
-    member makes the whole outgoing spec a guess. `run_entity_rules` uses
-    the finer per-member gate instead. `unknown_key` problems do not make
-    an entity unusable; anything else does.
-    """
-    verdict = validate_known_entity_metadata(field, value)
-    if verdict is None or len(blocking_problems(verdict)) != 0:
-        return None
-    return _configuration_of(value)
-
-
-def _configuration_of(value: object) -> Mapping[str, object] | None:
-    """`value`'s configuration mapping, with no judgment of its contents."""
-    mapping = as_string_mapping(value)
-    if mapping is None:
-        # Bare-string metadata is the canonical spelling for entities whose
-        # configuration is optional. Rules still need a real mapping to run
-        # against, especially when they judge a missing optional member.
-        return {} if isinstance(value, str) else None
-    if "configuration" not in mapping:
-        return {}
-    return as_string_mapping(mapping["configuration"])
 
 
 def dispatch_field(
@@ -350,48 +328,21 @@ def run_chain_rules(
     return tuple(problems)
 
 
-def _rank_only(shape: object) -> tuple[int | None, ...] | None:
-    """A shape of the document's rank with every extent undetermined."""
-    if not isinstance(shape, tuple):
-        return None
-    dimensions = cast("tuple[object, ...]", shape)
-    if not all(isinstance(v, int) and not isinstance(v, bool) for v in dimensions):
-        return None
-    return (None,) * len(dimensions)
-
-
 def chain_initial_spec(document: Mapping[str, object]) -> ArraySpec:
     """The spec entering a document's top-level codec chain.
 
-    The array a chunk pipeline encodes is one chunk: extents from a
-    regular grid this package can read, data type from the document.
-
-    When the extents are unavailable — a grid this package does not model,
-    a rectilinear grid whose chunks differ, or a regular grid with a
-    non-positive extent — the rank survives them. Every chunk of an array
-    has the array's rank, so `shape` becomes a tuple of `None` of that
-    length rather than `None`, and rank rules keep working while the
-    geometry rules stand down. (Geometry against a zero extent would be
-    noise on top of the grid's own complaint; a rank mismatch is a
-    separate fault and is still worth reporting.)
+    The array a chunk pipeline encodes is one chunk of the document's
+    chunk grid, so its shape is whatever that grid governs; see
+    `zarr_metadata.rules._chunk_grid`.
     """
-    from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID_NAME
-
-    grid = document.get("chunk_grid")
-    chunk_shape: tuple[int | None, ...] | None = None
-    if entity_name(grid) == REGULAR_CHUNK_GRID_NAME:
-        configuration = entity_configuration(CHUNK_GRID, grid)
-        extents = configuration.get("chunk_shape") if configuration is not None else None
-        if isinstance(extents, tuple):
-            values = cast("tuple[object, ...]", extents)
-            if all(isinstance(v, int) and not isinstance(v, bool) and v >= 1 for v in values):
-                chunk_shape = cast("tuple[int | None, ...]", values)
-    if chunk_shape is None:
-        chunk_shape = _rank_only(document.get("shape"))
+    chunk_shape = governed_shape(document.get("chunk_grid"), document.get("shape"))
+    # A metadata field is a name, or an object carrying one; anything else
+    # is not a data type this package can describe, and `entity_name`
+    # answers that question in one place rather than being re-derived here.
     data_type = document.get("data_type")
-    if not isinstance(data_type, (str, Mapping)):
-        data_type = None
-    return ArraySpec(chunk_shape, data_type)  # type: ignore[arg-type]
+    if entity_name(data_type) is None:
+        return ArraySpec(chunk_shape, None)
+    return ArraySpec(chunk_shape, cast("ZarrV3MetadataFieldJSON", data_type))
 
 
 __all__ = [
