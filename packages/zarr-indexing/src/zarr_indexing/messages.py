@@ -203,6 +203,18 @@ def _bound_is_implicit(bound: int | str | list[int | str]) -> bool:
     return isinstance(bound, list)
 
 
+def _finite(value: int | str, where: str) -> int:
+    """The integer behind a validated `index-value` that is not a sentinel.
+
+    Every value reaching the desugaring helpers has passed `_check_index_value`,
+    so a string here is one of the two sentinels, which each helper handles
+    before calling this. Anything else is an internal error, not bad input.
+    """
+    if isinstance(value, int):
+        return value
+    raise RuntimeError(f"{where} is {value!r}; expected an integer or an infinity sentinel")
+
+
 def _ext_key(value: int | str) -> tuple[int, int]:
     """A sort key giving the extended-integer order `-inf < n < +inf` exactly.
 
@@ -213,8 +225,7 @@ def _ext_key(value: int | str) -> tuple[int, int]:
         return (0, 0)
     if value == "+inf":
         return (2, 0)
-    assert isinstance(value, int)
-    return (1, value)
+    return (1, _finite(value, "bound"))
 
 
 def _rewrap(value: int | str, *, implicit: bool) -> int | str | list[int | str]:
@@ -276,10 +287,10 @@ def _resolve_upper_bound(
     The implicit/explicit bracket travels with the extent-bearing field (the
     upper bound, or `shape`), matching the spec's `[n]`-bracket convention.
     """
-    if upper_field is None:
+    if upper_raw is None:
+        # No upper-bound field was supplied (`upper_field` is None as well).
         return [["+inf"] for _ in range(rank)]
 
-    assert upper_raw is not None
     if kind_of == "exclusive":
         return list(upper_raw)
 
@@ -316,8 +327,7 @@ def _checked_i64(value: int, where: str) -> int:
 def _inclusive_to_exclusive(value: int | str, where: str) -> int | str:
     if value == "+inf" or value == "-inf":
         return value
-    assert isinstance(value, int)
-    return _checked_i64(value + 1, f"{where} converted to an exclusive bound")
+    return _checked_i64(_finite(value, where) + 1, f"{where} converted to an exclusive bound")
 
 
 def _shape_to_exclusive(min_value: int | str, shape_value: int | str, where: str) -> int | str:
@@ -330,9 +340,10 @@ def _shape_to_exclusive(min_value: int | str, shape_value: int | str, where: str
         return "+inf"
     if min_value == "-inf":
         return "-inf"
-    assert isinstance(min_value, int)
-    assert isinstance(shape_value, int)
-    return _checked_i64(min_value + shape_value, f"{where} added to its inclusive_min")
+    return _checked_i64(
+        _finite(min_value, f"inclusive_min for {where}") + _finite(shape_value, where),
+        f"{where} added to its inclusive_min",
+    )
 
 
 def _validate_domain(inclusive_min: list[Any], exclusive_max: list[Any], *, prefix: str) -> None:

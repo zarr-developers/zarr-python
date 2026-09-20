@@ -161,9 +161,11 @@ class _ShardingByteGetter(ByteGetter):
     def get_sync(
         self, prototype: BufferPrototype | None = None, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
-        assert prototype is None or prototype == default_buffer_prototype(), (
-            f"prototype is not supported within shards currently. diff: {prototype} != {default_buffer_prototype()}"
-        )
+        if prototype is not None and prototype != default_buffer_prototype():
+            raise ValueError(
+                "Non-default buffer prototypes are not supported within shards. "
+                f"Got {prototype}, expected {default_buffer_prototype()}."
+            )
         value = self.shard_dict.get(self.chunk_coords)
         if value is None:
             return None
@@ -194,7 +196,8 @@ class _ShardingByteSetter(_ShardingByteGetter, ByteSetter):
         del self.shard_dict[self.chunk_coords]
 
     async def set(self, value: Buffer, byte_range: ByteRequest | None = None) -> None:
-        assert byte_range is None, "byte_range is not supported within shards"
+        if byte_range is not None:
+            raise NotImplementedError("byte_range is not supported within shards.")
         self.set_sync(value)
 
     async def delete(self) -> None:
@@ -667,7 +670,8 @@ class ShardingCodec(
         index_spec = self._get_index_chunk_spec(index.chunks_per_shard)
         index_nd = get_ndbuffer_class().from_numpy_array(index.offsets_and_lengths)
         result: Buffer | None = index_transform.encode_chunk(index_nd, index_spec)
-        assert result is not None
+        if result is None:
+            raise RuntimeError("Encoding the shard index produced no bytes.")
         return result
 
     def _shard_reader_from_bytes_sync(
@@ -1542,7 +1546,8 @@ class ShardingCodec(
                 .decode([(index_bytes, self._get_index_chunk_spec(chunks_per_shard))])
             )
         )
-        assert index_array is not None  # the bytes are already in hand
+        if index_array is None:
+            raise RuntimeError("Decoding the shard index produced no array.")
         return _ShardIndex(chunks_per_shard, index_array.as_numpy_array())
 
     async def _encode_shard_index(self, index: _ShardIndex) -> Buffer:
@@ -1564,7 +1569,8 @@ class ShardingCodec(
                 )
             )
         )
-        assert index_bytes is not None
+        if index_bytes is None:
+            raise RuntimeError("Encoding the shard index produced no bytes.")
         return index_bytes
 
     def _shard_index_size(self, chunks_per_shard: tuple[int, ...]) -> int:

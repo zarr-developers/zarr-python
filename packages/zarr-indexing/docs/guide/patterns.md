@@ -303,7 +303,7 @@ so they equal the zero-origin models after `translate_domain_to`:
 ```
 
 `LazyArray` exposes the transform machinery through a positional array-like
-API. Its `.lazy`, `.lazy.oindex`, and `.lazy.vindex` accessors return views and
+API. Its `[...]`, `.oindex[...]`, and `.vindex[...]` operations return views and
 normalize positions before composition. This boundary differs from the literal
 coordinate semantics of `IndexTransform`, as the following table shows. The
 executable matrix checks the documented cases, not every possible NumPy expression.
@@ -313,7 +313,7 @@ executable matrix checks the documented cases, not every possible NumPy expressi
 | Surface | Meaning of an integer index | Meaning of `-1` |
 | --- | --- | --- |
 | `IndexDomain` and `IndexTransform` | A literal coordinate in the current domain | The address `-1`, when the domain contains it |
-| `LazyArray.lazy` | A NumPy-style position in the current view | The last position, normalized before transform composition |
+| `LazyArray` | A NumPy-style position in the current view | The last position, normalized before transform composition |
 
 The wrapper's three indexing modes all use positions in the current view. Each
 derived view begins at position zero, while the transform algebra underneath

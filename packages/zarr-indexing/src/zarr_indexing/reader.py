@@ -45,10 +45,25 @@ class ReadContext:
     """
 
     transform: IndexTransform
-    """Maps zero-origin output-buffer coordinates to global coordinates in the source."""
+    """Maps zero-origin output-buffer coordinates to global coordinates in the source.
+
+    A transform carrying a literal (nonzero-origin) domain, such as a view's,
+    is re-based to origin zero on construction: readers address the buffer
+    they fill, so the origin is fixed here rather than by every caller.
+    """
 
     projection: ChunkProjection | None = None
-    """The partition plan when this read is one part of a partitioned view, else `None`."""
+    """The read plan, always supplied by `LazyArray` execution.
+
+    Direct reader callers may omit it if their reader supports unplanned reads.
+    """
+
+    def __post_init__(self) -> None:
+        origin = self.transform.domain.inclusive_min
+        if any(origin):
+            object.__setattr__(
+                self, "transform", self.transform.translate_domain_to((0,) * len(origin))
+            )
 
 
 class Reader(Protocol):
@@ -85,7 +100,8 @@ class Reader(Protocol):
         to global coordinates in `source`, and its domain shape equals
         `out.shape`. `context.projection`, when present, is the corresponding
         partition plan: its `chunk_transform` is chunk-local, its
-        `cell_transform` describes result placement, and its `chunk_domain`
+        `cell_transform` places cells in the zero-origin result buffer of the
+        view that planned the read, and its `chunk_domain`
         describes the grid cell. Fill every cell in place, preserving the
         transform's exact values, order, and dtype, then return `None`. Do not
         replace or retain `out`; it may be a strided writable view rather than
@@ -363,14 +379,14 @@ def _lower_orthogonal(array: Any, transform: IndexTransform) -> Any:
         if isinstance(m, ConstantMap):
             selection.append(m.offset)
             continue
-        if out_dim in gathered:
-            selection.append(slice(None))
-        else:
-            assert isinstance(m, DimensionMap)
+        if isinstance(m, DimensionMap) and out_dim not in gathered:
             d = m.input_dimension
             lo = transform.domain.inclusive_min[d]
             hi = transform.domain.exclusive_max[d]
             selection.append(slice(m.offset + m.stride * lo, m.offset + m.stride * hi, m.stride))
+        else:
+            # Every ArrayMap, and every non-positive-stride DimensionMap, was gathered above.
+            selection.append(slice(None))
         if isinstance(m, ArrayMap):
             axis = m.dependent_axis
             if axis is None:
@@ -398,15 +414,14 @@ def _lower_general(array: Any, transform: IndexTransform) -> Any:
     flat axis with row-major strides, and a single `take` collects them.
     """
     outputs = transform.output
-    correlated_dims = [d for d, m in enumerate(outputs) if isinstance(m, ArrayMap)]
+    correlated = [(d, m) for d, m in enumerate(outputs) if isinstance(m, ArrayMap)]
+    correlated_dims = [d for d, _ in correlated]
 
     slice_input_dims = {m.input_dimension for m in outputs if isinstance(m, DimensionMap)}
     broadcast_axes = [d for d in range(transform.input_rank) if d not in slice_input_dims]
     broadcast_shape = tuple(transform.domain.shape[d] for d in broadcast_axes)
 
-    for d in correlated_dims:
-        arr_map = outputs[d]
-        assert isinstance(arr_map, ArrayMap)
+    for _, arr_map in correlated:
         # The axes the array varies over (its non-singleton axes; see
         # transform._array_map_dependency_axes) must all live in the block.
         dependency = (axis for axis, size in enumerate(arr_map.index_array.shape) if size > 1)
@@ -438,16 +453,14 @@ def _lower_general(array: Any, transform: IndexTransform) -> Any:
         if isinstance(m, ConstantMap):
             selection.append(m.offset)
             continue
-        if out_dim in correlated_dims:
+        if isinstance(m, ArrayMap):
             selection.append(slice(None))
             correlated_positions.append(axis)
         elif out_dim in gathered:
             selection.append(slice(None))
             residual_positions.append(axis)
-            assert isinstance(m, DimensionMap)
             residual_axis_dims.append(m.input_dimension)
         else:
-            assert isinstance(m, DimensionMap)
             d = m.input_dimension
             lo = transform.domain.inclusive_min[d]
             hi = transform.domain.exclusive_max[d]
@@ -471,10 +484,9 @@ def _lower_general(array: Any, transform: IndexTransform) -> Any:
     flat_index = np.zeros(math.prod(broadcast_shape), dtype=np.intp)
     stride = 1
     for position in range(n_corr - 1, -1, -1):
-        m = outputs[correlated_dims[position]]
-        assert isinstance(m, ArrayMap)
+        _, corr_map = correlated[position]
         flat_index = flat_index + (
-            _correlated_map_coords(m, broadcast_axes, broadcast_shape, transform.input_rank)
+            _correlated_map_coords(corr_map, broadcast_axes, broadcast_shape, transform.input_rank)
             * stride
         )
         stride *= corr_sizes[position]

@@ -311,7 +311,9 @@ class CastValue(ArrayArrayCodec):
         target_zdtype: ZDType[TBaseDType, TBaseScalar],
     ) -> None:
         """Validate that scalar map entries are compatible with source/target dtypes."""
-        assert self.scalar_map is not None
+        scalar_map = self.scalar_map
+        if scalar_map is None:
+            return
         # For encode: keys are source values, values are target values.
         # For decode: keys are target values, values are source values.
         direction_dtypes: dict[
@@ -321,9 +323,9 @@ class CastValue(ArrayArrayCodec):
             "decode": (target_zdtype, source_zdtype),
         }
         for direction, (key_zdtype, val_zdtype) in direction_dtypes.items():
-            if direction not in self.scalar_map:
+            if direction not in scalar_map:
                 continue
-            sub_map = self.scalar_map[direction]  # type: ignore[literal-required]
+            sub_map = scalar_map[direction]  # type: ignore[literal-required]
             for k, v in sub_map.items():
                 _check_representable(k, key_zdtype, f"scalar_map {direction} key")
                 _check_representable(v, val_zdtype, f"scalar_map {direction} value")
