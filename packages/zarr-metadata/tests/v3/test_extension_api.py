@@ -147,9 +147,10 @@ def test_a_registered_entity_canonicalizes_itself() -> None:
 
 def test_error_an_entity_must_say_what_it_is() -> None:
     with pytest.raises(TypeError, match="does not declare identifier"):
-
+        # Never bound: the guard raises while the class is being created,
+        # which is the whole point -- so pyright cannot see it used.
         @dataclass(frozen=True)
-        class Nameless(CodecEntity):
+        class Nameless(CodecEntity):  # pyright: ignore[reportUnusedClass]
             kind: ClassVar[CodecKind] = "bytes_bytes"
 
 
@@ -184,7 +185,7 @@ def test_error_an_optional_member_defaults_to_unset() -> None:
     with pytest.raises(TypeError, match="a default other than UNSET"):
 
         @dataclass(frozen=True)
-        class Inventive(CodecEntity):
+        class Inventive(CodecEntity):  # pyright: ignore[reportUnusedClass]
             level: int = 3
 
             identifier: ClassVar[str] = "acme.inventive"
