@@ -36,6 +36,17 @@ them through a scope:
 A name in no scope is not rejected -- that is what extension openness
 means -- so registering yours is how you get it judged rather than waved
 through.
+
+One known friction, under mypy only. An entity's `to_json` returns its own
+object TypedDict, and mypy does not accept that where a
+`ZarrV3MetadataFieldJSON` is wanted -- it reads a TypedDict as
+`Mapping[str, object]` and never as the `Mapping[str, JSONValue]` the
+envelope declares. Putting `to_json()` output straight into a `codecs`
+list therefore needs a `cast` under mypy; pyright accepts it. Widening the
+envelope fixes mypy and costs more than it buys: with `object` the
+package's own `st.from_type` strategies stop terminating, and with `Any`
+they stop generating the ill-typed members they exist to generate. The
+narrow type is also the true one -- a configuration's values are JSON.
 """
 
 from __future__ import annotations
