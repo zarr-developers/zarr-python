@@ -664,3 +664,58 @@ def test_error_a_malformed_must_understand_does_not_suppress_the_entity() -> Non
         }
     )
     assert ("codecs", 0, "configuration", "order") in {problem.loc for problem in problems}
+
+
+# -- blosc: the one member whose requiredness the spec makes conditional ------
+
+
+def _blosc_configuration(**overrides: object) -> dict[str, object]:
+    return {
+        "cname": "zstd",
+        "clevel": 5,
+        "shuffle": "shuffle",
+        "typesize": 2,
+        "blocksize": 0,
+        **overrides,
+    }
+
+
+def _blosc(**overrides: object) -> Mapping[str, object]:
+    return {"name": "blosc", "configuration": _blosc_configuration(**overrides)}
+
+
+def _with_blosc(**overrides: object) -> Mapping[str, object]:
+    return {**BASE, "codecs": ("bytes", _blosc(**overrides))}
+
+
+def test_blosc_accepts_a_document_zarr_python_writes() -> None:
+    assert validate_array_metadata_v3(_with_blosc()) == ()
+
+
+def test_blosc_typesize_may_be_omitted_only_without_shuffling() -> None:
+    # "Required unless `shuffle` is `"noshuffle"`, in which case the value
+    # is ignored." A TypedDict cannot say that, so the rule does.
+    configuration = _blosc_configuration()
+    del configuration["typesize"]
+    for shuffle, required in (("noshuffle", False), ("shuffle", True), ("bitshuffle", True)):
+        codec = {"name": "blosc", "configuration": {**configuration, "shuffle": shuffle}}
+        problems = validate_array_metadata_v3({**BASE, "codecs": ("bytes", codec)})
+        assert [problem.loc[-1] for problem in problems] == (["typesize"] if required else [])
+
+
+def test_error_blosc_typesize_is_not_positive() -> None:
+    loc, message = _sole_problem(_with_blosc(typesize=0))
+    assert loc == ("codecs", 1, "configuration", "typesize")
+    assert "positive" in message
+
+
+def test_error_blosc_clevel_out_of_range() -> None:
+    loc, message = _sole_problem(_with_blosc(clevel=99))
+    assert loc == ("codecs", 1, "configuration", "clevel")
+    assert "[0, 9]" in message
+
+
+def test_error_blosc_blocksize_is_negative() -> None:
+    loc, message = _sole_problem(_with_blosc(blocksize=-1))
+    assert loc == ("codecs", 1, "configuration", "blocksize")
+    assert "non-negative" in message

@@ -48,7 +48,6 @@ from zarr_metadata.v3.codec.gzip import GZIP_CODEC_NAME
 # silent omission.
 _RULE_FREE = frozenset(
     {
-        (CODECS, "blosc"),
         (CODECS, "crc32c"),
         (CODECS, "scale_offset"),
         (CODECS, "zstd"),
