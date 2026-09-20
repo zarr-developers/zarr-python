@@ -491,7 +491,7 @@ class MetadataEntity:
             # `typesize` requirement reads `shuffle`. Judging around the
             # hole would be guessing, so the type problems stand alone.
             return None, found
-        found = (*found, *within((), cls.value_problems(**members)))  # type: ignore[arg-type]
+        found = (*found, *within((), cls.value_problems(**members)))
         if any(entry.kind != "unknown_key" for entry in found):
             return None, found
         # Already asked, so do not ask again on the way in.

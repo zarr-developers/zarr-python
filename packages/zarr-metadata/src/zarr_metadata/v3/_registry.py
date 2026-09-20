@@ -203,7 +203,10 @@ class Context:
         A metadata field is a metadata field wherever it appears, so the
         envelope gets the same structural judgment here that the model
         layer gives a top-level one -- an extra member, a `configuration`
-        that is not an object, a `must_understand` that is not a boolean.
+        that is not an object, a `must_understand` that is not a boolean
+        or is `false`. That last one is why the flag is passed: an
+        extension point is something a reader must understand at every
+        depth, not only at the document's top level.
         `envelope_judged` says that judgment has already happened, which
         it has for the fields of a document the model layer accepted.
         """
@@ -211,7 +214,7 @@ class Context:
         if not envelope_judged:
             problems.extend(
                 ValidationProblem((*loc, *found.loc), found.message, found.kind)
-                for found in validate_metadata_field_v3(value)
+                for found in validate_metadata_field_v3(value, allow_must_understand_false=False)
             )
         name, _, _ = named_configuration(value)
         if name is None:

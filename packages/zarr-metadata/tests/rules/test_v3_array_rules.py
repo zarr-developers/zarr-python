@@ -744,3 +744,53 @@ def test_zstd_level_range(level: int, valid: bool) -> None:
         assert problems == ()
     else:
         assert [problem.loc for problem in problems] == [("codecs", 1, "configuration", "level")]
+
+
+# -- must_understand: false, wherever a document writes it --------------------
+
+# (a document nesting an ignorable extension point, and where it sits)
+IGNORABLE_NESTED: dict[str, tuple[Mapping[str, object], tuple[object, ...]]] = {
+    "inner-codec-of-a-shard": (
+        {
+            **BASE,
+            "codecs": (_shard(codecs=({"name": "bytes", "must_understand": False},)),),
+        },
+        ("codecs", 0, "configuration", "codecs", 0, "must_understand"),
+    ),
+    "index-codec-of-a-shard": (
+        {
+            **BASE,
+            "codecs": (_shard(index_codecs=({**_INDEX_BYTES, "must_understand": False},)),),
+        },
+        ("codecs", 0, "configuration", "index_codecs", 0, "must_understand"),
+    ),
+    "data-type-of-a-struct-field": (
+        {
+            **BASE,
+            "data_type": {
+                "name": "struct",
+                "configuration": {
+                    "fields": (
+                        {
+                            "name": "a",
+                            "data_type": {"name": "uint8", "must_understand": False},
+                        },
+                    )
+                },
+            },
+            "fill_value": {"a": 0},
+        },
+        ("data_type", "configuration", "fields", 0, "data_type", "must_understand"),
+    ),
+}
+
+
+@pytest.mark.parametrize("case", IGNORABLE_NESTED)
+def test_error_a_nested_extension_point_may_not_be_declared_ignorable(case: str) -> None:
+    # An extension point is something a reader must understand, and depth
+    # does not change that: a codec inside a shard is still a codec. The
+    # top-level check would otherwise be a check on where the flag was
+    # written rather than on what it says.
+    document, loc = IGNORABLE_NESTED[case]
+    problems = validate_array_metadata_v3(cast("Any", document))
+    assert loc in {problem.loc for problem in problems}
