@@ -16,7 +16,6 @@ from zarr_metadata.v3._entity import (
     MemberTypes,
     Opaque,
     StorageClass,
-    ValueRoutine,
     problem,
 )
 
@@ -153,47 +152,6 @@ class StructMembers(TypedDict):
     fields: tuple[StructFieldComponent, ...]
 
 
-def _value_problems(**members: Unpack[StructMembers]) -> tuple[ValidationProblem, ...]:
-    """What a struct can judge about its own fields.
-
-    Names have to exist, be non-empty and be distinct, because a fill
-    value addresses fields by name. Field types have to be fixed-size,
-    because a record's layout is otherwise not determined. Nothing about
-    a field type's own values: it is an entity, so it exists only if
-    those are allowed.
-    """
-    fields = members["fields"]
-    found: list[ValidationProblem] = []
-    if len(fields) == 0:
-        found.extend(problem(("fields",), "expected at least one struct field", "invalid_value"))
-    seen: dict[str, int] = {}
-    for index, field in enumerate(fields):
-        at: Loc = ("fields", index)
-        if field.name == "":
-            found.extend(problem((*at, "name"), "expected a non-empty field name", "invalid_value"))
-        first = seen.setdefault(field.name, index)
-        if first != index:
-            found.extend(
-                problem(
-                    (*at, "name"),
-                    f"duplicate field name {field.name!r}, already used by field {first}",
-                    "invalid_value",
-                )
-            )
-        if (
-            isinstance(field.data_type, DataTypeEntity)
-            and field.data_type.storage_class() == "variable_length"
-        ):
-            found.extend(
-                problem(
-                    (*at, "data_type"),
-                    "struct fields must use fixed-size data types",
-                    "invalid_value",
-                )
-            )
-    return tuple(found)
-
-
 @dataclass(frozen=True)
 class StructDataType(DataTypeEntity):
     """The `struct` data type, coerced from its metadata.
@@ -211,7 +169,50 @@ class StructDataType(DataTypeEntity):
     configuration_required: ClassVar[bool] = True
     member_types: ClassVar[MemberTypes] = {"fields": (True, _is_fields)}
 
-    value_problems: ClassVar[ValueRoutine] = staticmethod(_value_problems)
+    @staticmethod
+    def value_problems(**members: Unpack[StructMembers]) -> tuple[ValidationProblem, ...]:
+        """What a struct can judge about its own fields.
+
+        Names have to exist, be non-empty and be distinct, because a fill
+        value addresses fields by name. Field types have to be fixed-size,
+        because a record's layout is otherwise not determined. Nothing about
+        a field type's own values: it is an entity, so it exists only if
+        those are allowed.
+        """
+        fields = members["fields"]
+        found: list[ValidationProblem] = []
+        if len(fields) == 0:
+            found.extend(
+                problem(("fields",), "expected at least one struct field", "invalid_value")
+            )
+        seen: dict[str, int] = {}
+        for index, field in enumerate(fields):
+            at: Loc = ("fields", index)
+            if field.name == "":
+                found.extend(
+                    problem((*at, "name"), "expected a non-empty field name", "invalid_value")
+                )
+            first = seen.setdefault(field.name, index)
+            if first != index:
+                found.extend(
+                    problem(
+                        (*at, "name"),
+                        f"duplicate field name {field.name!r}, already used by field {first}",
+                        "invalid_value",
+                    )
+                )
+            if (
+                isinstance(field.data_type, DataTypeEntity)
+                and field.data_type.storage_class() == "variable_length"
+            ):
+                found.extend(
+                    problem(
+                        (*at, "data_type"),
+                        "struct fields must use fixed-size data types",
+                        "invalid_value",
+                    )
+                )
+        return tuple(found)
 
     @classmethod
     def prepare(

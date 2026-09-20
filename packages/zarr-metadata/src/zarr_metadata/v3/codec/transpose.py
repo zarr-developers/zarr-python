@@ -14,7 +14,6 @@ from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     MemberTypes,
-    ValueRoutine,
     is_int,
     problem,
     sequence_of,
@@ -66,24 +65,6 @@ __all__ = [
 ]
 
 
-def _value_problems(
-    **members: Unpack[TransposeCodecConfiguration],
-) -> tuple[ValidationProblem, ...]:
-    """`order` must permute its own axes.
-
-    Whether it permutes the *array's* axes is a different question --
-    it needs the array's rank -- and the rules layer asks that one.
-    """
-    order = members["order"]
-    if sorted(order) != list(range(len(order))):
-        return problem(
-            ("order",),
-            f"expected a permutation of 0..{len(order) - 1}, got {order!r}",
-            "invalid_value",
-        )
-    return ()
-
-
 @dataclass(frozen=True)
 class TransposeCodec(CodecEntity):
     """The `transpose` codec, coerced from its metadata."""
@@ -96,7 +77,23 @@ class TransposeCodec(CodecEntity):
     configuration_required: ClassVar[bool] = True
     member_types: ClassVar[MemberTypes] = {"order": (True, sequence_of(is_int))}
 
-    value_problems: ClassVar[ValueRoutine] = staticmethod(_value_problems)
+    @staticmethod
+    def value_problems(
+        **members: Unpack[TransposeCodecConfiguration],
+    ) -> tuple[ValidationProblem, ...]:
+        """`order` must permute its own axes.
+
+        Whether it permutes the *array's* axes is a different question --
+        it needs the array's rank -- and the rules layer asks that one.
+        """
+        order = members["order"]
+        if sorted(order) != list(range(len(order))):
+            return problem(
+                ("order",),
+                f"expected a permutation of 0..{len(order) - 1}, got {order!r}",
+                "invalid_value",
+            )
+        return ()
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         """A transpose permutes the array it receives, so ranks must agree.

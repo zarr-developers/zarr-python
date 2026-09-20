@@ -18,7 +18,6 @@ from zarr_metadata.v3._entity import (
     Loc,
     MemberTypes,
     Opaque,
-    ValueRoutine,
     is_int,
     one_of,
     problem,
@@ -153,25 +152,6 @@ class ShardingIndexedMembers(TypedDict):
     index_location: NotRequired[ShardingIndexLocation]
 
 
-def _value_problems(
-    **members: Unpack[ShardingIndexedMembers],
-) -> tuple[ValidationProblem, ...]:
-    """Every inner chunk extent must be at least one element.
-
-    Nothing about the two pipelines: their codecs are entities, and an
-    entity exists only if its own values are allowed.
-    """
-    return tuple(
-        ValidationProblem(
-            ("chunk_shape", position),
-            f"expected a positive chunk extent, got {extent}",
-            "invalid_value",
-        )
-        for position, extent in enumerate(members["chunk_shape"])
-        if extent < 1
-    )
-
-
 @dataclass(frozen=True)
 class ShardingIndexedCodec(CodecEntity):
     """The `sharding_indexed` codec, coerced from its metadata.
@@ -198,7 +178,24 @@ class ShardingIndexedCodec(CodecEntity):
         "index_location": (False, one_of(SHARDING_INDEX_LOCATION)),
     }
 
-    value_problems: ClassVar[ValueRoutine] = staticmethod(_value_problems)
+    @staticmethod
+    def value_problems(
+        **members: Unpack[ShardingIndexedMembers],
+    ) -> tuple[ValidationProblem, ...]:
+        """Every inner chunk extent must be at least one element.
+
+        Nothing about the two pipelines: their codecs are entities, and an
+        entity exists only if its own values are allowed.
+        """
+        return tuple(
+            ValidationProblem(
+                ("chunk_shape", position),
+                f"expected a positive chunk extent, got {extent}",
+                "invalid_value",
+            )
+            for position, extent in enumerate(members["chunk_shape"])
+            if extent < 1
+        )
 
     @classmethod
     def prepare(

@@ -17,7 +17,6 @@ from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     MemberTypes,
-    ValueRoutine,
     is_bool,
     is_int,
     problem,
@@ -78,20 +77,6 @@ __all__ = [
 ]
 
 
-def _value_problems(
-    **members: Unpack[ZstdCodecConfiguration],
-) -> tuple[ValidationProblem, ...]:
-    """zstd compression levels run -131072 to 22."""
-    level = members["level"]
-    if not ZSTD_MIN_LEVEL <= level <= ZSTD_MAX_LEVEL:
-        return problem(
-            ("level",),
-            f"expected an integer in [{ZSTD_MIN_LEVEL}, {ZSTD_MAX_LEVEL}], got {level}",
-            "invalid_value",
-        )
-    return ()
-
-
 @dataclass(frozen=True)
 class ZstdCodec(CodecEntity):
     """The `zstd` codec, coerced from its metadata."""
@@ -109,7 +94,19 @@ class ZstdCodec(CodecEntity):
         "checksum": (False, is_bool),
     }
 
-    value_problems: ClassVar[ValueRoutine] = staticmethod(_value_problems)
+    @staticmethod
+    def value_problems(
+        **members: Unpack[ZstdCodecConfiguration],
+    ) -> tuple[ValidationProblem, ...]:
+        """zstd compression levels run -131072 to 22."""
+        level = members["level"]
+        if not ZSTD_MIN_LEVEL <= level <= ZSTD_MAX_LEVEL:
+            return problem(
+                ("level",),
+                f"expected an integer in [{ZSTD_MIN_LEVEL}, {ZSTD_MAX_LEVEL}], got {level}",
+                "invalid_value",
+            )
+        return ()
 
     def to_json(self) -> ZstdCodecObject:
         return cast("ZstdCodecObject", super().to_json())

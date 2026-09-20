@@ -14,7 +14,6 @@ from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     MemberTypes,
-    ValueRoutine,
     is_int,
     problem,
 )
@@ -69,16 +68,6 @@ __all__ = [
 ]
 
 
-def _value_problems(
-    **members: Unpack[GzipCodecConfiguration],
-) -> tuple[ValidationProblem, ...]:
-    """gzip compression levels run 0 to 9."""
-    level = members["level"]
-    if not 0 <= level <= 9:
-        return problem(("level",), f"expected an integer in [0, 9], got {level}", "invalid_value")
-    return ()
-
-
 @dataclass(frozen=True)
 class GzipCodec(CodecEntity):
     """The `gzip` codec, coerced from its metadata."""
@@ -92,7 +81,17 @@ class GzipCodec(CodecEntity):
     configuration_required: ClassVar[bool] = True
     member_types: ClassVar[MemberTypes] = {"level": (True, is_int)}
 
-    value_problems: ClassVar[ValueRoutine] = staticmethod(_value_problems)
+    @staticmethod
+    def value_problems(
+        **members: Unpack[GzipCodecConfiguration],
+    ) -> tuple[ValidationProblem, ...]:
+        """gzip compression levels run 0 to 9."""
+        level = members["level"]
+        if not 0 <= level <= 9:
+            return problem(
+                ("level",), f"expected an integer in [0, 9], got {level}", "invalid_value"
+            )
+        return ()
 
     def to_json(self) -> GzipCodecObject:
         return cast("GzipCodecObject", super().to_json())

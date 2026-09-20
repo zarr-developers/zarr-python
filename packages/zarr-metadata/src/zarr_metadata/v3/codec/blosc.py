@@ -15,7 +15,6 @@ from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     MemberTypes,
-    ValueRoutine,
     is_int,
     one_of,
     problem,
@@ -92,44 +91,6 @@ __all__ = [
 ]
 
 
-def _value_problems(
-    **members: Unpack[BloscCodecConfiguration],
-) -> tuple[ValidationProblem, ...]:
-    """The value constraints the spec places on a blosc configuration."""
-    found: list[ValidationProblem] = []
-    clevel = members["clevel"]
-    if not 0 <= clevel <= 9:
-        found.extend(
-            problem(("clevel",), f"expected an integer in [0, 9], got {clevel}", "invalid_value")
-        )
-    blocksize = members["blocksize"]
-    if blocksize < 0:
-        found.extend(
-            problem(
-                ("blocksize",),
-                f"expected a non-negative integer, got {blocksize}",
-                "invalid_value",
-            )
-        )
-    shuffle = members["shuffle"]
-    typesize = members.get("typesize")
-    # Only where it means something: under `noshuffle` the spec says
-    # "the value is ignored", and `canonical` drops it.
-    if typesize is not None and shuffle != BLOSC_NO_SHUFFLE and typesize < 1:
-        found.extend(
-            problem(("typesize",), f"expected a positive integer, got {typesize}", "invalid_value")
-        )
-    if shuffle != BLOSC_NO_SHUFFLE and typesize is None:
-        found.extend(
-            problem(
-                ("typesize",),
-                f"typesize is required when shuffle is {shuffle!r}",
-                "missing_key",
-            )
-        )
-    return tuple(found)
-
-
 @dataclass(frozen=True)
 class BloscCodec(CodecEntity):
     """The `blosc` codec, coerced from its metadata.
@@ -161,7 +122,47 @@ class BloscCodec(CodecEntity):
         "typesize": (False, is_int),
     }
 
-    value_problems: ClassVar[ValueRoutine] = staticmethod(_value_problems)
+    @staticmethod
+    def value_problems(
+        **members: Unpack[BloscCodecConfiguration],
+    ) -> tuple[ValidationProblem, ...]:
+        """The value constraints the spec places on a blosc configuration."""
+        found: list[ValidationProblem] = []
+        clevel = members["clevel"]
+        if not 0 <= clevel <= 9:
+            found.extend(
+                problem(
+                    ("clevel",), f"expected an integer in [0, 9], got {clevel}", "invalid_value"
+                )
+            )
+        blocksize = members["blocksize"]
+        if blocksize < 0:
+            found.extend(
+                problem(
+                    ("blocksize",),
+                    f"expected a non-negative integer, got {blocksize}",
+                    "invalid_value",
+                )
+            )
+        shuffle = members["shuffle"]
+        typesize = members.get("typesize")
+        # Only where it means something: under `noshuffle` the spec says
+        # "the value is ignored", and `canonical` drops it.
+        if typesize is not None and shuffle != BLOSC_NO_SHUFFLE and typesize < 1:
+            found.extend(
+                problem(
+                    ("typesize",), f"expected a positive integer, got {typesize}", "invalid_value"
+                )
+            )
+        if shuffle != BLOSC_NO_SHUFFLE and typesize is None:
+            found.extend(
+                problem(
+                    ("typesize",),
+                    f"typesize is required when shuffle is {shuffle!r}",
+                    "missing_key",
+                )
+            )
+        return tuple(found)
 
     def canonical(self) -> Self:
         """Without a `typesize` that `noshuffle` renders meaningless.

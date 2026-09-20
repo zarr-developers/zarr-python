@@ -14,7 +14,6 @@ from zarr_metadata.v3._entity import (
     ChunkGridEntity,
     Loc,
     MemberTypes,
-    ValueRoutine,
     is_integer,
     one_of,
     problem,
@@ -202,44 +201,6 @@ def _axis_lengths(spec: RectilinearDimSpec) -> frozenset[int] | None:
     return frozenset(lengths) if len(lengths) != 0 else None
 
 
-def _value_problems(
-    **members: Unpack[RectilinearChunkGridConfiguration],
-) -> tuple[ValidationProblem, ...]:
-    """Every chunk extent, bare or run-length encoded, must be positive.
-
-    A run's count must be positive too: a run of zero chunks is a way
-    of writing nothing at all, and the empty spelling already exists.
-    """
-    found: list[ValidationProblem] = []
-    for dim, spec in enumerate(members["chunk_shapes"]):
-        loc: tuple[str | int, ...] = ("chunk_shapes", dim)
-        if isinstance(spec, int):
-            if spec < 1:
-                found.extend(
-                    problem(loc, f"expected a positive chunk extent, got {spec}", "invalid_value")
-                )
-            continue
-        for position, item in enumerate(spec):
-            if isinstance(item, int):
-                if item < 1:
-                    found.extend(
-                        problem(
-                            (*loc, position),
-                            f"expected a positive chunk extent, got {item}",
-                            "invalid_value",
-                        )
-                    )
-            elif item[0] < 1 or item[1] < 1:
-                found.extend(
-                    problem(
-                        (*loc, position),
-                        f"expected a positive [size, count] pair, got {item!r}",
-                        "invalid_value",
-                    )
-                )
-    return tuple(found)
-
-
 @dataclass(frozen=True)
 class RectilinearChunkGrid(ChunkGridEntity):
     """The `rectilinear` chunk grid, coerced from its metadata."""
@@ -255,7 +216,45 @@ class RectilinearChunkGrid(ChunkGridEntity):
         "chunk_shapes": (True, _is_dim_specs),
     }
 
-    value_problems: ClassVar[ValueRoutine] = staticmethod(_value_problems)
+    @staticmethod
+    def value_problems(
+        **members: Unpack[RectilinearChunkGridConfiguration],
+    ) -> tuple[ValidationProblem, ...]:
+        """Every chunk extent, bare or run-length encoded, must be positive.
+
+        A run's count must be positive too: a run of zero chunks is a way
+        of writing nothing at all, and the empty spelling already exists.
+        """
+        found: list[ValidationProblem] = []
+        for dim, spec in enumerate(members["chunk_shapes"]):
+            loc: tuple[str | int, ...] = ("chunk_shapes", dim)
+            if isinstance(spec, int):
+                if spec < 1:
+                    found.extend(
+                        problem(
+                            loc, f"expected a positive chunk extent, got {spec}", "invalid_value"
+                        )
+                    )
+                continue
+            for position, item in enumerate(spec):
+                if isinstance(item, int):
+                    if item < 1:
+                        found.extend(
+                            problem(
+                                (*loc, position),
+                                f"expected a positive chunk extent, got {item}",
+                                "invalid_value",
+                            )
+                        )
+                elif item[0] < 1 or item[1] < 1:
+                    found.extend(
+                        problem(
+                            (*loc, position),
+                            f"expected a positive [size, count] pair, got {item!r}",
+                            "invalid_value",
+                        )
+                    )
+        return tuple(found)
 
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
         """One spec per dimension, and explicit specs must cover it.

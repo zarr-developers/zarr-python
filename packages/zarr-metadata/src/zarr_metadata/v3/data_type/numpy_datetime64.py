@@ -13,7 +13,6 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     MemberTypes,
     StorageClass,
-    ValueRoutine,
     is_int,
     one_of,
     problem,
@@ -78,23 +77,6 @@ __all__ = [
 ]
 
 
-def _value_problems(
-    **members: Unpack[NumpyDatetime64Configuration],
-) -> tuple[ValidationProblem, ...]:
-    """`scale_factor` counts units per step, so it is positive.
-
-    The upper bound is numpy's: the field is a signed 32-bit integer.
-    """
-    scale_factor = members["scale_factor"]
-    if not 1 <= scale_factor <= NUMPY_TIME_MAX_SCALE_FACTOR:
-        return problem(
-            ("scale_factor",),
-            f"expected an integer in [1, {NUMPY_TIME_MAX_SCALE_FACTOR}], got {scale_factor}",
-            "invalid_value",
-        )
-    return ()
-
-
 @dataclass(frozen=True)
 class NumpyDatetime64DataType(NumpyTimeDataType):
     """The `numpy.datetime64` data type, coerced from its metadata."""
@@ -111,7 +93,22 @@ class NumpyDatetime64DataType(NumpyTimeDataType):
         "scale_factor": (True, is_int),
     }
 
-    value_problems: ClassVar[ValueRoutine] = staticmethod(_value_problems)
+    @staticmethod
+    def value_problems(
+        **members: Unpack[NumpyDatetime64Configuration],
+    ) -> tuple[ValidationProblem, ...]:
+        """`scale_factor` counts units per step, so it is positive.
+
+        The upper bound is numpy's: the field is a signed 32-bit integer.
+        """
+        scale_factor = members["scale_factor"]
+        if not 1 <= scale_factor <= NUMPY_TIME_MAX_SCALE_FACTOR:
+            return problem(
+                ("scale_factor",),
+                f"expected an integer in [1, {NUMPY_TIME_MAX_SCALE_FACTOR}], got {scale_factor}",
+                "invalid_value",
+            )
+        return ()
 
     def to_json(self) -> NumpyDatetime64:
         return cast("NumpyDatetime64", super().to_json())

@@ -16,7 +16,6 @@ from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     MemberTypes,
-    ValueRoutine,
     is_json_value,
     problem,
 )
@@ -76,27 +75,6 @@ __all__ = [
 ]
 
 
-def _value_problems(
-    **members: Unpack[ScaleOffsetCodecConfiguration],
-) -> tuple[ValidationProblem, ...]:
-    """Each value is a scalar of the array's type, so neither is null.
-
-    The registry says each is "JSON-encoded per the input array's
-    fill-value rules", and no data type admits `null` as a fill value.
-    Which scalar it should be needs the data type, so that part is the
-    document's question, not this codec's.
-    """
-    # Each member named outright: a TypedDict indexed by a loop variable
-    # has no type, and the two are different members rather than two of
-    # a kind.
-    found: list[ValidationProblem] = []
-    if members.get("offset", UNSET) is None:
-        found.extend(problem(("offset",), "expected a scalar, got null", "invalid_value"))
-    if members.get("scale", UNSET) is None:
-        found.extend(problem(("scale",), "expected a scalar, got null", "invalid_value"))
-    return tuple(found)
-
-
 @dataclass(frozen=True)
 class ScaleOffsetCodec(CodecEntity):
     """The `scale_offset` codec, coerced from its metadata.
@@ -125,7 +103,26 @@ class ScaleOffsetCodec(CodecEntity):
         """
         return incoming
 
-    value_problems: ClassVar[ValueRoutine] = staticmethod(_value_problems)
+    @staticmethod
+    def value_problems(
+        **members: Unpack[ScaleOffsetCodecConfiguration],
+    ) -> tuple[ValidationProblem, ...]:
+        """Each value is a scalar of the array's type, so neither is null.
+
+        The registry says each is "JSON-encoded per the input array's
+        fill-value rules", and no data type admits `null` as a fill value.
+        Which scalar it should be needs the data type, so that part is the
+        document's question, not this codec's.
+        """
+        # Each member named outright: a TypedDict indexed by a loop variable
+        # has no type, and the two are different members rather than two of
+        # a kind.
+        found: list[ValidationProblem] = []
+        if members.get("offset", UNSET) is None:
+            found.extend(problem(("offset",), "expected a scalar, got null", "invalid_value"))
+        if members.get("scale", UNSET) is None:
+            found.extend(problem(("scale",), "expected a scalar, got null", "invalid_value"))
+        return tuple(found)
 
     def to_json(self) -> ScaleOffsetCodecObject | ScaleOffsetCodecName:
         return cast("ScaleOffsetCodecObject | ScaleOffsetCodecName", super().to_json())
