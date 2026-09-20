@@ -15,7 +15,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 import zarr_metadata.rules._entities as entities
-from zarr_metadata.rules import ZARR_V2_ARRAY_RULES, ZARR_V3_ARRAY_RULES, ZARR_V3_GROUP_RULES
+from zarr_metadata.rules import (
+    ZARR_V2_ARRAY_RULES,
+    ZARR_V3_ARRAY_RULES,
+    ZARR_V3_GROUP_RULES,
+    Rule,
+)
 from zarr_metadata.rules._registry import (
     dispatched_fields,
     document_rule,
@@ -41,15 +46,20 @@ if TYPE_CHECKING:
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC_NAME
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC_NAME
 
-# Entities the package models but that carry no composition rules: their
-# canonical shape is the whole of what we can say about them. Listed by
-# hand, keyed by extension point, so that adding a codec is a deliberate
-# choice between "write rules" and "record that there are none", never a
-# silent omission.
+# Entities the package models that carry no *composition* rule — nothing
+# about them depends on the document or on the codec chain. Several still
+# have value constraints (`blosc`'s clevel range, `gzip`'s and `zstd`'s
+# level ranges); those are refinements of the type and live with it in
+# `v3._shape`, not here. Listed by hand, keyed by extension point, so that
+# adding a codec is a deliberate choice between "write a rule" and "record
+# that composition says nothing", never a silent omission.
 _RULE_FREE = frozenset(
     {
+        (CODECS, "blosc"),
         (CODECS, "crc32c"),
+        (CODECS, "gzip"),
         (CODECS, "scale_offset"),
+        (CODECS, "zstd"),
         (CHUNK_KEY_ENCODING, "default"),
         (CHUNK_KEY_ENCODING, "v2"),
         (DATA_TYPE, "bool"),
@@ -214,3 +224,48 @@ def test_error_entity_rule_reads_an_optional_member() -> None:
             incoming: ArrayParts | None,
         ) -> tuple[ValidationProblem, ...]:  # pragma: no cover - never registered
             return ()
+
+
+# Every document rule, by the layer it belongs to. A field rule reads one
+# top-level field; a composition rule spans several. Listed by hand so that
+# adding one is a deliberate choice, the way `_RULE_FREE` makes "this entity
+# has no composition rule" a deliberate choice.
+_FIELD_RULES = frozenset(
+    {
+        "_check_data_type_spelling",
+        "_check_data_type_shape",
+        "_check_chunk_key_encoding_shape",
+        "_check_chunk_grid_shape",
+        "check_codec_pipeline_order",
+        "check_codec_shapes",
+        "check_chunk_grid_shape",
+        "_dispatch_chunk_grid_entity_rules",
+        "_dispatch_data_type_entity_rules",
+        "_dispatch_chunk_key_encoding_entity_rules",
+        "_dispatch_codecs_entity_rules",
+        "check_consolidated_entries",
+    }
+)
+_COMPOSITION_RULES = frozenset(
+    {"_check_fill_matches_dtype", "check_dimension_names_length", "check_chunks_match_shape"}
+)
+
+
+@pytest.mark.parametrize(
+    "rules",
+    [ZARR_V3_ARRAY_RULES, ZARR_V2_ARRAY_RULES, ZARR_V3_GROUP_RULES],
+    ids=["v3-array", "v2-array", "v3-group"],
+)
+def test_document_rules_are_classified_by_what_they_read(rules: tuple[Rule, ...]) -> None:
+    # The classification is not decoration: a rule reading one field is a
+    # value constraint on that field, and could in principle move down to
+    # the layer that owns the field. One spanning fields cannot.
+    for rule in rules:
+        name = rule.check.__name__
+        assert name in _FIELD_RULES | _COMPOSITION_RULES, f"{name} is classified nowhere"
+        if name in _FIELD_RULES:
+            assert len(rule.requires) == 1, (
+                f"{name} is a field rule but reads {sorted(rule.requires)}"
+            )
+        else:
+            assert len(rule.requires) >= 2, f"{name} is a composition rule but reads one field"

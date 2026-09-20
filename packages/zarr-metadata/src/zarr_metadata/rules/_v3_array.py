@@ -1,4 +1,19 @@
-"""Composition rules for v3 array metadata documents.
+"""Rules over a whole v3 array metadata document.
+
+The same three-way split the entity layer uses applies here, one level
+up. **Type** is the document's structure, checked by
+`zarr_metadata.model`. **Value** is a constraint on one field's own
+content — the codec pipeline's kind ordering, a known entity's canonical
+shape — which needs nothing else in the document to decide. **Composition**
+is a judgment spanning fields: a fill value against its data type, one
+dimension name per dimension of `shape`.
+
+A rule's `requires` says which it is, and the two are kept in separate
+sections below; `tests/rules/test_registry.py` asserts the partition, so
+adding a rule is a deliberate choice rather than an accident of where the
+cursor was. Value rules over a single *entity* go one level further down,
+into `v3._shape` if they constrain a member and into `rules._entities` if
+they constrain elements within one.
 
 Whole-document rules live here: judgments that read several top-level
 fields, or that apply to a field regardless of which extension occupies
@@ -299,7 +314,7 @@ def _struct_fill_problems(
 
 
 # ---------------------------------------------------------------------------
-# whole-document rules
+# field rules: each reads one top-level field and nothing else
 # ---------------------------------------------------------------------------
 
 ZARR_V3_ARRAY = "zarr_v3_array"
@@ -309,9 +324,6 @@ register_document_type(ZARR_V3_ARRAY, ARRAY_METADATA_STANDARD_KEYS_V3)
 
 _data_type_spelling = document_rule(ZARR_V3_ARRAY, frozenset({"data_type"}))(
     _check_data_type_spelling
-)
-_fill_matches_dtype = document_rule(ZARR_V3_ARRAY, frozenset({"data_type", "fill_value"}))(
-    _check_fill_matches_dtype
 )
 
 
@@ -329,6 +341,7 @@ def _known_entity_shape(
         found = validate_known_entity_metadata(field, document[field])
         return () if found is None else prefixed((field,), found)
 
+    check.__name__ = f"_check_{field}_shape"
     return check
 
 
@@ -366,6 +379,15 @@ def check_chunk_grid_shape(document: Mapping[str, object]) -> tuple[ValidationPr
     if found is None:
         return ()
     return prefixed(("chunk_grid",), found)
+
+
+# ---------------------------------------------------------------------------
+# composition rules: each spans more than one top-level field
+# ---------------------------------------------------------------------------
+
+_fill_matches_dtype = document_rule(ZARR_V3_ARRAY, frozenset({"data_type", "fill_value"}))(
+    _check_fill_matches_dtype
+)
 
 
 @document_rule(ZARR_V3_ARRAY, frozenset({"shape", "dimension_names"}))

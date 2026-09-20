@@ -15,8 +15,29 @@ Two package-wide conventions qualify "exact":
   the TypedDicts declare. Normalize a freshly-`json.loads`-ed document
   (e.g. with a model-layer parser) before asking for shape verdicts.
 
-Value judgments beyond the types — permutation contents, shard geometry,
-cross-field consistency — belong to the composition rule layer, not here.
+Three kinds of judgment, and this module owns the first two:
+
+- **type**: is this an integer? — the TypedDicts, checked member by member.
+- **value**: is it an integer *in [0, 9]*? — a constraint the spec places on
+  one member's value, or on one entity's own configuration. Stated here as
+  a richer checker, or as an entity `invariant` when it spans two members
+  of the same configuration, because it is a refinement of the type and
+  needs nothing outside the entity to decide.
+- **composition**: does this codec's rank match the array that reached it?
+  — needs the document or the codec chain, and belongs to
+  `zarr_metadata.rules`.
+
+Putting value constraints here rather than in the rule layer keeps the
+answer next to the type it refines, and means a rule only exists where a
+judgment genuinely spans more than one entity.
+
+The boundary is the *member*, and it is not a matter of taste. A verdict
+here marks a whole member unusable, so a constraint on the elements
+*within* one — every extent of a `chunk_shape` being positive — would cost
+precision elsewhere: a zero on one axis would stop a rectilinear grid
+reporting the axis beside it, and would stand down a shard's inner
+pipeline entirely. Those stay in the rule layer, which judges element by
+element. Constraints on a member as a whole belong here.
 
 Unknown names are not judged (extension openness): the `validate_known_*`
 functions answer `None` for entities this package has no types for, no
@@ -33,7 +54,7 @@ ties it to the modules that define those names.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, cast
 
@@ -76,6 +97,7 @@ from zarr_metadata.v3.chunk_key_encoding.v2 import (
 from zarr_metadata.v3.codec.blosc import (
     BLOSC_CNAME,
     BLOSC_CODEC_NAME,
+    BLOSC_NO_SHUFFLE,
     BLOSC_SHUFFLE,
     BloscCodecConfiguration,
     BloscCodecObject,
@@ -148,11 +170,19 @@ from zarr_metadata.v3.data_type.uint32 import UINT32_DATA_TYPE_NAME
 from zarr_metadata.v3.data_type.uint64 import UINT64_DATA_TYPE_NAME
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from zarr_metadata.model._validation import ProblemKind
 
-    _FieldChecker = Callable[[object, tuple[str | int, ...]], tuple[ValidationProblem, ...]]
+_FieldChecker = Callable[[object, tuple[str | int, ...]], tuple[ValidationProblem, ...]]
+"""A constraint on one configuration member's value, given its location."""
+
+_EntityInvariant = Callable[[Mapping[str, object]], tuple[ValidationProblem, ...]]
+"""A value constraint spanning two members of one configuration.
+
+Runs only once every member has passed its own checker, so it may read
+them without guarding; `blosc`'s "typesize is required unless shuffle is
+noshuffle" is the whole population today. Locations are relative to the
+configuration.
+"""
 
 
 def entity_name(value: object) -> str | None:
@@ -186,6 +216,73 @@ def _check_json_bool(value: object, loc: tuple[str | int, ...]) -> tuple[Validat
     if not isinstance(value, bool):
         return _problems(loc, f"expected a boolean, got {value!r}")
     return ()
+
+
+def _int_in_range(low: int, high: int) -> _FieldChecker:
+    """An integer the spec confines to `[low, high]`."""
+
+    def check(value: object, loc: tuple[str | int, ...]) -> tuple[ValidationProblem, ...]:
+        problems = _check_json_int(value, loc)
+        if len(problems) != 0:
+            return problems
+        if low <= cast("int", value) <= high:
+            return ()
+        return _problems(
+            loc, f"expected an integer in [{low}, {high}], got {value!r}", "invalid_value"
+        )
+
+    return check
+
+
+def _bounded_int(low: int, description: str) -> _FieldChecker:
+    """An integer the spec bounds from below only."""
+
+    def check(value: object, loc: tuple[str | int, ...]) -> tuple[ValidationProblem, ...]:
+        problems = _check_json_int(value, loc)
+        if len(problems) != 0:
+            return problems
+        if cast("int", value) >= low:
+            return ()
+        return _problems(loc, f"expected {description}, got {value!r}", "invalid_value")
+
+    return check
+
+
+_check_positive_int = _bounded_int(1, "a positive integer")
+_check_non_negative_int = _bounded_int(0, "a non-negative integer")
+
+
+def _check_permutation(value: object, loc: tuple[str | int, ...]) -> tuple[ValidationProblem, ...]:
+    """A transpose order: a permutation of its own indices.
+
+    Whether it also matches the rank of the array that reached the codec
+    is composition, and lives in `rules._entities.transpose`.
+    """
+    problems = _check_int_tuple(value, loc)
+    if len(problems) != 0:
+        return problems
+    order = cast("tuple[int, ...]", value)
+    if sorted(order) == list(range(len(order))):
+        return ()
+    return _problems(
+        loc, f"expected a permutation of 0..{len(order) - 1}, got {order!r}", "invalid_value"
+    )
+
+
+def _blosc_typesize_is_present_when_shuffling(
+    configuration: Mapping[str, object],
+) -> tuple[ValidationProblem, ...]:
+    """`typesize` is required unless `shuffle` is `"noshuffle"`.
+
+    The one constraint in this package that spans two members of a single
+    configuration, and the reason `_EntityShape` carries invariants at all.
+    """
+    shuffle = configuration.get("shuffle")
+    if shuffle == BLOSC_NO_SHUFFLE or "typesize" in configuration:
+        return ()
+    return _problems(
+        ("typesize",), f"typesize is required when shuffle is {shuffle!r}", "missing_key"
+    )
 
 
 def _literal(allowed: tuple[str, ...]) -> _FieldChecker:
@@ -368,12 +465,14 @@ class _EntityShape:
     config_keys: frozenset[str]
     config_required: frozenset[str]
     config_checkers: Mapping[str, _FieldChecker]
+    invariants: tuple[_EntityInvariant, ...] = ()
 
 
 def _shape(
     object_type: type,
     configuration_type: type,
     checkers: Mapping[str, _FieldChecker],
+    invariants: tuple[_EntityInvariant, ...] = (),
 ) -> _EntityShape:
     config_keys = frozenset(configuration_type.__annotations__)
     if frozenset(checkers) != config_keys:
@@ -390,6 +489,7 @@ def _shape(
             configuration_type.__required_keys__,  # type: ignore[attr-defined]
         ),
         config_checkers=dict(checkers),
+        invariants=invariants,
     )
 
 
@@ -419,11 +519,12 @@ _CODEC_SHAPES: Final[Mapping[str, _EntityShape]] = {
         BloscCodecConfiguration,
         {
             "cname": _literal(BLOSC_CNAME),
-            "clevel": _check_json_int,
+            "clevel": _int_in_range(0, 9),
             "shuffle": _literal(BLOSC_SHUFFLE),
-            "blocksize": _check_json_int,
-            "typesize": _check_json_int,
+            "blocksize": _check_non_negative_int,
+            "typesize": _check_positive_int,
         },
+        invariants=(_blosc_typesize_is_present_when_shuffling,),
     ),
     BYTES_CODEC_NAME: _shape(
         BytesCodecObject, BytesCodecConfiguration, {"endian": _literal(ENDIANNESS)}
@@ -439,7 +540,9 @@ _CODEC_SHAPES: Final[Mapping[str, _EntityShape]] = {
         },
     ),
     CRC32C_CODEC_NAME: _shape(Crc32cCodecObject, Empty, {}),
-    GZIP_CODEC_NAME: _shape(GzipCodecObject, GzipCodecConfiguration, {"level": _check_json_int}),
+    GZIP_CODEC_NAME: _shape(
+        GzipCodecObject, GzipCodecConfiguration, {"level": _int_in_range(0, 9)}
+    ),
     SCALE_OFFSET_CODEC_NAME: _shape(
         ScaleOffsetCodecObject,
         ScaleOffsetCodecConfiguration,
@@ -456,12 +559,12 @@ _CODEC_SHAPES: Final[Mapping[str, _EntityShape]] = {
         },
     ),
     TRANSPOSE_CODEC_NAME: _shape(
-        TransposeCodecObject, TransposeCodecConfiguration, {"order": _check_int_tuple}
+        TransposeCodecObject, TransposeCodecConfiguration, {"order": _check_permutation}
     ),
     ZSTD_CODEC_NAME: _shape(
         ZstdCodecObject,
         ZstdCodecConfiguration,
-        {"level": _check_json_int, "checksum": _check_json_bool},
+        {"level": _int_in_range(-131072, 22), "checksum": _check_json_bool},
     ),
 }
 
@@ -519,12 +622,12 @@ _DATA_TYPE_SHAPES: Final[Mapping[str, _EntityShape]] = {
     NUMPY_DATETIME64_DATA_TYPE_NAME: _shape(
         NumpyDatetime64,
         NumpyDatetime64Configuration,
-        {"unit": _literal(NUMPY_TIME_UNIT), "scale_factor": _check_json_int},
+        {"unit": _literal(NUMPY_TIME_UNIT), "scale_factor": _int_in_range(1, 2**31 - 1)},
     ),
     NUMPY_TIMEDELTA64_DATA_TYPE_NAME: _shape(
         NumpyTimedelta64,
         NumpyTimedelta64Configuration,
-        {"unit": _literal(NUMPY_TIME_UNIT), "scale_factor": _check_json_int},
+        {"unit": _literal(NUMPY_TIME_UNIT), "scale_factor": _int_in_range(1, 2**31 - 1)},
     ),
     STRUCT_DATA_TYPE_NAME: _shape(Struct, StructConfiguration, {"fields": _check_struct_fields}),
 }
@@ -585,6 +688,16 @@ def _validate_known_entity(
     for key, checker in shape.config_checkers.items():
         if key in config:
             problems.extend(checker(config[key], ("configuration", key)))
+    if len(problems) == 0:
+        # Invariants read members directly, so they run only once every
+        # member has been vouched for; a complaint about one member is
+        # reason enough not to reason across them.
+        usable = cast("Mapping[str, object]", config)
+        for invariant in shape.invariants:
+            problems.extend(
+                ValidationProblem(("configuration", *found.loc), found.message, found.kind)
+                for found in invariant(usable)
+            )
     return tuple(problems)
 
 

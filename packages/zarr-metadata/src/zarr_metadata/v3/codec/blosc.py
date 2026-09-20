@@ -20,6 +20,14 @@ BloscShuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
 BLOSC_SHUFFLE: Final = ("noshuffle", "shuffle", "bitshuffle")
 """Tuple of permitted values for the `shuffle` field of the `blosc` codec."""
 
+BLOSC_NO_SHUFFLE: Final = "noshuffle"
+"""The `shuffle` value under which `typesize` carries no information.
+
+The spec requires `typesize` "unless `shuffle` is `"noshuffle"`, in which
+case the value is ignored", so this is the one value that changes whether
+another member is required.
+"""
+
 BloscCName = Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
 """Literal type of blosc compressor identifiers."""
 
@@ -58,6 +66,7 @@ is not permitted by the spec for this codec.
 __all__ = [
     "BLOSC_CNAME",
     "BLOSC_CODEC_NAME",
+    "BLOSC_NO_SHUFFLE",
     "BLOSC_SHUFFLE",
     "BloscCName",
     "BloscCodecConfiguration",

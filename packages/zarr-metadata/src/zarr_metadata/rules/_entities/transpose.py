@@ -1,4 +1,9 @@
-"""Composition rules and spec transition for the `transpose` codec."""
+"""Composition rules and spec transition for the `transpose` codec.
+
+Whether `order` is a permutation of its own indices is a fact about the
+value, checked by `v3._shape`. What is left here needs the array that
+reached the codec.
+"""
 
 from __future__ import annotations
 
@@ -30,27 +35,6 @@ def permute_grid(configuration: Mapping[str, object], incoming: ArrayParts) -> A
     if sorted(order) != list(range(len(order))):
         return incoming.with_grid(ChunkGrid(incoming.grid.rank, None))
     return incoming.with_grid(incoming.grid.permuted(order))
-
-
-@entity_rule(_ARRAY_V3, CODECS, TRANSPOSE_CODEC_NAME, reads=frozenset({"order"}))
-def order_is_a_permutation(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
-) -> tuple[ValidationProblem, ...]:
-    """`order` must be a permutation of its own indices.
-
-    Checked without reference to the incoming shape, so it holds even
-    when propagation has stopped upstream.
-    """
-    order = cast("tuple[int, ...]", configuration["order"])
-    if sorted(order) == list(range(len(order))):
-        return ()
-    return (
-        ValidationProblem(
-            ("order",),
-            f"expected a permutation of 0..{len(order) - 1}, got {order!r}",
-            "invalid_value",
-        ),
-    )
 
 
 @entity_rule(_ARRAY_V3, CODECS, TRANSPOSE_CODEC_NAME, reads=frozenset({"order"}))
