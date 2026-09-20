@@ -4,6 +4,7 @@ Blosc codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
 """
 
+from collections.abc import Mapping
 from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
@@ -63,6 +64,22 @@ is not permitted by the spec for this codec.
   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564 (short-hand names only "if no configuration metadata is required")
 """
 
+
+def canonical_configuration(configuration: Mapping[str, object]) -> Mapping[str, object]:
+    """A blosc configuration in its simplest equivalent form.
+
+    Under `shuffle: "noshuffle"` the spec says of `typesize` that "the
+    value is ignored", so whatever it holds carries no meaning and two
+    documents differing only there describe the same codec. Dropping it
+    makes that equality visible.
+
+    Assumes a configuration the shape validator has already accepted.
+    """
+    if configuration.get("shuffle") != BLOSC_NO_SHUFFLE or "typesize" not in configuration:
+        return configuration
+    return {key: value for key, value in configuration.items() if key != "typesize"}
+
+
 __all__ = [
     "BLOSC_CNAME",
     "BLOSC_CODEC_NAME",
@@ -74,4 +91,5 @@ __all__ = [
     "BloscCodecName",
     "BloscCodecObject",
     "BloscShuffle",
+    "canonical_configuration",
 ]
