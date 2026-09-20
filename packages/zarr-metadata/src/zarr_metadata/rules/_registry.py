@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, cast
 
 from zarr_metadata.rules._engine import Rule, as_string_mapping, prefixed
-from zarr_metadata.rules._spec import NOTHING_KNOWN, ArraySpec, initial_spec, propagate
+from zarr_metadata.rules._spec import NOTHING_KNOWN, ArraySpec, propagate
 from zarr_metadata.v3._extension_points import CHUNK_GRID, ExtensionPointField, canonical_name
 from zarr_metadata.v3._shape import (
     blocking_problems,
@@ -302,7 +302,10 @@ def chain_initial_spec(document: Mapping[str, object]) -> ArraySpec:
             values = cast("tuple[object, ...]", extents)
             if all(isinstance(v, int) and not isinstance(v, bool) and v >= 1 for v in values):
                 chunk_shape = cast("tuple[int, ...]", values)
-    return initial_spec(document, chunk_shape)
+    data_type = document.get("data_type")
+    if not isinstance(data_type, (str, Mapping)):
+        data_type = None
+    return ArraySpec(chunk_shape, data_type)  # type: ignore[arg-type]
 
 
 __all__ = [

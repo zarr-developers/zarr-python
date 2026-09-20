@@ -25,7 +25,6 @@ DATA_TYPE: Final[ExtensionPointField] = "data_type"
 CHUNK_GRID: Final[ExtensionPointField] = "chunk_grid"
 CHUNK_KEY_ENCODING: Final[ExtensionPointField] = "chunk_key_encoding"
 CODECS: Final[ExtensionPointField] = "codecs"
-STORAGE_TRANSFORMERS: Final[ExtensionPointField] = "storage_transformers"
 
 RAW_BYTES_FAMILY: Final = "r<N>"
 """Canonical key for the parameterized raw-bytes data type family.
@@ -48,7 +47,6 @@ __all__ = [
     "CODECS",
     "DATA_TYPE",
     "RAW_BYTES_FAMILY",
-    "STORAGE_TRANSFORMERS",
     "ExtensionPointField",
     "canonical_name",
 ]

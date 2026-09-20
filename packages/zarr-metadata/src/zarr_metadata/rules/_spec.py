@@ -132,24 +132,10 @@ def propagate(
             spec = spec.with_shape(None)
 
 
-def initial_spec(document: Mapping[str, object], chunk_shape: tuple[int, ...] | None) -> ArraySpec:
-    """The spec entering a document's top-level codec chain.
-
-    The array a chunk pipeline encodes is one chunk, so the incoming shape
-    is the chunk grid's chunk shape (`None` if the grid is not a regular
-    grid this package can read). The data type is the document's own.
-    """
-    data_type = document.get("data_type")
-    if not isinstance(data_type, (str, Mapping)):
-        data_type = None
-    return ArraySpec(chunk_shape, data_type)  # type: ignore[arg-type]
-
-
 __all__ = [
     "NOTHING_KNOWN",
     "ArraySpec",
     "SpecTransition",
-    "initial_spec",
     "propagate",
     "spec_transition",
     "transitions_registered",
