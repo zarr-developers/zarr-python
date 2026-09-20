@@ -15,7 +15,7 @@ from zarr_metadata.v3._entity import (
     DataTypeEntity,
     Loc,
     MemberTypes,
-    MetadataEntity,
+    Opaque,
     StorageClass,
     problem,
     within,
@@ -128,7 +128,7 @@ class StructFieldComponent:
     """
 
     name: str
-    data_type: MetadataEntity | object
+    data_type: DataTypeEntity | Opaque
 
     def to_json(self) -> StructField:
         data_type = self.data_type
@@ -137,7 +137,7 @@ class StructFieldComponent:
             {
                 "name": self.name,
                 "data_type": (
-                    data_type.to_json() if isinstance(data_type, MetadataEntity) else data_type
+                    data_type.to_json() if isinstance(data_type, DataTypeEntity) else data_type.json
                 ),
             },
         )

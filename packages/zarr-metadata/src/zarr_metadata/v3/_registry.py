@@ -21,13 +21,19 @@ folds a spelling onto it.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Literal, overload
 
 from zarr_metadata.model._validation import (
     ValidationProblem,
     validate_metadata_field_v3,
 )
-from zarr_metadata.v3._entity import named_configuration
+from zarr_metadata.v3._entity import (
+    ChunkGridEntity,
+    CodecEntity,
+    DataTypeEntity,
+    Opaque,
+    named_configuration,
+)
 from zarr_metadata.v3._extension_points import (
     CHUNK_GRID,
     CHUNK_KEY_ENCODING,
@@ -135,6 +141,37 @@ class Context:
             return None
         return entity
 
+    @overload
+    def coerce(
+        self,
+        field: Literal["data_type"],
+        value: object,
+        loc: Loc = (),
+        *,
+        envelope_judged: bool = False,
+    ) -> tuple[DataTypeEntity | Opaque, tuple[ValidationProblem, ...]]: ...
+
+    @overload
+    def coerce(
+        self,
+        field: Literal["codecs"],
+        value: object,
+        loc: Loc = (),
+        *,
+        envelope_judged: bool = False,
+    ) -> tuple[CodecEntity | Opaque, tuple[ValidationProblem, ...]]: ...
+
+    @overload
+    def coerce(
+        self,
+        field: Literal["chunk_grid"],
+        value: object,
+        loc: Loc = (),
+        *,
+        envelope_judged: bool = False,
+    ) -> tuple[ChunkGridEntity | Opaque, tuple[ValidationProblem, ...]]: ...
+
+    @overload
     def coerce(
         self,
         field: ExtensionPointField,
@@ -142,7 +179,16 @@ class Context:
         loc: Loc = (),
         *,
         envelope_judged: bool = False,
-    ) -> tuple[MetadataEntity | object, tuple[ValidationProblem, ...]]:
+    ) -> tuple[MetadataEntity | Opaque, tuple[ValidationProblem, ...]]: ...
+
+    def coerce(
+        self,
+        field: ExtensionPointField,
+        value: object,
+        loc: Loc = (),
+        *,
+        envelope_judged: bool = False,
+    ) -> tuple[MetadataEntity | Opaque, tuple[ValidationProblem, ...]]:
         """One nested entity, read in this scope.
 
         The primitive the containing entities are built from: a `struct`
@@ -169,18 +215,20 @@ class Context:
             )
         name, _, _ = named_configuration(value)
         if name is None:
-            return value, (
+            return Opaque(value, "invalid"), (
                 *problems,
                 ValidationProblem(loc, f"expected a metadata field, got {value!r}", "invalid_type"),
             )
         entity_type = self.resolve(field, name)
         if entity_type is None:
-            return value, tuple(problems)
+            return Opaque(value, "out_of_scope"), tuple(problems)
         entity, found = entity_type.coerce(value, self)
         problems.extend(
             ValidationProblem((*loc, *entry.loc), entry.message, entry.kind) for entry in found
         )
-        return (value if entity is None else entity), tuple(problems)
+        if entity is None:
+            return Opaque(value, "invalid"), tuple(problems)
+        return entity, tuple(problems)
 
 
 _CORE_CODECS: Final[dict[str, type[MetadataEntity]]] = {

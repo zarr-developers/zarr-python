@@ -88,11 +88,15 @@ other entities has to say which point it is reading them at, and
 data types, which import this.
 """
 
-DATA_TYPE: Final[ExtensionPointField] = "data_type"
-CHUNK_GRID: Final[ExtensionPointField] = "chunk_grid"
-CHUNK_KEY_ENCODING: Final[ExtensionPointField] = "chunk_key_encoding"
-CODECS: Final[ExtensionPointField] = "codecs"
-STORAGE_TRANSFORMERS: Final[ExtensionPointField] = "storage_transformers"
+# Left to infer their `Literal` types rather than widened to
+# `ExtensionPointField`: `Context.coerce` overloads on the field, so a
+# call written with one of these constants gets the entity type back
+# rather than the base. They are still assignable to the alias.
+DATA_TYPE: Final = "data_type"
+CHUNK_GRID: Final = "chunk_grid"
+CHUNK_KEY_ENCODING: Final = "chunk_key_encoding"
+CODECS: Final = "codecs"
+STORAGE_TRANSFORMERS: Final = "storage_transformers"
 
 StorageClass = Literal["single_byte", "multi_byte", "variable_length"]
 """How one scalar of a data type occupies bytes.
@@ -248,6 +252,26 @@ def coerce_members(
         elif required:
             unreadable.add(key)
     return members, tuple(problems), frozenset(unreadable)
+
+
+@dataclass(frozen=True, slots=True)
+class Opaque:
+    """A metadata field this reading did not turn into an entity.
+
+    Carrying the JSON rather than dropping it is what makes the result a
+    real union: `CodecEntity | Opaque` is exhaustive and narrows, where
+    `CodecEntity | object` is just `object` and narrows to nothing.
+
+    `reason` is the distinction a reader needs and could not otherwise
+    make. `out_of_scope` is a name no entity in this `Context` claims --
+    an extension this reader does not model, which is not an error and is
+    the reader's cue to resolve it elsewhere. `invalid` is a name that
+    *was* claimed and then refused; the reasons are in the problems
+    reported alongside.
+    """
+
+    json: object
+    reason: Literal["out_of_scope", "invalid"]
 
 
 # No `slots=True`, deliberately. It rebuilds the class, which on Python
@@ -597,6 +621,7 @@ __all__ = [
     "Loc",
     "MemberTypes",
     "MetadataEntity",
+    "Opaque",
     "StorageClass",
     "TypeCheck",
     "coerce_members",

@@ -11,20 +11,23 @@ from typing import ClassVar
 
 import pytest
 
-from zarr_metadata.model import UNSET, ValidationProblem
+from zarr_metadata.model import UNSET, MetadataValidationError, ValidationProblem
 from zarr_metadata.rules import (
     canonicalize_array_metadata_v3,
     validate_array_metadata_v3,
 )
 from zarr_metadata.v3.entity import (
     CORE_AND_EXTENSIONS,
+    ArrayDocumentV3,
     ArrayParts,
+    ChunkGridEntity,
     CodecEntity,
     CodecKind,
     Context,
     DataTypeEntity,
     MemberTypes,
     MetadataEntity,
+    Opaque,
     StorageClass,
     is_int,
     problem,
@@ -191,3 +194,64 @@ def test_error_an_optional_member_defaults_to_unset() -> None:
             identifier: ClassVar[str] = "acme.inventive"
             kind: ClassVar[CodecKind] = "bytes_bytes"
             member_types: ClassVar[MemberTypes] = {"level": (False, is_int)}
+
+
+def test_a_reader_gets_entities_or_an_exception() -> None:
+    array = ArrayDocumentV3.from_json(_document())
+    assert isinstance(array.data_type, DataTypeEntity)
+    assert array.data_type.storage_class() == "single_byte"
+    assert array.parts.grid.rank == 1
+    assert [type(codec).identifier for codec in array.codecs if isinstance(codec, CodecEntity)] == [
+        "bytes"
+    ]
+
+
+def test_error_a_reader_gets_every_reason_at_once() -> None:
+    document = _document(fill_value=-1, dimension_names=("x", "y"))
+    with pytest.raises(MetadataValidationError) as raised:
+        ArrayDocumentV3.from_json(document)
+    assert {problem.loc for problem in raised.value.problems} == {
+        ("fill_value",),
+        ("dimension_names",),
+    }
+
+
+def test_an_unmodelled_extension_is_read_not_refused() -> None:
+    # Openness: a name this reader does not model is not a failure. It
+    # arrives as `Opaque`, saying which kind of not-an-entity it is, so
+    # the reader can resolve it elsewhere instead of guessing.
+    document = _document(
+        codecs=(
+            {"name": "numcodecs.bitround", "configuration": {"keepbits": 9}},
+            {"name": "bytes", "configuration": {"endian": "little"}},
+        )
+    )
+    array = ArrayDocumentV3.from_json(document)
+    first = array.codecs[0]
+    assert isinstance(first, Opaque)
+    assert first.reason == "out_of_scope"
+    assert first.json == {"name": "numcodecs.bitround", "configuration": {"keepbits": 9}}
+    assert isinstance(array.codecs[1], CodecEntity)
+
+
+def test_every_extension_point_is_an_exhaustive_two_case_union() -> None:
+    # The property that makes the fields narrowable: an entity of the
+    # right kind, or an `Opaque`. Never a bare `object`.
+    array = ArrayDocumentV3.from_json(_document(data_type="mycorp.decimal", fill_value=0))
+    assert isinstance(array.data_type, (DataTypeEntity, Opaque))
+    assert isinstance(array.chunk_grid, (ChunkGridEntity, Opaque))
+    assert isinstance(array.chunk_key_encoding, (MetadataEntity, Opaque))
+    assert all(isinstance(codec, (CodecEntity, Opaque)) for codec in array.codecs)
+
+
+def test_a_reader_can_choose_its_own_scope() -> None:
+    document = _document(
+        codecs=(
+            {"name": "bytes", "configuration": {"endian": "little"}},
+            {"name": "acme.lz4", "configuration": {"acceleration": 4}},
+        )
+    )
+    assert isinstance(ArrayDocumentV3.from_json(document).codecs[1], Opaque)
+    in_scope = ArrayDocumentV3.from_json(document, context=SCOPE).codecs[1]
+    assert isinstance(in_scope, AcmeLz4Codec)
+    assert in_scope.acceleration == 4

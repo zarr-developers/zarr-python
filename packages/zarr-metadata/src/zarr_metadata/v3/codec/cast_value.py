@@ -18,7 +18,7 @@ from zarr_metadata.v3._entity import (
     DataTypeEntity,
     Loc,
     MemberTypes,
-    MetadataEntity,
+    Opaque,
     is_json_value,
     one_of,
     problem,
@@ -176,6 +176,10 @@ def _is_data_type_field(value: object, loc: Loc) -> tuple[ValidationProblem, ...
     return ()
 
 
+_UNREAD: Final = Opaque(None, "invalid")
+"""Placeholder for `data_type`, which is required and so never defaulted."""
+
+
 @dataclass(frozen=True)
 class CastValueCodec(CodecEntity):
     """The `cast_value` codec, coerced from its metadata.
@@ -184,7 +188,7 @@ class CastValueCodec(CodecEntity):
     read in a scope rather than on its own.
     """
 
-    data_type: MetadataEntity | object = None
+    data_type: DataTypeEntity | Opaque = _UNREAD
     rounding: CastRoundingMode | UNSET = UNSET
     out_of_range: CastOutOfRangeMode | UNSET = UNSET
     scalar_map: ScalarMap | UNSET = UNSET
@@ -212,7 +216,7 @@ class CastValueCodec(CodecEntity):
 
     def problems(self) -> tuple[ValidationProblem, ...]:
         """Whatever the data type being cast to says about itself."""
-        if not isinstance(self.data_type, MetadataEntity):
+        if not isinstance(self.data_type, DataTypeEntity):
             return ()
         return within(("data_type",), self.data_type.problems())
 
@@ -220,8 +224,10 @@ class CastValueCodec(CodecEntity):
         """The target data type in its canonical spelling."""
         members = super().configuration()
         data_type = self.data_type
-        if isinstance(data_type, MetadataEntity):
+        if isinstance(data_type, DataTypeEntity):
             members["data_type"] = data_type.to_json()
+        else:
+            members["data_type"] = data_type.json
         return members
 
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:

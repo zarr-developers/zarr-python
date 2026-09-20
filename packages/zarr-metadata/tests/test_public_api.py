@@ -309,6 +309,7 @@ _STANDALONE_VOCAB = frozenset(
         "HexFloat64",
         "JSONValue",
         "MetadataValidationError",
+        "Opaque",
         "NumpyDatetime64",
         "NumpyTimeUnit",
         "NumpyTimedelta64",

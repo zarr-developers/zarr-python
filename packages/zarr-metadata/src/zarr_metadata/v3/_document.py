@@ -16,10 +16,18 @@ change.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, cast
 
-from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.model._validation import (
+    MetadataValidationError,
+    ValidationProblem,
+    arrays_to_tuples,
+)
+from zarr_metadata.model._validation import (
+    validate_array_metadata_v3 as validate_array_metadata_v3_structure,
+)
 from zarr_metadata.v3._chain import chain_problems
 from zarr_metadata.v3._entity import (
     CHUNK_GRID,
@@ -28,33 +36,79 @@ from zarr_metadata.v3._entity import (
     DATA_TYPE,
     STORAGE_TRANSFORMERS,
     ChunkGridEntity,
+    CodecEntity,
     DataTypeEntity,
     ExtensionPointField,
     MetadataEntity,
+    Opaque,
     within,
 )
 from zarr_metadata.v3._parts import ArrayParts, ChunkGrid
+from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
-    from zarr_metadata.v3._registry import Context
+    from collections.abc import Sequence
 
 
 @dataclass(frozen=True, slots=True)
 class ArrayDocumentV3:
     """A v3 array document with its extension points read as entities.
 
-    A field holds the value untouched where its name was out of scope, so
-    an unmodelled extension survives the reading and is simply not judged.
+    A field that could not be read holds an `Opaque`, which carries the
+    JSON the document wrote and says whether the name was out of scope --
+    an extension this reader does not model, which is not an error -- or
+    claimed and refused. Both are narrowable: every field is an exhaustive
+    two-case union.
     """
 
     document: Mapping[str, object]
-    data_type: MetadataEntity | object
-    chunk_grid: MetadataEntity | object
-    chunk_key_encoding: MetadataEntity | object
-    codecs: tuple[MetadataEntity | object, ...]
-    storage_transformers: tuple[MetadataEntity | object, ...]
+    data_type: DataTypeEntity | Opaque
+    chunk_grid: ChunkGridEntity | Opaque
+    chunk_key_encoding: MetadataEntity | Opaque
+    codecs: tuple[CodecEntity | Opaque, ...]
+    storage_transformers: tuple[MetadataEntity | Opaque, ...]
+
+    def problems(self) -> tuple[ValidationProblem, ...]:
+        """Every semantic problem this document has, once it has been read.
+
+        The type-space problems are `read_array_v3`'s, because they are
+        the reasons some of this is `Opaque` rather than an entity.
+        """
+        return (
+            *_entity_problems(self),
+            *_fill_value_problems(self),
+            *_grid_problems(self),
+            *_dimension_names_problems(self),
+            *chain_problems(self.codecs, self.parts, ("codecs",)),
+        )
+
+    @classmethod
+    def from_json(cls, value: object, *, context: Context = CORE_AND_EXTENSIONS) -> ArrayDocumentV3:
+        """A v3 array document read into entities, or raise.
+
+        The reader's front door, and the one entry point that fails fast:
+        one call, and either every extension point is read or a single
+        `MetadataValidationError` carries every reason it is not --
+        structural and semantic together. Use `validate_array_metadata_v3`
+        instead when you want the problems as data.
+
+        A name this `context` does not model is *not* a failure. It comes
+        back as an `Opaque` marked `out_of_scope`, because a document may
+        legitimately use an extension this reader does not know, and
+        refusing it would make openness unimplementable. What fails is
+        metadata that is wrong, not metadata that is unfamiliar.
+        """
+        normalized = arrays_to_tuples(value)
+        problems = validate_array_metadata_v3_structure(normalized)
+        if isinstance(normalized, Mapping) and len(problems) == 0:
+            document = cast("Mapping[str, object]", normalized)
+            array, found = read_array_v3(document, context)
+            problems = (*found, *array.problems())
+            if len(problems) == 0:
+                return array
+        if len(problems) == 0:  # pragma: no cover - a non-mapping always has problems
+            problems = (ValidationProblem((), "expected a v3 array document", "invalid_type"),)
+        raise MetadataValidationError(problems)
 
     @property
     def parts(self) -> ArrayParts:
@@ -98,19 +152,19 @@ def read_array_v3(
     Type-space only: what comes back is well-typed by construction, and
     the problems are the reasons some of it is not an entity.
     """
-    read: dict[str, MetadataEntity | object] = {}
+    read: dict[str, MetadataEntity | Opaque] = {}
     problems: list[ValidationProblem] = []
     for field, key in _SINGLE_FIELDS:
         value = document.get(key)
         if value is None:
-            read[key] = None
+            read[key] = Opaque(None, "invalid")
             continue
         entity, found = context.coerce(field, value, (key,), envelope_judged=True)
         read[key] = entity
         problems.extend(found)
-    sequences: dict[str, tuple[MetadataEntity | object, ...]] = {}
+    sequences: dict[str, tuple[MetadataEntity | Opaque, ...]] = {}
     for field, key in _SEQUENCE_FIELDS:
-        read_entries: list[MetadataEntity | object] = []
+        read_entries: list[MetadataEntity | Opaque] = []
         entries = document.get(key)
         if isinstance(entries, (list, tuple)):
             for index, entry in enumerate(cast("Sequence[object]", entries)):
@@ -121,10 +175,10 @@ def read_array_v3(
     return (
         ArrayDocumentV3(
             document=document,
-            data_type=read["data_type"],
-            chunk_grid=read["chunk_grid"],
+            data_type=cast("DataTypeEntity | Opaque", read["data_type"]),
+            chunk_grid=cast("ChunkGridEntity | Opaque", read["chunk_grid"]),
             chunk_key_encoding=read["chunk_key_encoding"],
-            codecs=sequences["codecs"],
+            codecs=cast("tuple[CodecEntity | Opaque, ...]", sequences["codecs"]),
             storage_transformers=sequences["storage_transformers"],
         ),
         tuple(problems),
@@ -139,7 +193,9 @@ def _entity_problems(array: ArrayDocumentV3) -> tuple[ValidationProblem, ...]:
         if isinstance(entity, MetadataEntity):
             found.extend(within((key,), entity.problems()))
     for _, key in _SEQUENCE_FIELDS:
-        for index, entity in enumerate(cast("tuple[object, ...]", getattr(array, key))):
+        for index, entity in enumerate(
+            cast("tuple[MetadataEntity | Opaque, ...]", getattr(array, key))
+        ):
             if isinstance(entity, MetadataEntity):
                 found.extend(within((key, index), entity.problems()))
     return tuple(found)
@@ -187,14 +243,7 @@ def array_problems_v3(
     member is present and typed as its TypedDict declares.
     """
     array, problems = read_array_v3(document, context)
-    return (
-        *problems,
-        *_entity_problems(array),
-        *_fill_value_problems(array),
-        *_grid_problems(array),
-        *_dimension_names_problems(array),
-        *chain_problems(array.codecs, array.parts, ("codecs",)),
-    )
+    return (*problems, *array.problems())
 
 
 __all__ = [

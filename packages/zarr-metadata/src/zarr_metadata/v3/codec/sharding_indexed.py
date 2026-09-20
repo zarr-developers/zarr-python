@@ -18,7 +18,7 @@ from zarr_metadata.v3._entity import (
     Coerced,
     Loc,
     MemberTypes,
-    MetadataEntity,
+    Opaque,
     is_int,
     one_of,
     problem,
@@ -122,9 +122,9 @@ def _is_field_tuple(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
 
 def _coerce_pipeline(
     entries: tuple[object, ...], context: "Context", loc: Loc
-) -> tuple[tuple[MetadataEntity | object, ...], tuple[ValidationProblem, ...]]:
+) -> tuple[tuple[CodecEntity | Opaque, ...], tuple[ValidationProblem, ...]]:
     """Every entry of one pipeline, read in `context`."""
-    coerced: list[MetadataEntity | object] = []
+    coerced: list[CodecEntity | Opaque] = []
     problems: list[ValidationProblem] = []
     for index, entry in enumerate(entries):
         codec, found = context.coerce(CODECS, entry, (*loc, index))
@@ -143,8 +143,8 @@ class ShardingIndexedCodec(CodecEntity):
     """
 
     chunk_shape: tuple[int, ...] = ()
-    codecs: tuple[MetadataEntity | object, ...] = ()
-    index_codecs: tuple[MetadataEntity | object, ...] = ()
+    codecs: tuple[CodecEntity | Opaque, ...] = ()
+    index_codecs: tuple[CodecEntity | Opaque, ...] = ()
     index_location: ShardingIndexLocation | UNSET = UNSET
 
     identifier: ClassVar[str] = SHARDING_INDEXED_CODEC_NAME
@@ -190,8 +190,10 @@ class ShardingIndexedCodec(CodecEntity):
             if extent < 1
         ]
         for member in ("codecs", "index_codecs"):
-            for position, codec in enumerate(cast("tuple[object, ...]", getattr(self, member))):
-                if isinstance(codec, MetadataEntity):
+            for position, codec in enumerate(
+                cast("tuple[CodecEntity | Opaque, ...]", getattr(self, member))
+            ):
+                if isinstance(codec, CodecEntity):
                     found.extend(within((member, position), codec.problems()))
         return tuple(found)
 
@@ -272,8 +274,8 @@ class ShardingIndexedCodec(CodecEntity):
         members = super().configuration()
         for member in ("codecs", "index_codecs"):
             members[member] = tuple(
-                entry.to_json() if isinstance(entry, MetadataEntity) else entry
-                for entry in cast("tuple[object, ...]", members[member])
+                entry.to_json() if isinstance(entry, CodecEntity) else entry.json
+                for entry in cast("tuple[CodecEntity | Opaque, ...]", members[member])
             )
         return members
 

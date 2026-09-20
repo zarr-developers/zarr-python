@@ -72,7 +72,7 @@ def _canonical_document(document: Mapping[str, object], context: Context) -> dic
             out[key] = entity.to_json()
     if "codecs" in out:
         out["codecs"] = tuple(
-            codec.to_json() if isinstance(codec, MetadataEntity) else codec
+            codec.to_json() if isinstance(codec, MetadataEntity) else codec.json
             for codec in array.codecs
         )
     names = out.get("dimension_names")

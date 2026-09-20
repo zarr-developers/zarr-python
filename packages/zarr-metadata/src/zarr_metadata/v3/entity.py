@@ -5,15 +5,24 @@ key encodings, storage transformers -- is modelled as a class that
 answers for itself. This module is the public door to that layer, for two
 kinds of caller.
 
-**Reading metadata.** The concrete entities know things a document does
-not spell out: what a data type's scalars are, which position a codec
-occupies in the pipeline, what a chunk grid divides an array into. Reach
-them through a scope:
+**Reading metadata.** `ArrayDocumentV3.from_json` is the fail-fast front
+door: one call, and either every extension point is read or a single
+`MetadataValidationError` carries every reason it is not. The entities it
+yields know things the document does not spell out -- what a data type's
+scalars are, which position a codec occupies, what a grid divides an
+array into. A name the scope does not model is not a failure: it arrives
+as an `Opaque` marked `out_of_scope`, for the reader to resolve
+elsewhere.
 
-    from zarr_metadata.v3.entity import CORE_AND_EXTENSIONS
+    from zarr_metadata.v3.entity import ArrayDocumentV3, CodecEntity
 
-    data_type, problems = CORE_AND_EXTENSIONS.coerce("data_type", "int32")
-    data_type.storage_class()        # 'multi_byte'
+    array = ArrayDocumentV3.from_json(json.loads(raw))   # or raises
+    array.parts.grid.rank
+    for codec in array.codecs:
+        if isinstance(codec, CodecEntity):
+            codec.kind                  # 'array_bytes'
+        else:
+            codec.json, codec.reason    # 'out_of_scope': resolve it yourself
 
 **Writing an extension.** Subclass `CodecEntity`, `DataTypeEntity`,
 `ChunkGridEntity` or `MetadataEntity`, declare `identifier` and
@@ -77,6 +86,7 @@ from zarr_metadata.v3._entity import (
     Loc,
     MemberTypes,
     MetadataEntity,
+    Opaque,
     StorageClass,
     TypeCheck,
     coerce_members,
@@ -131,6 +141,7 @@ __all__ = [
     "MemberTypes",
     "MetadataEntity",
     "NumpyTimeDataType",
+    "Opaque",
     "StorageClass",
     "TypeCheck",
     "array_problems_v3",
