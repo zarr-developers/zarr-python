@@ -4,9 +4,18 @@ Regular chunk grid (Zarr v3 core spec).
 See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#regular-grids
 """
 
-from typing import Final, Literal, NotRequired
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
+
+from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.v3._entity import (
+    MemberTypes,
+    MetadataEntity,
+    is_int,
+    sequence_of,
+)
 
 REGULAR_CHUNK_GRID_NAME: Final = "regular"
 """The `name` field value of the regular chunk grid."""
@@ -40,8 +49,42 @@ valid; the short-hand-name form is not permitted by the spec for this grid.
 
 __all__ = [
     "REGULAR_CHUNK_GRID_NAME",
+    "RegularChunkGrid",
     "RegularChunkGridConfiguration",
     "RegularChunkGridMetadata",
     "RegularChunkGridName",
     "RegularChunkGridObject",
 ]
+
+
+@dataclass(frozen=True)
+class RegularChunkGrid(MetadataEntity):
+    """The `regular` chunk grid, coerced from its metadata."""
+
+    chunk_shape: tuple[int, ...] = ()
+
+    identifier: ClassVar[str] = REGULAR_CHUNK_GRID_NAME
+
+    configuration_required: ClassVar[bool] = True
+    member_types: ClassVar[MemberTypes] = {"chunk_shape": (True, sequence_of(is_int))}
+
+    def problems(self) -> tuple[ValidationProblem, ...]:
+        """Every chunk extent must be at least one element.
+
+        A chunk of zero elements along an axis covers nothing, so no
+        finite number of them tiles the axis; a negative one is
+        meaningless. Whether there is one extent *per array dimension* is
+        a question for the document, and the rules layer asks it.
+        """
+        return tuple(
+            ValidationProblem(
+                ("chunk_shape", position),
+                f"expected a positive chunk extent, got {extent}",
+                "invalid_value",
+            )
+            for position, extent in enumerate(self.chunk_shape)
+            if extent < 1
+        )
+
+    def to_json(self) -> RegularChunkGridObject:
+        return cast("RegularChunkGridObject", super().to_json())

@@ -42,6 +42,8 @@ from collections.abc import Mapping as _Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Literal, TypeAlias, TypeVar, cast
 
+from typing_extensions import TypeIs
+
 from zarr_metadata.model._validation import ValidationProblem, is_json
 from zarr_metadata.v3._extension_points import canonical_name
 
@@ -89,9 +91,18 @@ def problem(
     return (ValidationProblem(loc, message, kind),)
 
 
+def is_integer(value: object) -> TypeIs[int]:
+    """A JSON integer: an `int`, and not a `bool`.
+
+    `True` is an `int` in Python and `true` is not a number in JSON, so
+    the two have to be told apart everywhere a number is expected.
+    """
+    return not isinstance(value, bool) and isinstance(value, int)
+
+
 def is_int(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
     """An integer, and not a bool -- JSON `true` is not the integer 1."""
-    if isinstance(value, bool) or not isinstance(value, int):
+    if not is_integer(value):
         return problem(loc, f"expected an integer, got {value!r}")
     return ()
 
@@ -179,10 +190,13 @@ def coerce_members(
                     problem(("configuration", key), f"missing required key {key!r}", "missing_key")
                 )
             continue
-        found = check(configuration[key], ("configuration", key))
+        # Normalized before the check, so a check only ever sees the tuples
+        # the TypedDicts declare -- never the lists raw JSON arrives as.
+        value = _as_tuples(configuration[key])
+        found = check(value, ("configuration", key))
         problems.extend(found)
         if len(found) == 0:
-            members[key] = _as_tuples(configuration[key])
+            members[key] = value
     return members, tuple(problems)
 
 
@@ -368,6 +382,7 @@ __all__ = [
     "coerce_members",
     "is_bool",
     "is_int",
+    "is_integer",
     "is_json_value",
     "is_str",
     "named_configuration",

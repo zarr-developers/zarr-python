@@ -15,6 +15,19 @@ from typing import TYPE_CHECKING, get_type_hints
 import pytest
 
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS
+from zarr_metadata.v3.chunk_grid.rectilinear import (
+    RectilinearChunkGrid,
+    RectilinearChunkGridConfiguration,
+)
+from zarr_metadata.v3.chunk_grid.regular import RegularChunkGrid, RegularChunkGridConfiguration
+from zarr_metadata.v3.chunk_key_encoding.default import (
+    DefaultChunkKeyEncoding,
+    DefaultChunkKeyEncodingConfiguration,
+)
+from zarr_metadata.v3.chunk_key_encoding.v2 import (
+    V2ChunkKeyEncoding,
+    V2ChunkKeyEncodingConfiguration,
+)
 from zarr_metadata.v3.codec.blosc import BloscCodec, BloscCodecConfiguration
 from zarr_metadata.v3.codec.bytes import BytesCodec, BytesCodecConfiguration
 from zarr_metadata.v3.codec.crc32c import Crc32cCodec, Empty
@@ -35,6 +48,10 @@ CONFIGURATIONS: dict[str, tuple[type[MetadataEntity], type]] = {
     "scale_offset": (ScaleOffsetCodec, ScaleOffsetCodecConfiguration),
     "transpose": (TransposeCodec, TransposeCodecConfiguration),
     "zstd": (ZstdCodec, ZstdCodecConfiguration),
+    "regular": (RegularChunkGrid, RegularChunkGridConfiguration),
+    "rectilinear": (RectilinearChunkGrid, RectilinearChunkGridConfiguration),
+    "default": (DefaultChunkKeyEncoding, DefaultChunkKeyEncodingConfiguration),
+    "v2": (V2ChunkKeyEncoding, V2ChunkKeyEncodingConfiguration),
 }
 
 

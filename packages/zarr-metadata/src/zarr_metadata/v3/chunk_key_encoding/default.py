@@ -7,9 +7,16 @@ by appending `c<sep>k<sep>j<sep>i...` (where `<sep>` is `separator`).
 See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#chunk-key-encoding
 """
 
-from typing import Final, Literal, NotRequired
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
+
+from zarr_metadata.v3._entity import (
+    MemberTypes,
+    MetadataEntity,
+    one_of,
+)
 
 DEFAULT_CHUNK_KEY_ENCODING_NAME: Final = "default"
 """The `name` field value of the default chunk key encoding."""
@@ -55,9 +62,28 @@ so the short-hand-name form is permitted in addition to the object form.
 __all__ = [
     "DEFAULT_CHUNK_KEY_ENCODING_NAME",
     "DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR",
+    "DefaultChunkKeyEncoding",
     "DefaultChunkKeyEncodingConfiguration",
     "DefaultChunkKeyEncodingMetadata",
     "DefaultChunkKeyEncodingName",
     "DefaultChunkKeyEncodingObject",
     "DefaultChunkKeyEncodingSeparator",
 ]
+
+
+@dataclass(frozen=True)
+class DefaultChunkKeyEncoding(MetadataEntity):
+    """The `default` chunk key encoding, coerced from its metadata."""
+
+    separator: DefaultChunkKeyEncodingSeparator | None = None
+
+    identifier: ClassVar[str] = DEFAULT_CHUNK_KEY_ENCODING_NAME
+
+    member_types: ClassVar[MemberTypes] = {
+        "separator": (False, one_of(DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR))
+    }
+
+    def to_json(self) -> DefaultChunkKeyEncodingObject | DefaultChunkKeyEncodingName:
+        return cast(
+            "DefaultChunkKeyEncodingObject | DefaultChunkKeyEncodingName", super().to_json()
+        )

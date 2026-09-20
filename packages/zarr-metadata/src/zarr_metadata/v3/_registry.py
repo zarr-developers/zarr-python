@@ -29,6 +29,10 @@ from zarr_metadata.v3._extension_points import (
     CODECS,
     DATA_TYPE,
 )
+from zarr_metadata.v3.chunk_grid.rectilinear import RectilinearChunkGrid
+from zarr_metadata.v3.chunk_grid.regular import RegularChunkGrid
+from zarr_metadata.v3.chunk_key_encoding.default import DefaultChunkKeyEncoding
+from zarr_metadata.v3.chunk_key_encoding.v2 import V2ChunkKeyEncoding
 from zarr_metadata.v3.codec.blosc import BloscCodec
 from zarr_metadata.v3.codec.bytes import BytesCodec
 from zarr_metadata.v3.codec.crc32c import Crc32cCodec
@@ -55,10 +59,17 @@ _EXTENSION_CODECS: Final[dict[str, type[MetadataEntity]]] = {
 _CORE_DATA_TYPES: Final[dict[str, type[MetadataEntity]]] = {}
 _EXTENSION_DATA_TYPES: Final[dict[str, type[MetadataEntity]]] = {}
 
-_CORE_CHUNK_GRIDS: Final[dict[str, type[MetadataEntity]]] = {}
-_EXTENSION_CHUNK_GRIDS: Final[dict[str, type[MetadataEntity]]] = {}
+_CORE_CHUNK_GRIDS: Final[dict[str, type[MetadataEntity]]] = {
+    RegularChunkGrid.identifier: RegularChunkGrid,
+}
+_EXTENSION_CHUNK_GRIDS: Final[dict[str, type[MetadataEntity]]] = {
+    RectilinearChunkGrid.identifier: RectilinearChunkGrid,
+}
 
-_CORE_CHUNK_KEY_ENCODINGS: Final[dict[str, type[MetadataEntity]]] = {}
+_CORE_CHUNK_KEY_ENCODINGS: Final[dict[str, type[MetadataEntity]]] = {
+    DefaultChunkKeyEncoding.identifier: DefaultChunkKeyEncoding,
+    V2ChunkKeyEncoding.identifier: V2ChunkKeyEncoding,
+}
 
 
 CORE: Final = Context(

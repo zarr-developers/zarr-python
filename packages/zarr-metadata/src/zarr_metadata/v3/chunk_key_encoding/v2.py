@@ -13,9 +13,16 @@ names carry — this package's version-prefixed names always spell it
 See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#chunk-key-encoding
 """
 
-from typing import Final, Literal, NotRequired
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
+
+from zarr_metadata.v3._entity import (
+    MemberTypes,
+    MetadataEntity,
+    one_of,
+)
 
 V2_CHUNK_KEY_ENCODING_NAME: Final = "v2"
 """The `name` field value of the v2 chunk key encoding."""
@@ -61,9 +68,26 @@ so the short-hand-name form is permitted in addition to the object form.
 __all__ = [
     "V2_CHUNK_KEY_ENCODING_NAME",
     "V2_CHUNK_KEY_ENCODING_SEPARATOR",
+    "V2ChunkKeyEncoding",
     "V2ChunkKeyEncodingConfiguration",
     "V2ChunkKeyEncodingMetadata",
     "V2ChunkKeyEncodingName",
     "V2ChunkKeyEncodingObject",
     "V2ChunkKeyEncodingSeparator",
 ]
+
+
+@dataclass(frozen=True)
+class V2ChunkKeyEncoding(MetadataEntity):
+    """The `v2` chunk key encoding, coerced from its metadata."""
+
+    separator: V2ChunkKeyEncodingSeparator | None = None
+
+    identifier: ClassVar[str] = V2_CHUNK_KEY_ENCODING_NAME
+
+    member_types: ClassVar[MemberTypes] = {
+        "separator": (False, one_of(V2_CHUNK_KEY_ENCODING_SEPARATOR))
+    }
+
+    def to_json(self) -> V2ChunkKeyEncodingObject | V2ChunkKeyEncodingName:
+        return cast("V2ChunkKeyEncodingObject | V2ChunkKeyEncodingName", super().to_json())
