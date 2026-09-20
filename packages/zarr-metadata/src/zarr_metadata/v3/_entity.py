@@ -694,9 +694,16 @@ class MetadataEntity:
     def to_json(self) -> ZarrV3MetadataFieldJSON:
         """This entity as a document would write it.
 
-        Faithful to every member: read a document, write it back, and the
-        members come out as they went in. Ask `canonical` first if you
-        want the simplest equivalent spelling.
+        Faithful to every member it models: read a document, write it
+        back, and those come out as they went in. Ask `canonical` first
+        if you want the simplest equivalent spelling.
+
+        A member this entity does not model is not one of them. It is
+        reported as `unknown_key` and not held, so writing back drops it
+        -- which only a caller who took the problems as data and went on
+        past that one can reach, because `from_json` raises on it. A
+        caller who needs the bytes preserved has the JSON it passed in,
+        and `Opaque` is where unmodelled metadata belongs.
 
         What is *not* preserved is the envelope's spelling, because the
         entity does not model it: a bare name, `{"name": x}`, and

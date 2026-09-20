@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import copy
 import dataclasses
-from typing import get_args, get_type_hints
+from typing import Any, cast, get_args, get_type_hints
 
 import pytest
 
+from zarr_metadata.model import MetadataValidationError
 from zarr_metadata.rules import validate_array_metadata_v3
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS
 from zarr_metadata.v3.chunk_grid.rectilinear import (
@@ -68,7 +69,7 @@ from zarr_metadata.v3.data_type.uint8 import Uint8DataType
 from zarr_metadata.v3.data_type.uint16 import Uint16DataType
 from zarr_metadata.v3.data_type.uint32 import Uint32DataType
 from zarr_metadata.v3.data_type.uint64 import Uint64DataType
-from zarr_metadata.v3.entity import MetadataEntity
+from zarr_metadata.v3.entity import ArrayDocumentV3, MetadataEntity
 
 # Each registered entity, paired with the TypedDict its constructor
 # mirrors. Keyed by `<field>:<identifier>`, because an identifier is only
@@ -547,3 +548,45 @@ def test_to_json_shares_no_mutable_state_with_the_entity(field: str, written: ob
         else:
             configuration[key] = "clobbered"
     assert entity.to_json() == baseline
+
+
+def test_a_member_the_entity_does_not_model_is_not_written_back() -> None:
+    # `unknown_key` is survivable so that one stray member cannot hide
+    # every other finding about its entity -- a concession about
+    # reporting, not a promise to carry the member. The entity holds what
+    # it models, so writing back drops it.
+    entry = {
+        "name": "blosc",
+        "configuration": {
+            "cname": "zstd",
+            "clevel": 5,
+            "shuffle": "shuffle",
+            "typesize": 2,
+            "blocksize": 0,
+            "typo_key": 1,
+        },
+    }
+    codec, problems = CORE_AND_EXTENSIONS.coerce("codecs", entry)
+    assert [(p.loc, p.kind) for p in problems] == [(("configuration", "typo_key"), "unknown_key")]
+    assert isinstance(codec, MetadataEntity)
+    assert "typo_key" not in codec.to_json()["configuration"]  # type: ignore[index,operator]
+
+
+def test_the_fail_fast_reader_refuses_a_member_it_would_drop() -> None:
+    # Which is why dropping it is survivable: the reader that does not
+    # hand back problems does not hand back the entity either.
+    document = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (4,),
+        "data_type": "uint8",
+        "fill_value": 0,
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (2,)}},
+        "chunk_key_encoding": "default",
+        "codecs": ("bytes", {"name": "gzip", "configuration": {"level": 1, "typo_key": 1}}),
+    }
+    with pytest.raises(MetadataValidationError) as caught:
+        ArrayDocumentV3.from_json(cast("Any", document))
+    assert (("codecs", 1, "configuration", "typo_key"), "unknown_key") in {
+        (problem.loc, problem.kind) for problem in caught.value.problems
+    }
