@@ -114,9 +114,8 @@ member is about.
 CodecKind = Literal["array_array", "array_bytes", "bytes_bytes"]
 """The three pipeline positions the v3 spec sorts codecs into.
 
-Here rather than in `zarr_metadata.v3.codec.kind` because each codec
-declares its own kind, and that module imports every codec to build the
-tuples it will no longer need once they all do.
+Declared by each codec, which is why there is no table of it: a name
+does not have a pipeline position, a codec does.
 """
 
 TypeCheck: TypeAlias = "Callable[[object, Loc], tuple[ValidationProblem, ...]]"
