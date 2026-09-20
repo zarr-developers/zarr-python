@@ -12,7 +12,7 @@ from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID_NAME
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from zarr_metadata.rules._spec import ArraySpec, Sequence
+    from zarr_metadata.rules._spec import ArrayParts, Sequence
 
 _ARRAY_V3 = "zarr_v3_array"
 
@@ -46,7 +46,7 @@ def _expanded_extent(spec: Sequence[object]) -> int | None:
 
 @entity_rule(_ARRAY_V3, CHUNK_GRID, RECTILINEAR_CHUNK_GRID_NAME, reads=frozenset({"chunk_shapes"}))
 def chunk_extents_are_positive(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
     """Every chunk extent, bare or run-length encoded, must be positive."""
     chunk_shapes = cast("tuple[object, ...]", configuration["chunk_shapes"])
@@ -93,7 +93,7 @@ def chunk_extents_are_positive(
     reads=frozenset({"chunk_shapes"}),
 )
 def tiles_the_array(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
     """One spec per dimension, and explicit specs must sum to that extent.
 

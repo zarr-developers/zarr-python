@@ -14,16 +14,16 @@ from zarr_metadata.v3.codec.bytes import BYTES_CODEC_NAME
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from zarr_metadata.rules._spec import ArraySpec
+    from zarr_metadata.rules._spec import ArrayParts
 
 _ARRAY_V3 = "zarr_v3_array"
 
 
 @entity_rule(_ARRAY_V3, CODECS, BYTES_CODEC_NAME, reads_optional=frozenset({"endian"}))
 def data_type_has_a_raw_byte_representation(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
-    if incoming.data_type is None:
+    if incoming is None:
         return ()
     shape_verdict = validate_known_entity_metadata(DATA_TYPE, incoming.data_type)
     if shape_verdict is not None and len(blocking_problems(shape_verdict)) != 0:

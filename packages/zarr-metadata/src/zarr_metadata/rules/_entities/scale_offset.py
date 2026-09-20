@@ -35,10 +35,10 @@ from zarr_metadata.v3.codec.scale_offset import SCALE_OFFSET_CODEC_NAME
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from zarr_metadata.rules._spec import ArraySpec
+    from zarr_metadata.rules._spec import ArrayParts
 
 
 @spec_transition(SCALE_OFFSET_CODEC_NAME)
-def preserves_the_array(configuration: Mapping[str, object], incoming: ArraySpec) -> ArraySpec:
+def preserves_the_array(configuration: Mapping[str, object], incoming: ArrayParts) -> ArrayParts:
     """Element-wise arithmetic in the input type: same shape, same type."""
     return incoming

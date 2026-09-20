@@ -12,14 +12,14 @@ from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID_NAME
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from zarr_metadata.rules._spec import ArraySpec
+    from zarr_metadata.rules._spec import ArrayParts
 
 _ARRAY_V3 = "zarr_v3_array"
 
 
 @entity_rule(_ARRAY_V3, CHUNK_GRID, REGULAR_CHUNK_GRID_NAME, reads=frozenset({"chunk_shape"}))
 def chunk_extents_are_positive(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
     """Every chunk extent must be at least one element.
 
@@ -47,7 +47,7 @@ def chunk_extents_are_positive(
     reads=frozenset({"chunk_shape"}),
 )
 def chunks_every_dimension(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
     """A regular grid must chunk every array dimension."""
     shape = document["shape"]

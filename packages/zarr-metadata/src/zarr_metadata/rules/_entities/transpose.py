@@ -5,8 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.rules._chunk_grid import ChunkGrid
 from zarr_metadata.rules._registry import entity_rule
-from zarr_metadata.rules._spec import ArraySpec, spec_transition
+from zarr_metadata.rules._spec import ArrayParts, spec_transition
 from zarr_metadata.v3._extension_points import CODECS
 from zarr_metadata.v3.codec.transpose import TRANSPOSE_CODEC_NAME
 
@@ -17,23 +18,23 @@ _ARRAY_V3 = "zarr_v3_array"
 
 
 @spec_transition(TRANSPOSE_CODEC_NAME)
-def permute_shape(configuration: Mapping[str, object], incoming: ArraySpec) -> ArraySpec:
-    """The outgoing shape is the incoming shape permuted by `order`.
+def permute_grid(configuration: Mapping[str, object], incoming: ArrayParts) -> ArrayParts:
+    """The outgoing grid is the incoming one with its axes reordered.
 
-    Declines (shape None) when the order is not a permutation of the
-    incoming rank: the rules below report that, and any shape derived
-    from a bad order would be a guess.
+    A transposed grid is still a grid, so the parts survive the codec with
+    their lengths permuted. An order that is not a permutation of the rank
+    yields a grid of unknown extents — the rules below report the order
+    itself, and extents derived from a bad order would be a guess.
     """
     order = cast("tuple[int, ...]", configuration["order"])
-    shape = incoming.shape
-    if shape is None or sorted(order) != list(range(len(shape))):
-        return incoming.with_shape(None)
-    return incoming.with_shape(tuple(shape[axis] for axis in order))
+    if sorted(order) != list(range(len(order))):
+        return incoming.with_grid(ChunkGrid(incoming.grid.rank, None))
+    return incoming.with_grid(incoming.grid.permuted(order))
 
 
 @entity_rule(_ARRAY_V3, CODECS, TRANSPOSE_CODEC_NAME, reads=frozenset({"order"}))
 def order_is_a_permutation(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
     """`order` must be a permutation of its own indices.
 
@@ -54,25 +55,25 @@ def order_is_a_permutation(
 
 @entity_rule(_ARRAY_V3, CODECS, TRANSPOSE_CODEC_NAME, reads=frozenset({"order"}))
 def order_matches_incoming_rank(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
     """A transpose permutes the array it receives, so ranks must agree.
 
-    Judged against the *incoming* spec, not the document's `shape`: inside
-    a shard the incoming array is the inner chunk, and after another
-    transpose it is that transpose's output. Declines when the incoming
-    shape is unknown.
+    Judged against what actually reaches this codec, not the document's
+    `shape`: inside a shard that is the inner chunk, and after another
+    transpose it is that transpose's output. Declines when the rank is
+    unknown.
     """
-    if incoming.shape is None:
+    rank = incoming.grid.rank if incoming is not None else None
+    if rank is None:
         return ()
     order = cast("tuple[int, ...]", configuration["order"])
-    if len(order) == len(incoming.shape):
+    if len(order) == rank:
         return ()
     return (
         ValidationProblem(
             ("order",),
-            f"order has {len(order)} entries but the incoming array has "
-            f"{len(incoming.shape)} dimensions",
+            f"order has {len(order)} entries but the incoming array has {rank} dimensions",
             "invalid_value",
         ),
     )

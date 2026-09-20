@@ -23,10 +23,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from zarr_metadata.model._validation import ValidationProblem
-from zarr_metadata.rules._chunk_grid import shard_index_shape, uniform_shape
+from zarr_metadata.rules._chunk_grid import ChunkGrid, shard_index_grid
 from zarr_metadata.rules._pipeline import pipeline_order_problems, shape_problems
 from zarr_metadata.rules._registry import entity_rule, run_chain_rules
-from zarr_metadata.rules._spec import NOTHING_KNOWN, ArraySpec
+from zarr_metadata.rules._spec import ArrayParts
 from zarr_metadata.v3._extension_points import CODECS
 from zarr_metadata.v3._shape import entity_name
 from zarr_metadata.v3.codec.blosc import BLOSC_CODEC_NAME
@@ -48,7 +48,7 @@ _VARIABLE_SIZE_CODECS = frozenset(
 
 @entity_rule(_ARRAY_V3, CODECS, SHARDING_INDEXED_CODEC_NAME, reads=_CHUNK_SHAPE)
 def inner_chunk_extents_are_positive(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
     chunk_shape = cast("tuple[int, ...]", configuration["chunk_shape"])
     return tuple(
@@ -64,43 +64,48 @@ def inner_chunk_extents_are_positive(
 
 @entity_rule(_ARRAY_V3, CODECS, SHARDING_INDEXED_CODEC_NAME, reads=_CHUNK_SHAPE)
 def inner_chunks_tile_the_incoming_array(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
-    """The inner chunk must rank-match and evenly divide the array it receives.
+    """The inner chunk must rank-match and divide every chunk it receives.
 
-    Declines when the incoming array is unknown entirely — an unclassified
-    codec upstream — rather than guessing. A known rank with unknown
-    extents (a chunk grid this package cannot read) still supports the
-    rank check; only the divisibility check needs the extents.
+    One sharding configuration encodes every chunk, so its inner shape has
+    to divide all of them. Under a rectilinear grid an axis has several
+    lengths and the inner extent must divide each; an axis whose lengths
+    are unknown declines while the others are still judged.
     """
-    if incoming.shape is None:
+    if incoming is None or incoming.grid.rank is None:
         return ()
-    outer = incoming.shape
     inner = cast("tuple[int, ...]", configuration["chunk_shape"])
-    if len(inner) != len(outer):
+    if len(inner) != incoming.grid.rank:
         return (
             ValidationProblem(
                 ("chunk_shape",),
                 f"chunk_shape has {len(inner)} entries but the incoming array has "
-                f"{len(outer)} dimensions",
+                f"{incoming.grid.rank} dimensions",
                 "invalid_value",
             ),
         )
-    return tuple(
-        ValidationProblem(
-            ("chunk_shape", position),
-            f"inner chunk extent {inner_extent} does not evenly divide the "
-            f"incoming extent {outer_extent}",
-            "invalid_value",
-        )
-        for position, (outer_extent, inner_extent) in enumerate(zip(outer, inner, strict=True))
-        if outer_extent is not None and inner_extent >= 1 and outer_extent % inner_extent != 0
-    )
+    problems: list[ValidationProblem] = []
+    for position, extent in enumerate(inner):
+        lengths = incoming.grid.axis(position)
+        if lengths is None or extent < 1:
+            continue
+        indivisible = sorted(length for length in lengths if length % extent != 0)
+        if len(indivisible) != 0:
+            problems.append(
+                ValidationProblem(
+                    ("chunk_shape", position),
+                    f"inner chunk extent {extent} does not evenly divide the incoming "
+                    f"extent {indivisible[0]}",
+                    "invalid_value",
+                )
+            )
+    return tuple(problems)
 
 
 @entity_rule(_ARRAY_V3, CODECS, SHARDING_INDEXED_CODEC_NAME, reads=_PIPELINES)
 def inner_pipelines_are_pipelines(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
     """`codecs` and `index_codecs` obey the pipeline rules, recursively.
 
@@ -114,15 +119,17 @@ def inner_pipelines_are_pipelines(
     `zarr_metadata.rules._chunk_grid.shard_index_shape`.
     """
     inner = configuration["chunk_shape"]
-    if not isinstance(inner, tuple):
-        inner_start = NOTHING_KNOWN
-        index_start = NOTHING_KNOWN
+    if not isinstance(inner, tuple) or incoming is None:
+        inner_start: ArrayParts | None = None
+        index_start: ArrayParts | None = None
     else:
         extents = cast("tuple[object, ...]", inner)
-        # The inner chunk shape is a regular grid over the chunk this codec
-        # receives, and the index's shape follows from the two together.
-        inner_start = incoming.with_shape(uniform_shape(extents))
-        index_start = ArraySpec(shard_index_shape(incoming.shape, extents), "uint64")
+        # A shard is a nested array: `chunk_shape` is a regular grid over
+        # the chunk this codec receives, so the inner pipeline is built
+        # exactly like the document's own, and the index's grid follows
+        # from the two together.
+        inner_start = incoming.with_grid(ChunkGrid.regular(extents))
+        index_start = ArrayParts(shard_index_grid(incoming.grid, extents), "uint64")
     problems: list[ValidationProblem] = []
     for key in ("codecs", "index_codecs"):
         entries = configuration[key]
@@ -141,7 +148,7 @@ def inner_pipelines_are_pipelines(
 
 @entity_rule(_ARRAY_V3, CODECS, SHARDING_INDEXED_CODEC_NAME, reads=_INDEX_CODECS)
 def index_codecs_have_fixed_encoded_size(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
     """The shard index must have an encoded size derivable from metadata."""
     entries = cast("tuple[object, ...]", configuration["index_codecs"])

@@ -6,12 +6,12 @@ against the document's top-level fields: `transpose` permutes the shape,
 `cast_value` changes the data type, and a `sharding_indexed` codec that
 follows either one sees the transformed array.
 
-`ArraySpec` is the array a codec receives; `propagate` walks a chain
-handing each codec its incoming spec. A field is `None` once this package
-can no longer determine it. An unknown codec might change anything, so
-every codec after one receives `NOTHING_KNOWN` and rules that need a
-field decline rather than guess. Shape stops at the array->bytes
-boundary; the data type carries through.
+`ArrayParts` is every part of an array a codec will be handed, together
+with their element type; `propagate` walks a chain handing each codec what
+reaches it. There is no half-populated value: a codec receives `None` once
+this package can no longer say what it operates on. An unknown codec might
+change anything, so everything after one receives `None`, and so does
+everything after the array->bytes boundary, where there is no array left.
 
 Transitions are registered per array->array codec, next to that codec's
 rules, via `spec_transition`. A modelled codec with no transition is
@@ -24,6 +24,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Final
 
+from zarr_metadata.rules._chunk_grid import ChunkGrid  # noqa: TC001
 from zarr_metadata.v3._extension_points import CODECS, canonical_name
 from zarr_metadata.v3._shape import entity_name
 from zarr_metadata.v3.codec.kind import codec_kind_of_name
@@ -33,44 +34,39 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
-class ArraySpec:
-    """The array a codec receives; a field is `None` when undetermined.
+class ArrayParts:
+    """Every part of an array a codec will be handed, and their type.
 
-    `shape` is `None` only when there is no array left to describe (past
-    the array->bytes boundary) or when nothing about it can be determined.
-    An individual *extent* may be `None` while the rank is known: every
-    chunk of an array has the array's rank, whatever the chunk grid, so a
-    grid this package cannot read still pins `len(shape)`. Rules that need
-    a rank may use one; rules that need an extent test it for `None`.
+    The parts an array is divided into, not the fields of its metadata.
+    Plural deliberately: one pipeline encodes every chunk, so a rule about
+    it quantifies over all of them — a shard's inner chunk shape must
+    divide *every* chunk, which under a rectilinear grid is several
+    different lengths.
 
-    `data_type` is the metadata-field value verbatim (a bare name or a
-    name/configuration object) because rules compare it by name.
+    `data_type` is never absent. The only documents that cannot supply one
+    are documents the structural layer has already rejected, so "a real
+    array whose type we do not know" is not a state worth modelling; when
+    nothing is known, there are no `ArrayParts` at all. It is the
+    metadata-field value verbatim, because rules compare it by name.
     """
 
-    shape: tuple[int | None, ...] | None
-    data_type: ZarrV3MetadataFieldJSON | None
+    grid: ChunkGrid
+    data_type: ZarrV3MetadataFieldJSON
 
-    def with_shape(self, shape: tuple[int | None, ...] | None) -> ArraySpec:
-        return replace(self, shape=shape)
+    def with_grid(self, grid: ChunkGrid) -> ArrayParts:
+        return replace(self, grid=grid)
 
-    def with_data_type(self, data_type: ZarrV3MetadataFieldJSON | None) -> ArraySpec:
+    def with_data_type(self, data_type: ZarrV3MetadataFieldJSON) -> ArrayParts:
         return replace(self, data_type=data_type)
 
 
-NOTHING_KNOWN: Final = ArraySpec(None, None)
-"""The spec past a point where nothing about the array can be determined.
+SpecTransition = Callable[[Mapping[str, object], "ArrayParts"], "ArrayParts | None"]
+"""How one codec transforms what it receives.
 
-Compare by equality: a spec can arrive here field by field and is then
-equal to this constant without being it.
-"""
-
-
-SpecTransition = Callable[[Mapping[str, object], ArraySpec], ArraySpec]
-"""How one codec transforms the spec it receives.
-
-Takes the codec's (shape-valid) configuration and the incoming spec, and
-returns the outgoing one. A transition must never raise on the values the
-shape validator admits; a field it cannot determine becomes `None`.
+Takes the codec's (shape-valid) configuration and the incoming parts, and
+returns what the next codec sees, or `None` when this codec leaves nothing
+determinable. A transition must never raise on the values the shape
+validator admits.
 """
 
 _TRANSITIONS: Final[dict[str, SpecTransition]] = {}
@@ -106,42 +102,42 @@ def transitions_registered() -> frozenset[str]:
 
 def propagate(
     codecs: Sequence[object],
-    initial: ArraySpec,
+    initial: ArrayParts | None,
     configuration_of: Callable[[object], Mapping[str, object] | None],
-) -> Iterator[tuple[int, object, ArraySpec]]:
-    """Yield `(index, codec, incoming_spec)` for each codec in the chain.
+) -> Iterator[tuple[int, object, ArrayParts | None]]:
+    """Yield `(index, codec, incoming)` for each codec in the chain.
 
-    `incoming_spec` is `NOTHING_KNOWN` once propagation has stopped: after
-    an unknown codec, after a known codec whose configuration is not
-    shape-valid, or after a codec this package has no transition for.
+    `incoming` is `None` once propagation has stopped: after an unknown
+    codec, after a known codec whose configuration is not shape-valid,
+    after a codec this package has no transition for, and after the
+    array->bytes boundary, where there is no array to describe.
     `configuration_of` resolves a codec entry to its usable configuration
     (`entity_configuration` in practice; injected to keep this module free
     of the registry).
     """
-    spec = initial
+    parts = initial
     for index, codec in enumerate(codecs):
-        yield index, codec, spec
-        if spec == NOTHING_KNOWN:
+        yield index, codec, parts
+        if parts is None:
             continue
         name = entity_name(codec)
         kind = codec_kind_of_name(name) if name is not None else None
-        if kind is None:
-            spec = NOTHING_KNOWN
-        elif kind == "array_array":
+        if kind == "array_array":
             transition = _TRANSITIONS.get(canonical_name(CODECS, name or ""))
             configuration = configuration_of(codec)
-            if transition is None or configuration is None:
-                spec = NOTHING_KNOWN
-            else:
-                spec = transition(configuration, spec)
+            parts = (
+                None
+                if transition is None or configuration is None
+                else transition(configuration, parts)
+            )
         else:
-            # array->bytes: the array is gone; bytes->bytes: never had one.
-            spec = spec.with_shape(None)
+            # An unknown codec may change anything; array->bytes consumes
+            # the array; bytes->bytes never had one.
+            parts = None
 
 
 __all__ = [
-    "NOTHING_KNOWN",
-    "ArraySpec",
+    "ArrayParts",
     "SpecTransition",
     "propagate",
     "spec_transition",

@@ -13,7 +13,7 @@ from zarr_metadata.v3.data_type.numpy_timedelta64 import NUMPY_TIMEDELTA64_DATA_
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from zarr_metadata.rules._spec import ArraySpec
+    from zarr_metadata.rules._spec import ArrayParts
 
 _ARRAY_V3 = "zarr_v3_array"
 _MAX_SCALE_FACTOR = 2**31 - 1
@@ -21,7 +21,7 @@ _SCALE_FACTOR = frozenset({"scale_factor"})
 
 
 def _scale_factor_is_in_range(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
     scale_factor = cast("int", configuration["scale_factor"])
     if 1 <= scale_factor <= _MAX_SCALE_FACTOR:

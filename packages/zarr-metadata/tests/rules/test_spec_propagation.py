@@ -1,4 +1,4 @@
-"""Tests for array-spec propagation through a codec chain.
+"""Tests for propagating an array's parts through a codec chain.
 
 The property under test: every codec is judged against the array it
 *receives*, which is the document's chunk only for the first codec in
@@ -13,12 +13,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from zarr_metadata.rules import validate_array_metadata_v3
-from zarr_metadata.rules._spec import (
-    NOTHING_KNOWN,
-    ArraySpec,
-    propagate,
-    transitions_registered,
-)
+from zarr_metadata.rules._chunk_grid import ChunkGrid
+from zarr_metadata.rules._spec import ArrayParts, propagate, transitions_registered
 from zarr_metadata.v3.codec.kind import ARRAY_ARRAY_CODEC_NAMES
 
 if TYPE_CHECKING:
@@ -113,13 +109,14 @@ def test_propagate_yields_incoming_spec_per_codec() -> None:
     from zarr_metadata.v3._extension_points import CODECS
 
     chain = (_transpose(1, 0), "bytes", "crc32c")
-    start = ArraySpec((6, 4), "uint8")
+    start = ArrayParts(ChunkGrid.regular((6, 4)), "uint8")
     seen = list(propagate(chain, start, lambda c: entity_configuration(CODECS, c)))
     incoming = [spec for _, _, spec in seen]
-    assert incoming[0] == ArraySpec((6, 4), "uint8")  # transpose receives the chunk
-    assert incoming[1] == ArraySpec((4, 6), "uint8")  # bytes receives the transposed chunk
-    # past array->bytes: no array, so no shape; the type carries through
-    assert incoming[2] == ArraySpec(None, "uint8")
+    assert incoming[0] == ArrayParts(ChunkGrid.regular((6, 4)), "uint8")
+    # bytes receives the transposed chunk
+    assert incoming[1] == ArrayParts(ChunkGrid.regular((4, 6)), "uint8")
+    # past the array->bytes boundary there is no array to describe
+    assert incoming[2] is None
 
 
 def test_cast_value_changes_the_downstream_data_type() -> None:
@@ -127,20 +124,20 @@ def test_cast_value_changes_the_downstream_data_type() -> None:
     from zarr_metadata.v3._extension_points import CODECS
 
     chain = ({"name": "cast_value", "configuration": {"data_type": "float32"}}, "bytes")
-    start = ArraySpec((6, 4), "uint8")
+    start = ArrayParts(ChunkGrid.regular((6, 4)), "uint8")
     seen = list(propagate(chain, start, lambda c: entity_configuration(CODECS, c)))
-    assert seen[1][2] == ArraySpec((6, 4), "float32")
+    assert seen[1][2] == ArrayParts(ChunkGrid.regular((6, 4)), "float32")
 
 
 def test_unknown_codec_yields_nothing_known() -> None:
     from zarr_metadata.rules._registry import entity_configuration
     from zarr_metadata.v3._extension_points import CODECS
 
-    start = ArraySpec((6, 4), "uint8")
+    start = ArrayParts(ChunkGrid.regular((6, 4)), "uint8")
     seen = list(
         propagate(({"name": "zfpy"}, "bytes"), start, lambda c: entity_configuration(CODECS, c))
     )
-    assert seen[1][2] is NOTHING_KNOWN
+    assert seen[1][2] is None
 
 
 def test_every_array_array_codec_registers_a_transition() -> None:
@@ -157,5 +154,5 @@ def test_error_transition_for_a_non_array_array_codec() -> None:
     with pytest.raises(ValueError, match="only array->array codecs"):
 
         @spec_transition("gzip")
-        def _nope(configuration: object, incoming: ArraySpec) -> ArraySpec:  # pragma: no cover
+        def _nope(configuration: object, incoming: ArrayParts) -> ArrayParts:  # pragma: no cover
             return incoming

@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from zarr_metadata.rules._registry import entity_rule, run_entity_rules
-from zarr_metadata.rules._spec import ArraySpec, spec_transition
+from zarr_metadata.rules._spec import ArrayParts, spec_transition
 from zarr_metadata.v3._extension_points import CODECS, DATA_TYPE
 from zarr_metadata.v3.codec.cast_value import CAST_VALUE_CODEC_NAME
 
@@ -30,14 +30,14 @@ if TYPE_CHECKING:
 
 @entity_rule("zarr_v3_array", CODECS, CAST_VALUE_CODEC_NAME, reads=frozenset({"data_type"}))
 def target_data_type_obeys_its_rules(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
     """A cast target obeys the same entity rules as a top-level data type."""
     return run_entity_rules(DATA_TYPE, configuration["data_type"], document, ("data_type",))
 
 
 @spec_transition(CAST_VALUE_CODEC_NAME)
-def cast_data_type(configuration: Mapping[str, object], incoming: ArraySpec) -> ArraySpec:
+def cast_data_type(configuration: Mapping[str, object], incoming: ArrayParts) -> ArrayParts:
     """The outgoing type is the configured target."""
     target = cast("ZarrV3MetadataFieldJSON", configuration["data_type"])
     return incoming.with_data_type(target)

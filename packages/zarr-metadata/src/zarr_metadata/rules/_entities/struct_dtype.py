@@ -25,14 +25,14 @@ from zarr_metadata.v3._extension_points import DATA_TYPE
 from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE_NAME
 
 if TYPE_CHECKING:
-    from zarr_metadata.rules._spec import ArraySpec
+    from zarr_metadata.rules._spec import ArrayParts
 
 _ARRAY_V3 = "zarr_v3_array"
 
 
 @entity_rule(_ARRAY_V3, DATA_TYPE, STRUCT_DATA_TYPE_NAME, reads=frozenset({"fields"}))
 def field_data_types_obey_their_rules(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
     """Apply every known data type's rules inside struct fields, recursively."""
     problems: list[ValidationProblem] = []
@@ -71,7 +71,7 @@ def _field_names(configuration: Mapping[str, object]) -> tuple[tuple[int, str], 
 
 @entity_rule(_ARRAY_V3, DATA_TYPE, STRUCT_DATA_TYPE_NAME, reads=frozenset({"fields"}))
 def fields_are_non_empty(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
     fields = cast("tuple[object, ...]", configuration["fields"])
     if len(fields) != 0:
@@ -81,7 +81,7 @@ def fields_are_non_empty(
 
 @entity_rule(_ARRAY_V3, DATA_TYPE, STRUCT_DATA_TYPE_NAME, reads=frozenset({"fields"}))
 def field_data_types_are_fixed_size(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
     fields = cast("tuple[object, ...]", configuration["fields"])
     problems: list[ValidationProblem] = []
@@ -102,7 +102,7 @@ def field_data_types_are_fixed_size(
 
 @entity_rule(_ARRAY_V3, DATA_TYPE, STRUCT_DATA_TYPE_NAME, reads=frozenset({"fields"}))
 def field_names_are_non_empty(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
     """A struct field must be addressable, so its name cannot be empty."""
     return tuple(
@@ -116,7 +116,7 @@ def field_names_are_non_empty(
 
 @entity_rule(_ARRAY_V3, DATA_TYPE, STRUCT_DATA_TYPE_NAME, reads=frozenset({"fields"}))
 def field_names_are_unique(
-    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArraySpec
+    configuration: Mapping[str, object], document: Mapping[str, object], incoming: ArrayParts | None
 ) -> tuple[ValidationProblem, ...]:
     """Duplicate field names make a fill value's per-field mapping ambiguous."""
     seen: dict[str, int] = {}

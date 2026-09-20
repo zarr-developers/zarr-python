@@ -15,10 +15,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, cast
 
 from zarr_metadata.model._validation import ValidationProblem
-from zarr_metadata.rules._chunk_grid import governed_shape
+from zarr_metadata.rules._chunk_grid import ChunkGrid
 from zarr_metadata.rules._engine import Rule
 from zarr_metadata.rules._entity import configuration_mapping, entity_configuration
-from zarr_metadata.rules._spec import NOTHING_KNOWN, ArraySpec, propagate
+from zarr_metadata.rules._spec import ArrayParts, propagate
 from zarr_metadata.v3._extension_points import ExtensionPointField, canonical_name
 
 if TYPE_CHECKING:
@@ -34,16 +34,16 @@ from zarr_metadata.v3._shape import (
 )
 
 EntityCheck = Callable[
-    [Mapping[str, object], Mapping[str, object], "ArraySpec"],
+    [Mapping[str, object], Mapping[str, object], "ArrayParts | None"],
     "tuple[ValidationProblem, ...]",
 ]
 """An entity rule's check: `(configuration, document, incoming)` in, problems out.
 
-`incoming` is the `ArraySpec` the entity receives — for a codec, the
-array as transformed by every codec before it in the chain. Fields this
-package cannot determine are `None`; a caller with no chain context
-passes `NOTHING_KNOWN`. Rules that need a field test it `is None` and
-decline; rules that do not simply ignore the spec.
+`incoming` is what the entity receives — for a codec, the array parts as
+transformed by every codec before it in the chain, or `None` where this
+package can no longer say. A caller with no chain context passes `None`.
+Rules that need it test for `None` and decline; rules that do not simply
+ignore it.
 
 Problems carry locations relative to the entity's `configuration`; the
 dispatcher re-bases them onto the entity's position in the document.
@@ -227,7 +227,7 @@ def run_entity_rules(
     value: object,
     document: Mapping[str, object],
     loc: tuple[str | int, ...],
-    incoming: ArraySpec = NOTHING_KNOWN,
+    incoming: ArrayParts | None = None,
 ) -> tuple[ValidationProblem, ...]:
     """Run the rules registered for whatever entity `value` names.
 
@@ -311,7 +311,7 @@ def run_chain_rules(
     codecs: Sequence[object],
     document: Mapping[str, object],
     loc: tuple[str | int, ...],
-    initial: ArraySpec,
+    initial: ArrayParts | None,
 ) -> tuple[ValidationProblem, ...]:
     """Run entity rules over a codec chain, propagating the array spec.
 
@@ -328,21 +328,18 @@ def run_chain_rules(
     return tuple(problems)
 
 
-def chain_initial_spec(document: Mapping[str, object]) -> ArraySpec:
-    """The spec entering a document's top-level codec chain.
+def chain_initial_spec(document: Mapping[str, object]) -> ArrayParts | None:
+    """What enters a document's top-level codec chain.
 
-    The array a chunk pipeline encodes is one chunk of the document's
-    chunk grid, so its shape is whatever that grid governs; see
-    `zarr_metadata.rules._chunk_grid`.
+    The parts a chunk pipeline encodes are the chunks of the document's
+    chunk grid. A document whose `data_type` is not a metadata field has
+    already been rejected structurally, so there is nothing to describe.
     """
-    chunk_shape = governed_shape(document.get("chunk_grid"), document.get("shape"))
-    # A metadata field is a name, or an object carrying one; anything else
-    # is not a data type this package can describe, and `entity_name`
-    # answers that question in one place rather than being re-derived here.
     data_type = document.get("data_type")
     if entity_name(data_type) is None:
-        return ArraySpec(chunk_shape, None)
-    return ArraySpec(chunk_shape, cast("ZarrV3MetadataFieldJSON", data_type))
+        return None
+    grid = ChunkGrid.of(document.get("chunk_grid"), document.get("shape"))
+    return ArrayParts(grid, cast("ZarrV3MetadataFieldJSON", data_type))
 
 
 __all__ = [
