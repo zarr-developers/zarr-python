@@ -267,6 +267,13 @@ _EXTENSION_ROLES = (
     "FillValue",
     "Configuration",
     "Component",
+    # The bare role is the coerced entity itself: the dataclass that owns
+    # the extension's type checks, value checks and canonical spelling.
+    # Listed last so a longer role still wins the alternation.
+    "Codec",
+    "ChunkGrid",
+    "ChunkKeyEncoding",
+    "DataType",
 )
 _EXTENSION_NAME = re.compile(r"^(?:[A-Z][a-z0-9]*)+?(?:" + "|".join(_EXTENSION_ROLES) + r")$")
 

@@ -4,11 +4,18 @@ Scale-offset codec types.
 See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md
 """
 
-from typing import Final, Literal, NotRequired
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
+from zarr_metadata.v3._entity import (
+    CodecKind,
+    MemberTypes,
+    MetadataEntity,
+    is_json_value,
+)
 
 SCALE_OFFSET_CODEC_NAME: Final = "scale_offset"
 """The `name` field value of the `scale_offset` codec."""
@@ -56,8 +63,33 @@ form is permitted in addition to the object form.
 
 __all__ = [
     "SCALE_OFFSET_CODEC_NAME",
+    "ScaleOffsetCodec",
     "ScaleOffsetCodecConfiguration",
     "ScaleOffsetCodecMetadata",
     "ScaleOffsetCodecName",
     "ScaleOffsetCodecObject",
 ]
+
+
+@dataclass(frozen=True)
+class ScaleOffsetCodec(MetadataEntity):
+    """The `scale_offset` codec, coerced from its metadata.
+
+    Both members are optional and any JSON scalar is well-typed here; what
+    a given value means depends on the data type it is applied to, which
+    is a question for the rules layer.
+    """
+
+    offset: JSONValue | None = None
+    scale: JSONValue | None = None
+
+    identifier: ClassVar[str] = SCALE_OFFSET_CODEC_NAME
+    kind: ClassVar[CodecKind] = "array_array"
+
+    member_types: ClassVar[MemberTypes] = {
+        "offset": (False, is_json_value),
+        "scale": (False, is_json_value),
+    }
+
+    def to_json(self) -> ScaleOffsetCodecObject | ScaleOffsetCodecName:
+        return cast("ScaleOffsetCodecObject | ScaleOffsetCodecName", super().to_json())

@@ -6,15 +6,32 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 proposed the codec, was never merged).
 """
 
-from typing import Final, Literal, NotRequired
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
+
+from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.v3._entity import (
+    CodecKind,
+    MemberTypes,
+    MetadataEntity,
+    is_bool,
+    is_int,
+    problem,
+)
 
 ZSTD_CODEC_NAME: Final = "zstd"
 """The `name` field value of the `zstd` codec."""
 
 ZstdCodecName = Literal["zstd"]
 """Literal type of the `name` field of the `zstd` codec."""
+
+ZSTD_MIN_LEVEL: Final = -131072
+"""The lowest `level` zstd accepts: ZSTD_minCLevel(), -(1 << 17)."""
+
+ZSTD_MAX_LEVEL: Final = 22
+"""The highest `level` zstd accepts: ZSTD_maxCLevel()."""
 
 
 class ZstdCodecConfiguration(TypedDict, closed=True):
@@ -49,8 +66,41 @@ form is not permitted by the spec for this codec.
 
 __all__ = [
     "ZSTD_CODEC_NAME",
+    "ZSTD_MAX_LEVEL",
+    "ZSTD_MIN_LEVEL",
+    "ZstdCodec",
     "ZstdCodecConfiguration",
     "ZstdCodecMetadata",
     "ZstdCodecName",
     "ZstdCodecObject",
 ]
+
+
+@dataclass(frozen=True)
+class ZstdCodec(MetadataEntity):
+    """The `zstd` codec, coerced from its metadata."""
+
+    level: int = 0
+    checksum: bool | None = None
+
+    identifier: ClassVar[str] = ZSTD_CODEC_NAME
+    kind: ClassVar[CodecKind] = "bytes_bytes"
+
+    configuration_required: ClassVar[bool] = True
+    member_types: ClassVar[MemberTypes] = {
+        "level": (True, is_int),
+        "checksum": (False, is_bool),
+    }
+
+    def problems(self) -> tuple[ValidationProblem, ...]:
+        """zstd compression levels run -131072 to 22."""
+        if not ZSTD_MIN_LEVEL <= self.level <= ZSTD_MAX_LEVEL:
+            return problem(
+                ("level",),
+                f"expected an integer in [{ZSTD_MIN_LEVEL}, {ZSTD_MAX_LEVEL}], got {self.level}",
+                "invalid_value",
+            )
+        return ()
+
+    def to_json(self) -> ZstdCodecObject:
+        return cast("ZstdCodecObject", super().to_json())

@@ -8,8 +8,9 @@ classifies a known name; unknown names have no kind.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/index.html
 """
 
-from typing import Final, Literal
+from typing import Final
 
+from zarr_metadata.v3._entity import CodecKind
 from zarr_metadata.v3.codec.blosc import BLOSC_CODEC_NAME
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC_NAME
 from zarr_metadata.v3.codec.cast_value import CAST_VALUE_CODEC_NAME
@@ -37,9 +38,6 @@ BYTES_BYTES_CODEC_NAMES: Final = (
     ZSTD_CODEC_NAME,
 )
 """Tuple of the `name` field values of the known `bytes -> bytes` codecs."""
-
-CodecKind = Literal["array_array", "array_bytes", "bytes_bytes"]
-"""The three pipeline positions the v3 spec sorts codecs into."""
 
 
 def codec_kind_of_name(name: str) -> CodecKind | None:

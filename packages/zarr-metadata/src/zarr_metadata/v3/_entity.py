@@ -40,9 +40,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping as _Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, ClassVar, Literal, TypeAlias, TypeVar, cast
 
-from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.model._validation import ValidationProblem, is_json
 from zarr_metadata.v3._extension_points import canonical_name
 
 if TYPE_CHECKING:
@@ -66,6 +66,14 @@ go on reading the entity checks for None. Both never happen at once.
 """
 
 Loc: TypeAlias = "tuple[str | int, ...]"
+
+CodecKind = Literal["array_array", "array_bytes", "bytes_bytes"]
+"""The three pipeline positions the v3 spec sorts codecs into.
+
+Here rather than in `zarr_metadata.v3.codec.kind` because each codec
+declares its own kind, and that module imports every codec to build the
+tuples it will no longer need once they all do.
+"""
 
 TypeCheck: TypeAlias = "Callable[[object, Loc], tuple[ValidationProblem, ...]]"
 """Whether one value has the type a member declares, and where if not."""
@@ -100,6 +108,13 @@ def is_bool(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
     return ()
 
 
+def is_json_value(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+    """Any JSON value at all -- the widest type a member can declare."""
+    if not is_json(value):
+        return problem(loc, f"expected a JSON value, got {value!r}")
+    return ()
+
+
 def one_of(allowed: tuple[str, ...]) -> TypeCheck:
     """A member whose type is a closed set of names."""
 
@@ -123,6 +138,22 @@ def sequence_of(element: TypeCheck) -> TypeCheck:
         )
 
     return check
+
+
+def _as_tuples(value: object) -> object:
+    """Every JSON array in `value`, at any depth, as a tuple.
+
+    The TypedDicts spell a JSON array as a tuple throughout, so a member
+    taken straight from parsed JSON would otherwise hold a list where its
+    own type says tuple -- and two documents differing only in that would
+    compare unequal.
+    """
+    if isinstance(value, list):
+        return tuple(_as_tuples(entry) for entry in cast("list[object]", value))
+    if isinstance(value, _Mapping):
+        entries = cast("Mapping[str, object]", value)
+        return {key: _as_tuples(entry) for key, entry in entries.items()}
+    return value
 
 
 def coerce_members(
@@ -151,7 +182,7 @@ def coerce_members(
         found = check(configuration[key], ("configuration", key))
         problems.extend(found)
         if len(found) == 0:
-            members[key] = configuration[key]
+            members[key] = _as_tuples(configuration[key])
     return members, tuple(problems)
 
 
@@ -176,13 +207,25 @@ class Context:
         return self.entities.get(field, {}).get(canonical_name(field, name))
 
 
-@dataclass(frozen=True, slots=True)
+# No `slots=True`, deliberately: it rebuilds the class, which leaves the
+# zero-argument `super()` in a subclass pointing at the class that was
+# replaced. Subclasses call `super()` to narrow `to_json` and to adjust
+# `configuration`, so slots would be a trap laid for every entity.
+@dataclass(frozen=True)
 class MetadataEntity:
     """One named entity, coerced from its metadata.
 
     Subclasses add their configuration members as fields, which is what
     makes them well-typed by construction: an instance exists only if
-    `coerce` accepted the metadata that produced it.
+    `coerce` accepted the metadata that produced it. An optional member is
+    typed `| None` with a default of `None`, so absence is representable
+    and a canonical spelling can leave it out.
+
+    Most subclasses declare `member_types` and nothing else: the default
+    `coerce` and `to_json` are written once here against that table. The
+    ones that override are the ones with something particular to say --
+    a configuration containing other entities, a name that is a family
+    rather than a constant, a member another member renders meaningless.
     """
 
     must_understand: bool = True
@@ -203,6 +246,22 @@ class MetadataEntity:
     together.
     """
 
+    configuration_required: ClassVar[bool] = False
+    """Whether the bare-name spelling says too little for this entity.
+
+    The spec permits a bare name "if no configuration metadata is
+    required", so this is true exactly when some member is required.
+    """
+
+    @classmethod
+    def accepts(cls, name: str) -> bool:
+        """Whether `name` denotes this entity.
+
+        Constant for all but the raw-bytes family, where one class covers
+        every `r<N>`.
+        """
+        return name == cls.identifier
+
     @classmethod
     def coerce(cls, value: object, context: Context) -> Coerced[Self]:
         """`value` as this entity, or the reasons it is not one.
@@ -210,7 +269,36 @@ class MetadataEntity:
         `context` is the scope this reading is happening in; most entities
         have no use for it and ignore it.
         """
-        raise NotImplementedError  # pragma: no cover - subclasses implement
+        name, configuration, must_understand = named_configuration(value)
+        if name is None or not cls.accepts(name):
+            return None, problem((), f"expected the {cls.identifier!r} entity")
+        if configuration is None:
+            if cls.configuration_required:
+                return None, problem(
+                    ("configuration",),
+                    f"{cls.identifier!r} requires a configuration",
+                    "missing_key",
+                )
+            configuration = cast("Mapping[str, object]", {})
+        members, found = coerce_members(configuration, cls.member_types)
+        # An unknown key is worth reporting but does not stop the entity
+        # from being read: every member it declares was still understood.
+        if any(entry.kind != "unknown_key" for entry in found):
+            return None, found
+        return cls(must_understand=must_understand, **members), found  # type: ignore[arg-type]
+
+    def configuration(self) -> dict[str, object]:
+        """This entity's configuration, in its simplest equivalent form.
+
+        Absent optional members are left out, which is what makes the
+        bare-name spelling reachable. Override to drop a member that
+        another member renders meaningless.
+        """
+        return {
+            key: value
+            for key in type(self).member_types
+            if (value := getattr(self, key)) is not None
+        }
 
     def problems(self) -> tuple[ValidationProblem, ...]:
         """Every value of this entity the spec disallows.
@@ -223,10 +311,22 @@ class MetadataEntity:
     def to_json(self) -> ZarrV3MetadataFieldJSON:
         """This entity in its simplest equivalent spelling.
 
+        A name alone when the name says everything, and the object form
+        otherwise. `must_understand` is omitted when true, because that is
+        the default and says nothing; an explicit false says something.
+
         Subclasses narrow the return type to their own object TypedDict,
         which is the JSON form this dataclass models.
         """
-        raise NotImplementedError  # pragma: no cover - subclasses implement
+        configuration = self.configuration()
+        if len(configuration) == 0 and self.must_understand:
+            return cast("ZarrV3MetadataFieldJSON", type(self).identifier)
+        entry: dict[str, object] = {"name": type(self).identifier}
+        if len(configuration) != 0:
+            entry["configuration"] = configuration
+        if not self.must_understand:
+            entry["must_understand"] = False
+        return cast("ZarrV3MetadataFieldJSON", entry)
 
 
 def named_configuration(
@@ -258,6 +358,7 @@ def named_configuration(
 
 
 __all__ = [
+    "CodecKind",
     "Coerced",
     "Context",
     "Loc",
@@ -267,6 +368,7 @@ __all__ = [
     "coerce_members",
     "is_bool",
     "is_int",
+    "is_json_value",
     "is_str",
     "named_configuration",
     "one_of",

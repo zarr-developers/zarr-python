@@ -12,13 +12,9 @@ from typing_extensions import TypedDict, Unpack
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
-    Coerced,
-    Context,
     MemberTypes,
     MetadataEntity,
-    coerce_members,
     is_int,
-    named_configuration,
     one_of,
     problem,
 )
@@ -100,6 +96,7 @@ __all__ = [
     "BLOSC_NO_SHUFFLE",
     "BLOSC_SHUFFLE",
     "BloscCName",
+    "BloscCodec",
     "BloscCodecConfiguration",
     "BloscCodecMetadata",
     "BloscCodecName",
@@ -109,7 +106,7 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class BloscCodec(MetadataEntity):
     """The `blosc` codec, coerced from its metadata.
 
@@ -129,6 +126,8 @@ class BloscCodec(MetadataEntity):
 
     # Every member is required but `typesize`, which only means something
     # when shuffling; `problems` is where that conditional lives.
+    configuration_required: ClassVar[bool] = True
+
     member_types: ClassVar[MemberTypes] = {
         "cname": (True, one_of(BLOSC_CNAME)),
         "clevel": (True, is_int),
@@ -136,21 +135,6 @@ class BloscCodec(MetadataEntity):
         "blocksize": (True, is_int),
         "typesize": (False, is_int),
     }
-
-    @classmethod
-    def coerce(cls, value: object, context: Context) -> Coerced[Self]:
-        name, configuration, must_understand = named_configuration(value)
-        if name != BLOSC_CODEC_NAME:
-            return None, problem((), f"expected the {BLOSC_CODEC_NAME!r} codec")
-        if configuration is None:
-            # Required members mean the bare-name spelling says too little.
-            return None, problem(
-                ("configuration",), "blosc requires a configuration", "missing_key"
-            )
-        members, found = coerce_members(configuration, cls.member_types)
-        if any(entry.kind != "unknown_key" for entry in found):
-            return None, found
-        return cls(must_understand=must_understand, **members), found  # type: ignore[arg-type]
 
     def problems(self) -> tuple[ValidationProblem, ...]:
         """The value constraints the spec places on a blosc configuration."""
@@ -199,22 +183,17 @@ class BloscCodec(MetadataEntity):
         """
         return cls(**configuration)
 
-    def to_json(self) -> BloscCodecObject:
-        """The simplest spelling of this codec.
+    def configuration(self) -> dict[str, object]:
+        """The simplest spelling of this codec's configuration.
 
         `typesize` is dropped under `noshuffle`, where the spec says of it
-        that "the value is ignored" — so two documents differing only there
-        describe the same codec.
+        that "the value is ignored" -- so two documents differing only
+        there describe the same codec.
         """
-        configuration: dict[str, object] = {
-            "cname": self.cname,
-            "clevel": self.clevel,
-            "shuffle": self.shuffle,
-            "blocksize": self.blocksize,
-        }
-        if self.typesize is not None and self.shuffle != BLOSC_NO_SHUFFLE:
-            configuration["typesize"] = self.typesize
-        entry: dict[str, object] = {"name": BLOSC_CODEC_NAME, "configuration": configuration}
-        if not self.must_understand:
-            entry["must_understand"] = False
-        return cast("BloscCodecObject", entry)
+        members = super().configuration()
+        if self.shuffle == BLOSC_NO_SHUFFLE:
+            members.pop("typesize", None)
+        return members
+
+    def to_json(self) -> BloscCodecObject:
+        return cast("BloscCodecObject", super().to_json())

@@ -4,9 +4,19 @@ Gzip codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/gzip/index.html
 """
 
-from typing import Final, Literal, NotRequired
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
+
+from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.v3._entity import (
+    CodecKind,
+    MemberTypes,
+    MetadataEntity,
+    is_int,
+    problem,
+)
 
 GZIP_CODEC_NAME: Final = "gzip"
 """The `name` field value of the `gzip` codec."""
@@ -50,8 +60,33 @@ only the object form is valid; the short-hand-name form is not permitted.
 
 __all__ = [
     "GZIP_CODEC_NAME",
+    "GzipCodec",
     "GzipCodecConfiguration",
     "GzipCodecMetadata",
     "GzipCodecName",
     "GzipCodecObject",
 ]
+
+
+@dataclass(frozen=True)
+class GzipCodec(MetadataEntity):
+    """The `gzip` codec, coerced from its metadata."""
+
+    level: int = 5
+
+    identifier: ClassVar[str] = GZIP_CODEC_NAME
+    kind: ClassVar[CodecKind] = "bytes_bytes"
+
+    configuration_required: ClassVar[bool] = True
+    member_types: ClassVar[MemberTypes] = {"level": (True, is_int)}
+
+    def problems(self) -> tuple[ValidationProblem, ...]:
+        """gzip compression levels run 0 to 9."""
+        if not 0 <= self.level <= 9:
+            return problem(
+                ("level",), f"expected an integer in [0, 9], got {self.level}", "invalid_value"
+            )
+        return ()
+
+    def to_json(self) -> GzipCodecObject:
+        return cast("GzipCodecObject", super().to_json())

@@ -4,9 +4,17 @@ Bytes codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/bytes/index.html
 """
 
-from typing import Final, Literal, NotRequired
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
+
+from zarr_metadata.v3._entity import (
+    CodecKind,
+    MemberTypes,
+    MetadataEntity,
+    one_of,
+)
 
 BYTES_CODEC_NAME: Final = "bytes"
 """The `name` field value of the `bytes` codec."""
@@ -59,9 +67,29 @@ omit `configuration` entirely.
 __all__ = [
     "BYTES_CODEC_NAME",
     "ENDIANNESS",
+    "BytesCodec",
     "BytesCodecConfiguration",
     "BytesCodecMetadata",
     "BytesCodecName",
     "BytesCodecObject",
     "Endianness",
 ]
+
+
+@dataclass(frozen=True)
+class BytesCodec(MetadataEntity):
+    """The `bytes` codec, coerced from its metadata.
+
+    `endian` is optional and absent means something: a one-byte data type
+    has no byte order to state, and the spec lets such an array omit it.
+    """
+
+    endian: Endianness | None = None
+
+    identifier: ClassVar[str] = BYTES_CODEC_NAME
+    kind: ClassVar[CodecKind] = "array_bytes"
+
+    member_types: ClassVar[MemberTypes] = {"endian": (False, one_of(ENDIANNESS))}
+
+    def to_json(self) -> BytesCodecObject | BytesCodecName:
+        return cast("BytesCodecObject | BytesCodecName", super().to_json())

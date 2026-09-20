@@ -4,9 +4,20 @@ Transpose codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/transpose/index.html
 """
 
-from typing import Final, Literal, NotRequired
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
+
+from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.v3._entity import (
+    CodecKind,
+    MemberTypes,
+    MetadataEntity,
+    is_int,
+    problem,
+    sequence_of,
+)
 
 TRANSPOSE_CODEC_NAME: Final = "transpose"
 """The `name` field value of the `transpose` codec."""
@@ -45,8 +56,39 @@ form is not permitted by the spec for this codec.
 
 __all__ = [
     "TRANSPOSE_CODEC_NAME",
+    "TransposeCodec",
     "TransposeCodecConfiguration",
     "TransposeCodecMetadata",
     "TransposeCodecName",
     "TransposeCodecObject",
 ]
+
+
+@dataclass(frozen=True)
+class TransposeCodec(MetadataEntity):
+    """The `transpose` codec, coerced from its metadata."""
+
+    order: tuple[int, ...] = ()
+
+    identifier: ClassVar[str] = TRANSPOSE_CODEC_NAME
+    kind: ClassVar[CodecKind] = "array_array"
+
+    configuration_required: ClassVar[bool] = True
+    member_types: ClassVar[MemberTypes] = {"order": (True, sequence_of(is_int))}
+
+    def problems(self) -> tuple[ValidationProblem, ...]:
+        """`order` must permute its own axes.
+
+        Whether it permutes the *array's* axes is a different question --
+        it needs the array's rank -- and the rules layer asks that one.
+        """
+        if sorted(self.order) != list(range(len(self.order))):
+            return problem(
+                ("order",),
+                f"expected a permutation of 0..{len(self.order) - 1}, got {self.order!r}",
+                "invalid_value",
+            )
+        return ()
+
+    def to_json(self) -> TransposeCodecObject:
+        return cast("TransposeCodecObject", super().to_json())

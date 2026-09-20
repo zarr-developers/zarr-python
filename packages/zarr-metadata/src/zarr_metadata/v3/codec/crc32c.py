@@ -7,9 +7,15 @@ The CRC32C codec has no configuration fields, so the `configuration`
 key is absent from the metadata.
 """
 
-from typing import Final, Literal, NotRequired
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
+
+from zarr_metadata.v3._entity import (
+    CodecKind,
+    MetadataEntity,
+)
 
 CRC32C_CODEC_NAME: Final = "crc32c"
 """The `name` field value of the `crc32c` codec."""
@@ -47,7 +53,22 @@ configuration, so both forms are valid.
 
 __all__ = [
     "CRC32C_CODEC_NAME",
+    "Crc32cCodec",
     "Crc32cCodecMetadata",
     "Crc32cCodecName",
     "Crc32cCodecObject",
 ]
+
+
+@dataclass(frozen=True)
+class Crc32cCodec(MetadataEntity):
+    """The `crc32c` codec, coerced from its metadata.
+
+    The name says everything: a checksum has nothing to configure.
+    """
+
+    identifier: ClassVar[str] = CRC32C_CODEC_NAME
+    kind: ClassVar[CodecKind] = "bytes_bytes"
+
+    def to_json(self) -> Crc32cCodecObject | Crc32cCodecName:
+        return cast("Crc32cCodecObject | Crc32cCodecName", super().to_json())
