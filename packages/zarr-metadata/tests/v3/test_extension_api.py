@@ -18,8 +18,6 @@ from zarr_metadata.rules import (
     canonicalize_array_metadata_v3,
     validate_array_metadata_v3,
 )
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
-from zarr_metadata.v3._entity import json_type_of
 from zarr_metadata.v3.codec.blosc import BloscCodec
 from zarr_metadata.v3.codec.gzip import GzipCodec, GzipCodecObject
 from zarr_metadata.v3.entity import (
@@ -37,6 +35,7 @@ from zarr_metadata.v3.entity import (
     MetadataEntity,
     Opaque,
     StorageClass,
+    ZarrV3MetadataFieldJSON,
     problem,
 )
 
@@ -698,9 +697,8 @@ def test_error_the_named_json_type_must_have_the_members_as_keys() -> None:
 
 def test_a_third_party_entity_may_name_its_json_type_or_not() -> None:
     # Left defaulted, `to_json` is typed as any metadata field; named, as
-    # the entity's own type -- and either way the same dict comes back.
-    assert json_type_of(AcmeLz4Codec) is ZarrV3MetadataFieldJSON
-
+    # the entity's own type, held to the members at class creation -- and
+    # either way the same dict comes back.
     @dataclass(frozen=True)
     class AcmeTypedBlockCodec(CodecEntity[AcmeBlockObject]):
         block: int
@@ -708,7 +706,6 @@ def test_a_third_party_entity_may_name_its_json_type_or_not() -> None:
         identifier: ClassVar[str] = "acme.block"
         kind: ClassVar[CodecKind] = "bytes_bytes"
 
-    assert json_type_of(AcmeTypedBlockCodec) is AcmeBlockObject
     assert AcmeTypedBlockCodec(block=8).to_json() == {
         "name": "acme.block",
         "configuration": {"block": 8},

@@ -48,7 +48,13 @@ MemberTypes: TypeAlias = "Mapping[str, tuple[bool, TypeCheck]]"
 def problem(
     loc: Loc, message: str, kind: ProblemKind = "invalid_type"
 ) -> tuple[ValidationProblem, ...]:
-    """One problem, as the tuple every check returns."""
+    """One problem, as the one-element tuple every check returns.
+
+    A tuple so that a check can return it directly and a rule can
+    `found.extend(problem(...))` and raise `MetadataValidationError(found)`
+    once. The default `kind` names a type mismatch; a value rule passes
+    `"invalid_value"`.
+    """
     return (ValidationProblem(loc, message, kind),)
 
 

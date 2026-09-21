@@ -20,6 +20,10 @@ The package is organized to mirror the structure of the Zarr specifications:
   documents, with subpackages for [chunk grids](v3/chunk_grid.md),
   [chunk key encodings](v3/chunk_key_encoding.md), [codecs](v3/codec.md),
   and [data types](v3/data_type.md)
+- [`zarr_metadata.v3.entity`](v3/entity.md) — the extension layer: read a
+  document into entities that answer for themselves, and write your own
+  codec, data type or chunk grid and add it to a scope; its module
+  docstring is the guide
 
 The document types, models, and spec vocabulary — including the store keys —
 are re-exported at the top level, so

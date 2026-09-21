@@ -174,15 +174,18 @@ class Context:
         for field, table in self.tables().items():
             for key, entity in table.items():
                 if not issubclass(entity, _ENTITY_KINDS[field]):
+                    point = entity.extension_point
                     msg = (
                         f"{entity.__name__} is registered at {field!r}, which takes "
                         f"{_ENTITY_KINDS[field].__name__} entities"
+                        + (f"; register it at {point!r}" if point is not None else "")
                     )
                     raise TypeError(msg)
                 if key != entity.identifier:
                     msg = (
                         f"{entity.__name__} is registered at {field!r} under {key!r} "
-                        f"but its identifier is {entity.identifier!r}"
+                        f"but its identifier is {entity.identifier!r}; key the table by "
+                        f"{entity.__name__}.identifier"
                     )
                     raise ValueError(msg)
                 if "__dataclass_fields__" not in vars(entity) and any(

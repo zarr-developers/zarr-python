@@ -41,6 +41,7 @@ from typing import (
     Final,
     Generic,
     Literal,
+    NotRequired,
     TypeAlias,
     cast,
     final,
@@ -471,7 +472,7 @@ def _compile_entity(cls: type[MetadataEntity]) -> None:
     if len(declared) != 0:
         msg = (
             f"{cls.__name__} declares {', '.join(declared)}, which is derived from the "
-            "fields at class creation"
+            "fields at class creation; remove the declaration"
         )
         raise TypeError(msg)
     cls.member_types, unread = derive_member_types(cls)
@@ -582,8 +583,8 @@ def _fields_do_not_shadow_class_variables(cls: type[MetadataEntity]) -> str | No
     if len(shadowed) == 0:
         return None
     return (
-        f"{cls.__name__} declares {', '.join(shadowed)} as a field, "
-        "shadowing a class variable of the same name"
+        f"{cls.__name__} declares {', '.join(shadowed)} as a field, shadowing a class "
+        "variable of the same name; rename the field, or set the class variable instead"
     )
 
 
@@ -592,10 +593,15 @@ def _owed_class_variables_are_declared(cls: type[MetadataEntity]) -> str | None:
     # is one the concrete entity owes: `identifier` for all of them,
     # `kind` for a codec, `bounds` for an integer type. Derived rather
     # than listed, so adding one to a family cannot forget to require it.
-    missing = [name for name in declared_class_vars(cls) if not hasattr(cls, name)]
+    annotated = declared_class_vars(cls)
+    missing = sorted(name for name in annotated if not hasattr(cls, name))
     if len(missing) == 0:
         return None
-    return f"{cls.__name__} does not declare {', '.join(sorted(missing))}"
+    owed = ", ".join(f"{name} (annotated by {annotated[name].__name__})" for name in missing)
+    return (
+        f"{cls.__name__} does not declare {owed}; set each as a class variable, "
+        "or pass base=True if this class exists only to be subclassed"
+    )
 
 
 def _literal_class_variables_hold_a_listed_value(cls: type[MetadataEntity]) -> str | None:
@@ -699,7 +705,10 @@ def _named_json_type_matches_what_is_written(cls: type[MetadataEntity]) -> str |
             # names it uses are not reachable, so its keys go unjudged.
             continue
         hints = {key: strip_annotation(value)[0] for key, value in resolved.items()}
-        required: frozenset[str] = getattr(obj, "__required_keys__", frozenset())
+        # Requiredness from the resolved hints, not `__required_keys__`:
+        # under postponed annotations a TypedDict's own metaclass cannot
+        # see `NotRequired` inside a string.
+        required = {key for key, value in resolved.items() if get_origin(value) is not NotRequired}
         extra = sorted(hints.keys() - {"name", "configuration", "must_understand"})
         if len(extra) != 0:
             found.append(f"has the key(s) {', '.join(extra)}, which no envelope has")
@@ -729,18 +738,21 @@ def _named_json_type_matches_what_is_written(cls: type[MetadataEntity]) -> str |
         if not is_typeddict(configuration):
             continue
         try:
-            keys = get_type_hints(configuration, include_extras=True).keys()
+            configuration_hints = get_type_hints(configuration, include_extras=True)
         except NameError:
             continue
+        keys = configuration_hints.keys()
         if set(keys) != set(cls.member_types):
             found.append(
                 f"has configuration keys {sorted(keys)!r} where the members are "
                 f"{sorted(cls.member_types)!r}"
             )
             continue
-        configuration_required: frozenset[str] = getattr(
-            configuration, "__required_keys__", frozenset()
-        )
+        configuration_required = {
+            key
+            for key, value in configuration_hints.items()
+            if get_origin(value) is not NotRequired
+        }
         misstated = sorted(
             key
             for key, (member_required, _) in cls.member_types.items()
@@ -789,8 +801,10 @@ def _optional_members_default_to_unset(cls: type[MetadataEntity]) -> str | None:
     if len(invented) == 0:
         return None
     return (
-        f"{cls.__name__} gives the optional member(s) "
-        f"{', '.join(invented)} a default other than UNSET"
+        f"{cls.__name__} gives the optional member(s) {', '.join(invented)} a default "
+        "other than UNSET; write `| UNSET = UNSET` and read the meaning of absence where "
+        "the member is used -- a default written into every document is not a member the "
+        "document left out"
     )
 
 
@@ -808,8 +822,8 @@ def _required_members_have_no_default(cls: type[MetadataEntity]) -> str | None:
     if len(presumed) == 0:
         return None
     return (
-        f"{cls.__name__} gives the required member(s) "
-        f"{', '.join(presumed)} a default; required members have none"
+        f"{cls.__name__} gives the required member(s) {', '.join(presumed)} a default; "
+        "either drop the default, or make the member optional with `| UNSET = UNSET`"
     )
 
 
@@ -868,7 +882,10 @@ class MetadataEntity(Generic[JSONT_co]):
     """
 
     must_understand: ClassVar[bool] = True
-    """Whether a reader that does not know this entity may skip it.
+    """Whether a reader must understand this entity to read the array.
+
+    `True`, the default and every codec: a reader that does not know it
+    may not skip it.
 
     A property of the *kind* of metadata, not of a use of it: a codec is
     something you must understand, every time it appears, because
