@@ -386,7 +386,7 @@ def _own_annotations(klass: type) -> dict[str, object]:
     return dict(vars(klass).get("__annotations__", {}))
 
 
-def _field_hints(cls: type) -> dict[str, object]:
+def field_hints(cls: type) -> dict[str, object]:
     """The dataclass fields of `cls`, resolved, base first.
 
     Each class's own annotations are resolved in that class's module,
@@ -710,7 +710,7 @@ def _compile_typeddict(inner: object) -> TypeCheck | None:
 def _compile_record(inner: object) -> TypeCheck | None:
     if not isinstance(inner, type):  # pragma: no cover - the predicate says it is
         return None
-    members = _members_of(_field_hints(inner))
+    members = _members_of(field_hints(inner))
     return None if members is None else mapping_of(members)
 
 
@@ -748,7 +748,7 @@ def derive_member_types(cls: type) -> tuple[dict[str, tuple[bool, TypeCheck]], l
     """
     derived: dict[str, tuple[bool, TypeCheck]] = {}
     unread: list[str] = []
-    for name, annotation in _field_hints(cls).items():
+    for name, annotation in field_hints(cls).items():
         inner, metadata = _strip(annotation)
         if any(entry is FROM_NAME for entry in metadata):
             continue
@@ -906,7 +906,7 @@ def value_check_for(annotation: object) -> TypeCheck | None:
     elif isinstance(inner, type) and is_dataclass(inner) and not _is_entity_type(inner):
         members = {
             name: check
-            for name, field_annotation in _field_hints(inner).items()
+            for name, field_annotation in field_hints(inner).items()
             if (check := value_check_for(field_annotation)) is not None
         }
         if len(members) != 0:
@@ -934,22 +934,22 @@ def value_check_for(annotation: object) -> TypeCheck | None:
     return both
 
 
-def _contains_entity(annotation: object) -> bool:
+def contains_entity(annotation: object) -> bool:
     """Whether a value of this type holds a nested metadata field anywhere in it."""
     inner, _ = _strip(annotation)
     if _is_entity_type(inner):
         return True
     origin = get_origin(inner)
     if _is_union(inner):
-        return any(_contains_entity(arg) for arg in get_args(inner) if arg is not UNSET)
+        return any(contains_entity(arg) for arg in get_args(inner) if arg is not UNSET)
     if origin is tuple:
-        return any(_contains_entity(arg) for arg in get_args(inner) if arg is not Ellipsis)
+        return any(contains_entity(arg) for arg in get_args(inner) if arg is not Ellipsis)
     if is_typeddict(inner):
         return any(
-            _contains_entity(value) for value in get_type_hints(inner, include_extras=True).values()
+            contains_entity(value) for value in get_type_hints(inner, include_extras=True).values()
         )
     if isinstance(inner, type) and is_dataclass(inner):
-        return any(_contains_entity(value) for value in _field_hints(inner).values())
+        return any(contains_entity(value) for value in field_hints(inner).values())
     return False
 
 
@@ -978,7 +978,7 @@ def _entity_kinds(annotation: object) -> list[type[MetadataEntity]]:
     if origin is tuple:
         return [kind for arg in arguments if arg is not Ellipsis for kind in _entity_kinds(arg)]
     if isinstance(inner, type) and is_dataclass(inner) and not _is_entity_type(inner):
-        return [kind for value in _field_hints(inner).values() for kind in _entity_kinds(value)]
+        return [kind for value in field_hints(inner).values() for kind in _entity_kinds(value)]
     return []
 
 
@@ -1007,7 +1007,7 @@ def _element_annotations(inner: object, count: int) -> list[object]:
 def _fitting_branch(inner: object, value: object) -> object | None:
     """The branch of a union that holds an entity and whose shape `value` has."""
     for branch in get_args(inner):
-        if branch is UNSET or not _contains_entity(branch):
+        if branch is UNSET or not contains_entity(branch):
             continue
         if _has_shape(_shape(branch), value):
             return branch
@@ -1047,7 +1047,7 @@ def _resolve(
         entries = cast("Mapping[str, object]", value)
         members: dict[str, object] = {}
         found = []
-        for name, field_annotation in _field_hints(inner).items():
+        for name, field_annotation in field_hints(inner).items():
             if name not in entries:
                 continue
             member, problems = _resolve(field_annotation, entries[name], context, (*loc, name))
@@ -1057,7 +1057,7 @@ def _resolve(
     return value, ()
 
 
-def _render(annotation: object, value: object) -> object:
+def render_nested(annotation: object, value: object) -> object:
     """`value` as a document would write it: every nested entity in its JSON form."""
     if isinstance(value, MetadataEntity):
         return value.to_json()
@@ -1066,25 +1066,25 @@ def _render(annotation: object, value: object) -> object:
     inner, _ = _strip(annotation)
     if _is_union(inner):
         branch = _fitting_branch(inner, value)
-        return value if branch is None else _render(branch, value)
+        return value if branch is None else render_nested(branch, value)
     if get_origin(inner) is tuple:
         entries = cast("tuple[object, ...]", value)
         return tuple(
-            _render(element, entry)
+            render_nested(element, entry)
             for element, entry in zip(
                 _element_annotations(inner, len(entries)), entries, strict=True
             )
         )
     if isinstance(inner, type) and is_dataclass(inner) and not _is_entity_type(inner):
         return {
-            name: _render(field_annotation, getattr(value, name))
-            for name, field_annotation in _field_hints(inner).items()
+            name: render_nested(field_annotation, getattr(value, name))
+            for name, field_annotation in field_hints(inner).items()
             if getattr(value, name) is not UNSET
         }
     return value
 
 
-def _canonicalize(annotation: object, value: object) -> object:
+def canonicalize_nested(annotation: object, value: object) -> object:
     """`value` with every nested entity in its own canonical form."""
     if isinstance(value, MetadataEntity):
         return value.canonical()
@@ -1093,11 +1093,11 @@ def _canonicalize(annotation: object, value: object) -> object:
     inner, _ = _strip(annotation)
     if _is_union(inner):
         branch = _fitting_branch(inner, value)
-        return value if branch is None else _canonicalize(branch, value)
+        return value if branch is None else canonicalize_nested(branch, value)
     if get_origin(inner) is tuple:
         entries = cast("tuple[object, ...]", value)
         return tuple(
-            _canonicalize(element, entry)
+            canonicalize_nested(element, entry)
             for element, entry in zip(
                 _element_annotations(inner, len(entries)), entries, strict=True
             )
@@ -1112,8 +1112,8 @@ def _canonicalize(annotation: object, value: object) -> object:
         return replace(
             value,
             **{
-                name: _canonicalize(field_annotation, getattr(value, name))
-                for name, field_annotation in _field_hints(inner).items()
+                name: canonicalize_nested(field_annotation, getattr(value, name))
+                for name, field_annotation in field_hints(inner).items()
             },
         )
     return value
@@ -1351,7 +1351,7 @@ class MetadataEntity:
                 f"{', '.join(unsupported)}; declare one in `member_types`"
             )
             raise TypeError(msg)
-        optional = {name: is_optional(annotation) for name, annotation in _field_hints(cls).items()}
+        optional = {name: is_optional(annotation) for name, annotation in field_hints(cls).items()}
         misstated = sorted(
             member
             for member, (required, _) in declared.items()
@@ -1369,9 +1369,9 @@ class MetadataEntity:
             raise TypeError(msg)
         cls.member_types = {**derived, **declared}
         cls.configuration_required = any(required for required, _ in cls.member_types.values())
-        hints = _field_hints(cls)
+        hints = field_hints(cls)
         cls.nested_members = {
-            name: annotation for name, annotation in hints.items() if _contains_entity(annotation)
+            name: annotation for name, annotation in hints.items() if contains_entity(annotation)
         }
         cls.value_checks = {
             name: check
@@ -1551,7 +1551,7 @@ class MetadataEntity:
         return replace(
             self,
             **{
-                name: _canonicalize(annotation, getattr(self, name))
+                name: canonicalize_nested(annotation, getattr(self, name))
                 for name, annotation in nested.items()
             },
         )
@@ -1578,7 +1578,7 @@ class MetadataEntity:
         members = self._configuration_members()
         for name, annotation in type(self).nested_members.items():
             if name in members:
-                members[name] = _render(annotation, members[name])
+                members[name] = render_nested(annotation, members[name])
         return deepcopy(members)
 
     value_problems: ClassVar[ValueRoutine] = staticmethod(_no_value_problems)

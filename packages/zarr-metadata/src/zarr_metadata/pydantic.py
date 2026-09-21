@@ -60,7 +60,7 @@ from zarr_metadata._pydantic_schema import (
     ZarrV3MetadataFieldJSON as _ZarrV3MetadataFieldSchema,
 )
 from zarr_metadata.model._validation import arrays_to_tuples, validate_consolidated_metadata_v3
-from zarr_metadata.rules._v3_group import consolidated_entries_problems
+from zarr_metadata.v3._document import consolidated_entries_problems
 
 if TYPE_CHECKING:
     from collections.abc import Callable

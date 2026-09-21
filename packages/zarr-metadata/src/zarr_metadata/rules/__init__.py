@@ -14,12 +14,10 @@ must match their modeled shape; extra configuration keys produce an
 round-trips preserve those unmodeled members.
 """
 
-from zarr_metadata.rules._canonical import (
+from zarr_metadata.rules._documents import (
     Canonical,
     Invalid,
     canonicalize_array_metadata_v3,
-)
-from zarr_metadata.rules._documents import (
     parse_array_metadata_v2,
     parse_array_metadata_v3,
     parse_group_metadata_v2,

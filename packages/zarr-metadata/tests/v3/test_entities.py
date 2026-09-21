@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import copy
 import dataclasses
-from typing import Any, cast, get_args, get_type_hints
+from typing import Any, ClassVar, Self, cast, get_args, get_type_hints
 
 import pytest
 
-from zarr_metadata.model import MetadataValidationError
+from zarr_metadata.model import UNSET, MetadataValidationError
 from zarr_metadata.rules import validate_array_metadata_v3
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS
 from zarr_metadata.v3.chunk_grid.rectilinear import (
@@ -579,3 +579,62 @@ def test_the_fail_fast_reader_refuses_a_member_it_would_drop() -> None:
     assert (("codecs", 1, "configuration", "typo_key"), "unknown_key") in {
         (problem.loc, problem.kind) for problem in caught.value.problems
     }
+
+
+# A storage transformer: the one extension point nothing in the package
+# models, so the only way to reach it is to register one.
+@dataclasses.dataclass(frozen=True)
+class AcmeShardCache(MetadataEntity):
+    """A third-party storage transformer with a member canonical form drops."""
+
+    verbose: bool | UNSET = UNSET
+
+    identifier: ClassVar[str] = "acme.shard_cache"
+
+    def canonical(self) -> Self:
+        return dataclasses.replace(super().canonical(), verbose=UNSET)
+
+
+def test_the_document_writes_itself_back_and_canonical_reaches_every_point() -> None:
+    # `to_json` is faithful, entities included; `canonical` walks every
+    # field that holds an entity -- `storage_transformers` among them,
+    # which the hand-written walk it replaces never reached.
+    scope = CORE_AND_EXTENSIONS.extended_with(
+        storage_transformers={AcmeShardCache.identifier: AcmeShardCache}
+    )
+    document = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (4,),
+        "data_type": "uint8",
+        "fill_value": 0,
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (2,)}},
+        "chunk_key_encoding": "default",
+        "codecs": (
+            "bytes",
+            {
+                "name": "blosc",
+                "configuration": {
+                    "cname": "zstd",
+                    "clevel": 5,
+                    "shuffle": "noshuffle",
+                    "typesize": 4,
+                    "blocksize": 0,
+                },
+            },
+        ),
+        "storage_transformers": ({"name": "acme.shard_cache", "configuration": {"verbose": True}},),
+        "dimension_names": (None,),
+    }
+    array = ArrayDocumentV3.from_json(document, context=scope)
+    assert array.to_json() == document
+    canonical = array.canonical().to_json()
+    assert canonical["codecs"] == (
+        "bytes",
+        {
+            "name": "blosc",
+            "configuration": {"cname": "zstd", "clevel": 5, "shuffle": "noshuffle", "blocksize": 0},
+        },
+    )
+    assert canonical["storage_transformers"] == ("acme.shard_cache",)
+    assert "dimension_names" not in canonical

@@ -14,8 +14,12 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 
 from tests.rules.strategies import valid_documents
-from zarr_metadata.rules import validate_array_metadata_v3
-from zarr_metadata.rules._canonical import Canonical, Invalid, canonicalize_array_metadata_v3
+from zarr_metadata.rules import (
+    Canonical,
+    Invalid,
+    canonicalize_array_metadata_v3,
+    validate_array_metadata_v3,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

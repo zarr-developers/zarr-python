@@ -1,17 +1,25 @@
-"""Whole-document structural and composition validation.
+"""Whole-document validation and canonicalization: the door.
 
 These `validate_*` and `parse_*` functions mirror the model API but apply
-both validation layers. There is deliberately no `is_*` counterpart:
-composition validity is stricter than TypedDict membership, so a guard
-here could not narrow honestly. Use `zarr_metadata.model.is_*` for type
-narrowing.
+both validation layers, and `canonicalize_array_metadata_v3` answers with
+`Canonical[T] | Invalid`: the document in its simplest equivalent
+spelling, or every reason it is not valid. The work is done by the
+documents themselves -- `zarr_metadata.v3._document` and
+`zarr_metadata.v2._document` -- and what this module decides is which
+entities are in scope while it asks.
+
+There is deliberately no `is_*` counterpart: composition validity is
+stricter than TypedDict membership, so a guard here could not narrow
+honestly. Use `zarr_metadata.model.is_*` for type narrowing.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Generic, Literal, TypeVar, cast
 
+from zarr_metadata.model._array import ZarrV3ArrayMetadata
 from zarr_metadata.model._validation import (
     MetadataValidationError,
     arrays_to_tuples,
@@ -28,9 +36,8 @@ from zarr_metadata.model._validation import (
 from zarr_metadata.model._validation import (
     validate_group_metadata_v3 as _validate_group_structure_v3,
 )
-from zarr_metadata.rules._v2_array import array_problems_v2
-from zarr_metadata.rules._v3_group import group_problems_v3
-from zarr_metadata.v3._document import array_problems_v3
+from zarr_metadata.v2._document import array_problems_v2
+from zarr_metadata.v3._document import array_problems_v3, group_problems_v3, read_array_v3
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
 
 if TYPE_CHECKING:
@@ -44,6 +51,29 @@ if TYPE_CHECKING:
 
     _StructuralValidator = Callable[[object], tuple[ValidationProblem, ...]]
     _SemanticValidator = Callable[[Mapping[str, object]], tuple[ValidationProblem, ...]]
+
+DocumentT = TypeVar("DocumentT")
+
+
+@dataclass(frozen=True, slots=True)
+class Canonical(Generic[DocumentT]):
+    """A semantically valid document, in its simplest equivalent spelling."""
+
+    document: DocumentT
+    valid: Literal[True] = True
+
+
+@dataclass(frozen=True, slots=True)
+class Invalid:
+    """Every reason a document is not semantically valid; never empty."""
+
+    problems: tuple[ValidationProblem, ...]
+    valid: Literal[False] = False
+
+    def __post_init__(self) -> None:
+        if len(self.problems) == 0:
+            msg = "Invalid requires at least one validation problem"
+            raise ValueError(msg)
 
 
 def _no_semantics(document: Mapping[str, object]) -> tuple[ValidationProblem, ...]:
@@ -195,7 +225,40 @@ def parse_group_metadata_v2(value: object) -> ZarrV2GroupMetadataJSON:
     return cast("ZarrV2GroupMetadataJSON", normalized)
 
 
+def canonicalize_array_metadata_v3(
+    document: ZarrV3ArrayMetadataJSON, *, context: Context = CORE_AND_EXTENSIONS
+) -> Canonical[ZarrV3ArrayMetadataJSON] | Invalid:
+    """`document` in canonical form, or every reason it is not valid.
+
+    Canonical means the simplest spelling with the same meaning, and the
+    document decides that for itself in `ArrayDocumentV3.canonical`: each
+    entity in its own canonical form, and `dimension_names` of nothing
+    but nulls omitted. Two properties are worth holding on to, and
+    `tests/rules/test_canonical.py` asserts both: canonicalizing twice
+    changes nothing further, and canonicalizing never changes a verdict.
+
+    Expects a document the model layer has already accepted. Passing one
+    it has not is not an error -- the semantic problems are reported the
+    same way -- but the structural problems come back too, and the result
+    is `Invalid` rather than a canonical document. The document is read
+    once: the entities that judge it are the entities that are rewritten.
+    """
+    normalized = arrays_to_tuples(document)
+    problems = _validate_structure_v3(normalized)
+    if not isinstance(normalized, Mapping):
+        return Invalid(problems)
+    array, found = read_array_v3(cast("Mapping[str, object]", normalized), context)
+    problems = (*problems, *found, *array.problems())
+    if len(problems) != 0:
+        return Invalid(problems)
+    canonical = cast("ZarrV3ArrayMetadataJSON", array.canonical().to_json())
+    return Canonical(ZarrV3ArrayMetadata.from_json(canonical).to_json())
+
+
 __all__ = [
+    "Canonical",
+    "Invalid",
+    "canonicalize_array_metadata_v3",
     "parse_array_metadata_v2",
     "parse_array_metadata_v3",
     "parse_group_metadata_v2",

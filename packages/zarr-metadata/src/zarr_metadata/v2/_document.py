@@ -1,4 +1,4 @@
-"""Semantic checks for v2 array metadata documents.
+"""What a v2 array document can get wrong beyond its shape.
 
 Deliberately small: the one cross-field constraint the package interprets
 is that `chunks` and `shape` agree on dimensionality. v2 has no extension
