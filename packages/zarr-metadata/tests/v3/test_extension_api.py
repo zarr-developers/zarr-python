@@ -7,7 +7,7 @@ file has to reach into a private one, the extension surface is not real.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Annotated, ClassVar, Literal, NotRequired, Self, cast
 
 import pytest
@@ -450,6 +450,43 @@ def test_a_third_party_entity_containing_entities_writes_nothing_for_it() -> Non
     inner = codec.canonical().inner
     assert isinstance(inner, BloscCodec)
     assert inner.typesize is UNSET
+
+
+def test_error_an_entity_may_not_override_canonical() -> None:
+    # `canonical` is the walk into contained entities, read off the
+    # annotations; an override could lose it. The entity's own rewrite
+    # goes in `simplified`.
+    with pytest.raises(TypeError, match="put the entity's own rewrite in `simplified`"):
+
+        @dataclass(frozen=True)
+        class Rewriter(CodecEntity):  # pyright: ignore[reportUnusedClass]
+            identifier: ClassVar[str] = "acme.rewriter"
+            kind: ClassVar[CodecKind] = "bytes_bytes"
+
+            def canonical(self) -> Self:  # pyright: ignore[reportIncompatibleMethodOverride]
+                return self
+
+
+def test_simplified_composes_with_the_walk_into_contained_entities() -> None:
+    # An entity that contains an entity and rewrites its own members gets
+    # both from `canonical` -- the contained blosc loses the `typesize`
+    # that `noshuffle` ignores, and the frame of 0 that means "unframed"
+    # is dropped -- with nothing to call `super()` for.
+    @dataclass(frozen=True)
+    class AcmeFramedCodec(CodecEntity):
+        inner: CodecEntity | Opaque
+        frame: int | UNSET = UNSET
+
+        identifier: ClassVar[str] = "acme.framed"
+        kind: ClassVar[CodecKind] = "bytes_bytes"
+
+        def simplified(self) -> Self:
+            return self if self.frame != 0 else replace(self, frame=UNSET)
+
+    blosc = BloscCodec(cname="zstd", clevel=5, shuffle="noshuffle", typesize=4, blocksize=0)
+    framed = AcmeFramedCodec(inner=blosc, frame=0)
+    assert framed.canonical() == AcmeFramedCodec(inner=replace(blosc, typesize=UNSET))
+    assert framed.inner is blosc  # a transformation, not a mutation
 
 
 def test_error_a_nested_field_needs_an_entity_kind_with_a_point() -> None:
