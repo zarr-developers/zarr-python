@@ -99,3 +99,6 @@ class RegularChunkGrid(ChunkGridEntity[RegularChunkGridMetadata]):
     def grid(self, array_shape: object) -> ChunkGrid:
         """One extent per axis, the same for every chunk on that axis."""
         return ChunkGrid.regular(self.chunk_shape)
+
+    def to_json(self) -> RegularChunkGridObject:
+        return {"name": "regular", "configuration": {"chunk_shape": self.chunk_shape}}

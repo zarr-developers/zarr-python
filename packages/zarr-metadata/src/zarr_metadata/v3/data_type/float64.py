@@ -89,3 +89,6 @@ class Float64DataType(FloatDataType[Float64DataTypeName]):
     hex_parser: ClassVar[Callable[[str], object]] = staticmethod(hex_float64)
     largest: ClassVar[float | None] = None
     identifier: ClassVar[str] = FLOAT64_DATA_TYPE_NAME
+
+    def to_json(self) -> Float64DataTypeName:
+        return "float64"

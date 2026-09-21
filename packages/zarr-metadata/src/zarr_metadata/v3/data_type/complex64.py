@@ -48,3 +48,6 @@ class Complex64DataType(ComplexDataType[Complex64DataTypeName]):
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     component: ClassVar[type[FloatDataType]] = Float32DataType
     identifier: ClassVar[str] = COMPLEX64_DATA_TYPE_NAME
+
+    def to_json(self) -> Complex64DataTypeName:
+        return "complex64"

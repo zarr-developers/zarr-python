@@ -92,3 +92,9 @@ class ZstdCodec(BytesBytesCodec[ZstdCodecMetadata]):
                     "invalid_value",
                 )
             )
+
+    def to_json(self) -> ZstdCodecObject:
+        configuration: ZstdCodecConfiguration = {"level": self.level}
+        if self.checksum is not UNSET:
+            configuration["checksum"] = self.checksum
+        return {"name": "zstd", "configuration": configuration}

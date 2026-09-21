@@ -92,3 +92,9 @@ class NumpyTimedelta64DataType(NumpyTimeDataType[NumpyTimedelta64]):
                     "invalid_value",
                 )
             )
+
+    def to_json(self) -> NumpyTimedelta64:
+        return {
+            "name": "numpy.timedelta64",
+            "configuration": {"unit": self.unit, "scale_factor": self.scale_factor},
+        }

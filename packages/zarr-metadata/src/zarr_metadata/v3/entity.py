@@ -44,7 +44,9 @@ fields; put every rule finer than a type in `__post_init__`; add the
 class to a scope. Complete, and runnable as written:
 
     from dataclasses import dataclass
-    from typing import ClassVar
+    from typing import ClassVar, Literal, NotRequired
+
+    from typing_extensions import TypedDict
 
     from zarr_metadata.rules import validate_array_metadata_v3
     from zarr_metadata.v3.entity import (
@@ -55,8 +57,15 @@ class to a scope. Complete, and runnable as written:
         problem,
     )
 
+    class AcmeLz4Configuration(TypedDict, closed=True):
+        acceleration: NotRequired[int]
+
+    class AcmeLz4Object(TypedDict, closed=True):
+        name: Literal["acme.lz4"]
+        configuration: AcmeLz4Configuration
+
     @dataclass(frozen=True)  # load-bearing: `coerce` builds the entity with cls(**members)
-    class AcmeLz4Codec(BytesBytesCodec):
+    class AcmeLz4Codec(BytesBytesCodec[AcmeLz4Object | Literal["acme.lz4"]]):
         acceleration: int | UNSET = UNSET  # optional: defaults to UNSET, never to a value
 
         identifier: ClassVar[str] = "acme.lz4"
@@ -70,6 +79,11 @@ class to a scope. Complete, and runnable as written:
                         "invalid_value",
                     )
                 )
+
+        def to_json(self) -> AcmeLz4Object | Literal["acme.lz4"]:
+            if self.acceleration is UNSET:
+                return "acme.lz4"
+            return {"name": "acme.lz4", "configuration": {"acceleration": self.acceleration}}
 
     SCOPE = CORE_AND_EXTENSIONS.extended_with(AcmeLz4Codec)
     validate_array_metadata_v3(document, context=SCOPE)
@@ -98,8 +112,11 @@ type mismatch. `__post_init__` runs only on an entity whose members all
 read: a member of the wrong type is reported and the entity is not built.
 
 **What an entity answers for itself**, beyond its fields. `to_json`,
-`canonical` and `coerce` are written once in the base; an entity whose
-own members have two spellings that mean the same overrides
+abstract: the entity as a document writes it, as a literal of its own
+TypedDict, which pyright holds to that type -- the bare name when every
+member is absent, the object otherwise, a contained entity through
+`written`. `coerce` and `canonical` are written once in the base; an
+entity whose own members have two spellings that mean the same overrides
 `simplified`, which `canonical` calls (overriding `canonical` itself is
 refused). Then, by kind:
 
@@ -134,13 +151,11 @@ A scope reads what a class is off the class: its kind is its base, its
 key is its `identifier`, so `extended_with` takes the classes and nothing
 can be misfiled.
 
-**Naming the JSON type.** `CodecEntity[AcmeLz4Metadata]` types `to_json`
-as your own TypedDict rather than as any metadata field. The shape is
-`{name: Literal["acme.lz4"], configuration: AcmeLz4Configuration,
-must_understand: NotRequired[bool]}`, in a union with the name literal
-only if no member is required; class creation holds it to the entity
-key by key (names it accepts, the members as configuration keys with
-the members' requiredness), and the tests hold the value types.
+**Naming the JSON type.** `BytesBytesCodec[AcmeLz4Object | Literal["acme.lz4"]]`
+types `to_json` as your own JSON type rather than as any metadata field,
+and pyright checks the literal `to_json` returns against it: a key it
+does not declare, a required one left out, a value of the wrong type is
+a static error. Left unnamed, `to_json` is typed as any metadata field.
 
 Two complete extensions written against this module alone, as tests:
 `tests/v3/test_acme_affine.py` (an `array_array` codec with a number, an
@@ -195,6 +210,7 @@ from zarr_metadata.v3._entity import (
     named_configuration,
     problem,
     within,
+    written,
 )
 from zarr_metadata.v3._parts import ArrayParts, ChunkGrid, Extents
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS, Context
@@ -243,4 +259,5 @@ __all__ = [
     "named_configuration",
     "problem",
     "within",
+    "written",
 ]

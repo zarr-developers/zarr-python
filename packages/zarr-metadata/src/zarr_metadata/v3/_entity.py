@@ -34,7 +34,6 @@ from abc import ABC, abstractmethod
 # creation, and a name that exists only for the type checker is a NameError
 # then -- for this package and for any tool introspecting an entity.
 from collections.abc import Callable, Mapping  # noqa: TC003
-from copy import deepcopy
 from dataclasses import MISSING, Field, dataclass, is_dataclass, replace
 from typing import (
     TYPE_CHECKING,
@@ -42,7 +41,6 @@ from typing import (
     Final,
     Generic,
     Literal,
-    NotRequired,
     TypeAlias,
     cast,
     final,
@@ -173,24 +171,6 @@ def _is_entity_kind(candidate: object) -> TypeIs[type[MetadataEntity]]:
     return isinstance(candidate, type) and issubclass(candidate, MetadataEntity)
 
 
-def json_type_of(cls: type[MetadataEntity]) -> object:
-    """The JSON type `cls` names for `to_json`; the default if it names none.
-
-    Read off the subscripted base the class -- or the nearest ancestor
-    that did -- was declared with, `CodecEntity[GzipCodecMetadata]`: the
-    one place the correspondence between an entity and its public JSON
-    type is written.
-    """
-    for klass in cls.__mro__:
-        for base in klass.__dict__.get("__orig_bases__", ()):
-            origin = get_origin(base)
-            if isinstance(origin, type) and issubclass(origin, MetadataEntity):
-                arguments = get_args(base)
-                if len(arguments) == 1 and not isinstance(arguments[0], TypeVar):
-                    return arguments[0]
-    return ZarrV3MetadataFieldJSON
-
-
 def contains_entity(annotation: object) -> bool:
     """Whether a value of this type holds a nested metadata field anywhere in it."""
     inner, _ = strip_annotation(annotation)
@@ -291,31 +271,17 @@ def _resolve(
     return value, ()
 
 
-def render_nested(annotation: object, value: object) -> object:
-    """`value` as a document would write it: every nested entity in its JSON form."""
-    if is_entity(value):
+def written(value: MetadataEntity | Opaque) -> ZarrV3MetadataFieldJSON:
+    """A contained metadata field as a document would write it.
+
+    The entity's own JSON, or the JSON an `Opaque` kept. An `Opaque`
+    inside a built entity is out of scope -- an inner name no entity in
+    scope claimed -- and its JSON passed the envelope check as a metadata
+    field, which is what the cast says.
+    """
+    if isinstance(value, MetadataEntity):
         return value.to_json()
-    if isinstance(value, Opaque):
-        return value.json
-    inner, _ = strip_annotation(annotation)
-    if is_union(inner):
-        branch = _fitting_branch(inner, value)
-        return value if branch is None else render_nested(branch, value)
-    if get_origin(inner) is tuple:
-        entries = cast("tuple[object, ...]", value)
-        return tuple(
-            render_nested(element, entry)
-            for element, entry in zip(
-                element_annotations(inner, len(entries)), entries, strict=True
-            )
-        )
-    if isinstance(inner, type) and is_dataclass(inner) and not is_metadata_field_type(inner):
-        return {
-            name: render_nested(field_annotation, getattr(value, name))
-            for name, field_annotation in field_hints(inner).items()
-            if getattr(value, name) is not UNSET
-        }
-    return value
+    return cast("ZarrV3MetadataFieldJSON", value.json)
 
 
 def canonicalize_nested(annotation: object, value: object) -> object:
@@ -530,126 +496,6 @@ def _owed_class_variables_are_declared(cls: type[MetadataEntity]) -> str | None:
     )
 
 
-def _is_name_type(part: object) -> bool:
-    """A JSON type for the bare-name spelling: `str`, a `Literal` of names, or a `NewType` of `str`."""
-    return (
-        part is str
-        or (get_origin(part) is Literal and all(isinstance(v, str) for v in get_args(part)))
-        or getattr(part, "__supertype__", None) is str
-    )
-
-
-def _unaccepted(cls: type[MetadataEntity], name_type: object) -> list[str]:
-    """The names a `Literal` name type lists that the entity does not accept."""
-    if get_origin(name_type) is not Literal:
-        return []
-    return [value for value in get_args(name_type) if not cls.accepts(value)]
-
-
-def _named_json_type_matches_what_is_written(cls: type[MetadataEntity]) -> str | None:
-    # The named type is a promise about what `to_json` writes, held to
-    # key by key: the spellings it admits are the ones the members make
-    # the entity write, its names are ones the entity accepts, and its
-    # configuration keys are the members. Value types are not compared
-    # -- a nested entity's JSON type and its field type are different
-    # spellings of one thing -- so that much stays with the tests.
-    json_type = json_type_of(cls)
-    if json_type is ZarrV3MetadataFieldJSON:
-        return None
-    parts = get_args(json_type) if is_union(json_type) else (json_type,)
-    objects = [part for part in parts if is_typeddict(part)]
-    names = [part for part in parts if _is_name_type(part)]
-    if len(objects) > 1 or len(names) > 1 or len(objects) + len(names) != len(parts):
-        return (
-            f"{cls.__name__} names {json_type!r} as its JSON type, which is not an object "
-            "TypedDict, a name type, or a union of one of each"
-        )
-    members = _members(cls)
-    writes_bare = not any(members.values()) and cls.must_understand
-    writes_object = len(members) != 0 or not cls.must_understand
-    found: list[str] = []
-    if writes_bare and len(names) == 0:
-        found.append("lacks the bare name the entity writes when every member is absent")
-    if not writes_bare and len(names) != 0:
-        found.append("admits a bare name, which the entity never writes")
-    if writes_object and len(objects) == 0:
-        found.append("lacks the object the entity writes")
-    if not writes_object and len(objects) != 0:
-        found.append("admits an object, which the entity never writes")
-    found.extend(
-        f"lists the name(s) {', '.join(map(repr, unaccepted))}, which the entity does not accept"
-        for name_type in names
-        if len(unaccepted := _unaccepted(cls, name_type)) != 0
-    )
-    for obj in objects:
-        try:
-            resolved = get_type_hints(obj, include_extras=True)
-        except NameError:
-            # Declared inside a function under postponed annotations: the
-            # names it uses are not reachable, so its keys go unjudged.
-            continue
-        hints = {key: strip_annotation(value)[0] for key, value in resolved.items()}
-        # Requiredness from the resolved hints, not `__required_keys__`:
-        # under postponed annotations a TypedDict's own metaclass cannot
-        # see `NotRequired` inside a string.
-        required = {key for key, value in resolved.items() if get_origin(value) is not NotRequired}
-        extra = sorted(hints.keys() - {"name", "configuration", "must_understand"})
-        if len(extra) != 0:
-            found.append(f"has the key(s) {', '.join(extra)}, which no envelope has")
-        if "name" not in hints:
-            found.append("has no name key")
-        elif len(unaccepted := _unaccepted(cls, hints["name"])) != 0:
-            found.append(
-                f"names {', '.join(map(repr, unaccepted))}, which the entity does not accept"
-            )
-        if not cls.must_understand and "must_understand" not in hints:
-            found.append("has no must_understand key, which the entity writes")
-        if len(members) == 0:
-            if "configuration" in hints:
-                found.append("has a configuration key, and the entity has no members")
-            continue
-        if "configuration" not in hints:
-            found.append("has no configuration key, and the entity has members")
-            continue
-        if ("configuration" in required) != any(members.values()):
-            found.append(
-                "has configuration "
-                + ("required" if "configuration" in required else "optional")
-                + ", but a member is "
-                + ("required" if any(members.values()) else "not required")
-            )
-        configuration = hints["configuration"]
-        if not is_typeddict(configuration):
-            continue
-        try:
-            configuration_hints = get_type_hints(configuration, include_extras=True)
-        except NameError:
-            continue
-        keys = configuration_hints.keys()
-        if set(keys) != set(members):
-            found.append(
-                f"has configuration keys {sorted(keys)!r} where the members are {sorted(members)!r}"
-            )
-            continue
-        required_keys = {
-            key
-            for key, value in configuration_hints.items()
-            if get_origin(value) is not NotRequired
-        }
-        misstated = sorted(
-            key
-            for key, member_required in members.items()
-            if (key in required_keys) != member_required
-        )
-        if len(misstated) != 0:
-            found.append(
-                f"states {', '.join(misstated)} with a requiredness the field does not give it"
-            )
-    if len(found) == 0:
-        return None
-    return f"{cls.__name__} names {json_type!r} as its JSON type, which " + "; ".join(found)
-
-
 def _codecs_are_of_a_kind(cls: type[MetadataEntity]) -> str | None:
     # The kind is the base class, and what a kind must answer is abstract
     # on it; a codec that skips the kind classes skips that.
@@ -743,7 +589,6 @@ _INVARIANTS: Final[tuple[Callable[[type[MetadataEntity]], str | None], ...]] = (
     _nested_fields_admit_opaque,
     _fields_do_not_shadow_class_variables,
     _owed_class_variables_are_declared,
-    _named_json_type_matches_what_is_written,
     _codecs_are_of_a_kind,
     _class_variables_hold_listed_values,
     _optional_members_default_to_unset,
@@ -775,27 +620,9 @@ class MetadataEntity(MetadataFieldValue, ABC, Generic[JSONT_co]):
     say beyond their types, a `__post_init__` that collects every problem
     and raises `MetadataValidationError` once -- so `BloscCodec(clevel=99)`
     raises, and `coerce` reports the same problems instead. `coerce`,
-    `configuration`, `to_json` and `canonical` are written once here
-    against what the fields say, read off them as needed.
-    """
-
-    must_understand: ClassVar[bool] = True
-    """Whether a reader must understand this entity to read the array.
-
-    `True`, the default and every codec: a reader that does not know it
-    may not skip it.
-
-    A property of the *kind* of metadata, not of a use of it: a codec is
-    something you must understand, every time it appears, because
-    ignoring one gives wrong bytes. Consolidated metadata is the opposite
-    and is unconditionally skippable. Neither is a per-occurrence choice,
-    so neither is a configuration member -- which is why this is a class
-    variable and not a field.
-
-    The spec permits `must_understand: false` on a codec; this package
-    treats that as an oversight and refuses it. Where the flag does earn
-    its keep -- an unknown top-level extension field a reader really can
-    skip -- it stays per-occurrence, on `ZarrV3NamedConfig`.
+    `coerce` and `canonical` are written once here against what the
+    fields say, read off them as needed; `to_json` is the entity's own,
+    a literal of its JSON type.
     """
 
     identifier: ClassVar[str]
@@ -951,6 +778,25 @@ class MetadataEntity(MetadataFieldValue, ABC, Generic[JSONT_co]):
         )
         return walked.simplified()
 
+    @abstractmethod
+    def to_json(self) -> JSONT_co:
+        """This entity as a document would write it: a literal of its own JSON type.
+
+        Faithful to every member it holds: read a document, write it
+        back, and those come out as they went in. Ask `canonical` first
+        if you want the simplest equivalent spelling. The envelope's
+        spelling is the one thing not preserved, because the entity does
+        not model it: a bare name, `{"name": x}` and `{"name": x,
+        "configuration": {}}` all read to the same entity, and the entity
+        writes the bare name when every member it holds is absent.
+
+        Written per entity, as a literal of the TypedDict named as the
+        base's argument -- `CodecEntity[GzipCodecObject]` -- which is
+        what holds it to that type: pyright checks the literal's keys and
+        values against the TypedDict. A contained entity is written with
+        `written`.
+        """
+
     def simplified(self) -> Self:
         """This entity with its own members in their simplest equivalent spelling.
 
@@ -963,83 +809,6 @@ class MetadataEntity(MetadataFieldValue, ABC, Generic[JSONT_co]):
         entities is not this method's to keep.
         """
         return self
-
-    def configuration(self) -> dict[str, object]:
-        """This entity's configuration, as the document would write it.
-
-        Faithful to every member the entity holds: `to_json` is
-        serialization, not canonicalization, so nothing is simplified
-        here. A contained entity is rendered as its own `to_json`, by
-        walking the fields that hold one.
-
-        Absent optional members are left out, which is what makes the
-        bare-name spelling reachable. Absence is `UNSET`, never `None`:
-        this package holds `None` to mean a JSON `null` the document
-        actually wrote, and `scale_offset` is a real case where `null`
-        and absent are different documents.
-
-        Deep-copied, because a member can be an arbitrary JSON value: a
-        `scale_offset` offset may be an object, and handing the caller
-        the entity's own dict would let them mutate a frozen entity
-        through the document it returned.
-        """
-        members = self._configuration_members()
-        for name, annotation in _nested(type(self)).items():
-            if name in members:
-                members[name] = render_nested(annotation, members[name])
-        return deepcopy(members)
-
-    def _configuration_members(self) -> dict[str, object]:
-        """The members a configuration object would spell out.
-
-        Every field but one the envelope carries some other way -- the
-        `r<N>` width, which lives in the name.
-        """
-        return {
-            key: value for key in _members(type(self)) if (value := getattr(self, key)) is not UNSET
-        }
-
-    def to_json(self) -> JSONT_co:
-        """This entity as a document would write it.
-
-        Faithful to every member it models: read a document, write it
-        back, and those come out as they went in. Ask `canonical` first
-        if you want the simplest equivalent spelling.
-
-        A member this entity does not model is not one of them. It is
-        reported as `unknown_key` and not held, so writing back drops it
-        -- which only a caller who took the problems as data and went on
-        past that one can reach, because `from_json` raises on it. A
-        caller who needs the bytes preserved has the JSON it passed in,
-        and `Opaque` is where unmodelled metadata belongs.
-
-        What is *not* preserved is the envelope's spelling, because the
-        entity does not model it: a bare name, `{"name": x}`, and
-        `{"name": x, "configuration": {}}` all mean the same and all read
-        to the same entity, so all three write back as the bare name.
-        `must_understand` follows the entity's own class variable, so it
-        is omitted for everything this package models today.
-
-        The return type is the entity's own JSON type, named as the
-        base's argument -- `GzipCodecObject`, `BytesCodecObject |
-        BytesCodecName` -- and the `cast` below is the one place the
-        package asserts that the dict it builds has that shape. Asserted
-        rather than proven because a TypedDict cannot be built member by
-        member from `dict[str, object]`; held to, twice: `__init_subclass__`
-        refuses a named type whose shape disagrees with whether this
-        entity ever writes a bare name or an object, and
-        `tests/v3/test_entities.py` compiles the named type with
-        `check_for` and runs every entity's output through it.
-        """
-        configuration = self.configuration()
-        if len(configuration) == 0 and type(self).must_understand:
-            return cast("JSONT_co", type(self).identifier)
-        entry: dict[str, object] = {"name": type(self).identifier}
-        if len(configuration) != 0:
-            entry["configuration"] = configuration
-        if not type(self).must_understand:
-            entry["must_understand"] = False
-        return cast("JSONT_co", entry)
 
 
 @dataclass(frozen=True)
@@ -1205,11 +974,11 @@ __all__ = [
     "is_json_value",
     "is_metadata_field",
     "is_str",
-    "json_type_of",
     "kind_of",
     "named_configuration",
     "one_of",
     "problem",
     "sequence_of",
     "within",
+    "written",
 ]

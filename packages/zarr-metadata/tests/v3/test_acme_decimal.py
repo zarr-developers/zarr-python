@@ -106,6 +106,12 @@ class AcmeDecimalDataType(DataTypeEntity[AcmeDecimal]):
         if len(found) != 0:
             raise MetadataValidationError(found)
 
+    def to_json(self) -> AcmeDecimal:
+        return {
+            "name": "acme.decimal",
+            "configuration": {"precision": self.precision, "scale": self.scale},
+        }
+
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         """A decimal literal whose digits fit `precision` and `scale`.
 

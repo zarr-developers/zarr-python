@@ -35,3 +35,6 @@ class Uint16DataType(IntegerDataType[Uint16DataTypeName]):
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     bounds: ClassVar[tuple[int, int]] = (0, 65535)
     identifier: ClassVar[str] = UINT16_DATA_TYPE_NAME
+
+    def to_json(self) -> Uint16DataTypeName:
+        return "uint16"

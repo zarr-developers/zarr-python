@@ -89,3 +89,9 @@ class NumpyDatetime64DataType(NumpyTimeDataType[NumpyDatetime64]):
                     "invalid_value",
                 )
             )
+
+    def to_json(self) -> NumpyDatetime64:
+        return {
+            "name": "numpy.datetime64",
+            "configuration": {"unit": self.unit, "scale_factor": self.scale_factor},
+        }

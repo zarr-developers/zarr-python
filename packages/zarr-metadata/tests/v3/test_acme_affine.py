@@ -32,6 +32,7 @@ from zarr_metadata.v3.entity import (
     ValidationProblem,
     ZarrV3MetadataFieldJSON,
     problem,
+    written,
 )
 
 
@@ -78,6 +79,14 @@ class AcmeAffineCodec(ArrayArrayCodec[AcmeAffineObject]):
     def simplified(self) -> Self:
         """An offset of 0 is the identity, and absent says the same."""
         return replace(self, offset=UNSET) if self.offset == 0 else self
+
+    def to_json(self) -> AcmeAffineObject:
+        configuration: AcmeAffineConfiguration = {"scale": self.scale}
+        if self.offset is not UNSET:
+            configuration["offset"] = self.offset
+        if self.dtype is not UNSET:
+            configuration["dtype"] = written(self.dtype)
+        return {"name": "acme.affine", "configuration": configuration}
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         data_type = incoming.data_type if incoming is not None else None

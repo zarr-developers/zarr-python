@@ -40,8 +40,8 @@ from zarr_metadata.v3._entity import (
     StorageTransformerEntity,
     canonicalize_nested,
     contains_entity,
-    render_nested,
     within,
+    written,
 )
 from zarr_metadata.v3._parts import ArrayParts, ChunkGrid
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
@@ -116,16 +116,20 @@ class ArrayDocumentV3:
 
         Faithful to what was read, member for member; the fields that
         are not extension points come back exactly as the document had
-        them. Ask `canonical` first for the simplest equivalent spelling.
+        them, and a field the document did not have is not invented.
+        Ask `canonical` first for the simplest equivalent spelling.
         """
-        # Only the fields the document wrote: an absent one was read as an
-        # `Opaque` standing in, and writing it back would invent a null.
-        rendered = {
-            name: render_nested(annotation, getattr(self, name))
-            for name, annotation in field_hints(type(self)).items()
-            if contains_entity(annotation) and name in self.document
+        rendered: dict[str, object] = {
+            "data_type": written(self.data_type),
+            "chunk_grid": written(self.chunk_grid),
+            "chunk_key_encoding": written(self.chunk_key_encoding),
+            "codecs": tuple(written(codec) for codec in self.codecs),
+            "storage_transformers": tuple(written(entry) for entry in self.storage_transformers),
         }
-        return {**self.document, **rendered}
+        return {
+            **self.document,
+            **{key: value for key, value in rendered.items() if key in self.document},
+        }
 
     @classmethod
     def from_json(cls, value: object, *, context: Context = CORE_AND_EXTENSIONS) -> ArrayDocumentV3:

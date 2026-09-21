@@ -81,3 +81,6 @@ class GzipCodec(BytesBytesCodec[GzipCodecMetadata]):
                     ("level",), f"expected an integer in [0, 9], got {self.level}", "invalid_value"
                 )
             )
+
+    def to_json(self) -> GzipCodecObject:
+        return {"name": "gzip", "configuration": {"level": self.level}}

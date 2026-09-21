@@ -4,6 +4,7 @@ Cast-value codec types.
 See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md
 """
 
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal, NotRequired
 
@@ -16,6 +17,7 @@ from zarr_metadata.v3._entity import (
     ArrayArrayCodec,
     DataTypeEntity,
     Opaque,
+    written,
 )
 from zarr_metadata.v3._parts import ArrayParts
 
@@ -143,3 +145,15 @@ class CastValueCodec(ArrayArrayCodec[CastValueCodecMetadata]):
         """The same parts, holding the type this codec casts to."""
         data_type = self.data_type
         return incoming.with_data_type(data_type if isinstance(data_type, DataTypeEntity) else None)
+
+    def to_json(self) -> CastValueCodecObject:
+        configuration: CastValueCodecConfiguration = {"data_type": written(self.data_type)}
+        if self.rounding is not UNSET:
+            configuration["rounding"] = self.rounding
+        if self.out_of_range is not UNSET:
+            configuration["out_of_range"] = self.out_of_range
+        if self.scalar_map is not UNSET:
+            # Copied: the document handed out must not be a handle on
+            # this frozen entity's own map.
+            configuration["scalar_map"] = deepcopy(self.scalar_map)
+        return {"name": "cast_value", "configuration": configuration}

@@ -161,3 +161,14 @@ class BloscCodec(BytesBytesCodec[BloscCodecMetadata]):
         if self.shuffle != BLOSC_NO_SHUFFLE or self.typesize is UNSET:
             return self
         return replace(self, typesize=UNSET)
+
+    def to_json(self) -> BloscCodecObject:
+        configuration: BloscCodecConfiguration = {
+            "cname": self.cname,
+            "clevel": self.clevel,
+            "shuffle": self.shuffle,
+            "blocksize": self.blocksize,
+        }
+        if self.typesize is not UNSET:
+            configuration["typesize"] = self.typesize
+        return {"name": "blosc", "configuration": configuration}

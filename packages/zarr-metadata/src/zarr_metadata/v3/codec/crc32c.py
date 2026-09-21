@@ -67,3 +67,6 @@ class Crc32cCodec(BytesBytesCodec[Crc32cCodecName]):
     """
 
     identifier: ClassVar[str] = CRC32C_CODEC_NAME
+
+    def to_json(self) -> Crc32cCodecName:
+        return "crc32c"

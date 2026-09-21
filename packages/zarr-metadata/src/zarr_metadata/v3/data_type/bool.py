@@ -44,3 +44,6 @@ class BoolDataType(DataTypeEntity[BoolDataTypeName]):
         if not isinstance(value, bool):
             return problem(loc, f"expected a boolean, got {value!r}", "invalid_value")
         return ()
+
+    def to_json(self) -> BoolDataTypeName:
+        return "bool"

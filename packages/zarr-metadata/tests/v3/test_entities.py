@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 import dataclasses
 from typing import (
+    TYPE_CHECKING,
     Any,
     ClassVar,
     Self,
@@ -23,12 +24,13 @@ from hypothesis import given, settings
 
 from tests.helpers import configuration_of
 from tests.rules.strategies import valid_documents
+
+if TYPE_CHECKING:
+    from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+
 from zarr_metadata.model import UNSET, MetadataValidationError
 from zarr_metadata.rules import validate_array_metadata_v3
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
-from zarr_metadata.v3._compile import check_for
 from zarr_metadata.v3._document import read_array_v3
-from zarr_metadata.v3._entity import json_type_of
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS
 from zarr_metadata.v3.chunk_grid.rectilinear import (
     RectilinearChunkGrid,
@@ -132,13 +134,6 @@ ENTITIES: dict[str, type[MetadataEntity]] = {
     "data_type:string": StringDataType,
     "data_type:r<N>": RawBytesDataType,
 }
-
-
-@pytest.mark.parametrize("entity", ENTITIES.values(), ids=list(ENTITIES))
-def test_every_entity_names_its_json_type(entity: type[MetadataEntity]) -> None:
-    # The default is not wrong, only uninformative; every entity this
-    # package models says exactly what it writes.
-    assert json_type_of(entity) is not ZarrV3MetadataFieldJSON
 
 
 # One or more documents each entity reads, spelled to reach both shapes
@@ -247,15 +242,14 @@ EXAMPLES: dict[str, tuple[object, ...]] = {
 }
 
 
-def _assert_conforms(entity: MetadataEntity) -> None:
-    # The one `cast` in `to_json` asserts that what it builds has the
-    # entity's named type. This is that assertion, checked: the named
-    # type compiled by the package's own compiler, and the output run
-    # through it.
-    json_type = json_type_of(type(entity))
-    check = check_for(json_type)
-    assert check is not None, f"{json_type!r} is not a shape the compiler reads"
-    assert check(entity.to_json(), ()) == ()
+def _round_trips(entity: type[MetadataEntity], document: object) -> MetadataEntity:
+    read, problems = entity.coerce(document, CORE_AND_EXTENSIONS)
+    assert problems == ()
+    assert read is not None
+    again, problems = entity.coerce(read.to_json(), CORE_AND_EXTENSIONS)
+    assert problems == ()
+    assert again == read
+    return read
 
 
 @pytest.mark.parametrize(
@@ -265,26 +259,22 @@ def _assert_conforms(entity: MetadataEntity) -> None:
         f"{key}:{index}" for key, documents in EXAMPLES.items() for index in range(len(documents))
     ],
 )
-def test_to_json_conforms_to_the_named_json_type(
+def test_to_json_reads_back_to_the_same_entity(
     entity: type[MetadataEntity], document: object
 ) -> None:
-    read, problems = entity.coerce(document, CORE_AND_EXTENSIONS)
-    assert problems == ()
-    assert read is not None
-    _assert_conforms(read)
+    # What `to_json` writes, `coerce` reads to the entity that wrote it:
+    # every member is written, in the spelling the reader expects.
+    _round_trips(entity, document)
 
 
 @given(document=valid_documents())
 @settings(max_examples=50, deadline=None)
-def test_to_json_conforms_across_a_valid_document(document: dict[str, object]) -> None:
-    # The top-level entities of documents valid by construction, for the
-    # variation the examples fix: permutations, chunk shapes, an index
-    # pipeline. A nested entity is some entity's top-level example.
+def test_to_json_reads_back_across_a_valid_document(document: dict[str, object]) -> None:
     array, problems = read_array_v3(document, CORE_AND_EXTENSIONS)
     assert problems == ()
     for entity in (array.data_type, array.chunk_grid, array.chunk_key_encoding, *array.codecs):
         assert isinstance(entity, MetadataEntity)
-        _assert_conforms(entity)
+        _round_trips(type(entity), entity.to_json())
 
 
 def test_every_registered_entity_is_checked_here() -> None:
@@ -756,6 +746,11 @@ class AcmeShardCache(StorageTransformerEntity):
 
     def simplified(self) -> Self:
         return dataclasses.replace(self, verbose=UNSET)
+
+    def to_json(self) -> ZarrV3MetadataFieldJSON:
+        if self.verbose is UNSET:
+            return "acme.shard_cache"
+        return {"name": "acme.shard_cache", "configuration": {"verbose": self.verbose}}
 
 
 def test_the_document_writes_itself_back_and_canonical_reaches_every_point() -> None:

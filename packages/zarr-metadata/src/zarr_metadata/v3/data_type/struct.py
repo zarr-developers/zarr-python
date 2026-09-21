@@ -19,6 +19,7 @@ from zarr_metadata.v3._entity import (
     Opaque,
     StorageClass,
     problem,
+    written,
 )
 
 STRUCT_DATA_TYPE_NAME: Final = "struct"
@@ -93,6 +94,10 @@ class StructFieldComponent:
 
     name: str
     data_type: DataTypeEntity | Opaque
+
+
+def _written_field(field: StructFieldComponent) -> StructField:
+    return {"name": field.name, "data_type": written(field.data_type)}
 
 
 @dataclass(frozen=True)
@@ -209,3 +214,9 @@ class StructDataType(DataTypeEntity[Struct]):
             for key in sorted(fills.keys() - declared)
         )
         return tuple(found)
+
+    def to_json(self) -> Struct:
+        return {
+            "name": "struct",
+            "configuration": {"fields": tuple(_written_field(field) for field in self.fields)},
+        }

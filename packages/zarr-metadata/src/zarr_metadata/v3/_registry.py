@@ -228,10 +228,7 @@ def _registrable(entity: type[MetadataEntity]) -> type[MetadataEntity]:
         raise TypeError(msg)
     if inspect.isabstract(entity):
         left = ", ".join(sorted(entity.__abstractmethods__))
-        msg = (
-            f"{entity.__name__} does not define {left}, which its base leaves abstract; "
-            "define it, if only to return the same thing as `incoming` or ()"
-        )
+        msg = f"{entity.__name__} does not define {left}, which its base leaves abstract"
         raise TypeError(msg)
     if "__dataclass_fields__" not in vars(entity) and any(
         not is_class_var(annotation) for annotation in own_annotations(entity).values()
