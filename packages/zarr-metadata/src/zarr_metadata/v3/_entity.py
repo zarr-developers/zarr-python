@@ -31,7 +31,7 @@ from __future__ import annotations
 # (`TypeCheck`, `MemberTypes`) are resolved by `get_type_hints` at class
 # creation, and a name that exists only for the type checker is a NameError
 # then -- for this package and for any tool introspecting an entity.
-from collections.abc import Callable, Mapping, Sequence  # noqa: TC003
+from collections.abc import Callable, Mapping  # noqa: TC003
 from copy import deepcopy
 from dataclasses import MISSING, Field, dataclass, is_dataclass, replace
 from types import MappingProxyType
@@ -49,6 +49,7 @@ from typing import (
     get_origin,
     get_type_hints,
 )
+from weakref import WeakKeyDictionary
 
 from typing_extensions import TypeIs, TypeVar, is_typeddict
 
@@ -65,7 +66,6 @@ if TYPE_CHECKING:
     from zarr_metadata.v3._parts import ArrayParts
     from zarr_metadata.v3._registry import Context
 
-from zarr_metadata.v3 import _compile
 from zarr_metadata.v3._checks import (
     Loc,
     MemberTypes,
@@ -86,6 +86,7 @@ from zarr_metadata.v3._checks import (
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._compile import (
     FROM_NAME,
+    MetadataFieldValue,
     declared_class_vars,
     derive_member_types,
     element_annotations,
@@ -93,10 +94,13 @@ from zarr_metadata.v3._compile import (
     field_hints,
     has_shape,
     is_class_var,
+    is_metadata_field_type,
+    is_nested_field,
     is_union,
     own_annotations,
     shape_of,
     strip_annotation,
+    unsubscripted,
 )
 
 EntityT = TypeVar("EntityT", bound="MetadataEntity")
@@ -199,17 +203,6 @@ def _is_entity_kind(candidate: object) -> TypeIs[type[MetadataEntity]]:
     return isinstance(candidate, type) and issubclass(candidate, MetadataEntity)
 
 
-def _unsubscripted(candidate: object) -> object:
-    """`CodecEntity[X]` as `CodecEntity`; anything else as it is."""
-    origin = get_origin(candidate)
-    return origin if isinstance(origin, type) else candidate
-
-
-def _is_entity_type(candidate: object) -> bool:
-    candidate = _unsubscripted(candidate)
-    return candidate is Opaque or _is_entity_kind(candidate)
-
-
 def json_type_of(cls: type[MetadataEntity]) -> object:
     """The JSON type `cls` names for `to_json`; the default if it names none.
 
@@ -228,30 +221,10 @@ def json_type_of(cls: type[MetadataEntity]) -> object:
     return ZarrV3MetadataFieldJSON
 
 
-def _is_entity_or_opaque(candidates: Sequence[object]) -> bool:
-    """A nested metadata field: some entity kind, optionally with `Opaque`."""
-    return (
-        len(candidates) != 0
-        and all(_is_entity_type(candidate) for candidate in candidates)
-        and any(candidate is not Opaque for candidate in candidates)
-    )
-
-
-def _is_nested_field(annotation: object) -> bool:
-    """An entity type, or a union of entity types and `Opaque`."""
-    candidates = list(get_args(annotation)) if is_union(annotation) else [annotation]
-    return _is_entity_or_opaque([candidate for candidate in candidates if candidate is not UNSET])
-
-
-# The compiler knows nothing of entities; this is where it learns which
-# annotations are nested metadata fields.
-_compile.nested_field = _is_nested_field
-
-
 def contains_entity(annotation: object) -> bool:
     """Whether a value of this type holds a nested metadata field anywhere in it."""
     inner, _ = strip_annotation(annotation)
-    if _is_entity_type(inner):
+    if is_metadata_field_type(inner):
         return True
     origin = get_origin(inner)
     if is_union(inner):
@@ -274,7 +247,7 @@ def _as_entity_kind(candidate: object) -> type[MetadataEntity] | None:
     narrows this parameter and not the caller's variable, which the
     caller goes on to read as the annotation it is.
     """
-    candidate = _unsubscripted(candidate)
+    candidate = unsubscripted(candidate)
     if _is_entity_kind(candidate):
         return candidate
     return None
@@ -292,7 +265,7 @@ def _entity_kinds(annotation: object) -> list[type[MetadataEntity]]:
         return [kind for arg in arguments if arg is not UNSET for kind in _entity_kinds(arg)]
     if origin is tuple:
         return [kind for arg in arguments if arg is not Ellipsis for kind in _entity_kinds(arg)]
-    if isinstance(inner, type) and is_dataclass(inner) and not _is_entity_type(inner):
+    if isinstance(inner, type) and is_dataclass(inner) and not is_metadata_field_type(inner):
         return [kind for value in field_hints(inner).values() for kind in _entity_kinds(value)]
     return []
 
@@ -326,15 +299,13 @@ def _resolve(
 ) -> tuple[object, tuple[ValidationProblem, ...]]:
     """`value`, with every nested metadata field in it read as an entity in `context`.
 
-    What `prepare` used to be written for by hand: a field annotated with
-    an entity type is resolved through the scope, at the point that kind
-    of entity is registered at; an array of them element by element; a
-    record holding one field by field. The value has passed its type
-    check, so the shapes are the annotation's.
+    A field annotated with an entity type is resolved through the scope,
+    at the point that kind of entity is registered at; an array of them
+    element by element; a record holding one field by field. The value
+    has passed its type check, so the shapes are the annotation's.
     """
     inner, _ = strip_annotation(annotation)
-    candidates = list(get_args(inner)) if is_union(inner) else [inner]
-    if _is_entity_or_opaque(candidates):
+    if is_nested_field(inner):
         return context.coerce(_point_of(_entity_kinds(inner)[0]), value, loc)
     if is_union(inner):
         branch = _fitting_branch(inner, value)
@@ -350,7 +321,7 @@ def _resolve(
             resolved.append(item)
             found.extend(problems)
         return tuple(resolved), tuple(found)
-    if isinstance(inner, type) and is_dataclass(inner) and not _is_entity_type(inner):
+    if isinstance(inner, type) and is_dataclass(inner) and not is_metadata_field_type(inner):
         entries = cast("Mapping[str, object]", value)
         members: dict[str, object] = {}
         found = []
@@ -382,7 +353,7 @@ def render_nested(annotation: object, value: object) -> object:
                 element_annotations(inner, len(entries)), entries, strict=True
             )
         )
-    if isinstance(inner, type) and is_dataclass(inner) and not _is_entity_type(inner):
+    if isinstance(inner, type) and is_dataclass(inner) and not is_metadata_field_type(inner):
         return {
             name: render_nested(field_annotation, getattr(value, name))
             for name, field_annotation in field_hints(inner).items()
@@ -412,7 +383,7 @@ def canonicalize_nested(annotation: object, value: object) -> object:
     if (
         isinstance(inner, type)
         and is_dataclass(inner)
-        and not _is_entity_type(inner)
+        and not is_metadata_field_type(inner)
         and is_dataclass(value)
         and not isinstance(value, type)
     ):
@@ -426,72 +397,80 @@ def canonicalize_nested(annotation: object, value: object) -> object:
     return value
 
 
-_MISSING_DEFAULT: Final = object()
-"""Distinguishes "declared no default" from a default that is None or UNSET."""
-
-
 @dataclass(frozen=True, slots=True)
-class Opaque:
+class Opaque(MetadataFieldValue):
     """A metadata field this reading did not turn into an entity.
 
-    Carrying the JSON rather than dropping it is what makes the result a
-    real union: `CodecEntity | Opaque` is exhaustive and narrows, where
-    `CodecEntity | object` is just `object` and narrows to nothing.
-
-    `reason` is the distinction a reader needs and could not otherwise
-    make. `out_of_scope` is a name no entity in this `Context` claims --
-    an extension this reader does not model, which is not an error and is
-    the reader's cue to resolve it elsewhere. `invalid` is a name that
-    *was* claimed and then refused; the reasons are in the problems
-    reported alongside.
+    Carries the JSON the document wrote, so a reader holding a
+    `CodecEntity | Opaque` has everything the document said in either
+    case, and `reason` says which case it is. `out_of_scope` is a name no
+    entity in this `Context` claims -- an extension this reader does not
+    model, which is not an error and is the reader's cue to resolve it
+    elsewhere. `invalid` is a name that *was* claimed and then refused,
+    for the reasons reported alongside.
     """
 
     json: object
     reason: Literal["out_of_scope", "invalid"]
 
 
-# No `slots=True`, deliberately. It rebuilds the class, which on Python
-# 3.11 and 3.12 leaves the zero-argument `super()` *in that same class's
-# body* pointing at the class it replaced. Several entities call `super()`
-# to narrow `to_json` and to adjust `configuration`, so they would each
-# have to spell it `super(Cls, self)`. CPython fixed this in 3.13, so when
-# that is the floor this is worth revisiting; the memory saved is small at
-# document scale, which is why it has not been.
-_DERIVED: Final = ("member_types", "configuration_required", "nested_members", "name_members")
-"""The class variables `_compile_entity` derives; a declaration of one is refused."""
+@dataclass(frozen=True)
+class Compiled:
+    """What the layer reads off an entity's fields, computed once per class.
 
-
-def _compile_entity(cls: type[MetadataEntity]) -> None:
-    """Derive from the fields the tables the layer reads.
-
-    Raises for a declaration that cannot be compiled: a derived table
-    declared by hand, which the derivation would silently overwrite, and
-    a field annotation outside the shapes the compiler reads.
+    Kept beside the class rather than on it: a class is not written to
+    after its definition.
     """
-    declared = [name for name in _DERIVED if name in vars(cls)]
-    if len(declared) != 0:
-        msg = (
-            f"{cls.__name__} declares {', '.join(declared)}, which is derived from the "
-            "fields at class creation; remove the declaration"
-        )
-        raise TypeError(msg)
-    cls.member_types, unread = derive_member_types(cls)
-    if len(unread) != 0:
+
+    member_types: MemberTypes
+    """The configuration members, and the type check each one's annotation implies."""
+    configuration_required: bool
+    """Whether some member is required, which decides whether the bare-name spelling is legal."""
+    nested_members: Mapping[str, object]
+    """The fields that hold other entities, with their annotations."""
+    name_members: tuple[str, ...]
+    """The fields the envelope's name carries, marked `Annotated[str, FROM_NAME]`."""
+
+
+_COMPILED: Final[WeakKeyDictionary[type[MetadataEntity], Compiled]] = WeakKeyDictionary()
+
+
+def compiled(cls: type[MetadataEntity]) -> Compiled:
+    """The tables read off `cls`'s fields.
+
+    Computed the first time a class is asked about and kept for its
+    lifetime. Raises `TypeError` for a field annotation outside the shapes
+    the compiler reads.
+    """
+    found = _COMPILED.get(cls)
+    if found is None:
+        member_types, unread = derive_member_types(cls)
+        if len(unread) != 0:
+            hints = field_hints(cls)
+            msg = (
+                f"{cls.__name__}: "
+                f"{'; '.join(f'{name} is annotated {hints[name]!r}' for name in sorted(unread))}"
+                ", which is not a shape JSON takes. A field is int, float, bool, str, JSONValue, "
+                "a Literal of names, tuple[T, ...] or tuple[T1, T2], a TypedDict or dataclass "
+                "record, Mapping[str, V], a NewType, or an entity kind with Opaque "
+                "(CodecEntity | Opaque); add | UNSET for an optional member, and put any finer "
+                "rule in `__post_init__`"
+            )
+            raise TypeError(msg)
         hints = field_hints(cls)
-        msg = (
-            f"{cls.__name__}: {'; '.join(f'{name} is annotated {hints[name]!r}' for name in sorted(unread))}"
-            ", which is not a shape JSON takes. A field is int, float, bool, str, JSONValue, a "
-            "Literal of names, tuple[T, ...] or tuple[T1, T2], a TypedDict or dataclass record, "
-            "Mapping[str, V], a NewType, or an entity kind with Opaque (CodecEntity | Opaque); "
-            "add | UNSET for an optional member, and put any finer rule in `__post_init__`"
+        found = _COMPILED[cls] = Compiled(
+            member_types=MappingProxyType(member_types),
+            configuration_required=any(required for required, _ in member_types.values()),
+            nested_members=MappingProxyType(
+                {
+                    name: annotation
+                    for name, annotation in hints.items()
+                    if contains_entity(annotation)
+                }
+            ),
+            name_members=envelope_members(cls),
         )
-        raise TypeError(msg)
-    cls.configuration_required = any(required for required, _ in cls.member_types.values())
-    cls.name_members = envelope_members(cls)
-    hints = field_hints(cls)
-    cls.nested_members = {
-        name: annotation for name, annotation in hints.items() if contains_entity(annotation)
-    }
+    return found
 
 
 # The invariants, each a function of the compiled class returning why it
@@ -521,7 +500,7 @@ def _nested_kinds_have_a_point(cls: type[MetadataEntity]) -> str | None:
     # field typed as one could not be resolved through a scope.
     unplaced = sorted(
         name
-        for name, annotation in cls.nested_members.items()
+        for name, annotation in compiled(cls).nested_members.items()
         if any(kind.extension_point is None for kind in _entity_kinds(annotation))
     )
     if len(unplaced) == 0:
@@ -538,10 +517,10 @@ def _entity_unions_lacking_opaque(annotation: object) -> bool:
     inner, _ = strip_annotation(annotation)
     if is_union(inner):
         parts = [part for part in get_args(inner) if part is not UNSET]
-        if any(_is_entity_type(part) and part is not Opaque for part in parts):
+        if any(is_metadata_field_type(part) and part is not Opaque for part in parts):
             return Opaque not in parts
         return any(_entity_unions_lacking_opaque(part) for part in parts)
-    if _is_entity_type(inner):
+    if is_metadata_field_type(inner):
         return inner is not Opaque
     if get_origin(inner) is tuple:
         return any(
@@ -558,7 +537,7 @@ def _nested_fields_admit_opaque(cls: type[MetadataEntity]) -> str | None:
     # `codec.inner.level` would be accepted and then raise.
     lacking = sorted(
         name
-        for name, annotation in cls.nested_members.items()
+        for name, annotation in compiled(cls).nested_members.items()
         if _entity_unions_lacking_opaque(annotation)
     )
     if len(lacking) == 0:
@@ -681,8 +660,8 @@ def _named_json_type_matches_what_is_written(cls: type[MetadataEntity]) -> str |
             f"{cls.__name__} names {json_type!r} as its JSON type, which is not an object "
             "TypedDict, a name type, or a union of one of each"
         )
-    writes_bare = not cls.configuration_required and cls.must_understand
-    writes_object = len(cls.member_types) != 0 or not cls.must_understand
+    writes_bare = not compiled(cls).configuration_required and cls.must_understand
+    writes_object = len(compiled(cls).member_types) != 0 or not cls.must_understand
     found: list[str] = []
     if writes_bare and len(names) == 0:
         found.append("lacks the bare name the entity writes when every member is absent")
@@ -720,19 +699,19 @@ def _named_json_type_matches_what_is_written(cls: type[MetadataEntity]) -> str |
             )
         if not cls.must_understand and "must_understand" not in hints:
             found.append("has no must_understand key, which the entity writes")
-        if len(cls.member_types) == 0:
+        if len(compiled(cls).member_types) == 0:
             if "configuration" in hints:
                 found.append("has a configuration key, and the entity has no members")
             continue
         if "configuration" not in hints:
             found.append("has no configuration key, and the entity has members")
             continue
-        if ("configuration" in required) != cls.configuration_required:
+        if ("configuration" in required) != compiled(cls).configuration_required:
             found.append(
                 "has configuration "
                 + ("required" if "configuration" in required else "optional")
                 + ", but a member is "
-                + ("required" if cls.configuration_required else "not required")
+                + ("required" if compiled(cls).configuration_required else "not required")
             )
         configuration = hints["configuration"]
         if not is_typeddict(configuration):
@@ -742,10 +721,10 @@ def _named_json_type_matches_what_is_written(cls: type[MetadataEntity]) -> str |
         except NameError:
             continue
         keys = configuration_hints.keys()
-        if set(keys) != set(cls.member_types):
+        if set(keys) != set(compiled(cls).member_types):
             found.append(
                 f"has configuration keys {sorted(keys)!r} where the members are "
-                f"{sorted(cls.member_types)!r}"
+                f"{sorted(compiled(cls).member_types)!r}"
             )
             continue
         configuration_required = {
@@ -755,7 +734,7 @@ def _named_json_type_matches_what_is_written(cls: type[MetadataEntity]) -> str |
         }
         misstated = sorted(
             key
-            for key, (member_required, _) in cls.member_types.items()
+            for key, (member_required, _) in compiled(cls).member_types.items()
             if (key in configuration_required) != member_required
         )
         if len(misstated) != 0:
@@ -768,19 +747,19 @@ def _named_json_type_matches_what_is_written(cls: type[MetadataEntity]) -> str |
 
 
 def _declared_defaults(cls: type[MetadataEntity]) -> dict[str, object]:
-    """Each member's declared default, or `_MISSING_DEFAULT`.
+    """Each member's declared default, or `MISSING`.
 
     `@dataclass` has not run yet -- `__init_subclass__` runs first -- so
     a member declared with `field(...)` is still a `Field` here and its
     default has to be unwrapped.
     """
     defaulted: dict[str, object] = {}
-    for key in cls.member_types:
-        declared: object = getattr(cls, key, _MISSING_DEFAULT)
+    for key in compiled(cls).member_types:
+        declared: object = getattr(cls, key, MISSING)
         if type(declared) is Field:
             spec = cast("Field[object]", declared)
             declared = (
-                _MISSING_DEFAULT
+                MISSING
                 if spec.default is MISSING and spec.default_factory is MISSING
                 else spec.default
             )
@@ -795,7 +774,7 @@ def _optional_members_default_to_unset(cls: type[MetadataEntity]) -> str | None:
     defaulted = _declared_defaults(cls)
     invented = [
         key
-        for key, (required, _) in cls.member_types.items()
+        for key, (required, _) in compiled(cls).member_types.items()
         if not required and defaulted[key] is not UNSET
     ]
     if len(invented) == 0:
@@ -816,8 +795,8 @@ def _required_members_have_no_default(cls: type[MetadataEntity]) -> str | None:
     defaulted = _declared_defaults(cls)
     presumed = [
         key
-        for key, (required, _) in cls.member_types.items()
-        if required and defaulted[key] is not _MISSING_DEFAULT
+        for key, (required, _) in compiled(cls).member_types.items()
+        if required and defaulted[key] is not MISSING
     ]
     if len(presumed) == 0:
         return None
@@ -843,7 +822,7 @@ _INVARIANTS: Final[tuple[Callable[[type[MetadataEntity]], str | None], ...]] = (
 
 
 @dataclass(frozen=True)
-class MetadataEntity(Generic[JSONT_co]):
+class MetadataEntity(MetadataFieldValue, Generic[JSONT_co]):
     """One named entity, coerced from its metadata.
 
     Subclasses add their configuration members as fields, which is what
@@ -866,9 +845,9 @@ class MetadataEntity(Generic[JSONT_co]):
     and raises `MetadataValidationError` once -- so `BloscCodec(clevel=99)`
     raises, and `coerce` reports the same problems instead. `coerce`,
     `configuration`, `to_json` and `canonical` are written once here
-    against what the fields say, and the class variables below --
-    `member_types`, `nested_members` -- are that reading, compiled at
-    class creation: nothing declares them.
+    against what the fields say; `compiled(cls)` is that reading, computed
+    once per class and kept beside it, so the class itself is never
+    written to.
     """
 
     extension_point: ClassVar[ExtensionPointField | None] = None
@@ -908,49 +887,12 @@ class MetadataEntity(Generic[JSONT_co]):
     an invented identifier that no real name can collide with.
     """
 
-    member_types: ClassVar[MemberTypes] = MappingProxyType({})
-    """The configuration members, and the type each one takes.
-
-    Read off the dataclass fields at class creation: which members there
-    are, which may be absent (the type admits `UNSET`), and the check
-    each one's type implies. `coerce` reads a configuration against it
-    member by member, so one member that cannot be read costs that member
-    and not the rest. An annotation the compiler cannot read is refused
-    at class creation; the field is written as a shape JSON takes. The public
-    JSON TypedDict is held to the same keys by `tests/v3/test_entities.py`.
-    """
-
-    name_members: ClassVar[tuple[str, ...]] = ()
-    """The fields the envelope's name carries, marked `Annotated[str, FROM_NAME]`.
-
-    Read off the fields at class creation. `coerce` fills each with the
-    name the document wrote, so a family whose validity is in its name
-    -- the raw-bytes `r<N>` types -- needs no reading of its own.
-    """
-
-    nested_members: ClassVar[Mapping[str, object]] = MappingProxyType({})
-    """The fields that hold other entities, with their annotations.
-
-    Read off the fields at class creation, like `member_types`. These are
-    the members `coerce` resolves through the scope, `configuration`
-    renders as JSON and `canonical` recurses into -- so an entity that
-    contains entities writes nothing for any of that.
-    """
-
-    configuration_required: ClassVar[bool] = False
-    """Whether the bare-name spelling says too little for this entity.
-
-    The spec permits a bare name "if no configuration metadata is
-    required", so this is true exactly when some member is required --
-    which the fields already say.
-    """
-
     def __init_subclass__(cls, *, base: bool = False, **kwargs: object) -> None:
         """Compile the entity from its fields, and refuse one this layer cannot use.
 
-        `_compile_entity` derives the tables the layer reads -- the
-        members and their checks, the nested fields, the value rules --
-        and then every invariant in `_INVARIANTS` is asked. Each names
+        `compiled` reads the tables the layer needs off the fields -- the
+        members and their checks, the nested fields -- and then every
+        invariant in `_INVARIANTS` is asked. Each names
         something that type-checks cleanly and then goes wrong later,
         somewhere that will not name this class; an import-time error in
         the extension's own module is the one place the author is looking.
@@ -963,9 +905,10 @@ class MetadataEntity(Generic[JSONT_co]):
             return
         if "__dataclass_fields__" in vars(cls):
             # `@dataclass(slots=True)` builds the class a second time from
-            # the first one's dict, tables included: compiled already.
+            # the first one's dict: verified already, and its members are
+            # slot descriptors now rather than the defaults the checks read.
             return
-        _compile_entity(cls)
+        compiled(cls)
         for invariant in _INVARIANTS:
             message = invariant(cls)
             if message is not None:
@@ -991,21 +934,22 @@ class MetadataEntity(Generic[JSONT_co]):
         if name is None or not cls.accepts(name):
             return None, problem((), f"expected the {cls.identifier!r} entity")
         if configuration is None:
-            if cls.configuration_required:
+            if compiled(cls).configuration_required:
                 return None, problem(
                     ("configuration",),
                     f"{cls.identifier!r} requires a configuration",
                     "missing_key",
                 )
             configuration = cast("Mapping[str, object]", {})
-        members, own = coerce_members(configuration, cls.member_types)
-        for member in cls.name_members:
+        spec = compiled(cls)
+        members, own = coerce_members(configuration, spec.member_types)
+        for member in spec.name_members:
             members[member] = name
         # A member that is itself an entity is read in the scope whatever
         # else was found: its problems are determinable, so they are
         # reported in the same pass.
         found = own
-        for member, annotation in cls.nested_members.items():
+        for member, annotation in spec.nested_members.items():
             if member in members:
                 members[member], nested = _resolve(
                     annotation, members[member], context, ("configuration", member)
@@ -1050,7 +994,7 @@ class MetadataEntity(Generic[JSONT_co]):
         the entity's own rewrite, which is where an entity says that two
         spellings of its own members mean the same.
         """
-        nested = type(self).nested_members
+        nested = compiled(type(self)).nested_members
         walked = (
             self
             if len(nested) == 0
@@ -1097,7 +1041,7 @@ class MetadataEntity(Generic[JSONT_co]):
         through the document it returned.
         """
         members = self._configuration_members()
-        for name, annotation in type(self).nested_members.items():
+        for name, annotation in compiled(type(self)).nested_members.items():
             if name in members:
                 members[name] = render_nested(annotation, members[name])
         return deepcopy(members)
@@ -1110,7 +1054,7 @@ class MetadataEntity(Generic[JSONT_co]):
         """
         return {
             key: value
-            for key in type(self).member_types
+            for key in compiled(type(self)).member_types
             if (value := getattr(self, key)) is not UNSET
         }
 
@@ -1265,6 +1209,7 @@ __all__ = [
     "CodecEntity",
     "CodecKind",
     "Coerced",
+    "Compiled",
     "DataTypeEntity",
     "ExtensionPointField",
     "JSONT_co",
@@ -1275,6 +1220,7 @@ __all__ = [
     "StorageClass",
     "TypeCheck",
     "coerce_members",
+    "compiled",
     "is_bool",
     "is_entity",
     "is_int",

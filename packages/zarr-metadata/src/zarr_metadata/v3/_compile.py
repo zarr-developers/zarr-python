@@ -10,8 +10,9 @@ what an entity reads its member table off. Anything finer than a type
 -- a bound, a rule about a member, members read together -- is the
 entity's own `__post_init__`, in plain code.
 
-Nothing here knows what an entity is. A nested metadata field is the one
-shape recognised through `nested_field`, which `_entity` sets.
+Nothing here knows what an entity is. A nested metadata field is a
+field typed as a class deriving from `MetadataFieldValue`, which is the
+one thing the compiler is told about them.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from __future__ import annotations
 # then -- for this package and for any tool introspecting an entity.
 import sys
 import types
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import is_dataclass
 from typing import (
     TYPE_CHECKING,
@@ -40,7 +41,7 @@ from typing import (
     get_type_hints,
 )
 
-from typing_extensions import ReadOnly, is_typeddict
+from typing_extensions import ReadOnly, TypeIs, is_typeddict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.model._sentinel import UNSET
@@ -156,24 +157,45 @@ def is_optional(annotation: object) -> bool:
     return is_union(inner) and any(arg is UNSET for arg in get_args(inner))
 
 
-def _no_nested_field(annotation: object) -> bool:
-    return False
+class MetadataFieldValue:
+    """What a metadata field holds once read: an entity, or the JSON it could not read.
+
+    A base with no behaviour. A field annotated with a class deriving
+    from it -- `CodecEntity | Opaque` -- is a nested metadata field, which
+    is all the compiler needs to know of entities.
+    """
+
+    __slots__ = ()
 
 
-nested_field: Callable[[object], bool] = _no_nested_field
-"""Whether an annotation is a nested metadata field: an entity type, or a union of those with `Opaque`.
+def unsubscripted(candidate: object) -> object:
+    """`CodecEntity[X]` as `CodecEntity`; anything else as it is."""
+    origin = get_origin(candidate)
+    return origin if isinstance(origin, type) else candidate
 
-The one shape the compiler cannot recognise by itself, because which
-classes are entities is `_entity`'s to say; it sets this once at import.
-Consulted ahead of every other shape, since an entity is a dataclass too
-and must not be walked as a record.
-"""
+
+def is_metadata_field_type(candidate: object) -> TypeIs[type[MetadataFieldValue]]:
+    """Whether `candidate` is a class a metadata field may hold a value of."""
+    candidate = unsubscripted(candidate)
+    return isinstance(candidate, type) and issubclass(candidate, MetadataFieldValue)
+
+
+def is_nested_field(annotation: object) -> bool:
+    """A metadata-field class, or a union of them (with `UNSET`, if optional)."""
+    candidates = [
+        candidate
+        for candidate in (get_args(annotation) if is_union(annotation) else (annotation,))
+        if candidate is not UNSET
+    ]
+    return len(candidates) != 0 and all(
+        is_metadata_field_type(candidate) for candidate in candidates
+    )
 
 
 def describe(annotation: object) -> str:
     """The annotation as a message would name it: "an integer", "an object"."""
     inner, _ = strip_annotation(annotation)
-    if nested_field(inner):
+    if is_nested_field(inner):
         return "a metadata field"
     if inner is int:
         return "an integer"
@@ -213,7 +235,7 @@ def shape_of(annotation: object) -> str | None:
     None means any shape -- a JSON value, or a union that mixes them.
     """
     inner, _ = strip_annotation(annotation)
-    if nested_field(inner):
+    if is_nested_field(inner):
         return "field"
     if inner is int:
         return "int"
@@ -402,7 +424,7 @@ def check_for(annotation: object) -> TypeCheck | None:
     those, a nested object described by a TypedDict or a record dataclass,
     an object of undeclared keys as `Mapping[str, V]`, a `NewType` as the
     type it names, and a nested metadata field -- an entity type, with or
-    without `Opaque`, which `nested_field` recognises. `UNSET` in a union
+    without `Opaque`, which `is_nested_field` recognises. `UNSET` in a union
     says the member may be absent, which is the other half of a table
     entry and is read separately by `is_optional`.
 
@@ -411,7 +433,7 @@ def check_for(annotation: object) -> TypeCheck | None:
     one of these shapes instead, with any finer rule in `__post_init__`.
     """
     inner, _ = strip_annotation(annotation)
-    if nested_field(inner):
+    if is_nested_field(inner):
         return is_metadata_field
     if inner is int:
         return is_int
@@ -513,6 +535,7 @@ def declared_class_vars(cls: type) -> dict[str, type]:
 
 __all__ = [
     "FROM_NAME",
+    "MetadataFieldValue",
     "any_of",
     "check_for",
     "declared_class_vars",
@@ -524,11 +547,13 @@ __all__ = [
     "fixed_tuple",
     "has_shape",
     "is_class_var",
+    "is_metadata_field_type",
+    "is_nested_field",
     "is_optional",
     "is_union",
     "mapping_of",
-    "nested_field",
     "own_annotations",
     "shape_of",
     "strip_annotation",
+    "unsubscripted",
 ]

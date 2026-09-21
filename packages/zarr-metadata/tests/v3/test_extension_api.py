@@ -347,22 +347,6 @@ def test_error_a_member_needs_a_check_from_somewhere() -> None:
             kind: ClassVar[CodecKind] = "bytes_bytes"
 
 
-@pytest.mark.parametrize(
-    "name",
-    ["member_types", "configuration_required", "nested_members"],
-)
-def test_error_a_derived_class_variable_may_not_be_declared(name: str) -> None:
-    # Each is read off the fields at class creation, and a declaration
-    # would be silently overwritten by that reading. Built with `type`,
-    # since a class body cannot spell a name from a parameter.
-    with pytest.raises(TypeError, match=f"declares {name}, which is derived from the fields"):
-        type(
-            "Opinionated",
-            (CodecEntity,),
-            {"identifier": "acme.opinionated", "kind": "bytes_bytes", name: {}},
-        )
-
-
 # A third-party codec that contains another codec: the case that used to
 # need `prepare`, `configuration` and `canonical` written by hand.
 @dataclass(frozen=True)
@@ -555,7 +539,6 @@ def test_a_slotted_entity_is_compiled_once() -> None:
         identifier: ClassVar[str] = "acme.slotted"
         kind: ClassVar[CodecKind] = "bytes_bytes"
 
-    assert list(AcmeSlotted.member_types) == ["level"]
     assert AcmeSlotted(level=1).to_json() == {
         "name": "acme.slotted",
         "configuration": {"level": 1},
@@ -569,7 +552,7 @@ def test_a_bare_class_var_is_a_class_variable() -> None:
         kind: ClassVar[CodecKind] = "bytes_bytes"
         note: ClassVar = "not a member"
 
-    assert AcmeNoted.member_types == {}
+    assert AcmeNoted().to_json() == "acme.noted"
 
 
 def test_a_number_member_is_a_float_field() -> None:

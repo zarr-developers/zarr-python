@@ -6,9 +6,9 @@ here exist because the answer is the same for every width in a family
 apart from one number -- the range, the hex parser, the component type --
 so each family is written once and parameterised by that number.
 
-The alternative, a table keyed by data type name, is what this replaces:
-it put the knowledge of what `int32` accepts somewhere other than
-`int32`, and needed a drift test to keep the two in step.
+Written per family rather than kept in a table keyed by name, so that
+what `int32` accepts is stated where `int32` is, with nothing elsewhere
+to keep in step with it.
 """
 
 from __future__ import annotations
