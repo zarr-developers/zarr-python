@@ -4,7 +4,6 @@ Cast-value codec types.
 See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md
 """
 
-from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, cast
 
@@ -15,11 +14,7 @@ from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     DataTypeEntity,
-    Loc,
-    MemberTypes,
     Opaque,
-    is_json_value,
-    problem,
 )
 from zarr_metadata.v3._parts import ArrayParts
 
@@ -136,43 +131,6 @@ SCALAR_MAP_KEYS: Final = ("encode", "decode")
 """The two directions a `scalar_map` can override, both optional."""
 
 
-def _is_scalar_map(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-    """An object of `[old, new]` pairs per direction."""
-    if not isinstance(value, Mapping):
-        return problem(loc, f"expected an object, got {value!r}")
-    mapping = cast("Mapping[str, object]", value)
-    found: list[ValidationProblem] = []
-    for key in mapping:
-        if key not in SCALAR_MAP_KEYS:
-            found.extend(problem(loc, f"unexpected key {key!r}", "unknown_key"))
-    for key in SCALAR_MAP_KEYS:
-        if key in mapping:
-            found.extend(_is_scalar_pairs(mapping[key], (*loc, key)))
-    return tuple(found)
-
-
-def _is_scalar_pairs(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-    if not isinstance(value, tuple):
-        return problem(loc, f"expected an array of [old, new] pairs, got {value!r}")
-    entries = cast("tuple[object, ...]", value)
-    found: list[ValidationProblem] = []
-    for index, entry in enumerate(entries):
-        pair = cast("tuple[object, ...]", entry) if isinstance(entry, tuple) else ()
-        if len(pair) != 2:
-            found.extend(problem((*loc, index), f"expected an [old, new] pair, got {entry!r}"))
-            continue
-        for position, scalar in enumerate(pair):
-            found.extend(is_json_value(scalar, (*loc, index, position)))
-    return tuple(found)
-
-
-def _is_data_type_field(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-    """A metadata field -- which data type it names is settled on recursion."""
-    if not isinstance(value, (str, Mapping)):
-        return problem(loc, f"expected a data type, got {value!r}")
-    return ()
-
-
 @dataclass(frozen=True)
 class CastValueCodec(CodecEntity):
     """The `cast_value` codec, coerced from its metadata.
@@ -187,13 +145,7 @@ class CastValueCodec(CodecEntity):
     scalar_map: ScalarMap | UNSET = UNSET
 
     identifier: ClassVar[str] = CAST_VALUE_CODEC_NAME
-    configuration_type = CastValueCodecConfiguration
     kind: ClassVar[CodecKind] = "array_array"
-
-    member_types: ClassVar[MemberTypes] = {
-        "data_type": (True, _is_data_type_field),
-        "scalar_map": (False, _is_scalar_map),
-    }
 
     @classmethod
     def prepare(

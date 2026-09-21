@@ -103,7 +103,6 @@ class NumpyTimedelta64DataType(NumpyTimeDataType):
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     identifier: ClassVar[str] = NUMPY_TIMEDELTA64_DATA_TYPE_NAME
-    configuration_type = NumpyTimedelta64Configuration
 
     @staticmethod
     def value_problems(

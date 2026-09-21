@@ -69,7 +69,6 @@ class TransposeCodec(CodecEntity):
     order: tuple[int, ...]
 
     identifier: ClassVar[str] = TRANSPOSE_CODEC_NAME
-    configuration_type = TransposeCodecConfiguration
     kind: ClassVar[CodecKind] = "array_array"
 
     @staticmethod

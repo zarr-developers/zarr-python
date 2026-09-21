@@ -104,7 +104,6 @@ class BloscCodec(CodecEntity):
     typesize: int | UNSET = UNSET
 
     identifier: ClassVar[str] = BLOSC_CODEC_NAME
-    configuration_type = BloscCodecConfiguration
     variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "bytes_bytes"
 

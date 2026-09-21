@@ -82,7 +82,6 @@ class ZstdCodec(CodecEntity):
     checksum: bool | UNSET = UNSET
 
     identifier: ClassVar[str] = ZSTD_CODEC_NAME
-    configuration_type = ZstdCodecConfiguration
     variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "bytes_bytes"
 

@@ -86,7 +86,6 @@ class ScaleOffsetCodec(CodecEntity):
     scale: JSONValue | UNSET = UNSET
 
     identifier: ClassVar[str] = SCALE_OFFSET_CODEC_NAME
-    configuration_type = ScaleOffsetCodecConfiguration
     kind: ClassVar[CodecKind] = "array_array"
 
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:

@@ -77,7 +77,6 @@ class DefaultChunkKeyEncoding(MetadataEntity):
     separator: DefaultChunkKeyEncodingSeparator | UNSET = UNSET
 
     identifier: ClassVar[str] = DEFAULT_CHUNK_KEY_ENCODING_NAME
-    configuration_type = DefaultChunkKeyEncodingConfiguration
 
     def to_json(self) -> DefaultChunkKeyEncodingObject | DefaultChunkKeyEncodingName:
         return cast(

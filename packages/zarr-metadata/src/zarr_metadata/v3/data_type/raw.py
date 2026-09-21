@@ -10,13 +10,14 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 
 import re
 from dataclasses import dataclass
-from typing import ClassVar, Final, NewType, Self, cast
+from typing import Annotated, ClassVar, Final, NewType, Self, cast
 
 from typing_extensions import TypedDict, Unpack
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
+    FROM_NAME,
     Coerced,
     DataTypeEntity,
     Loc,
@@ -119,7 +120,8 @@ class RawBytesDataType(DataTypeEntity):
     `r8`, and canonicalizing it away is not this package's call.
     """
 
-    data_type_name: str
+    data_type_name: Annotated[str, FROM_NAME]
+    """The spelling as written -- `r8`, `r008` -- which is where the width lives."""
 
     scalar_storage: ClassVar[StorageClass] = "single_byte"
     identifier: ClassVar[str] = RAW_BYTES_FAMILY

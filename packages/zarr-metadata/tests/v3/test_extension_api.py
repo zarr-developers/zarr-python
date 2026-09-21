@@ -61,7 +61,6 @@ class AcmeLz4Codec(CodecEntity):
     identifier: ClassVar[str] = "acme.lz4"
     kind: ClassVar[CodecKind] = "bytes_bytes"
     variable_size: ClassVar[bool] = True
-    configuration_type = AcmeLz4Configuration
 
     @staticmethod
     def value_problems(
@@ -215,11 +214,12 @@ def test_error_an_optional_member_defaults_to_unset() -> None:
 
         @dataclass(frozen=True)
         class Inventive(CodecEntity):  # pyright: ignore[reportUnusedClass]
-            level: int = 3
+            # Optional by its type, so the annotation and the default agree
+            # on that much; it is the default's value that is wrong.
+            level: int | UNSET = 3  # pyright: ignore[reportAssignmentType]
 
             identifier: ClassVar[str] = "acme.inventive"
             kind: ClassVar[CodecKind] = "bytes_bytes"
-            member_types: ClassVar[MemberTypes] = {"level": (False, is_int)}
 
 
 def test_a_reader_gets_entities_or_an_exception() -> None:
@@ -387,10 +387,10 @@ def test_a_third_party_can_register_a_family() -> None:
 
 
 def test_error_requiredness_may_not_be_restated() -> None:
-    # It is the configuration's to say. A declared entry exists for the
-    # check, which the annotation does not imply; saying the member is
-    # required as well is the drift the derivation removes.
-    with pytest.raises(TypeError, match="requiredness its configuration does not give it"):
+    # It is the field's to say. A declared entry exists for the check,
+    # which the annotation does not imply; saying the member is required
+    # as well is the drift the derivation removes.
+    with pytest.raises(TypeError, match="requiredness its field does not give it"):
 
         @dataclass(frozen=True)
         class Insistent(CodecEntity):  # pyright: ignore[reportUnusedClass]
@@ -398,18 +398,14 @@ def test_error_requiredness_may_not_be_restated() -> None:
 
             identifier: ClassVar[str] = "acme.insistent"
             kind: ClassVar[CodecKind] = "bytes_bytes"
-            configuration_type = AcmeLz4Configuration
             member_types: ClassVar[MemberTypes] = {"acceleration": (True, is_int)}
 
 
 def test_error_a_member_needs_a_check_from_somewhere() -> None:
-    # An annotation naming another structure implies no check, so the
-    # entity owes one. Silently skipping the member would let anything
-    # through where the TypedDict promised a shape.
-    class Nested(TypedDict, closed=True):
-        inner: AcmeLz4Configuration
-
-    with pytest.raises(TypeError, match="declares no check for inner"):
+    # An annotation outside the shapes `check_for` compiles implies no
+    # check, so the entity owes one. Silently skipping the member would
+    # let anything through where the field promised a type.
+    with pytest.raises(TypeError, match="no check can be read off the annotation of inner"):
 
         @dataclass(frozen=True)
         class Structured(CodecEntity):  # pyright: ignore[reportUnusedClass]
@@ -417,12 +413,11 @@ def test_error_a_member_needs_a_check_from_somewhere() -> None:
 
             identifier: ClassVar[str] = "acme.structured"
             kind: ClassVar[CodecKind] = "bytes_bytes"
-            configuration_type = Nested
 
 
 def test_error_a_bare_name_rule_may_not_be_restated() -> None:
     # Whether the bare spelling is legal follows from whether any member
-    # is required, which the configuration already says.
+    # is required, which the fields already say.
     with pytest.raises(TypeError, match="declares `configuration_required`"):
 
         @dataclass(frozen=True)
@@ -431,5 +426,4 @@ def test_error_a_bare_name_rule_may_not_be_restated() -> None:
 
             identifier: ClassVar[str] = "acme.opinionated"
             kind: ClassVar[CodecKind] = "bytes_bytes"
-            configuration_type = AcmeLz4Configuration
             configuration_required: ClassVar[bool] = True

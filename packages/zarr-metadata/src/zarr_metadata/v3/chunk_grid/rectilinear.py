@@ -12,8 +12,6 @@ from typing_extensions import TypedDict, Unpack
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ChunkGridEntity,
-    Loc,
-    MemberTypes,
     is_integer,
     problem,
 )
@@ -123,43 +121,6 @@ __all__ = [
 ]
 
 
-def _is_dim_specs(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-    """One spec per dimension, each a bare extent or a list of entries.
-
-    An entry is an extent or a `[size, count]` run. The nesting is why
-    this is written out rather than composed from `sequence_of`.
-    """
-    if not isinstance(value, tuple):
-        return problem(loc, f"expected an array of dimension specs, got {value!r}")
-    specs = cast("tuple[object, ...]", value)
-    found: list[ValidationProblem] = []
-    for dim, spec in enumerate(specs):
-        at: Loc = (*loc, dim)
-        if is_integer(spec):
-            continue
-        if not isinstance(spec, tuple):
-            found.extend(
-                problem(
-                    at,
-                    "expected an integer or an array of integers / [value, count] pairs, "
-                    f"got {spec!r}",
-                )
-            )
-            continue
-        for position, item in enumerate(cast("tuple[object, ...]", spec)):
-            if is_integer(item):
-                continue
-            entries = cast("tuple[object, ...]", item) if isinstance(item, tuple) else ()
-            if len(entries) == 2 and all(is_integer(part) for part in entries):
-                continue
-            found.extend(
-                problem(
-                    (*at, position), f"expected an integer or a [value, count] pair, got {item!r}"
-                )
-            )
-    return tuple(found)
-
-
 def _covered_extent(spec: tuple[int | tuple[int, int], ...]) -> int | None:
     """How much of a dimension an explicit spec covers, or None.
 
@@ -208,11 +169,6 @@ class RectilinearChunkGrid(ChunkGridEntity):
     chunk_shapes: tuple[RectilinearDimSpec, ...]
 
     identifier: ClassVar[str] = RECTILINEAR_CHUNK_GRID_NAME
-    configuration_type = RectilinearChunkGridConfiguration
-
-    member_types: ClassVar[MemberTypes] = {
-        "chunk_shapes": (True, _is_dim_specs),
-    }
 
     @staticmethod
     def value_problems(

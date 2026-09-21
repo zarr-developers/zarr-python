@@ -24,12 +24,9 @@ elsewhere.
         else:
             codec.json, codec.reason    # 'out_of_scope': resolve it yourself
 
-**Writing an extension.** Describe the JSON with a TypedDict, subclass
-`CodecEntity`, `DataTypeEntity`, `ChunkGridEntity` or `MetadataEntity`,
-point at the TypedDict, and add it to a scope:
-
-    class AcmeLz4Configuration(TypedDict, closed=True):
-        acceleration: NotRequired[int]
+**Writing an extension.** Subclass `CodecEntity`, `DataTypeEntity`,
+`ChunkGridEntity` or `MetadataEntity`, declare the fields, and add it to
+a scope:
 
     @dataclass(frozen=True)
     class AcmeLz4Codec(CodecEntity):
@@ -39,7 +36,6 @@ point at the TypedDict, and add it to a scope:
 
         identifier: ClassVar[str] = "acme.lz4"
         kind: ClassVar[CodecKind] = "bytes_bytes"
-        configuration_type = AcmeLz4Configuration
 
     SCOPE = CORE_AND_EXTENSIONS.extended_with(
         codecs={AcmeLz4Codec.identifier: AcmeLz4Codec},
@@ -47,12 +43,17 @@ point at the TypedDict, and add it to a scope:
 
     validate_array_metadata_v3(document, context=SCOPE)
 
-`configuration_type` is the only place the JSON shape is written. Which
-members exist, which may be left out, and how each one is type-checked
-are all read off it -- `member_types` is for the exception, a member
-whose annotation names another structure. Value rules go in a
-`value_problems` staticmethod annotated with the same TypedDict, which
-runs only once every member has the type it declared:
+The fields are the only place the shape is written. Which members exist,
+which may be left out (the type admits `UNSET`), and how each one is
+type-checked are all read off the annotations -- an `int`, a `Literal`
+of names, an array, a nested entity type -- and `member_types` is for
+the exception, an annotation the compiler does not read. Value rules go
+in a `value_problems` staticmethod, which runs only once every member
+has the type it declared; annotate it with a TypedDict of the members so
+its body is checked:
+
+    class AcmeLz4Configuration(TypedDict, closed=True):
+        acceleration: NotRequired[int]
 
     @staticmethod
     def value_problems(
@@ -96,6 +97,7 @@ from zarr_metadata.v3._entity import (
     CHUNK_KEY_ENCODING,
     CODECS,
     DATA_TYPE,
+    FROM_NAME,
     STORAGE_TRANSFORMERS,
     ChunkGridEntity,
     CodecEntity,
@@ -115,6 +117,7 @@ from zarr_metadata.v3._entity import (
     is_int,
     is_integer,
     is_json_value,
+    is_metadata_field,
     is_str,
     named_configuration,
     one_of,
@@ -148,6 +151,7 @@ __all__ = [
     "CORE_AND_EXTENSIONS",
     "DATA_TYPE",
     "FLOAT_SPECIALS",
+    "FROM_NAME",
     "STORAGE_TRANSFORMERS",
     "UNKNOWN_GRID",
     "ArrayDocumentV3",
@@ -183,6 +187,7 @@ __all__ = [
     "is_int",
     "is_integer",
     "is_json_value",
+    "is_metadata_field",
     "is_str",
     "named_configuration",
     "one_of",

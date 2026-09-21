@@ -83,7 +83,6 @@ class V2ChunkKeyEncoding(MetadataEntity):
     separator: V2ChunkKeyEncodingSeparator | UNSET = UNSET
 
     identifier: ClassVar[str] = V2_CHUNK_KEY_ENCODING_NAME
-    configuration_type = V2ChunkKeyEncodingConfiguration
 
     def to_json(self) -> V2ChunkKeyEncodingObject | V2ChunkKeyEncodingName:
         return cast("V2ChunkKeyEncodingObject | V2ChunkKeyEncodingName", super().to_json())

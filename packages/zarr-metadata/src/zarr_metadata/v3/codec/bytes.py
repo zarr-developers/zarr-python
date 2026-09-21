@@ -90,7 +90,6 @@ class BytesCodec(CodecEntity):
     endian: Endianness | UNSET = UNSET
 
     identifier: ClassVar[str] = BYTES_CODEC_NAME
-    configuration_type = BytesCodecConfiguration
     kind: ClassVar[CodecKind] = "array_bytes"
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:

@@ -20,25 +20,29 @@ from zarr_metadata.rules import validate_array_metadata_v3
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS
 from zarr_metadata.v3.chunk_grid.rectilinear import (
     RectilinearChunkGrid,
+    RectilinearChunkGridConfiguration,
 )
-from zarr_metadata.v3.chunk_grid.regular import RegularChunkGrid
+from zarr_metadata.v3.chunk_grid.regular import RegularChunkGrid, RegularChunkGridConfiguration
 from zarr_metadata.v3.chunk_key_encoding.default import (
     DefaultChunkKeyEncoding,
+    DefaultChunkKeyEncodingConfiguration,
 )
 from zarr_metadata.v3.chunk_key_encoding.v2 import (
     V2ChunkKeyEncoding,
+    V2ChunkKeyEncodingConfiguration,
 )
-from zarr_metadata.v3.codec.blosc import BloscCodec
-from zarr_metadata.v3.codec.bytes import BytesCodec
-from zarr_metadata.v3.codec.cast_value import CastValueCodec
-from zarr_metadata.v3.codec.crc32c import Crc32cCodec
-from zarr_metadata.v3.codec.gzip import GzipCodec
-from zarr_metadata.v3.codec.scale_offset import ScaleOffsetCodec
+from zarr_metadata.v3.codec.blosc import BloscCodec, BloscCodecConfiguration
+from zarr_metadata.v3.codec.bytes import BytesCodec, BytesCodecConfiguration
+from zarr_metadata.v3.codec.cast_value import CastValueCodec, CastValueCodecConfiguration
+from zarr_metadata.v3.codec.crc32c import Crc32cCodec, Empty
+from zarr_metadata.v3.codec.gzip import GzipCodec, GzipCodecConfiguration
+from zarr_metadata.v3.codec.scale_offset import ScaleOffsetCodec, ScaleOffsetCodecConfiguration
 from zarr_metadata.v3.codec.sharding_indexed import (
     ShardingIndexedCodec,
+    ShardingIndexedCodecConfiguration,
 )
-from zarr_metadata.v3.codec.transpose import TransposeCodec
-from zarr_metadata.v3.codec.zstd import ZstdCodec
+from zarr_metadata.v3.codec.transpose import TransposeCodec, TransposeCodecConfiguration
+from zarr_metadata.v3.codec.zstd import ZstdCodec, ZstdCodecConfiguration
 from zarr_metadata.v3.data_type.bool import BoolDataType
 from zarr_metadata.v3.data_type.bytes import BytesDataType
 from zarr_metadata.v3.data_type.complex64 import Complex64DataType
@@ -51,29 +55,25 @@ from zarr_metadata.v3.data_type.int16 import Int16DataType
 from zarr_metadata.v3.data_type.int32 import Int32DataType
 from zarr_metadata.v3.data_type.int64 import Int64DataType
 from zarr_metadata.v3.data_type.numpy_datetime64 import (
+    NumpyDatetime64Configuration,
     NumpyDatetime64DataType,
 )
 from zarr_metadata.v3.data_type.numpy_timedelta64 import (
+    NumpyTimedelta64Configuration,
     NumpyTimedelta64DataType,
 )
 from zarr_metadata.v3.data_type.raw import RawBytesDataType
 from zarr_metadata.v3.data_type.string import StringDataType
-from zarr_metadata.v3.data_type.struct import StructDataType
+from zarr_metadata.v3.data_type.struct import StructConfiguration, StructDataType
 from zarr_metadata.v3.data_type.uint8 import Uint8DataType
 from zarr_metadata.v3.data_type.uint16 import Uint16DataType
 from zarr_metadata.v3.data_type.uint32 import Uint32DataType
 from zarr_metadata.v3.data_type.uint64 import Uint64DataType
 from zarr_metadata.v3.entity import ArrayDocumentV3, MetadataEntity
 
-# Each registered entity, paired with the TypedDict its constructor
-# mirrors. Keyed by `<field>:<identifier>`, because an identifier is only
-# unique within its extension point -- `bytes` is both a codec and a data
-# type.
 # Every registered entity, keyed by `<field>:<identifier>` -- an identifier
 # is unique only within its extension point, and `bytes` is both a codec
-# and a data type. What each one's configuration is comes off the class:
-# `configuration_type` is the only place that says so, and the fields are
-# held to it below.
+# and a data type.
 ENTITIES: dict[str, type[MetadataEntity]] = {
     "codecs:blosc": BloscCodec,
     "codecs:bytes": BytesCodec,
@@ -110,25 +110,48 @@ ENTITIES: dict[str, type[MetadataEntity]] = {
     "data_type:r<N>": RawBytesDataType,
 }
 
+# The public JSON TypedDict each configured entity's fields must mirror. Test
+# data, not a class attribute: nothing in the package reads it any more, so
+# this is the one correspondence still written by hand -- and the one that
+# catches an entity whose fields drift from the JSON type it is documented by.
+# An entity absent here has no configuration.
+CONFIGURATIONS: dict[str, type] = {
+    "codecs:blosc": BloscCodecConfiguration,
+    "codecs:bytes": BytesCodecConfiguration,
+    "codecs:cast_value": CastValueCodecConfiguration,
+    "codecs:crc32c": Empty,
+    "codecs:gzip": GzipCodecConfiguration,
+    "codecs:scale_offset": ScaleOffsetCodecConfiguration,
+    "codecs:sharding_indexed": ShardingIndexedCodecConfiguration,
+    "codecs:transpose": TransposeCodecConfiguration,
+    "codecs:zstd": ZstdCodecConfiguration,
+    "chunk_grid:regular": RegularChunkGridConfiguration,
+    "chunk_grid:rectilinear": RectilinearChunkGridConfiguration,
+    "chunk_key_encoding:default": DefaultChunkKeyEncodingConfiguration,
+    "chunk_key_encoding:v2": V2ChunkKeyEncodingConfiguration,
+    "data_type:numpy.datetime64": NumpyDatetime64Configuration,
+    "data_type:numpy.timedelta64": NumpyTimedelta64Configuration,
+    "data_type:struct": StructConfiguration,
+}
+
 
 @pytest.mark.parametrize("entity", ENTITIES.values(), ids=list(ENTITIES))
 def test_the_constructor_mirrors_the_configuration(entity: type[MetadataEntity]) -> None:
-    # The one correspondence still written by hand, and so the one that
-    # can still drift: the member table and `configuration_required` are
-    # now read off `configuration_type`, but the dataclass fields are
-    # not. It is also what catches an entity pointing at the wrong
-    # TypedDict, since the fields would stop matching.
+    # The member table and `configuration_required` are read off the fields,
+    # so the fields are the only spelling left that can drift from the public
+    # JSON TypedDict -- and a field the TypedDict does not have would be a
+    # member no document could write.
     #
-    # `must_understand` belongs to the object, not the configuration, so
-    # it is the one field the two deliberately do not share.
-    configuration = entity.configuration_type
+    # `must_understand` belongs to the object, not the configuration, so it
+    # is the one field the two deliberately do not share.
+    key = next(key for key, candidate in ENTITIES.items() if candidate is entity)
     fields = {field.name for field in dataclasses.fields(entity)} - {"must_understand"}
-    if configuration is None:
+    if key not in CONFIGURATIONS:
         # `r<N>` keeps its width in its name, so it holds a member that
         # is not a configuration key.
         assert fields == ({"data_type_name"} if entity is RawBytesDataType else set())
         return
-    assert fields == set(get_type_hints(configuration))
+    assert fields == set(get_type_hints(CONFIGURATIONS[key]))
 
 
 @pytest.mark.parametrize("entity", ENTITIES.values(), ids=list(ENTITIES))

@@ -4,7 +4,6 @@ Sharding-indexed codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index.html
 """
 
-from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, cast
 
@@ -16,7 +15,6 @@ from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     Loc,
-    MemberTypes,
     Opaque,
     problem,
 )
@@ -102,19 +100,6 @@ __all__ = [
 ]
 
 
-def _is_field_tuple(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-    """An array of metadata fields -- their names are checked on recursion."""
-    if not isinstance(value, tuple):
-        return problem(loc, f"expected an array of codecs, got {value!r}")
-    entries = cast("tuple[object, ...]", value)
-    return tuple(
-        found
-        for index, entry in enumerate(entries)
-        if not isinstance(entry, (str, Mapping))
-        for found in problem((*loc, index), f"expected a metadata field, got {entry!r}")
-    )
-
-
 def _coerce_pipeline(
     entries: tuple[object, ...], context: "Context", loc: Loc
 ) -> tuple[tuple[CodecEntity | Opaque, ...], tuple[ValidationProblem, ...]]:
@@ -164,14 +149,8 @@ class ShardingIndexedCodec(CodecEntity):
     index_location: ShardingIndexLocation | UNSET = UNSET
 
     identifier: ClassVar[str] = SHARDING_INDEXED_CODEC_NAME
-    configuration_type = ShardingIndexedCodecConfiguration
     variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "array_bytes"
-
-    member_types: ClassVar[MemberTypes] = {
-        "codecs": (True, _is_field_tuple),
-        "index_codecs": (True, _is_field_tuple),
-    }
 
     @staticmethod
     def value_problems(

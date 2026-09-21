@@ -67,7 +67,6 @@ class RegularChunkGrid(ChunkGridEntity):
     chunk_shape: tuple[int, ...]
 
     identifier: ClassVar[str] = REGULAR_CHUNK_GRID_NAME
-    configuration_type = RegularChunkGridConfiguration
 
     @staticmethod
     def value_problems(

@@ -30,35 +30,42 @@ not. A `struct` data type holds field data types and a `sharding_indexed`
 codec holds two codec pipelines, and neither can coerce its own
 configuration without knowing what names are in scope inside it.
 
-The shared plumbing lives here too: the member checks every entity needs
-and the walk over a configuration that applies them. What stays with the
-entity is the table saying which members it has -- that is the part that
-is about blosc rather than about entities.
+The shared plumbing lives here too: the member checks every entity needs,
+the compiler that reads them off a field annotation, and the walk over a
+configuration that applies them. What stays with the entity is its fields
+-- the part that is about blosc rather than about entities -- and
+everything the layer knows about a member is read from those.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping as _Mapping
+# Runtime imports, not `TYPE_CHECKING` ones: the string type aliases below
+# (`TypeCheck`, `MemberTypes`) are resolved by `get_type_hints` at class
+# creation, and a name that exists only for the type checker is a NameError
+# then -- for this package and for any tool introspecting an entity.
+import types
+from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import MISSING, Field, dataclass, fields
+from dataclasses import MISSING, Field, dataclass, fields, is_dataclass
 from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     ClassVar,
     Final,
     Literal,
     NotRequired,
-    Protocol,
     Required,
     TypeAlias,
     TypeVar,
+    Union,
     cast,
     get_args,
     get_origin,
     get_type_hints,
 )
 
-from typing_extensions import ReadOnly, TypeIs
+from typing_extensions import ReadOnly, TypeIs, is_typeddict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.model._sentinel import UNSET
@@ -70,7 +77,6 @@ from zarr_metadata.model._validation import (
 from zarr_metadata.v3._parts import ChunkGrid
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
     from typing import Self
 
     from zarr_metadata.model._validation import ProblemKind
@@ -218,7 +224,7 @@ def _as_tuples(value: object) -> object:
     if isinstance(value, (list, tuple)):
         entries = cast("list[object] | tuple[object, ...]", value)
         return tuple(_as_tuples(entry) for entry in entries)
-    if isinstance(value, _Mapping):
+    if isinstance(value, Mapping):
         entries = cast("Mapping[str, object]", value)
         return {key: _as_tuples(entry) for key, entry in entries.items()}
     return value
@@ -273,93 +279,344 @@ def coerce_members(
     return members, tuple(problems), frozenset(unreadable)
 
 
-class ConfigurationType(Protocol):
-    """What this layer reads off a configuration TypedDict.
+class _FromName:
+    """The marker behind `FROM_NAME`."""
 
-    A Protocol rather than `type`, so that what is read off it is stated
-    rather than assumed. Deliberately not `__required_keys__`: under
-    `from __future__ import annotations` a TypedDict computes that from
-    unresolved strings and reports every member required, which would
-    make an extension's optional members silently mandatory. Requiredness
-    is read from the resolved annotation instead.
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "FROM_NAME"
+
+
+FROM_NAME: Final = _FromName()
+"""Marks a field carried by the metadata envelope's `name`, not its configuration.
+
+    data_type_name: Annotated[str, FROM_NAME]
+
+A member all the same -- `value_problems` judges it -- but not a
+configuration key, so it is neither read from nor written to a
+`configuration` object. The raw-bytes family is the case: `r<N>` keeps its
+width in its name and has no configuration at all.
+"""
+
+
+def _strip(annotation: object) -> tuple[object, tuple[object, ...]]:
+    """An annotation's type, and the metadata `Annotated` wrapped it in.
+
+    `NotRequired`, `Required` and `ReadOnly` are qualifiers on a TypedDict
+    key, not part of the value's type; peeled with the `Annotated` layers,
+    in whatever order they were written.
+    """
+    metadata: list[object] = []
+    while True:
+        origin = get_origin(annotation)
+        if origin is Annotated:
+            inner, *extras = get_args(annotation)
+            metadata.extend(extras)
+            annotation = inner
+        elif origin in (NotRequired, Required, ReadOnly):
+            (annotation,) = get_args(annotation)
+        else:
+            return annotation, tuple(metadata)
+
+
+def _field_hints(cls: type) -> dict[str, object]:
+    """The dataclass fields of `cls`, resolved, base first.
+
+    Each class's own annotations are resolved in that class's module,
+    and class variables are skipped *before* resolving, by text -- so a
+    `ClassVar` whose annotation names something imported only for the
+    type checker cannot fail class creation. `@dataclass` sees the same
+    set, in the same order.
+    """
+    hints: dict[str, object] = {}
+    for ancestor in reversed(cls.__mro__):
+        raw = {
+            name: annotation
+            for name, annotation in vars(ancestor).get("__annotations__", {}).items()
+            if not _is_class_var(annotation)
+        }
+        if len(raw) == 0:
+            continue
+        shell = type("_Fields", (), {"__annotations__": raw, "__module__": ancestor.__module__})
+        hints.update(get_type_hints(shell, include_extras=True))
+    return hints
+
+
+def _is_union(annotation: object) -> bool:
+    return get_origin(annotation) in (Union, types.UnionType)
+
+
+def is_optional(annotation: object) -> bool:
+    """Whether a field may be absent: its type admits `UNSET`."""
+    inner, _ = _strip(annotation)
+    return _is_union(inner) and any(arg is UNSET for arg in get_args(inner))
+
+
+def _is_entity_type(candidate: object) -> bool:
+    return candidate is Opaque or (
+        isinstance(candidate, type) and issubclass(candidate, MetadataEntity)
+    )
+
+
+def _is_entity_or_opaque(candidates: Sequence[object]) -> bool:
+    """A nested metadata field: some entity kind, optionally with `Opaque`."""
+    return (
+        len(candidates) != 0
+        and all(_is_entity_type(candidate) for candidate in candidates)
+        and any(candidate is not Opaque for candidate in candidates)
+    )
+
+
+def is_metadata_field(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+    """A nested metadata field: a bare name or a named-configuration object.
+
+    Only the envelope's shape. Which entity the name denotes, and whether
+    its configuration is well formed, is settled when the containing
+    entity reads it in scope.
+    """
+    if not isinstance(value, (str, Mapping)):
+        return problem(loc, f"expected a metadata field, got {value!r}")
+    return ()
+
+
+def describe(annotation: object) -> str:
+    """The annotation as a message would name it: "an integer", "an object"."""
+    inner, _ = _strip(annotation)
+    if inner is int:
+        return "an integer"
+    if inner is bool:
+        return "a boolean"
+    if inner is str:
+        return "a string"
+    if inner is JSONValue:
+        return "a JSON value"
+    origin = get_origin(inner)
+    if origin is Literal:
+        return f"one of {tuple(sorted(get_args(inner)))!r}"
+    if _is_union(inner):
+        branches = [arg for arg in get_args(inner) if arg is not UNSET]
+        if _is_entity_or_opaque(branches):
+            return "a metadata field"
+        return " or ".join(describe(branch) for branch in branches)
+    if origin is tuple:
+        arguments = get_args(inner)
+        if len(arguments) == 2 and arguments[1] is Ellipsis:
+            return f"an array of {describe(arguments[0])} elements"
+        if len(arguments) == 2:
+            return f"a [{describe(arguments[0])}, {describe(arguments[1])}] pair"
+        return f"an array of {len(arguments)} elements"
+    if _is_entity_type(inner):
+        return "a metadata field"
+    if is_typeddict(inner) or is_dataclass(inner):
+        return "an object"
+    return "a value"
+
+
+def _shape(annotation: object) -> str | None:
+    """The top-level JSON shape an annotation admits, for choosing a union branch.
+
+    None means any shape -- a JSON value, or a union that mixes them.
+    """
+    inner, _ = _strip(annotation)
+    if inner is int:
+        return "int"
+    if inner is bool:
+        return "bool"
+    if inner is str:
+        return "str"
+    origin = get_origin(inner)
+    if origin is Literal:
+        values = get_args(inner)
+        return "int" if all(isinstance(value, int) for value in values) else "str"
+    if origin is tuple:
+        return "tuple"
+    if _is_entity_type(inner):
+        return "field"
+    if is_typeddict(inner) or is_dataclass(inner):
+        return "mapping"
+    return None
+
+
+def _has_shape(shape: str | None, value: object) -> bool:
+    if shape is None:
+        return True
+    if shape == "int":
+        return is_integer(value)
+    if shape == "bool":
+        return isinstance(value, bool)
+    if shape == "str":
+        return isinstance(value, str)
+    if shape == "tuple":
+        return isinstance(value, tuple)
+    if shape == "mapping":
+        return isinstance(value, Mapping)
+    return isinstance(value, (str, Mapping))  # "field"
+
+
+def any_of(branches: Sequence[tuple[object, TypeCheck]], description: str) -> TypeCheck:
+    """A member whose type is a union of shapes, judged by the branch it fits.
+
+    The branch whose top-level shape the value has is the one that
+    reports -- so an element inside a malformed array is located inside
+    the array, rather than the whole array being called wrong. A value
+    fitting no branch's shape is reported once, by what was expected.
     """
 
-    __name__: str
+    def check(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+        fitting = [check for annotation, check in branches if _has_shape(_shape(annotation), value)]
+        if len(fitting) == 0:
+            return problem(loc, f"expected {description}, got {value!r}")
+        verdicts = [check(value, loc) for check in fitting]
+        return () if any(len(verdict) == 0 for verdict in verdicts) else verdicts[0]
+
+    return check
 
 
-def _unwrap(annotation: object) -> object:
-    """An annotation without the qualifiers that are not its type.
+def fixed_tuple(elements: Sequence[TypeCheck], description: str) -> TypeCheck:
+    """A member whose type is an array of a fixed length, checked position by position."""
 
-    `NotRequired` and `Required` say whether a member must be present,
-    which is the other half of a member table entry; `ReadOnly` says
-    nothing about the value at all.
+    def check(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+        if not isinstance(value, tuple) or len(cast("tuple[object, ...]", value)) != len(elements):
+            return problem(loc, f"expected {description}, got {value!r}")
+        entries = cast("tuple[object, ...]", value)
+        return tuple(
+            found
+            for position, (element, entry) in enumerate(zip(elements, entries, strict=True))
+            for found in element(entry, (*loc, position))
+        )
+
+    return check
+
+
+def mapping_of(members: Mapping[str, tuple[bool, TypeCheck]]) -> TypeCheck:
+    """A member that is itself an object with declared keys, checked key by key.
+
+    Closed, like every configuration in this package: a key the type does
+    not declare is `unknown_key`, a required one missing is `missing_key`,
+    both located at the object. Each present member is checked at its own
+    key, so a problem inside is located inside.
     """
-    while get_origin(annotation) in (NotRequired, Required, ReadOnly):
-        (annotation,) = get_args(annotation)
-    return annotation
+
+    def check(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+        if not isinstance(value, Mapping):
+            return problem(loc, f"expected an object, got {value!r}")
+        entries = cast("Mapping[str, object]", value)
+        found: list[ValidationProblem] = []
+        for key in entries:
+            if key not in members:
+                found.extend(problem(loc, f"unexpected key {key!r}", "unknown_key"))
+        for key, (required, member) in members.items():
+            if key not in entries:
+                if required:
+                    found.extend(problem(loc, f"missing required key {key!r}", "missing_key"))
+                continue
+            found.extend(member(entries[key], (*loc, key)))
+        return tuple(found)
+
+    return check
+
+
+def _members_of(annotations: Mapping[str, object]) -> dict[str, tuple[bool, TypeCheck]] | None:
+    """A member table for a nested object's keys; None if any key's type has no check."""
+    members: dict[str, tuple[bool, TypeCheck]] = {}
+    for key, annotation in annotations.items():
+        check = check_for(annotation)
+        if check is None:
+            return None
+        inner, _ = _strip(annotation)
+        required = get_origin(annotation) is not NotRequired and not is_optional(inner)
+        members[key] = (required, check)
+    return members
 
 
 def check_for(annotation: object) -> TypeCheck | None:
-    """The check an annotation implies, or None if it implies none.
+    """The type check a field annotation implies, or None if it implies none.
 
-    None for an annotation naming another structure -- a nested
-    TypedDict, a recursive JSON alias, a tuple of either. Reading those
-    off the annotation would be a TypedDict-to-checker compiler, which
-    is a different package; the entity declares those itself.
+    A small compiler over the shapes this package's metadata takes: the
+    JSON scalars, a `Literal` of names, arrays homogeneous or fixed,
+    unions of those, a nested object described by a TypedDict or a
+    record dataclass, and a nested metadata field -- an entity type,
+    with or without `Opaque`. `UNSET` in a union says the member may be
+    absent, which is the other half of a table entry and is read
+    separately by `is_optional`.
+
+    None for an annotation outside those shapes, which the entity then
+    declares a check for by hand.
     """
-    annotation = _unwrap(annotation)
-    if annotation is int:
+    inner, _ = _strip(annotation)
+    if inner is int:
         return is_int
-    if annotation is bool:
+    if inner is bool:
         return is_bool
-    if annotation is str:
+    if inner is str:
         return is_str
-    if annotation is JSONValue:
+    if inner is JSONValue:
         return is_json_value
-    if get_origin(annotation) is Literal:
+    origin = get_origin(inner)
+    if origin is Literal:
         # Sorted, because the order `get_args` reports is not the order
         # the `Literal` was written in: two `Literal`s over the same
         # values compare and hash equal, so the first one built anywhere
         # in the process is the one every later one resolves to. The
         # check is a membership test either way; this is so the message
         # listing the values does not depend on import order.
-        return one_of(tuple(sorted(cast("tuple[str, ...]", get_args(annotation)))))
-    if get_origin(annotation) is tuple:
-        arguments = get_args(annotation)
+        return one_of(tuple(sorted(cast("tuple[str, ...]", get_args(inner)))))
+    if _is_union(inner):
+        branches = [arg for arg in get_args(inner) if arg is not UNSET]
+        if len(branches) == 1:
+            return check_for(branches[0])
+        if _is_entity_or_opaque(branches):
+            return is_metadata_field
+        compiled = [(branch, check_for(branch)) for branch in branches]
+        if any(check is None for _, check in compiled):
+            return None
+        return any_of(
+            [(branch, cast("TypeCheck", check)) for branch, check in compiled], describe(inner)
+        )
+    if origin is tuple:
+        arguments = get_args(inner)
         if len(arguments) == 2 and arguments[1] is Ellipsis:
             element = check_for(arguments[0])
             return None if element is None else sequence_of(element)
+        elements = [check_for(argument) for argument in arguments]
+        if any(element is None for element in elements):
+            return None
+        return fixed_tuple([cast("TypeCheck", element) for element in elements], describe(inner))
+    # A nested metadata field, before the record check: `Opaque` is itself
+    # a dataclass, and an entity type must not be walked as one either.
+    if _is_entity_type(inner):
+        return is_metadata_field
+    if is_typeddict(inner):
+        members = _members_of(get_type_hints(inner, include_extras=True))
+        return None if members is None else mapping_of(members)
+    if isinstance(inner, type) and is_dataclass(inner):
+        members = _members_of(_field_hints(inner))
+        return None if members is None else mapping_of(members)
     return None
 
 
-def is_required(annotation: object) -> bool:
-    """Whether a configuration member must be present.
+def derive_member_types(cls: type) -> tuple[dict[str, tuple[bool, TypeCheck]], list[str]]:
+    """The member table an entity's own fields describe.
 
-    From the resolved annotation rather than the TypedDict's
-    `__required_keys__`, which is computed from unresolved strings and
-    is wrong for a module using `from __future__ import annotations`.
-    `ReadOnly` may wrap either way round, so it is peeled first.
-    """
-    while get_origin(annotation) is ReadOnly:
-        (annotation,) = get_args(annotation)
-    return get_origin(annotation) is not NotRequired
-
-
-def derive_member_types(
-    configuration: ConfigurationType,
-) -> dict[str, tuple[bool, TypeCheck]]:
-    """The member table a configuration TypedDict already describes.
-
-    Requiredness is the TypedDict's, and so is the check wherever the
-    annotation implies one. A member it does not imply one for is left
-    out, for the entity to declare.
+    Every field is a configuration member unless `FROM_NAME` says it is
+    carried by the envelope. Requiredness is whether the type admits
+    `UNSET`; the check is whatever `check_for` reads off the type. Also
+    returned: the fields no check could be read for, which the entity
+    must declare by hand.
     """
     derived: dict[str, tuple[bool, TypeCheck]] = {}
-    for member, annotation in get_type_hints(configuration, include_extras=True).items():
-        check = check_for(annotation)
-        if check is not None:
-            derived[member] = (is_required(annotation), check)
-    return derived
+    unread: list[str] = []
+    for name, annotation in _field_hints(cls).items():
+        inner, metadata = _strip(annotation)
+        if any(entry is FROM_NAME for entry in metadata):
+            continue
+        check = check_for(inner)
+        if check is None:
+            unread.append(name)
+            continue
+        derived[name] = (not is_optional(inner), check)
+    return derived, unread
 
 
 ValueRoutine: TypeAlias = "Callable[..., tuple[ValidationProblem, ...]]"
@@ -479,23 +736,14 @@ class MetadataEntity:
     an invented identifier that no real name can collide with.
     """
 
-    configuration_type: ClassVar[ConfigurationType | None] = None
-    """The TypedDict describing this entity's `configuration` in JSON.
-
-    None for an entity that has no configuration. Everything else about
-    the members is read off it at class creation, so the JSON shape is
-    stated once: `member_types` and `configuration_required` are both
-    derived, and the constructor is held to the same keys by
-    `tests/v3/test_entities.py`.
-    """
-
     member_types: ClassVar[MemberTypes] = MappingProxyType({})
     """The configuration members, and the type each one takes.
 
-    Derived from `configuration_type`. A class declares an entry here
-    only for a member whose annotation names another structure -- a
-    nested TypedDict, a recursive JSON alias -- which is where reading
-    the check off the annotation would take a compiler.
+    Read off the dataclass fields at class creation: which members there
+    are, which may be absent (the type admits `UNSET`), and the check
+    each one's type implies. A class declares an entry itself only for a
+    field whose annotation `check_for` cannot compile, and the public
+    JSON TypedDict is held to the same keys by `tests/v3/test_entities.py`.
     """
 
     configuration_required: ClassVar[bool] = False
@@ -503,7 +751,7 @@ class MetadataEntity:
 
     The spec permits a bare name "if no configuration metadata is
     required", so this is true exactly when some member is required --
-    which the configuration TypedDict already says.
+    which the fields already say.
     """
 
     def __init_subclass__(cls, *, base: bool = False, **kwargs: object) -> None:
@@ -543,40 +791,37 @@ class MetadataEntity:
         if "configuration_required" in vars(cls):
             msg = (
                 f"{cls.__name__} declares `configuration_required`, which follows "
-                "from whether its configuration has a required member"
+                "from whether any member is required"
             )
             raise TypeError(msg)
-        if cls.configuration_type is not None:
-            # Before every guard below, because they read the table.
-            declared = dict(vars(cls).get("member_types", {}))
-            derived = derive_member_types(cls.configuration_type)
-            undeclared = sorted(
-                set(get_type_hints(cls.configuration_type)) - set(derived) - set(declared)
+        # Before every guard below, because they read the table.
+        declared = dict(vars(cls).get("member_types", {}))
+        derived, unread = derive_member_types(cls)
+        unsupported = sorted(set(unread) - set(declared))
+        if len(unsupported) != 0:
+            msg = (
+                f"{cls.__name__}: no check can be read off the annotation of "
+                f"{', '.join(unsupported)}; declare one in `member_types`"
             )
-            if len(undeclared) != 0:
-                msg = (
-                    f"{cls.__name__} declares no check for {', '.join(undeclared)}, "
-                    "whose annotation does not imply one"
-                )
-                raise TypeError(msg)
-            hints = get_type_hints(cls.configuration_type, include_extras=True)
-            misstated = sorted(
-                member
-                for member, (required, _) in declared.items()
-                if member in hints and required != is_required(hints[member])
+            raise TypeError(msg)
+        optional = {name: is_optional(annotation) for name, annotation in _field_hints(cls).items()}
+        misstated = sorted(
+            member
+            for member, (required, _) in declared.items()
+            if member in optional and required == optional[member]
+        )
+        if len(misstated) != 0:
+            # The check is the entity's to write; whether the member may
+            # be left out is the field's to say, and a declared entry
+            # that disagrees is the drift this derivation exists to rule
+            # out.
+            msg = (
+                f"{cls.__name__} declares {', '.join(misstated)} with a requiredness "
+                "its field does not give it"
             )
-            if len(misstated) != 0:
-                # The check is the entity's to write; whether the member
-                # may be left out is the configuration's to say, and a
-                # declared entry that disagrees is the drift this
-                # derivation exists to rule out.
-                msg = (
-                    f"{cls.__name__} declares {', '.join(misstated)} with a requiredness "
-                    "its configuration does not give it"
-                )
-                raise TypeError(msg)
-            cls.member_types = {**derived, **declared}
-            cls.configuration_required = any(required for required, _ in cls.member_types.values())
+            raise TypeError(msg)
+        cls.member_types = {**derived, **declared}
+        cls.configuration_required = any(required for required, _ in cls.member_types.values())
         annotated = _declared_class_vars(cls)
         shadowed = [
             name
@@ -989,7 +1234,7 @@ def named_configuration(
     """
     if isinstance(value, str):
         return value, None, True
-    if not isinstance(value, _Mapping):
+    if not isinstance(value, Mapping):
         return None, None, True
     entry = cast("Mapping[str, object]", value)
     name = entry.get("name")
@@ -999,9 +1244,7 @@ def named_configuration(
     must_understand = entry.get("must_understand", True)
     return (
         name,
-        cast("Mapping[str, object]", configuration)
-        if isinstance(configuration, _Mapping)
-        else None,
+        cast("Mapping[str, object]", configuration) if isinstance(configuration, Mapping) else None,
         must_understand if isinstance(must_understand, bool) else True,
     )
 
@@ -1011,6 +1254,7 @@ __all__ = [
     "CHUNK_KEY_ENCODING",
     "CODECS",
     "DATA_TYPE",
+    "FROM_NAME",
     "STORAGE_TRANSFORMERS",
     "ChunkGridEntity",
     "CodecEntity",
@@ -1030,6 +1274,7 @@ __all__ = [
     "is_int",
     "is_integer",
     "is_json_value",
+    "is_metadata_field",
     "is_str",
     "named_configuration",
     "one_of",

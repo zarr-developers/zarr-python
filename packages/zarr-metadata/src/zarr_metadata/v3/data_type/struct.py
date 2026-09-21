@@ -13,7 +13,6 @@ from zarr_metadata.v3._entity import (
     DATA_TYPE,
     DataTypeEntity,
     Loc,
-    MemberTypes,
     Opaque,
     StorageClass,
     problem,
@@ -89,34 +88,6 @@ __all__ = [
 ]
 
 
-def _is_fields(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-    """An array of `{name, data_type}` objects.
-
-    Whether a `data_type` names anything is settled on recursion; this
-    only asks whether the field entry has the two members at all.
-    """
-    if not isinstance(value, tuple):
-        return problem(loc, f"expected an array of struct fields, got {value!r}")
-    entries = cast("tuple[object, ...]", value)
-    found: list[ValidationProblem] = []
-    for index, entry in enumerate(entries):
-        if not isinstance(entry, Mapping):
-            found.extend(problem((*loc, index), f"expected a struct field, got {entry!r}"))
-            continue
-        field = cast("Mapping[str, object]", entry)
-        for key in STRUCT_FIELD_KEYS:
-            if key not in field:
-                found.extend(problem((*loc, index), f"missing required key {key!r}", "missing_key"))
-        for key in field:
-            if key not in STRUCT_FIELD_KEYS:
-                found.extend(problem((*loc, index), f"unexpected key {key!r}", "unknown_key"))
-        if "name" in field and not isinstance(field["name"], str):
-            found.extend(
-                problem((*loc, index, "name"), f"expected a string, got {field['name']!r}")
-            )
-    return tuple(found)
-
-
 @dataclass(frozen=True)
 class StructFieldComponent:
     """One field of a struct: a name, and the type of its values.
@@ -164,12 +135,7 @@ class StructDataType(DataTypeEntity):
     fields: tuple[StructFieldComponent, ...]
 
     identifier: ClassVar[str] = STRUCT_DATA_TYPE_NAME
-    configuration_type = StructConfiguration
     scalar_storage: ClassVar[StorageClass] = "single_byte"
-
-    member_types: ClassVar[MemberTypes] = {
-        "fields": (True, _is_fields),
-    }
 
     @staticmethod
     def value_problems(**members: Unpack[StructMembers]) -> tuple[ValidationProblem, ...]:
