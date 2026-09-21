@@ -10,12 +10,11 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 
 import re
 from dataclasses import dataclass
-from typing import Annotated, ClassVar, Final, NewType, Self, cast
+from typing import Annotated, ClassVar, Final, NewType, Self
 
 from typing_extensions import TypedDict, Unpack
 
 from zarr_metadata.model._validation import ValidationProblem
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
     FROM_NAME,
     Coerced,
@@ -107,7 +106,7 @@ class RawBytesMembers(TypedDict):
 
 
 @dataclass(frozen=True)
-class RawBytesDataType(DataTypeEntity):
+class RawBytesDataType(DataTypeEntity[RawBytesDataTypeName]):
     """An `r<N>` raw-bytes data type, coerced from its metadata.
 
     One class for the whole family, because `r8` and `r4096` differ only
@@ -163,8 +162,8 @@ class RawBytesDataType(DataTypeEntity):
         """
         return _name_problems(members["data_type_name"])
 
-    def to_json(self) -> ZarrV3MetadataFieldJSON:
-        return cast("ZarrV3MetadataFieldJSON", self.data_type_name)
+    def to_json(self) -> RawBytesDataTypeName:
+        return RawBytesDataTypeName(self.data_type_name)
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         """One byte value per byte of the scalar.

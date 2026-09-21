@@ -112,6 +112,22 @@ def sequence_of(element: TypeCheck) -> TypeCheck:
     return check
 
 
+def object_of(value: TypeCheck) -> TypeCheck:
+    """A member whose type is an object with any keys, checked value by value.
+
+    The open counterpart of `mapping_of`: a `Mapping[str, V]` says nothing
+    about which keys there are, only what each value must be.
+    """
+
+    def check(candidate: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+        if not isinstance(candidate, Mapping):
+            return problem(loc, f"expected an object, got {candidate!r}")
+        entries = cast("Mapping[str, object]", candidate)
+        return tuple(found for key, entry in entries.items() for found in value(entry, (*loc, key)))
+
+    return check
+
+
 def _as_tuples(value: object) -> object:
     """Every JSON array in `value`, at any depth, as a tuple.
 

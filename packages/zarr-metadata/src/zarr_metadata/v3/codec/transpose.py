@@ -5,7 +5,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/transpose/index.html
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired, cast
+from typing import ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -64,7 +64,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class TransposeCodec(CodecEntity):
+class TransposeCodec(CodecEntity[TransposeCodecMetadata]):
     """The `transpose` codec, coerced from its metadata."""
 
     order: tuple[int, ...]
@@ -110,6 +110,3 @@ class TransposeCodec(CodecEntity):
         longer the grid the document wrote.
         """
         return incoming.with_grid(incoming.grid.permuted(self.order))
-
-    def to_json(self) -> TransposeCodecObject:
-        return cast("TransposeCodecObject", super().to_json())

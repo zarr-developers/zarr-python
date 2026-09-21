@@ -5,7 +5,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index
 """
 
 from dataclasses import dataclass
-from typing import Annotated, ClassVar, Final, Literal, NotRequired, cast
+from typing import Annotated, ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -96,7 +96,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class ShardingIndexedCodec(CodecEntity):
+class ShardingIndexedCodec(CodecEntity[ShardingIndexedCodecMetadata]):
     """The `sharding_indexed` codec, coerced from its metadata.
 
     Holds two codec pipelines, so it is one of the few entities that
@@ -184,6 +184,3 @@ class ShardingIndexedCodec(CodecEntity):
                     )
                 )
         return tuple(found)
-
-    def to_json(self) -> ShardingIndexedCodecObject:
-        return cast("ShardingIndexedCodecObject", super().to_json())

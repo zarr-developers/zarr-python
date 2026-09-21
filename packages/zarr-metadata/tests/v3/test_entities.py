@@ -11,38 +11,52 @@ from __future__ import annotations
 
 import copy
 import dataclasses
-from typing import Any, ClassVar, Self, cast, get_args, get_type_hints
+import types
+from typing import (
+    Any,
+    ClassVar,
+    NotRequired,
+    Self,
+    Union,
+    cast,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 import pytest
+from hypothesis import given, settings
+from typing_extensions import ReadOnly, is_typeddict
 
+from tests.rules.strategies import valid_documents
 from zarr_metadata.model import UNSET, MetadataValidationError
 from zarr_metadata.rules import validate_array_metadata_v3
+from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+from zarr_metadata.v3._compile import check_for
+from zarr_metadata.v3._document import read_array_v3
+from zarr_metadata.v3._entity import json_type_of
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS
 from zarr_metadata.v3.chunk_grid.rectilinear import (
     RectilinearChunkGrid,
-    RectilinearChunkGridConfiguration,
 )
-from zarr_metadata.v3.chunk_grid.regular import RegularChunkGrid, RegularChunkGridConfiguration
+from zarr_metadata.v3.chunk_grid.regular import RegularChunkGrid
 from zarr_metadata.v3.chunk_key_encoding.default import (
     DefaultChunkKeyEncoding,
-    DefaultChunkKeyEncodingConfiguration,
 )
 from zarr_metadata.v3.chunk_key_encoding.v2 import (
     V2ChunkKeyEncoding,
-    V2ChunkKeyEncodingConfiguration,
 )
-from zarr_metadata.v3.codec.blosc import BloscCodec, BloscCodecConfiguration
-from zarr_metadata.v3.codec.bytes import BytesCodec, BytesCodecConfiguration
-from zarr_metadata.v3.codec.cast_value import CastValueCodec, CastValueCodecConfiguration
-from zarr_metadata.v3.codec.crc32c import Crc32cCodec, Empty
-from zarr_metadata.v3.codec.gzip import GzipCodec, GzipCodecConfiguration
-from zarr_metadata.v3.codec.scale_offset import ScaleOffsetCodec, ScaleOffsetCodecConfiguration
+from zarr_metadata.v3.codec.blosc import BloscCodec
+from zarr_metadata.v3.codec.bytes import BytesCodec
+from zarr_metadata.v3.codec.cast_value import CastValueCodec
+from zarr_metadata.v3.codec.crc32c import Crc32cCodec
+from zarr_metadata.v3.codec.gzip import GzipCodec
+from zarr_metadata.v3.codec.scale_offset import ScaleOffsetCodec
 from zarr_metadata.v3.codec.sharding_indexed import (
     ShardingIndexedCodec,
-    ShardingIndexedCodecConfiguration,
 )
-from zarr_metadata.v3.codec.transpose import TransposeCodec, TransposeCodecConfiguration
-from zarr_metadata.v3.codec.zstd import ZstdCodec, ZstdCodecConfiguration
+from zarr_metadata.v3.codec.transpose import TransposeCodec
+from zarr_metadata.v3.codec.zstd import ZstdCodec
 from zarr_metadata.v3.data_type.bool import BoolDataType
 from zarr_metadata.v3.data_type.bytes import BytesDataType
 from zarr_metadata.v3.data_type.complex64 import Complex64DataType
@@ -55,16 +69,14 @@ from zarr_metadata.v3.data_type.int16 import Int16DataType
 from zarr_metadata.v3.data_type.int32 import Int32DataType
 from zarr_metadata.v3.data_type.int64 import Int64DataType
 from zarr_metadata.v3.data_type.numpy_datetime64 import (
-    NumpyDatetime64Configuration,
     NumpyDatetime64DataType,
 )
 from zarr_metadata.v3.data_type.numpy_timedelta64 import (
-    NumpyTimedelta64Configuration,
     NumpyTimedelta64DataType,
 )
 from zarr_metadata.v3.data_type.raw import RawBytesDataType
 from zarr_metadata.v3.data_type.string import StringDataType
-from zarr_metadata.v3.data_type.struct import StructConfiguration, StructDataType
+from zarr_metadata.v3.data_type.struct import StructDataType
 from zarr_metadata.v3.data_type.uint8 import Uint8DataType
 from zarr_metadata.v3.data_type.uint16 import Uint16DataType
 from zarr_metadata.v3.data_type.uint32 import Uint32DataType
@@ -110,48 +122,29 @@ ENTITIES: dict[str, type[MetadataEntity]] = {
     "data_type:r<N>": RawBytesDataType,
 }
 
-# The public JSON TypedDict each configured entity's fields must mirror. Test
-# data, not a class attribute: nothing in the package reads it any more, so
-# this is the one correspondence still written by hand -- and the one that
-# catches an entity whose fields drift from the JSON type it is documented by.
-# An entity absent here has no configuration.
-CONFIGURATIONS: dict[str, type] = {
-    "codecs:blosc": BloscCodecConfiguration,
-    "codecs:bytes": BytesCodecConfiguration,
-    "codecs:cast_value": CastValueCodecConfiguration,
-    "codecs:crc32c": Empty,
-    "codecs:gzip": GzipCodecConfiguration,
-    "codecs:scale_offset": ScaleOffsetCodecConfiguration,
-    "codecs:sharding_indexed": ShardingIndexedCodecConfiguration,
-    "codecs:transpose": TransposeCodecConfiguration,
-    "codecs:zstd": ZstdCodecConfiguration,
-    "chunk_grid:regular": RegularChunkGridConfiguration,
-    "chunk_grid:rectilinear": RectilinearChunkGridConfiguration,
-    "chunk_key_encoding:default": DefaultChunkKeyEncodingConfiguration,
-    "chunk_key_encoding:v2": V2ChunkKeyEncodingConfiguration,
-    "data_type:numpy.datetime64": NumpyDatetime64Configuration,
-    "data_type:numpy.timedelta64": NumpyTimedelta64Configuration,
-    "data_type:struct": StructConfiguration,
-}
-
 
 @pytest.mark.parametrize("entity", ENTITIES.values(), ids=list(ENTITIES))
 def test_the_constructor_mirrors_the_configuration(entity: type[MetadataEntity]) -> None:
     # The member table and `configuration_required` are read off the fields,
-    # so the fields are the only spelling left that can drift from the public
-    # JSON TypedDict -- and a field the TypedDict does not have would be a
-    # member no document could write.
-    #
-    # `must_understand` belongs to the object, not the configuration, so it
-    # is the one field the two deliberately do not share.
-    key = next(key for key, candidate in ENTITIES.items() if candidate is entity)
+    # and the JSON type is named as the base's argument; the fields are the
+    # only spelling left that can drift from the public TypedDict -- and a
+    # field the TypedDict does not have would be a member no document could
+    # write. `must_understand` belongs to the object, not the configuration,
+    # so it is the one field the two deliberately do not share.
     fields = {field.name for field in dataclasses.fields(entity)} - {"must_understand"}
-    if key not in CONFIGURATIONS:
-        # `r<N>` keeps its width in its name, so it holds a member that
-        # is not a configuration key.
+    json_type = json_type_of(entity)
+    objects = [part for part in _parts(json_type) if is_typeddict(part)]
+    if len(objects) == 0:
+        # A bare-name type: nothing to configure. `r<N>` keeps its width
+        # in its name, so it holds a member that is not a configuration key.
         assert fields == ({"data_type_name"} if entity is RawBytesDataType else set())
         return
-    assert fields == set(get_type_hints(CONFIGURATIONS[key]))
+    (obj,) = objects
+    configuration = get_type_hints(obj, include_extras=True).get("configuration")
+    assert configuration is not None, f"{obj!r} has no configuration member"
+    while get_origin(configuration) in (NotRequired, ReadOnly):
+        (configuration,) = get_args(configuration)
+    assert fields == set(get_type_hints(configuration))
 
 
 @pytest.mark.parametrize("entity", ENTITIES.values(), ids=list(ENTITIES))
@@ -173,6 +166,165 @@ def test_the_value_routine_takes_the_members_it_will_be_given(
     assert set(get_type_hints(members)) == fields
 
 
+def _parts(json_type: object) -> tuple[object, ...]:
+    return (
+        get_args(json_type) if get_origin(json_type) in (Union, types.UnionType) else (json_type,)
+    )
+
+
+@pytest.mark.parametrize("entity", ENTITIES.values(), ids=list(ENTITIES))
+def test_every_entity_names_its_json_type(entity: type[MetadataEntity]) -> None:
+    # The default is not wrong, only uninformative; every entity this
+    # package models says exactly what it writes.
+    assert json_type_of(entity) is not ZarrV3MetadataFieldJSON
+
+
+# One or more documents each entity reads, spelled to reach both shapes
+# where the entity has both: the bare name when every member is absent,
+# the object otherwise. `st.from_type` over the named types cannot serve
+# here -- measured, it reaches a valid gzip or blosc in under 1% of draws.
+EXAMPLES: dict[str, tuple[object, ...]] = {
+    "codecs:blosc": (
+        {
+            "name": "blosc",
+            "configuration": {
+                "cname": "zstd",
+                "clevel": 5,
+                "shuffle": "shuffle",
+                "typesize": 4,
+                "blocksize": 0,
+            },
+        },
+    ),
+    "codecs:bytes": ("bytes", {"name": "bytes", "configuration": {"endian": "little"}}),
+    "codecs:cast_value": (
+        {"name": "cast_value", "configuration": {"data_type": "int8"}},
+        {
+            "name": "cast_value",
+            "configuration": {"data_type": "int8", "scalar_map": {"encode": (("NaN", 0),)}},
+        },
+    ),
+    "codecs:crc32c": ("crc32c", {"name": "crc32c"}),
+    "codecs:gzip": ({"name": "gzip", "configuration": {"level": 5}},),
+    "codecs:scale_offset": (
+        "scale_offset",
+        {"name": "scale_offset", "configuration": {"offset": 2, "scale": 0.5}},
+    ),
+    "codecs:sharding_indexed": (
+        {
+            "name": "sharding_indexed",
+            "configuration": {
+                "chunk_shape": (4,),
+                "codecs": ("bytes",),
+                "index_codecs": (
+                    {"name": "bytes", "configuration": {"endian": "little"}},
+                    "crc32c",
+                ),
+                "index_location": "start",
+            },
+        },
+    ),
+    "codecs:transpose": ({"name": "transpose", "configuration": {"order": (2, 1, 0)}},),
+    "codecs:zstd": ({"name": "zstd", "configuration": {"level": 3, "checksum": False}},),
+    "chunk_grid:regular": ({"name": "regular", "configuration": {"chunk_shape": (4, 4)}},),
+    "chunk_grid:rectilinear": (
+        {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": ((32, 32, 32),)},
+        },
+        {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": (((32, 3),),)},
+        },
+    ),
+    "chunk_key_encoding:default": (
+        "default",
+        {"name": "default", "configuration": {"separator": "."}},
+    ),
+    "chunk_key_encoding:v2": ("v2", {"name": "v2", "configuration": {"separator": "/"}}),
+    "data_type:numpy.datetime64": (
+        {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 1}},
+    ),
+    "data_type:numpy.timedelta64": (
+        {"name": "numpy.timedelta64", "configuration": {"unit": "ms", "scale_factor": 10}},
+    ),
+    "data_type:bool": ("bool",),
+    "data_type:int8": ("int8",),
+    "data_type:int16": ("int16",),
+    "data_type:int32": ("int32",),
+    "data_type:int64": ("int64",),
+    "data_type:uint8": ("uint8",),
+    "data_type:uint16": ("uint16",),
+    "data_type:uint32": ("uint32",),
+    "data_type:uint64": ("uint64",),
+    "data_type:float16": ("float16",),
+    "data_type:float32": ("float32",),
+    "data_type:float64": ("float64",),
+    "data_type:complex64": ("complex64",),
+    "data_type:complex128": ("complex128",),
+    "data_type:bytes": ("bytes",),
+    "data_type:struct": (
+        {
+            "name": "struct",
+            "configuration": {
+                "fields": (
+                    {"name": "a", "data_type": "uint8"},
+                    {
+                        "name": "b",
+                        "data_type": {
+                            "name": "numpy.datetime64",
+                            "configuration": {"unit": "s", "scale_factor": 1},
+                        },
+                    },
+                ),
+            },
+        },
+    ),
+    "data_type:string": ("string",),
+    "data_type:r<N>": ("r16", "r008"),
+}
+
+
+def _assert_conforms(entity: MetadataEntity) -> None:
+    # The one `cast` in `to_json` asserts that what it builds has the
+    # entity's named type. This is that assertion, checked: the named
+    # type compiled by the package's own compiler, and the output run
+    # through it.
+    json_type = json_type_of(type(entity))
+    check = check_for(json_type)
+    assert check is not None, f"{json_type!r} is not a shape the compiler reads"
+    assert check(entity.to_json(), ()) == ()
+
+
+@pytest.mark.parametrize(
+    ("entity", "document"),
+    [(ENTITIES[key], document) for key, documents in EXAMPLES.items() for document in documents],
+    ids=[
+        f"{key}:{index}" for key, documents in EXAMPLES.items() for index in range(len(documents))
+    ],
+)
+def test_to_json_conforms_to_the_named_json_type(
+    entity: type[MetadataEntity], document: object
+) -> None:
+    read, problems = entity.coerce(document, CORE_AND_EXTENSIONS)
+    assert problems == ()
+    assert read is not None
+    _assert_conforms(read)
+
+
+@given(document=valid_documents())
+@settings(max_examples=50, deadline=None)
+def test_to_json_conforms_across_a_valid_document(document: dict[str, object]) -> None:
+    # The top-level entities of documents valid by construction, for the
+    # variation the examples fix: permutations, chunk shapes, an index
+    # pipeline. A nested entity is some entity's top-level example.
+    array, problems = read_array_v3(document, CORE_AND_EXTENSIONS)
+    assert problems == ()
+    for entity in (array.data_type, array.chunk_grid, array.chunk_key_encoding, *array.codecs):
+        assert isinstance(entity, MetadataEntity)
+        _assert_conforms(entity)
+
+
 def test_every_registered_entity_is_checked_here() -> None:
     registered = {
         f"{field}:{identifier}"
@@ -180,6 +332,7 @@ def test_every_registered_entity_is_checked_here() -> None:
         for identifier in entities
     }
     assert registered == set(ENTITIES)
+    assert set(EXAMPLES) == set(ENTITIES)
 
 
 def test_core_is_a_subset_of_core_and_extensions() -> None:

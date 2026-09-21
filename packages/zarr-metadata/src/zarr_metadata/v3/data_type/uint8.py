@@ -29,7 +29,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class Uint8DataType(IntegerDataType):
+class Uint8DataType(IntegerDataType[Uint8DataTypeName]):
     """The `uint8` data type. The name says everything."""
 
     scalar_storage: ClassVar[StorageClass] = "single_byte"

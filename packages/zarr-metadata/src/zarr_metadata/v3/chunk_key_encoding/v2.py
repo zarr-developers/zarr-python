@@ -14,7 +14,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#chunk-key-enc
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired, cast
+from typing import ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -77,12 +77,9 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class V2ChunkKeyEncoding(MetadataEntity):
+class V2ChunkKeyEncoding(MetadataEntity[V2ChunkKeyEncodingMetadata]):
     """The `v2` chunk key encoding, coerced from its metadata."""
 
     separator: V2ChunkKeyEncodingSeparator | UNSET = UNSET
 
     identifier: ClassVar[str] = V2_CHUNK_KEY_ENCODING_NAME
-
-    def to_json(self) -> V2ChunkKeyEncodingObject | V2ChunkKeyEncodingName:
-        return cast("V2ChunkKeyEncodingObject | V2ChunkKeyEncodingName", super().to_json())

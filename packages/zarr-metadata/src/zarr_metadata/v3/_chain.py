@@ -28,19 +28,21 @@ from zarr_metadata.v3._entity import CodecEntity, within
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from zarr_metadata.v3._entity import Loc
+    from zarr_metadata.v3._entity import Loc, Opaque
     from zarr_metadata.v3._parts import ArrayParts
 
 _KIND_RANK = {"array_array": 0, "array_bytes": 1, "bytes_bytes": 2}
 
 
-def _label(codec: object) -> str:
+def _label(codec: CodecEntity | Opaque) -> str:
     if isinstance(codec, CodecEntity):
         return repr(type(codec).identifier)
     return repr(codec)
 
 
-def order_problems(codecs: Sequence[object], loc: Loc) -> tuple[ValidationProblem, ...]:
+def order_problems(
+    codecs: Sequence[CodecEntity | Opaque], loc: Loc
+) -> tuple[ValidationProblem, ...]:
     """Whether the pipeline is shaped the way the spec orders it.
 
     A codec out of scope is skipped: it imposes no ordering constraint,
@@ -84,7 +86,7 @@ def order_problems(codecs: Sequence[object], loc: Loc) -> tuple[ValidationProble
 
 
 def chain_problems(
-    codecs: Sequence[object], start: ArrayParts | None, loc: Loc
+    codecs: Sequence[CodecEntity | Opaque], start: ArrayParts | None, loc: Loc
 ) -> tuple[ValidationProblem, ...]:
     """Every problem this pipeline has, ordering and per-codec alike.
 

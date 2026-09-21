@@ -172,7 +172,7 @@ def _axis_lengths(spec: RectilinearDimSpec) -> frozenset[int] | None:
 
 
 @dataclass(frozen=True)
-class RectilinearChunkGrid(ChunkGridEntity):
+class RectilinearChunkGrid(ChunkGridEntity[RectilinearChunkGridMetadata]):
     """The `rectilinear` chunk grid, coerced from its metadata."""
 
     kind: Literal["inline"]
@@ -228,6 +228,3 @@ class RectilinearChunkGrid(ChunkGridEntity):
         grid, and the encoded one stays the same size as the array grows.
         """
         return replace(super().canonical(), chunk_shapes=canonical_chunk_shapes(self.chunk_shapes))
-
-    def to_json(self) -> RectilinearChunkGridObject:
-        return cast("RectilinearChunkGridObject", super().to_json())

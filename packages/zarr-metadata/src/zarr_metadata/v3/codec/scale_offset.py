@@ -5,7 +5,7 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired, cast
+from typing import ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -75,7 +75,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class ScaleOffsetCodec(CodecEntity):
+class ScaleOffsetCodec(CodecEntity[ScaleOffsetCodecMetadata]):
     """The `scale_offset` codec, coerced from its metadata.
 
     Both members are optional and any JSON scalar is well-typed here; what
@@ -110,6 +110,3 @@ class ScaleOffsetCodec(CodecEntity):
         if value is None:
             return problem((), "expected a scalar, got null", "invalid_value")
         return ()
-
-    def to_json(self) -> ScaleOffsetCodecObject | ScaleOffsetCodecName:
-        return cast("ScaleOffsetCodecObject | ScaleOffsetCodecName", super().to_json())

@@ -5,7 +5,7 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from dataclasses import dataclass
-from typing import Annotated, ClassVar, Final, Literal, NotRequired, cast
+from typing import Annotated, ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import ReadOnly, TypedDict
 
@@ -69,7 +69,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class NumpyDatetime64DataType(NumpyTimeDataType):
+class NumpyDatetime64DataType(NumpyTimeDataType[NumpyDatetime64]):
     """The `numpy.datetime64` data type, coerced from its metadata."""
 
     unit: NumpyTimeUnit
@@ -77,6 +77,3 @@ class NumpyDatetime64DataType(NumpyTimeDataType):
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     identifier: ClassVar[str] = NUMPY_DATETIME64_DATA_TYPE_NAME
-
-    def to_json(self) -> NumpyDatetime64:
-        return cast("NumpyDatetime64", super().to_json())

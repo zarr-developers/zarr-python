@@ -62,7 +62,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class RegularChunkGrid(ChunkGridEntity):
+class RegularChunkGrid(ChunkGridEntity[RegularChunkGridMetadata]):
     """The `regular` chunk grid, coerced from its metadata."""
 
     chunk_shape: tuple[Annotated[int, Ge(1)], ...]
@@ -86,6 +86,3 @@ class RegularChunkGrid(ChunkGridEntity):
     def grid(self, array_shape: object) -> ChunkGrid:
         """One extent per axis, the same for every chunk on that axis."""
         return ChunkGrid.regular(self.chunk_shape)
-
-    def to_json(self) -> RegularChunkGridObject:
-        return cast("RegularChunkGridObject", super().to_json())

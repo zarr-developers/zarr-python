@@ -5,7 +5,7 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from dataclasses import dataclass
-from typing import Annotated, ClassVar, Final, Literal, NotRequired, cast
+from typing import Annotated, ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import ReadOnly, TypedDict
 
@@ -72,7 +72,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class NumpyTimedelta64DataType(NumpyTimeDataType):
+class NumpyTimedelta64DataType(NumpyTimeDataType[NumpyTimedelta64]):
     """The `numpy.timedelta64` data type, coerced from its metadata."""
 
     unit: NumpyTimeUnit
@@ -80,6 +80,3 @@ class NumpyTimedelta64DataType(NumpyTimeDataType):
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     identifier: ClassVar[str] = NUMPY_TIMEDELTA64_DATA_TYPE_NAME
-
-    def to_json(self) -> NumpyTimedelta64:
-        return cast("NumpyTimedelta64", super().to_json())

@@ -5,7 +5,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/bytes/index.html
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired, cast
+from typing import ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -80,7 +80,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class BytesCodec(CodecEntity):
+class BytesCodec(CodecEntity[BytesCodecMetadata]):
     """The `bytes` codec, coerced from its metadata.
 
     `endian` is optional and absent means something: a one-byte data type
@@ -119,6 +119,3 @@ class BytesCodec(CodecEntity):
                 "missing_key",
             )
         return ()
-
-    def to_json(self) -> BytesCodecObject | BytesCodecName:
-        return cast("BytesCodecObject | BytesCodecName", super().to_json())

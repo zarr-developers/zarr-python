@@ -8,7 +8,7 @@ key is absent from the metadata.
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired, cast
+from typing import ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -61,7 +61,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class Crc32cCodec(CodecEntity):
+class Crc32cCodec(CodecEntity[Crc32cCodecName]):
     """The `crc32c` codec, coerced from its metadata.
 
     The name says everything: a checksum has nothing to configure.
@@ -69,6 +69,3 @@ class Crc32cCodec(CodecEntity):
 
     identifier: ClassVar[str] = CRC32C_CODEC_NAME
     kind: ClassVar[CodecKind] = "bytes_bytes"
-
-    def to_json(self) -> Crc32cCodecObject | Crc32cCodecName:
-        return cast("Crc32cCodecObject | Crc32cCodecName", super().to_json())

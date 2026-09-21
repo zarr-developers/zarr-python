@@ -26,7 +26,9 @@ elsewhere.
 
 **Writing an extension.** Subclass `CodecEntity`, `DataTypeEntity`,
 `ChunkGridEntity` or `MetadataEntity`, declare the fields, and add it to
-a scope:
+a scope. Name your JSON type as the base's argument if you have one --
+`CodecEntity[AcmeLz4Metadata]` -- and `to_json` is typed as it; left
+bare, `to_json` is typed as any metadata field:
 
     @dataclass(frozen=True)
     class AcmeLz4Codec(CodecEntity):

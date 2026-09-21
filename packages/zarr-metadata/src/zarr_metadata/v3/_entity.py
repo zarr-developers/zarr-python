@@ -38,16 +38,16 @@ from typing import (
     TYPE_CHECKING,
     ClassVar,
     Final,
+    Generic,
     Literal,
     TypeAlias,
-    TypeVar,
     cast,
     get_args,
     get_origin,
     get_type_hints,
 )
 
-from typing_extensions import is_typeddict
+from typing_extensions import TypeIs, TypeVar, is_typeddict
 
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import (
@@ -59,7 +59,6 @@ from zarr_metadata.v3._parts import ChunkGrid
 if TYPE_CHECKING:
     from typing import Self
 
-    from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
     from zarr_metadata.v3._parts import ArrayParts
     from zarr_metadata.v3._registry import Context
 
@@ -80,6 +79,7 @@ from zarr_metadata.v3._checks import (
     sequence_of,
     within,
 )
+from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._compile import (
     FROM_NAME,
     CheckCompiler,
@@ -107,6 +107,21 @@ from zarr_metadata.v3._compile import (
 )
 
 EntityT = TypeVar("EntityT", bound="MetadataEntity")
+
+JSONT_co = TypeVar(
+    "JSONT_co", bound=ZarrV3MetadataFieldJSON, default=ZarrV3MetadataFieldJSON, covariant=True
+)
+"""What an entity's `to_json` returns: its own JSON type, named as the base's argument.
+
+    class GzipCodec(CodecEntity[GzipCodecMetadata]): ...
+
+Covariant, because it appears only in a return; defaulted, so a bare
+`CodecEntity` -- in a field annotation, a table of entities, a scope --
+means `CodecEntity[ZarrV3MetadataFieldJSON]` and admits every codec, each
+of whose JSON types is assignable to that one (`ZarrV3NamedConfigJSON` is
+`ReadOnly` and closed for exactly this). An entity that leaves it
+defaulted is not wrong, only less informative.
+"""
 
 
 # A real alias, not a string one: entity modules subscript it as
@@ -173,10 +188,61 @@ does not have a pipeline position, a codec does.
 """
 
 
+def is_entity(value: object) -> TypeIs[MetadataEntity]:
+    """`value` is an entity, of whatever JSON type.
+
+    An `isinstance` against the generic base narrows an `object` to
+    `MetadataEntity[Unknown]`; this narrows it to the defaulted
+    `MetadataEntity`, whose `to_json` is any metadata field -- which is
+    all that can be said of an entity met as an `object`.
+    """
+    return isinstance(value, MetadataEntity)
+
+
+def _is_entity_kind(candidate: object) -> TypeIs[type[MetadataEntity]]:
+    """`candidate` is an entity class; narrowed as `is_entity` narrows."""
+    return isinstance(candidate, type) and issubclass(candidate, MetadataEntity)
+
+
+def _unsubscripted(candidate: object) -> object:
+    """`CodecEntity[X]` as `CodecEntity`; anything else as it is."""
+    origin = get_origin(candidate)
+    return origin if isinstance(origin, type) else candidate
+
+
 def _is_entity_type(candidate: object) -> bool:
-    return candidate is Opaque or (
-        isinstance(candidate, type) and issubclass(candidate, MetadataEntity)
+    candidate = _unsubscripted(candidate)
+    return candidate is Opaque or _is_entity_kind(candidate)
+
+
+def json_type_of(cls: type[MetadataEntity]) -> object:
+    """The JSON type `cls` names for `to_json`; the default if it names none.
+
+    Read off the subscripted base the class -- or the nearest ancestor
+    that did -- was declared with, `CodecEntity[GzipCodecMetadata]`: the
+    one place the correspondence between an entity and its public JSON
+    type is written.
+    """
+    for klass in cls.__mro__:
+        for base in klass.__dict__.get("__orig_bases__", ()):
+            origin = get_origin(base)
+            if isinstance(origin, type) and issubclass(origin, MetadataEntity):
+                arguments = get_args(base)
+                if len(arguments) == 1 and not isinstance(arguments[0], TypeVar):
+                    return arguments[0]
+    return ZarrV3MetadataFieldJSON
+
+
+def _json_shape(json_type: object) -> tuple[bool, bool]:
+    """Whether a JSON type admits a bare name, and whether it admits an object."""
+    parts = get_args(json_type) if is_union(json_type) else (json_type,)
+    bare = any(
+        part is str
+        or (get_origin(part) is Literal and all(isinstance(v, str) for v in get_args(part)))
+        or getattr(part, "__supertype__", None) is str
+        for part in parts
     )
+    return bare, any(is_typeddict(part) for part in parts)
 
 
 def _is_entity_or_opaque(candidates: Sequence[object]) -> bool:
@@ -233,7 +299,8 @@ def _as_entity_kind(candidate: object) -> type[MetadataEntity] | None:
     narrows this parameter and not the caller's variable, which the
     caller goes on to read as the annotation it is.
     """
-    if isinstance(candidate, type) and issubclass(candidate, MetadataEntity):
+    candidate = _unsubscripted(candidate)
+    if _is_entity_kind(candidate):
         return candidate
     return None
 
@@ -324,7 +391,7 @@ def _resolve(
 
 def render_nested(annotation: object, value: object) -> object:
     """`value` as a document would write it: every nested entity in its JSON form."""
-    if isinstance(value, MetadataEntity):
+    if is_entity(value):
         return value.to_json()
     if isinstance(value, Opaque):
         return value.json
@@ -351,7 +418,7 @@ def render_nested(annotation: object, value: object) -> object:
 
 def canonicalize_nested(annotation: object, value: object) -> object:
     """`value` with every nested entity in its own canonical form."""
-    if isinstance(value, MetadataEntity):
+    if is_entity(value):
         return value.canonical()
     if isinstance(value, Opaque):
         return value
@@ -425,7 +492,7 @@ class Opaque:
 # that is the floor this is worth revisiting; the memory saved is small at
 # document scale, which is why it has not been.
 @dataclass(frozen=True)
-class MetadataEntity:
+class MetadataEntity(Generic[JSONT_co]):
     """One named entity, coerced from its metadata.
 
     Subclasses add their configuration members as fields, which is what
@@ -605,6 +672,24 @@ class MetadataEntity:
             raise TypeError(msg)
         cls.member_types = {**derived, **declared}
         cls.configuration_required = any(required for required, _ in cls.member_types.values())
+        json_type = json_type_of(cls)
+        if json_type is not ZarrV3MetadataFieldJSON:
+            # The named type is a promise about what `to_json` writes, and
+            # its shape follows from the members: a bare name only when no
+            # member is required and the entity must be understood, an
+            # object whenever there is a member to write or the flag to.
+            admits_bare, admits_object = _json_shape(json_type)
+            writes_bare = not cls.configuration_required and cls.must_understand
+            writes_object = len(cls.member_types) != 0 or not cls.must_understand
+            if admits_bare != writes_bare or admits_object != writes_object:
+                msg = (
+                    f"{cls.__name__} names {json_type!r} as its JSON type, which "
+                    f"{'admits' if admits_bare else 'lacks'} a bare name and "
+                    f"{'admits' if admits_object else 'lacks'} an object, but the entity "
+                    f"{'writes' if writes_bare else 'never writes'} a bare name and "
+                    f"{'writes' if writes_object else 'never writes'} an object"
+                )
+                raise TypeError(msg)
         hints = field_hints(cls)
         cls.nested_members = {
             name: annotation for name, annotation in hints.items() if contains_entity(annotation)
@@ -933,7 +1018,7 @@ class MetadataEntity:
                 raise TypeError(msg)
         return entity
 
-    def to_json(self) -> ZarrV3MetadataFieldJSON:
+    def to_json(self) -> JSONT_co:
         """This entity as a document would write it.
 
         Faithful to every member it models: read a document, write it
@@ -954,22 +1039,30 @@ class MetadataEntity:
         `must_understand` follows the entity's own class variable, so it
         is omitted for everything this package models today.
 
-        Subclasses narrow the return type to their own object TypedDict,
-        which is the JSON form this dataclass models.
+        The return type is the entity's own JSON type, named as the
+        base's argument -- `GzipCodecObject`, `BytesCodecObject |
+        BytesCodecName` -- and the `cast` below is the one place the
+        package asserts that the dict it builds has that shape. Asserted
+        rather than proven because a TypedDict cannot be built member by
+        member from `dict[str, object]`; held to, twice: `__init_subclass__`
+        refuses a named type whose shape disagrees with whether this
+        entity ever writes a bare name or an object, and
+        `tests/v3/test_entities.py` compiles the named type with
+        `check_for` and runs every entity's output through it.
         """
         configuration = self.configuration()
         if len(configuration) == 0 and type(self).must_understand:
-            return cast("ZarrV3MetadataFieldJSON", type(self).identifier)
+            return cast("JSONT_co", type(self).identifier)
         entry: dict[str, object] = {"name": type(self).identifier}
         if len(configuration) != 0:
             entry["configuration"] = configuration
         if not type(self).must_understand:
             entry["must_understand"] = False
-        return cast("ZarrV3MetadataFieldJSON", entry)
+        return cast("JSONT_co", entry)
 
 
 @dataclass(frozen=True)
-class CodecEntity(MetadataEntity, base=True):
+class CodecEntity(MetadataEntity[JSONT_co], base=True):
     """An entity that occupies a position in the codec pipeline."""
 
     extension_point: ClassVar[ExtensionPointField] = CODECS
@@ -1010,7 +1103,7 @@ class CodecEntity(MetadataEntity, base=True):
 
 
 @dataclass(frozen=True)
-class ChunkGridEntity(MetadataEntity, base=True):
+class ChunkGridEntity(MetadataEntity[JSONT_co], base=True):
     """An entity that divides an array into the parts a pipeline encodes."""
 
     extension_point: ClassVar[ExtensionPointField] = CHUNK_GRID
@@ -1034,7 +1127,7 @@ class ChunkGridEntity(MetadataEntity, base=True):
 
 
 @dataclass(frozen=True)
-class DataTypeEntity(MetadataEntity, base=True):
+class DataTypeEntity(MetadataEntity[JSONT_co], base=True):
     """An entity that says how the array's scalars are stored.
 
     Only data types answer that, and every rule that turns on it -- a
@@ -1082,6 +1175,7 @@ __all__ = [
     "Ge",
     "Gt",
     "Interval",
+    "JSONT_co",
     "Le",
     "Loc",
     "Lt",
@@ -1094,11 +1188,13 @@ __all__ = [
     "ValueRoutine",
     "coerce_members",
     "is_bool",
+    "is_entity",
     "is_int",
     "is_integer",
     "is_json_value",
     "is_metadata_field",
     "is_str",
+    "json_type_of",
     "named_configuration",
     "one_of",
     "problem",

@@ -29,7 +29,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class Uint64DataType(IntegerDataType):
+class Uint64DataType(IntegerDataType[Uint64DataTypeName]):
     """The `uint64` data type. The name says everything."""
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"

@@ -97,7 +97,7 @@ class StructFieldComponent:
 
 
 @dataclass(frozen=True)
-class StructDataType(DataTypeEntity):
+class StructDataType(DataTypeEntity[Struct]):
     """The `struct` data type, coerced from its metadata.
 
     A record of named fields, each with a data type of its own -- so this
@@ -207,6 +207,3 @@ class StructDataType(DataTypeEntity):
             for key in sorted(fills.keys() - declared)
         )
         return tuple(found)
-
-    def to_json(self) -> Struct:
-        return cast("Struct", super().to_json())

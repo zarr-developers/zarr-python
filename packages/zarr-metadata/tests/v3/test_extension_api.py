@@ -8,16 +8,19 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, ClassVar, NewType, Self, cast
+from typing import Annotated, ClassVar, Literal, NotRequired, Self, cast
 
 import pytest
+from typing_extensions import TypedDict
 
 from zarr_metadata.model import UNSET, MetadataValidationError, ValidationProblem
 from zarr_metadata.rules import (
     canonicalize_array_metadata_v3,
     validate_array_metadata_v3,
 )
+from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._compile import _CHECK_COMPILERS
+from zarr_metadata.v3._entity import json_type_of
 from zarr_metadata.v3.codec.blosc import BloscCodec
 from zarr_metadata.v3.codec.gzip import GzipCodec
 from zarr_metadata.v3.entity import (
@@ -46,10 +49,6 @@ from zarr_metadata.v3.entity import (
 )
 
 ACME_MAX_ACCELERATION = 65537
-
-
-if TYPE_CHECKING:
-    from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 
 
 @dataclass(frozen=True)
@@ -567,7 +566,10 @@ def test_error_a_validates_rule_must_name_a_field() -> None:
 
 
 # An annotation shape the compiler does not read, taught to it from outside.
-Hex = NewType("Hex", str)
+class Hex(str):
+    """A hex digest: a `str` to the type checker, its own class at run time."""
+
+    __slots__ = ()
 
 
 def _is_hex(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
@@ -577,10 +579,10 @@ def _is_hex(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
 
 
 def test_a_third_party_can_teach_the_compiler_a_shape() -> None:
-    # `NewType` is a real case: to the type checker `Hex` is a `str`, but
-    # at run time it is a function `check_for` has no registration for,
-    # so an entity using it is refused -- until one is registered, through
-    # the same door the built-in shapes came through.
+    # A `str` subclass is a real case: to the type checker `Hex` is a
+    # `str`, but at run time it is a class `check_for` has no registration
+    # for, so an entity using it is refused -- until one is registered,
+    # through the same door the built-in shapes came through.
     with pytest.raises(TypeError, match="no check can be read off the annotation of digest"):
 
         @dataclass(frozen=True)
@@ -622,3 +624,43 @@ def test_a_third_party_can_teach_the_compiler_a_shape() -> None:
         _CHECK_COMPILERS[:] = [
             entry for entry in _CHECK_COMPILERS if entry.predicate is not is_hex_annotation
         ]
+
+
+def test_error_the_named_json_type_must_match_what_the_entity_writes() -> None:
+    # A required member means the entity is always written as an object,
+    # so naming a bare-name type for it is a promise `to_json` would break.
+    with pytest.raises(TypeError, match="lacks an object, but the entity never writes a bare name"):
+
+        @dataclass(frozen=True)
+        class Misnamed(CodecEntity[Literal["acme.misnamed"]]):  # pyright: ignore[reportUnusedClass]
+            level: int
+
+            identifier: ClassVar[str] = "acme.misnamed"
+            kind: ClassVar[CodecKind] = "bytes_bytes"
+
+
+def test_a_third_party_entity_may_name_its_json_type_or_not() -> None:
+    # Left defaulted, `to_json` is typed as any metadata field; named, as
+    # the entity's own type -- and either way the same dict comes back.
+    assert json_type_of(AcmeLz4Codec) is ZarrV3MetadataFieldJSON
+
+    class AcmeBlockConfiguration(TypedDict, closed=True):
+        block: int
+
+    class AcmeBlockObject(TypedDict, closed=True):
+        name: Literal["acme.block"]
+        configuration: AcmeBlockConfiguration
+        must_understand: NotRequired[bool]
+
+    @dataclass(frozen=True)
+    class AcmeTypedBlockCodec(CodecEntity[AcmeBlockObject]):
+        block: int
+
+        identifier: ClassVar[str] = "acme.block"
+        kind: ClassVar[CodecKind] = "bytes_bytes"
+
+    assert json_type_of(AcmeTypedBlockCodec) is AcmeBlockObject
+    assert AcmeTypedBlockCodec(block=8).to_json() == {
+        "name": "acme.block",
+        "configuration": {"block": 8},
+    }

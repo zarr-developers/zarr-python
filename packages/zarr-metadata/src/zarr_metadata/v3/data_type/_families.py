@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     DataTypeEntity,
+    JSONT_co,
     StorageClass,
     is_integer,
     problem,
@@ -63,7 +64,7 @@ def byte_values(value: object, expected: int | None, loc: Loc) -> tuple[Validati
 
 
 @dataclass(frozen=True)
-class IntegerDataType(DataTypeEntity, base=True):
+class IntegerDataType(DataTypeEntity[JSONT_co], base=True):
     """A fixed-width integer. The width is the whole difference."""
 
     bounds: ClassVar[tuple[int, int]]
@@ -80,7 +81,7 @@ class IntegerDataType(DataTypeEntity, base=True):
 
 
 @dataclass(frozen=True)
-class FloatDataType(DataTypeEntity, base=True):
+class FloatDataType(DataTypeEntity[JSONT_co], base=True):
     """A binary float. A fill value may be a number, a named non-finite, or hex."""
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
@@ -120,7 +121,7 @@ class FloatDataType(DataTypeEntity, base=True):
 
 
 @dataclass(frozen=True)
-class ComplexDataType(DataTypeEntity, base=True):
+class ComplexDataType(DataTypeEntity[JSONT_co], base=True):
     """A complex number: a `[real, imag]` pair of the component float type."""
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
@@ -167,7 +168,7 @@ NUMPY_TIME_MAX_SCALE_FACTOR: Final = 2**31 - 1
 
 
 @dataclass(frozen=True)
-class NumpyTimeDataType(DataTypeEntity, base=True):
+class NumpyTimeDataType(DataTypeEntity[JSONT_co], base=True):
     """A numpy time scalar: a signed 64-bit count of units, or `NaT`.
 
     The vocabulary the two time types share -- the unit codes and the

@@ -251,8 +251,7 @@ def canonicalize_array_metadata_v3(
     problems = (*problems, *found, *array.problems())
     if len(problems) != 0:
         return Invalid(problems)
-    canonical = cast("ZarrV3ArrayMetadataJSON", array.canonical().to_json())
-    return Canonical(ZarrV3ArrayMetadata.from_json(canonical).to_json())
+    return Canonical(ZarrV3ArrayMetadata.from_json(array.canonical().to_json()).to_json())
 
 
 __all__ = [

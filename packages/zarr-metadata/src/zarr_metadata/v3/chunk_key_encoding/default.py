@@ -8,7 +8,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#chunk-key-enc
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired, cast
+from typing import ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -71,14 +71,9 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class DefaultChunkKeyEncoding(MetadataEntity):
+class DefaultChunkKeyEncoding(MetadataEntity[DefaultChunkKeyEncodingMetadata]):
     """The `default` chunk key encoding, coerced from its metadata."""
 
     separator: DefaultChunkKeyEncodingSeparator | UNSET = UNSET
 
     identifier: ClassVar[str] = DEFAULT_CHUNK_KEY_ENCODING_NAME
-
-    def to_json(self) -> DefaultChunkKeyEncodingObject | DefaultChunkKeyEncodingName:
-        return cast(
-            "DefaultChunkKeyEncodingObject | DefaultChunkKeyEncodingName", super().to_json()
-        )

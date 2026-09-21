@@ -7,7 +7,7 @@ proposed the codec, was never merged).
 """
 
 from dataclasses import dataclass
-from typing import Annotated, ClassVar, Final, Literal, NotRequired, cast
+from typing import Annotated, ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -74,7 +74,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class ZstdCodec(CodecEntity):
+class ZstdCodec(CodecEntity[ZstdCodecMetadata]):
     """The `zstd` codec, coerced from its metadata."""
 
     level: Annotated[int, Interval(ge=ZSTD_MIN_LEVEL, le=ZSTD_MAX_LEVEL)]
@@ -83,6 +83,3 @@ class ZstdCodec(CodecEntity):
     identifier: ClassVar[str] = ZSTD_CODEC_NAME
     variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "bytes_bytes"
-
-    def to_json(self) -> ZstdCodecObject:
-        return cast("ZstdCodecObject", super().to_json())

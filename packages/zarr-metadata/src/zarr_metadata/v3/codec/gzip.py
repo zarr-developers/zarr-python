@@ -5,7 +5,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/gzip/index.html
 """
 
 from dataclasses import dataclass
-from typing import Annotated, ClassVar, Final, Literal, NotRequired, cast
+from typing import Annotated, ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -66,7 +66,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class GzipCodec(CodecEntity):
+class GzipCodec(CodecEntity[GzipCodecMetadata]):
     """The `gzip` codec, coerced from its metadata."""
 
     level: Annotated[int, Interval(ge=0, le=9)]
@@ -74,6 +74,3 @@ class GzipCodec(CodecEntity):
     identifier: ClassVar[str] = GZIP_CODEC_NAME
     variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "bytes_bytes"
-
-    def to_json(self) -> GzipCodecObject:
-        return cast("GzipCodecObject", super().to_json())

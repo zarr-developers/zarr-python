@@ -32,6 +32,7 @@ from typing import (
     ClassVar,
     Final,
     Literal,
+    NewType,
     NotRequired,
     Required,
     TypeAlias,
@@ -53,6 +54,7 @@ from zarr_metadata.v3._checks import (
     is_integer,
     is_json_value,
     is_str,
+    object_of,
     one_of,
     problem,
     sequence_of,
@@ -229,6 +231,10 @@ def describe(annotation: object) -> str:
         if len(arguments) == 2:
             return f"a [{describe(arguments[0])}, {describe(arguments[1])}] pair"
         return f"an array of {len(arguments)} elements"
+    if origin in (Mapping, dict):
+        return "an object"
+    if isinstance(inner, NewType):
+        return describe(inner.__supertype__)
     if is_typeddict(inner) or is_dataclass(inner):
         return "an object"
     return "a value"
@@ -255,6 +261,10 @@ def shape_of(annotation: object) -> str | None:
         return "int" if all(isinstance(value, int) for value in values) else "str"
     if origin is tuple:
         return "tuple"
+    if origin in (Mapping, dict):
+        return "mapping"
+    if isinstance(inner, NewType):
+        return shape_of(inner.__supertype__)
     if is_typeddict(inner) or is_dataclass(inner):
         return "mapping"
     return None
@@ -392,7 +402,7 @@ def register_check(
 ) -> None:
     """Teach `check_for` an annotation shape it does not read.
 
-        Hex = NewType("Hex", str)
+        class Hex(str): ...
         register_check(lambda annotation: annotation is Hex, lambda annotation: is_hex)
 
     `predicate` sees the annotation with `Annotated`, `NotRequired` and
@@ -491,16 +501,34 @@ def _compile_record(inner: object) -> TypeCheck | None:
     return None if members is None else mapping_of(members)
 
 
+@_builtin(lambda inner: get_origin(inner) in (Mapping, dict))
+def _compile_mapping(inner: object) -> TypeCheck | None:
+    # An object of undeclared keys: `Mapping[str, V]`, every value a `V`.
+    arguments = get_args(inner)
+    if len(arguments) != 2 or arguments[0] is not str:
+        return None
+    value = check_for(arguments[1])
+    return None if value is None else object_of(value)
+
+
+@_builtin(lambda inner: isinstance(inner, NewType))
+def _compile_new_type(inner: object) -> TypeCheck | None:
+    # A `NewType` is its supertype to a document; the distinction is the
+    # code's, for a value it has vouched for.
+    return check_for(cast("NewType", inner).__supertype__)
+
+
 def check_for(annotation: object) -> TypeCheck | None:
     """The type check a field annotation implies, or None if it implies none.
 
     A small compiler over the shapes this package's metadata takes: the
     JSON scalars, a `Literal` of names, arrays homogeneous or fixed,
     unions of those, a nested object described by a TypedDict or a
-    record dataclass, and a nested metadata field -- an entity type,
-    with or without `Opaque`. `UNSET` in a union says the member may be
-    absent, which is the other half of a table entry and is read
-    separately by `is_optional`.
+    record dataclass, an object of undeclared keys as `Mapping[str, V]`,
+    a `NewType` as the type it names, and a nested metadata field -- an
+    entity type, with or without `Opaque`. `UNSET` in a union says the
+    member may be absent, which is the other half of a table entry and
+    is read separately by `is_optional`.
 
     Open: each shape is a registration in `_CHECK_COMPILERS`, and
     `register_check` adds one from outside. None for an annotation no

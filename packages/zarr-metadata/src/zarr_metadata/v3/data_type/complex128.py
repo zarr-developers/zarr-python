@@ -42,7 +42,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class Complex128DataType(ComplexDataType):
+class Complex128DataType(ComplexDataType[Complex128DataTypeName]):
     """The `complex128` data type. The name says everything."""
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"

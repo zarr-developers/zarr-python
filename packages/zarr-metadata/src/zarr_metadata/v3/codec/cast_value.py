@@ -5,7 +5,7 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired, cast
+from typing import ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -126,7 +126,7 @@ SCALAR_MAP_KEYS: Final = ("encode", "decode")
 
 
 @dataclass(frozen=True)
-class CastValueCodec(CodecEntity):
+class CastValueCodec(CodecEntity[CastValueCodecMetadata]):
     """The `cast_value` codec, coerced from its metadata.
 
     Holds the data type it casts to, so like `sharding_indexed` it is
@@ -145,6 +145,3 @@ class CastValueCodec(CodecEntity):
         """The same parts, holding the type this codec casts to."""
         data_type = self.data_type
         return incoming.with_data_type(data_type if isinstance(data_type, DataTypeEntity) else None)
-
-    def to_json(self) -> CastValueCodecObject:
-        return cast("CastValueCodecObject", super().to_json())
