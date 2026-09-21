@@ -31,6 +31,10 @@ from zarr_metadata.model._validation import (
     validate_metadata_field_v3,
 )
 from zarr_metadata.v3._entity import (
+    CHUNK_GRID,
+    CHUNK_KEY_ENCODING,
+    CODECS,
+    DATA_TYPE,
     STORAGE_TRANSFORMERS,
     ChunkGridEntity,
     CodecEntity,
@@ -38,12 +42,6 @@ from zarr_metadata.v3._entity import (
     MetadataEntity,
     Opaque,
     named_configuration,
-)
-from zarr_metadata.v3._extension_points import (
-    CHUNK_GRID,
-    CHUNK_KEY_ENCODING,
-    CODECS,
-    DATA_TYPE,
 )
 from zarr_metadata.v3.chunk_grid.rectilinear import RectilinearChunkGrid
 from zarr_metadata.v3.chunk_grid.regular import RegularChunkGrid
@@ -82,8 +80,7 @@ from zarr_metadata.v3.data_type.uint64 import Uint64DataType
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from zarr_metadata.v3._entity import Loc
-    from zarr_metadata.v3._extension_points import ExtensionPointField
+    from zarr_metadata.v3._entity import ExtensionPointField, Loc
 
 
 class EntityTables(TypedDict):

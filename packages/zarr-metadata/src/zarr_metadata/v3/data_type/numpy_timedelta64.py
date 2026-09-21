@@ -13,40 +13,18 @@ from zarr_metadata.v3._entity import (
     Interval,
     StorageClass,
 )
-from zarr_metadata.v3.data_type._families import NumpyTimeDataType
+from zarr_metadata.v3.data_type._families import (
+    NUMPY_TIME_MAX_SCALE_FACTOR,
+    NUMPY_TIME_UNIT,
+    NumpyTimeDataType,
+    NumpyTimeUnit,
+)
 
 NUMPY_TIMEDELTA64_DATA_TYPE_NAME: Final = "numpy.timedelta64"
 """The `name` field value of the `numpy.timedelta64` data type."""
 
 NumpyTimedelta64DataTypeName = Literal["numpy.timedelta64"]
 """Literal type of the `name` field of the `numpy.timedelta64` data type."""
-
-NumpyTimeUnit = Literal[
-    "Y", "M", "W", "D", "h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as", "generic"
-]
-"""Time unit codes used by numpy.timedelta64."""
-
-NUMPY_TIME_MAX_SCALE_FACTOR: Final = 2**31 - 1
-"""The largest `scale_factor` numpy stores: the field is a signed int32."""
-
-NUMPY_TIME_UNIT: Final = (
-    "Y",
-    "M",
-    "W",
-    "D",
-    "h",
-    "m",
-    "s",
-    "ms",
-    "us",
-    "μs",
-    "ns",
-    "ps",
-    "fs",
-    "as",
-    "generic",
-)
-"""Runtime tuple of the permitted `numpy.timedelta64`/`numpy.datetime64` unit strings."""
 
 
 class NumpyTimedelta64Configuration(TypedDict, closed=True):

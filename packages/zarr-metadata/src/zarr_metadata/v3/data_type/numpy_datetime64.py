@@ -13,9 +13,10 @@ from zarr_metadata.v3._entity import (
     Interval,
     StorageClass,
 )
-from zarr_metadata.v3.data_type._families import NumpyTimeDataType
-from zarr_metadata.v3.data_type.numpy_timedelta64 import (
+from zarr_metadata.v3.data_type._families import (
     NUMPY_TIME_MAX_SCALE_FACTOR,
+    NumpyTimeDataType,
+    NumpyTimeUnit,
 )
 
 NUMPY_DATETIME64_DATA_TYPE_NAME: Final = "numpy.datetime64"
@@ -23,11 +24,6 @@ NUMPY_DATETIME64_DATA_TYPE_NAME: Final = "numpy.datetime64"
 
 NumpyDatetime64DataTypeName = Literal["numpy.datetime64"]
 """Literal type of the `name` field of the `numpy.datetime64` data type."""
-
-NumpyTimeUnit = Literal[
-    "Y", "M", "W", "D", "h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as", "generic"
-]
-"""Time unit codes used by numpy.datetime64."""
 
 
 class NumpyDatetime64Configuration(TypedDict, closed=True):

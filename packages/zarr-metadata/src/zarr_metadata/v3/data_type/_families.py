@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, Final
+from typing import TYPE_CHECKING, ClassVar, Final, Literal
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
@@ -138,9 +138,42 @@ class ComplexDataType(DataTypeEntity, base=True):
         )
 
 
+NumpyTimeUnit = Literal[
+    "Y", "M", "W", "D", "h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as", "generic"
+]
+"""Time unit codes shared by `numpy.datetime64` and `numpy.timedelta64`."""
+
+NUMPY_TIME_UNIT: Final = (
+    "Y",
+    "M",
+    "W",
+    "D",
+    "h",
+    "m",
+    "s",
+    "ms",
+    "us",
+    "μs",
+    "ns",
+    "ps",
+    "fs",
+    "as",
+    "generic",
+)
+"""Tuple of the permitted `unit` values, in numpy's order from coarse to fine."""
+
+NUMPY_TIME_MAX_SCALE_FACTOR: Final = 2**31 - 1
+"""The largest `scale_factor` numpy stores: the field is a signed int32."""
+
+
 @dataclass(frozen=True)
 class NumpyTimeDataType(DataTypeEntity, base=True):
-    """A numpy time scalar: a signed 64-bit count of units, or `NaT`."""
+    """A numpy time scalar: a signed 64-bit count of units, or `NaT`.
+
+    The vocabulary the two time types share -- the unit codes and the
+    scale-factor bound -- lives here with the family, so neither sibling
+    imports it from the other.
+    """
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
 
@@ -158,10 +191,13 @@ class NumpyTimeDataType(DataTypeEntity, base=True):
 
 __all__ = [
     "FLOAT_SPECIALS",
+    "NUMPY_TIME_MAX_SCALE_FACTOR",
+    "NUMPY_TIME_UNIT",
     "ComplexDataType",
     "FloatDataType",
     "IntegerDataType",
     "NumpyTimeDataType",
+    "NumpyTimeUnit",
     "as_sequence",
     "byte_values",
 ]

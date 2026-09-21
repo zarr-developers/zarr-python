@@ -109,10 +109,10 @@ ExtensionPointField = Literal[
 ]
 """The v3 array metadata fields whose values name an extension.
 
-Here rather than in `_extension_points` because an entity that contains
-other entities has to say which point it is reading them at, and
-`_extension_points` also folds `r<N>` names -- which means importing the
-data types, which import this.
+Names are unique only within a point -- `bytes` is both a core codec and
+a registered data type -- so every table in this package is keyed by
+point and then by name, and an entity that contains other entities says
+which point it reads them at.
 """
 
 # Left to infer their `Literal` types rather than widened to
