@@ -142,13 +142,12 @@ class BloscCodec(CodecEntity[BloscCodecMetadata]):
             )
         return tuple(found)
 
-    def canonical(self) -> Self:
+    def simplified(self) -> Self:
         """Without a `typesize` that `noshuffle` renders meaningless.
 
         The spec says of that case that "the value is ignored", so two
         documents differing only there describe the same codec.
         """
-        canonical = super().canonical()
-        if canonical.shuffle != BLOSC_NO_SHUFFLE or canonical.typesize is UNSET:
-            return canonical
-        return replace(canonical, typesize=UNSET)
+        if self.shuffle != BLOSC_NO_SHUFFLE or self.typesize is UNSET:
+            return self
+        return replace(self, typesize=UNSET)

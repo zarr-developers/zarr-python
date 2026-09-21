@@ -744,8 +744,8 @@ class AcmeShardCache(MetadataEntity):
 
     identifier: ClassVar[str] = "acme.shard_cache"
 
-    def canonical(self) -> Self:
-        return dataclasses.replace(super().canonical(), verbose=UNSET)
+    def simplified(self) -> Self:
+        return dataclasses.replace(self, verbose=UNSET)
 
 
 def test_the_document_writes_itself_back_and_canonical_reaches_every_point() -> None:

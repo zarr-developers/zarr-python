@@ -627,6 +627,16 @@ class MetadataEntity(Generic[JSONT_co]):
                 "from its field annotation, and nothing calls `prepare`"
             )
             raise TypeError(msg)
+        if "canonical" in cls.__dict__:
+            # The walk into contained entities is read off the annotations
+            # and must not be lost under an override; the entity's own
+            # rewrite has a hook of its own.
+            msg = (
+                f"{cls.__name__} overrides `canonical`, which is the walk into contained "
+                "entities; put the entity's own rewrite in `simplified`, which "
+                "`canonical` calls after the walk"
+            )
+            raise TypeError(msg)
         if "__post_init__" in cls.__dict__:
             # `coerce` builds through `unchecked`, which bypasses
             # `__init__` and so never reaches `__post_init__`. Rules put
@@ -859,23 +869,39 @@ class MetadataEntity(Generic[JSONT_co]):
         a reader that reads and writes should not change bytes it was not
         asked to change.
 
-        A contained entity is put in its own canonical form here, by
-        walking the fields that hold one. Override where two spellings of
-        the entity's *own* members mean the same -- a rectilinear
-        dimension's run-length encoding, a `typesize` that `noshuffle`
-        ignores -- and start from `super().canonical()`, so the walk is
-        not lost.
+        Two steps, each with one owner. Every contained entity is put in
+        its own canonical form by walking the fields that hold one, which
+        is read off the annotations and is this method's alone -- an
+        override of it is refused at class creation. Then `simplified`,
+        the entity's own rewrite, which is where an entity says that two
+        spellings of its own members mean the same.
         """
         nested = type(self).nested_members
-        if len(nested) == 0:
-            return self
-        return replace(
-            self,
-            **{
-                name: canonicalize_nested(annotation, getattr(self, name))
-                for name, annotation in nested.items()
-            },
+        walked = (
+            self
+            if len(nested) == 0
+            else replace(
+                self,
+                **{
+                    name: canonicalize_nested(annotation, getattr(self, name))
+                    for name, annotation in nested.items()
+                },
+            )
         )
+        return walked.simplified()
+
+    def simplified(self) -> Self:
+        """This entity with its own members in their simplest equivalent spelling.
+
+        The hook `canonical` calls once every contained entity is in
+        canonical form. Override it where two spellings of the entity's
+        *own* members mean the same -- a rectilinear dimension's
+        run-length encoding, a `typesize` that `noshuffle` ignores -- and
+        return the entity rewritten. The default is the identity, and
+        there is nothing to call `super()` for: the walk into contained
+        entities is not this method's to keep.
+        """
+        return self
 
     def configuration(self) -> dict[str, object]:
         """This entity's configuration, as the document would write it.
