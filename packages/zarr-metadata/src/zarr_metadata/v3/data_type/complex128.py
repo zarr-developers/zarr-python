@@ -48,6 +48,3 @@ class Complex128DataType(ComplexDataType):
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     component: ClassVar[type[FloatDataType]] = Float64DataType
     identifier: ClassVar[str] = COMPLEX128_DATA_TYPE_NAME
-
-    def to_json(self) -> Complex128DataTypeName:
-        return "complex128"

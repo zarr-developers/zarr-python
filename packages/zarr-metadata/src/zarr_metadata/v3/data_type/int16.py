@@ -35,6 +35,3 @@ class Int16DataType(IntegerDataType):
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     bounds: ClassVar[tuple[int, int]] = (-32768, 32767)
     identifier: ClassVar[str] = INT16_DATA_TYPE_NAME
-
-    def to_json(self) -> Int16DataTypeName:
-        return "int16"

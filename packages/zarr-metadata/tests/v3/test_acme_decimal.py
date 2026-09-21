@@ -100,12 +100,6 @@ class AcmeDecimalDataType(DataTypeEntity):
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     problems = acme_decimal_problems
 
-    def to_json(self) -> AcmeDecimal:
-        return {
-            "name": "acme.decimal",
-            "configuration": {"precision": self.precision, "scale": self.scale},
-        }
-
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         """A decimal literal whose digits fit `precision` and `scale`.
 

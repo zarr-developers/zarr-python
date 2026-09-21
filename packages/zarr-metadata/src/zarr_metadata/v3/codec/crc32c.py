@@ -68,6 +68,3 @@ class Crc32cCodec(BytesBytesCodec):
 
     identifier: ClassVar[str] = CRC32C_CODEC_NAME
     variable_size: ClassVar[bool] = False
-
-    def to_json(self) -> Crc32cCodecName:
-        return "crc32c"

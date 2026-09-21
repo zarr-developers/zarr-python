@@ -203,13 +203,3 @@ class ShardingIndexedCodec(ArrayBytesCodec):
                     )
                 )
         return tuple(found)
-
-    def to_json(self) -> ShardingIndexedCodecObject:
-        configuration: ShardingIndexedCodecConfiguration = {
-            "chunk_shape": self.chunk_shape,
-            "codecs": tuple(codec.to_json() for codec in self.codecs),
-            "index_codecs": tuple(codec.to_json() for codec in self.index_codecs),
-        }
-        if self.index_location is not UNSET:
-            configuration["index_location"] = self.index_location
-        return {"name": "sharding_indexed", "configuration": configuration}

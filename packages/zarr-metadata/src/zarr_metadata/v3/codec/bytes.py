@@ -118,8 +118,3 @@ class BytesCodec(ArrayBytesCodec):
                 "missing_key",
             )
         return ()
-
-    def to_json(self) -> BytesCodecObject | BytesCodecName:
-        if self.endian is UNSET:
-            return "bytes"
-        return {"name": "bytes", "configuration": {"endian": self.endian}}

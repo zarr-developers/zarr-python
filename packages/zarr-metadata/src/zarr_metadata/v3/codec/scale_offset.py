@@ -4,7 +4,6 @@ Scale-offset codec types.
 See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md
 """
 
-from copy import deepcopy
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired
 
@@ -113,15 +112,3 @@ class ScaleOffsetCodec(ArrayArrayCodec):
         longer changes the element type -- only the values.
         """
         return incoming
-
-    def to_json(self) -> ScaleOffsetCodecObject | ScaleOffsetCodecName:
-        configuration: ScaleOffsetCodecConfiguration = {}
-        # Copied: a member may be a JSON object, and the document handed
-        # out must not be a handle on this frozen entity.
-        if self.offset is not UNSET:
-            configuration["offset"] = deepcopy(self.offset)
-        if self.scale is not UNSET:
-            configuration["scale"] = deepcopy(self.scale)
-        if len(configuration) == 0:
-            return "scale_offset"
-        return {"name": "scale_offset", "configuration": configuration}

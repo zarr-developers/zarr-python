@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, NotRequired, Self, cast
+from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, NotRequired, Self
 
 import pytest
 from typing_extensions import TypedDict
@@ -33,13 +33,11 @@ from zarr_metadata.v3.entity import (
     Context,
     DataTypeEntity,
     IntegerDataType,
-    JSONValue,
     Loc,
     MetadataEntity,
     Opaque,
     StorageClass,
     ValidationProblem,
-    ZarrV3MetadataFieldJSON,
     problem,
 )
 
@@ -68,11 +66,6 @@ class AcmeLz4Codec(BytesBytesCodec):
     variable_size: ClassVar[bool] = True
     problems = acme_lz4_problems
 
-    def to_json(self) -> ZarrV3MetadataFieldJSON:
-        if self.acceleration is UNSET:
-            return "acme.lz4"
-        return {"name": "acme.lz4", "configuration": {"acceleration": self.acceleration}}
-
 
 @dataclass(frozen=True)
 class AcmeFloat8DataType(DataTypeEntity):
@@ -83,9 +76,6 @@ class AcmeFloat8DataType(DataTypeEntity):
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         return ()
-
-    def to_json(self) -> ZarrV3MetadataFieldJSON:
-        return "acme.float8"
 
 
 def _scope() -> Context:
@@ -166,9 +156,6 @@ def test_error_an_entity_must_say_what_it_is() -> None:
 
         variable_size: ClassVar[bool] = True
 
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            return "acme.nameless"
-
     with pytest.raises(TypeError, match="does not declare identifier"):
         CORE_AND_EXTENSIONS.extended_with(Nameless)
 
@@ -200,11 +187,6 @@ def test_an_absent_optional_member_is_read_as_unset_whatever_its_default() -> No
         identifier: ClassVar[str] = "acme.defaulted"
 
         variable_size: ClassVar[bool] = False
-
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            if self.level is UNSET:
-                return "acme.defaulted"
-            return {"name": "acme.defaulted", "configuration": {"level": self.level}}
 
     assert Defaulted().level == 3
     codec, problems = CORE_AND_EXTENSIONS.extended_with(Defaulted).coerce(
@@ -284,9 +266,6 @@ def test_error_a_family_member_must_declare_what_the_family_left_open() -> None:
     class Int24DataType(IntegerDataType):
         identifier: ClassVar[str] = "acme.int24"
 
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            return "acme.int24"
-
     with pytest.raises(TypeError, match="does not declare bounds"):
         CORE_AND_EXTENSIONS.extended_with(Int24DataType)
 
@@ -317,9 +296,6 @@ class AcmeFixedDataType(DataTypeEntity):
     @classmethod
     def accepts(cls, name: str) -> bool:
         return ACME_FIXED_PATTERN.fullmatch(name) is not None
-
-    def to_json(self) -> ZarrV3MetadataFieldJSON:
-        return cast("ZarrV3MetadataFieldJSON", self.data_type_name)
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         return ()
@@ -360,9 +336,6 @@ def test_error_a_member_needs_a_check_from_somewhere() -> None:
         identifier: ClassVar[str] = "acme.structured"
         variable_size: ClassVar[bool] = False
 
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            return "acme.structured"
-
     with pytest.raises(TypeError, match="inner is annotated .*, which is not a shape JSON takes"):
         CORE_AND_EXTENSIONS.extended_with(Structured)
 
@@ -380,9 +353,6 @@ class AcmeWrapperCodec(BytesBytesCodec):
 
     def canonical(self) -> Self:
         return replace(self, inner=self.inner.canonical())
-
-    def to_json(self) -> ZarrV3MetadataFieldJSON:
-        return {"name": "acme.wrapper", "configuration": {"inner": self.inner.to_json()}}
 
 
 def test_a_third_party_entity_containing_entities_reads_them_in_scope() -> None:
@@ -464,12 +434,6 @@ def test_canonical_is_the_entity_s_own_and_reaches_what_it_contains() -> None:
                 frame=UNSET if self.frame == 0 else self.frame,
             )
 
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            configuration: dict[str, JSONValue] = {"inner": self.inner.to_json()}
-            if self.frame is not UNSET:
-                configuration["frame"] = self.frame
-            return {"name": "acme.framed", "configuration": configuration}
-
     blosc = BloscCodec(cname="zstd", clevel=5, shuffle="noshuffle", typesize=4, blocksize=0)
     framed = AcmeFramedCodec(inner=blosc, frame=0)
     assert framed.canonical() == AcmeFramedCodec(inner=replace(blosc, typesize=UNSET))
@@ -485,9 +449,6 @@ def test_error_a_nested_field_names_a_kind() -> None:
 
         identifier: ClassVar[str] = "acme.vague"
         variable_size: ClassVar[bool] = False
-
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            return "acme.vague"
 
     with pytest.raises(TypeError, match="inner holds an entity but is not written as its kind"):
         CORE_AND_EXTENSIONS.extended_with(Vague)
@@ -533,9 +494,6 @@ class AcmeBlockCodec(BytesBytesCodec):
 
     variable_size: ClassVar[bool] = False
     problems = acme_block_problems
-
-    def to_json(self) -> ZarrV3MetadataFieldJSON:
-        return {"name": "acme.block", "configuration": {"block": self.block}}
 
 
 def test_a_rule_about_a_member_is_a_function_of_the_instance() -> None:
@@ -584,9 +542,6 @@ class AcmeRangeCodec(BytesBytesCodec):
     variable_size: ClassVar[bool] = False
     problems = acme_range_problems
 
-    def to_json(self) -> ZarrV3MetadataFieldJSON:
-        return {"name": "acme.range", "configuration": {"low": self.low, "high": self.high}}
-
 
 def test_the_constructor_stops_at_the_first_problem_and_coerce_reports_every_one() -> None:
     # One function, two consumers: the constructor takes the first
@@ -618,9 +573,6 @@ def test_error_an_entity_may_not_define_post_init() -> None:
         def __post_init__(self) -> None:
             return None
 
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            return "acme.checked"
-
     with pytest.raises(TypeError, match="defines __post_init__; write its rules as a function"):
         CORE_AND_EXTENSIONS.extended_with(Checked)
 
@@ -638,9 +590,6 @@ def test_error_a_field_annotation_names_what_is_not_defined() -> None:
         identifier: ClassVar[str] = "acme.localized"
         variable_size: ClassVar[bool] = False
 
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            return "acme.localized"
-
     with pytest.raises(TypeError, match="a field annotation names 'Local', which is not defined"):
         CORE_AND_EXTENSIONS.extended_with(Localized)
 
@@ -651,9 +600,6 @@ def test_error_a_codec_says_whether_its_output_size_is_fixed() -> None:
     @dataclass(frozen=True)
     class Sizeless(BytesBytesCodec):
         identifier: ClassVar[str] = "acme.sizeless"
-
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            return "acme.sizeless"
 
     with pytest.raises(TypeError, match="does not declare variable_size"):
         CORE_AND_EXTENSIONS.extended_with(Sizeless)
@@ -687,9 +633,6 @@ def test_a_slotted_entity_is_accepted() -> None:
 
         variable_size: ClassVar[bool] = False
 
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            return {"name": "acme.slotted", "configuration": {"level": self.level}}
-
     assert AcmeSlotted(level=1).to_json() == {
         "name": "acme.slotted",
         "configuration": {"level": 1},
@@ -702,9 +645,6 @@ def test_a_bare_class_var_is_a_class_variable() -> None:
         identifier: ClassVar[str] = "acme.noted"
         variable_size: ClassVar[bool] = False
         note: ClassVar = "not a member"
-
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            return "acme.noted"
 
     assert AcmeNoted().to_json() == "acme.noted"
 
@@ -723,9 +663,6 @@ def test_a_number_member_is_a_float_field() -> None:
 
         def transition(self, incoming: ArrayParts) -> ArrayParts | None:
             return incoming
-
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            return {"name": "acme.scaled", "configuration": {"scale": self.scale}}
 
     scope = CORE_AND_EXTENSIONS.extended_with(AcmeScaled)
     for spelled in (2, 2.5):
@@ -751,9 +688,6 @@ def test_error_an_entity_must_be_a_dataclass() -> None:
 
         identifier: ClassVar[str] = "acme.undecorated"
 
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            return {"name": "acme.undecorated", "configuration": {"level": self.level}}
-
     with pytest.raises(TypeError, match="not a dataclass; decorate it with @dataclass"):
         CORE_AND_EXTENSIONS.extended_with(Undecorated)
 
@@ -767,9 +701,6 @@ def test_error_a_nested_field_admits_opaque() -> None:
         identifier: ClassVar[str] = "acme.closed"
         variable_size: ClassVar[bool] = False
 
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            return "acme.closed"
-
     with pytest.raises(TypeError, match="inner holds an entity but is not written as its kind"):
         CORE_AND_EXTENSIONS.extended_with(Closed)
 
@@ -781,9 +712,6 @@ def test_error_an_array_array_codec_defines_transition() -> None:
     class Silent(ArrayArrayCodec):
         identifier: ClassVar[str] = "acme.silent"
         variable_size: ClassVar[bool] = False
-
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            return "acme.silent"
 
     with pytest.raises(
         TypeError, match="does not define transition, which its base leaves abstract"
@@ -798,9 +726,6 @@ def test_error_a_codec_is_of_a_kind() -> None:
     class Kindless(CodecEntity):
         identifier: ClassVar[str] = "acme.kindless"
 
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            return "acme.kindless"
-
     with pytest.raises(
         TypeError, match="subclasses CodecEntity directly; subclass ArrayArrayCodec"
     ):
@@ -813,9 +738,6 @@ def test_error_a_data_type_judges_its_fill_values() -> None:
     class Lax(DataTypeEntity):
         identifier: ClassVar[str] = "acme.lax"
         scalar_storage: ClassVar[StorageClass] = "single_byte"
-
-        def to_json(self) -> ZarrV3MetadataFieldJSON:
-            return "acme.lax"
 
     with pytest.raises(TypeError, match="does not define fill_value_problems"):
         CORE_AND_EXTENSIONS.extended_with(Lax)

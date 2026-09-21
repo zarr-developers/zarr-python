@@ -44,6 +44,3 @@ class StringDataType(DataTypeEntity):
         if not isinstance(value, str):
             return problem(loc, f"expected a string, got {value!r}", "invalid_value")
         return ()
-
-    def to_json(self) -> StringDataTypeName:
-        return "string"

@@ -88,6 +88,3 @@ class Float16DataType(FloatDataType):
     hex_parser: ClassVar[Callable[[str], object]] = staticmethod(hex_float16)
     largest: ClassVar[float | None] = 65504.0
     identifier: ClassVar[str] = FLOAT16_DATA_TYPE_NAME
-
-    def to_json(self) -> Float16DataTypeName:
-        return "float16"

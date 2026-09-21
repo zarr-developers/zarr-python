@@ -72,9 +72,3 @@ class NumpyDatetime64DataType(NumpyTimeDataType):
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     identifier: ClassVar[str] = NUMPY_DATETIME64_DATA_TYPE_NAME
-
-    def to_json(self) -> NumpyDatetime64:
-        return {
-            "name": "numpy.datetime64",
-            "configuration": {"unit": self.unit, "scale_factor": self.scale_factor},
-        }

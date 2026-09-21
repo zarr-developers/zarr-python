@@ -35,6 +35,3 @@ class Int8DataType(IntegerDataType):
     scalar_storage: ClassVar[StorageClass] = "single_byte"
     bounds: ClassVar[tuple[int, int]] = (-128, 127)
     identifier: ClassVar[str] = INT8_DATA_TYPE_NAME
-
-    def to_json(self) -> Int8DataTypeName:
-        return "int8"

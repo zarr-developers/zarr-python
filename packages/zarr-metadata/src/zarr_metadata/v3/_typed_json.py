@@ -1,9 +1,11 @@
 """JSON values parsed by type annotation.
 
-A dataclass's fields are its schema, and this module reads that schema.
-`parser_for` turns a field annotation into a parser: a function of a
-JSON value and its location that returns the typed value and every
-problem found with it. The annotations it reads are the shapes JSON
+A dataclass's fields are its schema, and this module reads that schema
+in both directions. `parser_for` turns a field annotation into a parser:
+a function of a JSON value and its location that returns the typed
+value and every problem found with it. `writer_for` turns the same
+annotation into the parser's inverse: a function of the typed value that
+returns the JSON a document writes for it. The annotations they read are the shapes JSON
 takes and no others -- `int`, `float` for any number, `bool`, `str`,
 `JSONValue`, a `Literal` of names, `tuple[T, ...]` and `tuple[T1, T2]`,
 a union of those, an object described by a TypedDict or a record
@@ -26,6 +28,7 @@ import functools
 import sys
 import types
 from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import is_dataclass
 from typing import (
     TYPE_CHECKING,
@@ -74,6 +77,12 @@ hands down to the parsers it is built from and reads nothing of itself.
 
 Leaf: TypeAlias = Callable[[object], "Parser[S] | None"]
 """A caller's own shapes: asked first for every annotation, None to decline."""
+
+Writer: TypeAlias = Callable[[object], JSONValue]
+"""A typed value as the JSON a document writes for it: a parser's inverse over the same annotation."""
+
+WriterLeaf: TypeAlias = Callable[[object], "Writer | None"]
+"""A caller's own shapes, for writing: asked first for every annotation, None to decline."""
 
 
 def problem(
@@ -650,17 +659,195 @@ def parser(annotation: object, leaf: Leaf[S]) -> Parser[S]:
     return found
 
 
+# --- the writers ---------------------------------------------------------
+#
+# The inverse of each parser, over the same annotation. A writer is asked
+# for a value the entity holds, which its field's type vouches for; the
+# checks here are what stand between a hand-built entity holding
+# something that is not JSON and a document that is not JSON.
+
+
+def _not_json(value: object) -> TypeError:
+    return TypeError(
+        f"{value!r} is not a JSON value; an entity's members are the JSON the document writes"
+    )
+
+
+def _as_json(value: object) -> JSONValue:
+    """A scalar or a JSON value as it is."""
+    if is_json(value):
+        return value
+    raise _not_json(value)
+
+
+def _copied(value: object) -> JSONValue:
+    """A JSON value, copied: the document handed out is not a handle on a frozen entity."""
+    if is_json(value):
+        return deepcopy(value)
+    raise _not_json(value)
+
+
+def each_of(element: Writer) -> Writer:
+    """An array, each element written by its type."""
+
+    def write(value: object) -> JSONValue:
+        if not isinstance(value, (list, tuple)):
+            raise _not_json(value)
+        return tuple(element(entry) for entry in cast("list[object] | tuple[object, ...]", value))
+
+    return write
+
+
+def positions_of(elements: Sequence[Writer]) -> Writer:
+    """An array of a fixed length, each position written by its type."""
+
+    def write(value: object) -> JSONValue:
+        if not isinstance(value, (list, tuple)):
+            raise _not_json(value)
+        entries = cast("list[object] | tuple[object, ...]", value)
+        return tuple(element(entry) for element, entry in zip(elements, entries, strict=True))
+
+    return write
+
+
+def one_of_writers(branches: Sequence[tuple[object, Writer]]) -> Writer:
+    """A union, written by the branch whose shape the value has, as the parser chose it."""
+
+    def write(value: object) -> JSONValue:
+        for annotation, branch in branches:
+            if has_shape(shape_of(annotation), value):
+                return branch(value)
+        return _as_json(value)
+
+    return write
+
+
+def keys_of(members: Mapping[str, Writer]) -> Writer:
+    """An object kept as a mapping: declared keys written by their types, the rest copied."""
+
+    def write(value: object) -> JSONValue:
+        if not isinstance(value, Mapping):
+            raise _not_json(value)
+        entries = cast("Mapping[str, object]", value)
+        return {
+            key: members[key](entry) if key in members else _copied(entry)
+            for key, entry in entries.items()
+        }
+
+    return write
+
+
+def fields_of(members: Mapping[str, Writer]) -> Writer:
+    """A record dataclass as an object: each field written by its type, an absent optional one left out."""
+
+    def write(value: object) -> JSONValue:
+        written: dict[str, JSONValue] = {}
+        for key, member in members.items():
+            entry = getattr(value, key)
+            if entry is not UNSET:
+                written[key] = member(entry)
+        return written
+
+    return write
+
+
+def values_of(value: Writer) -> Writer:
+    """An object of any keys, each value written by its type."""
+
+    def write(candidate: object) -> JSONValue:
+        if not isinstance(candidate, Mapping):
+            raise _not_json(candidate)
+        entries = cast("Mapping[str, object]", candidate)
+        return {key: value(entry) for key, entry in entries.items()}
+
+    return write
+
+
+def _writers_of(annotations: Mapping[str, object], leaf: WriterLeaf) -> dict[str, Writer] | None:
+    members: dict[str, Writer] = {}
+    for key, annotation in annotations.items():
+        member = writer_for(annotation, leaf)
+        if member is None:
+            return None
+        members[key] = member
+    return members
+
+
+def no_writer_leaf(annotation: object) -> Writer | None:
+    """The leaf of a caller with no shapes of its own."""
+    return None
+
+
+def writer_for(annotation: object, leaf: WriterLeaf) -> Writer | None:
+    """The writer a field annotation implies, or None if it implies none.
+
+    The inverse of `parser_for` over the same shapes: what the parser
+    reads from a document, the writer puts back. `leaf` is asked first,
+    here and at every depth, as the parser's is.
+    """
+    inner = without_unset(strip_annotation(annotation)[0])
+    found = leaf(inner)
+    if found is not None:
+        return found
+    if inner is int or inner is float or inner is bool or inner is str:
+        return _as_json
+    if get_origin(inner) is Literal:
+        return _as_json
+    if inner is JSONValue:
+        return _copied
+    if is_union(inner):
+        compiled = [(branch, writer_for(branch, leaf)) for branch in get_args(inner)]
+        branches = [(branch, member) for branch, member in compiled if member is not None]
+        return one_of_writers(branches) if len(branches) == len(compiled) else None
+    if get_origin(inner) is tuple:
+        arguments = get_args(inner)
+        if len(arguments) == 2 and arguments[1] is Ellipsis:
+            element = writer_for(arguments[0], leaf)
+            return None if element is None else each_of(element)
+        compiled = [writer_for(argument, leaf) for argument in arguments]
+        elements = [element for element in compiled if element is not None]
+        return positions_of(elements) if len(elements) == len(compiled) else None
+    if is_typeddict(inner):
+        members = _writers_of(get_type_hints(inner, include_extras=True), leaf)
+        return None if members is None else keys_of(members)
+    if get_origin(inner) in (Mapping, dict):
+        arguments = get_args(inner)
+        if len(arguments) != 2 or arguments[0] is not str:
+            return None
+        value = writer_for(arguments[1], leaf)
+        return None if value is None else values_of(value)
+    if isinstance(inner, NewType):
+        return writer_for(inner.__supertype__, leaf)
+    if isinstance(inner, type) and is_dataclass(inner):
+        members = _writers_of(field_hints(inner), leaf)
+        return None if members is None else fields_of(members)
+    return None
+
+
+def writer(annotation: object, leaf: WriterLeaf) -> Writer:
+    """The writer a field annotation implies; `TypeError` if it implies none."""
+    found = writer_for(annotation, leaf)
+    if found is None:
+        msg = f"{annotation!r} is not a shape JSON takes"
+        raise TypeError(msg)
+    return found
+
+
 __all__ = [
     "Leaf",
     "Loc",
     "Members",
     "Parsed",
     "Parser",
+    "Writer",
+    "WriterLeaf",
     "any_of",
     "as_tuples",
     "declared_class_vars",
     "describe",
+    "each_of",
     "field_hints",
+    "fields_of",
     "fixed_tuple",
     "has_shape",
     "is_class_var",
@@ -668,17 +855,24 @@ __all__ = [
     "is_not_required",
     "is_optional",
     "is_union",
+    "keys_of",
     "mapping_of",
     "no_leaf",
+    "no_writer_leaf",
     "object_of",
     "one_of",
+    "one_of_writers",
     "own_annotations",
     "parser",
     "parser_for",
+    "positions_of",
     "problem",
     "record_of",
     "sequence_of",
     "shape_of",
     "strip_annotation",
+    "values_of",
     "without_unset",
+    "writer",
+    "writer_for",
 ]

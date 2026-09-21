@@ -128,9 +128,6 @@ class RawBytesDataType(DataTypeEntity):
 
     problems = raw_bytes_problems
 
-    def to_json(self) -> RawBytesDataTypeName:
-        return RawBytesDataTypeName(self.data_type_name)
-
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         """One byte value per byte of the scalar.
 

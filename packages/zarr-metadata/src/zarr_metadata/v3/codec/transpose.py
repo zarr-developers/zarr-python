@@ -113,6 +113,3 @@ class TransposeCodec(ArrayArrayCodec):
         longer the grid the document wrote.
         """
         return incoming.with_grid(incoming.grid.permuted(self.order))
-
-    def to_json(self) -> TransposeCodecObject:
-        return {"name": "transpose", "configuration": {"order": self.order}}

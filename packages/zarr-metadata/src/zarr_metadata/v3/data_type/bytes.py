@@ -77,6 +77,3 @@ class BytesDataType(DataTypeEntity):
                 )
             return ()
         return byte_values(value, None, loc)
-
-    def to_json(self) -> BytesDataTypeName:
-        return "bytes"

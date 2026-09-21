@@ -11,27 +11,27 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import sys
 from typing import (
-    TYPE_CHECKING,
     Any,
     ClassVar,
     Self,
     cast,
+    get_type_hints,
 )
 
 import pytest
 from hypothesis import given, settings
+from typing_extensions import is_typeddict
 
-from tests.helpers import configuration_of
+from tests.helpers import configuration_of, entry_at
 from tests.rules.strategies import valid_documents
-
-if TYPE_CHECKING:
-    from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
-
 from zarr_metadata.model import UNSET, MetadataValidationError
 from zarr_metadata.rules import validate_array_metadata_v3
 from zarr_metadata.v3._document import read_array_v3
+from zarr_metadata.v3._entity import is_from_name
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS
+from zarr_metadata.v3._typed_json import field_hints, is_not_required, is_optional
 from zarr_metadata.v3.chunk_grid.rectilinear import (
     RectilinearChunkGrid,
 )
@@ -606,7 +606,7 @@ def test_canonical_is_what_simplifies() -> None:
         },
     )
     assert isinstance(blosc, BloscCodec)
-    assert "typesize" not in blosc.canonical().to_json()["configuration"]
+    assert "typesize" not in configuration_of(blosc.canonical().to_json())
 
 
 def test_canonical_reaches_a_contained_entity() -> None:
@@ -634,7 +634,7 @@ def test_canonical_reaches_a_contained_entity() -> None:
         },
     )
     assert isinstance(shard, ShardingIndexedCodec)
-    inner = shard.canonical().to_json()["configuration"]["codecs"][1]
+    inner = entry_at(shard.canonical().to_json(), "configuration", "codecs", 1)
     assert "typesize" not in configuration_of(inner)
 
 
@@ -711,7 +711,7 @@ def test_a_member_the_entity_does_not_model_is_not_written_back() -> None:
     codec, problems = CORE_AND_EXTENSIONS.coerce(CodecEntity, entry)
     assert [(p.loc, p.kind) for p in problems] == [(("configuration", "typo_key"), "unknown_key")]
     assert isinstance(codec, BloscCodec)
-    assert "typo_key" not in codec.to_json()["configuration"]
+    assert "typo_key" not in configuration_of(codec.to_json())
 
 
 def test_the_fail_fast_reader_refuses_a_member_it_would_drop() -> None:
@@ -746,11 +746,6 @@ class AcmeShardCache(StorageTransformerEntity):
 
     def canonical(self) -> Self:
         return dataclasses.replace(self, verbose=UNSET)
-
-    def to_json(self) -> ZarrV3MetadataFieldJSON:
-        if self.verbose is UNSET:
-            return "acme.shard_cache"
-        return {"name": "acme.shard_cache", "configuration": {"verbose": self.verbose}}
 
 
 def test_the_document_writes_itself_back_and_canonical_reaches_every_point() -> None:
@@ -794,3 +789,28 @@ def test_the_document_writes_itself_back_and_canonical_reaches_every_point() -> 
     )
     assert canonical["storage_transformers"] == ("acme.shard_cache",)
     assert "dimension_names" not in canonical
+
+
+def test_the_fields_are_the_public_configuration_type() -> None:
+    # Each entity module's `*Configuration` TypedDict is the public JSON
+    # type of what the entity holds; the fields are what it reads and
+    # writes. Nothing else ties the two, so this does: same keys, same
+    # requiredness. An entity of no members has no such type.
+    for cls in CORE_AND_EXTENSIONS.entities():
+        hints = field_hints(cls)
+        members = {key for key, annotation in hints.items() if not is_from_name(annotation)}
+        required = {key for key in members if not is_optional(hints[key])}
+        declared = [
+            value
+            for name, value in vars(sys.modules[cls.__module__]).items()
+            if name.endswith("Configuration") and is_typeddict(value)
+        ]
+        if len(declared) == 0:
+            assert members == set(), cls
+            continue
+        (configuration,) = declared
+        keys = get_type_hints(configuration, include_extras=True)
+        assert set(keys) == members, cls
+        assert {
+            key for key, annotation in keys.items() if not is_not_required(annotation)
+        } == required, cls

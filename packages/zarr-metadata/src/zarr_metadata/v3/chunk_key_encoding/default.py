@@ -77,8 +77,3 @@ class DefaultChunkKeyEncoding(ChunkKeyEncodingEntity):
     separator: DefaultChunkKeyEncodingSeparator | UNSET = UNSET
 
     identifier: ClassVar[str] = DEFAULT_CHUNK_KEY_ENCODING_NAME
-
-    def to_json(self) -> DefaultChunkKeyEncodingObject | DefaultChunkKeyEncodingName:
-        if self.separator is UNSET:
-            return "default"
-        return {"name": "default", "configuration": {"separator": self.separator}}

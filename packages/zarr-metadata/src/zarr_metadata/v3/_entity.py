@@ -11,11 +11,10 @@ of the entity's instance that yields problems as it finds them, bound
 on the class as `problems`; the constructor stops at the first,
 `coerce` reports every one.
 
-What an entity writes and what it simplifies to are its own too:
-`to_json` is abstract, a literal of the entity's JSON type, and
-`canonical` defaults to the entity itself. An entity that contains
-entities writes them with `written` and canonicalizes them with
-`canonicalized`, in the same two methods.
+What an entity writes follows from the same fields: `to_json` is
+written once here, the parser's inverse over each field's annotation.
+What it simplifies to is its own: `canonical` defaults to the entity
+itself, and an entity that contains entities canonicalizes them there.
 
 Composition -- what needs the document or the codec chain -- is the
 entity's to answer through `incoming_problems`, `shape_problems`,
@@ -39,6 +38,7 @@ from zarr_metadata.v3._typed_json import (
     Loc,
     Parsed,
     Parser,
+    Writer,
     as_tuples,
     declared_class_vars,
     field_hints,
@@ -49,12 +49,14 @@ from zarr_metadata.v3._typed_json import (
     parser_for,
     problem,
     strip_annotation,
+    writer,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
     from typing import Self
 
+    from zarr_metadata._common import JSONValue
     from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
     from zarr_metadata.v3._parts import ArrayParts, ChunkGrid
     from zarr_metadata.v3._registry import Context
@@ -321,6 +323,20 @@ def _nested_field(annotation: object) -> Parser[_Reading] | None:
     return parse
 
 
+def _nested_field_writer(annotation: object) -> Writer | None:
+    """The writer for a field holding another entity: what it holds, as it writes itself."""
+    if nested_kind(annotation) is None:
+        return None
+
+    def write(value: object) -> JSONValue:
+        if isinstance(value, (MetadataEntity, Opaque)):
+            return value.to_json()
+        msg = f"{value!r} is not an entity or an Opaque"
+        raise TypeError(msg)
+
+    return write
+
+
 @dataclass(frozen=True, slots=True)
 class _Member:
     """How `coerce` reads one field: what the annotation says, compiled once."""
@@ -329,6 +345,7 @@ class _Member:
     from_name: bool
     optional: bool
     parse: Parser[_Reading]
+    write: Writer
 
 
 @functools.cache
@@ -346,6 +363,7 @@ def _plan(cls: type[MetadataEntity]) -> tuple[_Member, ...]:
             is_from_name(annotation),
             is_optional(annotation),
             parser(annotation, _nested_field),
+            writer(annotation, _nested_field_writer),
         )
         for key, annotation in field_hints(cls).items()
     )
@@ -535,25 +553,35 @@ class MetadataEntity(ABC):
         """
         return self
 
-    @abstractmethod
     def to_json(self) -> ZarrV3MetadataFieldJSON:
-        """This entity as a document would write it: a literal of its own JSON type.
+        """This entity as a document would write it.
 
-        Faithful to every member it holds: read a document, write it
+        Written from the fields by the same declaration `coerce` reads
+        them by, each member by the writer its annotation implies: the
+        bare name when every member it holds is absent, the object
+        otherwise, a contained entity through its own `to_json`, a
+        JSON-valued member copied so the document is not a handle on
+        the entity. Faithful to every member: read a document, write it
         back, and those come out as they went in. Ask `canonical` first
         if you want the simplest equivalent spelling. The envelope's
         spelling is the one thing not preserved, because the entity does
         not model it: a bare name, `{"name": x}` and `{"name": x,
-        "configuration": {}}` all read to the same entity, and the entity
-        writes the bare name when every member it holds is absent.
+        "configuration": {}}` all read to the same entity.
 
-        Written per entity, as a literal of its own TypedDict and with
-        that TypedDict as the declared return type -- narrower than the
-        base's, which is what tells a consumer holding a `GzipCodec` that
-        it gets a `GzipCodecObject` -- so pyright checks the literal's keys
-        and values against it. A contained entity is written with
-        `written`.
+        An entity whose JSON is not its fields overrides this; none in
+        the package does.
         """
+        name = self.identifier
+        configuration: dict[str, JSONValue] = {}
+        for member in _plan(type(self)):
+            value = getattr(self, member.key)
+            if member.from_name:
+                name = value if isinstance(value, str) else name
+            elif value is not UNSET:
+                configuration[member.key] = member.write(value)
+        if len(configuration) == 0:
+            return name
+        return {"name": name, "configuration": configuration}
 
 
 @dataclass(frozen=True)

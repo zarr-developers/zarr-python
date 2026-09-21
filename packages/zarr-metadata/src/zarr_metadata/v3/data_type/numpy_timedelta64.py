@@ -76,9 +76,3 @@ class NumpyTimedelta64DataType(NumpyTimeDataType):
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     identifier: ClassVar[str] = NUMPY_TIMEDELTA64_DATA_TYPE_NAME
-
-    def to_json(self) -> NumpyTimedelta64:
-        return {
-            "name": "numpy.timedelta64",
-            "configuration": {"unit": self.unit, "scale_factor": self.scale_factor},
-        }

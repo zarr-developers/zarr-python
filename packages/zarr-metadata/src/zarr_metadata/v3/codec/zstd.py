@@ -95,9 +95,3 @@ class ZstdCodec(BytesBytesCodec):
     variable_size: ClassVar[bool] = True
 
     problems = zstd_problems
-
-    def to_json(self) -> ZstdCodecObject:
-        configuration: ZstdCodecConfiguration = {"level": self.level}
-        if self.checksum is not UNSET:
-            configuration["checksum"] = self.checksum
-        return {"name": "zstd", "configuration": configuration}

@@ -46,9 +46,7 @@ to a scope. Complete; runnable given a `document`:
 
     from collections.abc import Iterator
     from dataclasses import dataclass
-    from typing import ClassVar, Literal, NotRequired
-
-    from typing_extensions import TypedDict
+    from typing import ClassVar
 
     from zarr_metadata.rules import validate_array_metadata_v3
     from zarr_metadata.v3.entity import (
@@ -57,13 +55,6 @@ to a scope. Complete; runnable given a `document`:
         BytesBytesCodec,
         ValidationProblem,
     )
-
-    class AcmeLz4Configuration(TypedDict, closed=True):
-        acceleration: NotRequired[int]
-
-    class AcmeLz4Object(TypedDict, closed=True):
-        name: Literal["acme.lz4"]
-        configuration: AcmeLz4Configuration
 
     def acme_lz4_problems(codec: "AcmeLz4Codec", /) -> Iterator[ValidationProblem]:
         if codec.acceleration is not UNSET and not 1 <= codec.acceleration <= 65537:
@@ -81,25 +72,21 @@ to a scope. Complete; runnable given a `document`:
         variable_size: ClassVar[bool] = True  # a compressor: its output length is not fixed
         problems = acme_lz4_problems
 
-        def to_json(self) -> AcmeLz4Object | Literal["acme.lz4"]:
-            if self.acceleration is UNSET:
-                return "acme.lz4"
-            return {"name": "acme.lz4", "configuration": {"acceleration": self.acceleration}}
-
     SCOPE = CORE_AND_EXTENSIONS.extended_with(AcmeLz4Codec)
     validate_array_metadata_v3(document, context=SCOPE)
 
 The fields are the only place the shape is written. Which members exist,
-which may be left out (the type admits `UNSET`), and how each one is
-type-checked are all read off the annotations, and the shapes are the
+which may be left out (the type admits `UNSET`), how each one is
+type-checked, and how each is written back are all read off the
+annotations, and the shapes are the
 ones JSON takes: `int`, `float` (any JSON number), `bool`, `str`,
 `JSONValue`, a `Literal` of names, `tuple[T, ...]` or `tuple[T1, T2]`, a
 TypedDict or dataclass record, `Mapping[str, V]`, a `NewType`, and a
 nested entity, always as `inner: CodecEntity | Opaque`, because that is
 what the field holds when the inner name is out of scope -- at any
 depth, as an array's element or a record's field, and read in the scope
-the containing entity is read in. Anything else is refused at class
-creation. A required member
+the containing entity is read in. Anything else is refused at
+registration. A required member
 has no default; an optional one is `| UNSET = UNSET`, so absence stays
 distinct from a JSON `null`, and a member that means something when
 absent is read that way where it is used, not defaulted.
@@ -117,11 +104,11 @@ a reader that judges afterwards with `problems` and wants every one.
 It runs only on an entity whose members all read: a member of the wrong
 type is reported and the entity is not built.
 
-**What an entity answers for itself**, beyond its fields. `to_json`,
-abstract: the entity as a document writes it, as a literal of its own
-TypedDict, which pyright holds to that type -- the bare name when every
+**What an entity answers for itself**, beyond its fields. `to_json` is
+written once in the base, from the fields: the bare name when every
 member is absent, the object otherwise, a contained entity through its
-own `to_json`. `canonical`, the entity in its simplest equivalent form:
+own `to_json`; an entity whose JSON is not its fields overrides it, and
+none in the package does. `canonical`, the entity in its simplest equivalent form:
 the entity itself by default, overridden where two spellings of its
 members mean the same, and in an entity that contains entities to put
 those in canonical form -- `replace(self, inner=self.inner.canonical())`.
@@ -164,13 +151,6 @@ Python. A scope reads what a class is off the class: its kind is its
 base, its key is its `identifier`, so `extended_with` takes the classes
 and nothing can be misfiled.
 
-**Naming the JSON type.** The return annotation of `to_json` -- above,
-`AcmeLz4Object | Literal["acme.lz4"]` -- is the entity's own JSON type,
-narrower than the `ZarrV3MetadataFieldJSON` the base declares, and
-pyright checks the literal returned against it: a key it does not
-declare, a required one left out, a value of the wrong type is a static
-error.
-
 Two complete extensions written against this module alone, as tests:
 `tests/v3/test_acme_affine.py` (an `array_array` codec with a number, an
 optional member and a nested data type) and
@@ -181,15 +161,6 @@ A name in no scope is not rejected -- that is what extension openness
 means -- so registering yours is how you get it judged rather than waved
 through. `CORE` is what the specification defines; `CORE_AND_EXTENSIONS`
 adds the `zarr-extensions` registry; `extended_with(*classes)` adds yours.
-
-One known friction, under mypy only. An entity's `to_json` returns its
-own object TypedDict, and mypy does not accept that where a
-`ZarrV3MetadataFieldJSON` is wanted: it reads every TypedDict as
-`Mapping[str, object]`, never as the `Mapping[str, JSONValue]` the
-envelope declares (python/mypy#8994, python/mypy#18439 -- mypy lacks
-PEP 728, which every TypedDict here relies on). The conversion is sound
-and the annotation stays; a consumer under mypy casts at the one place
-it puts an entity's JSON into a document. Pyright accepts it.
 """
 
 from __future__ import annotations

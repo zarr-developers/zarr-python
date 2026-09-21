@@ -84,6 +84,3 @@ class GzipCodec(BytesBytesCodec):
     variable_size: ClassVar[bool] = True
 
     problems = gzip_problems
-
-    def to_json(self) -> GzipCodecObject:
-        return {"name": "gzip", "configuration": {"level": self.level}}

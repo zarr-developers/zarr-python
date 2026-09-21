@@ -98,10 +98,6 @@ class StructFieldComponent:
     data_type: DataTypeEntity | Opaque
 
 
-def _written_field(field: StructFieldComponent) -> StructField:
-    return {"name": field.name, "data_type": field.data_type.to_json()}
-
-
 def struct_problems(data_type: "StructDataType", /) -> "Iterator[ValidationProblem]":
     """Names exist, are non-empty and distinct; types are fixed-size.
 
@@ -214,9 +210,3 @@ class StructDataType(DataTypeEntity):
             for key in sorted(fills.keys() - declared)
         )
         return tuple(found)
-
-    def to_json(self) -> Struct:
-        return {
-            "name": "struct",
-            "configuration": {"fields": tuple(_written_field(field) for field in self.fields)},
-        }

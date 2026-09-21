@@ -242,9 +242,3 @@ class RectilinearChunkGrid(ChunkGridEntity):
         grid, and the encoded one stays the same size as the array grows.
         """
         return replace(self, chunk_shapes=canonical_chunk_shapes(self.chunk_shapes))
-
-    def to_json(self) -> RectilinearChunkGridObject:
-        return {
-            "name": "rectilinear",
-            "configuration": {"kind": self.kind, "chunk_shapes": self.chunk_shapes},
-        }

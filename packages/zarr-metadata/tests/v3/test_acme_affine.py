@@ -81,14 +81,6 @@ class AcmeAffineCodec(ArrayArrayCodec):
             dtype=UNSET if self.dtype is UNSET else self.dtype.canonical(),
         )
 
-    def to_json(self) -> AcmeAffineObject:
-        configuration: AcmeAffineConfiguration = {"scale": self.scale}
-        if self.offset is not UNSET:
-            configuration["offset"] = self.offset
-        if self.dtype is not UNSET:
-            configuration["dtype"] = self.dtype.to_json()
-        return {"name": "acme.affine", "configuration": configuration}
-
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         data_type = incoming.data_type if incoming is not None else None
         if data_type is None or data_type.storage_class() != "variable_length":
@@ -204,8 +196,7 @@ def test_round_trip_and_canonical() -> None:
     entry = _affine(scale=2, offset=1, dtype="float64")
     codec = ArrayDocumentV3.from_json(_document(codecs=[entry, BYTES_LE]), context=SCOPE).codecs[0]
     assert isinstance(codec, AcmeAffineCodec)
-    written: AcmeAffineObject = codec.to_json()
-    assert written == entry
+    assert codec.to_json() == entry
     assert AcmeAffineCodec(scale=2, offset=0).canonical() == AcmeAffineCodec(scale=2)
     document = _document(codecs=[_affine(scale=2, offset=0.0), BYTES_LE])
     result = canonicalize_array_metadata_v3(document, context=SCOPE)

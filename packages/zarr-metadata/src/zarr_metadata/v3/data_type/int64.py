@@ -35,6 +35,3 @@ class Int64DataType(IntegerDataType):
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     bounds: ClassVar[tuple[int, int]] = (-9223372036854775808, 9223372036854775807)
     identifier: ClassVar[str] = INT64_DATA_TYPE_NAME
-
-    def to_json(self) -> Int64DataTypeName:
-        return "int64"

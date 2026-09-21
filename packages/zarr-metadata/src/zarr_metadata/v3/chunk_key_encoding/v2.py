@@ -83,8 +83,3 @@ class V2ChunkKeyEncoding(ChunkKeyEncodingEntity):
     separator: V2ChunkKeyEncodingSeparator | UNSET = UNSET
 
     identifier: ClassVar[str] = V2_CHUNK_KEY_ENCODING_NAME
-
-    def to_json(self) -> V2ChunkKeyEncodingObject | V2ChunkKeyEncodingName:
-        if self.separator is UNSET:
-            return "v2"
-        return {"name": "v2", "configuration": {"separator": self.separator}}
