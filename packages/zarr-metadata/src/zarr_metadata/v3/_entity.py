@@ -1,40 +1,27 @@
 """What every metadata entity can do for itself.
 
-A codec, data type, chunk grid or chunk key encoding is three things at
-once: a JSON shape, a set of constraints on the values in that shape, and
-a canonical spelling. Keeping the three apart put one entity's knowledge
-in four modules and needed a table per axis plus a drift test per table to
-hold them together. Here they are one class per entity, and the class is
-where methods bind:
+A codec, data type, chunk grid or chunk key encoding is one frozen
+dataclass whose fields are its schema. Everything the layer knows about
+a member is read off the field annotations by `_compile`: which members
+there are, which may be absent, how each is type-checked, the bounds it
+must satisfy, and -- for a field typed as another entity -- that it is
+read through the scope, written back as its own JSON, and put in
+canonical form by recursing into it. The three places a value rule
+lives, by what it is about: a bound on the field, a member's rule under
+`@validates`, the members together in `value_problems`.
 
-- `coerce` is **type-space**: raw metadata in, the entity or the reasons
-  it is not that entity out.
-- `problems` is **value-space**: the entity is well-typed by construction,
-  so this only asks whether its values are in range.
-- `to_json` is **canonical**: the simplest spelling meaning the same, typed
-  as the entity's own object TypedDict.
+`coerce` is the reading path: raw metadata in, the entity or the
+reasons it is not one out, taking a `Context` -- the entities in scope
+for this reading -- which the entities that contain other entities need.
+`__init_subclass__` refuses, at class creation, every way of writing an
+entity that would type-check and then misbehave somewhere that will not
+name the class.
 
-The TypedDicts stay: they model the JSON form, and the correspondence is
-exact in both directions. A configuration TypedDict unpacked is the
-dataclass constructor's signature, and the object TypedDict is what
-`to_json` returns. `tests/v3/test_entities.py` asserts the first, so the
-two cannot drift.
-
-Everything that needs the document or the codec chain stays outside, in
-`zarr_metadata.rules`, because an entity cannot answer it alone.
-
-`coerce` takes a `Context`: the entities in scope for this reading. Most
-entities ignore it -- a `gzip` codec is a `gzip` codec whatever else is
-registered -- but the ones whose configuration contains other entities do
-not. A `struct` data type holds field data types and a `sharding_indexed`
-codec holds two codec pipelines, and neither can coerce its own
-configuration without knowing what names are in scope inside it.
-
-The shared plumbing lives here too: the member checks every entity needs,
-the compiler that reads them off a field annotation, and the walk over a
-configuration that applies them. What stays with the entity is its fields
--- the part that is about blosc rather than about entities -- and
-everything the layer knows about a member is read from those.
+Composition -- what needs the document or the codec chain -- is the
+entity's to answer too, through `incoming_problems`, `shape_problems`,
+`fill_value_problems`, `transition` and `grid`, each taking the part of
+the document it needs. The document that composes those answers is
+`_document`.
 """
 
 from __future__ import annotations
@@ -43,49 +30,84 @@ from __future__ import annotations
 # (`TypeCheck`, `MemberTypes`) are resolved by `get_type_hints` at class
 # creation, and a name that exists only for the type checker is a NameError
 # then -- for this package and for any tool introspecting an entity.
-import sys
-import types
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence  # noqa: TC003
 from copy import deepcopy
 from dataclasses import MISSING, Field, dataclass, fields, is_dataclass, replace
 from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
-    Annotated,
     ClassVar,
     Final,
     Literal,
-    NotRequired,
-    Required,
     TypeAlias,
     TypeVar,
-    Union,
     cast,
     get_args,
     get_origin,
     get_type_hints,
 )
 
-from typing_extensions import ReadOnly, TypeIs, is_typeddict
+from typing_extensions import is_typeddict
 
-from zarr_metadata._common import JSONValue
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import (
     MetadataValidationError,
     ValidationProblem,
-    is_json,
 )
 from zarr_metadata.v3._parts import ChunkGrid
 
 if TYPE_CHECKING:
     from typing import Self
 
-    from zarr_metadata.model._validation import ProblemKind
     from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
     from zarr_metadata.v3._parts import ArrayParts
     from zarr_metadata.v3._registry import Context
 
+from zarr_metadata.v3._checks import (
+    Loc,
+    MemberTypes,
+    TypeCheck,
+    coerce_members,
+    is_bool,
+    is_int,
+    is_integer,
+    is_json_value,
+    is_metadata_field,
+    is_str,
+    named_configuration,
+    one_of,
+    problem,
+    sequence_of,
+    within,
+)
+from zarr_metadata.v3._compile import (
+    FROM_NAME,
+    CheckCompiler,
+    Ge,
+    Gt,
+    Interval,
+    Le,
+    Lt,
+    MemberRule,
+    declared_class_vars,
+    derive_member_types,
+    element_annotations,
+    field_hints,
+    has_shape,
+    is_class_var,
+    is_optional,
+    is_union,
+    own_annotations,
+    register_check,
+    rule_members,
+    shape_of,
+    strip_annotation,
+    validates,
+    value_check_for,
+)
+
 EntityT = TypeVar("EntityT", bound="MetadataEntity")
+
 
 # A real alias, not a string one: entity modules subscript it as
 # `Coerced[Self]` in a return annotation, and not all of them defer
@@ -102,7 +124,6 @@ So test `entity is None` to decide whether to go on reading, and test the
 problems to decide the verdict. They are different questions.
 """
 
-Loc: TypeAlias = "tuple[str | int, ...]"
 
 ExtensionPointField = Literal[
     "data_type", "chunk_grid", "chunk_key_encoding", "codecs", "storage_transformers"
@@ -115,15 +136,25 @@ point and then by name, and an entity that contains other entities says
 which point it reads them at.
 """
 
+
 # Left to infer their `Literal` types rather than widened to
 # `ExtensionPointField`: `Context.coerce` overloads on the field, so a
 # call written with one of these constants gets the entity type back
 # rather than the base. They are still assignable to the alias.
 DATA_TYPE: Final = "data_type"
+
+
 CHUNK_GRID: Final = "chunk_grid"
+
+
 CHUNK_KEY_ENCODING: Final = "chunk_key_encoding"
+
+
 CODECS: Final = "codecs"
+
+
 STORAGE_TRANSFORMERS: Final = "storage_transformers"
+
 
 StorageClass = Literal["single_byte", "multi_byte", "variable_length"]
 """How one scalar of a data type occupies bytes.
@@ -133,290 +164,13 @@ whether a byte order applies, which is what the `bytes` codec's `endian`
 member is about.
 """
 
+
 CodecKind = Literal["array_array", "array_bytes", "bytes_bytes"]
 """The three pipeline positions the v3 spec sorts codecs into.
 
 Declared by each codec, which is why there is no table of it: a name
 does not have a pipeline position, a codec does.
 """
-
-TypeCheck: TypeAlias = "Callable[[object, Loc], tuple[ValidationProblem, ...]]"
-"""Whether one value has the type a member declares, and where if not."""
-
-MemberTypes: TypeAlias = "Mapping[str, tuple[bool, TypeCheck]]"
-"""Per configuration member: whether it is required, and its type check."""
-
-
-def problem(
-    loc: Loc, message: str, kind: ProblemKind = "invalid_type"
-) -> tuple[ValidationProblem, ...]:
-    """One problem, as the tuple every check returns."""
-    return (ValidationProblem(loc, message, kind),)
-
-
-def is_integer(value: object) -> TypeIs[int]:
-    """A JSON integer: an `int`, and not a `bool`.
-
-    `True` is an `int` in Python and `true` is not a number in JSON, so
-    the two have to be told apart everywhere a number is expected.
-    """
-    return not isinstance(value, bool) and isinstance(value, int)
-
-
-def is_int(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-    """An integer, and not a bool -- JSON `true` is not the integer 1."""
-    if not is_integer(value):
-        return problem(loc, f"expected an integer, got {value!r}")
-    return ()
-
-
-def is_str(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-    if not isinstance(value, str):
-        return problem(loc, f"expected a string, got {value!r}")
-    return ()
-
-
-def is_bool(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-    if not isinstance(value, bool):
-        return problem(loc, f"expected a boolean, got {value!r}")
-    return ()
-
-
-def is_json_value(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-    """Any JSON value at all -- the widest type a member can declare."""
-    if not is_json(value):
-        return problem(loc, f"expected a JSON value, got {value!r}")
-    return ()
-
-
-def one_of(allowed: tuple[str, ...]) -> TypeCheck:
-    """A member whose type is a closed set of names."""
-
-    def check(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-        if value not in allowed:
-            return problem(loc, f"expected one of {allowed!r}, got {value!r}", "invalid_value")
-        return ()
-
-    return check
-
-
-def sequence_of(element: TypeCheck) -> TypeCheck:
-    """A member whose type is a sequence, checked element by element."""
-
-    def check(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-        if not isinstance(value, (list, tuple)):
-            return problem(loc, f"expected a sequence, got {value!r}")
-        elements: tuple[object, ...] = tuple(cast("list[object] | tuple[object, ...]", value))
-        return tuple(
-            found for index, entry in enumerate(elements) for found in element(entry, (*loc, index))
-        )
-
-    return check
-
-
-def _as_tuples(value: object) -> object:
-    """Every JSON array in `value`, at any depth, as a tuple.
-
-    The TypedDicts spell a JSON array as a tuple throughout, so a member
-    taken straight from parsed JSON would otherwise hold a list where its
-    own type says tuple -- and two documents differing only in that would
-    compare unequal.
-    """
-    if isinstance(value, (list, tuple)):
-        entries = cast("list[object] | tuple[object, ...]", value)
-        return tuple(_as_tuples(entry) for entry in entries)
-    if isinstance(value, Mapping):
-        entries = cast("Mapping[str, object]", value)
-        return {key: _as_tuples(entry) for key, entry in entries.items()}
-    return value
-
-
-def coerce_members(
-    configuration: Mapping[str, object], types: MemberTypes
-) -> tuple[dict[str, object], tuple[ValidationProblem, ...], frozenset[str]]:
-    """The members `types` declares, taken from `configuration`.
-
-    Returns what was accepted, every problem found, and the names of the
-    required members that could not be read. Three kinds of problem, and
-    they differ in that last part:
-
-    - a key the entity does not declare says the value carries something
-      extra, not that it is wrong;
-    - an *optional* member of the wrong type leaves that member absent,
-      and everything else about the entity is still readable -- a bad
-      `index_location` says nothing about whether a shard's pipelines
-      are well formed, and silencing them would lose a real judgment;
-    - a *required* member missing or of the wrong type does stop it.
-      There is no honest reading of a `blosc` whose level is a string.
-    """
-    problems: list[ValidationProblem] = []
-    members: dict[str, object] = {}
-    unreadable: set[str] = set()
-    for key in configuration:
-        if key not in types:
-            problems.extend(
-                problem(("configuration", key), f"unexpected key {key!r}", "unknown_key")
-            )
-    for key, (required, check) in types.items():
-        if key not in configuration:
-            if required:
-                problems.extend(
-                    problem(("configuration", key), f"missing required key {key!r}", "missing_key")
-                )
-                unreadable.add(key)
-            continue
-        # Normalized before the check, so a check only ever sees the tuples
-        # the TypedDicts declare -- never the lists raw JSON arrives as.
-        value = _as_tuples(configuration[key])
-        found = check(value, ("configuration", key))
-        problems.extend(found)
-        # An unknown key says the value carries something extra, not that
-        # it is the wrong type -- so the member is still readable, and
-        # dropping it here would make `to_json` lose what was written.
-        if all(entry.kind == "unknown_key" for entry in found):
-            members[key] = value
-        elif required:
-            unreadable.add(key)
-    return members, tuple(problems), frozenset(unreadable)
-
-
-class _FromName:
-    """The marker behind `FROM_NAME`."""
-
-    __slots__ = ()
-
-    def __repr__(self) -> str:
-        return "FROM_NAME"
-
-
-FROM_NAME: Final = _FromName()
-"""Marks a field carried by the metadata envelope's `name`, not its configuration.
-
-    data_type_name: Annotated[str, FROM_NAME]
-
-A member all the same -- `value_problems` judges it -- but not a
-configuration key, so it is neither read from nor written to a
-`configuration` object. The raw-bytes family is the case: `r<N>` keeps its
-width in its name and has no configuration at all.
-"""
-
-
-@dataclass(frozen=True, slots=True)
-class Ge:
-    """`Annotated[int, Ge(1)]`: the value is at least `bound`."""
-
-    bound: int | float
-
-
-@dataclass(frozen=True, slots=True)
-class Gt:
-    """`Annotated[int, Gt(0)]`: the value is more than `bound`."""
-
-    bound: int | float
-
-
-@dataclass(frozen=True, slots=True)
-class Le:
-    """`Annotated[int, Le(9)]`: the value is at most `bound`."""
-
-    bound: int | float
-
-
-@dataclass(frozen=True, slots=True)
-class Lt:
-    """`Annotated[int, Lt(10)]`: the value is less than `bound`."""
-
-    bound: int | float
-
-
-@dataclass(frozen=True, slots=True)
-class Interval:
-    """`Annotated[int, Interval(ge=0, le=9)]`: the value lies within these bounds.
-
-    These five are the `annotated_types` vocabulary -- what pydantic reads
-    and msgspec's `Meta` mirrors -- so a reader recognises them. Defined
-    here rather than imported, so the package keeps its one dependency.
-    A bound is a value rule: it runs only once the member has the type it
-    declared, at whatever depth the annotation puts it, so a bound on an
-    array's element type judges each element at its own position.
-    """
-
-    ge: int | float | None = None
-    gt: int | float | None = None
-    le: int | float | None = None
-    lt: int | float | None = None
-
-
-def _strip(annotation: object) -> tuple[object, tuple[object, ...]]:
-    """An annotation's type, and the metadata `Annotated` wrapped it in.
-
-    `NotRequired`, `Required` and `ReadOnly` are qualifiers on a TypedDict
-    key, not part of the value's type; peeled with the `Annotated` layers,
-    in whatever order they were written.
-    """
-    metadata: list[object] = []
-    while True:
-        origin = get_origin(annotation)
-        if origin is Annotated:
-            inner, *extras = get_args(annotation)
-            metadata.extend(extras)
-            annotation = inner
-        elif origin in (NotRequired, Required, ReadOnly):
-            (annotation,) = get_args(annotation)
-        else:
-            return annotation, tuple(metadata)
-
-
-def _own_annotations(klass: type) -> dict[str, object]:
-    """A class's own annotations, unevaluated.
-
-    From 3.14 a class does not carry an `__annotations__` dict until it is
-    asked for one, and asking evaluates every annotation at once -- so a
-    `ClassVar` naming something imported only for the type checker would
-    fail the whole class. `annotationlib` can hand them back as the text
-    they were written as, which is what the callers here want anyway:
-    class variables are skipped by text before anything is evaluated.
-    Earlier versions leave the dict on the class, strings or values as
-    the module chose.
-    """
-    if sys.version_info >= (3, 14):
-        import annotationlib
-
-        return dict(annotationlib.get_annotations(klass, format=annotationlib.Format.STRING))
-    return dict(vars(klass).get("__annotations__", {}))
-
-
-def field_hints(cls: type) -> dict[str, object]:
-    """The dataclass fields of `cls`, resolved, base first.
-
-    Each class's own annotations are resolved in that class's module,
-    and class variables are skipped *before* resolving, by text -- so a
-    `ClassVar` whose annotation names something imported only for the
-    type checker cannot fail class creation. `@dataclass` sees the same
-    set, in the same order.
-    """
-    hints: dict[str, object] = {}
-    for ancestor in reversed(cls.__mro__):
-        raw = {
-            name: annotation
-            for name, annotation in _own_annotations(ancestor).items()
-            if not _is_class_var(annotation)
-        }
-        if len(raw) == 0:
-            continue
-        shell = type("_Fields", (), {"__annotations__": raw, "__module__": ancestor.__module__})
-        hints.update(get_type_hints(shell, include_extras=True))
-    return hints
-
-
-def _is_union(annotation: object) -> bool:
-    return get_origin(annotation) in (Union, types.UnionType)
-
-
-def is_optional(annotation: object) -> bool:
-    """Whether a field may be absent: its type admits `UNSET`."""
-    inner, _ = _strip(annotation)
-    return _is_union(inner) and any(arg is UNSET for arg in get_args(inner))
 
 
 def _is_entity_type(candidate: object) -> bool:
@@ -434,513 +188,32 @@ def _is_entity_or_opaque(candidates: Sequence[object]) -> bool:
     )
 
 
-def is_metadata_field(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-    """A nested metadata field: a bare name or a named-configuration object.
-
-    Only the envelope's shape. Which entity the name denotes, and whether
-    its configuration is well formed, is settled when the containing
-    entity reads it in scope.
-    """
-    if not isinstance(value, (str, Mapping)):
-        return problem(loc, f"expected a metadata field, got {value!r}")
-    return ()
+def _is_nested_field(annotation: object) -> bool:
+    """An entity type, or a union of entity types and `Opaque`."""
+    candidates = list(get_args(annotation)) if is_union(annotation) else [annotation]
+    return _is_entity_or_opaque([candidate for candidate in candidates if candidate is not UNSET])
 
 
-def describe(annotation: object) -> str:
-    """The annotation as a message would name it: "an integer", "an object"."""
-    inner, _ = _strip(annotation)
-    if inner is int:
-        return "an integer"
-    if inner is bool:
-        return "a boolean"
-    if inner is str:
-        return "a string"
-    if inner is JSONValue:
-        return "a JSON value"
-    origin = get_origin(inner)
-    if origin is Literal:
-        return f"one of {tuple(sorted(get_args(inner)))!r}"
-    if _is_union(inner):
-        branches = [arg for arg in get_args(inner) if arg is not UNSET]
-        if _is_entity_or_opaque(branches):
-            return "a metadata field"
-        return " or ".join(describe(branch) for branch in branches)
-    if origin is tuple:
-        arguments = get_args(inner)
-        if len(arguments) == 2 and arguments[1] is Ellipsis:
-            return f"an array of {describe(arguments[0])} elements"
-        if len(arguments) == 2:
-            return f"a [{describe(arguments[0])}, {describe(arguments[1])}] pair"
-        return f"an array of {len(arguments)} elements"
-    if _is_entity_type(inner):
-        return "a metadata field"
-    if is_typeddict(inner) or is_dataclass(inner):
-        return "an object"
-    return "a value"
-
-
-def _shape(annotation: object) -> str | None:
-    """The top-level JSON shape an annotation admits, for choosing a union branch.
-
-    None means any shape -- a JSON value, or a union that mixes them.
-    """
-    inner, _ = _strip(annotation)
-    if inner is int:
-        return "int"
-    if inner is bool:
-        return "bool"
-    if inner is str:
-        return "str"
-    origin = get_origin(inner)
-    if origin is Literal:
-        values = get_args(inner)
-        return "int" if all(isinstance(value, int) for value in values) else "str"
-    if origin is tuple:
-        return "tuple"
-    if _is_entity_type(inner):
-        return "field"
-    if is_typeddict(inner) or is_dataclass(inner):
-        return "mapping"
-    return None
-
-
-def _has_shape(shape: str | None, value: object) -> bool:
-    if shape is None:
-        return True
-    if shape == "int":
-        return is_integer(value)
-    if shape == "bool":
-        return isinstance(value, bool)
-    if shape == "str":
-        return isinstance(value, str)
-    if shape == "tuple":
-        return isinstance(value, tuple)
-    if shape == "mapping":
-        return isinstance(value, Mapping)
-    return isinstance(value, (str, Mapping))  # "field"
-
-
-def any_of(branches: Sequence[tuple[object, TypeCheck]], description: str) -> TypeCheck:
-    """A member whose type is a union of shapes, judged by the branch it fits.
-
-    The branch whose top-level shape the value has is the one that
-    reports -- so an element inside a malformed array is located inside
-    the array, rather than the whole array being called wrong. A value
-    fitting no branch's shape is reported once, by what was expected.
-    """
-
-    def check(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-        fitting = [check for annotation, check in branches if _has_shape(_shape(annotation), value)]
-        if len(fitting) == 0:
-            return problem(loc, f"expected {description}, got {value!r}")
-        verdicts = [check(value, loc) for check in fitting]
-        return () if any(len(verdict) == 0 for verdict in verdicts) else verdicts[0]
-
-    return check
-
-
-def fixed_tuple(elements: Sequence[TypeCheck], description: str) -> TypeCheck:
-    """A member whose type is an array of a fixed length, checked position by position."""
-
-    def check(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-        if not isinstance(value, tuple) or len(cast("tuple[object, ...]", value)) != len(elements):
-            return problem(loc, f"expected {description}, got {value!r}")
-        entries = cast("tuple[object, ...]", value)
-        return tuple(
-            found
-            for position, (element, entry) in enumerate(zip(elements, entries, strict=True))
-            for found in element(entry, (*loc, position))
-        )
-
-    return check
-
-
-def mapping_of(members: Mapping[str, tuple[bool, TypeCheck]]) -> TypeCheck:
-    """A member that is itself an object with declared keys, checked key by key.
-
-    Closed, like every configuration in this package: a key the type does
-    not declare is `unknown_key`, a required one missing is `missing_key`,
-    both located at the object. Each present member is checked at its own
-    key, so a problem inside is located inside.
-    """
-
-    def check(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-        if not isinstance(value, Mapping):
-            return problem(loc, f"expected an object, got {value!r}")
-        entries = cast("Mapping[str, object]", value)
-        found: list[ValidationProblem] = []
-        for key in entries:
-            if key not in members:
-                found.extend(problem(loc, f"unexpected key {key!r}", "unknown_key"))
-        for key, (required, member) in members.items():
-            if key not in entries:
-                if required:
-                    found.extend(problem(loc, f"missing required key {key!r}", "missing_key"))
-                continue
-            found.extend(member(entries[key], (*loc, key)))
-        return tuple(found)
-
-    return check
-
-
-def _members_of(annotations: Mapping[str, object]) -> dict[str, tuple[bool, TypeCheck]] | None:
-    """A member table for a nested object's keys; None if any key's type has no check."""
-    members: dict[str, tuple[bool, TypeCheck]] = {}
-    for key, annotation in annotations.items():
-        check = check_for(annotation)
-        if check is None:
-            return None
-        inner, _ = _strip(annotation)
-        required = get_origin(annotation) is not NotRequired and not is_optional(inner)
-        members[key] = (required, check)
-    return members
-
-
-CheckCompiler: TypeAlias = "Callable[[object], TypeCheck | None]"
-"""Turns one annotation into its type check -- or None, to decline it after all."""
-
-_CHECK_COMPILERS: Final[list[tuple[Callable[[object], bool], CheckCompiler]]] = []
-"""The shapes `check_for` reads, each as (does this annotation have it?, compile it).
-
-Consulted front to back. The built-in shapes are appended below in the
-order they must be tried -- a nested metadata field before a record,
-because `Opaque` is itself a dataclass -- and `register_check` puts a
-registration in front of all of them, so the newest one wins.
-"""
-
-
-def register_check(predicate: Callable[[object], bool], compile: CheckCompiler) -> None:
-    """Teach `check_for` an annotation shape it does not read.
-
-        Hex = NewType("Hex", str)
-        register_check(lambda annotation: annotation is Hex, lambda annotation: is_hex)
-
-    `predicate` sees the annotation with `Annotated`, `NotRequired` and
-    `ReadOnly` peeled; `compile` returns the check for it, calling
-    `check_for` itself for any shape inside. A registration is consulted
-    before every built-in one, so a package can also replace how a
-    built-in shape is judged. The same door the built-ins came through,
-    which is what makes the set of shapes open rather than this module's.
-    """
-    _CHECK_COMPILERS.insert(0, (predicate, compile))
-
-
-def _builtin(predicate: Callable[[object], bool]) -> Callable[[CheckCompiler], CheckCompiler]:
-    """Register a built-in shape, in the order written."""
-
-    def append(compile: CheckCompiler) -> CheckCompiler:
-        _CHECK_COMPILERS.append((predicate, compile))
-        return compile
-
-    return append
-
-
-@_builtin(lambda inner: inner is int)
-def _compile_int(inner: object) -> TypeCheck | None:
-    return is_int
-
-
-@_builtin(lambda inner: inner is bool)
-def _compile_bool(inner: object) -> TypeCheck | None:
-    return is_bool
-
-
-@_builtin(lambda inner: inner is str)
-def _compile_str(inner: object) -> TypeCheck | None:
-    return is_str
-
-
-@_builtin(lambda inner: inner is JSONValue)
-def _compile_json_value(inner: object) -> TypeCheck | None:
-    return is_json_value
-
-
-@_builtin(lambda inner: get_origin(inner) is Literal)
-def _compile_literal(inner: object) -> TypeCheck | None:
-    # Sorted, because the order `get_args` reports is not the order the
-    # `Literal` was written in: two `Literal`s over the same values
-    # compare and hash equal, so the first one built anywhere in the
-    # process is the one every later one resolves to. The check is a
-    # membership test either way; this is so the message listing the
-    # values does not depend on import order.
-    return one_of(tuple(sorted(cast("tuple[str, ...]", get_args(inner)))))
-
-
-@_builtin(_is_union)
-def _compile_union(inner: object) -> TypeCheck | None:
-    branches = [arg for arg in get_args(inner) if arg is not UNSET]
-    if len(branches) == 1:
-        return check_for(branches[0])
-    if _is_entity_or_opaque(branches):
-        return is_metadata_field
-    compiled = [(branch, check_for(branch)) for branch in branches]
-    if any(check is None for _, check in compiled):
-        return None
-    return any_of(
-        [(branch, cast("TypeCheck", check)) for branch, check in compiled], describe(inner)
-    )
-
-
-@_builtin(lambda inner: get_origin(inner) is tuple)
-def _compile_tuple(inner: object) -> TypeCheck | None:
-    arguments = get_args(inner)
-    if len(arguments) == 2 and arguments[1] is Ellipsis:
-        element = check_for(arguments[0])
-        return None if element is None else sequence_of(element)
-    elements = [check_for(argument) for argument in arguments]
-    if any(element is None for element in elements):
-        return None
-    return fixed_tuple([cast("TypeCheck", element) for element in elements], describe(inner))
-
-
-# A nested metadata field, before the record shape: `Opaque` is itself a
-# dataclass, and an entity type must not be walked as one either.
-@_builtin(_is_entity_type)
-def _compile_entity(inner: object) -> TypeCheck | None:
+def _compile_nested_field(annotation: object) -> TypeCheck | None:
     return is_metadata_field
 
 
-@_builtin(is_typeddict)
-def _compile_typeddict(inner: object) -> TypeCheck | None:
-    members = _members_of(get_type_hints(inner, include_extras=True))
-    return None if members is None else mapping_of(members)
-
-
-@_builtin(lambda inner: isinstance(inner, type) and is_dataclass(inner))
-def _compile_record(inner: object) -> TypeCheck | None:
-    if not isinstance(inner, type):  # pragma: no cover - the predicate says it is
-        return None
-    members = _members_of(field_hints(inner))
-    return None if members is None else mapping_of(members)
-
-
-def check_for(annotation: object) -> TypeCheck | None:
-    """The type check a field annotation implies, or None if it implies none.
-
-    A small compiler over the shapes this package's metadata takes: the
-    JSON scalars, a `Literal` of names, arrays homogeneous or fixed,
-    unions of those, a nested object described by a TypedDict or a
-    record dataclass, and a nested metadata field -- an entity type,
-    with or without `Opaque`. `UNSET` in a union says the member may be
-    absent, which is the other half of a table entry and is read
-    separately by `is_optional`.
-
-    Open: each shape is a registration in `_CHECK_COMPILERS`, and
-    `register_check` adds one from outside. None for an annotation no
-    registration claims, which the entity then declares a check for by
-    hand.
-    """
-    inner, _ = _strip(annotation)
-    for predicate, compile in _CHECK_COMPILERS:
-        if predicate(inner):
-            return compile(inner)
-    return None
-
-
-def derive_member_types(cls: type) -> tuple[dict[str, tuple[bool, TypeCheck]], list[str]]:
-    """The member table an entity's own fields describe.
-
-    Every field is a configuration member unless `FROM_NAME` says it is
-    carried by the envelope. Requiredness is whether the type admits
-    `UNSET`; the check is whatever `check_for` reads off the type. Also
-    returned: the fields no check could be read for, which the entity
-    must declare by hand.
-    """
-    derived: dict[str, tuple[bool, TypeCheck]] = {}
-    unread: list[str] = []
-    for name, annotation in field_hints(cls).items():
-        inner, metadata = _strip(annotation)
-        if any(entry is FROM_NAME for entry in metadata):
-            continue
-        check = check_for(inner)
-        if check is None:
-            unread.append(name)
-            continue
-        derived[name] = (not is_optional(inner), check)
-    return derived, unread
-
-
-MemberRule: TypeAlias = "Callable[..., tuple[ValidationProblem, ...]]"
-"""A rule about one member: takes its value, reports relative to it."""
-
-_RULE_MEMBERS: Final[dict[object, tuple[str, ...]]] = {}
-"""Which members each `@validates` rule is about, keyed by the function.
-
-A side table rather than an attribute on the function, so the decorator
-hands back exactly what it was given -- the declared signature survives,
-and the type checker keeps checking the body and its callers.
-"""
-
-_Rule = TypeVar("_Rule", bound="Callable[..., tuple[ValidationProblem, ...]]")
-
-
-def validates(*members: str) -> Callable[[_Rule], _Rule]:
-    """Mark a static rule as being about one member, or several alike.
-
-        @staticmethod
-        @validates("order")
-        def _order_permutes_itself(order: tuple[int, ...]) -> tuple[ValidationProblem, ...]:
-            ...
-
-    The rule receives the member's value, already of the type the field
-    declares, and only when the member is present; it reports relative
-    to the member, so a problem with an empty location is about the
-    member itself. Naming several members applies the one rule to each.
-    A rule that reads two members together is `value_problems`.
-    """
-
-    def mark(rule: _Rule) -> _Rule:
-        _RULE_MEMBERS[rule] = members
-        return rule
-
-    return mark
-
-
-def _bound_check(metadata: Sequence[object]) -> TypeCheck | None:
-    """The check the bound markers among an annotation's metadata imply, or None."""
-    ge = gt = le = lt = None
-    for marker in metadata:
-        if isinstance(marker, Ge):
-            ge = marker.bound
-        elif isinstance(marker, Gt):
-            gt = marker.bound
-        elif isinstance(marker, Le):
-            le = marker.bound
-        elif isinstance(marker, Lt):
-            lt = marker.bound
-        elif isinstance(marker, Interval):
-            ge = marker.ge if marker.ge is not None else ge
-            gt = marker.gt if marker.gt is not None else gt
-            le = marker.le if marker.le is not None else le
-            lt = marker.lt if marker.lt is not None else lt
-    if ge is None and gt is None and le is None and lt is None:
-        return None
-    if ge is not None and le is not None and gt is None and lt is None:
-        expectation = f"an integer in [{ge}, {le}]"
-    else:
-        comparisons = [
-            text
-            for bound, text in (
-                (ge, f">= {ge}"),
-                (gt, f"> {gt}"),
-                (le, f"<= {le}"),
-                (lt, f"< {lt}"),
-            )
-            if bound is not None
-        ]
-        expectation = "an integer " + " and ".join(comparisons)
-
-    def check(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-        # Not a number: the type check's finding, not this one's.
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            return ()
-        within_bounds = (
-            (ge is None or value >= ge)
-            and (gt is None or value > gt)
-            and (le is None or value <= le)
-            and (lt is None or value < lt)
-        )
-        if within_bounds:
-            return ()
-        return problem(loc, f"expected {expectation}, got {value}", "invalid_value")
-
-    return check
-
-
-def value_check_for(annotation: object) -> TypeCheck | None:
-    """The value check an annotation's metadata implies, at any depth, or None.
-
-    Over the shapes as the entity holds them, not as the JSON spells
-    them: this runs after every member has its type and every nested
-    entity has been read, so a record is a dataclass instance here and
-    an entity is skipped -- it is valid by construction.
-    """
-    inner, metadata = _strip(annotation)
-    own = _bound_check(metadata)
-    below: TypeCheck | None = None
-    if _is_union(inner):
-        branches = [
-            (branch, value_check_for(branch)) for branch in get_args(inner) if branch is not UNSET
-        ]
-        if any(check is not None for _, check in branches):
-
-            def by_branch(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-                for branch, check in branches:
-                    if check is not None and _has_shape(_shape(branch), value):
-                        return check(value, loc)
-                return ()
-
-            below = by_branch
-    elif get_origin(inner) is tuple:
-        arguments = get_args(inner)
-        if len(arguments) == 2 and arguments[1] is Ellipsis:
-            element = value_check_for(arguments[0])
-            if element is not None:
-                each = element
-
-                def per_element(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-                    entries = cast("tuple[object, ...]", value)
-                    return tuple(
-                        found
-                        for position, entry in enumerate(entries)
-                        for found in each(entry, (*loc, position))
-                    )
-
-                below = per_element
-        else:
-            positions = [value_check_for(argument) for argument in arguments]
-            if any(check is not None for check in positions):
-
-                def per_position(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-                    entries = cast("tuple[object, ...]", value)
-                    return tuple(
-                        found
-                        for position, (check, entry) in enumerate(
-                            zip(positions, entries, strict=True)
-                        )
-                        if check is not None
-                        for found in check(entry, (*loc, position))
-                    )
-
-                below = per_position
-    elif isinstance(inner, type) and is_dataclass(inner) and not _is_entity_type(inner):
-        members = {
-            name: check
-            for name, field_annotation in field_hints(inner).items()
-            if (check := value_check_for(field_annotation)) is not None
-        }
-        if len(members) != 0:
-
-            def per_field(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-                return tuple(
-                    found
-                    for name, check in members.items()
-                    if (held := getattr(value, name)) is not UNSET
-                    for found in check(held, (*loc, name))
-                )
-
-            below = per_field
-    if own is None and below is None:
-        return None
-    if below is None:
-        return own
-    if own is None:
-        return below
-    outer, inner_check = own, below
-
-    def both(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-        return (*outer(value, loc), *inner_check(value, loc))
-
-    return both
+# The compiler knows nothing of entities; this is where it learns that a
+# field typed as one is a nested metadata field. Registered ahead of every
+# built-in shape -- an entity is a dataclass too, and must not be walked as
+# a record -- through the same door a third party's shape comes in by.
+register_check(
+    _is_nested_field, _compile_nested_field, shape="field", description="a metadata field"
+)
 
 
 def contains_entity(annotation: object) -> bool:
     """Whether a value of this type holds a nested metadata field anywhere in it."""
-    inner, _ = _strip(annotation)
+    inner, _ = strip_annotation(annotation)
     if _is_entity_type(inner):
         return True
     origin = get_origin(inner)
-    if _is_union(inner):
+    if is_union(inner):
         return any(contains_entity(arg) for arg in get_args(inner) if arg is not UNSET)
     if origin is tuple:
         return any(contains_entity(arg) for arg in get_args(inner) if arg is not Ellipsis)
@@ -967,13 +240,13 @@ def _as_entity_kind(candidate: object) -> type[MetadataEntity] | None:
 
 def _entity_kinds(annotation: object) -> list[type[MetadataEntity]]:
     """Every entity type an annotation names, at any depth."""
-    inner, _ = _strip(annotation)
+    inner, _ = strip_annotation(annotation)
     kind = _as_entity_kind(inner)
     if kind is not None:
         return [kind]
     origin = get_origin(inner)
     arguments: tuple[object, ...] = get_args(inner)
-    if _is_union(inner):
+    if is_union(inner):
         return [kind for arg in arguments if arg is not UNSET for kind in _entity_kinds(arg)]
     if origin is tuple:
         return [kind for arg in arguments if arg is not Ellipsis for kind in _entity_kinds(arg)]
@@ -996,20 +269,12 @@ def _point_of(kind: type[MetadataEntity]) -> ExtensionPointField:
     return point
 
 
-def _element_annotations(inner: object, count: int) -> list[object]:
-    """The annotation of each element of a tuple type, one per element held."""
-    arguments = get_args(inner)
-    if len(arguments) == 2 and arguments[1] is Ellipsis:
-        return [arguments[0]] * count
-    return list(arguments)
-
-
 def _fitting_branch(inner: object, value: object) -> object | None:
     """The branch of a union that holds an entity and whose shape `value` has."""
     for branch in get_args(inner):
         if branch is UNSET or not contains_entity(branch):
             continue
-        if _has_shape(_shape(branch), value):
+        if has_shape(shape_of(branch), value):
             return branch
     return None
 
@@ -1025,11 +290,11 @@ def _resolve(
     record holding one field by field. The value has passed its type
     check, so the shapes are the annotation's.
     """
-    inner, _ = _strip(annotation)
-    candidates = list(get_args(inner)) if _is_union(inner) else [inner]
+    inner, _ = strip_annotation(annotation)
+    candidates = list(get_args(inner)) if is_union(inner) else [inner]
     if _is_entity_or_opaque(candidates):
         return context.coerce(_point_of(_entity_kinds(inner)[0]), value, loc)
-    if _is_union(inner):
+    if is_union(inner):
         branch = _fitting_branch(inner, value)
         return (value, ()) if branch is None else _resolve(branch, value, context, loc)
     if get_origin(inner) is tuple:
@@ -1037,7 +302,7 @@ def _resolve(
         resolved: list[object] = []
         found: list[ValidationProblem] = []
         for position, (element, entry) in enumerate(
-            zip(_element_annotations(inner, len(entries)), entries, strict=True)
+            zip(element_annotations(inner, len(entries)), entries, strict=True)
         ):
             item, problems = _resolve(element, entry, context, (*loc, position))
             resolved.append(item)
@@ -1063,8 +328,8 @@ def render_nested(annotation: object, value: object) -> object:
         return value.to_json()
     if isinstance(value, Opaque):
         return value.json
-    inner, _ = _strip(annotation)
-    if _is_union(inner):
+    inner, _ = strip_annotation(annotation)
+    if is_union(inner):
         branch = _fitting_branch(inner, value)
         return value if branch is None else render_nested(branch, value)
     if get_origin(inner) is tuple:
@@ -1072,7 +337,7 @@ def render_nested(annotation: object, value: object) -> object:
         return tuple(
             render_nested(element, entry)
             for element, entry in zip(
-                _element_annotations(inner, len(entries)), entries, strict=True
+                element_annotations(inner, len(entries)), entries, strict=True
             )
         )
     if isinstance(inner, type) and is_dataclass(inner) and not _is_entity_type(inner):
@@ -1090,8 +355,8 @@ def canonicalize_nested(annotation: object, value: object) -> object:
         return value.canonical()
     if isinstance(value, Opaque):
         return value
-    inner, _ = _strip(annotation)
-    if _is_union(inner):
+    inner, _ = strip_annotation(annotation)
+    if is_union(inner):
         branch = _fitting_branch(inner, value)
         return value if branch is None else canonicalize_nested(branch, value)
     if get_origin(inner) is tuple:
@@ -1099,7 +364,7 @@ def canonicalize_nested(annotation: object, value: object) -> object:
         return tuple(
             canonicalize_nested(element, entry)
             for element, entry in zip(
-                _element_annotations(inner, len(entries)), entries, strict=True
+                element_annotations(inner, len(entries)), entries, strict=True
             )
         )
     if (
@@ -1150,35 +415,6 @@ class Opaque:
 
     json: object
     reason: Literal["out_of_scope", "invalid"]
-
-
-def _is_class_var(annotation: object) -> bool:
-    """Whether an annotation says `ClassVar`.
-
-    `from __future__ import annotations` leaves them as strings, so this
-    reads the text when it gets one -- the same thing `dataclasses` does,
-    and for the same reason: resolving the name needs a module namespace
-    that is not available while the class is still being built.
-    """
-    if isinstance(annotation, str):
-        stripped = annotation.strip()
-        return stripped.startswith(("ClassVar[", "ClassVar", "typing.ClassVar"))
-    return get_origin(annotation) is ClassVar
-
-
-def _declared_class_vars(cls: type) -> dict[str, type]:
-    """Every class variable annotated anywhere in `cls`'s ancestry.
-
-    Mapped to the class that annotated it, so a message can say where the
-    requirement comes from. Base first, so a redeclaration names the
-    nearest ancestor.
-    """
-    found: dict[str, type] = {}
-    for ancestor in reversed(cls.__mro__):
-        for name, annotation in _own_annotations(ancestor).items():
-            if _is_class_var(annotation):
-                found[name] = ancestor
-    return found
 
 
 # No `slots=True`, deliberately. It rebuilds the class, which on Python
@@ -1388,7 +624,7 @@ class MetadataEntity:
             # attribute is not even hashable.
             if not callable(function):
                 continue
-            for member in _RULE_MEMBERS.get(function, ()):
+            for member in rule_members(function):
                 if member not in hints:
                     msg = f"{cls.__name__}: `@validates({member!r})` names no field of the entity"
                     raise TypeError(msg)
@@ -1408,11 +644,11 @@ class MetadataEntity:
                 "or `ChunkGridEntity`"
             )
             raise TypeError(msg)
-        annotated = _declared_class_vars(cls)
+        annotated = declared_class_vars(cls)
         shadowed = [
             name
-            for name, annotation in _own_annotations(cls).items()
-            if name in annotated and annotated[name] is not cls and not _is_class_var(annotation)
+            for name, annotation in own_annotations(cls).items()
+            if name in annotated and annotated[name] is not cls and not is_class_var(annotation)
         ]
         if len(shadowed) != 0:
             # A field of that name would go into `member_types`, into the
@@ -1827,50 +1063,6 @@ class DataTypeEntity(MetadataEntity, base=True):
         valid documents.
         """
         return ()
-
-
-def within(prefix: Loc, problems: Sequence[ValidationProblem]) -> tuple[ValidationProblem, ...]:
-    """One entity's problems, located in the document that holds it.
-
-    An entity reports relative to its own `configuration`, so that is what
-    goes between the field and the member. A problem with an empty
-    location is about the entity itself -- a malformed `r<N>` name, a
-    codec that cannot encode what reaches it -- and lands on the field.
-    """
-    return tuple(
-        ValidationProblem(
-            (*prefix, *(("configuration", *found.loc) if len(found.loc) != 0 else ())),
-            found.message,
-            found.kind,
-        )
-        for found in problems
-    )
-
-
-def named_configuration(
-    value: object,
-) -> tuple[str | None, Mapping[str, object] | None, bool]:
-    """Split metadata into `(name, configuration, must_understand)`.
-
-    The shared shape every entity arrives in: a bare name, or an object
-    carrying one. A `None` name means the value is not a metadata field at
-    all; a `None` configuration means the bare spelling was used.
-    """
-    if isinstance(value, str):
-        return value, None, True
-    if not isinstance(value, Mapping):
-        return None, None, True
-    entry = cast("Mapping[str, object]", value)
-    name = entry.get("name")
-    if not isinstance(name, str):
-        return None, None, True
-    configuration = entry.get("configuration")
-    must_understand = entry.get("must_understand", True)
-    return (
-        name,
-        cast("Mapping[str, object]", configuration) if isinstance(configuration, Mapping) else None,
-        must_understand if isinstance(must_understand, bool) else True,
-    )
 
 
 __all__ = [

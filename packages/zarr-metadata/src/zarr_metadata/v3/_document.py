@@ -29,6 +29,7 @@ from zarr_metadata.model._validation import (
     validate_array_metadata_v3 as validate_array_metadata_v3_structure,
 )
 from zarr_metadata.v3._chain import chain_problems
+from zarr_metadata.v3._compile import field_hints
 from zarr_metadata.v3._entity import (
     CHUNK_GRID,
     CHUNK_KEY_ENCODING,
@@ -43,7 +44,6 @@ from zarr_metadata.v3._entity import (
     Opaque,
     canonicalize_nested,
     contains_entity,
-    field_hints,
     render_nested,
     within,
 )

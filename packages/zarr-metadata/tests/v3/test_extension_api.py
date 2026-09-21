@@ -17,7 +17,7 @@ from zarr_metadata.rules import (
     canonicalize_array_metadata_v3,
     validate_array_metadata_v3,
 )
-from zarr_metadata.v3._entity import _CHECK_COMPILERS
+from zarr_metadata.v3._compile import _CHECK_COMPILERS
 from zarr_metadata.v3.codec.blosc import BloscCodec
 from zarr_metadata.v3.codec.gzip import GzipCodec
 from zarr_metadata.v3.entity import (
@@ -620,5 +620,5 @@ def test_a_third_party_can_teach_the_compiler_a_shape() -> None:
     finally:
         # A registration is process-wide; leave the compiler as it was found.
         _CHECK_COMPILERS[:] = [
-            entry for entry in _CHECK_COMPILERS if entry[0] is not is_hex_annotation
+            entry for entry in _CHECK_COMPILERS if entry.predicate is not is_hex_annotation
         ]
