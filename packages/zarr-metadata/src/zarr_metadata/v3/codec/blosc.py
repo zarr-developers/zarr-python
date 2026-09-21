@@ -112,7 +112,7 @@ class BloscCodec(BytesBytesCodec):
         """Bounds on `clevel` and `blocksize`; `typesize` against `shuffle`.
 
         Under `noshuffle` the spec says of `typesize` that "the value is
-        ignored", and `simplified` drops it; under either shuffle it is
+        ignored", and `canonical` drops it; under either shuffle it is
         required, and positive.
         """
         found: list[ValidationProblem] = []
@@ -152,7 +152,7 @@ class BloscCodec(BytesBytesCodec):
         if len(found) != 0:
             raise MetadataValidationError(found)
 
-    def simplified(self) -> Self:
+    def canonical(self) -> Self:
         """Without a `typesize` that `noshuffle` renders meaningless.
 
         The spec says of that case that "the value is ignored", so two

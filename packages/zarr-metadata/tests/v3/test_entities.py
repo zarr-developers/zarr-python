@@ -744,7 +744,7 @@ class AcmeShardCache(StorageTransformerEntity):
 
     identifier: ClassVar[str] = "acme.shard_cache"
 
-    def simplified(self) -> Self:
+    def canonical(self) -> Self:
         return dataclasses.replace(self, verbose=UNSET)
 
     def to_json(self) -> ZarrV3MetadataFieldJSON:

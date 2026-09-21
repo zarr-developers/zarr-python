@@ -29,7 +29,6 @@ from zarr_metadata.model._validation import (
     validate_array_metadata_v3 as validate_array_metadata_v3_structure,
 )
 from zarr_metadata.v3._chain import chain_problems
-from zarr_metadata.v3._compile import field_hints
 from zarr_metadata.v3._entity import (
     ChunkGridEntity,
     ChunkKeyEncodingEntity,
@@ -38,8 +37,7 @@ from zarr_metadata.v3._entity import (
     MetadataEntity,
     Opaque,
     StorageTransformerEntity,
-    canonicalize_nested,
-    contains_entity,
+    canonicalized,
     within,
     written,
 )
@@ -91,25 +89,26 @@ class ArrayDocumentV3:
     def canonical(self) -> ArrayDocumentV3:
         """This document in the simplest form that means the same thing.
 
-        Each entity in its own canonical form -- the same walk over the
-        fields that hold one that every entity containing entities gets
-        -- and the one rule that is the document's own: `dimension_names`
-        of nothing but nulls says what omitting the field says. A
-        *transformation*, asked for by `canonicalize_array_metadata_v3`;
-        `to_json` does not apply it.
+        Each entity in its own canonical form, and the one rule that is
+        the document's own: `dimension_names` of nothing but nulls says
+        what omitting the field says. A *transformation*, asked for by
+        `canonicalize_array_metadata_v3`; `to_json` does not apply it.
         """
-        entities = {
-            name: canonicalize_nested(annotation, getattr(self, name))
-            for name, annotation in field_hints(type(self)).items()
-            if contains_entity(annotation)
-        }
         document = dict(self.document)
         names = document.get("dimension_names")
         if isinstance(names, tuple) and all(
             entry is None for entry in cast("tuple[object, ...]", names)
         ):
             del document["dimension_names"]
-        return replace(self, document=document, **entities)
+        return replace(
+            self,
+            document=document,
+            data_type=canonicalized(self.data_type),
+            chunk_grid=canonicalized(self.chunk_grid),
+            chunk_key_encoding=canonicalized(self.chunk_key_encoding),
+            codecs=tuple(canonicalized(codec) for codec in self.codecs),
+            storage_transformers=tuple(canonicalized(entry) for entry in self.storage_transformers),
+        )
 
     def to_json(self) -> dict[str, object]:
         """The document as it would be written: every entity in its JSON form.

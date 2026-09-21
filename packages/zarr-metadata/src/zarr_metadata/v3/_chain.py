@@ -23,7 +23,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from zarr_metadata.model._validation import ValidationProblem
-from zarr_metadata.v3._entity import ArrayArrayCodec, CodecEntity, within
+from zarr_metadata.v3._entity import ArrayArrayCodec, ArrayBytesCodec, CodecEntity, within
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -31,7 +31,14 @@ if TYPE_CHECKING:
     from zarr_metadata.v3._entity import Loc, Opaque
     from zarr_metadata.v3._parts import ArrayParts
 
-_KIND_RANK = {"array_array": 0, "array_bytes": 1, "bytes_bytes": 2}
+
+def _stage(codec: CodecEntity) -> tuple[int, str]:
+    """Where in the pipeline a codec stands, as a rank and as the spec names it."""
+    if isinstance(codec, ArrayArrayCodec):
+        return 0, "array->array"
+    if isinstance(codec, ArrayBytesCodec):
+        return 1, "array->bytes"
+    return 2, "bytes->bytes"
 
 
 def _label(codec: CodecEntity | Opaque) -> str:
@@ -56,19 +63,18 @@ def order_problems(
     for index, codec in enumerate(codecs):
         if not isinstance(codec, CodecEntity):
             continue
-        kind = type(codec).kind
-        rank = _KIND_RANK[kind]
+        rank, stage = _stage(codec)
         if rank < latest:
             problems.append(
                 ValidationProblem(
                     (*loc, index),
-                    f"{kind.replace('_', '->')} codec {_label(codec)} may not "
+                    f"{stage} codec {_label(codec)} may not "
                     "follow a later-stage codec in the pipeline",
                     "invalid_value",
                 )
             )
         latest = max(latest, rank)
-        if kind == "array_bytes":
+        if isinstance(codec, ArrayBytesCodec):
             array_bytes += 1
             if array_bytes > 1:
                 problems.append(

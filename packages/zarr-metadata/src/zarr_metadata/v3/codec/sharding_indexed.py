@@ -4,8 +4,8 @@ Sharding-indexed codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index.html
 """
 
-from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired
+from dataclasses import dataclass, replace
+from typing import ClassVar, Final, Literal, NotRequired, Self
 
 from typing_extensions import TypedDict
 
@@ -17,6 +17,7 @@ from zarr_metadata.v3._entity import (
     ArrayBytesCodec,
     CodecEntity,
     Opaque,
+    canonicalized,
     problem,
     written,
 )
@@ -125,6 +126,14 @@ class ShardingIndexedCodec(ArrayBytesCodec):
                 )
         if len(found) != 0:
             raise MetadataValidationError(found)
+
+    def canonical(self) -> Self:
+        """Each pipeline's codecs in their own canonical form."""
+        return replace(
+            self,
+            codecs=tuple(canonicalized(codec) for codec in self.codecs),
+            index_codecs=tuple(canonicalized(codec) for codec in self.index_codecs),
+        )
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         """This shard against the array reaching it, and its two pipelines.

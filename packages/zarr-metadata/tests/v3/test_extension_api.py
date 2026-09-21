@@ -30,7 +30,6 @@ from zarr_metadata.v3.entity import (
     ChunkGridEntity,
     ChunkKeyEncodingEntity,
     CodecEntity,
-    CodecKind,
     Context,
     DataTypeEntity,
     IntegerDataType,
@@ -41,6 +40,7 @@ from zarr_metadata.v3.entity import (
     StorageClass,
     ValidationProblem,
     ZarrV3MetadataFieldJSON,
+    canonicalized,
     problem,
     written,
 )
@@ -184,19 +184,27 @@ def test_the_entity_layer_answers_what_a_reader_needs() -> None:
     assert parts.grid.axis(0) == frozenset({32})
 
 
-def test_error_an_optional_member_defaults_to_unset() -> None:
-    # Otherwise every instance emits it, the bare-name spelling becomes
-    # unreachable, and a canonicalized document gains a member the writer
-    # never wrote.
-    with pytest.raises(TypeError, match="a default other than UNSET"):
+def test_an_absent_optional_member_is_read_as_unset_whatever_its_default() -> None:
+    # A default is for hand construction; what a document left out is
+    # `UNSET`, so no field's default decides what a document said.
+    @dataclass(frozen=True)
+    class Defaulted(BytesBytesCodec):
+        level: int | UNSET = 3
 
-        @dataclass(frozen=True)
-        class Inventive(BytesBytesCodec):
-            # Optional by its type, so the annotation and the default agree
-            # on that much; it is the default's value that is wrong.
-            level: int | UNSET = 3
+        identifier: ClassVar[str] = "acme.defaulted"
 
-            identifier: ClassVar[str] = "acme.inventive"
+        def to_json(self) -> ZarrV3MetadataFieldJSON:
+            if self.level is UNSET:
+                return "acme.defaulted"
+            return {"name": "acme.defaulted", "configuration": {"level": self.level}}
+
+    assert Defaulted().level == 3
+    codec, problems = CORE_AND_EXTENSIONS.extended_with(Defaulted).coerce(
+        CodecEntity, "acme.defaulted"
+    )
+    assert problems == ()
+    assert isinstance(codec, Defaulted)
+    assert codec.level is UNSET
 
 
 def test_a_reader_gets_entities_or_an_exception() -> None:
@@ -258,19 +266,6 @@ def test_a_reader_can_choose_its_own_scope() -> None:
     in_scope = ArrayDocumentV3.from_json(document, context=SCOPE).codecs[1]
     assert isinstance(in_scope, AcmeLz4Codec)
     assert in_scope.acceleration == 4
-
-
-def test_error_a_field_may_not_shadow_a_class_variable() -> None:
-    # A field of that name goes into the configuration and into the JSON,
-    # while the class variable it shadows is what the rest of the layer
-    # reads -- so the entity would claim one thing and behave as another.
-    with pytest.raises(TypeError, match="shadowing a class variable"):
-
-        @dataclass(frozen=True)
-        class Negotiable(BytesBytesCodec):
-            kind: str = "bytes_bytes"  # pyright: ignore[reportIncompatibleVariableOverride]
-
-            identifier: ClassVar[str] = "acme.negotiable"
 
 
 def test_error_a_family_member_must_declare_what_the_family_left_open() -> None:
@@ -343,8 +338,7 @@ def test_error_a_member_needs_a_check_from_somewhere() -> None:
             identifier: ClassVar[str] = "acme.structured"
 
 
-# A third-party codec that contains another codec: the case that used to
-# need `prepare`, `configuration` and `canonical` written by hand.
+# A third-party codec that contains another codec.
 @dataclass(frozen=True)
 class AcmeWrapperCodec(BytesBytesCodec):
     """A codec that applies another codec after its own step."""
@@ -353,14 +347,18 @@ class AcmeWrapperCodec(BytesBytesCodec):
 
     identifier: ClassVar[str] = "acme.wrapper"
 
+    def canonical(self) -> Self:
+        return replace(self, inner=canonicalized(self.inner))
+
     def to_json(self) -> ZarrV3MetadataFieldJSON:
         return {"name": "acme.wrapper", "configuration": {"inner": written(self.inner)}}
 
 
-def test_a_third_party_entity_containing_entities_writes_nothing_for_it() -> None:
-    # `inner: CodecEntity | Opaque` is the whole declaration. Reading it
-    # in scope, writing it back, and canonicalizing through it all follow
-    # from the annotation, so a wrapper is as short to write as a leaf.
+def test_a_third_party_entity_containing_entities_reads_them_in_scope() -> None:
+    # `inner: CodecEntity | Opaque` is the whole declaration of the
+    # reading: the inner codec is resolved in the scope the wrapper is
+    # read in, and its problems are located inside. Writing and
+    # canonicalizing it are the wrapper's own two lines.
     scope = CORE_AND_EXTENSIONS.extended_with(AcmeWrapperCodec)
     entry = {
         "name": "acme.wrapper",
@@ -414,23 +412,9 @@ def test_a_third_party_entity_containing_entities_writes_nothing_for_it() -> Non
     assert inner.typesize is UNSET
 
 
-def test_error_an_entity_may_not_override_canonical() -> None:
-    # `canonical` is the walk into contained entities, read off the
-    # annotations; an override could lose it. The entity's own rewrite
-    # goes in `simplified`.
-    with pytest.raises(TypeError, match="put the entity's own rewrite in `simplified`"):
-
-        @dataclass(frozen=True)
-        class Rewriter(BytesBytesCodec):
-            identifier: ClassVar[str] = "acme.rewriter"
-
-            def canonical(self) -> Self:  # pyright: ignore[reportIncompatibleMethodOverride]
-                return self
-
-
-def test_simplified_composes_with_the_walk_into_contained_entities() -> None:
-    # An entity that contains an entity and rewrites its own members gets
-    # both from `canonical` -- the contained blosc loses the `typesize`
+def test_canonical_is_the_entity_s_own_and_reaches_what_it_contains() -> None:
+    # An entity that contains an entity and rewrites its own members does
+    # both in one `canonical` -- the contained blosc loses the `typesize`
     # that `noshuffle` ignores, and the frame of 0 that means "unframed"
     # is dropped -- with nothing to call `super()` for.
     @dataclass(frozen=True)
@@ -440,8 +424,12 @@ def test_simplified_composes_with_the_walk_into_contained_entities() -> None:
 
         identifier: ClassVar[str] = "acme.framed"
 
-        def simplified(self) -> Self:
-            return self if self.frame != 0 else replace(self, frame=UNSET)
+        def canonical(self) -> Self:
+            return replace(
+                self,
+                inner=canonicalized(self.inner),
+                frame=UNSET if self.frame == 0 else self.frame,
+            )
 
         def to_json(self) -> ZarrV3MetadataFieldJSON:
             configuration: dict[str, JSONValue] = {"inner": written(self.inner)}
@@ -455,10 +443,10 @@ def test_simplified_composes_with_the_walk_into_contained_entities() -> None:
     assert framed.inner is blosc  # a transformation, not a mutation
 
 
-def test_error_a_nested_field_needs_an_entity_kind_with_a_point() -> None:
-    # `MetadataEntity` is registered at no single point, so a field typed
-    # as one could not be resolved through any scope.
-    with pytest.raises(TypeError, match="is of no kind; annotate it with a codec kind"):
+def test_error_a_nested_field_names_a_kind() -> None:
+    # `MetadataEntity` is of no kind, so a field typed as one could not
+    # be resolved through any scope.
+    with pytest.raises(TypeError, match="inner holds an entity but is not written as its kind"):
 
         @dataclass(frozen=True)
         class Vague(BytesBytesCodec):
@@ -531,10 +519,9 @@ def test_a_rule_about_a_member_is_post_init() -> None:
     assert [p.kind for p in problems] == ["invalid_type"]
 
 
-def test_a_slotted_entity_is_compiled_once() -> None:
-    # `@dataclass(slots=True)` builds the class twice; the second pass
-    # arrives with the derived tables already on it and must not be
-    # refused as having declared them.
+def test_a_slotted_entity_is_accepted() -> None:
+    # `@dataclass(slots=True)` builds the class twice, so class creation
+    # sees it twice; the second time its members are slot descriptors.
     @dataclass(frozen=True, slots=True)
     class AcmeSlotted(BytesBytesCodec):
         level: int
@@ -611,7 +598,7 @@ def test_error_an_entity_must_be_a_dataclass() -> None:
 
 def test_error_a_nested_field_admits_opaque() -> None:
     # What the field holds when the inner name is out of scope.
-    with pytest.raises(TypeError, match="inner holds an entity but does not admit Opaque"):
+    with pytest.raises(TypeError, match="inner holds an entity but is not written as its kind"):
 
         @dataclass(frozen=True)
         class Closed(BytesBytesCodec):
@@ -637,14 +624,19 @@ def test_error_an_array_array_codec_defines_transition() -> None:
 
 
 def test_error_a_codec_is_of_a_kind() -> None:
+    # The kind classes say what a codec does to the array; registration
+    # refuses one that skipped them.
+    @dataclass(frozen=True)
+    class Kindless(CodecEntity):
+        identifier: ClassVar[str] = "acme.kindless"
+
+        def to_json(self) -> ZarrV3MetadataFieldJSON:
+            return "acme.kindless"
+
     with pytest.raises(
         TypeError, match="subclasses CodecEntity directly; subclass ArrayArrayCodec"
     ):
-
-        @dataclass(frozen=True)
-        class Kindless(CodecEntity):
-            identifier: ClassVar[str] = "acme.kindless"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
+        CORE_AND_EXTENSIONS.extended_with(Kindless)
 
 
 def test_error_a_data_type_judges_its_fill_values() -> None:
@@ -659,19 +651,6 @@ def test_error_a_data_type_judges_its_fill_values() -> None:
 
     with pytest.raises(TypeError, match="does not define fill_value_problems"):
         CORE_AND_EXTENSIONS.extended_with(Lax)
-
-
-def test_error_a_literal_class_variable_holds_a_listed_value() -> None:
-    # `bytes` asks a data type's storage class and has nothing to say
-    # about a fourth value: the endian rule would silently not apply.
-    with pytest.raises(
-        TypeError, match="sets scalar_storage = 'sixteen_bytes', which is not one of"
-    ):
-
-        @dataclass(frozen=True)
-        class Wide(DataTypeEntity):
-            identifier: ClassVar[str] = "acme.wide"
-            scalar_storage: ClassVar[StorageClass] = "sixteen_bytes"  # pyright: ignore[reportAssignmentType]
 
 
 def test_error_a_list_of_problem_tuples_is_refused() -> None:

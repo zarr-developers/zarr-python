@@ -5,8 +5,8 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from copy import deepcopy
-from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired
+from dataclasses import dataclass, replace
+from typing import ClassVar, Final, Literal, NotRequired, Self
 
 from typing_extensions import TypedDict
 
@@ -17,6 +17,7 @@ from zarr_metadata.v3._entity import (
     ArrayArrayCodec,
     DataTypeEntity,
     Opaque,
+    canonicalized,
     written,
 )
 from zarr_metadata.v3._parts import ArrayParts
@@ -140,6 +141,10 @@ class CastValueCodec(ArrayArrayCodec):
     scalar_map: ScalarMap | UNSET = UNSET
 
     identifier: ClassVar[str] = CAST_VALUE_CODEC_NAME
+
+    def canonical(self) -> Self:
+        """The target data type in its own canonical form."""
+        return replace(self, data_type=canonicalized(self.data_type))
 
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:
         """The same parts, holding the type this codec casts to."""

@@ -32,14 +32,18 @@ from zarr_metadata.model._validation import (
     ValidationProblem,
     validate_metadata_field_v3,
 )
-from zarr_metadata.v3._compile import is_class_var, own_annotations
 from zarr_metadata.v3._entity import (
     KINDS,
+    ArrayArrayCodec,
+    ArrayBytesCodec,
+    BytesBytesCodec,
+    CodecEntity,
     MetadataEntity,
     Opaque,
     kind_of,
     named_configuration,
 )
+from zarr_metadata.v3._typed_json import is_class_var, own_annotations
 from zarr_metadata.v3.chunk_grid.rectilinear import RectilinearChunkGrid
 from zarr_metadata.v3.chunk_grid.regular import RegularChunkGrid
 from zarr_metadata.v3.chunk_key_encoding.default import DefaultChunkKeyEncoding
@@ -73,10 +77,6 @@ from zarr_metadata.v3.data_type.uint8 import Uint8DataType
 from zarr_metadata.v3.data_type.uint16 import Uint16DataType
 from zarr_metadata.v3.data_type.uint32 import Uint32DataType
 from zarr_metadata.v3.data_type.uint64 import Uint64DataType
-
-if TYPE_CHECKING:
-    from zarr_metadata.v3._entity import Loc
-
 
 if TYPE_CHECKING:
     from zarr_metadata.v3._entity import Loc
@@ -216,14 +216,25 @@ def _registrable(entity: type[MetadataEntity]) -> type[MetadataEntity]:
     """The kind `entity` is registered under; `TypeError` for a class no scope can use.
 
     Class creation refuses what it can see; these are the things it
-    cannot -- the decorator, what a kind leaves abstract -- checked at
-    the first place the class passes through before `coerce` builds it.
+    cannot -- the decorator, what a kind leaves abstract, which base was
+    chosen -- checked at the first place the class passes through before
+    `coerce` builds it.
     """
     kind = kind_of(entity)
     if kind is None:
         msg = (
             f"{entity.__name__} is of no kind; subclass a codec kind, DataTypeEntity, "
             "ChunkGridEntity, ChunkKeyEncodingEntity or StorageTransformerEntity"
+        )
+        raise TypeError(msg)
+    if issubclass(entity, CodecEntity) and not issubclass(
+        entity, (ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec)
+    ):
+        # The kind classes say what a codec does to the array, and what
+        # each must answer is abstract on them.
+        msg = (
+            f"{entity.__name__} subclasses CodecEntity directly; subclass ArrayArrayCodec, "
+            "ArrayBytesCodec or BytesBytesCodec, which says what the codec does to the array"
         )
         raise TypeError(msg)
     if inspect.isabstract(entity):

@@ -290,7 +290,6 @@ _STANDALONE_VOCAB = frozenset(
         "Canonical",
         "CastOutOfRangeMode",
         "CastRoundingMode",
-        "CodecKind",
         "StorageClass",
         "Loc",
         "Extents",

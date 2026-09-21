@@ -14,13 +14,13 @@ For the field-level "any codec entry" alias (used in array metadata's
 `codecs` list and in sharding's inner pipelines), import `ZarrV3MetadataFieldJSON`
 from `zarr_metadata.v3`.
 
-Each codec declares its own pipeline kind (`array -> array`,
-`array -> bytes`, `bytes -> bytes`) as a `kind` class variable.
+Each codec's pipeline position (`array -> array`, `array -> bytes`,
+`bytes -> bytes`) is the kind class its entity subclasses, in
+`zarr_metadata.v3.entity`.
 
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/index.html
 """
 
-from zarr_metadata.v3._entity import CodecKind
 from zarr_metadata.v3.codec.blosc import BloscCodecMetadata
 from zarr_metadata.v3.codec.bytes import BytesCodecMetadata
 from zarr_metadata.v3.codec.cast_value import CastValueCodecMetadata
@@ -35,7 +35,6 @@ __all__ = [
     "BloscCodecMetadata",
     "BytesCodecMetadata",
     "CastValueCodecMetadata",
-    "CodecKind",
     "Crc32cCodecMetadata",
     "GzipCodecMetadata",
     "ScaleOffsetCodecMetadata",

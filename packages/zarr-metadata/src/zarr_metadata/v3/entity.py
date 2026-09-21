@@ -14,13 +14,13 @@ occupies, what a grid divides an array into. A name the scope does not
 model is not a failure: it arrives as an `Opaque` marked `out_of_scope`,
 for the reader to resolve elsewhere.
 
-    from zarr_metadata.v3.entity import ArrayDocumentV3, CodecEntity
+    from zarr_metadata.v3.entity import ArrayBytesCodec, ArrayDocumentV3, CodecEntity
 
     array = ArrayDocumentV3.from_json(json.loads(raw))   # or raises
     array.parts.grid.rank
     for codec in array.codecs:
         if isinstance(codec, CodecEntity):
-            codec.kind                  # 'array_bytes'
+            isinstance(codec, ArrayBytesCodec)   # its pipeline position is its base class
         else:
             codec.json, codec.reason    # 'out_of_scope': resolve it yourself
 
@@ -94,9 +94,11 @@ type-checked are all read off the annotations, and the shapes are the
 ones JSON takes: `int`, `float` (any JSON number), `bool`, `str`,
 `JSONValue`, a `Literal` of names, `tuple[T, ...]` or `tuple[T1, T2]`, a
 TypedDict or dataclass record, `Mapping[str, V]`, a `NewType`, and a
-nested entity -- always with `Opaque`, `inner: CodecEntity | Opaque`,
-because that is what the field holds when the inner name is out of
-scope. Anything else is refused at class creation. A required member
+nested entity, always as `inner: CodecEntity | Opaque`, because that is
+what the field holds when the inner name is out of scope -- at any
+depth, as an array's element or a record's field, and read in the scope
+the containing entity is read in. Anything else is refused at class
+creation. A required member
 has no default; an optional one is `| UNSET = UNSET`, so absence stays
 distinct from a JSON `null`, and a member that means something when
 absent is read that way where it is used, not defaulted.
@@ -115,10 +117,11 @@ read: a member of the wrong type is reported and the entity is not built.
 abstract: the entity as a document writes it, as a literal of its own
 TypedDict, which pyright holds to that type -- the bare name when every
 member is absent, the object otherwise, a contained entity through
-`written`. `coerce` and `canonical` are written once in the base; an
-entity whose own members have two spellings that mean the same overrides
-`simplified`, which `canonical` calls (overriding `canonical` itself is
-refused). Then, by kind:
+`written`. `canonical`, the entity in its simplest equivalent form: the
+entity itself by default, overridden where two spellings of its members
+mean the same, and in an entity that contains entities to put those in
+canonical form -- `replace(self, inner=canonicalized(self.inner))`.
+`coerce` is written once in the base. Then, by kind:
 
 - Every entity: `identifier`, the name it is registered under. A family
   -- one class for every `acme.fixedN` -- overrides `accepts(name)` and
@@ -142,14 +145,16 @@ refused). Then, by kind:
   `ChunkGridEntity`.
 
 What a kind leaves abstract, registration refuses an entity for not
-defining; the other mistakes an author would not otherwise see -- a
-`scalar_storage` outside the listed values, a nested field without
-`Opaque`, a class without `@dataclass`, an entity subclassing
-`MetadataEntity` or `CodecEntity` instead of a kind -- are refused at
-class creation or registration with a message that says what to write.
-A scope reads what a class is off the class: its kind is its base, its
-key is its `identifier`, so `extended_with` takes the classes and nothing
-can be misfiled.
+defining, as it refuses a class without `@dataclass` and a codec
+subclassing `CodecEntity` instead of a kind; class creation refuses a
+field whose annotation is not a shape JSON takes -- a nested entity
+without `Opaque` among them -- and a class variable a base annotates and
+nothing sets. Each says what to write. Everything else an author could
+get wrong, pyright says in the editor: the fields, the class variables
+and the kind's abstract methods are ordinary typed Python. A scope reads
+what a class is off the class: its kind is its base, its key is its
+`identifier`, so `extended_with` takes the classes and nothing can be
+misfiled.
 
 **Naming the JSON type.** The return annotation of `to_json` -- above,
 `AcmeLz4Object | Literal["acme.lz4"]` -- is the entity's own JSON type,
@@ -199,7 +204,6 @@ from zarr_metadata.v3._entity import (
     ChunkGridEntity,
     ChunkKeyEncodingEntity,
     CodecEntity,
-    CodecKind,
     Coerced,
     DataTypeEntity,
     Loc,
@@ -207,6 +211,7 @@ from zarr_metadata.v3._entity import (
     Opaque,
     StorageClass,
     StorageTransformerEntity,
+    canonicalized,
     is_integer,
     named_configuration,
     problem,
@@ -236,7 +241,6 @@ __all__ = [
     "ChunkGridEntity",
     "ChunkKeyEncodingEntity",
     "CodecEntity",
-    "CodecKind",
     "Coerced",
     "ComplexDataType",
     "Context",
@@ -255,6 +259,7 @@ __all__ = [
     "StorageTransformerEntity",
     "ValidationProblem",
     "ZarrV3MetadataFieldJSON",
+    "canonicalized",
     "chain_problems",
     "is_integer",
     "named_configuration",

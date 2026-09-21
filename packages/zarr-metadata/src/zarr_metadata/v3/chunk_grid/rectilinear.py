@@ -235,7 +235,7 @@ class RectilinearChunkGrid(ChunkGridEntity):
         """
         return ChunkGrid.derived(tuple(_axis_lengths(spec) for spec in self.chunk_shapes))
 
-    def simplified(self) -> Self:
+    def canonical(self) -> Self:
         """Run-length encoded, which is the spelling that does not grow.
 
         Two dimension specs listing the same extents describe the same

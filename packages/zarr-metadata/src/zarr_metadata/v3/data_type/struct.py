@@ -5,8 +5,8 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired, cast
+from dataclasses import dataclass, replace
+from typing import ClassVar, Final, Literal, NotRequired, Self, cast
 
 from typing_extensions import ReadOnly, TypedDict
 
@@ -18,6 +18,7 @@ from zarr_metadata.v3._entity import (
     Loc,
     Opaque,
     StorageClass,
+    canonicalized,
     problem,
     written,
 )
@@ -159,6 +160,15 @@ class StructDataType(DataTypeEntity):
                 )
         if len(found) != 0:
             raise MetadataValidationError(found)
+
+    def canonical(self) -> Self:
+        """Each field's data type in its own canonical form."""
+        return replace(
+            self,
+            fields=tuple(
+                replace(field, data_type=canonicalized(field.data_type)) for field in self.fields
+            ),
+        )
 
     def storage_class(self) -> StorageClass | None:
         """The widest class among the fields.

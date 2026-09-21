@@ -31,6 +31,7 @@ from zarr_metadata.v3.entity import (
     Opaque,
     ValidationProblem,
     ZarrV3MetadataFieldJSON,
+    canonicalized,
     problem,
     written,
 )
@@ -76,9 +77,13 @@ class AcmeAffineCodec(ArrayArrayCodec):
         if len(found) != 0:
             raise MetadataValidationError(found)
 
-    def simplified(self) -> Self:
-        """An offset of 0 is the identity, and absent says the same."""
-        return replace(self, offset=UNSET) if self.offset == 0 else self
+    def canonical(self) -> Self:
+        """An offset of 0 is the identity, and absent says the same; `dtype` in its own form."""
+        return replace(
+            self,
+            offset=UNSET if self.offset == 0 else self.offset,
+            dtype=UNSET if self.dtype is UNSET else canonicalized(self.dtype),
+        )
 
     def to_json(self) -> AcmeAffineObject:
         configuration: AcmeAffineConfiguration = {"scale": self.scale}
