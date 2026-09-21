@@ -288,6 +288,7 @@ _STANDALONE_VOCAB = frozenset(
         "BloscCName",
         "BloscShuffle",
         "Canonical",
+        "CheckCompiler",
         "CastOutOfRangeMode",
         "CastRoundingMode",
         "CodecKind",

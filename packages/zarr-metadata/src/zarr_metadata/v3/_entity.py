@@ -576,6 +576,124 @@ def _members_of(annotations: Mapping[str, object]) -> dict[str, tuple[bool, Type
     return members
 
 
+CheckCompiler: TypeAlias = "Callable[[object], TypeCheck | None]"
+"""Turns one annotation into its type check -- or None, to decline it after all."""
+
+_CHECK_COMPILERS: Final[list[tuple[Callable[[object], bool], CheckCompiler]]] = []
+"""The shapes `check_for` reads, each as (does this annotation have it?, compile it).
+
+Consulted front to back. The built-in shapes are appended below in the
+order they must be tried -- a nested metadata field before a record,
+because `Opaque` is itself a dataclass -- and `register_check` puts a
+registration in front of all of them, so the newest one wins.
+"""
+
+
+def register_check(predicate: Callable[[object], bool], compile: CheckCompiler) -> None:
+    """Teach `check_for` an annotation shape it does not read.
+
+        Hex = NewType("Hex", str)
+        register_check(lambda annotation: annotation is Hex, lambda annotation: is_hex)
+
+    `predicate` sees the annotation with `Annotated`, `NotRequired` and
+    `ReadOnly` peeled; `compile` returns the check for it, calling
+    `check_for` itself for any shape inside. A registration is consulted
+    before every built-in one, so a package can also replace how a
+    built-in shape is judged. The same door the built-ins came through,
+    which is what makes the set of shapes open rather than this module's.
+    """
+    _CHECK_COMPILERS.insert(0, (predicate, compile))
+
+
+def _builtin(predicate: Callable[[object], bool]) -> Callable[[CheckCompiler], CheckCompiler]:
+    """Register a built-in shape, in the order written."""
+
+    def append(compile: CheckCompiler) -> CheckCompiler:
+        _CHECK_COMPILERS.append((predicate, compile))
+        return compile
+
+    return append
+
+
+@_builtin(lambda inner: inner is int)
+def _compile_int(inner: object) -> TypeCheck | None:
+    return is_int
+
+
+@_builtin(lambda inner: inner is bool)
+def _compile_bool(inner: object) -> TypeCheck | None:
+    return is_bool
+
+
+@_builtin(lambda inner: inner is str)
+def _compile_str(inner: object) -> TypeCheck | None:
+    return is_str
+
+
+@_builtin(lambda inner: inner is JSONValue)
+def _compile_json_value(inner: object) -> TypeCheck | None:
+    return is_json_value
+
+
+@_builtin(lambda inner: get_origin(inner) is Literal)
+def _compile_literal(inner: object) -> TypeCheck | None:
+    # Sorted, because the order `get_args` reports is not the order the
+    # `Literal` was written in: two `Literal`s over the same values
+    # compare and hash equal, so the first one built anywhere in the
+    # process is the one every later one resolves to. The check is a
+    # membership test either way; this is so the message listing the
+    # values does not depend on import order.
+    return one_of(tuple(sorted(cast("tuple[str, ...]", get_args(inner)))))
+
+
+@_builtin(_is_union)
+def _compile_union(inner: object) -> TypeCheck | None:
+    branches = [arg for arg in get_args(inner) if arg is not UNSET]
+    if len(branches) == 1:
+        return check_for(branches[0])
+    if _is_entity_or_opaque(branches):
+        return is_metadata_field
+    compiled = [(branch, check_for(branch)) for branch in branches]
+    if any(check is None for _, check in compiled):
+        return None
+    return any_of(
+        [(branch, cast("TypeCheck", check)) for branch, check in compiled], describe(inner)
+    )
+
+
+@_builtin(lambda inner: get_origin(inner) is tuple)
+def _compile_tuple(inner: object) -> TypeCheck | None:
+    arguments = get_args(inner)
+    if len(arguments) == 2 and arguments[1] is Ellipsis:
+        element = check_for(arguments[0])
+        return None if element is None else sequence_of(element)
+    elements = [check_for(argument) for argument in arguments]
+    if any(element is None for element in elements):
+        return None
+    return fixed_tuple([cast("TypeCheck", element) for element in elements], describe(inner))
+
+
+# A nested metadata field, before the record shape: `Opaque` is itself a
+# dataclass, and an entity type must not be walked as one either.
+@_builtin(_is_entity_type)
+def _compile_entity(inner: object) -> TypeCheck | None:
+    return is_metadata_field
+
+
+@_builtin(is_typeddict)
+def _compile_typeddict(inner: object) -> TypeCheck | None:
+    members = _members_of(get_type_hints(inner, include_extras=True))
+    return None if members is None else mapping_of(members)
+
+
+@_builtin(lambda inner: isinstance(inner, type) and is_dataclass(inner))
+def _compile_record(inner: object) -> TypeCheck | None:
+    if not isinstance(inner, type):  # pragma: no cover - the predicate says it is
+        return None
+    members = _members_of(_field_hints(inner))
+    return None if members is None else mapping_of(members)
+
+
 def check_for(annotation: object) -> TypeCheck | None:
     """The type check a field annotation implies, or None if it implies none.
 
@@ -587,58 +705,15 @@ def check_for(annotation: object) -> TypeCheck | None:
     absent, which is the other half of a table entry and is read
     separately by `is_optional`.
 
-    None for an annotation outside those shapes, which the entity then
-    declares a check for by hand.
+    Open: each shape is a registration in `_CHECK_COMPILERS`, and
+    `register_check` adds one from outside. None for an annotation no
+    registration claims, which the entity then declares a check for by
+    hand.
     """
     inner, _ = _strip(annotation)
-    if inner is int:
-        return is_int
-    if inner is bool:
-        return is_bool
-    if inner is str:
-        return is_str
-    if inner is JSONValue:
-        return is_json_value
-    origin = get_origin(inner)
-    if origin is Literal:
-        # Sorted, because the order `get_args` reports is not the order
-        # the `Literal` was written in: two `Literal`s over the same
-        # values compare and hash equal, so the first one built anywhere
-        # in the process is the one every later one resolves to. The
-        # check is a membership test either way; this is so the message
-        # listing the values does not depend on import order.
-        return one_of(tuple(sorted(cast("tuple[str, ...]", get_args(inner)))))
-    if _is_union(inner):
-        branches = [arg for arg in get_args(inner) if arg is not UNSET]
-        if len(branches) == 1:
-            return check_for(branches[0])
-        if _is_entity_or_opaque(branches):
-            return is_metadata_field
-        compiled = [(branch, check_for(branch)) for branch in branches]
-        if any(check is None for _, check in compiled):
-            return None
-        return any_of(
-            [(branch, cast("TypeCheck", check)) for branch, check in compiled], describe(inner)
-        )
-    if origin is tuple:
-        arguments = get_args(inner)
-        if len(arguments) == 2 and arguments[1] is Ellipsis:
-            element = check_for(arguments[0])
-            return None if element is None else sequence_of(element)
-        elements = [check_for(argument) for argument in arguments]
-        if any(element is None for element in elements):
-            return None
-        return fixed_tuple([cast("TypeCheck", element) for element in elements], describe(inner))
-    # A nested metadata field, before the record check: `Opaque` is itself
-    # a dataclass, and an entity type must not be walked as one either.
-    if _is_entity_type(inner):
-        return is_metadata_field
-    if is_typeddict(inner):
-        members = _members_of(get_type_hints(inner, include_extras=True))
-        return None if members is None else mapping_of(members)
-    if isinstance(inner, type) and is_dataclass(inner):
-        members = _members_of(_field_hints(inner))
-        return None if members is None else mapping_of(members)
+    for predicate, compile in _CHECK_COMPILERS:
+        if predicate(inner):
+            return compile(inner)
     return None
 
 
@@ -1787,6 +1862,7 @@ __all__ = [
     "DATA_TYPE",
     "FROM_NAME",
     "STORAGE_TRANSFORMERS",
+    "CheckCompiler",
     "ChunkGridEntity",
     "CodecEntity",
     "CodecKind",
@@ -1816,6 +1892,7 @@ __all__ = [
     "named_configuration",
     "one_of",
     "problem",
+    "register_check",
     "sequence_of",
     "validates",
     "within",

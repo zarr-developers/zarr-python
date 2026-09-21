@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, ClassVar, Self, cast
+from typing import TYPE_CHECKING, Annotated, ClassVar, NewType, Self, cast
 
 import pytest
 
@@ -17,6 +17,7 @@ from zarr_metadata.rules import (
     canonicalize_array_metadata_v3,
     validate_array_metadata_v3,
 )
+from zarr_metadata.v3._entity import _CHECK_COMPILERS
 from zarr_metadata.v3.codec.blosc import BloscCodec
 from zarr_metadata.v3.codec.gzip import GzipCodec
 from zarr_metadata.v3.entity import (
@@ -32,6 +33,7 @@ from zarr_metadata.v3.entity import (
     DataTypeEntity,
     IntegerDataType,
     Interval,
+    Loc,
     MemberTypes,
     MetadataEntity,
     Opaque,
@@ -39,6 +41,7 @@ from zarr_metadata.v3.entity import (
     is_int,
     named_configuration,
     problem,
+    register_check,
     validates,
 )
 
@@ -561,3 +564,61 @@ def test_error_a_validates_rule_must_name_a_field() -> None:
             @validates("blocc")
             def _rule(block: int) -> tuple[ValidationProblem, ...]:
                 return ()
+
+
+# An annotation shape the compiler does not read, taught to it from outside.
+Hex = NewType("Hex", str)
+
+
+def _is_hex(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+    if not isinstance(value, str) or any(c not in "0123456789abcdef" for c in value):
+        return problem(loc, f"expected lowercase hex digits, got {value!r}")
+    return ()
+
+
+def test_a_third_party_can_teach_the_compiler_a_shape() -> None:
+    # `NewType` is a real case: to the type checker `Hex` is a `str`, but
+    # at run time it is a function `check_for` has no registration for,
+    # so an entity using it is refused -- until one is registered, through
+    # the same door the built-in shapes came through.
+    with pytest.raises(TypeError, match="no check can be read off the annotation of digest"):
+
+        @dataclass(frozen=True)
+        class Unregistered(CodecEntity):  # pyright: ignore[reportUnusedClass]
+            digest: Hex
+
+            identifier: ClassVar[str] = "acme.unregistered"
+            kind: ClassVar[CodecKind] = "bytes_bytes"
+
+    def is_hex_annotation(annotation: object) -> bool:
+        return annotation is Hex
+
+    register_check(is_hex_annotation, lambda annotation: _is_hex)
+    try:
+
+        @dataclass(frozen=True)
+        class AcmeDigestCodec(CodecEntity):
+            digest: Hex
+
+            identifier: ClassVar[str] = "acme.digest"
+            kind: ClassVar[CodecKind] = "bytes_bytes"
+
+        scope = CORE_AND_EXTENSIONS.extended_with(
+            codecs={AcmeDigestCodec.identifier: AcmeDigestCodec}
+        )
+        codec, problems = scope.coerce(
+            "codecs", {"name": "acme.digest", "configuration": {"digest": "c0ffee"}}
+        )
+        assert problems == ()
+        assert isinstance(codec, AcmeDigestCodec)
+        _, problems = scope.coerce(
+            "codecs", {"name": "acme.digest", "configuration": {"digest": "C0FFEE"}}
+        )
+        assert [(p.loc, p.kind) for p in problems] == [
+            (("configuration", "digest"), "invalid_type")
+        ]
+    finally:
+        # A registration is process-wide; leave the compiler as it was found.
+        _CHECK_COMPILERS[:] = [
+            entry for entry in _CHECK_COMPILERS if entry[0] is not is_hex_annotation
+        ]
