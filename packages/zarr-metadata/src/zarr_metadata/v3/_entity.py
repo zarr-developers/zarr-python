@@ -27,6 +27,7 @@ at registration, an entity `coerce` could not read.
 
 from __future__ import annotations
 
+import functools
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -57,7 +58,6 @@ if TYPE_CHECKING:
     from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
     from zarr_metadata.v3._parts import ArrayParts, ChunkGrid
     from zarr_metadata.v3._registry import Context
-    from zarr_metadata.v3._typed_json import Leaf
 
 EntityT = TypeVar("EntityT", bound="MetadataEntity")
 
@@ -226,7 +226,7 @@ def unreadable(cls: type[MetadataEntity]) -> str | None:
     unread: list[str] = []
     for name, annotation in hints.items():
         try:
-            accepted = parser_for(annotation, _reading(None, [])) is not None
+            accepted = parser_for(annotation, _nested_field) is not None
         except TypeError as refused:
             return f"{cls.__name__}: {name} {refused}"
         if not accepted:
@@ -283,34 +283,72 @@ def nested_kind(annotation: object) -> type[MetadataEntity] | None:
     raise TypeError(msg)
 
 
-def _reading(context: Context | None, nested: list[ValidationProblem]) -> Leaf:
-    """How a field holding another entity is parsed: `Kind | Opaque`, read in `context`.
+@dataclass(frozen=True, slots=True)
+class _Reading:
+    """What one reading hands down into the fields that hold entities.
 
-    Asked by the parser at every depth, so a struct's fields' data types
-    and a shard's inner pipelines are read the same way. The envelope's
-    shape is the containing field's own problem; what is found inside the
-    entity is collected in `nested`, apart, because the containing
-    entity's rules still run over its own members when only a contained
-    entity is wrong. With no `context` the shape is checked and nothing
-    is read, which is what registration asks.
+    The scope the inner entities are read in, and the problems found
+    inside them, kept apart from the containing entity's own: its rules
+    still run over its own members when only a contained entity is
+    wrong.
     """
 
-    def leaf(annotation: object) -> Parser | None:
-        kind = nested_kind(annotation)
-        if kind is None:
-            return None
+    context: Context
+    nested: list[ValidationProblem]
 
-        def parse(value: object, loc: Loc) -> Parsed:
-            problems = is_metadata_field(value, loc)
-            if len(problems) != 0 or context is None:
-                return value, problems
-            entity, found = context.coerce(kind, value, loc)
-            nested.extend(found)
-            return entity, ()
 
-        return parse
+def _nested_field(annotation: object) -> Parser[_Reading] | None:
+    """The parser for a field holding another entity: `Kind | Opaque`, read in the reading's scope.
 
-    return leaf
+    The entity layer's one shape of its own, asked by the parser at
+    every depth, so a struct's fields' data types and a shard's inner
+    pipelines are read the same way. The envelope's shape is the
+    containing field's own problem; what is found inside the entity
+    goes to the reading.
+    """
+    kind = nested_kind(annotation)
+    if kind is None:
+        return None
+
+    def parse(value: object, loc: Loc, reading: _Reading) -> Parsed:
+        problems = is_metadata_field(value, loc)
+        if len(problems) != 0:
+            return value, problems
+        entity, found = reading.context.coerce(kind, value, loc)
+        reading.nested.extend(found)
+        return entity, ()
+
+    return parse
+
+
+@dataclass(frozen=True, slots=True)
+class _Member:
+    """How `coerce` reads one field: what the annotation says, compiled once."""
+
+    key: str
+    from_name: bool
+    optional: bool
+    parse: Parser[_Reading]
+
+
+@functools.cache
+def _plan(cls: type[MetadataEntity]) -> tuple[_Member, ...]:
+    """The fields of `cls` as `coerce` reads them, compiled once per class.
+
+    A pure function of the class: its fields are fixed once it exists,
+    and each parser is a function of its annotation alone, taking the
+    reading it runs in as an argument. `TypeError` for a field no parser
+    reads, which registration refuses first.
+    """
+    return tuple(
+        _Member(
+            key,
+            is_from_name(annotation),
+            is_optional(annotation),
+            parser(annotation, _nested_field),
+        )
+        for key, annotation in field_hints(cls).items()
+    )
 
 
 @dataclass(frozen=True)
@@ -406,31 +444,29 @@ class MetadataEntity(ABC):
             return None, problem((), f"expected the {cls.identifier!r} entity")
         if len(envelope) != 0:
             return None, envelope
-        hints = field_hints(cls)
-        if given is None and any(
-            not is_from_name(annotation) and not is_optional(annotation)
-            for annotation in hints.values()
-        ):
+        plan = _plan(cls)
+        if given is None and any(not member.from_name and not member.optional for member in plan):
             return None, problem(
                 ("configuration",),
                 f"{cls.identifier!r} requires a configuration",
                 "missing_key",
             )
         configuration: Mapping[str, object] = {} if given is None else given
-        nested: list[ValidationProblem] = []
-        reading = _reading(context, nested)
+        reading = _Reading(context, [])
+        declared = {member.key: member for member in plan}
         members: dict[str, object] = {}
         own: list[ValidationProblem] = []
         for key in configuration:
-            if key not in hints or is_from_name(hints[key]):
+            if key not in declared or declared[key].from_name:
                 own.extend(
                     problem(("configuration", key), f"unexpected key {key!r}", "unknown_key")
                 )
-        for key, annotation in hints.items():
-            if is_from_name(annotation):
+        for member in plan:
+            key = member.key
+            if member.from_name:
                 members[key] = name
             elif key not in configuration:
-                if is_optional(annotation):
+                if member.optional:
                     members[key] = UNSET
                 else:
                     own.extend(
@@ -442,11 +478,11 @@ class MetadataEntity(ABC):
                 # Arrays as tuples before parsing, so a member holds the
                 # tuples its type declares, never the lists raw JSON
                 # arrives as.
-                members[key], problems = parser(annotation, reading)(
-                    as_tuples(configuration[key]), ("configuration", key)
+                members[key], problems = member.parse(
+                    as_tuples(configuration[key]), ("configuration", key), reading
                 )
                 own.extend(problems)
-        found = (*own, *nested)
+        found = (*own, *reading.nested)
         if any(entry.kind != "unknown_key" for entry in own):
             # An unknown key is survivable; a member that could not be
             # read is a hole, and judging around it would be guessing.
@@ -455,7 +491,7 @@ class MetadataEntity(ABC):
         # A problem about a member the envelope's name carries is about
         # the entity, and lands on it rather than under a configuration
         # the document does not have.
-        from_name = {key for key, annotation in hints.items() if is_from_name(annotation)}
+        from_name = {member.key for member in plan if member.from_name}
         refused = within(
             (),
             tuple(
@@ -469,7 +505,7 @@ class MetadataEntity(ABC):
             # Values the spec disallows: reported rather than raised,
             # every one, located under the configuration.
             return None, (*found, *refused)
-        if any(entry.kind != "unknown_key" for entry in nested):
+        if any(entry.kind != "unknown_key" for entry in reading.nested):
             # A contained entity could not be read. This entity's own
             # rules ran -- an invalid inner is an `Opaque`, as an
             # out-of-scope one is -- but what is handed back is not an

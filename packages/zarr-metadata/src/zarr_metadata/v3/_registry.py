@@ -173,21 +173,20 @@ class Context:
         envelope gets the same structural judgment here that the model
         layer gives a top-level one -- an extra member, a `configuration`
         that is not an object, a `must_understand` that is not a boolean
-        or is `false`. `envelope_judged` says the model layer has
-        reported that already, which it has for the fields of a
-        document, so it is not reported twice. The entity is read
-        whenever there is one to read -- a stray member or a malformed
-        `must_understand` says nothing about the configuration -- and
-        not when the value names no entity or its configuration is not
-        an object, which the envelope judgment has already said.
+        or is `false`. `envelope_judged` says the model layer has judged
+        and reported that already, which it has for the fields of a
+        document, so it is neither judged nor reported twice. The entity
+        is read whenever there is one to read -- a stray member or a
+        malformed `must_understand` says nothing about the configuration
+        -- and not when the value names no entity or its configuration
+        is not an object, which the envelope judgment has said.
         """
-        envelope = validate_metadata_field_v3(value, allow_must_understand_false=False)
         problems = (
             ()
             if envelope_judged
             else tuple(
                 ValidationProblem((*loc, *found.loc), found.message, found.kind)
-                for found in envelope
+                for found in validate_metadata_field_v3(value, allow_must_understand_false=False)
             )
         )
         name, _, malformed = named_configuration(value)

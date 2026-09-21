@@ -15,11 +15,14 @@ value.
 Nothing here knows what a metadata entity is. A caller with a shape of
 its own -- a field that holds another entity, read through a scope --
 passes a `leaf`, which is asked first for every annotation at every
-depth; the parser it returns is used as it is.
+depth; the parser it returns is used as it is. A parser is compiled
+once per annotation and takes the reading it runs in as an argument,
+so what varies between reads never has to be compiled into it.
 """
 
 from __future__ import annotations
 
+import functools
 import sys
 import types
 from collections.abc import Callable, Mapping, Sequence
@@ -33,6 +36,7 @@ from typing import (
     NotRequired,
     Required,
     TypeAlias,
+    TypeVar,
     Union,
     cast,
     get_args,
@@ -50,16 +54,25 @@ if TYPE_CHECKING:
     from zarr_metadata.model._validation import ProblemKind
 
 
-Loc: TypeAlias = "tuple[str | int, ...]"
+S = TypeVar("S")
+"""The reading a parser runs in: whatever the caller hands through, untouched here."""
+
+Loc: TypeAlias = tuple[str | int, ...]
 """Where in a document a value sits: the keys and indices down to it."""
 
-Parsed: TypeAlias = "tuple[object, tuple[ValidationProblem, ...]]"
+Parsed: TypeAlias = tuple[object, tuple[ValidationProblem, ...]]
 """What a parser returns: the typed value, and every problem found with it."""
 
-Parser: TypeAlias = "Callable[[object, Loc], Parsed]"
-"""One value against one annotation, located at `loc`."""
+Parser: TypeAlias = Callable[[object, Loc, S], Parsed]
+"""One value against one annotation, located at `loc`, in a reading `S`.
 
-Leaf: TypeAlias = "Callable[[object], Parser | None]"
+A parser is compiled once from the annotation and run many times; what
+varies between runs -- for a caller whose leaf reads a nested entity,
+the scope to read it in -- is the reading, an argument every parser
+hands down to the parsers it is built from and reads nothing of itself.
+"""
+
+Leaf: TypeAlias = Callable[[object], "Parser[S] | None"]
 """A caller's own shapes: asked first for every annotation, None to decline."""
 
 
@@ -195,6 +208,7 @@ def is_class_var(annotation: object) -> bool:
     return annotation is ClassVar or get_origin(annotation) is ClassVar
 
 
+@functools.cache
 def field_hints(cls: type) -> dict[str, object]:
     """The dataclass fields of `cls`, resolved, base first.
 
@@ -203,6 +217,10 @@ def field_hints(cls: type) -> dict[str, object]:
     `ClassVar` whose annotation names something imported only for the
     type checker cannot fail registration. `@dataclass` sees the same
     set, in the same order.
+
+    Cached per class: a class's annotations are fixed once it exists,
+    and resolving them costs a third of a read. A name that does not
+    resolve raises, and a raise is not cached.
     """
     hints: dict[str, object] = {}
     for ancestor in reversed(cls.__mro__):
@@ -319,8 +337,8 @@ def has_shape(shape: str | None, value: object) -> bool:
 # --- the parsers ---------------------------------------------------------
 
 
-def _scalar(description: str, admits: Callable[[object], bool]) -> Parser:
-    def parse(value: object, loc: Loc) -> Parsed:
+def _scalar(description: str, admits: Callable[[object], bool]) -> Parser[object]:
+    def parse(value: object, loc: Loc, state: object) -> Parsed:
         if admits(value):
             return value, ()
         return value, problem(loc, f"expected {description}, got {value!r}")
@@ -328,23 +346,23 @@ def _scalar(description: str, admits: Callable[[object], bool]) -> Parser:
     return parse
 
 
-_INTEGER: Parser = _scalar("an integer", is_integer)
-_NUMBER: Parser = _scalar(
+_INTEGER: Parser[object] = _scalar("an integer", is_integer)
+_NUMBER: Parser[object] = _scalar(
     "a number", lambda value: not isinstance(value, bool) and isinstance(value, (int, float))
 )
-_BOOLEAN: Parser = _scalar("a boolean", lambda value: isinstance(value, bool))
-_STRING: Parser = _scalar("a string", lambda value: isinstance(value, str))
-_JSON: Parser = _scalar("a JSON value", is_json)
+_BOOLEAN: Parser[object] = _scalar("a boolean", lambda value: isinstance(value, bool))
+_STRING: Parser[object] = _scalar("a string", lambda value: isinstance(value, str))
+_JSON: Parser[object] = _scalar("a JSON value", is_json)
 
 
-def one_of(allowed: tuple[object, ...]) -> Parser:
+def one_of(allowed: tuple[object, ...]) -> Parser[object]:
     """A member whose type is a closed set of values.
 
     Equal and of the same type: JSON `true` is not the integer 1, though
     Python says `True == 1`.
     """
 
-    def parse(value: object, loc: Loc) -> Parsed:
+    def parse(value: object, loc: Loc, state: object) -> Parsed:
         if not any(value == entry and type(value) is type(entry) for entry in allowed):
             return value, problem(
                 loc, f"expected one of {allowed!r}, got {value!r}", "invalid_value"
@@ -354,17 +372,17 @@ def one_of(allowed: tuple[object, ...]) -> Parser:
     return parse
 
 
-def sequence_of(element: Parser) -> Parser:
+def sequence_of(element: Parser[S]) -> Parser[S]:
     """A member whose type is an array of one element type, parsed element by element."""
 
-    def parse(value: object, loc: Loc) -> Parsed:
+    def parse(value: object, loc: Loc, state: S) -> Parsed:
         if not isinstance(value, (list, tuple)):
             return value, problem(loc, f"expected a sequence, got {value!r}")
         entries = cast("list[object] | tuple[object, ...]", value)
         parsed: list[object] = []
         found: list[ValidationProblem] = []
         for index, entry in enumerate(entries):
-            item, problems = element(entry, (*loc, index))
+            item, problems = element(entry, (*loc, index), state)
             parsed.append(item)
             found.extend(problems)
         return tuple(parsed), tuple(found)
@@ -372,10 +390,10 @@ def sequence_of(element: Parser) -> Parser:
     return parse
 
 
-def fixed_tuple(elements: Sequence[Parser], description: str) -> Parser:
+def fixed_tuple(elements: Sequence[Parser[S]], description: str) -> Parser[S]:
     """A member whose type is an array of a fixed length, parsed position by position."""
 
-    def parse(value: object, loc: Loc) -> Parsed:
+    def parse(value: object, loc: Loc, state: S) -> Parsed:
         if not isinstance(value, (list, tuple)):
             return value, problem(loc, f"expected {description}, got {value!r}")
         entries = tuple(cast("list[object] | tuple[object, ...]", value))
@@ -384,7 +402,7 @@ def fixed_tuple(elements: Sequence[Parser], description: str) -> Parser:
         parsed: list[object] = []
         found: list[ValidationProblem] = []
         for position, (element, entry) in enumerate(zip(elements, entries, strict=True)):
-            item, problems = element(entry, (*loc, position))
+            item, problems = element(entry, (*loc, position), state)
             parsed.append(item)
             found.extend(problems)
         return tuple(parsed), tuple(found)
@@ -392,7 +410,7 @@ def fixed_tuple(elements: Sequence[Parser], description: str) -> Parser:
     return parse
 
 
-def any_of(branches: Sequence[tuple[object, Parser]], description: str) -> Parser:
+def any_of(branches: Sequence[tuple[object, Parser[S]]], description: str) -> Parser[S]:
     """A member whose type is a union of shapes, parsed by the branch it fits.
 
     The branch whose top-level shape the value has is the one that
@@ -403,12 +421,12 @@ def any_of(branches: Sequence[tuple[object, Parser]], description: str) -> Parse
     reported by the first that does not.
     """
 
-    def parse(value: object, loc: Loc) -> Parsed:
+    def parse(value: object, loc: Loc, state: S) -> Parsed:
         first: Parsed | None = None
         for annotation, branch in branches:
             if not has_shape(shape_of(annotation), value):
                 continue
-            result = branch(value, loc)
+            result = branch(value, loc, state)
             if len(result[1]) == 0:
                 return result
             if first is None:
@@ -420,12 +438,12 @@ def any_of(branches: Sequence[tuple[object, Parser]], description: str) -> Parse
     return parse
 
 
-Members: TypeAlias = "Mapping[str, tuple[bool, Parser]]"
+Members: TypeAlias = Mapping[str, tuple[bool, "Parser[S]"]]
 """An object's declared keys: whether each is required, and its parser."""
 
 
 def _keys(
-    members: Members, entries: Mapping[str, object], loc: Loc
+    members: Members[S], entries: Mapping[str, object], loc: Loc, state: S
 ) -> tuple[dict[str, object], tuple[ValidationProblem, ...]]:
     """The declared keys of one object, each parsed at its own key.
 
@@ -446,30 +464,30 @@ def _keys(
             else:
                 parsed[key] = UNSET
             continue
-        item, problems = member(entries[key], (*loc, key))
+        item, problems = member(entries[key], (*loc, key), state)
         parsed[key] = item
         found.extend(problems)
     return parsed, tuple(found)
 
 
-def object_of(members: Members) -> Parser:
+def object_of(members: Members[S]) -> Parser[S]:
     """A member that is itself an object with declared keys, kept as the mapping it came as.
 
     A key the type does not declare is reported and kept: the member
     still says what the document said.
     """
 
-    def parse(value: object, loc: Loc) -> Parsed:
+    def parse(value: object, loc: Loc, state: S) -> Parsed:
         if not isinstance(value, Mapping):
             return value, problem(loc, f"expected an object, got {value!r}")
         entries = cast("Mapping[str, object]", value)
-        parsed, found = _keys(members, entries, loc)
+        parsed, found = _keys(members, entries, loc, state)
         return {**entries, **{key: item for key, item in parsed.items() if key in entries}}, found
 
     return parse
 
 
-def record_of(record: Callable[..., object], members: Members) -> Parser:
+def record_of(record: Callable[..., object], members: Members[S]) -> Parser[S]:
     """A member that is itself an object with declared keys, built as a dataclass.
 
     Built only from an object whose every key read; otherwise the value
@@ -478,11 +496,11 @@ def record_of(record: Callable[..., object], members: Members) -> Parser:
     is reported the same way, located under the object.
     """
 
-    def parse(value: object, loc: Loc) -> Parsed:
+    def parse(value: object, loc: Loc, state: S) -> Parsed:
         if not isinstance(value, Mapping):
             return value, problem(loc, f"expected an object, got {value!r}")
         entries = cast("Mapping[str, object]", value)
-        parsed, found = _keys(members, entries, loc)
+        parsed, found = _keys(members, entries, loc, state)
         if any(entry.kind != "unknown_key" for entry in found):
             return entries, found
         try:
@@ -499,21 +517,21 @@ def record_of(record: Callable[..., object], members: Members) -> Parser:
     return parse
 
 
-def mapping_of(value: Parser) -> Parser:
+def mapping_of(value: Parser[S]) -> Parser[S]:
     """A member whose type is an object with any keys, parsed value by value.
 
     The open counterpart of `object_of`: a `Mapping[str, V]` says nothing
     about which keys there are, only what each value must be.
     """
 
-    def parse(candidate: object, loc: Loc) -> Parsed:
+    def parse(candidate: object, loc: Loc, state: S) -> Parsed:
         if not isinstance(candidate, Mapping):
             return candidate, problem(loc, f"expected an object, got {candidate!r}")
         entries = cast("Mapping[str, object]", candidate)
         parsed: dict[str, object] = {}
         found: list[ValidationProblem] = []
         for key, entry in entries.items():
-            item, problems = value(entry, (*loc, key))
+            item, problems = value(entry, (*loc, key), state)
             parsed[key] = item
             found.extend(problems)
         return parsed, tuple(found)
@@ -524,27 +542,27 @@ def mapping_of(value: Parser) -> Parser:
 # --- the compiler --------------------------------------------------------
 
 
-def _members_of(annotations: Mapping[str, object], leaf: Leaf) -> Members | None:
+def _members_of(annotations: Mapping[str, object], leaf: Leaf[S]) -> Members[S] | None:
     """A member table for an object's keys; None if any key's type has no parser."""
-    members: dict[str, tuple[bool, Parser]] = {}
+    members: dict[str, tuple[bool, Parser[S]]] = {}
     for key, annotation in annotations.items():
-        parser = parser_for(annotation, leaf)
-        if parser is None:
+        member = parser_for(annotation, leaf)
+        if member is None:
             return None
         required = not is_not_required(annotation) and not is_optional(annotation)
-        members[key] = (required, parser)
+        members[key] = (required, member)
     return members
 
 
-def _union(inner: object, leaf: Leaf) -> Parser | None:
+def _union(inner: object, leaf: Leaf[S]) -> Parser[S] | None:
     compiled = [(branch, parser_for(branch, leaf)) for branch in get_args(inner)]
-    branches = [(branch, parser) for branch, parser in compiled if parser is not None]
+    branches = [(branch, member) for branch, member in compiled if member is not None]
     if len(branches) != len(compiled):
         return None
     return any_of(branches, describe(inner))
 
 
-def _tuple(inner: object, leaf: Leaf) -> Parser | None:
+def _tuple(inner: object, leaf: Leaf[S]) -> Parser[S] | None:
     arguments = get_args(inner)
     if len(arguments) == 2 and arguments[1] is Ellipsis:
         element = parser_for(arguments[0], leaf)
@@ -556,7 +574,7 @@ def _tuple(inner: object, leaf: Leaf) -> Parser | None:
     return fixed_tuple(elements, describe(inner))
 
 
-def _mapping(inner: object, leaf: Leaf) -> Parser | None:
+def _mapping(inner: object, leaf: Leaf[S]) -> Parser[S] | None:
     arguments = get_args(inner)
     if len(arguments) != 2 or arguments[0] is not str:
         return None
@@ -564,19 +582,20 @@ def _mapping(inner: object, leaf: Leaf) -> Parser | None:
     return None if value is None else mapping_of(value)
 
 
-def _no_leaf(annotation: object) -> Parser | None:
+def no_leaf(annotation: object) -> Parser[object] | None:
+    """The leaf of a caller with no shapes of its own."""
     return None
 
 
-def parser_for(annotation: object, leaf: Leaf = _no_leaf) -> Parser | None:
+def parser_for(annotation: object, leaf: Leaf[S]) -> Parser[S] | None:
     """The parser a field annotation implies, or None if it implies none.
 
     A small compiler over the shapes JSON takes and no others, listed in
     the module docstring. `leaf` is asked first, here and at every depth
     -- inside a union, an array, an object -- and what it returns is
     used as it is. Closed: an annotation outside these implies no
-    parser, and an entity declaring one is refused at registration.
-    The field is written as one of these shapes instead, with any finer
+    parser, and an entity declaring one is refused at registration. The
+    field is written as one of these shapes instead, with any finer
     rule in `__post_init__`.
     """
     inner = without_unset(strip_annotation(annotation)[0])
@@ -622,7 +641,7 @@ def parser_for(annotation: object, leaf: Leaf = _no_leaf) -> Parser | None:
     return None
 
 
-def parser(annotation: object, leaf: Leaf = _no_leaf) -> Parser:
+def parser(annotation: object, leaf: Leaf[S]) -> Parser[S]:
     """The parser a field annotation implies; `TypeError` if it implies none."""
     found = parser_for(annotation, leaf)
     if found is None:
@@ -650,6 +669,7 @@ __all__ = [
     "is_optional",
     "is_union",
     "mapping_of",
+    "no_leaf",
     "object_of",
     "one_of",
     "own_annotations",
