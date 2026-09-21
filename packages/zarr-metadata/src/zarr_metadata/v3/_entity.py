@@ -43,6 +43,7 @@ from __future__ import annotations
 # (`TypeCheck`, `MemberTypes`) are resolved by `get_type_hints` at class
 # creation, and a name that exists only for the type checker is a NameError
 # then -- for this package and for any tool introspecting an entity.
+import sys
 import types
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
@@ -366,6 +367,25 @@ def _strip(annotation: object) -> tuple[object, tuple[object, ...]]:
             return annotation, tuple(metadata)
 
 
+def _own_annotations(klass: type) -> dict[str, object]:
+    """A class's own annotations, unevaluated.
+
+    From 3.14 a class does not carry an `__annotations__` dict until it is
+    asked for one, and asking evaluates every annotation at once -- so a
+    `ClassVar` naming something imported only for the type checker would
+    fail the whole class. `annotationlib` can hand them back as the text
+    they were written as, which is what the callers here want anyway:
+    class variables are skipped by text before anything is evaluated.
+    Earlier versions leave the dict on the class, strings or values as
+    the module chose.
+    """
+    if sys.version_info >= (3, 14):
+        import annotationlib
+
+        return dict(annotationlib.get_annotations(klass, format=annotationlib.Format.STRING))
+    return dict(vars(klass).get("__annotations__", {}))
+
+
 def _field_hints(cls: type) -> dict[str, object]:
     """The dataclass fields of `cls`, resolved, base first.
 
@@ -379,7 +399,7 @@ def _field_hints(cls: type) -> dict[str, object]:
     for ancestor in reversed(cls.__mro__):
         raw = {
             name: annotation
-            for name, annotation in vars(ancestor).get("__annotations__", {}).items()
+            for name, annotation in _own_annotations(ancestor).items()
             if not _is_class_var(annotation)
         }
         if len(raw) == 0:
@@ -1155,7 +1175,7 @@ def _declared_class_vars(cls: type) -> dict[str, type]:
     """
     found: dict[str, type] = {}
     for ancestor in reversed(cls.__mro__):
-        for name, annotation in vars(ancestor).get("__annotations__", {}).items():
+        for name, annotation in _own_annotations(ancestor).items():
             if _is_class_var(annotation):
                 found[name] = ancestor
     return found
@@ -1391,10 +1411,8 @@ class MetadataEntity:
         annotated = _declared_class_vars(cls)
         shadowed = [
             name
-            for name in vars(cls).get("__annotations__", {})
-            if name in annotated
-            and annotated[name] is not cls
-            and not _is_class_var(vars(cls)["__annotations__"][name])
+            for name, annotation in _own_annotations(cls).items()
+            if name in annotated and annotated[name] is not cls and not _is_class_var(annotation)
         ]
         if len(shadowed) != 0:
             # A field of that name would go into `member_types`, into the
