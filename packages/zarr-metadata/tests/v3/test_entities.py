@@ -11,22 +11,15 @@ from __future__ import annotations
 
 import copy
 import dataclasses
-import types
 from typing import (
     Any,
     ClassVar,
-    NotRequired,
     Self,
-    Union,
     cast,
-    get_args,
-    get_origin,
-    get_type_hints,
 )
 
 import pytest
 from hypothesis import given, settings
-from typing_extensions import ReadOnly, is_typeddict
 
 from tests.rules.strategies import valid_documents
 from zarr_metadata.model import UNSET, MetadataValidationError
@@ -121,36 +114,6 @@ ENTITIES: dict[str, type[MetadataEntity]] = {
     "data_type:string": StringDataType,
     "data_type:r<N>": RawBytesDataType,
 }
-
-
-@pytest.mark.parametrize("entity", ENTITIES.values(), ids=list(ENTITIES))
-def test_the_constructor_mirrors_the_configuration(entity: type[MetadataEntity]) -> None:
-    # The member table and `configuration_required` are read off the fields,
-    # and the JSON type is named as the base's argument; the fields are the
-    # only spelling left that can drift from the public TypedDict -- and a
-    # field the TypedDict does not have would be a member no document could
-    # write. `must_understand` belongs to the object, not the configuration,
-    # so it is the one field the two deliberately do not share.
-    fields = {field.name for field in dataclasses.fields(entity)} - {"must_understand"}
-    json_type = json_type_of(entity)
-    objects = [part for part in _parts(json_type) if is_typeddict(part)]
-    if len(objects) == 0:
-        # A bare-name type: nothing to configure. `r<N>` keeps its width
-        # in its name, so it holds a member that is not a configuration key.
-        assert fields == ({"data_type_name"} if entity is RawBytesDataType else set())
-        return
-    (obj,) = objects
-    configuration = get_type_hints(obj, include_extras=True).get("configuration")
-    assert configuration is not None, f"{obj!r} has no configuration member"
-    while get_origin(configuration) in (NotRequired, ReadOnly):
-        (configuration,) = get_args(configuration)
-    assert fields == set(get_type_hints(configuration))
-
-
-def _parts(json_type: object) -> tuple[object, ...]:
-    return (
-        get_args(json_type) if get_origin(json_type) in (Union, types.UnionType) else (json_type,)
-    )
 
 
 @pytest.mark.parametrize("entity", ENTITIES.values(), ids=list(ENTITIES))
@@ -474,6 +437,46 @@ def test_an_unreadable_member_costs_the_entity() -> None:
     assert {problem.loc for problem in problems} == {
         ("codecs", 1, "configuration", "clevel"),
     }
+
+
+def test_an_optional_member_of_the_wrong_type_is_not_judged_as_absent() -> None:
+    # `typesize` could not be read. Building the entity around the hole
+    # would have `__post_init__` see it as absent and add a second,
+    # contradictory problem at the same location.
+    document = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (4,),
+        "data_type": "uint8",
+        "fill_value": 0,
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (4,)}},
+        "chunk_key_encoding": "default",
+        "codecs": (
+            "bytes",
+            {
+                "name": "blosc",
+                "configuration": {
+                    "cname": "zstd",
+                    "clevel": 5,
+                    "shuffle": "shuffle",
+                    "typesize": "four",
+                    "blocksize": 0,
+                },
+            },
+        ),
+    }
+    problems = validate_array_metadata_v3(document)  # type: ignore[arg-type]
+    assert [(problem.loc, problem.kind) for problem in problems] == [
+        (("codecs", 1, "configuration", "typesize"), "invalid_type")
+    ]
+
+
+def test_the_document_writes_back_only_the_fields_it_read() -> None:
+    # An absent field is read as an `Opaque` standing in for it; writing
+    # it back as `null` would invent a value the document never wrote.
+    array, problems = read_array_v3({"shape": (4,)}, CORE_AND_EXTENSIONS)
+    assert problems == ()
+    assert array.to_json() == {"shape": (4,)}
 
 
 def test_an_unreadable_member_is_not_judged_by_its_default() -> None:

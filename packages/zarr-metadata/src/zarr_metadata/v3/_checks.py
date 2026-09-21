@@ -80,6 +80,13 @@ def is_bool(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
     return ()
 
 
+def is_number(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+    """A JSON number: an `int` or a `float`, and not a `bool`."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return problem(loc, f"expected a number, got {value!r}")
+    return ()
+
+
 def is_json_value(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
     """Any JSON value at all -- the widest type a member can declare."""
     if not is_json(value):
@@ -147,25 +154,18 @@ def _as_tuples(value: object) -> object:
 
 def coerce_members(
     configuration: Mapping[str, object], types: MemberTypes
-) -> tuple[dict[str, object], tuple[ValidationProblem, ...], frozenset[str]]:
+) -> tuple[dict[str, object], tuple[ValidationProblem, ...]]:
     """The members `types` declares, taken from `configuration`.
 
-    Returns what was accepted, every problem found, and the names of the
-    required members that could not be read. Three kinds of problem, and
-    they differ in that last part:
-
-    - a key the entity does not declare says the value carries something
-      extra, not that it is wrong;
-    - an *optional* member of the wrong type leaves that member absent,
-      and everything else about the entity is still readable -- a bad
-      `index_location` says nothing about whether a shard's pipelines
-      are well formed, and silencing them would lose a real judgment;
-    - a *required* member missing or of the wrong type does stop it.
-      There is no honest reading of a `blosc` whose level is a string.
+    Returns what was read and every problem found. A key the entity does
+    not declare says the value carries something extra, not that it is
+    wrong, so the member it sits beside is still read; a member of the
+    wrong type, or a required one missing, is reported and left out --
+    and an entity is never built around the hole, because its rules are
+    written over a whole configuration.
     """
     problems: list[ValidationProblem] = []
     members: dict[str, object] = {}
-    unreadable: set[str] = set()
     for key in configuration:
         if key not in types:
             problems.extend(
@@ -177,21 +177,15 @@ def coerce_members(
                 problems.extend(
                     problem(("configuration", key), f"missing required key {key!r}", "missing_key")
                 )
-                unreadable.add(key)
             continue
         # Normalized before the check, so a check only ever sees the tuples
         # the TypedDicts declare -- never the lists raw JSON arrives as.
         value = _as_tuples(configuration[key])
         found = check(value, ("configuration", key))
         problems.extend(found)
-        # An unknown key says the value carries something extra, not that
-        # it is the wrong type -- so the member is still readable, and
-        # dropping it here would make `to_json` lose what was written.
         if all(entry.kind == "unknown_key" for entry in found):
             members[key] = value
-        elif required:
-            unreadable.add(key)
-    return members, tuple(problems), frozenset(unreadable)
+    return members, tuple(problems)
 
 
 def is_metadata_field(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
@@ -260,6 +254,7 @@ __all__ = [
     "is_integer",
     "is_json_value",
     "is_metadata_field",
+    "is_number",
     "is_str",
     "named_configuration",
     "one_of",

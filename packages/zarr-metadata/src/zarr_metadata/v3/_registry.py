@@ -30,6 +30,7 @@ from zarr_metadata.model._validation import (
     ValidationProblem,
     validate_metadata_field_v3,
 )
+from zarr_metadata.v3._compile import is_class_var, own_annotations
 from zarr_metadata.v3._entity import (
     CHUNK_GRID,
     CHUNK_KEY_ENCODING,
@@ -184,6 +185,17 @@ class Context:
                         f"but its identifier is {entity.identifier!r}"
                     )
                     raise ValueError(msg)
+                if "__dataclass_fields__" not in vars(entity) and any(
+                    not is_class_var(annotation) for annotation in own_annotations(entity).values()
+                ):
+                    # Class creation runs before `@dataclass` and cannot
+                    # see whether it was applied; this is the next place
+                    # the entity passes through before `coerce` builds it.
+                    msg = (
+                        f"{entity.__name__} declares fields but is not a dataclass; decorate "
+                        "it with @dataclass(frozen=True), which is what `coerce` builds it with"
+                    )
+                    raise TypeError(msg)
 
     def extended_with(self, **entities: Unpack[PartialEntityTables]) -> Context:
         """This scope, plus entities of your own at the points named.

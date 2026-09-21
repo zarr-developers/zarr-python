@@ -84,6 +84,18 @@ class MetadataValidationError(ValueError):
 
     def __init__(self, problems: Sequence[ValidationProblem]) -> None:
         self.problems = tuple(problems)
+        for entry in self.problems:
+            # The type says so; the check is for the trap the type cannot
+            # close: `problem()` returns a one-element tuple, and a list
+            # of those passes here and fails far away, where a `loc` is
+            # read off it.
+            if not isinstance(entry, ValidationProblem):  # pyright: ignore[reportUnnecessaryIsInstance]
+                msg = (
+                    f"MetadataValidationError takes ValidationProblem values, got "
+                    f"{type(entry).__name__}; `problem()` returns a tuple of them, so collect "
+                    "with `extend`, not `append`"
+                )
+                raise TypeError(msg)
         super().__init__("\n".join(str(problem) for problem in self.problems))
 
 

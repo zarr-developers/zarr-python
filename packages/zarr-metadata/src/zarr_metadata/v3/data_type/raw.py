@@ -10,16 +10,14 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 
 import re
 from dataclasses import dataclass
-from typing import Annotated, ClassVar, Final, NewType, Self
+from typing import Annotated, ClassVar, Final, NewType
 
 from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3._entity import (
     FROM_NAME,
-    Coerced,
     DataTypeEntity,
     Loc,
     StorageClass,
-    named_configuration,
     problem,
 )
 from zarr_metadata.v3.data_type._families import byte_values
@@ -126,26 +124,6 @@ class RawBytesDataType(DataTypeEntity[RawBytesDataTypeName]):
         third party's extension.
         """
         return RAW_BYTES_NAME_PATTERN.fullmatch(name) is not None
-
-    @classmethod
-    def coerce(cls, value: object, context: object) -> Coerced[Self]:
-        name, configuration, _ = named_configuration(value)
-        if name is None or not cls.accepts(name):
-            return None, problem((), "expected an 'r<N>' raw-bytes data type")
-        found: tuple[ValidationProblem, ...] = ()
-        if configuration is not None and len(configuration) != 0:
-            # Survivable, as an unknown key is everywhere else: the name
-            # still says everything this type is, so it is still read and
-            # its fill values are still judged. Returning nothing here let
-            # a stray key hide every other problem in the document.
-            found = problem(("configuration",), "'r<N>' takes no configuration", "unknown_key")
-        try:
-            entity = cls(data_type_name=name)
-        except MetadataValidationError as refused:
-            return None, (*found, *refused.problems)
-        if any(entry.kind != "unknown_key" for entry in found):
-            return None, found
-        return entity, found
 
     def __post_init__(self) -> None:
         """This family's validity is in its name, not in a configuration."""

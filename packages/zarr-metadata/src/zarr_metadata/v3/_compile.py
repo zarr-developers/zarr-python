@@ -50,6 +50,7 @@ from zarr_metadata.v3._checks import (
     is_integer,
     is_json_value,
     is_metadata_field,
+    is_number,
     is_str,
     object_of,
     one_of,
@@ -176,6 +177,8 @@ def describe(annotation: object) -> str:
         return "a metadata field"
     if inner is int:
         return "an integer"
+    if inner is float:
+        return "a number"
     if inner is bool:
         return "a boolean"
     if inner is str:
@@ -214,6 +217,8 @@ def shape_of(annotation: object) -> str | None:
         return "field"
     if inner is int:
         return "int"
+    if inner is float:
+        return "number"
     if inner is bool:
         return "bool"
     if inner is str:
@@ -238,6 +243,8 @@ def has_shape(shape: str | None, value: object) -> bool:
         return True
     if shape == "int":
         return is_integer(value)
+    if shape == "number":
+        return not isinstance(value, bool) and isinstance(value, (int, float))
     if shape == "bool":
         return isinstance(value, bool)
     if shape == "str":
@@ -391,7 +398,7 @@ def check_for(annotation: object) -> TypeCheck | None:
     """The type check a field annotation implies, or None if it implies none.
 
     A small compiler over the shapes JSON takes, and no others: the
-    scalars, a `Literal` of names, arrays homogeneous or fixed, unions of
+    scalars (`int`, `float` for any number, `bool`, `str`), a `Literal` of names, arrays homogeneous or fixed, unions of
     those, a nested object described by a TypedDict or a record dataclass,
     an object of undeclared keys as `Mapping[str, V]`, a `NewType` as the
     type it names, and a nested metadata field -- an entity type, with or
@@ -408,6 +415,8 @@ def check_for(annotation: object) -> TypeCheck | None:
         return is_metadata_field
     if inner is int:
         return is_int
+    if inner is float:
+        return is_number
     if inner is bool:
         return is_bool
     if inner is str:
@@ -431,6 +440,15 @@ def check_for(annotation: object) -> TypeCheck | None:
     if isinstance(inner, type) and is_dataclass(inner):
         return _compile_record(inner)
     return None
+
+
+def envelope_members(cls: type) -> tuple[str, ...]:
+    """The fields `FROM_NAME` marks: carried by the envelope's name, not by a configuration key."""
+    return tuple(
+        name
+        for name, annotation in field_hints(cls).items()
+        if any(entry is FROM_NAME for entry in strip_annotation(annotation)[1])
+    )
 
 
 def derive_member_types(cls: type) -> tuple[dict[str, tuple[bool, TypeCheck]], list[str]]:
@@ -475,7 +493,7 @@ def is_class_var(annotation: object) -> bool:
     if isinstance(annotation, str):
         stripped = annotation.strip()
         return stripped.startswith(("ClassVar[", "ClassVar", "typing.ClassVar"))
-    return get_origin(annotation) is ClassVar
+    return annotation is ClassVar or get_origin(annotation) is ClassVar
 
 
 def declared_class_vars(cls: type) -> dict[str, type]:
@@ -501,6 +519,7 @@ __all__ = [
     "derive_member_types",
     "describe",
     "element_annotations",
+    "envelope_members",
     "field_hints",
     "fixed_tuple",
     "has_shape",

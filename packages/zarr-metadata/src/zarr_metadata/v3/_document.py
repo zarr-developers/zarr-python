@@ -119,10 +119,12 @@ class ArrayDocumentV3:
         are not extension points come back exactly as the document had
         them. Ask `canonical` first for the simplest equivalent spelling.
         """
+        # Only the fields the document wrote: an absent one was read as an
+        # `Opaque` standing in, and writing it back would invent a null.
         rendered = {
             name: render_nested(annotation, getattr(self, name))
             for name, annotation in field_hints(type(self)).items()
-            if contains_entity(annotation)
+            if contains_entity(annotation) and name in self.document
         }
         return {**self.document, **rendered}
 
