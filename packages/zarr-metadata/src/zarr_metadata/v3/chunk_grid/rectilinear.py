@@ -4,7 +4,7 @@ Rectilinear chunk grid (zarr-extensions).
 See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, cast
 
 from typing_extensions import TypedDict
@@ -166,6 +166,14 @@ def _axis_lengths(spec: RectilinearDimSpec) -> frozenset[int] | None:
     return frozenset(lengths) if len(lengths) != 0 else None
 
 
+@dataclass(frozen=True)
+class RectilinearChunkGridOptions:
+    """What a `rectilinear` grid is configured with."""
+
+    kind: Literal["inline"]
+    chunk_shapes: tuple[RectilinearDimSpec, ...]
+
+
 def rectilinear_problems(grid: "RectilinearChunkGrid", /) -> "Iterator[ValidationProblem]":
     """Every extent, and every run's length and count, is at least 1."""
     for axis, spec in enumerate(grid.chunk_shapes):
@@ -187,12 +195,19 @@ def rectilinear_problems(grid: "RectilinearChunkGrid", /) -> "Iterator[Validatio
 class RectilinearChunkGrid(ChunkGridEntity):
     """The `rectilinear` chunk grid, coerced from its metadata."""
 
-    kind: Literal["inline"]
-    chunk_shapes: tuple[RectilinearDimSpec, ...]
+    configuration: RectilinearChunkGridOptions
 
     identifier: ClassVar[str] = RECTILINEAR_CHUNK_GRID_NAME
 
     problems = rectilinear_problems
+
+    @property
+    def kind(self) -> Literal["inline"]:
+        return self.configuration.kind
+
+    @property
+    def chunk_shapes(self) -> tuple[RectilinearDimSpec, ...]:
+        return self.configuration.chunk_shapes
 
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
         """One spec per dimension, and explicit specs must cover it.
@@ -241,4 +256,4 @@ class RectilinearChunkGrid(ChunkGridEntity):
         Two dimension specs listing the same extents describe the same
         grid, and the encoded one stays the same size as the array grows.
         """
-        return replace(self, chunk_shapes=canonical_chunk_shapes(self.chunk_shapes))
+        return self.with_configuration(chunk_shapes=canonical_chunk_shapes(self.chunk_shapes))

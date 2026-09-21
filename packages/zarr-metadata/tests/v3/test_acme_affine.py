@@ -8,7 +8,7 @@ docstring points at.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Literal, NotRequired, Self
 
 import pytest
@@ -62,21 +62,37 @@ def acme_affine_problems(codec: AcmeAffineCodec, /) -> Iterator[ValidationProble
 
 
 @dataclass(frozen=True)
-class AcmeAffineCodec(ArrayArrayCodec):
-    """`x * scale + offset`, stored as `dtype` if one is named."""
-
+class AcmeAffineOptions:
     scale: float
     offset: float | UNSET = UNSET
     dtype: DataTypeEntity | Opaque | UNSET = UNSET
+
+
+@dataclass(frozen=True)
+class AcmeAffineCodec(ArrayArrayCodec):
+    """`x * scale + offset`, stored as `dtype` if one is named."""
+
+    configuration: AcmeAffineOptions
 
     identifier: ClassVar[str] = "acme.affine"
     variable_size: ClassVar[bool] = False
     problems = acme_affine_problems
 
+    @property
+    def scale(self) -> float:
+        return self.configuration.scale
+
+    @property
+    def offset(self) -> float | UNSET:
+        return self.configuration.offset
+
+    @property
+    def dtype(self) -> DataTypeEntity | Opaque | UNSET:
+        return self.configuration.dtype
+
     def canonical(self) -> Self:
         """An offset of 0 is the identity, and absent says the same; `dtype` in its own form."""
-        return replace(
-            self,
+        return self.with_configuration(
             offset=UNSET if self.offset == 0 else self.offset,
             dtype=UNSET if self.dtype is UNSET else self.dtype.canonical(),
         )
@@ -197,7 +213,9 @@ def test_round_trip_and_canonical() -> None:
     codec = ArrayDocumentV3.from_json(_document(codecs=[entry, BYTES_LE]), context=SCOPE).codecs[0]
     assert isinstance(codec, AcmeAffineCodec)
     assert codec.to_json() == entry
-    assert AcmeAffineCodec(scale=2, offset=0).canonical() == AcmeAffineCodec(scale=2)
+    assert AcmeAffineCodec(AcmeAffineOptions(scale=2, offset=0)).canonical() == AcmeAffineCodec(
+        AcmeAffineOptions(scale=2)
+    )
     document = _document(codecs=[_affine(scale=2, offset=0.0), BYTES_LE])
     result = canonicalize_array_metadata_v3(document, context=SCOPE)
     assert isinstance(result, Canonical)
@@ -205,13 +223,13 @@ def test_round_trip_and_canonical() -> None:
 
 
 def test_constructed_by_hand() -> None:
-    codec = AcmeAffineCodec(scale=2.5, offset=-1, dtype=Float32DataType())
+    codec = AcmeAffineCodec(AcmeAffineOptions(scale=2.5, offset=-1, dtype=Float32DataType()))
     assert codec.to_json() == {
         "name": "acme.affine",
         "configuration": {"scale": 2.5, "offset": -1, "dtype": "float32"},
     }
     with pytest.raises(MetadataValidationError) as caught:
-        AcmeAffineCodec(scale=0)
+        AcmeAffineCodec(AcmeAffineOptions(scale=0))
     assert [(found.loc, found.kind) for found in caught.value.problems] == [
         (("scale",), "invalid_value")
     ]

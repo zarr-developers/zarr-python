@@ -737,15 +737,24 @@ def test_the_fail_fast_reader_refuses_a_member_it_would_drop() -> None:
 # A storage transformer: the one extension point nothing in the package
 # models, so the only way to reach it is to register one.
 @dataclasses.dataclass(frozen=True)
+class AcmeShardCacheOptions:
+    verbose: bool | UNSET = UNSET
+
+
+@dataclasses.dataclass(frozen=True)
 class AcmeShardCache(StorageTransformerEntity):
     """A third-party storage transformer with a member canonical form drops."""
 
-    verbose: bool | UNSET = UNSET
+    configuration: AcmeShardCacheOptions
 
     identifier: ClassVar[str] = "acme.shard_cache"
 
+    @property
+    def verbose(self) -> bool | UNSET:
+        return self.configuration.verbose
+
     def canonical(self) -> Self:
-        return dataclasses.replace(self, verbose=UNSET)
+        return self.with_configuration(verbose=UNSET)
 
 
 def test_the_document_writes_itself_back_and_canonical_reaches_every_point() -> None:
@@ -797,7 +806,8 @@ def test_the_fields_are_the_public_configuration_type() -> None:
     # writes. Nothing else ties the two, so this does: same keys, same
     # requiredness. An entity of no members has no such type.
     for cls in CORE_AND_EXTENSIONS.entities():
-        hints = field_hints(cls)
+        record = field_hints(cls).get("configuration")
+        hints = field_hints(record) if isinstance(record, type) else {}
         members = {key for key, annotation in hints.items() if not is_from_name(annotation)}
         required = {key for key in members if not is_optional(hints[key])}
         declared = [

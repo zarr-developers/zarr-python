@@ -90,15 +90,28 @@ def acme_decimal_problems(data_type: AcmeDecimalDataType, /) -> Iterator[Validat
 
 
 @dataclass(frozen=True)
+class AcmeDecimalOptions:
+    precision: int
+    scale: int
+
+
+@dataclass(frozen=True)
 class AcmeDecimalDataType(DataTypeEntity):
     """The `acme.decimal` data type, coerced from its metadata."""
 
-    precision: int
-    scale: int
+    configuration: AcmeDecimalOptions
 
     identifier: ClassVar[str] = ACME_DECIMAL_DATA_TYPE_NAME
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     problems = acme_decimal_problems
+
+    @property
+    def precision(self) -> int:
+        return self.configuration.precision
+
+    @property
+    def scale(self) -> int:
+        return self.configuration.scale
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         """A decimal literal whose digits fit `precision` and `scale`.
@@ -261,11 +274,11 @@ def test_canonical_form_keeps_the_configuration() -> None:
 
 
 def test_hand_construction() -> None:
-    entity = AcmeDecimalDataType(precision=4, scale=2)
+    entity = AcmeDecimalDataType(AcmeDecimalOptions(precision=4, scale=2))
     assert entity.storage_class() == "multi_byte"
     assert entity.to_json() == _data_type(4, 2)
-    assert entity == AcmeDecimalDataType(4, 2)
-    assert hash(entity) == hash(AcmeDecimalDataType(4, 2))
+    assert entity == AcmeDecimalDataType(AcmeDecimalOptions(4, 2))
+    assert hash(entity) == hash(AcmeDecimalDataType(AcmeDecimalOptions(4, 2)))
 
 
 @pytest.mark.parametrize(
@@ -283,26 +296,26 @@ def test_hand_construction() -> None:
     ],
 )
 def test_fill_values_that_fit_are_accepted(precision: int, scale: int, value: str) -> None:
-    entity = AcmeDecimalDataType(precision=precision, scale=scale)
+    entity = AcmeDecimalDataType(AcmeDecimalOptions(precision=precision, scale=scale))
     assert entity.fill_value_problems(value, ("fill_value",)) == ()
 
 
 @pytest.mark.parametrize("precision", [0, 39])
 def test_error_precision_out_of_range(precision: int) -> None:
     with pytest.raises(MetadataValidationError) as caught:
-        AcmeDecimalDataType(precision=precision, scale=0)
+        AcmeDecimalDataType(AcmeDecimalOptions(precision=precision, scale=0))
     assert _locs(caught.value.problems) == [("precision",)]
 
 
 def test_error_scale_negative() -> None:
     with pytest.raises(MetadataValidationError) as caught:
-        AcmeDecimalDataType(precision=4, scale=-1)
+        AcmeDecimalDataType(AcmeDecimalOptions(precision=4, scale=-1))
     assert _locs(caught.value.problems) == [("scale",)]
 
 
 def test_error_scale_above_precision() -> None:
     with pytest.raises(MetadataValidationError) as caught:
-        AcmeDecimalDataType(precision=4, scale=5)
+        AcmeDecimalDataType(AcmeDecimalOptions(precision=4, scale=5))
     assert [(problem.loc, problem.message) for problem in caught.value.problems] == [
         (("scale",), "expected an integer <= precision (4), got 5")
     ]
@@ -310,7 +323,7 @@ def test_error_scale_above_precision() -> None:
 
 def test_error_the_constructor_stops_at_the_first_problem_and_coerce_reports_every_one() -> None:
     with pytest.raises(MetadataValidationError) as caught:
-        AcmeDecimalDataType(precision=0, scale=-1)
+        AcmeDecimalDataType(AcmeDecimalOptions(precision=0, scale=-1))
     assert _locs(caught.value.problems) == [("precision",)]
     _, problems = SCOPE.coerce(
         DataTypeEntity, {"name": "acme.decimal", "configuration": {"precision": 0, "scale": -1}}
@@ -319,18 +332,18 @@ def test_error_the_constructor_stops_at_the_first_problem_and_coerce_reports_eve
 
 
 def test_error_fill_value_must_be_a_string() -> None:
-    entity = AcmeDecimalDataType(precision=4, scale=2)
+    entity = AcmeDecimalDataType(AcmeDecimalOptions(precision=4, scale=2))
     assert _locs(entity.fill_value_problems(12.5, ("fill_value",))) == [("fill_value",)]
 
 
 @pytest.mark.parametrize("value", ["", "1e2", " 12.5", "12.", ".5", "abc", "1,5", "NaN"])
 def test_error_fill_value_must_be_a_decimal_literal(value: str) -> None:
-    entity = AcmeDecimalDataType(precision=4, scale=2)
+    entity = AcmeDecimalDataType(AcmeDecimalOptions(precision=4, scale=2))
     assert _locs(entity.fill_value_problems(value, ("fill_value",))) == [("fill_value",)]
 
 
 def test_error_fill_value_with_too_many_fraction_digits() -> None:
-    entity = AcmeDecimalDataType(precision=4, scale=2)
+    entity = AcmeDecimalDataType(AcmeDecimalOptions(precision=4, scale=2))
     problems = entity.fill_value_problems("1.234", ("fill_value",))
     assert [(problem.loc, problem.message) for problem in problems] == [
         (("fill_value",), "'1.234' has 3 fractional digits, but scale is 2")
@@ -338,7 +351,7 @@ def test_error_fill_value_with_too_many_fraction_digits() -> None:
 
 
 def test_error_fill_value_with_too_many_integer_digits() -> None:
-    entity = AcmeDecimalDataType(precision=4, scale=2)
+    entity = AcmeDecimalDataType(AcmeDecimalOptions(precision=4, scale=2))
     problems = entity.fill_value_problems("1234.5", ("fill_value",))
     assert [(problem.loc, problem.message) for problem in problems] == [
         (

@@ -4,7 +4,7 @@ Cast-value codec types.
 See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import ClassVar, Final, Literal, NotRequired, Self
 
 from typing_extensions import TypedDict
@@ -125,6 +125,16 @@ SCALAR_MAP_KEYS: Final = ("encode", "decode")
 
 
 @dataclass(frozen=True)
+class CastValueOptions:
+    """What `cast_value` is configured with."""
+
+    data_type: DataTypeEntity | Opaque
+    rounding: CastRoundingMode | UNSET = UNSET
+    out_of_range: CastOutOfRangeMode | UNSET = UNSET
+    scalar_map: ScalarMap | UNSET = UNSET
+
+
+@dataclass(frozen=True)
 class CastValueCodec(ArrayArrayCodec):
     """The `cast_value` codec, coerced from its metadata.
 
@@ -132,17 +142,30 @@ class CastValueCodec(ArrayArrayCodec):
     read in a scope rather than on its own.
     """
 
-    data_type: DataTypeEntity | Opaque
-    rounding: CastRoundingMode | UNSET = UNSET
-    out_of_range: CastOutOfRangeMode | UNSET = UNSET
-    scalar_map: ScalarMap | UNSET = UNSET
+    configuration: CastValueOptions
 
     identifier: ClassVar[str] = CAST_VALUE_CODEC_NAME
     variable_size: ClassVar[bool] = False
 
+    @property
+    def data_type(self) -> DataTypeEntity | Opaque:
+        return self.configuration.data_type
+
+    @property
+    def rounding(self) -> CastRoundingMode | UNSET:
+        return self.configuration.rounding
+
+    @property
+    def out_of_range(self) -> CastOutOfRangeMode | UNSET:
+        return self.configuration.out_of_range
+
+    @property
+    def scalar_map(self) -> ScalarMap | UNSET:
+        return self.configuration.scalar_map
+
     def canonical(self) -> Self:
         """The target data type in its own canonical form."""
-        return replace(self, data_type=self.data_type.canonical())
+        return self.with_configuration(data_type=self.data_type.canonical())
 
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:
         """The same parts, holding the type this codec casts to."""

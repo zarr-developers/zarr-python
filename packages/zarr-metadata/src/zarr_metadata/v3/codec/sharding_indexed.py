@@ -4,7 +4,7 @@ Sharding-indexed codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index.html
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self
 
 from typing_extensions import TypedDict
@@ -97,6 +97,16 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True)
+class ShardingIndexedOptions:
+    """What `sharding_indexed` is configured with."""
+
+    chunk_shape: tuple[int, ...]
+    codecs: tuple[CodecEntity | Opaque, ...]
+    index_codecs: tuple[CodecEntity | Opaque, ...]
+    index_location: ShardingIndexLocation | UNSET = UNSET
+
+
 def sharding_problems(codec: "ShardingIndexedCodec", /) -> "Iterator[ValidationProblem]":
     for index, extent in enumerate(codec.chunk_shape):
         if extent < 1:
@@ -114,20 +124,32 @@ class ShardingIndexedCodec(ArrayBytesCodec):
     itself an entity, read the same way this one was.
     """
 
-    chunk_shape: tuple[int, ...]
-    codecs: tuple[CodecEntity | Opaque, ...]
-    index_codecs: tuple[CodecEntity | Opaque, ...]
-    index_location: ShardingIndexLocation | UNSET = UNSET
+    configuration: ShardingIndexedOptions
 
     identifier: ClassVar[str] = SHARDING_INDEXED_CODEC_NAME
     variable_size: ClassVar[bool] = True
 
     problems = sharding_problems
 
+    @property
+    def chunk_shape(self) -> tuple[int, ...]:
+        return self.configuration.chunk_shape
+
+    @property
+    def codecs(self) -> tuple[CodecEntity | Opaque, ...]:
+        return self.configuration.codecs
+
+    @property
+    def index_codecs(self) -> tuple[CodecEntity | Opaque, ...]:
+        return self.configuration.index_codecs
+
+    @property
+    def index_location(self) -> ShardingIndexLocation | UNSET:
+        return self.configuration.index_location
+
     def canonical(self) -> Self:
         """Each pipeline's codecs in their own canonical form."""
-        return replace(
-            self,
+        return self.with_configuration(
             codecs=tuple(codec.canonical() for codec in self.codecs),
             index_codecs=tuple(codec.canonical() for codec in self.index_codecs),
         )

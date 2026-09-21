@@ -39,8 +39,9 @@ with `loc` relative to the configuration: `("level",)`.
 **Writing an extension.** Subclass the kind of thing it is -- a codec's
 kind (`ArrayArrayCodec`, `ArrayBytesCodec`, `BytesBytesCodec`),
 `DataTypeEntity`, `ChunkGridEntity`, `ChunkKeyEncodingEntity` or
-`StorageTransformerEntity`; declare the configuration as dataclass
-fields; write every rule finer than a type as a function of the
+`StorageTransformerEntity`; declare the configuration as a frozen
+dataclass of its members and name it in the entity's one field,
+`configuration`; write every rule finer than a type as a function of the
 instance that yields problems, and bind it as `problems`; add the class
 to a scope. Complete; runnable given a `document`:
 
@@ -56,17 +57,22 @@ to a scope. Complete; runnable given a `document`:
         ValidationProblem,
     )
 
+    @dataclass(frozen=True)  # the fields are the schema; frozen, so a configuration is a value
+    class AcmeLz4Options:
+        acceleration: int | UNSET = UNSET  # optional: absent reads as UNSET
+
     def acme_lz4_problems(codec: "AcmeLz4Codec", /) -> Iterator[ValidationProblem]:
-        if codec.acceleration is not UNSET and not 1 <= codec.acceleration <= 65537:
+        acceleration = codec.configuration.acceleration
+        if acceleration is not UNSET and not 1 <= acceleration <= 65537:
             yield ValidationProblem(
                 ("acceleration",),
-                f"expected an integer in [1, 65537], got {codec.acceleration}",
+                f"expected an integer in [1, 65537], got {acceleration}",
                 "invalid_value",
             )
 
-    @dataclass(frozen=True)  # the fields are the schema; frozen, so an entity is a value
+    @dataclass(frozen=True)
     class AcmeLz4Codec(BytesBytesCodec):
-        acceleration: int | UNSET = UNSET  # optional: absent reads as UNSET
+        configuration: AcmeLz4Options   # the shape of the metadata: a name, and a configuration
 
         identifier: ClassVar[str] = "acme.lz4"
         variable_size: ClassVar[bool] = True  # a compressor: its output length is not fixed
@@ -75,10 +81,12 @@ to a scope. Complete; runnable given a `document`:
     SCOPE = CORE_AND_EXTENSIONS.extended_with(AcmeLz4Codec)
     validate_array_metadata_v3(document, context=SCOPE)
 
-The fields are the only place the shape is written. Which members exist,
-which may be left out (the type admits `UNSET`), how each one is
-type-checked, and how each is written back are all read off the
-annotations, and the shapes are the
+An entity has the shape of its metadata: a name, which is the class,
+and a configuration, which is a record dataclass named in the one field
+`configuration`. The record's fields are the only place the members
+are written. Which members exist, which may be left out (the type
+admits `UNSET`), how each one is type-checked, and how each is written
+back are all read off the annotations, and the shapes are the
 ones JSON takes: `int`, `float` (any JSON number), `bool`, `str`,
 `JSONValue`, a `Literal` of names, `tuple[T, ...]` or `tuple[T1, T2]`, a
 TypedDict or dataclass record, `Mapping[str, V]`, a `NewType`, and a
@@ -89,7 +97,11 @@ the containing entity is read in. Anything else is refused at
 registration. A required member
 has no default; an optional one is `| UNSET = UNSET`, so absence stays
 distinct from a JSON `null`, and a member that means something when
-absent is read that way where it is used, not defaulted.
+absent is read that way where it is used, not defaulted. A member is
+read as `codec.configuration.acceleration`; an entity that wants it at
+the top level adds a `@property` for it. `with_configuration(**changes)`
+is the entity with members of its configuration replaced, checked as
+any construction is.
 
 Everything finer than a type -- a bound, a rule about one member, members
 read together -- is a function of the instance that yields
@@ -104,14 +116,14 @@ a reader that judges afterwards with `problems` and wants every one.
 It runs only on an entity whose members all read: a member of the wrong
 type is reported and the entity is not built.
 
-**What an entity answers for itself**, beyond its fields. `to_json` is
-written once in the base, from the fields: the bare name when every
+**What an entity answers for itself**, beyond its configuration. `to_json` is
+written once in the base, from the record: the bare name when every
 member is absent, the object otherwise, a contained entity through its
 own `to_json`; an entity whose JSON is not its fields overrides it, and
 none in the package does. `canonical`, the entity in its simplest equivalent form:
 the entity itself by default, overridden where two spellings of its
 members mean the same, and in an entity that contains entities to put
-those in canonical form -- `replace(self, inner=self.inner.canonical())`.
+those in canonical form -- `self.with_configuration(inner=self.inner.canonical())`.
 An `Opaque` answers both as well, with the JSON it kept and with itself,
 so a field typed `CodecEntity | Opaque` is written and simplified without
 asking which it holds. `coerce` is written once in the base. Then, by
@@ -141,8 +153,10 @@ kind:
 
 Registration is the one moment an entity is refused, with a message
 that says what to write: a class without `@dataclass`, a codec
-subclassing `CodecEntity` instead of a kind, a field whose annotation is
-not a shape JSON takes -- a nested entity without `Opaque` among them --
+subclassing `CodecEntity` instead of a kind, a field other than
+`configuration` and a carried name, a configuration that is not a
+record dataclass, a member whose annotation is not a shape JSON takes
+-- a nested entity without `Opaque` among them --
 a `__post_init__` of the entity's own, a class variable a base
 annotates and nothing sets, and what a kind leaves abstract. Everything
 else an author could get wrong, pyright says in the editor: the fields,

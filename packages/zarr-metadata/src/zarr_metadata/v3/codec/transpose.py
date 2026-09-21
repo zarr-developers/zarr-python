@@ -64,6 +64,13 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True)
+class TransposeOptions:
+    """What `transpose` is configured with."""
+
+    order: tuple[int, ...]
+
+
 def transpose_problems(codec: "TransposeCodec", /) -> "Iterator[ValidationProblem]":
     """`order` must permute its own axes.
 
@@ -82,12 +89,16 @@ def transpose_problems(codec: "TransposeCodec", /) -> "Iterator[ValidationProble
 class TransposeCodec(ArrayArrayCodec):
     """The `transpose` codec, coerced from its metadata."""
 
-    order: tuple[int, ...]
+    configuration: TransposeOptions
 
     identifier: ClassVar[str] = TRANSPOSE_CODEC_NAME
     variable_size: ClassVar[bool] = False
 
     problems = transpose_problems
+
+    @property
+    def order(self) -> tuple[int, ...]:
+        return self.configuration.order
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         """A transpose permutes the array it receives, so ranks must agree.

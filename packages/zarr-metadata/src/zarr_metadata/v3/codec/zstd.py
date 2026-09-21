@@ -75,6 +75,14 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True)
+class ZstdOptions:
+    """What `zstd` is configured with."""
+
+    level: int
+    checksum: bool | UNSET = UNSET
+
+
 def zstd_problems(codec: "ZstdCodec", /) -> "Iterator[ValidationProblem]":
     if not ZSTD_MIN_LEVEL <= codec.level <= ZSTD_MAX_LEVEL:
         yield ValidationProblem(
@@ -88,10 +96,17 @@ def zstd_problems(codec: "ZstdCodec", /) -> "Iterator[ValidationProblem]":
 class ZstdCodec(BytesBytesCodec):
     """The `zstd` codec, coerced from its metadata."""
 
-    level: int
-    checksum: bool | UNSET = UNSET
+    configuration: ZstdOptions
 
     identifier: ClassVar[str] = ZSTD_CODEC_NAME
     variable_size: ClassVar[bool] = True
 
     problems = zstd_problems
+
+    @property
+    def level(self) -> int:
+        return self.configuration.level
+
+    @property
+    def checksum(self) -> bool | UNSET:
+        return self.configuration.checksum

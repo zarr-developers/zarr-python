@@ -7,7 +7,7 @@ file has to reach into a private one, the extension surface is not real.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, NotRequired, Self
 
 import pytest
@@ -18,7 +18,7 @@ from zarr_metadata.rules import (
     canonicalize_array_metadata_v3,
     validate_array_metadata_v3,
 )
-from zarr_metadata.v3.codec.blosc import BloscCodec
+from zarr_metadata.v3.codec.blosc import BloscCodec, BloscOptions
 from zarr_metadata.v3.codec.gzip import GzipCodec
 from zarr_metadata.v3.entity import (
     CORE_AND_EXTENSIONS,
@@ -57,14 +57,23 @@ def acme_lz4_problems(codec: AcmeLz4Codec, /) -> Iterator[ValidationProblem]:
 
 
 @dataclass(frozen=True)
+class AcmeLz4Options:
+    acceleration: int | UNSET = UNSET
+
+
+@dataclass(frozen=True)
 class AcmeLz4Codec(BytesBytesCodec):
     """A third-party compressor."""
 
-    acceleration: int | UNSET = UNSET
+    configuration: AcmeLz4Options
 
     identifier: ClassVar[str] = "acme.lz4"
     variable_size: ClassVar[bool] = True
     problems = acme_lz4_problems
+
+    @property
+    def acceleration(self) -> int | UNSET:
+        return self.configuration.acceleration
 
 
 @dataclass(frozen=True)
@@ -177,18 +186,28 @@ def test_the_entity_layer_answers_what_a_reader_needs() -> None:
     assert parts.grid.axis(0) == frozenset({32})
 
 
+@dataclass(frozen=True)
+class DefaultedOptions:
+    level: int | UNSET = 3
+
+
 def test_an_absent_optional_member_is_read_as_unset_whatever_its_default() -> None:
     # A default is for hand construction; what a document left out is
-    # `UNSET`, so no field's default decides what a document said.
+    # `UNSET` in the record, so no field's default decides what a
+    # document said.
     @dataclass(frozen=True)
     class Defaulted(BytesBytesCodec):
-        level: int | UNSET = 3
+        configuration: DefaultedOptions
 
         identifier: ClassVar[str] = "acme.defaulted"
 
         variable_size: ClassVar[bool] = False
 
-    assert Defaulted().level == 3
+        @property
+        def level(self) -> int | UNSET:
+            return self.configuration.level
+
+    assert Defaulted(DefaultedOptions()).level == 3
     codec, problems = CORE_AND_EXTENSIONS.extended_with(Defaulted).coerce(
         CodecEntity, "acme.defaulted"
     )
@@ -325,16 +344,25 @@ def test_a_third_party_can_register_a_family() -> None:
     assert [(p.loc, p.kind) for p in problems] == [(("data_type",), "invalid_value")]
 
 
+@dataclass(frozen=True)
+class StructuredOptions:
+    inner: object
+
+
 def test_error_a_member_needs_a_check_from_somewhere() -> None:
     # An annotation outside the shapes the parser reads implies no
     # parser, so the entity owes one. Silently skipping the member would
     # let anything through where the field promised a type.
     @dataclass(frozen=True)
     class Structured(BytesBytesCodec):
-        inner: object
+        configuration: StructuredOptions
 
         identifier: ClassVar[str] = "acme.structured"
         variable_size: ClassVar[bool] = False
+
+        @property
+        def inner(self) -> object:
+            return self.configuration.inner
 
     with pytest.raises(TypeError, match="inner is annotated .*, which is not a shape JSON takes"):
         CORE_AND_EXTENSIONS.extended_with(Structured)
@@ -342,17 +370,26 @@ def test_error_a_member_needs_a_check_from_somewhere() -> None:
 
 # A third-party codec that contains another codec.
 @dataclass(frozen=True)
+class AcmeWrapperOptions:
+    inner: CodecEntity | Opaque
+
+
+@dataclass(frozen=True)
 class AcmeWrapperCodec(BytesBytesCodec):
     """A codec that applies another codec after its own step."""
 
-    inner: CodecEntity | Opaque
+    configuration: AcmeWrapperOptions
 
     identifier: ClassVar[str] = "acme.wrapper"
 
     variable_size: ClassVar[bool] = False
 
+    @property
+    def inner(self) -> CodecEntity | Opaque:
+        return self.configuration.inner
+
     def canonical(self) -> Self:
-        return replace(self, inner=self.inner.canonical())
+        return self.with_configuration(inner=self.inner.canonical())
 
 
 def test_a_third_party_entity_containing_entities_reads_them_in_scope() -> None:
@@ -413,6 +450,12 @@ def test_a_third_party_entity_containing_entities_reads_them_in_scope() -> None:
     assert inner.typesize is UNSET
 
 
+@dataclass(frozen=True)
+class AcmeFramedOptions:
+    inner: CodecEntity | Opaque
+    frame: int | UNSET = UNSET
+
+
 def test_canonical_is_the_entity_s_own_and_reaches_what_it_contains() -> None:
     # An entity that contains an entity and rewrites its own members does
     # both in one `canonical` -- the contained blosc loses the `typesize`
@@ -420,24 +463,39 @@ def test_canonical_is_the_entity_s_own_and_reaches_what_it_contains() -> None:
     # is dropped -- with nothing to call `super()` for.
     @dataclass(frozen=True)
     class AcmeFramedCodec(BytesBytesCodec):
-        inner: CodecEntity | Opaque
-        frame: int | UNSET = UNSET
+        configuration: AcmeFramedOptions
 
         identifier: ClassVar[str] = "acme.framed"
 
         variable_size: ClassVar[bool] = False
 
+        @property
+        def inner(self) -> CodecEntity | Opaque:
+            return self.configuration.inner
+
+        @property
+        def frame(self) -> int | UNSET:
+            return self.configuration.frame
+
         def canonical(self) -> Self:
-            return replace(
-                self,
+            return self.with_configuration(
                 inner=self.inner.canonical(),
                 frame=UNSET if self.frame == 0 else self.frame,
             )
 
-    blosc = BloscCodec(cname="zstd", clevel=5, shuffle="noshuffle", typesize=4, blocksize=0)
-    framed = AcmeFramedCodec(inner=blosc, frame=0)
-    assert framed.canonical() == AcmeFramedCodec(inner=replace(blosc, typesize=UNSET))
+    blosc = BloscCodec(
+        BloscOptions(cname="zstd", clevel=5, shuffle="noshuffle", typesize=4, blocksize=0)
+    )
+    framed = AcmeFramedCodec(AcmeFramedOptions(inner=blosc, frame=0))
+    assert framed.canonical() == AcmeFramedCodec(
+        AcmeFramedOptions(inner=blosc.with_configuration(typesize=UNSET))
+    )
     assert framed.inner is blosc  # a transformation, not a mutation
+
+
+@dataclass(frozen=True)
+class VagueOptions:
+    inner: MetadataEntity | Opaque
 
 
 def test_error_a_nested_field_names_a_kind() -> None:
@@ -445,10 +503,14 @@ def test_error_a_nested_field_names_a_kind() -> None:
     # be resolved through any scope.
     @dataclass(frozen=True)
     class Vague(BytesBytesCodec):
-        inner: MetadataEntity | Opaque
+        configuration: VagueOptions
 
         identifier: ClassVar[str] = "acme.vague"
         variable_size: ClassVar[bool] = False
+
+        @property
+        def inner(self) -> MetadataEntity | Opaque:
+            return self.configuration.inner
 
     with pytest.raises(TypeError, match="inner holds an entity but is not written as its kind"):
         CORE_AND_EXTENSIONS.extended_with(Vague)
@@ -485,15 +547,24 @@ def acme_block_problems(codec: AcmeBlockCodec, /) -> Iterator[ValidationProblem]
 
 
 @dataclass(frozen=True)
+class AcmeBlockOptions:
+    block: int
+
+
+@dataclass(frozen=True)
 class AcmeBlockCodec(BytesBytesCodec):
     """A codec whose block size must be a power of two."""
 
-    block: int
+    configuration: AcmeBlockOptions
 
     identifier: ClassVar[str] = "acme.block"
 
     variable_size: ClassVar[bool] = False
     problems = acme_block_problems
+
+    @property
+    def block(self) -> int:
+        return self.configuration.block
 
 
 def test_a_rule_about_a_member_is_a_function_of_the_instance() -> None:
@@ -512,7 +583,7 @@ def test_a_rule_about_a_member_is_a_function_of_the_instance() -> None:
     ]
     # And on the constructor, the same rule.
     with pytest.raises(MetadataValidationError) as caught:
-        AcmeBlockCodec(block=6)
+        AcmeBlockCodec(AcmeBlockOptions(block=6))
     assert [p.loc for p in caught.value.problems] == [("block",)]
     # A member that failed its type check never reaches the rule.
     _, problems = scope.coerce(CodecEntity, {"name": "acme.block", "configuration": {"block": "x"}})
@@ -531,16 +602,29 @@ def acme_range_problems(codec: AcmeRangeCodec, /) -> Iterator[ValidationProblem]
 
 
 @dataclass(frozen=True)
+class AcmeRangeOptions:
+    low: int
+    high: int
+
+
+@dataclass(frozen=True)
 class AcmeRangeCodec(BytesBytesCodec):
     """A codec with two rules, so that one can fail after another."""
 
-    low: int
-    high: int
+    configuration: AcmeRangeOptions
 
     identifier: ClassVar[str] = "acme.range"
 
     variable_size: ClassVar[bool] = False
     problems = acme_range_problems
+
+    @property
+    def low(self) -> int:
+        return self.configuration.low
+
+    @property
+    def high(self) -> int:
+        return self.configuration.high
 
 
 def test_the_constructor_stops_at_the_first_problem_and_coerce_reports_every_one() -> None:
@@ -548,17 +632,17 @@ def test_the_constructor_stops_at_the_first_problem_and_coerce_reports_every_one
     # problem it yields, `coerce` runs it to the end. A consumer holding
     # an entity may run it too, and stop or collect as it likes.
     with pytest.raises(MetadataValidationError) as caught:
-        AcmeRangeCodec(low=-1, high=-2)
+        AcmeRangeCodec(AcmeRangeOptions(low=-1, high=-2))
     assert [p.loc for p in caught.value.problems] == [("low",)]
     scope = CORE_AND_EXTENSIONS.extended_with(AcmeRangeCodec)
     _, problems = scope.coerce(
         CodecEntity, {"name": "acme.range", "configuration": {"low": -1, "high": -2}}
     )
     assert [p.loc for p in problems] == [("configuration", "low"), ("configuration", "high")]
-    assert list(acme_range_problems(AcmeRangeCodec(low=0, high=1))) == []
+    assert list(acme_range_problems(AcmeRangeCodec(AcmeRangeOptions(low=0, high=1)))) == []
     # A reader that wants every problem of a hand-built one builds the
     # record without the check and asks.
-    record = AcmeRangeCodec.create_unchecked(low=-1, high=-2)
+    record = AcmeRangeCodec.create_unchecked(configuration=AcmeRangeOptions(low=-1, high=-2))
     assert [p.loc for p in record.problems()] == [("low",), ("high",)]
 
 
@@ -577,6 +661,13 @@ def test_error_an_entity_may_not_define_post_init() -> None:
         CORE_AND_EXTENSIONS.extended_with(Checked)
 
 
+@dataclass(frozen=True)
+class LocalizedOptions:
+    # `Local` is defined inside the test, so it is not here, where this
+    # class's annotations resolve: the case the message is for.
+    inner: Local  # noqa: F821  # pyright: ignore[reportUndefinedVariable]
+
+
 def test_error_a_field_annotation_names_what_is_not_defined() -> None:
     # Annotations are resolved where the class is, at registration; a
     # type defined inside a function is not there.
@@ -585,10 +676,14 @@ def test_error_a_field_annotation_names_what_is_not_defined() -> None:
 
     @dataclass(frozen=True)
     class Localized(BytesBytesCodec):
-        inner: Local
+        configuration: LocalizedOptions
 
         identifier: ClassVar[str] = "acme.localized"
         variable_size: ClassVar[bool] = False
+
+        @property
+        def inner(self) -> Local:
+            return self.configuration.inner
 
     with pytest.raises(TypeError, match="a field annotation names 'Local', which is not defined"):
         CORE_AND_EXTENSIONS.extended_with(Localized)
@@ -622,18 +717,27 @@ def test_a_malformed_envelope_is_one_problem() -> None:
     assert [(p.loc, p.kind) for p in problems] == [(("codecs", 0, "configuration"), "invalid_type")]
 
 
+@dataclass(frozen=True)
+class AcmeSlottedOptions:
+    level: int
+
+
 def test_a_slotted_entity_is_accepted() -> None:
     # `@dataclass(slots=True)` builds the class twice; registration sees
     # the second, whose members are slot descriptors.
     @dataclass(frozen=True, slots=True)
     class AcmeSlotted(BytesBytesCodec):
-        level: int
+        configuration: AcmeSlottedOptions
 
         identifier: ClassVar[str] = "acme.slotted"
 
         variable_size: ClassVar[bool] = False
 
-    assert AcmeSlotted(level=1).to_json() == {
+        @property
+        def level(self) -> int:
+            return self.configuration.level
+
+    assert AcmeSlotted(AcmeSlottedOptions(level=1)).to_json() == {
         "name": "acme.slotted",
         "configuration": {"level": 1},
     }
@@ -649,17 +753,26 @@ def test_a_bare_class_var_is_a_class_variable() -> None:
     assert AcmeNoted().to_json() == "acme.noted"
 
 
+@dataclass(frozen=True)
+class AcmeScaledOptions:
+    scale: float
+
+
 def test_a_number_member_is_a_float_field() -> None:
     # JSON has one number type; `float` admits an int spelled without a
     # point and refuses a bool, which is what a document's `2` and `true`
     # deserve.
     @dataclass(frozen=True)
     class AcmeScaled(ArrayArrayCodec):
-        scale: float
+        configuration: AcmeScaledOptions
 
         identifier: ClassVar[str] = "acme.scaled"
 
         variable_size: ClassVar[bool] = False
+
+        @property
+        def scale(self) -> float:
+            return self.configuration.scale
 
         def transition(self, incoming: ArrayParts) -> ArrayParts | None:
             return incoming
@@ -679,27 +792,45 @@ def test_a_number_member_is_a_float_field() -> None:
     ]
 
 
+@dataclass(frozen=True)
+class UndecoratedOptions:
+    level: int
+
+
 def test_error_an_entity_must_be_a_dataclass() -> None:
     # Class creation runs before `@dataclass` and cannot see it missing;
     # registration can, and says so instead of the first `coerce` failing
     # with the base class's `__init__`.
     class Undecorated(BytesBytesCodec):
-        level: int
+        configuration: UndecoratedOptions
 
         identifier: ClassVar[str] = "acme.undecorated"
 
+        @property
+        def level(self) -> int:
+            return self.configuration.level
+
     with pytest.raises(TypeError, match="not a dataclass; decorate it with @dataclass"):
         CORE_AND_EXTENSIONS.extended_with(Undecorated)
+
+
+@dataclass(frozen=True)
+class ClosedOptions:
+    inner: CodecEntity
 
 
 def test_error_a_nested_field_admits_opaque() -> None:
     # What the field holds when the inner name is out of scope.
     @dataclass(frozen=True)
     class Closed(BytesBytesCodec):
-        inner: CodecEntity
+        configuration: ClosedOptions
 
         identifier: ClassVar[str] = "acme.closed"
         variable_size: ClassVar[bool] = False
+
+        @property
+        def inner(self) -> CodecEntity:
+            return self.configuration.inner
 
     with pytest.raises(TypeError, match="inner holds an entity but is not written as its kind"):
         CORE_AND_EXTENSIONS.extended_with(Closed)

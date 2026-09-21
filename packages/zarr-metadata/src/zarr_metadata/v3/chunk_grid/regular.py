@@ -60,6 +60,13 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True)
+class RegularChunkGridOptions:
+    """What a `regular` grid is configured with."""
+
+    chunk_shape: tuple[int, ...]
+
+
 def regular_problems(grid: "RegularChunkGrid", /) -> "Iterator[ValidationProblem]":
     for index, extent in enumerate(grid.chunk_shape):
         if extent < 1:
@@ -72,11 +79,15 @@ def regular_problems(grid: "RegularChunkGrid", /) -> "Iterator[ValidationProblem
 class RegularChunkGrid(ChunkGridEntity):
     """The `regular` chunk grid, coerced from its metadata."""
 
-    chunk_shape: tuple[int, ...]
+    configuration: RegularChunkGridOptions
 
     identifier: ClassVar[str] = REGULAR_CHUNK_GRID_NAME
 
     problems = regular_problems
+
+    @property
+    def chunk_shape(self) -> tuple[int, ...]:
+        return self.configuration.chunk_shape
 
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
         """A regular grid must chunk every array dimension."""

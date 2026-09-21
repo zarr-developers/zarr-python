@@ -74,6 +74,14 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True)
+class ScaleOffsetOptions:
+    """What `scale_offset` is configured with."""
+
+    offset: JSONValue | UNSET = UNSET
+    scale: JSONValue | UNSET = UNSET
+
+
 def scale_offset_problems(codec: "ScaleOffsetCodec", /) -> "Iterator[ValidationProblem]":
     """Each value is a scalar of the array's type, so neither is null.
 
@@ -97,13 +105,20 @@ class ScaleOffsetCodec(ArrayArrayCodec):
     is a question for the rules layer.
     """
 
-    offset: JSONValue | UNSET = UNSET
-    scale: JSONValue | UNSET = UNSET
+    configuration: ScaleOffsetOptions
 
     identifier: ClassVar[str] = SCALE_OFFSET_CODEC_NAME
     variable_size: ClassVar[bool] = False
 
     problems = scale_offset_problems
+
+    @property
+    def offset(self) -> JSONValue | UNSET:
+        return self.configuration.offset
+
+    @property
+    def scale(self) -> JSONValue | UNSET:
+        return self.configuration.scale
 
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:
         """The same array, element for element.

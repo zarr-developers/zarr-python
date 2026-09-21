@@ -71,9 +71,20 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class DefaultChunkKeyEncoding(ChunkKeyEncodingEntity):
-    """The `default` chunk key encoding, coerced from its metadata."""
+class DefaultChunkKeyEncodingOptions:
+    """What the `default` encoding is configured with."""
 
     separator: DefaultChunkKeyEncodingSeparator | UNSET = UNSET
 
+
+@dataclass(frozen=True)
+class DefaultChunkKeyEncoding(ChunkKeyEncodingEntity):
+    """The `default` chunk key encoding, coerced from its metadata."""
+
+    configuration: DefaultChunkKeyEncodingOptions
+
     identifier: ClassVar[str] = DEFAULT_CHUNK_KEY_ENCODING_NAME
+
+    @property
+    def separator(self) -> DefaultChunkKeyEncodingSeparator | UNSET:
+        return self.configuration.separator

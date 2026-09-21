@@ -84,6 +84,9 @@ Writer: TypeAlias = Callable[[object], JSONValue]
 WriterLeaf: TypeAlias = Callable[[object], "Writer | None"]
 """A caller's own shapes, for writing: asked first for every annotation, None to decline."""
 
+RecordWriter: TypeAlias = Callable[[object], dict[str, JSONValue]]
+"""A record dataclass as the JSON object a document writes for it."""
+
 
 def problem(
     loc: Loc, message: str, kind: ProblemKind = "invalid_type"
@@ -737,10 +740,10 @@ def keys_of(members: Mapping[str, Writer]) -> Writer:
     return write
 
 
-def fields_of(members: Mapping[str, Writer]) -> Writer:
+def fields_of(members: Mapping[str, Writer]) -> RecordWriter:
     """A record dataclass as an object: each field written by its type, an absent optional one left out."""
 
-    def write(value: object) -> JSONValue:
+    def write(value: object) -> dict[str, JSONValue]:
         written: dict[str, JSONValue] = {}
         for key, member in members.items():
             entry = getattr(value, key)
@@ -833,12 +836,22 @@ def writer(annotation: object, leaf: WriterLeaf) -> Writer:
     return found
 
 
+def record_writer(record: type, leaf: WriterLeaf) -> RecordWriter:
+    """The writer of a record dataclass, as the object it writes; `TypeError` for a field no writer reads."""
+    members = _writers_of(field_hints(record), leaf)
+    if members is None:
+        msg = f"{record.__name__} has a field that is not a shape JSON takes"
+        raise TypeError(msg)
+    return fields_of(members)
+
+
 __all__ = [
     "Leaf",
     "Loc",
     "Members",
     "Parsed",
     "Parser",
+    "RecordWriter",
     "Writer",
     "WriterLeaf",
     "any_of",
@@ -868,6 +881,7 @@ __all__ = [
     "positions_of",
     "problem",
     "record_of",
+    "record_writer",
     "sequence_of",
     "shape_of",
     "strip_annotation",

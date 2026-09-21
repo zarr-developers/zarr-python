@@ -98,6 +98,13 @@ class StructFieldComponent:
     data_type: DataTypeEntity | Opaque
 
 
+@dataclass(frozen=True)
+class StructOptions:
+    """What `struct` is configured with."""
+
+    fields: tuple[StructFieldComponent, ...]
+
+
 def struct_problems(data_type: "StructDataType", /) -> "Iterator[ValidationProblem]":
     """Names exist, are non-empty and distinct; types are fixed-size.
 
@@ -140,17 +147,20 @@ class StructDataType(DataTypeEntity):
     read in to make sense of them.
     """
 
-    fields: tuple[StructFieldComponent, ...]
+    configuration: StructOptions
 
     identifier: ClassVar[str] = STRUCT_DATA_TYPE_NAME
     scalar_storage: ClassVar[StorageClass] = "single_byte"
 
     problems = struct_problems
 
+    @property
+    def fields(self) -> tuple[StructFieldComponent, ...]:
+        return self.configuration.fields
+
     def canonical(self) -> Self:
         """Each field's data type in its own canonical form."""
-        return replace(
-            self,
+        return self.with_configuration(
             fields=tuple(
                 replace(field, data_type=field.data_type.canonical()) for field in self.fields
             ),

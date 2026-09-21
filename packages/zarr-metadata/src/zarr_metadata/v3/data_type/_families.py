@@ -167,6 +167,14 @@ NUMPY_TIME_MAX_SCALE_FACTOR: Final = 2**31 - 1
 """The largest `scale_factor` numpy stores: the field is a signed int32."""
 
 
+@dataclass(frozen=True)
+class NumpyTimeOptions:
+    """What a numpy time type is configured with: a unit, and how many of it one tick is."""
+
+    unit: NumpyTimeUnit
+    scale_factor: int
+
+
 def numpy_time_problems(data_type: NumpyTimeDataType, /) -> Iterator[ValidationProblem]:
     if not 1 <= data_type.scale_factor <= NUMPY_TIME_MAX_SCALE_FACTOR:
         yield ValidationProblem(
@@ -186,11 +194,18 @@ class NumpyTimeDataType(DataTypeEntity):
     neither sibling imports them from the other.
     """
 
-    unit: NumpyTimeUnit
-    scale_factor: int
+    configuration: NumpyTimeOptions
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     problems = numpy_time_problems
+
+    @property
+    def unit(self) -> NumpyTimeUnit:
+        return self.configuration.unit
+
+    @property
+    def scale_factor(self) -> int:
+        return self.configuration.scale_factor
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         if value == "NaT":

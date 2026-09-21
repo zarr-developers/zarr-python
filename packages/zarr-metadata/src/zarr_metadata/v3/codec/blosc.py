@@ -4,7 +4,7 @@ Blosc codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self
 
 from typing_extensions import TypedDict
@@ -89,6 +89,17 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True)
+class BloscOptions:
+    """What `blosc` is configured with."""
+
+    cname: BloscCName
+    clevel: int
+    shuffle: BloscShuffle
+    blocksize: int
+    typesize: int | UNSET = UNSET
+
+
 def blosc_problems(codec: "BloscCodec", /) -> "Iterator[ValidationProblem]":
     """Bounds on `clevel` and `blocksize`; `typesize` against `shuffle`.
 
@@ -128,11 +139,7 @@ class BloscCodec(BytesBytesCodec):
     equivalent document.
     """
 
-    cname: BloscCName
-    clevel: int
-    shuffle: BloscShuffle
-    blocksize: int
-    typesize: int | UNSET = UNSET
+    configuration: BloscOptions
 
     identifier: ClassVar[str] = BLOSC_CODEC_NAME
     variable_size: ClassVar[bool] = True
@@ -140,6 +147,26 @@ class BloscCodec(BytesBytesCodec):
     # Every member is required but `typesize`, which only means something
     # when shuffling; `blosc_problems` is where that conditional lives.
     problems = blosc_problems
+
+    @property
+    def cname(self) -> BloscCName:
+        return self.configuration.cname
+
+    @property
+    def clevel(self) -> int:
+        return self.configuration.clevel
+
+    @property
+    def shuffle(self) -> BloscShuffle:
+        return self.configuration.shuffle
+
+    @property
+    def blocksize(self) -> int:
+        return self.configuration.blocksize
+
+    @property
+    def typesize(self) -> int | UNSET:
+        return self.configuration.typesize
 
     def canonical(self) -> Self:
         """Without a `typesize` that `noshuffle` renders meaningless.
@@ -149,4 +176,4 @@ class BloscCodec(BytesBytesCodec):
         """
         if self.shuffle != BLOSC_NO_SHUFFLE or self.typesize is UNSET:
             return self
-        return replace(self, typesize=UNSET)
+        return self.with_configuration(typesize=UNSET)

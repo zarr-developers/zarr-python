@@ -79,6 +79,13 @@ __all__ = [
 
 
 @dataclass(frozen=True)
+class BytesOptions:
+    """What `bytes` is configured with."""
+
+    endian: Endianness | UNSET = UNSET
+
+
+@dataclass(frozen=True)
 class BytesCodec(ArrayBytesCodec):
     """The `bytes` codec, coerced from its metadata.
 
@@ -86,10 +93,14 @@ class BytesCodec(ArrayBytesCodec):
     has no byte order to state, and the spec lets such an array omit it.
     """
 
-    endian: Endianness | UNSET = UNSET
+    configuration: BytesOptions
 
     identifier: ClassVar[str] = BYTES_CODEC_NAME
     variable_size: ClassVar[bool] = False
+
+    @property
+    def endian(self) -> Endianness | UNSET:
+        return self.configuration.endian
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         """The data type reaching here must have a raw byte representation.

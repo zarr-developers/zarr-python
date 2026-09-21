@@ -67,6 +67,13 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True)
+class GzipOptions:
+    """What `gzip` is configured with."""
+
+    level: int
+
+
 def gzip_problems(codec: "GzipCodec", /) -> "Iterator[ValidationProblem]":
     if not 0 <= codec.level <= 9:
         yield ValidationProblem(
@@ -78,9 +85,13 @@ def gzip_problems(codec: "GzipCodec", /) -> "Iterator[ValidationProblem]":
 class GzipCodec(BytesBytesCodec):
     """The `gzip` codec, coerced from its metadata."""
 
-    level: int
+    configuration: GzipOptions
 
     identifier: ClassVar[str] = GZIP_CODEC_NAME
     variable_size: ClassVar[bool] = True
 
     problems = gzip_problems
+
+    @property
+    def level(self) -> int:
+        return self.configuration.level

@@ -77,9 +77,20 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class V2ChunkKeyEncoding(ChunkKeyEncodingEntity):
-    """The `v2` chunk key encoding, coerced from its metadata."""
+class V2ChunkKeyEncodingOptions:
+    """What the `v2` encoding is configured with."""
 
     separator: V2ChunkKeyEncodingSeparator | UNSET = UNSET
 
+
+@dataclass(frozen=True)
+class V2ChunkKeyEncoding(ChunkKeyEncodingEntity):
+    """The `v2` chunk key encoding, coerced from its metadata."""
+
+    configuration: V2ChunkKeyEncodingOptions
+
     identifier: ClassVar[str] = V2_CHUNK_KEY_ENCODING_NAME
+
+    @property
+    def separator(self) -> V2ChunkKeyEncodingSeparator | UNSET:
+        return self.configuration.separator
