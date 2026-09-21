@@ -4,27 +4,21 @@ Cast-value codec types.
 See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/cast_value/README.md
 """
 
-from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, cast
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal, NotRequired, cast
 
+from typing_extensions import TypedDict
+
+from zarr_metadata._common import JSONValue
 from zarr_metadata.model._sentinel import UNSET
-from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
-    DATA_TYPE,
     CodecEntity,
     CodecKind,
     DataTypeEntity,
     Opaque,
 )
 from zarr_metadata.v3._parts import ArrayParts
-
-if TYPE_CHECKING:
-    from zarr_metadata.v3._registry import Context
-
-from typing_extensions import TypedDict
-
-from zarr_metadata._common import JSONValue
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 
 CAST_VALUE_CODEC_NAME: Final = "cast_value"
 """The `name` field value of the `cast_value` codec."""
@@ -146,32 +140,6 @@ class CastValueCodec(CodecEntity):
 
     identifier: ClassVar[str] = CAST_VALUE_CODEC_NAME
     kind: ClassVar[CodecKind] = "array_array"
-
-    @classmethod
-    def prepare(
-        cls, members: dict[str, object], context: "Context"
-    ) -> tuple[dict[str, object], tuple[ValidationProblem, ...]]:
-        """The target data type, read in this scope."""
-        data_type, found = context.coerce(
-            DATA_TYPE, members["data_type"], ("configuration", "data_type")
-        )
-        return {**members, "data_type": data_type}, found
-
-    def canonical(self) -> Self:
-        """The target data type in its own canonical form."""
-        if not isinstance(self.data_type, DataTypeEntity):
-            return self
-        return replace(self, data_type=self.data_type.canonical())
-
-    def configuration(self) -> dict[str, object]:
-        """The target data type in its canonical spelling."""
-        members = super().configuration()
-        data_type = self.data_type
-        if isinstance(data_type, DataTypeEntity):
-            members["data_type"] = data_type.to_json()
-        else:
-            members["data_type"] = data_type.json
-        return members
 
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:
         """The same parts, holding the type this codec casts to."""

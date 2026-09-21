@@ -4,17 +4,18 @@ Sharding-indexed codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index.html
 """
 
-from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, cast
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal, NotRequired, cast
+
+from typing_extensions import TypedDict, Unpack
 
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._chain import chain_problems
+from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
-    CODECS,
     CodecEntity,
     CodecKind,
-    Loc,
     Opaque,
     problem,
 )
@@ -25,13 +26,6 @@ from zarr_metadata.v3._parts import (
     shard_index_grid,
 )
 from zarr_metadata.v3.data_type.uint64 import Uint64DataType
-
-if TYPE_CHECKING:
-    from zarr_metadata.v3._registry import Context
-
-from typing_extensions import TypedDict, Unpack
-
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 
 SHARDING_INDEXED_CODEC_NAME: Final = "sharding_indexed"
 """The `name` field value of the `sharding_indexed` codec."""
@@ -100,32 +94,12 @@ __all__ = [
 ]
 
 
-def _coerce_pipeline(
-    entries: tuple[object, ...], context: "Context", loc: Loc
-) -> tuple[tuple[CodecEntity | Opaque, ...], tuple[ValidationProblem, ...]]:
-    """Every entry of one pipeline, read in `context`."""
-    coerced: list[CodecEntity | Opaque] = []
-    problems: list[ValidationProblem] = []
-    for index, entry in enumerate(entries):
-        codec, found = context.coerce(CODECS, entry, (*loc, index))
-        coerced.append(codec)
-        problems.extend(found)
-    return tuple(coerced), tuple(problems)
-
-
-def _canonical_pipeline(
-    codecs: tuple[CodecEntity | Opaque, ...],
-) -> tuple[CodecEntity | Opaque, ...]:
-    """Each codec canonicalized; one out of scope is left as written."""
-    return tuple(codec.canonical() if isinstance(codec, CodecEntity) else codec for codec in codecs)
-
-
 class ShardingIndexedMembers(TypedDict):
     """A shard's members as the entity holds them.
 
     Not `ShardingIndexedCodecConfiguration`, which describes the JSON: by
-    the time values are judged, `prepare` has read the two pipelines, so
-    these are codecs rather than the metadata fields that named them.
+    the time values are judged, the two pipelines have been read in scope,
+    so these are codecs rather than the metadata fields that named them.
     """
 
     chunk_shape: tuple[int, ...]
@@ -169,24 +143,6 @@ class ShardingIndexedCodec(CodecEntity):
             )
             for position, extent in enumerate(members["chunk_shape"])
             if extent < 1
-        )
-
-    @classmethod
-    def prepare(
-        cls, members: dict[str, object], context: "Context"
-    ) -> tuple[dict[str, object], tuple[ValidationProblem, ...]]:
-        """Both pipelines, read in this scope."""
-        inner, from_inner = _coerce_pipeline(
-            cast("tuple[object, ...]", members["codecs"]), context, ("configuration", "codecs")
-        )
-        index, from_index = _coerce_pipeline(
-            cast("tuple[object, ...]", members["index_codecs"]),
-            context,
-            ("configuration", "index_codecs"),
-        )
-        return (
-            {**members, "codecs": inner, "index_codecs": index},
-            (*from_inner, *from_index),
         )
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
@@ -260,24 +216,6 @@ class ShardingIndexedCodec(CodecEntity):
                     )
                 )
         return tuple(found)
-
-    def canonical(self) -> Self:
-        """Each codec of each pipeline in its own canonical form."""
-        return replace(
-            self,
-            codecs=_canonical_pipeline(self.codecs),
-            index_codecs=_canonical_pipeline(self.index_codecs),
-        )
-
-    def configuration(self) -> dict[str, object]:
-        """The two pipelines in their canonical spelling, entry by entry."""
-        members = super().configuration()
-        for member in ("codecs", "index_codecs"):
-            members[member] = tuple(
-                entry.to_json() if isinstance(entry, CodecEntity) else entry.json
-                for entry in cast("tuple[CodecEntity | Opaque, ...]", members[member])
-            )
-        return members
 
     def to_json(self) -> ShardingIndexedCodecObject:
         return cast("ShardingIndexedCodecObject", super().to_json())

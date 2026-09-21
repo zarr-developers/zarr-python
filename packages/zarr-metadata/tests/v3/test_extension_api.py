@@ -18,6 +18,8 @@ from zarr_metadata.rules import (
     canonicalize_array_metadata_v3,
     validate_array_metadata_v3,
 )
+from zarr_metadata.v3.codec.blosc import BloscCodec
+from zarr_metadata.v3.codec.gzip import GzipCodec
 from zarr_metadata.v3.entity import (
     CORE,
     CORE_AND_EXTENSIONS,
@@ -427,3 +429,102 @@ def test_error_a_bare_name_rule_may_not_be_restated() -> None:
             identifier: ClassVar[str] = "acme.opinionated"
             kind: ClassVar[CodecKind] = "bytes_bytes"
             configuration_required: ClassVar[bool] = True
+
+
+# A third-party codec that contains another codec: the case that used to
+# need `prepare`, `configuration` and `canonical` written by hand.
+@dataclass(frozen=True)
+class AcmeWrapperCodec(CodecEntity):
+    """A codec that applies another codec after its own step."""
+
+    inner: CodecEntity | Opaque
+
+    identifier: ClassVar[str] = "acme.wrapper"
+    kind: ClassVar[CodecKind] = "bytes_bytes"
+
+
+def test_a_third_party_entity_containing_entities_writes_nothing_for_it() -> None:
+    # `inner: CodecEntity | Opaque` is the whole declaration. Reading it
+    # in scope, writing it back, and canonicalizing through it all follow
+    # from the annotation, so a wrapper is as short to write as a leaf.
+    scope = CORE_AND_EXTENSIONS.extended_with(
+        codecs={AcmeWrapperCodec.identifier: AcmeWrapperCodec}
+    )
+    entry = {
+        "name": "acme.wrapper",
+        "configuration": {"inner": {"name": "gzip", "configuration": {"level": 5}}},
+    }
+    codec, problems = scope.coerce("codecs", entry)
+    assert problems == ()
+    assert isinstance(codec, AcmeWrapperCodec)
+    assert isinstance(codec.inner, GzipCodec)
+    assert codec.inner.level == 5
+    assert codec.to_json() == entry
+
+    # An inner codec the scope does not model stays verbatim, as anywhere.
+    unknown = {"name": "acme.wrapper", "configuration": {"inner": "acme.unknown"}}
+    codec, problems = scope.coerce("codecs", unknown)
+    assert problems == ()
+    assert isinstance(codec, AcmeWrapperCodec)
+    assert isinstance(codec.inner, Opaque)
+    assert codec.to_json() == unknown
+
+    # A problem inside is located inside.
+    bad = {
+        "name": "acme.wrapper",
+        "configuration": {"inner": {"name": "gzip", "configuration": {"level": 99}}},
+    }
+    _, problems = scope.coerce("codecs", bad)
+    assert [problem.loc for problem in problems] == [
+        ("configuration", "inner", "configuration", "level")
+    ]
+
+    # Canonical form reaches the contained entity.
+    verbose = {
+        "name": "acme.wrapper",
+        "configuration": {
+            "inner": {
+                "name": "blosc",
+                "configuration": {
+                    "cname": "zstd",
+                    "clevel": 5,
+                    "shuffle": "noshuffle",
+                    "typesize": 4,
+                    "blocksize": 0,
+                },
+            }
+        },
+    }
+    codec, _ = scope.coerce("codecs", verbose)
+    assert isinstance(codec, AcmeWrapperCodec)
+    inner = codec.canonical().inner
+    assert isinstance(inner, BloscCodec)
+    assert inner.typesize is UNSET
+
+
+def test_error_an_entity_may_not_define_prepare() -> None:
+    # A member that is an entity is read from its annotation; an override
+    # named `prepare` is resolution that would never run.
+    with pytest.raises(TypeError, match="nothing calls `prepare`"):
+
+        @dataclass(frozen=True)
+        class Preparer(CodecEntity):  # pyright: ignore[reportUnusedClass]
+            identifier: ClassVar[str] = "acme.preparer"
+            kind: ClassVar[CodecKind] = "bytes_bytes"
+
+            @classmethod
+            def prepare(cls, members: object, context: object) -> object:
+                return members
+
+
+def test_error_a_nested_field_needs_an_entity_kind_with_a_point() -> None:
+    # `MetadataEntity` is registered at no single point, so a field typed
+    # as one could not be resolved through any scope.
+    with pytest.raises(TypeError, match="has no `extension_point`"):
+
+        @dataclass(frozen=True)
+        class Vague(CodecEntity):  # pyright: ignore[reportUnusedClass]
+            inner: MetadataEntity | Opaque
+
+            identifier: ClassVar[str] = "acme.vague"
+            kind: ClassVar[CodecKind] = "bytes_bytes"

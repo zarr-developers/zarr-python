@@ -158,9 +158,10 @@ class BloscCodec(CodecEntity):
         The spec says of that case that "the value is ignored", so two
         documents differing only there describe the same codec.
         """
-        if self.shuffle != BLOSC_NO_SHUFFLE or self.typesize is UNSET:
-            return self
-        return replace(self, typesize=UNSET)
+        canonical = super().canonical()
+        if canonical.shuffle != BLOSC_NO_SHUFFLE or canonical.typesize is UNSET:
+            return canonical
+        return replace(canonical, typesize=UNSET)
 
     def to_json(self) -> BloscCodecObject:
         return cast("BloscCodecObject", super().to_json())

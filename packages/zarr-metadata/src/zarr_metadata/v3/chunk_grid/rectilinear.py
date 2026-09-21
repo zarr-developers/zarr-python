@@ -257,7 +257,7 @@ class RectilinearChunkGrid(ChunkGridEntity):
         Two dimension specs listing the same extents describe the same
         grid, and the encoded one stays the same size as the array grows.
         """
-        return replace(self, chunk_shapes=canonical_chunk_shapes(self.chunk_shapes))
+        return replace(super().canonical(), chunk_shapes=canonical_chunk_shapes(self.chunk_shapes))
 
     def to_json(self) -> RectilinearChunkGridObject:
         return cast("RectilinearChunkGridObject", super().to_json())

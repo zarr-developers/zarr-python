@@ -5,26 +5,21 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, cast
+from dataclasses import dataclass
+from typing import ClassVar, Final, Literal, NotRequired, cast
 
+from typing_extensions import ReadOnly, TypedDict, Unpack
+
+from zarr_metadata._common import JSONValue
 from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
-    DATA_TYPE,
     DataTypeEntity,
     Loc,
     Opaque,
     StorageClass,
     problem,
 )
-
-if TYPE_CHECKING:
-    from zarr_metadata.v3._registry import Context
-
-from typing_extensions import ReadOnly, TypedDict, Unpack
-
-from zarr_metadata._common import JSONValue
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 
 STRUCT_DATA_TYPE_NAME: Final = "struct"
 """The `name` field value of the `struct` data type."""
@@ -99,24 +94,12 @@ class StructFieldComponent:
     name: str
     data_type: DataTypeEntity | Opaque
 
-    def to_json(self) -> StructField:
-        data_type = self.data_type
-        return cast(
-            "StructField",
-            {
-                "name": self.name,
-                "data_type": (
-                    data_type.to_json() if isinstance(data_type, DataTypeEntity) else data_type.json
-                ),
-            },
-        )
-
 
 class StructMembers(TypedDict):
     """A struct's members as the entity holds them.
 
     Not `StructConfiguration`, which describes the JSON: by the time
-    values are judged, `prepare` has read each field's data type, so
+    values are judged, each field's data type has been read in scope, so
     these are components holding entities rather than field objects.
     """
 
@@ -182,24 +165,6 @@ class StructDataType(DataTypeEntity):
                 )
         return tuple(found)
 
-    @classmethod
-    def prepare(
-        cls, members: dict[str, object], context: "Context"
-    ) -> tuple[dict[str, object], tuple[ValidationProblem, ...]]:
-        """Each field's data type, read in this scope."""
-        fields: list[StructFieldComponent] = []
-        found: list[ValidationProblem] = []
-        for index, entry in enumerate(cast("tuple[object, ...]", members["fields"])):
-            field = cast("Mapping[str, object]", entry)
-            data_type, from_field = context.coerce(
-                DATA_TYPE, field["data_type"], ("configuration", "fields", index, "data_type")
-            )
-            found.extend(from_field)
-            fields.append(
-                StructFieldComponent(name=cast("str", field["name"]), data_type=data_type)
-            )
-        return {**members, "fields": tuple(fields)}, tuple(found)
-
     def storage_class(self) -> StorageClass | None:
         """The widest class among the fields.
 
@@ -254,22 +219,6 @@ class StructDataType(DataTypeEntity):
             for key in sorted(fills.keys() - declared)
         )
         return tuple(found)
-
-    def canonical(self) -> Self:
-        """Each field's data type in its own canonical form."""
-        return replace(
-            self,
-            fields=tuple(
-                replace(field, data_type=field.data_type.canonical())
-                if isinstance(field.data_type, DataTypeEntity)
-                else field
-                for field in self.fields
-            ),
-        )
-
-    def configuration(self) -> dict[str, object]:
-        """Each field in its canonical spelling, type included."""
-        return {"fields": tuple(field.to_json() for field in self.fields)}
 
     def to_json(self) -> Struct:
         return cast("Struct", super().to_json())

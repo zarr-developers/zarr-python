@@ -46,7 +46,7 @@ from __future__ import annotations
 import types
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import MISSING, Field, dataclass, fields, is_dataclass
+from dataclasses import MISSING, Field, dataclass, fields, is_dataclass, replace
 from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
@@ -619,6 +619,191 @@ def derive_member_types(cls: type) -> tuple[dict[str, tuple[bool, TypeCheck]], l
     return derived, unread
 
 
+def _contains_entity(annotation: object) -> bool:
+    """Whether a value of this type holds a nested metadata field anywhere in it."""
+    inner, _ = _strip(annotation)
+    if _is_entity_type(inner):
+        return True
+    origin = get_origin(inner)
+    if _is_union(inner):
+        return any(_contains_entity(arg) for arg in get_args(inner) if arg is not UNSET)
+    if origin is tuple:
+        return any(_contains_entity(arg) for arg in get_args(inner) if arg is not Ellipsis)
+    if is_typeddict(inner):
+        return any(
+            _contains_entity(value) for value in get_type_hints(inner, include_extras=True).values()
+        )
+    if isinstance(inner, type) and is_dataclass(inner):
+        return any(_contains_entity(value) for value in _field_hints(inner).values())
+    return False
+
+
+def _as_entity_kind(candidate: object) -> type[MetadataEntity] | None:
+    """`candidate` as an entity type, or None if it is not one.
+
+    In a function of its own so that the `isinstance`/`issubclass` pair
+    narrows this parameter and not the caller's variable, which the
+    caller goes on to read as the annotation it is.
+    """
+    if isinstance(candidate, type) and issubclass(candidate, MetadataEntity):
+        return candidate
+    return None
+
+
+def _entity_kinds(annotation: object) -> list[type[MetadataEntity]]:
+    """Every entity type an annotation names, at any depth."""
+    inner, _ = _strip(annotation)
+    kind = _as_entity_kind(inner)
+    if kind is not None:
+        return [kind]
+    origin = get_origin(inner)
+    arguments: tuple[object, ...] = get_args(inner)
+    if _is_union(inner):
+        return [kind for arg in arguments if arg is not UNSET for kind in _entity_kinds(arg)]
+    if origin is tuple:
+        return [kind for arg in arguments if arg is not Ellipsis for kind in _entity_kinds(arg)]
+    if isinstance(inner, type) and is_dataclass(inner) and not _is_entity_type(inner):
+        return [kind for value in _field_hints(inner).values() for kind in _entity_kinds(value)]
+    return []
+
+
+def _point_of(kind: type[MetadataEntity]) -> ExtensionPointField:
+    """The point a nested entity kind is resolved at.
+
+    Every nested field's kind has one by the time an entity exists --
+    `__init_subclass__` refuses the class otherwise -- so this is the
+    narrowing, not a second check.
+    """
+    point = kind.extension_point
+    if point is None:
+        msg = f"{kind.__name__} is registered at no single extension point"
+        raise TypeError(msg)
+    return point
+
+
+def _element_annotations(inner: object, count: int) -> list[object]:
+    """The annotation of each element of a tuple type, one per element held."""
+    arguments = get_args(inner)
+    if len(arguments) == 2 and arguments[1] is Ellipsis:
+        return [arguments[0]] * count
+    return list(arguments)
+
+
+def _fitting_branch(inner: object, value: object) -> object | None:
+    """The branch of a union that holds an entity and whose shape `value` has."""
+    for branch in get_args(inner):
+        if branch is UNSET or not _contains_entity(branch):
+            continue
+        if _has_shape(_shape(branch), value):
+            return branch
+    return None
+
+
+def _resolve(
+    annotation: object, value: object, context: Context, loc: Loc
+) -> tuple[object, tuple[ValidationProblem, ...]]:
+    """`value`, with every nested metadata field in it read as an entity in `context`.
+
+    What `prepare` used to be written for by hand: a field annotated with
+    an entity type is resolved through the scope, at the point that kind
+    of entity is registered at; an array of them element by element; a
+    record holding one field by field. The value has passed its type
+    check, so the shapes are the annotation's.
+    """
+    inner, _ = _strip(annotation)
+    candidates = list(get_args(inner)) if _is_union(inner) else [inner]
+    if _is_entity_or_opaque(candidates):
+        return context.coerce(_point_of(_entity_kinds(inner)[0]), value, loc)
+    if _is_union(inner):
+        branch = _fitting_branch(inner, value)
+        return (value, ()) if branch is None else _resolve(branch, value, context, loc)
+    if get_origin(inner) is tuple:
+        entries = cast("tuple[object, ...]", value)
+        resolved: list[object] = []
+        found: list[ValidationProblem] = []
+        for position, (element, entry) in enumerate(
+            zip(_element_annotations(inner, len(entries)), entries, strict=True)
+        ):
+            item, problems = _resolve(element, entry, context, (*loc, position))
+            resolved.append(item)
+            found.extend(problems)
+        return tuple(resolved), tuple(found)
+    if isinstance(inner, type) and is_dataclass(inner) and not _is_entity_type(inner):
+        entries = cast("Mapping[str, object]", value)
+        members: dict[str, object] = {}
+        found = []
+        for name, field_annotation in _field_hints(inner).items():
+            if name not in entries:
+                continue
+            member, problems = _resolve(field_annotation, entries[name], context, (*loc, name))
+            members[name] = member
+            found.extend(problems)
+        return inner(**members), tuple(found)
+    return value, ()
+
+
+def _render(annotation: object, value: object) -> object:
+    """`value` as a document would write it: every nested entity in its JSON form."""
+    if isinstance(value, MetadataEntity):
+        return value.to_json()
+    if isinstance(value, Opaque):
+        return value.json
+    inner, _ = _strip(annotation)
+    if _is_union(inner):
+        branch = _fitting_branch(inner, value)
+        return value if branch is None else _render(branch, value)
+    if get_origin(inner) is tuple:
+        entries = cast("tuple[object, ...]", value)
+        return tuple(
+            _render(element, entry)
+            for element, entry in zip(
+                _element_annotations(inner, len(entries)), entries, strict=True
+            )
+        )
+    if isinstance(inner, type) and is_dataclass(inner) and not _is_entity_type(inner):
+        return {
+            name: _render(field_annotation, getattr(value, name))
+            for name, field_annotation in _field_hints(inner).items()
+            if getattr(value, name) is not UNSET
+        }
+    return value
+
+
+def _canonicalize(annotation: object, value: object) -> object:
+    """`value` with every nested entity in its own canonical form."""
+    if isinstance(value, MetadataEntity):
+        return value.canonical()
+    if isinstance(value, Opaque):
+        return value
+    inner, _ = _strip(annotation)
+    if _is_union(inner):
+        branch = _fitting_branch(inner, value)
+        return value if branch is None else _canonicalize(branch, value)
+    if get_origin(inner) is tuple:
+        entries = cast("tuple[object, ...]", value)
+        return tuple(
+            _canonicalize(element, entry)
+            for element, entry in zip(
+                _element_annotations(inner, len(entries)), entries, strict=True
+            )
+        )
+    if (
+        isinstance(inner, type)
+        and is_dataclass(inner)
+        and not _is_entity_type(inner)
+        and is_dataclass(value)
+        and not isinstance(value, type)
+    ):
+        return replace(
+            value,
+            **{
+                name: _canonicalize(field_annotation, getattr(value, name))
+                for name, field_annotation in _field_hints(inner).items()
+            },
+        )
+    return value
+
+
 ValueRoutine: TypeAlias = "Callable[..., tuple[ValidationProblem, ...]]"
 """An entity's value-space judgment, over the members it was given."""
 
@@ -712,6 +897,16 @@ class MetadataEntity:
     rather than a constant, a member another member renders meaningless.
     """
 
+    extension_point: ClassVar[ExtensionPointField | None] = None
+    """Where this kind of entity is registered, if it is registered at one point.
+
+    Set by `CodecEntity`, `DataTypeEntity` and `ChunkGridEntity`. It is
+    what makes a field typed as one of those resolvable: the scope is
+    asked at that point. `MetadataEntity` itself is the kind of the two
+    points that take any entity, so it names none, and a field typed as
+    bare `MetadataEntity` is refused at class creation.
+    """
+
     must_understand: ClassVar[bool] = True
     """Whether a reader that does not know this entity may skip it.
 
@@ -746,6 +941,15 @@ class MetadataEntity:
     JSON TypedDict is held to the same keys by `tests/v3/test_entities.py`.
     """
 
+    nested_members: ClassVar[Mapping[str, object]] = MappingProxyType({})
+    """The fields that hold other entities, with their annotations.
+
+    Read off the fields at class creation, like `member_types`. These are
+    the members `coerce` resolves through the scope, `configuration`
+    renders as JSON and `canonical` recurses into -- so an entity that
+    contains entities writes nothing for any of that.
+    """
+
     configuration_required: ClassVar[bool] = False
     """Whether the bare-name spelling says too little for this entity.
 
@@ -775,6 +979,15 @@ class MetadataEntity:
             msg = (
                 f"{cls.__name__} defines `problems`; value rules belong in "
                 "`value_problems`, which takes the members rather than an entity"
+            )
+            raise TypeError(msg)
+        if "prepare" in cls.__dict__:
+            # A member that is an entity is read from its annotation, so
+            # an override named `prepare` is resolution that would never
+            # run, and nothing else would say so.
+            msg = (
+                f"{cls.__name__} defines `prepare`; a member that is an entity is read "
+                "from its field annotation, and nothing calls `prepare`"
             )
             raise TypeError(msg)
         if "__post_init__" in cls.__dict__:
@@ -822,6 +1035,24 @@ class MetadataEntity:
             raise TypeError(msg)
         cls.member_types = {**derived, **declared}
         cls.configuration_required = any(required for required, _ in cls.member_types.values())
+        hints = _field_hints(cls)
+        cls.nested_members = {
+            name: annotation for name, annotation in hints.items() if _contains_entity(annotation)
+        }
+        unplaced = sorted(
+            name
+            for name, annotation in cls.nested_members.items()
+            if any(kind.extension_point is None for kind in _entity_kinds(annotation))
+        )
+        if len(unplaced) != 0:
+            # `MetadataEntity` itself is registered at no single point, so
+            # a field typed as one could not be resolved through a scope.
+            msg = (
+                f"{cls.__name__}: the entity kind of {', '.join(unplaced)} has no "
+                "`extension_point`; annotate it with `CodecEntity`, `DataTypeEntity` "
+                "or `ChunkGridEntity`"
+            )
+            raise TypeError(msg)
         annotated = _declared_class_vars(cls)
         shadowed = [
             name
@@ -906,19 +1137,6 @@ class MetadataEntity:
         return name == cls.identifier
 
     @classmethod
-    def prepare(
-        cls, members: dict[str, object], context: Context
-    ) -> tuple[dict[str, object], tuple[ValidationProblem, ...]]:
-        """The members, with any that are themselves entities read as such.
-
-        The seam between `coerce_members`, which knows types, and
-        `value_problems`, which knows values: a `struct` cannot ask
-        whether a field is fixed-size until that field's data type is an
-        entity. Default: nothing to convert.
-        """
-        return members, ()
-
-    @classmethod
     def coerce(cls, value: object, context: Context) -> Coerced[Self]:
         """`value` as this entity, or the reasons it is not one.
 
@@ -940,8 +1158,12 @@ class MetadataEntity:
         if len(unreadable) == 0:
             # Before judging: a member that is itself an entity has to be
             # one before its container's value rules can ask it anything.
-            members, nested = cls.prepare(members, context)
-            found = (*found, *nested)
+            for name, annotation in cls.nested_members.items():
+                if name in members:
+                    members[name], nested = _resolve(
+                        annotation, members[name], context, ("configuration", name)
+                    )
+                    found = (*found, *nested)
         if len(unreadable) != 0:
             # A member that could not be read leaves a hole, and the value
             # rules are written over a whole configuration -- blosc's
@@ -963,20 +1185,31 @@ class MetadataEntity:
         a reader that reads and writes should not change bytes it was not
         asked to change.
 
-        Default: entities are already canonical. Override where two
-        spellings of a member mean the same -- a rectilinear dimension's
-        run-length encoding, a `typesize` that `noshuffle` ignores -- and
-        where a contained entity has its own canonical form.
+        A contained entity is put in its own canonical form here, by
+        walking the fields that hold one. Override where two spellings of
+        the entity's *own* members mean the same -- a rectilinear
+        dimension's run-length encoding, a `typesize` that `noshuffle`
+        ignores -- and start from `super().canonical()`, so the walk is
+        not lost.
         """
-        return self
+        nested = type(self).nested_members
+        if len(nested) == 0:
+            return self
+        return replace(
+            self,
+            **{
+                name: _canonicalize(annotation, getattr(self, name))
+                for name, annotation in nested.items()
+            },
+        )
 
     def configuration(self) -> dict[str, object]:
         """This entity's configuration, as the document would write it.
 
         Faithful to every member the entity holds: `to_json` is
         serialization, not canonicalization, so nothing is simplified
-        here. Override only to render a member that is not already JSON,
-        such as a contained entity.
+        here. A contained entity is rendered as its own `to_json`, by
+        walking the fields that hold one.
 
         Absent optional members are left out, which is what makes the
         bare-name spelling reachable. Absence is `UNSET`, never `None`:
@@ -989,7 +1222,11 @@ class MetadataEntity:
         the entity's own dict would let them mutate a frozen entity
         through the document it returned.
         """
-        return deepcopy(self._configuration_members())
+        members = self._configuration_members()
+        for name, annotation in type(self).nested_members.items():
+            if name in members:
+                members[name] = _render(annotation, members[name])
+        return deepcopy(members)
 
     value_problems: ClassVar[ValueRoutine] = staticmethod(_no_value_problems)
     """Every value among the members the spec disallows.
@@ -1119,6 +1356,9 @@ class MetadataEntity:
 class CodecEntity(MetadataEntity, base=True):
     """An entity that occupies a position in the codec pipeline."""
 
+    extension_point: ClassVar[ExtensionPointField] = CODECS
+    """Where a codec is registered, and so where a field typed as one is resolved."""
+
     kind: ClassVar[CodecKind]
 
     variable_size: ClassVar[bool] = False
@@ -1157,6 +1397,8 @@ class CodecEntity(MetadataEntity, base=True):
 class ChunkGridEntity(MetadataEntity, base=True):
     """An entity that divides an array into the parts a pipeline encodes."""
 
+    extension_point: ClassVar[ExtensionPointField] = CHUNK_GRID
+
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
         """Why this grid does not divide an array of `array_shape`.
 
@@ -1184,6 +1426,8 @@ class DataTypeEntity(MetadataEntity, base=True):
     cannot be variable-length -- asks a data type rather than consulting
     a table of names.
     """
+
+    extension_point: ClassVar[ExtensionPointField] = DATA_TYPE
 
     scalar_storage: ClassVar[StorageClass]
 
