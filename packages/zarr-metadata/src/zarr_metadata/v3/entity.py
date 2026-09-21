@@ -47,10 +47,14 @@ The fields are the only place the shape is written. Which members exist,
 which may be left out (the type admits `UNSET`), and how each one is
 type-checked are all read off the annotations -- an `int`, a `Literal`
 of names, an array, a nested entity type -- and `member_types` is for
-the exception, an annotation the compiler does not read. Value rules go
-in a `value_problems` staticmethod, which runs only once every member
-has the type it declared; annotate it with a TypedDict of the members so
-its body is checked:
+the exception, an annotation the compiler does not read. A bound on a
+value is written on the field too, in the `annotated_types` vocabulary:
+
+    acceleration: Annotated[int, Interval(ge=1, le=65537)] | UNSET = UNSET
+
+A rule that is not a bound goes in a `value_problems` staticmethod,
+which runs only once every member has the type it declared; annotate it
+with a TypedDict of the members so its body is checked:
 
     class AcmeLz4Configuration(TypedDict, closed=True):
         acceleration: NotRequired[int]
@@ -105,7 +109,12 @@ from zarr_metadata.v3._entity import (
     Coerced,
     DataTypeEntity,
     ExtensionPointField,
+    Ge,
+    Gt,
+    Interval,
+    Le,
     Loc,
+    Lt,
     MemberTypes,
     MetadataEntity,
     Opaque,
@@ -168,8 +177,13 @@ __all__ = [
     "ExtensionPointField",
     "Extents",
     "FloatDataType",
+    "Ge",
+    "Gt",
     "IntegerDataType",
+    "Interval",
+    "Le",
     "Loc",
+    "Lt",
     "MemberTypes",
     "MetadataEntity",
     "NumpyTimeDataType",

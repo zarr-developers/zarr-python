@@ -5,13 +5,14 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#regular-grids
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, cast
+from typing import TYPE_CHECKING, Annotated, ClassVar, Final, Literal, NotRequired, cast
 
-from typing_extensions import TypedDict, Unpack
+from typing_extensions import TypedDict
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ChunkGridEntity,
+    Ge,
     problem,
 )
 from zarr_metadata.v3._parts import ChunkGrid
@@ -64,30 +65,9 @@ __all__ = [
 class RegularChunkGrid(ChunkGridEntity):
     """The `regular` chunk grid, coerced from its metadata."""
 
-    chunk_shape: tuple[int, ...]
+    chunk_shape: tuple[Annotated[int, Ge(1)], ...]
 
     identifier: ClassVar[str] = REGULAR_CHUNK_GRID_NAME
-
-    @staticmethod
-    def value_problems(
-        **members: Unpack[RegularChunkGridConfiguration],
-    ) -> tuple[ValidationProblem, ...]:
-        """Every chunk extent must be at least one element.
-
-        A chunk of zero elements along an axis covers nothing, so no
-        finite number of them tiles the axis; a negative one is
-        meaningless. Whether there is one extent *per array dimension* is
-        a question for the document, and the rules layer asks it.
-        """
-        return tuple(
-            ValidationProblem(
-                ("chunk_shape", position),
-                f"expected a positive chunk extent, got {extent}",
-                "invalid_value",
-            )
-            for position, extent in enumerate(members["chunk_shape"])
-            if extent < 1
-        )
 
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
         """A regular grid must chunk every array dimension."""

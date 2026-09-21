@@ -5,14 +5,13 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired, cast
+from typing import Annotated, ClassVar, Final, Literal, NotRequired, cast
 
-from typing_extensions import ReadOnly, TypedDict, Unpack
+from typing_extensions import ReadOnly, TypedDict
 
-from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
+    Interval,
     StorageClass,
-    problem,
 )
 from zarr_metadata.v3.data_type._families import NumpyTimeDataType
 from zarr_metadata.v3.data_type.numpy_timedelta64 import (
@@ -78,27 +77,10 @@ class NumpyDatetime64DataType(NumpyTimeDataType):
     """The `numpy.datetime64` data type, coerced from its metadata."""
 
     unit: NumpyTimeUnit
-    scale_factor: int
+    scale_factor: Annotated[int, Interval(ge=1, le=NUMPY_TIME_MAX_SCALE_FACTOR)]
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     identifier: ClassVar[str] = NUMPY_DATETIME64_DATA_TYPE_NAME
-
-    @staticmethod
-    def value_problems(
-        **members: Unpack[NumpyDatetime64Configuration],
-    ) -> tuple[ValidationProblem, ...]:
-        """`scale_factor` counts units per step, so it is positive.
-
-        The upper bound is numpy's: the field is a signed 32-bit integer.
-        """
-        scale_factor = members["scale_factor"]
-        if not 1 <= scale_factor <= NUMPY_TIME_MAX_SCALE_FACTOR:
-            return problem(
-                ("scale_factor",),
-                f"expected an integer in [1, {NUMPY_TIME_MAX_SCALE_FACTOR}], got {scale_factor}",
-                "invalid_value",
-            )
-        return ()
 
     def to_json(self) -> NumpyDatetime64:
         return cast("NumpyDatetime64", super().to_json())

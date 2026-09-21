@@ -82,7 +82,7 @@ def test_a_well_ordered_chain_always_produces_a_verdict(codecs: tuple[object, ..
 # supplies. Those have their own tests in `test_v3_array_rules.py`.
 _WITNESSES: Mapping[str, str] = {
     "rank against the incoming array": "incoming array has",  # 63%
-    "positive chunk extents": "expected a positive chunk extent",  # 34%
+    "positive chunk extents": "expected an integer >= 1",  # 34%
     "transpose order is a permutation": "expected a permutation",  # 21%
     "endianness for multi-byte types": "endian is required",  # 20%
 }

@@ -5,9 +5,9 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired, cast
+from typing import Annotated, ClassVar, Final, Literal, NotRequired, cast
 
-from typing_extensions import TypedDict, Unpack
+from typing_extensions import TypedDict
 
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import ValidationProblem
@@ -16,6 +16,7 @@ from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
+    Ge,
     Opaque,
     problem,
 )
@@ -94,20 +95,6 @@ __all__ = [
 ]
 
 
-class ShardingIndexedMembers(TypedDict):
-    """A shard's members as the entity holds them.
-
-    Not `ShardingIndexedCodecConfiguration`, which describes the JSON: by
-    the time values are judged, the two pipelines have been read in scope,
-    so these are codecs rather than the metadata fields that named them.
-    """
-
-    chunk_shape: tuple[int, ...]
-    codecs: tuple[CodecEntity | Opaque, ...]
-    index_codecs: tuple[CodecEntity | Opaque, ...]
-    index_location: NotRequired[ShardingIndexLocation]
-
-
 @dataclass(frozen=True)
 class ShardingIndexedCodec(CodecEntity):
     """The `sharding_indexed` codec, coerced from its metadata.
@@ -117,7 +104,7 @@ class ShardingIndexedCodec(CodecEntity):
     itself an entity, read the same way this one was.
     """
 
-    chunk_shape: tuple[int, ...]
+    chunk_shape: tuple[Annotated[int, Ge(1)], ...]
     codecs: tuple[CodecEntity | Opaque, ...]
     index_codecs: tuple[CodecEntity | Opaque, ...]
     index_location: ShardingIndexLocation | UNSET = UNSET
@@ -125,25 +112,6 @@ class ShardingIndexedCodec(CodecEntity):
     identifier: ClassVar[str] = SHARDING_INDEXED_CODEC_NAME
     variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "array_bytes"
-
-    @staticmethod
-    def value_problems(
-        **members: Unpack[ShardingIndexedMembers],
-    ) -> tuple[ValidationProblem, ...]:
-        """Every inner chunk extent must be at least one element.
-
-        Nothing about the two pipelines: their codecs are entities, and an
-        entity exists only if its own values are allowed.
-        """
-        return tuple(
-            ValidationProblem(
-                ("chunk_shape", position),
-                f"expected a positive chunk extent, got {extent}",
-                "invalid_value",
-            )
-            for position, extent in enumerate(members["chunk_shape"])
-            if extent < 1
-        )
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         """This shard against the array reaching it, and its two pipelines.

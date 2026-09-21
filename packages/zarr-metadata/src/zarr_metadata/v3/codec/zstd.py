@@ -7,16 +7,15 @@ proposed the codec, was never merged).
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired, cast
+from typing import Annotated, ClassVar, Final, Literal, NotRequired, cast
 
-from typing_extensions import TypedDict, Unpack
+from typing_extensions import TypedDict
 
 from zarr_metadata.model._sentinel import UNSET
-from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
-    problem,
+    Interval,
 )
 
 ZSTD_CODEC_NAME: Final = "zstd"
@@ -78,26 +77,12 @@ __all__ = [
 class ZstdCodec(CodecEntity):
     """The `zstd` codec, coerced from its metadata."""
 
-    level: int
+    level: Annotated[int, Interval(ge=ZSTD_MIN_LEVEL, le=ZSTD_MAX_LEVEL)]
     checksum: bool | UNSET = UNSET
 
     identifier: ClassVar[str] = ZSTD_CODEC_NAME
     variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "bytes_bytes"
-
-    @staticmethod
-    def value_problems(
-        **members: Unpack[ZstdCodecConfiguration],
-    ) -> tuple[ValidationProblem, ...]:
-        """zstd compression levels run -131072 to 22."""
-        level = members["level"]
-        if not ZSTD_MIN_LEVEL <= level <= ZSTD_MAX_LEVEL:
-            return problem(
-                ("level",),
-                f"expected an integer in [{ZSTD_MIN_LEVEL}, {ZSTD_MAX_LEVEL}], got {level}",
-                "invalid_value",
-            )
-        return ()
 
     def to_json(self) -> ZstdCodecObject:
         return cast("ZstdCodecObject", super().to_json())

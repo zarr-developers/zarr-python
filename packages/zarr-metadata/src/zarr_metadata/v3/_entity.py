@@ -300,6 +300,52 @@ width in its name and has no configuration at all.
 """
 
 
+@dataclass(frozen=True, slots=True)
+class Ge:
+    """`Annotated[int, Ge(1)]`: the value is at least `bound`."""
+
+    bound: int | float
+
+
+@dataclass(frozen=True, slots=True)
+class Gt:
+    """`Annotated[int, Gt(0)]`: the value is more than `bound`."""
+
+    bound: int | float
+
+
+@dataclass(frozen=True, slots=True)
+class Le:
+    """`Annotated[int, Le(9)]`: the value is at most `bound`."""
+
+    bound: int | float
+
+
+@dataclass(frozen=True, slots=True)
+class Lt:
+    """`Annotated[int, Lt(10)]`: the value is less than `bound`."""
+
+    bound: int | float
+
+
+@dataclass(frozen=True, slots=True)
+class Interval:
+    """`Annotated[int, Interval(ge=0, le=9)]`: the value lies within these bounds.
+
+    These five are the `annotated_types` vocabulary -- what pydantic reads
+    and msgspec's `Meta` mirrors -- so a reader recognises them. Defined
+    here rather than imported, so the package keeps its one dependency.
+    A bound is a value rule: it runs only once the member has the type it
+    declared, at whatever depth the annotation puts it, so a bound on an
+    array's element type judges each element at its own position.
+    """
+
+    ge: int | float | None = None
+    gt: int | float | None = None
+    le: int | float | None = None
+    lt: int | float | None = None
+
+
 def _strip(annotation: object) -> tuple[object, tuple[object, ...]]:
     """An annotation's type, and the metadata `Annotated` wrapped it in.
 
@@ -617,6 +663,144 @@ def derive_member_types(cls: type) -> tuple[dict[str, tuple[bool, TypeCheck]], l
             continue
         derived[name] = (not is_optional(inner), check)
     return derived, unread
+
+
+def _bound_check(metadata: Sequence[object]) -> TypeCheck | None:
+    """The check the bound markers among an annotation's metadata imply, or None."""
+    ge = gt = le = lt = None
+    for marker in metadata:
+        if isinstance(marker, Ge):
+            ge = marker.bound
+        elif isinstance(marker, Gt):
+            gt = marker.bound
+        elif isinstance(marker, Le):
+            le = marker.bound
+        elif isinstance(marker, Lt):
+            lt = marker.bound
+        elif isinstance(marker, Interval):
+            ge = marker.ge if marker.ge is not None else ge
+            gt = marker.gt if marker.gt is not None else gt
+            le = marker.le if marker.le is not None else le
+            lt = marker.lt if marker.lt is not None else lt
+    if ge is None and gt is None and le is None and lt is None:
+        return None
+    if ge is not None and le is not None and gt is None and lt is None:
+        expectation = f"an integer in [{ge}, {le}]"
+    else:
+        comparisons = [
+            text
+            for bound, text in (
+                (ge, f">= {ge}"),
+                (gt, f"> {gt}"),
+                (le, f"<= {le}"),
+                (lt, f"< {lt}"),
+            )
+            if bound is not None
+        ]
+        expectation = "an integer " + " and ".join(comparisons)
+
+    def check(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+        # Not a number: the type check's finding, not this one's.
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return ()
+        within_bounds = (
+            (ge is None or value >= ge)
+            and (gt is None or value > gt)
+            and (le is None or value <= le)
+            and (lt is None or value < lt)
+        )
+        if within_bounds:
+            return ()
+        return problem(loc, f"expected {expectation}, got {value}", "invalid_value")
+
+    return check
+
+
+def value_check_for(annotation: object) -> TypeCheck | None:
+    """The value check an annotation's metadata implies, at any depth, or None.
+
+    Over the shapes as the entity holds them, not as the JSON spells
+    them: this runs after every member has its type and every nested
+    entity has been read, so a record is a dataclass instance here and
+    an entity is skipped -- it is valid by construction.
+    """
+    inner, metadata = _strip(annotation)
+    own = _bound_check(metadata)
+    below: TypeCheck | None = None
+    if _is_union(inner):
+        branches = [
+            (branch, value_check_for(branch)) for branch in get_args(inner) if branch is not UNSET
+        ]
+        if any(check is not None for _, check in branches):
+
+            def by_branch(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+                for branch, check in branches:
+                    if check is not None and _has_shape(_shape(branch), value):
+                        return check(value, loc)
+                return ()
+
+            below = by_branch
+    elif get_origin(inner) is tuple:
+        arguments = get_args(inner)
+        if len(arguments) == 2 and arguments[1] is Ellipsis:
+            element = value_check_for(arguments[0])
+            if element is not None:
+                each = element
+
+                def per_element(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+                    entries = cast("tuple[object, ...]", value)
+                    return tuple(
+                        found
+                        for position, entry in enumerate(entries)
+                        for found in each(entry, (*loc, position))
+                    )
+
+                below = per_element
+        else:
+            positions = [value_check_for(argument) for argument in arguments]
+            if any(check is not None for check in positions):
+
+                def per_position(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+                    entries = cast("tuple[object, ...]", value)
+                    return tuple(
+                        found
+                        for position, (check, entry) in enumerate(
+                            zip(positions, entries, strict=True)
+                        )
+                        if check is not None
+                        for found in check(entry, (*loc, position))
+                    )
+
+                below = per_position
+    elif isinstance(inner, type) and is_dataclass(inner) and not _is_entity_type(inner):
+        members = {
+            name: check
+            for name, field_annotation in _field_hints(inner).items()
+            if (check := value_check_for(field_annotation)) is not None
+        }
+        if len(members) != 0:
+
+            def per_field(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+                return tuple(
+                    found
+                    for name, check in members.items()
+                    if (held := getattr(value, name)) is not UNSET
+                    for found in check(held, (*loc, name))
+                )
+
+            below = per_field
+    if own is None and below is None:
+        return None
+    if below is None:
+        return own
+    if own is None:
+        return below
+    outer, inner_check = own, below
+
+    def both(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
+        return (*outer(value, loc), *inner_check(value, loc))
+
+    return both
 
 
 def _contains_entity(annotation: object) -> bool:
@@ -950,6 +1134,16 @@ class MetadataEntity:
     contains entities writes nothing for any of that.
     """
 
+    value_checks: ClassVar[Mapping[str, TypeCheck]] = MappingProxyType({})
+    """The value rules the field annotations state, member by member.
+
+    A bound in an `Annotated` -- `level: Annotated[int, Interval(ge=0,
+    le=9)]`, `chunk_shape: tuple[Annotated[int, Ge(1)], ...]` -- becomes
+    a check here at class creation, located at the member and, for an
+    element, at its position. Runs with `value_problems`, after the type
+    checks, on both the reading path and the constructor.
+    """
+
     configuration_required: ClassVar[bool] = False
     """Whether the bare-name spelling says too little for this entity.
 
@@ -1038,6 +1232,11 @@ class MetadataEntity:
         hints = _field_hints(cls)
         cls.nested_members = {
             name: annotation for name, annotation in hints.items() if _contains_entity(annotation)
+        }
+        cls.value_checks = {
+            name: check
+            for name, annotation in hints.items()
+            if (check := value_check_for(annotation)) is not None
         }
         unplaced = sorted(
             name
@@ -1170,7 +1369,7 @@ class MetadataEntity:
             # `typesize` requirement reads `shuffle`. Judging around the
             # hole would be guessing, so the type problems stand alone.
             return None, found
-        found = (*found, *within((), cls.value_problems(**members)))
+        found = (*found, *within((), cls._judge_values(members)))
         if any(entry.kind != "unknown_key" for entry in found):
             return None, found
         # Already asked, so do not ask again on the way in.
@@ -1254,9 +1453,25 @@ class MetadataEntity:
         than raising, and `unchecked` is the door for a caller that has
         already asked.
         """
-        found = type(self).value_problems(**self._members())
+        found = type(self)._judge_values(self._members())
         if len(found) != 0:
             raise MetadataValidationError(found)
+
+    @classmethod
+    def _judge_values(cls, members: Mapping[str, object]) -> tuple[ValidationProblem, ...]:
+        """Every value problem among the members.
+
+        The bounds the annotations state first, member by member, then
+        whatever `value_problems` has to say -- one routine for the
+        reading path and the constructor, so the two cannot disagree.
+        """
+        from_annotations = [
+            found
+            for name, check in cls.value_checks.items()
+            if name in members
+            for found in check(members[name], (name,))
+        ]
+        return (*from_annotations, *cls.value_problems(**members))
 
     def _members(self) -> dict[str, object]:
         """Every member this entity holds, unrendered.
@@ -1506,7 +1721,12 @@ __all__ = [
     "Coerced",
     "DataTypeEntity",
     "ExtensionPointField",
+    "Ge",
+    "Gt",
+    "Interval",
+    "Le",
     "Loc",
+    "Lt",
     "MemberTypes",
     "MetadataEntity",
     "Opaque",

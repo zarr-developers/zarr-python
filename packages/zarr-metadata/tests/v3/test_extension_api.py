@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, NotRequired, Self, cast
+from typing import TYPE_CHECKING, Annotated, ClassVar, Self, cast
 
 import pytest
-from typing_extensions import TypedDict, Unpack
 
 from zarr_metadata.model import UNSET, MetadataValidationError, ValidationProblem
 from zarr_metadata.rules import (
@@ -32,6 +31,7 @@ from zarr_metadata.v3.entity import (
     Context,
     DataTypeEntity,
     IntegerDataType,
+    Interval,
     MemberTypes,
     MetadataEntity,
     Opaque,
@@ -48,39 +48,15 @@ if TYPE_CHECKING:
     from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 
 
-class AcmeLz4Configuration(TypedDict, closed=True):
-    """The JSON shape of an `acme.lz4` configuration."""
-
-    acceleration: NotRequired[int]
-
-
 @dataclass(frozen=True)
 class AcmeLz4Codec(CodecEntity):
     """A third-party compressor."""
 
-    acceleration: int | UNSET = UNSET
+    acceleration: Annotated[int, Interval(ge=1, le=ACME_MAX_ACCELERATION)] | UNSET = UNSET
 
     identifier: ClassVar[str] = "acme.lz4"
     kind: ClassVar[CodecKind] = "bytes_bytes"
     variable_size: ClassVar[bool] = True
-
-    @staticmethod
-    def value_problems(
-        **members: Unpack[AcmeLz4Configuration],
-    ) -> tuple[ValidationProblem, ...]:
-        # No defensive narrowing: a member that failed its type check
-        # never reaches here, so asking whether it is present is enough
-        # to have an int.
-        if "acceleration" not in members:
-            return ()
-        acceleration = members["acceleration"]
-        if not 1 <= acceleration <= ACME_MAX_ACCELERATION:
-            return problem(
-                ("acceleration",),
-                f"expected an integer in [1, {ACME_MAX_ACCELERATION}], got {acceleration}",
-                "invalid_value",
-            )
-        return ()
 
 
 @dataclass(frozen=True)

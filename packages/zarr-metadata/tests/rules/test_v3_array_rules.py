@@ -135,7 +135,7 @@ def test_error_regular_chunk_extent_zero() -> None:
         {**BASE, "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (0, 2)}}}
     )
     assert loc == ("chunk_grid", "configuration", "chunk_shape", 0)
-    assert "positive chunk extent" in message
+    assert "expected an integer >= 1" in message
 
 
 def test_error_rectilinear_rank_mismatch() -> None:
@@ -176,7 +176,7 @@ def test_error_rectilinear_nonpositive_rle() -> None:
             },
         }
     )
-    assert any("positive [size, count] pair" in p.message for p in problems)
+    assert any("expected an integer >= 1" in p.message for p in problems)
 
 
 def test_error_transpose_not_a_permutation() -> None:
@@ -272,7 +272,7 @@ def test_error_sharding_inner_chunk_extent_zero() -> None:
     problems = validate_array_metadata_v3({**BASE, "codecs": (_shard(chunk_shape=(0, 2)),)})
     assert any(
         p.loc == ("codecs", 0, "configuration", "chunk_shape", 0)
-        and "positive chunk extent" in p.message
+        and "expected an integer >= 1" in p.message
         for p in problems
     )
 

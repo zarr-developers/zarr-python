@@ -5,13 +5,14 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, cast
+from typing import TYPE_CHECKING, Annotated, ClassVar, Final, Literal, NotRequired, Self, cast
 
-from typing_extensions import TypedDict, Unpack
+from typing_extensions import TypedDict
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ChunkGridEntity,
+    Ge,
     is_integer,
     problem,
 )
@@ -40,6 +41,15 @@ RectilinearDimSpec = int | tuple[int | tuple[int, int], ...]
 Either a bare integer (uniform shorthand for a regular dimension within
 a rectilinear grid), or a tuple of integers and/or `[value, count]` RLE
 pairs.
+"""
+
+_PositiveExtent = Annotated[int, Ge(1)]
+_PositiveDimSpec = (
+    _PositiveExtent | tuple[_PositiveExtent | tuple[_PositiveExtent, _PositiveExtent], ...]
+)
+"""`RectilinearDimSpec` as the entity holds it: every extent, and every
+run-length count, at least one. The same type to a type checker; the
+bounds are what the reading path judges.
 """
 
 
@@ -166,49 +176,9 @@ class RectilinearChunkGrid(ChunkGridEntity):
     """The `rectilinear` chunk grid, coerced from its metadata."""
 
     kind: Literal["inline"]
-    chunk_shapes: tuple[RectilinearDimSpec, ...]
+    chunk_shapes: tuple[_PositiveDimSpec, ...]
 
     identifier: ClassVar[str] = RECTILINEAR_CHUNK_GRID_NAME
-
-    @staticmethod
-    def value_problems(
-        **members: Unpack[RectilinearChunkGridConfiguration],
-    ) -> tuple[ValidationProblem, ...]:
-        """Every chunk extent, bare or run-length encoded, must be positive.
-
-        A run's count must be positive too: a run of zero chunks is a way
-        of writing nothing at all, and the empty spelling already exists.
-        """
-        found: list[ValidationProblem] = []
-        for dim, spec in enumerate(members["chunk_shapes"]):
-            loc: tuple[str | int, ...] = ("chunk_shapes", dim)
-            if isinstance(spec, int):
-                if spec < 1:
-                    found.extend(
-                        problem(
-                            loc, f"expected a positive chunk extent, got {spec}", "invalid_value"
-                        )
-                    )
-                continue
-            for position, item in enumerate(spec):
-                if isinstance(item, int):
-                    if item < 1:
-                        found.extend(
-                            problem(
-                                (*loc, position),
-                                f"expected a positive chunk extent, got {item}",
-                                "invalid_value",
-                            )
-                        )
-                elif item[0] < 1 or item[1] < 1:
-                    found.extend(
-                        problem(
-                            (*loc, position),
-                            f"expected a positive [size, count] pair, got {item!r}",
-                            "invalid_value",
-                        )
-                    )
-        return tuple(found)
 
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
         """One spec per dimension, and explicit specs must cover it.

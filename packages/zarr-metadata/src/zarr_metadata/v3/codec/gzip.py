@@ -5,15 +5,14 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/gzip/index.html
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired, cast
+from typing import Annotated, ClassVar, Final, Literal, NotRequired, cast
 
-from typing_extensions import TypedDict, Unpack
+from typing_extensions import TypedDict
 
-from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
-    problem,
+    Interval,
 )
 
 GZIP_CODEC_NAME: Final = "gzip"
@@ -70,23 +69,11 @@ __all__ = [
 class GzipCodec(CodecEntity):
     """The `gzip` codec, coerced from its metadata."""
 
-    level: int
+    level: Annotated[int, Interval(ge=0, le=9)]
 
     identifier: ClassVar[str] = GZIP_CODEC_NAME
     variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "bytes_bytes"
-
-    @staticmethod
-    def value_problems(
-        **members: Unpack[GzipCodecConfiguration],
-    ) -> tuple[ValidationProblem, ...]:
-        """gzip compression levels run 0 to 9."""
-        level = members["level"]
-        if not 0 <= level <= 9:
-            return problem(
-                ("level",), f"expected an integer in [0, 9], got {level}", "invalid_value"
-            )
-        return ()
 
     def to_json(self) -> GzipCodecObject:
         return cast("GzipCodecObject", super().to_json())
