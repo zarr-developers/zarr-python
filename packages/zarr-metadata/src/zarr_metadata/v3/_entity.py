@@ -139,37 +139,7 @@ problems to decide the verdict. They are different questions.
 """
 
 
-ExtensionPointField = Literal[
-    "data_type", "chunk_grid", "chunk_key_encoding", "codecs", "storage_transformers"
-]
-"""The v3 array metadata fields whose values name an extension.
-
-Names are unique only within a point -- `bytes` is both a core codec and
-a registered data type -- so every table in this package is keyed by
-point and then by name, and an entity that contains other entities says
-which point it reads them at.
-"""
-
-
 # Left to infer their `Literal` types rather than widened to
-# `ExtensionPointField`: `Context.coerce` overloads on the field, so a
-# call written with one of these constants gets the entity type back
-# rather than the base. They are still assignable to the alias.
-DATA_TYPE: Final = "data_type"
-
-
-CHUNK_GRID: Final = "chunk_grid"
-
-
-CHUNK_KEY_ENCODING: Final = "chunk_key_encoding"
-
-
-CODECS: Final = "codecs"
-
-
-STORAGE_TRANSFORMERS: Final = "storage_transformers"
-
-
 StorageClass = Literal["single_byte", "multi_byte", "variable_length"]
 """How one scalar of a data type occupies bytes.
 
@@ -270,20 +240,6 @@ def _entity_kinds(annotation: object) -> list[type[MetadataEntity]]:
     return []
 
 
-def _point_of(kind: type[MetadataEntity]) -> ExtensionPointField:
-    """The point a nested entity kind is resolved at.
-
-    Every nested field's kind has one by the time an entity exists --
-    `__init_subclass__` refuses the class otherwise -- so this is the
-    narrowing, not a second check.
-    """
-    point = kind.extension_point
-    if point is None:
-        msg = f"{kind.__name__} is registered at no single extension point"
-        raise TypeError(msg)
-    return point
-
-
 def _fitting_branch(inner: object, value: object) -> object | None:
     """The branch of a union that holds an entity and whose shape `value` has."""
     for branch in get_args(inner):
@@ -306,7 +262,7 @@ def _resolve(
     """
     inner, _ = strip_annotation(annotation)
     if is_nested_field(inner):
-        return context.coerce(_point_of(_entity_kinds(inner)[0]), value, loc)
+        return context.coerce(_entity_kinds(inner)[0], value, loc)
     if is_union(inner):
         branch = _fitting_branch(inner, value)
         return (value, ()) if branch is None else _resolve(branch, value, context, loc)
@@ -474,20 +430,32 @@ def _final_methods_are_not_overridden(cls: type[MetadataEntity]) -> str | None:
     return None
 
 
-def _nested_kinds_have_a_point(cls: type[MetadataEntity]) -> str | None:
-    # `MetadataEntity` itself is registered at no single point, so a
-    # field typed as one could not be resolved through a scope.
+def _entities_are_of_a_kind(cls: type[MetadataEntity]) -> str | None:
+    # A scope holds entities by kind, so an entity of none could never be
+    # registered or resolved.
+    if kind_of(cls) is not None:
+        return None
+    return (
+        f"{cls.__name__} subclasses MetadataEntity directly; subclass the kind of thing it is: "
+        "a codec kind, DataTypeEntity, ChunkGridEntity, ChunkKeyEncodingEntity or "
+        "StorageTransformerEntity"
+    )
+
+
+def _nested_fields_name_a_kind(cls: type[MetadataEntity]) -> str | None:
+    # A field typed as bare `MetadataEntity` could not be resolved through
+    # a scope: nothing says which kind's table to look in.
     unplaced = sorted(
         name
         for name, annotation in _nested(cls).items()
-        if any(kind.extension_point is None for kind in _entity_kinds(annotation))
+        if any(kind_of(kind) is None for kind in _entity_kinds(annotation))
     )
     if len(unplaced) == 0:
         return None
     return (
-        f"{cls.__name__}: the entity kind of {', '.join(unplaced)} has no "
-        "`extension_point`; annotate it with `CodecEntity`, `DataTypeEntity` "
-        "or `ChunkGridEntity`"
+        f"{cls.__name__}: the entity type of {', '.join(unplaced)} is of no kind; annotate it "
+        "with a codec kind, DataTypeEntity, ChunkGridEntity, ChunkKeyEncodingEntity or "
+        "StorageTransformerEntity, or a subclass of one"
     )
 
 
@@ -770,7 +738,8 @@ def _required_members_have_no_default(cls: type[MetadataEntity]) -> str | None:
 _INVARIANTS: Final[tuple[Callable[[type[MetadataEntity]], str | None], ...]] = (
     _fields_are_json_shapes,
     _final_methods_are_not_overridden,
-    _nested_kinds_have_a_point,
+    _entities_are_of_a_kind,
+    _nested_fields_name_a_kind,
     _nested_fields_admit_opaque,
     _fields_do_not_shadow_class_variables,
     _owed_class_variables_are_declared,
@@ -808,16 +777,6 @@ class MetadataEntity(MetadataFieldValue, ABC, Generic[JSONT_co]):
     raises, and `coerce` reports the same problems instead. `coerce`,
     `configuration`, `to_json` and `canonical` are written once here
     against what the fields say, read off them as needed.
-    """
-
-    extension_point: ClassVar[ExtensionPointField | None] = None
-    """Where this kind of entity is registered, if it is registered at one point.
-
-    Set by `CodecEntity`, `DataTypeEntity` and `ChunkGridEntity`. It is
-    what makes a field typed as one of those resolvable: the scope is
-    asked at that point. `MetadataEntity` itself is the kind of the two
-    points that take any entity, so it names none, and a field typed as
-    bare `MetadataEntity` is refused at class creation.
     """
 
     must_understand: ClassVar[bool] = True
@@ -1092,9 +1051,6 @@ class CodecEntity(MetadataEntity[JSONT_co], base=True):
     pipeline the codec may stand, and what it must answer.
     """
 
-    extension_point: ClassVar[ExtensionPointField] = CODECS
-    """Where a codec is registered, and so where a field typed as one is resolved."""
-
     kind: ClassVar[CodecKind]
     """Set by the kind class."""
 
@@ -1151,8 +1107,6 @@ class BytesBytesCodec(CodecEntity[JSONT_co], base=True):
 class ChunkGridEntity(MetadataEntity[JSONT_co], base=True):
     """An entity that divides an array into the parts a pipeline encodes."""
 
-    extension_point: ClassVar[ExtensionPointField] = CHUNK_GRID
-
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
         """Why this grid does not divide an array of `array_shape`.
 
@@ -1181,8 +1135,6 @@ class DataTypeEntity(MetadataEntity[JSONT_co], base=True):
     a table of names.
     """
 
-    extension_point: ClassVar[ExtensionPointField] = DATA_TYPE
-
     scalar_storage: ClassVar[StorageClass]
 
     def storage_class(self) -> StorageClass | None:
@@ -1202,27 +1154,49 @@ class DataTypeEntity(MetadataEntity[JSONT_co], base=True):
         """
 
 
+@dataclass(frozen=True)
+class ChunkKeyEncodingEntity(MetadataEntity[JSONT_co], base=True):
+    """An entity that says how a chunk's coordinates become a store key."""
+
+
+@dataclass(frozen=True)
+class StorageTransformerEntity(MetadataEntity[JSONT_co], base=True):
+    """An entity that stands between the codec pipeline and the store."""
+
+
+KINDS: Final[tuple[type[MetadataEntity], ...]] = (
+    DataTypeEntity,
+    ChunkGridEntity,
+    ChunkKeyEncodingEntity,
+    CodecEntity,
+    StorageTransformerEntity,
+)
+"""The kinds of entity: what a scope holds a table of, and what a document's fields are read as."""
+
+
+def kind_of(cls: type[MetadataEntity]) -> type[MetadataEntity] | None:
+    """The kind `cls` is of, or None for a class under none of them."""
+    return next((kind for kind in cls.__mro__ if kind in KINDS), None)
+
+
 __all__ = [
-    "CHUNK_GRID",
-    "CHUNK_KEY_ENCODING",
-    "CODECS",
-    "DATA_TYPE",
     "FROM_NAME",
-    "STORAGE_TRANSFORMERS",
+    "KINDS",
     "ArrayArrayCodec",
     "ArrayBytesCodec",
     "BytesBytesCodec",
     "ChunkGridEntity",
+    "ChunkKeyEncodingEntity",
     "CodecEntity",
     "CodecKind",
     "Coerced",
     "DataTypeEntity",
-    "ExtensionPointField",
     "JSONT_co",
     "Loc",
     "MetadataEntity",
     "Opaque",
     "StorageClass",
+    "StorageTransformerEntity",
     "TypeCheck",
     "is_bool",
     "is_entity",
@@ -1232,6 +1206,7 @@ __all__ = [
     "is_metadata_field",
     "is_str",
     "json_type_of",
+    "kind_of",
     "named_configuration",
     "one_of",
     "problem",

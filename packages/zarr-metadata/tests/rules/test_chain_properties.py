@@ -27,7 +27,7 @@ from tests.rules.strategies import (
     valid_documents,
 )
 from zarr_metadata.rules import validate_array_metadata_v3
-from zarr_metadata.v3.entity import CODECS, CORE_AND_EXTENSIONS
+from zarr_metadata.v3.entity import CORE_AND_EXTENSIONS, CodecEntity
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -61,7 +61,7 @@ def test_the_strategies_cover_every_codec_the_package_models() -> None:
     for kinds, expected in ((ARRAY_ARRAY, "array_array"), (ARRAY_BYTES, "array_bytes")):
         for entry in kinds:
             name = entry.__annotations__["name"].__args__[0]
-            entity = CORE_AND_EXTENSIONS.resolve(CODECS, name)
+            entity = CORE_AND_EXTENSIONS.resolve(CodecEntity, name)
             assert entity is not None, name
             assert entity.kind == expected
 

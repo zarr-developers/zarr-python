@@ -20,7 +20,7 @@ from typing_extensions import TypedDict
 
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.v3._entity import (
-    MetadataEntity,
+    ChunkKeyEncodingEntity,
 )
 
 V2_CHUNK_KEY_ENCODING_NAME: Final = "v2"
@@ -77,7 +77,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class V2ChunkKeyEncoding(MetadataEntity[V2ChunkKeyEncodingMetadata]):
+class V2ChunkKeyEncoding(ChunkKeyEncodingEntity[V2ChunkKeyEncodingMetadata]):
     """The `v2` chunk key encoding, coerced from its metadata."""
 
     separator: V2ChunkKeyEncodingSeparator | UNSET = UNSET

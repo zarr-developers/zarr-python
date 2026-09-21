@@ -28,18 +28,18 @@ for the reader to resolve elsewhere.
 being judged rather than demanded. `zarr_metadata.rules.validate_array_metadata_v3(document, context=...)`
 returns a tuple of `ValidationProblem(loc, message, kind)`, `kind` one of
 `ProblemKind`, each `loc` indexing into the document:
-`("codecs", 1, "configuration", "level")`. `SCOPE.coerce("codecs", entry)`
-reads one metadata field and returns `(entity, problems)` where `entity`
-is the entity or an `Opaque` -- never `None` -- with `loc` relative to the
-entry: `("configuration", "level")`. An entity's own
+`("codecs", 1, "configuration", "level")`. `SCOPE.coerce(CodecEntity, entry)`
+reads one metadata field as an entity of that kind and returns
+`(entity, problems)` where `entity` is the entity or an `Opaque` -- never
+`None` -- with `loc` relative to the entry: `("configuration", "level")`. An entity's own
 `coerce(value, context)` returns `(entity or None, problems)`; that is
 `Coerced`. Constructing an entity by hand raises `MetadataValidationError`
 with `loc` relative to the configuration: `("level",)`.
 
 **Writing an extension.** Subclass the kind of thing it is -- a codec's
 kind (`ArrayArrayCodec`, `ArrayBytesCodec`, `BytesBytesCodec`),
-`DataTypeEntity`, `ChunkGridEntity`, or `MetadataEntity` for the two
-points that take anything; declare the configuration as dataclass
+`DataTypeEntity`, `ChunkGridEntity`, `ChunkKeyEncodingEntity` or
+`StorageTransformerEntity`; declare the configuration as dataclass
 fields; put every rule finer than a type in `__post_init__`; add the
 class to a scope. Complete, and runnable as written:
 
@@ -71,7 +71,7 @@ class to a scope. Complete, and runnable as written:
                     )
                 )
 
-    SCOPE = CORE_AND_EXTENSIONS.extended_with(codecs={AcmeLz4Codec.identifier: AcmeLz4Codec})
+    SCOPE = CORE_AND_EXTENSIONS.extended_with(AcmeLz4Codec)
     validate_array_metadata_v3(document, context=SCOPE)
 
 The fields are the only place the shape is written. Which members exist,
@@ -127,9 +127,12 @@ refused). Then, by kind:
 What a kind leaves abstract, registration refuses an entity for not
 defining; the other mistakes an author would not otherwise see -- a
 `scalar_storage` outside the listed values, a nested field without
-`Opaque`, a class without `@dataclass`, a codec subclassing `CodecEntity`
-instead of a kind -- are refused at class creation or registration with
-a message that says what to write.
+`Opaque`, a class without `@dataclass`, an entity subclassing
+`MetadataEntity` or `CodecEntity` instead of a kind -- are refused at
+class creation or registration with a message that says what to write.
+A scope reads what a class is off the class: its kind is its base, its
+key is its `identifier`, so `extended_with` takes the classes and nothing
+can be misfiled.
 
 **Naming the JSON type.** `CodecEntity[AcmeLz4Metadata]` types `to_json`
 as your own TypedDict rather than as any metadata field. The shape is
@@ -148,7 +151,7 @@ fill-value rule).
 A name in no scope is not rejected -- that is what extension openness
 means -- so registering yours is how you get it judged rather than waved
 through. `CORE` is what the specification defines; `CORE_AND_EXTENSIONS`
-adds the `zarr-extensions` registry; `extended_with` adds yours.
+adds the `zarr-extensions` registry; `extended_with(*classes)` adds yours.
 
 One known friction, under mypy only. An entity's `to_json` returns its
 own object TypedDict, and mypy does not accept that where a
@@ -173,32 +176,28 @@ from zarr_metadata.v3._chain import chain_problems
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._document import ArrayDocumentV3
 from zarr_metadata.v3._entity import (
-    CHUNK_GRID,
-    CHUNK_KEY_ENCODING,
-    CODECS,
-    DATA_TYPE,
     FROM_NAME,
-    STORAGE_TRANSFORMERS,
     ArrayArrayCodec,
     ArrayBytesCodec,
     BytesBytesCodec,
     ChunkGridEntity,
+    ChunkKeyEncodingEntity,
     CodecEntity,
     CodecKind,
     Coerced,
     DataTypeEntity,
-    ExtensionPointField,
     Loc,
     MetadataEntity,
     Opaque,
     StorageClass,
+    StorageTransformerEntity,
     is_integer,
     named_configuration,
     problem,
     within,
 )
 from zarr_metadata.v3._parts import ArrayParts, ChunkGrid, Extents
-from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS, Context, EntityTables
+from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS, Context
 from zarr_metadata.v3.data_type._families import (
     ComplexDataType,
     FloatDataType,
@@ -207,14 +206,9 @@ from zarr_metadata.v3.data_type._families import (
 )
 
 __all__ = [
-    "CHUNK_GRID",
-    "CHUNK_KEY_ENCODING",
-    "CODECS",
     "CORE",
     "CORE_AND_EXTENSIONS",
-    "DATA_TYPE",
     "FROM_NAME",
-    "STORAGE_TRANSFORMERS",
     "UNSET",
     "ArrayArrayCodec",
     "ArrayBytesCodec",
@@ -223,14 +217,13 @@ __all__ = [
     "BytesBytesCodec",
     "ChunkGrid",
     "ChunkGridEntity",
+    "ChunkKeyEncodingEntity",
     "CodecEntity",
     "CodecKind",
     "Coerced",
     "ComplexDataType",
     "Context",
     "DataTypeEntity",
-    "EntityTables",
-    "ExtensionPointField",
     "Extents",
     "FloatDataType",
     "IntegerDataType",
@@ -242,6 +235,7 @@ __all__ = [
     "Opaque",
     "ProblemKind",
     "StorageClass",
+    "StorageTransformerEntity",
     "ValidationProblem",
     "ZarrV3MetadataFieldJSON",
     "chain_problems",

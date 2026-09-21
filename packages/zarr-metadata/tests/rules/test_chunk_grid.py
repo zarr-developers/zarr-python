@@ -10,6 +10,7 @@ from tests.helpers import configuration_of, entry_at
 from zarr_metadata.rules import validate_array_metadata_v3
 from zarr_metadata.v3._parts import ChunkGrid, shard_index_grid
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS
+from zarr_metadata.v3.entity import ChunkGridEntity
 
 BASE: Mapping[str, object] = {
     "zarr_format": 3,
@@ -99,7 +100,9 @@ def _grid_of(grid: object, shape: object) -> ChunkGrid:
         if isinstance(grid, Mapping)
         else None
     )
-    entity_type = CORE_AND_EXTENSIONS.resolve("chunk_grid", name) if isinstance(name, str) else None
+    entity_type = (
+        CORE_AND_EXTENSIONS.resolve(ChunkGridEntity, name) if isinstance(name, str) else None
+    )
     if entity_type is None:
         return ChunkGrid.unreadable(shape)
     entity, _ = entity_type.coerce(grid, CORE_AND_EXTENSIONS)

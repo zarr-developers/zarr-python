@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from zarr_metadata.model._validation import (
     MetadataValidationError,
@@ -31,17 +31,13 @@ from zarr_metadata.model._validation import (
 from zarr_metadata.v3._chain import chain_problems
 from zarr_metadata.v3._compile import field_hints
 from zarr_metadata.v3._entity import (
-    CHUNK_GRID,
-    CHUNK_KEY_ENCODING,
-    CODECS,
-    DATA_TYPE,
-    STORAGE_TRANSFORMERS,
     ChunkGridEntity,
+    ChunkKeyEncodingEntity,
     CodecEntity,
     DataTypeEntity,
-    ExtensionPointField,
     MetadataEntity,
     Opaque,
+    StorageTransformerEntity,
     canonicalize_nested,
     contains_entity,
     render_nested,
@@ -54,6 +50,9 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from zarr_metadata.v3._entity import Loc
+
+
+_EntityT = TypeVar("_EntityT", bound=MetadataEntity)
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,9 +69,9 @@ class ArrayDocumentV3:
     document: Mapping[str, object]
     data_type: DataTypeEntity | Opaque
     chunk_grid: ChunkGridEntity | Opaque
-    chunk_key_encoding: MetadataEntity | Opaque
+    chunk_key_encoding: ChunkKeyEncodingEntity | Opaque
     codecs: tuple[CodecEntity | Opaque, ...]
-    storage_transformers: tuple[MetadataEntity | Opaque, ...]
+    storage_transformers: tuple[StorageTransformerEntity | Opaque, ...]
 
     def problems(self) -> tuple[ValidationProblem, ...]:
         """Every semantic problem this document has, once it has been read.
@@ -173,21 +172,30 @@ class ArrayDocumentV3:
         )
 
 
-# The three extension points a document names once, and the field each is
-# named in. `codecs` is the fourth and holds a list, so it is separate.
-_SINGLE_FIELDS: Final[tuple[tuple[ExtensionPointField, str], ...]] = (
-    (DATA_TYPE, "data_type"),
-    (CHUNK_GRID, "chunk_grid"),
-    (CHUNK_KEY_ENCODING, "chunk_key_encoding"),
-)
+def _read_one(
+    context: Context, kind: type[_EntityT], document: Mapping[str, object], key: str
+) -> tuple[_EntityT | Opaque, tuple[ValidationProblem, ...]]:
+    """The entity of `kind` the document names at `key`; an `Opaque` if it names none."""
+    value = document.get(key)
+    if value is None:
+        return Opaque(None, "invalid"), ()
+    return context.coerce(kind, value, (key,), envelope_judged=True)
 
-# The two the document names as a list. Nothing models a storage
-# transformer yet, so nothing is judged there today -- but the extension
-# point is registerable, and a registered one has to be reached.
-_SEQUENCE_FIELDS: Final[tuple[tuple[ExtensionPointField, str], ...]] = (
-    (CODECS, "codecs"),
-    (STORAGE_TRANSFORMERS, "storage_transformers"),
-)
+
+def _read_each(
+    context: Context, kind: type[_EntityT], document: Mapping[str, object], key: str
+) -> tuple[tuple[_EntityT | Opaque, ...], tuple[ValidationProblem, ...]]:
+    """The entities of `kind` the document lists at `key`, in order."""
+    entries = document.get(key)
+    if not isinstance(entries, (list, tuple)):
+        return (), ()
+    read: list[_EntityT | Opaque] = []
+    problems: list[ValidationProblem] = []
+    for index, entry in enumerate(cast("Sequence[object]", entries)):
+        entity, found = context.coerce(kind, entry, (key, index), envelope_judged=True)
+        read.append(entity)
+        problems.extend(found)
+    return tuple(read), tuple(problems)
 
 
 def read_array_v3(
@@ -195,39 +203,28 @@ def read_array_v3(
 ) -> tuple[ArrayDocumentV3, tuple[ValidationProblem, ...]]:
     """`document`'s extension points, read in `context`.
 
-    Type-space only: what comes back is well-typed by construction, and
-    the problems are the reasons some of it is not an entity.
+    The one place that knows which of a document's fields holds which
+    kind of entity. Type-space only: what comes back is well-typed by
+    construction, and the problems are the reasons some of it is not an
+    entity.
     """
-    read: dict[str, MetadataEntity | Opaque] = {}
-    problems: list[ValidationProblem] = []
-    for field, key in _SINGLE_FIELDS:
-        value = document.get(key)
-        if value is None:
-            read[key] = Opaque(None, "invalid")
-            continue
-        entity, found = context.coerce(field, value, (key,), envelope_judged=True)
-        read[key] = entity
-        problems.extend(found)
-    sequences: dict[str, tuple[MetadataEntity | Opaque, ...]] = {}
-    for field, key in _SEQUENCE_FIELDS:
-        read_entries: list[MetadataEntity | Opaque] = []
-        entries = document.get(key)
-        if isinstance(entries, (list, tuple)):
-            for index, entry in enumerate(cast("Sequence[object]", entries)):
-                entity, found = context.coerce(field, entry, (key, index), envelope_judged=True)
-                read_entries.append(entity)
-                problems.extend(found)
-        sequences[key] = tuple(read_entries)
+    data_type, found_1 = _read_one(context, DataTypeEntity, document, "data_type")
+    chunk_grid, found_2 = _read_one(context, ChunkGridEntity, document, "chunk_grid")
+    encoding, found_3 = _read_one(context, ChunkKeyEncodingEntity, document, "chunk_key_encoding")
+    codecs, found_4 = _read_each(context, CodecEntity, document, "codecs")
+    transformers, found_5 = _read_each(
+        context, StorageTransformerEntity, document, "storage_transformers"
+    )
     return (
         ArrayDocumentV3(
             document=document,
-            data_type=cast("DataTypeEntity | Opaque", read["data_type"]),
-            chunk_grid=cast("ChunkGridEntity | Opaque", read["chunk_grid"]),
-            chunk_key_encoding=read["chunk_key_encoding"],
-            codecs=cast("tuple[CodecEntity | Opaque, ...]", sequences["codecs"]),
-            storage_transformers=sequences["storage_transformers"],
+            data_type=data_type,
+            chunk_grid=chunk_grid,
+            chunk_key_encoding=encoding,
+            codecs=codecs,
+            storage_transformers=transformers,
         ),
-        tuple(problems),
+        (*found_1, *found_2, *found_3, *found_4, *found_5),
     )
 
 

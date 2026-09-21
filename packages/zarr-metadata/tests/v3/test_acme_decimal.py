@@ -151,9 +151,7 @@ class AcmeDecimalDataType(DataTypeEntity[AcmeDecimal]):
 from zarr_metadata.rules import canonicalize_array_metadata_v3, validate_array_metadata_v3
 from zarr_metadata.v3.entity import CORE_AND_EXTENSIONS, ArrayDocumentV3, Context, Opaque
 
-SCOPE: Context = CORE_AND_EXTENSIONS.extended_with(
-    data_type={AcmeDecimalDataType.identifier: AcmeDecimalDataType}
-)
+SCOPE: Context = CORE_AND_EXTENSIONS.extended_with(AcmeDecimalDataType)
 
 LITTLE_ENDIAN_BYTES = {"name": "bytes", "configuration": {"endian": "little"}}
 

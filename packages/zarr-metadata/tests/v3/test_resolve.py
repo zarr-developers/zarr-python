@@ -19,37 +19,36 @@ from zarr_metadata.v3.data_type.numpy_datetime64 import NumpyDatetime64DataType
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_FAMILY, RawBytesDataType
 from zarr_metadata.v3.data_type.uint8 import Uint8DataType
 from zarr_metadata.v3.entity import (
-    CHUNK_GRID,
-    CODECS,
     CORE_AND_EXTENSIONS,
-    DATA_TYPE,
-    ExtensionPointField,
+    ChunkGridEntity,
+    CodecEntity,
+    DataTypeEntity,
     MetadataEntity,
 )
 
 # (field, name, the entity that answers for it — None when nothing does)
-RESOLUTIONS: dict[str, tuple[ExtensionPointField, str, type[MetadataEntity] | None]] = {
-    "plain-dtype": (DATA_TYPE, "uint8", Uint8DataType),
-    "dotted-dtype": (DATA_TYPE, "numpy.datetime64", NumpyDatetime64DataType),
-    "raw-8": (DATA_TYPE, "r8", RawBytesDataType),
-    "raw-24": (DATA_TYPE, "r24", RawBytesDataType),
+RESOLUTIONS: dict[str, tuple[type[MetadataEntity], str, type[MetadataEntity] | None]] = {
+    "plain-dtype": (DataTypeEntity, "uint8", Uint8DataType),
+    "dotted-dtype": (DataTypeEntity, "numpy.datetime64", NumpyDatetime64DataType),
+    "raw-8": (DataTypeEntity, "r8", RawBytesDataType),
+    "raw-24": (DataTypeEntity, "r24", RawBytesDataType),
     # A malformed member reaches the family too: a misspelling of
     # something we model must be reported as such, not pass as an unknown
     # third-party extension.
-    "raw-not-multiple-of-8": (DATA_TYPE, "r12", RawBytesDataType),
-    "raw-zero": (DATA_TYPE, "r0", RawBytesDataType),
+    "raw-not-multiple-of-8": (DataTypeEntity, "r12", RawBytesDataType),
+    "raw-zero": (DataTypeEntity, "r0", RawBytesDataType),
     # Tables are per point, so the family cannot be reached from another.
-    "raw-shaped-codec-name": (CODECS, "r8", None),
-    "codec": (CODECS, "blosc", BloscCodec),
-    "unknown": (CODECS, "zfpy", None),
+    "raw-shaped-codec-name": (CodecEntity, "r8", None),
+    "codec": (CodecEntity, "blosc", BloscCodec),
+    "unknown": (CodecEntity, "zfpy", None),
     # The family's key is invented, so no document may write it.
-    "the-family-key-itself": (DATA_TYPE, RAW_BYTES_FAMILY, None),
+    "the-family-key-itself": (DataTypeEntity, RAW_BYTES_FAMILY, None),
 }
 
 
 @pytest.mark.parametrize(("field", "name", "expected"), RESOLUTIONS.values(), ids=list(RESOLUTIONS))
 def test_a_name_resolves_to_the_entity_that_answers_for_it(
-    field: ExtensionPointField, name: str, expected: type[MetadataEntity] | None
+    field: type[MetadataEntity], name: str, expected: type[MetadataEntity] | None
 ) -> None:
     assert CORE_AND_EXTENSIONS.resolve(field, name) is expected
 
@@ -60,15 +59,15 @@ def test_every_numeric_r_spelling_resolves_to_the_family(width: int) -> None:
     # the family claims a name by grammar shape, not by validity, so a
     # misspelled member of a family we model is reported as a misspelling
     # rather than passing as an unknown third-party extension.
-    assert CORE_AND_EXTENSIONS.resolve(DATA_TYPE, f"r{width}") is RawBytesDataType
+    assert CORE_AND_EXTENSIONS.resolve(DataTypeEntity, f"r{width}") is RawBytesDataType
 
 
-OTHER_POINTS: tuple[ExtensionPointField, ...] = (CODECS, CHUNK_GRID)
+OTHER_KINDS: tuple[type[MetadataEntity], ...] = (CodecEntity, ChunkGridEntity)
 
 
-@given(width=st.integers(min_value=0, max_value=2**32), field=st.sampled_from(OTHER_POINTS))
+@given(width=st.integers(min_value=0, max_value=2**32), field=st.sampled_from(OTHER_KINDS))
 def test_r_shaped_names_resolve_to_nothing_outside_data_types(
-    width: int, field: ExtensionPointField
+    width: int, field: type[MetadataEntity]
 ) -> None:
     # The family belongs to `data_type`; a codec that happens to be named
     # `r8` must not reach it.
@@ -80,14 +79,14 @@ def test_r_shaped_names_resolve_to_nothing_outside_data_types(
 _UNCLAIMED = st.text(min_size=1).filter(
     lambda name: (
         not (name.startswith("r") and name[1:].isdigit())
-        and name not in CORE_AND_EXTENSIONS.entities["data_type"]
+        and name not in CORE_AND_EXTENSIONS.tables[DataTypeEntity]
     )
 )
 
 
 @given(name=_UNCLAIMED)
 def test_a_name_no_entity_claims_resolves_to_nothing(name: str) -> None:
-    assert CORE_AND_EXTENSIONS.resolve(DATA_TYPE, name) is None
+    assert CORE_AND_EXTENSIONS.resolve(DataTypeEntity, name) is None
 
 
 def test_squatted_names_are_judged_against_the_definition_they_squat() -> None:

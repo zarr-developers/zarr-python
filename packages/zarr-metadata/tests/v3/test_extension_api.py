@@ -21,7 +21,6 @@ from zarr_metadata.rules import (
 from zarr_metadata.v3.codec.blosc import BloscCodec
 from zarr_metadata.v3.codec.gzip import GzipCodec, GzipCodecObject
 from zarr_metadata.v3.entity import (
-    CORE,
     CORE_AND_EXTENSIONS,
     FROM_NAME,
     ArrayArrayCodec,
@@ -29,6 +28,7 @@ from zarr_metadata.v3.entity import (
     ArrayParts,
     BytesBytesCodec,
     ChunkGridEntity,
+    ChunkKeyEncodingEntity,
     CodecEntity,
     CodecKind,
     Context,
@@ -78,10 +78,7 @@ class AcmeFloat8DataType(DataTypeEntity):
 
 
 def _scope() -> Context:
-    return CORE_AND_EXTENSIONS.extended_with(
-        codecs={AcmeLz4Codec.identifier: AcmeLz4Codec},
-        data_type={AcmeFloat8DataType.identifier: AcmeFloat8DataType},
-    )
+    return CORE_AND_EXTENSIONS.extended_with(AcmeLz4Codec, AcmeFloat8DataType)
 
 
 SCOPE = _scope()
@@ -160,33 +157,15 @@ def test_error_an_entity_must_say_what_it_is() -> None:
             """A codec that forgot to say what it is."""
 
 
-def test_error_a_registry_key_must_be_the_identifier() -> None:
-    # Otherwise `resolve` never finds it and the document is silently
-    # waved through, indistinguishable from openness.
-    with pytest.raises(ValueError, match="registered at 'codecs' under 'acme.lz-4'"):
-        CORE.extended_with(codecs={"acme.lz-4": AcmeLz4Codec})
-
-
-def test_error_an_entity_cannot_be_registered_at_the_wrong_point() -> None:
-    # `EntityTables` says so to the type checker, which settles a scope
-    # written out in source. A scope assembled at run time -- from an
-    # entry point, from configuration -- had no type to check, and a
-    # codec under `data_type` would resolve and then be asked for a
-    # storage class it has no answer to.
-    with pytest.raises(TypeError, match="registered at 'data_type', which takes DataTypeEntity"):
-        # Deliberately wrong, and pyright says so; the runtime refusal is what is under test.
-        CORE.extended_with(data_type={AcmeLz4Codec.identifier: AcmeLz4Codec})  # pyright: ignore[reportArgumentType]
-
-
 def test_the_entity_layer_answers_what_a_reader_needs() -> None:
     # The questions zarr-python asks before it can read a chunk.
-    data_type, problems = CORE_AND_EXTENSIONS.coerce("data_type", "int32")
+    data_type, problems = CORE_AND_EXTENSIONS.coerce(DataTypeEntity, "int32")
     assert problems == ()
     assert isinstance(data_type, DataTypeEntity)
     assert data_type.storage_class() == "multi_byte"
 
     grid, problems = CORE_AND_EXTENSIONS.coerce(
-        "chunk_grid", {"name": "regular", "configuration": {"chunk_shape": (32, 32)}}
+        ChunkGridEntity, {"name": "regular", "configuration": {"chunk_shape": (32, 32)}}
     )
     assert problems == ()
     assert isinstance(grid, ChunkGridEntity)
@@ -254,7 +233,7 @@ def test_every_extension_point_is_an_exhaustive_two_case_union() -> None:
     array = ArrayDocumentV3.from_json(_document(data_type="mycorp.decimal", fill_value=0))
     assert isinstance(array.data_type, (DataTypeEntity, Opaque))
     assert isinstance(array.chunk_grid, (ChunkGridEntity, Opaque))
-    assert isinstance(array.chunk_key_encoding, (MetadataEntity, Opaque))
+    assert isinstance(array.chunk_key_encoding, (ChunkKeyEncodingEntity, Opaque))
     assert all(isinstance(codec, (CodecEntity, Opaque)) for codec in array.codecs)
 
 
@@ -325,19 +304,17 @@ def test_a_third_party_can_register_a_family() -> None:
     # holds a table of spellings: the entity registers under an invented
     # identifier and `resolve` asks it, so a family is registered exactly
     # like a single name.
-    scope = CORE_AND_EXTENSIONS.extended_with(
-        data_type={AcmeFixedDataType.identifier: AcmeFixedDataType}
-    )
+    scope = CORE_AND_EXTENSIONS.extended_with(AcmeFixedDataType)
     for name in ("acme.fixed8", "acme.fixed128"):
-        assert scope.resolve("data_type", name) is AcmeFixedDataType
-        entity, problems = scope.coerce("data_type", name)
+        assert scope.resolve(DataTypeEntity, name) is AcmeFixedDataType
+        entity, problems = scope.coerce(DataTypeEntity, name)
         assert problems == ()
         assert isinstance(entity, AcmeFixedDataType)
         assert entity.to_json() == name
     # The invented identifier is not a name a document may write, and a
     # near-miss is still nobody's.
-    assert scope.resolve("data_type", AcmeFixedDataType.identifier) is None
-    assert scope.resolve("data_type", "acme.fixed") is None
+    assert scope.resolve(DataTypeEntity, AcmeFixedDataType.identifier) is None
+    assert scope.resolve(DataTypeEntity, "acme.fixed") is None
 
 
 def test_error_a_member_needs_a_check_from_somewhere() -> None:
@@ -368,14 +345,12 @@ def test_a_third_party_entity_containing_entities_writes_nothing_for_it() -> Non
     # `inner: CodecEntity | Opaque` is the whole declaration. Reading it
     # in scope, writing it back, and canonicalizing through it all follow
     # from the annotation, so a wrapper is as short to write as a leaf.
-    scope = CORE_AND_EXTENSIONS.extended_with(
-        codecs={AcmeWrapperCodec.identifier: AcmeWrapperCodec}
-    )
+    scope = CORE_AND_EXTENSIONS.extended_with(AcmeWrapperCodec)
     entry = {
         "name": "acme.wrapper",
         "configuration": {"inner": {"name": "gzip", "configuration": {"level": 5}}},
     }
-    codec, problems = scope.coerce("codecs", entry)
+    codec, problems = scope.coerce(CodecEntity, entry)
     assert problems == ()
     assert isinstance(codec, AcmeWrapperCodec)
     assert isinstance(codec.inner, GzipCodec)
@@ -384,7 +359,7 @@ def test_a_third_party_entity_containing_entities_writes_nothing_for_it() -> Non
 
     # An inner codec the scope does not model stays verbatim, as anywhere.
     unknown = {"name": "acme.wrapper", "configuration": {"inner": "acme.unknown"}}
-    codec, problems = scope.coerce("codecs", unknown)
+    codec, problems = scope.coerce(CodecEntity, unknown)
     assert problems == ()
     assert isinstance(codec, AcmeWrapperCodec)
     assert isinstance(codec.inner, Opaque)
@@ -395,7 +370,7 @@ def test_a_third_party_entity_containing_entities_writes_nothing_for_it() -> Non
         "name": "acme.wrapper",
         "configuration": {"inner": {"name": "gzip", "configuration": {"level": 99}}},
     }
-    _, problems = scope.coerce("codecs", bad)
+    _, problems = scope.coerce(CodecEntity, bad)
     assert [problem.loc for problem in problems] == [
         ("configuration", "inner", "configuration", "level")
     ]
@@ -416,7 +391,7 @@ def test_a_third_party_entity_containing_entities_writes_nothing_for_it() -> Non
             }
         },
     }
-    codec, _ = scope.coerce("codecs", verbose)
+    codec, _ = scope.coerce(CodecEntity, verbose)
     assert isinstance(codec, AcmeWrapperCodec)
     inner = codec.canonical().inner
     assert isinstance(inner, BloscCodec)
@@ -461,7 +436,7 @@ def test_simplified_composes_with_the_walk_into_contained_entities() -> None:
 def test_error_a_nested_field_needs_an_entity_kind_with_a_point() -> None:
     # `MetadataEntity` is registered at no single point, so a field typed
     # as one could not be resolved through any scope.
-    with pytest.raises(TypeError, match="has no `extension_point`"):
+    with pytest.raises(TypeError, match="is of no kind; annotate it with a codec kind"):
 
         @dataclass(frozen=True)
         class Vague(BytesBytesCodec):
@@ -512,11 +487,13 @@ def test_a_rule_about_a_member_is_post_init() -> None:
     # The rule runs on the typed members and reports relative to the
     # configuration; `coerce` catches what it raises and locates it in
     # the document, and the constructor raises it as it is.
-    scope = CORE_AND_EXTENSIONS.extended_with(codecs={AcmeBlockCodec.identifier: AcmeBlockCodec})
-    codec, problems = scope.coerce("codecs", {"name": "acme.block", "configuration": {"block": 64}})
+    scope = CORE_AND_EXTENSIONS.extended_with(AcmeBlockCodec)
+    codec, problems = scope.coerce(
+        CodecEntity, {"name": "acme.block", "configuration": {"block": 64}}
+    )
     assert problems == ()
     assert isinstance(codec, AcmeBlockCodec)
-    _, problems = scope.coerce("codecs", {"name": "acme.block", "configuration": {"block": 6}})
+    _, problems = scope.coerce(CodecEntity, {"name": "acme.block", "configuration": {"block": 6}})
     assert [(p.loc, p.message) for p in problems] == [
         (("configuration", "block"), "expected a power of two, got 6")
     ]
@@ -525,7 +502,7 @@ def test_a_rule_about_a_member_is_post_init() -> None:
         AcmeBlockCodec(block=6)
     assert [p.loc for p in caught.value.problems] == [("block",)]
     # A member that failed its type check never reaches the rule.
-    _, problems = scope.coerce("codecs", {"name": "acme.block", "configuration": {"block": "x"}})
+    _, problems = scope.coerce(CodecEntity, {"name": "acme.block", "configuration": {"block": "x"}})
     assert [p.kind for p in problems] == ["invalid_type"]
 
 
@@ -567,14 +544,16 @@ def test_a_number_member_is_a_float_field() -> None:
         def transition(self, incoming: ArrayParts) -> ArrayParts | None:
             return incoming
 
-    scope = CORE_AND_EXTENSIONS.extended_with(codecs={AcmeScaled.identifier: AcmeScaled})
+    scope = CORE_AND_EXTENSIONS.extended_with(AcmeScaled)
     for written in (2, 2.5):
         codec, problems = scope.coerce(
-            "codecs", {"name": "acme.scaled", "configuration": {"scale": written}}
+            CodecEntity, {"name": "acme.scaled", "configuration": {"scale": written}}
         )
         assert problems == ()
         assert isinstance(codec, AcmeScaled)
-    _, problems = scope.coerce("codecs", {"name": "acme.scaled", "configuration": {"scale": True}})
+    _, problems = scope.coerce(
+        CodecEntity, {"name": "acme.scaled", "configuration": {"scale": True}}
+    )
     assert [(p.loc, p.message) for p in problems] == [
         (("configuration", "scale"), "expected a number, got True")
     ]
@@ -590,7 +569,7 @@ def test_error_an_entity_must_be_a_dataclass() -> None:
         identifier: ClassVar[str] = "acme.undecorated"
 
     with pytest.raises(TypeError, match="not a dataclass; decorate it with @dataclass"):
-        CORE_AND_EXTENSIONS.extended_with(codecs={Undecorated.identifier: Undecorated})
+        CORE_AND_EXTENSIONS.extended_with(Undecorated)
 
 
 def test_error_a_nested_field_admits_opaque() -> None:
@@ -614,7 +593,7 @@ def test_error_an_array_array_codec_defines_transition() -> None:
     with pytest.raises(
         TypeError, match="does not define transition, which its base leaves abstract"
     ):
-        CORE_AND_EXTENSIONS.extended_with(codecs={Silent.identifier: Silent})
+        CORE_AND_EXTENSIONS.extended_with(Silent)
 
 
 def test_error_a_codec_is_of_a_kind() -> None:
@@ -636,7 +615,7 @@ def test_error_a_data_type_judges_its_fill_values() -> None:
         scalar_storage: ClassVar[StorageClass] = "single_byte"
 
     with pytest.raises(TypeError, match="does not define fill_value_problems"):
-        CORE_AND_EXTENSIONS.extended_with(data_type={Lax.identifier: Lax})
+        CORE_AND_EXTENSIONS.extended_with(Lax)
 
 
 def test_error_a_literal_class_variable_holds_a_listed_value() -> None:

@@ -75,7 +75,7 @@ REJECTED: dict[str, tuple[object, object, str]] = {
 def _data_type(metadata: object) -> DataTypeEntity:
     name = metadata if isinstance(metadata, str) else entry_at(metadata, "name")
     assert isinstance(name, str), metadata
-    entity_type = CORE_AND_EXTENSIONS.resolve("data_type", name)
+    entity_type = CORE_AND_EXTENSIONS.resolve(DataTypeEntity, name)
     assert entity_type is not None, metadata
     entity, problems = entity_type.coerce(metadata, CORE_AND_EXTENSIONS)
     assert problems == (), problems
@@ -98,7 +98,7 @@ def test_error_rejects(metadata: object, fill: object, reason: str) -> None:
 def test_error_a_malformed_raw_name_has_no_entity_to_ask() -> None:
     # `r12` is not a width, so the data type does not exist and there is
     # nothing to put a fill value to.
-    entity, problems = CORE_AND_EXTENSIONS.coerce("data_type", "r12")
+    entity, problems = CORE_AND_EXTENSIONS.coerce(DataTypeEntity, "r12")
     assert not isinstance(entity, DataTypeEntity)
     assert [problem.message for problem in problems] == [
         "Expected 'r<N>' where N is a positive multiple of 8, got 'r12'"
@@ -107,4 +107,4 @@ def test_error_a_malformed_raw_name_has_no_entity_to_ask() -> None:
 
 def test_an_unmodelled_data_type_judges_nothing() -> None:
     # Extension openness: a fill value we cannot interpret is not wrong.
-    assert CORE_AND_EXTENSIONS.resolve("data_type", "mycorp.decimal") is None
+    assert CORE_AND_EXTENSIONS.resolve(DataTypeEntity, "mycorp.decimal") is None

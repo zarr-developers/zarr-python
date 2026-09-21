@@ -97,7 +97,7 @@ class AcmeAffineCodec(ArrayArrayCodec[AcmeAffineObject]):
         )
 
 
-SCOPE = CORE_AND_EXTENSIONS.extended_with(codecs={AcmeAffineCodec.identifier: AcmeAffineCodec})
+SCOPE = CORE_AND_EXTENSIONS.extended_with(AcmeAffineCodec)
 BYTES_LE = {"name": "bytes", "configuration": {"endian": "little"}}
 
 

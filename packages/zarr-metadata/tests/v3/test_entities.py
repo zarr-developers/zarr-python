@@ -75,11 +75,28 @@ from zarr_metadata.v3.data_type.uint8 import Uint8DataType
 from zarr_metadata.v3.data_type.uint16 import Uint16DataType
 from zarr_metadata.v3.data_type.uint32 import Uint32DataType
 from zarr_metadata.v3.data_type.uint64 import Uint64DataType
-from zarr_metadata.v3.entity import ArrayDocumentV3, ExtensionPointField, MetadataEntity
+from zarr_metadata.v3.entity import (
+    ArrayDocumentV3,
+    ChunkGridEntity,
+    ChunkKeyEncodingEntity,
+    CodecEntity,
+    DataTypeEntity,
+    MetadataEntity,
+    StorageTransformerEntity,
+)
 
 # Every registered entity, keyed by `<field>:<identifier>` -- an identifier
 # is unique only within its extension point, and `bytes` is both a codec
 # and a data type.
+# The field of a v3 array document each kind is read from: the test ids.
+POINT: dict[type[MetadataEntity], str] = {
+    DataTypeEntity: "data_type",
+    ChunkGridEntity: "chunk_grid",
+    ChunkKeyEncodingEntity: "chunk_key_encoding",
+    CodecEntity: "codecs",
+    StorageTransformerEntity: "storage_transformers",
+}
+
 ENTITIES: dict[str, type[MetadataEntity]] = {
     "codecs:blosc": BloscCodec,
     "codecs:bytes": BytesCodec,
@@ -272,8 +289,8 @@ def test_to_json_conforms_across_a_valid_document(document: dict[str, object]) -
 
 def test_every_registered_entity_is_checked_here() -> None:
     registered = {
-        f"{field}:{identifier}"
-        for field, entities in CORE_AND_EXTENSIONS.tables().items()
+        f"{POINT[kind]}:{identifier}"
+        for kind, entities in CORE_AND_EXTENSIONS.tables.items()
         for identifier in entities
     }
     assert registered == set(ENTITIES)
@@ -281,15 +298,15 @@ def test_every_registered_entity_is_checked_here() -> None:
 
 
 def test_core_is_a_subset_of_core_and_extensions() -> None:
-    both = CORE_AND_EXTENSIONS.tables()
-    for field, entities in CORE.tables().items():
-        assert entities.items() <= both[field].items()
+    both = CORE_AND_EXTENSIONS.tables
+    for kind, entities in CORE.tables.items():
+        assert entities.items() <= both[kind].items()
 
 
 def test_a_name_out_of_scope_resolves_to_nothing() -> None:
     # Not an error: an unmodelled extension is left unjudged, not rejected.
-    assert CORE.resolve("codecs", "mycorp.secret") is None
-    assert CORE.resolve("codecs", "blosc") is BloscCodec
+    assert CORE.resolve(CodecEntity, "mycorp.secret") is None
+    assert CORE.resolve(CodecEntity, "blosc") is BloscCodec
 
 
 def test_an_entity_round_trips_through_its_json_form() -> None:
@@ -516,23 +533,23 @@ def test_an_unreadable_member_is_not_judged_by_its_default() -> None:
 
 
 # Entities whose written form and canonical form differ, or could.
-FAITHFUL: dict[str, tuple[ExtensionPointField, object]] = {
+FAITHFUL: dict[str, tuple[type[MetadataEntity], object]] = {
     "rectilinear-expanded": (
-        "chunk_grid",
+        ChunkGridEntity,
         {
             "name": "rectilinear",
             "configuration": {"kind": "inline", "chunk_shapes": ((32, 32, 32),)},
         },
     ),
     "rectilinear-encoded": (
-        "chunk_grid",
+        ChunkGridEntity,
         {
             "name": "rectilinear",
             "configuration": {"kind": "inline", "chunk_shapes": (((32, 3),),)},
         },
     ),
     "blosc-ignored-typesize": (
-        "codecs",
+        CodecEntity,
         {
             "name": "blosc",
             "configuration": {
@@ -544,13 +561,13 @@ FAITHFUL: dict[str, tuple[ExtensionPointField, object]] = {
             },
         },
     ),
-    "raw-bytes-padded": ("data_type", "r008"),
+    "raw-bytes-padded": (DataTypeEntity, "r008"),
     "scale-offset-scalar": (
-        "codecs",
+        CodecEntity,
         {"name": "scale_offset", "configuration": {"offset": 2, "scale": 0.5}},
     ),
     "struct-nested": (
-        "data_type",
+        DataTypeEntity,
         {
             "name": "struct",
             "configuration": {
@@ -562,7 +579,7 @@ FAITHFUL: dict[str, tuple[ExtensionPointField, object]] = {
 
 
 @pytest.mark.parametrize(("field", "written"), FAITHFUL.values(), ids=list(FAITHFUL))
-def test_to_json_writes_back_what_was_read(field: ExtensionPointField, written: object) -> None:
+def test_to_json_writes_back_what_was_read(field: type[MetadataEntity], written: object) -> None:
     # Serialization is not canonicalization. A reader that reads a
     # document and writes it back must not change bytes it was not asked
     # to change -- `canonical()` is where you ask.
@@ -574,7 +591,7 @@ def test_to_json_writes_back_what_was_read(field: ExtensionPointField, written: 
 
 def test_canonical_is_what_simplifies() -> None:
     encoded, _ = CORE_AND_EXTENSIONS.coerce(
-        "chunk_grid",
+        ChunkGridEntity,
         {
             "name": "rectilinear",
             "configuration": {"kind": "inline", "chunk_shapes": ((32, 32, 32),)},
@@ -586,7 +603,7 @@ def test_canonical_is_what_simplifies() -> None:
         "configuration": {"kind": "inline", "chunk_shapes": (((32, 3),),)},
     }
     blosc, _ = CORE_AND_EXTENSIONS.coerce(
-        "codecs",
+        CodecEntity,
         {
             "name": "blosc",
             "configuration": {
@@ -604,7 +621,7 @@ def test_canonical_is_what_simplifies() -> None:
 
 def test_canonical_reaches_a_contained_entity() -> None:
     shard, _ = CORE_AND_EXTENSIONS.coerce(
-        "codecs",
+        CodecEntity,
         {
             "name": "sharding_indexed",
             "configuration": {
@@ -635,7 +652,7 @@ def test_error_an_explicit_null_scalar_is_refused() -> None:
     # `null` is a value the document wrote, distinct from absence -- and
     # no data type admits it as a scalar, so the codec cannot be built.
     codec, problems = CORE_AND_EXTENSIONS.coerce(
-        "codecs", {"name": "scale_offset", "configuration": {"offset": None}}
+        CodecEntity, {"name": "scale_offset", "configuration": {"offset": None}}
     )
     assert codec is not None
     assert not isinstance(codec, MetadataEntity)
@@ -643,20 +660,20 @@ def test_error_an_explicit_null_scalar_is_refused() -> None:
 
 
 # (an entity whose configuration holds a mutable JSON value)
-MUTABLE_MEMBERS: dict[str, tuple[ExtensionPointField, object]] = {
+MUTABLE_MEMBERS: dict[str, tuple[type[MetadataEntity], object]] = {
     "scale-offset-object": (
-        "codecs",
+        CodecEntity,
         {"name": "scale_offset", "configuration": {"offset": {"a": 1}}},
     ),
     "cast-value-scalar-map": (
-        "codecs",
+        CodecEntity,
         {
             "name": "cast_value",
             "configuration": {"data_type": "int8", "scalar_map": {"encode": (("NaN", 0),)}},
         },
     ),
     "struct-fields": (
-        "data_type",
+        DataTypeEntity,
         {"name": "struct", "configuration": {"fields": ({"name": "a", "data_type": "uint8"},)}},
     ),
 }
@@ -664,7 +681,7 @@ MUTABLE_MEMBERS: dict[str, tuple[ExtensionPointField, object]] = {
 
 @pytest.mark.parametrize(("field", "written"), MUTABLE_MEMBERS.values(), ids=list(MUTABLE_MEMBERS))
 def test_to_json_shares_no_mutable_state_with_the_entity(
-    field: ExtensionPointField, written: object
+    field: type[MetadataEntity], written: object
 ) -> None:
     # The model layer has this test; the entity layer did not, and handed
     # out its own dict -- so a caller mutating the document it was given
@@ -701,7 +718,7 @@ def test_a_member_the_entity_does_not_model_is_not_written_back() -> None:
             "typo_key": 1,
         },
     }
-    codec, problems = CORE_AND_EXTENSIONS.coerce("codecs", entry)
+    codec, problems = CORE_AND_EXTENSIONS.coerce(CodecEntity, entry)
     assert [(p.loc, p.kind) for p in problems] == [(("configuration", "typo_key"), "unknown_key")]
     assert isinstance(codec, BloscCodec)
     assert "typo_key" not in codec.to_json()["configuration"]
@@ -730,7 +747,7 @@ def test_the_fail_fast_reader_refuses_a_member_it_would_drop() -> None:
 # A storage transformer: the one extension point nothing in the package
 # models, so the only way to reach it is to register one.
 @dataclasses.dataclass(frozen=True)
-class AcmeShardCache(MetadataEntity):
+class AcmeShardCache(StorageTransformerEntity):
     """A third-party storage transformer with a member canonical form drops."""
 
     verbose: bool | UNSET = UNSET
@@ -745,9 +762,7 @@ def test_the_document_writes_itself_back_and_canonical_reaches_every_point() -> 
     # `to_json` is faithful, entities included; `canonical` walks every
     # field that holds an entity -- `storage_transformers` among them,
     # which the hand-written walk it replaces never reached.
-    scope = CORE_AND_EXTENSIONS.extended_with(
-        storage_transformers={AcmeShardCache.identifier: AcmeShardCache}
-    )
+    scope = CORE_AND_EXTENSIONS.extended_with(AcmeShardCache)
     document = {
         "zarr_format": 3,
         "node_type": "array",
