@@ -21,6 +21,7 @@ from typing import (
 import pytest
 from hypothesis import given, settings
 
+from tests.helpers import configuration_of
 from tests.rules.strategies import valid_documents
 from zarr_metadata.model import UNSET, MetadataValidationError
 from zarr_metadata.rules import validate_array_metadata_v3
@@ -74,7 +75,7 @@ from zarr_metadata.v3.data_type.uint8 import Uint8DataType
 from zarr_metadata.v3.data_type.uint16 import Uint16DataType
 from zarr_metadata.v3.data_type.uint32 import Uint32DataType
 from zarr_metadata.v3.data_type.uint64 import Uint64DataType
-from zarr_metadata.v3.entity import ArrayDocumentV3, MetadataEntity
+from zarr_metadata.v3.entity import ArrayDocumentV3, ExtensionPointField, MetadataEntity
 
 # Every registered entity, keyed by `<field>:<identifier>` -- an identifier
 # is unique only within its extension point, and `bytes` is both a codec
@@ -362,7 +363,7 @@ def test_a_nested_metadata_field_is_judged_like_a_top_level_one(
             },
         ),
     }
-    problems = validate_array_metadata_v3(document)  # type: ignore[arg-type]
+    problems = validate_array_metadata_v3(document)
     assert [problem.loc for problem in problems] == [
         ("codecs", 0, "configuration", "codecs", 0, *inner_loc)
     ]
@@ -393,18 +394,24 @@ def test_every_problem_location_indexes_into_the_document() -> None:
             },
         ),
     }
-    problems = validate_array_metadata_v3(document)  # type: ignore[arg-type]
+    problems = validate_array_metadata_v3(document)
     assert len(problems) != 0
     for problem in problems:
         node: object = document
         for step in problem.loc:
-            if not isinstance(node, (dict, tuple)) or (isinstance(node, dict) and step not in node):
-                # A `missing_key` problem names where the key belongs, so
-                # it is allowed to run past the end of what is there. Any
-                # other kind must address a node that exists.
-                assert problem.kind == "missing_key", (problem.loc, step)
-                break
-            node = node[step]  # type: ignore[index]
+            # Two branches rather than one `or`: each narrows `step` to
+            # the key type its container takes.
+            if isinstance(node, dict) and isinstance(step, str) and step in node:
+                node = node[step]
+                continue
+            if isinstance(node, tuple) and isinstance(step, int) and step < len(node):
+                node = node[step]
+                continue
+            # A `missing_key` problem names where the key belongs, so it
+            # is allowed to run past the end of what is there. Any other
+            # kind must address a node that exists.
+            assert problem.kind == "missing_key", (problem.loc, step)
+            break
 
 
 def test_an_unreadable_member_costs_the_entity() -> None:
@@ -433,7 +440,7 @@ def test_an_unreadable_member_costs_the_entity() -> None:
             },
         ),
     }
-    problems = validate_array_metadata_v3(document)  # type: ignore[arg-type]
+    problems = validate_array_metadata_v3(document)
     assert {problem.loc for problem in problems} == {
         ("codecs", 1, "configuration", "clevel"),
     }
@@ -465,7 +472,7 @@ def test_an_optional_member_of_the_wrong_type_is_not_judged_as_absent() -> None:
             },
         ),
     }
-    problems = validate_array_metadata_v3(document)  # type: ignore[arg-type]
+    problems = validate_array_metadata_v3(document)
     assert [(problem.loc, problem.kind) for problem in problems] == [
         (("codecs", 1, "configuration", "typesize"), "invalid_type")
     ]
@@ -504,12 +511,12 @@ def test_an_unreadable_member_is_not_judged_by_its_default() -> None:
             },
         ),
     }
-    problems = validate_array_metadata_v3(document)  # type: ignore[arg-type]
+    problems = validate_array_metadata_v3(document)
     assert [problem.loc for problem in problems] == [("codecs", 1, "configuration", "shuffle")]
 
 
 # Entities whose written form and canonical form differ, or could.
-FAITHFUL: dict[str, tuple[str, object]] = {
+FAITHFUL: dict[str, tuple[ExtensionPointField, object]] = {
     "rectilinear-expanded": (
         "chunk_grid",
         {
@@ -555,11 +562,11 @@ FAITHFUL: dict[str, tuple[str, object]] = {
 
 
 @pytest.mark.parametrize(("field", "written"), FAITHFUL.values(), ids=list(FAITHFUL))
-def test_to_json_writes_back_what_was_read(field: str, written: object) -> None:
+def test_to_json_writes_back_what_was_read(field: ExtensionPointField, written: object) -> None:
     # Serialization is not canonicalization. A reader that reads a
     # document and writes it back must not change bytes it was not asked
     # to change -- `canonical()` is where you ask.
-    entity, problems = CORE_AND_EXTENSIONS.coerce(field, written)  # type: ignore[arg-type]
+    entity, problems = CORE_AND_EXTENSIONS.coerce(field, written)
     assert problems == ()
     assert isinstance(entity, MetadataEntity)
     assert entity.to_json() == written
@@ -591,8 +598,8 @@ def test_canonical_is_what_simplifies() -> None:
             },
         },
     )
-    assert isinstance(blosc, MetadataEntity)
-    assert "typesize" not in blosc.canonical().to_json()["configuration"]  # type: ignore[index]
+    assert isinstance(blosc, BloscCodec)
+    assert "typesize" not in blosc.canonical().to_json()["configuration"]
 
 
 def test_canonical_reaches_a_contained_entity() -> None:
@@ -619,9 +626,9 @@ def test_canonical_reaches_a_contained_entity() -> None:
             },
         },
     )
-    assert isinstance(shard, MetadataEntity)
-    inner = shard.canonical().to_json()["configuration"]["codecs"][1]  # type: ignore[index]
-    assert "typesize" not in inner["configuration"]  # type: ignore[index]
+    assert isinstance(shard, ShardingIndexedCodec)
+    inner = shard.canonical().to_json()["configuration"]["codecs"][1]
+    assert "typesize" not in configuration_of(inner)
 
 
 def test_error_an_explicit_null_scalar_is_refused() -> None:
@@ -636,7 +643,7 @@ def test_error_an_explicit_null_scalar_is_refused() -> None:
 
 
 # (an entity whose configuration holds a mutable JSON value)
-MUTABLE_MEMBERS: dict[str, tuple[str, object]] = {
+MUTABLE_MEMBERS: dict[str, tuple[ExtensionPointField, object]] = {
     "scale-offset-object": (
         "codecs",
         {"name": "scale_offset", "configuration": {"offset": {"a": 1}}},
@@ -656,16 +663,18 @@ MUTABLE_MEMBERS: dict[str, tuple[str, object]] = {
 
 
 @pytest.mark.parametrize(("field", "written"), MUTABLE_MEMBERS.values(), ids=list(MUTABLE_MEMBERS))
-def test_to_json_shares_no_mutable_state_with_the_entity(field: str, written: object) -> None:
+def test_to_json_shares_no_mutable_state_with_the_entity(
+    field: ExtensionPointField, written: object
+) -> None:
     # The model layer has this test; the entity layer did not, and handed
     # out its own dict -- so a caller mutating the document it was given
     # mutated a frozen entity.
-    entity, problems = CORE_AND_EXTENSIONS.coerce(field, written)  # type: ignore[arg-type]
+    entity, problems = CORE_AND_EXTENSIONS.coerce(field, written)
     assert problems == ()
     assert isinstance(entity, MetadataEntity)
     baseline = copy.deepcopy(entity.to_json())
     handed_out = entity.to_json()
-    configuration = handed_out["configuration"]  # type: ignore[index]
+    configuration = configuration_of(handed_out)
     assert isinstance(configuration, dict)
     for key in list(configuration):
         value = configuration[key]
@@ -694,8 +703,8 @@ def test_a_member_the_entity_does_not_model_is_not_written_back() -> None:
     }
     codec, problems = CORE_AND_EXTENSIONS.coerce("codecs", entry)
     assert [(p.loc, p.kind) for p in problems] == [(("configuration", "typo_key"), "unknown_key")]
-    assert isinstance(codec, MetadataEntity)
-    assert "typo_key" not in codec.to_json()["configuration"]  # type: ignore[index,operator]
+    assert isinstance(codec, BloscCodec)
+    assert "typo_key" not in codec.to_json()["configuration"]
 
 
 def test_the_fail_fast_reader_refuses_a_member_it_would_drop() -> None:

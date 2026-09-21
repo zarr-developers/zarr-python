@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from tests.helpers import entry_at
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS
 from zarr_metadata.v3.entity import DataTypeEntity
 
@@ -71,23 +72,25 @@ REJECTED: dict[str, tuple[object, object, str]] = {
 }
 
 
-def _data_type(metadata: object) -> object:
-    name = metadata if isinstance(metadata, str) else metadata["name"]  # type: ignore[index]
-    entity_type = CORE_AND_EXTENSIONS.resolve("data_type", name)  # type: ignore[arg-type]
+def _data_type(metadata: object) -> DataTypeEntity:
+    name = metadata if isinstance(metadata, str) else entry_at(metadata, "name")
+    assert isinstance(name, str), metadata
+    entity_type = CORE_AND_EXTENSIONS.resolve("data_type", name)
     assert entity_type is not None, metadata
     entity, problems = entity_type.coerce(metadata, CORE_AND_EXTENSIONS)
     assert problems == (), problems
+    assert entity is not None, metadata
     return entity
 
 
 @pytest.mark.parametrize(("metadata", "fill"), ACCEPTED.values(), ids=list(ACCEPTED))
 def test_accepts(metadata: object, fill: object) -> None:
-    assert _data_type(metadata).fill_value_problems(fill) == ()  # type: ignore[attr-defined]
+    assert _data_type(metadata).fill_value_problems(fill) == ()
 
 
 @pytest.mark.parametrize(("metadata", "fill", "reason"), REJECTED.values(), ids=list(REJECTED))
 def test_error_rejects(metadata: object, fill: object, reason: str) -> None:
-    problems = _data_type(metadata).fill_value_problems(fill)  # type: ignore[attr-defined]
+    problems = _data_type(metadata).fill_value_problems(fill)
     assert problems, f"expected {fill!r} to be rejected"
     assert any(reason in problem.message for problem in problems), problems
 

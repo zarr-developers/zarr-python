@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
 
 import pytest
 
+from tests.helpers import configuration_of, entry_at
 from zarr_metadata.rules import validate_array_metadata_v3
 from zarr_metadata.v3._parts import ChunkGrid, shard_index_grid
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 BASE: Mapping[str, object] = {
     "zarr_format": 3,
@@ -94,14 +92,20 @@ def _grid_of(grid: object, shape: object) -> ChunkGrid:
     A grid entity builds its own; one out of scope pins only the rank the
     array shape gives it.
     """
-    name = grid if isinstance(grid, str) else (grid or {}).get("name")  # type: ignore[union-attr]
+    name = (
+        grid
+        if isinstance(grid, str)
+        else entry_at(grid, "name")
+        if isinstance(grid, Mapping)
+        else None
+    )
     entity_type = CORE_AND_EXTENSIONS.resolve("chunk_grid", name) if isinstance(name, str) else None
     if entity_type is None:
         return ChunkGrid.unreadable(shape)
     entity, _ = entity_type.coerce(grid, CORE_AND_EXTENSIONS)
     if entity is None:
         return ChunkGrid.unreadable(shape)
-    return entity.grid(shape)  # type: ignore[attr-defined]
+    return entity.grid(shape)
 
 
 @pytest.mark.parametrize(("grid", "shape", "rank", "extents"), GRIDS.values(), ids=list(GRIDS))
@@ -209,10 +213,12 @@ def test_error_a_bad_inner_extent_costs_the_shard() -> None:
     # exist and nothing inside it is interpreted. The JSON is still there
     # on the `Opaque` that replaces it; what is gone is the reading, and
     # the one report that matters is the one you must fix first.
-    inner = _shard((0, 2))
-    inner["configuration"] = {  # type: ignore[index]
-        **inner["configuration"],  # type: ignore[dict-item]
-        "codecs": ({"name": "transpose", "configuration": {"order": (0, 1, 2)}}, "bytes"),
+    inner = {
+        **_shard((0, 2)),
+        "configuration": {
+            **configuration_of(_shard((0, 2))),
+            "codecs": ({"name": "transpose", "configuration": {"order": (0, 1, 2)}}, "bytes"),
+        },
     }
     problems = validate_array_metadata_v3(
         {**BASE, "data_type": "uint16", "chunk_grid": REGULAR, "codecs": (inner,)}

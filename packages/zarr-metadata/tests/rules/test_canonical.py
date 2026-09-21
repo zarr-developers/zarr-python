@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 import pytest
 from hypothesis import HealthCheck, given, settings
 
+from tests.helpers import configuration_of, entry_at
 from tests.rules.strategies import valid_documents
 from zarr_metadata.rules import (
     Canonical,
@@ -39,7 +40,7 @@ BASE: Mapping[str, object] = {
 
 
 def _canonical(**overrides: object) -> Mapping[str, object]:
-    result = canonicalize_array_metadata_v3({**BASE, **overrides})  # type: ignore[arg-type]
+    result = canonicalize_array_metadata_v3({**BASE, **overrides})
     assert isinstance(result, Canonical), result
     return result.document
 
@@ -90,7 +91,7 @@ def test_error_an_extension_point_may_not_be_declared_ignorable() -> None:
     # it, and no extension point is skippable -- so there is nothing for
     # canonicalization to keep.
     result = canonicalize_array_metadata_v3(
-        {**BASE, "codecs": ({"name": "bytes", "must_understand": False},)}  # type: ignore[arg-type]
+        {**BASE, "codecs": ({"name": "bytes", "must_understand": False},)}
     )
     assert isinstance(result, Invalid)
     assert [problem.loc for problem in result.problems] == [("codecs", 0, "must_understand")]
@@ -103,15 +104,15 @@ def test_blosc_drops_a_typesize_that_shuffle_renders_ignored() -> None:
             "bytes",
             {"name": "blosc", "configuration": {**configuration, "shuffle": "noshuffle"}},
         )
-    )["codecs"][1]  # type: ignore[index]
-    assert "typesize" not in dropped["configuration"]  # type: ignore[index]
+    )
+    assert "typesize" not in configuration_of(entry_at(dropped, "codecs", 1))
     kept = _canonical(
         codecs=(
             "bytes",
             {"name": "blosc", "configuration": {**configuration, "shuffle": "shuffle"}},
         )
-    )["codecs"][1]  # type: ignore[index]
-    assert kept["configuration"]["typesize"] == 4  # type: ignore[index]
+    )
+    assert configuration_of(entry_at(kept, "codecs", 1))["typesize"] == 4
 
 
 def test_dimension_names_of_nothing_but_nulls_are_dropped() -> None:
@@ -128,13 +129,13 @@ def test_a_rectilinear_step_is_not_expanded() -> None:
             "configuration": {"kind": "inline", "chunk_shapes": (spec,)},
         }
         shape = (64,) if spec == 32 else (32,)
-        result = canonicalize_array_metadata_v3({**BASE, "shape": shape, "chunk_grid": grid})  # type: ignore[arg-type]
+        result = canonicalize_array_metadata_v3({**BASE, "shape": shape, "chunk_grid": grid})
         assert isinstance(result, Canonical), result
-        assert result.document["chunk_grid"]["configuration"]["chunk_shapes"] == (spec,)  # type: ignore[index]
+        assert entry_at(result.document, "chunk_grid", "configuration", "chunk_shapes") == (spec,)
 
 
 def test_error_a_semantically_invalid_document_reports_instead() -> None:
-    result = canonicalize_array_metadata_v3({**BASE, "fill_value": 999})  # type: ignore[arg-type]
+    result = canonicalize_array_metadata_v3({**BASE, "fill_value": 999})
     assert isinstance(result, Invalid)
     # The field is the location, not part of the message: the data type
     # says what it accepts, and the document says where it was asked.
@@ -149,7 +150,7 @@ def test_error_invalid_cannot_be_empty() -> None:
 @given(valid_documents())
 @_SLOW
 def test_canonicalizing_twice_changes_nothing_further(doc: Mapping[str, object]) -> None:
-    once = canonicalize_array_metadata_v3(doc)  # type: ignore[arg-type]
+    once = canonicalize_array_metadata_v3(doc)
     assert isinstance(once, Canonical), once
     twice = canonicalize_array_metadata_v3(once.document)
     assert isinstance(twice, Canonical), twice
@@ -161,6 +162,6 @@ def test_canonicalizing_twice_changes_nothing_further(doc: Mapping[str, object])
 def test_canonicalizing_never_changes_the_verdict(doc: Mapping[str, object]) -> None:
     # A simplification that changed meaning would show up here as a
     # document that validated before and does not after.
-    result = canonicalize_array_metadata_v3(doc)  # type: ignore[arg-type]
+    result = canonicalize_array_metadata_v3(doc)
     assert isinstance(result, Canonical), result
     assert validate_array_metadata_v3(result.document) == ()

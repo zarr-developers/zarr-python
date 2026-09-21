@@ -103,7 +103,7 @@ def test_an_unregistered_name_is_not_judged() -> None:
             {"name": "acme.lz4", "configuration": {"acceleration": 999999}},
         )
     )
-    assert validate_array_metadata_v3(document) == ()  # type: ignore[arg-type]
+    assert validate_array_metadata_v3(document) == ()
 
 
 def test_a_registered_entity_is_judged() -> None:
@@ -113,7 +113,7 @@ def test_a_registered_entity_is_judged() -> None:
             {"name": "acme.lz4", "configuration": {"acceleration": 999999}},
         )
     )
-    problems = validate_array_metadata_v3(document, context=SCOPE)  # type: ignore[arg-type]
+    problems = validate_array_metadata_v3(document, context=SCOPE)
     assert [problem.loc for problem in problems] == [("codecs", 1, "configuration", "acceleration")]
 
 
@@ -123,14 +123,14 @@ def test_a_registered_entity_joins_the_pipeline_rules() -> None:
     document = _document(
         codecs=("acme.lz4", {"name": "bytes", "configuration": {"endian": "little"}})
     )
-    problems = validate_array_metadata_v3(document, context=SCOPE)  # type: ignore[arg-type]
+    problems = validate_array_metadata_v3(document, context=SCOPE)
     assert [problem.loc for problem in problems] == [("codecs", 1)]
 
 
 def test_a_registered_data_type_drives_the_codecs_around_it() -> None:
     # Single-byte, so the `bytes` codec needs no endianness for it.
     document = _document(data_type="acme.float8", fill_value=0, codecs=("bytes",))
-    assert validate_array_metadata_v3(document, context=SCOPE) == ()  # type: ignore[arg-type]
+    assert validate_array_metadata_v3(document, context=SCOPE) == ()
 
 
 def test_a_registered_entity_canonicalizes_itself() -> None:
@@ -140,9 +140,9 @@ def test_a_registered_entity_canonicalizes_itself() -> None:
             {"name": "acme.lz4", "configuration": {}},
         )
     )
-    result = canonicalize_array_metadata_v3(document, context=SCOPE)  # type: ignore[arg-type]
+    result = canonicalize_array_metadata_v3(document, context=SCOPE)
     assert result.valid is True
-    assert result.document["codecs"][1] == "acme.lz4"  # type: ignore[index]
+    assert result.document["codecs"][1] == "acme.lz4"
 
 
 def test_error_an_entity_must_say_what_it_is() -> None:
@@ -150,7 +150,7 @@ def test_error_an_entity_must_say_what_it_is() -> None:
         # Never bound: the guard raises while the class is being created,
         # which is the whole point -- so pyright cannot see it used.
         @dataclass(frozen=True)
-        class Nameless(CodecEntity):  # pyright: ignore[reportUnusedClass]
+        class Nameless(CodecEntity):
             kind: ClassVar[CodecKind] = "bytes_bytes"
 
 
@@ -168,7 +168,8 @@ def test_error_an_entity_cannot_be_registered_at_the_wrong_point() -> None:
     # codec under `data_type` would resolve and then be asked for a
     # storage class it has no answer to.
     with pytest.raises(TypeError, match="registered at 'data_type', which takes DataTypeEntity"):
-        CORE.extended_with(data_type={AcmeLz4Codec.identifier: AcmeLz4Codec})  # type: ignore[dict-item]
+        # Deliberately wrong, and pyright says so; the runtime refusal is what is under test.
+        CORE.extended_with(data_type={AcmeLz4Codec.identifier: AcmeLz4Codec})  # pyright: ignore[reportArgumentType]
 
 
 def test_the_entity_layer_answers_what_a_reader_needs() -> None:
@@ -195,10 +196,10 @@ def test_error_an_optional_member_defaults_to_unset() -> None:
     with pytest.raises(TypeError, match="a default other than UNSET"):
 
         @dataclass(frozen=True)
-        class Inventive(CodecEntity):  # pyright: ignore[reportUnusedClass]
+        class Inventive(CodecEntity):
             # Optional by its type, so the annotation and the default agree
             # on that much; it is the default's value that is wrong.
-            level: int | UNSET = 3  # pyright: ignore[reportAssignmentType]
+            level: int | UNSET = 3
 
             identifier: ClassVar[str] = "acme.inventive"
             kind: ClassVar[CodecKind] = "bytes_bytes"
@@ -272,7 +273,7 @@ def test_error_a_field_may_not_shadow_a_class_variable() -> None:
     with pytest.raises(TypeError, match="shadowing a class variable"):
 
         @dataclass(frozen=True)
-        class Negotiable(CodecEntity):  # pyright: ignore[reportUnusedClass]
+        class Negotiable(CodecEntity):
             must_understand: bool = True  # pyright: ignore[reportIncompatibleVariableOverride]
 
             identifier: ClassVar[str] = "acme.negotiable"
@@ -286,7 +287,7 @@ def test_error_a_family_member_must_declare_what_the_family_left_open() -> None:
     with pytest.raises(TypeError, match="does not declare bounds"):
 
         @dataclass(frozen=True)
-        class Int24DataType(IntegerDataType):  # pyright: ignore[reportUnusedClass]
+        class Int24DataType(IntegerDataType):
             identifier: ClassVar[str] = "acme.int24"
 
 
@@ -339,7 +340,7 @@ def test_error_a_member_needs_a_check_from_somewhere() -> None:
     with pytest.raises(TypeError, match="inner is annotated .*, which is not a shape JSON takes"):
 
         @dataclass(frozen=True)
-        class Structured(CodecEntity):  # pyright: ignore[reportUnusedClass]
+        class Structured(CodecEntity):
             inner: object
 
             identifier: ClassVar[str] = "acme.structured"
@@ -440,7 +441,7 @@ def test_error_an_entity_may_not_override_canonical() -> None:
     with pytest.raises(TypeError, match="put the entity's own rewrite in `simplified`"):
 
         @dataclass(frozen=True)
-        class Rewriter(CodecEntity):  # pyright: ignore[reportUnusedClass]
+        class Rewriter(CodecEntity):
             identifier: ClassVar[str] = "acme.rewriter"
             kind: ClassVar[CodecKind] = "bytes_bytes"
 
@@ -476,7 +477,7 @@ def test_error_a_nested_field_needs_an_entity_kind_with_a_point() -> None:
     with pytest.raises(TypeError, match="has no `extension_point`"):
 
         @dataclass(frozen=True)
-        class Vague(CodecEntity):  # pyright: ignore[reportUnusedClass]
+        class Vague(CodecEntity):
             inner: MetadataEntity | Opaque
 
             identifier: ClassVar[str] = "acme.vague"
@@ -617,7 +618,7 @@ def test_error_a_nested_field_admits_opaque() -> None:
     with pytest.raises(TypeError, match="inner holds an entity but does not admit Opaque"):
 
         @dataclass(frozen=True)
-        class Closed(CodecEntity):  # pyright: ignore[reportUnusedClass]
+        class Closed(CodecEntity):
             inner: CodecEntity
 
             identifier: ClassVar[str] = "acme.closed"
@@ -629,7 +630,7 @@ def test_error_an_array_array_codec_defines_transition() -> None:
     with pytest.raises(TypeError, match="array_array codec and does not define transition"):
 
         @dataclass(frozen=True)
-        class Silent(CodecEntity):  # pyright: ignore[reportUnusedClass]
+        class Silent(CodecEntity):
             identifier: ClassVar[str] = "acme.silent"
             kind: ClassVar[CodecKind] = "array_array"
 
@@ -642,16 +643,16 @@ def test_error_a_literal_class_variable_holds_a_listed_value() -> None:
     ):
 
         @dataclass(frozen=True)
-        class Wide(DataTypeEntity):  # pyright: ignore[reportUnusedClass]
+        class Wide(DataTypeEntity):
             identifier: ClassVar[str] = "acme.wide"
-            scalar_storage: ClassVar[StorageClass] = "sixteen_bytes"  # type: ignore[assignment]  # pyright: ignore[reportAssignmentType]
+            scalar_storage: ClassVar[StorageClass] = "sixteen_bytes"  # pyright: ignore[reportAssignmentType]
 
 
 def test_error_a_list_of_problem_tuples_is_refused() -> None:
     # `problem()` returns a one-element tuple; a list of those would pass
     # the constructor and fail inside `coerce`, far from the mistake.
     with pytest.raises(TypeError, match="collect with `extend`, not `append`"):
-        MetadataValidationError([problem(("a",), "bad a")])  # type: ignore[list-item]  # pyright: ignore[reportArgumentType]
+        MetadataValidationError([problem(("a",), "bad a")])  # pyright: ignore[reportArgumentType]
 
 
 def test_error_the_named_json_type_must_match_what_the_entity_writes() -> None:
@@ -662,7 +663,7 @@ def test_error_the_named_json_type_must_match_what_the_entity_writes() -> None:
     ):
 
         @dataclass(frozen=True)
-        class Misnamed(CodecEntity[Literal["acme.misnamed"]]):  # pyright: ignore[reportUnusedClass]
+        class Misnamed(CodecEntity[Literal["acme.misnamed"]]):
             level: int
 
             identifier: ClassVar[str] = "acme.misnamed"
@@ -675,7 +676,7 @@ def test_error_the_named_json_type_must_name_what_the_entity_accepts() -> None:
     with pytest.raises(TypeError, match="names 'gzip', which the entity does not accept"):
 
         @dataclass(frozen=True)
-        class Impostor(CodecEntity[GzipCodecObject]):  # pyright: ignore[reportUnusedClass]
+        class Impostor(CodecEntity[GzipCodecObject]):
             level: int
 
             identifier: ClassVar[str] = "acme.impostor"
@@ -688,7 +689,7 @@ def test_error_the_named_json_type_must_have_the_members_as_keys() -> None:
     ):
 
         @dataclass(frozen=True)
-        class Mismatched(CodecEntity[AcmeLvlObject]):  # pyright: ignore[reportUnusedClass]
+        class Mismatched(CodecEntity[AcmeLvlObject]):
             level: int
 
             identifier: ClassVar[str] = "acme.lvl"

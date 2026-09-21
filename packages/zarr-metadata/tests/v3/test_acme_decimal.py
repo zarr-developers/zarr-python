@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, cast
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired
 
 import pytest
 from typing_extensions import ReadOnly, TypedDict
@@ -17,7 +17,6 @@ from typing_extensions import ReadOnly, TypedDict
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from zarr_metadata import ZarrV3ArrayMetadataJSON
 
 from zarr_metadata.v3.entity import (
     DataTypeEntity,
@@ -261,8 +260,7 @@ def test_to_json_writes_back_what_was_read() -> None:
 
 
 def test_canonical_form_keeps_the_configuration() -> None:
-    document = cast("ZarrV3ArrayMetadataJSON", _document())
-    result = canonicalize_array_metadata_v3(document, context=SCOPE)
+    result = canonicalize_array_metadata_v3(_document(), context=SCOPE)
     assert result.valid is True
     assert result.document["data_type"] == _data_type(4, 2)
 

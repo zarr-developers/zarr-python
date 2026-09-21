@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, Final, Literal
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, cast
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
@@ -43,7 +43,8 @@ def as_sequence(value: object) -> tuple[object, ...] | None:
     """
     if isinstance(value, str) or not isinstance(value, Sequence):
         return None
-    return tuple(value)  # type: ignore[arg-type]
+    # `isinstance` narrows to `Sequence[Unknown]`; its elements are objects.
+    return tuple(cast("Sequence[object]", value))
 
 
 def byte_values(value: object, expected: int | None, loc: Loc) -> tuple[ValidationProblem, ...]:

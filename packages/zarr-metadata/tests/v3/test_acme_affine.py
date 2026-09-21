@@ -9,7 +9,7 @@ docstring points at.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, ClassVar, Literal, NotRequired, Self, cast
+from typing import ClassVar, Literal, NotRequired, Self
 
 import pytest
 from typing_extensions import TypedDict
@@ -34,9 +34,6 @@ from zarr_metadata.v3.entity import (
     ZarrV3MetadataFieldJSON,
     problem,
 )
-
-if TYPE_CHECKING:
-    from zarr_metadata import ZarrV3ArrayMetadataJSON
 
 
 class AcmeAffineConfiguration(TypedDict, closed=True):
@@ -202,12 +199,10 @@ def test_round_trip_and_canonical() -> None:
     written: AcmeAffineObject = codec.to_json()
     assert written == entry
     assert AcmeAffineCodec(scale=2, offset=0).canonical() == AcmeAffineCodec(scale=2)
-    document = cast(
-        "ZarrV3ArrayMetadataJSON", _document(codecs=[_affine(scale=2, offset=0.0), BYTES_LE])
-    )
+    document = _document(codecs=[_affine(scale=2, offset=0.0), BYTES_LE])
     result = canonicalize_array_metadata_v3(document, context=SCOPE)
     assert isinstance(result, Canonical)
-    assert cast("tuple[object, ...]", result.document["codecs"])[0] == _affine(scale=2)
+    assert result.document["codecs"][0] == _affine(scale=2)
 
 
 def test_constructed_by_hand() -> None:

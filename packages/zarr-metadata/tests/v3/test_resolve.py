@@ -23,11 +23,12 @@ from zarr_metadata.v3.entity import (
     CODECS,
     CORE_AND_EXTENSIONS,
     DATA_TYPE,
+    ExtensionPointField,
     MetadataEntity,
 )
 
 # (field, name, the entity that answers for it — None when nothing does)
-RESOLUTIONS: dict[str, tuple[str, str, type[MetadataEntity] | None]] = {
+RESOLUTIONS: dict[str, tuple[ExtensionPointField, str, type[MetadataEntity] | None]] = {
     "plain-dtype": (DATA_TYPE, "uint8", Uint8DataType),
     "dotted-dtype": (DATA_TYPE, "numpy.datetime64", NumpyDatetime64DataType),
     "raw-8": (DATA_TYPE, "r8", RawBytesDataType),
@@ -48,9 +49,9 @@ RESOLUTIONS: dict[str, tuple[str, str, type[MetadataEntity] | None]] = {
 
 @pytest.mark.parametrize(("field", "name", "expected"), RESOLUTIONS.values(), ids=list(RESOLUTIONS))
 def test_a_name_resolves_to_the_entity_that_answers_for_it(
-    field: str, name: str, expected: type[MetadataEntity] | None
+    field: ExtensionPointField, name: str, expected: type[MetadataEntity] | None
 ) -> None:
-    assert CORE_AND_EXTENSIONS.resolve(field, name) is expected  # type: ignore[arg-type]
+    assert CORE_AND_EXTENSIONS.resolve(field, name) is expected
 
 
 @given(width=st.integers(min_value=0, max_value=2**32))
@@ -62,11 +63,16 @@ def test_every_numeric_r_spelling_resolves_to_the_family(width: int) -> None:
     assert CORE_AND_EXTENSIONS.resolve(DATA_TYPE, f"r{width}") is RawBytesDataType
 
 
-@given(width=st.integers(min_value=0, max_value=2**32), field=st.sampled_from([CODECS, CHUNK_GRID]))
-def test_r_shaped_names_resolve_to_nothing_outside_data_types(width: int, field: str) -> None:
+OTHER_POINTS: tuple[ExtensionPointField, ...] = (CODECS, CHUNK_GRID)
+
+
+@given(width=st.integers(min_value=0, max_value=2**32), field=st.sampled_from(OTHER_POINTS))
+def test_r_shaped_names_resolve_to_nothing_outside_data_types(
+    width: int, field: ExtensionPointField
+) -> None:
     # The family belongs to `data_type`; a codec that happens to be named
     # `r8` must not reach it.
-    assert CORE_AND_EXTENSIONS.resolve(field, f"r{width}") is None  # type: ignore[arg-type]
+    assert CORE_AND_EXTENSIONS.resolve(field, f"r{width}") is None
 
 
 # The scan `resolve` falls back to asks every entity, so a name no entity

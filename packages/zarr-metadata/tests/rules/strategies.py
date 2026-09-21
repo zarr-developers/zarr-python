@@ -60,7 +60,7 @@ JSON_VALUES = st.recursive(
 # `JSONValue` is a `TypeAliasType`, which `register_type_strategy` does not
 # accept in its signature but does resolve at runtime — it is exactly the
 # forward reference `from_type` fails on.
-st.register_type_strategy(JSONValue, JSON_VALUES)  # type: ignore[arg-type]
+st.register_type_strategy(JSONValue, JSON_VALUES)  # pyright: ignore[reportArgumentType]
 
 # The codec TypedDicts, by pipeline kind. Hand-written because there is no
 # name-to-type table to derive it from; `test_chain_properties.py` asserts it

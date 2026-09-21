@@ -129,6 +129,13 @@ checks = [
 # keeps a pyright release from turning CI red on its own schedule.
 [tool.pyright]
 include = ["src", "tests"]
+# Pyright is the only checker that runs on this package (the root mypy
+# config covers the root package alone), and it honours `# type: ignore`
+# as a blanket suppression of every diagnostic on the line. So that
+# spelling is switched off: a suppression is `# pyright: ignore[rule]`,
+# names the rule, and is an error once it stops suppressing anything.
+enableTypeIgnoreComments = false
+reportUnnecessaryTypeIgnoreComment = "error"
 # `tests` is a package imported as `tests.*`, which pytest resolves from the
 # rootdir; pyright needs the same root on its search path.
 extraPaths = ["."]

@@ -226,7 +226,7 @@ def parse_group_metadata_v2(value: object) -> ZarrV2GroupMetadataJSON:
 
 
 def canonicalize_array_metadata_v3(
-    document: ZarrV3ArrayMetadataJSON, *, context: Context = CORE_AND_EXTENSIONS
+    document: object, *, context: Context = CORE_AND_EXTENSIONS
 ) -> Canonical[ZarrV3ArrayMetadataJSON] | Invalid:
     """`document` in canonical form, or every reason it is not valid.
 
@@ -237,10 +237,10 @@ def canonicalize_array_metadata_v3(
     `tests/rules/test_canonical.py` asserts both: canonicalizing twice
     changes nothing further, and canonicalizing never changes a verdict.
 
-    Expects a document the model layer has already accepted. Passing one
-    it has not is not an error -- the semantic problems are reported the
-    same way -- but the structural problems come back too, and the result
-    is `Invalid` rather than a canonical document. The document is read
+    Takes any value, like `validate_array_metadata_v3`: a document the
+    model layer has not accepted is not an error -- the structural
+    problems come back with the semantic ones, and the result is
+    `Invalid` rather than a canonical document. The document is read
     once: the entities that judge it are the entities that are rewritten.
     """
     normalized = arrays_to_tuples(document)
