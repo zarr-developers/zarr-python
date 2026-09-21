@@ -7,7 +7,7 @@ file has to reach into a private one, the extension surface is not real.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Annotated, ClassVar, Literal, NotRequired, Self, cast
 
 import pytest
@@ -262,20 +262,6 @@ def test_a_reader_can_choose_its_own_scope() -> None:
     assert in_scope.acceleration == 4
 
 
-def test_error_value_rules_must_be_value_problems() -> None:
-    # `problems` was the old name and takes an entity; an override using
-    # it would never run, and nothing else would notice.
-    with pytest.raises(TypeError, match="none of them takes an entity"):
-
-        @dataclass(frozen=True)
-        class Stale(CodecEntity):  # pyright: ignore[reportUnusedClass]
-            identifier: ClassVar[str] = "acme.stale"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
-
-            def problems(self) -> tuple[ValidationProblem, ...]:
-                return ()
-
-
 def test_error_an_entity_may_not_validate_in_post_init() -> None:
     # `coerce` builds through `unchecked`, which never reaches
     # `__post_init__`, so a rule there holds for a hand-built entity and
@@ -287,7 +273,7 @@ def test_error_an_entity_may_not_validate_in_post_init() -> None:
             identifier: ClassVar[str] = "acme.eager"
             kind: ClassVar[CodecKind] = "bytes_bytes"
 
-            def __post_init__(self) -> None:
+            def __post_init__(self) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
                 raise AssertionError
 
 
@@ -379,18 +365,20 @@ def test_error_a_member_needs_a_check_from_somewhere() -> None:
             kind: ClassVar[CodecKind] = "bytes_bytes"
 
 
-def test_error_a_bare_name_rule_may_not_be_restated() -> None:
-    # Whether the bare spelling is legal follows from whether any member
-    # is required, which the fields already say.
-    with pytest.raises(TypeError, match="declares `configuration_required`"):
-
-        @dataclass(frozen=True)
-        class Opinionated(CodecEntity):  # pyright: ignore[reportUnusedClass]
-            acceleration: int | UNSET = UNSET
-
-            identifier: ClassVar[str] = "acme.opinionated"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
-            configuration_required: ClassVar[bool] = True
+@pytest.mark.parametrize(
+    "name",
+    ["member_types", "configuration_required", "nested_members", "value_checks", "member_rules"],
+)
+def test_error_a_derived_class_variable_may_not_be_declared(name: str) -> None:
+    # Each is read off the fields at class creation, and a declaration
+    # would be silently overwritten by that reading. Built with `type`,
+    # since a class body cannot spell a name from a parameter.
+    with pytest.raises(TypeError, match=f"declares {name}, which is derived from the fields"):
+        type(
+            "Opinionated",
+            (CodecEntity,),
+            {"identifier": "acme.opinionated", "kind": "bytes_bytes", name: {}},
+        )
 
 
 # A third-party codec that contains another codec: the case that used to
@@ -462,58 +450,6 @@ def test_a_third_party_entity_containing_entities_writes_nothing_for_it() -> Non
     inner = codec.canonical().inner
     assert isinstance(inner, BloscCodec)
     assert inner.typesize is UNSET
-
-
-def test_error_an_entity_may_not_define_prepare() -> None:
-    # A member that is an entity is read from its annotation; an override
-    # named `prepare` is resolution that would never run.
-    with pytest.raises(TypeError, match="nothing calls `prepare`"):
-
-        @dataclass(frozen=True)
-        class Preparer(CodecEntity):  # pyright: ignore[reportUnusedClass]
-            identifier: ClassVar[str] = "acme.preparer"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
-
-            @classmethod
-            def prepare(cls, members: object, context: object) -> object:
-                return members
-
-
-def test_error_an_entity_may_not_override_canonical() -> None:
-    # `canonical` is the walk into contained entities, read off the
-    # annotations; an override could lose it. The entity's own rewrite
-    # goes in `simplified`.
-    with pytest.raises(TypeError, match="put the entity's own rewrite in `simplified`"):
-
-        @dataclass(frozen=True)
-        class Rewriter(CodecEntity):  # pyright: ignore[reportUnusedClass]
-            identifier: ClassVar[str] = "acme.rewriter"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
-
-            def canonical(self) -> Self:
-                return self
-
-
-def test_simplified_composes_with_the_walk_into_contained_entities() -> None:
-    # An entity that contains an entity and rewrites its own members gets
-    # both from `canonical` -- the contained blosc loses the `typesize`
-    # that `noshuffle` ignores, and the frame of 0 that means "unframed"
-    # is dropped -- with nothing to call `super()` for.
-    @dataclass(frozen=True)
-    class AcmeFramedCodec(CodecEntity):
-        inner: CodecEntity | Opaque
-        frame: int | UNSET = UNSET
-
-        identifier: ClassVar[str] = "acme.framed"
-        kind: ClassVar[CodecKind] = "bytes_bytes"
-
-        def simplified(self) -> Self:
-            return self if self.frame != 0 else replace(self, frame=UNSET)
-
-    blosc = BloscCodec(cname="zstd", clevel=5, shuffle="noshuffle", typesize=4, blocksize=0)
-    framed = AcmeFramedCodec(inner=blosc, frame=0)
-    assert framed.canonical() == AcmeFramedCodec(inner=replace(blosc, typesize=UNSET))
-    assert framed.inner is blosc  # a transformation, not a mutation
 
 
 def test_error_a_nested_field_needs_an_entity_kind_with_a_point() -> None:

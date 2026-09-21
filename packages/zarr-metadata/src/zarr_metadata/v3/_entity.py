@@ -42,6 +42,7 @@ from typing import (
     Literal,
     TypeAlias,
     cast,
+    final,
     get_args,
     get_origin,
     get_type_hints,
@@ -490,6 +491,237 @@ class Opaque:
 # have to spell it `super(Cls, self)`. CPython fixed this in 3.13, so when
 # that is the floor this is worth revisiting; the memory saved is small at
 # document scale, which is why it has not been.
+_DERIVED: Final = (
+    "member_types",
+    "configuration_required",
+    "nested_members",
+    "value_checks",
+    "member_rules",
+)
+"""The class variables `_compile_entity` derives; a declaration of one is refused."""
+
+
+def _compile_entity(cls: type[MetadataEntity]) -> None:
+    """Derive from the fields the tables the layer reads.
+
+    Raises for a declaration that cannot be compiled: a derived table
+    declared by hand, which the derivation would silently overwrite; a
+    field annotation no registered shape reads; a `@validates` naming no
+    field.
+    """
+    declared = [name for name in _DERIVED if name in vars(cls)]
+    if len(declared) != 0:
+        msg = (
+            f"{cls.__name__} declares {', '.join(declared)}, which is derived from the "
+            "fields at class creation"
+        )
+        raise TypeError(msg)
+    cls.member_types, unread = derive_member_types(cls)
+    if len(unread) != 0:
+        msg = (
+            f"{cls.__name__}: no check can be read off the annotation of "
+            f"{', '.join(sorted(unread))}; teach the compiler that shape with `register_check`"
+        )
+        raise TypeError(msg)
+    cls.configuration_required = any(required for required, _ in cls.member_types.values())
+    hints = field_hints(cls)
+    cls.nested_members = {
+        name: annotation for name, annotation in hints.items() if contains_entity(annotation)
+    }
+    cls.value_checks = {
+        name: check
+        for name, annotation in hints.items()
+        if (check := value_check_for(annotation)) is not None
+    }
+    cls.member_rules = _member_rules(cls, hints)
+
+
+def _member_rules(
+    cls: type[MetadataEntity], hints: Mapping[str, object]
+) -> dict[str, tuple[MemberRule, ...]]:
+    """The `@validates` rules in the class and its ancestors, by the member each is about."""
+    attributes: dict[str, object] = {}
+    for ancestor in reversed(cls.__mro__):
+        attributes.update(vars(ancestor))
+    rules: dict[str, list[MemberRule]] = {}
+    for attribute in attributes.values():
+        function = attribute.__func__ if isinstance(attribute, staticmethod) else attribute
+        # Only a function can carry the mark; a table-valued class
+        # attribute is not even hashable.
+        if not callable(function):
+            continue
+        for member in rule_members(function):
+            if member not in hints:
+                msg = f"{cls.__name__}: `@validates({member!r})` names no field of the entity"
+                raise TypeError(msg)
+            rules.setdefault(member, []).append(cast("MemberRule", function))
+    return {member: tuple(found) for member, found in rules.items()}
+
+
+# The invariants, each a function of the compiled class returning why it
+# is refused, or None. Every one names something that type-checks cleanly
+# and then goes wrong somewhere that will not name the class.
+
+_FINAL_ADVICE: Final[Mapping[str, str]] = {
+    "canonical": (
+        "which is the walk into contained entities; put the entity's own rewrite "
+        "in `simplified`, which `canonical` calls after the walk"
+    ),
+    "__post_init__": (
+        "which `unchecked` does not reach, and `coerce` builds through `unchecked`; "
+        "value rules belong in `value_problems`"
+    ),
+}
+"""What to do instead, for each method the base marks `@final`."""
+
+
+def _final_methods_are_not_overridden(cls: type[MetadataEntity]) -> str | None:
+    # `@final` is a promise pyright checks in the author's editor; this
+    # is the same promise for a class created without one.
+    for name in vars(cls):
+        if getattr(getattr(MetadataEntity, name, None), "__final__", False):
+            return f"{cls.__name__} overrides `{name}`, {_FINAL_ADVICE.get(name, 'which is final')}"
+    return None
+
+
+def _named_json_type_matches_what_is_written(cls: type[MetadataEntity]) -> str | None:
+    # The named type is a promise about what `to_json` writes, and its
+    # shape follows from the members: a bare name only when no member is
+    # required and the entity must be understood, an object whenever
+    # there is a member to write or the flag to.
+    json_type = json_type_of(cls)
+    if json_type is ZarrV3MetadataFieldJSON:
+        return None
+    admits_bare, admits_object = _json_shape(json_type)
+    writes_bare = not cls.configuration_required and cls.must_understand
+    writes_object = len(cls.member_types) != 0 or not cls.must_understand
+    if admits_bare == writes_bare and admits_object == writes_object:
+        return None
+    return (
+        f"{cls.__name__} names {json_type!r} as its JSON type, which "
+        f"{'admits' if admits_bare else 'lacks'} a bare name and "
+        f"{'admits' if admits_object else 'lacks'} an object, but the entity "
+        f"{'writes' if writes_bare else 'never writes'} a bare name and "
+        f"{'writes' if writes_object else 'never writes'} an object"
+    )
+
+
+def _nested_kinds_have_a_point(cls: type[MetadataEntity]) -> str | None:
+    # `MetadataEntity` itself is registered at no single point, so a
+    # field typed as one could not be resolved through a scope.
+    unplaced = sorted(
+        name
+        for name, annotation in cls.nested_members.items()
+        if any(kind.extension_point is None for kind in _entity_kinds(annotation))
+    )
+    if len(unplaced) == 0:
+        return None
+    return (
+        f"{cls.__name__}: the entity kind of {', '.join(unplaced)} has no "
+        "`extension_point`; annotate it with `CodecEntity`, `DataTypeEntity` "
+        "or `ChunkGridEntity`"
+    )
+
+
+def _fields_do_not_shadow_class_variables(cls: type[MetadataEntity]) -> str | None:
+    # A field of that name would go into `member_types`, into the
+    # configuration, and into the JSON -- while the class variable it
+    # shadows is what every other part of this layer reads.
+    annotated = declared_class_vars(cls)
+    shadowed = [
+        name
+        for name, annotation in own_annotations(cls).items()
+        if name in annotated and annotated[name] is not cls and not is_class_var(annotation)
+    ]
+    if len(shadowed) == 0:
+        return None
+    return (
+        f"{cls.__name__} declares {', '.join(shadowed)} as a field, "
+        "shadowing a class variable of the same name"
+    )
+
+
+def _owed_class_variables_are_declared(cls: type[MetadataEntity]) -> str | None:
+    # A class variable annotated with no value anywhere in the ancestry
+    # is one the concrete entity owes: `identifier` for all of them,
+    # `kind` for a codec, `bounds` for an integer type. Derived rather
+    # than listed, so adding one to a family cannot forget to require it.
+    missing = [name for name in declared_class_vars(cls) if not hasattr(cls, name)]
+    if len(missing) == 0:
+        return None
+    return f"{cls.__name__} does not declare {', '.join(sorted(missing))}"
+
+
+def _declared_defaults(cls: type[MetadataEntity]) -> dict[str, object]:
+    """Each member's declared default, or `_MISSING_DEFAULT`.
+
+    `@dataclass` has not run yet -- `__init_subclass__` runs first -- so
+    a member declared with `field(...)` is still a `Field` here and its
+    default has to be unwrapped.
+    """
+    defaulted: dict[str, object] = {}
+    for key in cls.member_types:
+        declared: object = getattr(cls, key, _MISSING_DEFAULT)
+        if type(declared) is Field:
+            spec = cast("Field[object]", declared)
+            declared = (
+                _MISSING_DEFAULT
+                if spec.default is MISSING and spec.default_factory is MISSING
+                else spec.default
+            )
+        defaulted[key] = declared
+    return defaulted
+
+
+def _optional_members_default_to_unset(cls: type[MetadataEntity]) -> str | None:
+    # Or `configuration` emits the member for every instance, so the
+    # bare-name spelling becomes unreachable and a document gains a
+    # member it never wrote.
+    defaulted = _declared_defaults(cls)
+    invented = [
+        key
+        for key, (required, _) in cls.member_types.items()
+        if not required and defaulted[key] is not UNSET
+    ]
+    if len(invented) == 0:
+        return None
+    return (
+        f"{cls.__name__} gives the optional member(s) "
+        f"{', '.join(invented)} a default other than UNSET"
+    )
+
+
+def _required_members_have_no_default(cls: type[MetadataEntity]) -> str | None:
+    # A required member with a default is an entity that can be built
+    # without it -- and then serializes a document nobody wrote. A
+    # conventional starting point is a `create_default` classmethod,
+    # named so that asking for one is deliberate.
+    defaulted = _declared_defaults(cls)
+    presumed = [
+        key
+        for key, (required, _) in cls.member_types.items()
+        if required and defaulted[key] is not _MISSING_DEFAULT
+    ]
+    if len(presumed) == 0:
+        return None
+    return (
+        f"{cls.__name__} gives the required member(s) "
+        f"{', '.join(presumed)} a default; required members have none"
+    )
+
+
+_INVARIANTS: Final[tuple[Callable[[type[MetadataEntity]], str | None], ...]] = (
+    _final_methods_are_not_overridden,
+    _named_json_type_matches_what_is_written,
+    _nested_kinds_have_a_point,
+    _fields_do_not_shadow_class_variables,
+    _owed_class_variables_are_declared,
+    _optional_members_default_to_unset,
+    _required_members_have_no_default,
+)
+"""What a compiled entity must satisfy, asked in this order at class creation."""
+
+
 @dataclass(frozen=True)
 class MetadataEntity(Generic[JSONT_co]):
     """One named entity, coerced from its metadata.
@@ -598,12 +830,14 @@ class MetadataEntity(Generic[JSONT_co]):
     """
 
     def __init_subclass__(cls, *, base: bool = False, **kwargs: object) -> None:
-        """Refuse a subclass that is not an entity this layer can use.
+        """Compile the entity from its fields, and refuse one this layer cannot use.
 
-        Every check here has the same shape: something that type-checks
-        cleanly and then goes wrong later, somewhere that will not name
-        this class. An import-time error in the extension's own module is
-        the one place the author is looking.
+        `_compile_entity` derives the tables the layer reads -- the
+        members and their checks, the nested fields, the value rules --
+        and then every invariant in `_INVARIANTS` is asked. Each names
+        something that type-checks cleanly and then goes wrong later,
+        somewhere that will not name this class; an import-time error in
+        the extension's own module is the one place the author is looking.
 
         `base=True` for a class that exists to add a class variable
         rather than to be an entity -- `CodecEntity`, `IntegerDataType`.
@@ -611,189 +845,11 @@ class MetadataEntity(Generic[JSONT_co]):
         super().__init_subclass__(**kwargs)
         if base:
             return
-        if "problems" in cls.__dict__:
-            # Value rules are `value_problems`, a static routine over the
-            # members. An override named `problems` is a rule that would
-            # never run, and nothing else would say so.
-            msg = (
-                f"{cls.__name__} defines `problems`; a value rule is a bound on the "
-                "field, a `@validates` rule about one member, or `value_problems` "
-                "over the members together -- none of them takes an entity"
-            )
-            raise TypeError(msg)
-        if "prepare" in cls.__dict__:
-            # A member that is an entity is read from its annotation, so
-            # an override named `prepare` is resolution that would never
-            # run, and nothing else would say so.
-            msg = (
-                f"{cls.__name__} defines `prepare`; a member that is an entity is read "
-                "from its field annotation, and nothing calls `prepare`"
-            )
-            raise TypeError(msg)
-        if "canonical" in cls.__dict__:
-            # The walk into contained entities is read off the annotations
-            # and must not be lost under an override; the entity's own
-            # rewrite has a hook of its own.
-            msg = (
-                f"{cls.__name__} overrides `canonical`, which is the walk into contained "
-                "entities; put the entity's own rewrite in `simplified`, which "
-                "`canonical` calls after the walk"
-            )
-            raise TypeError(msg)
-        if "__post_init__" in cls.__dict__:
-            # `coerce` builds through `unchecked`, which bypasses
-            # `__init__` and so never reaches `__post_init__`. Rules put
-            # there would hold for a hand-built entity and be silently
-            # absent for every entity read from a document -- the one
-            # direction that matters.
-            msg = (
-                f"{cls.__name__} defines `__post_init__`, which `unchecked` does "
-                "not reach; value rules belong in `value_problems`"
-            )
-            raise TypeError(msg)
-        if "configuration_required" in vars(cls):
-            msg = (
-                f"{cls.__name__} declares `configuration_required`, which follows "
-                "from whether any member is required"
-            )
-            raise TypeError(msg)
-        # Before every guard below, because they read the table.
-        cls.member_types, unread = derive_member_types(cls)
-        if len(unread) != 0:
-            msg = (
-                f"{cls.__name__}: no check can be read off the annotation of "
-                f"{', '.join(sorted(unread))}; teach the compiler that shape with `register_check`"
-            )
-            raise TypeError(msg)
-        cls.configuration_required = any(required for required, _ in cls.member_types.values())
-        json_type = json_type_of(cls)
-        if json_type is not ZarrV3MetadataFieldJSON:
-            # The named type is a promise about what `to_json` writes, and
-            # its shape follows from the members: a bare name only when no
-            # member is required and the entity must be understood, an
-            # object whenever there is a member to write or the flag to.
-            admits_bare, admits_object = _json_shape(json_type)
-            writes_bare = not cls.configuration_required and cls.must_understand
-            writes_object = len(cls.member_types) != 0 or not cls.must_understand
-            if admits_bare != writes_bare or admits_object != writes_object:
-                msg = (
-                    f"{cls.__name__} names {json_type!r} as its JSON type, which "
-                    f"{'admits' if admits_bare else 'lacks'} a bare name and "
-                    f"{'admits' if admits_object else 'lacks'} an object, but the entity "
-                    f"{'writes' if writes_bare else 'never writes'} a bare name and "
-                    f"{'writes' if writes_object else 'never writes'} an object"
-                )
-                raise TypeError(msg)
-        hints = field_hints(cls)
-        cls.nested_members = {
-            name: annotation for name, annotation in hints.items() if contains_entity(annotation)
-        }
-        cls.value_checks = {
-            name: check
-            for name, annotation in hints.items()
-            if (check := value_check_for(annotation)) is not None
-        }
-        attributes: dict[str, object] = {}
-        for ancestor in reversed(cls.__mro__):
-            attributes.update(vars(ancestor))
-        rules: dict[str, list[MemberRule]] = {}
-        for attribute in attributes.values():
-            function = attribute.__func__ if isinstance(attribute, staticmethod) else attribute
-            # Only a function can carry the mark; a table-valued class
-            # attribute is not even hashable.
-            if not callable(function):
-                continue
-            for member in rule_members(function):
-                if member not in hints:
-                    msg = f"{cls.__name__}: `@validates({member!r})` names no field of the entity"
-                    raise TypeError(msg)
-                rules.setdefault(member, []).append(cast("MemberRule", function))
-        cls.member_rules = {member: tuple(found) for member, found in rules.items()}
-        unplaced = sorted(
-            name
-            for name, annotation in cls.nested_members.items()
-            if any(kind.extension_point is None for kind in _entity_kinds(annotation))
-        )
-        if len(unplaced) != 0:
-            # `MetadataEntity` itself is registered at no single point, so
-            # a field typed as one could not be resolved through a scope.
-            msg = (
-                f"{cls.__name__}: the entity kind of {', '.join(unplaced)} has no "
-                "`extension_point`; annotate it with `CodecEntity`, `DataTypeEntity` "
-                "or `ChunkGridEntity`"
-            )
-            raise TypeError(msg)
-        annotated = declared_class_vars(cls)
-        shadowed = [
-            name
-            for name, annotation in own_annotations(cls).items()
-            if name in annotated and annotated[name] is not cls and not is_class_var(annotation)
-        ]
-        if len(shadowed) != 0:
-            # A field of that name would go into `member_types`, into the
-            # configuration, and into the JSON -- while the class variable
-            # it shadows is what every other part of this layer reads.
-            msg = (
-                f"{cls.__name__} declares {', '.join(shadowed)} as a field, "
-                "shadowing a class variable of the same name"
-            )
-            raise TypeError(msg)
-        # A class variable annotated with no value anywhere in the
-        # ancestry is one the concrete entity owes: `identifier` for all
-        # of them, `kind` for a codec, `bounds` for an integer type.
-        # Derived rather than listed, so adding one to a family cannot
-        # forget to require it.
-        missing = [name for name in annotated if not hasattr(cls, name)]
-        if len(missing) != 0:
-            msg = f"{cls.__name__} does not declare {', '.join(sorted(missing))}"
-            raise TypeError(msg)
-        # A member's default decides whether the entity can exist without
-        # it, so the two kinds have opposite rules. `@dataclass` has not
-        # run yet, so a member declared with `field(...)` is still a
-        # `Field` here and its default has to be unwrapped.
-        defaulted: dict[str, object] = {}
-        for key in cls.member_types:
-            declared: object = getattr(cls, key, _MISSING_DEFAULT)
-            if type(declared) is Field:
-                # `field(...)`, so the default is inside it rather than
-                # being the attribute. `@dataclass` has not unwrapped it
-                # yet -- this hook runs first.
-                spec = cast("Field[object]", declared)
-                declared = (
-                    _MISSING_DEFAULT
-                    if spec.default is MISSING and spec.default_factory is MISSING
-                    else spec.default
-                )
-            defaulted[key] = declared
-        # An optional member defaults to UNSET or `configuration` emits it
-        # for every instance, so the bare-name spelling becomes
-        # unreachable and a document gains a member it never wrote.
-        invented = [
-            key
-            for key, (required, _) in cls.member_types.items()
-            if not required and defaulted[key] is not UNSET
-        ]
-        if len(invented) != 0:
-            msg = (
-                f"{cls.__name__} gives the optional member(s) "
-                f"{', '.join(invented)} a default other than UNSET"
-            )
-            raise TypeError(msg)
-        # A required member with a default is an entity that can be built
-        # without it -- and then serializes a document nobody wrote. A
-        # conventional starting point is a `create_default` classmethod,
-        # named so that asking for one is deliberate.
-        presumed = [
-            key
-            for key, (required, _) in cls.member_types.items()
-            if required and defaulted[key] is not _MISSING_DEFAULT
-        ]
-        if len(presumed) != 0:
-            msg = (
-                f"{cls.__name__} gives the required member(s) "
-                f"{', '.join(presumed)} a default; required members have none"
-            )
-            raise TypeError(msg)
+        _compile_entity(cls)
+        for invariant in _INVARIANTS:
+            message = invariant(cls)
+            if message is not None:
+                raise TypeError(message)
 
     @classmethod
     def accepts(cls, name: str) -> bool:
@@ -844,6 +900,7 @@ class MetadataEntity(Generic[JSONT_co]):
         # Already asked, so do not ask again on the way in.
         return cls.unchecked(**members), found
 
+    @final
     def canonical(self) -> Self:
         """This entity in the simplest form that means the same thing.
 
@@ -931,6 +988,7 @@ class MetadataEntity(Generic[JSONT_co]):
     Locations are relative to the entity's `configuration`.
     """
 
+    @final
     def __post_init__(self) -> None:
         """Refuse to exist with values the spec disallows.
 
