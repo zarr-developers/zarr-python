@@ -12,8 +12,7 @@ from typing_extensions import TypedDict
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
-    CodecEntity,
-    CodecKind,
+    ArrayBytesCodec,
     DataTypeEntity,
     problem,
 )
@@ -80,7 +79,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class BytesCodec(CodecEntity[BytesCodecMetadata]):
+class BytesCodec(ArrayBytesCodec[BytesCodecMetadata]):
     """The `bytes` codec, coerced from its metadata.
 
     `endian` is optional and absent means something: a one-byte data type
@@ -90,7 +89,6 @@ class BytesCodec(CodecEntity[BytesCodecMetadata]):
     endian: Endianness | UNSET = UNSET
 
     identifier: ClassVar[str] = BYTES_CODEC_NAME
-    kind: ClassVar[CodecKind] = "array_bytes"
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         """The data type reaching here must have a raw byte representation.

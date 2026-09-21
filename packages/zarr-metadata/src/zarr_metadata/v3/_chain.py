@@ -23,7 +23,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from zarr_metadata.model._validation import ValidationProblem
-from zarr_metadata.v3._entity import CodecEntity, within
+from zarr_metadata.v3._entity import ArrayArrayCodec, CodecEntity, within
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -102,9 +102,9 @@ def chain_problems(
             continue
         problems.extend(within((*loc, index), codec.incoming_problems(incoming)))
         incoming = (
-            None
-            if incoming is None or type(codec).kind != "array_array"
-            else codec.transition(incoming)
+            codec.transition(incoming)
+            if incoming is not None and isinstance(codec, ArrayArrayCodec)
+            else None
         )
     return tuple(problems)
 

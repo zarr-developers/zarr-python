@@ -21,6 +21,7 @@ real name can collide with, and recognizes its own names through
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal, overload
 
@@ -188,6 +189,16 @@ class Context:
                         f"{entity.__name__}.identifier"
                     )
                     raise ValueError(msg)
+                if inspect.isabstract(entity):
+                    # What a kind leaves abstract -- `transition`, `grid`,
+                    # `fill_value_problems` -- the entity answers, or it
+                    # is not one this scope can use.
+                    left = ", ".join(sorted(entity.__abstractmethods__))
+                    msg = (
+                        f"{entity.__name__} does not define {left}, which its base leaves "
+                        "abstract; define it, if only to return the same thing as `incoming` or ()"
+                    )
+                    raise TypeError(msg)
                 if "__dataclass_fields__" not in vars(entity) and any(
                     not is_class_var(annotation) for annotation in own_annotations(entity).values()
                 ):

@@ -13,8 +13,7 @@ from zarr_metadata._common import JSONValue
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3._entity import (
-    CodecEntity,
-    CodecKind,
+    ArrayArrayCodec,
     problem,
 )
 from zarr_metadata.v3._parts import ArrayParts
@@ -74,7 +73,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class ScaleOffsetCodec(CodecEntity[ScaleOffsetCodecMetadata]):
+class ScaleOffsetCodec(ArrayArrayCodec[ScaleOffsetCodecMetadata]):
     """The `scale_offset` codec, coerced from its metadata.
 
     Both members are optional and any JSON scalar is well-typed here; what
@@ -86,7 +85,6 @@ class ScaleOffsetCodec(CodecEntity[ScaleOffsetCodecMetadata]):
     scale: JSONValue | UNSET = UNSET
 
     identifier: ClassVar[str] = SCALE_OFFSET_CODEC_NAME
-    kind: ClassVar[CodecKind] = "array_array"
 
     def __post_init__(self) -> None:
         """Each value is a scalar of the array's type, so neither is null.

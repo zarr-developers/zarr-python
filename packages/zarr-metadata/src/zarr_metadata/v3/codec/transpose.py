@@ -11,8 +11,7 @@ from typing_extensions import TypedDict
 
 from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3._entity import (
-    CodecEntity,
-    CodecKind,
+    ArrayArrayCodec,
     problem,
 )
 from zarr_metadata.v3._parts import ArrayParts
@@ -63,13 +62,12 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class TransposeCodec(CodecEntity[TransposeCodecMetadata]):
+class TransposeCodec(ArrayArrayCodec[TransposeCodecMetadata]):
     """The `transpose` codec, coerced from its metadata."""
 
     order: tuple[int, ...]
 
     identifier: ClassVar[str] = TRANSPOSE_CODEC_NAME
-    kind: ClassVar[CodecKind] = "array_array"
 
     def __post_init__(self) -> None:
         """`order` must permute its own axes.

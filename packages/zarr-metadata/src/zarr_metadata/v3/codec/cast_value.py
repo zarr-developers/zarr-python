@@ -13,8 +13,7 @@ from zarr_metadata._common import JSONValue
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
-    CodecEntity,
-    CodecKind,
+    ArrayArrayCodec,
     DataTypeEntity,
     Opaque,
 )
@@ -126,7 +125,7 @@ SCALAR_MAP_KEYS: Final = ("encode", "decode")
 
 
 @dataclass(frozen=True)
-class CastValueCodec(CodecEntity[CastValueCodecMetadata]):
+class CastValueCodec(ArrayArrayCodec[CastValueCodecMetadata]):
     """The `cast_value` codec, coerced from its metadata.
 
     Holds the data type it casts to, so like `sharding_indexed` it is
@@ -139,7 +138,6 @@ class CastValueCodec(CodecEntity[CastValueCodecMetadata]):
     scalar_map: ScalarMap | UNSET = UNSET
 
     identifier: ClassVar[str] = CAST_VALUE_CODEC_NAME
-    kind: ClassVar[CodecKind] = "array_array"
 
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:
         """The same parts, holding the type this codec casts to."""

@@ -23,10 +23,9 @@ from zarr_metadata.v3.data_type.float32 import Float32DataType
 from zarr_metadata.v3.entity import (
     CORE_AND_EXTENSIONS,
     UNSET,
+    ArrayArrayCodec,
     ArrayDocumentV3,
     ArrayParts,
-    CodecEntity,
-    CodecKind,
     DataTypeEntity,
     MetadataValidationError,
     Opaque,
@@ -49,7 +48,7 @@ class AcmeAffineObject(TypedDict, closed=True):
 
 
 @dataclass(frozen=True)
-class AcmeAffineCodec(CodecEntity[AcmeAffineObject]):
+class AcmeAffineCodec(ArrayArrayCodec[AcmeAffineObject]):
     """`x * scale + offset`, stored as `dtype` if one is named."""
 
     scale: float
@@ -57,7 +56,6 @@ class AcmeAffineCodec(CodecEntity[AcmeAffineObject]):
     dtype: DataTypeEntity | Opaque | UNSET = UNSET
 
     identifier: ClassVar[str] = "acme.affine"
-    kind: ClassVar[CodecKind] = "array_array"
 
     def __post_init__(self) -> None:
         found: list[ValidationProblem] = []

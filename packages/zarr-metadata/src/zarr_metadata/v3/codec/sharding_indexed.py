@@ -14,8 +14,8 @@ from zarr_metadata.model._validation import MetadataValidationError, ValidationP
 from zarr_metadata.v3._chain import chain_problems
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
+    ArrayBytesCodec,
     CodecEntity,
-    CodecKind,
     Opaque,
     problem,
 )
@@ -95,7 +95,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class ShardingIndexedCodec(CodecEntity[ShardingIndexedCodecMetadata]):
+class ShardingIndexedCodec(ArrayBytesCodec[ShardingIndexedCodecMetadata]):
     """The `sharding_indexed` codec, coerced from its metadata.
 
     Holds two codec pipelines, so it is one of the few entities that
@@ -110,7 +110,6 @@ class ShardingIndexedCodec(CodecEntity[ShardingIndexedCodecMetadata]):
 
     identifier: ClassVar[str] = SHARDING_INDEXED_CODEC_NAME
     variable_size: ClassVar[bool] = True
-    kind: ClassVar[CodecKind] = "array_bytes"
 
     def __post_init__(self) -> None:
         found: list[ValidationProblem] = []

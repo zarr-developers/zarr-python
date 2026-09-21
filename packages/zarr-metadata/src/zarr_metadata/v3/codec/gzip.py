@@ -11,8 +11,7 @@ from typing_extensions import TypedDict
 
 from zarr_metadata.model._validation import MetadataValidationError
 from zarr_metadata.v3._entity import (
-    CodecEntity,
-    CodecKind,
+    BytesBytesCodec,
     problem,
 )
 
@@ -67,14 +66,13 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class GzipCodec(CodecEntity[GzipCodecMetadata]):
+class GzipCodec(BytesBytesCodec[GzipCodecMetadata]):
     """The `gzip` codec, coerced from its metadata."""
 
     level: int
 
     identifier: ClassVar[str] = GZIP_CODEC_NAME
     variable_size: ClassVar[bool] = True
-    kind: ClassVar[CodecKind] = "bytes_bytes"
 
     def __post_init__(self) -> None:
         if not 0 <= self.level <= 9:

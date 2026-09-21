@@ -24,17 +24,21 @@ from zarr_metadata.v3.entity import (
     CORE,
     CORE_AND_EXTENSIONS,
     FROM_NAME,
+    ArrayArrayCodec,
     ArrayDocumentV3,
     ArrayParts,
+    BytesBytesCodec,
     ChunkGridEntity,
     CodecEntity,
     CodecKind,
     Context,
     DataTypeEntity,
     IntegerDataType,
+    Loc,
     MetadataEntity,
     Opaque,
     StorageClass,
+    ValidationProblem,
     ZarrV3MetadataFieldJSON,
     problem,
 )
@@ -43,13 +47,12 @@ ACME_MAX_ACCELERATION = 65537
 
 
 @dataclass(frozen=True)
-class AcmeLz4Codec(CodecEntity):
+class AcmeLz4Codec(BytesBytesCodec):
     """A third-party compressor."""
 
     acceleration: int | UNSET = UNSET
 
     identifier: ClassVar[str] = "acme.lz4"
-    kind: ClassVar[CodecKind] = "bytes_bytes"
     variable_size: ClassVar[bool] = True
 
     def __post_init__(self) -> None:
@@ -69,6 +72,9 @@ class AcmeFloat8DataType(DataTypeEntity):
 
     identifier: ClassVar[str] = "acme.float8"
     scalar_storage: ClassVar[StorageClass] = "single_byte"
+
+    def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
+        return ()
 
 
 def _scope() -> Context:
@@ -150,8 +156,8 @@ def test_error_an_entity_must_say_what_it_is() -> None:
         # Never bound: the guard raises while the class is being created,
         # which is the whole point -- so pyright cannot see it used.
         @dataclass(frozen=True)
-        class Nameless(CodecEntity):
-            kind: ClassVar[CodecKind] = "bytes_bytes"
+        class Nameless(BytesBytesCodec):
+            """A codec that forgot to say what it is."""
 
 
 def test_error_a_registry_key_must_be_the_identifier() -> None:
@@ -196,13 +202,12 @@ def test_error_an_optional_member_defaults_to_unset() -> None:
     with pytest.raises(TypeError, match="a default other than UNSET"):
 
         @dataclass(frozen=True)
-        class Inventive(CodecEntity):
+        class Inventive(BytesBytesCodec):
             # Optional by its type, so the annotation and the default agree
             # on that much; it is the default's value that is wrong.
             level: int | UNSET = 3
 
             identifier: ClassVar[str] = "acme.inventive"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
 
 
 def test_a_reader_gets_entities_or_an_exception() -> None:
@@ -273,11 +278,10 @@ def test_error_a_field_may_not_shadow_a_class_variable() -> None:
     with pytest.raises(TypeError, match="shadowing a class variable"):
 
         @dataclass(frozen=True)
-        class Negotiable(CodecEntity):
+        class Negotiable(BytesBytesCodec):
             must_understand: bool = True  # pyright: ignore[reportIncompatibleVariableOverride]
 
             identifier: ClassVar[str] = "acme.negotiable"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
 
 
 def test_error_a_family_member_must_declare_what_the_family_left_open() -> None:
@@ -312,6 +316,9 @@ class AcmeFixedDataType(DataTypeEntity):
     def to_json(self) -> ZarrV3MetadataFieldJSON:
         return cast("ZarrV3MetadataFieldJSON", self.data_type_name)
 
+    def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
+        return ()
+
 
 def test_a_third_party_can_register_a_family() -> None:
     # One class for an unbounded set of names. Nothing in the package
@@ -340,23 +347,21 @@ def test_error_a_member_needs_a_check_from_somewhere() -> None:
     with pytest.raises(TypeError, match="inner is annotated .*, which is not a shape JSON takes"):
 
         @dataclass(frozen=True)
-        class Structured(CodecEntity):
+        class Structured(BytesBytesCodec):
             inner: object
 
             identifier: ClassVar[str] = "acme.structured"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
 
 
 # A third-party codec that contains another codec: the case that used to
 # need `prepare`, `configuration` and `canonical` written by hand.
 @dataclass(frozen=True)
-class AcmeWrapperCodec(CodecEntity):
+class AcmeWrapperCodec(BytesBytesCodec):
     """A codec that applies another codec after its own step."""
 
     inner: CodecEntity | Opaque
 
     identifier: ClassVar[str] = "acme.wrapper"
-    kind: ClassVar[CodecKind] = "bytes_bytes"
 
 
 def test_a_third_party_entity_containing_entities_writes_nothing_for_it() -> None:
@@ -425,9 +430,8 @@ def test_error_an_entity_may_not_override_canonical() -> None:
     with pytest.raises(TypeError, match="put the entity's own rewrite in `simplified`"):
 
         @dataclass(frozen=True)
-        class Rewriter(CodecEntity):
+        class Rewriter(BytesBytesCodec):
             identifier: ClassVar[str] = "acme.rewriter"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
 
             def canonical(self) -> Self:  # pyright: ignore[reportIncompatibleMethodOverride]
                 return self
@@ -439,12 +443,11 @@ def test_simplified_composes_with_the_walk_into_contained_entities() -> None:
     # that `noshuffle` ignores, and the frame of 0 that means "unframed"
     # is dropped -- with nothing to call `super()` for.
     @dataclass(frozen=True)
-    class AcmeFramedCodec(CodecEntity):
+    class AcmeFramedCodec(BytesBytesCodec):
         inner: CodecEntity | Opaque
         frame: int | UNSET = UNSET
 
         identifier: ClassVar[str] = "acme.framed"
-        kind: ClassVar[CodecKind] = "bytes_bytes"
 
         def simplified(self) -> Self:
             return self if self.frame != 0 else replace(self, frame=UNSET)
@@ -461,11 +464,10 @@ def test_error_a_nested_field_needs_an_entity_kind_with_a_point() -> None:
     with pytest.raises(TypeError, match="has no `extension_point`"):
 
         @dataclass(frozen=True)
-        class Vague(CodecEntity):
+        class Vague(BytesBytesCodec):
             inner: MetadataEntity | Opaque
 
             identifier: ClassVar[str] = "acme.vague"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
 
 
 # The JSON types third-party entities name, at module level so their
@@ -492,13 +494,12 @@ class AcmeBlockObject(TypedDict, closed=True):
 
 # A third-party rule about a member, written in `__post_init__`.
 @dataclass(frozen=True)
-class AcmeBlockCodec(CodecEntity):
+class AcmeBlockCodec(BytesBytesCodec):
     """A codec whose block size must be a power of two."""
 
     block: int
 
     identifier: ClassVar[str] = "acme.block"
-    kind: ClassVar[CodecKind] = "bytes_bytes"
 
     def __post_init__(self) -> None:
         if self.block < 1 or self.block & (self.block - 1) != 0:
@@ -533,11 +534,10 @@ def test_a_slotted_entity_is_compiled_once() -> None:
     # arrives with the derived tables already on it and must not be
     # refused as having declared them.
     @dataclass(frozen=True, slots=True)
-    class AcmeSlotted(CodecEntity):
+    class AcmeSlotted(BytesBytesCodec):
         level: int
 
         identifier: ClassVar[str] = "acme.slotted"
-        kind: ClassVar[CodecKind] = "bytes_bytes"
 
     assert AcmeSlotted(level=1).to_json() == {
         "name": "acme.slotted",
@@ -547,9 +547,8 @@ def test_a_slotted_entity_is_compiled_once() -> None:
 
 def test_a_bare_class_var_is_a_class_variable() -> None:
     @dataclass(frozen=True)
-    class AcmeNoted(CodecEntity):
+    class AcmeNoted(BytesBytesCodec):
         identifier: ClassVar[str] = "acme.noted"
-        kind: ClassVar[CodecKind] = "bytes_bytes"
         note: ClassVar = "not a member"
 
     assert AcmeNoted().to_json() == "acme.noted"
@@ -560,11 +559,10 @@ def test_a_number_member_is_a_float_field() -> None:
     # point and refuses a bool, which is what a document's `2` and `true`
     # deserve.
     @dataclass(frozen=True)
-    class AcmeScaled(CodecEntity):
+    class AcmeScaled(ArrayArrayCodec):
         scale: float
 
         identifier: ClassVar[str] = "acme.scaled"
-        kind: ClassVar[CodecKind] = "array_array"
 
         def transition(self, incoming: ArrayParts) -> ArrayParts | None:
             return incoming
@@ -586,11 +584,10 @@ def test_error_an_entity_must_be_a_dataclass() -> None:
     # Class creation runs before `@dataclass` and cannot see it missing;
     # registration can, and says so instead of the first `coerce` failing
     # with the base class's `__init__`.
-    class Undecorated(CodecEntity):
+    class Undecorated(BytesBytesCodec):
         level: int
 
         identifier: ClassVar[str] = "acme.undecorated"
-        kind: ClassVar[CodecKind] = "bytes_bytes"
 
     with pytest.raises(TypeError, match="not a dataclass; decorate it with @dataclass"):
         CORE_AND_EXTENSIONS.extended_with(codecs={Undecorated.identifier: Undecorated})
@@ -601,21 +598,45 @@ def test_error_a_nested_field_admits_opaque() -> None:
     with pytest.raises(TypeError, match="inner holds an entity but does not admit Opaque"):
 
         @dataclass(frozen=True)
-        class Closed(CodecEntity):
+        class Closed(BytesBytesCodec):
             inner: CodecEntity
 
             identifier: ClassVar[str] = "acme.closed"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
 
 
 def test_error_an_array_array_codec_defines_transition() -> None:
-    # Left at the default, every rule after the codec would go silent.
-    with pytest.raises(TypeError, match="array_array codec and does not define transition"):
+    # `transition` is abstract on the kind; a codec that leaves it so is
+    # refused where it is first used, with what to write.
+    @dataclass(frozen=True)
+    class Silent(ArrayArrayCodec):
+        identifier: ClassVar[str] = "acme.silent"
+
+    with pytest.raises(
+        TypeError, match="does not define transition, which its base leaves abstract"
+    ):
+        CORE_AND_EXTENSIONS.extended_with(codecs={Silent.identifier: Silent})
+
+
+def test_error_a_codec_is_of_a_kind() -> None:
+    with pytest.raises(
+        TypeError, match="subclasses CodecEntity directly; subclass ArrayArrayCodec"
+    ):
 
         @dataclass(frozen=True)
-        class Silent(CodecEntity):
-            identifier: ClassVar[str] = "acme.silent"
-            kind: ClassVar[CodecKind] = "array_array"
+        class Kindless(CodecEntity):
+            identifier: ClassVar[str] = "acme.kindless"
+            kind: ClassVar[CodecKind] = "bytes_bytes"
+
+
+def test_error_a_data_type_judges_its_fill_values() -> None:
+    # Abstract, so that accepting every fill value is said, not defaulted.
+    @dataclass(frozen=True)
+    class Lax(DataTypeEntity):
+        identifier: ClassVar[str] = "acme.lax"
+        scalar_storage: ClassVar[StorageClass] = "single_byte"
+
+    with pytest.raises(TypeError, match="does not define fill_value_problems"):
+        CORE_AND_EXTENSIONS.extended_with(data_type={Lax.identifier: Lax})
 
 
 def test_error_a_literal_class_variable_holds_a_listed_value() -> None:
@@ -646,11 +667,10 @@ def test_error_the_named_json_type_must_match_what_the_entity_writes() -> None:
     ):
 
         @dataclass(frozen=True)
-        class Misnamed(CodecEntity[Literal["acme.misnamed"]]):
+        class Misnamed(BytesBytesCodec[Literal["acme.misnamed"]]):
             level: int
 
             identifier: ClassVar[str] = "acme.misnamed"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
 
 
 def test_error_the_named_json_type_must_name_what_the_entity_accepts() -> None:
@@ -659,11 +679,10 @@ def test_error_the_named_json_type_must_name_what_the_entity_accepts() -> None:
     with pytest.raises(TypeError, match="names 'gzip', which the entity does not accept"):
 
         @dataclass(frozen=True)
-        class Impostor(CodecEntity[GzipCodecObject]):
+        class Impostor(BytesBytesCodec[GzipCodecObject]):
             level: int
 
             identifier: ClassVar[str] = "acme.impostor"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
 
 
 def test_error_the_named_json_type_must_have_the_members_as_keys() -> None:
@@ -672,11 +691,10 @@ def test_error_the_named_json_type_must_have_the_members_as_keys() -> None:
     ):
 
         @dataclass(frozen=True)
-        class Mismatched(CodecEntity[AcmeLvlObject]):
+        class Mismatched(BytesBytesCodec[AcmeLvlObject]):
             level: int
 
             identifier: ClassVar[str] = "acme.lvl"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
 
 
 def test_a_third_party_entity_may_name_its_json_type_or_not() -> None:
@@ -684,11 +702,10 @@ def test_a_third_party_entity_may_name_its_json_type_or_not() -> None:
     # the entity's own type, held to the members at class creation -- and
     # either way the same dict comes back.
     @dataclass(frozen=True)
-    class AcmeTypedBlockCodec(CodecEntity[AcmeBlockObject]):
+    class AcmeTypedBlockCodec(BytesBytesCodec[AcmeBlockObject]):
         block: int
 
         identifier: ClassVar[str] = "acme.block"
-        kind: ClassVar[CodecKind] = "bytes_bytes"
 
     assert AcmeTypedBlockCodec(block=8).to_json() == {
         "name": "acme.block",

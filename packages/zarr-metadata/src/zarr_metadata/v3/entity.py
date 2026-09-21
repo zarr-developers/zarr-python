@@ -36,10 +36,12 @@ entry: `("configuration", "level")`. An entity's own
 `Coerced`. Constructing an entity by hand raises `MetadataValidationError`
 with `loc` relative to the configuration: `("level",)`.
 
-**Writing an extension.** Subclass `CodecEntity`, `DataTypeEntity`,
-`ChunkGridEntity` or `MetadataEntity`; declare the configuration as
-dataclass fields; put every rule finer than a type in `__post_init__`;
-add the class to a scope. Complete, and runnable as written:
+**Writing an extension.** Subclass the kind of thing it is -- a codec's
+kind (`ArrayArrayCodec`, `ArrayBytesCodec`, `BytesBytesCodec`),
+`DataTypeEntity`, `ChunkGridEntity`, or `MetadataEntity` for the two
+points that take anything; declare the configuration as dataclass
+fields; put every rule finer than a type in `__post_init__`; add the
+class to a scope. Complete, and runnable as written:
 
     from dataclasses import dataclass
     from typing import ClassVar
@@ -48,18 +50,16 @@ add the class to a scope. Complete, and runnable as written:
     from zarr_metadata.v3.entity import (
         CORE_AND_EXTENSIONS,
         UNSET,
-        CodecEntity,
-        CodecKind,
+        BytesBytesCodec,
         MetadataValidationError,
         problem,
     )
 
     @dataclass(frozen=True)  # load-bearing: `coerce` builds the entity with cls(**members)
-    class AcmeLz4Codec(CodecEntity):
+    class AcmeLz4Codec(BytesBytesCodec):
         acceleration: int | UNSET = UNSET  # optional: defaults to UNSET, never to a value
 
         identifier: ClassVar[str] = "acme.lz4"
-        kind: ClassVar[CodecKind] = "bytes_bytes"
 
         def __post_init__(self) -> None:
             if self.acceleration is not UNSET and not 1 <= self.acceleration <= 65537:
@@ -107,30 +107,29 @@ refused). Then, by kind:
   -- one class for every `acme.fixedN` -- overrides `accepts(name)` and
   keeps the name in a field marked `Annotated[str, FROM_NAME]`, which
   `coerce` fills from the envelope.
-- A codec: `kind`. An `array_array` codec must define
-  `transition(incoming: ArrayParts) -> ArrayParts | None` -- return
-  `incoming` if it leaves the array's shape, grid and data type alone,
-  or the parts it hands the next codec -- and may define
+- A codec: its kind is its base class. An `ArrayArrayCodec` defines
+  `transition(incoming: ArrayParts) -> ArrayParts | None` -- abstract:
+  return `incoming` if it leaves the array's shape, grid and data type
+  alone, or the parts it hands the next codec -- and any codec may define
   `incoming_problems(incoming)` for what it cannot take. `variable_size`
-  says its output length is not fixed. A `bytes_bytes` or `array_bytes`
-  codec defines neither.
+  says its output length is not fixed.
 - A data type: `scalar_storage`, one of `StorageClass` (the `bytes`
   codec asks it whether an endianness is needed), and
-  `fill_value_problems(value, loc)`, which judges a document's
-  `fill_value`; left undefined, every fill value is accepted. The
-  families `IntegerDataType`, `FloatDataType`, `ComplexDataType` and
-  `NumpyTimeDataType` carry those for the types they cover; a family of
+  `fill_value_problems(value, loc)`, abstract: it judges a document's
+  `fill_value`, and a type that accepts any says so with `return ()`.
+  The families `IntegerDataType`, `FloatDataType`, `ComplexDataType` and
+  `NumpyTimeDataType` carry both for the types they cover; a family of
   your own is a subclass declared with `base=True`, which owes nothing
   itself and passes its class variables down.
-- A chunk grid: `grid(array_shape)` and `shape_problems`; see
+- A chunk grid: `grid(array_shape)`, abstract, and `shape_problems`; see
   `ChunkGridEntity`.
 
-The defaults fail closed for the package's own sake, so the ones an
-author would otherwise miss -- an `array_array` codec without a
-`transition`, a data type with a `scalar_storage` outside the listed
-values, a nested field without `Opaque`, a class without `@dataclass`
-(caught at registration, the first place that can see it) -- are refused
-with a message that says what to write.
+What a kind leaves abstract, registration refuses an entity for not
+defining; the other mistakes an author would not otherwise see -- a
+`scalar_storage` outside the listed values, a nested field without
+`Opaque`, a class without `@dataclass`, a codec subclassing `CodecEntity`
+instead of a kind -- are refused at class creation or registration with
+a message that says what to write.
 
 **Naming the JSON type.** `CodecEntity[AcmeLz4Metadata]` types `to_json`
 as your own TypedDict rather than as any metadata field. The shape is
@@ -180,6 +179,9 @@ from zarr_metadata.v3._entity import (
     DATA_TYPE,
     FROM_NAME,
     STORAGE_TRANSFORMERS,
+    ArrayArrayCodec,
+    ArrayBytesCodec,
+    BytesBytesCodec,
     ChunkGridEntity,
     CodecEntity,
     CodecKind,
@@ -214,8 +216,11 @@ __all__ = [
     "FROM_NAME",
     "STORAGE_TRANSFORMERS",
     "UNSET",
+    "ArrayArrayCodec",
+    "ArrayBytesCodec",
     "ArrayDocumentV3",
     "ArrayParts",
+    "BytesBytesCodec",
     "ChunkGrid",
     "ChunkGridEntity",
     "CodecEntity",

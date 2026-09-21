@@ -27,6 +27,8 @@ the document it needs. The document that composes those answers is
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
+
 # Runtime imports, not `TYPE_CHECKING` ones: the string type aliases below
 # (`TypeCheck`, `MemberTypes`) are resolved by `get_type_hints` at class
 # creation, and a name that exists only for the type checker is a NameError
@@ -58,12 +60,11 @@ from zarr_metadata.model._validation import (
     MetadataValidationError,
     ValidationProblem,
 )
-from zarr_metadata.v3._parts import ChunkGrid
 
 if TYPE_CHECKING:
     from typing import Self
 
-    from zarr_metadata.v3._parts import ArrayParts
+    from zarr_metadata.v3._parts import ArrayParts, ChunkGrid
     from zarr_metadata.v3._registry import Context
 
 from zarr_metadata.v3._checks import (
@@ -583,49 +584,6 @@ def _owed_class_variables_are_declared(cls: type[MetadataEntity]) -> str | None:
     )
 
 
-def _literal_class_variables_hold_a_listed_value(cls: type[MetadataEntity]) -> str | None:
-    # A class variable typed as a `Literal` -- `kind`, `scalar_storage` --
-    # is read by other entities' rules, which have nothing to say about a
-    # value outside the listed ones and would fall silent.
-    for name, annotating in declared_class_vars(cls).items():
-        if not hasattr(cls, name):
-            continue
-        shell = type(
-            "_ClassVar",
-            (),
-            {
-                "__annotations__": {name: own_annotations(annotating)[name]},
-                "__module__": annotating.__module__,
-            },
-        )
-        try:
-            hint = get_type_hints(shell)[name]
-        except NameError:
-            # Typed with a name imported only for the type checker.
-            continue
-        inner = get_args(hint)[0] if get_origin(hint) is ClassVar else hint
-        if get_origin(inner) is Literal and getattr(cls, name) not in get_args(inner):
-            return (
-                f"{cls.__name__} sets {name} = {getattr(cls, name)!r}, "
-                f"which is not one of {get_args(inner)!r}"
-            )
-    return None
-
-
-def _array_array_codecs_define_transition(cls: type[MetadataEntity]) -> str | None:
-    # The default `transition` is None -- undeterminable -- which stops
-    # every rule after the codec. Right for a codec that could not say;
-    # wrong to accept silently from one being written now.
-    if not (issubclass(cls, CodecEntity) and cls.kind == "array_array"):
-        return None
-    if cls.transition is not CodecEntity.transition:
-        return None
-    return (
-        f"{cls.__name__} is an array_array codec and does not define transition; return "
-        "incoming if it leaves the array's parts unchanged, or the parts it hands the next codec"
-    )
-
-
 def _is_name_type(part: object) -> bool:
     """A JSON type for the bare-name spelling: `str`, a `Literal` of names, or a `NewType` of `str`."""
     return (
@@ -746,6 +704,33 @@ def _named_json_type_matches_what_is_written(cls: type[MetadataEntity]) -> str |
     return f"{cls.__name__} names {json_type!r} as its JSON type, which " + "; ".join(found)
 
 
+def _codecs_are_of_a_kind(cls: type[MetadataEntity]) -> str | None:
+    # The kind is the base class, and what a kind must answer is abstract
+    # on it; a codec that skips the kind classes skips that.
+    if not issubclass(cls, CodecEntity):
+        return None
+    if issubclass(cls, (ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec)):
+        return None
+    return (
+        f"{cls.__name__} subclasses CodecEntity directly; subclass ArrayArrayCodec, "
+        "ArrayBytesCodec or BytesBytesCodec, which says what the codec does to the array"
+    )
+
+
+def _class_variables_hold_listed_values(cls: type[MetadataEntity]) -> str | None:
+    # Other entities' rules read these and have nothing to say about a
+    # value outside the listed ones: the endian rule would fall silent.
+    listed: tuple[tuple[str, tuple[object, ...]], ...] = ()
+    if issubclass(cls, CodecEntity):
+        listed = (("kind", get_args(CodecKind)),)
+    elif issubclass(cls, DataTypeEntity):
+        listed = (("scalar_storage", get_args(StorageClass)),)
+    for name, values in listed:
+        if hasattr(cls, name) and getattr(cls, name) not in values:
+            return f"{cls.__name__} sets {name} = {getattr(cls, name)!r}, which is not one of {values!r}"
+    return None
+
+
 def _declared_defaults(cls: type[MetadataEntity]) -> dict[str, object]:
     """Each member's declared default, or `MISSING`.
 
@@ -813,8 +798,8 @@ _INVARIANTS: Final[tuple[Callable[[type[MetadataEntity]], str | None], ...]] = (
     _fields_do_not_shadow_class_variables,
     _owed_class_variables_are_declared,
     _named_json_type_matches_what_is_written,
-    _literal_class_variables_hold_a_listed_value,
-    _array_array_codecs_define_transition,
+    _codecs_are_of_a_kind,
+    _class_variables_hold_listed_values,
     _optional_members_default_to_unset,
     _required_members_have_no_default,
 )
@@ -822,7 +807,7 @@ _INVARIANTS: Final[tuple[Callable[[type[MetadataEntity]], str | None], ...]] = (
 
 
 @dataclass(frozen=True)
-class MetadataEntity(MetadataFieldValue, Generic[JSONT_co]):
+class MetadataEntity(MetadataFieldValue, ABC, Generic[JSONT_co]):
     """One named entity, coerced from its metadata.
 
     Subclasses add their configuration members as fields, which is what
@@ -1103,12 +1088,18 @@ class MetadataEntity(MetadataFieldValue, Generic[JSONT_co]):
 
 @dataclass(frozen=True)
 class CodecEntity(MetadataEntity[JSONT_co], base=True):
-    """An entity that occupies a position in the codec pipeline."""
+    """An entity that occupies a position in the codec pipeline.
+
+    Of one of three kinds, each a base class: `ArrayArrayCodec`,
+    `ArrayBytesCodec`, `BytesBytesCodec`. The kind fixes where in the
+    pipeline the codec may stand, and what it must answer.
+    """
 
     extension_point: ClassVar[ExtensionPointField] = CODECS
     """Where a codec is registered, and so where a field typed as one is resolved."""
 
     kind: ClassVar[CodecKind]
+    """Set by the kind class."""
 
     variable_size: ClassVar[bool] = False
     """Whether this codec's output size depends on the bytes it is given.
@@ -1122,24 +1113,41 @@ class CodecEntity(MetadataEntity[JSONT_co], base=True):
 
         `incoming` is None once the chain can no longer say what reaches
         here, and the default answer to that is nothing: declining beats
-        guessing. Locations are relative to this codec's `configuration`,
-        as `problems`' are; an empty one lands on the codec itself.
+        guessing. Locations are relative to this codec's `configuration`;
+        an empty one lands on the codec itself.
         """
         return ()
 
+
+@dataclass(frozen=True)
+class ArrayArrayCodec(CodecEntity[JSONT_co], base=True):
+    """A codec that transforms the array: what reaches the next codec is its to say."""
+
+    kind: ClassVar[CodecKind] = "array_array"
+
+    @abstractmethod
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:
-        """What the next codec in the chain sees, or None if undeterminable.
+        """What the next codec in the chain sees.
 
-        Only an array-to-array codec has anything to say: the two later
-        kinds end shape propagation by construction, one by consuming the
-        array and the other by never having had it.
-
-        The default is None, so a modelled codec that forgets to say how
-        it transforms the array stops propagation rather than silently
-        claiming to leave it alone. Failing closed here costs a judgment;
-        failing open would invent one.
+        `incoming` itself if this codec leaves the array's shape, grid and
+        data type alone; the parts it hands on if it changes one; None if
+        that cannot be determined from the metadata, which ends the
+        judgments downstream rather than inventing them.
         """
-        return None
+
+
+@dataclass(frozen=True)
+class ArrayBytesCodec(CodecEntity[JSONT_co], base=True):
+    """The one codec in a pipeline that turns the array into bytes."""
+
+    kind: ClassVar[CodecKind] = "array_bytes"
+
+
+@dataclass(frozen=True)
+class BytesBytesCodec(CodecEntity[JSONT_co], base=True):
+    """A codec that transforms bytes, after the array is gone."""
+
+    kind: ClassVar[CodecKind] = "bytes_bytes"
 
 
 @dataclass(frozen=True)
@@ -1156,6 +1164,7 @@ class ChunkGridEntity(MetadataEntity[JSONT_co], base=True):
         """
         return ()
 
+    @abstractmethod
     def grid(self, array_shape: object) -> ChunkGrid:
         """What this grid divides an array of `array_shape` into.
 
@@ -1163,7 +1172,6 @@ class ChunkGridEntity(MetadataEntity[JSONT_co], base=True):
         alone: a grid whose own metadata cannot be read still has the
         array's rank, and rank is enough for several rules.
         """
-        return ChunkGrid.unreadable(array_shape)
 
 
 @dataclass(frozen=True)
@@ -1188,14 +1196,13 @@ class DataTypeEntity(MetadataEntity[JSONT_co], base=True):
         """
         return type(self).scalar_storage
 
+    @abstractmethod
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         """Why `value` is not a fill value of this type, if it is not.
 
-        Default: nothing. A data type this package does not model accepts
-        whatever its extension says it does, and guessing would reject
-        valid documents.
+        Every data type answers this; one that accepts any fill value
+        says so with `return ()`.
         """
-        return ()
 
 
 __all__ = [
@@ -1205,6 +1212,9 @@ __all__ = [
     "DATA_TYPE",
     "FROM_NAME",
     "STORAGE_TRANSFORMERS",
+    "ArrayArrayCodec",
+    "ArrayBytesCodec",
+    "BytesBytesCodec",
     "ChunkGridEntity",
     "CodecEntity",
     "CodecKind",

@@ -14,8 +14,7 @@ from typing_extensions import TypedDict
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import MetadataValidationError
 from zarr_metadata.v3._entity import (
-    CodecEntity,
-    CodecKind,
+    BytesBytesCodec,
     problem,
 )
 
@@ -75,7 +74,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class ZstdCodec(CodecEntity[ZstdCodecMetadata]):
+class ZstdCodec(BytesBytesCodec[ZstdCodecMetadata]):
     """The `zstd` codec, coerced from its metadata."""
 
     level: int
@@ -83,7 +82,6 @@ class ZstdCodec(CodecEntity[ZstdCodecMetadata]):
 
     identifier: ClassVar[str] = ZSTD_CODEC_NAME
     variable_size: ClassVar[bool] = True
-    kind: ClassVar[CodecKind] = "bytes_bytes"
 
     def __post_init__(self) -> None:
         if not ZSTD_MIN_LEVEL <= self.level <= ZSTD_MAX_LEVEL:

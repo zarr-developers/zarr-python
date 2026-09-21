@@ -13,8 +13,7 @@ from typing import ClassVar, Final, Literal, NotRequired
 from typing_extensions import TypedDict
 
 from zarr_metadata.v3._entity import (
-    CodecEntity,
-    CodecKind,
+    BytesBytesCodec,
 )
 
 CRC32C_CODEC_NAME: Final = "crc32c"
@@ -61,11 +60,10 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class Crc32cCodec(CodecEntity[Crc32cCodecName]):
+class Crc32cCodec(BytesBytesCodec[Crc32cCodecName]):
     """The `crc32c` codec, coerced from its metadata.
 
     The name says everything: a checksum has nothing to configure.
     """
 
     identifier: ClassVar[str] = CRC32C_CODEC_NAME
-    kind: ClassVar[CodecKind] = "bytes_bytes"

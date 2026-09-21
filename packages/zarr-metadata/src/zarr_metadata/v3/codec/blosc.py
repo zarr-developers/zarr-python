@@ -12,8 +12,7 @@ from typing_extensions import TypedDict
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3._entity import (
-    CodecEntity,
-    CodecKind,
+    BytesBytesCodec,
     problem,
 )
 
@@ -89,7 +88,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class BloscCodec(CodecEntity[BloscCodecMetadata]):
+class BloscCodec(BytesBytesCodec[BloscCodecMetadata]):
     """The `blosc` codec, coerced from its metadata.
 
     Everything blosc knows about itself: the shape its metadata takes, the
@@ -105,7 +104,6 @@ class BloscCodec(CodecEntity[BloscCodecMetadata]):
 
     identifier: ClassVar[str] = BLOSC_CODEC_NAME
     variable_size: ClassVar[bool] = True
-    kind: ClassVar[CodecKind] = "bytes_bytes"
 
     # Every member is required but `typesize`, which only means something
     # when shuffling; `problems` is where that conditional lives.
