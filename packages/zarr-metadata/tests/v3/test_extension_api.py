@@ -601,6 +601,10 @@ def test_the_constructor_stops_at_the_first_problem_and_coerce_reports_every_one
     )
     assert [p.loc for p in problems] == [("configuration", "low"), ("configuration", "high")]
     assert list(acme_range_problems(AcmeRangeCodec(low=0, high=1))) == []
+    # A reader that wants every problem of a hand-built one builds the
+    # record without the check and asks.
+    record = AcmeRangeCodec.create_unchecked(low=-1, high=-2)
+    assert [p.loc for p in record.problems()] == [("low",), ("high",)]
 
 
 def test_error_an_entity_may_not_define_post_init() -> None:

@@ -406,11 +406,15 @@ class MetadataEntity(ABC):
             raise MetadataValidationError((first,))
 
     @classmethod
-    def _unchecked(cls, members: Mapping[str, object]) -> Self:
-        """The instance `cls(**members)` would build, without asking `problems`.
+    def create_unchecked(cls, **members: object) -> Self:
+        """The record `cls(**members)` would build, without asking `problems`.
 
-        For `coerce`, which asks `problems` itself and reports every one,
-        where the constructor stops at the first.
+        The constructor is the checked way to build an entity, and stops
+        at the first problem; this is for a reader that judges
+        afterwards and wants every one, as `coerce` does -- it asks
+        `problems` itself and reports what it yields. The members are
+        the caller's promise: nothing here checks their names or types,
+        which the constructor does.
         """
         entity = object.__new__(cls)
         for name, value in members.items():
@@ -487,7 +491,7 @@ class MetadataEntity(ABC):
             # An unknown key is survivable; a member that could not be
             # read is a hole, and judging around it would be guessing.
             return None, found
-        entity = cls._unchecked(members)
+        entity = cls.create_unchecked(**members)
         # A problem about a member the envelope's name carries is about
         # the entity, and lands on it rather than under a configuration
         # the document does not have.

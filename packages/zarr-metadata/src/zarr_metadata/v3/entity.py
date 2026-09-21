@@ -112,6 +112,8 @@ configuration, and `kind` is `"invalid_value"` for a value rule. The
 constructor stops at the first problem it yields, so
 `AcmeLz4Codec(acceleration=0)` raises `MetadataValidationError`;
 `coerce` runs it to the end and reports every problem in the document.
+`create_unchecked(**members)` builds the record without the check, for
+a reader that judges afterwards with `problems` and wants every one.
 It runs only on an entity whose members all read: a member of the wrong
 type is reported and the entity is not built.
 
