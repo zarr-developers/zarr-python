@@ -39,7 +39,6 @@ from typing import (
     TYPE_CHECKING,
     ClassVar,
     Final,
-    Generic,
     Literal,
     TypeAlias,
     cast,
@@ -49,7 +48,7 @@ from typing import (
     get_type_hints,
 )
 
-from typing_extensions import TypeIs, TypeVar, is_typeddict
+from typing_extensions import TypeVar, is_typeddict
 
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import (
@@ -60,6 +59,7 @@ from zarr_metadata.model._validation import (
 if TYPE_CHECKING:
     from typing import Self
 
+    from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
     from zarr_metadata.v3._parts import ArrayParts, ChunkGrid
     from zarr_metadata.v3._registry import Context
 
@@ -79,7 +79,6 @@ from zarr_metadata.v3._checks import (
     sequence_of,
     within,
 )
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._compile import (
     FROM_NAME,
     MetadataFieldValue,
@@ -98,26 +97,9 @@ from zarr_metadata.v3._compile import (
     shape_of,
     strip_annotation,
     type_check,
-    unsubscripted,
 )
 
 EntityT = TypeVar("EntityT", bound="MetadataEntity")
-
-JSONT_co = TypeVar(
-    "JSONT_co", bound=ZarrV3MetadataFieldJSON, default=ZarrV3MetadataFieldJSON, covariant=True
-)
-"""What an entity's `to_json` returns: its own JSON type, named as the base's argument.
-
-    class GzipCodec(CodecEntity[GzipCodecMetadata]): ...
-
-Covariant, because it appears only in a return; defaulted, so a bare
-`CodecEntity` -- in a field annotation, a table of entities, a scope --
-means `CodecEntity[ZarrV3MetadataFieldJSON]` and admits every codec, each
-of whose JSON types is assignable to that one (`ZarrV3NamedConfigJSON` is
-`ReadOnly` and closed for exactly this). An entity that leaves it
-defaulted is not wrong, only less informative.
-"""
-
 
 # A real alias, not a string one: entity modules subscript it as
 # `Coerced[Self]` in a return annotation, and not all of them defer
@@ -137,7 +119,6 @@ problems to decide the verdict. They are different questions.
 """
 
 
-# Left to infer their `Literal` types rather than widened to
 StorageClass = Literal["single_byte", "multi_byte", "variable_length"]
 """How one scalar of a data type occupies bytes.
 
@@ -153,22 +134,6 @@ CodecKind = Literal["array_array", "array_bytes", "bytes_bytes"]
 Declared by each codec, which is why there is no table of it: a name
 does not have a pipeline position, a codec does.
 """
-
-
-def is_entity(value: object) -> TypeIs[MetadataEntity]:
-    """`value` is an entity, of whatever JSON type.
-
-    An `isinstance` against the generic base narrows an `object` to
-    `MetadataEntity[Unknown]`; this narrows it to the defaulted
-    `MetadataEntity`, whose `to_json` is any metadata field -- which is
-    all that can be said of an entity met as an `object`.
-    """
-    return isinstance(value, MetadataEntity)
-
-
-def _is_entity_kind(candidate: object) -> TypeIs[type[MetadataEntity]]:
-    """`candidate` is an entity class; narrowed as `is_entity` narrows."""
-    return isinstance(candidate, type) and issubclass(candidate, MetadataEntity)
 
 
 def contains_entity(annotation: object) -> bool:
@@ -190,23 +155,17 @@ def contains_entity(annotation: object) -> bool:
     return False
 
 
-def _as_entity_kind(candidate: object) -> type[MetadataEntity] | None:
-    """`candidate` as an entity type, or None if it is not one.
-
-    In a function of its own so that the `isinstance`/`issubclass` pair
-    narrows this parameter and not the caller's variable, which the
-    caller goes on to read as the annotation it is.
-    """
-    candidate = unsubscripted(candidate)
-    if _is_entity_kind(candidate):
-        return candidate
+def _entity_class(annotation: object) -> type[MetadataEntity] | None:
+    """`annotation` when it is an entity class, else None."""
+    if isinstance(annotation, type) and issubclass(annotation, MetadataEntity):
+        return annotation
     return None
 
 
 def _entity_kinds(annotation: object) -> list[type[MetadataEntity]]:
     """Every entity type an annotation names, at any depth."""
     inner, _ = strip_annotation(annotation)
-    kind = _as_entity_kind(inner)
+    kind = _entity_class(inner)
     if kind is not None:
         return [kind]
     origin = get_origin(inner)
@@ -286,7 +245,7 @@ def written(value: MetadataEntity | Opaque) -> ZarrV3MetadataFieldJSON:
 
 def canonicalize_nested(annotation: object, value: object) -> object:
     """`value` with every nested entity in its own canonical form."""
-    if is_entity(value):
+    if isinstance(value, MetadataEntity):
         return value.canonical()
     if isinstance(value, Opaque):
         return value
@@ -598,7 +557,7 @@ _INVARIANTS: Final[tuple[Callable[[type[MetadataEntity]], str | None], ...]] = (
 
 
 @dataclass(frozen=True)
-class MetadataEntity(MetadataFieldValue, ABC, Generic[JSONT_co]):
+class MetadataEntity(MetadataFieldValue, ABC):
     """One named entity, coerced from its metadata.
 
     Subclasses add their configuration members as fields, which is what
@@ -779,7 +738,7 @@ class MetadataEntity(MetadataFieldValue, ABC, Generic[JSONT_co]):
         return walked.simplified()
 
     @abstractmethod
-    def to_json(self) -> JSONT_co:
+    def to_json(self) -> ZarrV3MetadataFieldJSON:
         """This entity as a document would write it: a literal of its own JSON type.
 
         Faithful to every member it holds: read a document, write it
@@ -790,10 +749,11 @@ class MetadataEntity(MetadataFieldValue, ABC, Generic[JSONT_co]):
         "configuration": {}}` all read to the same entity, and the entity
         writes the bare name when every member it holds is absent.
 
-        Written per entity, as a literal of the TypedDict named as the
-        base's argument -- `CodecEntity[GzipCodecObject]` -- which is
-        what holds it to that type: pyright checks the literal's keys and
-        values against the TypedDict. A contained entity is written with
+        Written per entity, as a literal of its own TypedDict and with
+        that TypedDict as the declared return type -- narrower than the
+        base's, which is what tells a consumer holding a `GzipCodec` that
+        it gets a `GzipCodecObject` -- so pyright checks the literal's keys
+        and values against it. A contained entity is written with
         `written`.
         """
 
@@ -812,7 +772,7 @@ class MetadataEntity(MetadataFieldValue, ABC, Generic[JSONT_co]):
 
 
 @dataclass(frozen=True)
-class CodecEntity(MetadataEntity[JSONT_co], base=True):
+class CodecEntity(MetadataEntity, base=True):
     """An entity that occupies a position in the codec pipeline.
 
     Of one of three kinds, each a base class: `ArrayArrayCodec`,
@@ -842,7 +802,7 @@ class CodecEntity(MetadataEntity[JSONT_co], base=True):
 
 
 @dataclass(frozen=True)
-class ArrayArrayCodec(CodecEntity[JSONT_co], base=True):
+class ArrayArrayCodec(CodecEntity, base=True):
     """A codec that transforms the array: what reaches the next codec is its to say."""
 
     kind: ClassVar[CodecKind] = "array_array"
@@ -859,21 +819,21 @@ class ArrayArrayCodec(CodecEntity[JSONT_co], base=True):
 
 
 @dataclass(frozen=True)
-class ArrayBytesCodec(CodecEntity[JSONT_co], base=True):
+class ArrayBytesCodec(CodecEntity, base=True):
     """The one codec in a pipeline that turns the array into bytes."""
 
     kind: ClassVar[CodecKind] = "array_bytes"
 
 
 @dataclass(frozen=True)
-class BytesBytesCodec(CodecEntity[JSONT_co], base=True):
+class BytesBytesCodec(CodecEntity, base=True):
     """A codec that transforms bytes, after the array is gone."""
 
     kind: ClassVar[CodecKind] = "bytes_bytes"
 
 
 @dataclass(frozen=True)
-class ChunkGridEntity(MetadataEntity[JSONT_co], base=True):
+class ChunkGridEntity(MetadataEntity, base=True):
     """An entity that divides an array into the parts a pipeline encodes."""
 
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
@@ -895,7 +855,7 @@ class ChunkGridEntity(MetadataEntity[JSONT_co], base=True):
 
 
 @dataclass(frozen=True)
-class DataTypeEntity(MetadataEntity[JSONT_co], base=True):
+class DataTypeEntity(MetadataEntity, base=True):
     """An entity that says how the array's scalars are stored.
 
     Only data types answer that, and every rule that turns on it -- a
@@ -924,12 +884,12 @@ class DataTypeEntity(MetadataEntity[JSONT_co], base=True):
 
 
 @dataclass(frozen=True)
-class ChunkKeyEncodingEntity(MetadataEntity[JSONT_co], base=True):
+class ChunkKeyEncodingEntity(MetadataEntity, base=True):
     """An entity that says how a chunk's coordinates become a store key."""
 
 
 @dataclass(frozen=True)
-class StorageTransformerEntity(MetadataEntity[JSONT_co], base=True):
+class StorageTransformerEntity(MetadataEntity, base=True):
     """An entity that stands between the codec pipeline and the store."""
 
 
@@ -960,7 +920,6 @@ __all__ = [
     "CodecKind",
     "Coerced",
     "DataTypeEntity",
-    "JSONT_co",
     "Loc",
     "MetadataEntity",
     "Opaque",
@@ -968,7 +927,6 @@ __all__ = [
     "StorageTransformerEntity",
     "TypeCheck",
     "is_bool",
-    "is_entity",
     "is_int",
     "is_integer",
     "is_json_value",

@@ -96,7 +96,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class ShardingIndexedCodec(ArrayBytesCodec[ShardingIndexedCodecMetadata]):
+class ShardingIndexedCodec(ArrayBytesCodec):
     """The `sharding_indexed` codec, coerced from its metadata.
 
     Holds two codec pipelines, so it is one of the few entities that

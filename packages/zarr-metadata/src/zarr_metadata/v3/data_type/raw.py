@@ -96,7 +96,7 @@ def _name_problems(name: str) -> tuple[ValidationProblem, ...]:
 
 
 @dataclass(frozen=True)
-class RawBytesDataType(DataTypeEntity[RawBytesDataTypeName]):
+class RawBytesDataType(DataTypeEntity):
     """An `r<N>` raw-bytes data type, coerced from its metadata.
 
     One class for the whole family, because `r8` and `r4096` differ only

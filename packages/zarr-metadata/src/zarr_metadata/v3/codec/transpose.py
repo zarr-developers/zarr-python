@@ -62,7 +62,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class TransposeCodec(ArrayArrayCodec[TransposeCodecMetadata]):
+class TransposeCodec(ArrayArrayCodec):
     """The `transpose` codec, coerced from its metadata."""
 
     order: tuple[int, ...]

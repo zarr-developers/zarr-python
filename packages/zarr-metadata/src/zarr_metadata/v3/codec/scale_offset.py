@@ -74,7 +74,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class ScaleOffsetCodec(ArrayArrayCodec[ScaleOffsetCodecMetadata]):
+class ScaleOffsetCodec(ArrayArrayCodec):
     """The `scale_offset` codec, coerced from its metadata.
 
     Both members are optional and any JSON scalar is well-typed here; what

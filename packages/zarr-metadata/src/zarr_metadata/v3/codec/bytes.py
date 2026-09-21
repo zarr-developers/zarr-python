@@ -79,7 +79,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class BytesCodec(ArrayBytesCodec[BytesCodecMetadata]):
+class BytesCodec(ArrayBytesCodec):
     """The `bytes` codec, coerced from its metadata.
 
     `endian` is optional and absent means something: a one-byte data type

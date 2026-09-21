@@ -127,7 +127,7 @@ SCALAR_MAP_KEYS: Final = ("encode", "decode")
 
 
 @dataclass(frozen=True)
-class CastValueCodec(ArrayArrayCodec[CastValueCodecMetadata]):
+class CastValueCodec(ArrayArrayCodec):
     """The `cast_value` codec, coerced from its metadata.
 
     Holds the data type it casts to, so like `sharding_indexed` it is

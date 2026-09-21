@@ -101,7 +101,7 @@ def _written_field(field: StructFieldComponent) -> StructField:
 
 
 @dataclass(frozen=True)
-class StructDataType(DataTypeEntity[Struct]):
+class StructDataType(DataTypeEntity):
     """The `struct` data type, coerced from its metadata.
 
     A record of named fields, each with a data type of its own -- so this

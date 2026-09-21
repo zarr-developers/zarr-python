@@ -73,7 +73,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class NumpyTimedelta64DataType(NumpyTimeDataType[NumpyTimedelta64]):
+class NumpyTimedelta64DataType(NumpyTimeDataType):
     """The `numpy.timedelta64` data type, coerced from its metadata."""
 
     unit: NumpyTimeUnit

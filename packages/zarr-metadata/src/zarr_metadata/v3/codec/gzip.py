@@ -66,7 +66,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class GzipCodec(BytesBytesCodec[GzipCodecMetadata]):
+class GzipCodec(BytesBytesCodec):
     """The `gzip` codec, coerced from its metadata."""
 
     level: int

@@ -34,7 +34,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class StringDataType(DataTypeEntity[StringDataTypeName]):
+class StringDataType(DataTypeEntity):
     """The `string` data type. The name says everything."""
 
     scalar_storage: ClassVar[StorageClass] = "variable_length"

@@ -29,7 +29,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class Uint32DataType(IntegerDataType[Uint32DataTypeName]):
+class Uint32DataType(IntegerDataType):
     """The `uint32` data type. The name says everything."""
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"

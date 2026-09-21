@@ -71,7 +71,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class AcmeDecimalDataType(DataTypeEntity[AcmeDecimal]):
+class AcmeDecimalDataType(DataTypeEntity):
     """The `acme.decimal` data type, coerced from its metadata."""
 
     precision: int

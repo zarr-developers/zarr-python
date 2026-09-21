@@ -60,7 +60,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class BytesDataType(DataTypeEntity[BytesDataTypeName]):
+class BytesDataType(DataTypeEntity):
     """The `bytes` data type. The name says everything."""
 
     scalar_storage: ClassVar[StorageClass] = "variable_length"

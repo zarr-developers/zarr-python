@@ -71,7 +71,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class DefaultChunkKeyEncoding(ChunkKeyEncodingEntity[DefaultChunkKeyEncodingMetadata]):
+class DefaultChunkKeyEncoding(ChunkKeyEncodingEntity):
     """The `default` chunk key encoding, coerced from its metadata."""
 
     separator: DefaultChunkKeyEncodingSeparator | UNSET = UNSET

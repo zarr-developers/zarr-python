@@ -77,7 +77,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class V2ChunkKeyEncoding(ChunkKeyEncodingEntity[V2ChunkKeyEncodingMetadata]):
+class V2ChunkKeyEncoding(ChunkKeyEncodingEntity):
     """The `v2` chunk key encoding, coerced from its metadata."""
 
     separator: V2ChunkKeyEncodingSeparator | UNSET = UNSET

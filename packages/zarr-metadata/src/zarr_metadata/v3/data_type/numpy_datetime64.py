@@ -70,7 +70,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class NumpyDatetime64DataType(NumpyTimeDataType[NumpyDatetime64]):
+class NumpyDatetime64DataType(NumpyTimeDataType):
     """The `numpy.datetime64` data type, coerced from its metadata."""
 
     unit: NumpyTimeUnit

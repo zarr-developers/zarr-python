@@ -61,7 +61,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class RegularChunkGrid(ChunkGridEntity[RegularChunkGridMetadata]):
+class RegularChunkGrid(ChunkGridEntity):
     """The `regular` chunk grid, coerced from its metadata."""
 
     chunk_shape: tuple[int, ...]

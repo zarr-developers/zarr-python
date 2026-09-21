@@ -88,7 +88,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class BloscCodec(BytesBytesCodec[BloscCodecMetadata]):
+class BloscCodec(BytesBytesCodec):
     """The `blosc` codec, coerced from its metadata.
 
     Everything blosc knows about itself: the shape its metadata takes, the

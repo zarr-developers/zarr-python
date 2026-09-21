@@ -34,7 +34,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class BoolDataType(DataTypeEntity[BoolDataTypeName]):
+class BoolDataType(DataTypeEntity):
     """The `bool` data type. The name says everything."""
 
     scalar_storage: ClassVar[StorageClass] = "single_byte"

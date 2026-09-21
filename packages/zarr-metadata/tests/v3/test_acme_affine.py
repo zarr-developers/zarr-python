@@ -49,7 +49,7 @@ class AcmeAffineObject(TypedDict, closed=True):
 
 
 @dataclass(frozen=True)
-class AcmeAffineCodec(ArrayArrayCodec[AcmeAffineObject]):
+class AcmeAffineCodec(ArrayArrayCodec):
     """`x * scale + offset`, stored as `dtype` if one is named."""
 
     scale: float

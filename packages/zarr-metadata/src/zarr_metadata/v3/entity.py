@@ -65,7 +65,7 @@ class to a scope. Complete, and runnable as written:
         configuration: AcmeLz4Configuration
 
     @dataclass(frozen=True)  # load-bearing: `coerce` builds the entity with cls(**members)
-    class AcmeLz4Codec(BytesBytesCodec[AcmeLz4Object | Literal["acme.lz4"]]):
+    class AcmeLz4Codec(BytesBytesCodec):
         acceleration: int | UNSET = UNSET  # optional: defaults to UNSET, never to a value
 
         identifier: ClassVar[str] = "acme.lz4"
@@ -151,11 +151,12 @@ A scope reads what a class is off the class: its kind is its base, its
 key is its `identifier`, so `extended_with` takes the classes and nothing
 can be misfiled.
 
-**Naming the JSON type.** `BytesBytesCodec[AcmeLz4Object | Literal["acme.lz4"]]`
-types `to_json` as your own JSON type rather than as any metadata field,
-and pyright checks the literal `to_json` returns against it: a key it
-does not declare, a required one left out, a value of the wrong type is
-a static error. Left unnamed, `to_json` is typed as any metadata field.
+**Naming the JSON type.** The return annotation of `to_json` -- above,
+`AcmeLz4Object | Literal["acme.lz4"]` -- is the entity's own JSON type,
+narrower than the `ZarrV3MetadataFieldJSON` the base declares, and
+pyright checks the literal returned against it: a key it does not
+declare, a required one left out, a value of the wrong type is a static
+error.
 
 Two complete extensions written against this module alone, as tests:
 `tests/v3/test_acme_affine.py` (an `array_array` codec with a number, an

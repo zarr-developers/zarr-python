@@ -167,7 +167,7 @@ def _axis_lengths(spec: RectilinearDimSpec) -> frozenset[int] | None:
 
 
 @dataclass(frozen=True)
-class RectilinearChunkGrid(ChunkGridEntity[RectilinearChunkGridMetadata]):
+class RectilinearChunkGrid(ChunkGridEntity):
     """The `rectilinear` chunk grid, coerced from its metadata."""
 
     kind: Literal["inline"]

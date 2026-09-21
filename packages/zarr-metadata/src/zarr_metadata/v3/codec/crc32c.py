@@ -60,7 +60,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class Crc32cCodec(BytesBytesCodec[Crc32cCodecName]):
+class Crc32cCodec(BytesBytesCodec):
     """The `crc32c` codec, coerced from its metadata.
 
     The name says everything: a checksum has nothing to configure.

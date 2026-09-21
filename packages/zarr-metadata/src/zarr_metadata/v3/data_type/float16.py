@@ -81,7 +81,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class Float16DataType(FloatDataType[Float16DataTypeName]):
+class Float16DataType(FloatDataType):
     """The `float16` data type. The name says everything."""
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"

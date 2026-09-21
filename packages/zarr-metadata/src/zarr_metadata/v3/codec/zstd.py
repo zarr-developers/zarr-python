@@ -74,7 +74,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class ZstdCodec(BytesBytesCodec[ZstdCodecMetadata]):
+class ZstdCodec(BytesBytesCodec):
     """The `zstd` codec, coerced from its metadata."""
 
     level: int
