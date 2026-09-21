@@ -5,16 +5,18 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
 """
 
 from dataclasses import dataclass, replace
-from typing import ClassVar, Final, Literal, NotRequired, Self
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self
 
 from typing_extensions import TypedDict
 
 from zarr_metadata.model._sentinel import UNSET
-from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
+from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     BytesBytesCodec,
-    problem,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 BLOSC_CODEC_NAME: Final = "blosc"
 """The `name` field value of the `blosc` codec."""
@@ -87,6 +89,36 @@ __all__ = [
 ]
 
 
+def blosc_problems(codec: "BloscCodec", /) -> "Iterator[ValidationProblem]":
+    """Bounds on `clevel` and `blocksize`; `typesize` against `shuffle`.
+
+    Under `noshuffle` the spec says of `typesize` that "the value is
+    ignored", and `canonical` drops it; under either shuffle it is
+    required, and positive.
+    """
+    if not 0 <= codec.clevel <= 9:
+        yield ValidationProblem(
+            ("clevel",), f"expected an integer in [0, 9], got {codec.clevel}", "invalid_value"
+        )
+    if codec.blocksize < 0:
+        yield ValidationProblem(
+            ("blocksize",), f"expected an integer >= 0, got {codec.blocksize}", "invalid_value"
+        )
+    if codec.shuffle != BLOSC_NO_SHUFFLE:
+        if codec.typesize is UNSET:
+            yield ValidationProblem(
+                ("typesize",),
+                f"typesize is required when shuffle is {codec.shuffle!r}",
+                "missing_key",
+            )
+        elif codec.typesize < 1:
+            yield ValidationProblem(
+                ("typesize",),
+                f"expected a positive integer, got {codec.typesize}",
+                "invalid_value",
+            )
+
+
 @dataclass(frozen=True)
 class BloscCodec(BytesBytesCodec):
     """The `blosc` codec, coerced from its metadata.
@@ -106,51 +138,8 @@ class BloscCodec(BytesBytesCodec):
     variable_size: ClassVar[bool] = True
 
     # Every member is required but `typesize`, which only means something
-    # when shuffling; `problems` is where that conditional lives.
-
-    def __post_init__(self) -> None:
-        """Bounds on `clevel` and `blocksize`; `typesize` against `shuffle`.
-
-        Under `noshuffle` the spec says of `typesize` that "the value is
-        ignored", and `canonical` drops it; under either shuffle it is
-        required, and positive.
-        """
-        found: list[ValidationProblem] = []
-        if not 0 <= self.clevel <= 9:
-            found.extend(
-                problem(
-                    ("clevel",),
-                    f"expected an integer in [0, 9], got {self.clevel}",
-                    "invalid_value",
-                )
-            )
-        if self.blocksize < 0:
-            found.extend(
-                problem(
-                    ("blocksize",),
-                    f"expected an integer >= 0, got {self.blocksize}",
-                    "invalid_value",
-                )
-            )
-        if self.shuffle != BLOSC_NO_SHUFFLE:
-            if self.typesize is UNSET:
-                found.extend(
-                    problem(
-                        ("typesize",),
-                        f"typesize is required when shuffle is {self.shuffle!r}",
-                        "missing_key",
-                    )
-                )
-            elif self.typesize < 1:
-                found.extend(
-                    problem(
-                        ("typesize",),
-                        f"expected a positive integer, got {self.typesize}",
-                        "invalid_value",
-                    )
-                )
-        if len(found) != 0:
-            raise MetadataValidationError(found)
+    # when shuffling; `blosc_problems` is where that conditional lives.
+    problems = blosc_problems
 
     def canonical(self) -> Self:
         """Without a `typesize` that `noshuffle` renders meaningless.

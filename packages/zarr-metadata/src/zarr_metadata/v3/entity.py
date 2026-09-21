@@ -40,9 +40,11 @@ with `loc` relative to the configuration: `("level",)`.
 kind (`ArrayArrayCodec`, `ArrayBytesCodec`, `BytesBytesCodec`),
 `DataTypeEntity`, `ChunkGridEntity`, `ChunkKeyEncodingEntity` or
 `StorageTransformerEntity`; declare the configuration as dataclass
-fields; put every rule finer than a type in `__post_init__`; add the
-class to a scope. Complete, and runnable as written:
+fields; write every rule finer than a type as a function of the
+instance that yields problems, and bind it as `problems`; add the class
+to a scope. Complete, and runnable as written:
 
+    from collections.abc import Iterator
     from dataclasses import dataclass
     from typing import ClassVar, Literal, NotRequired
 
@@ -53,8 +55,7 @@ class to a scope. Complete, and runnable as written:
         CORE_AND_EXTENSIONS,
         UNSET,
         BytesBytesCodec,
-        MetadataValidationError,
-        problem,
+        ValidationProblem,
     )
 
     class AcmeLz4Configuration(TypedDict, closed=True):
@@ -64,21 +65,20 @@ class to a scope. Complete, and runnable as written:
         name: Literal["acme.lz4"]
         configuration: AcmeLz4Configuration
 
-    @dataclass(frozen=True)  # load-bearing: `coerce` builds the entity with cls(**members)
+    def acme_lz4_problems(codec: "AcmeLz4Codec", /) -> Iterator[ValidationProblem]:
+        if codec.acceleration is not UNSET and not 1 <= codec.acceleration <= 65537:
+            yield ValidationProblem(
+                ("acceleration",),
+                f"expected an integer in [1, 65537], got {codec.acceleration}",
+                "invalid_value",
+            )
+
+    @dataclass(frozen=True)  # the fields are the schema; frozen, so an entity is a value
     class AcmeLz4Codec(BytesBytesCodec):
-        acceleration: int | UNSET = UNSET  # optional: defaults to UNSET, never to a value
+        acceleration: int | UNSET = UNSET  # optional: absent reads as UNSET
 
         identifier: ClassVar[str] = "acme.lz4"
-
-        def __post_init__(self) -> None:
-            if self.acceleration is not UNSET and not 1 <= self.acceleration <= 65537:
-                raise MetadataValidationError(
-                    problem(
-                        ("acceleration",),
-                        f"expected an integer in [1, 65537], got {self.acceleration}",
-                        "invalid_value",
-                    )
-                )
+        problems = acme_lz4_problems
 
         def to_json(self) -> AcmeLz4Object | Literal["acme.lz4"]:
             if self.acceleration is UNSET:
@@ -104,14 +104,15 @@ distinct from a JSON `null`, and a member that means something when
 absent is read that way where it is used, not defaulted.
 
 Everything finer than a type -- a bound, a rule about one member, members
-read together -- is `__post_init__`, in plain code. It collects every
-problem it finds and raises once; `coerce` catches the same error and
-reports the problems in the document instead. `problem(loc, message,
-kind)` returns a *one-element tuple*, so several are collected with
-`found.extend(problem(...))` and raised as `MetadataValidationError(found)`;
-pass `kind="invalid_value"` for a value rule, since the default names a
-type mismatch. `__post_init__` runs only on an entity whose members all
-read: a member of the wrong type is reported and the entity is not built.
+read together -- is a function of the instance that yields
+`ValidationProblem(loc, message, kind)` as it finds each, in plain
+code, bound on the class as `problems`. Locations are relative to the
+configuration, and `kind` is `"invalid_value"` for a value rule. The
+constructor stops at the first problem it yields, so
+`AcmeLz4Codec(acceleration=0)` raises `MetadataValidationError`;
+`coerce` runs it to the end and reports every problem in the document.
+It runs only on an entity whose members all read: a member of the wrong
+type is reported and the entity is not built.
 
 **What an entity answers for itself**, beyond its fields. `to_json`,
 abstract: the entity as a document writes it, as a literal of its own

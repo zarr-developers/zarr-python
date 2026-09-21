@@ -10,17 +10,19 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 
 import re
 from dataclasses import dataclass
-from typing import Annotated, ClassVar, Final, NewType
+from typing import TYPE_CHECKING, Annotated, ClassVar, Final, NewType
 
-from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
+from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     FROM_NAME,
     DataTypeEntity,
     Loc,
     StorageClass,
-    problem,
 )
 from zarr_metadata.v3.data_type._families import byte_values
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 RawBytesDataTypeName = NewType("RawBytesDataTypeName", str)
 """A spec-conformant `r<N>` raw-bytes name (e.g. `"r8"`, `"r16"`).
@@ -82,17 +84,16 @@ __all__ = [
 ]
 
 
-def _name_problems(name: str) -> tuple[ValidationProblem, ...]:
-    """Why `name` is not a well-formed `r<N>`, if it is not.
+def raw_bytes_problems(data_type: "RawBytesDataType", /) -> "Iterator[ValidationProblem]":
+    """This family's validity is in its name, not in a configuration.
 
     "raw bits, variable size given by *, limited to be a multiple of 8"
     -- and zero bits is not a data type.
     """
     try:
-        raw_bytes_dtype_name(name)
+        raw_bytes_dtype_name(data_type.data_type_name)
     except ValueError as error:
-        return problem((), str(error), "invalid_value")
-    return ()
+        yield ValidationProblem((), str(error), "invalid_value")
 
 
 @dataclass(frozen=True)
@@ -125,11 +126,7 @@ class RawBytesDataType(DataTypeEntity):
         """
         return RAW_BYTES_NAME_PATTERN.fullmatch(name) is not None
 
-    def __post_init__(self) -> None:
-        """This family's validity is in its name, not in a configuration."""
-        found = _name_problems(self.data_type_name)
-        if len(found) != 0:
-            raise MetadataValidationError(found)
+    problems = raw_bytes_problems
 
     def to_json(self) -> RawBytesDataTypeName:
         return RawBytesDataTypeName(self.data_type_name)
@@ -138,7 +135,7 @@ class RawBytesDataType(DataTypeEntity):
         """One byte value per byte of the scalar.
 
         A malformed name says nothing about how wide the scalar is, so
-        there is no length to check against; `problems` reports the name.
+        there is no length to check against; `raw_bytes_problems` reports the name.
         """
         try:
             raw_bytes_dtype_name(self.data_type_name)

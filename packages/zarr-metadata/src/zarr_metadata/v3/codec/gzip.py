@@ -5,15 +5,17 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/gzip/index.html
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.model._validation import MetadataValidationError
+from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     BytesBytesCodec,
-    problem,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 GZIP_CODEC_NAME: Final = "gzip"
 """The `name` field value of the `gzip` codec."""
@@ -65,6 +67,13 @@ __all__ = [
 ]
 
 
+def gzip_problems(codec: "GzipCodec", /) -> "Iterator[ValidationProblem]":
+    if not 0 <= codec.level <= 9:
+        yield ValidationProblem(
+            ("level",), f"expected an integer in [0, 9], got {codec.level}", "invalid_value"
+        )
+
+
 @dataclass(frozen=True)
 class GzipCodec(BytesBytesCodec):
     """The `gzip` codec, coerced from its metadata."""
@@ -74,13 +83,7 @@ class GzipCodec(BytesBytesCodec):
     identifier: ClassVar[str] = GZIP_CODEC_NAME
     variable_size: ClassVar[bool] = True
 
-    def __post_init__(self) -> None:
-        if not 0 <= self.level <= 9:
-            raise MetadataValidationError(
-                problem(
-                    ("level",), f"expected an integer in [0, 9], got {self.level}", "invalid_value"
-                )
-            )
+    problems = gzip_problems
 
     def to_json(self) -> GzipCodecObject:
         return {"name": "gzip", "configuration": {"level": self.level}}

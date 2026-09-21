@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, c
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
+from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ChunkGridEntity,
     Loc,
@@ -19,7 +19,7 @@ from zarr_metadata.v3._entity import (
 from zarr_metadata.v3._parts import ChunkGrid
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
 
 RECTILINEAR_CHUNK_GRID_NAME: Final = "rectilinear"
@@ -69,8 +69,8 @@ the short-hand-name form is not permitted by the spec for this grid.
 """
 
 
-def _not_positive(loc: Loc, value: int) -> tuple[ValidationProblem, ...]:
-    return problem(loc, f"expected an integer >= 1, got {value}", "invalid_value")
+def _not_positive(loc: Loc, value: int) -> ValidationProblem:
+    return ValidationProblem(loc, f"expected an integer >= 1, got {value}", "invalid_value")
 
 
 def canonical_dim_spec(spec: RectilinearDimSpec) -> RectilinearDimSpec:
@@ -166,6 +166,23 @@ def _axis_lengths(spec: RectilinearDimSpec) -> frozenset[int] | None:
     return frozenset(lengths) if len(lengths) != 0 else None
 
 
+def rectilinear_problems(grid: "RectilinearChunkGrid", /) -> "Iterator[ValidationProblem]":
+    """Every extent, and every run's length and count, is at least 1."""
+    for axis, spec in enumerate(grid.chunk_shapes):
+        if isinstance(spec, int):
+            if spec < 1:
+                yield _not_positive(("chunk_shapes", axis), spec)
+            continue
+        for index, entry in enumerate(spec):
+            if isinstance(entry, int):
+                if entry < 1:
+                    yield _not_positive(("chunk_shapes", axis, index), entry)
+                continue
+            for position, value in enumerate(entry):
+                if value < 1:
+                    yield _not_positive(("chunk_shapes", axis, index, position), value)
+
+
 @dataclass(frozen=True)
 class RectilinearChunkGrid(ChunkGridEntity):
     """The `rectilinear` chunk grid, coerced from its metadata."""
@@ -175,24 +192,7 @@ class RectilinearChunkGrid(ChunkGridEntity):
 
     identifier: ClassVar[str] = RECTILINEAR_CHUNK_GRID_NAME
 
-    def __post_init__(self) -> None:
-        """Every extent, and every run's length and count, is at least 1."""
-        found: list[ValidationProblem] = []
-        for axis, spec in enumerate(self.chunk_shapes):
-            if isinstance(spec, int):
-                if spec < 1:
-                    found.extend(_not_positive(("chunk_shapes", axis), spec))
-                continue
-            for index, entry in enumerate(spec):
-                if isinstance(entry, int):
-                    if entry < 1:
-                        found.extend(_not_positive(("chunk_shapes", axis, index), entry))
-                    continue
-                for position, value in enumerate(entry):
-                    if value < 1:
-                        found.extend(_not_positive(("chunk_shapes", axis, index, position), value))
-        if len(found) != 0:
-            raise MetadataValidationError(found)
+    problems = rectilinear_problems
 
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
         """One spec per dimension, and explicit specs must cover it.

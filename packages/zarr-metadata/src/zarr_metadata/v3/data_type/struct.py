@@ -4,14 +4,14 @@ Zarr `struct` data type (heterogeneous record, zarr-extensions).
 See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/struct/README.md
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, replace
-from typing import ClassVar, Final, Literal, NotRequired, Self, cast
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, cast
 
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
+from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
     DataTypeEntity,
@@ -22,6 +22,9 @@ from zarr_metadata.v3._entity import (
     problem,
     written,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 STRUCT_DATA_TYPE_NAME: Final = "struct"
 """The `name` field value of the `struct` data type."""
@@ -101,6 +104,39 @@ def _written_field(field: StructFieldComponent) -> StructField:
     return {"name": field.name, "data_type": written(field.data_type)}
 
 
+def struct_problems(data_type: "StructDataType", /) -> "Iterator[ValidationProblem]":
+    """Names exist, are non-empty and distinct; types are fixed-size.
+
+    A fill value addresses fields by name, and a record's layout is not
+    determined by a variable-length field. Nothing about a field type's
+    own values: it is an entity, so it exists only if those are allowed.
+    """
+    if len(data_type.fields) == 0:
+        yield ValidationProblem(("fields",), "expected at least one struct field", "invalid_value")
+    seen: dict[str, int] = {}
+    for index, field in enumerate(data_type.fields):
+        if field.name == "":
+            yield ValidationProblem(
+                ("fields", index, "name"), "expected a non-empty field name", "invalid_value"
+            )
+        first = seen.setdefault(field.name, index)
+        if first != index:
+            yield ValidationProblem(
+                ("fields", index, "name"),
+                f"duplicate field name {field.name!r}, already used by field {first}",
+                "invalid_value",
+            )
+        if (
+            isinstance(field.data_type, DataTypeEntity)
+            and field.data_type.storage_class() == "variable_length"
+        ):
+            yield ValidationProblem(
+                ("fields", index, "data_type"),
+                "struct fields must use fixed-size data types",
+                "invalid_value",
+            )
+
+
 @dataclass(frozen=True)
 class StructDataType(DataTypeEntity):
     """The `struct` data type, coerced from its metadata.
@@ -115,51 +151,7 @@ class StructDataType(DataTypeEntity):
     identifier: ClassVar[str] = STRUCT_DATA_TYPE_NAME
     scalar_storage: ClassVar[StorageClass] = "single_byte"
 
-    def __post_init__(self) -> None:
-        """Names exist, are non-empty and distinct; types are fixed-size.
-
-        A fill value addresses fields by name, and a record's layout is
-        not determined by a variable-length field. Nothing about a field
-        type's own values: it is an entity, so it exists only if those
-        are allowed.
-        """
-        found: list[ValidationProblem] = []
-        if len(self.fields) == 0:
-            found.extend(
-                problem(("fields",), "expected at least one struct field", "invalid_value")
-            )
-        seen: dict[str, int] = {}
-        for index, field in enumerate(self.fields):
-            if field.name == "":
-                found.extend(
-                    problem(
-                        ("fields", index, "name"),
-                        "expected a non-empty field name",
-                        "invalid_value",
-                    )
-                )
-            first = seen.setdefault(field.name, index)
-            if first != index:
-                found.extend(
-                    problem(
-                        ("fields", index, "name"),
-                        f"duplicate field name {field.name!r}, already used by field {first}",
-                        "invalid_value",
-                    )
-                )
-            if (
-                isinstance(field.data_type, DataTypeEntity)
-                and field.data_type.storage_class() == "variable_length"
-            ):
-                found.extend(
-                    problem(
-                        ("fields", index, "data_type"),
-                        "struct fields must use fixed-size data types",
-                        "invalid_value",
-                    )
-                )
-        if len(found) != 0:
-            raise MetadataValidationError(found)
+    problems = struct_problems
 
     def canonical(self) -> Self:
         """Each field's data type in its own canonical form."""

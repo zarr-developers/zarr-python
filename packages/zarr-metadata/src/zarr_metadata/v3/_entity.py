@@ -6,9 +6,10 @@ field annotations are its schema: `coerce` reads a document's
 configuration against them, member by member, with `_typed_json`. A
 field typed `CodecEntity | Opaque` holds another entity, read through
 the scope the containing one is read in. Everything finer than a type --
-a bound, a rule about a member, members read together -- is the entity's
-own `__post_init__`, which collects every problem it finds and raises
-once; `coerce` reports those instead of raising.
+a bound, a rule about a member, members read together -- is a function
+of the entity's instance that yields problems as it finds them, bound
+on the class as `problems`; the constructor stops at the first,
+`coerce` reports every one.
 
 What an entity writes and what it simplifies to are its own too:
 `to_json` is abstract, a literal of the entity's JSON type, and
@@ -49,7 +50,7 @@ from zarr_metadata.v3._typed_json import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
     from typing import Self
 
     from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
@@ -281,13 +282,13 @@ class MetadataEntity(ABC):
     mapping instead: `MappingProxyType` is unhashable too, and anything
     else stops `json.dumps` from serializing what `to_json` returns.
 
-    A subclass writes its fields; a `__post_init__` where the spec has
-    something to say beyond their types, collecting every problem and
-    raising `MetadataValidationError` once -- so `BloscCodec(clevel=99)`
-    raises, and `coerce` reports the same problems instead; `to_json`, a
-    literal of its JSON type; and `canonical` where two spellings of its
-    members mean the same. `coerce` is written once here, against what
-    the fields say.
+    A subclass writes its fields; where the spec has something to say
+    beyond their types, a function of the instance that yields problems,
+    bound as `problems` -- so `BloscCodec(clevel=99)` raises on the
+    first, and `coerce` reports every one instead; `to_json`, a literal
+    of its JSON type; and `canonical` where two spellings of its members
+    mean the same. `coerce` is written once here, against what the
+    fields say.
     """
 
     identifier: ClassVar[str]
@@ -301,13 +302,14 @@ class MetadataEntity(ABC):
     def __init_subclass__(cls, *, base: bool = False, **kwargs: object) -> None:
         """Refuse, at class creation, an entity this layer could not read.
 
-        Two things type-check cleanly and then go wrong somewhere that
+        Three things type-check cleanly and then go wrong somewhere that
         will not name the class: a field whose annotation is not a shape
-        JSON takes, which `coerce` could not parse, and a class variable
-        a base annotates and nothing sets -- `identifier` for every
-        entity, `bounds` for an integer type -- which the first lookup
-        would fail. An import-time error in the extension's own module is
-        the one place the author is looking.
+        JSON takes, which `coerce` could not parse; a `__post_init__` of
+        the entity's own, whose rules `coerce` would never ask; and a
+        class variable a base annotates and nothing sets -- `identifier`
+        for every entity, `bounds` for an integer type -- which the first
+        lookup would fail. An import-time error in the extension's own
+        module is the one place the author is looking.
 
         `base=True` for a class that exists to add a class variable
         rather than to be an entity -- `CodecEntity`, `IntegerDataType`.
@@ -333,7 +335,14 @@ class MetadataEntity(ABC):
                 "a Literal of names, tuple[T, ...] or tuple[T1, T2], a TypedDict or dataclass "
                 "record, Mapping[str, V], a NewType, or an entity kind with Opaque "
                 "(CodecEntity | Opaque); add | UNSET for an optional member, and put any finer "
-                "rule in `__post_init__`"
+                "rule in the function bound as `problems`"
+            )
+            raise TypeError(msg)
+        if "__post_init__" in vars(cls):
+            msg = (
+                f"{cls.__name__} defines __post_init__; write its rules as a function of the "
+                "instance that yields problems and bind it as `problems = <function>`: the "
+                "constructor stops at the first problem it yields, `coerce` reports every one"
             )
             raise TypeError(msg)
         annotated = declared_class_vars(cls)
@@ -347,6 +356,36 @@ class MetadataEntity(ABC):
                 "or pass base=True if this class exists only to be subclassed"
             )
             raise TypeError(msg)
+
+    def problems(self, /) -> Iterator[ValidationProblem]:
+        """Every reason this entity's values are not allowed, yielded as found.
+
+        The entity's own rules -- a bound, a rule about one member,
+        members read together -- written as a function of the instance
+        and bound on the class: `problems = blosc_problems`. Locations
+        are relative to the configuration. A consumer stops at the first
+        or collects them all, as it needs: the constructor stops at the
+        first, `coerce` collects every one. Default: none.
+        """
+        yield from ()
+
+    def __post_init__(self) -> None:
+        """Refuse the first problem `problems` finds, so `BloscCodec(clevel=99)` raises."""
+        first = next(self.problems(), None)
+        if first is not None:
+            raise MetadataValidationError((first,))
+
+    @classmethod
+    def _unchecked(cls, members: Mapping[str, object]) -> Self:
+        """The instance `cls(**members)` would build, without asking `problems`.
+
+        For `coerce`, which asks `problems` itself and reports every one,
+        where the constructor stops at the first.
+        """
+        entity = object.__new__(cls)
+        for name, value in members.items():
+            object.__setattr__(entity, name, value)
+        return entity
 
     @classmethod
     def accepts(cls, name: str) -> bool:
@@ -418,12 +457,12 @@ class MetadataEntity(ABC):
             # An unknown key is survivable; a member that could not be
             # read is a hole, and judging around it would be guessing.
             return None, found
-        try:
-            entity = cls(**members)
-        except MetadataValidationError as refused:
-            # `__post_init__` found values the spec disallows: reported
-            # rather than raised, located under the configuration.
-            return None, (*found, *within((), refused.problems))
+        entity = cls._unchecked(members)
+        refused = within((), tuple(entity.problems()))
+        if len(refused) != 0:
+            # Values the spec disallows: reported rather than raised,
+            # every one, located under the configuration.
+            return None, (*found, *refused)
         if any(entry.kind != "unknown_key" for entry in nested):
             # A contained entity could not be read. This entity's own
             # rules ran -- an invalid inner is an `Opaque`, as an

@@ -7,16 +7,18 @@ proposed the codec, was never merged).
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
 from zarr_metadata.model._sentinel import UNSET
-from zarr_metadata.model._validation import MetadataValidationError
+from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     BytesBytesCodec,
-    problem,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 ZSTD_CODEC_NAME: Final = "zstd"
 """The `name` field value of the `zstd` codec."""
@@ -73,6 +75,15 @@ __all__ = [
 ]
 
 
+def zstd_problems(codec: "ZstdCodec", /) -> "Iterator[ValidationProblem]":
+    if not ZSTD_MIN_LEVEL <= codec.level <= ZSTD_MAX_LEVEL:
+        yield ValidationProblem(
+            ("level",),
+            f"expected an integer in [{ZSTD_MIN_LEVEL}, {ZSTD_MAX_LEVEL}], got {codec.level}",
+            "invalid_value",
+        )
+
+
 @dataclass(frozen=True)
 class ZstdCodec(BytesBytesCodec):
     """The `zstd` codec, coerced from its metadata."""
@@ -83,15 +94,7 @@ class ZstdCodec(BytesBytesCodec):
     identifier: ClassVar[str] = ZSTD_CODEC_NAME
     variable_size: ClassVar[bool] = True
 
-    def __post_init__(self) -> None:
-        if not ZSTD_MIN_LEVEL <= self.level <= ZSTD_MAX_LEVEL:
-            raise MetadataValidationError(
-                problem(
-                    ("level",),
-                    f"expected an integer in [{ZSTD_MIN_LEVEL}, {ZSTD_MAX_LEVEL}], got {self.level}",
-                    "invalid_value",
-                )
-            )
+    problems = zstd_problems
 
     def to_json(self) -> ZstdCodecObject:
         configuration: ZstdCodecConfiguration = {"level": self.level}

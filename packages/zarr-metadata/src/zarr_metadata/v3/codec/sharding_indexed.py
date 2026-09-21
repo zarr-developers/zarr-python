@@ -5,12 +5,12 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index
 """
 
 from dataclasses import dataclass, replace
-from typing import ClassVar, Final, Literal, NotRequired, Self
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self
 
 from typing_extensions import TypedDict
 
 from zarr_metadata.model._sentinel import UNSET
-from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
+from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._chain import chain_problems
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
@@ -28,6 +28,9 @@ from zarr_metadata.v3._parts import (
     shard_index_grid,
 )
 from zarr_metadata.v3.data_type.uint64 import Uint64DataType
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 SHARDING_INDEXED_CODEC_NAME: Final = "sharding_indexed"
 """The `name` field value of the `sharding_indexed` codec."""
@@ -96,6 +99,14 @@ __all__ = [
 ]
 
 
+def sharding_problems(codec: "ShardingIndexedCodec", /) -> "Iterator[ValidationProblem]":
+    for index, extent in enumerate(codec.chunk_shape):
+        if extent < 1:
+            yield ValidationProblem(
+                ("chunk_shape", index), f"expected an integer >= 1, got {extent}", "invalid_value"
+            )
+
+
 @dataclass(frozen=True)
 class ShardingIndexedCodec(ArrayBytesCodec):
     """The `sharding_indexed` codec, coerced from its metadata.
@@ -113,19 +124,7 @@ class ShardingIndexedCodec(ArrayBytesCodec):
     identifier: ClassVar[str] = SHARDING_INDEXED_CODEC_NAME
     variable_size: ClassVar[bool] = True
 
-    def __post_init__(self) -> None:
-        found: list[ValidationProblem] = []
-        for index, extent in enumerate(self.chunk_shape):
-            if extent < 1:
-                found.extend(
-                    problem(
-                        ("chunk_shape", index),
-                        f"expected an integer >= 1, got {extent}",
-                        "invalid_value",
-                    )
-                )
-        if len(found) != 0:
-            raise MetadataValidationError(found)
+    problems = sharding_problems
 
     def canonical(self) -> Self:
         """Each pipeline's codecs in their own canonical form."""

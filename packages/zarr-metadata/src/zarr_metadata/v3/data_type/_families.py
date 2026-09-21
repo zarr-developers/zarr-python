@@ -26,7 +26,7 @@ from zarr_metadata.v3._entity import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from zarr_metadata.v3._entity import Loc
 
@@ -167,16 +167,30 @@ NUMPY_TIME_MAX_SCALE_FACTOR: Final = 2**31 - 1
 """The largest `scale_factor` numpy stores: the field is a signed int32."""
 
 
+def numpy_time_problems(data_type: NumpyTimeDataType, /) -> Iterator[ValidationProblem]:
+    if not 1 <= data_type.scale_factor <= NUMPY_TIME_MAX_SCALE_FACTOR:
+        yield ValidationProblem(
+            ("scale_factor",),
+            f"expected an integer in [1, {NUMPY_TIME_MAX_SCALE_FACTOR}], "
+            f"got {data_type.scale_factor}",
+            "invalid_value",
+        )
+
+
 @dataclass(frozen=True)
 class NumpyTimeDataType(DataTypeEntity, base=True):
     """A numpy time scalar: a signed 64-bit count of units, or `NaT`.
 
-    The vocabulary the two time types share -- the unit codes and the
-    scale-factor bound -- lives here with the family, so neither sibling
-    imports it from the other.
+    The two time types share their configuration -- a unit and a scale
+    factor -- and the rule on it, so both live here with the family and
+    neither sibling imports them from the other.
     """
 
+    unit: NumpyTimeUnit
+    scale_factor: int
+
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
+    problems = numpy_time_problems
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         if value == "NaT":

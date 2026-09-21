@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
+from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ChunkGridEntity,
     problem,
@@ -17,7 +17,7 @@ from zarr_metadata.v3._entity import (
 from zarr_metadata.v3._parts import ChunkGrid
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
 
 REGULAR_CHUNK_GRID_NAME: Final = "regular"
@@ -60,6 +60,14 @@ __all__ = [
 ]
 
 
+def regular_problems(grid: "RegularChunkGrid", /) -> "Iterator[ValidationProblem]":
+    for index, extent in enumerate(grid.chunk_shape):
+        if extent < 1:
+            yield ValidationProblem(
+                ("chunk_shape", index), f"expected an integer >= 1, got {extent}", "invalid_value"
+            )
+
+
 @dataclass(frozen=True)
 class RegularChunkGrid(ChunkGridEntity):
     """The `regular` chunk grid, coerced from its metadata."""
@@ -68,19 +76,7 @@ class RegularChunkGrid(ChunkGridEntity):
 
     identifier: ClassVar[str] = REGULAR_CHUNK_GRID_NAME
 
-    def __post_init__(self) -> None:
-        found: list[ValidationProblem] = []
-        for index, extent in enumerate(self.chunk_shape):
-            if extent < 1:
-                found.extend(
-                    problem(
-                        ("chunk_shape", index),
-                        f"expected an integer >= 1, got {extent}",
-                        "invalid_value",
-                    )
-                )
-        if len(found) != 0:
-            raise MetadataValidationError(found)
+    problems = regular_problems
 
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
         """A regular grid must chunk every array dimension."""

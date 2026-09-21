@@ -15,7 +15,7 @@ import pytest
 from typing_extensions import ReadOnly, TypedDict
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Iterator
 
 
 from zarr_metadata.v3.entity import (
@@ -70,6 +70,25 @@ __all__ = [
 ]
 
 
+def acme_decimal_problems(data_type: AcmeDecimalDataType, /) -> Iterator[ValidationProblem]:
+    if not 1 <= data_type.precision <= ACME_DECIMAL_MAX_PRECISION:
+        yield ValidationProblem(
+            ("precision",),
+            f"expected an integer in [1, {ACME_DECIMAL_MAX_PRECISION}], got {data_type.precision}",
+            "invalid_value",
+        )
+    if data_type.scale < 0:
+        yield ValidationProblem(
+            ("scale",), f"expected an integer >= 0, got {data_type.scale}", "invalid_value"
+        )
+    elif data_type.scale > data_type.precision:
+        yield ValidationProblem(
+            ("scale",),
+            f"expected an integer <= precision ({data_type.precision}), got {data_type.scale}",
+            "invalid_value",
+        )
+
+
 @dataclass(frozen=True)
 class AcmeDecimalDataType(DataTypeEntity):
     """The `acme.decimal` data type, coerced from its metadata."""
@@ -79,32 +98,7 @@ class AcmeDecimalDataType(DataTypeEntity):
 
     identifier: ClassVar[str] = ACME_DECIMAL_DATA_TYPE_NAME
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
-
-    def __post_init__(self) -> None:
-        found: list[ValidationProblem] = []
-        if not 1 <= self.precision <= ACME_DECIMAL_MAX_PRECISION:
-            found.extend(
-                problem(
-                    ("precision",),
-                    f"expected an integer in [1, {ACME_DECIMAL_MAX_PRECISION}], "
-                    f"got {self.precision}",
-                    "invalid_value",
-                )
-            )
-        if self.scale < 0:
-            found.extend(
-                problem(("scale",), f"expected an integer >= 0, got {self.scale}", "invalid_value")
-            )
-        elif self.scale > self.precision:
-            found.extend(
-                problem(
-                    ("scale",),
-                    f"expected an integer <= precision ({self.precision}), got {self.scale}",
-                    "invalid_value",
-                )
-            )
-        if len(found) != 0:
-            raise MetadataValidationError(found)
+    problems = acme_decimal_problems
 
     def to_json(self) -> AcmeDecimal:
         return {
@@ -320,10 +314,14 @@ def test_error_scale_above_precision() -> None:
     ]
 
 
-def test_error_every_member_problem_is_reported_at_once() -> None:
+def test_error_the_constructor_stops_at_the_first_problem_and_coerce_reports_every_one() -> None:
     with pytest.raises(MetadataValidationError) as caught:
         AcmeDecimalDataType(precision=0, scale=-1)
-    assert _locs(caught.value.problems) == [("precision",), ("scale",)]
+    assert _locs(caught.value.problems) == [("precision",)]
+    _, problems = SCOPE.coerce(
+        DataTypeEntity, {"name": "acme.decimal", "configuration": {"precision": 0, "scale": -1}}
+    )
+    assert _locs(problems) == [("configuration", "precision"), ("configuration", "scale")]
 
 
 def test_error_fill_value_must_be_a_string() -> None:

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, replace
-from typing import Annotated, ClassVar, Literal, NotRequired, Self, cast
+from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, NotRequired, Self, cast
 
 import pytest
 from typing_extensions import TypedDict
@@ -45,7 +45,19 @@ from zarr_metadata.v3.entity import (
     written,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 ACME_MAX_ACCELERATION = 65537
+
+
+def acme_lz4_problems(codec: AcmeLz4Codec, /) -> Iterator[ValidationProblem]:
+    if codec.acceleration is not UNSET and not 1 <= codec.acceleration <= ACME_MAX_ACCELERATION:
+        yield ValidationProblem(
+            ("acceleration",),
+            f"expected an integer in [1, {ACME_MAX_ACCELERATION}], got {codec.acceleration}",
+            "invalid_value",
+        )
 
 
 @dataclass(frozen=True)
@@ -56,16 +68,7 @@ class AcmeLz4Codec(BytesBytesCodec):
 
     identifier: ClassVar[str] = "acme.lz4"
     variable_size: ClassVar[bool] = True
-
-    def __post_init__(self) -> None:
-        if self.acceleration is not UNSET and not 1 <= self.acceleration <= ACME_MAX_ACCELERATION:
-            raise MetadataValidationError(
-                problem(
-                    ("acceleration",),
-                    f"expected an integer in [1, {ACME_MAX_ACCELERATION}], got {self.acceleration}",
-                    "invalid_value",
-                )
-            )
+    problems = acme_lz4_problems
 
     def to_json(self) -> ZarrV3MetadataFieldJSON:
         if self.acceleration is UNSET:
@@ -326,8 +329,8 @@ def test_a_third_party_can_register_a_family() -> None:
 
 
 def test_error_a_member_needs_a_check_from_somewhere() -> None:
-    # An annotation outside the shapes `check_for` compiles implies no
-    # check, so the entity owes one. Silently skipping the member would
+    # An annotation outside the shapes the parser reads implies no
+    # parser, so the entity owes one. Silently skipping the member would
     # let anything through where the field promised a type.
     with pytest.raises(TypeError, match="inner is annotated .*, which is not a shape JSON takes"):
 
@@ -477,7 +480,14 @@ class AcmeBlockObject(TypedDict, closed=True):
     must_understand: NotRequired[bool]
 
 
-# A third-party rule about a member, written in `__post_init__`.
+# A third-party rule about a member: a function of the instance.
+def acme_block_problems(codec: AcmeBlockCodec, /) -> Iterator[ValidationProblem]:
+    if codec.block < 1 or codec.block & (codec.block - 1) != 0:
+        yield ValidationProblem(
+            ("block",), f"expected a power of two, got {codec.block}", "invalid_value"
+        )
+
+
 @dataclass(frozen=True)
 class AcmeBlockCodec(BytesBytesCodec):
     """A codec whose block size must be a power of two."""
@@ -485,21 +495,16 @@ class AcmeBlockCodec(BytesBytesCodec):
     block: int
 
     identifier: ClassVar[str] = "acme.block"
-
-    def __post_init__(self) -> None:
-        if self.block < 1 or self.block & (self.block - 1) != 0:
-            raise MetadataValidationError(
-                problem(("block",), f"expected a power of two, got {self.block}", "invalid_value")
-            )
+    problems = acme_block_problems
 
     def to_json(self) -> ZarrV3MetadataFieldJSON:
         return {"name": "acme.block", "configuration": {"block": self.block}}
 
 
-def test_a_rule_about_a_member_is_post_init() -> None:
+def test_a_rule_about_a_member_is_a_function_of_the_instance() -> None:
     # The rule runs on the typed members and reports relative to the
-    # configuration; `coerce` catches what it raises and locates it in
-    # the document, and the constructor raises it as it is.
+    # configuration; `coerce` runs it to the end and locates what it
+    # yields in the document; the constructor stops at the first.
     scope = CORE_AND_EXTENSIONS.extended_with(AcmeBlockCodec)
     codec, problems = scope.coerce(
         CodecEntity, {"name": "acme.block", "configuration": {"block": 64}}
@@ -517,6 +522,59 @@ def test_a_rule_about_a_member_is_post_init() -> None:
     # A member that failed its type check never reaches the rule.
     _, problems = scope.coerce(CodecEntity, {"name": "acme.block", "configuration": {"block": "x"}})
     assert [p.kind for p in problems] == ["invalid_type"]
+
+
+def acme_range_problems(codec: AcmeRangeCodec, /) -> Iterator[ValidationProblem]:
+    if codec.low < 0:
+        yield ValidationProblem(
+            ("low",), f"expected an integer >= 0, got {codec.low}", "invalid_value"
+        )
+    if codec.high < codec.low:
+        yield ValidationProblem(
+            ("high",), f"expected an integer >= low, got {codec.high}", "invalid_value"
+        )
+
+
+@dataclass(frozen=True)
+class AcmeRangeCodec(BytesBytesCodec):
+    """A codec with two rules, so that one can fail after another."""
+
+    low: int
+    high: int
+
+    identifier: ClassVar[str] = "acme.range"
+    problems = acme_range_problems
+
+    def to_json(self) -> ZarrV3MetadataFieldJSON:
+        return {"name": "acme.range", "configuration": {"low": self.low, "high": self.high}}
+
+
+def test_the_constructor_stops_at_the_first_problem_and_coerce_reports_every_one() -> None:
+    # One function, two consumers: the constructor takes the first
+    # problem it yields, `coerce` runs it to the end. A consumer holding
+    # an entity may run it too, and stop or collect as it likes.
+    with pytest.raises(MetadataValidationError) as caught:
+        AcmeRangeCodec(low=-1, high=-2)
+    assert [p.loc for p in caught.value.problems] == [("low",)]
+    scope = CORE_AND_EXTENSIONS.extended_with(AcmeRangeCodec)
+    _, problems = scope.coerce(
+        CodecEntity, {"name": "acme.range", "configuration": {"low": -1, "high": -2}}
+    )
+    assert [p.loc for p in problems] == [("configuration", "low"), ("configuration", "high")]
+    assert list(acme_range_problems(AcmeRangeCodec(low=0, high=1))) == []
+
+
+def test_error_an_entity_may_not_define_post_init() -> None:
+    # `coerce` never runs it, so a rule written there would judge a
+    # hand-built entity and no document.
+    with pytest.raises(TypeError, match="defines __post_init__; write its rules as a function"):
+
+        @dataclass(frozen=True)
+        class Checked(BytesBytesCodec):
+            identifier: ClassVar[str] = "acme.checked"
+
+            def __post_init__(self) -> None:
+                return None
 
 
 def test_a_slotted_entity_is_accepted() -> None:

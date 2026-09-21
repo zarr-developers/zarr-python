@@ -9,7 +9,7 @@ docstring points at.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import ClassVar, Literal, NotRequired, Self
+from typing import TYPE_CHECKING, ClassVar, Literal, NotRequired, Self
 
 import pytest
 from typing_extensions import TypedDict
@@ -36,6 +36,9 @@ from zarr_metadata.v3.entity import (
     written,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 
 class AcmeAffineConfiguration(TypedDict, closed=True):
     scale: float
@@ -49,6 +52,17 @@ class AcmeAffineObject(TypedDict, closed=True):
     must_understand: NotRequired[bool]
 
 
+def acme_affine_problems(codec: AcmeAffineCodec, /) -> Iterator[ValidationProblem]:
+    if codec.scale == 0:
+        yield ValidationProblem(("scale",), "expected a non-zero number, got 0", "invalid_value")
+    if isinstance(codec.dtype, DataTypeEntity) and codec.dtype.storage_class() == "variable_length":
+        yield ValidationProblem(
+            ("dtype",),
+            f"expected a fixed-size data type, got {type(codec.dtype).identifier!r}",
+            "invalid_value",
+        )
+
+
 @dataclass(frozen=True)
 class AcmeAffineCodec(ArrayArrayCodec):
     """`x * scale + offset`, stored as `dtype` if one is named."""
@@ -58,24 +72,7 @@ class AcmeAffineCodec(ArrayArrayCodec):
     dtype: DataTypeEntity | Opaque | UNSET = UNSET
 
     identifier: ClassVar[str] = "acme.affine"
-
-    def __post_init__(self) -> None:
-        found: list[ValidationProblem] = []
-        if self.scale == 0:
-            found.extend(problem(("scale",), "expected a non-zero number, got 0", "invalid_value"))
-        if (
-            isinstance(self.dtype, DataTypeEntity)
-            and self.dtype.storage_class() == "variable_length"
-        ):
-            found.extend(
-                problem(
-                    ("dtype",),
-                    f"expected a fixed-size data type, got {type(self.dtype).identifier!r}",
-                    "invalid_value",
-                )
-            )
-        if len(found) != 0:
-            raise MetadataValidationError(found)
+    problems = acme_affine_problems
 
     def canonical(self) -> Self:
         """An offset of 0 is the identity, and absent says the same; `dtype` in its own form."""

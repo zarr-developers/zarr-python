@@ -9,10 +9,8 @@ from typing import ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import ReadOnly, TypedDict
 
-from zarr_metadata.model._validation import MetadataValidationError
 from zarr_metadata.v3._entity import (
     StorageClass,
-    problem,
 )
 from zarr_metadata.v3.data_type._families import (
     NUMPY_TIME_MAX_SCALE_FACTOR,
@@ -76,22 +74,8 @@ __all__ = [
 class NumpyTimedelta64DataType(NumpyTimeDataType):
     """The `numpy.timedelta64` data type, coerced from its metadata."""
 
-    unit: NumpyTimeUnit
-    scale_factor: int
-
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     identifier: ClassVar[str] = NUMPY_TIMEDELTA64_DATA_TYPE_NAME
-
-    def __post_init__(self) -> None:
-        if not 1 <= self.scale_factor <= NUMPY_TIME_MAX_SCALE_FACTOR:
-            raise MetadataValidationError(
-                problem(
-                    ("scale_factor",),
-                    f"expected an integer in [1, {NUMPY_TIME_MAX_SCALE_FACTOR}], "
-                    f"got {self.scale_factor}",
-                    "invalid_value",
-                )
-            )
 
     def to_json(self) -> NumpyTimedelta64:
         return {
