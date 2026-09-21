@@ -288,7 +288,6 @@ _STANDALONE_VOCAB = frozenset(
         "BloscCName",
         "BloscShuffle",
         "Canonical",
-        "CheckCompiler",
         "CastOutOfRangeMode",
         "CastRoundingMode",
         "CodecKind",
@@ -297,11 +296,6 @@ _STANDALONE_VOCAB = frozenset(
         "MemberTypes",
         "Loc",
         "Extents",
-        "Ge",
-        "Gt",
-        "Interval",
-        "Le",
-        "Lt",
         "ExtensionPointField",
         "Context",
         "Coerced",
@@ -329,7 +323,6 @@ _STANDALONE_VOCAB = frozenset(
         "Struct",
         "StructField",
         "ValidationProblem",
-        "ValueRoutine",
     }
 )
 

@@ -48,38 +48,19 @@ bare, `to_json` is typed as any metadata field:
 The fields are the only place the shape is written. Which members exist,
 which may be left out (the type admits `UNSET`), and how each one is
 type-checked are all read off the annotations -- an `int`, a `Literal`
-of names, an array, a nested entity type -- and an annotation the
-compiler does not read is taught to it once, with `register_check`. A
-bound on a value is written on the field too, in the `annotated_types`
-vocabulary:
+of names, an array, a nested object, a nested entity type: the shapes
+JSON takes, and no others. Everything finer -- a bound, a rule about a
+member, members read together -- is `__post_init__`, in plain code,
+collecting every problem and raising once; `coerce` reports those
+instead of raising, located under the configuration:
 
-    acceleration: Annotated[int, Interval(ge=1, le=65537)] | UNSET = UNSET
+    acceleration: int | UNSET = UNSET
 
-A rule about one member that is not a bound is a `@validates` rule: a
-staticmethod taking the member's value, run only when the member is
-present and has the type it declared, reporting relative to the member:
-
-    @staticmethod
-    @validates("order")
-    def _order_permutes_itself(order: tuple[int, ...]) -> tuple[ValidationProblem, ...]:
-        if sorted(order) != list(range(len(order))):
-            return problem((), f"expected a permutation, got {order!r}", "invalid_value")
-        return ()
-
-A rule that reads two members together goes in a `value_problems`
-staticmethod; annotate it with a TypedDict of the members so its body is
-checked:
-
-    class AcmeLz4Configuration(TypedDict, closed=True):
-        acceleration: NotRequired[int]
-
-    @staticmethod
-    def value_problems(
-        **members: Unpack[AcmeLz4Configuration],
-    ) -> tuple[ValidationProblem, ...]:
-        if "acceleration" not in members:
-            return ()
-        ...
+    def __post_init__(self) -> None:
+        if self.acceleration is not UNSET and not 1 <= self.acceleration <= 65537:
+            raise MetadataValidationError(
+                problem(("acceleration",), f"expected an integer in [1, 65537], got {self.acceleration}", "invalid_value")
+            )
 
 A name in no scope is not rejected -- that is what extension openness
 means -- so registering yours is how you get it judged rather than waved
@@ -117,25 +98,18 @@ from zarr_metadata.v3._entity import (
     DATA_TYPE,
     FROM_NAME,
     STORAGE_TRANSFORMERS,
-    CheckCompiler,
     ChunkGridEntity,
     CodecEntity,
     CodecKind,
     Coerced,
     DataTypeEntity,
     ExtensionPointField,
-    Ge,
-    Gt,
-    Interval,
-    Le,
     Loc,
-    Lt,
     MemberTypes,
     MetadataEntity,
     Opaque,
     StorageClass,
     TypeCheck,
-    ValueRoutine,
     coerce_members,
     is_bool,
     is_int,
@@ -146,9 +120,7 @@ from zarr_metadata.v3._entity import (
     named_configuration,
     one_of,
     problem,
-    register_check,
     sequence_of,
-    validates,
     within,
 )
 from zarr_metadata.v3._parts import UNKNOWN_GRID, ArrayParts, ChunkGrid, Extents, shard_index_grid
@@ -182,7 +154,6 @@ __all__ = [
     "UNKNOWN_GRID",
     "ArrayDocumentV3",
     "ArrayParts",
-    "CheckCompiler",
     "ChunkGrid",
     "ChunkGridEntity",
     "CodecEntity",
@@ -195,13 +166,8 @@ __all__ = [
     "ExtensionPointField",
     "Extents",
     "FloatDataType",
-    "Ge",
-    "Gt",
     "IntegerDataType",
-    "Interval",
-    "Le",
     "Loc",
-    "Lt",
     "MemberTypes",
     "MetadataEntity",
     "NumpyTimeDataType",
@@ -209,7 +175,6 @@ __all__ = [
     "PartialEntityTables",
     "StorageClass",
     "TypeCheck",
-    "ValueRoutine",
     "array_problems_v3",
     "as_sequence",
     "byte_values",
@@ -226,9 +191,7 @@ __all__ = [
     "order_problems",
     "problem",
     "read_array_v3",
-    "register_check",
     "sequence_of",
     "shard_index_grid",
-    "validates",
     "within",
 ]

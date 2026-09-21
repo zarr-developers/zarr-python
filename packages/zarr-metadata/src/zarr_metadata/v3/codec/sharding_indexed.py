@@ -5,18 +5,17 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index
 """
 
 from dataclasses import dataclass
-from typing import Annotated, ClassVar, Final, Literal, NotRequired
+from typing import ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
 from zarr_metadata.model._sentinel import UNSET
-from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3._chain import chain_problems
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
-    Ge,
     Opaque,
     problem,
 )
@@ -104,7 +103,7 @@ class ShardingIndexedCodec(CodecEntity[ShardingIndexedCodecMetadata]):
     itself an entity, read the same way this one was.
     """
 
-    chunk_shape: tuple[Annotated[int, Ge(1)], ...]
+    chunk_shape: tuple[int, ...]
     codecs: tuple[CodecEntity | Opaque, ...]
     index_codecs: tuple[CodecEntity | Opaque, ...]
     index_location: ShardingIndexLocation | UNSET = UNSET
@@ -112,6 +111,20 @@ class ShardingIndexedCodec(CodecEntity[ShardingIndexedCodecMetadata]):
     identifier: ClassVar[str] = SHARDING_INDEXED_CODEC_NAME
     variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "array_bytes"
+
+    def __post_init__(self) -> None:
+        found: list[ValidationProblem] = []
+        for index, extent in enumerate(self.chunk_shape):
+            if extent < 1:
+                found.extend(
+                    problem(
+                        ("chunk_shape", index),
+                        f"expected an integer >= 1, got {extent}",
+                        "invalid_value",
+                    )
+                )
+        if len(found) != 0:
+            raise MetadataValidationError(found)
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         """This shard against the array reaching it, and its two pipelines.

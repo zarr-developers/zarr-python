@@ -9,12 +9,11 @@ from typing import ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     problem,
-    validates,
 )
 from zarr_metadata.v3._parts import ArrayParts
 
@@ -72,19 +71,20 @@ class TransposeCodec(CodecEntity[TransposeCodecMetadata]):
     identifier: ClassVar[str] = TRANSPOSE_CODEC_NAME
     kind: ClassVar[CodecKind] = "array_array"
 
-    @staticmethod
-    @validates("order")
-    def _order_permutes_itself(order: tuple[int, ...]) -> tuple[ValidationProblem, ...]:
+    def __post_init__(self) -> None:
         """`order` must permute its own axes.
 
         Whether it permutes the *array's* axes is a different question --
         it needs the array's rank -- and the rules layer asks that one.
         """
-        if sorted(order) != list(range(len(order))):
-            return problem(
-                (), f"expected a permutation of 0..{len(order) - 1}, got {order!r}", "invalid_value"
+        if sorted(self.order) != list(range(len(self.order))):
+            raise MetadataValidationError(
+                problem(
+                    ("order",),
+                    f"expected a permutation of 0..{len(self.order) - 1}, got {self.order!r}",
+                    "invalid_value",
+                )
             )
-        return ()
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         """A transpose permutes the array it receives, so ranks must agree.

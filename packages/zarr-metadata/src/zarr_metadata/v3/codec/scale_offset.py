@@ -11,12 +11,11 @@ from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.model._sentinel import UNSET
-from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     problem,
-    validates,
 )
 from zarr_metadata.v3._parts import ArrayParts
 
@@ -89,17 +88,7 @@ class ScaleOffsetCodec(CodecEntity[ScaleOffsetCodecMetadata]):
     identifier: ClassVar[str] = SCALE_OFFSET_CODEC_NAME
     kind: ClassVar[CodecKind] = "array_array"
 
-    def transition(self, incoming: ArrayParts) -> ArrayParts | None:
-        """The same array, element for element.
-
-        The registry entry removed the `astype` field, so this codec no
-        longer changes the element type -- only the values.
-        """
-        return incoming
-
-    @staticmethod
-    @validates("offset", "scale")
-    def _is_a_scalar(value: JSONValue) -> tuple[ValidationProblem, ...]:
+    def __post_init__(self) -> None:
         """Each value is a scalar of the array's type, so neither is null.
 
         The registry says each is "JSON-encoded per the input array's
@@ -107,6 +96,18 @@ class ScaleOffsetCodec(CodecEntity[ScaleOffsetCodecMetadata]):
         Which scalar it should be needs the data type, so that part is the
         document's question, not this codec's.
         """
-        if value is None:
-            return problem((), "expected a scalar, got null", "invalid_value")
-        return ()
+        found: list[ValidationProblem] = []
+        if self.offset is None:
+            found.extend(problem(("offset",), "expected a scalar, got null", "invalid_value"))
+        if self.scale is None:
+            found.extend(problem(("scale",), "expected a scalar, got null", "invalid_value"))
+        if len(found) != 0:
+            raise MetadataValidationError(found)
+
+    def transition(self, incoming: ArrayParts) -> ArrayParts | None:
+        """The same array, element for element.
+
+        The registry entry removed the `astype` field, so this codec no
+        longer changes the element type -- only the values.
+        """
+        return incoming

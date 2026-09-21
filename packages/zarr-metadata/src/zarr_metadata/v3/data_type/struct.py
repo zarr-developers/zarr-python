@@ -11,7 +11,7 @@ from typing import ClassVar, Final, Literal, NotRequired, cast
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
     DataTypeEntity,
@@ -19,7 +19,6 @@ from zarr_metadata.v3._entity import (
     Opaque,
     StorageClass,
     problem,
-    validates,
 )
 
 STRUCT_DATA_TYPE_NAME: Final = "struct"
@@ -110,11 +109,7 @@ class StructDataType(DataTypeEntity[Struct]):
     identifier: ClassVar[str] = STRUCT_DATA_TYPE_NAME
     scalar_storage: ClassVar[StorageClass] = "single_byte"
 
-    @staticmethod
-    @validates("fields")
-    def _fields_form_a_record(
-        fields: tuple[StructFieldComponent, ...],
-    ) -> tuple[ValidationProblem, ...]:
+    def __post_init__(self) -> None:
         """Names exist, are non-empty and distinct; types are fixed-size.
 
         A fill value addresses fields by name, and a record's layout is
@@ -123,19 +118,25 @@ class StructDataType(DataTypeEntity[Struct]):
         are allowed.
         """
         found: list[ValidationProblem] = []
-        if len(fields) == 0:
-            found.extend(problem((), "expected at least one struct field", "invalid_value"))
+        if len(self.fields) == 0:
+            found.extend(
+                problem(("fields",), "expected at least one struct field", "invalid_value")
+            )
         seen: dict[str, int] = {}
-        for index, field in enumerate(fields):
+        for index, field in enumerate(self.fields):
             if field.name == "":
                 found.extend(
-                    problem((index, "name"), "expected a non-empty field name", "invalid_value")
+                    problem(
+                        ("fields", index, "name"),
+                        "expected a non-empty field name",
+                        "invalid_value",
+                    )
                 )
             first = seen.setdefault(field.name, index)
             if first != index:
                 found.extend(
                     problem(
-                        (index, "name"),
+                        ("fields", index, "name"),
                         f"duplicate field name {field.name!r}, already used by field {first}",
                         "invalid_value",
                     )
@@ -146,12 +147,13 @@ class StructDataType(DataTypeEntity[Struct]):
             ):
                 found.extend(
                     problem(
-                        (index, "data_type"),
+                        ("fields", index, "data_type"),
                         "struct fields must use fixed-size data types",
                         "invalid_value",
                     )
                 )
-        return tuple(found)
+        if len(found) != 0:
+            raise MetadataValidationError(found)
 
     def storage_class(self) -> StorageClass | None:
         """The widest class among the fields.

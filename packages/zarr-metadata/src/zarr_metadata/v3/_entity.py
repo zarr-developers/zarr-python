@@ -2,13 +2,14 @@
 
 A codec, data type, chunk grid or chunk key encoding is one frozen
 dataclass whose fields are its schema. Everything the layer knows about
-a member is read off the field annotations by `_compile`: which members
-there are, which may be absent, how each is type-checked, the bounds it
-must satisfy, and -- for a field typed as another entity -- that it is
-read through the scope, written back as its own JSON, and put in
-canonical form by recursing into it. The three places a value rule
-lives, by what it is about: a bound on the field, a member's rule under
-`@validates`, the members together in `value_problems`.
+a member's type is read off the field annotations by `_compile`: which
+members there are, which may be absent, how each is type-checked, and
+-- for a field typed as another entity -- that it is read through the
+scope, written back as its own JSON, and put in canonical form by
+recursing into it. Everything finer than a type -- a bound, a rule about
+a member, members read together -- is the entity's own `__post_init__`,
+which collects every problem it finds and raises once; `coerce` reports
+those instead of raising.
 
 `coerce` is the reading path: raw metadata in, the entity or the
 reasons it is not one out, taking a `Context` -- the entities in scope
@@ -32,7 +33,7 @@ from __future__ import annotations
 # then -- for this package and for any tool introspecting an entity.
 from collections.abc import Callable, Mapping, Sequence  # noqa: TC003
 from copy import deepcopy
-from dataclasses import MISSING, Field, dataclass, fields, is_dataclass, replace
+from dataclasses import MISSING, Field, dataclass, is_dataclass, replace
 from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
@@ -63,6 +64,7 @@ if TYPE_CHECKING:
     from zarr_metadata.v3._parts import ArrayParts
     from zarr_metadata.v3._registry import Context
 
+from zarr_metadata.v3 import _compile
 from zarr_metadata.v3._checks import (
     Loc,
     MemberTypes,
@@ -83,13 +85,6 @@ from zarr_metadata.v3._checks import (
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._compile import (
     FROM_NAME,
-    CheckCompiler,
-    Ge,
-    Gt,
-    Interval,
-    Le,
-    Lt,
-    MemberRule,
     declared_class_vars,
     derive_member_types,
     element_annotations,
@@ -98,12 +93,8 @@ from zarr_metadata.v3._compile import (
     is_class_var,
     is_union,
     own_annotations,
-    register_check,
-    rule_members,
     shape_of,
     strip_annotation,
-    validates,
-    value_check_for,
 )
 
 EntityT = TypeVar("EntityT", bound="MetadataEntity")
@@ -260,17 +251,9 @@ def _is_nested_field(annotation: object) -> bool:
     return _is_entity_or_opaque([candidate for candidate in candidates if candidate is not UNSET])
 
 
-def _compile_nested_field(annotation: object) -> TypeCheck | None:
-    return is_metadata_field
-
-
-# The compiler knows nothing of entities; this is where it learns that a
-# field typed as one is a nested metadata field. Registered ahead of every
-# built-in shape -- an entity is a dataclass too, and must not be walked as
-# a record -- through the same door a third party's shape comes in by.
-register_check(
-    _is_nested_field, _compile_nested_field, shape="field", description="a metadata field"
-)
+# The compiler knows nothing of entities; this is where it learns which
+# annotations are nested metadata fields.
+_compile.nested_field = _is_nested_field
 
 
 def contains_entity(annotation: object) -> bool:
@@ -451,17 +434,8 @@ def canonicalize_nested(annotation: object, value: object) -> object:
     return value
 
 
-ValueRoutine: TypeAlias = "Callable[..., tuple[ValidationProblem, ...]]"
-"""An entity's value-space judgment, over the members it was given."""
-
-
 _MISSING_DEFAULT: Final = object()
 """Distinguishes "declared no default" from a default that is None or UNSET."""
-
-
-def _no_value_problems(**members: object) -> tuple[ValidationProblem, ...]:
-    """An entity whose types admit only valid values has nothing to add."""
-    return ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -491,13 +465,7 @@ class Opaque:
 # have to spell it `super(Cls, self)`. CPython fixed this in 3.13, so when
 # that is the floor this is worth revisiting; the memory saved is small at
 # document scale, which is why it has not been.
-_DERIVED: Final = (
-    "member_types",
-    "configuration_required",
-    "nested_members",
-    "value_checks",
-    "member_rules",
-)
+_DERIVED: Final = ("member_types", "configuration_required", "nested_members")
 """The class variables `_compile_entity` derives; a declaration of one is refused."""
 
 
@@ -505,9 +473,8 @@ def _compile_entity(cls: type[MetadataEntity]) -> None:
     """Derive from the fields the tables the layer reads.
 
     Raises for a declaration that cannot be compiled: a derived table
-    declared by hand, which the derivation would silently overwrite; a
-    field annotation no registered shape reads; a `@validates` naming no
-    field.
+    declared by hand, which the derivation would silently overwrite, and
+    a field annotation outside the shapes the compiler reads.
     """
     declared = [name for name in _DERIVED if name in vars(cls)]
     if len(declared) != 0:
@@ -520,7 +487,8 @@ def _compile_entity(cls: type[MetadataEntity]) -> None:
     if len(unread) != 0:
         msg = (
             f"{cls.__name__}: no check can be read off the annotation of "
-            f"{', '.join(sorted(unread))}; teach the compiler that shape with `register_check`"
+            f"{', '.join(sorted(unread))}; a field is one of the shapes JSON takes, "
+            "with any finer rule in `__post_init__`"
         )
         raise TypeError(msg)
     cls.configuration_required = any(required for required, _ in cls.member_types.values())
@@ -528,34 +496,6 @@ def _compile_entity(cls: type[MetadataEntity]) -> None:
     cls.nested_members = {
         name: annotation for name, annotation in hints.items() if contains_entity(annotation)
     }
-    cls.value_checks = {
-        name: check
-        for name, annotation in hints.items()
-        if (check := value_check_for(annotation)) is not None
-    }
-    cls.member_rules = _member_rules(cls, hints)
-
-
-def _member_rules(
-    cls: type[MetadataEntity], hints: Mapping[str, object]
-) -> dict[str, tuple[MemberRule, ...]]:
-    """The `@validates` rules in the class and its ancestors, by the member each is about."""
-    attributes: dict[str, object] = {}
-    for ancestor in reversed(cls.__mro__):
-        attributes.update(vars(ancestor))
-    rules: dict[str, list[MemberRule]] = {}
-    for attribute in attributes.values():
-        function = attribute.__func__ if isinstance(attribute, staticmethod) else attribute
-        # Only a function can carry the mark; a table-valued class
-        # attribute is not even hashable.
-        if not callable(function):
-            continue
-        for member in rule_members(function):
-            if member not in hints:
-                msg = f"{cls.__name__}: `@validates({member!r})` names no field of the entity"
-                raise TypeError(msg)
-            rules.setdefault(member, []).append(cast("MemberRule", function))
-    return {member: tuple(found) for member, found in rules.items()}
 
 
 # The invariants, each a function of the compiled class returning why it
@@ -566,10 +506,6 @@ _FINAL_ADVICE: Final[Mapping[str, str]] = {
     "canonical": (
         "which is the walk into contained entities; put the entity's own rewrite "
         "in `simplified`, which `canonical` calls after the walk"
-    ),
-    "__post_init__": (
-        "which `unchecked` does not reach, and `coerce` builds through `unchecked`; "
-        "value rules belong in `value_problems`"
     ),
 }
 """What to do instead, for each method the base marks `@final`."""
@@ -740,12 +676,14 @@ class MetadataEntity(Generic[JSONT_co]):
     mapping instead: `MappingProxyType` is unhashable too, and anything
     else stops `json.dumps` from serializing what `to_json` returns.
 
-    A subclass writes its fields, and a rule where the spec has something
-    to say beyond their types. `coerce`, `configuration`, `to_json` and
-    `canonical` are written once here against what the fields say, and
-    the class variables below -- `member_types`, `nested_members`,
-    `value_checks`, `member_rules` -- are that reading, compiled at class
-    creation: nothing declares them.
+    A subclass writes its fields and, where the spec has something to
+    say beyond their types, a `__post_init__` that collects every problem
+    and raises `MetadataValidationError` once -- so `BloscCodec(clevel=99)`
+    raises, and `coerce` reports the same problems instead. `coerce`,
+    `configuration`, `to_json` and `canonical` are written once here
+    against what the fields say, and the class variables below --
+    `member_types`, `nested_members` -- are that reading, compiled at
+    class creation: nothing declares them.
     """
 
     extension_point: ClassVar[ExtensionPointField | None] = None
@@ -790,7 +728,7 @@ class MetadataEntity(Generic[JSONT_co]):
     each one's type implies. `coerce` reads a configuration against it
     member by member, so one member that cannot be read costs that member
     and not the rest. An annotation the compiler cannot read is refused
-    at class creation; `register_check` teaches it the shape. The public
+    at class creation; the field is written as a shape JSON takes. The public
     JSON TypedDict is held to the same keys by `tests/v3/test_entities.py`.
     """
 
@@ -801,24 +739,6 @@ class MetadataEntity(Generic[JSONT_co]):
     the members `coerce` resolves through the scope, `configuration`
     renders as JSON and `canonical` recurses into -- so an entity that
     contains entities writes nothing for any of that.
-    """
-
-    value_checks: ClassVar[Mapping[str, TypeCheck]] = MappingProxyType({})
-    """The value rules the field annotations state, member by member.
-
-    A bound in an `Annotated` -- `level: Annotated[int, Interval(ge=0,
-    le=9)]`, `chunk_shape: tuple[Annotated[int, Ge(1)], ...]` -- becomes
-    a check here at class creation, located at the member and, for an
-    element, at its position. Runs with `value_problems`, after the type
-    checks, on both the reading path and the constructor.
-    """
-
-    member_rules: ClassVar[Mapping[str, tuple[MemberRule, ...]]] = MappingProxyType({})
-    """The `@validates` rules, by the member each is about.
-
-    Collected at class creation from the class and its ancestors, the
-    nearest definition of a name winning. Run after the annotation bounds
-    and before `value_problems`, on both paths.
     """
 
     configuration_required: ClassVar[bool] = False
@@ -894,11 +814,15 @@ class MetadataEntity(Generic[JSONT_co]):
             # `typesize` requirement reads `shuffle`. Judging around the
             # hole would be guessing, so the type problems stand alone.
             return None, found
-        found = (*found, *within((), cls._judge_values(members)))
+        try:
+            entity = cls(**members)
+        except MetadataValidationError as refused:
+            # `__post_init__` found values the spec disallows: reported
+            # rather than raised, located under the configuration.
+            return None, (*found, *within((), refused.problems))
         if any(entry.kind != "unknown_key" for entry in found):
             return None, found
-        # Already asked, so do not ask again on the way in.
-        return cls.unchecked(**members), found
+        return entity, found
 
     @final
     def canonical(self) -> Self:
@@ -969,122 +893,17 @@ class MetadataEntity(Generic[JSONT_co]):
                 members[name] = render_nested(annotation, members[name])
         return deepcopy(members)
 
-    value_problems: ClassVar[ValueRoutine] = staticmethod(_no_value_problems)
-    """What the spec disallows among the members taken together.
-
-    The third of three places a value rule lives, for the rule that
-    reads two members at once -- blosc's `typesize` against its
-    `shuffle`. A bound on one member is on the field; a rule about one
-    member is a `@validates` staticmethod. A routine rather than a
-    method, because judging values does not need an entity -- and
-    needing one would mean an invalid one had been built. Takes
-    `Unpack[<Entity>Configuration]`: the same spelling the constructor
-    takes, receiving only the members that are present.
-
-    Typed loosely here because the base does not know any entity's
-    configuration, and saying so is the truth. Call a specific routine by
-    its own name to have the arguments checked.
-
-    Locations are relative to the entity's `configuration`.
-    """
-
-    @final
-    def __post_init__(self) -> None:
-        """Refuse to exist with values the spec disallows.
-
-        So an instance is the value guarantee, not just the type one:
-        `BloscCodec(clevel=99)` raises rather than serializing a document
-        no reader will accept. `coerce` asks `value_problems` first and
-        reports, so reading a bad document still returns problems rather
-        than raising, and `unchecked` is the door for a caller that has
-        already asked.
-        """
-        found = type(self)._judge_values(self._members())
-        if len(found) != 0:
-            raise MetadataValidationError(found)
-
-    @classmethod
-    def _judge_values(cls, members: Mapping[str, object]) -> tuple[ValidationProblem, ...]:
-        """Every value problem among the members.
-
-        The bounds the annotations state first, then the `@validates`
-        rules, member by member, then whatever `value_problems` has to
-        say about the members together -- one routine for the reading
-        path and the constructor, so the two cannot disagree.
-        """
-        from_annotations = [
-            found
-            for name, check in cls.value_checks.items()
-            if name in members
-            for found in check(members[name], (name,))
-        ]
-        from_rules = [
-            ValidationProblem((member, *found.loc), found.message, found.kind)
-            for member, member_rules in cls.member_rules.items()
-            if member in members
-            for rule in member_rules
-            for found in rule(members[member])
-        ]
-        return (*from_annotations, *from_rules, *cls.value_problems(**members))
-
-    def _members(self) -> dict[str, object]:
-        """Every member this entity holds, unrendered.
-
-        The dataclass's own fields, which is what `value_problems`
-        judges: a member is a member whether or not the JSON spells it
-        as a configuration key. The raw-bytes family is the case that
-        separates the two -- its width lives in its name, so it has a
-        field and no configuration at all.
-        """
-        return {
-            field_.name: value
-            for field_ in fields(self)
-            if (value := getattr(self, field_.name)) is not UNSET
-        }
-
     def _configuration_members(self) -> dict[str, object]:
         """The members a configuration object would spell out.
 
-        `_members` minus anything the envelope carries some other way.
+        Every field but one the envelope carries some other way -- the
+        `r<N>` width, which lives in the name.
         """
         return {
             key: value
             for key in type(self).member_types
             if (value := getattr(self, key)) is not UNSET
         }
-
-    @classmethod
-    def unchecked(cls, **members: object) -> Self:
-        """This entity, without asking whether its values are allowed.
-
-        For a caller that has already asked -- `coerce` does, so that it
-        can report the answer instead of raising it. Named so that
-        choosing it is deliberate.
-
-        Unchecked means *value*-unchecked. A member this entity does not
-        declare, or one with neither a value nor a default, is still a
-        `TypeError`: those produce an entity that cannot be repred,
-        compared or hashed, which no caller is asking for.
-        """
-        declared = {field_.name: field_ for field_ in fields(cls)}
-        unknown = sorted(members.keys() - declared.keys())
-        if len(unknown) != 0:
-            msg = f"{cls.__name__} has no member(s) {', '.join(unknown)}"
-            raise TypeError(msg)
-        entity = object.__new__(cls)
-        for name, field_ in declared.items():
-            if name in members:
-                object.__setattr__(entity, name, members[name])
-            elif field_.default is not MISSING:
-                object.__setattr__(entity, name, field_.default)
-            elif field_.default_factory is not MISSING:  # pragma: no cover - none today
-                object.__setattr__(entity, name, field_.default_factory())
-            else:
-                # Leaving it unset would give an entity whose `repr`,
-                # `==` and `hash` raise `AttributeError` on access.
-                msg = f"{cls.__name__} is missing a value for {name!r}"
-                raise TypeError(msg)
-        return entity
 
     def to_json(self) -> JSONT_co:
         """This entity as a document would write it.
@@ -1233,27 +1052,19 @@ __all__ = [
     "DATA_TYPE",
     "FROM_NAME",
     "STORAGE_TRANSFORMERS",
-    "CheckCompiler",
     "ChunkGridEntity",
     "CodecEntity",
     "CodecKind",
     "Coerced",
     "DataTypeEntity",
     "ExtensionPointField",
-    "Ge",
-    "Gt",
-    "Interval",
     "JSONT_co",
-    "Le",
     "Loc",
-    "Lt",
-    "MemberRule",
     "MemberTypes",
     "MetadataEntity",
     "Opaque",
     "StorageClass",
     "TypeCheck",
-    "ValueRoutine",
     "coerce_members",
     "is_bool",
     "is_entity",
@@ -1266,8 +1077,6 @@ __all__ = [
     "named_configuration",
     "one_of",
     "problem",
-    "register_check",
     "sequence_of",
-    "validates",
     "within",
 ]

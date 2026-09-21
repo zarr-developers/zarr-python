@@ -8,18 +8,17 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, replace
-from typing import Annotated, ClassVar, Literal, NotRequired, Self, cast
+from typing import ClassVar, Literal, NotRequired, Self, cast
 
 import pytest
 from typing_extensions import TypedDict
 
-from zarr_metadata.model import UNSET, MetadataValidationError, ValidationProblem
+from zarr_metadata.model import UNSET, MetadataValidationError
 from zarr_metadata.rules import (
     canonicalize_array_metadata_v3,
     validate_array_metadata_v3,
 )
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
-from zarr_metadata.v3._compile import _CHECK_COMPILERS
 from zarr_metadata.v3._entity import json_type_of
 from zarr_metadata.v3.codec.blosc import BloscCodec
 from zarr_metadata.v3.codec.gzip import GzipCodec
@@ -35,15 +34,11 @@ from zarr_metadata.v3.entity import (
     Context,
     DataTypeEntity,
     IntegerDataType,
-    Interval,
-    Loc,
     MetadataEntity,
     Opaque,
     StorageClass,
     named_configuration,
     problem,
-    register_check,
-    validates,
 )
 
 ACME_MAX_ACCELERATION = 65537
@@ -53,11 +48,21 @@ ACME_MAX_ACCELERATION = 65537
 class AcmeLz4Codec(CodecEntity):
     """A third-party compressor."""
 
-    acceleration: Annotated[int, Interval(ge=1, le=ACME_MAX_ACCELERATION)] | UNSET = UNSET
+    acceleration: int | UNSET = UNSET
 
     identifier: ClassVar[str] = "acme.lz4"
     kind: ClassVar[CodecKind] = "bytes_bytes"
     variable_size: ClassVar[bool] = True
+
+    def __post_init__(self) -> None:
+        if self.acceleration is not UNSET and not 1 <= self.acceleration <= ACME_MAX_ACCELERATION:
+            raise MetadataValidationError(
+                problem(
+                    ("acceleration",),
+                    f"expected an integer in [1, {ACME_MAX_ACCELERATION}], got {self.acceleration}",
+                    "invalid_value",
+                )
+            )
 
 
 @dataclass(frozen=True)
@@ -262,21 +267,6 @@ def test_a_reader_can_choose_its_own_scope() -> None:
     assert in_scope.acceleration == 4
 
 
-def test_error_an_entity_may_not_validate_in_post_init() -> None:
-    # `coerce` builds through `unchecked`, which never reaches
-    # `__post_init__`, so a rule there holds for a hand-built entity and
-    # is silently absent for every entity read from a document.
-    with pytest.raises(TypeError, match="`unchecked` does not reach"):
-
-        @dataclass(frozen=True)
-        class Eager(CodecEntity):  # pyright: ignore[reportUnusedClass]
-            identifier: ClassVar[str] = "acme.eager"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
-
-            def __post_init__(self) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
-                raise AssertionError
-
-
 def test_error_a_field_may_not_shadow_a_class_variable() -> None:
     # A field of that name goes into the configuration and into the JSON,
     # while the class variable it shadows is what the rest of the layer
@@ -325,7 +315,7 @@ class AcmeFixedDataType(DataTypeEntity):
         name, _, _ = named_configuration(value)
         if name is None or not cls.accepts(name):
             return None, problem((), "expected an 'acme.fixedN' data type")
-        return cls.unchecked(data_type_name=name), ()
+        return cls(data_type_name=name), ()
 
     def to_json(self) -> ZarrV3MetadataFieldJSON:
         return cast("ZarrV3MetadataFieldJSON", self.data_type_name)
@@ -355,7 +345,7 @@ def test_error_a_member_needs_a_check_from_somewhere() -> None:
     # An annotation outside the shapes `check_for` compiles implies no
     # check, so the entity owes one. Silently skipping the member would
     # let anything through where the field promised a type.
-    with pytest.raises(TypeError, match="annotation of inner; teach the compiler that shape"):
+    with pytest.raises(TypeError, match="annotation of inner; a field is one of the shapes JSON"):
 
         @dataclass(frozen=True)
         class Structured(CodecEntity):  # pyright: ignore[reportUnusedClass]
@@ -367,7 +357,7 @@ def test_error_a_member_needs_a_check_from_somewhere() -> None:
 
 @pytest.mark.parametrize(
     "name",
-    ["member_types", "configuration_required", "nested_members", "value_checks", "member_rules"],
+    ["member_types", "configuration_required", "nested_members"],
 )
 def test_error_a_derived_class_variable_may_not_be_declared(name: str) -> None:
     # Each is read off the fields at class creation, and a declaration
@@ -502,7 +492,7 @@ def test_error_a_nested_field_needs_an_entity_kind_with_a_point() -> None:
             kind: ClassVar[CodecKind] = "bytes_bytes"
 
 
-# A third-party rule about one member, written as a `@validates` rule.
+# A third-party rule about a member, written in `__post_init__`.
 @dataclass(frozen=True)
 class AcmeBlockCodec(CodecEntity):
     """A codec whose block size must be a power of two."""
@@ -512,19 +502,17 @@ class AcmeBlockCodec(CodecEntity):
     identifier: ClassVar[str] = "acme.block"
     kind: ClassVar[CodecKind] = "bytes_bytes"
 
-    @staticmethod
-    @validates("block")
-    def _block_is_a_power_of_two(block: int) -> tuple[ValidationProblem, ...]:
-        if block < 1 or block & (block - 1) != 0:
-            return problem((), f"expected a power of two, got {block}", "invalid_value")
-        return ()
+    def __post_init__(self) -> None:
+        if self.block < 1 or self.block & (self.block - 1) != 0:
+            raise MetadataValidationError(
+                problem(("block",), f"expected a power of two, got {self.block}", "invalid_value")
+            )
 
 
-def test_a_rule_about_one_member_is_a_validates_rule() -> None:
-    # The rule receives the typed member, only when present, and reports
-    # relative to it: the location is supplied, and no `**members` is
-    # unpacked by hand. The declared signature survives, so a call by
-    # name is checked.
+def test_a_rule_about_a_member_is_post_init() -> None:
+    # The rule runs on the typed members and reports relative to the
+    # configuration; `coerce` catches what it raises and locates it in
+    # the document, and the constructor raises it as it is.
     scope = CORE_AND_EXTENSIONS.extended_with(codecs={AcmeBlockCodec.identifier: AcmeBlockCodec})
     codec, problems = scope.coerce("codecs", {"name": "acme.block", "configuration": {"block": 64}})
     assert problems == ()
@@ -540,83 +528,6 @@ def test_a_rule_about_one_member_is_a_validates_rule() -> None:
     # A member that failed its type check never reaches the rule.
     _, problems = scope.coerce("codecs", {"name": "acme.block", "configuration": {"block": "x"}})
     assert [p.kind for p in problems] == ["invalid_type"]
-
-
-def test_error_a_validates_rule_must_name_a_field() -> None:
-    with pytest.raises(TypeError, match="`@validates\\('blocc'\\)` names no field"):
-
-        @dataclass(frozen=True)
-        class Misspelt(CodecEntity):  # pyright: ignore[reportUnusedClass]
-            block: int
-
-            identifier: ClassVar[str] = "acme.misspelt"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
-
-            @staticmethod
-            @validates("blocc")
-            def _rule(block: int) -> tuple[ValidationProblem, ...]:
-                return ()
-
-
-# An annotation shape the compiler does not read, taught to it from outside.
-class Hex(str):
-    """A hex digest: a `str` to the type checker, its own class at run time."""
-
-    __slots__ = ()
-
-
-def _is_hex(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
-    if not isinstance(value, str) or any(c not in "0123456789abcdef" for c in value):
-        return problem(loc, f"expected lowercase hex digits, got {value!r}")
-    return ()
-
-
-def test_a_third_party_can_teach_the_compiler_a_shape() -> None:
-    # A `str` subclass is a real case: to the type checker `Hex` is a
-    # `str`, but at run time it is a class `check_for` has no registration
-    # for, so an entity using it is refused -- until one is registered,
-    # through the same door the built-in shapes came through.
-    with pytest.raises(TypeError, match="no check can be read off the annotation of digest"):
-
-        @dataclass(frozen=True)
-        class Unregistered(CodecEntity):  # pyright: ignore[reportUnusedClass]
-            digest: Hex
-
-            identifier: ClassVar[str] = "acme.unregistered"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
-
-    def is_hex_annotation(annotation: object) -> bool:
-        return annotation is Hex
-
-    register_check(is_hex_annotation, lambda annotation: _is_hex)
-    try:
-
-        @dataclass(frozen=True)
-        class AcmeDigestCodec(CodecEntity):
-            digest: Hex
-
-            identifier: ClassVar[str] = "acme.digest"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
-
-        scope = CORE_AND_EXTENSIONS.extended_with(
-            codecs={AcmeDigestCodec.identifier: AcmeDigestCodec}
-        )
-        codec, problems = scope.coerce(
-            "codecs", {"name": "acme.digest", "configuration": {"digest": "c0ffee"}}
-        )
-        assert problems == ()
-        assert isinstance(codec, AcmeDigestCodec)
-        _, problems = scope.coerce(
-            "codecs", {"name": "acme.digest", "configuration": {"digest": "C0FFEE"}}
-        )
-        assert [(p.loc, p.kind) for p in problems] == [
-            (("configuration", "digest"), "invalid_type")
-        ]
-    finally:
-        # A registration is process-wide; leave the compiler as it was found.
-        _CHECK_COMPILERS[:] = [
-            entry for entry in _CHECK_COMPILERS if entry.predicate is not is_hex_annotation
-        ]
 
 
 def test_error_the_named_json_type_must_match_what_the_entity_writes() -> None:

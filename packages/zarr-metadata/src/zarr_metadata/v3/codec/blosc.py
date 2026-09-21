@@ -5,17 +5,15 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
 """
 
 from dataclasses import dataclass, replace
-from typing import Annotated, ClassVar, Final, Literal, NotRequired, Self
+from typing import ClassVar, Final, Literal, NotRequired, Self
 
-from typing_extensions import TypedDict, Unpack
+from typing_extensions import TypedDict
 
 from zarr_metadata.model._sentinel import UNSET
-from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
-    Ge,
-    Interval,
     problem,
 )
 
@@ -100,9 +98,9 @@ class BloscCodec(CodecEntity[BloscCodecMetadata]):
     """
 
     cname: BloscCName
-    clevel: Annotated[int, Interval(ge=0, le=9)]
+    clevel: int
     shuffle: BloscShuffle
-    blocksize: Annotated[int, Ge(0)]
+    blocksize: int
     typesize: int | UNSET = UNSET
 
     identifier: ClassVar[str] = BLOSC_CODEC_NAME
@@ -112,35 +110,49 @@ class BloscCodec(CodecEntity[BloscCodecMetadata]):
     # Every member is required but `typesize`, which only means something
     # when shuffling; `problems` is where that conditional lives.
 
-    @staticmethod
-    def value_problems(
-        **members: Unpack[BloscCodecConfiguration],
-    ) -> tuple[ValidationProblem, ...]:
-        """`typesize` against `shuffle`: required, and positive, only where it counts.
+    def __post_init__(self) -> None:
+        """Bounds on `clevel` and `blocksize`; `typesize` against `shuffle`.
 
         Under `noshuffle` the spec says of `typesize` that "the value is
-        ignored", and `canonical` drops it. A rule over two members, which
-        is what this routine is for; the bounds on `clevel` and
-        `blocksize` are on the fields.
+        ignored", and `simplified` drops it; under either shuffle it is
+        required, and positive.
         """
-        shuffle = members["shuffle"]
-        typesize = members.get("typesize")
         found: list[ValidationProblem] = []
-        if typesize is not None and shuffle != BLOSC_NO_SHUFFLE and typesize < 1:
+        if not 0 <= self.clevel <= 9:
             found.extend(
                 problem(
-                    ("typesize",), f"expected a positive integer, got {typesize}", "invalid_value"
+                    ("clevel",),
+                    f"expected an integer in [0, 9], got {self.clevel}",
+                    "invalid_value",
                 )
             )
-        if shuffle != BLOSC_NO_SHUFFLE and typesize is None:
+        if self.blocksize < 0:
             found.extend(
                 problem(
-                    ("typesize",),
-                    f"typesize is required when shuffle is {shuffle!r}",
-                    "missing_key",
+                    ("blocksize",),
+                    f"expected an integer >= 0, got {self.blocksize}",
+                    "invalid_value",
                 )
             )
-        return tuple(found)
+        if self.shuffle != BLOSC_NO_SHUFFLE:
+            if self.typesize is UNSET:
+                found.extend(
+                    problem(
+                        ("typesize",),
+                        f"typesize is required when shuffle is {self.shuffle!r}",
+                        "missing_key",
+                    )
+                )
+            elif self.typesize < 1:
+                found.extend(
+                    problem(
+                        ("typesize",),
+                        f"expected a positive integer, got {self.typesize}",
+                        "invalid_value",
+                    )
+                )
+        if len(found) != 0:
+            raise MetadataValidationError(found)
 
     def simplified(self) -> Self:
         """Without a `typesize` that `noshuffle` renders meaningless.

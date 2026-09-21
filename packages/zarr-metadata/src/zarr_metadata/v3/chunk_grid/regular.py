@@ -5,14 +5,13 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#regular-grids
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, ClassVar, Final, Literal, NotRequired, cast
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3._entity import (
     ChunkGridEntity,
-    Ge,
     problem,
 )
 from zarr_metadata.v3._parts import ChunkGrid
@@ -65,9 +64,23 @@ __all__ = [
 class RegularChunkGrid(ChunkGridEntity[RegularChunkGridMetadata]):
     """The `regular` chunk grid, coerced from its metadata."""
 
-    chunk_shape: tuple[Annotated[int, Ge(1)], ...]
+    chunk_shape: tuple[int, ...]
 
     identifier: ClassVar[str] = REGULAR_CHUNK_GRID_NAME
+
+    def __post_init__(self) -> None:
+        found: list[ValidationProblem] = []
+        for index, extent in enumerate(self.chunk_shape):
+            if extent < 1:
+                found.extend(
+                    problem(
+                        ("chunk_shape", index),
+                        f"expected an integer >= 1, got {extent}",
+                        "invalid_value",
+                    )
+                )
+        if len(found) != 0:
+            raise MetadataValidationError(found)
 
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
         """A regular grid must chunk every array dimension."""

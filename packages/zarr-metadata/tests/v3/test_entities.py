@@ -147,25 +147,6 @@ def test_the_constructor_mirrors_the_configuration(entity: type[MetadataEntity])
     assert fields == set(get_type_hints(configuration))
 
 
-@pytest.mark.parametrize("entity", ENTITIES.values(), ids=list(ENTITIES))
-def test_the_value_routine_takes_the_members_it_will_be_given(
-    entity: type[MetadataEntity],
-) -> None:
-    # `coerce` calls it as `value_problems(**members)`, which no type can
-    # check: members is a dict built at run time. So the correspondence
-    # is checked here, against the fields rather than the configuration
-    # -- `r<N>` holds a member that is not a configuration key, and a
-    # `struct` and a `sharding_indexed` annotate a TypedDict of their own
-    # because `prepare` has replaced field objects with entities by then.
-    # Neither changes which members there are.
-    if entity.value_problems is MetadataEntity.value_problems:
-        return
-    # The annotation is `Unpack[X]`; X is what says which members.
-    (members,) = get_args(get_type_hints(entity.value_problems)["members"])
-    fields = {field.name for field in dataclasses.fields(entity)} - {"must_understand"}
-    assert set(get_type_hints(members)) == fields
-
-
 def _parts(json_type: object) -> tuple[object, ...]:
     return (
         get_args(json_type) if get_origin(json_type) in (Union, types.UnionType) else (json_type,)

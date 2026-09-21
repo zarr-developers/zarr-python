@@ -12,9 +12,7 @@ import re
 from dataclasses import dataclass
 from typing import Annotated, ClassVar, Final, NewType, Self
 
-from typing_extensions import TypedDict, Unpack
-
-from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3._entity import (
     FROM_NAME,
     Coerced,
@@ -99,12 +97,6 @@ def _name_problems(name: str) -> tuple[ValidationProblem, ...]:
     return ()
 
 
-class RawBytesMembers(TypedDict):
-    """A raw-bytes type's members: the spelling, which carries the width."""
-
-    data_type_name: str
-
-
 @dataclass(frozen=True)
 class RawBytesDataType(DataTypeEntity[RawBytesDataTypeName]):
     """An `r<N>` raw-bytes data type, coerced from its metadata.
@@ -147,20 +139,19 @@ class RawBytesDataType(DataTypeEntity[RawBytesDataTypeName]):
             # its fill values are still judged. Returning nothing here let
             # a stray key hide every other problem in the document.
             found = problem(("configuration",), "'r<N>' takes no configuration", "unknown_key")
-        found = (*found, *cls.value_problems(data_type_name=name))
+        try:
+            entity = cls(data_type_name=name)
+        except MetadataValidationError as refused:
+            return None, (*found, *refused.problems)
         if any(entry.kind != "unknown_key" for entry in found):
             return None, found
-        return cls.unchecked(data_type_name=name), found
+        return entity, found
 
-    @staticmethod
-    def value_problems(**members: Unpack[RawBytesMembers]) -> tuple[ValidationProblem, ...]:
-        """This family's validity is in its name, not in a configuration.
-
-        Which is the one place a member is not a configuration key, and
-        why `value_problems` judges the entity's fields rather than its
-        configuration: there is no configuration here to judge.
-        """
-        return _name_problems(members["data_type_name"])
+    def __post_init__(self) -> None:
+        """This family's validity is in its name, not in a configuration."""
+        found = _name_problems(self.data_type_name)
+        if len(found) != 0:
+            raise MetadataValidationError(found)
 
     def to_json(self) -> RawBytesDataTypeName:
         return RawBytesDataTypeName(self.data_type_name)

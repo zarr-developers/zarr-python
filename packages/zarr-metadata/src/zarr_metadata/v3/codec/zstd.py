@@ -7,15 +7,16 @@ proposed the codec, was never merged).
 """
 
 from dataclasses import dataclass
-from typing import Annotated, ClassVar, Final, Literal, NotRequired
+from typing import ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
 from zarr_metadata.model._sentinel import UNSET
+from zarr_metadata.model._validation import MetadataValidationError
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
-    Interval,
+    problem,
 )
 
 ZSTD_CODEC_NAME: Final = "zstd"
@@ -77,9 +78,19 @@ __all__ = [
 class ZstdCodec(CodecEntity[ZstdCodecMetadata]):
     """The `zstd` codec, coerced from its metadata."""
 
-    level: Annotated[int, Interval(ge=ZSTD_MIN_LEVEL, le=ZSTD_MAX_LEVEL)]
+    level: int
     checksum: bool | UNSET = UNSET
 
     identifier: ClassVar[str] = ZSTD_CODEC_NAME
     variable_size: ClassVar[bool] = True
     kind: ClassVar[CodecKind] = "bytes_bytes"
+
+    def __post_init__(self) -> None:
+        if not ZSTD_MIN_LEVEL <= self.level <= ZSTD_MAX_LEVEL:
+            raise MetadataValidationError(
+                problem(
+                    ("level",),
+                    f"expected an integer in [{ZSTD_MIN_LEVEL}, {ZSTD_MAX_LEVEL}], got {self.level}",
+                    "invalid_value",
+                )
+            )

@@ -5,14 +5,14 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Annotated, ClassVar, Final, Literal, NotRequired, Self, cast
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, cast
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.model._validation import ValidationProblem
+from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3._entity import (
     ChunkGridEntity,
-    Ge,
+    Loc,
     is_integer,
     problem,
 )
@@ -43,15 +43,6 @@ a rectilinear grid), or a tuple of integers and/or `[value, count]` RLE
 pairs.
 """
 
-_PositiveExtent = Annotated[int, Ge(1)]
-_PositiveDimSpec = (
-    _PositiveExtent | tuple[_PositiveExtent | tuple[_PositiveExtent, _PositiveExtent], ...]
-)
-"""`RectilinearDimSpec` as the entity holds it: every extent, and every
-run-length count, at least one. The same type to a type checker; the
-bounds are what the reading path judges.
-"""
-
 
 class RectilinearChunkGridConfiguration(TypedDict, closed=True):
     """Configuration for the rectilinear chunk grid."""
@@ -76,6 +67,10 @@ the short-hand-name form is not permitted by the spec for this grid.
   https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md#L59-L62
   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564
 """
+
+
+def _not_positive(loc: Loc, value: int) -> tuple[ValidationProblem, ...]:
+    return problem(loc, f"expected an integer >= 1, got {value}", "invalid_value")
 
 
 def canonical_dim_spec(spec: RectilinearDimSpec) -> RectilinearDimSpec:
@@ -176,9 +171,28 @@ class RectilinearChunkGrid(ChunkGridEntity[RectilinearChunkGridMetadata]):
     """The `rectilinear` chunk grid, coerced from its metadata."""
 
     kind: Literal["inline"]
-    chunk_shapes: tuple[_PositiveDimSpec, ...]
+    chunk_shapes: tuple[RectilinearDimSpec, ...]
 
     identifier: ClassVar[str] = RECTILINEAR_CHUNK_GRID_NAME
+
+    def __post_init__(self) -> None:
+        """Every extent, and every run's length and count, is at least 1."""
+        found: list[ValidationProblem] = []
+        for axis, spec in enumerate(self.chunk_shapes):
+            if isinstance(spec, int):
+                if spec < 1:
+                    found.extend(_not_positive(("chunk_shapes", axis), spec))
+                continue
+            for index, entry in enumerate(spec):
+                if isinstance(entry, int):
+                    if entry < 1:
+                        found.extend(_not_positive(("chunk_shapes", axis, index), entry))
+                    continue
+                for position, value in enumerate(entry):
+                    if value < 1:
+                        found.extend(_not_positive(("chunk_shapes", axis, index, position), value))
+        if len(found) != 0:
+            raise MetadataValidationError(found)
 
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
         """One spec per dimension, and explicit specs must cover it.
