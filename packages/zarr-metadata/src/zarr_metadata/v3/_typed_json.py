@@ -51,7 +51,7 @@ from typing_extensions import ReadOnly, TypeIs, is_typeddict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.model._sentinel import UNSET
-from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem, is_json
+from zarr_metadata.model._validation import ValidationProblem, is_json
 
 if TYPE_CHECKING:
     from zarr_metadata.model._validation import ProblemKind
@@ -215,13 +215,13 @@ def is_class_var(annotation: object) -> bool:
     that is not available while the class is still being built.
     """
     if isinstance(annotation, str):
-        stripped = annotation.strip()
-        return stripped.startswith(("ClassVar[", "ClassVar", "typing.ClassVar"))
+        head = annotation.strip().split("[", 1)[0].strip()
+        return head.rsplit(".", 1)[-1] == "ClassVar"
     return annotation is ClassVar or get_origin(annotation) is ClassVar
 
 
 @functools.cache
-def field_hints(cls: type) -> dict[str, object]:
+def field_hints(cls: type) -> Mapping[str, object]:
     """The dataclass fields of `cls`, resolved, base first.
 
     Each class's own annotations are resolved in that class's module,
@@ -232,7 +232,8 @@ def field_hints(cls: type) -> dict[str, object]:
 
     Cached per class: a class's annotations are fixed once it exists,
     and resolving them costs a third of a read. A name that does not
-    resolve raises, and a raise is not cached.
+    resolve raises, and a raise is not cached. Read-only, since every
+    caller shares the one mapping.
     """
     hints: dict[str, object] = {}
     for ancestor in reversed(cls.__mro__):
@@ -245,7 +246,7 @@ def field_hints(cls: type) -> dict[str, object]:
             continue
         shell = type("_Fields", (), {"__annotations__": raw, "__module__": ancestor.__module__})
         hints.update(get_type_hints(shell, include_extras=True))
-    return hints
+    return types.MappingProxyType(hints)
 
 
 def declared_class_vars(cls: type) -> dict[str, type]:
@@ -281,7 +282,7 @@ def describe(annotation: object) -> str:
         return "a JSON value"
     origin = get_origin(inner)
     if origin is Literal:
-        return f"one of {tuple(sorted(get_args(inner)))!r}"
+        return f"one of {tuple(sorted(get_args(inner), key=repr))!r}"
     if is_union(inner):
         return " or ".join(describe(branch) for branch in get_args(inner))
     if origin is tuple:
@@ -317,8 +318,10 @@ def shape_of(annotation: object) -> str | None:
         return "str"
     origin = get_origin(inner)
     if origin is Literal:
-        values = get_args(inner)
-        return "int" if all(isinstance(value, int) for value in values) else "str"
+        # `True` is a bool before it is an int, as `is_integer` says.
+        values: tuple[object, ...] = get_args(inner)
+        shapes = {shape_of(type(value)) for value in values}
+        return shapes.pop() if len(shapes) == 1 else None
     if origin is tuple:
         return "tuple"
     if origin in (Mapping, dict):
@@ -503,9 +506,8 @@ def record_of(record: Callable[..., object], members: Members[S]) -> Parser[S]:
     """A member that is itself an object with declared keys, built as a dataclass.
 
     Built only from an object whose every key read; otherwise the value
-    comes back as it came, with the reasons. A record that refuses its
-    own values -- a `__post_init__` raising `MetadataValidationError` --
-    is reported the same way, located under the object.
+    comes back as it came, with the reasons. A record is plain data: it
+    has no rules of its own, so building it cannot fail.
     """
 
     def parse(value: object, loc: Loc, state: S) -> Parsed:
@@ -515,16 +517,7 @@ def record_of(record: Callable[..., object], members: Members[S]) -> Parser[S]:
         parsed, found = _keys(members, entries, loc, state)
         if any(entry.kind != "unknown_key" for entry in found):
             return entries, found
-        try:
-            return record(**parsed), found
-        except MetadataValidationError as refused:
-            return entries, (
-                *found,
-                *(
-                    ValidationProblem((*loc, *entry.loc), entry.message, entry.kind)
-                    for entry in refused.problems
-                ),
-            )
+        return record(**parsed), found
 
     return parse
 
@@ -608,7 +601,7 @@ def parser_for(annotation: object, leaf: Leaf[S]) -> Parser[S] | None:
     used as it is. Closed: an annotation outside these implies no
     parser, and an entity declaring one is refused at registration. The
     field is written as one of these shapes instead, with any finer
-    rule in `__post_init__`.
+    rule in the configuration's `problems`.
     """
     inner = without_unset(strip_annotation(annotation)[0])
     found = leaf(inner)
@@ -648,6 +641,15 @@ def parser_for(annotation: object, leaf: Leaf[S]) -> Parser[S] | None:
     # Last, because `is_dataclass` narrows what pyright knows of `inner`
     # for every line after it.
     if isinstance(inner, type) and is_dataclass(inner):
+        if "__post_init__" in vars(inner):
+            # A record is plain data, built whenever its keys read; a
+            # rule about it belongs in the configuration's `problems`,
+            # which is asked for every problem rather than the first.
+            msg = (
+                f"{inner.__name__} defines __post_init__; a record is plain data, and a rule "
+                "about it belongs in the configuration's `problems`"
+            )
+            raise TypeError(msg)
         members = _members_of(field_hints(inner), leaf)
         return None if members is None else record_of(inner, members)
     return None
@@ -708,6 +710,8 @@ def positions_of(elements: Sequence[Writer]) -> Writer:
         if not isinstance(value, (list, tuple)):
             raise _not_json(value)
         entries = cast("list[object] | tuple[object, ...]", value)
+        if len(entries) != len(elements):
+            raise _not_json(entries)
         return tuple(element(entry) for element, entry in zip(elements, entries, strict=True))
 
     return write

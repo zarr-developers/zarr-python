@@ -4,7 +4,7 @@ Zarr `struct` data type (heterogeneous record, zarr-extensions).
 See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/struct/README.md
 """
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self, cast
 
@@ -85,6 +85,7 @@ __all__ = [
     "StructField",
     "StructFieldComponent",
     "StructFillValue",
+    "StructOptions",
 ]
 
 

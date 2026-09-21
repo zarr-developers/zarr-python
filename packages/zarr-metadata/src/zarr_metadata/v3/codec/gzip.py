@@ -66,6 +66,7 @@ __all__ = [
     "GzipCodecMetadata",
     "GzipCodecName",
     "GzipCodecObject",
+    "GzipOptions",
 ]
 
 

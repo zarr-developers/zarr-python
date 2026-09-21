@@ -87,6 +87,7 @@ __all__ = [
     "BloscCodecMetadata",
     "BloscCodecName",
     "BloscCodecObject",
+    "BloscOptions",
     "BloscShuffle",
 ]
 
@@ -146,7 +147,7 @@ class BloscCodec(BytesBytesCodec, Configured):
     variable_size: ClassVar[bool] = True
 
     # Every member is required but `typesize`, which only means something
-    # when shuffling; `blosc_problems` is where that conditional lives.
+    # when shuffling; `BloscOptions.problems` is where that conditional lives.
 
     @property
     def cname(self) -> BloscCName:

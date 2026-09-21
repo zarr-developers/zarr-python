@@ -141,14 +141,18 @@ class Context:
         a table keyed by name could not hold it; the identifier keys
         exist for `extended_with` to take a name over, not for lookup.
         """
+        entity = self._claimant(kind, name)
+        if entity is None or not issubclass(entity, kind):
+            return None
+        return entity
+
+    def _claimant(self, kind: type[MetadataEntity], name: str) -> type[MetadataEntity] | None:
+        """The entity registered under `kind`'s kind that claims `name`, whatever its subclass."""
         registered = kind_of(kind)
         if registered is None:
             return None
         table = self.tables.get(registered, {})
-        entity = next((candidate for candidate in table.values() if candidate.accepts(name)), None)
-        if entity is None or not issubclass(entity, kind):
-            return None
-        return entity
+        return next((candidate for candidate in table.values() if candidate.accepts(name)), None)
 
     def coerce(
         self,
@@ -192,9 +196,21 @@ class Context:
         name, _, malformed = named_configuration(value)
         if name is None or len(malformed) != 0:
             return Opaque(value, "invalid"), problems
-        entity_type = self.resolve(kind, name)
+        entity_type = self._claimant(kind, name)
         if entity_type is None:
             return Opaque(value, "out_of_scope"), problems
+        if not issubclass(entity_type, kind):
+            # In scope, so not for another reader to resolve: the name
+            # is an entity of the wrong kind for this position.
+            return Opaque(value, "invalid"), (
+                *problems,
+                ValidationProblem(
+                    loc,
+                    f"expected {_an(kind.__name__)}, got {name!r}, "
+                    f"{_an(_refinement(entity_type, kind).__name__)}",
+                    "invalid_value",
+                ),
+            )
         entity, found = entity_type.coerce(value, self)
         problems = (
             *problems,
@@ -203,6 +219,17 @@ class Context:
         if entity is None:
             return Opaque(value, "invalid"), problems
         return entity, problems
+
+
+def _refinement(entity: type[MetadataEntity], kind: type[MetadataEntity]) -> type[MetadataEntity]:
+    """The class just below `kind`'s kind that `entity` is: `ArrayArrayCodec` for a transpose codec."""
+    mro = entity.__mro__
+    return mro[mro.index(kind_of(kind) or MetadataEntity) - 1]
+
+
+def _an(noun: str) -> str:
+    """`noun` with its indefinite article: `an ArrayArrayCodec`, `a BytesBytesCodec`."""
+    return f"an {noun}" if noun[:1].upper() in "AEIOU" else f"a {noun}"
 
 
 def _registrable(entity: type[MetadataEntity]) -> type[MetadataEntity]:

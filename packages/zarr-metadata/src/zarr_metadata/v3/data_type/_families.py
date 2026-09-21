@@ -227,6 +227,7 @@ __all__ = [
     "FloatDataType",
     "IntegerDataType",
     "NumpyTimeDataType",
+    "NumpyTimeOptions",
     "NumpyTimeUnit",
     "as_sequence",
     "byte_values",

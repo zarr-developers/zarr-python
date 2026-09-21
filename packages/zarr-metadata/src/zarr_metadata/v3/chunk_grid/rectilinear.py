@@ -122,6 +122,7 @@ __all__ = [
     "RectilinearChunkGridMetadata",
     "RectilinearChunkGridName",
     "RectilinearChunkGridObject",
+    "RectilinearChunkGridOptions",
     "RectilinearDimSpec",
     "canonical_chunk_shapes",
     "canonical_dim_spec",

@@ -57,8 +57,11 @@ ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_j
 class ValidationProblem:
     """A single structural problem found while validating a metadata document.
 
-    `loc` is the path from the document root to the offending value, e.g.
-    `("codecs", 0, "name")`. An empty `loc` refers to the document as a whole.
+    `loc` is the path from the root of what was judged to the offending
+    value, e.g. `("codecs", 0, "name")`, and an empty `loc` refers to that
+    root. The root is the document for the validators, the one field for
+    a scope's `coerce`, and the configuration for an entity's rules and
+    its constructor.
     `kind` classifies the failure mode for programmatic dispatch; `message`
     is the human-readable description.
     """

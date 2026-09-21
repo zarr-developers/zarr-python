@@ -59,6 +59,7 @@ from zarr_metadata.v3._typed_json import (
     problem,
     record_writer,
     strip_annotation,
+    without_unset,
 )
 
 if TYPE_CHECKING:
@@ -224,8 +225,9 @@ def unreadable(cls: type[MetadataEntity]) -> str | None:
     wrong somewhere that will not name the class: a field of any other
     name; a `configuration` on an entity that is not `Configured`; a
     configuration that is not a `Configuration`, or a member of it whose
-    annotation is not a shape JSON takes; a `__post_init__` of the
-    entity's own, whose rules `coerce` would never ask; and a class
+    annotation is not a shape JSON takes, or is itself a `Configuration`,
+    whose rules nothing would ask; a `__post_init__` of the entity's or
+    its record's own, since the rules go in `problems`; and a class
     variable a base annotates and nothing sets -- `identifier` for every
     entity, `bounds` for an integer type -- which the first lookup would
     fail. Registration asks, and refuses the class with the answer.
@@ -260,12 +262,27 @@ def unreadable(cls: type[MetadataEntity]) -> str | None:
             members = field_hints(record)
         except NameError as unresolved:
             return _unresolved(record, unresolved)
+        if "__post_init__" in vars(record):
+            return (
+                f"{record.__name__} defines __post_init__; write its rules as `problems`, "
+                "yielding each: the entity's constructor stops at the first, `coerce` reports "
+                "every one"
+            )
         unread: list[str] = []
         for name, annotation in members.items():
+            inner = without_unset(strip_annotation(annotation)[0])
+            if isinstance(inner, type) and issubclass(inner, Configuration):
+                return (
+                    f"{cls.__name__}: {name} is annotated {inner.__name__}, a Configuration, whose "
+                    "rules nothing would ask; a member that is an object is a plain record "
+                    "dataclass or a TypedDict, and its rules belong to the entity's configuration"
+                )
             try:
                 accepted = parser_for(annotation, _nested_field) is not None
             except TypeError as refused:
                 return f"{cls.__name__}: {name} {refused}"
+            except NameError as unresolved:
+                return _unresolved(record, unresolved)
             if not accepted:
                 unread.append(name)
         if len(unread) != 0:
@@ -276,7 +293,7 @@ def unreadable(cls: type[MetadataEntity]) -> str | None:
                 "a Literal of names, tuple[T, ...] or tuple[T1, T2], a TypedDict or dataclass "
                 "record, Mapping[str, V], a NewType, or an entity kind with Opaque "
                 "(CodecEntity | Opaque); add | UNSET for an optional member, and put any finer "
-                "rule in the function bound as `problems`"
+                "rule in the record's `problems`"
             )
     if "__post_init__" in vars(cls):
         return (
@@ -470,7 +487,7 @@ class MetadataEntity(ABC):
     Subclasses add their configuration members as fields, which is what
     makes them well-typed when read: `coerce` builds one only from
     metadata it accepted. Built by hand, the types are the caller's
-    promise -- `__post_init__` judges values, not types. An optional member is
+    promise -- the record's `problems` judges values, not types. An optional member is
     typed `| UNSET` with a default of `UNSET`, so absence is representable
     -- and distinct from a `null` the document wrote -- and a canonical
     spelling can leave it out.
@@ -612,7 +629,7 @@ class MetadataEntity(ABC):
         of the entity's members mean the same -- a rectilinear
         dimension's run-length encoding, a `typesize` that `noshuffle`
         ignores -- and, in an entity that contains entities, to put those
-        in canonical form: `replace(self, inner=canonicalized(self.inner))`.
+        in canonical form: `self.with_configuration(inner=self.inner.canonical())`.
         """
         return self
 
@@ -629,7 +646,9 @@ class MetadataEntity(ABC):
         if you want the simplest equivalent spelling. The envelope's
         spelling is the one thing not preserved, because the entity does
         not model it: a bare name, `{"name": x}` and `{"name": x,
-        "configuration": {}}` all read to the same entity.
+        "configuration": {}}` all read to the same entity, and a
+        `must_understand` the document wrote is not written back, since
+        absent means the same as `true` and `false` is refused.
 
         An entity whose JSON is not its fields overrides this; none in
         the package does.

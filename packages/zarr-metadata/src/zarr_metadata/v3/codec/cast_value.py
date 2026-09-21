@@ -117,6 +117,7 @@ __all__ = [
     "CastValueCodecMetadata",
     "CastValueCodecName",
     "CastValueCodecObject",
+    "CastValueOptions",
     "ScalarMap",
     "ScalarMapEntry",
 ]

@@ -267,6 +267,10 @@ _EXTENSION_ROLES = (
     "FillValue",
     "Configuration",
     "Component",
+    # The configuration record an entity is built from, `BloscOptions`:
+    # the dataclass whose fields are the members and whose `problems`
+    # holds the rules. `Configuration` is taken by the TypedDict.
+    "Options",
     # The bare role is the coerced entity itself: the dataclass that owns
     # the extension's type checks, value checks and canonical spelling.
     # Listed last so a longer role still wins the alternation.

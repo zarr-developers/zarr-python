@@ -74,6 +74,7 @@ __all__ = [
     "V2ChunkKeyEncodingMetadata",
     "V2ChunkKeyEncodingName",
     "V2ChunkKeyEncodingObject",
+    "V2ChunkKeyEncodingOptions",
     "V2ChunkKeyEncodingSeparator",
 ]
 

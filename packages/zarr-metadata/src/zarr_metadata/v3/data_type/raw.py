@@ -130,7 +130,7 @@ class RawBytesDataType(DataTypeEntity):
         """One byte value per byte of the scalar.
 
         A malformed name says nothing about how wide the scalar is, so
-        there is no length to check against; `raw_bytes_problems` reports the name.
+        there is no length to check against; `name_problems` reports the name.
         """
         try:
             raw_bytes_dtype_name(self.data_type_name)

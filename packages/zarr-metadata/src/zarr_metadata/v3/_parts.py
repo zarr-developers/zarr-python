@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from zarr_metadata.v3._entity import DataTypeEntity
 
 
-Extents: TypeAlias = "tuple[frozenset[int] | None, ...]"
+Extents: TypeAlias = tuple[frozenset[int] | None, ...]
 """One entry per dimension: the lengths that dimension's chunks take.
 
 A singleton is a uniform axis. `None` is an axis whose lengths this

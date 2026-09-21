@@ -68,6 +68,7 @@ __all__ = [
     "DefaultChunkKeyEncodingMetadata",
     "DefaultChunkKeyEncodingName",
     "DefaultChunkKeyEncodingObject",
+    "DefaultChunkKeyEncodingOptions",
     "DefaultChunkKeyEncodingSeparator",
 ]
 

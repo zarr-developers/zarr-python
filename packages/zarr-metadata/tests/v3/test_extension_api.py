@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, NotRequired, Self
+from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, NotRequired, Self, get_args
 
 import pytest
 from typing_extensions import TypedDict
@@ -34,6 +34,7 @@ from zarr_metadata.v3.entity import (
     Configured,
     Context,
     DataTypeEntity,
+    Extents,
     IntegerDataType,
     Loc,
     MetadataEntity,
@@ -891,3 +892,84 @@ def test_error_a_configuration_needs_configured_beside_the_kind() -> None:
 
     with pytest.raises(TypeError, match="declares `configuration` without `Configured`"):
         CORE_AND_EXTENSIONS.extended_with(Unmarked)
+
+
+@dataclass(frozen=True)
+class NestedRecordOptions(Configuration):
+    depth: int
+
+
+@dataclass(frozen=True)
+class NestingOptions(Configuration):
+    inner: NestedRecordOptions
+
+
+def test_error_a_member_may_not_be_a_configuration() -> None:
+    # `problems` is asked of the entity's configuration and of nothing
+    # inside it; a `Configuration` nested there would carry rules nothing
+    # runs.
+    @dataclass(frozen=True)
+    class Nesting(BytesBytesCodec, Configured):
+        configuration: NestingOptions
+
+        identifier: ClassVar[str] = "acme.nesting"
+        variable_size: ClassVar[bool] = False
+
+    with pytest.raises(TypeError, match="a Configuration, whose rules nothing would ask"):
+        CORE_AND_EXTENSIONS.extended_with(Nesting)
+
+
+@dataclass(frozen=True)
+class CheckedOptions(Configuration):
+    level: int
+
+    def __post_init__(self) -> None:
+        return None
+
+
+def test_error_a_record_may_not_define_post_init() -> None:
+    # It would stop at the first problem where `coerce` reports every one.
+    @dataclass(frozen=True)
+    class RecordChecked(BytesBytesCodec, Configured):
+        configuration: CheckedOptions
+
+        identifier: ClassVar[str] = "acme.record_checked"
+        variable_size: ClassVar[bool] = False
+
+    with pytest.raises(
+        TypeError, match="CheckedOptions defines __post_init__; write its rules as `problems`"
+    ):
+        CORE_AND_EXTENSIONS.extended_with(RecordChecked)
+
+
+@dataclass(frozen=True)
+class Window:
+    start: int
+
+    def __post_init__(self) -> None:
+        return None
+
+
+@dataclass(frozen=True)
+class WindowedOptions(Configuration):
+    window: Window
+
+
+def test_error_a_nested_record_may_not_define_post_init() -> None:
+    # A plain record is data, built whenever its keys read; a rule about
+    # it belongs with the other rules, in the configuration's `problems`.
+    @dataclass(frozen=True)
+    class Windowed(BytesBytesCodec, Configured):
+        configuration: WindowedOptions
+
+        identifier: ClassVar[str] = "acme.windowed"
+        variable_size: ClassVar[bool] = False
+
+    with pytest.raises(TypeError, match="Window defines __post_init__; a record is plain data"):
+        CORE_AND_EXTENSIONS.extended_with(Windowed)
+
+
+def test_extents_is_a_type_an_extension_can_write() -> None:
+    # `Extents | None` in a third party's annotation needs a real alias,
+    # not a string one.
+    assert get_args(Extents | None) == (Extents, type(None))

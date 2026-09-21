@@ -76,6 +76,7 @@ __all__ = [
     "BytesCodecMetadata",
     "BytesCodecName",
     "BytesCodecObject",
+    "BytesOptions",
     "Endianness",
 ]
 

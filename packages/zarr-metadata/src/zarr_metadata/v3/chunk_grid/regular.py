@@ -59,6 +59,7 @@ __all__ = [
     "RegularChunkGridMetadata",
     "RegularChunkGridName",
     "RegularChunkGridObject",
+    "RegularChunkGridOptions",
 ]
 
 

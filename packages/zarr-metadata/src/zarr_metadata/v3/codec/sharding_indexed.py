@@ -96,6 +96,7 @@ __all__ = [
     "ShardingIndexedCodecMetadata",
     "ShardingIndexedCodecName",
     "ShardingIndexedCodecObject",
+    "ShardingIndexedOptions",
 ]
 
 

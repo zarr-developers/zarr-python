@@ -74,6 +74,7 @@ __all__ = [
     "ZstdCodecMetadata",
     "ZstdCodecName",
     "ZstdCodecObject",
+    "ZstdOptions",
 ]
 
 

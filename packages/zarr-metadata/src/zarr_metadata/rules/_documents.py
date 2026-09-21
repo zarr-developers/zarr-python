@@ -242,6 +242,15 @@ def canonicalize_array_metadata_v3(
     problems come back with the semantic ones, and the result is
     `Invalid` rather than a canonical document. The document is read
     once: the entities that judge it are the entities that are rewritten.
+
+    Tell the two apart with `result.valid is True` or
+    `isinstance(result, Invalid)`; pyright narrows the literal on a
+    comparison, not on `if result.valid`.
+
+    An entity whose canonical form breaks its own rules raises
+    `MetadataValidationError` from here, as its constructor does: that
+    is a bug in the entity, not a verdict on the document, which was
+    valid.
     """
     normalized = arrays_to_tuples(document)
     problems = _validate_structure_v3(normalized)

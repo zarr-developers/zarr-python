@@ -73,6 +73,7 @@ __all__ = [
     "ScaleOffsetCodecMetadata",
     "ScaleOffsetCodecName",
     "ScaleOffsetCodecObject",
+    "ScaleOffsetOptions",
 ]
 
 

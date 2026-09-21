@@ -794,3 +794,10 @@ def test_error_a_nested_extension_point_may_not_be_declared_ignorable(case: str)
     document, loc = IGNORABLE_NESTED[case]
     problems = validate_array_metadata_v3(cast("Any", document))
     assert loc in {problem.loc for problem in problems}
+
+
+def test_error_a_pipeline_that_is_not_an_array_is_not_judged_as_empty() -> None:
+    # Nothing was read, so there is no chain to find an array->bytes
+    # codec missing from: the one problem is the shape of the field.
+    problems = validate_array_metadata_v3(cast("Any", {**BASE, "codecs": "bytes"}))
+    assert [(problem.loc, problem.kind) for problem in problems] == [(("codecs",), "invalid_type")]

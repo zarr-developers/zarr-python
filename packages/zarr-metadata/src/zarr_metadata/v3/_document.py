@@ -77,11 +77,17 @@ class ArrayDocumentV3:
         """
         # No per-entity value problems: an entity exists only if its own
         # values are allowed, so `read_array_v3` has already reported any.
+        # A pipeline the document did not write as an array was not read,
+        # and an empty one would be judged for a verdict about nothing.
         return (
             *_fill_value_problems(self),
             *_grid_problems(self),
             *_dimension_names_problems(self),
-            *chain_problems(self.codecs, self.parts, ("codecs",)),
+            *(
+                chain_problems(self.codecs, self.parts, ("codecs",))
+                if _listed(self.document, "codecs") is not None
+                else ()
+            ),
         )
 
     def canonical(self) -> ArrayDocumentV3:
@@ -174,6 +180,12 @@ class ArrayDocumentV3:
         )
 
 
+def _listed(document: Mapping[str, object], key: str) -> Sequence[object] | None:
+    """What the document lists at `key`; None if it wrote no array there."""
+    entries = document.get(key)
+    return cast("Sequence[object]", entries) if isinstance(entries, (list, tuple)) else None
+
+
 def _read_one(
     context: Context, kind: type[_EntityT], document: Mapping[str, object], key: str
 ) -> tuple[_EntityT | Opaque, tuple[ValidationProblem, ...]]:
@@ -188,12 +200,12 @@ def _read_each(
     context: Context, kind: type[_EntityT], document: Mapping[str, object], key: str
 ) -> tuple[tuple[_EntityT | Opaque, ...], tuple[ValidationProblem, ...]]:
     """The entities of `kind` the document lists at `key`, in order."""
-    entries = document.get(key)
-    if not isinstance(entries, (list, tuple)):
+    entries = _listed(document, key)
+    if entries is None:
         return (), ()
     read: list[_EntityT | Opaque] = []
     problems: list[ValidationProblem] = []
-    for index, entry in enumerate(cast("Sequence[object]", entries)):
+    for index, entry in enumerate(entries):
         entity, found = context.coerce(kind, entry, (key, index), envelope_judged=True)
         read.append(entity)
         problems.extend(found)

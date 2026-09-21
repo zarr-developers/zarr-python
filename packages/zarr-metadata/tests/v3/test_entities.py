@@ -15,6 +15,7 @@ import sys
 from typing import (
     Any,
     ClassVar,
+    Literal,
     Self,
     cast,
     get_type_hints,
@@ -29,9 +30,18 @@ from tests.rules.strategies import valid_documents
 from zarr_metadata.model import UNSET, MetadataValidationError
 from zarr_metadata.rules import validate_array_metadata_v3
 from zarr_metadata.v3._document import read_array_v3
-from zarr_metadata.v3._entity import is_from_name
+from zarr_metadata.v3._entity import BytesBytesCodec, Opaque, is_from_name
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS
-from zarr_metadata.v3._typed_json import field_hints, is_not_required, is_optional
+from zarr_metadata.v3._typed_json import (
+    describe,
+    field_hints,
+    is_class_var,
+    is_not_required,
+    is_optional,
+    no_writer_leaf,
+    shape_of,
+    writer_for,
+)
 from zarr_metadata.v3.chunk_grid.rectilinear import (
     RectilinearChunkGrid,
 )
@@ -826,3 +836,69 @@ def test_the_fields_are_the_public_configuration_type() -> None:
         assert {
             key for key, annotation in keys.items() if not is_not_required(annotation)
         } == required, cls
+
+
+def test_error_an_entity_of_another_kind_is_invalid_not_out_of_scope() -> None:
+    # `transpose` is in scope, so it is not for another reader to
+    # resolve; it is an array->array codec where a bytes->bytes one goes.
+    value = {"name": "transpose", "configuration": {"order": (0,)}}
+    entity, problems = CORE_AND_EXTENSIONS.coerce(BytesBytesCodec, value, ("codecs", 2))
+    assert entity == Opaque(value, "invalid")
+    assert [(problem.loc, problem.kind, problem.message) for problem in problems] == [
+        (
+            ("codecs", 2),
+            "invalid_value",
+            "expected a BytesBytesCodec, got 'transpose', an ArrayArrayCodec",
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("annotation", "shape"),
+    [
+        (Literal[True], "bool"),
+        (Literal[1, 2], "int"),
+        (Literal["a", "b"], "str"),
+        (Literal[0, "auto"], None),
+    ],
+)
+def test_a_literal_has_the_shape_of_its_values(annotation: object, shape: str | None) -> None:
+    # `True` is an integer to Python and a boolean to JSON; a literal
+    # mixing shapes has none, so a union tries it for any value.
+    assert shape_of(annotation) == shape
+
+
+def test_a_literal_of_mixed_shapes_is_described() -> None:
+    assert describe(Literal[0, "auto"]) == "one of ('auto', 0)"
+
+
+@pytest.mark.parametrize(
+    ("annotation", "expected"),
+    [
+        ("ClassVar[str]", True),
+        ("ClassVar", True),
+        ("typing.ClassVar[str]", True),
+        ("t.ClassVar[str]", True),
+        ("str", False),
+        ("ClassVarLike[str]", False),
+        ("Final[ClassVar[str]]", False),
+    ],
+)
+def test_a_class_var_is_read_from_any_spelling(annotation: str, expected: bool) -> None:
+    # Under PEP 649 the annotation is a string, spelled however the
+    # module imported the name.
+    assert is_class_var(annotation) is expected
+
+
+def test_field_hints_is_shared_and_so_read_only() -> None:
+    hints = field_hints(GzipCodec)
+    assert field_hints(GzipCodec) is hints
+    with pytest.raises(TypeError, match="does not support item assignment"):
+        cast("dict[str, object]", hints)["configuration"] = int
+
+
+def test_error_a_fixed_tuple_of_the_wrong_length_is_not_written() -> None:
+    write = writer_for(tuple[int, str], no_writer_leaf)
+    assert write is not None
+    with pytest.raises(TypeError, match="is not a JSON value"):
+        write((1,))
