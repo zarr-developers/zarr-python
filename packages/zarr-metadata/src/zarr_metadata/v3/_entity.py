@@ -95,7 +95,6 @@ from zarr_metadata.v3._compile import (
     field_hints,
     has_shape,
     is_class_var,
-    is_optional,
     is_union,
     own_annotations,
     register_check,
@@ -498,8 +497,9 @@ class MetadataEntity(Generic[JSONT_co]):
     Subclasses add their configuration members as fields, which is what
     makes them well-typed by construction: an instance exists only if
     `coerce` accepted the metadata that produced it. An optional member is
-    typed `| None` with a default of `None`, so absence is representable
-    and a canonical spelling can leave it out.
+    typed `| UNSET` with a default of `UNSET`, so absence is representable
+    -- and distinct from a `null` the document wrote -- and a canonical
+    spelling can leave it out.
 
     Frozen, so an entity of hashable members is hashable. One holding a
     value out of scope is not, because that value is the JSON the document
@@ -508,11 +508,12 @@ class MetadataEntity(Generic[JSONT_co]):
     mapping instead: `MappingProxyType` is unhashable too, and anything
     else stops `json.dumps` from serializing what `to_json` returns.
 
-    Most subclasses declare `member_types` and nothing else: the default
-    `coerce` and `to_json` are written once here against that table. The
-    ones that override are the ones with something particular to say --
-    a configuration containing other entities, a name that is a family
-    rather than a constant, a member another member renders meaningless.
+    A subclass writes its fields, and a rule where the spec has something
+    to say beyond their types. `coerce`, `configuration`, `to_json` and
+    `canonical` are written once here against what the fields say, and
+    the class variables below -- `member_types`, `nested_members`,
+    `value_checks`, `member_rules` -- are that reading, compiled at class
+    creation: nothing declares them.
     """
 
     extension_point: ClassVar[ExtensionPointField | None] = None
@@ -554,8 +555,10 @@ class MetadataEntity(Generic[JSONT_co]):
 
     Read off the dataclass fields at class creation: which members there
     are, which may be absent (the type admits `UNSET`), and the check
-    each one's type implies. A class declares an entry itself only for a
-    field whose annotation `check_for` cannot compile, and the public
+    each one's type implies. `coerce` reads a configuration against it
+    member by member, so one member that cannot be read costs that member
+    and not the rest. An annotation the compiler cannot read is refused
+    at class creation; `register_check` teaches it the shape. The public
     JSON TypedDict is held to the same keys by `tests/v3/test_entities.py`.
     """
 
@@ -655,32 +658,13 @@ class MetadataEntity(Generic[JSONT_co]):
             )
             raise TypeError(msg)
         # Before every guard below, because they read the table.
-        declared = dict(vars(cls).get("member_types", {}))
-        derived, unread = derive_member_types(cls)
-        unsupported = sorted(set(unread) - set(declared))
-        if len(unsupported) != 0:
+        cls.member_types, unread = derive_member_types(cls)
+        if len(unread) != 0:
             msg = (
                 f"{cls.__name__}: no check can be read off the annotation of "
-                f"{', '.join(unsupported)}; declare one in `member_types`"
+                f"{', '.join(sorted(unread))}; teach the compiler that shape with `register_check`"
             )
             raise TypeError(msg)
-        optional = {name: is_optional(annotation) for name, annotation in field_hints(cls).items()}
-        misstated = sorted(
-            member
-            for member, (required, _) in declared.items()
-            if member in optional and required == optional[member]
-        )
-        if len(misstated) != 0:
-            # The check is the entity's to write; whether the member may
-            # be left out is the field's to say, and a declared entry
-            # that disagrees is the drift this derivation exists to rule
-            # out.
-            msg = (
-                f"{cls.__name__} declares {', '.join(misstated)} with a requiredness "
-                "its field does not give it"
-            )
-            raise TypeError(msg)
-        cls.member_types = {**derived, **declared}
         cls.configuration_required = any(required for required, _ in cls.member_types.values())
         json_type = json_type_of(cls)
         if json_type is not ZarrV3MetadataFieldJSON:

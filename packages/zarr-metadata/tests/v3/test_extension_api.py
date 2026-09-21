@@ -37,11 +37,9 @@ from zarr_metadata.v3.entity import (
     IntegerDataType,
     Interval,
     Loc,
-    MemberTypes,
     MetadataEntity,
     Opaque,
     StorageClass,
-    is_int,
     named_configuration,
     problem,
     register_check,
@@ -367,26 +365,11 @@ def test_a_third_party_can_register_a_family() -> None:
     assert scope.resolve("data_type", "acme.fixed") is None
 
 
-def test_error_requiredness_may_not_be_restated() -> None:
-    # It is the field's to say. A declared entry exists for the check,
-    # which the annotation does not imply; saying the member is required
-    # as well is the drift the derivation removes.
-    with pytest.raises(TypeError, match="requiredness its field does not give it"):
-
-        @dataclass(frozen=True)
-        class Insistent(CodecEntity):  # pyright: ignore[reportUnusedClass]
-            acceleration: int | UNSET = UNSET
-
-            identifier: ClassVar[str] = "acme.insistent"
-            kind: ClassVar[CodecKind] = "bytes_bytes"
-            member_types: ClassVar[MemberTypes] = {"acceleration": (True, is_int)}
-
-
 def test_error_a_member_needs_a_check_from_somewhere() -> None:
     # An annotation outside the shapes `check_for` compiles implies no
     # check, so the entity owes one. Silently skipping the member would
     # let anything through where the field promised a type.
-    with pytest.raises(TypeError, match="no check can be read off the annotation of inner"):
+    with pytest.raises(TypeError, match="annotation of inner; teach the compiler that shape"):
 
         @dataclass(frozen=True)
         class Structured(CodecEntity):  # pyright: ignore[reportUnusedClass]

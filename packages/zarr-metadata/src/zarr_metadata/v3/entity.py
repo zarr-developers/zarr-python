@@ -48,9 +48,10 @@ bare, `to_json` is typed as any metadata field:
 The fields are the only place the shape is written. Which members exist,
 which may be left out (the type admits `UNSET`), and how each one is
 type-checked are all read off the annotations -- an `int`, a `Literal`
-of names, an array, a nested entity type -- and `member_types` is for
-the exception, an annotation the compiler does not read. A bound on a
-value is written on the field too, in the `annotated_types` vocabulary:
+of names, an array, a nested entity type -- and an annotation the
+compiler does not read is taught to it once, with `register_check`. A
+bound on a value is written on the field too, in the `annotated_types`
+vocabulary:
 
     acceleration: Annotated[int, Interval(ge=1, le=65537)] | UNSET = UNSET
 
