@@ -26,6 +26,7 @@ from zarr_metadata.v3.entity import (
     ArrayArrayCodec,
     ArrayDocumentV3,
     ArrayParts,
+    Configuration,
     DataTypeEntity,
     MetadataValidationError,
     Opaque,
@@ -50,22 +51,26 @@ class AcmeAffineObject(TypedDict, closed=True):
     must_understand: NotRequired[bool]
 
 
-def acme_affine_problems(codec: AcmeAffineCodec, /) -> Iterator[ValidationProblem]:
-    if codec.scale == 0:
-        yield ValidationProblem(("scale",), "expected a non-zero number, got 0", "invalid_value")
-    if isinstance(codec.dtype, DataTypeEntity) and codec.dtype.storage_class() == "variable_length":
-        yield ValidationProblem(
-            ("dtype",),
-            f"expected a fixed-size data type, got {type(codec.dtype).identifier!r}",
-            "invalid_value",
-        )
-
-
 @dataclass(frozen=True)
-class AcmeAffineOptions:
+class AcmeAffineOptions(Configuration):
     scale: float
     offset: float | UNSET = UNSET
     dtype: DataTypeEntity | Opaque | UNSET = UNSET
+
+    def problems(self) -> Iterator[ValidationProblem]:
+        if self.scale == 0:
+            yield ValidationProblem(
+                ("scale",), "expected a non-zero number, got 0", "invalid_value"
+            )
+        if (
+            isinstance(self.dtype, DataTypeEntity)
+            and self.dtype.storage_class() == "variable_length"
+        ):
+            yield ValidationProblem(
+                ("dtype",),
+                f"expected a fixed-size data type, got {type(self.dtype).identifier!r}",
+                "invalid_value",
+            )
 
 
 @dataclass(frozen=True)
@@ -76,7 +81,6 @@ class AcmeAffineCodec(ArrayArrayCodec):
 
     identifier: ClassVar[str] = "acme.affine"
     variable_size: ClassVar[bool] = False
-    problems = acme_affine_problems
 
     @property
     def scale(self) -> float:

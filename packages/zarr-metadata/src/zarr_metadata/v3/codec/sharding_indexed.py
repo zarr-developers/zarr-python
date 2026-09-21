@@ -16,6 +16,7 @@ from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
     ArrayBytesCodec,
     CodecEntity,
+    Configuration,
     Opaque,
     problem,
 )
@@ -98,7 +99,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class ShardingIndexedOptions:
+class ShardingIndexedOptions(Configuration):
     """What `sharding_indexed` is configured with."""
 
     chunk_shape: tuple[int, ...]
@@ -106,13 +107,14 @@ class ShardingIndexedOptions:
     index_codecs: tuple[CodecEntity | Opaque, ...]
     index_location: ShardingIndexLocation | UNSET = UNSET
 
-
-def sharding_problems(codec: "ShardingIndexedCodec", /) -> "Iterator[ValidationProblem]":
-    for index, extent in enumerate(codec.chunk_shape):
-        if extent < 1:
-            yield ValidationProblem(
-                ("chunk_shape", index), f"expected an integer >= 1, got {extent}", "invalid_value"
-            )
+    def problems(self) -> "Iterator[ValidationProblem]":
+        for index, extent in enumerate(self.chunk_shape):
+            if extent < 1:
+                yield ValidationProblem(
+                    ("chunk_shape", index),
+                    f"expected an integer >= 1, got {extent}",
+                    "invalid_value",
+                )
 
 
 @dataclass(frozen=True)
@@ -128,8 +130,6 @@ class ShardingIndexedCodec(ArrayBytesCodec):
 
     identifier: ClassVar[str] = SHARDING_INDEXED_CODEC_NAME
     variable_size: ClassVar[bool] = True
-
-    problems = sharding_problems
 
     @property
     def chunk_shape(self) -> tuple[int, ...]:

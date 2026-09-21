@@ -12,6 +12,7 @@ from typing_extensions import TypedDict
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ChunkGridEntity,
+    Configuration,
     problem,
 )
 from zarr_metadata.v3._parts import ChunkGrid
@@ -61,18 +62,19 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class RegularChunkGridOptions:
+class RegularChunkGridOptions(Configuration):
     """What a `regular` grid is configured with."""
 
     chunk_shape: tuple[int, ...]
 
-
-def regular_problems(grid: "RegularChunkGrid", /) -> "Iterator[ValidationProblem]":
-    for index, extent in enumerate(grid.chunk_shape):
-        if extent < 1:
-            yield ValidationProblem(
-                ("chunk_shape", index), f"expected an integer >= 1, got {extent}", "invalid_value"
-            )
+    def problems(self) -> "Iterator[ValidationProblem]":
+        for index, extent in enumerate(self.chunk_shape):
+            if extent < 1:
+                yield ValidationProblem(
+                    ("chunk_shape", index),
+                    f"expected an integer >= 1, got {extent}",
+                    "invalid_value",
+                )
 
 
 @dataclass(frozen=True)
@@ -82,8 +84,6 @@ class RegularChunkGrid(ChunkGridEntity):
     configuration: RegularChunkGridOptions
 
     identifier: ClassVar[str] = REGULAR_CHUNK_GRID_NAME
-
-    problems = regular_problems
 
     @property
     def chunk_shape(self) -> tuple[int, ...]:

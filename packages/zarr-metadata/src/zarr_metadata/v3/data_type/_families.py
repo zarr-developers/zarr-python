@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal, cast
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
+    Configuration,
     DataTypeEntity,
     StorageClass,
     is_integer,
@@ -168,21 +169,20 @@ NUMPY_TIME_MAX_SCALE_FACTOR: Final = 2**31 - 1
 
 
 @dataclass(frozen=True)
-class NumpyTimeOptions:
+class NumpyTimeOptions(Configuration):
     """What a numpy time type is configured with: a unit, and how many of it one tick is."""
 
     unit: NumpyTimeUnit
     scale_factor: int
 
-
-def numpy_time_problems(data_type: NumpyTimeDataType, /) -> Iterator[ValidationProblem]:
-    if not 1 <= data_type.scale_factor <= NUMPY_TIME_MAX_SCALE_FACTOR:
-        yield ValidationProblem(
-            ("scale_factor",),
-            f"expected an integer in [1, {NUMPY_TIME_MAX_SCALE_FACTOR}], "
-            f"got {data_type.scale_factor}",
-            "invalid_value",
-        )
+    def problems(self) -> Iterator[ValidationProblem]:
+        if not 1 <= self.scale_factor <= NUMPY_TIME_MAX_SCALE_FACTOR:
+            yield ValidationProblem(
+                ("scale_factor",),
+                f"expected an integer in [1, {NUMPY_TIME_MAX_SCALE_FACTOR}], "
+                f"got {self.scale_factor}",
+                "invalid_value",
+            )
 
 
 @dataclass(frozen=True)
@@ -197,7 +197,6 @@ class NumpyTimeDataType(DataTypeEntity):
     configuration: NumpyTimeOptions
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
-    problems = numpy_time_problems
 
     @property
     def unit(self) -> NumpyTimeUnit:

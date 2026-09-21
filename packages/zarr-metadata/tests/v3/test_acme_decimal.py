@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 
 from zarr_metadata.v3.entity import (
+    Configuration,
     DataTypeEntity,
     Loc,
     MetadataValidationError,
@@ -70,29 +71,28 @@ __all__ = [
 ]
 
 
-def acme_decimal_problems(data_type: AcmeDecimalDataType, /) -> Iterator[ValidationProblem]:
-    if not 1 <= data_type.precision <= ACME_DECIMAL_MAX_PRECISION:
-        yield ValidationProblem(
-            ("precision",),
-            f"expected an integer in [1, {ACME_DECIMAL_MAX_PRECISION}], got {data_type.precision}",
-            "invalid_value",
-        )
-    if data_type.scale < 0:
-        yield ValidationProblem(
-            ("scale",), f"expected an integer >= 0, got {data_type.scale}", "invalid_value"
-        )
-    elif data_type.scale > data_type.precision:
-        yield ValidationProblem(
-            ("scale",),
-            f"expected an integer <= precision ({data_type.precision}), got {data_type.scale}",
-            "invalid_value",
-        )
-
-
 @dataclass(frozen=True)
-class AcmeDecimalOptions:
+class AcmeDecimalOptions(Configuration):
     precision: int
     scale: int
+
+    def problems(self) -> Iterator[ValidationProblem]:
+        if not 1 <= self.precision <= ACME_DECIMAL_MAX_PRECISION:
+            yield ValidationProblem(
+                ("precision",),
+                f"expected an integer in [1, {ACME_DECIMAL_MAX_PRECISION}], got {self.precision}",
+                "invalid_value",
+            )
+        if self.scale < 0:
+            yield ValidationProblem(
+                ("scale",), f"expected an integer >= 0, got {self.scale}", "invalid_value"
+            )
+        elif self.scale > self.precision:
+            yield ValidationProblem(
+                ("scale",),
+                f"expected an integer <= precision ({self.precision}), got {self.scale}",
+                "invalid_value",
+            )
 
 
 @dataclass(frozen=True)
@@ -103,7 +103,6 @@ class AcmeDecimalDataType(DataTypeEntity):
 
     identifier: ClassVar[str] = ACME_DECIMAL_DATA_TYPE_NAME
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
-    problems = acme_decimal_problems
 
     @property
     def precision(self) -> int:

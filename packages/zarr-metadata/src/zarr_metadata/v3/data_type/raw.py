@@ -84,18 +84,6 @@ __all__ = [
 ]
 
 
-def raw_bytes_problems(data_type: "RawBytesDataType", /) -> "Iterator[ValidationProblem]":
-    """This family's validity is in its name, not in a configuration.
-
-    "raw bits, variable size given by *, limited to be a multiple of 8"
-    -- and zero bits is not a data type.
-    """
-    try:
-        raw_bytes_dtype_name(data_type.data_type_name)
-    except ValueError as error:
-        yield ValidationProblem((), str(error), "invalid_value")
-
-
 @dataclass(frozen=True)
 class RawBytesDataType(DataTypeEntity):
     """An `r<N>` raw-bytes data type, coerced from its metadata.
@@ -126,7 +114,17 @@ class RawBytesDataType(DataTypeEntity):
         """
         return RAW_BYTES_NAME_PATTERN.fullmatch(name) is not None
 
-    problems = raw_bytes_problems
+    @classmethod
+    def name_problems(cls, name: str) -> "Iterator[ValidationProblem]":
+        """This family's validity is in its name, not in a configuration.
+
+        "raw bits, variable size given by *, limited to be a multiple of 8"
+        -- and zero bits is not a data type.
+        """
+        try:
+            raw_bytes_dtype_name(name)
+        except ValueError as error:
+            yield ValidationProblem((), str(error), "invalid_value")
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         """One byte value per byte of the scalar.

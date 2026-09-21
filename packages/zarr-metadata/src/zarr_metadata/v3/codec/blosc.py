@@ -13,6 +13,7 @@ from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     BytesBytesCodec,
+    Configuration,
 )
 
 if TYPE_CHECKING:
@@ -90,7 +91,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class BloscOptions:
+class BloscOptions(Configuration):
     """What `blosc` is configured with."""
 
     cname: BloscCName
@@ -99,35 +100,34 @@ class BloscOptions:
     blocksize: int
     typesize: int | UNSET = UNSET
 
+    def problems(self) -> "Iterator[ValidationProblem]":
+        """Bounds on `clevel` and `blocksize`; `typesize` against `shuffle`.
 
-def blosc_problems(codec: "BloscCodec", /) -> "Iterator[ValidationProblem]":
-    """Bounds on `clevel` and `blocksize`; `typesize` against `shuffle`.
-
-    Under `noshuffle` the spec says of `typesize` that "the value is
-    ignored", and `canonical` drops it; under either shuffle it is
-    required, and positive.
-    """
-    if not 0 <= codec.clevel <= 9:
-        yield ValidationProblem(
-            ("clevel",), f"expected an integer in [0, 9], got {codec.clevel}", "invalid_value"
-        )
-    if codec.blocksize < 0:
-        yield ValidationProblem(
-            ("blocksize",), f"expected an integer >= 0, got {codec.blocksize}", "invalid_value"
-        )
-    if codec.shuffle != BLOSC_NO_SHUFFLE:
-        if codec.typesize is UNSET:
+        Under `noshuffle` the spec says of `typesize` that "the value is
+        ignored", and `canonical` drops it; under either shuffle it is
+        required, and positive.
+        """
+        if not 0 <= self.clevel <= 9:
             yield ValidationProblem(
-                ("typesize",),
-                f"typesize is required when shuffle is {codec.shuffle!r}",
-                "missing_key",
+                ("clevel",), f"expected an integer in [0, 9], got {self.clevel}", "invalid_value"
             )
-        elif codec.typesize < 1:
+        if self.blocksize < 0:
             yield ValidationProblem(
-                ("typesize",),
-                f"expected a positive integer, got {codec.typesize}",
-                "invalid_value",
+                ("blocksize",), f"expected an integer >= 0, got {self.blocksize}", "invalid_value"
             )
+        if self.shuffle != BLOSC_NO_SHUFFLE:
+            if self.typesize is UNSET:
+                yield ValidationProblem(
+                    ("typesize",),
+                    f"typesize is required when shuffle is {self.shuffle!r}",
+                    "missing_key",
+                )
+            elif self.typesize < 1:
+                yield ValidationProblem(
+                    ("typesize",),
+                    f"expected a positive integer, got {self.typesize}",
+                    "invalid_value",
+                )
 
 
 @dataclass(frozen=True)
@@ -146,7 +146,6 @@ class BloscCodec(BytesBytesCodec):
 
     # Every member is required but `typesize`, which only means something
     # when shuffling; `blosc_problems` is where that conditional lives.
-    problems = blosc_problems
 
     @property
     def cname(self) -> BloscCName:

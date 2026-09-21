@@ -82,6 +82,7 @@ from zarr_metadata.v3.entity import (
     ChunkGridEntity,
     ChunkKeyEncodingEntity,
     CodecEntity,
+    Configuration,
     DataTypeEntity,
     MetadataEntity,
     StorageTransformerEntity,
@@ -737,7 +738,7 @@ def test_the_fail_fast_reader_refuses_a_member_it_would_drop() -> None:
 # A storage transformer: the one extension point nothing in the package
 # models, so the only way to reach it is to register one.
 @dataclasses.dataclass(frozen=True)
-class AcmeShardCacheOptions:
+class AcmeShardCacheOptions(Configuration):
     verbose: bool | UNSET = UNSET
 
 

@@ -13,6 +13,7 @@ from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ArrayBytesCodec,
+    Configuration,
     DataTypeEntity,
     problem,
 )
@@ -79,7 +80,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class BytesOptions:
+class BytesOptions(Configuration):
     """What `bytes` is configured with."""
 
     endian: Endianness | UNSET = UNSET

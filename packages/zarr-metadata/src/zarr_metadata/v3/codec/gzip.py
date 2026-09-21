@@ -12,6 +12,7 @@ from typing_extensions import TypedDict
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     BytesBytesCodec,
+    Configuration,
 )
 
 if TYPE_CHECKING:
@@ -68,17 +69,16 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class GzipOptions:
+class GzipOptions(Configuration):
     """What `gzip` is configured with."""
 
     level: int
 
-
-def gzip_problems(codec: "GzipCodec", /) -> "Iterator[ValidationProblem]":
-    if not 0 <= codec.level <= 9:
-        yield ValidationProblem(
-            ("level",), f"expected an integer in [0, 9], got {codec.level}", "invalid_value"
-        )
+    def problems(self) -> "Iterator[ValidationProblem]":
+        if not 0 <= self.level <= 9:
+            yield ValidationProblem(
+                ("level",), f"expected an integer in [0, 9], got {self.level}", "invalid_value"
+            )
 
 
 @dataclass(frozen=True)
@@ -89,8 +89,6 @@ class GzipCodec(BytesBytesCodec):
 
     identifier: ClassVar[str] = GZIP_CODEC_NAME
     variable_size: ClassVar[bool] = True
-
-    problems = gzip_problems
 
     @property
     def level(self) -> int:

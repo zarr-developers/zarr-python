@@ -12,6 +12,7 @@ from typing_extensions import TypedDict
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ChunkGridEntity,
+    Configuration,
     Loc,
     is_integer,
     problem,
@@ -167,28 +168,27 @@ def _axis_lengths(spec: RectilinearDimSpec) -> frozenset[int] | None:
 
 
 @dataclass(frozen=True)
-class RectilinearChunkGridOptions:
+class RectilinearChunkGridOptions(Configuration):
     """What a `rectilinear` grid is configured with."""
 
     kind: Literal["inline"]
     chunk_shapes: tuple[RectilinearDimSpec, ...]
 
-
-def rectilinear_problems(grid: "RectilinearChunkGrid", /) -> "Iterator[ValidationProblem]":
-    """Every extent, and every run's length and count, is at least 1."""
-    for axis, spec in enumerate(grid.chunk_shapes):
-        if isinstance(spec, int):
-            if spec < 1:
-                yield _not_positive(("chunk_shapes", axis), spec)
-            continue
-        for index, entry in enumerate(spec):
-            if isinstance(entry, int):
-                if entry < 1:
-                    yield _not_positive(("chunk_shapes", axis, index), entry)
+    def problems(self) -> "Iterator[ValidationProblem]":
+        """Every extent, and every run's length and count, is at least 1."""
+        for axis, spec in enumerate(self.chunk_shapes):
+            if isinstance(spec, int):
+                if spec < 1:
+                    yield _not_positive(("chunk_shapes", axis), spec)
                 continue
-            for position, value in enumerate(entry):
-                if value < 1:
-                    yield _not_positive(("chunk_shapes", axis, index, position), value)
+            for index, entry in enumerate(spec):
+                if isinstance(entry, int):
+                    if entry < 1:
+                        yield _not_positive(("chunk_shapes", axis, index), entry)
+                    continue
+                for position, value in enumerate(entry):
+                    if value < 1:
+                        yield _not_positive(("chunk_shapes", axis, index, position), value)
 
 
 @dataclass(frozen=True)
@@ -198,8 +198,6 @@ class RectilinearChunkGrid(ChunkGridEntity):
     configuration: RectilinearChunkGridOptions
 
     identifier: ClassVar[str] = RECTILINEAR_CHUNK_GRID_NAME
-
-    problems = rectilinear_problems
 
     @property
     def kind(self) -> Literal["inline"]:

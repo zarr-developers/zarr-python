@@ -15,6 +15,7 @@ from typing_extensions import TypedDict
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.v3._entity import (
     ChunkKeyEncodingEntity,
+    Configuration,
 )
 
 DEFAULT_CHUNK_KEY_ENCODING_NAME: Final = "default"
@@ -71,7 +72,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class DefaultChunkKeyEncodingOptions:
+class DefaultChunkKeyEncodingOptions(Configuration):
     """What the `default` encoding is configured with."""
 
     separator: DefaultChunkKeyEncodingSeparator | UNSET = UNSET

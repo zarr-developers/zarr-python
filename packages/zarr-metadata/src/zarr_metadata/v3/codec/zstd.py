@@ -15,6 +15,7 @@ from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     BytesBytesCodec,
+    Configuration,
 )
 
 if TYPE_CHECKING:
@@ -76,20 +77,19 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class ZstdOptions:
+class ZstdOptions(Configuration):
     """What `zstd` is configured with."""
 
     level: int
     checksum: bool | UNSET = UNSET
 
-
-def zstd_problems(codec: "ZstdCodec", /) -> "Iterator[ValidationProblem]":
-    if not ZSTD_MIN_LEVEL <= codec.level <= ZSTD_MAX_LEVEL:
-        yield ValidationProblem(
-            ("level",),
-            f"expected an integer in [{ZSTD_MIN_LEVEL}, {ZSTD_MAX_LEVEL}], got {codec.level}",
-            "invalid_value",
-        )
+    def problems(self) -> "Iterator[ValidationProblem]":
+        if not ZSTD_MIN_LEVEL <= self.level <= ZSTD_MAX_LEVEL:
+            yield ValidationProblem(
+                ("level",),
+                f"expected an integer in [{ZSTD_MIN_LEVEL}, {ZSTD_MAX_LEVEL}], got {self.level}",
+                "invalid_value",
+            )
 
 
 @dataclass(frozen=True)
@@ -100,8 +100,6 @@ class ZstdCodec(BytesBytesCodec):
 
     identifier: ClassVar[str] = ZSTD_CODEC_NAME
     variable_size: ClassVar[bool] = True
-
-    problems = zstd_problems
 
     @property
     def level(self) -> int:

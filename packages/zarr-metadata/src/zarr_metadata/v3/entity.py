@@ -40,10 +40,9 @@ with `loc` relative to the configuration: `("level",)`.
 kind (`ArrayArrayCodec`, `ArrayBytesCodec`, `BytesBytesCodec`),
 `DataTypeEntity`, `ChunkGridEntity`, `ChunkKeyEncodingEntity` or
 `StorageTransformerEntity`; declare the configuration as a frozen
-dataclass of its members and name it in the entity's one field,
-`configuration`; write every rule finer than a type as a function of the
-instance that yields problems, and bind it as `problems`; add the class
-to a scope. Complete; runnable given a `document`:
+`Configuration` of its members, with every rule finer than a type in
+its `problems`, and name it in the entity's one field, `configuration`;
+add the class to a scope. Complete; runnable given a `document`:
 
     from collections.abc import Iterator
     from dataclasses import dataclass
@@ -54,21 +53,21 @@ to a scope. Complete; runnable given a `document`:
         CORE_AND_EXTENSIONS,
         UNSET,
         BytesBytesCodec,
+        Configuration,
         ValidationProblem,
     )
 
     @dataclass(frozen=True)  # the fields are the schema; frozen, so a configuration is a value
-    class AcmeLz4Options:
+    class AcmeLz4Options(Configuration):
         acceleration: int | UNSET = UNSET  # optional: absent reads as UNSET
 
-    def acme_lz4_problems(codec: "AcmeLz4Codec", /) -> Iterator[ValidationProblem]:
-        acceleration = codec.configuration.acceleration
-        if acceleration is not UNSET and not 1 <= acceleration <= 65537:
-            yield ValidationProblem(
-                ("acceleration",),
-                f"expected an integer in [1, 65537], got {acceleration}",
-                "invalid_value",
-            )
+        def problems(self) -> Iterator[ValidationProblem]:
+            if self.acceleration is not UNSET and not 1 <= self.acceleration <= 65537:
+                yield ValidationProblem(
+                    ("acceleration",),
+                    f"expected an integer in [1, 65537], got {self.acceleration}",
+                    "invalid_value",
+                )
 
     @dataclass(frozen=True)
     class AcmeLz4Codec(BytesBytesCodec):
@@ -76,7 +75,6 @@ to a scope. Complete; runnable given a `document`:
 
         identifier: ClassVar[str] = "acme.lz4"
         variable_size: ClassVar[bool] = True  # a compressor: its output length is not fixed
-        problems = acme_lz4_problems
 
     SCOPE = CORE_AND_EXTENSIONS.extended_with(AcmeLz4Codec)
     validate_array_metadata_v3(document, context=SCOPE)
@@ -104,17 +102,18 @@ is the entity with members of its configuration replaced, checked as
 any construction is.
 
 Everything finer than a type -- a bound, a rule about one member, members
-read together -- is a function of the instance that yields
+read together -- is the record's `problems`, which yields
 `ValidationProblem(loc, message, kind)` as it finds each, in plain
-code, bound on the class as `problems`. Locations are relative to the
-configuration, and `kind` is `"invalid_value"` for a value rule. The
-constructor stops at the first problem it yields, so
-`AcmeLz4Codec(acceleration=0)` raises `MetadataValidationError`;
-`coerce` runs it to the end and reports every problem in the document.
-`create_unchecked(**members)` builds the record without the check, for
-a reader that judges afterwards with `problems` and wants every one.
-It runs only on an entity whose members all read: a member of the wrong
-type is reported and the entity is not built.
+code. Locations are relative to the configuration, and `kind` is
+`"invalid_value"` for a value rule. The entity's constructor stops at
+the first problem it yields, so `AcmeLz4Codec(AcmeLz4Options(acceleration=0))`
+raises `MetadataValidationError`; `coerce` runs it to the end and
+reports every problem in the document; a reader with a record asks
+`options.problems()` directly and stops or collects. It runs only on a
+configuration whose members all read: a member of the wrong type is
+reported and the entity is not built. A family's rule about its name --
+`r<N>` a multiple of 8 -- is the entity's `name_problems(name)`, a
+classmethod, located on the entity.
 
 **What an entity answers for itself**, beyond its configuration. `to_json` is
 written once in the base, from the record: the bare name when every
@@ -198,6 +197,7 @@ from zarr_metadata.v3._entity import (
     ChunkKeyEncodingEntity,
     CodecEntity,
     Coerced,
+    Configuration,
     DataTypeEntity,
     Loc,
     MetadataEntity,
@@ -234,6 +234,7 @@ __all__ = [
     "CodecEntity",
     "Coerced",
     "ComplexDataType",
+    "Configuration",
     "Context",
     "DataTypeEntity",
     "Extents",

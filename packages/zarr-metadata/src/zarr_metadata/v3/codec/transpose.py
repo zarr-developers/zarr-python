@@ -12,6 +12,7 @@ from typing_extensions import TypedDict
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ArrayArrayCodec,
+    Configuration,
     problem,
 )
 from zarr_metadata.v3._parts import ArrayParts
@@ -65,24 +66,23 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class TransposeOptions:
+class TransposeOptions(Configuration):
     """What `transpose` is configured with."""
 
     order: tuple[int, ...]
 
+    def problems(self) -> "Iterator[ValidationProblem]":
+        """`order` must permute its own axes.
 
-def transpose_problems(codec: "TransposeCodec", /) -> "Iterator[ValidationProblem]":
-    """`order` must permute its own axes.
-
-    Whether it permutes the *array's* axes is a different question -- it
-    needs the array's rank -- and the rules layer asks that one.
-    """
-    if sorted(codec.order) != list(range(len(codec.order))):
-        yield ValidationProblem(
-            ("order",),
-            f"expected a permutation of 0..{len(codec.order) - 1}, got {codec.order!r}",
-            "invalid_value",
-        )
+        Whether it permutes the *array's* axes is a different question -- it
+        needs the array's rank -- and the rules layer asks that one.
+        """
+        if sorted(self.order) != list(range(len(self.order))):
+            yield ValidationProblem(
+                ("order",),
+                f"expected a permutation of 0..{len(self.order) - 1}, got {self.order!r}",
+                "invalid_value",
+            )
 
 
 @dataclass(frozen=True)
@@ -93,8 +93,6 @@ class TransposeCodec(ArrayArrayCodec):
 
     identifier: ClassVar[str] = TRANSPOSE_CODEC_NAME
     variable_size: ClassVar[bool] = False
-
-    problems = transpose_problems
 
     @property
     def order(self) -> tuple[int, ...]:

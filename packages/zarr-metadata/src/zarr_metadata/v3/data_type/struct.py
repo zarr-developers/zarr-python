@@ -14,6 +14,7 @@ from zarr_metadata._common import JSONValue
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
+    Configuration,
     DataTypeEntity,
     Loc,
     Opaque,
@@ -99,43 +100,44 @@ class StructFieldComponent:
 
 
 @dataclass(frozen=True)
-class StructOptions:
+class StructOptions(Configuration):
     """What `struct` is configured with."""
 
     fields: tuple[StructFieldComponent, ...]
 
+    def problems(self) -> "Iterator[ValidationProblem]":
+        """Names exist, are non-empty and distinct; types are fixed-size.
 
-def struct_problems(data_type: "StructDataType", /) -> "Iterator[ValidationProblem]":
-    """Names exist, are non-empty and distinct; types are fixed-size.
-
-    A fill value addresses fields by name, and a record's layout is not
-    determined by a variable-length field. Nothing about a field type's
-    own values: it is an entity, so it exists only if those are allowed.
-    """
-    if len(data_type.fields) == 0:
-        yield ValidationProblem(("fields",), "expected at least one struct field", "invalid_value")
-    seen: dict[str, int] = {}
-    for index, field in enumerate(data_type.fields):
-        if field.name == "":
+        A fill value addresses fields by name, and a record's layout is not
+        determined by a variable-length field. Nothing about a field type's
+        own values: it is an entity, so it exists only if those are allowed.
+        """
+        if len(self.fields) == 0:
             yield ValidationProblem(
-                ("fields", index, "name"), "expected a non-empty field name", "invalid_value"
+                ("fields",), "expected at least one struct field", "invalid_value"
             )
-        first = seen.setdefault(field.name, index)
-        if first != index:
-            yield ValidationProblem(
-                ("fields", index, "name"),
-                f"duplicate field name {field.name!r}, already used by field {first}",
-                "invalid_value",
-            )
-        if (
-            isinstance(field.data_type, DataTypeEntity)
-            and field.data_type.storage_class() == "variable_length"
-        ):
-            yield ValidationProblem(
-                ("fields", index, "data_type"),
-                "struct fields must use fixed-size data types",
-                "invalid_value",
-            )
+        seen: dict[str, int] = {}
+        for index, field in enumerate(self.fields):
+            if field.name == "":
+                yield ValidationProblem(
+                    ("fields", index, "name"), "expected a non-empty field name", "invalid_value"
+                )
+            first = seen.setdefault(field.name, index)
+            if first != index:
+                yield ValidationProblem(
+                    ("fields", index, "name"),
+                    f"duplicate field name {field.name!r}, already used by field {first}",
+                    "invalid_value",
+                )
+            if (
+                isinstance(field.data_type, DataTypeEntity)
+                and field.data_type.storage_class() == "variable_length"
+            ):
+                yield ValidationProblem(
+                    ("fields", index, "data_type"),
+                    "struct fields must use fixed-size data types",
+                    "invalid_value",
+                )
 
 
 @dataclass(frozen=True)
@@ -151,8 +153,6 @@ class StructDataType(DataTypeEntity):
 
     identifier: ClassVar[str] = STRUCT_DATA_TYPE_NAME
     scalar_storage: ClassVar[StorageClass] = "single_byte"
-
-    problems = struct_problems
 
     @property
     def fields(self) -> tuple[StructFieldComponent, ...]:

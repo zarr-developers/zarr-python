@@ -14,6 +14,7 @@ from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ArrayArrayCodec,
+    Configuration,
 )
 from zarr_metadata.v3._parts import ArrayParts
 
@@ -75,25 +76,24 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class ScaleOffsetOptions:
+class ScaleOffsetOptions(Configuration):
     """What `scale_offset` is configured with."""
 
     offset: JSONValue | UNSET = UNSET
     scale: JSONValue | UNSET = UNSET
 
+    def problems(self) -> "Iterator[ValidationProblem]":
+        """Each value is a scalar of the array's type, so neither is null.
 
-def scale_offset_problems(codec: "ScaleOffsetCodec", /) -> "Iterator[ValidationProblem]":
-    """Each value is a scalar of the array's type, so neither is null.
-
-    The registry says each is "JSON-encoded per the input array's
-    fill-value rules", and no data type admits `null` as a fill value.
-    Which scalar it should be needs the data type, so that part is the
-    document's question, not this codec's.
-    """
-    if codec.offset is None:
-        yield ValidationProblem(("offset",), "expected a scalar, got null", "invalid_value")
-    if codec.scale is None:
-        yield ValidationProblem(("scale",), "expected a scalar, got null", "invalid_value")
+        The registry says each is "JSON-encoded per the input array's
+        fill-value rules", and no data type admits `null` as a fill value.
+        Which scalar it should be needs the data type, so that part is the
+        document's question, not this codec's.
+        """
+        if self.offset is None:
+            yield ValidationProblem(("offset",), "expected a scalar, got null", "invalid_value")
+        if self.scale is None:
+            yield ValidationProblem(("scale",), "expected a scalar, got null", "invalid_value")
 
 
 @dataclass(frozen=True)
@@ -109,8 +109,6 @@ class ScaleOffsetCodec(ArrayArrayCodec):
 
     identifier: ClassVar[str] = SCALE_OFFSET_CODEC_NAME
     variable_size: ClassVar[bool] = False
-
-    problems = scale_offset_problems
 
     @property
     def offset(self) -> JSONValue | UNSET:

@@ -30,6 +30,7 @@ from zarr_metadata.v3.entity import (
     ChunkGridEntity,
     ChunkKeyEncodingEntity,
     CodecEntity,
+    Configuration,
     Context,
     DataTypeEntity,
     IntegerDataType,
@@ -47,18 +48,17 @@ if TYPE_CHECKING:
 ACME_MAX_ACCELERATION = 65537
 
 
-def acme_lz4_problems(codec: AcmeLz4Codec, /) -> Iterator[ValidationProblem]:
-    if codec.acceleration is not UNSET and not 1 <= codec.acceleration <= ACME_MAX_ACCELERATION:
-        yield ValidationProblem(
-            ("acceleration",),
-            f"expected an integer in [1, {ACME_MAX_ACCELERATION}], got {codec.acceleration}",
-            "invalid_value",
-        )
-
-
 @dataclass(frozen=True)
-class AcmeLz4Options:
+class AcmeLz4Options(Configuration):
     acceleration: int | UNSET = UNSET
+
+    def problems(self) -> Iterator[ValidationProblem]:
+        if self.acceleration is not UNSET and not 1 <= self.acceleration <= ACME_MAX_ACCELERATION:
+            yield ValidationProblem(
+                ("acceleration",),
+                f"expected an integer in [1, {ACME_MAX_ACCELERATION}], got {self.acceleration}",
+                "invalid_value",
+            )
 
 
 @dataclass(frozen=True)
@@ -69,7 +69,6 @@ class AcmeLz4Codec(BytesBytesCodec):
 
     identifier: ClassVar[str] = "acme.lz4"
     variable_size: ClassVar[bool] = True
-    problems = acme_lz4_problems
 
     @property
     def acceleration(self) -> int | UNSET:
@@ -187,7 +186,7 @@ def test_the_entity_layer_answers_what_a_reader_needs() -> None:
 
 
 @dataclass(frozen=True)
-class DefaultedOptions:
+class DefaultedOptions(Configuration):
     level: int | UNSET = 3
 
 
@@ -294,14 +293,6 @@ def test_error_a_family_member_must_declare_what_the_family_left_open() -> None:
 ACME_FIXED_PATTERN = re.compile(r"acme\.fixed(\d+)")
 
 
-def acme_fixed_problems(data_type: AcmeFixedDataType, /) -> Iterator[ValidationProblem]:
-    match = ACME_FIXED_PATTERN.fullmatch(data_type.data_type_name)
-    if match is not None and int(match.group(1)) % 8 != 0:
-        yield ValidationProblem(
-            ("data_type_name",), "expected a width that is a multiple of 8", "invalid_value"
-        )
-
-
 @dataclass(frozen=True)
 class AcmeFixedDataType(DataTypeEntity):
     """`acme.fixedN`, a fixed-width type for every N."""
@@ -310,7 +301,12 @@ class AcmeFixedDataType(DataTypeEntity):
 
     identifier: ClassVar[str] = "acme.fixed<N>"
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
-    problems = acme_fixed_problems
+
+    @classmethod
+    def name_problems(cls, name: str) -> Iterator[ValidationProblem]:
+        match = ACME_FIXED_PATTERN.fullmatch(name)
+        if match is not None and int(match.group(1)) % 8 != 0:
+            yield ValidationProblem((), "expected a width that is a multiple of 8", "invalid_value")
 
     @classmethod
     def accepts(cls, name: str) -> bool:
@@ -345,7 +341,7 @@ def test_a_third_party_can_register_a_family() -> None:
 
 
 @dataclass(frozen=True)
-class StructuredOptions:
+class StructuredOptions(Configuration):
     inner: object
 
 
@@ -370,7 +366,7 @@ def test_error_a_member_needs_a_check_from_somewhere() -> None:
 
 # A third-party codec that contains another codec.
 @dataclass(frozen=True)
-class AcmeWrapperOptions:
+class AcmeWrapperOptions(Configuration):
     inner: CodecEntity | Opaque
 
 
@@ -451,7 +447,7 @@ def test_a_third_party_entity_containing_entities_reads_them_in_scope() -> None:
 
 
 @dataclass(frozen=True)
-class AcmeFramedOptions:
+class AcmeFramedOptions(Configuration):
     inner: CodecEntity | Opaque
     frame: int | UNSET = UNSET
 
@@ -494,7 +490,7 @@ def test_canonical_is_the_entity_s_own_and_reaches_what_it_contains() -> None:
 
 
 @dataclass(frozen=True)
-class VagueOptions:
+class VagueOptions(Configuration):
     inner: MetadataEntity | Opaque
 
 
@@ -538,17 +534,18 @@ class AcmeBlockObject(TypedDict, closed=True):
     must_understand: NotRequired[bool]
 
 
-# A third-party rule about a member: a function of the instance.
-def acme_block_problems(codec: AcmeBlockCodec, /) -> Iterator[ValidationProblem]:
-    if codec.block < 1 or codec.block & (codec.block - 1) != 0:
-        yield ValidationProblem(
-            ("block",), f"expected a power of two, got {codec.block}", "invalid_value"
-        )
+# A third-party rule about a member: the record's own.
 
 
 @dataclass(frozen=True)
-class AcmeBlockOptions:
+class AcmeBlockOptions(Configuration):
     block: int
+
+    def problems(self) -> Iterator[ValidationProblem]:
+        if self.block < 1 or self.block & (self.block - 1) != 0:
+            yield ValidationProblem(
+                ("block",), f"expected a power of two, got {self.block}", "invalid_value"
+            )
 
 
 @dataclass(frozen=True)
@@ -560,15 +557,14 @@ class AcmeBlockCodec(BytesBytesCodec):
     identifier: ClassVar[str] = "acme.block"
 
     variable_size: ClassVar[bool] = False
-    problems = acme_block_problems
 
     @property
     def block(self) -> int:
         return self.configuration.block
 
 
-def test_a_rule_about_a_member_is_a_function_of_the_instance() -> None:
-    # The rule runs on the typed members and reports relative to the
+def test_a_rule_about_a_member_is_the_record_s_own() -> None:
+    # The rule runs on the typed record and reports relative to the
     # configuration; `coerce` runs it to the end and locates what it
     # yields in the document; the constructor stops at the first.
     scope = CORE_AND_EXTENSIONS.extended_with(AcmeBlockCodec)
@@ -590,21 +586,20 @@ def test_a_rule_about_a_member_is_a_function_of_the_instance() -> None:
     assert [p.kind for p in problems] == ["invalid_type"]
 
 
-def acme_range_problems(codec: AcmeRangeCodec, /) -> Iterator[ValidationProblem]:
-    if codec.low < 0:
-        yield ValidationProblem(
-            ("low",), f"expected an integer >= 0, got {codec.low}", "invalid_value"
-        )
-    if codec.high < codec.low:
-        yield ValidationProblem(
-            ("high",), f"expected an integer >= low, got {codec.high}", "invalid_value"
-        )
-
-
 @dataclass(frozen=True)
-class AcmeRangeOptions:
+class AcmeRangeOptions(Configuration):
     low: int
     high: int
+
+    def problems(self) -> Iterator[ValidationProblem]:
+        if self.low < 0:
+            yield ValidationProblem(
+                ("low",), f"expected an integer >= 0, got {self.low}", "invalid_value"
+            )
+        if self.high < self.low:
+            yield ValidationProblem(
+                ("high",), f"expected an integer >= low, got {self.high}", "invalid_value"
+            )
 
 
 @dataclass(frozen=True)
@@ -616,7 +611,6 @@ class AcmeRangeCodec(BytesBytesCodec):
     identifier: ClassVar[str] = "acme.range"
 
     variable_size: ClassVar[bool] = False
-    problems = acme_range_problems
 
     @property
     def low(self) -> int:
@@ -628,9 +622,9 @@ class AcmeRangeCodec(BytesBytesCodec):
 
 
 def test_the_constructor_stops_at_the_first_problem_and_coerce_reports_every_one() -> None:
-    # One function, two consumers: the constructor takes the first
-    # problem it yields, `coerce` runs it to the end. A consumer holding
-    # an entity may run it too, and stop or collect as it likes.
+    # One method, three consumers: the entity's constructor takes the
+    # first problem it yields, `coerce` runs it to the end, and a reader
+    # with a record asks it directly, and stops or collects.
     with pytest.raises(MetadataValidationError) as caught:
         AcmeRangeCodec(AcmeRangeOptions(low=-1, high=-2))
     assert [p.loc for p in caught.value.problems] == [("low",)]
@@ -639,16 +633,14 @@ def test_the_constructor_stops_at_the_first_problem_and_coerce_reports_every_one
         CodecEntity, {"name": "acme.range", "configuration": {"low": -1, "high": -2}}
     )
     assert [p.loc for p in problems] == [("configuration", "low"), ("configuration", "high")]
-    assert list(acme_range_problems(AcmeRangeCodec(AcmeRangeOptions(low=0, high=1)))) == []
-    # A reader that wants every problem of a hand-built one builds the
-    # record without the check and asks.
-    record = AcmeRangeCodec.create_unchecked(configuration=AcmeRangeOptions(low=-1, high=-2))
-    assert [p.loc for p in record.problems()] == [("low",), ("high",)]
+    assert list(AcmeRangeOptions(low=0, high=1).problems()) == []
+    # A reader that wants every problem of a record asks the record.
+    assert [p.loc for p in AcmeRangeOptions(low=-1, high=-2).problems()] == [("low",), ("high",)]
 
 
 def test_error_an_entity_may_not_define_post_init() -> None:
     # `coerce` never runs it, so a rule written there would judge a
-    # hand-built entity and no document.
+    # hand-built entity and no document; the rules go on the record.
     @dataclass(frozen=True)
     class Checked(BytesBytesCodec):
         identifier: ClassVar[str] = "acme.checked"
@@ -657,12 +649,12 @@ def test_error_an_entity_may_not_define_post_init() -> None:
         def __post_init__(self) -> None:
             return None
 
-    with pytest.raises(TypeError, match="defines __post_init__; write its rules as a function"):
+    with pytest.raises(TypeError, match="defines __post_init__; write its rules as `problems`"):
         CORE_AND_EXTENSIONS.extended_with(Checked)
 
 
 @dataclass(frozen=True)
-class LocalizedOptions:
+class LocalizedOptions(Configuration):
     # `Local` is defined inside the test, so it is not here, where this
     # class's annotations resolve: the case the message is for.
     inner: Local  # noqa: F821  # pyright: ignore[reportUndefinedVariable]
@@ -718,7 +710,7 @@ def test_a_malformed_envelope_is_one_problem() -> None:
 
 
 @dataclass(frozen=True)
-class AcmeSlottedOptions:
+class AcmeSlottedOptions(Configuration):
     level: int
 
 
@@ -754,7 +746,7 @@ def test_a_bare_class_var_is_a_class_variable() -> None:
 
 
 @dataclass(frozen=True)
-class AcmeScaledOptions:
+class AcmeScaledOptions(Configuration):
     scale: float
 
 
@@ -793,7 +785,7 @@ def test_a_number_member_is_a_float_field() -> None:
 
 
 @dataclass(frozen=True)
-class UndecoratedOptions:
+class UndecoratedOptions(Configuration):
     level: int
 
 
@@ -815,7 +807,7 @@ def test_error_an_entity_must_be_a_dataclass() -> None:
 
 
 @dataclass(frozen=True)
-class ClosedOptions:
+class ClosedOptions(Configuration):
     inner: CodecEntity
 
 

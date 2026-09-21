@@ -14,6 +14,7 @@ from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
     ArrayArrayCodec,
+    Configuration,
     DataTypeEntity,
     Opaque,
 )
@@ -125,7 +126,7 @@ SCALAR_MAP_KEYS: Final = ("encode", "decode")
 
 
 @dataclass(frozen=True)
-class CastValueOptions:
+class CastValueOptions(Configuration):
     """What `cast_value` is configured with."""
 
     data_type: DataTypeEntity | Opaque

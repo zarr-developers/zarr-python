@@ -21,6 +21,7 @@ from typing_extensions import TypedDict
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.v3._entity import (
     ChunkKeyEncodingEntity,
+    Configuration,
 )
 
 V2_CHUNK_KEY_ENCODING_NAME: Final = "v2"
@@ -77,7 +78,7 @@ __all__ = [
 
 
 @dataclass(frozen=True)
-class V2ChunkKeyEncodingOptions:
+class V2ChunkKeyEncodingOptions(Configuration):
     """What the `v2` encoding is configured with."""
 
     separator: V2ChunkKeyEncodingSeparator | UNSET = UNSET
