@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal, cast
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     Configuration,
+    Configured,
     DataTypeEntity,
     StorageClass,
     is_integer,
@@ -186,7 +187,7 @@ class NumpyTimeOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class NumpyTimeDataType(DataTypeEntity):
+class NumpyTimeDataType(DataTypeEntity, Configured):
     """A numpy time scalar: a signed 64-bit count of units, or `NaT`.
 
     The two time types share their configuration -- a unit and a scale

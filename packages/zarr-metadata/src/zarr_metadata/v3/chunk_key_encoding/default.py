@@ -16,6 +16,7 @@ from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.v3._entity import (
     ChunkKeyEncodingEntity,
     Configuration,
+    Configured,
 )
 
 DEFAULT_CHUNK_KEY_ENCODING_NAME: Final = "default"
@@ -79,7 +80,7 @@ class DefaultChunkKeyEncodingOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class DefaultChunkKeyEncoding(ChunkKeyEncodingEntity):
+class DefaultChunkKeyEncoding(ChunkKeyEncodingEntity, Configured):
     """The `default` chunk key encoding, coerced from its metadata."""
 
     configuration: DefaultChunkKeyEncodingOptions

@@ -17,6 +17,7 @@ from zarr_metadata.v3._entity import (
     ArrayBytesCodec,
     CodecEntity,
     Configuration,
+    Configured,
     Opaque,
     problem,
 )
@@ -118,7 +119,7 @@ class ShardingIndexedOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class ShardingIndexedCodec(ArrayBytesCodec):
+class ShardingIndexedCodec(ArrayBytesCodec, Configured):
     """The `sharding_indexed` codec, coerced from its metadata.
 
     Holds two codec pipelines, so it is one of the few entities that

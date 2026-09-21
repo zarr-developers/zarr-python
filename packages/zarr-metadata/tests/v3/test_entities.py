@@ -83,6 +83,7 @@ from zarr_metadata.v3.entity import (
     ChunkKeyEncodingEntity,
     CodecEntity,
     Configuration,
+    Configured,
     DataTypeEntity,
     MetadataEntity,
     StorageTransformerEntity,
@@ -743,7 +744,7 @@ class AcmeShardCacheOptions(Configuration):
 
 
 @dataclasses.dataclass(frozen=True)
-class AcmeShardCache(StorageTransformerEntity):
+class AcmeShardCache(StorageTransformerEntity, Configured):
     """A third-party storage transformer with a member canonical form drops."""
 
     configuration: AcmeShardCacheOptions

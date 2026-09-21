@@ -16,6 +16,7 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     BytesBytesCodec,
     Configuration,
+    Configured,
 )
 
 if TYPE_CHECKING:
@@ -93,7 +94,7 @@ class ZstdOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class ZstdCodec(BytesBytesCodec):
+class ZstdCodec(BytesBytesCodec, Configured):
     """The `zstd` codec, coerced from its metadata."""
 
     configuration: ZstdOptions

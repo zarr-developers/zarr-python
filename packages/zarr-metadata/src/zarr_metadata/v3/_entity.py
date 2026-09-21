@@ -27,10 +27,9 @@ at registration, an entity `coerce` could not read.
 from __future__ import annotations
 
 import functools
-import operator
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, is_dataclass, replace
+from dataclasses import dataclass, replace
 from typing import (
     TYPE_CHECKING,
     ClassVar,
@@ -219,31 +218,39 @@ class Opaque:
 def unreadable(cls: type[MetadataEntity]) -> str | None:
     """Why `coerce` could not read an instance of `cls`; None if it can.
 
-    An entity's fields are `configuration`, a `Configuration` record of
-    its members, and at most one field the envelope's name fills. Things
-    that type-check cleanly and then go wrong somewhere that will not
-    name the class: a field of any other name; a configuration that is
-    not a `Configuration`, or a member of it whose annotation is not a
-    shape JSON takes; a `__post_init__` of the entity's own, whose rules
-    `coerce` would never ask; and a class variable a base annotates and
-    nothing sets -- `identifier` for every entity, `bounds` for an
-    integer type -- which the first lookup would fail. Registration asks,
-    and refuses the class with the answer.
+    An entity's fields are `configuration`, which a `Configured` entity
+    narrows to its own `Configuration` record, and at most one field the
+    envelope's name fills. Things that type-check cleanly and then go
+    wrong somewhere that will not name the class: a field of any other
+    name; a `configuration` on an entity that is not `Configured`; a
+    configuration that is not a `Configuration`, or a member of it whose
+    annotation is not a shape JSON takes; a `__post_init__` of the
+    entity's own, whose rules `coerce` would never ask; and a class
+    variable a base annotates and nothing sets -- `identifier` for every
+    entity, `bounds` for an integer type -- which the first lookup would
+    fail. Registration asks, and refuses the class with the answer.
     """
     try:
         hints = field_hints(cls)
     except NameError as unresolved:
         return _unresolved(cls, unresolved)
     for name, annotation in hints.items():
-        if name == "configuration" or is_from_name(annotation):
+        if name == "configuration" and issubclass(cls, Configured):
             continue
+        if is_from_name(annotation):
+            continue
+        if name == "configuration":
+            return (
+                f"{cls.__name__} declares `configuration` without `Configured`; an entity with a "
+                f"configuration adds it beside its kind: class {cls.__name__}(..., Configured)"
+            )
         return (
             f"{cls.__name__} declares a field {name!r}; an entity's fields are `configuration`, "
             "a frozen dataclass of its members, and a name it carries marked FROM_NAME -- put "
             f"{name!r} in the configuration record"
         )
-    record = hints.get("configuration")
-    if record is not None:
+    if issubclass(cls, Configured):
+        record = hints["configuration"]
         if not (isinstance(record, type) and issubclass(record, Configuration)):
             return (
                 f"{cls.__name__}: configuration is annotated {record!r}; annotate it with a frozen "
@@ -380,9 +387,9 @@ class _Plan:
     from_name: str | None
     """The field the envelope's name fills, for a family; None for every other entity."""
     parse: Parser[_Reading] | None
-    """The configuration record's parser; None for an entity with no configuration."""
-    write: Callable[[MetadataEntity], dict[str, JSONValue]] | None
-    """The entity's configuration as the JSON object it writes; None for an entity with none."""
+    """The configuration record's parser; None for an entity that is not `Configured`."""
+    write: Callable[[Configured], dict[str, JSONValue]] | None
+    """The entity's configuration as the JSON object it writes; None for one that is not `Configured`."""
     requires_configuration: bool
     """Whether the record has a member the document must write."""
 
@@ -397,18 +404,17 @@ def _plan(cls: type[MetadataEntity]) -> _Plan:
     """
     hints = field_hints(cls)
     from_name = next((key for key, annotation in hints.items() if is_from_name(annotation)), None)
-    record = hints.get("configuration")
-    if record is None:
+    if not issubclass(cls, Configured):
         return _Plan(from_name, None, None, False)
-    if not (isinstance(record, type) and is_dataclass(record)):  # pragma: no cover - refused first
-        msg = f"{cls.__name__}: configuration is annotated {record!r}, not a record dataclass"
+    record = hints["configuration"]
+    if not (isinstance(record, type) and issubclass(record, Configuration)):  # pragma: no cover
+        msg = f"{cls.__name__}: configuration is annotated {record!r}, not a Configuration"
         raise TypeError(msg)
     required = any(not is_optional(annotation) for annotation in field_hints(record).values())
     writes: RecordWriter = record_writer(record, _nested_field_writer)
-    configuration_of = operator.attrgetter("configuration")
 
-    def write(entity: MetadataEntity) -> dict[str, JSONValue]:
-        return writes(configuration_of(entity))
+    def write(entity: Configured) -> dict[str, JSONValue]:
+        return writes(entity.configuration)
 
     return _Plan(from_name, parser(record, _nested_field), write, required)
 
@@ -430,6 +436,31 @@ class Configuration:
     def problems(self) -> Iterator[ValidationProblem]:
         """Every reason these values are not allowed, yielded as found. Default: none."""
         yield from ()
+
+
+@dataclass(frozen=True)
+class Configured:
+    """The half of an entity that has a configuration.
+
+    An entity whose metadata carries a `configuration` object adds this
+    beside its kind -- `class GzipCodec(BytesBytesCodec, Configured)` --
+    and narrows the field to its own record: `configuration:
+    GzipOptions`. What the layer does with a configuration -- parse it,
+    ask its rules, write it back, replace members of it -- is done here
+    or asked of this, and an entity that is not `Configured` has none
+    of it: its metadata is a bare name.
+    """
+
+    configuration: Configuration
+
+    def with_configuration(self, **changes: object) -> Self:
+        """This entity with these configuration members changed.
+
+        `codec.with_configuration(typesize=UNSET)` is the record replaced
+        member by member and the entity rebuilt around it, so the
+        constructor checks the result as it checks any other.
+        """
+        return replace(self, configuration=replace(self.configuration, **changes))
 
 
 @dataclass(frozen=True)
@@ -483,9 +514,8 @@ class MetadataEntity(ABC):
         plan = _plan(type(self))
         name = self.identifier if plan.from_name is None else getattr(self, plan.from_name)
         first = next(type(self).name_problems(name), None)
-        configuration = getattr(self, "configuration", None)
-        if first is None and isinstance(configuration, Configuration):
-            first = next(configuration.problems(), None)
+        if first is None and isinstance(self, Configured):
+            first = next(self.configuration.problems(), None)
         if first is not None:
             raise MetadataValidationError((first,))
 
@@ -522,7 +552,7 @@ class MetadataEntity(ABC):
             members[plan.from_name] = name
         reading = _Reading(context, [])
         own: tuple[ValidationProblem, ...] = ()
-        if plan.parse is None:
+        if not issubclass(cls, Configured) or plan.parse is None:
             own = tuple(
                 found
                 for key in (given or {})
@@ -569,19 +599,6 @@ class MetadataEntity(ABC):
             return None, found
         return cls(**members), found
 
-    def with_configuration(self, **changes: object) -> Self:
-        """This entity with these configuration members changed.
-
-        `codec.with_configuration(typesize=UNSET)` is the record replaced
-        member by member and the entity rebuilt around it, so the
-        constructor checks the result as it checks any other.
-        """
-        current = getattr(self, "configuration", None)
-        if not is_dataclass(current) or isinstance(current, type):
-            msg = f"{type(self).__name__} has no configuration"
-            raise TypeError(msg)
-        return replace(self, configuration=replace(current, **changes))
-
     def canonical(self) -> Self:
         """This entity in the simplest form that means the same thing.
 
@@ -622,7 +639,7 @@ class MetadataEntity(ABC):
         if plan.from_name is not None:
             carried = getattr(self, plan.from_name)
             name = carried if isinstance(carried, str) else name
-        if plan.write is None:
+        if not isinstance(self, Configured) or plan.write is None:
             return name
         configuration = plan.write(self)
         if len(configuration) == 0:
@@ -770,6 +787,7 @@ __all__ = [
     "CodecEntity",
     "Coerced",
     "Configuration",
+    "Configured",
     "DataTypeEntity",
     "Loc",
     "MetadataEntity",

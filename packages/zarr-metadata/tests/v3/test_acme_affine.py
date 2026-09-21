@@ -27,6 +27,7 @@ from zarr_metadata.v3.entity import (
     ArrayDocumentV3,
     ArrayParts,
     Configuration,
+    Configured,
     DataTypeEntity,
     MetadataValidationError,
     Opaque,
@@ -74,7 +75,7 @@ class AcmeAffineOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class AcmeAffineCodec(ArrayArrayCodec):
+class AcmeAffineCodec(ArrayArrayCodec, Configured):
     """`x * scale + offset`, stored as `dtype` if one is named."""
 
     configuration: AcmeAffineOptions

@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 from zarr_metadata.v3.entity import (
     Configuration,
+    Configured,
     DataTypeEntity,
     Loc,
     MetadataValidationError,
@@ -96,7 +97,7 @@ class AcmeDecimalOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class AcmeDecimalDataType(DataTypeEntity):
+class AcmeDecimalDataType(DataTypeEntity, Configured):
     """The `acme.decimal` data type, coerced from its metadata."""
 
     configuration: AcmeDecimalOptions
