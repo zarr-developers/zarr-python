@@ -5,8 +5,7 @@ compiler over them. `check_for` turns an annotation into its type check
 -- a scalar, a `Literal`, arrays homogeneous or fixed, unions, a nested
 object described by a TypedDict or a record dataclass, an object of
 undeclared keys, a `NewType` as the type it names: the shapes JSON takes
-and no others, which is what keeps it small. `derive_member_types` is
-what an entity reads its member table off. Anything finer than a type
+and no others, which is what keeps it small. Anything finer than a type
 -- a bound, a rule about a member, members read together -- is the
 entity's own `__post_init__`, in plain code.
 
@@ -18,7 +17,7 @@ one thing the compiler is told about them.
 from __future__ import annotations
 
 # Runtime imports, not `TYPE_CHECKING` ones: the string type aliases below
-# (`TypeCheck`, `MemberTypes`) are resolved by `get_type_hints` at class
+# (`TypeCheck`) are resolved by `get_type_hints` at class
 # creation, and a name that exists only for the type checker is a NameError
 # then -- for this package and for any tool introspecting an entity.
 import sys
@@ -416,6 +415,20 @@ def _compile_new_type(inner: object) -> TypeCheck | None:
     return check_for(cast("NewType", inner).__supertype__)
 
 
+def is_from_name(annotation: object) -> bool:
+    """Whether `FROM_NAME` marks the field: carried by the envelope's name, not a configuration key."""
+    return any(entry is FROM_NAME for entry in strip_annotation(annotation)[1])
+
+
+def type_check(annotation: object) -> TypeCheck:
+    """The type check a field annotation implies; `TypeError` if it implies none."""
+    check = check_for(annotation)
+    if check is None:
+        msg = f"{annotation!r} is not a shape JSON takes"
+        raise TypeError(msg)
+    return check
+
+
 def check_for(annotation: object) -> TypeCheck | None:
     """The type check a field annotation implies, or None if it implies none.
 
@@ -464,38 +477,6 @@ def check_for(annotation: object) -> TypeCheck | None:
     return None
 
 
-def envelope_members(cls: type) -> tuple[str, ...]:
-    """The fields `FROM_NAME` marks: carried by the envelope's name, not by a configuration key."""
-    return tuple(
-        name
-        for name, annotation in field_hints(cls).items()
-        if any(entry is FROM_NAME for entry in strip_annotation(annotation)[1])
-    )
-
-
-def derive_member_types(cls: type) -> tuple[dict[str, tuple[bool, TypeCheck]], list[str]]:
-    """The member table an entity's own fields describe.
-
-    Every field is a configuration member unless `FROM_NAME` says it is
-    carried by the envelope. Requiredness is whether the type admits
-    `UNSET`; the check is whatever `check_for` reads off the type. Also
-    returned: the fields no check could be read for, which class
-    creation refuses.
-    """
-    derived: dict[str, tuple[bool, TypeCheck]] = {}
-    unread: list[str] = []
-    for name, annotation in field_hints(cls).items():
-        inner, metadata = strip_annotation(annotation)
-        if any(entry is FROM_NAME for entry in metadata):
-            continue
-        check = check_for(inner)
-        if check is None:
-            unread.append(name)
-            continue
-        derived[name] = (not is_optional(inner), check)
-    return derived, unread
-
-
 def element_annotations(inner: object, count: int) -> list[object]:
     """The annotation of each element of a tuple type, one per element held."""
     arguments = get_args(inner)
@@ -539,14 +520,13 @@ __all__ = [
     "any_of",
     "check_for",
     "declared_class_vars",
-    "derive_member_types",
     "describe",
     "element_annotations",
-    "envelope_members",
     "field_hints",
     "fixed_tuple",
     "has_shape",
     "is_class_var",
+    "is_from_name",
     "is_metadata_field_type",
     "is_nested_field",
     "is_optional",
@@ -555,5 +535,6 @@ __all__ = [
     "own_annotations",
     "shape_of",
     "strip_annotation",
+    "type_check",
     "unsubscripted",
 ]

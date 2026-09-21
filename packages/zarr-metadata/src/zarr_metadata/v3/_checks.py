@@ -1,11 +1,9 @@
-"""The member checks every entity needs, and the walk that applies them.
+"""The member checks every entity needs.
 
 One check is a function of a value and its location that returns the
 problems it found -- none, for a value of the right type. The scalars,
-a closed set of names, a homogeneous sequence, and a nested metadata
-field cover what a configuration member can be; `coerce_members` walks
-a configuration with a table of them, distinguishing an unknown key, an
-optional member that failed, and a required one that did. `within` and
+a closed set of names, a homogeneous sequence, an object, and a nested
+metadata field cover what a configuration member can be. `within` and
 `named_configuration` are how an entity's problems and envelope are read
 from the document that holds it.
 """
@@ -13,7 +11,7 @@ from the document that holds it.
 from __future__ import annotations
 
 # Runtime imports, not `TYPE_CHECKING` ones: the string type aliases below
-# (`TypeCheck`, `MemberTypes`) are resolved by `get_type_hints` at class
+# (`TypeCheck`) are resolved by `get_type_hints` at class
 # creation, and a name that exists only for the type checker is a NameError
 # then -- for this package and for any tool introspecting an entity.
 from collections.abc import Callable, Mapping, Sequence
@@ -39,10 +37,6 @@ Loc: TypeAlias = "tuple[str | int, ...]"
 
 TypeCheck: TypeAlias = "Callable[[object, Loc], tuple[ValidationProblem, ...]]"
 """Whether one value has the type a member declares, and where if not."""
-
-
-MemberTypes: TypeAlias = "Mapping[str, tuple[bool, TypeCheck]]"
-"""Per configuration member: whether it is required, and its type check."""
 
 
 def problem(
@@ -141,7 +135,7 @@ def object_of(value: TypeCheck) -> TypeCheck:
     return check
 
 
-def _as_tuples(value: object) -> object:
+def as_tuples(value: object) -> object:
     """Every JSON array in `value`, at any depth, as a tuple.
 
     The TypedDicts spell a JSON array as a tuple throughout, so a member
@@ -151,47 +145,11 @@ def _as_tuples(value: object) -> object:
     """
     if isinstance(value, (list, tuple)):
         entries = cast("list[object] | tuple[object, ...]", value)
-        return tuple(_as_tuples(entry) for entry in entries)
+        return tuple(as_tuples(entry) for entry in entries)
     if isinstance(value, Mapping):
         entries = cast("Mapping[str, object]", value)
-        return {key: _as_tuples(entry) for key, entry in entries.items()}
+        return {key: as_tuples(entry) for key, entry in entries.items()}
     return value
-
-
-def coerce_members(
-    configuration: Mapping[str, object], types: MemberTypes
-) -> tuple[dict[str, object], tuple[ValidationProblem, ...]]:
-    """The members `types` declares, taken from `configuration`.
-
-    Returns what was read and every problem found. A key the entity does
-    not declare says the value carries something extra, not that it is
-    wrong, so the member it sits beside is still read; a member of the
-    wrong type, or a required one missing, is reported and left out --
-    and an entity is never built around the hole, because its rules are
-    written over a whole configuration.
-    """
-    problems: list[ValidationProblem] = []
-    members: dict[str, object] = {}
-    for key in configuration:
-        if key not in types:
-            problems.extend(
-                problem(("configuration", key), f"unexpected key {key!r}", "unknown_key")
-            )
-    for key, (required, check) in types.items():
-        if key not in configuration:
-            if required:
-                problems.extend(
-                    problem(("configuration", key), f"missing required key {key!r}", "missing_key")
-                )
-            continue
-        # Normalized before the check, so a check only ever sees the tuples
-        # the TypedDicts declare -- never the lists raw JSON arrives as.
-        value = _as_tuples(configuration[key])
-        found = check(value, ("configuration", key))
-        problems.extend(found)
-        if all(entry.kind == "unknown_key" for entry in found):
-            members[key] = value
-    return members, tuple(problems)
 
 
 def is_metadata_field(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
@@ -252,9 +210,8 @@ def named_configuration(
 
 __all__ = [
     "Loc",
-    "MemberTypes",
     "TypeCheck",
-    "coerce_members",
+    "as_tuples",
     "is_bool",
     "is_int",
     "is_integer",
