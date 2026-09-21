@@ -37,9 +37,7 @@ from zarr_metadata.v3._entity import (
     MetadataEntity,
     Opaque,
     StorageTransformerEntity,
-    canonicalized,
     within,
-    written,
 )
 from zarr_metadata.v3._parts import ArrayParts, ChunkGrid
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
@@ -103,11 +101,11 @@ class ArrayDocumentV3:
         return replace(
             self,
             document=document,
-            data_type=canonicalized(self.data_type),
-            chunk_grid=canonicalized(self.chunk_grid),
-            chunk_key_encoding=canonicalized(self.chunk_key_encoding),
-            codecs=tuple(canonicalized(codec) for codec in self.codecs),
-            storage_transformers=tuple(canonicalized(entry) for entry in self.storage_transformers),
+            data_type=self.data_type.canonical(),
+            chunk_grid=self.chunk_grid.canonical(),
+            chunk_key_encoding=self.chunk_key_encoding.canonical(),
+            codecs=tuple(codec.canonical() for codec in self.codecs),
+            storage_transformers=tuple(entry.canonical() for entry in self.storage_transformers),
         )
 
     def to_json(self) -> dict[str, object]:
@@ -119,11 +117,11 @@ class ArrayDocumentV3:
         Ask `canonical` first for the simplest equivalent spelling.
         """
         rendered: dict[str, object] = {
-            "data_type": written(self.data_type),
-            "chunk_grid": written(self.chunk_grid),
-            "chunk_key_encoding": written(self.chunk_key_encoding),
-            "codecs": tuple(written(codec) for codec in self.codecs),
-            "storage_transformers": tuple(written(entry) for entry in self.storage_transformers),
+            "data_type": self.data_type.to_json(),
+            "chunk_grid": self.chunk_grid.to_json(),
+            "chunk_key_encoding": self.chunk_key_encoding.to_json(),
+            "codecs": tuple(codec.to_json() for codec in self.codecs),
+            "storage_transformers": tuple(entry.to_json() for entry in self.storage_transformers),
         }
         return {
             **self.document,
@@ -148,10 +146,11 @@ class ArrayDocumentV3:
         """
         normalized = arrays_to_tuples(value)
         problems = validate_array_metadata_v3_structure(normalized)
-        if isinstance(normalized, Mapping) and len(problems) == 0:
-            document = cast("Mapping[str, object]", normalized)
-            array, found = read_array_v3(document, context)
-            problems = (*found, *array.problems())
+        if isinstance(normalized, Mapping):
+            # Read whatever the structure allowed, so a structural
+            # problem does not hide the semantic ones behind it.
+            array, found = read_array_v3(cast("Mapping[str, object]", normalized), context)
+            problems = (*problems, *found, *array.problems())
             if len(problems) == 0:
                 return array
         if len(problems) == 0:  # pragma: no cover - a non-mapping always has problems

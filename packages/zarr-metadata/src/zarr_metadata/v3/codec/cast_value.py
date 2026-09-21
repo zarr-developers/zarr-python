@@ -17,8 +17,6 @@ from zarr_metadata.v3._entity import (
     ArrayArrayCodec,
     DataTypeEntity,
     Opaque,
-    canonicalized,
-    written,
 )
 from zarr_metadata.v3._parts import ArrayParts
 
@@ -141,10 +139,11 @@ class CastValueCodec(ArrayArrayCodec):
     scalar_map: ScalarMap | UNSET = UNSET
 
     identifier: ClassVar[str] = CAST_VALUE_CODEC_NAME
+    variable_size: ClassVar[bool] = False
 
     def canonical(self) -> Self:
         """The target data type in its own canonical form."""
-        return replace(self, data_type=canonicalized(self.data_type))
+        return replace(self, data_type=self.data_type.canonical())
 
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:
         """The same parts, holding the type this codec casts to."""
@@ -152,7 +151,7 @@ class CastValueCodec(ArrayArrayCodec):
         return incoming.with_data_type(data_type if isinstance(data_type, DataTypeEntity) else None)
 
     def to_json(self) -> CastValueCodecObject:
-        configuration: CastValueCodecConfiguration = {"data_type": written(self.data_type)}
+        configuration: CastValueCodecConfiguration = {"data_type": self.data_type.to_json()}
         if self.rounding is not UNSET:
             configuration["rounding"] = self.rounding
         if self.out_of_range is not UNSET:

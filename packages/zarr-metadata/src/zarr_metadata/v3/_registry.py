@@ -13,11 +13,12 @@ refuse for being optional. `CORE_AND_EXTENSIONS` adds what
 `zarr-extensions` registers and this package models. A name in neither is
 not rejected — extension openness — it is simply not judged.
 
-Identifiers are the `name` the metadata carries, with one exception. A
-family covers many names with one class -- every `r<N>` spelling is one
-data-type family -- so it registers under an invented identifier that no
-real name can collide with, and recognizes its own names through
-`accepts`.
+An entity is registered under its `identifier`, which is the `name` the
+metadata carries -- except for a family, which covers many names with
+one class (every `r<N>` spelling is one data-type family) and registers
+under an invented one. Resolution asks each entity of a kind whether a
+name is its own, through `accepts`; the identifier is the key that
+`extended_with` takes a name over with.
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ from zarr_metadata.v3._entity import (
     Opaque,
     kind_of,
     named_configuration,
+    unreadable,
 )
 from zarr_metadata.v3._typed_json import is_class_var, own_annotations
 from zarr_metadata.v3.chunk_grid.rectilinear import RectilinearChunkGrid
@@ -133,28 +135,17 @@ class Context:
         an error: an unknown name may be an extension this reader does
         not model, and openness means leaving it unjudged.
 
-        The entity has the last word, via `accepts`. A name that is a key
-        still has to be claimed, because a family's key is an invented
-        identifier that no document may write; and a name that is not a
-        key may still belong to a family, which is what the scan is for.
+        Each entity of the kind is asked whether the name is its own,
+        through `accepts`, in registration order, and the first to claim
+        it answers for it. A family covers many names with one class, so
+        a table keyed by name could not hold it; the identifier keys
+        exist for `extended_with` to take a name over, not for lookup.
         """
         registered = kind_of(kind)
         if registered is None:
             return None
         table = self.tables.get(registered, {})
-        entity = table.get(name)
-        if entity is not None and not entity.accepts(name):
-            return None
-        if entity is None:
-            # A family covers many names with one class, so its entry
-            # cannot be keyed by all of them; it is keyed by an invented
-            # identifier and recognizes its own. Asked only when the name
-            # is not a key, so the common case stays a lookup. First
-            # match wins, and two entities claiming one name is a scope
-            # that contradicts itself.
-            entity = next(
-                (candidate for candidate in table.values() if candidate.accepts(name)), None
-            )
+        entity = next((candidate for candidate in table.values() if candidate.accepts(name)), None)
         if entity is None or not issubclass(entity, kind):
             return None
         return entity
@@ -182,43 +173,48 @@ class Context:
         envelope gets the same structural judgment here that the model
         layer gives a top-level one -- an extra member, a `configuration`
         that is not an object, a `must_understand` that is not a boolean
-        or is `false`. That last one is why the flag is passed: an
-        extension point is something a reader must understand at every
-        depth, not only at the document's top level.
-        `envelope_judged` says that judgment has already happened, which
-        it has for the fields of a document the model layer accepted.
+        or is `false`. `envelope_judged` says the model layer has
+        reported that already, which it has for the fields of a
+        document, so it is not reported twice. The entity is read
+        whenever there is one to read -- a stray member or a malformed
+        `must_understand` says nothing about the configuration -- and
+        not when the value names no entity or its configuration is not
+        an object, which the envelope judgment has already said.
         """
-        problems: list[ValidationProblem] = []
-        if not envelope_judged:
-            problems.extend(
+        envelope = validate_metadata_field_v3(value, allow_must_understand_false=False)
+        problems = (
+            ()
+            if envelope_judged
+            else tuple(
                 ValidationProblem((*loc, *found.loc), found.message, found.kind)
-                for found in validate_metadata_field_v3(value, allow_must_understand_false=False)
+                for found in envelope
             )
-        name, _, _ = named_configuration(value)
-        if name is None:
-            return Opaque(value, "invalid"), (
-                *problems,
-                ValidationProblem(loc, f"expected a metadata field, got {value!r}", "invalid_type"),
-            )
+        )
+        name, _, malformed = named_configuration(value)
+        if name is None or len(malformed) != 0:
+            return Opaque(value, "invalid"), problems
         entity_type = self.resolve(kind, name)
         if entity_type is None:
-            return Opaque(value, "out_of_scope"), tuple(problems)
+            return Opaque(value, "out_of_scope"), problems
         entity, found = entity_type.coerce(value, self)
-        problems.extend(
-            ValidationProblem((*loc, *entry.loc), entry.message, entry.kind) for entry in found
+        problems = (
+            *problems,
+            *(ValidationProblem((*loc, *entry.loc), entry.message, entry.kind) for entry in found),
         )
         if entity is None:
-            return Opaque(value, "invalid"), tuple(problems)
-        return entity, tuple(problems)
+            return Opaque(value, "invalid"), problems
+        return entity, problems
 
 
 def _registrable(entity: type[MetadataEntity]) -> type[MetadataEntity]:
     """The kind `entity` is registered under; `TypeError` for a class no scope can use.
 
-    Class creation refuses what it can see; these are the things it
-    cannot -- the decorator, what a kind leaves abstract, which base was
-    chosen -- checked at the first place the class passes through before
-    `coerce` builds it.
+    The one moment an entity is refused: every way of writing one that
+    type-checks cleanly and then fails somewhere that will not name the
+    class -- no kind, a codec skipping the kind classes, no `@dataclass`,
+    a field `coerce` could not parse, a `__post_init__` `coerce` would
+    never ask, a class variable owed and unset, what a kind leaves
+    abstract -- with a message that says what to write.
     """
     kind = kind_of(entity)
     if kind is None:
@@ -237,17 +233,20 @@ def _registrable(entity: type[MetadataEntity]) -> type[MetadataEntity]:
             "ArrayBytesCodec or BytesBytesCodec, which says what the codec does to the array"
         )
         raise TypeError(msg)
-    if inspect.isabstract(entity):
-        left = ", ".join(sorted(entity.__abstractmethods__))
-        msg = f"{entity.__name__} does not define {left}, which its base leaves abstract"
-        raise TypeError(msg)
     if "__dataclass_fields__" not in vars(entity) and any(
         not is_class_var(annotation) for annotation in own_annotations(entity).values()
     ):
         msg = (
             f"{entity.__name__} declares fields but is not a dataclass; decorate it with "
-            "@dataclass(frozen=True), which is what `coerce` builds it with"
+            "@dataclass(frozen=True), which is what makes its fields the configuration"
         )
+        raise TypeError(msg)
+    refused = unreadable(entity)
+    if refused is not None:
+        raise TypeError(refused)
+    if inspect.isabstract(entity):
+        left = ", ".join(sorted(entity.__abstractmethods__))
+        msg = f"{entity.__name__} does not define {left}, which its base leaves abstract"
         raise TypeError(msg)
     return kind
 

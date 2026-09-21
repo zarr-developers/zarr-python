@@ -21,7 +21,8 @@ Composition -- what needs the document or the codec chain -- is the
 entity's to answer through `incoming_problems`, `shape_problems`,
 `fill_value_problems`, `transition` and `grid`, each taking the part of
 the document it needs. The document that composes those answers is
-`_document`; which entities are in scope is `_registry`.
+`_document`; which entities are in scope is `_registry`, which refuses,
+at registration, an entity `coerce` could not read.
 """
 
 from __future__ import annotations
@@ -132,28 +133,29 @@ def within(prefix: Loc, problems: Sequence[ValidationProblem]) -> tuple[Validati
 
 def named_configuration(
     value: object,
-) -> tuple[str | None, Mapping[str, object] | None, bool]:
-    """Split metadata into `(name, configuration, must_understand)`.
+) -> tuple[str | None, Mapping[str, object] | None, tuple[ValidationProblem, ...]]:
+    """Split metadata into `(name, configuration, problems)`.
 
     The shared shape every entity arrives in: a bare name, or an object
-    carrying one. A `None` name means the value is not a metadata field at
-    all; a `None` configuration means the bare spelling was used.
+    carrying one. A `None` name means the value is not a metadata field
+    at all; a `None` configuration means the bare spelling was used, or
+    the key was left out. A configuration that is present and not an
+    object is the one problem reported, at `("configuration",)`.
     """
     if isinstance(value, str):
-        return value, None, True
+        return value, None, ()
     if not isinstance(value, Mapping):
-        return None, None, True
+        return None, None, ()
     entry = cast("Mapping[str, object]", value)
     name = entry.get("name")
     if not isinstance(name, str):
-        return None, None, True
-    configuration = entry.get("configuration")
-    must_understand = entry.get("must_understand", True)
-    return (
-        name,
-        cast("Mapping[str, object]", configuration) if isinstance(configuration, Mapping) else None,
-        must_understand if isinstance(must_understand, bool) else True,
-    )
+        return None, None, ()
+    if "configuration" not in entry:
+        return name, None, ()
+    configuration = entry["configuration"]
+    if not isinstance(configuration, Mapping):
+        return name, None, problem(("configuration",), f"expected an object, got {configuration!r}")
+    return name, cast("Mapping[str, object]", configuration), ()
 
 
 def is_metadata_field(value: object, loc: Loc) -> tuple[ValidationProblem, ...]:
@@ -179,30 +181,78 @@ class Opaque:
     model, which is not an error and is the reader's cue to resolve it
     elsewhere. `invalid` is a name that *was* claimed and then refused,
     for the reasons reported alongside.
+
+    Answers `to_json` and `canonical` as an entity does, so a field typed
+    `CodecEntity | Opaque` is written and simplified without asking
+    which case it holds.
     """
 
     json: object
     reason: Literal["out_of_scope", "invalid"]
 
+    def to_json(self) -> ZarrV3MetadataFieldJSON:
+        """The JSON the document wrote, as it wrote it.
 
-def written(value: MetadataEntity | Opaque) -> ZarrV3MetadataFieldJSON:
-    """A contained metadata field as a document would write it.
+        An `Opaque` inside a built entity is out of scope -- an inner
+        name no entity in scope claimed -- and its JSON passed the
+        envelope check as a metadata field, which is what the cast says.
+        """
+        return cast("ZarrV3MetadataFieldJSON", self.json)
 
-    The entity's own JSON, or the JSON an `Opaque` kept. An `Opaque`
-    inside a built entity is out of scope -- an inner name no entity in
-    scope claimed -- and its JSON passed the envelope check as a metadata
-    field, which is what the cast says.
+    def canonical(self) -> Self:
+        """Itself: what was not read cannot be simplified."""
+        return self
+
+
+def unreadable(cls: type[MetadataEntity]) -> str | None:
+    """Why `coerce` could not read an instance of `cls`; None if it can.
+
+    Three things type-check cleanly and then go wrong somewhere that
+    will not name the class: a field whose annotation is not a shape
+    JSON takes, which `coerce` could not parse; a `__post_init__` of the
+    entity's own, whose rules `coerce` would never ask; and a class
+    variable a base annotates and nothing sets -- `identifier` for every
+    entity, `bounds` for an integer type -- which the first lookup would
+    fail. Registration asks, and refuses the class with the answer.
     """
-    if isinstance(value, MetadataEntity):
-        return value.to_json()
-    return cast("ZarrV3MetadataFieldJSON", value.json)
-
-
-def canonicalized(value: EntityT | Opaque) -> EntityT | Opaque:
-    """A contained metadata field in canonical form: the entity's own, or the `Opaque` as it is."""
-    if isinstance(value, MetadataEntity):
-        return value.canonical()
-    return value
+    try:
+        hints = field_hints(cls)
+    except NameError as unresolved:
+        return (
+            f"{cls.__name__}: a field annotation names {unresolved.name!r}, which is not "
+            "defined where the class is; define it at module level, or import it outside "
+            "`TYPE_CHECKING`"
+        )
+    unread: list[str] = []
+    for name, annotation in hints.items():
+        try:
+            accepted = parser_for(annotation, _reading(None, [])) is not None
+        except TypeError as refused:
+            return f"{cls.__name__}: {name} {refused}"
+        if not accepted:
+            unread.append(name)
+    if len(unread) != 0:
+        return (
+            f"{cls.__name__}: "
+            f"{'; '.join(f'{name} is annotated {hints[name]!r}' for name in unread)}"
+            ", which is not a shape JSON takes. A field is int, float, bool, str, JSONValue, "
+            "a Literal of names, tuple[T, ...] or tuple[T1, T2], a TypedDict or dataclass "
+            "record, Mapping[str, V], a NewType, or an entity kind with Opaque "
+            "(CodecEntity | Opaque); add | UNSET for an optional member, and put any finer "
+            "rule in the function bound as `problems`"
+        )
+    if "__post_init__" in vars(cls):
+        return (
+            f"{cls.__name__} defines __post_init__; write its rules as a function of the "
+            "instance that yields problems and bind it as `problems = <function>`: the "
+            "constructor stops at the first problem it yields, `coerce` reports every one"
+        )
+    annotated = declared_class_vars(cls)
+    missing = sorted(name for name in annotated if not hasattr(cls, name))
+    if len(missing) != 0:
+        owed = ", ".join(f"{name} (annotated by {annotated[name].__name__})" for name in missing)
+        return f"{cls.__name__} does not declare {owed}; set each as a class variable"
+    return None
 
 
 def nested_kind(annotation: object) -> type[MetadataEntity] | None:
@@ -212,7 +262,7 @@ def nested_kind(annotation: object) -> type[MetadataEntity] | None:
     because that is what the field holds when the inner name is out of
     scope, and a kind -- or a subclass of one, `GzipCodec` -- because a
     scope resolves names by kind. An annotation naming an entity any
-    other way is a `TypeError` saying so, which class creation reports
+    other way is a `TypeError` saying so, which registration reports
     against the field.
     """
     parts = get_args(annotation) if is_union(annotation) else (annotation,)
@@ -242,7 +292,7 @@ def _reading(context: Context | None, nested: list[ValidationProblem]) -> Leaf:
     entity is collected in `nested`, apart, because the containing
     entity's rules still run over its own members when only a contained
     entity is wrong. With no `context` the shape is checked and nothing
-    is read, which is what class creation asks.
+    is read, which is what registration asks.
     """
 
     def leaf(annotation: object) -> Parser | None:
@@ -299,64 +349,6 @@ class MetadataEntity(ABC):
     an invented identifier that no real name can collide with.
     """
 
-    def __init_subclass__(cls, *, base: bool = False, **kwargs: object) -> None:
-        """Refuse, at class creation, an entity this layer could not read.
-
-        Three things type-check cleanly and then go wrong somewhere that
-        will not name the class: a field whose annotation is not a shape
-        JSON takes, which `coerce` could not parse; a `__post_init__` of
-        the entity's own, whose rules `coerce` would never ask; and a
-        class variable a base annotates and nothing sets -- `identifier`
-        for every entity, `bounds` for an integer type -- which the first
-        lookup would fail. An import-time error in the extension's own
-        module is the one place the author is looking.
-
-        `base=True` for a class that exists to add a class variable
-        rather than to be an entity -- `CodecEntity`, `IntegerDataType`.
-        """
-        super().__init_subclass__(**kwargs)
-        if base:
-            return
-        hints = field_hints(cls)
-        unread: list[str] = []
-        for name, annotation in hints.items():
-            try:
-                accepted = parser_for(annotation, _reading(None, [])) is not None
-            except TypeError as refused:
-                msg = f"{cls.__name__}: {name} {refused}"
-                raise TypeError(msg) from None
-            if not accepted:
-                unread.append(name)
-        if len(unread) != 0:
-            msg = (
-                f"{cls.__name__}: "
-                f"{'; '.join(f'{name} is annotated {hints[name]!r}' for name in unread)}"
-                ", which is not a shape JSON takes. A field is int, float, bool, str, JSONValue, "
-                "a Literal of names, tuple[T, ...] or tuple[T1, T2], a TypedDict or dataclass "
-                "record, Mapping[str, V], a NewType, or an entity kind with Opaque "
-                "(CodecEntity | Opaque); add | UNSET for an optional member, and put any finer "
-                "rule in the function bound as `problems`"
-            )
-            raise TypeError(msg)
-        if "__post_init__" in vars(cls):
-            msg = (
-                f"{cls.__name__} defines __post_init__; write its rules as a function of the "
-                "instance that yields problems and bind it as `problems = <function>`: the "
-                "constructor stops at the first problem it yields, `coerce` reports every one"
-            )
-            raise TypeError(msg)
-        annotated = declared_class_vars(cls)
-        missing = sorted(name for name in annotated if not hasattr(cls, name))
-        if len(missing) != 0:
-            owed = ", ".join(
-                f"{name} (annotated by {annotated[name].__name__})" for name in missing
-            )
-            msg = (
-                f"{cls.__name__} does not declare {owed}; set each as a class variable, "
-                "or pass base=True if this class exists only to be subclassed"
-            )
-            raise TypeError(msg)
-
     def problems(self, /) -> Iterator[ValidationProblem]:
         """Every reason this entity's values are not allowed, yielded as found.
 
@@ -409,9 +401,11 @@ class MetadataEntity(ABC):
         configuration -- and handed back only when everything inside it
         read too.
         """
-        name, given, _ = named_configuration(value)
+        name, given, envelope = named_configuration(value)
         if name is None or not cls.accepts(name):
             return None, problem((), f"expected the {cls.identifier!r} entity")
+        if len(envelope) != 0:
+            return None, envelope
         hints = field_hints(cls)
         if given is None and any(
             not is_from_name(annotation) and not is_optional(annotation)
@@ -458,7 +452,19 @@ class MetadataEntity(ABC):
             # read is a hole, and judging around it would be guessing.
             return None, found
         entity = cls._unchecked(members)
-        refused = within((), tuple(entity.problems()))
+        # A problem about a member the envelope's name carries is about
+        # the entity, and lands on it rather than under a configuration
+        # the document does not have.
+        from_name = {key for key, annotation in hints.items() if is_from_name(annotation)}
+        refused = within(
+            (),
+            tuple(
+                ValidationProblem((), found.message, found.kind)
+                if len(found.loc) != 0 and found.loc[0] in from_name
+                else found
+                for found in entity.problems()
+            ),
+        )
         if len(refused) != 0:
             # Values the spec disallows: reported rather than raised,
             # every one, located under the configuration.
@@ -511,7 +517,7 @@ class MetadataEntity(ABC):
 
 
 @dataclass(frozen=True)
-class CodecEntity(MetadataEntity, base=True):
+class CodecEntity(MetadataEntity):
     """An entity that occupies a position in the codec pipeline.
 
     Of one of three kinds, each a base class: `ArrayArrayCodec`,
@@ -519,11 +525,12 @@ class CodecEntity(MetadataEntity, base=True):
     pipeline the codec may stand, and what it must answer.
     """
 
-    variable_size: ClassVar[bool] = False
+    variable_size: ClassVar[bool]
     """Whether this codec's output size depends on the bytes it is given.
 
     A compressor's does, so a shard index encoded with one has no size
-    derivable from metadata alone, and the shard cannot be read.
+    derivable from metadata alone, and the shard cannot be read. Every
+    codec says, because a default in either direction is a verdict.
     """
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
@@ -538,7 +545,7 @@ class CodecEntity(MetadataEntity, base=True):
 
 
 @dataclass(frozen=True)
-class ArrayArrayCodec(CodecEntity, base=True):
+class ArrayArrayCodec(CodecEntity):
     """A codec that transforms the array: what reaches the next codec is its to say."""
 
     @abstractmethod
@@ -553,17 +560,17 @@ class ArrayArrayCodec(CodecEntity, base=True):
 
 
 @dataclass(frozen=True)
-class ArrayBytesCodec(CodecEntity, base=True):
+class ArrayBytesCodec(CodecEntity):
     """The one codec in a pipeline that turns the array into bytes."""
 
 
 @dataclass(frozen=True)
-class BytesBytesCodec(CodecEntity, base=True):
+class BytesBytesCodec(CodecEntity):
     """A codec that transforms bytes, after the array is gone."""
 
 
 @dataclass(frozen=True)
-class ChunkGridEntity(MetadataEntity, base=True):
+class ChunkGridEntity(MetadataEntity):
     """An entity that divides an array into the parts a pipeline encodes."""
 
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
@@ -585,7 +592,7 @@ class ChunkGridEntity(MetadataEntity, base=True):
 
 
 @dataclass(frozen=True)
-class DataTypeEntity(MetadataEntity, base=True):
+class DataTypeEntity(MetadataEntity):
     """An entity that says how the array's scalars are stored.
 
     Only data types answer that, and every rule that turns on it -- a
@@ -614,12 +621,12 @@ class DataTypeEntity(MetadataEntity, base=True):
 
 
 @dataclass(frozen=True)
-class ChunkKeyEncodingEntity(MetadataEntity, base=True):
+class ChunkKeyEncodingEntity(MetadataEntity):
     """An entity that says how a chunk's coordinates become a store key."""
 
 
 @dataclass(frozen=True)
-class StorageTransformerEntity(MetadataEntity, base=True):
+class StorageTransformerEntity(MetadataEntity):
     """An entity that stands between the codec pipeline and the store."""
 
 
@@ -654,7 +661,6 @@ __all__ = [
     "Opaque",
     "StorageClass",
     "StorageTransformerEntity",
-    "canonicalized",
     "is_from_name",
     "is_integer",
     "is_metadata_field",
@@ -662,6 +668,6 @@ __all__ = [
     "named_configuration",
     "nested_kind",
     "problem",
+    "unreadable",
     "within",
-    "written",
 ]

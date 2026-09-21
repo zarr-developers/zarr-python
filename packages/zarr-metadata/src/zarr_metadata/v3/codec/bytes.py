@@ -89,6 +89,7 @@ class BytesCodec(ArrayBytesCodec):
     endian: Endianness | UNSET = UNSET
 
     identifier: ClassVar[str] = BYTES_CODEC_NAME
+    variable_size: ClassVar[bool] = False
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         """The data type reaching here must have a raw byte representation.

@@ -44,7 +44,7 @@ from typing_extensions import ReadOnly, TypeIs, is_typeddict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.model._sentinel import UNSET
-from zarr_metadata.model._validation import ValidationProblem, is_json
+from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem, is_json
 
 if TYPE_CHECKING:
     from zarr_metadata.model._validation import ProblemKind
@@ -201,7 +201,7 @@ def field_hints(cls: type) -> dict[str, object]:
     Each class's own annotations are resolved in that class's module,
     and class variables are skipped *before* resolving, by text -- so a
     `ClassVar` whose annotation names something imported only for the
-    type checker cannot fail class creation. `@dataclass` sees the same
+    type checker cannot fail registration. `@dataclass` sees the same
     set, in the same order.
     """
     hints: dict[str, object] = {}
@@ -337,11 +337,15 @@ _STRING: Parser = _scalar("a string", lambda value: isinstance(value, str))
 _JSON: Parser = _scalar("a JSON value", is_json)
 
 
-def one_of(allowed: tuple[str, ...]) -> Parser:
-    """A member whose type is a closed set of names."""
+def one_of(allowed: tuple[object, ...]) -> Parser:
+    """A member whose type is a closed set of values.
+
+    Equal and of the same type: JSON `true` is not the integer 1, though
+    Python says `True == 1`.
+    """
 
     def parse(value: object, loc: Loc) -> Parsed:
-        if value not in allowed:
+        if not any(value == entry and type(value) is type(entry) for entry in allowed):
             return value, problem(
                 loc, f"expected one of {allowed!r}, got {value!r}", "invalid_value"
             )
@@ -372,9 +376,9 @@ def fixed_tuple(elements: Sequence[Parser], description: str) -> Parser:
     """A member whose type is an array of a fixed length, parsed position by position."""
 
     def parse(value: object, loc: Loc) -> Parsed:
-        if not isinstance(value, tuple):
+        if not isinstance(value, (list, tuple)):
             return value, problem(loc, f"expected {description}, got {value!r}")
-        entries = cast("tuple[object, ...]", value)
+        entries = tuple(cast("list[object] | tuple[object, ...]", value))
         if len(entries) != len(elements):
             return entries, problem(loc, f"expected {description}, got {entries!r}")
         parsed: list[object] = []
@@ -427,18 +431,18 @@ def _keys(
 
     Closed, like every configuration in this package: a key the type does
     not declare is `unknown_key`, a required one missing is `missing_key`,
-    both located at the object. An optional key left out is parsed as
+    both located at the key. An optional key left out is parsed as
     `UNSET`, so a record never depends on a default for it.
     """
     parsed: dict[str, object] = {}
     found: list[ValidationProblem] = []
     for key in entries:
         if key not in members:
-            found.extend(problem(loc, f"unexpected key {key!r}", "unknown_key"))
+            found.extend(problem((*loc, key), f"unexpected key {key!r}", "unknown_key"))
     for key, (required, member) in members.items():
         if key not in entries:
             if required:
-                found.extend(problem(loc, f"missing required key {key!r}", "missing_key"))
+                found.extend(problem((*loc, key), f"missing required key {key!r}", "missing_key"))
             else:
                 parsed[key] = UNSET
             continue
@@ -469,7 +473,9 @@ def record_of(record: Callable[..., object], members: Members) -> Parser:
     """A member that is itself an object with declared keys, built as a dataclass.
 
     Built only from an object whose every key read; otherwise the value
-    comes back as it came, with the reasons.
+    comes back as it came, with the reasons. A record that refuses its
+    own values -- a `__post_init__` raising `MetadataValidationError` --
+    is reported the same way, located under the object.
     """
 
     def parse(value: object, loc: Loc) -> Parsed:
@@ -479,7 +485,16 @@ def record_of(record: Callable[..., object], members: Members) -> Parser:
         parsed, found = _keys(members, entries, loc)
         if any(entry.kind != "unknown_key" for entry in found):
             return entries, found
-        return record(**parsed), found
+        try:
+            return record(**parsed), found
+        except MetadataValidationError as refused:
+            return entries, (
+                *found,
+                *(
+                    ValidationProblem((*loc, *entry.loc), entry.message, entry.kind)
+                    for entry in refused.problems
+                ),
+            )
 
     return parse
 
@@ -560,7 +575,7 @@ def parser_for(annotation: object, leaf: Leaf = _no_leaf) -> Parser | None:
     the module docstring. `leaf` is asked first, here and at every depth
     -- inside a union, an array, an object -- and what it returns is
     used as it is. Closed: an annotation outside these implies no
-    parser, and a dataclass declaring one is refused at class creation.
+    parser, and an entity declaring one is refused at registration.
     The field is written as one of these shapes instead, with any finer
     rule in `__post_init__`.
     """
@@ -585,7 +600,7 @@ def parser_for(annotation: object, leaf: Leaf = _no_leaf) -> Parser | None:
         # in the process is the one every later one resolves to. The
         # parse is a membership test either way; this is so the message
         # listing the values does not depend on import order.
-        return one_of(tuple(sorted(cast("tuple[str, ...]", get_args(inner)))))
+        return one_of(tuple(sorted(get_args(inner), key=repr)))
     if is_union(inner):
         return _union(inner, leaf)
     if get_origin(inner) is tuple:

@@ -31,9 +31,7 @@ from zarr_metadata.v3.entity import (
     Opaque,
     ValidationProblem,
     ZarrV3MetadataFieldJSON,
-    canonicalized,
     problem,
-    written,
 )
 
 if TYPE_CHECKING:
@@ -72,6 +70,7 @@ class AcmeAffineCodec(ArrayArrayCodec):
     dtype: DataTypeEntity | Opaque | UNSET = UNSET
 
     identifier: ClassVar[str] = "acme.affine"
+    variable_size: ClassVar[bool] = False
     problems = acme_affine_problems
 
     def canonical(self) -> Self:
@@ -79,7 +78,7 @@ class AcmeAffineCodec(ArrayArrayCodec):
         return replace(
             self,
             offset=UNSET if self.offset == 0 else self.offset,
-            dtype=UNSET if self.dtype is UNSET else canonicalized(self.dtype),
+            dtype=UNSET if self.dtype is UNSET else self.dtype.canonical(),
         )
 
     def to_json(self) -> AcmeAffineObject:
@@ -87,7 +86,7 @@ class AcmeAffineCodec(ArrayArrayCodec):
         if self.offset is not UNSET:
             configuration["offset"] = self.offset
         if self.dtype is not UNSET:
-            configuration["dtype"] = written(self.dtype)
+            configuration["dtype"] = self.dtype.to_json()
         return {"name": "acme.affine", "configuration": configuration}
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:

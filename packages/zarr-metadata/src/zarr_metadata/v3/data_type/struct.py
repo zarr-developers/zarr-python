@@ -18,9 +18,7 @@ from zarr_metadata.v3._entity import (
     Loc,
     Opaque,
     StorageClass,
-    canonicalized,
     problem,
-    written,
 )
 
 if TYPE_CHECKING:
@@ -101,7 +99,7 @@ class StructFieldComponent:
 
 
 def _written_field(field: StructFieldComponent) -> StructField:
-    return {"name": field.name, "data_type": written(field.data_type)}
+    return {"name": field.name, "data_type": field.data_type.to_json()}
 
 
 def struct_problems(data_type: "StructDataType", /) -> "Iterator[ValidationProblem]":
@@ -158,7 +156,7 @@ class StructDataType(DataTypeEntity):
         return replace(
             self,
             fields=tuple(
-                replace(field, data_type=canonicalized(field.data_type)) for field in self.fields
+                replace(field, data_type=field.data_type.canonical()) for field in self.fields
             ),
         )
 

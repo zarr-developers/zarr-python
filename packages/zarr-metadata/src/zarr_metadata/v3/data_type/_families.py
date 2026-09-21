@@ -64,7 +64,7 @@ def byte_values(value: object, expected: int | None, loc: Loc) -> tuple[Validati
 
 
 @dataclass(frozen=True)
-class IntegerDataType(DataTypeEntity, base=True):
+class IntegerDataType(DataTypeEntity):
     """A fixed-width integer. The width is the whole difference."""
 
     bounds: ClassVar[tuple[int, int]]
@@ -81,7 +81,7 @@ class IntegerDataType(DataTypeEntity, base=True):
 
 
 @dataclass(frozen=True)
-class FloatDataType(DataTypeEntity, base=True):
+class FloatDataType(DataTypeEntity):
     """A binary float. A fill value may be a number, a named non-finite, or hex."""
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
@@ -121,7 +121,7 @@ class FloatDataType(DataTypeEntity, base=True):
 
 
 @dataclass(frozen=True)
-class ComplexDataType(DataTypeEntity, base=True):
+class ComplexDataType(DataTypeEntity):
     """A complex number: a `[real, imag]` pair of the component float type."""
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
@@ -178,7 +178,7 @@ def numpy_time_problems(data_type: NumpyTimeDataType, /) -> Iterator[ValidationP
 
 
 @dataclass(frozen=True)
-class NumpyTimeDataType(DataTypeEntity, base=True):
+class NumpyTimeDataType(DataTypeEntity):
     """A numpy time scalar: a signed 64-bit count of units, or `NaT`.
 
     The two time types share their configuration -- a unit and a scale

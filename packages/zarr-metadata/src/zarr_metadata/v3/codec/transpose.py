@@ -85,6 +85,7 @@ class TransposeCodec(ArrayArrayCodec):
     order: tuple[int, ...]
 
     identifier: ClassVar[str] = TRANSPOSE_CODEC_NAME
+    variable_size: ClassVar[bool] = False
 
     problems = transpose_problems
 

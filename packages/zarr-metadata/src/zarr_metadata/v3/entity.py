@@ -42,7 +42,7 @@ kind (`ArrayArrayCodec`, `ArrayBytesCodec`, `BytesBytesCodec`),
 `StorageTransformerEntity`; declare the configuration as dataclass
 fields; write every rule finer than a type as a function of the
 instance that yields problems, and bind it as `problems`; add the class
-to a scope. Complete, and runnable as written:
+to a scope. Complete; runnable given a `document`:
 
     from collections.abc import Iterator
     from dataclasses import dataclass
@@ -78,6 +78,7 @@ to a scope. Complete, and runnable as written:
         acceleration: int | UNSET = UNSET  # optional: absent reads as UNSET
 
         identifier: ClassVar[str] = "acme.lz4"
+        variable_size: ClassVar[bool] = True  # a compressor: its output length is not fixed
         problems = acme_lz4_problems
 
         def to_json(self) -> AcmeLz4Object | Literal["acme.lz4"]:
@@ -117,12 +118,15 @@ type is reported and the entity is not built.
 **What an entity answers for itself**, beyond its fields. `to_json`,
 abstract: the entity as a document writes it, as a literal of its own
 TypedDict, which pyright holds to that type -- the bare name when every
-member is absent, the object otherwise, a contained entity through
-`written`. `canonical`, the entity in its simplest equivalent form: the
-entity itself by default, overridden where two spellings of its members
-mean the same, and in an entity that contains entities to put those in
-canonical form -- `replace(self, inner=canonicalized(self.inner))`.
-`coerce` is written once in the base. Then, by kind:
+member is absent, the object otherwise, a contained entity through its
+own `to_json`. `canonical`, the entity in its simplest equivalent form:
+the entity itself by default, overridden where two spellings of its
+members mean the same, and in an entity that contains entities to put
+those in canonical form -- `replace(self, inner=self.inner.canonical())`.
+An `Opaque` answers both as well, with the JSON it kept and with itself,
+so a field typed `CodecEntity | Opaque` is written and simplified without
+asking which it holds. `coerce` is written once in the base. Then, by
+kind:
 
 - Every entity: `identifier`, the name it is registered under. A family
   -- one class for every `acme.fixedN` -- overrides `accepts(name)` and
@@ -132,30 +136,31 @@ canonical form -- `replace(self, inner=canonicalized(self.inner))`.
   `transition(incoming: ArrayParts) -> ArrayParts | None` -- abstract:
   return `incoming` if it leaves the array's shape, grid and data type
   alone, or the parts it hands the next codec -- and any codec may define
-  `incoming_problems(incoming)` for what it cannot take. `variable_size`
-  says its output length is not fixed.
+  `incoming_problems(incoming)` for what it cannot take. Every codec
+  declares `variable_size`, whether its output length depends on its
+  input, which is what keeps a compressor out of a shard's index.
 - A data type: `scalar_storage`, one of `StorageClass` (the `bytes`
   codec asks it whether an endianness is needed), and
   `fill_value_problems(value, loc)`, abstract: it judges a document's
   `fill_value`, and a type that accepts any says so with `return ()`.
   The families `IntegerDataType`, `FloatDataType`, `ComplexDataType` and
   `NumpyTimeDataType` carry both for the types they cover; a family of
-  your own is a subclass declared with `base=True`, which owes nothing
-  itself and passes its class variables down.
+  your own is a plain subclass that is never registered itself, and
+  passes its class variables down.
 - A chunk grid: `grid(array_shape)`, abstract, and `shape_problems`; see
   `ChunkGridEntity`.
 
-What a kind leaves abstract, registration refuses an entity for not
-defining, as it refuses a class without `@dataclass` and a codec
-subclassing `CodecEntity` instead of a kind; class creation refuses a
-field whose annotation is not a shape JSON takes -- a nested entity
-without `Opaque` among them -- and a class variable a base annotates and
-nothing sets. Each says what to write. Everything else an author could
-get wrong, pyright says in the editor: the fields, the class variables
-and the kind's abstract methods are ordinary typed Python. A scope reads
-what a class is off the class: its kind is its base, its key is its
-`identifier`, so `extended_with` takes the classes and nothing can be
-misfiled.
+Registration is the one moment an entity is refused, with a message
+that says what to write: a class without `@dataclass`, a codec
+subclassing `CodecEntity` instead of a kind, a field whose annotation is
+not a shape JSON takes -- a nested entity without `Opaque` among them --
+a `__post_init__` of the entity's own, a class variable a base
+annotates and nothing sets, and what a kind leaves abstract. Everything
+else an author could get wrong, pyright says in the editor: the fields,
+the class variables and the kind's abstract methods are ordinary typed
+Python. A scope reads what a class is off the class: its kind is its
+base, its key is its `identifier`, so `extended_with` takes the classes
+and nothing can be misfiled.
 
 **Naming the JSON type.** The return annotation of `to_json` -- above,
 `AcmeLz4Object | Literal["acme.lz4"]` -- is the entity's own JSON type,
@@ -212,12 +217,10 @@ from zarr_metadata.v3._entity import (
     Opaque,
     StorageClass,
     StorageTransformerEntity,
-    canonicalized,
     is_integer,
     named_configuration,
     problem,
     within,
-    written,
 )
 from zarr_metadata.v3._parts import ArrayParts, ChunkGrid, Extents
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS, Context
@@ -260,11 +263,9 @@ __all__ = [
     "StorageTransformerEntity",
     "ValidationProblem",
     "ZarrV3MetadataFieldJSON",
-    "canonicalized",
     "chain_problems",
     "is_integer",
     "named_configuration",
     "problem",
     "within",
-    "written",
 ]

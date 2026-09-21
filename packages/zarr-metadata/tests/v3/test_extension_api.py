@@ -40,9 +40,7 @@ from zarr_metadata.v3.entity import (
     StorageClass,
     ValidationProblem,
     ZarrV3MetadataFieldJSON,
-    canonicalized,
     problem,
-    written,
 )
 
 if TYPE_CHECKING:
@@ -162,12 +160,17 @@ def test_a_registered_entity_canonicalizes_itself() -> None:
 
 
 def test_error_an_entity_must_say_what_it_is() -> None:
+    @dataclass(frozen=True)
+    class Nameless(BytesBytesCodec):
+        """A codec that forgot to say what it is."""
+
+        variable_size: ClassVar[bool] = True
+
+        def to_json(self) -> ZarrV3MetadataFieldJSON:
+            return "acme.nameless"
+
     with pytest.raises(TypeError, match="does not declare identifier"):
-        # Never bound: the guard raises while the class is being created,
-        # which is the whole point -- so pyright cannot see it used.
-        @dataclass(frozen=True)
-        class Nameless(BytesBytesCodec):
-            """A codec that forgot to say what it is."""
+        CORE_AND_EXTENSIONS.extended_with(Nameless)
 
 
 def test_the_entity_layer_answers_what_a_reader_needs() -> None:
@@ -195,6 +198,8 @@ def test_an_absent_optional_member_is_read_as_unset_whatever_its_default() -> No
         level: int | UNSET = 3
 
         identifier: ClassVar[str] = "acme.defaulted"
+
+        variable_size: ClassVar[bool] = False
 
         def to_json(self) -> ZarrV3MetadataFieldJSON:
             if self.level is UNSET:
@@ -275,19 +280,28 @@ def test_error_a_family_member_must_declare_what_the_family_left_open() -> None:
     # `bounds` is annotated on `IntegerDataType` and bound by none of it,
     # so every concrete integer type owes one. Nothing lists it: the
     # requirement is read off the annotation.
+    @dataclass(frozen=True)
+    class Int24DataType(IntegerDataType):
+        identifier: ClassVar[str] = "acme.int24"
+
+        def to_json(self) -> ZarrV3MetadataFieldJSON:
+            return "acme.int24"
+
     with pytest.raises(TypeError, match="does not declare bounds"):
-
-        @dataclass(frozen=True)
-        class Int24DataType(IntegerDataType):
-            identifier: ClassVar[str] = "acme.int24"
-
-            def to_json(self) -> ZarrV3MetadataFieldJSON:
-                return "acme.int24"
+        CORE_AND_EXTENSIONS.extended_with(Int24DataType)
 
 
 # A third-party *family*: one class covering a parameterized set of names,
 # the way `r<N>` covers every raw-byte width.
 ACME_FIXED_PATTERN = re.compile(r"acme\.fixed(\d+)")
+
+
+def acme_fixed_problems(data_type: AcmeFixedDataType, /) -> Iterator[ValidationProblem]:
+    match = ACME_FIXED_PATTERN.fullmatch(data_type.data_type_name)
+    if match is not None and int(match.group(1)) % 8 != 0:
+        yield ValidationProblem(
+            ("data_type_name",), "expected a width that is a multiple of 8", "invalid_value"
+        )
 
 
 @dataclass(frozen=True)
@@ -298,6 +312,7 @@ class AcmeFixedDataType(DataTypeEntity):
 
     identifier: ClassVar[str] = "acme.fixed<N>"
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
+    problems = acme_fixed_problems
 
     @classmethod
     def accepts(cls, name: str) -> bool:
@@ -326,19 +341,30 @@ def test_a_third_party_can_register_a_family() -> None:
     # near-miss is still nobody's.
     assert scope.resolve(DataTypeEntity, AcmeFixedDataType.identifier) is None
     assert scope.resolve(DataTypeEntity, "acme.fixed") is None
+    # A rule about the name lands on the field: the document has no
+    # configuration to locate it under.
+    problems = validate_array_metadata_v3(
+        _document(data_type="acme.fixed12", fill_value=0), context=scope
+    )
+    assert [(p.loc, p.kind) for p in problems] == [(("data_type",), "invalid_value")]
 
 
 def test_error_a_member_needs_a_check_from_somewhere() -> None:
     # An annotation outside the shapes the parser reads implies no
     # parser, so the entity owes one. Silently skipping the member would
     # let anything through where the field promised a type.
+    @dataclass(frozen=True)
+    class Structured(BytesBytesCodec):
+        inner: object
+
+        identifier: ClassVar[str] = "acme.structured"
+        variable_size: ClassVar[bool] = False
+
+        def to_json(self) -> ZarrV3MetadataFieldJSON:
+            return "acme.structured"
+
     with pytest.raises(TypeError, match="inner is annotated .*, which is not a shape JSON takes"):
-
-        @dataclass(frozen=True)
-        class Structured(BytesBytesCodec):
-            inner: object
-
-            identifier: ClassVar[str] = "acme.structured"
+        CORE_AND_EXTENSIONS.extended_with(Structured)
 
 
 # A third-party codec that contains another codec.
@@ -350,11 +376,13 @@ class AcmeWrapperCodec(BytesBytesCodec):
 
     identifier: ClassVar[str] = "acme.wrapper"
 
+    variable_size: ClassVar[bool] = False
+
     def canonical(self) -> Self:
-        return replace(self, inner=canonicalized(self.inner))
+        return replace(self, inner=self.inner.canonical())
 
     def to_json(self) -> ZarrV3MetadataFieldJSON:
-        return {"name": "acme.wrapper", "configuration": {"inner": written(self.inner)}}
+        return {"name": "acme.wrapper", "configuration": {"inner": self.inner.to_json()}}
 
 
 def test_a_third_party_entity_containing_entities_reads_them_in_scope() -> None:
@@ -427,15 +455,17 @@ def test_canonical_is_the_entity_s_own_and_reaches_what_it_contains() -> None:
 
         identifier: ClassVar[str] = "acme.framed"
 
+        variable_size: ClassVar[bool] = False
+
         def canonical(self) -> Self:
             return replace(
                 self,
-                inner=canonicalized(self.inner),
+                inner=self.inner.canonical(),
                 frame=UNSET if self.frame == 0 else self.frame,
             )
 
         def to_json(self) -> ZarrV3MetadataFieldJSON:
-            configuration: dict[str, JSONValue] = {"inner": written(self.inner)}
+            configuration: dict[str, JSONValue] = {"inner": self.inner.to_json()}
             if self.frame is not UNSET:
                 configuration["frame"] = self.frame
             return {"name": "acme.framed", "configuration": configuration}
@@ -449,13 +479,18 @@ def test_canonical_is_the_entity_s_own_and_reaches_what_it_contains() -> None:
 def test_error_a_nested_field_names_a_kind() -> None:
     # `MetadataEntity` is of no kind, so a field typed as one could not
     # be resolved through any scope.
+    @dataclass(frozen=True)
+    class Vague(BytesBytesCodec):
+        inner: MetadataEntity | Opaque
+
+        identifier: ClassVar[str] = "acme.vague"
+        variable_size: ClassVar[bool] = False
+
+        def to_json(self) -> ZarrV3MetadataFieldJSON:
+            return "acme.vague"
+
     with pytest.raises(TypeError, match="inner holds an entity but is not written as its kind"):
-
-        @dataclass(frozen=True)
-        class Vague(BytesBytesCodec):
-            inner: MetadataEntity | Opaque
-
-            identifier: ClassVar[str] = "acme.vague"
+        CORE_AND_EXTENSIONS.extended_with(Vague)
 
 
 # The JSON types third-party entities name, at module level so their
@@ -495,6 +530,8 @@ class AcmeBlockCodec(BytesBytesCodec):
     block: int
 
     identifier: ClassVar[str] = "acme.block"
+
+    variable_size: ClassVar[bool] = False
     problems = acme_block_problems
 
     def to_json(self) -> ZarrV3MetadataFieldJSON:
@@ -543,6 +580,8 @@ class AcmeRangeCodec(BytesBytesCodec):
     high: int
 
     identifier: ClassVar[str] = "acme.range"
+
+    variable_size: ClassVar[bool] = False
     problems = acme_range_problems
 
     def to_json(self) -> ZarrV3MetadataFieldJSON:
@@ -567,24 +606,82 @@ def test_the_constructor_stops_at_the_first_problem_and_coerce_reports_every_one
 def test_error_an_entity_may_not_define_post_init() -> None:
     # `coerce` never runs it, so a rule written there would judge a
     # hand-built entity and no document.
+    @dataclass(frozen=True)
+    class Checked(BytesBytesCodec):
+        identifier: ClassVar[str] = "acme.checked"
+        variable_size: ClassVar[bool] = False
+
+        def __post_init__(self) -> None:
+            return None
+
+        def to_json(self) -> ZarrV3MetadataFieldJSON:
+            return "acme.checked"
+
     with pytest.raises(TypeError, match="defines __post_init__; write its rules as a function"):
+        CORE_AND_EXTENSIONS.extended_with(Checked)
 
-        @dataclass(frozen=True)
-        class Checked(BytesBytesCodec):
-            identifier: ClassVar[str] = "acme.checked"
 
-            def __post_init__(self) -> None:
-                return None
+def test_error_a_field_annotation_names_what_is_not_defined() -> None:
+    # Annotations are resolved where the class is, at registration; a
+    # type defined inside a function is not there.
+    class Local(TypedDict, closed=True):
+        depth: int
+
+    @dataclass(frozen=True)
+    class Localized(BytesBytesCodec):
+        inner: Local
+
+        identifier: ClassVar[str] = "acme.localized"
+        variable_size: ClassVar[bool] = False
+
+        def to_json(self) -> ZarrV3MetadataFieldJSON:
+            return "acme.localized"
+
+    with pytest.raises(TypeError, match="a field annotation names 'Local', which is not defined"):
+        CORE_AND_EXTENSIONS.extended_with(Localized)
+
+
+def test_error_a_codec_says_whether_its_output_size_is_fixed() -> None:
+    # A default in either direction is a verdict: a compressor that
+    # said nothing would be accepted as a shard-index codec.
+    @dataclass(frozen=True)
+    class Sizeless(BytesBytesCodec):
+        identifier: ClassVar[str] = "acme.sizeless"
+
+        def to_json(self) -> ZarrV3MetadataFieldJSON:
+            return "acme.sizeless"
+
+    with pytest.raises(TypeError, match="does not declare variable_size"):
+        CORE_AND_EXTENSIONS.extended_with(Sizeless)
+
+
+def test_a_reader_gets_structural_and_semantic_reasons_together() -> None:
+    with pytest.raises(MetadataValidationError) as caught:
+        ArrayDocumentV3.from_json(_document(attributes=5, fill_value=-1))
+    assert {problem.loc for problem in caught.value.problems} == {("attributes",), ("fill_value",)}
+
+
+def test_a_malformed_envelope_is_one_problem() -> None:
+    # The envelope is judged once, by the scope; the entity is not asked
+    # to read what is not a metadata field.
+    _, problems = CORE_AND_EXTENSIONS.coerce(CodecEntity, 5, ("codecs", 0))
+    assert [(p.loc, p.kind) for p in problems] == [(("codecs", 0), "invalid_type")]
+    _, problems = CORE_AND_EXTENSIONS.coerce(
+        CodecEntity, {"name": "gzip", "configuration": 42}, ("codecs", 0)
+    )
+    assert [(p.loc, p.kind) for p in problems] == [(("codecs", 0, "configuration"), "invalid_type")]
 
 
 def test_a_slotted_entity_is_accepted() -> None:
-    # `@dataclass(slots=True)` builds the class twice, so class creation
-    # sees it twice; the second time its members are slot descriptors.
+    # `@dataclass(slots=True)` builds the class twice; registration sees
+    # the second, whose members are slot descriptors.
     @dataclass(frozen=True, slots=True)
     class AcmeSlotted(BytesBytesCodec):
         level: int
 
         identifier: ClassVar[str] = "acme.slotted"
+
+        variable_size: ClassVar[bool] = False
 
         def to_json(self) -> ZarrV3MetadataFieldJSON:
             return {"name": "acme.slotted", "configuration": {"level": self.level}}
@@ -599,6 +696,7 @@ def test_a_bare_class_var_is_a_class_variable() -> None:
     @dataclass(frozen=True)
     class AcmeNoted(BytesBytesCodec):
         identifier: ClassVar[str] = "acme.noted"
+        variable_size: ClassVar[bool] = False
         note: ClassVar = "not a member"
 
         def to_json(self) -> ZarrV3MetadataFieldJSON:
@@ -616,6 +714,8 @@ def test_a_number_member_is_a_float_field() -> None:
         scale: float
 
         identifier: ClassVar[str] = "acme.scaled"
+
+        variable_size: ClassVar[bool] = False
 
         def transition(self, incoming: ArrayParts) -> ArrayParts | None:
             return incoming
@@ -656,13 +756,18 @@ def test_error_an_entity_must_be_a_dataclass() -> None:
 
 def test_error_a_nested_field_admits_opaque() -> None:
     # What the field holds when the inner name is out of scope.
+    @dataclass(frozen=True)
+    class Closed(BytesBytesCodec):
+        inner: CodecEntity
+
+        identifier: ClassVar[str] = "acme.closed"
+        variable_size: ClassVar[bool] = False
+
+        def to_json(self) -> ZarrV3MetadataFieldJSON:
+            return "acme.closed"
+
     with pytest.raises(TypeError, match="inner holds an entity but is not written as its kind"):
-
-        @dataclass(frozen=True)
-        class Closed(BytesBytesCodec):
-            inner: CodecEntity
-
-            identifier: ClassVar[str] = "acme.closed"
+        CORE_AND_EXTENSIONS.extended_with(Closed)
 
 
 def test_error_an_array_array_codec_defines_transition() -> None:
@@ -671,6 +776,7 @@ def test_error_an_array_array_codec_defines_transition() -> None:
     @dataclass(frozen=True)
     class Silent(ArrayArrayCodec):
         identifier: ClassVar[str] = "acme.silent"
+        variable_size: ClassVar[bool] = False
 
         def to_json(self) -> ZarrV3MetadataFieldJSON:
             return "acme.silent"

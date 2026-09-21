@@ -102,6 +102,7 @@ class ScaleOffsetCodec(ArrayArrayCodec):
     scale: JSONValue | UNSET = UNSET
 
     identifier: ClassVar[str] = SCALE_OFFSET_CODEC_NAME
+    variable_size: ClassVar[bool] = False
 
     problems = scale_offset_problems
 
