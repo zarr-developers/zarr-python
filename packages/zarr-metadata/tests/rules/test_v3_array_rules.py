@@ -726,7 +726,7 @@ def test_error_blosc_clevel_out_of_range() -> None:
 def test_error_blosc_blocksize_is_negative() -> None:
     loc, message = _sole_problem(_with_blosc(blocksize=-1))
     assert loc == ("codecs", 1, "configuration", "blocksize")
-    assert "non-negative" in message
+    assert "expected an integer >= 0" in message
 
 
 @pytest.mark.parametrize(

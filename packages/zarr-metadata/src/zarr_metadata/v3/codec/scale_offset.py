@@ -7,7 +7,7 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal, NotRequired, cast
 
-from typing_extensions import TypedDict, Unpack
+from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.model._sentinel import UNSET
@@ -16,6 +16,7 @@ from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     problem,
+    validates,
 )
 from zarr_metadata.v3._parts import ArrayParts
 
@@ -97,9 +98,8 @@ class ScaleOffsetCodec(CodecEntity):
         return incoming
 
     @staticmethod
-    def value_problems(
-        **members: Unpack[ScaleOffsetCodecConfiguration],
-    ) -> tuple[ValidationProblem, ...]:
+    @validates("offset", "scale")
+    def _is_a_scalar(value: JSONValue) -> tuple[ValidationProblem, ...]:
         """Each value is a scalar of the array's type, so neither is null.
 
         The registry says each is "JSON-encoded per the input array's
@@ -107,15 +107,9 @@ class ScaleOffsetCodec(CodecEntity):
         Which scalar it should be needs the data type, so that part is the
         document's question, not this codec's.
         """
-        # Each member named outright: a TypedDict indexed by a loop variable
-        # has no type, and the two are different members rather than two of
-        # a kind.
-        found: list[ValidationProblem] = []
-        if members.get("offset", UNSET) is None:
-            found.extend(problem(("offset",), "expected a scalar, got null", "invalid_value"))
-        if members.get("scale", UNSET) is None:
-            found.extend(problem(("scale",), "expected a scalar, got null", "invalid_value"))
-        return tuple(found)
+        if value is None:
+            return problem((), "expected a scalar, got null", "invalid_value")
+        return ()
 
     def to_json(self) -> ScaleOffsetCodecObject | ScaleOffsetCodecName:
         return cast("ScaleOffsetCodecObject | ScaleOffsetCodecName", super().to_json())

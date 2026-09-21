@@ -52,9 +52,20 @@ value is written on the field too, in the `annotated_types` vocabulary:
 
     acceleration: Annotated[int, Interval(ge=1, le=65537)] | UNSET = UNSET
 
-A rule that is not a bound goes in a `value_problems` staticmethod,
-which runs only once every member has the type it declared; annotate it
-with a TypedDict of the members so its body is checked:
+A rule about one member that is not a bound is a `@validates` rule: a
+staticmethod taking the member's value, run only when the member is
+present and has the type it declared, reporting relative to the member:
+
+    @staticmethod
+    @validates("order")
+    def _order_permutes_itself(order: tuple[int, ...]) -> tuple[ValidationProblem, ...]:
+        if sorted(order) != list(range(len(order))):
+            return problem((), f"expected a permutation, got {order!r}", "invalid_value")
+        return ()
+
+A rule that reads two members together goes in a `value_problems`
+staticmethod; annotate it with a TypedDict of the members so its body is
+checked:
 
     class AcmeLz4Configuration(TypedDict, closed=True):
         acceleration: NotRequired[int]
@@ -132,6 +143,7 @@ from zarr_metadata.v3._entity import (
     one_of,
     problem,
     sequence_of,
+    validates,
     within,
 )
 from zarr_metadata.v3._parts import UNKNOWN_GRID, ArrayParts, ChunkGrid, Extents, shard_index_grid
@@ -210,5 +222,6 @@ __all__ = [
     "read_array_v3",
     "sequence_of",
     "shard_index_grid",
+    "validates",
     "within",
 ]

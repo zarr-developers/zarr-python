@@ -5,7 +5,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
 """
 
 from dataclasses import dataclass, replace
-from typing import ClassVar, Final, Literal, NotRequired, Self, cast
+from typing import Annotated, ClassVar, Final, Literal, NotRequired, Self, cast
 
 from typing_extensions import TypedDict, Unpack
 
@@ -14,6 +14,8 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
+    Ge,
+    Interval,
     problem,
 )
 
@@ -98,9 +100,9 @@ class BloscCodec(CodecEntity):
     """
 
     cname: BloscCName
-    clevel: int
+    clevel: Annotated[int, Interval(ge=0, le=9)]
     shuffle: BloscShuffle
-    blocksize: int
+    blocksize: Annotated[int, Ge(0)]
     typesize: int | UNSET = UNSET
 
     identifier: ClassVar[str] = BLOSC_CODEC_NAME
@@ -114,28 +116,16 @@ class BloscCodec(CodecEntity):
     def value_problems(
         **members: Unpack[BloscCodecConfiguration],
     ) -> tuple[ValidationProblem, ...]:
-        """The value constraints the spec places on a blosc configuration."""
-        found: list[ValidationProblem] = []
-        clevel = members["clevel"]
-        if not 0 <= clevel <= 9:
-            found.extend(
-                problem(
-                    ("clevel",), f"expected an integer in [0, 9], got {clevel}", "invalid_value"
-                )
-            )
-        blocksize = members["blocksize"]
-        if blocksize < 0:
-            found.extend(
-                problem(
-                    ("blocksize",),
-                    f"expected a non-negative integer, got {blocksize}",
-                    "invalid_value",
-                )
-            )
+        """`typesize` against `shuffle`: required, and positive, only where it counts.
+
+        Under `noshuffle` the spec says of `typesize` that "the value is
+        ignored", and `canonical` drops it. A rule over two members, which
+        is what this routine is for; the bounds on `clevel` and
+        `blocksize` are on the fields.
+        """
         shuffle = members["shuffle"]
         typesize = members.get("typesize")
-        # Only where it means something: under `noshuffle` the spec says
-        # "the value is ignored", and `canonical` drops it.
+        found: list[ValidationProblem] = []
         if typesize is not None and shuffle != BLOSC_NO_SHUFFLE and typesize < 1:
             found.extend(
                 problem(

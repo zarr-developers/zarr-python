@@ -39,6 +39,7 @@ from zarr_metadata.v3.entity import (
     is_int,
     named_configuration,
     problem,
+    validates,
 )
 
 ACME_MAX_ACCELERATION = 65537
@@ -264,7 +265,7 @@ def test_a_reader_can_choose_its_own_scope() -> None:
 def test_error_value_rules_must_be_value_problems() -> None:
     # `problems` was the old name and takes an entity; an override using
     # it would never run, and nothing else would notice.
-    with pytest.raises(TypeError, match="value rules belong in `value_problems`"):
+    with pytest.raises(TypeError, match="none of them takes an entity"):
 
         @dataclass(frozen=True)
         class Stale(CodecEntity):  # pyright: ignore[reportUnusedClass]
@@ -504,3 +505,59 @@ def test_error_a_nested_field_needs_an_entity_kind_with_a_point() -> None:
 
             identifier: ClassVar[str] = "acme.vague"
             kind: ClassVar[CodecKind] = "bytes_bytes"
+
+
+# A third-party rule about one member, written as a `@validates` rule.
+@dataclass(frozen=True)
+class AcmeBlockCodec(CodecEntity):
+    """A codec whose block size must be a power of two."""
+
+    block: int
+
+    identifier: ClassVar[str] = "acme.block"
+    kind: ClassVar[CodecKind] = "bytes_bytes"
+
+    @staticmethod
+    @validates("block")
+    def _block_is_a_power_of_two(block: int) -> tuple[ValidationProblem, ...]:
+        if block < 1 or block & (block - 1) != 0:
+            return problem((), f"expected a power of two, got {block}", "invalid_value")
+        return ()
+
+
+def test_a_rule_about_one_member_is_a_validates_rule() -> None:
+    # The rule receives the typed member, only when present, and reports
+    # relative to it: the location is supplied, and no `**members` is
+    # unpacked by hand. The declared signature survives, so a call by
+    # name is checked.
+    scope = CORE_AND_EXTENSIONS.extended_with(codecs={AcmeBlockCodec.identifier: AcmeBlockCodec})
+    codec, problems = scope.coerce("codecs", {"name": "acme.block", "configuration": {"block": 64}})
+    assert problems == ()
+    assert isinstance(codec, AcmeBlockCodec)
+    _, problems = scope.coerce("codecs", {"name": "acme.block", "configuration": {"block": 6}})
+    assert [(p.loc, p.message) for p in problems] == [
+        (("configuration", "block"), "expected a power of two, got 6")
+    ]
+    # And on the constructor, the same rule.
+    with pytest.raises(MetadataValidationError) as caught:
+        AcmeBlockCodec(block=6)
+    assert [p.loc for p in caught.value.problems] == [("block",)]
+    # A member that failed its type check never reaches the rule.
+    _, problems = scope.coerce("codecs", {"name": "acme.block", "configuration": {"block": "x"}})
+    assert [p.kind for p in problems] == ["invalid_type"]
+
+
+def test_error_a_validates_rule_must_name_a_field() -> None:
+    with pytest.raises(TypeError, match="`@validates\\('blocc'\\)` names no field"):
+
+        @dataclass(frozen=True)
+        class Misspelt(CodecEntity):  # pyright: ignore[reportUnusedClass]
+            block: int
+
+            identifier: ClassVar[str] = "acme.misspelt"
+            kind: ClassVar[CodecKind] = "bytes_bytes"
+
+            @staticmethod
+            @validates("blocc")
+            def _rule(block: int) -> tuple[ValidationProblem, ...]:
+                return ()

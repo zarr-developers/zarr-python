@@ -7,13 +7,14 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/transpose/index.html
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal, NotRequired, cast
 
-from typing_extensions import TypedDict, Unpack
+from typing_extensions import TypedDict
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     CodecEntity,
     CodecKind,
     problem,
+    validates,
 )
 from zarr_metadata.v3._parts import ArrayParts
 
@@ -72,20 +73,16 @@ class TransposeCodec(CodecEntity):
     kind: ClassVar[CodecKind] = "array_array"
 
     @staticmethod
-    def value_problems(
-        **members: Unpack[TransposeCodecConfiguration],
-    ) -> tuple[ValidationProblem, ...]:
+    @validates("order")
+    def _order_permutes_itself(order: tuple[int, ...]) -> tuple[ValidationProblem, ...]:
         """`order` must permute its own axes.
 
         Whether it permutes the *array's* axes is a different question --
         it needs the array's rank -- and the rules layer asks that one.
         """
-        order = members["order"]
         if sorted(order) != list(range(len(order))):
             return problem(
-                ("order",),
-                f"expected a permutation of 0..{len(order) - 1}, got {order!r}",
-                "invalid_value",
+                (), f"expected a permutation of 0..{len(order) - 1}, got {order!r}", "invalid_value"
             )
         return ()
 

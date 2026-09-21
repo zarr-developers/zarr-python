@@ -665,6 +665,42 @@ def derive_member_types(cls: type) -> tuple[dict[str, tuple[bool, TypeCheck]], l
     return derived, unread
 
 
+MemberRule: TypeAlias = "Callable[..., tuple[ValidationProblem, ...]]"
+"""A rule about one member: takes its value, reports relative to it."""
+
+_RULE_MEMBERS: Final[dict[object, tuple[str, ...]]] = {}
+"""Which members each `@validates` rule is about, keyed by the function.
+
+A side table rather than an attribute on the function, so the decorator
+hands back exactly what it was given -- the declared signature survives,
+and the type checker keeps checking the body and its callers.
+"""
+
+_Rule = TypeVar("_Rule", bound="Callable[..., tuple[ValidationProblem, ...]]")
+
+
+def validates(*members: str) -> Callable[[_Rule], _Rule]:
+    """Mark a static rule as being about one member, or several alike.
+
+        @staticmethod
+        @validates("order")
+        def _order_permutes_itself(order: tuple[int, ...]) -> tuple[ValidationProblem, ...]:
+            ...
+
+    The rule receives the member's value, already of the type the field
+    declares, and only when the member is present; it reports relative
+    to the member, so a problem with an empty location is about the
+    member itself. Naming several members applies the one rule to each.
+    A rule that reads two members together is `value_problems`.
+    """
+
+    def mark(rule: _Rule) -> _Rule:
+        _RULE_MEMBERS[rule] = members
+        return rule
+
+    return mark
+
+
 def _bound_check(metadata: Sequence[object]) -> TypeCheck | None:
     """The check the bound markers among an annotation's metadata imply, or None."""
     ge = gt = le = lt = None
@@ -1144,6 +1180,14 @@ class MetadataEntity:
     checks, on both the reading path and the constructor.
     """
 
+    member_rules: ClassVar[Mapping[str, tuple[MemberRule, ...]]] = MappingProxyType({})
+    """The `@validates` rules, by the member each is about.
+
+    Collected at class creation from the class and its ancestors, the
+    nearest definition of a name winning. Run after the annotation bounds
+    and before `value_problems`, on both paths.
+    """
+
     configuration_required: ClassVar[bool] = False
     """Whether the bare-name spelling says too little for this entity.
 
@@ -1171,8 +1215,9 @@ class MetadataEntity:
             # members. An override named `problems` is a rule that would
             # never run, and nothing else would say so.
             msg = (
-                f"{cls.__name__} defines `problems`; value rules belong in "
-                "`value_problems`, which takes the members rather than an entity"
+                f"{cls.__name__} defines `problems`; a value rule is a bound on the "
+                "field, a `@validates` rule about one member, or `value_problems` "
+                "over the members together -- none of them takes an entity"
             )
             raise TypeError(msg)
         if "prepare" in cls.__dict__:
@@ -1238,6 +1283,22 @@ class MetadataEntity:
             for name, annotation in hints.items()
             if (check := value_check_for(annotation)) is not None
         }
+        attributes: dict[str, object] = {}
+        for ancestor in reversed(cls.__mro__):
+            attributes.update(vars(ancestor))
+        rules: dict[str, list[MemberRule]] = {}
+        for attribute in attributes.values():
+            function = attribute.__func__ if isinstance(attribute, staticmethod) else attribute
+            # Only a function can carry the mark; a table-valued class
+            # attribute is not even hashable.
+            if not callable(function):
+                continue
+            for member in _RULE_MEMBERS.get(function, ()):
+                if member not in hints:
+                    msg = f"{cls.__name__}: `@validates({member!r})` names no field of the entity"
+                    raise TypeError(msg)
+                rules.setdefault(member, []).append(cast("MemberRule", function))
+        cls.member_rules = {member: tuple(found) for member, found in rules.items()}
         unplaced = sorted(
             name
             for name, annotation in cls.nested_members.items()
@@ -1428,11 +1489,14 @@ class MetadataEntity:
         return deepcopy(members)
 
     value_problems: ClassVar[ValueRoutine] = staticmethod(_no_value_problems)
-    """Every value among the members the spec disallows.
+    """What the spec disallows among the members taken together.
 
-    A routine rather than a method, because judging values does not need
-    an entity -- and needing one would mean an invalid one had been
-    built. Each entity supplies its own, taking
+    The third of three places a value rule lives, for the rule that
+    reads two members at once -- blosc's `typesize` against its
+    `shuffle`. A bound on one member is on the field; a rule about one
+    member is a `@validates` staticmethod. A routine rather than a
+    method, because judging values does not need an entity -- and
+    needing one would mean an invalid one had been built. Takes
     `Unpack[<Entity>Configuration]`: the same spelling the constructor
     takes, receiving only the members that are present.
 
@@ -1461,9 +1525,10 @@ class MetadataEntity:
     def _judge_values(cls, members: Mapping[str, object]) -> tuple[ValidationProblem, ...]:
         """Every value problem among the members.
 
-        The bounds the annotations state first, member by member, then
-        whatever `value_problems` has to say -- one routine for the
-        reading path and the constructor, so the two cannot disagree.
+        The bounds the annotations state first, then the `@validates`
+        rules, member by member, then whatever `value_problems` has to
+        say about the members together -- one routine for the reading
+        path and the constructor, so the two cannot disagree.
         """
         from_annotations = [
             found
@@ -1471,7 +1536,14 @@ class MetadataEntity:
             if name in members
             for found in check(members[name], (name,))
         ]
-        return (*from_annotations, *cls.value_problems(**members))
+        from_rules = [
+            ValidationProblem((member, *found.loc), found.message, found.kind)
+            for member, member_rules in cls.member_rules.items()
+            if member in members
+            for rule in member_rules
+            for found in rule(members[member])
+        ]
+        return (*from_annotations, *from_rules, *cls.value_problems(**members))
 
     def _members(self) -> dict[str, object]:
         """Every member this entity holds, unrendered.
@@ -1727,6 +1799,7 @@ __all__ = [
     "Le",
     "Loc",
     "Lt",
+    "MemberRule",
     "MemberTypes",
     "MetadataEntity",
     "Opaque",
@@ -1744,5 +1817,6 @@ __all__ = [
     "one_of",
     "problem",
     "sequence_of",
+    "validates",
     "within",
 ]

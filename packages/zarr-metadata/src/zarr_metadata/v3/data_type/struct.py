@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal, NotRequired, cast
 
-from typing_extensions import ReadOnly, TypedDict, Unpack
+from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.model._validation import ValidationProblem
@@ -19,6 +19,7 @@ from zarr_metadata.v3._entity import (
     Opaque,
     StorageClass,
     problem,
+    validates,
 )
 
 STRUCT_DATA_TYPE_NAME: Final = "struct"
@@ -95,17 +96,6 @@ class StructFieldComponent:
     data_type: DataTypeEntity | Opaque
 
 
-class StructMembers(TypedDict):
-    """A struct's members as the entity holds them.
-
-    Not `StructConfiguration`, which describes the JSON: by the time
-    values are judged, each field's data type has been read in scope, so
-    these are components holding entities rather than field objects.
-    """
-
-    fields: tuple[StructFieldComponent, ...]
-
-
 @dataclass(frozen=True)
 class StructDataType(DataTypeEntity):
     """The `struct` data type, coerced from its metadata.
@@ -121,33 +111,31 @@ class StructDataType(DataTypeEntity):
     scalar_storage: ClassVar[StorageClass] = "single_byte"
 
     @staticmethod
-    def value_problems(**members: Unpack[StructMembers]) -> tuple[ValidationProblem, ...]:
-        """What a struct can judge about its own fields.
+    @validates("fields")
+    def _fields_form_a_record(
+        fields: tuple[StructFieldComponent, ...],
+    ) -> tuple[ValidationProblem, ...]:
+        """Names exist, are non-empty and distinct; types are fixed-size.
 
-        Names have to exist, be non-empty and be distinct, because a fill
-        value addresses fields by name. Field types have to be fixed-size,
-        because a record's layout is otherwise not determined. Nothing about
-        a field type's own values: it is an entity, so it exists only if
-        those are allowed.
+        A fill value addresses fields by name, and a record's layout is
+        not determined by a variable-length field. Nothing about a field
+        type's own values: it is an entity, so it exists only if those
+        are allowed.
         """
-        fields = members["fields"]
         found: list[ValidationProblem] = []
         if len(fields) == 0:
-            found.extend(
-                problem(("fields",), "expected at least one struct field", "invalid_value")
-            )
+            found.extend(problem((), "expected at least one struct field", "invalid_value"))
         seen: dict[str, int] = {}
         for index, field in enumerate(fields):
-            at: Loc = ("fields", index)
             if field.name == "":
                 found.extend(
-                    problem((*at, "name"), "expected a non-empty field name", "invalid_value")
+                    problem((index, "name"), "expected a non-empty field name", "invalid_value")
                 )
             first = seen.setdefault(field.name, index)
             if first != index:
                 found.extend(
                     problem(
-                        (*at, "name"),
+                        (index, "name"),
                         f"duplicate field name {field.name!r}, already used by field {first}",
                         "invalid_value",
                     )
@@ -158,7 +146,7 @@ class StructDataType(DataTypeEntity):
             ):
                 found.extend(
                     problem(
-                        (*at, "data_type"),
+                        (index, "data_type"),
                         "struct fields must use fixed-size data types",
                         "invalid_value",
                     )
