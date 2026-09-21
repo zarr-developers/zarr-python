@@ -8,9 +8,37 @@ set positional-arguments
 default:
     @just --list
 
-# Run the test suite; extra args are passed to pytest
+# Run the test suite on the project interpreter; extra args are passed to pytest
 test *args:
     uv run --group test pytest tests "$@"
+
+# The oldest and newest interpreters the package is declared for: the floor is
+# `requires-python`, the ceiling the newest classifier, both read from
+# pyproject.toml so this recipe cannot drift from what CI's matrix spans.
+# uv fetches an interpreter it does not have. A difference in how a version
+# materialises annotations or resolves a stub shows up here, not only in CI.
+# Run the test suite on the oldest and newest supported interpreters
+test-versions *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    read -r floor ceiling < <(uv run python - <<'EOF'
+    import re
+    import tomllib
+
+    project = tomllib.load(open("pyproject.toml", "rb"))["project"]
+    floor = re.fullmatch(r">=\s*(\d+\.\d+)", project["requires-python"]).group(1)
+    declared = [
+        classifier.rsplit(" ", 1)[1]
+        for classifier in project["classifiers"]
+        if classifier.startswith("Programming Language :: Python :: 3.")
+    ]
+    print(floor, max(declared, key=lambda version: tuple(map(int, version.split(".")))))
+    EOF
+    )
+    for version in "$floor" "$ceiling"; do
+        echo "== python $version =="
+        uv run --python "$version" --group test pytest tests "$@"
+    done
 
 # Lint with the same invocation CI uses
 lint:
@@ -26,8 +54,8 @@ pyright_version := "1.1.414"
 typecheck:
     uv run --python 3.11 --group test --with 'pyright=={{ pyright_version }}' pyright
 
-# Run everything CI runs for this package
-check: lint typecheck test docs-check
+# Run everything CI runs for this package, on both ends of the version range
+check: lint typecheck test-versions docs-check
 
 # Preview the changelog that the next release would generate
 changelog-draft:
