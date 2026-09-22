@@ -132,7 +132,7 @@ class ScaleOffsetCodec(ArrayArrayCodec):
             return problem(
                 (),
                 "scale_offset is defined for integer and floating-point data types, not "
-                f"{type(data_type).identifier!r}",
+                f"{data_type.name!r}",
                 "invalid_value",
             )
         return tuple(

@@ -71,6 +71,7 @@ class IntegerDataType(DataTypeEntity):
     configuration: Configuration = field(default_factory=Configuration)
 
     bounds: ClassVar[tuple[int, int]]
+    twos_complement: ClassVar[bool] = True
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         low, high = type(self).bounds
@@ -90,6 +91,7 @@ class FloatDataType(DataTypeEntity):
     configuration: Configuration = field(default_factory=Configuration)
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
+    twos_complement: ClassVar[bool] = False
     hex_parser: ClassVar[Callable[[str], object]]
 
     largest: ClassVar[float | None]
@@ -132,6 +134,7 @@ class ComplexDataType(DataTypeEntity):
     configuration: Configuration = field(default_factory=Configuration)
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
+    twos_complement: ClassVar[bool] = False
     component: ClassVar[type[FloatDataType]]
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
@@ -203,6 +206,9 @@ class NumpyTimeDataType(DataTypeEntity):
     configuration: NumpyTimeOptions
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
+    # Stored as a signed integer, but it denotes an instant or a
+    # duration; wrapping one is not a defined cast.
+    twos_complement: ClassVar[bool] = False
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         if value == "NaT":

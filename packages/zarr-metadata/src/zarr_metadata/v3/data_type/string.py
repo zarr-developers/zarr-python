@@ -41,6 +41,7 @@ class StringDataType(DataTypeEntity):
     configuration: Configuration = field(default_factory=Configuration)
 
     scalar_storage: ClassVar[StorageClass] = "variable_length"
+    twos_complement: ClassVar[bool] = False
     identifier: ClassVar[str] = STRING_DATA_TYPE_NAME
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:

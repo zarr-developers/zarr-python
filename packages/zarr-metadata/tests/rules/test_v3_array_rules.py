@@ -854,3 +854,52 @@ def test_error_scale_offset_data_type_has_no_arithmetic() -> None:
         ("codecs", 0),
         "scale_offset is defined for integer and floating-point data types, not 'bool'",
     )
+
+
+# (a cast target, whether `out_of_range: "wrap"` is defined for it)
+WRAP_TARGETS: dict[str, tuple[object, bool]] = {
+    "int32": ("int32", True),
+    "uint64": ("uint64", True),
+    "bool": ("bool", False),
+    "float32": ("float32", False),
+    "complex64": ("complex64", False),
+    "raw-bytes": ("r8", False),
+    "string": ("string", False),
+    "numpy-time": (
+        {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 1}},
+        False,
+    ),
+    # Out of scope, so it may be an integral extension type; declining
+    # beats guessing.
+    "unmodelled": ("mycorp.bigint", True),
+}
+
+
+@pytest.mark.parametrize(("target", "allowed"), WRAP_TARGETS.values(), ids=list(WRAP_TARGETS))
+def test_wrap_requires_a_twos_complement_integer_target(target: object, allowed: bool) -> None:
+    document = {
+        **BASE,
+        "codecs": (
+            {"name": "cast_value", "configuration": {"data_type": target, "out_of_range": "wrap"}},
+            {"name": "bytes", "configuration": {"endian": "little"}},
+        ),
+    }
+    wrap = [
+        problem
+        for problem in validate_array_metadata_v3(document)
+        if problem.loc == ("codecs", 0, "configuration", "out_of_range")
+    ]
+    assert (len(wrap) == 0) is allowed, wrap
+
+
+def test_the_wrap_message_names_the_spelling_not_the_family() -> None:
+    # `r<N>` is an invented lookup key, not a name any document writes.
+    document = {
+        **BASE,
+        "codecs": (
+            {"name": "cast_value", "configuration": {"data_type": "r24", "out_of_range": "wrap"}},
+            {"name": "bytes", "configuration": {"endian": "little"}},
+        ),
+    }
+    messages = [problem.message for problem in validate_array_metadata_v3(document)]
+    assert any("got 'r24'" in message for message in messages), messages

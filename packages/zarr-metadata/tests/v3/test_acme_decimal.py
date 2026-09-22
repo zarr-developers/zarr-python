@@ -104,6 +104,7 @@ class AcmeDecimalDataType(DataTypeEntity):
 
     identifier: ClassVar[str] = ACME_DECIMAL_DATA_TYPE_NAME
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
+    twos_complement: ClassVar[bool] = False
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         """A decimal literal whose digits fit `precision` and `scale`.

@@ -113,7 +113,7 @@ class BytesCodec(ArrayBytesCodec):
         if not isinstance(data_type, DataTypeEntity):
             return ()
         storage = data_type.storage_class()
-        name = type(data_type).identifier
+        name = data_type.name
         if storage == "variable_length":
             return problem(
                 (),

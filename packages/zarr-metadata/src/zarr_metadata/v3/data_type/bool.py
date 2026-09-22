@@ -41,6 +41,7 @@ class BoolDataType(DataTypeEntity):
     configuration: Configuration = field(default_factory=Configuration)
 
     scalar_storage: ClassVar[StorageClass] = "single_byte"
+    twos_complement: ClassVar[bool] = False
     identifier: ClassVar[str] = BOOL_DATA_TYPE_NAME
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:

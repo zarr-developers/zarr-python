@@ -154,6 +154,7 @@ class StructDataType(DataTypeEntity):
 
     identifier: ClassVar[str] = STRUCT_DATA_TYPE_NAME
     scalar_storage: ClassVar[StorageClass] = "single_byte"
+    twos_complement: ClassVar[bool] = False
 
     def canonical(self) -> Self:
         """Each field's data type in its own canonical form."""

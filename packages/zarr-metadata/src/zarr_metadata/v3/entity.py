@@ -196,9 +196,12 @@ kind:
   endianness is needed), and `fill_value_problems(value, loc) ->
   tuple[ValidationProblem, ...]`, abstract: it judges a document's
   `fill_value`, and a type that accepts any says so with `return ()`.
-  These composition hooks return tuples; a record's `problems` yields.
-  The families `IntegerDataType`, `FloatDataType`, `ComplexDataType` and
-  `NumpyTimeDataType` carry both for the types they cover; a family of
+  It also declares `twos_complement`, whether its scalars are two's
+  complement integers, which `cast_value` asks before it lets a cast
+  wrap. These composition hooks return tuples; a record's `problems`
+  yields. The families `IntegerDataType`, `FloatDataType`,
+  `ComplexDataType` and `NumpyTimeDataType` carry all three for the
+  types they cover; a family of
   your own is a plain subclass that is never registered itself, and
   passes its class variables down.
 - A chunk grid: `grid(array_shape)`, abstract, and `shape_problems`; see

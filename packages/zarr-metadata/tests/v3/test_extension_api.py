@@ -82,6 +82,7 @@ class AcmeFloat8DataType(DataTypeEntity):
 
     identifier: ClassVar[str] = "acme.float8"
     scalar_storage: ClassVar[StorageClass] = "single_byte"
+    twos_complement: ClassVar[bool] = False
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         return ()
@@ -301,6 +302,7 @@ class AcmeFixedDataType(DataTypeEntity):
 
     identifier: ClassVar[str] = "acme.fixed<N>"
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
+    twos_complement: ClassVar[bool] = False
 
     @classmethod
     def name_problems(cls, name: str) -> Iterator[ValidationProblem]:
@@ -813,9 +815,28 @@ def test_error_a_data_type_judges_its_fill_values() -> None:
     class Lax(DataTypeEntity):
         identifier: ClassVar[str] = "acme.lax"
         scalar_storage: ClassVar[StorageClass] = "single_byte"
+        twos_complement: ClassVar[bool] = False
 
     with pytest.raises(TypeError, match="does not define fill_value_problems"):
         CORE_AND_EXTENSIONS.extended_with(Lax)
+
+
+def test_error_a_data_type_must_say_whether_it_wraps() -> None:
+    # `cast_value`'s `out_of_range: "wrap"` is defined only for two's
+    # complement integers. Defaulting either way would answer for a new
+    # data type silently, and one direction accepts an undefined cast.
+    @dataclass(frozen=True)
+    class Undecided(DataTypeEntity):
+        identifier: ClassVar[str] = "acme.undecided"
+        scalar_storage: ClassVar[StorageClass] = "single_byte"
+
+        def fill_value_problems(
+            self, value: object, loc: Loc = ()
+        ) -> tuple[ValidationProblem, ...]:
+            return ()
+
+    with pytest.raises(TypeError, match="does not declare twos_complement"):
+        CORE_AND_EXTENSIONS.extended_with(Undecided)
 
 
 def test_error_a_list_of_problem_tuples_is_refused() -> None:

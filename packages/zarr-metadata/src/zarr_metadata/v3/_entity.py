@@ -805,6 +805,19 @@ class MetadataEntity(ABC):
         """
         return name == cls.identifier
 
+    @property
+    def name(self) -> str:
+        """The name this entity carries, as a document writes it.
+
+        The identifier, except for a family whose name carries a value:
+        the raw-bytes family's identifier is invented and belongs in no
+        message a reader sees, and its name is the `r24` the document
+        wrote. Anything a reader sees wants this; anything looking a
+        class up wants `identifier`.
+        """
+        from_name = _plan(type(self)).from_name
+        return type(self).identifier if from_name is None else cast("str", getattr(self, from_name))
+
     @classmethod
     def create_unchecked(cls, **fields: object) -> Self:
         """This entity with these fields, built without the constructor's checks.
@@ -1040,6 +1053,16 @@ class DataTypeEntity(MetadataEntity):
     """
 
     scalar_storage: ClassVar[StorageClass]
+
+    twos_complement: ClassVar[bool]
+    """Whether this type's scalars are two's complement integers.
+
+    Asked by `cast_value`, whose `out_of_range: "wrap"` is defined only
+    for such a target. Owed rather than defaulted: a data type added
+    later must decide, because either default would answer for it
+    silently -- and getting it wrong in one direction accepts a cast the
+    spec does not define.
+    """
 
     def storage_class(self) -> StorageClass | None:
         """How one scalar occupies bytes, or None if undetermined.

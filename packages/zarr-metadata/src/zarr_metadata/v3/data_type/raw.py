@@ -106,6 +106,7 @@ class RawBytesDataType(DataTypeEntity):
     """The spelling as written -- `r8`, `r008` -- which is where the width lives."""
 
     scalar_storage: ClassVar[StorageClass] = "single_byte"
+    twos_complement: ClassVar[bool] = False
     identifier: ClassVar[str] = RAW_BYTES_FAMILY
 
     @classmethod

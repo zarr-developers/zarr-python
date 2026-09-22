@@ -5,12 +5,13 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from dataclasses import dataclass
-from typing import ClassVar, Final, Literal, NotRequired, Self
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NotRequired, Self
 
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.model._sentinel import UNSET
+from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
     ArrayArrayCodec,
@@ -19,6 +20,9 @@ from zarr_metadata.v3._entity import (
     Opaque,
 )
 from zarr_metadata.v3._parts import ArrayParts
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 CAST_VALUE_CODEC_NAME: Final = "cast_value"
 """The `name` field value of the `cast_value` codec."""
@@ -134,6 +138,27 @@ class CastValueOptions(Configuration):
     rounding: CastRoundingMode | UNSET = UNSET
     out_of_range: CastOutOfRangeMode | UNSET = UNSET
     scalar_map: ScalarMap | UNSET = UNSET
+
+    def problems(self) -> "Iterator[ValidationProblem]":
+        """`out_of_range: "wrap"` needs a target that wraps.
+
+        The spec defines wrapping only for integral targets with a two's
+        complement representation, which is a fact each data type states
+        about itself. A target out of scope is not judged: it may well be
+        an integral extension type, and judging it here would be guessing.
+        """
+        target = self.data_type
+        if (
+            self.out_of_range == "wrap"
+            and isinstance(target, DataTypeEntity)
+            and not type(target).twos_complement
+        ):
+            yield ValidationProblem(
+                ("out_of_range",),
+                "out_of_range 'wrap' requires a two's complement integer data_type, "
+                f"got {target.name!r}",
+                "invalid_value",
+            )
 
 
 @dataclass(frozen=True)
