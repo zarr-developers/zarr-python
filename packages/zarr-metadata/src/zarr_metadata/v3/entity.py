@@ -191,8 +191,9 @@ member whose annotation is not a shape JSON takes
 a `__post_init__` of the entity's own, a class variable a base
 annotates and nothing sets, and what a kind leaves abstract. What is
 left, pyright says in the editor and the constructors say at runtime: a
-member of the wrong type, a value the rules disallow, a `canonical`
-returning something else, a hook with the wrong signature.
+member of the wrong type, a record that is not the entity's own, a
+value the rules disallow, a `canonical` returning something else, a
+hook with the wrong signature.
 A scope reads what a class is off the class: its kind is its base, its
 key is its `identifier`, so `extended_with` takes the classes and
 nothing can be misfiled -- and a class whose `identifier` the scope

@@ -37,6 +37,8 @@ from zarr_metadata.v3._entity import (
     MetadataEntity,
     Opaque,
     StorageTransformerEntity,
+    held_problems,
+    problem,
     within,
 )
 from zarr_metadata.v3._parts import ArrayParts, ChunkGrid
@@ -68,6 +70,36 @@ class ArrayDocumentV3:
     chunk_key_encoding: ChunkKeyEncodingEntity | Opaque
     codecs: tuple[CodecEntity | Opaque, ...]
     storage_transformers: tuple[StorageTransformerEntity | Opaque, ...]
+
+    def __post_init__(self) -> None:
+        """Refuse a field holding anything but an entity of its kind or an `Opaque`.
+
+        `read_array_v3` builds a document that holds what it says by
+        construction; this is the same guarantee for one built by hand,
+        located at the field.
+        """
+        found = (
+            *_as_object(self.document),
+            *held_problems(self.data_type, DataTypeEntity, ("data_type",)),
+            *held_problems(self.chunk_grid, ChunkGridEntity, ("chunk_grid",)),
+            *held_problems(
+                self.chunk_key_encoding, ChunkKeyEncodingEntity, ("chunk_key_encoding",)
+            ),
+            *(
+                entry
+                for index, codec in enumerate(self.codecs)
+                for entry in held_problems(codec, CodecEntity, ("codecs", index))
+            ),
+            *(
+                entry
+                for index, transformer in enumerate(self.storage_transformers)
+                for entry in held_problems(
+                    transformer, StorageTransformerEntity, ("storage_transformers", index)
+                )
+            ),
+        )
+        if len(found) != 0:
+            raise MetadataValidationError(found)
 
     def problems(self) -> tuple[ValidationProblem, ...]:
         """Every semantic problem this document has, once it has been read.
@@ -185,6 +217,13 @@ class ArrayDocumentV3:
         return ArrayParts(
             grid, self.data_type if isinstance(self.data_type, DataTypeEntity) else None
         )
+
+
+def _as_object(value: object) -> tuple[ValidationProblem, ...]:
+    """Why `value` is not the document as an object, which is what the reader read it as."""
+    if isinstance(value, Mapping):
+        return ()
+    return problem((), f"expected the document as an object, got {value!r}")
 
 
 def _rendered(array: ArrayDocumentV3) -> dict[str, object]:

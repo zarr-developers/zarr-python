@@ -200,10 +200,22 @@ class Opaque:
     Answers `to_json` and `canonical` as an entity does, so a field typed
     `CodecEntity | Opaque` is written and simplified without asking
     which case it holds.
+
+    Built by the scope as it reads. The constructor refuses a `reason`
+    the reader does not give; `json` is whatever the document wrote,
+    which nothing checks, since the document may have written anything.
     """
 
     json: object
     reason: Literal["out_of_scope", "invalid"]
+
+    def __post_init__(self) -> None:
+        """Refuse a reason that is not one of the reader's two."""
+        reason: object = self.reason
+        if reason not in ("out_of_scope", "invalid"):
+            raise MetadataValidationError(
+                problem(("reason",), f"expected 'out_of_scope' or 'invalid', got {reason!r}")
+            )
 
     def to_json(self) -> ZarrV3MetadataFieldJSON:
         """The JSON the document wrote, as it wrote it.
@@ -392,6 +404,15 @@ def _nested_field_writer(annotation: object) -> Writer | None:
     return write
 
 
+def held_problems(
+    value: object, kind: type[MetadataEntity], loc: Loc
+) -> tuple[ValidationProblem, ...]:
+    """Why `value` is not what a field typed `kind | Opaque` holds: an entity of the kind, or an `Opaque`."""
+    if isinstance(value, (kind, Opaque)):
+        return ()
+    return problem(loc, f"expected an entity of {kind.__name__} or an Opaque, got {value!r}")
+
+
 def _held_field(annotation: object) -> Parser[None] | None:
     """The check on a value a record holds in a field typed as an entity or as a record.
 
@@ -406,11 +427,7 @@ def _held_field(annotation: object) -> Parser[None] | None:
     if kind is not None:
 
         def holds_entity(value: object, loc: Loc, state: None) -> Parsed:
-            if isinstance(value, (kind, Opaque)):
-                return value, ()
-            return value, problem(
-                loc, f"expected an entity of {kind.__name__} or an Opaque, got {value!r}"
-            )
+            return value, held_problems(value, kind, loc)
 
         return holds_entity
     inner = without_unset(strip_annotation(annotation)[0])
@@ -466,6 +483,8 @@ class _Plan:
 
     from_name: str | None
     """The field the envelope's name fills, for a family; None for every other entity."""
+    record: type[Configuration]
+    """The record the entity declares, which its constructor holds it to."""
     read: Callable[
         [object, Loc, _Reading], tuple[Configuration | None, tuple[ValidationProblem, ...]]
     ]
@@ -512,7 +531,7 @@ def _plan(cls: type[MetadataEntity]) -> _Plan:
     def write(entity: MetadataEntity) -> dict[str, JSONValue]:
         return writes(entity.configuration)
 
-    return _Plan(from_name, read, write, required)
+    return _Plan(from_name, record, read, write, required)
 
 
 @dataclass(frozen=True)
@@ -555,9 +574,9 @@ class MetadataEntity(ABC):
 
     An entity is well-typed and allowed however it was built. `coerce`
     builds one only from metadata it accepted; by hand, the record's
-    constructor refuses a member of the wrong type and the entity's
-    refuses a value the rules disallow, and `replace` and
-    `with_configuration` go through both. An optional member is typed
+    constructor refuses a member of the wrong type, the entity's refuses
+    a record that is not its own and then a value the rules disallow,
+    and `replace` and `with_configuration` go through both. An optional member is typed
     `| UNSET` with a default of `UNSET`, so absence is representable --
     and distinct from a `null` the document wrote -- and a canonical
     spelling can leave it out.
@@ -608,9 +627,26 @@ class MetadataEntity(ABC):
         yield from ()
 
     def __post_init__(self) -> None:
-        """Refuse the first problem the rules find, so `BloscCodec(BloscOptions(clevel=99))` raises."""
+        """Refuse a record that is not this entity's own, then the first problem the rules find.
+
+        The runtime half of the entity's type, as the record's constructor
+        is of the record's: `GzipCodec(BloscOptions(...))` and a family
+        member carrying a name that is not a string are refused before
+        any rule reads them. Then `BloscCodec(BloscOptions(clevel=99))`
+        raises on the first problem the rules yield.
+        """
         plan = _plan(type(self))
-        name = self.identifier if plan.from_name is None else getattr(self, plan.from_name)
+        if not isinstance(self.configuration, plan.record):
+            raise MetadataValidationError(
+                problem(
+                    (),
+                    f"expected a {plan.record.__name__} configuration, got "
+                    f"{type(self.configuration).__name__}",
+                )
+            )
+        name: object = self.identifier if plan.from_name is None else getattr(self, plan.from_name)
+        if not isinstance(name, str):
+            raise MetadataValidationError(problem((), f"expected a string name, got {name!r}"))
         first = next(type(self).name_problems(name), None)
         if first is None:
             first = next(self.configuration.problems(), None)
@@ -888,6 +924,7 @@ __all__ = [
     "Opaque",
     "StorageClass",
     "StorageTransformerEntity",
+    "held_problems",
     "is_from_name",
     "is_integer",
     "is_metadata_field",

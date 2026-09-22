@@ -1037,3 +1037,44 @@ def test_error_a_member_holding_a_record_holds_one_that_is_well_typed() -> None:
     assert [(p.loc, p.kind) for p in caught.value.problems] == [
         (("fields", 0, "name"), "invalid_type")
     ]
+
+
+def test_error_an_entity_refuses_a_record_that_is_not_its_own() -> None:
+    # The runtime half of the entity's type: the record's members are
+    # well-typed, and they are blosc's, which gzip would write under its
+    # own name.
+    with pytest.raises(MetadataValidationError) as caught:
+        GzipCodec(BloscOptions(cname="zstd", clevel=5, shuffle="noshuffle", blocksize=0))  # pyright: ignore[reportArgumentType]
+    assert [(p.loc, p.kind, p.message) for p in caught.value.problems] == [
+        ((), "invalid_type", "expected a GzipOptions configuration, got BloscOptions")
+    ]
+
+
+def test_error_a_carried_name_is_a_string() -> None:
+    with pytest.raises(MetadataValidationError) as caught:
+        RawBytesDataType(16)  # pyright: ignore[reportArgumentType]
+    assert [(p.loc, p.kind) for p in caught.value.problems] == [((), "invalid_type")]
+
+
+def test_error_an_opaque_carries_a_reason_the_reader_gives() -> None:
+    with pytest.raises(MetadataValidationError) as caught:
+        Opaque({"name": "acme.x"}, "shrug")  # pyright: ignore[reportArgumentType]
+    assert [(p.loc, p.kind) for p in caught.value.problems] == [(("reason",), "invalid_type")]
+
+
+def test_error_a_document_holds_an_entity_of_each_field_s_kind() -> None:
+    # A document built by hand is held to what `read_array_v3` builds:
+    # each field an entity of its kind, or an `Opaque`.
+    with pytest.raises(MetadataValidationError) as caught:
+        ArrayDocumentV3(
+            document={},
+            data_type=GzipCodec(GzipOptions(level=1)),  # pyright: ignore[reportArgumentType]
+            chunk_grid=Opaque(None, "invalid"),
+            chunk_key_encoding=Opaque(None, "invalid"),
+            codecs=(Int8DataType(),),  # pyright: ignore[reportArgumentType]
+            storage_transformers=(),
+        )
+    assert [(p.loc, p.kind) for p in caught.value.problems] == [
+        (("data_type",), "invalid_type"),
+        (("codecs", 0), "invalid_type"),
+    ]
