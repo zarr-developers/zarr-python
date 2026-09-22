@@ -11,7 +11,6 @@ from typing_extensions import TypedDict
 
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import ValidationProblem
-from zarr_metadata.v3._chain import chain_problems
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
     ArrayBytesCodec,
@@ -29,7 +28,7 @@ from zarr_metadata.v3._parts import (
 from zarr_metadata.v3.data_type.uint64 import Uint64DataType
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping, Sequence
 
 SHARDING_INDEXED_CODEC_NAME: Final = "sharding_indexed"
 """The `name` field value of the `sharding_indexed` codec."""
@@ -140,50 +139,57 @@ class ShardingIndexedCodec(ArrayBytesCodec):
         )
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
-        """This shard against the array reaching it, and its two pipelines.
+        """This shard against the array reaching it.
 
         One sharding configuration encodes every chunk, so its inner
         shape has to divide all of them. Under a rectilinear grid an axis
         has several lengths and the inner extent must divide each; an axis
         whose lengths are unknown declines while the others are judged.
+        The index must be readable from metadata alone, so no codec of
+        variable output size may encode it. The two pipelines are
+        `inner_pipelines`, refined by the walk.
         """
-        found = list(self._inner_chunk_problems(incoming))
-        # Both pipelines start from this codec's own configuration and
-        # from the spec, so neither waits on what reached the codec. An
-        # unreadable codec upstream costs the element type and the
-        # enclosing extents; it does not make the inner chunk shape
-        # unknown, and the index is a `uint64` array whatever precedes it.
+        return (
+            *self._inner_chunk_problems(incoming),
+            *(
+                ValidationProblem(
+                    ("index_codecs", index),
+                    f"{type(codec).identifier!r} produces variable-size output; "
+                    "index_codecs must be fixed-size",
+                    "invalid_value",
+                )
+                for index, codec in enumerate(self.configuration.index_codecs)
+                if isinstance(codec, CodecEntity) and type(codec).variable_size
+            ),
+        )
+
+    def inner_pipelines(
+        self, incoming: ArrayParts | None
+    ) -> "Mapping[str, tuple[Sequence[CodecEntity | Opaque], ArrayParts | None]]":
+        """The inner chunk pipeline and the index pipeline, with what each is handed.
+
+        Both start from this codec's own configuration and from the
+        spec, so neither waits on what reached the codec. An unreadable
+        codec upstream costs the element type and the enclosing extents;
+        it does not make the inner chunk shape unknown, and the index is
+        a `uint64` array whatever precedes it.
+        """
         outer = incoming.grid if incoming is not None else UNKNOWN_GRID
-        found.extend(
-            chain_problems(
+        return {
+            "codecs": (
                 self.configuration.codecs,
                 ArrayParts(
                     ChunkGrid.regular(self.configuration.chunk_shape),
                     incoming.data_type if incoming is not None else None,
                 ),
-                ("codecs",),
-            )
-        )
-        found.extend(
-            chain_problems(
+            ),
+            "index_codecs": (
                 self.configuration.index_codecs,
                 ArrayParts(
                     shard_index_grid(outer, self.configuration.chunk_shape), Uint64DataType()
                 ),
-                ("index_codecs",),
-            )
-        )
-        found.extend(
-            ValidationProblem(
-                ("index_codecs", index),
-                f"{type(codec).identifier!r} produces variable-size output; "
-                "index_codecs must be fixed-size",
-                "invalid_value",
-            )
-            for index, codec in enumerate(self.configuration.index_codecs)
-            if isinstance(codec, CodecEntity) and type(codec).variable_size
-        )
-        return tuple(found)
+            ),
+        }
 
     def _inner_chunk_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         """Whether the inner chunk divides every chunk this shard receives."""

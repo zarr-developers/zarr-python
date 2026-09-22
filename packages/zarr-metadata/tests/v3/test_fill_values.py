@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import pytest
 
-from tests.helpers import entry_at
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS
 from zarr_metadata.v3.entity import DataTypeEntity, resolve
 
@@ -73,13 +72,9 @@ REJECTED: dict[str, tuple[object, object, str]] = {
 
 
 def _data_type(metadata: object) -> DataTypeEntity:
-    name = metadata if isinstance(metadata, str) else entry_at(metadata, "name")
-    assert isinstance(name, str), metadata
-    entity_type = CORE_AND_EXTENSIONS.claimant(DataTypeEntity, name)
-    assert entity_type is not None, metadata
-    entity, problems = entity_type.coerce(metadata, CORE_AND_EXTENSIONS)
+    entity, problems = resolve(metadata, DataTypeEntity, CORE_AND_EXTENSIONS)
     assert problems == (), problems
-    assert entity is not None, metadata
+    assert isinstance(entity, DataTypeEntity), metadata
     return entity
 
 

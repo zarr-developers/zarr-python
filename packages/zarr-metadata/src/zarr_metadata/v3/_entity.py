@@ -45,6 +45,8 @@ from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import (
     MetadataValidationError,
     ValidationProblem,
+    is_json,
+    refine_json,
     validate_metadata_field_v3,
 )
 from zarr_metadata.v3._typed_json import (
@@ -53,7 +55,6 @@ from zarr_metadata.v3._typed_json import (
     Parser,
     RecordWriter,
     Writer,
-    as_tuples,
     declared_class_vars,
     field_hints,
     is_integer,
@@ -205,21 +206,38 @@ class Opaque:
     `CodecEntity | Opaque` is written and simplified without asking
     which case it holds.
 
-    Built by the scope as it reads. The constructor refuses a `reason`
-    the reader does not give; `json` is whatever the document wrote,
-    which nothing checks, since the document may have written anything.
+    Built by the reader through `create_unchecked`, from JSON it has
+    refined; the constructor checks one built by hand.
     """
 
-    json: object
+    json: JSONValue
     reason: Literal["out_of_scope", "invalid"]
 
     def __post_init__(self) -> None:
-        """Refuse a reason that is not one of the reader's two."""
+        """Refuse a reason that is not one of the reader's two, and a `json` that is not JSON."""
         reason: object = self.reason
-        if reason not in ("out_of_scope", "invalid"):
-            raise MetadataValidationError(
-                problem(("reason",), f"expected 'out_of_scope' or 'invalid', got {reason!r}")
-            )
+        found = (
+            *(
+                ()
+                if reason in ("out_of_scope", "invalid")
+                else problem(("reason",), f"expected 'out_of_scope' or 'invalid', got {reason!r}")
+            ),
+            *(
+                ()
+                if is_json(self.json)
+                else problem(("json",), f"expected JSON, got {self.json!r}")
+            ),
+        )
+        if len(found) != 0:
+            raise MetadataValidationError(found)
+
+    @classmethod
+    def create_unchecked(cls, json: JSONValue, reason: Literal["out_of_scope", "invalid"]) -> Self:
+        """An `Opaque` built without the constructor's check, for the reader, whose JSON is refined."""
+        opaque = object.__new__(cls)
+        object.__setattr__(opaque, "json", json)
+        object.__setattr__(opaque, "reason", reason)
+        return opaque
 
     def to_json(self) -> ZarrV3MetadataFieldJSON:
         """The JSON the document wrote, as it wrote it.
@@ -387,7 +405,9 @@ def _nested_field(annotation: object) -> Parser[_Reading] | None:
         problems = is_metadata_field(value, loc)
         if len(problems) != 0:
             return value, problems
-        entity, found = resolve(value, kind, reading.context, loc)
+        # The parser hands refined JSON; its own type is `object` because
+        # the checker knows no JSON type.
+        entity, found = _resolve_field(cast("JSONValue", value), kind, reading.context, loc)
         reading.nested.extend(found)
         return entity, ()
 
@@ -413,55 +433,77 @@ def resolve(
     kind: type[EntityT],
     context: Context,
     loc: Loc = (),
-    *,
-    envelope_judged: bool = False,
 ) -> tuple[EntityT | Opaque, tuple[ValidationProblem, ...]]:
     """`data`, one metadata field, read as an entity of `kind` in `context`.
 
-    The reader. It relates the identifier in `data` to a concrete class
-    through `context`, and that class owns the validation routine: its
-    `coerce` is handed the field. What comes back is the entity, or an
-    `Opaque` saying why not. A name no class in `context` claims is
-    `out_of_scope` -- an unmodelled extension, left unjudged, which is
-    what makes the format open. A name claimed and refused, or of
-    another kind than this position takes, is `invalid`, for the reasons
-    reported alongside. `loc` prefixes the problems, so they point at
-    where in the containing configuration the field sat.
+    The reader for one field: the first two layers of reading a
+    document, applied to a field on its own. The first needs nothing but
+    the value -- `data` is refined to JSON, arrays as tuples, and judged
+    as a metadata field, an extra member, a `configuration` that is not
+    an object or a `must_understand` that is not a boolean or is `false`
+    each a problem. The second needs `context`: the identifier in the
+    field is related to a concrete class through it, and that class owns
+    the validation routine, its `coerce`, which is handed the field.
 
-    A metadata field is a metadata field wherever it appears, so the
-    envelope gets the same structural judgment here that the model layer
-    gives a top-level one -- an extra member, a `configuration` that is
-    not an object, a `must_understand` that is not a boolean or is
-    `false`. `envelope_judged` says the model layer has judged and
-    reported that already, which it has for the fields of a document, so
-    it is neither judged nor reported twice. The class is asked whenever
-    there is one to ask -- a stray member or a malformed
+    What comes back is the entity, or an `Opaque` saying why not. A name
+    no class in `context` claims is `out_of_scope` -- an unmodelled
+    extension, left unjudged, which is what makes the format open. A
+    name claimed and refused, or of another kind than this position
+    takes, is `invalid`, for the reasons reported alongside; so is a
+    value that is not JSON, or names no entity. `loc` prefixes the
+    problems, so they point at where in the containing configuration the
+    field sat.
+    """
+    refined, problems = refine_json(data, loc)
+    if refined is None:
+        return Opaque.create_unchecked(None, "invalid"), problems
+    return _resolve_field(refined, kind, context, loc)
+
+
+def _resolve_field(
+    data: JSONValue, kind: type[EntityT], context: Context, loc: Loc
+) -> tuple[EntityT | Opaque, tuple[ValidationProblem, ...]]:
+    """A refined field, its envelope judged, then read.
+
+    What a nested field gets: a metadata field is a metadata field
+    wherever it appears, so the envelope gets the same structural
+    judgment here that the model layer gives a top-level one.
+    """
+    problems = tuple(
+        ValidationProblem((*loc, *found.loc), found.message, found.kind)
+        for found in validate_metadata_field_v3(data, allow_must_understand_false=False)
+    )
+    entity, found = read_field(data, kind, context, loc)
+    return entity, (*problems, *found)
+
+
+def read_field(
+    data: JSONValue, kind: type[EntityT], context: Context, loc: Loc = ()
+) -> tuple[EntityT | Opaque, tuple[ValidationProblem, ...]]:
+    """The second layer for one field whose envelope the first has judged.
+
+    What `resolve` does once the envelope is judged, and what the
+    document reader does for a top-level field, whose envelope the model
+    layer judged with the document: relate the identifier in `data` to a
+    class through `context`, and hand the class the field. The class is
+    asked whenever there is one to ask -- a stray member or a malformed
     `must_understand` says nothing about the configuration -- and not
     when the value names no entity or its configuration is not an
     object, which the envelope judgment has said.
     """
-    problems = (
-        ()
-        if envelope_judged
-        else tuple(
-            ValidationProblem((*loc, *found.loc), found.message, found.kind)
-            for found in validate_metadata_field_v3(data, allow_must_understand_false=False)
-        )
-    )
     name, _, malformed = named_configuration(data)
     if name is None or len(malformed) != 0:
-        return Opaque(data, "invalid"), problems
+        return Opaque.create_unchecked(data, "invalid"), ()
     # Asked with the kind's kind, so a class of the wrong kind for this
     # position is found, and told apart from a name nothing claims.
     registered = kind_of(kind)
     entity_type = None if registered is None else context.claimant(registered, name)
     if entity_type is None:
-        return Opaque(data, "out_of_scope"), problems
+        return Opaque.create_unchecked(data, "out_of_scope"), ()
     if not issubclass(entity_type, kind):
         # In scope, so not for another reader to resolve: the name is an
         # entity of the wrong kind for this position.
-        return Opaque(data, "invalid"), (
-            *problems,
+        return Opaque.create_unchecked(data, "invalid"), (
             ValidationProblem(
                 loc,
                 f"expected {_an(kind.__name__)}, got {name!r}, "
@@ -470,12 +512,11 @@ def resolve(
             ),
         )
     entity, found = entity_type.coerce(data, context)
-    problems = (
-        *problems,
-        *(ValidationProblem((*loc, *entry.loc), entry.message, entry.kind) for entry in found),
+    problems = tuple(
+        ValidationProblem((*loc, *entry.loc), entry.message, entry.kind) for entry in found
     )
     if entity is None:
-        return Opaque(data, "invalid"), problems
+        return Opaque.create_unchecked(data, "invalid"), problems
     return entity, problems
 
 
@@ -793,11 +834,12 @@ class MetadataEntity(ABC):
         return replace(self, configuration=replace(self.configuration, **changes))
 
     @classmethod
-    def coerce(cls, value: object, context: Context) -> Coerced[Self]:
+    def coerce(cls, value: JSONValue, context: Context) -> Coerced[Self]:
         """`value` as this entity, or the reasons it is not one: the class's validation routine.
 
         `resolve` relates a field's name to this class and hands it the
-        field; this is what the class does with it. The configuration is
+        field, refined JSON with arrays as tuples, which is what `value`
+        is; this is what the class does with it. The configuration is
         parsed against the record the `configuration` field names,
         member by member; a member holding another entity is read in
         `context`, the scope this reading is happening in. An optional
@@ -826,12 +868,8 @@ class MetadataEntity(ABC):
                 "missing_key",
             )
         reading = _Reading(context, [])
-        # Arrays as tuples before parsing, so a member holds the tuples
-        # its type declares, never the lists raw JSON arrives as. A bare
-        # name's record has no members, so any key is an unknown one.
-        record, own = plan.read(
-            as_tuples({} if given is None else given), ("configuration",), reading
-        )
+        # A bare name's record has no members, so any key is an unknown one.
+        record, own = plan.read({} if given is None else given, ("configuration",), reading)
         found = (*own, *reading.nested)
         if record is None:
             # An unknown key is survivable; a member that could not be
@@ -928,6 +966,20 @@ class CodecEntity(MetadataEntity):
         an empty one lands on the codec itself.
         """
         return ()
+
+    def inner_pipelines(
+        self, incoming: ArrayParts | None
+    ) -> Mapping[str, tuple[Sequence[CodecEntity | Opaque], ArrayParts | None]]:
+        """The pipelines this codec holds, by the member holding each, with what each is handed.
+
+        A shard holds two: its `codecs`, handed its inner chunk, and its
+        `index_codecs`, handed the shard index. Refinement walks them as
+        it walks the pipeline this codec stands in, locating what it
+        finds under the member, so a codec that holds pipelines says
+        which and what they receive, and judges nothing inside them
+        itself. Default: none.
+        """
+        return {}
 
 
 @dataclass(frozen=True)
@@ -1057,6 +1109,7 @@ __all__ = [
     "named_configuration",
     "nested_kind",
     "problem",
+    "read_field",
     "resolve",
     "unreadable",
     "within",

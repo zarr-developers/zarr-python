@@ -22,13 +22,10 @@ from typing import TYPE_CHECKING, Generic, Literal, TypeVar, cast
 from zarr_metadata.model._array import ZarrV3ArrayMetadata
 from zarr_metadata.model._validation import (
     MetadataValidationError,
-    arrays_to_tuples,
+    refine_json,
 )
 from zarr_metadata.model._validation import (
     validate_array_metadata_v2 as _validate_structure_v2,
-)
-from zarr_metadata.model._validation import (
-    validate_array_metadata_v3 as _validate_structure_v3,
 )
 from zarr_metadata.model._validation import (
     validate_group_metadata_v2 as _validate_group_structure_v2,
@@ -37,12 +34,18 @@ from zarr_metadata.model._validation import (
     validate_group_metadata_v3 as _validate_group_structure_v3,
 )
 from zarr_metadata.v2._document import array_problems_v2
-from zarr_metadata.v3._document import array_problems_v3, group_problems_v3, read_array_v3
+from zarr_metadata.v3._document import (
+    group_problems_v3,
+    read_array_v3,
+    refine_array_v3,
+    well_formed_array_v3,
+)
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from zarr_metadata._common import JSONValue
     from zarr_metadata.model._validation import ValidationProblem
     from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
     from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
@@ -50,7 +53,7 @@ if TYPE_CHECKING:
     from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
     _StructuralValidator = Callable[[object], tuple[ValidationProblem, ...]]
-    _SemanticValidator = Callable[[Mapping[str, object]], tuple[ValidationProblem, ...]]
+    _SemanticValidator = Callable[[Mapping[str, JSONValue]], tuple[ValidationProblem, ...]]
 
 DocumentT = TypeVar("DocumentT")
 
@@ -76,23 +79,9 @@ class Invalid:
             raise ValueError(msg)
 
 
-def _no_semantics(document: Mapping[str, object]) -> tuple[ValidationProblem, ...]:
+def _no_semantics(document: Mapping[str, JSONValue]) -> tuple[ValidationProblem, ...]:
     """v2 group documents carry no cross-field constraints."""
     return ()
-
-
-def _array_semantics_v3(context: Context) -> _SemanticValidator:
-    """The v3 array semantics, asked in `context`.
-
-    The work is `zarr_metadata.v3` asking each entity about itself and
-    about the parts of the document it meets; what this layer decides is
-    which entities are in scope while it asks.
-    """
-
-    def judge(document: Mapping[str, object]) -> tuple[ValidationProblem, ...]:
-        return array_problems_v3(document, context)
-
-    return judge
 
 
 def _group_semantics_v3(context: Context) -> _SemanticValidator:
@@ -102,24 +91,28 @@ def _group_semantics_v3(context: Context) -> _SemanticValidator:
     and those are array and group documents judged in the same scope.
     """
 
-    def judge(document: Mapping[str, object]) -> tuple[ValidationProblem, ...]:
+    def judge(document: Mapping[str, JSONValue]) -> tuple[ValidationProblem, ...]:
         return group_problems_v3(document, context)
 
     return judge
 
 
 def _judged(
-    normalized: object, structure: _StructuralValidator, semantics: _SemanticValidator
-) -> tuple[ValidationProblem, ...]:
-    """Structural and semantic problems in an already-normalized document.
+    value: object, structure: _StructuralValidator, semantics: _SemanticValidator
+) -> tuple[JSONValue | None, tuple[ValidationProblem, ...]]:
+    """`value` refined to JSON, and its structural and semantic problems.
 
-    Takes the normalized value rather than the caller's input so that
-    `validate_*` and `parse_*` each walk the document once.
+    The layers for a document without a codec pipeline: JSON first,
+    then the shape, then whatever the semantics need of an object. A
+    value that is not JSON is None with only that verdict.
     """
-    problems = structure(normalized)
-    if isinstance(normalized, Mapping):
-        problems = problems + semantics(cast("Mapping[str, object]", normalized))
-    return tuple(problems)
+    refined, problems = refine_json(value)
+    if refined is None:
+        return None, problems
+    problems = structure(refined)
+    if isinstance(refined, Mapping):
+        problems = (*problems, *semantics(cast("Mapping[str, JSONValue]", refined)))
+    return refined, tuple(problems)
 
 
 def validate_array_metadata_v3(
@@ -134,13 +127,20 @@ def validate_array_metadata_v3(
     that could not be built -- so a document with two defects in one
     configuration may need a second pass. The verdict is never affected.
 
-    Structural problems (from the model layer) and semantic problems
-    (from the entities themselves) are reported together. JSON arrays are
-    normalized to tuples before judgment, so list-spelled documents
-    (e.g. fresh `json.loads` output) are judged at the canonical data
-    level rather than rejected for their spelling.
+    The three layers of reading, in order, each handing the next what it
+    needs: the value refined to JSON and judged for shape, the extension
+    points read in `context`, the whole refined against the array. Their
+    problems are reported together; a value that is not JSON gets only
+    that verdict. List-spelled documents (fresh `json.loads` output) are
+    judged at the canonical data level rather than rejected for their
+    spelling.
     """
-    return _judged(arrays_to_tuples(value), _validate_structure_v3, _array_semantics_v3(context))
+    document, problems = well_formed_array_v3(value)
+    if document is None:
+        return problems
+    array, found = read_array_v3(document, context)
+    _, composed = refine_array_v3(array)
+    return (*problems, *found, *composed)
 
 
 def parse_array_metadata_v3(
@@ -152,11 +152,14 @@ def parse_array_metadata_v3(
     `MetadataValidationError` carrying every structural and composition
     problem found.
     """
-    normalized = arrays_to_tuples(value)
-    problems = _judged(normalized, _validate_structure_v3, _array_semantics_v3(context))
-    if len(problems) != 0:
+    document, problems = well_formed_array_v3(value)
+    if document is not None:
+        array, found = read_array_v3(document, context)
+        _, composed = refine_array_v3(array)
+        problems = (*problems, *found, *composed)
+    if document is None or len(problems) != 0:
         raise MetadataValidationError(problems)
-    return cast("ZarrV3ArrayMetadataJSON", normalized)
+    return cast("ZarrV3ArrayMetadataJSON", document)
 
 
 def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
@@ -165,7 +168,7 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     JSON arrays are normalized to tuples before judgment, as in
     `validate_array_metadata_v3`.
     """
-    return _judged(arrays_to_tuples(value), _validate_structure_v2, array_problems_v2)
+    return _judged(value, _validate_structure_v2, array_problems_v2)[1]
 
 
 def parse_array_metadata_v2(value: object) -> ZarrV2ArrayMetadataJSON:
@@ -175,11 +178,10 @@ def parse_array_metadata_v2(value: object) -> ZarrV2ArrayMetadataJSON:
     `MetadataValidationError` carrying every structural and composition
     problem found.
     """
-    normalized = arrays_to_tuples(value)
-    problems = _judged(normalized, _validate_structure_v2, array_problems_v2)
+    refined, problems = _judged(value, _validate_structure_v2, array_problems_v2)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
-    return cast("ZarrV2ArrayMetadataJSON", normalized)
+    return cast("ZarrV2ArrayMetadataJSON", refined)
 
 
 def validate_group_metadata_v3(
@@ -191,20 +193,17 @@ def validate_group_metadata_v3(
     consolidated child document invalid under its own rules is reported
     here, at its path.
     """
-    return _judged(
-        arrays_to_tuples(value), _validate_group_structure_v3, _group_semantics_v3(context)
-    )
+    return _judged(value, _validate_group_structure_v3, _group_semantics_v3(context))[1]
 
 
 def parse_group_metadata_v3(
     value: object, *, context: Context = CORE_AND_EXTENSIONS
 ) -> ZarrV3GroupMetadataJSON:
     """Return `value` as a valid `ZarrV3GroupMetadataJSON`, or raise."""
-    normalized = arrays_to_tuples(value)
-    problems = _judged(normalized, _validate_group_structure_v3, _group_semantics_v3(context))
+    refined, problems = _judged(value, _validate_group_structure_v3, _group_semantics_v3(context))
     if len(problems) != 0:
         raise MetadataValidationError(problems)
-    return cast("ZarrV3GroupMetadataJSON", normalized)
+    return cast("ZarrV3GroupMetadataJSON", refined)
 
 
 def validate_group_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
@@ -213,16 +212,15 @@ def validate_group_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     v2 group documents carry no composition constraints today, so this is
     the structural judgment, offered here for a uniform read-side API.
     """
-    return _judged(arrays_to_tuples(value), _validate_group_structure_v2, _no_semantics)
+    return _judged(value, _validate_group_structure_v2, _no_semantics)[1]
 
 
 def parse_group_metadata_v2(value: object) -> ZarrV2GroupMetadataJSON:
     """Return `value` as a valid `ZarrV2GroupMetadataJSON`, or raise."""
-    normalized = arrays_to_tuples(value)
-    problems = _judged(normalized, _validate_group_structure_v2, _no_semantics)
+    refined, problems = _judged(value, _validate_group_structure_v2, _no_semantics)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
-    return cast("ZarrV2GroupMetadataJSON", normalized)
+    return cast("ZarrV2GroupMetadataJSON", refined)
 
 
 def canonicalize_array_metadata_v3(
@@ -252,12 +250,12 @@ def canonicalize_array_metadata_v3(
     is a bug in the entity, not a verdict on the document, which was
     valid.
     """
-    normalized = arrays_to_tuples(document)
-    problems = _validate_structure_v3(normalized)
-    if not isinstance(normalized, Mapping):
+    refined, problems = well_formed_array_v3(document)
+    if refined is None:
         return Invalid(problems)
-    array, found = read_array_v3(cast("Mapping[str, object]", normalized), context)
-    problems = (*problems, *found, *array.problems())
+    array, found = read_array_v3(refined, context)
+    _, composed = refine_array_v3(array)
+    problems = (*problems, *found, *composed)
     if len(problems) != 0:
         return Invalid(problems)
     return Canonical(ZarrV3ArrayMetadata.from_json(array.canonical().to_json()).to_json())

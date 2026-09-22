@@ -29,7 +29,7 @@ from tests.helpers import configuration_of, entry_at
 from tests.rules.strategies import valid_documents
 from zarr_metadata.model import UNSET, MetadataValidationError
 from zarr_metadata.rules import validate_array_metadata_v3
-from zarr_metadata.v3._document import read_array_v3
+from zarr_metadata.v3._document import read_array_v3, refine_array_v3, well_formed_array_v3
 from zarr_metadata.v3._entity import BytesBytesCodec, Opaque, is_from_name
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS
 from zarr_metadata.v3._typed_json import (
@@ -95,6 +95,7 @@ from zarr_metadata.v3.entity import (
     CodecEntity,
     Configuration,
     DataTypeEntity,
+    JSONValue,
     MetadataEntity,
     StorageTransformerEntity,
     resolve,
@@ -255,7 +256,7 @@ EXAMPLES: dict[str, tuple[object, ...]] = {
 }
 
 
-def _round_trips(entity: type[MetadataEntity], document: object) -> MetadataEntity:
+def _round_trips(entity: type[MetadataEntity], document: JSONValue) -> MetadataEntity:
     read, problems = entity.coerce(document, CORE_AND_EXTENSIONS)
     assert problems == ()
     assert read is not None
@@ -273,7 +274,7 @@ def _round_trips(entity: type[MetadataEntity], document: object) -> MetadataEnti
     ],
 )
 def test_to_json_reads_back_to_the_same_entity(
-    entity: type[MetadataEntity], document: object
+    entity: type[MetadataEntity], document: JSONValue
 ) -> None:
     # What `to_json` writes, `coerce` reads to the entity that wrote it:
     # every member is written, in the spelling the reader expects.
@@ -283,7 +284,10 @@ def test_to_json_reads_back_to_the_same_entity(
 @given(document=valid_documents())
 @settings(max_examples=50, deadline=None)
 def test_to_json_reads_back_across_a_valid_document(document: dict[str, object]) -> None:
-    array, problems = read_array_v3(document, CORE_AND_EXTENSIONS)
+    refined, structural = well_formed_array_v3(document)
+    assert refined is not None
+    assert structural == ()
+    array, problems = read_array_v3(refined, CORE_AND_EXTENSIONS)
     assert problems == ()
     for entity in (array.data_type, array.chunk_grid, array.chunk_key_encoding, *array.codecs):
         assert isinstance(entity, MetadataEntity)
@@ -517,7 +521,7 @@ def test_the_document_writes_back_only_the_fields_it_read() -> None:
     ],
     ids=["bare", "object", "empty-configuration", "must-understand", "both"],
 )
-def test_the_document_writes_an_envelope_as_it_was_written(spelling: object) -> None:
+def test_the_document_writes_an_envelope_as_it_was_written(spelling: JSONValue) -> None:
     # An entity writes its own spelling; the document knows the one it
     # read and puts it back, around a codec in the pipeline and around
     # one inside a shard alike. Only `canonical` simplifies it.
@@ -1098,3 +1102,108 @@ def test_create_unchecked_is_the_one_way_around_the_constructors() -> None:
     read, problems = GzipCodec.coerce({"name": "gzip", "configuration": {"level": 1}}, CORE)
     assert problems == ()
     assert read == GzipCodec(GzipOptions(level=1))
+
+
+def test_the_first_layer_refines_json_and_judges_the_shape() -> None:
+    # Needs nothing but the value: arrays become tuples, the structural
+    # problems come with the document, and the next layer reads what it
+    # can regardless of them.
+    document, problems = well_formed_array_v3(
+        {"zarr_format": 3, "node_type": "array", "shape": [4]}
+    )
+    assert document is not None
+    assert document["shape"] == (4,)
+    assert ("data_type",) in {problem.loc for problem in problems}
+    assert all(problem.kind == "missing_key" for problem in problems)
+
+
+def test_error_a_value_that_is_not_json_gets_only_that_verdict() -> None:
+    document, problems = well_formed_array_v3({"shape": (4,), "attributes": {"x": object()}})
+    assert document is None
+    assert [(p.loc, p.kind) for p in problems] == [(("attributes", "x"), "invalid_type")]
+
+
+def test_error_a_document_that_is_not_an_object_has_nothing_to_read() -> None:
+    document, problems = well_formed_array_v3([1, 2])
+    assert document is None
+    assert [(p.loc, p.kind) for p in problems] == [((), "invalid_type")]
+
+
+def test_error_a_field_that_is_not_json_resolves_to_an_invalid_opaque() -> None:
+    entity, problems = resolve(
+        {"name": "gzip", "configuration": {"level": object()}}, CodecEntity, CORE
+    )
+    assert entity == Opaque(None, "invalid")
+    assert [(p.loc, p.kind) for p in problems] == [(("configuration", "level"), "invalid_type")]
+
+
+def test_the_third_layer_resolves_the_pipeline() -> None:
+    # What a codec pipeline is built from: at each position, the array
+    # that reaches the codec, and a shard's two pipelines refined inside
+    # it. Past the array->bytes boundary there is no array.
+    document = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (64, 32),
+        "data_type": "float32",
+        "fill_value": 0.0,
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (32, 16)}},
+        "chunk_key_encoding": "default",
+        "codecs": (
+            {"name": "transpose", "configuration": {"order": (1, 0)}},
+            {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": (8, 8),
+                    "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
+                    "index_codecs": (
+                        {"name": "bytes", "configuration": {"endian": "little"}},
+                        "crc32c",
+                    ),
+                },
+            },
+            {"name": "gzip", "configuration": {"level": 5}},
+        ),
+    }
+    array = ArrayDocumentV3.from_json(document)
+    refined, problems = refine_array_v3(array)
+    assert problems == ()
+    transpose, shard, gzip = refined.pipeline.stages
+    assert isinstance(transpose.codec, TransposeCodec)
+    assert transpose.incoming is refined.parts
+    assert refined.parts.grid.axis(0) == frozenset({32})
+    assert shard.incoming is not None
+    assert shard.incoming.grid.axis(0) == frozenset({16})  # transposed
+    assert isinstance(shard.incoming.data_type, Float32DataType)
+    assert gzip.incoming is None
+    (inner_bytes,) = shard.inner["codecs"].stages
+    assert inner_bytes.incoming is not None
+    assert inner_bytes.incoming.grid.axis(1) == frozenset({8})
+    assert isinstance(inner_bytes.incoming.data_type, Float32DataType)
+    index_bytes, index_crc = shard.inner["index_codecs"].stages
+    assert index_bytes.incoming is not None
+    assert isinstance(index_bytes.incoming.data_type, Uint64DataType)
+    assert index_crc.incoming is None
+
+
+def test_an_out_of_scope_codec_receives_the_array_and_passes_nothing_on() -> None:
+    document = {
+        "shape": (4,),
+        "data_type": "uint8",
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (2,)}},
+        "codecs": ("acme.unknown", "bytes"),
+    }
+    array, problems = read_array_v3(well_formed_array_v3(document)[0] or {}, CORE_AND_EXTENSIONS)
+    assert problems == ()
+    refined, _ = refine_array_v3(array)
+    unknown, bytes_codec = refined.pipeline.stages
+    assert isinstance(unknown.codec, Opaque)
+    assert unknown.incoming is refined.parts
+    assert bytes_codec.incoming is None
+
+
+def test_error_an_opaque_holds_json() -> None:
+    with pytest.raises(MetadataValidationError) as caught:
+        Opaque({"name": object()}, "invalid")  # pyright: ignore[reportArgumentType]
+    assert [(p.loc, p.kind) for p in caught.value.problems] == [(("json",), "invalid_type")]
+    assert Opaque.create_unchecked({"name": "x"}, "out_of_scope").reason == "out_of_scope"

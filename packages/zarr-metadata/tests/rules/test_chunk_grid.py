@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
 import pytest
 
-from tests.helpers import configuration_of, entry_at
+from tests.helpers import configuration_of
 from zarr_metadata.rules import validate_array_metadata_v3
 from zarr_metadata.v3._parts import ChunkGrid, shard_index_grid
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS
-from zarr_metadata.v3.entity import ChunkGridEntity
+from zarr_metadata.v3.entity import ChunkGridEntity, resolve
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 BASE: Mapping[str, object] = {
     "zarr_format": 3,
@@ -93,20 +96,8 @@ def _grid_of(grid: object, shape: object) -> ChunkGrid:
     A grid entity builds its own; one out of scope pins only the rank the
     array shape gives it.
     """
-    name = (
-        grid
-        if isinstance(grid, str)
-        else entry_at(grid, "name")
-        if isinstance(grid, Mapping)
-        else None
-    )
-    entity_type = (
-        CORE_AND_EXTENSIONS.claimant(ChunkGridEntity, name) if isinstance(name, str) else None
-    )
-    if entity_type is None:
-        return ChunkGrid.unreadable(shape)
-    entity, _ = entity_type.coerce(grid, CORE_AND_EXTENSIONS)
-    if entity is None:
+    entity, _ = resolve(grid, ChunkGridEntity, CORE_AND_EXTENSIONS)
+    if not isinstance(entity, ChunkGridEntity):
         return ChunkGrid.unreadable(shape)
     return entity.grid(shape)
 

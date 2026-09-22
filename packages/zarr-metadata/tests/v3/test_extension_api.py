@@ -41,6 +41,7 @@ from zarr_metadata.v3.entity import (
     StorageClass,
     ValidationProblem,
     problem,
+    refine_array_v3,
     resolve,
 )
 
@@ -217,7 +218,7 @@ def test_a_reader_gets_entities_or_an_exception() -> None:
     array = ArrayDocumentV3.from_json(_document())
     assert isinstance(array.data_type, DataTypeEntity)
     assert array.data_type.storage_class() == "single_byte"
-    assert array.parts.grid.rank == 1
+    assert refine_array_v3(array)[0].parts.grid.rank == 1
     assert [type(codec).identifier for codec in array.codecs if isinstance(codec, CodecEntity)] == [
         "bytes"
     ]

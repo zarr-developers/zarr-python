@@ -134,6 +134,54 @@ def validate_json(value: object) -> tuple[ValidationProblem, ...]:
     return (ValidationProblem((), f"not a JSON-serializable value: {value!r}", "invalid_type"),)
 
 
+def refine_json(
+    value: object, loc: tuple[str | int, ...] = ()
+) -> tuple[JSONValue | None, tuple[ValidationProblem, ...]]:
+    """`value` as JSON with arrays as tuples, or None with every reason it is not JSON.
+
+    The first layer of reading, which needs nothing but the value. One
+    walk normalizes and judges: a mapping becomes a `dict` with string
+    keys, a sequence a tuple, a float must be finite. Everything after
+    it takes `JSONValue` and normalizes nothing. A value that is not
+    JSON is None, with the problems located at the leaves that are not:
+    not JSON is the first verdict, and there is nothing to read.
+    """
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return value, ()
+        return None, (
+            ValidationProblem(loc, f"non-finite float {value!r} is not JSON", "invalid_value"),
+        )
+    if isinstance(value, (str, int, bool)) or value is None:
+        return value, ()
+    if isinstance(value, Mapping):
+        members: dict[str, JSONValue] = {}
+        problems: list[ValidationProblem] = []
+        for key, item in cast("Mapping[object, object]", value).items():
+            if not isinstance(key, str):
+                problems.append(
+                    ValidationProblem(loc, f"non-string key {key!r} in JSON object", "invalid_type")
+                )
+                continue
+            member, found = refine_json(item, (*loc, key))
+            problems.extend(found)
+            if len(found) == 0:
+                members[key] = member
+        return (members if len(problems) == 0 else None), tuple(problems)
+    if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
+        entries: list[JSONValue] = []
+        found_in_entries: list[ValidationProblem] = []
+        for index, item in enumerate(cast("Sequence[object]", value)):
+            entry, found = refine_json(item, (*loc, index))
+            found_in_entries.extend(found)
+            if len(found) == 0:
+                entries.append(entry)
+        return (tuple(entries) if len(found_in_entries) == 0 else None), tuple(found_in_entries)
+    return None, (
+        ValidationProblem(loc, f"not a JSON-serializable value: {value!r}", "invalid_type"),
+    )
+
+
 def _is_canonical_json(value: object) -> TypeIs[JSONValue]:
     """Whether `value` already uses the concrete containers in `JSONValue`."""
     if isinstance(value, float):

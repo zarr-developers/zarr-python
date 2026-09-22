@@ -110,23 +110,6 @@ def is_integer(value: object) -> TypeIs[int]:
     return not isinstance(value, bool) and isinstance(value, int)
 
 
-def as_tuples(value: object) -> object:
-    """Every JSON array in `value`, at any depth, as a tuple.
-
-    The TypedDicts spell a JSON array as a tuple throughout, so a member
-    taken straight from parsed JSON would otherwise hold a list where its
-    own type says tuple -- and two documents differing only in that would
-    compare unequal.
-    """
-    if isinstance(value, (list, tuple)):
-        entries = cast("list[object] | tuple[object, ...]", value)
-        return tuple(as_tuples(entry) for entry in entries)
-    if isinstance(value, Mapping):
-        entries = cast("Mapping[str, object]", value)
-        return {key: as_tuples(entry) for key, entry in entries.items()}
-    return value
-
-
 # --- annotations ---------------------------------------------------------
 
 
@@ -865,7 +848,6 @@ __all__ = [
     "Writer",
     "WriterLeaf",
     "any_of",
-    "as_tuples",
     "declared_class_vars",
     "describe",
     "each_of",

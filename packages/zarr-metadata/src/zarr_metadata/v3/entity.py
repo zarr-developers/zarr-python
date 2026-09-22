@@ -24,6 +24,19 @@ for the reader to resolve elsewhere.
         else:
             codec.json, codec.reason    # 'out_of_scope': resolve it yourself
 
+**Three layers**, ordered by what each needs, each handing the next a
+typed value and its problems. `well_formed_array_v3(value)` needs only
+the value: JSON refined, arrays as tuples, and the document's shape
+judged. `read_array_v3(document, context)` needs a scope: each
+extension point's name related to a class and the class handed the
+field. `refine_array_v3(array)` needs the array: the fill value against
+the type, the grid against the shape, and the codec pipeline walked with
+what reaches each codec. Its value, `RefinedArrayV3`, is the resolved
+pipeline -- `Pipeline` of `PipelineStage`, each a codec and the
+`ArrayParts` it is handed, a shard's inner pipelines refined inside it
+-- which is what a codec pipeline is built from; validation is what the
+walk finds. `from_json` and `validate_array_metadata_v3` run all three.
+
 **What comes back.** Problems, not exceptions, wherever a document is
 being judged rather than demanded. `zarr_metadata.rules.validate_array_metadata_v3(document, context=...)`
 returns a tuple of `ValidationProblem(loc, message, kind)`, each `loc`
@@ -31,9 +44,10 @@ indexing into the document:
 `("codecs", 1, "configuration", "level")`, and `kind` one of
 `invalid_type`, `invalid_value`, `missing_key`, `unknown_key` and
 `invalid_json`. `resolve(entry, CodecEntity, SCOPE)` reads one metadata
-field as an entity of that kind: it relates the name in the entry to a
-class in the scope and hands that class the field, since the class owns
-its validation routine. It returns `(entity, problems)` where `entity`
+field as an entity of that kind, the first two layers for a field on its
+own: it refines and judges the field, relates the name in it to a class
+in the scope, and hands that class the field, since the class owns its
+validation routine. It returns `(entity, problems)` where `entity`
 is the entity or an `Opaque` -- never `None` -- with `loc` relative to
 the entry: `("configuration", "level")`. The class's routine,
 `coerce(value, context)`, returns `(entity or None, problems)`, that is
@@ -160,7 +174,11 @@ kind:
   -- one class for every `acme.fixedN` -- overrides `accepts(name)` and
   keeps the name in a field marked `Annotated[str, FROM_NAME]`, which
   `coerce` fills from the envelope.
-- A codec: its kind is its base class. An `ArrayArrayCodec` defines
+- A codec: its kind is its base class. One that holds pipelines of its
+  own, as a shard does, declares them through `inner_pipelines(incoming)`
+  -- each by the member that holds it, with the parts it is handed --
+  and refinement walks them; it judges nothing inside them itself. An
+  `ArrayArrayCodec` defines
   `transition(incoming: ArrayParts) -> ArrayParts | None` -- abstract:
   return `incoming` if it leaves the array's shape, grid and data type
   alone, the parts it hands the next codec, or None when the metadata
@@ -231,9 +249,15 @@ from zarr_metadata.model._validation import (
     ProblemKind,
     ValidationProblem,
 )
-from zarr_metadata.v3._chain import chain_problems
+from zarr_metadata.v3._chain import Pipeline, PipelineStage
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
-from zarr_metadata.v3._document import ArrayDocumentV3
+from zarr_metadata.v3._document import (
+    ArrayDocumentV3,
+    RefinedArrayV3,
+    read_array_v3,
+    refine_array_v3,
+    well_formed_array_v3,
+)
 from zarr_metadata.v3._entity import (
     FROM_NAME,
     ArrayArrayCodec,
@@ -293,15 +317,20 @@ __all__ = [
     "MetadataValidationError",
     "NumpyTimeDataType",
     "Opaque",
+    "Pipeline",
+    "PipelineStage",
     "ProblemKind",
+    "RefinedArrayV3",
     "StorageClass",
     "StorageTransformerEntity",
     "ValidationProblem",
     "ZarrV3MetadataFieldJSON",
-    "chain_problems",
     "is_integer",
     "named_configuration",
     "problem",
+    "read_array_v3",
+    "refine_array_v3",
     "resolve",
+    "well_formed_array_v3",
     "within",
 ]

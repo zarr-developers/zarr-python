@@ -7,9 +7,10 @@ against the document's top-level fields: `transpose` permutes the grid,
 `cast_value` changes the element type, and a shard that follows either
 one sees the transformed array.
 
-This is where the walk lives rather than in `zarr_metadata.rules`,
-because a `sharding_indexed` codec holds two pipelines of its own and has
-to walk them to judge itself.
+The walk produces the resolved pipeline: at each position the codec and
+the array that reaches it, and for a codec that holds pipelines of its
+own -- a shard's inner chunks and its index -- those pipelines refined
+the same way. Validation is what the walk finds on the way.
 
 Propagation stops -- every later codec receives `None` -- at the
 array-to-bytes boundary, where there is no array left, and after any
@@ -20,16 +21,39 @@ change anything, so declining is the only honest answer.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import ArrayArrayCodec, ArrayBytesCodec, CodecEntity, within
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from zarr_metadata.v3._entity import Loc, Opaque
     from zarr_metadata.v3._parts import ArrayParts
+
+
+@dataclass(frozen=True, slots=True)
+class PipelineStage:
+    """One position of a refined pipeline: the codec, and the array that reaches it."""
+
+    codec: CodecEntity | Opaque
+    incoming: ArrayParts | None
+    """What reaches this codec.
+
+    None past the array->bytes boundary, where there is no array, and
+    after a codec that could not say what it does to one.
+    """
+    inner: Mapping[str, Pipeline]
+    """The pipelines this codec holds, refined, by the member that holds each; empty for most."""
+
+
+@dataclass(frozen=True, slots=True)
+class Pipeline:
+    """A codec pipeline refined against the array handed to it: what reaches each codec."""
+
+    stages: tuple[PipelineStage, ...]
 
 
 def _stage(codec: CodecEntity) -> tuple[int, str]:
@@ -44,7 +68,7 @@ def _stage(codec: CodecEntity) -> tuple[int, str]:
 def _label(codec: CodecEntity | Opaque) -> str:
     if isinstance(codec, CodecEntity):
         return repr(type(codec).identifier)
-    return repr(codec)
+    return repr(codec.json)
 
 
 def order_problems(
@@ -91,31 +115,44 @@ def order_problems(
     return tuple(problems)
 
 
-def chain_problems(
+def refine_pipeline(
     codecs: Sequence[CodecEntity | Opaque], start: ArrayParts | None, loc: Loc
-) -> tuple[ValidationProblem, ...]:
-    """Every problem this pipeline has, ordering and per-codec alike.
+) -> tuple[Pipeline, tuple[ValidationProblem, ...]]:
+    """The pipeline refined against `start`, with every problem found on the way.
 
-    `start` is what the first codec receives: the document's own array, or
-    a shard's inner chunk, or its index.
+    `start` is what the first codec receives: the document's own array,
+    or a shard's inner chunk, or its index. Each codec is asked what it
+    cannot take of what reaches it, then what it hands on; a codec that
+    holds pipelines has them refined in turn, located under the member
+    that holds each. Ordering is judged first, over the whole pipeline.
     """
     problems = list(order_problems(codecs, loc))
+    stages: list[PipelineStage] = []
     incoming = start
     for index, codec in enumerate(codecs):
         if not isinstance(codec, CodecEntity):
             # Out of scope: unjudged, and everything after it is too.
+            stages.append(PipelineStage(codec, incoming, {}))
             incoming = None
             continue
         problems.extend(within((*loc, index), codec.incoming_problems(incoming)))
+        inner: dict[str, Pipeline] = {}
+        for member, (held, handed) in codec.inner_pipelines(incoming).items():
+            pipeline, found = refine_pipeline(held, handed, (*loc, index, "configuration", member))
+            inner[member] = pipeline
+            problems.extend(found)
+        stages.append(PipelineStage(codec, incoming, inner))
         incoming = (
             codec.transition(incoming)
             if incoming is not None and isinstance(codec, ArrayArrayCodec)
             else None
         )
-    return tuple(problems)
+    return Pipeline(tuple(stages)), tuple(problems)
 
 
 __all__ = [
-    "chain_problems",
+    "Pipeline",
+    "PipelineStage",
     "order_problems",
+    "refine_pipeline",
 ]
