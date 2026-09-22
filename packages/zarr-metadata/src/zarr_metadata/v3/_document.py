@@ -39,6 +39,7 @@ from zarr_metadata.v3._entity import (
     StorageTransformerEntity,
     held_problems,
     problem,
+    resolve,
     within,
 )
 from zarr_metadata.v3._parts import ArrayParts, ChunkGrid
@@ -306,7 +307,7 @@ def _read_one(
     value = document.get(key)
     if value is None:
         return Opaque(None, "invalid"), ()
-    return context.coerce(kind, value, (key,), envelope_judged=True)
+    return resolve(value, kind, context, (key,), envelope_judged=True)
 
 
 def _read_each(
@@ -319,7 +320,7 @@ def _read_each(
     read: list[_EntityT | Opaque] = []
     problems: list[ValidationProblem] = []
     for index, entry in enumerate(entries):
-        entity, found = context.coerce(kind, entry, (key, index), envelope_judged=True)
+        entity, found = resolve(entry, kind, context, (key, index), envelope_judged=True)
         read.append(entity)
         problems.extend(found)
     return tuple(read), tuple(problems)

@@ -27,22 +27,17 @@ import inspect
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, TypeVar
+from typing import Final
 
-from zarr_metadata.model._validation import (
-    ValidationProblem,
-    validate_metadata_field_v3,
-)
 from zarr_metadata.v3._entity import (
     KINDS,
     ArrayArrayCodec,
     ArrayBytesCodec,
     BytesBytesCodec,
     CodecEntity,
+    EntityT,
     MetadataEntity,
-    Opaque,
     kind_of,
-    named_configuration,
     unreadable,
 )
 from zarr_metadata.v3._typed_json import is_class_var, own_annotations
@@ -80,11 +75,6 @@ from zarr_metadata.v3.data_type.uint16 import Uint16DataType
 from zarr_metadata.v3.data_type.uint32 import Uint32DataType
 from zarr_metadata.v3.data_type.uint64 import Uint64DataType
 
-if TYPE_CHECKING:
-    from zarr_metadata.v3._entity import Loc
-
-_EntityT = TypeVar("_EntityT", bound=MetadataEntity)
-
 Tables = Mapping[type[MetadataEntity], Mapping[str, type[MetadataEntity]]]
 """By kind, then by the identifier each entity is registered under."""
 
@@ -93,10 +83,12 @@ Tables = Mapping[type[MetadataEntity], Mapping[str, type[MetadataEntity]]]
 class Context:
     """The entities in scope while metadata is being read.
 
-    Built from classes with `Context.of`; extended with more by
-    `extended_with`. What each class is registered as is read off it --
-    its kind is its base class, its key is its `identifier` -- so there
-    is nothing to misfile.
+    A value, with no reading of its own: `resolve` reads a field in it,
+    and `claimant` is the one question it answers, which class a name
+    belongs to. Built from classes with `Context.of`; extended with more
+    by `extended_with`. What each class is registered as is read off it
+    -- its kind is its base class, its key is its `identifier` -- so
+    there is nothing to misfile.
     """
 
     tables: Tables
@@ -127,109 +119,25 @@ class Context:
         """Every entity in scope, kind by kind."""
         return tuple(entity for table in self.tables.values() for entity in table.values())
 
-    def resolve(self, kind: type[_EntityT], name: str) -> type[_EntityT] | None:
-        """The entity of `kind` that `name` denotes, or None if out of scope.
+    def claimant(self, kind: type[EntityT], name: str) -> type[EntityT] | None:
+        """The class in scope that claims `name` as an entity of `kind`; None if none does.
 
-        `kind` may be a subclass of a kind -- `GzipCodec`, a family -- in
-        which case only an entity under it resolves. Out of scope is not
-        an error: an unknown name may be an extension this reader does
-        not model, and openness means leaving it unjudged.
-
-        Each entity of the kind is asked whether the name is its own,
-        through `accepts`, in registration order, and the first to claim
-        it answers for it. A family covers many names with one class, so
-        a table keyed by name could not hold it; the identifier keys
-        exist for `extended_with` to take a name over, not for lookup.
+        Asks each class registered under the kind's kind whether the name
+        is its own -- a family claims every `r<N>` -- rather than looking
+        a key up, so the identifier keys exist for `extended_with` to
+        take a name over, not for lookup. A class that claims the name
+        but is not a `kind` -- `transpose` asked for as a
+        `BytesBytesCodec` -- is none; `resolve` asks with the kind's kind
+        to tell that case from a name nothing claims.
         """
-        entity = self._claimant(kind, name)
-        if entity is None or not issubclass(entity, kind):
-            return None
-        return entity
-
-    def _claimant(self, kind: type[MetadataEntity], name: str) -> type[MetadataEntity] | None:
-        """The entity registered under `kind`'s kind that claims `name`, whatever its subclass."""
         registered = kind_of(kind)
         if registered is None:
             return None
         table = self.tables.get(registered, {})
-        return next((candidate for candidate in table.values() if candidate.accepts(name)), None)
-
-    def coerce(
-        self,
-        kind: type[_EntityT],
-        value: object,
-        loc: Loc = (),
-        *,
-        envelope_judged: bool = False,
-    ) -> tuple[_EntityT | Opaque, tuple[ValidationProblem, ...]]:
-        """One nested entity of `kind`, read in this scope.
-
-        The primitive the containing entities are built from: a `struct`
-        data type reads its fields with it, a `sharding_indexed` codec its
-        two pipelines. Returns the entity when its name is in scope, and
-        the value untouched when it is not -- an unmodelled extension is
-        left unjudged, which is what makes the format open.
-
-        `loc` prefixes the problems, so they point at where in the
-        containing configuration the entity sat.
-
-        A metadata field is a metadata field wherever it appears, so the
-        envelope gets the same structural judgment here that the model
-        layer gives a top-level one -- an extra member, a `configuration`
-        that is not an object, a `must_understand` that is not a boolean
-        or is `false`. `envelope_judged` says the model layer has judged
-        and reported that already, which it has for the fields of a
-        document, so it is neither judged nor reported twice. The entity
-        is read whenever there is one to read -- a stray member or a
-        malformed `must_understand` says nothing about the configuration
-        -- and not when the value names no entity or its configuration
-        is not an object, which the envelope judgment has said.
-        """
-        problems = (
-            ()
-            if envelope_judged
-            else tuple(
-                ValidationProblem((*loc, *found.loc), found.message, found.kind)
-                for found in validate_metadata_field_v3(value, allow_must_understand_false=False)
-            )
-        )
-        name, _, malformed = named_configuration(value)
-        if name is None or len(malformed) != 0:
-            return Opaque(value, "invalid"), problems
-        entity_type = self._claimant(kind, name)
-        if entity_type is None:
-            return Opaque(value, "out_of_scope"), problems
-        if not issubclass(entity_type, kind):
-            # In scope, so not for another reader to resolve: the name
-            # is an entity of the wrong kind for this position.
-            return Opaque(value, "invalid"), (
-                *problems,
-                ValidationProblem(
-                    loc,
-                    f"expected {_an(kind.__name__)}, got {name!r}, "
-                    f"{_an(_refinement(entity_type, kind).__name__)}",
-                    "invalid_value",
-                ),
-            )
-        entity, found = entity_type.coerce(value, self)
-        problems = (
-            *problems,
-            *(ValidationProblem((*loc, *entry.loc), entry.message, entry.kind) for entry in found),
-        )
-        if entity is None:
-            return Opaque(value, "invalid"), problems
-        return entity, problems
-
-
-def _refinement(entity: type[MetadataEntity], kind: type[MetadataEntity]) -> type[MetadataEntity]:
-    """The class just below `kind`'s kind that `entity` is: `ArrayArrayCodec` for a transpose codec."""
-    mro = entity.__mro__
-    return mro[mro.index(kind_of(kind) or MetadataEntity) - 1]
-
-
-def _an(noun: str) -> str:
-    """`noun` with its indefinite article: `an ArrayArrayCodec`, `a BytesBytesCodec`."""
-    return f"an {noun}" if noun[:1].upper() in "AEIOU" else f"a {noun}"
+        entity = next((candidate for candidate in table.values() if candidate.accepts(name)), None)
+        if entity is None or not issubclass(entity, kind):
+            return None
+        return entity
 
 
 def _registrable(entity: type[MetadataEntity]) -> type[MetadataEntity]:

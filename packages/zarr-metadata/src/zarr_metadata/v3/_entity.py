@@ -42,7 +42,11 @@ from typing import (
 )
 
 from zarr_metadata.model._sentinel import UNSET
-from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
+from zarr_metadata.model._validation import (
+    MetadataValidationError,
+    ValidationProblem,
+    validate_metadata_field_v3,
+)
 from zarr_metadata.v3._typed_json import (
     Loc,
     Parsed,
@@ -383,7 +387,7 @@ def _nested_field(annotation: object) -> Parser[_Reading] | None:
         problems = is_metadata_field(value, loc)
         if len(problems) != 0:
             return value, problems
-        entity, found = reading.context.coerce(kind, value, loc)
+        entity, found = resolve(value, kind, reading.context, loc)
         reading.nested.extend(found)
         return entity, ()
 
@@ -402,6 +406,88 @@ def _nested_field_writer(annotation: object) -> Writer | None:
         raise TypeError(msg)
 
     return write
+
+
+def resolve(
+    data: object,
+    kind: type[EntityT],
+    context: Context,
+    loc: Loc = (),
+    *,
+    envelope_judged: bool = False,
+) -> tuple[EntityT | Opaque, tuple[ValidationProblem, ...]]:
+    """`data`, one metadata field, read as an entity of `kind` in `context`.
+
+    The reader. It relates the identifier in `data` to a concrete class
+    through `context`, and that class owns the validation routine: its
+    `coerce` is handed the field. What comes back is the entity, or an
+    `Opaque` saying why not. A name no class in `context` claims is
+    `out_of_scope` -- an unmodelled extension, left unjudged, which is
+    what makes the format open. A name claimed and refused, or of
+    another kind than this position takes, is `invalid`, for the reasons
+    reported alongside. `loc` prefixes the problems, so they point at
+    where in the containing configuration the field sat.
+
+    A metadata field is a metadata field wherever it appears, so the
+    envelope gets the same structural judgment here that the model layer
+    gives a top-level one -- an extra member, a `configuration` that is
+    not an object, a `must_understand` that is not a boolean or is
+    `false`. `envelope_judged` says the model layer has judged and
+    reported that already, which it has for the fields of a document, so
+    it is neither judged nor reported twice. The class is asked whenever
+    there is one to ask -- a stray member or a malformed
+    `must_understand` says nothing about the configuration -- and not
+    when the value names no entity or its configuration is not an
+    object, which the envelope judgment has said.
+    """
+    problems = (
+        ()
+        if envelope_judged
+        else tuple(
+            ValidationProblem((*loc, *found.loc), found.message, found.kind)
+            for found in validate_metadata_field_v3(data, allow_must_understand_false=False)
+        )
+    )
+    name, _, malformed = named_configuration(data)
+    if name is None or len(malformed) != 0:
+        return Opaque(data, "invalid"), problems
+    # Asked with the kind's kind, so a class of the wrong kind for this
+    # position is found, and told apart from a name nothing claims.
+    registered = kind_of(kind)
+    entity_type = None if registered is None else context.claimant(registered, name)
+    if entity_type is None:
+        return Opaque(data, "out_of_scope"), problems
+    if not issubclass(entity_type, kind):
+        # In scope, so not for another reader to resolve: the name is an
+        # entity of the wrong kind for this position.
+        return Opaque(data, "invalid"), (
+            *problems,
+            ValidationProblem(
+                loc,
+                f"expected {_an(kind.__name__)}, got {name!r}, "
+                f"{_an(_refinement(entity_type, kind).__name__)}",
+                "invalid_value",
+            ),
+        )
+    entity, found = entity_type.coerce(data, context)
+    problems = (
+        *problems,
+        *(ValidationProblem((*loc, *entry.loc), entry.message, entry.kind) for entry in found),
+    )
+    if entity is None:
+        return Opaque(data, "invalid"), problems
+    return entity, problems
+
+
+def _refinement(entity: type[MetadataEntity], kind: type[MetadataEntity]) -> type[MetadataEntity]:
+    """The class just below `kind`'s kind that `entity` is: `ArrayArrayCodec` for a transpose codec."""
+    mro = entity.__mro__
+    return mro[mro.index(kind_of(kind) or MetadataEntity) - 1]
+
+
+def _an(noun: str) -> str:
+    """`noun` with its indefinite article: `an ArrayArrayCodec`, `a BytesBytesCodec`."""
+    return f"an {noun}" if noun[:1].upper() in "AEIOU" else f"a {noun}"
 
 
 def held_problems(
@@ -708,16 +794,23 @@ class MetadataEntity(ABC):
 
     @classmethod
     def coerce(cls, value: object, context: Context) -> Coerced[Self]:
-        """`value` as this entity, or the reasons it is not one.
+        """`value` as this entity, or the reasons it is not one: the class's validation routine.
 
-        The configuration is parsed against the record the `configuration`
-        field names, member by member; a member holding another entity is
-        read in `context`, the scope this reading is happening in. An
-        optional member the document left out is `UNSET` in the record,
-        so no field's default decides what a document said. The entity is
+        `resolve` relates a field's name to this class and hands it the
+        field; this is what the class does with it. The configuration is
+        parsed against the record the `configuration` field names,
+        member by member; a member holding another entity is read in
+        `context`, the scope this reading is happening in. An optional
+        member the document left out is `UNSET` in the record, so no
+        field's default decides what a document said. The entity is
         built only when every member of its own read -- its rules are
         written over a whole configuration -- and handed back only when
         everything inside it read too.
+
+        The envelope is the field's, not the class's, and `resolve`
+        judges it: a stray member or a `must_understand` of `false` is
+        not reported here. Called on a class no scope has registered,
+        this runs with none of registration's refusals having happened.
         """
         name, given, envelope = named_configuration(value)
         if name is None or not cls.accepts(name):
@@ -950,6 +1043,7 @@ __all__ = [
     "Coerced",
     "Configuration",
     "DataTypeEntity",
+    "EntityT",
     "Loc",
     "MetadataEntity",
     "Opaque",
@@ -963,6 +1057,7 @@ __all__ = [
     "named_configuration",
     "nested_kind",
     "problem",
+    "resolve",
     "unreadable",
     "within",
 ]

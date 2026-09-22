@@ -41,6 +41,7 @@ from zarr_metadata.v3.entity import (
     StorageClass,
     ValidationProblem,
     problem,
+    resolve,
 )
 
 if TYPE_CHECKING:
@@ -169,13 +170,15 @@ def test_error_an_entity_must_say_what_it_is() -> None:
 
 def test_the_entity_layer_answers_what_a_reader_needs() -> None:
     # The questions zarr-python asks before it can read a chunk.
-    data_type, problems = CORE_AND_EXTENSIONS.coerce(DataTypeEntity, "int32")
+    data_type, problems = resolve("int32", DataTypeEntity, CORE_AND_EXTENSIONS)
     assert problems == ()
     assert isinstance(data_type, DataTypeEntity)
     assert data_type.storage_class() == "multi_byte"
 
-    grid, problems = CORE_AND_EXTENSIONS.coerce(
-        ChunkGridEntity, {"name": "regular", "configuration": {"chunk_shape": (32, 32)}}
+    grid, problems = resolve(
+        {"name": "regular", "configuration": {"chunk_shape": (32, 32)}},
+        ChunkGridEntity,
+        CORE_AND_EXTENSIONS,
     )
     assert problems == ()
     assert isinstance(grid, ChunkGridEntity)
@@ -202,8 +205,8 @@ def test_an_absent_optional_member_is_read_as_unset_whatever_its_default() -> No
         variable_size: ClassVar[bool] = False
 
     assert Defaulted(DefaultedOptions()).configuration.level == 3
-    codec, problems = CORE_AND_EXTENSIONS.extended_with(Defaulted).coerce(
-        CodecEntity, "acme.defaulted"
+    codec, problems = resolve(
+        "acme.defaulted", CodecEntity, CORE_AND_EXTENSIONS.extended_with(Defaulted)
     )
     assert problems == ()
     assert isinstance(codec, Defaulted)
@@ -319,15 +322,15 @@ def test_a_third_party_can_register_a_family() -> None:
     # like a single name.
     scope = CORE_AND_EXTENSIONS.extended_with(AcmeFixedDataType)
     for name in ("acme.fixed8", "acme.fixed128"):
-        assert scope.resolve(DataTypeEntity, name) is AcmeFixedDataType
-        entity, problems = scope.coerce(DataTypeEntity, name)
+        assert scope.claimant(DataTypeEntity, name) is AcmeFixedDataType
+        entity, problems = resolve(name, DataTypeEntity, scope)
         assert problems == ()
         assert isinstance(entity, AcmeFixedDataType)
         assert entity.to_json() == name
     # The invented identifier is not a name a document may write, and a
     # near-miss is still nobody's.
-    assert scope.resolve(DataTypeEntity, AcmeFixedDataType.identifier) is None
-    assert scope.resolve(DataTypeEntity, "acme.fixed") is None
+    assert scope.claimant(DataTypeEntity, AcmeFixedDataType.identifier) is None
+    assert scope.claimant(DataTypeEntity, "acme.fixed") is None
     # A rule about the name lands on the field: the document has no
     # configuration to locate it under.
     problems = validate_array_metadata_v3(
@@ -386,7 +389,7 @@ def test_a_third_party_entity_containing_entities_reads_them_in_scope() -> None:
         "name": "acme.wrapper",
         "configuration": {"inner": {"name": "gzip", "configuration": {"level": 5}}},
     }
-    codec, problems = scope.coerce(CodecEntity, entry)
+    codec, problems = resolve(entry, CodecEntity, scope)
     assert problems == ()
     assert isinstance(codec, AcmeWrapperCodec)
     inner = codec.configuration.inner
@@ -396,7 +399,7 @@ def test_a_third_party_entity_containing_entities_reads_them_in_scope() -> None:
 
     # An inner codec the scope does not model stays verbatim, as anywhere.
     unknown = {"name": "acme.wrapper", "configuration": {"inner": "acme.unknown"}}
-    codec, problems = scope.coerce(CodecEntity, unknown)
+    codec, problems = resolve(unknown, CodecEntity, scope)
     assert problems == ()
     assert isinstance(codec, AcmeWrapperCodec)
     assert isinstance(codec.configuration.inner, Opaque)
@@ -407,7 +410,7 @@ def test_a_third_party_entity_containing_entities_reads_them_in_scope() -> None:
         "name": "acme.wrapper",
         "configuration": {"inner": {"name": "gzip", "configuration": {"level": 99}}},
     }
-    _, problems = scope.coerce(CodecEntity, bad)
+    _, problems = resolve(bad, CodecEntity, scope)
     assert [problem.loc for problem in problems] == [
         ("configuration", "inner", "configuration", "level")
     ]
@@ -428,7 +431,7 @@ def test_a_third_party_entity_containing_entities_reads_them_in_scope() -> None:
             }
         },
     }
-    codec, _ = scope.coerce(CodecEntity, verbose)
+    codec, _ = resolve(verbose, CodecEntity, scope)
     assert isinstance(codec, AcmeWrapperCodec)
     inner = codec.canonical().configuration.inner
     assert isinstance(inner, BloscCodec)
@@ -541,12 +544,12 @@ def test_a_rule_about_a_member_is_the_record_s_own() -> None:
     # configuration; `coerce` runs it to the end and locates what it
     # yields in the document; the constructor stops at the first.
     scope = CORE_AND_EXTENSIONS.extended_with(AcmeBlockCodec)
-    codec, problems = scope.coerce(
-        CodecEntity, {"name": "acme.block", "configuration": {"block": 64}}
+    codec, problems = resolve(
+        {"name": "acme.block", "configuration": {"block": 64}}, CodecEntity, scope
     )
     assert problems == ()
     assert isinstance(codec, AcmeBlockCodec)
-    _, problems = scope.coerce(CodecEntity, {"name": "acme.block", "configuration": {"block": 6}})
+    _, problems = resolve({"name": "acme.block", "configuration": {"block": 6}}, CodecEntity, scope)
     assert [(p.loc, p.message) for p in problems] == [
         (("configuration", "block"), "expected a power of two, got 6")
     ]
@@ -555,7 +558,9 @@ def test_a_rule_about_a_member_is_the_record_s_own() -> None:
         AcmeBlockCodec(AcmeBlockOptions(block=6))
     assert [p.loc for p in caught.value.problems] == [("block",)]
     # A member that failed its type check never reaches the rule.
-    _, problems = scope.coerce(CodecEntity, {"name": "acme.block", "configuration": {"block": "x"}})
+    _, problems = resolve(
+        {"name": "acme.block", "configuration": {"block": "x"}}, CodecEntity, scope
+    )
     assert [p.kind for p in problems] == ["invalid_type"]
 
 
@@ -594,8 +599,8 @@ def test_the_constructor_stops_at_the_first_problem_and_coerce_reports_every_one
         AcmeRangeCodec(AcmeRangeOptions(low=-1, high=-2))
     assert [p.loc for p in caught.value.problems] == [("low",)]
     scope = CORE_AND_EXTENSIONS.extended_with(AcmeRangeCodec)
-    _, problems = scope.coerce(
-        CodecEntity, {"name": "acme.range", "configuration": {"low": -1, "high": -2}}
+    _, problems = resolve(
+        {"name": "acme.range", "configuration": {"low": -1, "high": -2}}, CodecEntity, scope
     )
     assert [p.loc for p in problems] == [("configuration", "low"), ("configuration", "high")]
     assert list(AcmeRangeOptions(low=0, high=1).problems()) == []
@@ -662,10 +667,10 @@ def test_a_reader_gets_structural_and_semantic_reasons_together() -> None:
 def test_a_malformed_envelope_is_one_problem() -> None:
     # The envelope is judged once, by the scope; the entity is not asked
     # to read what is not a metadata field.
-    _, problems = CORE_AND_EXTENSIONS.coerce(CodecEntity, 5, ("codecs", 0))
+    _, problems = resolve(5, CodecEntity, CORE_AND_EXTENSIONS, ("codecs", 0))
     assert [(p.loc, p.kind) for p in problems] == [(("codecs", 0), "invalid_type")]
-    _, problems = CORE_AND_EXTENSIONS.coerce(
-        CodecEntity, {"name": "gzip", "configuration": 42}, ("codecs", 0)
+    _, problems = resolve(
+        {"name": "gzip", "configuration": 42}, CodecEntity, CORE_AND_EXTENSIONS, ("codecs", 0)
     )
     assert [(p.loc, p.kind) for p in problems] == [(("codecs", 0, "configuration"), "invalid_type")]
 
@@ -725,13 +730,13 @@ def test_a_number_member_is_a_float_field() -> None:
 
     scope = CORE_AND_EXTENSIONS.extended_with(AcmeScaled)
     for spelled in (2, 2.5):
-        codec, problems = scope.coerce(
-            CodecEntity, {"name": "acme.scaled", "configuration": {"scale": spelled}}
+        codec, problems = resolve(
+            {"name": "acme.scaled", "configuration": {"scale": spelled}}, CodecEntity, scope
         )
         assert problems == ()
         assert isinstance(codec, AcmeScaled)
-    _, problems = scope.coerce(
-        CodecEntity, {"name": "acme.scaled", "configuration": {"scale": True}}
+    _, problems = resolve(
+        {"name": "acme.scaled", "configuration": {"scale": True}}, CodecEntity, scope
     )
     assert [(p.loc, p.message) for p in problems] == [
         (("configuration", "scale"), "expected a number, got True")

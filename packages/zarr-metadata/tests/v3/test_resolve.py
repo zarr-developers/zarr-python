@@ -50,7 +50,7 @@ RESOLUTIONS: dict[str, tuple[type[MetadataEntity], str, type[MetadataEntity] | N
 def test_a_name_resolves_to_the_entity_that_answers_for_it(
     field: type[MetadataEntity], name: str, expected: type[MetadataEntity] | None
 ) -> None:
-    assert CORE_AND_EXTENSIONS.resolve(field, name) is expected
+    assert CORE_AND_EXTENSIONS.claimant(field, name) is expected
 
 
 @given(width=st.integers(min_value=0, max_value=2**32))
@@ -59,7 +59,7 @@ def test_every_numeric_r_spelling_resolves_to_the_family(width: int) -> None:
     # the family claims a name by grammar shape, not by validity, so a
     # misspelled member of a family we model is reported as a misspelling
     # rather than passing as an unknown third-party extension.
-    assert CORE_AND_EXTENSIONS.resolve(DataTypeEntity, f"r{width}") is RawBytesDataType
+    assert CORE_AND_EXTENSIONS.claimant(DataTypeEntity, f"r{width}") is RawBytesDataType
 
 
 OTHER_KINDS: tuple[type[MetadataEntity], ...] = (CodecEntity, ChunkGridEntity)
@@ -71,7 +71,7 @@ def test_r_shaped_names_resolve_to_nothing_outside_data_types(
 ) -> None:
     # The family belongs to `data_type`; a codec that happens to be named
     # `r8` must not reach it.
-    assert CORE_AND_EXTENSIONS.resolve(field, f"r{width}") is None
+    assert CORE_AND_EXTENSIONS.claimant(field, f"r{width}") is None
 
 
 # The scan `resolve` falls back to asks every entity, so a name no entity
@@ -86,7 +86,7 @@ _UNCLAIMED = st.text(min_size=1).filter(
 
 @given(name=_UNCLAIMED)
 def test_a_name_no_entity_claims_resolves_to_nothing(name: str) -> None:
-    assert CORE_AND_EXTENSIONS.resolve(DataTypeEntity, name) is None
+    assert CORE_AND_EXTENSIONS.claimant(DataTypeEntity, name) is None
 
 
 def test_squatted_names_are_judged_against_the_definition_they_squat() -> None:

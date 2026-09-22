@@ -30,13 +30,17 @@ returns a tuple of `ValidationProblem(loc, message, kind)`, each `loc`
 indexing into the document:
 `("codecs", 1, "configuration", "level")`, and `kind` one of
 `invalid_type`, `invalid_value`, `missing_key`, `unknown_key` and
-`invalid_json`. `SCOPE.coerce(CodecEntity, entry)` reads one metadata
-field as an entity of that kind and returns `(entity, problems)` where
-`entity` is the entity or an `Opaque` -- never `None` -- with `loc`
-relative to the entry: `("configuration", "level")`. An entity's own
-`coerce(value, context)` returns `(entity or None, problems)`; that is
-`Coerced`. Constructing an entity by hand raises `MetadataValidationError`
-with `loc` relative to the configuration: `("level",)`.
+`invalid_json`. `resolve(entry, CodecEntity, SCOPE)` reads one metadata
+field as an entity of that kind: it relates the name in the entry to a
+class in the scope and hands that class the field, since the class owns
+its validation routine. It returns `(entity, problems)` where `entity`
+is the entity or an `Opaque` -- never `None` -- with `loc` relative to
+the entry: `("configuration", "level")`. The class's routine,
+`coerce(value, context)`, returns `(entity or None, problems)`, that is
+`Coerced`, and judges the configuration; the envelope is the field's,
+and `resolve` judges it. Constructing an entity by hand raises
+`MetadataValidationError` with `loc` relative to the configuration:
+`("level",)`.
 
 **Writing an extension.** Subclass the kind of thing it is -- a codec's
 kind (`ArrayArrayCodec`, `ArrayBytesCodec`, `BytesBytesCodec`),
@@ -202,7 +206,8 @@ key is its `identifier`, so `extended_with` takes the classes and
 nothing can be misfiled -- and a class whose `identifier` the scope
 already has takes the name over, so registering your own `"gzip"`
 replaces the package's reading of it. `Context.of(*classes)` is a scope
-of exactly those.
+of exactly those, and a scope is a value: `resolve` reads in it, and
+`claimant(kind, name)` says which class a name belongs to.
 
 Two complete extensions written against this module alone, as tests in
 the repository:
@@ -248,6 +253,7 @@ from zarr_metadata.v3._entity import (
     is_integer,
     named_configuration,
     problem,
+    resolve,
     within,
 )
 from zarr_metadata.v3._parts import ArrayParts, ChunkGrid, Extents
@@ -296,5 +302,6 @@ __all__ = [
     "is_integer",
     "named_configuration",
     "problem",
+    "resolve",
     "within",
 ]

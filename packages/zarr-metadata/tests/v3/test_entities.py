@@ -97,6 +97,7 @@ from zarr_metadata.v3.entity import (
     DataTypeEntity,
     MetadataEntity,
     StorageTransformerEntity,
+    resolve,
 )
 
 # Every registered entity, keyed by `<field>:<identifier>` -- an identifier
@@ -307,8 +308,8 @@ def test_core_is_a_subset_of_core_and_extensions() -> None:
 
 def test_a_name_out_of_scope_resolves_to_nothing() -> None:
     # Not an error: an unmodelled extension is left unjudged, not rejected.
-    assert CORE.resolve(CodecEntity, "mycorp.secret") is None
-    assert CORE.resolve(CodecEntity, "blosc") is BloscCodec
+    assert CORE.claimant(CodecEntity, "mycorp.secret") is None
+    assert CORE.claimant(CodecEntity, "blosc") is BloscCodec
 
 
 def test_an_entity_round_trips_through_its_json_form() -> None:
@@ -649,27 +650,27 @@ def test_to_json_writes_back_what_was_read(field: type[MetadataEntity], written:
     # Serialization is not canonicalization. A reader that reads a
     # document and writes it back must not change bytes it was not asked
     # to change -- `canonical()` is where you ask.
-    entity, problems = CORE_AND_EXTENSIONS.coerce(field, written)
+    entity, problems = resolve(written, field, CORE_AND_EXTENSIONS)
     assert problems == ()
     assert isinstance(entity, MetadataEntity)
     assert entity.to_json() == written
 
 
 def test_canonical_is_what_simplifies() -> None:
-    encoded, _ = CORE_AND_EXTENSIONS.coerce(
-        ChunkGridEntity,
+    encoded, _ = resolve(
         {
             "name": "rectilinear",
             "configuration": {"kind": "inline", "chunk_shapes": ((32, 32, 32),)},
         },
+        ChunkGridEntity,
+        CORE_AND_EXTENSIONS,
     )
     assert isinstance(encoded, MetadataEntity)
     assert encoded.canonical().to_json() == {
         "name": "rectilinear",
         "configuration": {"kind": "inline", "chunk_shapes": (((32, 3),),)},
     }
-    blosc, _ = CORE_AND_EXTENSIONS.coerce(
-        CodecEntity,
+    blosc, _ = resolve(
         {
             "name": "blosc",
             "configuration": {
@@ -680,14 +681,15 @@ def test_canonical_is_what_simplifies() -> None:
                 "typesize": 4,
             },
         },
+        CodecEntity,
+        CORE_AND_EXTENSIONS,
     )
     assert isinstance(blosc, BloscCodec)
     assert "typesize" not in configuration_of(blosc.canonical().to_json())
 
 
 def test_canonical_reaches_a_contained_entity() -> None:
-    shard, _ = CORE_AND_EXTENSIONS.coerce(
-        CodecEntity,
+    shard, _ = resolve(
         {
             "name": "sharding_indexed",
             "configuration": {
@@ -708,6 +710,8 @@ def test_canonical_reaches_a_contained_entity() -> None:
                 "index_codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
             },
         },
+        CodecEntity,
+        CORE_AND_EXTENSIONS,
     )
     assert isinstance(shard, ShardingIndexedCodec)
     inner = entry_at(shard.canonical().to_json(), "configuration", "codecs", 1)
@@ -717,8 +721,10 @@ def test_canonical_reaches_a_contained_entity() -> None:
 def test_error_an_explicit_null_scalar_is_refused() -> None:
     # `null` is a value the document wrote, distinct from absence -- and
     # no data type admits it as a scalar, so the codec cannot be built.
-    codec, problems = CORE_AND_EXTENSIONS.coerce(
-        CodecEntity, {"name": "scale_offset", "configuration": {"offset": None}}
+    codec, problems = resolve(
+        {"name": "scale_offset", "configuration": {"offset": None}},
+        CodecEntity,
+        CORE_AND_EXTENSIONS,
     )
     assert codec is not None
     assert not isinstance(codec, MetadataEntity)
@@ -752,7 +758,7 @@ def test_to_json_shares_no_mutable_state_with_the_entity(
     # The model layer has this test; the entity layer did not, and handed
     # out its own dict -- so a caller mutating the document it was given
     # mutated a frozen entity.
-    entity, problems = CORE_AND_EXTENSIONS.coerce(field, written)
+    entity, problems = resolve(written, field, CORE_AND_EXTENSIONS)
     assert problems == ()
     assert isinstance(entity, MetadataEntity)
     baseline = copy.deepcopy(entity.to_json())
@@ -784,7 +790,7 @@ def test_a_member_the_entity_does_not_model_is_not_written_back() -> None:
             "typo_key": 1,
         },
     }
-    codec, problems = CORE_AND_EXTENSIONS.coerce(CodecEntity, entry)
+    codec, problems = resolve(entry, CodecEntity, CORE_AND_EXTENSIONS)
     assert [(p.loc, p.kind) for p in problems] == [(("configuration", "typo_key"), "unknown_key")]
     assert isinstance(codec, BloscCodec)
     assert "typo_key" not in configuration_of(codec.to_json())
@@ -904,7 +910,7 @@ def test_a_bare_name_entity_holds_the_empty_configuration() -> None:
     # holds the empty record, reads either spelling, and writes the name.
     assert Crc32cCodec().configuration == Configuration()
     for spelling in ("crc32c", {"name": "crc32c"}, {"name": "crc32c", "configuration": {}}):
-        assert CORE_AND_EXTENSIONS.coerce(CodecEntity, spelling) == (Crc32cCodec(), ())
+        assert resolve(spelling, CodecEntity, CORE_AND_EXTENSIONS) == (Crc32cCodec(), ())
     assert Crc32cCodec().to_json() == "crc32c"
 
 
@@ -917,7 +923,7 @@ def test_error_an_entity_of_another_kind_is_invalid_not_out_of_scope() -> None:
     # `transpose` is in scope, so it is not for another reader to
     # resolve; it is an array->array codec where a bytes->bytes one goes.
     value = {"name": "transpose", "configuration": {"order": (0,)}}
-    entity, problems = CORE_AND_EXTENSIONS.coerce(BytesBytesCodec, value, ("codecs", 2))
+    entity, problems = resolve(value, BytesBytesCodec, CORE_AND_EXTENSIONS, ("codecs", 2))
     assert entity == Opaque(value, "invalid")
     assert [(problem.loc, problem.kind, problem.message) for problem in problems] == [
         (

@@ -26,6 +26,7 @@ from zarr_metadata.v3.entity import (
     StorageClass,
     ValidationProblem,
     problem,
+    resolve,
 )
 
 ACME_DECIMAL_DATA_TYPE_NAME: Final = "acme.decimal"
@@ -316,8 +317,10 @@ def test_error_the_constructor_stops_at_the_first_problem_and_coerce_reports_eve
     with pytest.raises(MetadataValidationError) as caught:
         AcmeDecimalDataType(AcmeDecimalOptions(precision=0, scale=-1))
     assert _locs(caught.value.problems) == [("precision",)]
-    _, problems = SCOPE.coerce(
-        DataTypeEntity, {"name": "acme.decimal", "configuration": {"precision": 0, "scale": -1}}
+    _, problems = resolve(
+        {"name": "acme.decimal", "configuration": {"precision": 0, "scale": -1}},
+        DataTypeEntity,
+        SCOPE,
     )
     assert _locs(problems) == [("configuration", "precision"), ("configuration", "scale")]
 

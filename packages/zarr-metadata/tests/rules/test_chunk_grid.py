@@ -101,7 +101,7 @@ def _grid_of(grid: object, shape: object) -> ChunkGrid:
         else None
     )
     entity_type = (
-        CORE_AND_EXTENSIONS.resolve(ChunkGridEntity, name) if isinstance(name, str) else None
+        CORE_AND_EXTENSIONS.claimant(ChunkGridEntity, name) if isinstance(name, str) else None
     )
     if entity_type is None:
         return ChunkGrid.unreadable(shape)

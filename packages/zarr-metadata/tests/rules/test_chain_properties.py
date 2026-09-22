@@ -66,7 +66,7 @@ def test_the_strategies_cover_every_codec_the_package_models() -> None:
     for kinds, expected in ((ARRAY_ARRAY, ArrayArrayCodec), (ARRAY_BYTES, ArrayBytesCodec)):
         for entry in kinds:
             name = entry.__annotations__["name"].__args__[0]
-            entity = CORE_AND_EXTENSIONS.resolve(CodecEntity, name)
+            entity = CORE_AND_EXTENSIONS.claimant(CodecEntity, name)
             assert entity is not None, name
             assert issubclass(entity, expected)
 
