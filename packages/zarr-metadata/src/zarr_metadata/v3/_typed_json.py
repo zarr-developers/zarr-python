@@ -506,8 +506,9 @@ def record_of(record: Callable[..., object], members: Members[S]) -> Parser[S]:
     """A member that is itself an object with declared keys, built as a dataclass.
 
     Built only from an object whose every key read; otherwise the value
-    comes back as it came, with the reasons. A record is plain data: it
-    has no rules of its own, so building it cannot fail.
+    comes back as it came, with the reasons. A record has no rules of
+    its own, and every member it is built from has just been checked,
+    so building it cannot fail.
     """
 
     def parse(value: object, loc: Loc, state: S) -> Parsed:
@@ -547,8 +548,13 @@ def mapping_of(value: Parser[S]) -> Parser[S]:
 # --- the compiler --------------------------------------------------------
 
 
-def _members_of(annotations: Mapping[str, object], leaf: Leaf[S]) -> Members[S] | None:
-    """A member table for an object's keys; None if any key's type has no parser."""
+def members_of(annotations: Mapping[str, object], leaf: Leaf[S]) -> Members[S] | None:
+    """A member table for an object's keys; None if any key's type has no parser.
+
+    For a caller with a record class of its own to hand to `record_of`;
+    `parser_for` builds the same table for a record it meets as an
+    annotation.
+    """
     members: dict[str, tuple[bool, Parser[S]]] = {}
     for key, annotation in annotations.items():
         member = parser_for(annotation, leaf)
@@ -630,7 +636,7 @@ def parser_for(annotation: object, leaf: Leaf[S]) -> Parser[S] | None:
     if get_origin(inner) is tuple:
         return _tuple(inner, leaf)
     if is_typeddict(inner):
-        members = _members_of(get_type_hints(inner, include_extras=True), leaf)
+        members = members_of(get_type_hints(inner, include_extras=True), leaf)
         return None if members is None else object_of(members)
     if get_origin(inner) in (Mapping, dict):
         return _mapping(inner, leaf)
@@ -650,7 +656,7 @@ def parser_for(annotation: object, leaf: Leaf[S]) -> Parser[S] | None:
                 "about it belongs in the configuration's `problems`"
             )
             raise TypeError(msg)
-        members = _members_of(field_hints(inner), leaf)
+        members = members_of(field_hints(inner), leaf)
         return None if members is None else record_of(inner, members)
     return None
 
@@ -874,6 +880,7 @@ __all__ = [
     "is_union",
     "keys_of",
     "mapping_of",
+    "members_of",
     "no_leaf",
     "no_writer_leaf",
     "object_of",

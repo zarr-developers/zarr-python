@@ -29,7 +29,7 @@ from __future__ import annotations
 import functools
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, is_dataclass, replace
 from typing import (
     TYPE_CHECKING,
     ClassVar,
@@ -41,6 +41,7 @@ from typing import (
     get_args,
 )
 
+from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3._typed_json import (
     Loc,
@@ -54,9 +55,11 @@ from zarr_metadata.v3._typed_json import (
     is_integer,
     is_optional,
     is_union,
+    members_of,
     parser,
     parser_for,
     problem,
+    record_of,
     record_writer,
     strip_annotation,
     without_unset,
@@ -254,7 +257,7 @@ def unreadable(cls: type[MetadataEntity]) -> str | None:
         members = field_hints(record)
     except NameError as unresolved:
         return _unresolved(record, unresolved)
-    if "__post_init__" in vars(record):
+    if record.__post_init__ is not Configuration.__post_init__:
         return (
             f"{record.__name__} defines __post_init__; write its rules as `problems`, "
             "yielding each: the entity's constructor stops at the first, `coerce` reports "
@@ -389,6 +392,74 @@ def _nested_field_writer(annotation: object) -> Writer | None:
     return write
 
 
+def _held_field(annotation: object) -> Parser[None] | None:
+    """The check on a value a record holds in a field typed as an entity or as a record.
+
+    The leaf the record's constructor checks with, where `_nested_field`
+    is the one a document is read with: a field typed `Kind | Opaque`
+    holds an instance of the kind or an `Opaque`, and a field typed as a
+    record dataclass holds an instance of it, checked in turn. Every
+    other shape is one JSON takes, and a Python value of that shape
+    passes the same parser.
+    """
+    kind = nested_kind(annotation)
+    if kind is not None:
+
+        def holds_entity(value: object, loc: Loc, state: None) -> Parsed:
+            if isinstance(value, (kind, Opaque)):
+                return value, ()
+            return value, problem(
+                loc, f"expected an entity of {kind.__name__} or an Opaque, got {value!r}"
+            )
+
+        return holds_entity
+    inner = without_unset(strip_annotation(annotation)[0])
+    if isinstance(inner, type) and is_dataclass(inner):
+
+        def holds_record(value: object, loc: Loc, state: None) -> Parsed:
+            if not isinstance(value, inner):
+                return value, problem(loc, f"expected {inner.__name__}, got {value!r}")
+            return value, tuple(
+                ValidationProblem((*loc, *found.loc), found.message, found.kind)
+                for found in mistyped(value)
+            )
+
+        return holds_record
+    return None
+
+
+@functools.cache
+def _checks(record: type) -> dict[str, tuple[bool, Parser[None]]]:
+    """Each field of a record: whether it may be `UNSET`, and the check on a value held in it."""
+    return {
+        name: (is_optional(annotation), parser(annotation, _held_field))
+        for name, annotation in field_hints(record).items()
+    }
+
+
+def mistyped(record: object) -> tuple[ValidationProblem, ...]:
+    """Every field of `record` holding a value not of its type, located at the field.
+
+    The runtime half of a record's type. Pyright checks the values a
+    caller writes; this checks the ones it cannot see -- through
+    `**changes`, through `replace`, through anything typed `object` --
+    with the parsers a document is read by, so a record is well-typed
+    however it was built.
+    """
+    found: list[ValidationProblem] = []
+    for name, (optional, check) in _checks(type(record)).items():
+        value = getattr(record, name)
+        if optional and value is UNSET:
+            continue
+        # An unknown key in a mapping member is the reader's report, not
+        # a type: the record holds what the document said, as `coerce`
+        # lets it, and a hand-built one may say the same.
+        found.extend(
+            entry for entry in check(value, (name,), None)[1] if entry.kind != "unknown_key"
+        )
+    return tuple(found)
+
+
 @dataclass(frozen=True, slots=True)
 class _Plan:
     """How `coerce` reads and `to_json` writes one class, compiled once from its fields."""
@@ -411,7 +482,10 @@ def _plan(cls: type[MetadataEntity]) -> _Plan:
 
     Each parser is a function of its annotation alone, taking the reading
     it runs in as an argument. `TypeError` for a shape no parser reads,
-    which registration refuses first.
+    which registration refuses first. The record is built through its
+    constructor, which checks the members' types once more: the same
+    work twice, measured at a twelfth of a document read, and the price
+    of there being no unchecked way to build one.
     """
     hints = field_hints(cls)
     from_name = next((key for key, annotation in hints.items() if is_from_name(annotation)), None)
@@ -420,7 +494,11 @@ def _plan(cls: type[MetadataEntity]) -> _Plan:
         msg = f"{cls.__name__}: configuration is annotated {record!r}, not a Configuration"
         raise TypeError(msg)
     required = any(not is_optional(annotation) for annotation in field_hints(record).values())
-    parse = parser(record, _nested_field)
+    members = members_of(field_hints(record), _nested_field)
+    if members is None:  # pragma: no cover - registration refused the member first
+        msg = f"{cls.__name__}: a configuration member is not a shape JSON takes"
+        raise TypeError(msg)
+    parse = record_of(record, members)
     writes: RecordWriter = record_writer(record, _nested_field_writer)
 
     def read(
@@ -452,7 +530,19 @@ class Configuration:
     A reader stops at the first or collects them all, as it needs: the
     entity's constructor stops at the first, `coerce` reports every one,
     and `BloscOptions(...).problems()` answers without an entity at all.
+
+    The constructor refuses a member of the wrong type, so a record is
+    well-typed however it was built -- by hand, through `replace`,
+    through an entity's `with_configuration` -- and the rules can trust
+    what they read. Values are the rules' business, and the entity's
+    constructor asks them.
     """
+
+    def __post_init__(self) -> None:
+        """Refuse every member of the wrong type, so `GzipOptions(level="high")` raises."""
+        found = mistyped(self)
+        if len(found) != 0:
+            raise MetadataValidationError(found)
 
     def problems(self) -> Iterator[ValidationProblem]:
         """Every reason these values are not allowed, yielded as found. Default: none."""
@@ -463,12 +553,13 @@ class Configuration:
 class MetadataEntity(ABC):
     """One named entity, coerced from its metadata.
 
-    Subclasses add their configuration members as fields, which is what
-    makes them well-typed when read: `coerce` builds one only from
-    metadata it accepted. Built by hand, the types are the caller's
-    promise -- the record's `problems` judges values, not types. An optional member is
-    typed `| UNSET` with a default of `UNSET`, so absence is representable
-    -- and distinct from a `null` the document wrote -- and a canonical
+    An entity is well-typed and allowed however it was built. `coerce`
+    builds one only from metadata it accepted; by hand, the record's
+    constructor refuses a member of the wrong type and the entity's
+    refuses a value the rules disallow, and `replace` and
+    `with_configuration` go through both. An optional member is typed
+    `| UNSET` with a default of `UNSET`, so absence is representable --
+    and distinct from a `null` the document wrote -- and a canonical
     spelling can leave it out.
 
     Frozen, so an entity of hashable members is hashable. One holding a
@@ -538,10 +629,13 @@ class MetadataEntity(ABC):
     def with_configuration(self, **changes: object) -> Self:
         """This entity with these configuration members changed.
 
-        `codec.with_configuration(typesize=UNSET)` is the record replaced
-        member by member and the entity rebuilt around it, so the
-        constructor checks the result as it checks any other. A name
-        that is not a member is refused the way `replace` refuses it.
+        `codec.with_configuration(typesize=UNSET)` is the record rebuilt
+        through its constructor, which refuses a member of the wrong
+        type, and the entity rebuilt through its own, which refuses a
+        value the rules disallow -- the same checks as any construction,
+        since pyright cannot see the members through `**changes`. A
+        name that is not a member is refused the way `replace` refuses
+        it.
         """
         return replace(self, configuration=replace(self.configuration, **changes))
 

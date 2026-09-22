@@ -123,7 +123,10 @@ read together -- is the record's `problems`, which yields
 code. Locations are relative to the configuration, and `kind` is
 `"invalid_value"` for a value rule. The entity's constructor stops at
 the first problem it yields, so `AcmeLz4Codec(AcmeLz4Options(acceleration=0))`
-raises `MetadataValidationError`; `coerce` runs it to the end and
+raises `MetadataValidationError`, and the record's constructor refuses
+a member of the wrong type, so `AcmeLz4Options(acceleration="fast")`
+raises too, whether written by hand, through `replace` or through
+`with_configuration`; `coerce` runs it to the end and
 reports every problem in the document; a reader with a record asks
 `options.problems()` directly and stops or collects. It runs only on a
 configuration whose members all read: a member of the wrong type is
@@ -187,8 +190,9 @@ member whose annotation is not a shape JSON takes
 -- a nested entity without `Opaque` among them --
 a `__post_init__` of the entity's own, a class variable a base
 annotates and nothing sets, and what a kind leaves abstract. What is
-left, pyright says in the editor: a member of the wrong type, a
-`canonical` returning something else, a hook with the wrong signature.
+left, pyright says in the editor and the constructors say at runtime: a
+member of the wrong type, a value the rules disallow, a `canonical`
+returning something else, a hook with the wrong signature.
 A scope reads what a class is off the class: its kind is its base, its
 key is its `identifier`, so `extended_with` takes the classes and
 nothing can be misfiled -- and a class whose `identifier` the scope

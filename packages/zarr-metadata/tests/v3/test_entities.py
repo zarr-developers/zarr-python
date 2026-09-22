@@ -52,14 +52,15 @@ from zarr_metadata.v3.chunk_key_encoding.default import (
 from zarr_metadata.v3.chunk_key_encoding.v2 import (
     V2ChunkKeyEncoding,
 )
-from zarr_metadata.v3.codec.blosc import BloscCodec
+from zarr_metadata.v3.codec.blosc import BloscCodec, BloscOptions
 from zarr_metadata.v3.codec.bytes import BytesCodec
 from zarr_metadata.v3.codec.cast_value import CastValueCodec
 from zarr_metadata.v3.codec.crc32c import Crc32cCodec
-from zarr_metadata.v3.codec.gzip import GzipCodec
+from zarr_metadata.v3.codec.gzip import GzipCodec, GzipOptions
 from zarr_metadata.v3.codec.scale_offset import ScaleOffsetCodec
 from zarr_metadata.v3.codec.sharding_indexed import (
     ShardingIndexedCodec,
+    ShardingIndexedOptions,
 )
 from zarr_metadata.v3.codec.transpose import TransposeCodec
 from zarr_metadata.v3.codec.zstd import ZstdCodec
@@ -82,7 +83,7 @@ from zarr_metadata.v3.data_type.numpy_timedelta64 import (
 )
 from zarr_metadata.v3.data_type.raw import RawBytesDataType
 from zarr_metadata.v3.data_type.string import StringDataType
-from zarr_metadata.v3.data_type.struct import StructDataType
+from zarr_metadata.v3.data_type.struct import StructDataType, StructFieldComponent, StructOptions
 from zarr_metadata.v3.data_type.uint8 import Uint8DataType
 from zarr_metadata.v3.data_type.uint16 import Uint16DataType
 from zarr_metadata.v3.data_type.uint32 import Uint32DataType
@@ -976,3 +977,63 @@ def test_error_a_fixed_tuple_of_the_wrong_length_is_not_written() -> None:
     assert write is not None
     with pytest.raises(TypeError, match="is not a JSON value"):
         write((1,))
+
+
+def test_error_a_record_refuses_a_member_of_the_wrong_type() -> None:
+    # The runtime half of the record's type: pyright sees a value written
+    # by hand, the constructor sees the rest.
+    with pytest.raises(MetadataValidationError) as caught:
+        GzipOptions(level="high")  # pyright: ignore[reportArgumentType]
+    assert [(p.loc, p.kind, p.message) for p in caught.value.problems] == [
+        (("level",), "invalid_type", "expected an integer, got 'high'")
+    ]
+
+
+def test_error_a_record_reports_every_mistyped_member() -> None:
+    with pytest.raises(MetadataValidationError) as caught:
+        BloscOptions(cname=1, clevel="x", shuffle="shuffle", blocksize=0, typesize=4)  # pyright: ignore[reportArgumentType]
+    assert [p.loc for p in caught.value.problems] == [("cname",), ("clevel",)]
+
+
+def test_error_a_required_member_may_not_be_unset() -> None:
+    with pytest.raises(MetadataValidationError) as caught:
+        GzipOptions(level=UNSET)  # pyright: ignore[reportArgumentType]
+    assert [(p.loc, p.kind) for p in caught.value.problems] == [(("level",), "invalid_type")]
+
+
+def test_error_with_configuration_refuses_a_member_of_the_wrong_type() -> None:
+    # `**changes` is typed `object`, so this is the path pyright cannot
+    # see; the record's constructor sees it, and `5.0` is not an integer.
+    codec = GzipCodec(GzipOptions(level=1))
+    with pytest.raises(MetadataValidationError) as caught:
+        codec.with_configuration(level=5.0)
+    assert [(p.loc, p.kind) for p in caught.value.problems] == [(("level",), "invalid_type")]
+
+
+def test_error_a_member_holding_an_entity_holds_one() -> None:
+    # A shard's pipelines are entities, not the JSON that names them.
+    with pytest.raises(MetadataValidationError) as caught:
+        ShardingIndexedOptions(
+            chunk_shape=(2,),
+            codecs=("bytes",),  # pyright: ignore[reportArgumentType]
+            index_codecs=(Crc32cCodec(),),
+        )
+    assert [(p.loc, p.kind, p.message) for p in caught.value.problems] == [
+        (
+            ("codecs", 0),
+            "invalid_type",
+            "expected an entity of CodecEntity or an Opaque, got 'bytes'",
+        )
+    ]
+
+
+def test_error_a_member_holding_a_record_holds_one_that_is_well_typed() -> None:
+    # A record inside a record is checked in turn, and located inside.
+    with pytest.raises(MetadataValidationError) as caught:
+        StructOptions(fields=(("a", Int8DataType()),))  # pyright: ignore[reportArgumentType]
+    assert [(p.loc, p.kind) for p in caught.value.problems] == [(("fields", 0), "invalid_type")]
+    with pytest.raises(MetadataValidationError) as caught:
+        StructOptions(fields=(StructFieldComponent(name=1, data_type=Int8DataType()),))  # pyright: ignore[reportArgumentType]
+    assert [(p.loc, p.kind) for p in caught.value.problems] == [
+        (("fields", 0, "name"), "invalid_type")
+    ]
