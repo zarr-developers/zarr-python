@@ -116,6 +116,20 @@ VALID_CASES: dict[str, Mapping[str, object]] = {
         "chunk_grid": {"name": "hilbert", "configuration": {"level": 3}},
     },
     "unknown-codec-inconclusive": {**BASE, "codecs": ({"name": "zfpy"}, "bytes")},
+    "scale-offset-scalars-of-the-array-type": {
+        **BASE,
+        "codecs": ({"name": "scale_offset", "configuration": {"offset": 1, "scale": 2}}, "bytes"),
+    },
+    "scale-offset-scalars-of-the-type-cast-to": {
+        **BASE,
+        "data_type": "float32",
+        "fill_value": "NaN",
+        "codecs": (
+            {"name": "cast_value", "configuration": {"data_type": "uint8"}},
+            {"name": "scale_offset", "configuration": {"offset": 10}},
+            "bytes",
+        ),
+    },
 }
 
 
@@ -801,3 +815,42 @@ def test_error_a_pipeline_that_is_not_an_array_is_not_judged_as_empty() -> None:
     # codec missing from: the one problem is the shape of the field.
     problems = validate_array_metadata_v3(cast("Any", {**BASE, "codecs": "bytes"}))
     assert [(problem.loc, problem.kind) for problem in problems] == [(("codecs",), "invalid_type")]
+
+
+@pytest.mark.parametrize(
+    ("codecs", "loc"),
+    [
+        (
+            ({"name": "scale_offset", "configuration": {"scale": "0"}}, "bytes"),
+            ("codecs", 0, "configuration", "scale"),
+        ),
+        (
+            ({"name": "scale_offset", "configuration": {"offset": -1}}, "bytes"),
+            ("codecs", 0, "configuration", "offset"),
+        ),
+        (
+            (
+                {"name": "cast_value", "configuration": {"data_type": "uint8"}},
+                {"name": "scale_offset", "configuration": {"scale": 0.5}},
+                "bytes",
+            ),
+            ("codecs", 1, "configuration", "scale"),
+        ),
+    ],
+    ids=["string-for-uint8", "out-of-range-for-uint8", "float-for-the-type-cast-to"],
+)
+def test_error_scale_offset_scalar_is_no_fill_value_of_the_type_it_receives(
+    codecs: tuple[object, ...], loc: tuple[str | int, ...]
+) -> None:
+    # Each scalar is "encoded to JSON using the Zarr V3 fill value encoding
+    # for the input array's data type" -- the type that reaches the codec.
+    problems = validate_array_metadata_v3({**BASE, "codecs": codecs})
+    assert [(p.loc, p.kind) for p in problems] == [(loc, "invalid_value")]
+
+
+def test_error_scale_offset_data_type_has_no_arithmetic() -> None:
+    doc = {**BASE, "data_type": "bool", "fill_value": False, "codecs": ("scale_offset", "bytes")}
+    assert _sole_problem(doc) == (
+        ("codecs", 0),
+        "scale_offset is defined for integer and floating-point data types, not 'bool'",
+    )

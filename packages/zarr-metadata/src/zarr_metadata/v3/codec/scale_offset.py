@@ -15,8 +15,11 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ArrayArrayCodec,
     Configuration,
+    DataTypeEntity,
+    problem,
 )
 from zarr_metadata.v3._parts import ArrayParts
+from zarr_metadata.v3.data_type._families import FloatDataType, IntegerDataType
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -103,13 +106,44 @@ class ScaleOffsetCodec(ArrayArrayCodec):
 
     Both members are optional and any JSON scalar is well-typed here; what
     a given value means depends on the data type it is applied to, which
-    is a question for the rules layer.
+    `incoming_problems` asks of the type that reaches the codec.
     """
 
     configuration: ScaleOffsetOptions
 
     identifier: ClassVar[str] = SCALE_OFFSET_CODEC_NAME
     variable_size: ClassVar[bool] = False
+
+    def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
+        """What the array handed to this codec must be, and what its members must be for it.
+
+        The registry defines the codec for data types with arithmetic and
+        lists the integer and floating-point ones. `offset` and `scale`
+        are each "encoded to JSON using the Zarr V3 fill value encoding
+        for the input array's data type" -- the type that reaches this
+        codec, which after a `cast_value` is not the array's own -- so
+        each is a fill value of that type, and that type judges it: the
+        string `"0"` is no `float32` and no `int32`.
+        """
+        data_type = incoming.data_type if incoming is not None else None
+        if not isinstance(data_type, DataTypeEntity):
+            return ()
+        if not isinstance(data_type, (IntegerDataType, FloatDataType)):
+            return problem(
+                (),
+                "scale_offset is defined for integer and floating-point data types, not "
+                f"{type(data_type).identifier!r}",
+                "invalid_value",
+            )
+        return tuple(
+            found
+            for member, value in (
+                ("offset", self.configuration.offset),
+                ("scale", self.configuration.scale),
+            )
+            if value is not UNSET
+            for found in data_type.fill_value_problems(value, (member,))
+        )
 
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:
         """The same array, element for element.
