@@ -10,8 +10,8 @@ well typed and still not a valid document.
 
 Every `ValidationProblem` carries a machine-readable `kind` alongside its
 human-readable `message`, so consumers can dispatch on the failure mode
-(`missing_key`, `invalid_type`, `invalid_value`, `invalid_json`) without
-string-matching messages.
+(`missing_key`, `invalid_type`, `invalid_value`, `invalid_json`,
+`unknown_key`) without string-matching messages.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
-ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_json"]
+ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_json", "unknown_key"]
 """Machine-readable classification of a `ValidationProblem`.
 
 - `missing_key`: a required key (document key or store key) is absent.
@@ -38,6 +38,13 @@ ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_j
 - `invalid_value`: a value has an acceptable type but an invalid content
   (e.g. `zarr_format: 2` in a v3 document, `order: "Q"`).
 - `invalid_json`: bytes that do not decode as JSON.
+- `unknown_key`: a key an object's type does not declare, where the type
+  says it is closed, as a closed TypedDict does. Whether a Zarr
+  configuration is closed is rarely said (zarr-developers/zarr-specs#270
+  has been open since 2023), and many readers refuse such a key. It gets
+  a kind of its own so that a caller who tolerates it can tell it from a
+  wrong value, and so that it never masks the other findings about the
+  same object.
 """
 
 
