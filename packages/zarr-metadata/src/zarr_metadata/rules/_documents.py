@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Generic, Literal, TypeVar, cast
 from zarr_metadata.model._array import ZarrV3ArrayMetadata
 from zarr_metadata.model._validation import (
     MetadataValidationError,
-    refine_json,
+    refine_node_json,
 )
 from zarr_metadata.model._validation import (
     validate_array_metadata_v2 as _validate_structure_v2,
@@ -106,7 +106,7 @@ def _judged(
     then the shape, then whatever the semantics need of an object. A
     value that is not JSON is None with only that verdict.
     """
-    refined, problems = refine_json(value)
+    refined, problems = refine_node_json(value)
     if refined is None:
         return None, problems
     problems = structure(refined)

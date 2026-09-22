@@ -1432,12 +1432,12 @@ def test_array_v3_from_json_materializes_abstract_containers() -> None:
 
 
 def test_from_key_value_rejects_non_standard_json_constant() -> None:
-    """Store JSON decoding rejects JavaScript NaN/Infinity constants."""
+    """A JavaScript NaN constant outside the attributes is located, not decoded as a fill value."""
     doc = dict(ZarrV3ArrayMetadata.create_default().to_json())
     doc["fill_value"] = float("nan")
     raw = json.dumps(doc)
 
-    with pytest.raises(MetadataValidationError, match="invalid JSON"):
+    with pytest.raises(MetadataValidationError, match="fill_value: non-finite float nan"):
         ZarrV3ArrayMetadata.from_key_value({"zarr.json": raw.encode()})
 
 
@@ -1445,7 +1445,7 @@ def test_to_key_value_rejects_non_finite_model_value() -> None:
     """Strict encoding prevents directly-constructed models from writing invalid JSON."""
     model = ZarrV3ArrayMetadata.create_default(fill_value=float("nan"))
 
-    with pytest.raises(ValueError, match="JSON compliant"):
+    with pytest.raises(MetadataValidationError, match="fill_value: non-finite float nan"):
         model.to_key_value()
 
 

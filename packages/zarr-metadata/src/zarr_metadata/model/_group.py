@@ -24,8 +24,8 @@ from zarr_metadata.model._validation import (
     load_store_json,
     parse_group_metadata_v2,
     parse_group_metadata_v3,
+    stored_json_problems,
     validate_consolidated_metadata_v3,
-    validate_json,
 )
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
 from zarr_metadata.v2.consolidated import ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY
@@ -178,7 +178,11 @@ class ZarrV3GroupMetadata:
         return cls.from_json(load_store_json(mapping, ZARR_V3_GROUP_METADATA_STORE_KEY))
 
     def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
-        return {ZARR_V3_GROUP_METADATA_STORE_KEY: dump_store_json(self.to_json(), indent=indent)}
+        return {
+            ZARR_V3_GROUP_METADATA_STORE_KEY: dump_store_json(
+                ZARR_V3_GROUP_METADATA_STORE_KEY, self.to_json(), indent=indent
+            )
+        }
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -336,10 +340,14 @@ class ZarrV2GroupMetadata:
         # when attributes are set (even empty) — UNSET emits no file.
         zgroup = {k: v for k, v in self.to_json().items() if k != "attributes"}
         out: dict[str, bytes] = {
-            ZARR_V2_GROUP_METADATA_STORE_KEY: dump_store_json(zgroup, indent=indent)
+            ZARR_V2_GROUP_METADATA_STORE_KEY: dump_store_json(
+                ZARR_V2_GROUP_METADATA_STORE_KEY, zgroup, indent=indent
+            )
         }
         if self.attributes is not UNSET:
-            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = dump_store_json(self.attributes, indent=indent)
+            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = dump_store_json(
+                ZARR_V2_ATTRIBUTES_STORE_KEY, self.attributes, indent=indent
+            )
         return out
 
 
@@ -404,12 +412,14 @@ class ZarrV2ConsolidatedMetadata:
                     )
                 )
             else:
+                # Each entry is the document its key names, so a `.zattrs`
+                # entry is user data (`stored_json_problems`).
                 for key, value in cast("Mapping[str, object]", entries).items():
                     problems.extend(
                         ValidationProblem(
                             ("metadata", key, *problem.loc), problem.message, problem.kind
                         )
-                        for problem in validate_json(value)
+                        for problem in stored_json_problems(key, value)
                     )
         if len(problems) != 0:
             raise MetadataValidationError(problems)
@@ -425,5 +435,7 @@ class ZarrV2ConsolidatedMetadata:
 
     def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
         return {
-            ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY: dump_store_json(self.to_json(), indent=indent)
+            ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY: dump_store_json(
+                ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY, self.to_json(), indent=indent
+            )
         }

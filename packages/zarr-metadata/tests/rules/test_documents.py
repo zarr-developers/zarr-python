@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import pytest
@@ -69,6 +70,18 @@ CASES: dict[str, tuple[Validator, Parser, Mapping[str, object]]] = {
         validate_array_metadata_v2,
         parse_array_metadata_v2,
         V2_ARRAY,
+    ),
+    # Attributes are user data: zarr-python writes a non-finite number
+    # there as Python's `json` does, and every layer reads it.
+    "v3-array-attributes-hold-non-finite-numbers": (
+        validate_array_metadata_v3,
+        parse_array_metadata_v3,
+        {**V3_ARRAY, "attributes": {"_FillValue": math.nan, "range": [-math.inf, math.inf]}},
+    ),
+    "v2-array-attributes-hold-non-finite-numbers": (
+        validate_array_metadata_v2,
+        parse_array_metadata_v2,
+        {**V2_ARRAY, "attributes": {"_FillValue": math.nan}},
     ),
 }
 

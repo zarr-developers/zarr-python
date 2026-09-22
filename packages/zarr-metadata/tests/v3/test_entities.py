@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import math
 import sys
 from typing import (
     Any,
@@ -1207,3 +1208,24 @@ def test_error_an_opaque_holds_json() -> None:
         Opaque({"name": object()}, "invalid")  # pyright: ignore[reportArgumentType]
     assert [(p.loc, p.kind) for p in caught.value.problems] == [(("json",), "invalid_type")]
     assert Opaque.create_unchecked({"name": "x"}, "out_of_scope").reason == "out_of_scope"
+
+
+def test_the_document_reads_and_writes_attributes_as_user_data() -> None:
+    # zarr-python writes attributes with Python's `json` defaults, so an
+    # xarray `_FillValue` of NaN arrives as a bare `NaN`. Attributes are
+    # nobody's to interpret: every layer reads one, and the faithful
+    # writer puts it back.
+    document = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (4,),
+        "data_type": "float32",
+        "fill_value": "NaN",
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (2,)}},
+        "chunk_key_encoding": "default",
+        "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
+        "attributes": {"_FillValue": math.nan},
+    }
+    written = ArrayDocumentV3.from_json(document).to_json()["attributes"]
+    fill = cast("dict[str, float]", written)["_FillValue"]
+    assert math.isnan(fill)

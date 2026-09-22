@@ -15,9 +15,9 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Final, Literal, NoReturn, cast
+from typing import Final, Literal, cast
 
 from typing_extensions import TypeIs
 
@@ -111,8 +111,16 @@ def _prefix(
 
 def validate_json(value: object) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not JSON-serializable (recursively)."""
+    return _json_problems(value, finite=True)
+
+
+def _json_problems(value: object, *, finite: bool) -> tuple[ValidationProblem, ...]:
+    """Every reason `value` is not JSON, a non-finite number being one only when `finite`.
+
+    `finite` is false for user data alone; see `refine_node_json`.
+    """
     if isinstance(value, float):
-        if math.isfinite(value):
+        if not finite or math.isfinite(value):
             return ()
         return (ValidationProblem((), f"non-finite float {value!r} is not JSON", "invalid_value"),)
     if isinstance(value, (str, int, bool)) or value is None:
@@ -125,11 +133,11 @@ def validate_json(value: object) -> tuple[ValidationProblem, ...]:
                     ValidationProblem((), f"non-string key {key!r} in JSON object", "invalid_type")
                 )
                 continue
-            problems.extend(_prefix(key, validate_json(item)))
+            problems.extend(_prefix(key, _json_problems(item, finite=finite)))
         return tuple(problems)
     if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
         for index, item in enumerate(cast("Sequence[object]", value)):
-            problems.extend(_prefix(index, validate_json(item)))
+            problems.extend(_prefix(index, _json_problems(item, finite=finite)))
         return tuple(problems)
     return (ValidationProblem((), f"not a JSON-serializable value: {value!r}", "invalid_type"),)
 
@@ -146,8 +154,38 @@ def refine_json(
     JSON is None, with the problems located at the leaves that are not:
     not JSON is the first verdict, and there is nothing to read.
     """
+    return _refine(value, loc, finite=True)
+
+
+def refine_node_json(
+    value: object, loc: tuple[str | int, ...] = ()
+) -> tuple[JSONValue | None, tuple[ValidationProblem, ...]]:
+    """A node document refined as `refine_json` refines it, except for the user data it holds.
+
+    A node's `attributes` are user data. The spec asks only that each be
+    a JSON value, no layer interprets one, and zarr-python writes them
+    with the defaults of Python's `json` module, so an attribute can hold
+    `NaN`, `Infinity` or `-Infinity` -- xarray's `_FillValue`, a CF
+    `missing_value` -- which RFC 8259 lacks. Such a number is read here
+    as the float it is. Wherever the spec interprets a value, it spells
+    those numbers as strings, so anywhere else a non-finite number is not
+    JSON, as in `refine_json`. The documents a v3 group's inline
+    `consolidated_metadata` holds are node documents too; a v2 document
+    is judged merged, its `.zattrs` as `attributes`. A value that is not
+    an object is refined as `refine_json` refines it.
+    """
+    if not isinstance(value, Mapping):
+        return refine_json(value, loc)
+    return _refine_members(cast("Mapping[object, object]", value), loc, _node_member)
+
+
+_Refined = tuple[JSONValue | None, tuple[ValidationProblem, ...]]
+
+
+def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refined:
+    """`refine_json`, a non-finite number being JSON unless `finite`."""
     if isinstance(value, float):
-        if math.isfinite(value):
+        if not finite or math.isfinite(value):
             return value, ()
         return None, (
             ValidationProblem(loc, f"non-finite float {value!r} is not JSON", "invalid_value"),
@@ -155,24 +193,16 @@ def refine_json(
     if isinstance(value, (str, int, bool)) or value is None:
         return value, ()
     if isinstance(value, Mapping):
-        members: dict[str, JSONValue] = {}
-        problems: list[ValidationProblem] = []
-        for key, item in cast("Mapping[object, object]", value).items():
-            if not isinstance(key, str):
-                problems.append(
-                    ValidationProblem(loc, f"non-string key {key!r} in JSON object", "invalid_type")
-                )
-                continue
-            member, found = refine_json(item, (*loc, key))
-            problems.extend(found)
-            if len(found) == 0:
-                members[key] = member
-        return (members if len(problems) == 0 else None), tuple(problems)
+        return _refine_members(
+            cast("Mapping[object, object]", value),
+            loc,
+            lambda _key, item, at: _refine(item, at, finite=finite),
+        )
     if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
         entries: list[JSONValue] = []
         found_in_entries: list[ValidationProblem] = []
         for index, item in enumerate(cast("Sequence[object]", value)):
-            entry, found = refine_json(item, (*loc, index))
+            entry, found = _refine(item, (*loc, index), finite=finite)
             found_in_entries.extend(found)
             if len(found) == 0:
                 entries.append(entry)
@@ -182,21 +212,72 @@ def refine_json(
     )
 
 
-def _is_canonical_json(value: object) -> TypeIs[JSONValue]:
-    """Whether `value` already uses the concrete containers in `JSONValue`."""
+def _refine_members(
+    value: Mapping[object, object],
+    loc: tuple[str | int, ...],
+    member: Callable[[str, object, tuple[str | int, ...]], _Refined],
+) -> _Refined:
+    """An object refined member by member, in the order it was written, with `member`."""
+    members: dict[str, JSONValue] = {}
+    problems: list[ValidationProblem] = []
+    for key, item in value.items():
+        if not isinstance(key, str):
+            problems.append(
+                ValidationProblem(loc, f"non-string key {key!r} in JSON object", "invalid_type")
+            )
+            continue
+        refined, found = member(key, item, (*loc, key))
+        problems.extend(found)
+        if len(found) == 0:
+            members[key] = refined
+    return (members if len(problems) == 0 else None), tuple(problems)
+
+
+def _node_member(key: str, item: object, loc: tuple[str | int, ...]) -> _Refined:
+    """One member of a node document: its attributes are user data."""
+    if key == "attributes":
+        return _refine(item, loc, finite=False)
+    if key == "consolidated_metadata" and isinstance(item, Mapping):
+        return _refine_members(cast("Mapping[object, object]", item), loc, _consolidated_member)
+    return _refine(item, loc, finite=True)
+
+
+def _consolidated_member(key: str, item: object, loc: tuple[str | int, ...]) -> _Refined:
+    """One member of an inline consolidated envelope: its `metadata` maps paths to nodes."""
+    if key == "metadata" and isinstance(item, Mapping):
+        return _refine_members(
+            cast("Mapping[object, object]", item),
+            loc,
+            lambda _path, node, at: refine_node_json(node, at),
+        )
+    return _refine(item, loc, finite=True)
+
+
+def _is_canonical_json(value: object, *, finite: bool = True) -> TypeIs[JSONValue]:
+    """Whether `value` already uses the concrete containers in `JSONValue`.
+
+    A non-finite number counts only when `finite` is false; see
+    `_is_canonical_node_json`.
+    """
     if isinstance(value, float):
-        return math.isfinite(value)
+        return not finite or math.isfinite(value)
     if isinstance(value, (str, int, bool)) or value is None:
         return True
     if isinstance(value, (list, tuple)):
         sequence = cast("list[object] | tuple[object, ...]", value)
-        return all(_is_canonical_json(item) for item in sequence)
+        return all(_is_canonical_json(item, finite=finite) for item in sequence)
     if isinstance(value, dict):
         mapping = cast("dict[object, object]", value)
         return all(
-            isinstance(key, str) and _is_canonical_json(item) for key, item in mapping.items()
+            isinstance(key, str) and _is_canonical_json(item, finite=finite)
+            for key, item in mapping.items()
         )
     return False
+
+
+def _is_canonical_node_json(value: object) -> bool:
+    """Whether a node document already uses `JSONValue`'s containers, and is JSON as `refine_node_json` reads one."""
+    return _is_canonical_json(value, finite=False) and len(refine_node_json(value)[1]) == 0
 
 
 def is_json(value: object) -> TypeIs[JSONValue]:
@@ -559,9 +640,11 @@ def _validate_attributes(value: object) -> tuple[ValidationProblem, ...]:
                 ("attributes",), "expected a mapping with string keys", "invalid_type"
             ),
         )
+    # User data: a non-finite number is an attribute value (see
+    # `refine_node_json`).
     problems: list[ValidationProblem] = []
     for key, item in cast("Mapping[str, object]", value).items():
-        problems.extend(_prefix("attributes", _prefix(key, validate_json(item))))
+        problems.extend(_prefix("attributes", _prefix(key, _json_problems(item, finite=False))))
     return tuple(problems)
 
 
@@ -651,7 +734,7 @@ def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
 def is_array_metadata_v3(value: object) -> TypeIs[ZarrV3ArrayMetadataJSON]:
     """Whether `value` is a structurally-valid v3 array metadata document."""
     return (
-        _is_canonical_json(value)
+        _is_canonical_node_json(value)
         and not validate_array_metadata_v3(value)
         and _is_canonical_array_metadata_v3(value)
     )
@@ -743,7 +826,7 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
 def is_array_metadata_v2(value: object) -> TypeIs[ZarrV2ArrayMetadataJSON]:
     """Whether `value` is a structurally-valid v2 array metadata document."""
     return (
-        _is_canonical_json(value)
+        _is_canonical_node_json(value)
         and not validate_array_metadata_v2(value)
         and _is_canonical_array_metadata_v2(value)
     )
@@ -855,7 +938,7 @@ def validate_group_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
 
 def is_group_metadata_v3(value: object) -> TypeIs[ZarrV3GroupMetadataJSON]:
     """Whether `value` is a structurally-valid v3 group metadata document."""
-    return _is_canonical_json(value) and not validate_group_metadata_v3(value)
+    return _is_canonical_node_json(value) and not validate_group_metadata_v3(value)
 
 
 def parse_group_metadata_v3(value: object) -> ZarrV3GroupMetadataJSON:
@@ -888,7 +971,7 @@ def validate_group_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
 
 def is_group_metadata_v2(value: object) -> TypeIs[ZarrV2GroupMetadataJSON]:
     """Whether `value` is a structurally-valid v2 group metadata document."""
-    return _is_canonical_json(value) and not validate_group_metadata_v2(value)
+    return _is_canonical_node_json(value) and not validate_group_metadata_v2(value)
 
 
 def parse_group_metadata_v2(value: object) -> ZarrV2GroupMetadataJSON:
@@ -900,9 +983,47 @@ def parse_group_metadata_v2(value: object) -> ZarrV2GroupMetadataJSON:
     return cast(ZarrV2GroupMetadataJSON, normalized)
 
 
-def _reject_json_constant(constant: str) -> NoReturn:
-    """Reject the JavaScript constants accepted by Python's JSON decoder."""
-    raise ValueError(f"non-standard JSON constant {constant!r}")
+def stored_json_problems(key: str, value: object) -> tuple[ValidationProblem, ...]:
+    """Every reason `value` is not JSON that may be stored at `key`.
+
+    RFC 8259, except in user data, where a non-finite number is the value
+    it is (see `refine_node_json`). Which parts are user data follows
+    from what the key stores: a `zarr.json` is a node document, a
+    `.zattrs` is user data throughout, a `.zmetadata` holds documents
+    keyed the same way, and a `.zarray` or `.zgroup` holds none.
+    """
+    name = key.rsplit("/", 1)[-1]
+    if name == "zarr.json":
+        return refine_node_json(value)[1]
+    if name == ".zattrs":
+        return _json_problems(value, finite=False)
+    if name == ".zmetadata" and isinstance(value, Mapping):
+        return _consolidated_v2_problems(cast("Mapping[object, object]", value))
+    return validate_json(value)
+
+
+def _consolidated_v2_problems(
+    consolidated: Mapping[object, object],
+) -> tuple[ValidationProblem, ...]:
+    """A `.zmetadata` document: each entry judged as the document its key names."""
+    entries = consolidated.get("metadata")
+    if not isinstance(entries, Mapping):
+        return validate_json(consolidated)
+    problems = list(
+        validate_json({key: item for key, item in consolidated.items() if key != "metadata"})
+    )
+    for entry_key, entry in cast("Mapping[object, object]", entries).items():
+        if not isinstance(entry_key, str):
+            problems.append(
+                ValidationProblem(
+                    ("metadata",), f"non-string key {entry_key!r} in JSON object", "invalid_type"
+                )
+            )
+            continue
+        problems.extend(
+            _prefix("metadata", _prefix(entry_key, stored_json_problems(entry_key, entry)))
+        )
+    return tuple(problems)
 
 
 def load_store_json(mapping: Mapping[str, bytes], key: str) -> object:
@@ -913,8 +1034,10 @@ def load_store_json(mapping: Mapping[str, bytes], key: str) -> object:
     into typed positions silently. Narrow the result with a `parse_*`.
 
     Every ingestion failure surfaces as `MetadataValidationError`: a missing
-    store key is a `missing_key` problem and undecodable bytes are an
-    `invalid_json` problem, rather than leaking `KeyError` /
+    store key is a `missing_key` problem, undecodable bytes are an
+    `invalid_json` problem, and a non-finite number outside user data --
+    which Python's decoder reads as a float -- is located where it was
+    written (`stored_json_problems`), rather than leaking `KeyError` /
     `json.JSONDecodeError` to callers.
     """
     if key not in mapping:
@@ -922,16 +1045,30 @@ def load_store_json(mapping: Mapping[str, bytes], key: str) -> object:
             [ValidationProblem((key,), "missing store key", "missing_key")]
         )
     try:
-        return json.loads(mapping[key], parse_constant=_reject_json_constant)
+        value: object = json.loads(mapping[key])
     except (UnicodeDecodeError, ValueError) as exc:
         raise MetadataValidationError(
             [ValidationProblem((key,), f"invalid JSON: {exc}", "invalid_json")]
         ) from exc
+    problems = stored_json_problems(key, value)
+    if len(problems) != 0:
+        raise MetadataValidationError(problems)
+    return value
 
 
-def dump_store_json(value: object, *, indent: int | str | None = None) -> bytes:
-    """Encode a metadata document as strict RFC 8259 JSON bytes."""
-    return json.dumps(value, indent=indent, allow_nan=False).encode("utf-8")
+def dump_store_json(key: str, value: object, *, indent: int | str | None = None) -> bytes:
+    """Encode the document stored at `key` as JSON bytes.
+
+    RFC 8259, except that a non-finite number in user data is written as
+    Python's `json` writes it (`NaN`, `Infinity`, `-Infinity`), which is
+    how zarr-python writes attributes. Anywhere else one is refused, as
+    `load_store_json` refuses it: a model built by hand is not validated,
+    so this is where a non-finite fill value would otherwise be written.
+    """
+    problems = stored_json_problems(key, value)
+    if len(problems) != 0:
+        raise MetadataValidationError(problems)
+    return json.dumps(value, indent=indent, allow_nan=True).encode("utf-8")
 
 
 def arrays_to_tuples(obj: object) -> object:

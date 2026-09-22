@@ -1,9 +1,9 @@
 """A whole v3 array document, read in three layers, each with what it needs.
 
 1. `well_formed_array_v3`: the value alone. JSON syntax and the
-   document's shape -- arrays as tuples, string keys, finite floats, the
-   keys a v3 array has and the shapes their values take, the envelope of
-   each extension point.
+   document's shape -- arrays as tuples, string keys, floats finite
+   outside the user's attributes, the keys a v3 array has and the shapes
+   their values take, the envelope of each extension point.
 2. `read_array_v3`: a scope. Each extension point's name related to a
    class in the `Context`, and the class handed the field: the
    configuration parsed against its record, the rules asked, nested
@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, TypeVar, cast
 from zarr_metadata.model._validation import (
     MetadataValidationError,
     ValidationProblem,
-    refine_json,
+    refine_node_json,
 )
 from zarr_metadata.model._validation import (
     validate_array_metadata_v3 as validate_array_metadata_v3_structure,
@@ -212,7 +212,8 @@ def well_formed_array_v3(
     """The first layer: `value` as a refined v3 array document, with every structural problem.
 
     Needs nothing but the value. The JSON is refined -- arrays as
-    tuples, string keys, finite floats -- and the document's shape is
+    tuples, string keys, floats finite except in the attributes, which
+    are user data (`refine_node_json`) -- and the document's shape is
     judged by the model layer: the keys a v3 array has, the shapes their
     values take, the envelope of each extension point. What comes back
     is refined JSON that the next layer reads without normalizing or
@@ -221,7 +222,7 @@ def well_formed_array_v3(
     not JSON, or not an object, is None with the reasons: not JSON is
     the first verdict, and there is nothing to read.
     """
-    refined, problems = refine_json(value)
+    refined, problems = refine_node_json(value)
     if refined is None:
         return None, problems
     if not isinstance(refined, Mapping):

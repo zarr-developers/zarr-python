@@ -323,7 +323,11 @@ class ZarrV3ArrayMetadata:
         return cls.from_json(load_store_json(mapping, ZARR_V3_ARRAY_METADATA_STORE_KEY))
 
     def to_key_value(self, *, indent: int | str | None = None) -> Mapping[str, bytes]:
-        return {ZARR_V3_ARRAY_METADATA_STORE_KEY: dump_store_json(self.to_json(), indent=indent)}
+        return {
+            ZARR_V3_ARRAY_METADATA_STORE_KEY: dump_store_json(
+                ZARR_V3_ARRAY_METADATA_STORE_KEY, self.to_json(), indent=indent
+            )
+        }
 
 
 class ZarrV2ArrayMetadataPartial(TypedDict, total=False):
@@ -489,8 +493,12 @@ class ZarrV2ArrayMetadata:
         # when attributes are set (even empty) — UNSET emits no file.
         zarray = {k: v for k, v in self.to_json().items() if k != "attributes"}
         out: dict[str, bytes] = {
-            ZARR_V2_ARRAY_METADATA_STORE_KEY: dump_store_json(zarray, indent=indent)
+            ZARR_V2_ARRAY_METADATA_STORE_KEY: dump_store_json(
+                ZARR_V2_ARRAY_METADATA_STORE_KEY, zarray, indent=indent
+            )
         }
         if self.attributes is not UNSET:
-            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = dump_store_json(self.attributes, indent=indent)
+            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = dump_store_json(
+                ZARR_V2_ATTRIBUTES_STORE_KEY, self.attributes, indent=indent
+            )
         return out
