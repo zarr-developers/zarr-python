@@ -501,10 +501,9 @@ def _plan(cls: type[MetadataEntity]) -> _Plan:
 
     Each parser is a function of its annotation alone, taking the reading
     it runs in as an argument. `TypeError` for a shape no parser reads,
-    which registration refuses first. The record is built through its
-    constructor, which checks the members' types once more: the same
-    work twice, measured at a twelfth of a document read, and the price
-    of there being no unchecked way to build one.
+    which registration refuses first. The record is built through
+    `create_unchecked`: its members were type-checked by the parsers the
+    constructor would use, and a read does each check once.
     """
     hints = field_hints(cls)
     from_name = next((key for key, annotation in hints.items() if is_from_name(annotation)), None)
@@ -517,7 +516,7 @@ def _plan(cls: type[MetadataEntity]) -> _Plan:
     if members is None:  # pragma: no cover - registration refused the member first
         msg = f"{cls.__name__}: a configuration member is not a shape JSON takes"
         raise TypeError(msg)
-    parse = record_of(record, members)
+    parse = record_of(record.create_unchecked, members)
     writes: RecordWriter = record_writer(record, _nested_field_writer)
 
     def read(
@@ -563,6 +562,22 @@ class Configuration:
         if len(found) != 0:
             raise MetadataValidationError(found)
 
+    @classmethod
+    def create_unchecked(cls, **members: object) -> Self:
+        """This record with these members, built without the constructor's check.
+
+        The one way around the check, for a caller that has just made
+        it: the parser, which type-checked every member against the same
+        annotations before building the record. Every field is given --
+        the parser gives an absent optional member as `UNSET` -- since
+        nothing here applies a default. Anything that has not checked
+        the members goes through the constructor.
+        """
+        record = object.__new__(cls)
+        for name, value in members.items():
+            object.__setattr__(record, name, value)
+        return record
+
     def problems(self) -> Iterator[ValidationProblem]:
         """Every reason these values are not allowed, yielded as found. Default: none."""
         yield from ()
@@ -573,10 +588,11 @@ class MetadataEntity(ABC):
     """One named entity, coerced from its metadata.
 
     An entity is well-typed and allowed however it was built. `coerce`
-    builds one only from metadata it accepted; by hand, the record's
-    constructor refuses a member of the wrong type, the entity's refuses
-    a record that is not its own and then a value the rules disallow,
-    and `replace` and `with_configuration` go through both. An optional member is typed
+    builds one only from metadata it accepted, through `create_unchecked`
+    once it has; by hand, the record's constructor refuses a member of
+    the wrong type, the entity's refuses a record that is not its own
+    and then a value the rules disallow, and `replace` and
+    `with_configuration` go through both. An optional member is typed
     `| UNSET` with a default of `UNSET`, so absence is representable --
     and distinct from a `null` the document wrote -- and a canonical
     spelling can leave it out.
@@ -662,6 +678,21 @@ class MetadataEntity(ABC):
         """
         return name == cls.identifier
 
+    @classmethod
+    def create_unchecked(cls, **fields: object) -> Self:
+        """This entity with these fields, built without the constructor's checks.
+
+        The one way around them, for a caller that has just made them:
+        `coerce`, which type-checked the record and ran the rules before
+        building. Every field is given -- the record, and the carried
+        name for a family -- since nothing here applies a default.
+        Anything that has not checked goes through the constructor.
+        """
+        entity = object.__new__(cls)
+        for name, value in fields.items():
+            object.__setattr__(entity, name, value)
+        return entity
+
     def with_configuration(self, **changes: object) -> Self:
         """This entity with these configuration members changed.
 
@@ -728,7 +759,7 @@ class MetadataEntity(ABC):
             # entity that would be asked composition questions it cannot
             # answer.
             return None, found
-        return cls(configuration=record, **carried), found
+        return cls.create_unchecked(configuration=record, **carried), found
 
     def canonical(self) -> Self:
         """This entity in the simplest form that means the same thing.

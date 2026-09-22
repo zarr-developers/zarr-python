@@ -126,7 +126,10 @@ the first problem it yields, so `AcmeLz4Codec(AcmeLz4Options(acceleration=0))`
 raises `MetadataValidationError`, and the record's constructor refuses
 a member of the wrong type, so `AcmeLz4Options(acceleration="fast")`
 raises too, whether written by hand, through `replace` or through
-`with_configuration`; `coerce` runs it to the end and
+`with_configuration`. `create_unchecked(**fields)`, on a record and on
+an entity, is the one way around the constructors, for a reader that
+has just made their checks: `coerce` is that reader, and a document
+read makes each check once. `coerce` runs it to the end and
 reports every problem in the document; a reader with a record asks
 `options.problems()` directly and stops or collects. It runs only on a
 configuration whose members all read: a member of the wrong type is

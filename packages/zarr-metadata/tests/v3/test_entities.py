@@ -1078,3 +1078,17 @@ def test_error_a_document_holds_an_entity_of_each_field_s_kind() -> None:
         (("data_type",), "invalid_type"),
         (("codecs", 0), "invalid_type"),
     ]
+
+
+def test_create_unchecked_is_the_one_way_around_the_constructors() -> None:
+    # For a caller that has just made the checks itself, as `coerce`
+    # has: the record's members are not type-checked, the entity's
+    # record and rules are not asked.
+    record = GzipOptions.create_unchecked(level="high")
+    assert record.level == "high"
+    codec = GzipCodec.create_unchecked(configuration=GzipOptions(level=99))
+    assert codec.configuration.level == 99
+    assert codec == GzipCodec.create_unchecked(configuration=GzipOptions(level=99))
+    read, problems = GzipCodec.coerce({"name": "gzip", "configuration": {"level": 1}}, CORE)
+    assert problems == ()
+    assert read == GzipCodec(GzipOptions(level=1))
