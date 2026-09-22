@@ -14,13 +14,12 @@ to keep in step with it.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, cast
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     Configuration,
-    Configured,
     DataTypeEntity,
     StorageClass,
     is_integer,
@@ -69,6 +68,8 @@ def byte_values(value: object, expected: int | None, loc: Loc) -> tuple[Validati
 class IntegerDataType(DataTypeEntity):
     """A fixed-width integer. The width is the whole difference."""
 
+    configuration: Configuration = field(default_factory=Configuration)
+
     bounds: ClassVar[tuple[int, int]]
 
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
@@ -85,6 +86,8 @@ class IntegerDataType(DataTypeEntity):
 @dataclass(frozen=True)
 class FloatDataType(DataTypeEntity):
     """A binary float. A fill value may be a number, a named non-finite, or hex."""
+
+    configuration: Configuration = field(default_factory=Configuration)
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     hex_parser: ClassVar[Callable[[str], object]]
@@ -125,6 +128,8 @@ class FloatDataType(DataTypeEntity):
 @dataclass(frozen=True)
 class ComplexDataType(DataTypeEntity):
     """A complex number: a `[real, imag]` pair of the component float type."""
+
+    configuration: Configuration = field(default_factory=Configuration)
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
     component: ClassVar[type[FloatDataType]]
@@ -187,7 +192,7 @@ class NumpyTimeOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class NumpyTimeDataType(DataTypeEntity, Configured):
+class NumpyTimeDataType(DataTypeEntity):
     """A numpy time scalar: a signed 64-bit count of units, or `NaT`.
 
     The two time types share their configuration -- a unit and a scale

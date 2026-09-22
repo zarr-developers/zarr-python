@@ -15,7 +15,6 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ArrayArrayCodec,
     Configuration,
-    Configured,
 )
 from zarr_metadata.v3._parts import ArrayParts
 
@@ -99,7 +98,7 @@ class ScaleOffsetOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class ScaleOffsetCodec(ArrayArrayCodec, Configured):
+class ScaleOffsetCodec(ArrayArrayCodec):
     """The `scale_offset` codec, coerced from its metadata.
 
     Both members are optional and any JSON scalar is well-typed here; what

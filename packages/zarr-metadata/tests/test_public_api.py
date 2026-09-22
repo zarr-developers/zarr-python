@@ -300,7 +300,6 @@ _STANDALONE_VOCAB = frozenset(
         "Context",
         "Coerced",
         "Configuration",
-        "Configured",
         "ChunkGrid",
         "ArrayParts",
         "ArrayDocumentV3",

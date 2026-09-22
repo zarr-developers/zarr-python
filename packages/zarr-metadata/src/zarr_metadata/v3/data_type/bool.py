@@ -4,11 +4,12 @@ Zarr v3 `bool` data type.
 See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import ClassVar, Final, Literal
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
+    Configuration,
     DataTypeEntity,
     Loc,
     StorageClass,
@@ -36,6 +37,8 @@ __all__ = [
 @dataclass(frozen=True)
 class BoolDataType(DataTypeEntity):
     """The `bool` data type. The name says everything."""
+
+    configuration: Configuration = field(default_factory=Configuration)
 
     scalar_storage: ClassVar[StorageClass] = "single_byte"
     identifier: ClassVar[str] = BOOL_DATA_TYPE_NAME

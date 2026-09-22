@@ -15,7 +15,6 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
     Configuration,
-    Configured,
     DataTypeEntity,
     Loc,
     Opaque,
@@ -143,7 +142,7 @@ class StructOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class StructDataType(DataTypeEntity, Configured):
+class StructDataType(DataTypeEntity):
     """The `struct` data type, coerced from its metadata.
 
     A record of named fields, each with a data type of its own -- so this

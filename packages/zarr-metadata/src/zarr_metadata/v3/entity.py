@@ -41,11 +41,12 @@ with `loc` relative to the configuration: `("level",)`.
 **Writing an extension.** Subclass the kind of thing it is -- a codec's
 kind (`ArrayArrayCodec`, `ArrayBytesCodec`, `BytesBytesCodec`),
 `DataTypeEntity`, `ChunkGridEntity`, `ChunkKeyEncodingEntity` or
-`StorageTransformerEntity`, with `Configured` beside it if the metadata
-carries a configuration; declare that configuration as a frozen
+`StorageTransformerEntity`; declare its configuration as a frozen
 `Configuration` of its members, with every rule finer than a type in
 its `problems`, and name it in the entity's one field, `configuration`;
-add the class to a scope. Complete, and runnable as written:
+add the class to a scope. An entity of a bare name defaults the field
+to the empty record: `configuration: Configuration =
+field(default_factory=Configuration)`. Complete, and runnable as written:
 
     from collections.abc import Iterator
     from dataclasses import dataclass
@@ -57,8 +58,7 @@ add the class to a scope. Complete, and runnable as written:
         UNSET,
         BytesBytesCodec,
         Configuration,
-        Configured,
-        ValidationProblem,
+            ValidationProblem,
     )
 
     @dataclass(frozen=True)  # the fields are the schema; frozen, so a configuration is a value
@@ -74,7 +74,7 @@ add the class to a scope. Complete, and runnable as written:
                 )
 
     @dataclass(frozen=True)
-    class AcmeLz4Codec(BytesBytesCodec, Configured):
+    class AcmeLz4Codec(BytesBytesCodec):
         configuration: AcmeLz4Options   # the shape of the metadata: a name, and a configuration
 
         identifier: ClassVar[str] = "acme.lz4"
@@ -90,9 +90,10 @@ add the class to a scope. Complete, and runnable as written:
     assert validate_array_metadata_v3(document, context=SCOPE) == ()
 
 An entity has the shape of its metadata: a name, which is the class,
-and, for a `Configured` one, a configuration, which is a record
-dataclass named in the one field `configuration`; an entity of a bare
-name is not `Configured` and has no field. The record's fields are the
+and a configuration, which is a record dataclass named in the one field
+`configuration`; an entity of a bare name defaults it to the empty
+`Configuration`, since the spec makes an absent configuration and an
+empty one the same. The record's fields are the
 one place the entity's members are declared; the public `*Configuration`
 TypedDict beside it declares the JSON, and a test holds the two to the
 same keys. Which members exist, which may be left out (the type admits
@@ -180,8 +181,8 @@ kind:
 Registration is the one moment an entity is refused, with a message
 that says what to write: a class without `@dataclass`, a codec
 subclassing `CodecEntity` instead of a kind, a field other than
-`configuration` and a carried name, a `configuration` without
-`Configured`, a configuration that is not a `Configuration` record, a
+`configuration` and a carried name, a configuration that is not a
+`Configuration` record, a
 member whose annotation is not a shape JSON takes
 -- a nested entity without `Opaque` among them --
 a `__post_init__` of the entity's own, a class variable a base
@@ -230,7 +231,6 @@ from zarr_metadata.v3._entity import (
     CodecEntity,
     Coerced,
     Configuration,
-    Configured,
     DataTypeEntity,
     Loc,
     MetadataEntity,
@@ -268,7 +268,6 @@ __all__ = [
     "Coerced",
     "ComplexDataType",
     "Configuration",
-    "Configured",
     "Context",
     "DataTypeEntity",
     "Extents",

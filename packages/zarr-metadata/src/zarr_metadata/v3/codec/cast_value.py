@@ -15,7 +15,6 @@ from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._entity import (
     ArrayArrayCodec,
     Configuration,
-    Configured,
     DataTypeEntity,
     Opaque,
 )
@@ -138,7 +137,7 @@ class CastValueOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class CastValueCodec(ArrayArrayCodec, Configured):
+class CastValueCodec(ArrayArrayCodec):
     """The `cast_value` codec, coerced from its metadata.
 
     Holds the data type it casts to, so like `sharding_indexed` it is

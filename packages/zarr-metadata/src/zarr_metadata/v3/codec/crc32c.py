@@ -7,13 +7,14 @@ The CRC32C codec has no configuration fields, so the `configuration`
 key is absent from the metadata.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import ClassVar, Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
 from zarr_metadata.v3._entity import (
     BytesBytesCodec,
+    Configuration,
 )
 
 CRC32C_CODEC_NAME: Final = "crc32c"
@@ -65,6 +66,8 @@ class Crc32cCodec(BytesBytesCodec):
 
     The name says everything: a checksum has nothing to configure.
     """
+
+    configuration: Configuration = field(default_factory=Configuration)
 
     identifier: ClassVar[str] = CRC32C_CODEC_NAME
     variable_size: ClassVar[bool] = False

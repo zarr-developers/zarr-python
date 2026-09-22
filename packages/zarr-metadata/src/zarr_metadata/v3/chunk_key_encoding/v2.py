@@ -22,7 +22,6 @@ from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.v3._entity import (
     ChunkKeyEncodingEntity,
     Configuration,
-    Configured,
 )
 
 V2_CHUNK_KEY_ENCODING_NAME: Final = "v2"
@@ -87,7 +86,7 @@ class V2ChunkKeyEncodingOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class V2ChunkKeyEncoding(ChunkKeyEncodingEntity, Configured):
+class V2ChunkKeyEncoding(ChunkKeyEncodingEntity):
     """The `v2` chunk key encoding, coerced from its metadata."""
 
     configuration: V2ChunkKeyEncodingOptions

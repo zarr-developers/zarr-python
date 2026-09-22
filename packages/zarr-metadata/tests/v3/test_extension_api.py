@@ -7,7 +7,7 @@ file has to reach into a private one, the extension surface is not real.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, NotRequired, Self, get_args
 
 import pytest
@@ -31,7 +31,6 @@ from zarr_metadata.v3.entity import (
     ChunkKeyEncodingEntity,
     CodecEntity,
     Configuration,
-    Configured,
     Context,
     DataTypeEntity,
     Extents,
@@ -64,7 +63,7 @@ class AcmeLz4Options(Configuration):
 
 
 @dataclass(frozen=True)
-class AcmeLz4Codec(BytesBytesCodec, Configured):
+class AcmeLz4Codec(BytesBytesCodec):
     """A third-party compressor."""
 
     configuration: AcmeLz4Options
@@ -80,6 +79,8 @@ class AcmeLz4Codec(BytesBytesCodec, Configured):
 @dataclass(frozen=True)
 class AcmeFloat8DataType(DataTypeEntity):
     """A third-party one-byte float."""
+
+    configuration: Configuration = field(default_factory=Configuration)
 
     identifier: ClassVar[str] = "acme.float8"
     scalar_storage: ClassVar[StorageClass] = "single_byte"
@@ -197,7 +198,7 @@ def test_an_absent_optional_member_is_read_as_unset_whatever_its_default() -> No
     # `UNSET` in the record, so no field's default decides what a
     # document said.
     @dataclass(frozen=True)
-    class Defaulted(BytesBytesCodec, Configured):
+    class Defaulted(BytesBytesCodec):
         configuration: DefaultedOptions
 
         identifier: ClassVar[str] = "acme.defaulted"
@@ -299,6 +300,7 @@ ACME_FIXED_PATTERN = re.compile(r"acme\.fixed(\d+)")
 class AcmeFixedDataType(DataTypeEntity):
     """`acme.fixedN`, a fixed-width type for every N."""
 
+    configuration: Configuration = field(default_factory=Configuration, kw_only=True)
     data_type_name: Annotated[str, FROM_NAME]
 
     identifier: ClassVar[str] = "acme.fixed<N>"
@@ -352,7 +354,7 @@ def test_error_a_member_needs_a_check_from_somewhere() -> None:
     # parser, so the entity owes one. Silently skipping the member would
     # let anything through where the field promised a type.
     @dataclass(frozen=True)
-    class Structured(BytesBytesCodec, Configured):
+    class Structured(BytesBytesCodec):
         configuration: StructuredOptions
 
         identifier: ClassVar[str] = "acme.structured"
@@ -373,7 +375,7 @@ class AcmeWrapperOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class AcmeWrapperCodec(BytesBytesCodec, Configured):
+class AcmeWrapperCodec(BytesBytesCodec):
     """A codec that applies another codec after its own step."""
 
     configuration: AcmeWrapperOptions
@@ -460,7 +462,7 @@ def test_canonical_is_the_entity_s_own_and_reaches_what_it_contains() -> None:
     # that `noshuffle` ignores, and the frame of 0 that means "unframed"
     # is dropped -- with nothing to call `super()` for.
     @dataclass(frozen=True)
-    class AcmeFramedCodec(BytesBytesCodec, Configured):
+    class AcmeFramedCodec(BytesBytesCodec):
         configuration: AcmeFramedOptions
 
         identifier: ClassVar[str] = "acme.framed"
@@ -500,7 +502,7 @@ def test_error_a_nested_field_names_a_kind() -> None:
     # `MetadataEntity` is of no kind, so a field typed as one could not
     # be resolved through any scope.
     @dataclass(frozen=True)
-    class Vague(BytesBytesCodec, Configured):
+    class Vague(BytesBytesCodec):
         configuration: VagueOptions
 
         identifier: ClassVar[str] = "acme.vague"
@@ -551,7 +553,7 @@ class AcmeBlockOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class AcmeBlockCodec(BytesBytesCodec, Configured):
+class AcmeBlockCodec(BytesBytesCodec):
     """A codec whose block size must be a power of two."""
 
     configuration: AcmeBlockOptions
@@ -605,7 +607,7 @@ class AcmeRangeOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class AcmeRangeCodec(BytesBytesCodec, Configured):
+class AcmeRangeCodec(BytesBytesCodec):
     """A codec with two rules, so that one can fail after another."""
 
     configuration: AcmeRangeOptions
@@ -669,7 +671,7 @@ def test_error_a_field_annotation_names_what_is_not_defined() -> None:
         depth: int
 
     @dataclass(frozen=True)
-    class Localized(BytesBytesCodec, Configured):
+    class Localized(BytesBytesCodec):
         configuration: LocalizedOptions
 
         identifier: ClassVar[str] = "acme.localized"
@@ -720,7 +722,7 @@ def test_a_slotted_entity_is_accepted() -> None:
     # `@dataclass(slots=True)` builds the class twice; registration sees
     # the second, whose members are slot descriptors.
     @dataclass(frozen=True, slots=True)
-    class AcmeSlotted(BytesBytesCodec, Configured):
+    class AcmeSlotted(BytesBytesCodec):
         configuration: AcmeSlottedOptions
 
         identifier: ClassVar[str] = "acme.slotted"
@@ -740,6 +742,7 @@ def test_a_slotted_entity_is_accepted() -> None:
 def test_a_bare_class_var_is_a_class_variable() -> None:
     @dataclass(frozen=True)
     class AcmeNoted(BytesBytesCodec):
+        configuration: Configuration = field(default_factory=Configuration)
         identifier: ClassVar[str] = "acme.noted"
         variable_size: ClassVar[bool] = False
         note: ClassVar = "not a member"
@@ -757,7 +760,7 @@ def test_a_number_member_is_a_float_field() -> None:
     # point and refuses a bool, which is what a document's `2` and `true`
     # deserve.
     @dataclass(frozen=True)
-    class AcmeScaled(ArrayArrayCodec, Configured):
+    class AcmeScaled(ArrayArrayCodec):
         configuration: AcmeScaledOptions
 
         identifier: ClassVar[str] = "acme.scaled"
@@ -795,7 +798,7 @@ def test_error_an_entity_must_be_a_dataclass() -> None:
     # Class creation runs before `@dataclass` and cannot see it missing;
     # registration can, and says so instead of the first `coerce` failing
     # with the base class's `__init__`.
-    class Undecorated(BytesBytesCodec, Configured):
+    class Undecorated(BytesBytesCodec):
         configuration: UndecoratedOptions
 
         identifier: ClassVar[str] = "acme.undecorated"
@@ -816,7 +819,7 @@ class ClosedOptions(Configuration):
 def test_error_a_nested_field_admits_opaque() -> None:
     # What the field holds when the inner name is out of scope.
     @dataclass(frozen=True)
-    class Closed(BytesBytesCodec, Configured):
+    class Closed(BytesBytesCodec):
         configuration: ClosedOptions
 
         identifier: ClassVar[str] = "acme.closed"
@@ -876,25 +879,6 @@ def test_error_a_list_of_problem_tuples_is_refused() -> None:
 
 
 @dataclass(frozen=True)
-class UnmarkedOptions(Configuration):
-    level: int
-
-
-def test_error_a_configuration_needs_configured_beside_the_kind() -> None:
-    # The marker is what the layer branches on: an entity that declares
-    # the field without it has a field of a name the layer does not read.
-    @dataclass(frozen=True)
-    class Unmarked(BytesBytesCodec):
-        configuration: UnmarkedOptions
-
-        identifier: ClassVar[str] = "acme.unmarked"
-        variable_size: ClassVar[bool] = False
-
-    with pytest.raises(TypeError, match="declares `configuration` without `Configured`"):
-        CORE_AND_EXTENSIONS.extended_with(Unmarked)
-
-
-@dataclass(frozen=True)
 class NestedRecordOptions(Configuration):
     depth: int
 
@@ -909,7 +893,7 @@ def test_error_a_member_may_not_be_a_configuration() -> None:
     # inside it; a `Configuration` nested there would carry rules nothing
     # runs.
     @dataclass(frozen=True)
-    class Nesting(BytesBytesCodec, Configured):
+    class Nesting(BytesBytesCodec):
         configuration: NestingOptions
 
         identifier: ClassVar[str] = "acme.nesting"
@@ -930,7 +914,7 @@ class CheckedOptions(Configuration):
 def test_error_a_record_may_not_define_post_init() -> None:
     # It would stop at the first problem where `coerce` reports every one.
     @dataclass(frozen=True)
-    class RecordChecked(BytesBytesCodec, Configured):
+    class RecordChecked(BytesBytesCodec):
         configuration: CheckedOptions
 
         identifier: ClassVar[str] = "acme.record_checked"
@@ -959,7 +943,7 @@ def test_error_a_nested_record_may_not_define_post_init() -> None:
     # A plain record is data, built whenever its keys read; a rule about
     # it belongs with the other rules, in the configuration's `problems`.
     @dataclass(frozen=True)
-    class Windowed(BytesBytesCodec, Configured):
+    class Windowed(BytesBytesCodec):
         configuration: WindowedOptions
 
         identifier: ClassVar[str] = "acme.windowed"

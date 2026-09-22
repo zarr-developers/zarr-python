@@ -13,7 +13,6 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ArrayArrayCodec,
     Configuration,
-    Configured,
     problem,
 )
 from zarr_metadata.v3._parts import ArrayParts
@@ -88,7 +87,7 @@ class TransposeOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class TransposeCodec(ArrayArrayCodec, Configured):
+class TransposeCodec(ArrayArrayCodec):
     """The `transpose` codec, coerced from its metadata."""
 
     configuration: TransposeOptions

@@ -9,12 +9,13 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Annotated, ClassVar, Final, NewType
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     FROM_NAME,
+    Configuration,
     DataTypeEntity,
     Loc,
     StorageClass,
@@ -97,6 +98,9 @@ class RawBytesDataType(DataTypeEntity):
     back out as it went in. `r008` is a valid and distinct way of writing
     `r8`, and canonicalizing it away is not this package's call.
     """
+
+    # Keyword-only, so the carried name stays the one positional argument.
+    configuration: Configuration = field(default_factory=Configuration, kw_only=True)
 
     data_type_name: Annotated[str, FROM_NAME]
     """The spelling as written -- `r8`, `r008` -- which is where the width lives."""

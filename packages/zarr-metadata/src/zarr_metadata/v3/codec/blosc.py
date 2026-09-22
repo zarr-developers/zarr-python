@@ -14,7 +14,6 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     BytesBytesCodec,
     Configuration,
-    Configured,
 )
 
 if TYPE_CHECKING:
@@ -133,7 +132,7 @@ class BloscOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class BloscCodec(BytesBytesCodec, Configured):
+class BloscCodec(BytesBytesCodec):
     """The `blosc` codec, coerced from its metadata.
 
     Everything blosc knows about itself: the shape its metadata takes, the

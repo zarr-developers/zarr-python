@@ -219,82 +219,74 @@ class Opaque:
 def unreadable(cls: type[MetadataEntity]) -> str | None:
     """Why `coerce` could not read an instance of `cls`; None if it can.
 
-    An entity's fields are `configuration`, which a `Configured` entity
-    narrows to its own `Configuration` record, and at most one field the
-    envelope's name fills. Things that type-check cleanly and then go
-    wrong somewhere that will not name the class: a field of any other
-    name; a `configuration` on an entity that is not `Configured`; a
-    configuration that is not a `Configuration`, or a member of it whose
-    annotation is not a shape JSON takes, or is itself a `Configuration`,
-    whose rules nothing would ask; a `__post_init__` of the entity's or
-    its record's own, since the rules go in `problems`; and a class
-    variable a base annotates and nothing sets -- `identifier` for every
-    entity, `bounds` for an integer type -- which the first lookup would
-    fail. Registration asks, and refuses the class with the answer.
+    An entity's fields are `configuration`, which an entity narrows to
+    its own `Configuration` record or defaults to the empty one, and at
+    most one field the envelope's name fills. Things that type-check
+    cleanly and then go wrong somewhere that will not name the class: a
+    field of any other name; a configuration that is not a
+    `Configuration`, or a member of it whose annotation is not a shape
+    JSON takes, or is itself a `Configuration`, whose rules nothing would
+    ask; a `__post_init__` of the entity's or its record's own, since the
+    rules go in `problems`; and a class variable a base annotates and
+    nothing sets -- `identifier` for every entity, `bounds` for an
+    integer type -- which the first lookup would fail. Registration asks,
+    and refuses the class with the answer.
     """
     try:
         hints = field_hints(cls)
     except NameError as unresolved:
         return _unresolved(cls, unresolved)
     for name, annotation in hints.items():
-        if name == "configuration" and issubclass(cls, Configured):
+        if name == "configuration" or is_from_name(annotation):
             continue
-        if is_from_name(annotation):
-            continue
-        if name == "configuration":
-            return (
-                f"{cls.__name__} declares `configuration` without `Configured`; an entity with a "
-                f"configuration adds it beside its kind: class {cls.__name__}(..., Configured)"
-            )
         return (
             f"{cls.__name__} declares a field {name!r}; an entity's fields are `configuration`, "
             "a frozen dataclass of its members, and a name it carries marked FROM_NAME -- put "
             f"{name!r} in the configuration record"
         )
-    if issubclass(cls, Configured):
-        record = hints["configuration"]
-        if not (isinstance(record, type) and issubclass(record, Configuration)):
+    record = hints["configuration"]
+    if not (isinstance(record, type) and issubclass(record, Configuration)):
+        return (
+            f"{cls.__name__}: configuration is annotated {record!r}; annotate it with a frozen "
+            "dataclass subclassing Configuration, one field per configuration member"
+        )
+    try:
+        members = field_hints(record)
+    except NameError as unresolved:
+        return _unresolved(record, unresolved)
+    if "__post_init__" in vars(record):
+        return (
+            f"{record.__name__} defines __post_init__; write its rules as `problems`, "
+            "yielding each: the entity's constructor stops at the first, `coerce` reports "
+            "every one"
+        )
+    unread: list[str] = []
+    for name, annotation in members.items():
+        inner = without_unset(strip_annotation(annotation)[0])
+        if isinstance(inner, type) and issubclass(inner, Configuration):
             return (
-                f"{cls.__name__}: configuration is annotated {record!r}; annotate it with a frozen "
-                "dataclass subclassing Configuration, one field per configuration member"
+                f"{cls.__name__}: {name} is annotated {inner.__name__}, a Configuration, whose "
+                "rules nothing would ask; a member that is an object is a plain record "
+                "dataclass or a TypedDict, and its rules belong to the entity's configuration"
             )
         try:
-            members = field_hints(record)
+            accepted = parser_for(annotation, _nested_field) is not None
+        except TypeError as refused:
+            return f"{cls.__name__}: {name} {refused}"
         except NameError as unresolved:
             return _unresolved(record, unresolved)
-        if "__post_init__" in vars(record):
-            return (
-                f"{record.__name__} defines __post_init__; write its rules as `problems`, "
-                "yielding each: the entity's constructor stops at the first, `coerce` reports "
-                "every one"
-            )
-        unread: list[str] = []
-        for name, annotation in members.items():
-            inner = without_unset(strip_annotation(annotation)[0])
-            if isinstance(inner, type) and issubclass(inner, Configuration):
-                return (
-                    f"{cls.__name__}: {name} is annotated {inner.__name__}, a Configuration, whose "
-                    "rules nothing would ask; a member that is an object is a plain record "
-                    "dataclass or a TypedDict, and its rules belong to the entity's configuration"
-                )
-            try:
-                accepted = parser_for(annotation, _nested_field) is not None
-            except TypeError as refused:
-                return f"{cls.__name__}: {name} {refused}"
-            except NameError as unresolved:
-                return _unresolved(record, unresolved)
-            if not accepted:
-                unread.append(name)
-        if len(unread) != 0:
-            return (
-                f"{cls.__name__}: "
-                f"{'; '.join(f'{name} is annotated {members[name]!r}' for name in unread)}"
-                ", which is not a shape JSON takes. A member is int, float, bool, str, JSONValue, "
-                "a Literal of names, tuple[T, ...] or tuple[T1, T2], a TypedDict or dataclass "
-                "record, Mapping[str, V], a NewType, or an entity kind with Opaque "
-                "(CodecEntity | Opaque); add | UNSET for an optional member, and put any finer "
-                "rule in the record's `problems`"
-            )
+        if not accepted:
+            unread.append(name)
+    if len(unread) != 0:
+        return (
+            f"{cls.__name__}: "
+            f"{'; '.join(f'{name} is annotated {members[name]!r}' for name in unread)}"
+            ", which is not a shape JSON takes. A member is int, float, bool, str, JSONValue, "
+            "a Literal of names, tuple[T, ...] or tuple[T1, T2], a TypedDict or dataclass "
+            "record, Mapping[str, V], a NewType, or an entity kind with Opaque "
+            "(CodecEntity | Opaque); add | UNSET for an optional member, and put any finer "
+            "rule in the record's `problems`"
+        )
     if "__post_init__" in vars(cls):
         return (
             f"{cls.__name__} defines __post_init__; write its rules as `problems` on its "
@@ -403,10 +395,12 @@ class _Plan:
 
     from_name: str | None
     """The field the envelope's name fills, for a family; None for every other entity."""
-    parse: Parser[_Reading] | None
-    """The configuration record's parser; None for an entity that is not `Configured`."""
-    write: Callable[[Configured], dict[str, JSONValue]] | None
-    """The entity's configuration as the JSON object it writes; None for one that is not `Configured`."""
+    read: Callable[
+        [object, Loc, _Reading], tuple[Configuration | None, tuple[ValidationProblem, ...]]
+    ]
+    """The configuration record, built when every member read, and the problems found."""
+    write: Callable[[MetadataEntity], dict[str, JSONValue]]
+    """The entity's configuration as the JSON object it writes; empty for a bare name."""
     requires_configuration: bool
     """Whether the record has a member the document must write."""
 
@@ -421,19 +415,26 @@ def _plan(cls: type[MetadataEntity]) -> _Plan:
     """
     hints = field_hints(cls)
     from_name = next((key for key, annotation in hints.items() if is_from_name(annotation)), None)
-    if not issubclass(cls, Configured):
-        return _Plan(from_name, None, None, False)
     record = hints["configuration"]
     if not (isinstance(record, type) and issubclass(record, Configuration)):  # pragma: no cover
         msg = f"{cls.__name__}: configuration is annotated {record!r}, not a Configuration"
         raise TypeError(msg)
     required = any(not is_optional(annotation) for annotation in field_hints(record).values())
+    parse = parser(record, _nested_field)
     writes: RecordWriter = record_writer(record, _nested_field_writer)
 
-    def write(entity: Configured) -> dict[str, JSONValue]:
+    def read(
+        value: object, loc: Loc, reading: _Reading
+    ) -> tuple[Configuration | None, tuple[ValidationProblem, ...]]:
+        typed, found = parse(value, loc, reading)
+        # The parser builds the record only from an object whose every
+        # member read; anything else comes back as it came.
+        return (typed if isinstance(typed, Configuration) else None), found
+
+    def write(entity: MetadataEntity) -> dict[str, JSONValue]:
         return writes(entity.configuration)
 
-    return _Plan(from_name, parser(record, _nested_field), write, required)
+    return _Plan(from_name, read, write, required)
 
 
 @dataclass(frozen=True)
@@ -442,7 +443,10 @@ class Configuration:
 
     A frozen dataclass whose fields are the configuration's members,
     each a shape JSON takes; the entity names it in its `configuration`
-    field. `problems` is where everything finer than a type goes -- a
+    field, and an entity of a bare name defaults it to this one, empty,
+    since the spec makes an absent configuration and an empty one the
+    same.
+    `problems` is where everything finer than a type goes -- a
     bound, a rule about one member, members read together -- yielding
     each problem as it is found, located relative to the configuration.
     A reader stops at the first or collects them all, as it needs: the
@@ -453,31 +457,6 @@ class Configuration:
     def problems(self) -> Iterator[ValidationProblem]:
         """Every reason these values are not allowed, yielded as found. Default: none."""
         yield from ()
-
-
-@dataclass(frozen=True)
-class Configured:
-    """The half of an entity that has a configuration.
-
-    An entity whose metadata carries a `configuration` object adds this
-    beside its kind -- `class GzipCodec(BytesBytesCodec, Configured)` --
-    and narrows the field to its own record: `configuration:
-    GzipOptions`. What the layer does with a configuration -- parse it,
-    ask its rules, write it back, replace members of it -- is done here
-    or asked of this, and an entity that is not `Configured` has none
-    of it: its metadata is a bare name.
-    """
-
-    configuration: Configuration
-
-    def with_configuration(self, **changes: object) -> Self:
-        """This entity with these configuration members changed.
-
-        `codec.with_configuration(typesize=UNSET)` is the record replaced
-        member by member and the entity rebuilt around it, so the
-        constructor checks the result as it checks any other.
-        """
-        return replace(self, configuration=replace(self.configuration, **changes))
 
 
 @dataclass(frozen=True)
@@ -503,8 +482,19 @@ class MetadataEntity(ABC):
     `problems` holds what the spec says beyond the members' types -- so
     `BloscCodec(BloscOptions(clevel=99))` raises on the first, and
     `coerce` reports every one instead -- and writes `canonical` where
-    two spellings of its members mean the same. `coerce` and `to_json`
+    two spellings of its members mean the same. An entity of a bare
+    name defaults the field to the empty record. `coerce` and `to_json`
     are written once here, against what the record says.
+    """
+
+    configuration: Configuration
+    """The record of this entity's members.
+
+    An entity with members narrows it to its own record, `configuration:
+    GzipOptions`, its one positional argument. An entity of a bare name
+    defaults it to the empty record -- `configuration: Configuration =
+    field(default_factory=Configuration)` -- so that `Crc32cCodec()`
+    builds; `coerce` passes the record either way.
     """
 
     identifier: ClassVar[str]
@@ -531,7 +521,7 @@ class MetadataEntity(ABC):
         plan = _plan(type(self))
         name = self.identifier if plan.from_name is None else getattr(self, plan.from_name)
         first = next(type(self).name_problems(name), None)
-        if first is None and isinstance(self, Configured):
+        if first is None:
             first = next(self.configuration.problems(), None)
         if first is not None:
             raise MetadataValidationError((first,))
@@ -544,6 +534,16 @@ class MetadataEntity(ABC):
         every `r<N>`.
         """
         return name == cls.identifier
+
+    def with_configuration(self, **changes: object) -> Self:
+        """This entity with these configuration members changed.
+
+        `codec.with_configuration(typesize=UNSET)` is the record replaced
+        member by member and the entity rebuilt around it, so the
+        constructor checks the result as it checks any other. A name
+        that is not a member is refused the way `replace` refuses it.
+        """
+        return replace(self, configuration=replace(self.configuration, **changes))
 
     @classmethod
     def coerce(cls, value: object, context: Context) -> Coerced[Self]:
@@ -564,45 +564,29 @@ class MetadataEntity(ABC):
         if len(envelope) != 0:
             return None, envelope
         plan = _plan(cls)
-        members: dict[str, object] = {}
-        if plan.from_name is not None:
-            members[plan.from_name] = name
-        reading = _Reading(context, [])
-        own: tuple[ValidationProblem, ...] = ()
-        if not issubclass(cls, Configured) or plan.parse is None:
-            own = tuple(
-                found
-                for key in (given or {})
-                for found in problem(
-                    ("configuration", key), f"unexpected key {key!r}", "unknown_key"
-                )
-            )
-        elif given is None and plan.requires_configuration:
+        carried: dict[str, str] = {} if plan.from_name is None else {plan.from_name: name}
+        if given is None and plan.requires_configuration:
             return None, problem(
                 ("configuration",),
                 f"{cls.identifier!r} requires a configuration",
                 "missing_key",
             )
-        else:
-            # Arrays as tuples before parsing, so a member holds the
-            # tuples its type declares, never the lists raw JSON
-            # arrives as.
-            members["configuration"], own = plan.parse(
-                as_tuples({} if given is None else given), ("configuration",), reading
-            )
+        reading = _Reading(context, [])
+        # Arrays as tuples before parsing, so a member holds the tuples
+        # its type declares, never the lists raw JSON arrives as. A bare
+        # name's record has no members, so any key is an unknown one.
+        record, own = plan.read(
+            as_tuples({} if given is None else given), ("configuration",), reading
+        )
         found = (*own, *reading.nested)
-        if any(entry.kind != "unknown_key" for entry in own):
+        if record is None:
             # An unknown key is survivable; a member that could not be
             # read is a hole, and judging around it would be guessing.
             return None, found
         # The rules, asked of the name and of the record before anything
         # is built: a name problem lands on the entity, a configuration
         # problem under the configuration.
-        record = members.get("configuration")
-        refused = (
-            *cls.name_problems(name),
-            *(within((), tuple(record.problems())) if isinstance(record, Configuration) else ()),
-        )
+        refused = (*cls.name_problems(name), *within((), tuple(record.problems())))
         if len(refused) != 0:
             # Values the spec disallows: reported rather than raised,
             # every one.
@@ -614,7 +598,7 @@ class MetadataEntity(ABC):
             # entity that would be asked composition questions it cannot
             # answer.
             return None, found
-        return cls(**members), found
+        return cls(configuration=record, **carried), found
 
     def canonical(self) -> Self:
         """This entity in the simplest form that means the same thing.
@@ -658,8 +642,6 @@ class MetadataEntity(ABC):
         if plan.from_name is not None:
             carried = getattr(self, plan.from_name)
             name = carried if isinstance(carried, str) else name
-        if not isinstance(self, Configured) or plan.write is None:
-            return name
         configuration = plan.write(self)
         if len(configuration) == 0:
             return name
@@ -806,7 +788,6 @@ __all__ = [
     "CodecEntity",
     "Coerced",
     "Configuration",
-    "Configured",
     "DataTypeEntity",
     "Loc",
     "MetadataEntity",

@@ -14,7 +14,6 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ArrayBytesCodec,
     Configuration,
-    Configured,
     DataTypeEntity,
     problem,
 )
@@ -89,7 +88,7 @@ class BytesOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class BytesCodec(ArrayBytesCodec, Configured):
+class BytesCodec(ArrayBytesCodec):
     """The `bytes` codec, coerced from its metadata.
 
     `endian` is optional and absent means something: a one-byte data type

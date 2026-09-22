@@ -5,11 +5,12 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import ClassVar, Final, Literal, NewType
 
 from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
+    Configuration,
     DataTypeEntity,
     Loc,
     StorageClass,
@@ -62,6 +63,8 @@ __all__ = [
 @dataclass(frozen=True)
 class BytesDataType(DataTypeEntity):
     """The `bytes` data type. The name says everything."""
+
+    configuration: Configuration = field(default_factory=Configuration)
 
     scalar_storage: ClassVar[StorageClass] = "variable_length"
     identifier: ClassVar[str] = BYTES_DATA_TYPE_NAME

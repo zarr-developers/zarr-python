@@ -13,7 +13,6 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ChunkGridEntity,
     Configuration,
-    Configured,
     Loc,
     is_integer,
     problem,
@@ -194,7 +193,7 @@ class RectilinearChunkGridOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class RectilinearChunkGrid(ChunkGridEntity, Configured):
+class RectilinearChunkGrid(ChunkGridEntity):
     """The `rectilinear` chunk grid, coerced from its metadata."""
 
     configuration: RectilinearChunkGridOptions

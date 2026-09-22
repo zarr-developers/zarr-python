@@ -93,7 +93,6 @@ from zarr_metadata.v3.entity import (
     ChunkKeyEncodingEntity,
     CodecEntity,
     Configuration,
-    Configured,
     DataTypeEntity,
     MetadataEntity,
     StorageTransformerEntity,
@@ -818,7 +817,7 @@ class AcmeShardCacheOptions(Configuration):
 
 
 @dataclasses.dataclass(frozen=True)
-class AcmeShardCache(StorageTransformerEntity, Configured):
+class AcmeShardCache(StorageTransformerEntity):
     """A third-party storage transformer with a member canonical form drops."""
 
     configuration: AcmeShardCacheOptions
@@ -900,6 +899,21 @@ def test_the_fields_are_the_public_configuration_type() -> None:
         assert {
             key for key, annotation in keys.items() if not is_not_required(annotation)
         } == required, cls
+
+
+def test_a_bare_name_entity_holds_the_empty_configuration() -> None:
+    # One rule for every entity: a name and a record. The spec makes an
+    # absent configuration and an empty one the same, so a bare name
+    # holds the empty record, reads either spelling, and writes the name.
+    assert Crc32cCodec().configuration == Configuration()
+    for spelling in ("crc32c", {"name": "crc32c"}, {"name": "crc32c", "configuration": {}}):
+        assert CORE_AND_EXTENSIONS.coerce(CodecEntity, spelling) == (Crc32cCodec(), ())
+    assert Crc32cCodec().to_json() == "crc32c"
+
+
+def test_error_a_bare_name_entity_has_no_member_to_change() -> None:
+    with pytest.raises(TypeError, match="unexpected keyword argument 'level'"):
+        Crc32cCodec().with_configuration(level=1)
 
 
 def test_error_an_entity_of_another_kind_is_invalid_not_out_of_scope() -> None:

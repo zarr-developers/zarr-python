@@ -13,7 +13,6 @@ from zarr_metadata.model._validation import ValidationProblem
 from zarr_metadata.v3._entity import (
     ChunkGridEntity,
     Configuration,
-    Configured,
     problem,
 )
 from zarr_metadata.v3._parts import ChunkGrid
@@ -80,7 +79,7 @@ class RegularChunkGridOptions(Configuration):
 
 
 @dataclass(frozen=True)
-class RegularChunkGrid(ChunkGridEntity, Configured):
+class RegularChunkGrid(ChunkGridEntity):
     """The `regular` chunk grid, coerced from its metadata."""
 
     configuration: RegularChunkGridOptions
