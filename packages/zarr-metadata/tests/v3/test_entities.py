@@ -1229,3 +1229,25 @@ def test_the_document_reads_and_writes_attributes_as_user_data() -> None:
     written = ArrayDocumentV3.from_json(document).to_json()["attributes"]
     fill = cast("dict[str, float]", written)["_FillValue"]
     assert math.isnan(fill)
+
+
+def test_the_document_names_the_fields_a_reader_must_understand() -> None:
+    # Recognition is the reader's own knowledge, as in the model: the
+    # document keeps an unknown field, writes it back, and says which
+    # ones a reader must refuse to open the array without understanding.
+    document = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (4,),
+        "data_type": "uint8",
+        "fill_value": 0,
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (2,)}},
+        "chunk_key_encoding": "default",
+        "codecs": ("bytes",),
+        "provenance": {"tool": "x"},
+        "notes": {"must_understand": False, "text": "y"},
+        "flag": True,
+    }
+    array = ArrayDocumentV3.from_json(document)
+    assert array.must_understand_fields == {"provenance": {"tool": "x"}, "flag": True}
+    assert array.to_json() == document

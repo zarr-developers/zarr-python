@@ -26,7 +26,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, TypeVar, cast
 
+from zarr_metadata.model._array import must_understand_subset
 from zarr_metadata.model._validation import (
+    ARRAY_METADATA_STANDARD_KEYS_V3,
     MetadataValidationError,
     ValidationProblem,
     refine_node_json,
@@ -56,6 +58,7 @@ if TYPE_CHECKING:
 
     from zarr_metadata._common import JSONValue
     from zarr_metadata.v3._entity import Loc
+    from zarr_metadata.v3.array import ZarrV3ExtensionField
 
 
 _EntityT = TypeVar("_EntityT", bound=MetadataEntity)
@@ -159,6 +162,25 @@ class ArrayDocumentV3:
                 for key, value in _rendered(self).items()
             },
         }
+
+    @property
+    def must_understand_fields(self) -> dict[str, ZarrV3ExtensionField]:
+        """The fields outside the spec's that do not say `must_understand: false`.
+
+        A reader must refuse to open the array if this holds a field it
+        does not recognize. Recognition is the reader's own knowledge: a
+        top-level field is no extension point, so no scope claims one,
+        and the document partitions by obligation and leaves the verdict
+        to its reader, as `ZarrV3ArrayMetadata.must_understand_fields`
+        does. An extension point the scope does not claim is the same
+        question asked of an `Opaque`.
+        """
+        extra = {
+            key: value
+            for key, value in self.document.items()
+            if key not in ARRAY_METADATA_STANDARD_KEYS_V3
+        }
+        return must_understand_subset(cast("Mapping[str, ZarrV3ExtensionField]", extra))
 
     @classmethod
     def from_json(cls, value: object, *, context: Context = CORE_AND_EXTENSIONS) -> ArrayDocumentV3:

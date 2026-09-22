@@ -12,12 +12,14 @@ door: one call, and either every extension point is read or a single
 spell out -- what a data type's scalars are, which position a codec
 occupies, what a grid divides an array into. A name the scope does not
 model is not a failure: it arrives as an `Opaque` marked `out_of_scope`,
-for the reader to resolve elsewhere.
+for the reader to resolve elsewhere. Nor is a top-level field outside the
+spec's: `must_understand_fields` names the ones the reader must refuse
+to open the array without recognizing.
 
     from zarr_metadata.v3.entity import ArrayBytesCodec, ArrayDocumentV3, CodecEntity
 
     array = ArrayDocumentV3.from_json(json.loads(raw))   # or raises
-    array.parts.grid.rank
+    array.must_understand_fields    # a field here you do not know: refuse
     for codec in array.codecs:
         if isinstance(codec, CodecEntity):
             isinstance(codec, ArrayBytesCodec)   # its pipeline position is its base class
