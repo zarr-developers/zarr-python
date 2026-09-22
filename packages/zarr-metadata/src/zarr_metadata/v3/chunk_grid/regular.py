@@ -86,24 +86,20 @@ class RegularChunkGrid(ChunkGridEntity):
 
     identifier: ClassVar[str] = REGULAR_CHUNK_GRID_NAME
 
-    @property
-    def chunk_shape(self) -> tuple[int, ...]:
-        return self.configuration.chunk_shape
-
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
         """A regular grid must chunk every array dimension."""
         if not isinstance(array_shape, (list, tuple)):
             return ()
         extents = tuple(cast("Sequence[object]", array_shape))
-        if len(self.chunk_shape) == len(extents):
+        if len(self.configuration.chunk_shape) == len(extents):
             return ()
         return problem(
             ("chunk_shape",),
-            f"chunk_shape has {len(self.chunk_shape)} entries but shape has "
+            f"chunk_shape has {len(self.configuration.chunk_shape)} entries but shape has "
             f"{len(extents)} dimensions",
             "invalid_value",
         )
 
     def grid(self, array_shape: object) -> ChunkGrid:
         """One extent per axis, the same for every chunk on that axis."""
-        return ChunkGrid.regular(self.chunk_shape)
+        return ChunkGrid.regular(self.configuration.chunk_shape)

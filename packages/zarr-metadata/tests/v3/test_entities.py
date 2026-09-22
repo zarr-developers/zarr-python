@@ -339,7 +339,7 @@ def test_an_unknown_key_is_reported_without_losing_the_member() -> None:
     )
     assert [problem.kind for problem in problems] == ["unknown_key"]
     assert codec is not None
-    assert codec.scalar_map == {"encode": (), "enc": ()}
+    assert codec.configuration.scalar_map == {"encode": (), "enc": ()}
 
 
 # (a defect in a nested metadata field, the location it belongs at)
@@ -823,10 +823,6 @@ class AcmeShardCache(StorageTransformerEntity):
     configuration: AcmeShardCacheOptions
 
     identifier: ClassVar[str] = "acme.shard_cache"
-
-    @property
-    def verbose(self) -> bool | UNSET:
-        return self.configuration.verbose
 
     def canonical(self) -> Self:
         return self.with_configuration(verbose=UNSET)

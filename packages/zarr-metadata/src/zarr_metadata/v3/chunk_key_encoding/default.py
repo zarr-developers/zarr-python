@@ -86,7 +86,3 @@ class DefaultChunkKeyEncoding(ChunkKeyEncodingEntity):
     configuration: DefaultChunkKeyEncodingOptions
 
     identifier: ClassVar[str] = DEFAULT_CHUNK_KEY_ENCODING_NAME
-
-    @property
-    def separator(self) -> DefaultChunkKeyEncodingSeparator | UNSET:
-        return self.configuration.separator

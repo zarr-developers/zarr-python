@@ -112,8 +112,8 @@ distinct from a JSON `null`, and a member that means something when
 absent is read that way where it is used, not defaulted. Only `| UNSET`
 makes a member optional to a document: a plain default serves hand
 construction, and a document must still write the member. A member is
-read as `codec.configuration.acceleration`; an entity that wants it at
-the top level adds a `@property` for it. `with_configuration(**changes)`
+read as `codec.configuration.acceleration`, the shape the metadata has;
+nothing lifts it to the entity. `with_configuration(**changes)`
 is the entity with members of its configuration replaced, checked as
 any construction is.
 

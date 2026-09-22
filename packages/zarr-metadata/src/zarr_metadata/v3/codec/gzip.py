@@ -90,7 +90,3 @@ class GzipCodec(BytesBytesCodec):
 
     identifier: ClassVar[str] = GZIP_CODEC_NAME
     variable_size: ClassVar[bool] = True
-
-    @property
-    def level(self) -> int:
-        return self.configuration.level

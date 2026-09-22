@@ -100,10 +100,6 @@ class BytesCodec(ArrayBytesCodec):
     identifier: ClassVar[str] = BYTES_CODEC_NAME
     variable_size: ClassVar[bool] = False
 
-    @property
-    def endian(self) -> Endianness | UNSET:
-        return self.configuration.endian
-
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         """The data type reaching here must have a raw byte representation.
 
@@ -124,7 +120,7 @@ class BytesCodec(ArrayBytesCodec):
                 f"bytes codec is not compatible with variable-length data_type {name!r}",
                 "invalid_value",
             )
-        if storage == "multi_byte" and self.endian is UNSET:
+        if storage == "multi_byte" and self.configuration.endian is UNSET:
             return problem(
                 ("endian",),
                 f"endian is required for data type {name!r}, which contains multi-byte values",

@@ -149,27 +149,11 @@ class CastValueCodec(ArrayArrayCodec):
     identifier: ClassVar[str] = CAST_VALUE_CODEC_NAME
     variable_size: ClassVar[bool] = False
 
-    @property
-    def data_type(self) -> DataTypeEntity | Opaque:
-        return self.configuration.data_type
-
-    @property
-    def rounding(self) -> CastRoundingMode | UNSET:
-        return self.configuration.rounding
-
-    @property
-    def out_of_range(self) -> CastOutOfRangeMode | UNSET:
-        return self.configuration.out_of_range
-
-    @property
-    def scalar_map(self) -> ScalarMap | UNSET:
-        return self.configuration.scalar_map
-
     def canonical(self) -> Self:
         """The target data type in its own canonical form."""
-        return self.with_configuration(data_type=self.data_type.canonical())
+        return self.with_configuration(data_type=self.configuration.data_type.canonical())
 
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:
         """The same parts, holding the type this codec casts to."""
-        data_type = self.data_type
+        data_type = self.configuration.data_type
         return incoming.with_data_type(data_type if isinstance(data_type, DataTypeEntity) else None)

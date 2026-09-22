@@ -204,14 +204,6 @@ class NumpyTimeDataType(DataTypeEntity):
 
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
 
-    @property
-    def unit(self) -> NumpyTimeUnit:
-        return self.configuration.unit
-
-    @property
-    def scale_factor(self) -> int:
-        return self.configuration.scale_factor
-
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         if value == "NaT":
             return ()

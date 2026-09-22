@@ -71,10 +71,6 @@ class AcmeLz4Codec(BytesBytesCodec):
     identifier: ClassVar[str] = "acme.lz4"
     variable_size: ClassVar[bool] = True
 
-    @property
-    def acceleration(self) -> int | UNSET:
-        return self.configuration.acceleration
-
 
 @dataclass(frozen=True)
 class AcmeFloat8DataType(DataTypeEntity):
@@ -205,17 +201,13 @@ def test_an_absent_optional_member_is_read_as_unset_whatever_its_default() -> No
 
         variable_size: ClassVar[bool] = False
 
-        @property
-        def level(self) -> int | UNSET:
-            return self.configuration.level
-
-    assert Defaulted(DefaultedOptions()).level == 3
+    assert Defaulted(DefaultedOptions()).configuration.level == 3
     codec, problems = CORE_AND_EXTENSIONS.extended_with(Defaulted).coerce(
         CodecEntity, "acme.defaulted"
     )
     assert problems == ()
     assert isinstance(codec, Defaulted)
-    assert codec.level is UNSET
+    assert codec.configuration.level is UNSET
 
 
 def test_a_reader_gets_entities_or_an_exception() -> None:
@@ -276,7 +268,7 @@ def test_a_reader_can_choose_its_own_scope() -> None:
     assert isinstance(ArrayDocumentV3.from_json(document).codecs[1], Opaque)
     in_scope = ArrayDocumentV3.from_json(document, context=SCOPE).codecs[1]
     assert isinstance(in_scope, AcmeLz4Codec)
-    assert in_scope.acceleration == 4
+    assert in_scope.configuration.acceleration == 4
 
 
 def test_error_a_family_member_must_declare_what_the_family_left_open() -> None:
@@ -360,10 +352,6 @@ def test_error_a_member_needs_a_check_from_somewhere() -> None:
         identifier: ClassVar[str] = "acme.structured"
         variable_size: ClassVar[bool] = False
 
-        @property
-        def inner(self) -> object:
-            return self.configuration.inner
-
     with pytest.raises(TypeError, match="inner is annotated .*, which is not a shape JSON takes"):
         CORE_AND_EXTENSIONS.extended_with(Structured)
 
@@ -384,12 +372,8 @@ class AcmeWrapperCodec(BytesBytesCodec):
 
     variable_size: ClassVar[bool] = False
 
-    @property
-    def inner(self) -> CodecEntity | Opaque:
-        return self.configuration.inner
-
     def canonical(self) -> Self:
-        return self.with_configuration(inner=self.inner.canonical())
+        return self.with_configuration(inner=self.configuration.inner.canonical())
 
 
 def test_a_third_party_entity_containing_entities_reads_them_in_scope() -> None:
@@ -405,8 +389,9 @@ def test_a_third_party_entity_containing_entities_reads_them_in_scope() -> None:
     codec, problems = scope.coerce(CodecEntity, entry)
     assert problems == ()
     assert isinstance(codec, AcmeWrapperCodec)
-    assert isinstance(codec.inner, GzipCodec)
-    assert codec.inner.level == 5
+    inner = codec.configuration.inner
+    assert isinstance(inner, GzipCodec)
+    assert inner.configuration.level == 5
     assert codec.to_json() == entry
 
     # An inner codec the scope does not model stays verbatim, as anywhere.
@@ -414,7 +399,7 @@ def test_a_third_party_entity_containing_entities_reads_them_in_scope() -> None:
     codec, problems = scope.coerce(CodecEntity, unknown)
     assert problems == ()
     assert isinstance(codec, AcmeWrapperCodec)
-    assert isinstance(codec.inner, Opaque)
+    assert isinstance(codec.configuration.inner, Opaque)
     assert codec.to_json() == unknown
 
     # A problem inside is located inside.
@@ -445,9 +430,9 @@ def test_a_third_party_entity_containing_entities_reads_them_in_scope() -> None:
     }
     codec, _ = scope.coerce(CodecEntity, verbose)
     assert isinstance(codec, AcmeWrapperCodec)
-    inner = codec.canonical().inner
+    inner = codec.canonical().configuration.inner
     assert isinstance(inner, BloscCodec)
-    assert inner.typesize is UNSET
+    assert inner.configuration.typesize is UNSET
 
 
 @dataclass(frozen=True)
@@ -469,18 +454,10 @@ def test_canonical_is_the_entity_s_own_and_reaches_what_it_contains() -> None:
 
         variable_size: ClassVar[bool] = False
 
-        @property
-        def inner(self) -> CodecEntity | Opaque:
-            return self.configuration.inner
-
-        @property
-        def frame(self) -> int | UNSET:
-            return self.configuration.frame
-
         def canonical(self) -> Self:
             return self.with_configuration(
-                inner=self.inner.canonical(),
-                frame=UNSET if self.frame == 0 else self.frame,
+                inner=self.configuration.inner.canonical(),
+                frame=UNSET if self.configuration.frame == 0 else self.configuration.frame,
             )
 
     blosc = BloscCodec(
@@ -490,7 +467,7 @@ def test_canonical_is_the_entity_s_own_and_reaches_what_it_contains() -> None:
     assert framed.canonical() == AcmeFramedCodec(
         AcmeFramedOptions(inner=blosc.with_configuration(typesize=UNSET))
     )
-    assert framed.inner is blosc  # a transformation, not a mutation
+    assert framed.configuration.inner is blosc  # a transformation, not a mutation
 
 
 @dataclass(frozen=True)
@@ -507,10 +484,6 @@ def test_error_a_nested_field_names_a_kind() -> None:
 
         identifier: ClassVar[str] = "acme.vague"
         variable_size: ClassVar[bool] = False
-
-        @property
-        def inner(self) -> MetadataEntity | Opaque:
-            return self.configuration.inner
 
     with pytest.raises(TypeError, match="inner holds an entity but is not written as its kind"):
         CORE_AND_EXTENSIONS.extended_with(Vague)
@@ -562,10 +535,6 @@ class AcmeBlockCodec(BytesBytesCodec):
 
     variable_size: ClassVar[bool] = False
 
-    @property
-    def block(self) -> int:
-        return self.configuration.block
-
 
 def test_a_rule_about_a_member_is_the_record_s_own() -> None:
     # The rule runs on the typed record and reports relative to the
@@ -616,14 +585,6 @@ class AcmeRangeCodec(BytesBytesCodec):
 
     variable_size: ClassVar[bool] = False
 
-    @property
-    def low(self) -> int:
-        return self.configuration.low
-
-    @property
-    def high(self) -> int:
-        return self.configuration.high
-
 
 def test_the_constructor_stops_at_the_first_problem_and_coerce_reports_every_one() -> None:
     # One method, three consumers: the entity's constructor takes the
@@ -666,8 +627,8 @@ class LocalizedOptions(Configuration):
 
 def test_error_a_field_annotation_names_what_is_not_defined() -> None:
     # Annotations are resolved where the class is, at registration; a
-    # type defined inside a function is not there.
-    class Local(TypedDict, closed=True):
+    # type defined inside a function is not there, however real it is.
+    class Local(TypedDict, closed=True):  # pyright: ignore[reportUnusedClass]
         depth: int
 
     @dataclass(frozen=True)
@@ -676,10 +637,6 @@ def test_error_a_field_annotation_names_what_is_not_defined() -> None:
 
         identifier: ClassVar[str] = "acme.localized"
         variable_size: ClassVar[bool] = False
-
-        @property
-        def inner(self) -> Local:
-            return self.configuration.inner
 
     with pytest.raises(TypeError, match="a field annotation names 'Local', which is not defined"):
         CORE_AND_EXTENSIONS.extended_with(Localized)
@@ -729,10 +686,6 @@ def test_a_slotted_entity_is_accepted() -> None:
 
         variable_size: ClassVar[bool] = False
 
-        @property
-        def level(self) -> int:
-            return self.configuration.level
-
     assert AcmeSlotted(AcmeSlottedOptions(level=1)).to_json() == {
         "name": "acme.slotted",
         "configuration": {"level": 1},
@@ -767,10 +720,6 @@ def test_a_number_member_is_a_float_field() -> None:
 
         variable_size: ClassVar[bool] = False
 
-        @property
-        def scale(self) -> float:
-            return self.configuration.scale
-
         def transition(self, incoming: ArrayParts) -> ArrayParts | None:
             return incoming
 
@@ -803,10 +752,6 @@ def test_error_an_entity_must_be_a_dataclass() -> None:
 
         identifier: ClassVar[str] = "acme.undecorated"
 
-        @property
-        def level(self) -> int:
-            return self.configuration.level
-
     with pytest.raises(TypeError, match="not a dataclass; decorate it with @dataclass"):
         CORE_AND_EXTENSIONS.extended_with(Undecorated)
 
@@ -824,10 +769,6 @@ def test_error_a_nested_field_admits_opaque() -> None:
 
         identifier: ClassVar[str] = "acme.closed"
         variable_size: ClassVar[bool] = False
-
-        @property
-        def inner(self) -> CodecEntity:
-            return self.configuration.inner
 
     with pytest.raises(TypeError, match="inner holds an entity but is not written as its kind"):
         CORE_AND_EXTENSIONS.extended_with(Closed)

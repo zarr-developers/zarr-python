@@ -92,7 +92,3 @@ class V2ChunkKeyEncoding(ChunkKeyEncodingEntity):
     configuration: V2ChunkKeyEncodingOptions
 
     identifier: ClassVar[str] = V2_CHUNK_KEY_ENCODING_NAME
-
-    @property
-    def separator(self) -> V2ChunkKeyEncodingSeparator | UNSET:
-        return self.configuration.separator

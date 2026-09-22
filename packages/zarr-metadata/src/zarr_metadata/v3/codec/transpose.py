@@ -95,10 +95,6 @@ class TransposeCodec(ArrayArrayCodec):
     identifier: ClassVar[str] = TRANSPOSE_CODEC_NAME
     variable_size: ClassVar[bool] = False
 
-    @property
-    def order(self) -> tuple[int, ...]:
-        return self.configuration.order
-
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
         """A transpose permutes the array it receives, so ranks must agree.
 
@@ -107,11 +103,11 @@ class TransposeCodec(ArrayArrayCodec):
         transpose's output.
         """
         rank = incoming.grid.rank if incoming is not None else None
-        if rank is None or len(self.order) == rank:
+        if rank is None or len(self.configuration.order) == rank:
             return ()
         return problem(
             ("order",),
-            f"order has {len(self.order)} entries but the incoming array has {rank} dimensions",
+            f"order has {len(self.configuration.order)} entries but the incoming array has {rank} dimensions",
             "invalid_value",
         )
 
@@ -122,4 +118,4 @@ class TransposeCodec(ArrayArrayCodec):
         survive the trip; the grid metadata does not, because it is no
         longer the grid the document wrote.
         """
-        return incoming.with_grid(incoming.grid.permuted(self.order))
+        return incoming.with_grid(incoming.grid.permuted(self.configuration.order))

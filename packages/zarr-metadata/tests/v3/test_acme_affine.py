@@ -82,23 +82,13 @@ class AcmeAffineCodec(ArrayArrayCodec):
     identifier: ClassVar[str] = "acme.affine"
     variable_size: ClassVar[bool] = False
 
-    @property
-    def scale(self) -> float:
-        return self.configuration.scale
-
-    @property
-    def offset(self) -> float | UNSET:
-        return self.configuration.offset
-
-    @property
-    def dtype(self) -> DataTypeEntity | Opaque | UNSET:
-        return self.configuration.dtype
-
     def canonical(self) -> Self:
         """An offset of 0 is the identity, and absent says the same; `dtype` in its own form."""
         return self.with_configuration(
-            offset=UNSET if self.offset == 0 else self.offset,
-            dtype=UNSET if self.dtype is UNSET else self.dtype.canonical(),
+            offset=UNSET if self.configuration.offset == 0 else self.configuration.offset,
+            dtype=UNSET
+            if self.configuration.dtype is UNSET
+            else self.configuration.dtype.canonical(),
         )
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
@@ -112,10 +102,12 @@ class AcmeAffineCodec(ArrayArrayCodec):
         )
 
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:
-        if self.dtype is UNSET:
+        if self.configuration.dtype is UNSET:
             return incoming
         return incoming.with_data_type(
-            self.dtype if isinstance(self.dtype, DataTypeEntity) else None
+            self.configuration.dtype
+            if isinstance(self.configuration.dtype, DataTypeEntity)
+            else None
         )
 
 
@@ -207,8 +199,8 @@ def test_an_out_of_scope_dtype_is_kept_and_not_judged() -> None:
     assert validate_array_metadata_v3(document, context=SCOPE) == ()
     codec = ArrayDocumentV3.from_json(document, context=SCOPE).codecs[0]
     assert isinstance(codec, AcmeAffineCodec)
-    assert isinstance(codec.dtype, Opaque)
-    assert codec.dtype.reason == "out_of_scope"
+    assert isinstance(codec.configuration.dtype, Opaque)
+    assert codec.configuration.dtype.reason == "out_of_scope"
     assert codec.to_json() == entry
 
 

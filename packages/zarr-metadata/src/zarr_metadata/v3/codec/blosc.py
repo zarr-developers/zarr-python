@@ -148,32 +148,12 @@ class BloscCodec(BytesBytesCodec):
     # Every member is required but `typesize`, which only means something
     # when shuffling; `BloscOptions.problems` is where that conditional lives.
 
-    @property
-    def cname(self) -> BloscCName:
-        return self.configuration.cname
-
-    @property
-    def clevel(self) -> int:
-        return self.configuration.clevel
-
-    @property
-    def shuffle(self) -> BloscShuffle:
-        return self.configuration.shuffle
-
-    @property
-    def blocksize(self) -> int:
-        return self.configuration.blocksize
-
-    @property
-    def typesize(self) -> int | UNSET:
-        return self.configuration.typesize
-
     def canonical(self) -> Self:
         """Without a `typesize` that `noshuffle` renders meaningless.
 
         The spec says of that case that "the value is ignored", so two
         documents differing only there describe the same codec.
         """
-        if self.shuffle != BLOSC_NO_SHUFFLE or self.typesize is UNSET:
+        if self.configuration.shuffle != BLOSC_NO_SHUFFLE or self.configuration.typesize is UNSET:
             return self
         return self.with_configuration(typesize=UNSET)

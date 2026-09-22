@@ -132,27 +132,11 @@ class ShardingIndexedCodec(ArrayBytesCodec):
     identifier: ClassVar[str] = SHARDING_INDEXED_CODEC_NAME
     variable_size: ClassVar[bool] = True
 
-    @property
-    def chunk_shape(self) -> tuple[int, ...]:
-        return self.configuration.chunk_shape
-
-    @property
-    def codecs(self) -> tuple[CodecEntity | Opaque, ...]:
-        return self.configuration.codecs
-
-    @property
-    def index_codecs(self) -> tuple[CodecEntity | Opaque, ...]:
-        return self.configuration.index_codecs
-
-    @property
-    def index_location(self) -> ShardingIndexLocation | UNSET:
-        return self.configuration.index_location
-
     def canonical(self) -> Self:
         """Each pipeline's codecs in their own canonical form."""
         return self.with_configuration(
-            codecs=tuple(codec.canonical() for codec in self.codecs),
-            index_codecs=tuple(codec.canonical() for codec in self.index_codecs),
+            codecs=tuple(codec.canonical() for codec in self.configuration.codecs),
+            index_codecs=tuple(codec.canonical() for codec in self.configuration.index_codecs),
         )
 
     def incoming_problems(self, incoming: ArrayParts | None) -> tuple[ValidationProblem, ...]:
@@ -172,9 +156,9 @@ class ShardingIndexedCodec(ArrayBytesCodec):
         outer = incoming.grid if incoming is not None else UNKNOWN_GRID
         found.extend(
             chain_problems(
-                self.codecs,
+                self.configuration.codecs,
                 ArrayParts(
-                    ChunkGrid.regular(self.chunk_shape),
+                    ChunkGrid.regular(self.configuration.chunk_shape),
                     incoming.data_type if incoming is not None else None,
                 ),
                 ("codecs",),
@@ -182,8 +166,10 @@ class ShardingIndexedCodec(ArrayBytesCodec):
         )
         found.extend(
             chain_problems(
-                self.index_codecs,
-                ArrayParts(shard_index_grid(outer, self.chunk_shape), Uint64DataType()),
+                self.configuration.index_codecs,
+                ArrayParts(
+                    shard_index_grid(outer, self.configuration.chunk_shape), Uint64DataType()
+                ),
                 ("index_codecs",),
             )
         )
@@ -194,7 +180,7 @@ class ShardingIndexedCodec(ArrayBytesCodec):
                 "index_codecs must be fixed-size",
                 "invalid_value",
             )
-            for index, codec in enumerate(self.index_codecs)
+            for index, codec in enumerate(self.configuration.index_codecs)
             if isinstance(codec, CodecEntity) and type(codec).variable_size
         )
         return tuple(found)
@@ -203,15 +189,15 @@ class ShardingIndexedCodec(ArrayBytesCodec):
         """Whether the inner chunk divides every chunk this shard receives."""
         if incoming is None or incoming.grid.rank is None:
             return ()
-        if len(self.chunk_shape) != incoming.grid.rank:
+        if len(self.configuration.chunk_shape) != incoming.grid.rank:
             return problem(
                 ("chunk_shape",),
-                f"chunk_shape has {len(self.chunk_shape)} entries but the incoming array "
+                f"chunk_shape has {len(self.configuration.chunk_shape)} entries but the incoming array "
                 f"has {incoming.grid.rank} dimensions",
                 "invalid_value",
             )
         found: list[ValidationProblem] = []
-        for position, extent in enumerate(self.chunk_shape):
+        for position, extent in enumerate(self.configuration.chunk_shape):
             lengths = incoming.grid.axis(position)
             if lengths is None or extent < 1:
                 continue

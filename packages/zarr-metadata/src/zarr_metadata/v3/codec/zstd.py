@@ -101,11 +101,3 @@ class ZstdCodec(BytesBytesCodec):
 
     identifier: ClassVar[str] = ZSTD_CODEC_NAME
     variable_size: ClassVar[bool] = True
-
-    @property
-    def level(self) -> int:
-        return self.configuration.level
-
-    @property
-    def checksum(self) -> bool | UNSET:
-        return self.configuration.checksum

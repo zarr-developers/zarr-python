@@ -111,14 +111,6 @@ class ScaleOffsetCodec(ArrayArrayCodec):
     identifier: ClassVar[str] = SCALE_OFFSET_CODEC_NAME
     variable_size: ClassVar[bool] = False
 
-    @property
-    def offset(self) -> JSONValue | UNSET:
-        return self.configuration.offset
-
-    @property
-    def scale(self) -> JSONValue | UNSET:
-        return self.configuration.scale
-
     def transition(self, incoming: ArrayParts) -> ArrayParts | None:
         """The same array, element for element.
 

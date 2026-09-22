@@ -104,14 +104,6 @@ class AcmeDecimalDataType(DataTypeEntity):
     identifier: ClassVar[str] = ACME_DECIMAL_DATA_TYPE_NAME
     scalar_storage: ClassVar[StorageClass] = "multi_byte"
 
-    @property
-    def precision(self) -> int:
-        return self.configuration.precision
-
-    @property
-    def scale(self) -> int:
-        return self.configuration.scale
-
     def fill_value_problems(self, value: object, loc: Loc = ()) -> tuple[ValidationProblem, ...]:
         """A decimal literal whose digits fit `precision` and `scale`.
 
@@ -130,13 +122,13 @@ class AcmeDecimalDataType(DataTypeEntity):
         integer_digits = len(matched.group("integer").lstrip("0"))
         fraction = matched.group("fraction")
         fraction_digits = 0 if fraction is None else len(fraction)
-        allowed_integer_digits = self.precision - self.scale
+        allowed_integer_digits = self.configuration.precision - self.configuration.scale
         found: list[ValidationProblem] = []
-        if fraction_digits > self.scale:
+        if fraction_digits > self.configuration.scale:
             found.extend(
                 problem(
                     loc,
-                    f"{value!r} has {fraction_digits} fractional digits, but scale is {self.scale}",
+                    f"{value!r} has {fraction_digits} fractional digits, but scale is {self.configuration.scale}",
                     "invalid_value",
                 )
             )
@@ -144,8 +136,8 @@ class AcmeDecimalDataType(DataTypeEntity):
             found.extend(
                 problem(
                     loc,
-                    f"{value!r} has {integer_digits} integer digits, but precision {self.precision} "
-                    f"with scale {self.scale} allows {allowed_integer_digits}",
+                    f"{value!r} has {integer_digits} integer digits, but precision {self.configuration.precision} "
+                    f"with scale {self.configuration.scale} allows {allowed_integer_digits}",
                     "invalid_value",
                 )
             )

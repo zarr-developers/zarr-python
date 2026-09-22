@@ -200,14 +200,6 @@ class RectilinearChunkGrid(ChunkGridEntity):
 
     identifier: ClassVar[str] = RECTILINEAR_CHUNK_GRID_NAME
 
-    @property
-    def kind(self) -> Literal["inline"]:
-        return self.configuration.kind
-
-    @property
-    def chunk_shapes(self) -> tuple[RectilinearDimSpec, ...]:
-        return self.configuration.chunk_shapes
-
     def shape_problems(self, array_shape: object) -> tuple[ValidationProblem, ...]:
         """One spec per dimension, and explicit specs must cover it.
 
@@ -218,15 +210,17 @@ class RectilinearChunkGrid(ChunkGridEntity):
         if not isinstance(array_shape, (list, tuple)):
             return ()
         extents = tuple(cast("Sequence[object]", array_shape))
-        if len(self.chunk_shapes) != len(extents):
+        if len(self.configuration.chunk_shapes) != len(extents):
             return problem(
                 ("chunk_shapes",),
-                f"chunk_shapes has {len(self.chunk_shapes)} entries but shape has "
+                f"chunk_shapes has {len(self.configuration.chunk_shapes)} entries but shape has "
                 f"{len(extents)} dimensions",
                 "invalid_value",
             )
         found: list[ValidationProblem] = []
-        for dim, (spec, extent) in enumerate(zip(self.chunk_shapes, extents, strict=True)):
+        for dim, (spec, extent) in enumerate(
+            zip(self.configuration.chunk_shapes, extents, strict=True)
+        ):
             if isinstance(spec, int) or not is_integer(extent):
                 continue
             total = _covered_extent(spec)
@@ -247,7 +241,9 @@ class RectilinearChunkGrid(ChunkGridEntity):
         axis of `[30, 34]` gives `{30, 34}`, and anything asking about
         divisibility has to hold for both.
         """
-        return ChunkGrid.derived(tuple(_axis_lengths(spec) for spec in self.chunk_shapes))
+        return ChunkGrid.derived(
+            tuple(_axis_lengths(spec) for spec in self.configuration.chunk_shapes)
+        )
 
     def canonical(self) -> Self:
         """Run-length encoded, which is the spelling that does not grow.
@@ -255,4 +251,6 @@ class RectilinearChunkGrid(ChunkGridEntity):
         Two dimension specs listing the same extents describe the same
         grid, and the encoded one stays the same size as the array grows.
         """
-        return self.with_configuration(chunk_shapes=canonical_chunk_shapes(self.chunk_shapes))
+        return self.with_configuration(
+            chunk_shapes=canonical_chunk_shapes(self.configuration.chunk_shapes)
+        )

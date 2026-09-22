@@ -155,15 +155,12 @@ class StructDataType(DataTypeEntity):
     identifier: ClassVar[str] = STRUCT_DATA_TYPE_NAME
     scalar_storage: ClassVar[StorageClass] = "single_byte"
 
-    @property
-    def fields(self) -> tuple[StructFieldComponent, ...]:
-        return self.configuration.fields
-
     def canonical(self) -> Self:
         """Each field's data type in its own canonical form."""
         return self.with_configuration(
             fields=tuple(
-                replace(field, data_type=field.data_type.canonical()) for field in self.fields
+                replace(field, data_type=field.data_type.canonical())
+                for field in self.configuration.fields
             ),
         )
 
@@ -175,7 +172,7 @@ class StructDataType(DataTypeEntity):
         field's type is out of scope: the answer would be a guess.
         """
         widest: StorageClass = "single_byte"
-        for field in self.fields:
+        for field in self.configuration.fields:
             if not isinstance(field.data_type, DataTypeEntity):
                 return None
             found = field.data_type.storage_class()
@@ -203,7 +200,7 @@ class StructDataType(DataTypeEntity):
             )
         fills = cast("Mapping[str, object]", value)
         found: list[ValidationProblem] = []
-        for field in self.fields:
+        for field in self.configuration.fields:
             at: Loc = (*loc, field.name)
             if field.name not in fills:
                 found.extend(
@@ -215,7 +212,7 @@ class StructDataType(DataTypeEntity):
             if not isinstance(field.data_type, DataTypeEntity):
                 continue
             found.extend(field.data_type.fill_value_problems(fills[field.name], at))
-        declared = {field.name for field in self.fields}
+        declared = {field.name for field in self.configuration.fields}
         found.extend(
             ValidationProblem((*loc, key), f"unknown struct fill field {key!r}", "unknown_key")
             for key in sorted(fills.keys() - declared)
