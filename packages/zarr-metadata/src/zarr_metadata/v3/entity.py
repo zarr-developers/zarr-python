@@ -134,7 +134,9 @@ classmethod, located on the entity.
 written once in the base, from the record: the bare name when every
 member is absent, the object otherwise, a contained entity through its
 own `to_json`; an entity whose JSON is not its fields overrides it, and
-none in the package does. `canonical`, the entity in its simplest equivalent form:
+none in the package does. `ArrayDocumentV3.to_json` puts each envelope
+back as the document spelled it, so a document read and written comes
+out as it went in. `canonical`, the entity in its simplest equivalent form:
 the entity itself by default, overridden where two spellings of its
 members mean the same, and in an entity that contains entities to put
 those in canonical form -- `self.with_configuration(inner=self.inner.canonical())`.

@@ -642,13 +642,13 @@ class MetadataEntity(ABC):
         object otherwise, a contained entity through its own `to_json`,
         a JSON-valued member copied so the document is not a handle on
         the entity. Faithful to every member: read a document, write it
-        back, and those come out as they went in. Ask `canonical` first
-        if you want the simplest equivalent spelling. The envelope's
-        spelling is the one thing not preserved, because the entity does
-        not model it: a bare name, `{"name": x}` and `{"name": x,
-        "configuration": {}}` all read to the same entity, and a
-        `must_understand` the document wrote is not written back, since
-        absent means the same as `true` and `false` is refused.
+        back, and those come out as they went in. The envelope is
+        written the entity's way -- the bare name when nothing is
+        configured, the object otherwise, no `must_understand`, which
+        means what absence means -- because an entity alone has no
+        document to be faithful to; `ArrayDocumentV3.to_json` puts back
+        the spelling the document used. Ask `canonical` first if you
+        want the simplest equivalent spelling.
 
         An entity whose JSON is not its fields overrides this; none in
         the package does.

@@ -505,6 +505,70 @@ def test_the_document_writes_back_only_the_fields_it_read() -> None:
     assert array.to_json() == {"shape": (4,)}
 
 
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        "crc32c",
+        {"name": "crc32c"},
+        {"name": "crc32c", "configuration": {}},
+        {"name": "crc32c", "must_understand": True},
+        {"name": "crc32c", "configuration": {}, "must_understand": True},
+    ],
+    ids=["bare", "object", "empty-configuration", "must-understand", "both"],
+)
+def test_the_document_writes_an_envelope_as_it_was_written(spelling: object) -> None:
+    # An entity writes its own spelling; the document knows the one it
+    # read and puts it back, around a codec in the pipeline and around
+    # one inside a shard alike. Only `canonical` simplifies it.
+    document = {
+        "codecs": (
+            {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": (2,),
+                    "codecs": ("bytes",),
+                    "index_codecs": (
+                        {"name": "bytes", "configuration": {"endian": "little"}},
+                        spelling,
+                    ),
+                },
+            },
+            spelling,
+        ),
+    }
+    array, problems = read_array_v3(document, CORE_AND_EXTENSIONS)
+    assert problems == ()
+    assert isinstance(array.codecs[0], ShardingIndexedCodec)
+    assert isinstance(array.codecs[1], Crc32cCodec)
+    assert array.to_json() == document
+    canonical = array.canonical().to_json()["codecs"]
+    assert isinstance(canonical, tuple)
+    assert canonical[1] == "crc32c"
+
+
+def test_the_document_writes_a_changed_member_inside_the_envelope_it_read() -> None:
+    # What changed is what changes: the member is the entity's, the
+    # spelling around it the document's. An entity put in by hand has
+    # no spelling on record and writes itself.
+    document = {
+        "codecs": (
+            "bytes",
+            {"name": "gzip", "configuration": {"level": 1}, "must_understand": True},
+        ),
+    }
+    array, problems = read_array_v3(document, CORE_AND_EXTENSIONS)
+    assert problems == ()
+    bytes_codec, gzip = array.codecs
+    assert isinstance(gzip, GzipCodec)
+    changed = dataclasses.replace(array, codecs=(bytes_codec, gzip.with_configuration(level=5)))
+    assert changed.to_json()["codecs"] == (
+        "bytes",
+        {"name": "gzip", "configuration": {"level": 5}, "must_understand": True},
+    )
+    swapped = dataclasses.replace(array, codecs=(bytes_codec, Crc32cCodec()))
+    assert swapped.to_json()["codecs"] == ("bytes", "crc32c")
+
+
 def test_an_unreadable_member_is_not_judged_by_its_default() -> None:
     # `shuffle` could not be read, so it falls back to `noshuffle`, under
     # which `typesize` means nothing. The absent `typesize` must not be

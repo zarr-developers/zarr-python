@@ -93,45 +93,52 @@ class ArrayDocumentV3:
     def canonical(self) -> ArrayDocumentV3:
         """This document in the simplest form that means the same thing.
 
-        Each entity in its own canonical form, and the one rule that is
-        the document's own: `dimension_names` of nothing but nulls says
-        what omitting the field says. A *transformation*, asked for by
-        `canonicalize_array_metadata_v3`; `to_json` does not apply it.
+        Each entity in its own canonical form and in its own spelling of
+        the envelope -- the bare name when nothing is configured, no
+        `must_understand`, which means what absence means -- and the one
+        rule that is the document's own: `dimension_names` of nothing
+        but nulls says what omitting the field says. A *transformation*,
+        asked for by `canonicalize_array_metadata_v3`; `to_json` does
+        not apply it. What comes back is a document written that way, so
+        writing it changes nothing further.
         """
-        document = dict(self.document)
-        names = document.get("dimension_names")
-        if isinstance(names, tuple) and all(
-            entry is None for entry in cast("tuple[object, ...]", names)
-        ):
-            del document["dimension_names"]
-        return replace(
+        simplified = replace(
             self,
-            document=document,
             data_type=self.data_type.canonical(),
             chunk_grid=self.chunk_grid.canonical(),
             chunk_key_encoding=self.chunk_key_encoding.canonical(),
             codecs=tuple(codec.canonical() for codec in self.codecs),
             storage_transformers=tuple(entry.canonical() for entry in self.storage_transformers),
         )
+        document = {**self.document, **_rendered(simplified)}
+        names = document.get("dimension_names")
+        if isinstance(names, tuple) and all(
+            entry is None for entry in cast("tuple[object, ...]", names)
+        ):
+            del document["dimension_names"]
+        return replace(simplified, document=document)
 
     def to_json(self) -> dict[str, object]:
-        """The document as it would be written: every entity in its JSON form.
+        """The document as it was written, with each entity's members as the entity has them.
 
-        Faithful to what was read, member for member; the fields that
-        are not extension points come back exactly as the document had
-        them, and a field the document did not have is not invented.
-        Ask `canonical` first for the simplest equivalent spelling.
+        Faithful: a document read and written comes out as it went in,
+        an entity's envelope included -- `{"name": "crc32c"}` stays an
+        object, an empty `configuration` and a `must_understand` of
+        `true` stay written -- because the document knows the spelling
+        it read and puts it back around what the entity writes. What
+        changed is what changes: a member replaced through
+        `with_configuration` is written as the entity now has it, and an
+        entity put in by hand is written as it writes itself. A field
+        the document did not have is not invented, and one it wrote as
+        something no entity could be read from stands as written. Ask
+        `canonical` first for the simplest equivalent spelling.
         """
-        rendered: dict[str, object] = {
-            "data_type": self.data_type.to_json(),
-            "chunk_grid": self.chunk_grid.to_json(),
-            "chunk_key_encoding": self.chunk_key_encoding.to_json(),
-            "codecs": tuple(codec.to_json() for codec in self.codecs),
-            "storage_transformers": tuple(entry.to_json() for entry in self.storage_transformers),
-        }
         return {
             **self.document,
-            **{key: value for key, value in rendered.items() if key in self.document},
+            **{
+                key: _as_written(self.document[key], value)
+                for key, value in _rendered(self).items()
+            },
         }
 
     @classmethod
@@ -178,6 +185,73 @@ class ArrayDocumentV3:
         return ArrayParts(
             grid, self.data_type if isinstance(self.data_type, DataTypeEntity) else None
         )
+
+
+def _rendered(array: ArrayDocumentV3) -> dict[str, object]:
+    """Each entity field the document has, as its entities write it; one nothing was read from is left out."""
+    rendered: dict[str, object] = {}
+    for key, entity in (
+        ("data_type", array.data_type),
+        ("chunk_grid", array.chunk_grid),
+        ("chunk_key_encoding", array.chunk_key_encoding),
+    ):
+        if key in array.document:
+            rendered[key] = entity.to_json()
+    for key, entities in (
+        ("codecs", array.codecs),
+        ("storage_transformers", array.storage_transformers),
+    ):
+        if _listed(array.document, key) is not None:
+            rendered[key] = tuple(entity.to_json() for entity in entities)
+    return rendered
+
+
+_ENVELOPE_KEYS = frozenset({"name", "configuration"})
+"""What an entity writes around its members; anything else around a name is the document's."""
+
+
+def _as_written(original: object, rendered: object) -> object:
+    """`rendered`, an entity's JSON, in the spelling `original`, the document's JSON at the same place, used.
+
+    The envelope's writer, the counterpart of `named_configuration`. An
+    entity writes its members and its own spelling of the envelope,
+    since it has no document to be faithful to; the document has, so
+    the spellings that mean the same come back as they were written:
+    the object around a bare name, a `configuration` of nothing, a
+    `must_understand` of `true`. The two trees are walked together, so
+    a codec inside a shard is dressed as one in the pipeline is. Where
+    they disagree -- an entity put in or taken out by hand, a name
+    changed -- the rendered value stands, members and all.
+    """
+    nothing: dict[str, object] = {}
+    if isinstance(original, Mapping):
+        before = cast("Mapping[str, object]", original)
+        if isinstance(rendered, str):
+            if before.get("name") == rendered:
+                return {
+                    key: nothing if key == "configuration" else value
+                    for key, value in before.items()
+                }
+            return rendered
+        if isinstance(rendered, Mapping):
+            after = cast("Mapping[str, object]", rendered)
+            written = {key: _as_written(before.get(key), value) for key, value in after.items()}
+            if (
+                after.keys() <= _ENVELOPE_KEYS
+                and "name" in after
+                and before.get("name") == after["name"]
+            ):
+                for key, value in before.items():
+                    if key not in written:
+                        written[key] = nothing if key == "configuration" else value
+            return written
+    if isinstance(original, (list, tuple)) and isinstance(rendered, (list, tuple)):
+        before = cast("Sequence[object]", original)
+        after = cast("Sequence[object]", rendered)
+        if len(before) != len(after):
+            return tuple(after)
+        return tuple(_as_written(entry, value) for entry, value in zip(before, after, strict=True))
+    return rendered
 
 
 def _listed(document: Mapping[str, object], key: str) -> Sequence[object] | None:
