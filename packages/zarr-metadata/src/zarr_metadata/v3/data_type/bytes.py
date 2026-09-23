@@ -7,6 +7,8 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 import re
 from typing import Final, Literal, NewType
 
+from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration
+
 BYTES_DATA_TYPE_NAME: Final = "bytes"
 """The `data_type` value for the variable-length `bytes` type."""
 
@@ -39,7 +41,14 @@ Either a JSON array of integers in `[0, 255]` (one per byte), or a
 """
 
 
+BYTES_DATA_TYPE: Final = DataTypeDefinition(
+    name=BYTES_DATA_TYPE_NAME, configuration=EmptyConfiguration
+)
+"""The `bytes` data type: a bare name, with nothing to configure."""
+
+
 __all__ = [
+    "BYTES_DATA_TYPE",
     "BYTES_DATA_TYPE_NAME",
     "Base64Bytes",
     "BytesDataTypeName",

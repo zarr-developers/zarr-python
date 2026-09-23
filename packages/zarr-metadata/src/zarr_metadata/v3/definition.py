@@ -109,18 +109,29 @@ word, so a definition refuses it. Its members are the shapes JSON takes:
 `Mapping[str, V]`, a `NewType` and a type alias.
 
 A member holding another metadata field is annotated with the field alias
-of its kind -- a container codec's `codecs: tuple[CodecField, ...]` -- and
-read in the scope its field is read in. `ZarrV3MetadataFieldJSON` is the
-same JSON, but checks as JSON and nothing more, so a definition refuses a
+of its kind -- a shard's `codecs: tuple[CodecField, ...]` -- and read in
+the scope its field is read in. `ZarrV3MetadataFieldJSON` is the same
+JSON, but checks as JSON and nothing more, so a definition refuses a
 member typed with it. A family, one definition for many names, claims
-them through `names` and says which are allowed through `name_rules`.
+them through `names` and says which are allowed through `name_rules`:
+the raw-bytes family claims every `r<N>`. An extension with nothing to
+configure takes `EmptyConfiguration`, and is written as its bare name.
+
+**The simplest spelling.** `canonicalize(field, kind, scope)` gives a
+field that reads in its simplest equivalent spelling: the configuration
+its TypedDict admits, each nested field in its own simplest spelling,
+then the definition's `canonical` -- blosc drops a `typesize` that
+`noshuffle` ignores, a rectilinear grid run-length encodes its chunk
+shapes -- and the envelope in the fewest words. What `canonical` gives
+is judged again: one that does not hold is a `ValueError`, a fault in
+the definition.
 
 A definition checks itself when it is built, and each of these is a
 `TypeError` saying what is wrong: a `configuration` that is not a
 TypedDict, says nothing of the keys it does not declare, or has a member
 no checker reads, named down to the TypedDict that holds it; a `name`
-that is not a string; `rules`, `name_rules` or `names` that are not
-functions; a codec `kind` that is not one of the three. A scope refuses
+that is not a string; `rules`, `name_rules`, `canonical` or `names`
+that are not functions; a codec `kind` that is not one of the three. A scope refuses
 a definition of no kind. Nothing happens at class creation.
 """
 
@@ -139,11 +150,13 @@ from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     DataTypeField,
     Definition,
+    EmptyConfiguration,
     Resolution,
     Resolved,
     StorageTransformerDefinition,
     StorageTransformerField,
     Unread,
+    canonicalize,
     configuration_of,
     resolve,
 )
@@ -163,6 +176,7 @@ __all__ = [
     "DataTypeDefinition",
     "DataTypeField",
     "Definition",
+    "EmptyConfiguration",
     "JSONValue",
     "Loc",
     "MetadataValidationError",
@@ -174,6 +188,7 @@ __all__ = [
     "Unread",
     "ValidationProblem",
     "ZarrV3MetadataFieldJSON",
+    "canonicalize",
     "check",
     "configuration_of",
     "resolve",

@@ -6,6 +6,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 
 from typing import Final, Literal
 
+from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration
 from zarr_metadata.v3.data_type.float64 import Float64FillValue
 
 COMPLEX128_DATA_TYPE_NAME: Final = "complex128"
@@ -29,7 +30,14 @@ A two-element JSON array `[real, imag]` where each component is a
 """
 
 
+COMPLEX128_DATA_TYPE: Final = DataTypeDefinition(
+    name=COMPLEX128_DATA_TYPE_NAME, configuration=EmptyConfiguration
+)
+"""The `complex128` data type: a bare name, with nothing to configure."""
+
+
 __all__ = [
+    "COMPLEX128_DATA_TYPE",
     "COMPLEX128_DATA_TYPE_NAME",
     "Complex128Component",
     "Complex128DataTypeName",

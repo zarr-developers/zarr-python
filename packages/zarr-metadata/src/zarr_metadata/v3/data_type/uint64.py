@@ -6,6 +6,8 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 
 from typing import Final, Literal
 
+from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration
+
 UINT64_DATA_TYPE_NAME: Final = "uint64"
 """The `data_type` value for the `uint64` type."""
 
@@ -16,7 +18,14 @@ Uint64FillValue = int
 """Permitted JSON shape of the `fill_value` field for `uint64`: a JSON integer in [0, 2**64 - 1]."""
 
 
+UINT64_DATA_TYPE: Final = DataTypeDefinition(
+    name=UINT64_DATA_TYPE_NAME, configuration=EmptyConfiguration
+)
+"""The `uint64` data type: a bare name, with nothing to configure."""
+
+
 __all__ = [
+    "UINT64_DATA_TYPE",
     "UINT64_DATA_TYPE_NAME",
     "Uint64DataTypeName",
     "Uint64FillValue",

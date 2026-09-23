@@ -44,7 +44,7 @@ from typing import (
     get_origin,
 )
 
-from typing_extensions import TypeAliasType, TypeVar, is_typeddict
+from typing_extensions import TypeAliasType, TypedDict, TypeVar, is_typeddict
 
 from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
 from zarr_metadata._json import ValidationProblem, refine_json
@@ -89,6 +89,15 @@ def no_name_rules(name: str) -> Iterator[ValidationProblem]:
     yield from ()
 
 
+def unchanged(configuration: T) -> T:
+    """The canonical form of a configuration with no simpler spelling: itself."""
+    return configuration
+
+
+class EmptyConfiguration(TypedDict, closed=True):
+    """The configuration of a definition with nothing to configure, written as its bare name."""
+
+
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Definition(Generic[C]):
     """One extension's metadata, as JSON: its name, the TypedDict its configuration is, its rules.
@@ -109,7 +118,8 @@ class Definition(Generic[C]):
     A family claims many names -- every `r<N>`, one data type -- through
     `names`, and says which of them are allowed through `name_rules`,
     whose problems land on the field, since a name is not configuration.
-    Every other definition claims `name` alone.
+    Every other definition claims `name` alone. `canonical` is where two
+    spellings of the configuration that mean the same thing are made one.
 
     Built by hand, a definition refuses what it could not read with: a
     `configuration` that is not a TypedDict, says nothing of the keys it
@@ -127,6 +137,12 @@ class Definition(Generic[C]):
     """Which names a family claims; None for a definition that claims `name` alone."""
     name_rules: Callable[[str], Iterable[ValidationProblem]] = no_name_rules
     """What the spec disallows in a claimed name."""
+    canonical: Callable[[C], C] = unchanged
+    """A well-typed, allowed configuration in its simplest equivalent spelling.
+
+    Only the definition's own members: a nested field is put in its own
+    canonical form by `canonicalize`, which knows where each one sits.
+    """
 
     def __post_init__(self) -> None:
         refusal = _malformed(self) or self._refusal()
@@ -180,7 +196,11 @@ def _malformed(definition: Definition[Any]) -> str | None:
     name = cast("object", definition.name)
     if not isinstance(name, str):
         return f"a definition's name is a string, got {name!r}"
-    functions: dict[str, object] = {"rules": definition.rules, "name_rules": definition.name_rules}
+    functions: dict[str, object] = {
+        "rules": definition.rules,
+        "name_rules": definition.name_rules,
+        "canonical": definition.canonical,
+    }
     if definition.names is not None:
         functions["names"] = definition.names
     return next(
@@ -584,6 +604,68 @@ def _read(
     return Resolved(data, "read", definition, configuration), tuple(problems)
 
 
+def canonicalize(
+    data: object, kind: type[D], context: Context, loc: Loc = ()
+) -> tuple[JSONValue | None, Problems]:
+    """`data`, one metadata field, in its simplest equivalent spelling, and every problem.
+
+    Only a field that reads has one. Its configuration holds what its
+    TypedDict admits, each nested field goes in its own canonical form,
+    and then the definition's `canonical` has the rest -- judged again,
+    so a `canonical` that gives a configuration that does not hold is a
+    `ValueError`, a fault in the definition rather than the field. The
+    envelope takes the fewest words: the bare name when nothing is
+    configured, and no `must_understand`, since `true` is what absence
+    means and `false` is refused, a problem reported with the field. A
+    name nothing in scope claims comes back as written, since what it
+    simplifies to is its own definition's call; a field that does not
+    read has no canonical form, and comes back None.
+    """
+    resolved, problems = resolve(data, kind, context, loc)
+    if resolved.resolution == "out_of_scope":
+        return resolved.json, problems
+    if resolved.resolution != "read" or resolved.definition is None:
+        return None, problems
+    return _canonical_field(resolved.definition, resolved, context), problems
+
+
+def _canonical_field(
+    definition: Definition[Any], resolved: Resolved[Any], context: Context
+) -> JSONValue:
+    """A field that read, in its simplest equivalent spelling: nested fields first, then its own members."""
+    name, _, _ = named_configuration(resolved.json)
+    configuration: JSONValue = dict(resolved.configuration or {})
+    _, _, nested = _checked(definition.configuration, configuration, ())
+    for field in nested:
+        simplest, _ = canonicalize(field.json, field.kind, context)
+        configuration = _replaced(
+            configuration, field.loc, field.json if simplest is None else simplest
+        )
+    simplified = cast("Mapping[str, JSONValue]", definition.canonical(configuration))
+    _, refused = definition.judge(simplified)
+    if len(refused) != 0:
+        msg = (
+            f"{definition.name!r}: its canonical gave {simplified!r}, which does not hold: "
+            f"{list(refused)!r}"
+        )
+        raise ValueError(msg)
+    if len(simplified) == 0:
+        return name
+    return {"name": name, "configuration": simplified}
+
+
+def _replaced(value: JSONValue, path: Loc, new: JSONValue) -> JSONValue:
+    """`value` with what sits at `path` replaced by `new`; `path` comes from a check of `value`."""
+    if len(path) == 0:
+        return new
+    step, rest = path[0], path[1:]
+    if isinstance(step, str):
+        members = cast("Mapping[str, JSONValue]", value)
+        return {**members, step: _replaced(members[step], rest, new)}
+    entries = cast("tuple[JSONValue, ...]", value)
+    return (*entries[:step], _replaced(entries[step], rest, new), *entries[step + 1 :])
+
+
 __all__ = [
     "KINDS",
     "ChunkGridDefinition",
@@ -596,16 +678,19 @@ __all__ = [
     "DataTypeDefinition",
     "DataTypeField",
     "Definition",
+    "EmptyConfiguration",
     "Resolution",
     "Resolved",
     "StorageTransformerDefinition",
     "StorageTransformerField",
     "Unread",
     "as_kind",
+    "canonicalize",
     "configuration_of",
     "kind_of",
     "named_configuration",
     "no_name_rules",
     "no_rules",
     "resolve",
+    "unchanged",
 ]

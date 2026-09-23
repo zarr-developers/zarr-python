@@ -4,11 +4,13 @@ Sharding-indexed codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index.html
 """
 
+from collections.abc import Iterator
 from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+from zarr_metadata._json import ValidationProblem
+from zarr_metadata.v3._definition import CodecDefinition, CodecField
 
 SHARDING_INDEXED_CODEC_NAME: Final = "sharding_indexed"
 """The `name` field value of the `sharding_indexed` codec."""
@@ -42,8 +44,8 @@ class ShardingIndexedCodecConfiguration(TypedDict, closed=True):
     """
 
     chunk_shape: tuple[int, ...]
-    codecs: tuple[ZarrV3MetadataFieldJSON, ...]
-    index_codecs: tuple[ZarrV3MetadataFieldJSON, ...]
+    codecs: tuple[CodecField, ...]
+    index_codecs: tuple[CodecField, ...]
     index_location: NotRequired[ShardingIndexLocation]
 
 
@@ -65,7 +67,31 @@ form is not permitted by the spec for this codec.
   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564 (short-hand names only "if no configuration metadata is required")
 """
 
+
+def _rules(configuration: ShardingIndexedCodecConfiguration) -> Iterator[ValidationProblem]:
+    """Every inner chunk extent is at least 1."""
+    for index, extent in enumerate(configuration["chunk_shape"]):
+        if extent < 1:
+            yield ValidationProblem(
+                ("chunk_shape", index), f"expected an integer >= 1, got {extent}", "invalid_value"
+            )
+
+
+SHARDING_INDEXED_CODEC: Final = CodecDefinition(
+    name=SHARDING_INDEXED_CODEC_NAME,
+    configuration=ShardingIndexedCodecConfiguration,
+    kind="array_bytes",
+    rules=_rules,
+)
+"""The `sharding_indexed` codec.
+
+Its two pipelines are nested fields, each codec in them read in the
+scope the shard is read in.
+"""
+
+
 __all__ = [
+    "SHARDING_INDEXED_CODEC",
     "SHARDING_INDEXED_CODEC_NAME",
     "SHARDING_INDEX_LOCATION",
     "ShardingIndexLocation",
