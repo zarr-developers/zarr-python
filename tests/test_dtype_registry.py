@@ -29,7 +29,7 @@ from zarr.dtype import (  # type: ignore[attr-defined]
     parse_data_type,
     parse_dtype,
 )
-from zarr.errors import DataTypeValidationError
+from zarr.errors import DataTypeValidationError, NestedDataTypeValidationError
 
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
@@ -325,7 +325,7 @@ _RESOLUTION_ROUTES: dict[str, Any] = {
         data, zarr_format=zarr_format, registry=registry
     ),
     "Struct.from_json": lambda data, zarr_format, registry: Struct.from_json(
-        data, zarr_format=zarr_format, resolver=registry.match_json
+        data, zarr_format=zarr_format, registry=registry
     ),
 }
 
@@ -348,14 +348,14 @@ def test_resolve_struct_fields_with_registry(route: str, zarr_format: ZarrFormat
 def test_resolve_struct_fields_default_registry() -> None:
     """Without a registry, fields are resolved from the default registry, which lacks _Byte."""
     data = Struct(fields=(("a", _Byte()),)).to_json(zarr_format=3)
-    with pytest.raises(ValueError, match="No Zarr data type found"):
+    with pytest.raises(NestedDataTypeValidationError, match=r"at path \['a'\]"):
         get_data_type_from_json(data, zarr_format=3)
 
 
 def test_resolve_struct_fields_missing_from_registry() -> None:
     """A field data type is not found in the default registry when the registry lacks it."""
     data = Struct(fields=(("a", UInt8()),)).to_json(zarr_format=3)
-    with pytest.raises(ValueError, match="No Zarr data type found"):
+    with pytest.raises(NestedDataTypeValidationError, match=r"at path \['a'\]"):
         get_data_type_from_json(data, zarr_format=3, registry=_registry_with(Struct))
 
 
@@ -366,7 +366,7 @@ def test_parse_dtype_native_missing_from_registry() -> None:
 
 
 class _OverridesFromJSON(Int8):
-    """A data type that overrides `from_json` itself, as data types written before resolvers do."""
+    """A data type that overrides `from_json` itself, as data types that contain none may."""
 
     _zarr_v3_name = "test.overrides_from_json"  # type: ignore[assignment]
 
@@ -378,8 +378,33 @@ class _OverridesFromJSON(Int8):
 
 
 def test_resolve_data_type_overriding_from_json() -> None:
-    """A registry does not give a resolver to a data type that contains no other data types."""
+    """A registry creates a data type that contains no other data types with its `from_json`."""
     registry = _registry_with(Struct, _OverridesFromJSON)
     expected = Struct(fields=(("a", _OverridesFromJSON()),))
     observed = registry.match_json(expected.to_json(zarr_format=3), zarr_format=3)
     assert observed == expected
+
+
+@pytest.mark.parametrize(
+    ("zarr_format", "zdtype", "path"),
+    [
+        (2, Struct(fields=(("x", Int8()), ("y", _Byte()))), ["y"]),
+        # Zarr V2 structured data types nested in structured data types do not round trip
+        (
+            3,
+            Struct(fields=(("outer", Struct(fields=(("x", Int8()), ("y", _Byte())))),)),
+            ["outer", "y"],
+        ),
+    ],
+    ids=str,
+)
+def test_resolve_struct_field_missing_path(
+    zarr_format: ZarrFormat, zdtype: Struct, path: list[str]
+) -> None:
+    """
+    A field data type that matches no data type is reported with its path through the structured
+    data types that contain it, rather than as a mismatch of the outermost data type.
+    """
+    registry = _registry_with(Struct, Int8)
+    with pytest.raises(NestedDataTypeValidationError, match=re.escape(f"at path {path!r}")):
+        registry.match_json(zdtype.to_json(zarr_format=zarr_format), zarr_format=zarr_format)

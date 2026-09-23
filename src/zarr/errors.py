@@ -11,6 +11,7 @@ __all__ = [
     "GroupNotFoundError",
     "MetadataValidationError",
     "NegativeStepError",
+    "NestedDataTypeValidationError",
     "NodeTypeValidationError",
     "UnknownCodecError",
     "UnstableSpecificationWarning",
@@ -87,6 +88,16 @@ class ContainsArrayAndGroupError(BaseZarrError):
 
 
 class DataTypeValidationError(ValueError): ...
+
+
+class NestedDataTypeValidationError(DataTypeValidationError):
+    """
+    A data type contains a data type that is invalid, such as a structured data type with a field
+    whose data type matches no data type.
+
+    The JSON has the shape of the containing data type, so a data type registry reports this error
+    rather than trying other data types.
+    """
 
 
 class MetadataValidationError(BaseZarrError):

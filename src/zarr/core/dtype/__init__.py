@@ -50,14 +50,14 @@ from zarr.core.dtype.npy.string import (
     VariableLengthUTF8,
     VariableLengthUTF8JSON_V2,
 )
-from zarr.core.dtype.registry import DataTypeRegistry
-from zarr.core.dtype.wrapper import DTypeResolver, TBaseDType, TBaseScalar, ZDType
+from zarr.core.dtype.registry import DataTypeRegistry, DTypeContext
+from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 __all__ = [
     "Bool",
     "Complex64",
     "Complex128",
-    "DTypeResolver",
+    "DTypeContext",
     "DataTypeRegistry",
     "DateTime64",
     "DateTime64JSON_V2",
