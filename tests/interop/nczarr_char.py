@@ -1,9 +1,13 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#   "zarr @ git+https://github.com/d-v-b/zarr-python.git@feat/nczarr-char-dtype",
+#   "zarr",
 #   "netCDF4>=1.7",
 # ]
+#
+# # zarr is the checkout this script is in, not a release
+# [tool.uv.sources]
+# zarr = { path = "../..", editable = true }
 # ///
 """
 Reproducer: zarr-python and NCZarr (netCDF-C) agree on the netCDF `NC_CHAR` data type.
@@ -27,13 +31,12 @@ This script checks, against the netCDF-C library bundled with the `netCDF4` whee
 netCDF-C gives `">S1"` this meaning only for arrays with NCZarr metadata (`_nczarr_array`). It
 reads a pure Zarr array (`#mode=zarr`) with `">S1"` as `NC_STRING`.
 
-It is not part of the test suite. Run it from the repository root against the local checkout with
-
-    uv run --with netCDF4 python tests/interop/nczarr_char.py
-
-or on its own (which installs zarr from the branch named in the header) with
+It is not part of the test suite. Run it with
 
     uv run tests/interop/nczarr_char.py
+
+which installs the zarr of the checkout this script is in (see `[tool.uv.sources]` in the header),
+from any working directory.
 """
 
 from __future__ import annotations
