@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Final, NotRequired, cast
 import pytest
 from typing_extensions import TypedDict
 
+from zarr_metadata.model import validate_array_metadata_v3
 from zarr_metadata.model._array import ZarrV3ArrayMetadata
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
@@ -22,12 +23,14 @@ from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
     ChunkGridDefinition,
+    ChunkKeyEncodingDefinition,
     CodecDefinition,
     CodecField,
     Context,
     DataTypeDefinition,
     Definition,
     JSONValue,
+    StorageTransformerDefinition,
     ValidationProblem,
     ZarrV3MetadataFieldJSON,
     check,
@@ -363,6 +366,35 @@ def test_error_must_understand_false_is_refused() -> None:
     resolved, found = resolve({"name": "crc32c", "must_understand": False}, CodecDefinition, SCOPE)
     assert resolved.resolution == "read"
     assert _locs(found) == [(("must_understand",), "invalid_value")]
+
+
+@pytest.mark.parametrize(
+    ("member", "kind"),
+    [
+        ("data_type", DataTypeDefinition),
+        ("chunk_grid", ChunkGridDefinition),
+        ("chunk_key_encoding", ChunkKeyEncodingDefinition),
+        ("codecs", CodecDefinition),
+        ("storage_transformers", StorageTransformerDefinition),
+    ],
+)
+def test_error_must_understand_false_is_refused_wherever_the_model_refuses_it(
+    member: str, kind: type[Definition[Any]]
+) -> None:
+    # One reading of the spec, applied by two readers: a field read here,
+    # and the model's validator. If either changes alone, this fails.
+    field: dict[str, JSONValue] = {"name": "acme.example", "must_understand": False}
+    listed = member in ("codecs", "storage_transformers")
+    document: dict[str, object] = dict(ZarrV3ArrayMetadata.create_default().to_json())
+    document[member] = [field] if listed else field
+    at = (member, 0) if listed else (member,)
+    by_model = [
+        (problem.loc[len(at) :], problem.kind)
+        for problem in validate_array_metadata_v3(document)
+        if problem.loc[: len(at)] == at
+    ]
+    assert _locs(resolve(field, kind, CORE_AND_EXTENSIONS)[1]) == by_model
+    assert by_model == [(("must_understand",), "invalid_value")]
 
 
 def test_error_a_value_that_is_not_json() -> None:
