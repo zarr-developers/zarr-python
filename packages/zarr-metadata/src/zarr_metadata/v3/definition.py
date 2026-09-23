@@ -106,6 +106,13 @@ supports.
     )
     SCOPE = CORE_AND_EXTENSIONS.extended_with(ACME_LZ4)
 
+A scope reads whole documents as well as fields:
+`validate_array_metadata_v3(document, context=SCOPE)`, from
+`zarr_metadata.model`, reads each extension point of a v3 array document
+through the definitions in `SCOPE`, and so do the model's `from_json` and
+`from_key_value`. A fill value is not judged against its data type there:
+no rule here reads one field against another.
+
 The TypedDict says what a key it does not declare is: with
 `closed=True`, a problem, as above; with `extra_items=`, a key holding
 that type; with `closed=False`, anything at all. One that says none of
