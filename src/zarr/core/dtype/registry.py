@@ -36,10 +36,10 @@ _V2_SINGLE_BYTE_ALIASES: Final[Mapping[str, str]] = {
 _V2_BYTES_KINDS: Final = ("V",)
 
 
-def _v2_canonical_name(name: str) -> str | None:
+def _v2_canonical_name(name: str) -> str:
     """
-    Return the canonical "|" spelling of a Zarr V2 data type name whose byte order is not
-    relevant, or None if the name has no other spelling.
+    The canonical spelling of a Zarr V2 data type name: `"|"` for a byte order that is not
+    relevant, and the name as written otherwise.
     """
     if name in _V2_SINGLE_BYTE_ALIASES:
         return _V2_SINGLE_BYTE_ALIASES[name]
@@ -51,7 +51,7 @@ def _v2_canonical_name(name: str) -> str | None:
         and length.isdigit()
     ):
         return f"|{kind}{length}"
-    return None
+    return name
 
 
 def _v2_spellings(data: DTypeJSON) -> tuple[DTypeJSON, ...]:
@@ -64,7 +64,7 @@ def _v2_spellings(data: DTypeJSON) -> tuple[DTypeJSON, ...]:
     if (
         isinstance(data, dict)
         and isinstance(name := data.get("name"), str)
-        and (canonical := _v2_canonical_name(name)) is not None
+        and (canonical := _v2_canonical_name(name)) != name
     ):
         return (data, {**data, "name": canonical})
     return (data,)
