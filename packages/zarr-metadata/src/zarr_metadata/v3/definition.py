@@ -70,7 +70,10 @@ without it -- so a consumer that tolerates one filters by kind and uses
 what was read; the field is valid only when there is no problem at all.
 
 **Writing an extension.** A TypedDict, a function for its rules, and a
-definition; then a scope that holds it:
+definition; then a scope that holds it. The TypedDict is a
+`typing_extensions.TypedDict`: `closed` and `extra_items` are PEP 728's,
+which `typing.TypedDict` does not take on the versions this package
+supports.
 
     from collections.abc import Iterator
 

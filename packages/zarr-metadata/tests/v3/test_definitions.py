@@ -7,7 +7,7 @@ import re
 from collections.abc import (
     Mapping,  # noqa: TC003 - a TypedDict's annotations are evaluated at run time
 )
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Final, NotRequired, cast
 
 import pytest
@@ -39,7 +39,7 @@ from zarr_metadata.v3.definition import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterable, Iterator
     from decimal import Decimal
 
 
@@ -405,6 +405,56 @@ def test_error_must_understand_false_is_refused_wherever_the_model_refuses_it(
     ]
     assert _locs(resolve(field, kind, CORE_AND_EXTENSIONS)[1]) == by_model
     assert by_model == [(("must_understand",), "invalid_value")]
+
+
+def _ruled_by(
+    rules: Callable[[GzipCodecConfiguration], Iterable[ValidationProblem]],
+) -> Context:
+    lying = replace(GZIP_CODEC, name="acme.gzip", rules=rules)
+    return CORE.extended_with(lying)
+
+
+def test_error_a_rule_that_yields_something_else() -> None:
+    def rules(configuration: GzipCodecConfiguration) -> Iterator[ValidationProblem]:
+        yield "level is too high"  # pyright: ignore[reportReturnType]
+
+    with pytest.raises(TypeError, match="'acme.gzip': its rules yield ValidationProblem values"):
+        resolve(
+            {"name": "acme.gzip", "configuration": {"level": 1}},
+            CodecDefinition,
+            _ruled_by(rules),
+        )
+
+
+def test_error_a_rule_that_raises_says_whose_it_is() -> None:
+    def rules(configuration: GzipCodecConfiguration) -> Iterator[ValidationProblem]:
+        yield from ({}[configuration["level"]],)
+
+    with pytest.raises(KeyError) as raised:
+        resolve(
+            {"name": "acme.gzip", "configuration": {"level": 1}},
+            CodecDefinition,
+            _ruled_by(rules),
+        )
+    assert raised.value.__notes__ == [
+        "raised by the rules of 'acme.gzip', reading ('configuration',)"
+    ]
+
+
+def test_error_a_rule_that_returns_none_says_whose_it_is() -> None:
+    # A plain function that forgot to yield: nothing to iterate.
+    def rules(configuration: GzipCodecConfiguration) -> None:
+        return None
+
+    with pytest.raises(TypeError, match="not iterable") as raised:
+        resolve(
+            {"name": "acme.gzip", "configuration": {"level": 1}},
+            CodecDefinition,
+            _ruled_by(rules),  # pyright: ignore[reportArgumentType]
+        )
+    assert raised.value.__notes__ == [
+        "raised by the rules of 'acme.gzip', reading ('configuration',)"
+    ]
 
 
 def test_error_null_is_not_a_field() -> None:

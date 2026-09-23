@@ -187,7 +187,7 @@ class Definition(Generic[C]):
         configuration, problems = self.check(value, loc)
         if configuration is None:
             return None, problems
-        refused = _located(loc, tuple(self.rules(configuration)))
+        refused = _ruled(self, configuration, loc)
         return (configuration if len(refused) == 0 else None), (*problems, *refused)
 
 
@@ -364,7 +364,8 @@ def _vetting(annotation: object) -> Parser | None:
         msg = (
             f"{annotation.__name__} says nothing of the keys it does not declare, so it is "
             "open, and such a key would go unreported; declare it closed=True, or "
-            "extra_items= for what such a key holds, or closed=False to take any"
+            "extra_items= for what such a key holds, or closed=False to take any, "
+            "on a typing_extensions.TypedDict"
         )
         raise TypeError(msg)
     return _field(annotation)
@@ -435,6 +436,26 @@ def _put_back(value: object, nested: list[_NestedField]) -> object:
 def _usable(problems: Sequence[ValidationProblem]) -> bool:
     """Whether a value with these problems still reads: an unknown key is survivable, nothing else is."""
     return all(found.kind == "unknown_key" for found in problems)
+
+
+def _ruled(definition: Definition[C], configuration: C, at: Loc) -> Problems:
+    """What `definition`'s rules find in `configuration`, located under `at`.
+
+    The rules are the extension author's code, handed a configuration that
+    type-checked. What they yield is checked to be what they declare, and
+    an error one raises says which definition's rules raised it, and where
+    they were reading.
+    """
+    try:
+        found = tuple(cast("Iterable[object]", definition.rules(configuration)))
+    except Exception as error:
+        error.add_note(f"raised by the rules of {definition.name!r}, reading {at!r}")
+        raise
+    for item in found:
+        if not isinstance(item, ValidationProblem):
+            msg = f"{definition.name!r}: its rules yield ValidationProblem values, got {item!r}"
+            raise TypeError(msg)
+    return _located(at, cast("tuple[ValidationProblem, ...]", found))
 
 
 def _located(prefix: Loc, problems: Iterable[ValidationProblem]) -> Problems:
@@ -592,7 +613,7 @@ def _read(
     sound = _usable(found) and all(_usable(envelope) for envelope in envelopes)
     configuration = cast("Mapping[str, JSONValue]", typed) if sound else None
     if configuration is not None:
-        problems.extend(_located(at, definition.rules(configuration)))
+        problems.extend(_ruled(definition, configuration, at))
     for field, envelope in zip(nested, envelopes, strict=True):
         problems.extend(envelope)
         problems.extend(_read(field.json, field.kind, context, field.loc)[1])
