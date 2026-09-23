@@ -1142,25 +1142,28 @@ class AsyncGroup:
             filters are applied (if any are specified) and the data is serialized into bytes.
 
             For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-            returns another bytestream. Multiple compressors may be provided for Zarr format 3.
-            If no ``compressors`` are provided, a default set of compressors will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_compressors``
-            in [`zarr.config`][zarr.config].
-            Use ``None`` to omit default compressors.
+            returns another bytestream, and these values must be instances of
+            [`zarr.abc.codec.BytesBytesCodec`][], or dict representations of
+            [`zarr.abc.codec.BytesBytesCodec`][], e.g. ``ZstdCodec(level=3)`` or
+            ``{"name": "zstd", "configuration": {"level": 3}}``.
+            Multiple compressors may be provided for Zarr format 3.
+            If no ``compressors`` are provided, chunks are compressed with a default
+            compressor, which is currently [`zarr.codecs.ZstdCodec`][].
+            Use ``None`` to omit the default compressor and store chunks uncompressed.
 
-            For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
-            be provided for Zarr format 2.
-            If no ``compressor`` is provided, a default compressor will be used.
-            in [`zarr.config`][zarr.config].
-            Use ``None`` to omit the default compressor.
+            For Zarr format 2, a "compressor" can be any numcodecs codec, or a dict
+            representation of one. Only a single compressor may be provided for
+            Zarr format 2.
+            If no ``compressor`` is provided, chunks are compressed with a default
+            compressor, which is currently ``numcodecs.Blosc``.
+            Use ``None`` to omit the default compressor and store chunks uncompressed.
         compressor : Codec, optional
             Deprecated in favor of ``compressors``.
         serializer : dict[str, JSON] | ArrayBytesCodec, optional
             Array-to-bytes codec to use for encoding the array data.
             Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-            If no ``serializer`` is provided, a default serializer will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_serializer``
-            in [`zarr.config`][zarr.config].
+            If no ``serializer`` is provided, a default serializer will be used,
+            which is currently [`zarr.codecs.BytesCodec`][] for most data types.
         fill_value : Any, optional
             Fill value for the array.
         order : {"C", "F"}, optional
@@ -2587,25 +2590,28 @@ class Group(SyncMixin):
             filters are applied (if any are specified) and the data is serialized into bytes.
 
             For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-            returns another bytestream. Multiple compressors may be provided for Zarr format 3.
-            If no ``compressors`` are provided, a default set of compressors will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_compressors``
-            in [`zarr.config`][].
-            Use ``None`` to omit default compressors.
+            returns another bytestream, and these values must be instances of
+            [`zarr.abc.codec.BytesBytesCodec`][], or dict representations of
+            [`zarr.abc.codec.BytesBytesCodec`][], e.g. ``ZstdCodec(level=3)`` or
+            ``{"name": "zstd", "configuration": {"level": 3}}``.
+            Multiple compressors may be provided for Zarr format 3.
+            If no ``compressors`` are provided, chunks are compressed with a default
+            compressor, which is currently [`zarr.codecs.ZstdCodec`][].
+            Use ``None`` to omit the default compressor and store chunks uncompressed.
 
-            For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
-            be provided for Zarr format 2.
-            If no ``compressor`` is provided, a default compressor will be used.
-            in [`zarr.config`][].
-            Use ``None`` to omit the default compressor.
+            For Zarr format 2, a "compressor" can be any numcodecs codec, or a dict
+            representation of one. Only a single compressor may be provided for
+            Zarr format 2.
+            If no ``compressor`` is provided, chunks are compressed with a default
+            compressor, which is currently ``numcodecs.Blosc``.
+            Use ``None`` to omit the default compressor and store chunks uncompressed.
         compressor : Codec, optional
             Deprecated in favor of ``compressors``.
         serializer : dict[str, JSON] | ArrayBytesCodec, optional
             Array-to-bytes codec to use for encoding the array data.
             Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-            If no ``serializer`` is provided, a default serializer will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_serializer``
-            in [`zarr.config`][].
+            If no ``serializer`` is provided, a default serializer will be used,
+            which is currently [`zarr.codecs.BytesCodec`][] for most data types.
         fill_value : Any, optional
             Fill value for the array.
         order : {"C", "F"}, optional
@@ -2731,25 +2737,28 @@ class Group(SyncMixin):
             filters are applied (if any are specified) and the data is serialized into bytes.
 
             For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-            returns another bytestream. Multiple compressors may be provided for Zarr format 3.
-            If no ``compressors`` are provided, a default set of compressors will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_compressors``
-            in [`zarr.config`][zarr.config].
-            Use ``None`` to omit default compressors.
+            returns another bytestream, and these values must be instances of
+            [`zarr.abc.codec.BytesBytesCodec`][], or dict representations of
+            [`zarr.abc.codec.BytesBytesCodec`][], e.g. ``ZstdCodec(level=3)`` or
+            ``{"name": "zstd", "configuration": {"level": 3}}``.
+            Multiple compressors may be provided for Zarr format 3.
+            If no ``compressors`` are provided, chunks are compressed with a default
+            compressor, which is currently [`zarr.codecs.ZstdCodec`][].
+            Use ``None`` to omit the default compressor and store chunks uncompressed.
 
-            For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
-            be provided for Zarr format 2.
-            If no ``compressor`` is provided, a default compressor will be used.
-            in [`zarr.config`][zarr.config].
-            Use ``None`` to omit the default compressor.
+            For Zarr format 2, a "compressor" can be any numcodecs codec, or a dict
+            representation of one. Only a single compressor may be provided for
+            Zarr format 2.
+            If no ``compressor`` is provided, chunks are compressed with a default
+            compressor, which is currently ``numcodecs.Blosc``.
+            Use ``None`` to omit the default compressor and store chunks uncompressed.
         compressor : Codec, optional
             Deprecated in favor of ``compressors``.
         serializer : dict[str, JSON] | ArrayBytesCodec, optional
             Array-to-bytes codec to use for encoding the array data.
             Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-            If no ``serializer`` is provided, a default serializer will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_serializer``
-            in [`zarr.config`][zarr.config].
+            If no ``serializer`` is provided, a default serializer will be used,
+            which is currently [`zarr.codecs.BytesCodec`][] for most data types.
         fill_value : Any, optional
             Fill value for the array.
         order : {"C", "F"}, optional

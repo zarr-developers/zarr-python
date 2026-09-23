@@ -669,11 +669,12 @@ def create(
     dtype : str or dtype, optional
         NumPy dtype.
     compressor : Codec, optional
-        Primary compressor to compress chunk data.
+        Primary compressor to compress chunk data. This can be any numcodecs
+        codec, or a dict representation of one.
         Zarr format 2 only. Zarr format 3 arrays should use `codecs` instead.
 
-        If neither `compressor` nor `filters` are provided, the default compressor
-        [`zarr.codecs.ZstdCodec`][] is used.
+        If neither `compressor` nor `filters` are provided, chunks are compressed
+        with a default compressor, which is currently `numcodecs.Zstd`.
 
         If `compressor` is set to `None`, no compression is used.
     fill_value : Any, optional
@@ -892,23 +893,25 @@ def create_array(
         filters are applied (if any are specified) and the data is serialized into bytes.
 
         For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-        returns another bytestream. Multiple compressors may be provided for Zarr format 3.
-        If no `compressors` are provided, a default set of compressors will be used.
-        These defaults can be changed by modifying the value of `array.v3_default_compressors`
-        in [`zarr.config`][zarr.config].
-        Use `None` to omit default compressors.
+        returns another bytestream, and these values must be instances of
+        [`zarr.abc.codec.BytesBytesCodec`][], or dict representations of
+        [`zarr.abc.codec.BytesBytesCodec`][], e.g. `ZstdCodec(level=3)` or
+        `{"name": "zstd", "configuration": {"level": 3}}`.
+        Multiple compressors may be provided for Zarr format 3.
+        If no `compressors` are provided, chunks are compressed with a default compressor,
+        which is currently [`zarr.codecs.ZstdCodec`][].
+        Use `None` to omit the default compressor and store chunks uncompressed.
 
-        For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
-        be provided for Zarr format 2.
-        If no `compressor` is provided, a default compressor will be used.
-        in [`zarr.config`][zarr.config].
-        Use `None` to omit the default compressor.
+        For Zarr format 2, a "compressor" can be any numcodecs codec, or a dict
+        representation of one. Only a single compressor may be provided for Zarr format 2.
+        If no `compressor` is provided, chunks are compressed with a default compressor,
+        which is currently `numcodecs.Zstd`.
+        Use `None` to omit the default compressor and store chunks uncompressed.
     serializer : dict[str, JSON] | ArrayBytesCodec, optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-        If no `serializer` is provided, a default serializer will be used.
-        These defaults can be changed by modifying the value of `array.v3_default_serializer`
-        in [`zarr.config`][zarr.config].
+        If no `serializer` is provided, a default serializer will be used,
+        which is currently [`zarr.codecs.BytesCodec`][] for most data types.
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
@@ -1098,8 +1101,8 @@ def from_array(
 
         - dict[str, JSON]: A dict representation of an `ArrayBytesCodec`.
         - ArrayBytesCodec: An instance of `ArrayBytesCodec`.
-        - "auto": a default serializer will be used. These defaults can be changed by modifying the value of
-          `array.v3_default_serializer` in [`zarr.config`][zarr.config].
+        - "auto": a default serializer will be used, which is currently
+          [`zarr.codecs.BytesCodec`][] for most data types.
         - "keep": Retain the serializer of the input array if it is a zarr Array.
 
     fill_value : Any, optional
