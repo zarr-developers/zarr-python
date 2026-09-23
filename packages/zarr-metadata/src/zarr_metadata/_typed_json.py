@@ -936,7 +936,7 @@ def check(
         msg = f"{shape!r} is not a TypedDict"
         raise TypeError(msg)
     refined, problems = refine_json(value, loc)
-    if refined is None:
+    if len(problems) != 0:
         return None, problems
     typed, found = _checker(shape)(refined, loc)
     readable = all(problem.kind == "unknown_key" for problem in found)

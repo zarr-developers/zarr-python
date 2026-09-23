@@ -956,6 +956,14 @@ def test_error_check_locates_a_value_that_is_not_json(
     assert [(problem.loc, problem.kind) for problem in problems] == [(loc, kind)]
 
 
+def test_error_check_refuses_null() -> None:
+    # JSON's null is JSON, and not an object: refined, it is None with no
+    # problem, which is not a verdict.
+    typed, problems = check(None, Options)
+    assert typed is None
+    assert [(problem.loc, problem.kind) for problem in problems] == [((), "invalid_type")]
+
+
 def test_error_check_refuses_a_value_of_another_type() -> None:
     typed, problems = check({"level": "high"}, Options)
     assert typed is None
