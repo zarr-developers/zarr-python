@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Final, Self
 
 import numpy as np
 
+from zarr.core.dtype.common import HasNestedDTypes
 from zarr.errors import DataTypeValidationError
 
 if TYPE_CHECKING:
@@ -260,6 +261,11 @@ class DataTypeRegistry:
         for candidate in candidates:
             for val in self.contents.values():
                 try:
+                    if issubclass(val, HasNestedDTypes):
+                        # the data types it contains are resolved with this registry
+                        return val._from_json_nested(
+                            candidate, zarr_format=zarr_format, resolver=self.match_json
+                        )
                     return val.from_json(candidate, zarr_format=zarr_format)
                 except DataTypeValidationError:
                     pass

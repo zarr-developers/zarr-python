@@ -29,6 +29,7 @@ from typing import (
     TYPE_CHECKING,
     ClassVar,
     Literal,
+    Protocol,
     Self,
     TypeGuard,
     overload,
@@ -46,6 +47,21 @@ type TBaseScalar = np.generic | str | bytes
 # This is the bound for the dtypes that we support. If we support non-numpy dtypes,
 # then this bound will need to be widened.
 type TBaseDType = np.dtype[np.generic]
+
+
+class DTypeResolver(Protocol):
+    """
+    Resolves the JSON representation of a data type to a data type, like
+    [`DataTypeRegistry.match_json`][zarr.core.dtype.DataTypeRegistry.match_json].
+
+    A data type that contains other data types, such as a structured data type, resolves them with
+    the resolver it is given (see `HasNestedDTypes`), so that they come from the same set of data
+    types as it does.
+    """
+
+    def __call__(
+        self, data: DTypeJSON, *, zarr_format: ZarrFormat
+    ) -> ZDType[TBaseDType, TBaseScalar]: ...
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -145,6 +161,7 @@ class ZDType[DType: TBaseDType, Scalar: TBaseScalar](ABC):
 
         zarr_format : ZarrFormat
             The zarr format version.
+
 
         Returns
         -------

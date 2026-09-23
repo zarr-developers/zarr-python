@@ -51,12 +51,13 @@ from zarr.core.dtype.npy.string import (
     VariableLengthUTF8JSON_V2,
 )
 from zarr.core.dtype.registry import DataTypeRegistry
-from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+from zarr.core.dtype.wrapper import DTypeResolver, TBaseDType, TBaseScalar, ZDType
 
 __all__ = [
     "Bool",
     "Complex64",
     "Complex128",
+    "DTypeResolver",
     "DataTypeRegistry",
     "DateTime64",
     "DateTime64JSON_V2",
@@ -161,9 +162,12 @@ for dtype in ANY_DTYPE:
 
 
 # TODO: find a better name for this function
-def get_data_type_from_native_dtype(dtype: npt.DTypeLike) -> ZDType[TBaseDType, TBaseScalar]:
+def get_data_type_from_native_dtype(
+    dtype: npt.DTypeLike, *, registry: DataTypeRegistry | None = None
+) -> ZDType[TBaseDType, TBaseScalar]:
     """
-    Get a data type wrapper (an instance of ``ZDType``) from a native data type, e.g. a numpy dtype.
+    Get a data type wrapper (an instance of ``ZDType``) from a native data type, e.g. a numpy dtype,
+    from the data types in `registry`, or the default data type registry if it is None.
     """
     if not isinstance(dtype, np.dtype):
         na_dtype: np.dtype[np.generic]
@@ -174,23 +178,28 @@ def get_data_type_from_native_dtype(dtype: npt.DTypeLike) -> ZDType[TBaseDType, 
             na_dtype = np.dtype(dtype)
     else:
         na_dtype = dtype
-    return data_type_registry.match_dtype(dtype=na_dtype)
+    return (data_type_registry if registry is None else registry).match_dtype(dtype=na_dtype)
 
 
 def get_data_type_from_json(
-    dtype_spec: DTypeJSON, *, zarr_format: ZarrFormat
+    dtype_spec: DTypeJSON, *, zarr_format: ZarrFormat, registry: DataTypeRegistry | None = None
 ) -> ZDType[TBaseDType, TBaseScalar]:
     """
     Given a JSON representation of a data type and a Zarr format version,
-    attempt to create a ZDType instance from the registered ZDType classes.
+    attempt to create a ZDType instance from the ZDType classes in `registry`, or the default data
+    type registry if it is None. The data types a data type contains, such as the fields of a
+    structured data type, are resolved with the same registry.
     """
-    return data_type_registry.match_json(dtype_spec, zarr_format=zarr_format)
+    return (data_type_registry if registry is None else registry).match_json(
+        dtype_spec, zarr_format=zarr_format
+    )
 
 
 def parse_data_type(
     dtype_spec: ZDTypeLike,
     *,
     zarr_format: ZarrFormat,
+    registry: DataTypeRegistry | None = None,
 ) -> ZDType[TBaseDType, TBaseScalar]:
     """
     Interpret the input as a ZDType.
@@ -208,6 +217,8 @@ def parse_data_type(
         The Zarr format version. This parameter is required because this function will attempt to
         parse the JSON representation of a data type, and the JSON representation of data types
         varies between Zarr 2 and Zarr 3.
+    registry : DataTypeRegistry | None
+        The data types to choose from. The default is the default data type registry.
 
     Returns
     -------
@@ -227,13 +238,14 @@ def parse_data_type(
     # DateTime64(endianness='little', scale_factor=10, unit='s')
     ```
     """
-    return parse_dtype(dtype_spec, zarr_format=zarr_format)
+    return parse_dtype(dtype_spec, zarr_format=zarr_format, registry=registry)
 
 
 def parse_dtype(
     dtype_spec: ZDTypeLike,
     *,
     zarr_format: ZarrFormat,
+    registry: DataTypeRegistry | None = None,
 ) -> ZDType[TBaseDType, TBaseScalar]:
     """
     Convert the input as a ZDType.
@@ -248,6 +260,8 @@ def parse_dtype(
         The Zarr format version. This parameter is required because this function will attempt to
         parse the JSON representation of a data type, and the JSON representation of data types
         varies between Zarr 2 and Zarr 3.
+    registry : DataTypeRegistry | None
+        The data types to choose from. The default is the default data type registry.
 
     Returns
     -------
@@ -272,7 +286,7 @@ def parse_dtype(
     # First attempt to interpret the input as JSON
     if isinstance(dtype_spec, Mapping | str | Sequence):
         try:
-            return get_data_type_from_json(dtype_spec, zarr_format=zarr_format)
+            return get_data_type_from_json(dtype_spec, zarr_format=zarr_format, registry=registry)
         except ValueError:
             # no data type matched this JSON-like input
             pass
@@ -282,7 +296,7 @@ def parse_dtype(
         return VariableLengthUTF8()  # type: ignore[return-value]
     # otherwise, we have either a numpy dtype string, or a zarr v3 dtype string, and in either case
     # we can create a native dtype from it, and do the dtype inference from that
-    return get_data_type_from_native_dtype(dtype_spec)  # type: ignore[arg-type]
+    return get_data_type_from_native_dtype(dtype_spec, registry=registry)  # type: ignore[arg-type]
 
 
 def __getattr__(name: str) -> object:

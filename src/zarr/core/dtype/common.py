@@ -4,9 +4,11 @@ import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import (
+    TYPE_CHECKING,
     ClassVar,
     Final,
     Literal,
+    Self,
     TypedDict,
     TypeGuard,
 )
@@ -15,6 +17,10 @@ from typing_extensions import ReadOnly
 
 from zarr.core.common import NamedConfig
 from zarr.errors import UnstableSpecificationWarning
+
+if TYPE_CHECKING:
+    from zarr.core.common import ZarrFormat
+    from zarr.core.dtype.wrapper import DTypeResolver
 
 EndiannessStr = Literal["little", "big"]
 ENDIANNESS_STR: Final = "little", "big"
@@ -217,6 +223,25 @@ class HasItemSize:
 
 
 @dataclass(frozen=True, kw_only=True)
+class HasNestedDTypes:
+    """
+    A mix-in class for data types that contain other data types, such as structured data types.
+
+    A data type registry creates these data types with `_from_json_nested`, giving them a resolver
+    for the data types they contain, so that those come from the same registry.
+    """
+
+    @classmethod
+    def _from_json_nested(
+        cls, data: DTypeJSON, *, zarr_format: ZarrFormat, resolver: DTypeResolver
+    ) -> Self:
+        """
+        Create an instance of this data type from JSON data, resolving the data types it contains
+        with `resolver`.
+        """
+        raise NotImplementedError  # pragma: no cover
+
+
 class HasObjectCodec:
     """
     A mix-in class for data types that require an object codec id.

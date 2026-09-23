@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Literal, get_args
+from typing import TYPE_CHECKING, Any, Literal, Self, get_args
 
 import numpy as np
 import pytest
@@ -29,10 +29,11 @@ from zarr.dtype import (  # type: ignore[attr-defined]
     parse_data_type,
     parse_dtype,
 )
+from zarr.errors import DataTypeValidationError
 
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
-    from zarr.core.dtype.common import DTypeName_V2
+    from zarr.core.dtype.common import DTypeJSON, DTypeName_V2
 
 from .test_dtype.conftest import zdtype_examples
 
@@ -297,3 +298,88 @@ def test_match_json_v2_byte_order_alias_malformed_length(name: str) -> None:
     """A fixed-length bytes name needs a length of ASCII digits to have a canonical alias."""
     with pytest.raises(ValueError, match="No Zarr data type found"):
         data_type_registry.match_json({"name": name, "object_codec_id": None}, zarr_format=2)
+
+
+class _Byte(UInt8):
+    """A data type that is not in the default registry, spelled "<u1" in Zarr V2."""
+
+    _zarr_v3_name = "test.byte"  # type: ignore[assignment]
+    _zarr_v2_names = ("<u1",)  # type: ignore[assignment]
+
+
+def _registry_with(*classes: type[ZDType[Any, Any]]) -> DataTypeRegistry:
+    registry = DataTypeRegistry()
+    for cls in classes:
+        registry.register(cls._zarr_v3_name, cls)
+    return registry
+
+
+_RESOLUTION_ROUTES: dict[str, Any] = {
+    "match_json": lambda data, zarr_format, registry: registry.match_json(
+        data, zarr_format=zarr_format
+    ),
+    "get_data_type_from_json": lambda data, zarr_format, registry: get_data_type_from_json(
+        data, zarr_format=zarr_format, registry=registry
+    ),
+    "parse_dtype": lambda data, zarr_format, registry: parse_dtype(
+        data, zarr_format=zarr_format, registry=registry
+    ),
+    "Struct.from_json": lambda data, zarr_format, registry: Struct.from_json(
+        data, zarr_format=zarr_format, resolver=registry.match_json
+    ),
+}
+
+
+@pytest.mark.parametrize("route", _RESOLUTION_ROUTES)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_resolve_struct_fields_with_registry(route: str, zarr_format: ZarrFormat) -> None:
+    """
+    The fields of a structured data type are resolved from the same registry as the structured
+    data type, whichever route the JSON takes into the registry.
+    """
+    registry = _registry_with(Struct, _Byte, Int8)
+    expected = Struct(fields=(("a", _Byte()), ("b", Int8())))
+    data = expected.to_json(zarr_format=zarr_format)
+    observed = _RESOLUTION_ROUTES[route](data, zarr_format, registry)
+    assert observed == expected
+    assert type(observed.fields[0][1]) is _Byte
+
+
+def test_resolve_struct_fields_default_registry() -> None:
+    """Without a registry, fields are resolved from the default registry, which lacks _Byte."""
+    data = Struct(fields=(("a", _Byte()),)).to_json(zarr_format=3)
+    with pytest.raises(ValueError, match="No Zarr data type found"):
+        get_data_type_from_json(data, zarr_format=3)
+
+
+def test_resolve_struct_fields_missing_from_registry() -> None:
+    """A field data type is not found in the default registry when the registry lacks it."""
+    data = Struct(fields=(("a", UInt8()),)).to_json(zarr_format=3)
+    with pytest.raises(ValueError, match="No Zarr data type found"):
+        get_data_type_from_json(data, zarr_format=3, registry=_registry_with(Struct))
+
+
+def test_parse_dtype_native_missing_from_registry() -> None:
+    """A native data type is matched only against the registry it is given."""
+    with pytest.raises(ValueError, match="No Zarr data type found"):
+        parse_dtype(np.dtype("uint8"), zarr_format=3, registry=_registry_with(Int8))
+
+
+class _OverridesFromJSON(Int8):
+    """A data type that overrides `from_json` itself, as data types written before resolvers do."""
+
+    _zarr_v3_name = "test.overrides_from_json"  # type: ignore[assignment]
+
+    @classmethod
+    def from_json(cls, data: DTypeJSON, *, zarr_format: ZarrFormat) -> Self:
+        if zarr_format == 3 and data == cls._zarr_v3_name:
+            return cls()
+        raise DataTypeValidationError(f"Invalid JSON representation of {cls.__name__}: {data!r}")
+
+
+def test_resolve_data_type_overriding_from_json() -> None:
+    """A registry does not give a resolver to a data type that contains no other data types."""
+    registry = _registry_with(Struct, _OverridesFromJSON)
+    expected = Struct(fields=(("a", _OverridesFromJSON()),))
+    observed = registry.match_json(expected.to_json(zarr_format=3), zarr_format=3)
+    assert observed == expected
