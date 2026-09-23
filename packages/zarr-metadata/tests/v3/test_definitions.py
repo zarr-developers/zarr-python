@@ -224,6 +224,15 @@ def test_core_is_a_subset_of_core_and_extensions() -> None:
             {"chunk_shape": (2, 3)},
             [],
         ),
+        # An extent of 0 is right on a dimension of length 0, which only the
+        # array's shape can tell.
+        (
+            {"name": "regular", "configuration": {"chunk_shape": [0, 3]}},
+            ChunkGridDefinition,
+            "read",
+            {"chunk_shape": (0, 3)},
+            [],
+        ),
         # An unknown key is survivable: reported, left out of the
         # configuration, and the field still read.
         (
@@ -305,6 +314,7 @@ def test_core_is_a_subset_of_core_and_extensions() -> None:
         "bytes-bare",
         "bytes-endian",
         "regular-grid",
+        "regular-grid-zero-extent",
         "unknown-key",
         "unknown-key-before-the-rules",
         "not-required-postponed",
@@ -421,9 +431,9 @@ def test_error_a_value_that_is_not_a_field() -> None:
     assert len(found) == 1
 
 
-def test_error_a_regular_grid_extent_is_zero() -> None:
+def test_error_a_regular_grid_extent_is_negative() -> None:
     resolved, found = resolve(
-        {"name": "regular", "configuration": {"chunk_shape": [2, 0]}}, ChunkGridDefinition, SCOPE
+        {"name": "regular", "configuration": {"chunk_shape": [2, -1]}}, ChunkGridDefinition, SCOPE
     )
     assert resolved.resolution == "invalid"
     assert _locs(found) == [(("configuration", "chunk_shape", 1), "invalid_value")]

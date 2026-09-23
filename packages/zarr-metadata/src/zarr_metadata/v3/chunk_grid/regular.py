@@ -44,11 +44,18 @@ valid; the short-hand-name form is not permitted by the spec for this grid.
 
 
 def _rules(configuration: RegularChunkGridConfiguration) -> Iterator[ValidationProblem]:
-    """Every chunk extent is at least 1."""
+    """No chunk extent is negative.
+
+    "The chunk shape elements are non-zero when the corresponding
+    dimensions of the arrays have non-zero length": an extent of 0 is
+    right for a dimension of length 0, which zarr-python 3.0 and 3.1
+    wrote, and which a grid alone cannot tell from one that is not. The
+    array's shape can, where the grid is read beside it.
+    """
     for index, extent in enumerate(configuration["chunk_shape"]):
-        if extent < 1:
+        if extent < 0:
             yield ValidationProblem(
-                ("chunk_shape", index), f"expected an integer >= 1, got {extent}", "invalid_value"
+                ("chunk_shape", index), f"expected an integer >= 0, got {extent}", "invalid_value"
             )
 
 
