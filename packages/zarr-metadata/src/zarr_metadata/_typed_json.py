@@ -18,6 +18,8 @@ an array comes back as a tuple, and an object as a new dict of the keys
 its type admits, so a key a closed TypedDict does not declare is
 reported, as `unknown_key`, and left out.
 
+`check` is the whole of it for a caller holding a JSON value and a
+TypedDict, and the public door, `zarr_metadata.typed_json`, exports it.
 Nothing here knows what a metadata field is. A caller with a shape of its
 own passes a `leaf`, which is asked first for every annotation at every
 depth; the parser it returns is used as it is. Parsers are compiled once
@@ -28,9 +30,11 @@ union that did not match leaves nothing behind.
 from __future__ import annotations
 
 import functools
+import sys
 import types
 import typing
 from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -42,6 +46,7 @@ from typing import (
     NewType,
     NoReturn,
     TypeAlias,
+    TypeVar,
     cast,
     get_args,
     get_origin,
@@ -52,11 +57,13 @@ import typing_extensions
 from typing_extensions import NoExtraItems, TypeIs, is_typeddict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.model._validation import ValidationProblem, is_json
+from zarr_metadata.model._validation import ValidationProblem, is_json, refine_json
 
 if TYPE_CHECKING:
     from zarr_metadata.model._validation import ProblemKind
 
+
+T = TypeVar("T")
 
 Loc: TypeAlias = tuple[str | int, ...]
 """Where in a document a value sits: the keys and indices down to it."""
@@ -167,6 +174,27 @@ def is_alias(annotation: object) -> bool:
     return len(cast("typing_extensions.TypeAliasType", annotation).__type_params__) == 0
 
 
+@functools.cache
+def alias_value(alias: typing_extensions.TypeAliasType) -> object:
+    """What `alias` stands for, evaluated where it was made; `TypeError` if a name in it does not resolve.
+
+    A `type` statement's value is evaluated when asked for. One made with
+    `TypeAliasType` holds whatever it was given, and an alias that names
+    itself -- `TypeAliasType("Dtype", str | tuple[tuple[str, "Dtype"], ...])`
+    -- gives it as a string, which is resolved here in the alias's module.
+    """
+    holder = type(
+        "_AliasValue",
+        (),
+        {"__annotations__": {"value": alias.__value__}, "__module__": alias.__module__},
+    )
+    try:
+        return get_type_hints(holder, include_extras=True)["value"]
+    except NameError as error:
+        msg = f"{alias.__name__}: {error}; its value must resolve in its module"
+        raise TypeError(msg) from error
+
+
 # --- TypedDicts ----------------------------------------------------------
 
 
@@ -221,15 +249,21 @@ def typeddict_keys(typeddict: type) -> TypedDictKeys:
     that says none of these is as its bases are -- which the runtime does
     not record -- or open, when no base says either.
     """
-    try:
-        hints = get_type_hints(typeddict, include_extras=True)
-    except NameError as error:
-        msg = f"{typeddict.__name__}: {error}; its annotations must resolve in its module"
-        raise TypeError(msg) from error
+    hints = dict(_hints(typeddict))
     required_at_runtime = cast("frozenset[str]", getattr(typeddict, "__required_keys__", ()))
+    optional_at_runtime = cast("frozenset[str]", getattr(typeddict, "__optional_keys__", ()))
+    if frozenset(hints) != required_at_runtime | optional_at_runtime:
+        msg = (
+            f"{typeddict.__name__}: its annotations declare {sorted(hints)!r}, and the runtime "
+            f"{sorted(required_at_runtime | optional_at_runtime)!r}"
+        )
+        raise TypeError(msg)
     members: dict[str, tuple[object, bool]] = {}
     for key, hint in hints.items():
         said = qualifiers(hint)
+        if "Required" in said and "NotRequired" in said:
+            msg = f"{typeddict.__name__}.{key}: Required and NotRequired both; the spec allows one"
+            raise TypeError(msg)
         if "Required" in said:
             required = True
         elif "NotRequired" in said:
@@ -239,6 +273,55 @@ def typeddict_keys(typeddict: type) -> TypedDictKeys:
         members[key] = (strip_annotation(hint)[0], required)
     extra_items, declared = _openness(typeddict)
     return TypedDictKeys(types.MappingProxyType(members), extra_items, declared)
+
+
+@functools.cache
+def _hints(typeddict: type) -> Mapping[str, object]:
+    """Every key's annotation, evaluated in the module of the class that declared the key.
+
+    As the typing spec has it, and as `get_type_hints` does not quite:
+    it evaluates all a class inherited in the class's own module, so a
+    string a base elsewhere wrote inside an annotation -- `tuple["Local",
+    ...]` -- is read where `Local` may mean something else, or nothing,
+    since the runtime ties a module only to a string at the top of an
+    annotation. And it looks names up in the class's module before the
+    module a string is tied to, so an inherited `x: "Foo"` reads as the
+    subclass's `Foo` when both modules have one. So a base's keys come
+    from the base, and a class's own keys -- those no base gave it -- are
+    evaluated in its module with nothing else in scope. `typing.TypedDict`
+    on 3.11 does not record a class's bases, so there every key is
+    evaluated as the class's own, which is right unless a string nested
+    in a base's annotation names something only the base's module has.
+    """
+    bases = _typeddict_bases(typeddict)
+    hints: dict[str, object] = {}
+    for base in bases:
+        hints.update(_hints(base))
+    written = _written(typeddict)
+    inherited = [_written(base) for base in bases]
+    own = {
+        key: annotation
+        for key, annotation in written.items()
+        if not any(key in given and given[key] == annotation for given in inherited)
+    }
+    holder = type("_Own", (), {"__annotations__": own, "__module__": typeddict.__module__})
+    try:
+        hints.update(get_type_hints(holder, localns={}, include_extras=True))
+    except NameError as error:
+        msg = f"{typeddict.__name__}: {error}; its annotations must resolve in its module"
+        raise TypeError(msg) from error
+    return types.MappingProxyType(hints)
+
+
+def _written(typeddict: type) -> dict[str, object]:
+    """A TypedDict's annotations, its bases' included, as far as they evaluate without failing."""
+    if sys.version_info >= (3, 14):
+        import annotationlib
+
+        return dict(
+            annotationlib.get_annotations(typeddict, format=annotationlib.Format.FORWARDREF)
+        )
+    return dict(vars(typeddict).get("__annotations__", {}))
 
 
 def _openness(typeddict: type) -> tuple[object, bool]:
@@ -326,10 +409,23 @@ def describe(annotation: object, seen: frozenset[object] = frozenset()) -> str:
         return "an object"
     if is_alias(inner):
         alias = cast("typing_extensions.TypeAliasType", inner)
-        if alias in seen:
+        if alias in seen or _holds(alias_value(alias), alias, frozenset()):
             return f"a {alias.__name__}"
-        return describe(alias.__value__, seen | {alias})
+        return describe(alias_value(alias), seen | {alias})
     return "a value"
+
+
+def _holds(annotation: object, alias: object, seen: frozenset[object]) -> bool:
+    """Whether `alias` occurs in `annotation`, through the aliases in it: whether it holds itself."""
+    inner = strip_annotation(annotation)[0]
+    if inner is alias:
+        return True
+    if is_alias(inner):
+        if inner in seen:
+            return False
+        value = alias_value(cast("typing_extensions.TypeAliasType", inner))
+        return _holds(value, alias, seen | {inner})
+    return any(_holds(argument, alias, seen) for argument in get_args(inner))
 
 
 def shape_of(annotation: object) -> str | None:
@@ -345,7 +441,7 @@ def shape_of(annotation: object) -> str | None:
         if isinstance(inner, NewType):
             inner = strip_annotation(inner.__supertype__)[0]
         else:
-            inner = strip_annotation(cast("typing_extensions.TypeAliasType", inner).__value__)[0]
+            inner = strip_annotation(alias_value(cast("typing_extensions.TypeAliasType", inner)))[0]
     if inner is int:
         return "int"
     if inner is float:
@@ -466,33 +562,77 @@ def fixed_tuple(elements: Sequence[Parser], description: str) -> Parser:
     return parse
 
 
-def any_of(branches: Sequence[tuple[str | None, Parser]], description: str) -> Parser:
-    """A member whose type is a union of shapes, parsed by the branch it fits.
+Branch: TypeAlias = tuple[str | None, Parser, frozenset[str] | None]
+"""A branch of a union: its top-level shape, from `shape_of`; its parser; and its keys, if a TypedDict."""
 
-    Each branch is its top-level shape, from `shape_of`, and its parser.
-    The branch whose shape the value has is the one that reports -- so an
+Tag: TypeAlias = tuple[str, Mapping[tuple[type, object], int]]
+"""A key every branch requires as a `Literal`, and which branch each of its values picks."""
+
+
+def any_of(branches: Sequence[Branch], description: str, tag: Tag | None = None) -> Parser:
+    """A member whose type is a union of shapes, parsed by the branch it is.
+
+    Only a branch whose top-level shape the value has is tried -- so an
     element inside a malformed array is located inside the array, rather
-    than the whole array being called wrong. A value fitting no branch's
-    shape is reported once, by what was expected; one fitting several is
-    parsed by the first that accepts it with no problem, and otherwise
-    reported by the first that tried.
+    than the whole array being called wrong -- and a value fitting no
+    branch's shape is reported once, by what was expected. When every
+    branch is a TypedDict requiring a key as a `Literal` of values of its
+    own, that key's value picks the branch, and the problems are that
+    branch's. Otherwise the value is parsed by the first branch it reads
+    as with no problem -- among TypedDicts, the one declaring the most of
+    its keys -- and failing that, reported by the branch with the fewest
+    problems.
     """
 
     def parse(value: object, loc: Loc) -> Parsed:
-        first: Parsed | None = None
-        for shape, branch in branches:
+        present = _keys_of(value)
+        if tag is not None and present is not None:
+            return _by_tag(branches, tag, cast("Mapping[str, object]", value), loc)
+        clean: list[tuple[int, int, Parsed]] = []
+        failed: list[tuple[int, int, Parsed]] = []
+        for index, (shape, branch, keys) in enumerate(branches):
             if not has_shape(shape, value):
                 continue
             result = branch(value, loc)
-            if len(result[1]) == 0:
+            if len(result[1]) != 0:
+                failed.append((len(result[1]), index, result))
+            elif keys is None or present is None:
                 return result
-            if first is None:
-                first = result
-        if first is None:
-            return value, problem(loc, f"expected {description}, got {value!r}")
-        return first
+            else:
+                clean.append((-len(keys & present), index, result))
+        if len(clean) != 0:
+            return min(clean, key=lambda found: found[:2])[2]
+        if len(failed) != 0:
+            return min(failed, key=lambda found: found[:2])[2]
+        return value, problem(loc, f"expected {description}, got {value!r}")
 
     return parse
+
+
+def _by_tag(branches: Sequence[Branch], tag: Tag, value: Mapping[str, object], loc: Loc) -> Parsed:
+    """`value` parsed by the branch its tag picks; a tag missing, or one no branch has, reported at it."""
+    key, picks = tag
+    if key not in value:
+        return value, problem((*loc, key), f"missing required key {key!r}", "missing_key")
+    said = value[key]
+    index = picks.get((type(said), said)) if _hashable(said) else None
+    if index is None:
+        allowed = tuple(sorted((entry for _, entry in picks), key=repr))
+        return value, problem(
+            (*loc, key), f"expected one of {allowed!r}, got {said!r}", "invalid_value"
+        )
+    return branches[index][1](value, loc)
+
+
+def _keys_of(value: object) -> AbstractSet[str] | None:
+    """The keys of `value` if it is a JSON object, else None."""
+    if isinstance(value, Mapping):
+        return cast("Mapping[str, object]", value).keys()
+    return None
+
+
+def _hashable(value: object) -> bool:
+    return value is None or isinstance(value, (str, int, float))
 
 
 def object_of(members: Mapping[str, tuple[Parser, bool]], extra: Parser | None) -> Parser:
@@ -564,13 +704,48 @@ to a parser that calls itself.
 
 
 def _union(inner: object, leaf: Leaf, building: _Building) -> Parser | None:
-    branches: list[tuple[str | None, Parser]] = []
-    for branch in get_args(inner):
+    arguments = get_args(inner)
+    branches: list[Branch] = []
+    for branch in arguments:
         member = _compile(branch, leaf, building)
         if member is None:
             return None
-        branches.append((shape_of(branch), member))
-    return any_of(branches, describe(inner))
+        typeddict = strip_annotation(branch)[0]
+        keys = (
+            frozenset(typeddict_keys(typeddict).members)
+            if isinstance(typeddict, type) and is_typeddict(typeddict)
+            else None
+        )
+        branches.append((shape_of(branch), member, keys))
+    return any_of(branches, describe(inner), _tag(arguments))
+
+
+def _tag(arguments: Sequence[object]) -> Tag | None:
+    """The key that says which of these TypedDicts a value is, if there is one.
+
+    One every branch requires, as a `Literal` whose values no other branch
+    has: the discriminator a union of configurations spells with `name`.
+    """
+    typeddicts = [strip_annotation(argument)[0] for argument in arguments]
+    if not all(isinstance(typed, type) and is_typeddict(typed) for typed in typeddicts):
+        return None
+    keys = [typeddict_keys(cast("type", typed)) for typed in typeddicts]
+    shared = set(keys[0].required)
+    for each in keys[1:]:
+        shared &= each.required
+    for key in sorted(shared):
+        picks: dict[tuple[type, object], int] = {}
+        for index, each in enumerate(keys):
+            annotation = strip_annotation(each.members[key][0])[0]
+            if get_origin(annotation) is not Literal:
+                break
+            values: tuple[object, ...] = get_args(annotation)
+            if any((type(entry), entry) in picks for entry in values):
+                break
+            picks.update({(type(entry), entry): index for entry in values})
+        else:
+            return key, types.MappingProxyType(picks)
+    return None
 
 
 def _tuple(inner: object, leaf: Leaf, building: _Building) -> Parser | None:
@@ -633,7 +808,7 @@ def _object(typeddict: type, leaf: Leaf, building: _Building) -> Parser | None:
 def _alias(
     alias: typing_extensions.TypeAliasType, leaf: Leaf, building: _Building
 ) -> Parser | None:
-    return _recursive(alias, building, lambda: _compile(alias.__value__, leaf, building))
+    return _recursive(alias, building, lambda: _compile(alias_value(alias), leaf, building))
 
 
 def _literal(inner: object) -> Parser | None:
@@ -705,22 +880,82 @@ def no_leaf(annotation: object) -> Parser | None:
 
 
 def parser(annotation: object, leaf: Leaf) -> Parser:
-    """The parser an annotation implies; `TypeError` if it implies none."""
+    """The parser an annotation implies; `TypeError` saying what in it no parser reads."""
     found = parser_for(annotation, leaf)
     if found is None:
-        msg = f"{annotation!r} is not a shape JSON takes"
+        inner = strip_annotation(annotation)[0]
+        unread = unread_in(inner, leaf) if isinstance(inner, type) and is_typeddict(inner) else None
+        msg = unread or f"{annotation!r} is not a shape JSON takes"
         raise TypeError(msg)
     return found
 
 
+def unread_in(typeddict: type, leaf: Leaf) -> str | None:
+    """What in `typeddict` no parser reads, named down to the TypedDict that holds it; None if all is read."""
+    keys = typeddict_keys(typeddict)
+    others: list[tuple[str, object]] = []
+    if not (keys.closed or keys.open):
+        others.append(("extra_items", keys.extra_items))
+    for key, annotation in [*((key, member[0]) for key, member in keys.members.items()), *others]:
+        try:
+            member = parser_for(annotation, leaf)
+        except TypeError as error:
+            return f"{typeddict.__name__}.{key}: {error}"
+        if member is not None:
+            continue
+        inner = strip_annotation(annotation)[0]
+        if isinstance(inner, type) and is_typeddict(inner):
+            deeper = unread_in(inner, leaf)
+            if deeper is not None:
+                return f"{typeddict.__name__}.{key}: {deeper}"
+        return (
+            f"{typeddict.__name__}: {key} is not a shape JSON takes; write it as one -- a "
+            "number, string, boolean, null, array, object, or an alias of one"
+        )
+    return None
+
+
+@functools.cache
+def _checker(typeddict: type) -> Parser:
+    return parser(typeddict, no_leaf)
+
+
+def check(
+    value: object, shape: type[T], loc: Loc = ()
+) -> tuple[T | None, tuple[ValidationProblem, ...]]:
+    """`value` type-checked as `shape`, a TypedDict: a value of it or None, and every problem.
+
+    `value` is refined to JSON first -- arrays as tuples, string keys,
+    finite floats -- and then checked member by member, each problem
+    located under `loc`. What comes back holds what `shape` admits and
+    nothing else: a key a closed TypedDict does not declare is reported,
+    as `unknown_key`, and left out, and the value still comes back.
+    Anything else wrong and it does not. `TypeError` for a `shape` that is
+    not a TypedDict, or holds something no parser reads.
+    """
+    if not is_typeddict(shape):
+        msg = f"{shape!r} is not a TypedDict"
+        raise TypeError(msg)
+    refined, problems = refine_json(value, loc)
+    if refined is None:
+        return None, problems
+    typed, found = _checker(shape)(refined, loc)
+    readable = all(problem.kind == "unknown_key" for problem in found)
+    return (cast("T", typed) if readable else None), found
+
+
 __all__ = [
+    "Branch",
     "Leaf",
     "Loc",
     "Parsed",
     "Parser",
     "Qualifier",
+    "Tag",
     "TypedDictKeys",
+    "alias_value",
     "any_of",
+    "check",
     "describe",
     "fixed_tuple",
     "has_shape",
@@ -739,4 +974,5 @@ __all__ = [
     "shape_of",
     "strip_annotation",
     "typeddict_keys",
+    "unread_in",
 ]

@@ -22,16 +22,18 @@ import copy
 import itertools
 import sys
 import types
+import typing
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Annotated, Literal, NewType, NotRequired, Required, TypeAlias, Union, cast
 
-from hypothesis import HealthCheck, event, given, settings
+import pytest
+from hypothesis import HealthCheck, event, find, given, note, settings
 from hypothesis import strategies as st
 from typing_extensions import ReadOnly, TypeAliasType, TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.v3._typed_json import Loc, Parsed, no_leaf, parser, typeddict_keys
+from zarr_metadata._typed_json import Loc, Parsed, no_leaf, parser, typeddict_keys
 
 # --- specs -----------------------------------------------------------------
 
@@ -98,17 +100,23 @@ class Member:
 
 @dataclass(frozen=True)
 class Layer:
-    """One class in a TypedDict's ancestry, its own keys and keywords."""
+    """One class in a TypedDict's ancestry: its own keys and keywords, and how its module writes it."""
 
     total: bool
     members: tuple[Member, ...]
     says: Says
+    postponed: bool = False
+    """In a mixed build, whether the class's annotations are left as strings."""
+    quoted: bool = False
+    """Evaluated, whether the class writes the name of another class inside an annotation as a string."""
 
 
 @dataclass(frozen=True)
 class Object:
     layers: tuple[Layer, ...]
-    """Base first; the last is the TypedDict itself."""
+    """Base first; the last is the TypedDict itself. Each is written in a module of its own."""
+    stdlib: bool = False
+    """Whether the classes are `typing.TypedDict`s rather than `typing_extensions` ones."""
 
 
 Spec: TypeAlias = Leaf | OneOf | ArrayOf | Fixed | AnyOf | MappingOf | Named | Itself | Object
@@ -123,14 +131,16 @@ def members_of(spec: Object) -> dict[str, tuple[Spec, bool]]:
     found: dict[str, tuple[Spec, bool]] = {}
     for layer in spec.layers:
         for member in layer.members:
-            if "Required" in member.wrappers:
-                required = True
-            elif "NotRequired" in member.wrappers:
-                required = False
-            else:
-                required = layer.total
-            found[member.key] = (member.spec, required)
+            found[member.key] = (member.spec, _required(member, layer.total))
     return found
+
+
+def _required(member: Member, total: bool) -> bool:
+    if "Required" in member.wrappers:
+        return True
+    if "NotRequired" in member.wrappers:
+        return False
+    return total
 
 
 def says_of(spec: Object) -> Says:
@@ -199,22 +209,18 @@ def conforms(value: object, spec: Spec, itself: Object | None = None) -> bool:
 
 # --- building a spec, evaluated or postponed --------------------------------
 
-_SCRATCH = types.ModuleType("tests.v3._typed_json_properties_scratch")
-_SCRATCH.__dict__.update(
-    {
-        "Annotated": Annotated,
-        "JSONValue": JSONValue,
-        "Literal": Literal,
-        "Mapping": Mapping,
-        "NewType": NewType,
-        "NotRequired": NotRequired,
-        "ReadOnly": ReadOnly,
-        "Required": Required,
-        "TypeAliasType": TypeAliasType,
-        "Union": Union,
-    }
-)
-sys.modules[_SCRATCH.__name__] = _SCRATCH  # where a string annotation is resolved
+_PRELUDE: dict[str, object] = {
+    "Annotated": Annotated,
+    "JSONValue": JSONValue,
+    "Literal": Literal,
+    "Mapping": Mapping,
+    "NewType": NewType,
+    "NotRequired": NotRequired,
+    "ReadOnly": ReadOnly,
+    "Required": Required,
+    "TypeAliasType": TypeAliasType,
+    "Union": Union,
+}
 _serial = itertools.count()
 
 _LEAF_TEXT: dict[str, str] = {
@@ -226,57 +232,96 @@ _LEAF_TEXT: dict[str, str] = {
     "json": "JSONValue",
 }
 
+Mode: TypeAlias = Literal["evaluated", "postponed", "mixed"]
+"""How a build writes its classes' annotations: all evaluated, all strings, or as each class says."""
 
-def _evaluated(text: str) -> object:
-    return eval(text, _SCRATCH.__dict__)
+_ONE_MODULE_FOR_STDLIB = sys.version_info < (3, 12)
+"""`typing.TypedDict` records a class's bases from 3.12; before, a subclass reads its keys in one module."""
+
+
+def _module() -> types.ModuleType:
+    """A fresh module, registered where a string annotation is resolved, knowing only the prelude."""
+    module = types.ModuleType(f"tests._typed_json_properties_{next(_serial)}")
+    module.__dict__.update(_PRELUDE)
+    sys.modules[module.__name__] = module
+    return module
+
+
+def _evaluated(text: str, home: types.ModuleType) -> object:
+    return eval(text, home.__dict__)
 
 
 @dataclass(frozen=True)
 class Build:
-    """A spec built in the scratch module: every class's annotations evaluated, or left as strings."""
+    """A spec built as source, each class in a module of its own, the names it uses imported there."""
 
-    postponed: bool
+    mode: Mode
+    source: list[str] = field(default_factory=list)
+    """What was built, as it would be written: for a failing example's notes."""
 
     def annotation(self, spec: Spec) -> object:
-        return _evaluated(self.text(spec, None))
+        home = _module()
+        return _evaluated(self.text(spec, None, home, quoted=False), home)
 
-    def text(self, spec: Spec, itself: str | None) -> str:
+    def _named(self, name: str, made: object, home: types.ModuleType, *, quoted: bool) -> str:
+        home.__dict__[name] = made
+        return repr(name) if quoted else name
+
+    def text(self, spec: Spec, itself: str | None, home: types.ModuleType, *, quoted: bool) -> str:
+        """`spec` written in `home`, a name inside another annotation quoted when `quoted`."""
         if isinstance(spec, Leaf):
             return _LEAF_TEXT[spec.name]
         if isinstance(spec, OneOf):
             return f"Literal[{', '.join(repr(value) for value in spec.values)}]"
         if isinstance(spec, ArrayOf):
-            return f"tuple[{self.text(spec.element, itself)}, ...]"
+            return f"tuple[{self.text(spec.element, itself, home, quoted=quoted)}, ...]"
         if isinstance(spec, Fixed):
-            return f"tuple[{', '.join(self.text(element, itself) for element in spec.elements)}]"
+            elements = ", ".join(
+                self.text(element, itself, home, quoted=quoted) for element in spec.elements
+            )
+            return f"tuple[{elements}]"
         if isinstance(spec, AnyOf):
-            return f"Union[{', '.join(self.text(branch, itself) for branch in spec.branches)}]"
+            branches = ", ".join(
+                self.text(branch, itself, home, quoted=quoted) for branch in spec.branches
+            )
+            return f"Union[{branches}]"
         if isinstance(spec, MappingOf):
-            return f"Mapping[str, {self.text(spec.value, itself)}]"
+            return f"Mapping[str, {self.text(spec.value, itself, home, quoted=quoted)}]"
         if isinstance(spec, Named):
             name = f"Named{next(_serial)}"
             maker = "NewType" if spec.how == "newtype" else "TypeAliasType"
-            inner = self.text(spec.inner, itself)
-            _SCRATCH.__dict__[name] = _evaluated(f"{maker}({name!r}, {inner})")
-            return name
+            inner = self.text(spec.inner, itself, home, quoted=quoted and spec.how == "alias")
+            written = f"{maker}({name!r}, {inner})"
+            self.source.append(f"# {home.__name__}\n{name} = {written}")
+            return self._named(name, _evaluated(written, home), home, quoted=quoted)
         if isinstance(spec, Itself):
             assert itself is not None
             return repr(itself)  # a forward reference: the class is not built yet
-        return self.typeddict(spec)
+        name, built = self.typeddict(spec)
+        return self._named(name, built, home, quoted=quoted)
 
-    def member(self, member: Member, itself: str) -> str:
-        text = self.text(member.spec, itself)
+    def member(self, member: Member, itself: str, home: types.ModuleType, *, quoted: bool) -> str:
+        text = self.text(member.spec, itself, home, quoted=quoted)
         for wrapper in member.wrappers:
             text = f"Annotated[{text}, 'meta']" if wrapper == "Annotated" else f"{wrapper}[{text}]"
         return text
 
-    def typeddict(self, spec: Object) -> str:
+    def typeddict(self, spec: Object) -> tuple[str, object]:
+        """The TypedDict `spec` is, a class per layer, each in its module: its name, and it."""
         names = [f"T{next(_serial)}" for _ in spec.layers]
-        base: object = TypedDict
+        shared = _module() if spec.stdlib and _ONE_MODULE_FOR_STDLIB else None
+        base: object = typing.TypedDict if spec.stdlib else TypedDict
+        base_name = "typing.TypedDict" if spec.stdlib else "TypedDict"
         for layer, name in zip(spec.layers, names, strict=True):
-            texts = {member.key: self.member(member, names[-1]) for member in layer.members}
+            home = shared or _module()
+            postponed = self.mode == "postponed" or (self.mode == "mixed" and layer.postponed)
+            quoted = not postponed and layer.quoted
+            texts = {
+                member.key: self.member(member, names[-1], home, quoted=quoted)
+                for member in layer.members
+            }
             annotations = (
-                texts if self.postponed else {key: _evaluated(text) for key, text in texts.items()}
+                texts if postponed else {key: _evaluated(text, home) for key, text in texts.items()}
             )
             keywords: dict[str, object] = {"total": layer.total}
             if layer.says == "closed":
@@ -284,13 +329,24 @@ class Build:
             elif layer.says == "open":
                 keywords["closed"] = False
             elif isinstance(layer.says, ExtraItems):
-                extra = self.text(layer.says.spec, None)
-                keywords["extra_items"] = extra if self.postponed else _evaluated(extra)
-            namespace = {"__annotations__": annotations, "__module__": _SCRATCH.__name__}
+                extra = self.text(layer.says.spec, None, home, quoted=False)
+                keywords["extra_items"] = extra if postponed else _evaluated(extra, home)
+            namespace = {"__annotations__": annotations, "__module__": home.__name__}
             built = types.new_class(name, (base,), keywords, lambda body: body.update(namespace))  # noqa: B023 - run at once
-            _SCRATCH.__dict__[name] = built
-            base = built
-        return names[-1]
+            home.__dict__[name] = built
+            written = "".join(
+                f"\n    {key}: {text!r}" if postponed else f"\n    {key}: {text}"
+                for key, text in texts.items()
+            )
+            header = "from __future__ import annotations\n" if postponed else ""
+            self.source.append(
+                f"# {home.__name__}\n{header}class {name}({base_name}, {keywords!r}):{written or ' ...'}"
+            )
+            base, base_name = built, name
+        return names[-1], base
+
+    def text_of(self) -> str:
+        return "\n\n".join(self.source)
 
 
 # --- strategies ------------------------------------------------------------
@@ -320,6 +376,10 @@ def _wrappers(draw: st.DrawFn) -> tuple[str, ...]:
     return tuple(draw(st.permutations([wrapper for wrapper in chosen if wrapper != ""])))
 
 
+_TYPING_TAKES_PEP_728 = sys.version_info >= (3, 15)
+"""Whether `typing.TypedDict` takes `closed=` and `extra_items=`, as `typing_extensions` does."""
+
+
 @st.composite
 def _objects(draw: st.DrawFn, inner: st.SearchStrategy[Spec]) -> Object:
     keys = draw(st.lists(st.sampled_from(_KEYS), unique=True, max_size=4))
@@ -327,6 +387,7 @@ def _objects(draw: st.DrawFn, inner: st.SearchStrategy[Spec]) -> Object:
     owners = [draw(st.integers(0, count - 1)) for _ in keys]
     layers: list[Layer] = []
     said: Says = "unsaid"
+    declared: dict[str, tuple[Member, bool]] = {}
     for index in range(count):
         # A subclass of a closed TypedDict, or of one with extra items, is
         # kept to what the typing spec allows it: to say the same, or
@@ -336,16 +397,56 @@ def _objects(draw: st.DrawFn, inner: st.SearchStrategy[Spec]) -> Object:
         if not restricted and draw(st.booleans()):
             choices.append(ExtraItems(draw(inner)))
         says = draw(st.sampled_from(choices))
+        total = draw(st.booleans())
         members = [
             Member(key, draw(inner), draw(_wrappers()))
             for key, owner in zip(keys, owners, strict=True)
             if owner == index and not restricted
         ]
+        if not restricted:
+            members += draw(_redeclared(declared, total))
         if index == count - 1 and not restricted and draw(st.booleans()):
             members.append(Member("self", ArrayOf(Itself()), draw(_wrappers())))
-        layers.append(Layer(draw(st.booleans()), tuple(members), says))
+        postponed, quoted = draw(st.booleans()), draw(st.booleans())
+        layers.append(Layer(total, tuple(members), says, postponed, quoted))
+        declared.update({member.key: (member, _required(member, total)) for member in members})
         said = says if says != "unsaid" else said
-    return Object(tuple(layers))
+    speaks = any(layer.says != "unsaid" for layer in layers)
+    # `typing.TypedDict` from 3.13 refuses a read-only key redeclaring one it
+    # thinks mutable, and cannot see `ReadOnly` in a postponed base: it would
+    # not build what the spec allows, so it declares no key twice here.
+    redeclares = sum(len(layer.members) for layer in layers) > len(
+        {member.key for layer in layers for member in layer.members}
+    )
+    stdlib = (_TYPING_TAKES_PEP_728 or not speaks) and not redeclares and draw(st.booleans())
+    return Object(tuple(layers), stdlib)
+
+
+@st.composite
+def _redeclared(
+    draw: st.DrawFn, declared: dict[str, tuple[Member, bool]], total: bool
+) -> list[Member]:
+    """None, or one read-only key a base declared, narrowed as the typing spec lets a subclass.
+
+    Its type may narrow -- a union to some of its branches -- and a key
+    that was not required may become required, never the other way.
+    """
+    candidates = sorted(
+        key for key, (member, _) in declared.items() if "ReadOnly" in member.wrappers
+    )
+    if len(candidates) == 0 or not draw(st.booleans()):
+        return []
+    key = draw(st.sampled_from(candidates))
+    earlier, was_required = declared[key]
+    spec = earlier.spec
+    if isinstance(spec, AnyOf):
+        kept = sorted(draw(st.sets(st.integers(0, len(spec.branches) - 1), min_size=1)))
+        branches = tuple(spec.branches[index] for index in kept)
+        spec = branches[0] if len(branches) == 1 else AnyOf(branches)
+    wrappers = draw(_wrappers())
+    if was_required and not _required(Member(key, spec, wrappers), total):
+        wrappers = ("Required", *(wrapper for wrapper in wrappers if wrapper != "NotRequired"))
+    return [Member(key, spec, wrappers)]
 
 
 def specs(depth: int) -> st.SearchStrategy[Spec]:
@@ -517,6 +618,8 @@ def _same_json(left: object, right: object) -> bool:
 
 # --- the properties ---------------------------------------------------------
 
+_MODES: tuple[Mode, ...] = ("evaluated", "postponed", "mixed")
+
 _DEPTH = 3
 """The operational cap: how deep a spec nests, and how deep a value of it."""
 
@@ -540,7 +643,9 @@ def test_the_checker_agrees_with_the_reference(data: st.DataObject) -> None:
     # it; and when every problem is a key a closed TypedDict does not
     # declare, what comes back is a value of the type.
     spec = data.draw(specs(_DEPTH), label="spec")
-    annotation = Build(postponed=False).annotation(spec)
+    build = Build(data.draw(st.sampled_from(_MODES), label="mode"))
+    annotation = build.annotation(spec)
+    note(build.text_of())
     value = data.draw(_values(spec), label="value")
     event(f"spec {type(spec).__name__}")
     before = copy.deepcopy(value)
@@ -566,10 +671,13 @@ def test_a_postponed_typeddict_reads_as_an_evaluated_one(data: st.DataObject) ->
     # `from __future__ import annotations` leaves them: read alike, down to
     # each problem's message.
     spec = data.draw(specs(_DEPTH), label="spec")
-    evaluated = Build(postponed=False).annotation(spec)
-    postponed = Build(postponed=True).annotation(spec)
+    evaluated = Build("evaluated")
+    written = Build(data.draw(st.sampled_from(("postponed", "mixed")), label="mode"))
+    read_evaluated, read_written = evaluated.annotation(spec), written.annotation(spec)
+    note(evaluated.text_of())
+    note(written.text_of())
     value = data.draw(_values(spec), label="value")
-    assert _read(evaluated, value) == _read(postponed, value)
+    assert _read(read_evaluated, value) == _read(read_written, value)
 
 
 @_EXAMPLES
@@ -583,8 +691,10 @@ def test_typeddict_keys_follow_the_typing_spec(data: st.DataObject) -> None:
     said = says_of(spec)
     event(f"{len(spec.layers)} classes")
     event(f"says {said if isinstance(said, str) else 'extra_items'}")
-    for postponed in (False, True):
-        keys = typeddict_keys(cast("type", Build(postponed=postponed).annotation(spec)))
+    for mode in _MODES:
+        build = Build(mode)
+        keys = typeddict_keys(cast("type", build.annotation(spec)))
+        note(build.text_of())
         assert set(keys.members) == set(members)
         assert keys.required == {key for key, (_, required) in members.items() if required}
         assert keys.closed == (said == "closed")
@@ -605,7 +715,78 @@ def test_a_key_a_closed_typeddict_does_not_declare_is_reported_and_left_out(
     declared = members_of(spec)
     value = data.draw(_object_values(spec, _DEPTH), label="value")
     key = data.draw(st.text(max_size=3).filter(lambda drawn: drawn not in declared), label="key")
-    annotation = Build(postponed=data.draw(st.booleans(), label="postponed")).annotation(spec)
+    build = Build(data.draw(st.sampled_from(_MODES), label="mode"))
+    annotation = build.annotation(spec)
+    note(build.text_of())
     typed, problems = _read(annotation, {**value, key: data.draw(json_values(1), label="held")})
     assert [(found.loc, found.kind) for found in problems] == [((key,), "unknown_key")]
     assert _same_json(typed, value)
+
+
+# --- reach: what the strategy has to keep drawing -----------------------------
+
+
+def _nests_a_name(spec: Spec, *, nested: bool = False) -> bool:
+    """Whether `spec` names another class or alias inside an annotation, where a quoted name loses its module."""
+    if isinstance(spec, (Named, Object)):
+        return nested
+    if isinstance(spec, ArrayOf):
+        return _nests_a_name(spec.element, nested=True)
+    if isinstance(spec, MappingOf):
+        return _nests_a_name(spec.value, nested=True)
+    if isinstance(spec, Fixed):
+        return any(_nests_a_name(element, nested=True) for element in spec.elements)
+    if isinstance(spec, AnyOf):
+        return any(_nests_a_name(branch, nested=True) for branch in spec.branches)
+    return False
+
+
+def _hides_a_qualifier(spec: Object) -> bool:
+    """Whether a postponed class writes a qualifier its `total` contradicts, which the runtime then misses."""
+    return any(
+        layer.postponed
+        and any(
+            ("NotRequired" in member.wrappers and layer.total)
+            or ("Required" in member.wrappers and not layer.total)
+            for member in layer.members
+        )
+        for layer in spec.layers
+    )
+
+
+_REACHES = {
+    "a-key-redeclared": lambda spec: any(
+        member.key in {earlier.key for layer in spec.layers[:index] for earlier in layer.members}
+        for index, later in enumerate(spec.layers)
+        for member in later.members
+    ),
+    "openness-inherited": lambda spec: (
+        spec.layers[-1].says == "unsaid" and any(layer.says != "unsaid" for layer in spec.layers)
+    ),
+    "typing-typeddict": lambda spec: spec.stdlib and len(spec.layers) > 1,
+    "classes-evaluated-and-postponed": lambda spec: (
+        len({layer.postponed for layer in spec.layers}) == 2
+    ),
+    "a-qualifier-the-runtime-cannot-see": _hides_a_qualifier,
+    "a-quoted-name-a-subclass-inherits": lambda spec: (
+        len(spec.layers) > 1
+        and any(
+            layer.quoted and any(_nests_a_name(member.spec) for member in layer.members)
+            for layer in spec.layers[:-1]
+        )
+    ),
+    "a-class-that-holds-itself": lambda spec: any(
+        member.key == "self" for layer in spec.layers for member in layer.members
+    ),
+}
+
+
+@pytest.mark.parametrize("reach", sorted(_REACHES))
+def test_the_strategy_reaches(reach: str) -> None:
+    # Each case the properties are meant to cover, drawn at least once in a
+    # modest search: an edit to the strategy cannot quietly lose one.
+    find(
+        _objects(specs(_DEPTH - 1)),
+        _REACHES[reach],
+        settings=settings(max_examples=2000, database=None, deadline=None),
+    )
