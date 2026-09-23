@@ -43,7 +43,7 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.core.common import JSON
-from zarr.core.context import Context, Reading
+from zarr.core.context import Context, Resolver
 from zarr.core.dtype.npy.string import (
     FixedLengthUTF32,
     FixedLengthUTF32JSON_V2,
@@ -192,10 +192,10 @@ def get_data_type_from_json(
     it is None. The data types a data type contains, such as the fields of a structured data type,
     are resolved from the same context.
     """
-    reading = Reading(
+    resolver = Resolver(
         context=Context.default() if context is None else context, zarr_format=zarr_format
     )
-    return reading.resolve_data_type(dtype_spec)
+    return resolver.resolve_data_type(dtype_spec)
 
 
 def parse_data_type(

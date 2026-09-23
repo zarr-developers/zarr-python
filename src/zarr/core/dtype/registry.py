@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Final, Self
 
 import numpy as np
 
-from zarr.core.context import Context, Reading, json_pointer
+from zarr.core.context import Context, Resolver, json_pointer
 from zarr.core.dtype.common import HasNestedDTypes
 from zarr.errors import DataTypeValidationError, NestedDataTypeValidationError
 
@@ -261,28 +261,30 @@ class DataTypeRegistry:
             If no matching Zarr data type is found for the given JSON data.
         """
 
-        reading = Reading(context=Context(data_types=self), zarr_format=zarr_format)
-        return self._match_json(data, reading=reading)
+        resolver = Resolver(context=Context(data_types=self), zarr_format=zarr_format)
+        return self._match_json(data, resolver=resolver)
 
-    def _match_json(self, data: DTypeJSON, *, reading: Reading) -> ZDType[TBaseDType, TBaseScalar]:
+    def _match_json(
+        self, data: DTypeJSON, *, resolver: Resolver
+    ) -> ZDType[TBaseDType, TBaseScalar]:
         """
-        Match a JSON representation of a data type to a registered ZDType, in `reading`.
+        Match a JSON representation of a data type to a registered ZDType, at `resolver`'s location.
         """
         self._lazy_load()
-        candidates = _v2_spellings(data) if reading.zarr_format == 2 else (data,)
+        candidates = _v2_spellings(data) if resolver.zarr_format == 2 else (data,)
         for candidate in candidates:
             for val in self.contents.values():
                 try:
                     if issubclass(val, HasNestedDTypes):
-                        # the data types it contains are resolved in this reading
-                        return val._from_json_nested(candidate, reading=reading)
-                    return val.from_json(candidate, zarr_format=reading.zarr_format)
+                        # the data types it contains are resolved with this resolver
+                        return val._from_json_nested(candidate, resolver=resolver)
+                    return val.from_json(candidate, zarr_format=resolver.zarr_format)
                 except NestedDataTypeValidationError:
                     # the JSON is this data type, and a data type it contains is invalid
                     raise
                 except DataTypeValidationError:
                     pass
         msg = f"No Zarr data type found that matches {data!r}"
-        if reading.loc:
-            msg += f" at {json_pointer(reading.loc)}"
+        if resolver.loc:
+            msg += f" at {json_pointer(resolver.loc)}"
         raise ValueError(msg)

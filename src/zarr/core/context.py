@@ -1,10 +1,11 @@
 """
-The extensions that Zarr metadata is read with, and the state of a read in progress.
+The extensions that Zarr metadata is read with, and the resolver that reads with them.
 
 A `Context` is the set of extensions a read may resolve, by kind. It is a value: the same for a
-whole read, and passed in by the caller as `context=`. A `Reading` is where a read has got to: the
-context, the Zarr format of the document, and the location in the document. It changes at every
-nested step, and is threaded through the read by zarr.
+whole read, and passed in by the caller as `context=`. A `Resolver` is a context positioned in a
+document: the context, the Zarr format of the document, and the location in the document. It is
+re-positioned at every nested step, and is threaded through the read by zarr. (The pair mirrors
+`referencing.Registry` and `referencing.Resolver` in python-jsonschema.)
 """
 
 from __future__ import annotations
@@ -57,13 +58,14 @@ def json_pointer(loc: JSONLocation) -> str:
 
 
 @dataclass(frozen=True, kw_only=True)
-class Reading:
+class Resolver:
     """
-    The state of a read of Zarr metadata in progress.
+    Resolves the extensions in a Zarr metadata document from a context, at a location in the
+    document.
 
-    An extension that contains other extensions, such as a structured data type, reads each of them
-    with the reading returned by `at`, so that they come from the same context, use the same Zarr
-    format, and report errors with their location.
+    An extension that contains other extensions, such as a structured data type, resolves each of
+    them with the resolver returned by `at`, so that they come from the same context, use the same
+    Zarr format, and report errors with their location.
 
     Attributes
     ----------
@@ -81,19 +83,19 @@ class Reading:
     zarr_format: ZarrFormat
     loc: JSONLocation = ()
 
-    def at(self, *keys: str | int) -> Reading:
+    def at(self, *keys: str | int) -> Resolver:
         """
-        The reading of the JSON at `keys` within the JSON of this reading.
+        The resolver for the JSON at `keys` within the JSON at this resolver's location.
         """
         return replace(self, loc=(*self.loc, *keys))
 
     def resolve_data_type(self, data: DTypeJSON) -> ZDType[TBaseDType, TBaseScalar]:
         """
-        Resolve the JSON representation of a data type at the location of this reading.
+        Resolve the JSON representation of a data type at this resolver's location.
 
         Raises
         ------
         ValueError
             If no data type in the context matches `data`.
         """
-        return self.context.data_types._match_json(data, reading=self)
+        return self.context.data_types._match_json(data, resolver=self)
