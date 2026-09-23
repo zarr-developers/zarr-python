@@ -253,6 +253,14 @@ def test_a_reader_takes_a_name_over_from_a_family() -> None:
     assert resolve("r8", DataTypeDefinition, scope)[0].definition is RAW_BYTES_DATA_TYPE
 
 
+def test_a_definition_filed_again_is_asked_first() -> None:
+    # Filed again after a reader's `r16`, the raw-bytes family is the one
+    # passed last, and reads `r16` once more.
+    mine = DataTypeDefinition(name="r16", configuration=EmptyConfiguration)
+    scope = CORE_AND_EXTENSIONS.extended_with(mine).extended_with(RAW_BYTES_DATA_TYPE)
+    assert resolve("r16", DataTypeDefinition, scope)[0].definition is RAW_BYTES_DATA_TYPE
+
+
 def test_an_unclaimed_field_keeps_its_own_spelling() -> None:
     assert canonicalize({"name": "zfpy"}, CodecDefinition, CORE) == ({"name": "zfpy"}, ())
 

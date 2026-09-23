@@ -94,6 +94,9 @@ class Context:
                     "ChunkKeyEncodingDefinition or StorageTransformerDefinition"
                 )
                 raise TypeError(msg)
+            # Filed again, a name moves to the end, so the one filed last is
+            # the one asked first.
+            tables[kind].pop(definition.name, None)
             tables[kind][definition.name] = definition
         return cls(
             MappingProxyType({kind: MappingProxyType(table) for kind, table in tables.items()})
