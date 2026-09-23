@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
+from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
@@ -21,6 +22,7 @@ from zarr_metadata.v3.definition import (
     CodecDefinition,
     DataTypeDefinition,
     Definition,
+    EmptyConfiguration,
     ValidationProblem,
     canonicalize,
     resolve,
@@ -240,6 +242,15 @@ def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field
 def test_the_simplest_spelling(field: dict[str, Any], simplest: object) -> None:
     kind = ChunkGridDefinition if field["name"] == "rectilinear" else CodecDefinition
     assert canonicalize(field, kind, CORE_AND_EXTENSIONS) == (simplest, ())
+
+
+def test_a_reader_takes_a_name_over_from_a_family() -> None:
+    # The raw-bytes family claims every `r<N>`; a reader's own `r16`,
+    # passed later, reads `r16`, and the family keeps the rest.
+    mine = DataTypeDefinition(name="r16", configuration=EmptyConfiguration)
+    scope = CORE_AND_EXTENSIONS.extended_with(mine)
+    assert resolve("r16", DataTypeDefinition, scope)[0].definition is mine
+    assert resolve("r8", DataTypeDefinition, scope)[0].definition is RAW_BYTES_DATA_TYPE
 
 
 def test_an_unclaimed_field_keeps_its_own_spelling() -> None:

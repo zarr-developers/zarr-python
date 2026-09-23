@@ -102,9 +102,10 @@ class Context:
     def extended_with(self, *definitions: Definition[Any]) -> Context:
         """This scope, plus definitions of your own.
 
-        A name already filed under the same kind is taken over by what is
-        passed here, which is how a reader substitutes its own reading of
-        a codec the package already defines.
+        A name already filed under the same kind, or claimed by a family,
+        is taken over by what is passed here, which is how a reader
+        substitutes its own reading of a codec the package already
+        defines.
         """
         return Context.of(*self.definitions(), *definitions)
 
@@ -116,13 +117,15 @@ class Context:
         """The definition of `kind` in scope that claims `name`; None if none does.
 
         Asks each definition filed under the kind whether the name is its
-        own -- a family claims every `r<N>` -- rather than looking a key
-        up, so the names a scope files under exist for `extended_with` to
-        take one over.
+        own -- a family claims every `r<N>` -- the one filed last first, so
+        a definition a scope was extended with takes a name over from one
+        before it, whether that one was filed under the name or claims it
+        as a family.
         """
         table = self.tables.get(as_kind(kind), {})
         return cast(
-            "D | None", next((entry for entry in table.values() if entry.claims(name)), None)
+            "D | None",
+            next((entry for entry in reversed(tuple(table.values())) if entry.claims(name)), None),
         )
 
 
