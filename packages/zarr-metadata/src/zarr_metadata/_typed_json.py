@@ -100,10 +100,9 @@ def problem(
 ) -> tuple[ValidationProblem, ...]:
     """One problem, as the one-element tuple every parser returns.
 
-    A tuple so that a parser can return it directly and a rule can
-    `found.extend(problem(...))` and raise `MetadataValidationError(found)`
-    once. The default `kind` names a type mismatch; a value rule passes
-    `"invalid_value"`.
+    A tuple so that a parser can return it directly and a caller that
+    collects problems can `found.extend(problem(...))`. The default `kind`
+    names a type mismatch; a value rule passes `"invalid_value"`.
     """
     return (ValidationProblem(loc, message, kind),)
 
