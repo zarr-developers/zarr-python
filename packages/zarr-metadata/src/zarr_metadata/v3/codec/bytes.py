@@ -8,6 +8,8 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
+from zarr_metadata.v3._definition import CodecDefinition
+
 BYTES_CODEC_NAME: Final = "bytes"
 """The `name` field value of the `bytes` codec."""
 
@@ -56,7 +58,17 @@ omit `configuration` entirely.
   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564
 """
 
+BYTES_CODEC: Final = CodecDefinition(
+    name=BYTES_CODEC_NAME, configuration=BytesCodecConfiguration, kind="array_bytes"
+)
+"""The `bytes` codec.
+
+No rule of its own: whether `endian` is required depends on the data type
+the codec is handed, which is a question about the array, not the field.
+"""
+
 __all__ = [
+    "BYTES_CODEC",
     "BYTES_CODEC_NAME",
     "ENDIANNESS",
     "BytesCodecConfiguration",

@@ -14,6 +14,10 @@ For the field-level "any codec entry" alias (used in array metadata's
 `codecs` list and in sharding's inner pipelines), import `ZarrV3MetadataFieldJSON`
 from `zarr_metadata.v3`.
 
+Each codec's pipeline position (`array -> array`, `array -> bytes`,
+`bytes -> bytes`) is its definition's `kind`, in
+`zarr_metadata.v3.definition`.
+
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/index.html
 """
 

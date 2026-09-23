@@ -267,6 +267,12 @@ _EXTENSION_ROLES = (
     "FillValue",
     "Configuration",
     "Component",
+    # What one kind of extension's metadata is, as JSON: `CodecDefinition`,
+    # the value holding a codec's name, configuration TypedDict and rules.
+    "Definition",
+    # A configuration member holding a metadata field of that kind:
+    # `CodecField`, read in the scope its field is read in.
+    "Field",
 )
 _EXTENSION_NAME = re.compile(r"^(?:[A-Z][a-z0-9]*)+?(?:" + "|".join(_EXTENSION_ROLES) + r")$")
 
@@ -279,6 +285,13 @@ _STANDALONE_VOCAB = frozenset(
         "Base64Bytes",
         "BloscCName",
         "BloscShuffle",
+        "CodecKind",
+        "Context",
+        "Definition",
+        "Loc",
+        "Resolution",
+        "Resolved",
+        "Unread",
         "CastOutOfRangeMode",
         "CastRoundingMode",
         "Endianness",
@@ -286,7 +299,6 @@ _STANDALONE_VOCAB = frozenset(
         "HexFloat32",
         "HexFloat64",
         "JSONValue",
-        "Loc",
         "MetadataValidationError",
         "NumpyDatetime64",
         "NumpyTimeUnit",
@@ -411,7 +423,14 @@ def _literal_backed_constants() -> list[tuple[str, str, str]]:
         for const_name, value in vars(module).items():
             if const_name.startswith("_") or not const_name.isupper():
                 continue
-            members = frozenset(value) if isinstance(value, tuple) else frozenset({value})
+            if isinstance(value, tuple):
+                members = frozenset(value)
+            elif isinstance(value, str):
+                members = frozenset({value})
+            else:
+                # A value that is not a name -- a definition, a scope --
+                # backs no Literal type and carries no signal here.
+                continue
             if not all(isinstance(m, str) for m in members):
                 continue
             matches = [t for t, args in literals.items() if args == members]
@@ -443,7 +462,14 @@ def _value_tied_constants() -> set[str]:
         for const_name, value in vars(module).items():
             if const_name.startswith("_") or not const_name.isupper():
                 continue
-            members = frozenset(value) if isinstance(value, tuple) else frozenset({value})
+            if isinstance(value, tuple):
+                members = frozenset(value)
+            elif isinstance(value, str):
+                members = frozenset({value})
+            else:
+                # A value that is not a name -- a definition, a scope --
+                # backs no Literal type and carries no signal here.
+                continue
             if not all(isinstance(m, str) for m in members):
                 continue
             if sum(1 for args in literals if args == members) > 1:

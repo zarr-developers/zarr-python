@@ -11,6 +11,8 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
+from zarr_metadata.v3._definition import CodecDefinition
+
 CRC32C_CODEC_NAME: Final = "crc32c"
 """The `name` field value of the `crc32c` codec."""
 
@@ -45,7 +47,13 @@ configuration, so both forms are valid.
 """
 
 
+CRC32C_CODEC: Final = CodecDefinition(
+    name=CRC32C_CODEC_NAME, configuration=Empty, kind="bytes_bytes"
+)
+"""The `crc32c` codec: a checksum has nothing to configure."""
+
 __all__ = [
+    "CRC32C_CODEC",
     "CRC32C_CODEC_NAME",
     "Crc32cCodecMetadata",
     "Crc32cCodecName",
