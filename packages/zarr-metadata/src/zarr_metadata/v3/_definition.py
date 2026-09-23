@@ -460,9 +460,6 @@ def _configuration_checked(
     document's is: a stray member, or a `must_understand` of `false`, is a
     problem of the configuration, and the value does not come back.
     """
-    if not is_typeddict(shape):
-        msg = f"{shape!r} is not a TypedDict"
-        raise TypeError(msg)
     refined, problems = refine_json(value, loc)
     if len(problems) != 0:
         return None, problems
