@@ -2,18 +2,72 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Final, Self
 
 import numpy as np
 
 from zarr.errors import DataTypeValidationError
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from importlib.metadata import EntryPoint
 
     from zarr.core.common import ZarrFormat
     from zarr.core.dtype.common import DTypeJSON
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+
+
+# Zarr V2 data type names are NumPy typestrs, whose first character is the byte order: "<", ">", or
+# "|" (not relevant). For the data types below the byte order is not relevant, so their "<" and ">"
+# spellings name the same data type as the canonical "|" spelling. Other implementations write
+# them: netCDF-C writes "<i1" and "<u1", Zarr.jl wrote "<b1", "<i1" and "<u1", and jzarr wrote
+# ">i1" and ">u1".
+
+# Single-byte data types, keyed by their non-canonical spellings.
+_V2_SINGLE_BYTE_ALIASES: Final[Mapping[str, str]] = {
+    "<b1": "|b1",
+    ">b1": "|b1",
+    "<i1": "|i1",
+    ">i1": "|i1",
+    "<u1": "|u1",
+    ">u1": "|u1",
+}
+# Fixed-length bytes data types, whose names are the kind followed by the length in bytes.
+_V2_BYTES_KINDS: Final = ("V",)
+
+
+def _v2_canonical_name(name: str) -> str:
+    """
+    The canonical spelling of a Zarr V2 data type name: `"|"` for a byte order that is not
+    relevant, and the name as written otherwise.
+    """
+    if name in _V2_SINGLE_BYTE_ALIASES:
+        return _V2_SINGLE_BYTE_ALIASES[name]
+    byte_order, kind, length = name[:1], name[1:2], name[2:]
+    if (
+        byte_order in ("<", ">")
+        and kind in _V2_BYTES_KINDS
+        and length.isascii()
+        and length.isdigit()
+    ):
+        return f"|{kind}{length}"
+    return name
+
+
+def _v2_spellings(data: DTypeJSON) -> tuple[DTypeJSON, ...]:
+    """
+    The spellings of a Zarr V2 data type JSON to match, in order: the name as written, then its
+    canonical spelling if it has another. A data type that declares a non-canonical spelling
+    (e.g. `">S1"`) takes precedence over the canonical alias, because the name as written is
+    tried first.
+    """
+    if (
+        isinstance(data, dict)
+        and isinstance(name := data.get("name"), str)
+        and (canonical := _v2_canonical_name(name)) != name
+    ):
+        return (data, {**data, "name": canonical})
+    return (data,)
 
 
 # This class is different from the other registry classes, which inherit from
@@ -202,9 +256,11 @@ class DataTypeRegistry:
             If no matching Zarr data type is found for the given JSON data.
         """
 
-        for val in self.contents.values():
-            try:
-                return val.from_json(data, zarr_format=zarr_format)
-            except DataTypeValidationError:
-                pass
+        candidates = _v2_spellings(data) if zarr_format == 2 else (data,)
+        for candidate in candidates:
+            for val in self.contents.values():
+                try:
+                    return val.from_json(candidate, zarr_format=zarr_format)
+                except DataTypeValidationError:
+                    pass
         raise ValueError(f"No Zarr data type found that matches {data!r}")

@@ -12,7 +12,7 @@ from zarr.core.dtype.common import (
     DTypeJSON,
     HasItemSize,
     StructuredName_V2,
-    check_dtype_spec_v2,
+    check_dtype_spec_no_object_codec_v2,
     check_structured_dtype_name_v2,
     v3_unstable_dtype_warning,
 )
@@ -28,6 +28,22 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
 
 StructuredScalarLike = list[object] | tuple[object, ...] | bytes | int
+
+
+def _field_from_json(
+    data: DTypeJSON, *, zarr_format: ZarrFormat
+) -> ZDType[TBaseDType, TBaseScalar]:
+    """
+    Parse the data type of a structured field, reporting an unrecognized field data type as an
+    invalid structured data type.
+    """
+    # avoid circular import
+    from zarr.core.dtype import get_data_type_from_json
+
+    try:
+        return get_data_type_from_json(data, zarr_format=zarr_format)
+    except ValueError as e:
+        raise DataTypeValidationError(f"Invalid structured field data type: {e}") from e
 
 
 class StructuredJSON_V2(DTypeConfig_V2[StructuredName_V2, None]):
@@ -239,10 +255,9 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             for Zarr V2, False otherwise.
         """
         return (
-            check_dtype_spec_v2(data)
+            check_dtype_spec_no_object_codec_v2(data)
             and not isinstance(data["name"], str)
             and check_structured_dtype_name_v2(data["name"])
-            and data["object_codec_id"] is None
         )
 
     @classmethod
@@ -271,9 +286,6 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
-        # avoid circular import
-        from zarr.core.dtype import get_data_type_from_json
-
         if cls._check_json_v2(data):
             # structured dtypes are constructed directly from a list of lists
             # note that we do not handle the object codec here! this will prevent structured
@@ -283,9 +295,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
                 fields=tuple(  # type: ignore[str-unpack]
                     (  # type: ignore[misc]
                         f_name,
-                        get_data_type_from_json(
-                            {"name": f_dtype, "object_codec_id": None}, zarr_format=2
-                        ),
+                        _field_from_json({"name": f_dtype, "object_codec_id": None}, zarr_format=2),
                     )
                     for f_name, f_dtype in name
                 )
@@ -295,14 +305,12 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
     @classmethod
     def _from_json_v3(cls, data: DTypeJSON) -> Self:
-        from zarr.core.dtype import get_data_type_from_json
-
         if cls._check_json_v3(data):
             config = data["configuration"]
             meta_fields = config["fields"]
             return cls(
                 fields=tuple(
-                    (f_name, get_data_type_from_json(f_dtype, zarr_format=3))  # type: ignore[misc]
+                    (f_name, _field_from_json(f_dtype, zarr_format=3))  # type: ignore[misc]
                     for f_name, f_dtype in meta_fields
                 )
             )
@@ -557,8 +565,6 @@ class Struct(Structured):
 
     @classmethod
     def _from_json_v3(cls, data: DTypeJSON) -> Self:
-        from zarr.core.dtype import get_data_type_from_json
-
         if cls._check_json_v3(data):
             config = data["configuration"]
             meta_fields = config["fields"]
@@ -570,7 +576,7 @@ class Struct(Structured):
                 else:
                     # Legacy tuple-style field format from "structured" dtype
                     f_name, f_dtype = field  # type: ignore[unreachable]
-                parsed_fields.append((f_name, get_data_type_from_json(f_dtype, zarr_format=3)))  # type: ignore[arg-type]
+                parsed_fields.append((f_name, _field_from_json(f_dtype, zarr_format=3)))  # type: ignore[arg-type]
             return cls(fields=tuple(parsed_fields))
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON object with the key {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)

@@ -19,7 +19,7 @@ from zarr.core.dtype.common import (
     DTypeJSON,
     HasEndianness,
     HasItemSize,
-    check_dtype_spec_v2,
+    check_dtype_spec_no_object_codec_v2,
 )
 from zarr.core.dtype.npy.common import (
     check_json_int,
@@ -86,11 +86,7 @@ class BaseInt[
             False otherwise.
         """
 
-        return (
-            check_dtype_spec_v2(data)
-            and data["name"] in cls._zarr_v2_names
-            and data["object_codec_id"] is None
-        )
+        return check_dtype_spec_no_object_codec_v2(data) and data["name"] in cls._zarr_v2_names
 
     @classmethod
     def _check_json_v3(cls, data: object) -> TypeGuard[str]:
@@ -415,11 +411,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
 
     dtype_cls = np.dtypes.UInt8DType
     _zarr_v3_name: ClassVar[Literal["uint8"]] = "uint8"
-    _zarr_v2_names: ClassVar[tuple[Literal["|u1"], Literal["<u1"], Literal[">u1"]]] = (
-        "|u1",
-        "<u1",
-        ">u1",
-    )
+    _zarr_v2_names: ClassVar[tuple[Literal["|u1"]]] = ("|u1",)
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:

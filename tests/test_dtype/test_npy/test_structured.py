@@ -67,8 +67,9 @@ class TestStruct(BaseTestZDType):
         },
     )
     invalid_json_v2 = (
-        [("field1", "|i1"), ("field2", "|f8")],
-        [("field1", "|S10"), ("field2", "|f8")],
+        {"name": "|f8", "object_codec_id": None},
+        {"name": [["field1", "|i9"], ["field2", "<f8"]], "object_codec_id": None},
+        {"name": [["field1", "|i1"], ["field2", "<f8"]], "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         {

@@ -18,6 +18,11 @@ from zarr.core.dtype.common import unpack_dtype_json
 from zarr.dtype import (  # type: ignore[attr-defined]
     Bool,
     FixedLengthUTF32,
+    Int8,
+    Int16,
+    RawBytes,
+    Struct,
+    UInt8,
     VariableLengthUTF8,
     ZDType,
     data_type_registry,
@@ -27,6 +32,7 @@ from zarr.dtype import (  # type: ignore[attr-defined]
 
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
+    from zarr.core.dtype.common import DTypeName_V2
 
 from .test_dtype.conftest import zdtype_examples
 
@@ -215,3 +221,79 @@ def test_parse_data_type(
     else:
         observed = dtype_parser_func(dtype_spec, zarr_format=zarr_format)
         assert observed == data_type
+
+
+class _LittleEndianUInt8(UInt8):
+    """A data type that declares the non-canonical spelling "<u1" as its own Zarr V2 name."""
+
+    _zarr_v3_name = "test.little_endian_uint8"  # type: ignore[assignment]
+    _zarr_v2_names = ("<u1",)  # type: ignore[assignment]
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        *((name, Bool()) for name in ("|b1", "<b1", ">b1")),
+        *((name, Int8()) for name in ("|i1", "<i1", ">i1")),
+        *((name, UInt8()) for name in ("|u1", "<u1", ">u1")),
+        *((name, RawBytes(length=4)) for name in ("|V4", "<V4", ">V4")),
+        ("<i2", Int16(endianness="little")),
+        (">i2", Int16(endianness="big")),
+        ([["a", "<i1"], ["b", ">b1"]], Struct(fields=(("a", Int8()), ("b", Bool())))),
+    ],
+    ids=str,
+)
+def test_match_json_v2_byte_order(name: DTypeName_V2, expected: ZDType[Any, Any]) -> None:
+    """
+    A Zarr V2 data type name whose byte order is not relevant matches the same data type for any
+    byte order character, and serializes with the canonical "|".
+    """
+    observed = data_type_registry.match_json({"name": name, "object_codec_id": None}, zarr_format=2)
+    assert observed == expected
+    assert observed.to_json(zarr_format=2) == expected.to_json(zarr_format=2)
+
+
+def test_match_json_v2_declared_spelling_takes_precedence(
+    data_type_registry_fixture: DataTypeRegistry,
+) -> None:
+    """
+    A data type that declares a non-canonical spelling matches that spelling, and the other
+    spellings still match the canonical data type.
+    """
+    data_type_registry_fixture.register(UInt8._zarr_v3_name, UInt8)
+    data_type_registry_fixture.register(_LittleEndianUInt8._zarr_v3_name, _LittleEndianUInt8)
+    for name, expected in (("<u1", _LittleEndianUInt8()), (">u1", UInt8()), ("|u1", UInt8())):
+        observed = data_type_registry_fixture.match_json(
+            {"name": name, "object_codec_id": None}, zarr_format=2
+        )
+        assert type(observed) is type(expected)
+        assert observed.to_json(zarr_format=2)["name"] == ("<u1" if name == "<u1" else "|u1")
+
+
+@pytest.mark.parametrize("name", ["|i2", "|f4", "|U1", "|M8[ns]"])
+def test_match_json_v2_byte_order_relevant(name: str) -> None:
+    """The byte order of a multi-byte data type is part of its name, so "|" is rejected."""
+    with pytest.raises(ValueError, match="No Zarr data type found"):
+        data_type_registry.match_json({"name": name, "object_codec_id": None}, zarr_format=2)
+
+
+@pytest.mark.parametrize("name", ["=u1", "=i2"])
+def test_match_json_v2_native_byte_order(name: str) -> None:
+    """The Zarr V2 byte order character is one of "<", ">", or "|"; NumPy's "=" is not allowed."""
+    with pytest.raises(ValueError, match="No Zarr data type found"):
+        data_type_registry.match_json({"name": name, "object_codec_id": None}, zarr_format=2)
+
+
+def test_match_json_v2_byte_order_alias_object_codec() -> None:
+    """Normalizing the byte order does not relax the other members of the data type."""
+    with pytest.raises(ValueError, match="No Zarr data type found"):
+        data_type_registry.match_json(
+            {"name": "<u1", "object_codec_id": "vlen-utf8"}, zarr_format=2
+        )
+
+
+@pytest.mark.parametrize("name", ["<V", ">V", "<V-1", "<V4x", "<V٤"])
+def test_match_json_v2_byte_order_alias_malformed_length(name: str) -> None:
+    """A fixed-length bytes name needs a length of ASCII digits to have a canonical alias."""
+    with pytest.raises(ValueError, match="No Zarr data type found"):
+        data_type_registry.match_json({"name": name, "object_codec_id": None}, zarr_format=2)
