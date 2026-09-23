@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import contextlib
-import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Final, Self
 
 import numpy as np
 
 from zarr.errors import DataTypeValidationError
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from importlib.metadata import EntryPoint
 
     from zarr.core.common import ZarrFormat
@@ -18,22 +18,53 @@ if TYPE_CHECKING:
 
 
 # Zarr V2 data type names are NumPy typestrs, whose first character is the byte order: "<", ">", or
-# "|" (not relevant). For these kinds the byte order is not relevant, so "<" and ">" spell the same
-# data type as "|". Other implementations write them (e.g. netCDF-C writes "<i1" and "<u1").
-_V2_BYTE_ORDER_IRRELEVANT = re.compile(r"^[<>](b1|i1|u1|V\d+)$")
+# "|" (not relevant). For the data types below the byte order is not relevant, so their "<" and ">"
+# spellings name the same data type as the canonical "|" spelling. Other implementations write
+# them: netCDF-C writes "<i1" and "<u1", Zarr.jl wrote "<b1", "<i1" and "<u1", and jzarr wrote
+# ">i1" and ">u1".
+
+# Single-byte data types, keyed by their non-canonical spellings.
+_V2_SINGLE_BYTE_ALIASES: Final[Mapping[str, str]] = {
+    "<b1": "|b1",
+    ">b1": "|b1",
+    "<i1": "|i1",
+    ">i1": "|i1",
+    "<u1": "|u1",
+    ">u1": "|u1",
+}
+# Fixed-length bytes data types, whose names are the kind followed by the length in bytes.
+_V2_BYTES_KINDS: Final = ("V",)
+
+
+def _v2_canonical_name(name: str) -> str | None:
+    """
+    Return the canonical "|" spelling of a Zarr V2 data type name whose byte order is not
+    relevant, or None if the name has no other spelling.
+    """
+    if name in _V2_SINGLE_BYTE_ALIASES:
+        return _V2_SINGLE_BYTE_ALIASES[name]
+    byte_order, kind, length = name[:1], name[1:2], name[2:]
+    if (
+        byte_order in ("<", ">")
+        and kind in _V2_BYTES_KINDS
+        and length.isascii()
+        and length.isdigit()
+    ):
+        return f"|{kind}{length}"
+    return None
 
 
 def _v2_canonical_alias(data: DTypeJSON) -> DTypeJSON | None:
     """
-    Return the canonical spelling of a Zarr V2 data type name whose byte order is not relevant,
-    or None if the name has no other spelling.
+    Return the Zarr V2 data type JSON with its name spelled canonically, or None if the name has no
+    other spelling.
     """
     if (
         isinstance(data, dict)
         and isinstance(name := data.get("name"), str)
-        and _V2_BYTE_ORDER_IRRELEVANT.match(name)
+        and (canonical := _v2_canonical_name(name)) is not None
     ):
-        return {**data, "name": "|" + name[1:]}
+        return {**data, "name": canonical}
     return None
 
 

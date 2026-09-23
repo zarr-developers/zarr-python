@@ -290,3 +290,10 @@ def test_match_json_v2_byte_order_alias_object_codec() -> None:
         data_type_registry.match_json(
             {"name": "<u1", "object_codec_id": "vlen-utf8"}, zarr_format=2
         )
+
+
+@pytest.mark.parametrize("name", ["<V", ">V", "<V-1", "<V4x", "<V٤"])
+def test_match_json_v2_byte_order_alias_malformed_length(name: str) -> None:
+    """A fixed-length bytes name needs a length of ASCII digits to have a canonical alias."""
+    with pytest.raises(ValueError, match="No Zarr data type found"):
+        data_type_registry.match_json({"name": name, "object_codec_id": None}, zarr_format=2)

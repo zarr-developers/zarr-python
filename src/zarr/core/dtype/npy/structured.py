@@ -12,7 +12,7 @@ from zarr.core.dtype.common import (
     DTypeJSON,
     HasItemSize,
     StructuredName_V2,
-    check_dtype_spec_v2,
+    check_dtype_spec_no_object_codec_v2,
     check_structured_dtype_name_v2,
     v3_unstable_dtype_warning,
 )
@@ -255,10 +255,9 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             for Zarr V2, False otherwise.
         """
         return (
-            check_dtype_spec_v2(data)
+            check_dtype_spec_no_object_codec_v2(data)
             and not isinstance(data["name"], str)
             and check_structured_dtype_name_v2(data["name"])
-            and data["object_codec_id"] is None
         )
 
     @classmethod
