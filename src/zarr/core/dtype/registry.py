@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Final, Self
 import numpy as np
 
 from zarr.core.context import Context, Resolver, json_pointer
-from zarr.errors import DataTypeValidationError, NestedDataTypeValidationError
+from zarr.errors import DataTypeValidationError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -69,6 +69,16 @@ def _v2_spellings(data: DTypeJSON) -> tuple[DTypeJSON, ...]:
     ):
         return (data, {**data, "name": canonical})
     return (data,)
+
+
+class _NestedDataTypeValidationError(DataTypeValidationError):
+    """
+    A data type contains a data type that is invalid, such as a structured data type with a field
+    whose data type matches no data type.
+
+    The JSON has the shape of the containing data type, so a data type registry re-raises this
+    error rather than trying other data types.
+    """
 
 
 # This class is different from the other registry classes, which inherit from
@@ -275,7 +285,7 @@ class DataTypeRegistry:
             for val in self.contents.values():
                 try:
                     return val._from_json_resolved(candidate, resolver=resolver)
-                except NestedDataTypeValidationError:
+                except _NestedDataTypeValidationError:
                     # the JSON is this data type, and a data type it contains is invalid
                     raise
                 except DataTypeValidationError:

@@ -2,10 +2,12 @@
 The extensions that Zarr metadata is read with, and the resolver that reads with them.
 
 A `Context` is the set of extensions a read may resolve, by kind. It is a value: the same for a
-whole read, and passed in by the caller as `context=`. A `Resolver` is a context positioned in a
-document: the context, the Zarr format of the document, and the location in the document. It is
-re-positioned at every nested step, and is threaded through the read by zarr. (The pair mirrors
-`referencing.Registry` and `referencing.Resolver` in python-jsonschema.)
+whole read. A `Resolver` is a context positioned in a document: the context, the Zarr format of the
+document, and the location in the document. It is re-positioned at every nested step, and is
+threaded through the read by zarr. (The pair mirrors `referencing.Registry` and
+`referencing.Resolver` in python-jsonschema.)
+
+Both are internal: nothing in the public API takes a context yet.
 """
 
 from __future__ import annotations

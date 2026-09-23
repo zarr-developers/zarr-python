@@ -22,13 +22,19 @@ from zarr.core.dtype.npy.common import (
     bytes_to_json,
     check_json_str,
 )
+from zarr.core.dtype.registry import _NestedDataTypeValidationError
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-from zarr.errors import DataTypeValidationError, NestedDataTypeValidationError
+from zarr.errors import DataTypeValidationError
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
 
 StructuredScalarLike = list[object] | tuple[object, ...] | bytes | int
+
+
+def _default_resolver(*, zarr_format: ZarrFormat) -> Resolver:
+    """A resolver for the default registry, at the top of a document."""
+    return Resolver(context=Context.default(), zarr_format=zarr_format)
 
 
 def _resolve_field(data: DTypeJSON, resolver: Resolver) -> ZDType[TBaseDType, TBaseScalar]:
@@ -41,7 +47,7 @@ def _resolve_field(data: DTypeJSON, resolver: Resolver) -> ZDType[TBaseDType, TB
     except DataTypeValidationError:
         raise
     except ValueError as e:
-        raise NestedDataTypeValidationError(str(e)) from e
+        raise _NestedDataTypeValidationError(str(e)) from e
 
 
 class StructuredJSON_V2(DTypeConfig_V2[StructuredName_V2, None]):
@@ -283,44 +289,14 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
         )
 
     @classmethod
-    def from_json(
-        cls,
-        data: DTypeJSON,
-        *,
-        zarr_format: ZarrFormat,
-        context: Context | None = None,
-    ) -> Self:
-        """
-        Create a structured data type from JSON data, resolving the data types of its fields from
-        `context`.
-
-        Parameters
-        ----------
-        data : DTypeJSON
-            The JSON representation of the data type.
-        zarr_format : ZarrFormat
-            The zarr format version.
-        context : Context | None
-            The extensions to resolve the field data types from. The default is
-            `Context.default()`.
-
-        Returns
-        -------
-        Self
-            An instance of this data type.
-        """
-        resolver = Resolver(
-            context=Context.default() if context is None else context, zarr_format=zarr_format
-        )
-        return cls._from_json_resolved(data, resolver=resolver)
-
-    @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
-        return cls.from_json(data, zarr_format=2)
+        # the fields are resolved from the default registry
+        return cls._from_json_resolved_v2(data, resolver=_default_resolver(zarr_format=2))
 
     @classmethod
     def _from_json_v3(cls, data: DTypeJSON) -> Self:
-        return cls.from_json(data, zarr_format=3)
+        # the fields are resolved from the default registry
+        return cls._from_json_resolved_v3(data, resolver=_default_resolver(zarr_format=3))
 
     @classmethod
     def _from_json_resolved(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
