@@ -47,6 +47,5 @@ Its types are intentionally not exported by `zarr_indexing`.
 ## Running the example
 
 ```bash
-cd packages/zarr-indexing
-uv run --with-editable . examples/system_memory_chunk_cache/system_memory_chunk_cache.py
+uv run packages/zarr-indexing/examples/system_memory_chunk_cache/system_memory_chunk_cache.py
 ```

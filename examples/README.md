@@ -19,7 +19,26 @@ examples/
 To add a new example:
 
 1. Create a new subdirectory: `examples/my_example/`
-2. Add your Python code: `examples/my_example/my_example.py`
+2. Add your Python code: `examples/my_example/my_example.py`. Declare its dependencies in a
+   [PEP 723](https://peps.python.org/pep-0723/) header, and install zarr from this checkout rather
+   than from a release or a branch, so that running the example (and its test in
+   `tests/test_examples.py`) exercises the zarr it is next to:
+
+    ```python
+    # /// script
+    # requires-python = ">=3.12"
+    # dependencies = [
+    #   "zarr",
+    # ]
+    #
+    # # in-repo packages come from this checkout, not a release
+    # [tool.uv.sources]
+    # zarr = { path = "../..", editable = true }
+    # ///
+    ```
+
+    A copy of the script outside this repository runs against a released zarr once the
+    `[tool.uv.sources]` table is removed.
 3. Create documentation: `examples/my_example/README.md`
 4. Create a documentation page at `docs/user-guide/examples/my_example.md`. The documentation page should simply link to the `README.md` and the source code, e.g.:
 

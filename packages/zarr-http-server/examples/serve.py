@@ -1,9 +1,15 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#   "zarr-http-server @ git+https://github.com/zarr-developers/zarr-python.git@main#subdirectory=packages/zarr-http-server",
+#   "zarr",
+#   "zarr-http-server",
 #   "httpx",
 # ]
+#
+# # in-repo packages come from this checkout, not a release
+# [tool.uv.sources]
+# zarr = { path = "../../..", editable = true }
+# zarr-http-server = { path = "..", editable = true }
 # ///
 """
 Serve a Zarr array over HTTP and fetch its metadata and chunks.

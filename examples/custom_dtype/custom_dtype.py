@@ -1,10 +1,14 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#   "zarr @ git+https://github.com/zarr-developers/zarr-python.git@main",
+#   "zarr",
 #   "ml_dtypes==0.5.4",
 #   "pytest==8.4.1"
 # ]
+#
+# # in-repo packages come from this checkout, not a release
+# [tool.uv.sources]
+# zarr = { path = "../..", editable = true }
 # ///
 #
 

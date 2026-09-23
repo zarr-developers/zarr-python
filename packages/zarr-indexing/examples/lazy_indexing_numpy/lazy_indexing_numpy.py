@@ -1,10 +1,14 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#   "zarr-indexing>=0.1",
+#   "zarr-indexing",
 #   "numpy==2.4.3",
 #   "pytest==9.0.2"
 # ]
+#
+# # in-repo packages come from this checkout, not a release
+# [tool.uv.sources]
+# zarr-indexing = { path = "../..", editable = true }
 # ///
 #
 

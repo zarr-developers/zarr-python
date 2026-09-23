@@ -1,12 +1,17 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#   "zarr @ git+https://github.com/zarr-developers/zarr-python.git@main",
-#   "zarr-indexing>=0.1",
+#   "zarr",
+#   "zarr-indexing",
 #   "dask[array]==2025.3.0",
 #   "numpy==2.4.3",
 #   "pytest==9.0.2"
 # ]
+#
+# # in-repo packages come from this checkout, not a release
+# [tool.uv.sources]
+# zarr = { path = "../../../..", editable = true }
+# zarr-indexing = { path = "../..", editable = true }
 # ///
 #
 

@@ -1,9 +1,13 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#   "zarr-indexing>=0.1",
+#   "zarr-indexing",
 #   "numpy==2.4.3",
 # ]
+#
+# # in-repo packages come from this checkout, not a release
+# [tool.uv.sources]
+# zarr-indexing = { path = "../..", editable = true }
 # ///
 #
 from __future__ import annotations
