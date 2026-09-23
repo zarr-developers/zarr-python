@@ -542,6 +542,107 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
 
 @dataclass(frozen=True, kw_only=True)
+class NCZarrChar(NullTerminatedBytes):
+    """
+    The netCDF `NC_CHAR` data type as NCZarr writes it in Zarr V2: a one-byte string named `">S1"`.
+
+    In the Zarr V2 specification the byte order of an `"S"` data type is not relevant, so `">S1"`
+    and `"|S1"` name the same data type, and this data type holds the same values as
+    `NullTerminatedBytes(length=1)`. NCZarr gives the byte order a meaning of its own: it reads
+    `">S1"` as `NC_CHAR` and `"|S1"` as `NC_STRING`. This data type keeps the `">S1"` spelling
+    when array metadata is written back, so netCDF readers see the same type.
+
+    It is never inferred from a NumPy data type: arrays with a NumPy `"S1"` data type use
+    `NullTerminatedBytes`. It has no Zarr V3 representation.
+
+    Attributes
+    ----------
+    length : int
+        The length of the bytes, which is always 1.
+
+    References
+    ----------
+    See the [NCZarr documentation](https://github.com/Unidata/netcdf-c/blob/main/docs/nczarr.md)
+    for the NCZarr type mapping.
+    """
+
+    _zarr_v3_name: ClassVar[Literal["nczarr.char"]] = "nczarr.char"  # type: ignore[assignment]
+    _zarr_v2_name: ClassVar[Literal[">S1"]] = ">S1"
+    length: int = 1
+
+    def __post_init__(self) -> None:
+        if self.length != 1:
+            raise ValueError(f"length must be 1, got {self.length}.")
+
+    @classmethod
+    def _check_native_dtype(cls, dtype: TBaseDType) -> TypeGuard[np.dtypes.BytesDType[int]]:
+        """
+        Return False: a NumPy data type does not say whether it holds netCDF characters.
+        """
+        return False
+
+    @classmethod
+    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[NullterminatedBytesJSON_V2]:
+        """
+        Check that the input is the NCZarr `NC_CHAR` data type, `{"name": ">S1", "object_codec_id": None}`.
+        """
+        return check_dtype_spec_no_object_codec_v2(data) and data["name"] == cls._zarr_v2_name
+
+    @classmethod
+    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[NullTerminatedBytesJSON_V3]:
+        """
+        Return False: this data type has no Zarr V3 representation.
+        """
+        return False
+
+    @classmethod
+    def _from_json_v2(cls, data: DTypeJSON) -> Self:
+        if cls._check_json_v2(data):
+            return cls()
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v2_name!r}"
+        raise DataTypeValidationError(msg)
+
+    @classmethod
+    def _from_json_v3(cls, data: DTypeJSON) -> Self:
+        msg = f"{cls.__name__} has no Zarr V3 representation. Got {data!r}"
+        raise DataTypeValidationError(msg)
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> NullterminatedBytesJSON_V2: ...
+
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NullTerminatedBytesJSON_V3: ...
+
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> DTypeConfig_V2[str, None] | NullTerminatedBytesJSON_V3:
+        """
+        Serialize this data type to Zarr V2 JSON.
+
+        Parameters
+        ----------
+        zarr_format : ZarrFormat
+            The Zarr format version. Only 2 is supported.
+
+        Returns
+        -------
+        NullterminatedBytesJSON_V2
+            `{"name": ">S1", "object_codec_id": None}`.
+
+        Raises
+        ------
+        ValueError
+            If `zarr_format` is 3: this data type has no Zarr V3 representation.
+        """
+        if zarr_format == 2:
+            return {"name": self._zarr_v2_name, "object_codec_id": None}
+        raise ValueError(
+            f"{type(self).__name__} has no Zarr V3 representation. Use NullTerminatedBytes(length=1) "
+            "to store one-byte strings in a Zarr V3 array."
+        )
+
+
+@dataclass(frozen=True, kw_only=True)
 class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize):
     """
     A Zarr data type for arrays containing fixed-length sequences of raw bytes.

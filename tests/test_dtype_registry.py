@@ -20,6 +20,8 @@ from zarr.dtype import (  # type: ignore[attr-defined]
     FixedLengthUTF32,
     Int8,
     Int16,
+    NCZarrChar,
+    NullTerminatedBytes,
     RawBytes,
     Struct,
     UInt8,
@@ -237,16 +239,24 @@ class _LittleEndianUInt8(UInt8):
         *((name, Int8()) for name in ("|i1", "<i1", ">i1")),
         *((name, UInt8()) for name in ("|u1", "<u1", ">u1")),
         *((name, RawBytes(length=4)) for name in ("|V4", "<V4", ">V4")),
+        *((name, NullTerminatedBytes(length=1)) for name in ("|S1", "<S1")),
+        *((name, NullTerminatedBytes(length=5)) for name in ("|S5", "<S5", ">S5")),
+        # NCZarr's spelling of netCDF NC_CHAR keeps its own data type
+        (">S1", NCZarrChar()),
         ("<i2", Int16(endianness="little")),
         (">i2", Int16(endianness="big")),
         ([["a", "<i1"], ["b", ">b1"]], Struct(fields=(("a", Int8()), ("b", Bool())))),
+        (
+            [["a", ">S1"], ["b", "<S3"]],
+            Struct(fields=(("a", NCZarrChar()), ("b", NullTerminatedBytes(length=3)))),
+        ),
     ],
     ids=str,
 )
 def test_match_json_v2_byte_order(name: DTypeName_V2, expected: ZDType[Any, Any]) -> None:
     """
     A Zarr V2 data type name whose byte order is not relevant matches the same data type for any
-    byte order character, and serializes with the canonical "|".
+    byte order character, and serializes with the canonical "|", except for the NCZarr ">S1".
     """
     observed = data_type_registry.match_json({"name": name, "object_codec_id": None}, zarr_format=2)
     assert observed == expected
