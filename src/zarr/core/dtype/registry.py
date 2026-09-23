@@ -54,18 +54,20 @@ def _v2_canonical_name(name: str) -> str | None:
     return None
 
 
-def _v2_canonical_alias(data: DTypeJSON) -> DTypeJSON | None:
+def _v2_spellings(data: DTypeJSON) -> tuple[DTypeJSON, ...]:
     """
-    Return the Zarr V2 data type JSON with its name spelled canonically, or None if the name has no
-    other spelling.
+    The spellings of a Zarr V2 data type JSON to match, in order: the name as written, then its
+    canonical spelling if it has another. A data type that declares a non-canonical spelling
+    (e.g. `">S1"`) takes precedence over the canonical alias, because the name as written is
+    tried first.
     """
     if (
         isinstance(data, dict)
         and isinstance(name := data.get("name"), str)
         and (canonical := _v2_canonical_name(name)) is not None
     ):
-        return {**data, "name": canonical}
-    return None
+        return (data, {**data, "name": canonical})
+    return (data,)
 
 
 # This class is different from the other registry classes, which inherit from
@@ -254,11 +256,7 @@ class DataTypeRegistry:
             If no matching Zarr data type is found for the given JSON data.
         """
 
-        # A data type that declares a non-canonical spelling takes precedence over the canonical
-        # alias, so the alias is only tried after the name as written fails to match.
-        candidates = [data]
-        if zarr_format == 2 and (alias := _v2_canonical_alias(data)) is not None:
-            candidates.append(alias)
+        candidates = _v2_spellings(data) if zarr_format == 2 else (data,)
         for candidate in candidates:
             for val in self.contents.values():
                 try:
