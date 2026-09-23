@@ -101,7 +101,8 @@ class DataTypeRegistry:
         the registry. After loading, clear the lazy load list.
         """
         for e in self._lazy_load_list:
-            self.register(e.load()._zarr_v3_name, e.load())
+            cls = e.load()
+            self.register(cls._zarr_v3_name, cls)
 
         self._lazy_load_list.clear()
 
@@ -167,6 +168,7 @@ class DataTypeRegistry:
             If the key is not found in the registry.
         """
 
+        self._lazy_load()
         return self.contents[key]
 
     def match_dtype(self, dtype: TBaseDType) -> ZDType[TBaseDType, TBaseScalar]:
@@ -201,6 +203,7 @@ class DataTypeRegistry:
         constructed.
         """
 
+        self._lazy_load()
         if dtype == np.dtype("O"):
             msg = (
                 f"Zarr data type resolution from {dtype} failed. "
@@ -257,6 +260,7 @@ class DataTypeRegistry:
             If no matching Zarr data type is found for the given JSON data.
         """
 
+        self._lazy_load()
         candidates = _v2_spellings(data) if zarr_format == 2 else (data,)
         for candidate in candidates:
             for val in self.contents.values():
