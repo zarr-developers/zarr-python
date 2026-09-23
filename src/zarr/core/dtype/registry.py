@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Final, Self
 import numpy as np
 
 from zarr.core.context import Context, Resolver, json_pointer
-from zarr.core.dtype.common import HasNestedDTypes
 from zarr.errors import DataTypeValidationError, NestedDataTypeValidationError
 
 if TYPE_CHECKING:
@@ -275,10 +274,7 @@ class DataTypeRegistry:
         for candidate in candidates:
             for val in self.contents.values():
                 try:
-                    if issubclass(val, HasNestedDTypes):
-                        # the data types it contains are resolved with this resolver
-                        return val._from_json_nested(candidate, resolver=resolver)
-                    return val.from_json(candidate, zarr_format=resolver.zarr_format)
+                    return val._from_json_resolved(candidate, resolver=resolver)
                 except NestedDataTypeValidationError:
                     # the JSON is this data type, and a data type it contains is invalid
                     raise

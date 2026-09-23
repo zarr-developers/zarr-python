@@ -38,6 +38,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
+    from zarr.core.context import Resolver
     from zarr.core.dtype.common import DTypeJSON, DTypeSpec_V2, DTypeSpec_V3
 
 # This the upper bound for the scalar types we support. It's numpy scalars + str,
@@ -146,7 +147,6 @@ class ZDType[DType: TBaseDType, Scalar: TBaseScalar](ABC):
         zarr_format : ZarrFormat
             The zarr format version.
 
-
         Returns
         -------
         Self
@@ -157,6 +157,18 @@ class ZDType[DType: TBaseDType, Scalar: TBaseScalar](ABC):
         if zarr_format == 3:
             return cls._from_json_v3(data)
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
+
+    @classmethod
+    def _from_json_resolved(cls: type[Self], data: DTypeJSON, *, resolver: Resolver) -> Self:
+        """
+        Create an instance of this ZDType from JSON data at `resolver`'s location.
+
+        A data type registry creates every data type with this method. A data type that contains
+        other data types, such as a structured data type, overrides it to resolve each of them
+        with `resolver.at(...).resolve_data_type(...)`, so that they come from the same context.
+        Other data types ignore the resolver: the default is `from_json` in its Zarr format.
+        """
+        return cls.from_json(data, zarr_format=resolver.zarr_format)
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> DTypeSpec_V2: ...

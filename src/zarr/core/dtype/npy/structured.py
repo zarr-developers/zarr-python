@@ -12,7 +12,6 @@ from zarr.core.dtype.common import (
     DTypeConfig_V2,
     DTypeJSON,
     HasItemSize,
-    HasNestedDTypes,
     StructuredName_V2,
     check_dtype_spec_no_object_codec_v2,
     check_structured_dtype_name_v2,
@@ -125,7 +124,7 @@ class StructJSON_V3(
 
 
 @dataclass(frozen=True, kw_only=True)
-class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize, HasNestedDTypes):
+class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
     """
     A Zarr data type for arrays containing structured scalars, AKA "record arrays" (legacy format).
 
@@ -313,7 +312,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize, HasNest
         resolver = Resolver(
             context=Context.default() if context is None else context, zarr_format=zarr_format
         )
-        return cls._from_json_nested(data, resolver=resolver)
+        return cls._from_json_resolved(data, resolver=resolver)
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
@@ -324,17 +323,17 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize, HasNest
         return cls.from_json(data, zarr_format=3)
 
     @classmethod
-    def _from_json_nested(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
+    def _from_json_resolved(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
         if resolver.zarr_format == 2:
-            return cls._from_json_nested_v2(data, resolver=resolver)
+            return cls._from_json_resolved_v2(data, resolver=resolver)
         if resolver.zarr_format == 3:
-            return cls._from_json_nested_v3(data, resolver=resolver)
+            return cls._from_json_resolved_v3(data, resolver=resolver)
         raise ValueError(
             f"zarr_format must be 2 or 3, got {resolver.zarr_format}"
         )  # pragma: no cover
 
     @classmethod
-    def _from_json_nested_v2(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
+    def _from_json_resolved_v2(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
         if cls._check_json_v2(data):
             # structured dtypes are constructed directly from a list of lists
             # note that we do not handle the object codec here! this will prevent structured
@@ -358,7 +357,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize, HasNest
         raise DataTypeValidationError(msg)
 
     @classmethod
-    def _from_json_nested_v3(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
+    def _from_json_resolved_v3(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
         if cls._check_json_v3(data):
             config = data["configuration"]
             meta_fields = config["fields"]
@@ -621,7 +620,7 @@ class Struct(Structured):
         )
 
     @classmethod
-    def _from_json_nested_v3(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
+    def _from_json_resolved_v3(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
         if cls._check_json_v3(data):
             config = data["configuration"]
             meta_fields = config["fields"]
