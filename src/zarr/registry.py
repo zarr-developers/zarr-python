@@ -7,6 +7,7 @@ from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any
 
 from zarr.core.config import BadConfigError, config
+from zarr.core.context import Context
 from zarr.core.dtype import data_type_registry
 from zarr.errors import UnknownCodecError, ZarrUserWarning
 
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
 
 __all__ = [
+    "Context",
     "Registry",
     "get_buffer_class",
     "get_chunk_key_encoding_class",

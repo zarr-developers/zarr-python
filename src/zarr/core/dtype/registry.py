@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import contextlib
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, Self
 
 import numpy as np
 
+from zarr.core.context import Context, Reading, json_pointer
 from zarr.core.dtype.common import HasNestedDTypes
 from zarr.errors import DataTypeValidationError, NestedDataTypeValidationError
 
@@ -260,71 +261,28 @@ class DataTypeRegistry:
             If no matching Zarr data type is found for the given JSON data.
         """
 
-        return self._match_json(data, context=DTypeContext(registry=self, zarr_format=zarr_format))
+        reading = Reading(context=Context(data_types=self), zarr_format=zarr_format)
+        return self._match_json(data, reading=reading)
 
-    def _match_json(
-        self, data: DTypeJSON, *, context: DTypeContext
-    ) -> ZDType[TBaseDType, TBaseScalar]:
+    def _match_json(self, data: DTypeJSON, *, reading: Reading) -> ZDType[TBaseDType, TBaseScalar]:
         """
-        Match a JSON representation of a data type to a registered ZDType, in `context`.
+        Match a JSON representation of a data type to a registered ZDType, in `reading`.
         """
         self._lazy_load()
-        candidates = _v2_spellings(data) if context.zarr_format == 2 else (data,)
+        candidates = _v2_spellings(data) if reading.zarr_format == 2 else (data,)
         for candidate in candidates:
             for val in self.contents.values():
                 try:
                     if issubclass(val, HasNestedDTypes):
-                        # the data types it contains are resolved in this context
-                        return val._from_json_nested(candidate, context=context)
-                    return val.from_json(candidate, zarr_format=context.zarr_format)
+                        # the data types it contains are resolved in this reading
+                        return val._from_json_nested(candidate, reading=reading)
+                    return val.from_json(candidate, zarr_format=reading.zarr_format)
                 except NestedDataTypeValidationError:
                     # the JSON is this data type, and a data type it contains is invalid
                     raise
                 except DataTypeValidationError:
                     pass
         msg = f"No Zarr data type found that matches {data!r}"
-        if context.path:
-            raise NestedDataTypeValidationError(f"{msg} at path {list(context.path)!r}")
+        if reading.loc:
+            msg += f" at {json_pointer(reading.loc)}"
         raise ValueError(msg)
-
-
-@dataclass(frozen=True, kw_only=True)
-class DTypeContext:
-    """
-    The context in which a data type is resolved from JSON.
-
-    A data type that contains other data types (see `HasNestedDTypes`) resolves each of them with
-    `resolve`, on the context returned by `child`, so that they come from the same registry, use the
-    same Zarr format, and report errors with their location.
-
-    Attributes
-    ----------
-    registry : DataTypeRegistry
-        The data types to resolve from.
-    zarr_format : ZarrFormat
-        The Zarr format of the JSON.
-    path : tuple[str, ...]
-        The location of the data type within the data types that contain it, e.g. the names of the
-        structured fields that lead to it. Empty for a data type that no other data type contains.
-    """
-
-    registry: DataTypeRegistry
-    zarr_format: ZarrFormat
-    path: tuple[str, ...] = ()
-
-    def child(self, name: str) -> DTypeContext:
-        """
-        The context of the data type called `name` within the data type of this context.
-        """
-        return replace(self, path=(*self.path, name))
-
-    def resolve(self, data: DTypeJSON) -> ZDType[TBaseDType, TBaseScalar]:
-        """
-        Resolve the JSON representation of a data type in this context.
-
-        Raises
-        ------
-        NestedDataTypeValidationError
-            If no data type matches, and this context is within another data type.
-        """
-        return self.registry._match_json(data, context=self)

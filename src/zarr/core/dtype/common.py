@@ -19,7 +19,7 @@ from zarr.core.common import NamedConfig
 from zarr.errors import UnstableSpecificationWarning
 
 if TYPE_CHECKING:
-    from zarr.core.dtype.registry import DTypeContext
+    from zarr.core.context import Reading
 
 EndiannessStr = Literal["little", "big"]
 ENDIANNESS_STR: Final = "little", "big"
@@ -227,15 +227,15 @@ class HasNestedDTypes:
     A mix-in class for data types that contain other data types, such as structured data types.
 
     A data type registry creates these data types with `_from_json_nested`, giving them the
-    `DTypeContext` to resolve the data types they contain in, so that those come from the same
-    registry.
+    `Reading` to resolve the data types they contain with, so that those come from the same
+    context.
     """
 
     @classmethod
-    def _from_json_nested(cls, data: DTypeJSON, *, context: DTypeContext) -> Self:
+    def _from_json_nested(cls, data: DTypeJSON, *, reading: Reading) -> Self:
         """
-        Create an instance of this data type from JSON data, resolving the data types it contains
-        with `context.child(name).resolve(...)`.
+        Create an instance of this data type from JSON data, resolving each data type it contains
+        with `reading.at(...).resolve_data_type(...)`, at the location of its JSON within `data`.
         """
         raise NotImplementedError  # pragma: no cover
 

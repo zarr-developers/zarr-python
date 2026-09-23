@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypeGuard, cast, over
 import numpy as np
 
 from zarr.core.common import NamedConfig
+from zarr.core.context import Context, Reading
 from zarr.core.dtype.common import (
     DTypeConfig_V2,
     DTypeJSON,
@@ -22,15 +23,26 @@ from zarr.core.dtype.npy.common import (
     bytes_to_json,
     check_json_str,
 )
-from zarr.core.dtype.registry import DTypeContext
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-from zarr.errors import DataTypeValidationError
+from zarr.errors import DataTypeValidationError, NestedDataTypeValidationError
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
-    from zarr.core.dtype.registry import DataTypeRegistry
 
 StructuredScalarLike = list[object] | tuple[object, ...] | bytes | int
+
+
+def _resolve_field(data: DTypeJSON, reading: Reading) -> ZDType[TBaseDType, TBaseScalar]:
+    """
+    Resolve the data type of a structured field. A field data type that matches nothing makes the
+    structured data type invalid, rather than a different data type.
+    """
+    try:
+        return reading.resolve_data_type(data)
+    except DataTypeValidationError:
+        raise
+    except ValueError as e:
+        raise NestedDataTypeValidationError(str(e)) from e
 
 
 class StructuredJSON_V2(DTypeConfig_V2[StructuredName_V2, None]):
@@ -277,11 +289,11 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize, HasNest
         data: DTypeJSON,
         *,
         zarr_format: ZarrFormat,
-        registry: DataTypeRegistry | None = None,
+        context: Context | None = None,
     ) -> Self:
         """
         Create a structured data type from JSON data, resolving the data types of its fields from
-        `registry`.
+        `context`.
 
         Parameters
         ----------
@@ -289,22 +301,19 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize, HasNest
             The JSON representation of the data type.
         zarr_format : ZarrFormat
             The zarr format version.
-        registry : DataTypeRegistry | None
-            The data types to resolve the field data types from. The default is the default data
-            type registry.
+        context : Context | None
+            The extensions to resolve the field data types from. The default is
+            `Context.default()`.
 
         Returns
         -------
         Self
             An instance of this data type.
         """
-        # avoid circular import
-        from zarr.core.dtype import data_type_registry
-
-        context = DTypeContext(
-            registry=data_type_registry if registry is None else registry, zarr_format=zarr_format
+        reading = Reading(
+            context=Context.default() if context is None else context, zarr_format=zarr_format
         )
-        return cls._from_json_nested(data, context=context)
+        return cls._from_json_nested(data, reading=reading)
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
@@ -315,45 +324,51 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize, HasNest
         return cls.from_json(data, zarr_format=3)
 
     @classmethod
-    def _from_json_nested(cls, data: DTypeJSON, *, context: DTypeContext) -> Self:
-        if context.zarr_format == 2:
-            return cls._from_json_nested_v2(data, context=context)
-        if context.zarr_format == 3:
-            return cls._from_json_nested_v3(data, context=context)
+    def _from_json_nested(cls, data: DTypeJSON, *, reading: Reading) -> Self:
+        if reading.zarr_format == 2:
+            return cls._from_json_nested_v2(data, reading=reading)
+        if reading.zarr_format == 3:
+            return cls._from_json_nested_v3(data, reading=reading)
         raise ValueError(
-            f"zarr_format must be 2 or 3, got {context.zarr_format}"
+            f"zarr_format must be 2 or 3, got {reading.zarr_format}"
         )  # pragma: no cover
 
     @classmethod
-    def _from_json_nested_v2(cls, data: DTypeJSON, *, context: DTypeContext) -> Self:
+    def _from_json_nested_v2(cls, data: DTypeJSON, *, reading: Reading) -> Self:
         if cls._check_json_v2(data):
             # structured dtypes are constructed directly from a list of lists
             # note that we do not handle the object codec here! this will prevent structured
             # dtypes from containing object dtypes.
             name = data["name"]
             return cls(
-                fields=tuple(  # type: ignore[str-unpack]
+                fields=tuple(
                     (  # type: ignore[misc]
                         f_name,
-                        context.child(f_name).resolve(  # type: ignore[arg-type]
-                            {"name": f_dtype, "object_codec_id": None}
+                        _resolve_field(
+                            {"name": f_dtype, "object_codec_id": None},
+                            # the location in the data type as written in the document, which
+                            # is the "name" of the Zarr V2 data type JSON
+                            reading.at(index, 1),
                         ),
                     )
-                    for f_name, f_dtype in name
+                    for index, (f_name, f_dtype) in enumerate(name)
                 )
             )
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON array of arrays"
         raise DataTypeValidationError(msg)
 
     @classmethod
-    def _from_json_nested_v3(cls, data: DTypeJSON, *, context: DTypeContext) -> Self:
+    def _from_json_nested_v3(cls, data: DTypeJSON, *, reading: Reading) -> Self:
         if cls._check_json_v3(data):
             config = data["configuration"]
             meta_fields = config["fields"]
             return cls(
                 fields=tuple(
-                    (f_name, context.child(f_name).resolve(f_dtype))  # type: ignore[misc, arg-type]
-                    for f_name, f_dtype in meta_fields
+                    (  # type: ignore[misc]
+                        f_name,
+                        _resolve_field(f_dtype, reading.at("configuration", "fields", index, 1)),
+                    )
+                    for index, (f_name, f_dtype) in enumerate(meta_fields)
                 )
             )
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON object with the key {cls._zarr_v3_name!r}"
@@ -606,19 +621,21 @@ class Struct(Structured):
         )
 
     @classmethod
-    def _from_json_nested_v3(cls, data: DTypeJSON, *, context: DTypeContext) -> Self:
+    def _from_json_nested_v3(cls, data: DTypeJSON, *, reading: Reading) -> Self:
         if cls._check_json_v3(data):
             config = data["configuration"]
             meta_fields = config["fields"]
             parsed_fields: list[tuple[str, ZDType[TBaseDType, TBaseScalar]]] = []
-            for field in meta_fields:
+            for index, field in enumerate(meta_fields):
                 if isinstance(field, dict):
                     f_name = field["name"]
                     f_dtype = field["data_type"]
+                    f_reading = reading.at("configuration", "fields", index, "data_type")
                 else:
                     # Legacy tuple-style field format from "structured" dtype
                     f_name, f_dtype = field  # type: ignore[unreachable]
-                parsed_fields.append((f_name, context.child(f_name).resolve(f_dtype)))  # type: ignore[arg-type]
+                    f_reading = reading.at("configuration", "fields", index, 1)
+                parsed_fields.append((f_name, _resolve_field(f_dtype, f_reading)))  # type: ignore[arg-type]
             return cls(fields=tuple(parsed_fields))
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON object with the key {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)

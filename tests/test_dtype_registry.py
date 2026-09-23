@@ -30,6 +30,7 @@ from zarr.dtype import (  # type: ignore[attr-defined]
     parse_dtype,
 )
 from zarr.errors import DataTypeValidationError, NestedDataTypeValidationError
+from zarr.registry import Context
 
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
@@ -319,13 +320,13 @@ _RESOLUTION_ROUTES: dict[str, Any] = {
         data, zarr_format=zarr_format
     ),
     "get_data_type_from_json": lambda data, zarr_format, registry: get_data_type_from_json(
-        data, zarr_format=zarr_format, registry=registry
+        data, zarr_format=zarr_format, context=Context(data_types=registry)
     ),
     "parse_dtype": lambda data, zarr_format, registry: parse_dtype(
-        data, zarr_format=zarr_format, registry=registry
+        data, zarr_format=zarr_format, context=Context(data_types=registry)
     ),
     "Struct.from_json": lambda data, zarr_format, registry: Struct.from_json(
-        data, zarr_format=zarr_format, registry=registry
+        data, zarr_format=zarr_format, context=Context(data_types=registry)
     ),
 }
 
@@ -348,21 +349,29 @@ def test_resolve_struct_fields_with_registry(route: str, zarr_format: ZarrFormat
 def test_resolve_struct_fields_default_registry() -> None:
     """Without a registry, fields are resolved from the default registry, which lacks _Byte."""
     data = Struct(fields=(("a", _Byte()),)).to_json(zarr_format=3)
-    with pytest.raises(NestedDataTypeValidationError, match=r"at path \['a'\]"):
+    with pytest.raises(
+        NestedDataTypeValidationError, match="at /configuration/fields/0/data_type$"
+    ):
         get_data_type_from_json(data, zarr_format=3)
 
 
 def test_resolve_struct_fields_missing_from_registry() -> None:
     """A field data type is not found in the default registry when the registry lacks it."""
     data = Struct(fields=(("a", UInt8()),)).to_json(zarr_format=3)
-    with pytest.raises(NestedDataTypeValidationError, match=r"at path \['a'\]"):
-        get_data_type_from_json(data, zarr_format=3, registry=_registry_with(Struct))
+    with pytest.raises(
+        NestedDataTypeValidationError, match="at /configuration/fields/0/data_type$"
+    ):
+        get_data_type_from_json(
+            data, zarr_format=3, context=Context(data_types=_registry_with(Struct))
+        )
 
 
 def test_parse_dtype_native_missing_from_registry() -> None:
     """A native data type is matched only against the registry it is given."""
     with pytest.raises(ValueError, match="No Zarr data type found"):
-        parse_dtype(np.dtype("uint8"), zarr_format=3, registry=_registry_with(Int8))
+        parse_dtype(
+            np.dtype("uint8"), zarr_format=3, context=Context(data_types=_registry_with(Int8))
+        )
 
 
 class _OverridesFromJSON(Int8):
@@ -386,25 +395,25 @@ def test_resolve_data_type_overriding_from_json() -> None:
 
 
 @pytest.mark.parametrize(
-    ("zarr_format", "zdtype", "path"),
+    ("zarr_format", "zdtype", "pointer"),
     [
-        (2, Struct(fields=(("x", Int8()), ("y", _Byte()))), ["y"]),
+        (2, Struct(fields=(("x", Int8()), ("y", _Byte()))), "/1/1"),
         # Zarr V2 structured data types nested in structured data types do not round trip
         (
             3,
             Struct(fields=(("outer", Struct(fields=(("x", Int8()), ("y", _Byte())))),)),
-            ["outer", "y"],
+            "/configuration/fields/0/data_type/configuration/fields/1/data_type",
         ),
     ],
     ids=str,
 )
-def test_resolve_struct_field_missing_path(
-    zarr_format: ZarrFormat, zdtype: Struct, path: list[str]
+def test_resolve_struct_field_missing_location(
+    zarr_format: ZarrFormat, zdtype: Struct, pointer: str
 ) -> None:
     """
-    A field data type that matches no data type is reported with its path through the structured
-    data types that contain it, rather than as a mismatch of the outermost data type.
+    A field data type that matches no data type is reported with its location in the JSON, through
+    the structured data types that contain it, rather than as a mismatch of the outermost data type.
     """
     registry = _registry_with(Struct, Int8)
-    with pytest.raises(NestedDataTypeValidationError, match=re.escape(f"at path {path!r}")):
+    with pytest.raises(NestedDataTypeValidationError, match=f"at {re.escape(pointer)}$"):
         registry.match_json(zdtype.to_json(zarr_format=zarr_format), zarr_format=zarr_format)
