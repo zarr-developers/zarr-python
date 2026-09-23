@@ -31,6 +31,12 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ['3.12', '3.13', '3.14']
+    # The recipes run `uv run --project ../..`, which would otherwise honour
+    # the root .python-version pin and rebuild the venv on that interpreter.
+    # UV_PYTHON reaches every uv call inside them, keeping the justfile
+    # interpreter-agnostic for local use.
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,9 +55,15 @@ jobs:
       # The suite imports nothing from `zarr`; it runs against the repo-root
       # environment, with this package as an editable overlay, to share the
       # parent project's pinned test toolchain. The recipes carry that
-      # invocation; this step only fixes the interpreter the matrix asked for.
+      # invocation; this step installs dependencies up front so their
+      # install time is reported separately from the tests.
       - name: Sync test dependency group
-        run: uv sync --project ../.. --group test --python ${{ matrix.python-version }}
+        run: uv sync --project ../.. --group test
+      - name: Check interpreter
+        run: >-
+          uv run --project ../.. --group test python -c
+          "import sys; v = '%d.%d' % sys.version_info[:2];
+          assert v == '${{ matrix.python-version }}', v"
       - name: Run pytest
         # Suites and invocation live in packages/zarr-indexing/justfile.
         run: just test
