@@ -187,7 +187,7 @@ class Definition(Generic[C]):
         configuration, problems = self.check(value, loc)
         if configuration is None:
             return None, problems
-        refused = _ruled(self, configuration, loc)
+        refused = _ruled(self, lambda: self.rules(configuration), loc)
         return (configuration if len(refused) == 0 else None), (*problems, *refused)
 
 
@@ -438,16 +438,17 @@ def _usable(problems: Sequence[ValidationProblem]) -> bool:
     return all(found.kind == "unknown_key" for found in problems)
 
 
-def _ruled(definition: Definition[C], configuration: C, at: Loc) -> Problems:
-    """What `definition`'s rules find in `configuration`, located under `at`.
+def _ruled(
+    definition: Definition[Any], ask: Callable[[], Iterable[ValidationProblem]], at: Loc
+) -> Problems:
+    """What `ask`, a call of `definition`'s rules or name rules, finds, located under `at`.
 
-    The rules are the extension author's code, handed a configuration that
-    type-checked. What they yield is checked to be what they declare, and
-    an error one raises says which definition's rules raised it, and where
-    they were reading.
+    Rules are the extension author's code. What they yield is checked to be
+    what they declare, and an error one raises says which definition's rules
+    raised it, and where they were reading.
     """
     try:
-        found = tuple(cast("Iterable[object]", definition.rules(configuration)))
+        found = tuple(cast("Iterable[object]", ask()))
     except Exception as error:
         error.add_note(f"raised by the rules of {definition.name!r}, reading {at!r}")
         raise
@@ -603,7 +604,7 @@ def _read(
     if definition is None:
         return Resolved(data, "out_of_scope", None, None), ()
     at = (*loc, "configuration")
-    problems = list(_located(loc, definition.name_rules(name)))
+    problems = list(_ruled(definition, lambda: definition.name_rules(name), loc))
     if given is None and definition.requires_configuration:
         problems.extend(problem(at, f"{name!r} requires a configuration", "missing_key"))
         return Resolved(data, "invalid", definition, None), tuple(problems)
@@ -613,7 +614,7 @@ def _read(
     sound = _usable(found) and all(_usable(envelope) for envelope in envelopes)
     configuration = cast("Mapping[str, JSONValue]", typed) if sound else None
     if configuration is not None:
-        problems.extend(_ruled(definition, configuration, at))
+        problems.extend(_ruled(definition, lambda: definition.rules(configuration), at))
     for field, envelope in zip(nested, envelopes, strict=True):
         problems.extend(envelope)
         problems.extend(_read(field.json, field.kind, context, field.loc)[1])

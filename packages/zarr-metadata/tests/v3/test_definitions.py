@@ -457,6 +457,21 @@ def test_error_a_rule_that_returns_none_says_whose_it_is() -> None:
     ]
 
 
+def test_error_a_name_rule_that_yields_something_else() -> None:
+    family = replace(
+        GZIP_CODEC,
+        name="acme*",
+        names=lambda name: name.startswith("acme"),
+        name_rules=lambda name: iter(["not a problem"]),
+    )
+    with pytest.raises(TypeError, match="'acme\\*': its rules yield ValidationProblem values"):
+        resolve(
+            {"name": "acme7", "configuration": {"level": 1}},
+            CodecDefinition,
+            CORE.extended_with(family),
+        )
+
+
 def test_error_null_is_not_a_field() -> None:
     # JSON's null is JSON: refined, it is None with no problem, which is
     # not a verdict. Read as a field or checked as a configuration, it is
