@@ -39,6 +39,7 @@ if TYPE_CHECKING:
         ShapeLike,
         ZarrFormat,
     )
+    from zarr.core.context import Context
     from zarr.core.dtype import ZDTypeLike
     from zarr.storage import StoreLike
     from zarr.types import AnyArray
@@ -186,6 +187,7 @@ def open(
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
+    context: Context | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.open
 ) -> AnyArray | Group:
     """Open a group or array using file-mode-like semantics.
@@ -209,6 +211,9 @@ def open(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    context : Context | None, optional
+        The extensions to read metadata with, such as the data types. The default is
+        `Context.default()`.
     **kwargs
         Additional parameters are passed through to `zarr.open_array` or
         `zarr.open_group`.
@@ -236,6 +241,7 @@ def open(
             zarr_format=zarr_format,
             path=path,
             storage_options=storage_options,
+            context=context,
             **kwargs,
         )
     )
@@ -492,6 +498,7 @@ def open_group(
     meta_array: Any | None = None,  # not used in async api
     attributes: dict[str, JSON] | None = None,
     use_consolidated: bool | str | None = None,
+    context: Context | None = None,
 ) -> Group:
     """Open a group using file-mode-like semantics.
 
@@ -542,6 +549,9 @@ def open_group(
         Zarr format 2 allowed configuring the key storing the consolidated metadata
         (`.zmetadata` by default). Specify the custom key as `use_consolidated`
         to load consolidated metadata from a non-default key.
+    context : Context | None, optional
+        The extensions to read metadata with, such as the data types. The default is
+        `Context.default()`.
 
     Returns
     -------
@@ -562,6 +572,7 @@ def open_group(
                 meta_array=meta_array,
                 attributes=attributes,
                 use_consolidated=use_consolidated,
+                context=context,
             )
         )
     )
@@ -1355,6 +1366,7 @@ def open_array(
     zarr_format: ZarrFormat | None = None,
     path: PathLike = "",
     storage_options: dict[str, Any] | None = None,
+    context: Context | None = None,
     **kwargs: Any,
 ) -> AnyArray:
     """Open an array using file-mode-like semantics.
@@ -1372,6 +1384,9 @@ def open_array(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    context : Context | None, optional
+        The extensions to read the metadata of an existing array with, such as the data types.
+        The default is `Context.default()`.
     **kwargs
         Any keyword arguments to pass to [`create`][zarr.api.asynchronous.create].
 
@@ -1388,6 +1403,7 @@ def open_array(
                 zarr_format=zarr_format,
                 path=path,
                 storage_options=storage_options,
+                context=context,
                 **kwargs,
             )
         )

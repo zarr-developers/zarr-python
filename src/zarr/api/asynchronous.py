@@ -18,6 +18,7 @@ from zarr.core.array import (
     create_array,
     from_array,
     get_array_metadata,
+    parse_array_metadata,
 )
 from zarr.core.array_spec import ArrayConfigLike, parse_array_config
 from zarr.core.buffer import NDArrayLike
@@ -56,6 +57,7 @@ if TYPE_CHECKING:
     from zarr.abc.numcodec import Numcodec
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+    from zarr.core.context import Context
     from zarr.core.metadata.v2 import CompressorLikev2
     from zarr.storage import StoreLike
     from zarr.types import AnyArray, AnyAsyncArray
@@ -339,6 +341,7 @@ async def open(
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
+    context: Context | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to open_array
 ) -> AnyAsyncArray | AsyncGroup:
     """Convenience function to open a group or array using file-mode-like semantics.
@@ -362,6 +365,9 @@ async def open(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    context : Context | None, optional
+        The extensions to read metadata with, such as the data types. The default is
+        `Context.default()`.
     **kwargs
         Additional parameters are passed through to `zarr.open_array` or
         `zarr.open_group`.
@@ -401,19 +407,27 @@ async def open(
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
             if is_v3_array or zarr_format == 2:
                 return AsyncArray(
-                    store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
+                    store_path=store_path,
+                    metadata=parse_array_metadata(_metadata_dict, context=context),
+                    config=kwargs.get("config"),
                 )
         except (FileNotFoundError, NodeTypeValidationError):
             pass
-        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+        return await open_group(
+            store=store_path, zarr_format=zarr_format, mode=mode, context=context, **kwargs
+        )
 
     try:
-        return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+        return await open_array(
+            store=store_path, zarr_format=zarr_format, mode=mode, context=context, **kwargs
+        )
     except (KeyError, NodeTypeValidationError):
         # KeyError for a missing key
         # NodeTypeValidationError for failing to parse node metadata as an array when it's
         # actually a group
-        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+        return await open_group(
+            store=store_path, zarr_format=zarr_format, mode=mode, context=context, **kwargs
+        )
 
 
 async def open_consolidated(
@@ -790,6 +804,7 @@ async def open_group(
     meta_array: Any | None = None,  # not used
     attributes: dict[str, JSON] | None = None,
     use_consolidated: bool | str | None = None,
+    context: Context | None = None,
 ) -> AsyncGroup:
     """Open a group using file-mode-like semantics.
 
@@ -840,6 +855,9 @@ async def open_group(
         Zarr format 2 allowed configuring the key storing the consolidated metadata
         (`.zmetadata` by default). Specify the custom key as `use_consolidated`
         to load consolidated metadata from a non-default key.
+    context : Context | None, optional
+        The extensions to read metadata with, such as the data types. The default is
+        `Context.default()`.
 
     Returns
     -------
@@ -863,7 +881,10 @@ async def open_group(
     try:
         if mode in _READ_MODES:
             return await AsyncGroup.open(
-                store_path, zarr_format=zarr_format, use_consolidated=use_consolidated
+                store_path,
+                zarr_format=zarr_format,
+                use_consolidated=use_consolidated,
+                context=context,
             )
     except (KeyError, FileNotFoundError):
         pass
@@ -875,6 +896,7 @@ async def open_group(
             zarr_format=_zarr_format,
             overwrite=overwrite,
             attributes=attributes,
+            context=context,
         )
     msg = f"No group found in store {store!r} at path {store_path.path!r}"
     raise GroupNotFoundError(msg)
@@ -1234,6 +1256,7 @@ async def open_array(
     zarr_format: ZarrFormat | None = None,
     path: PathLike = "",
     storage_options: dict[str, Any] | None = None,
+    context: Context | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to save
 ) -> AnyAsyncArray:
     """Open an array using file-mode-like semantics.
@@ -1251,6 +1274,9 @@ async def open_array(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    context : Context | None, optional
+        The extensions to read the metadata of an existing array with, such as the data types.
+        The default is `Context.default()`.
     **kwargs
         Any keyword arguments to pass to [`create`][zarr.api.asynchronous.create].
 
@@ -1267,7 +1293,7 @@ async def open_array(
         _warn_write_empty_chunks_kwarg()
 
     try:
-        return await AsyncArray.open(store_path, zarr_format=zarr_format)
+        return await AsyncArray.open(store_path, zarr_format=zarr_format, context=context)
     except FileNotFoundError as err:
         if not store_path.read_only and mode in _CREATE_MODES:
             overwrite = _infer_overwrite(mode)

@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import Store
     from zarr.core.common import ZarrFormat
+    from zarr.core.context import Context
     from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
     from zarr.types import AnyArray
 
@@ -142,7 +143,9 @@ def create_rooted_hierarchy(
     return _parse_async_node(async_node)
 
 
-def get_node(store: Store, path: str, zarr_format: ZarrFormat) -> AnyArray | Group:
+def get_node(
+    store: Store, path: str, zarr_format: ZarrFormat, *, context: Context | None = None
+) -> AnyArray | Group:
     """
     Get an Array or Group from a path in a Store.
 
@@ -154,10 +157,14 @@ def get_node(store: Store, path: str, zarr_format: ZarrFormat) -> AnyArray | Gro
         The path to the node to read.
     zarr_format : {2, 3}
         The zarr format of the node to read.
+    context : Context | None
+        The extensions to read the metadata with. The default is `Context.default()`.
 
     Returns
     -------
     Array | Group
     """
 
-    return _parse_async_node(sync(get_node_async(store=store, path=path, zarr_format=zarr_format)))
+    return _parse_async_node(
+        sync(get_node_async(store=store, path=path, zarr_format=zarr_format, context=context))
+    )

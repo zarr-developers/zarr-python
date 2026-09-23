@@ -45,6 +45,7 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config
+from zarr.core.context import Context
 from zarr.core.dtype import parse_data_type
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
@@ -163,7 +164,20 @@ class ConsolidatedMetadata:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> ConsolidatedMetadata:
+    def from_dict(
+        cls, data: dict[str, JSON], *, context: Context | None = None
+    ) -> ConsolidatedMetadata:
+        """
+        Read consolidated metadata from its JSON form.
+
+        Parameters
+        ----------
+        data : dict
+            The JSON form of the consolidated metadata.
+        context : Context | None
+            The extensions to read the metadata of the nodes with. The default is
+            `Context.default()`.
+        """
         data = dict(data)
 
         kind = data.get("kind")
@@ -188,16 +202,16 @@ class ConsolidatedMetadata:
                 if zarr_format == 3:
                     node_type = parse_node_type(v.get("node_type", None))
                     if node_type == "group":
-                        metadata[k] = GroupMetadata.from_dict(v)
+                        metadata[k] = GroupMetadata.from_dict(v, context=context)
                     elif node_type == "array":
-                        metadata[k] = ArrayV3Metadata.from_dict(v)
+                        metadata[k] = ArrayV3Metadata.from_dict(v, context=context)
                     else:
                         assert_never(node_type)
                 elif zarr_format == 2:
                     if "shape" in v:
-                        metadata[k] = ArrayV2Metadata.from_dict(v)
+                        metadata[k] = ArrayV2Metadata.from_dict(v, context=context)
                     else:
-                        metadata[k] = GroupMetadata.from_dict(v)
+                        metadata[k] = GroupMetadata.from_dict(v, context=context)
                 else:
                     assert_never(zarr_format)
 
@@ -415,7 +429,18 @@ class GroupMetadata(Metadata):
         object.__setattr__(self, "consolidated_metadata", consolidated_metadata)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
+    def from_dict(cls, data: dict[str, Any], *, context: Context | None = None) -> GroupMetadata:
+        """
+        Read group metadata from a JSON metadata document.
+
+        Parameters
+        ----------
+        data : dict
+            The JSON metadata document.
+        context : Context | None
+            The extensions to read any consolidated metadata with. The default is
+            `Context.default()`.
+        """
         data = dict(data)
         node_type = data.pop("node_type", None)
         if node_type not in ("group", None):
@@ -424,7 +449,9 @@ class GroupMetadata(Metadata):
             )
         consolidated_metadata = data.pop("consolidated_metadata", None)
         if consolidated_metadata:
-            data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(consolidated_metadata)
+            data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(
+                consolidated_metadata, context=context
+            )
 
         zarr_format = data.get("zarr_format")
         if zarr_format == 2 or zarr_format is None:
@@ -459,10 +486,21 @@ class ImplicitGroupMarker(GroupMetadata):
 class AsyncGroup:
     """
     Asynchronous Group object.
+
+    Attributes
+    ----------
+    metadata : GroupMetadata
+        The metadata of the group.
+    store_path : StorePath
+        The location of the group.
+    context : Context
+        The extensions the metadata of the group's members is read with. Groups and arrays reached
+        through this group, and groups created in it, share it.
     """
 
     metadata: GroupMetadata
     store_path: StorePath
+    context: Context = field(default_factory=Context.default, compare=False, repr=False)
 
     # TODO: make this correct and work
     # TODO: ensure that this can be bound properly to subclass of AsyncGroup
@@ -475,6 +513,7 @@ class AsyncGroup:
         attributes: dict[str, Any] | None = None,
         overwrite: bool = False,
         zarr_format: ZarrFormat = 3,
+        context: Context | None = None,
     ) -> AsyncGroup:
         store_path = await make_store_path(store)
 
@@ -489,6 +528,7 @@ class AsyncGroup:
         group = cls(
             metadata=GroupMetadata(attributes=attributes, zarr_format=zarr_format),
             store_path=store_path,
+            context=Context.default() if context is None else context,
         )
         await group._save_metadata(ensure_parents=True)
         return group
@@ -499,6 +539,8 @@ class AsyncGroup:
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
         use_consolidated: bool | str | None = None,
+        *,
+        context: Context | None = None,
     ) -> AsyncGroup:
         """Open a new AsyncGroup
 
@@ -523,6 +565,9 @@ class AsyncGroup:
             Zarr format 2 allowed configuring the key storing the consolidated metadata
             (``.zmetadata`` by default). Specify the custom key as ``use_consolidated``
             to load consolidated metadata from a non-default key.
+        context : Context | None, optional
+            The extensions to read the metadata of the group and its members with. The default is
+            `Context.default()`.
         """
         store_path = await make_store_path(store)
         if not store_path.store.supports_consolidated_metadata:
@@ -605,7 +650,11 @@ class AsyncGroup:
                 maybe_consolidated_metadata_bytes = None
 
             return cls._from_bytes_v2(
-                store_path, zgroup_bytes, zattrs_bytes, maybe_consolidated_metadata_bytes
+                store_path,
+                zgroup_bytes,
+                zattrs_bytes,
+                maybe_consolidated_metadata_bytes,
+                context=context,
             )
         else:
             # V3 groups are comprised of a zarr.json object
@@ -618,6 +667,7 @@ class AsyncGroup:
                 store_path,
                 zarr_json_bytes,
                 use_consolidated=use_consolidated,
+                context=context,
             )
 
     @classmethod
@@ -627,6 +677,8 @@ class AsyncGroup:
         zgroup_bytes: Buffer,
         zattrs_bytes: Buffer | None,
         consolidated_metadata_bytes: Buffer | None,
+        *,
+        context: Context | None = None,
     ) -> AsyncGroup:
         # V2 groups are comprised of a .zgroup and .zattrs objects
         zgroup = buffer_to_json_object(zgroup_bytes)
@@ -661,7 +713,7 @@ class AsyncGroup:
                 "must_understand": False,
             }
 
-        return cls.from_dict(store_path, group_metadata)
+        return cls.from_dict(store_path, group_metadata, context=context)
 
     @classmethod
     def _from_bytes_v3(
@@ -669,6 +721,8 @@ class AsyncGroup:
         store_path: StorePath,
         zarr_json_bytes: Buffer,
         use_consolidated: bool | None,
+        *,
+        context: Context | None = None,
     ) -> AsyncGroup:
         group_metadata = buffer_to_json_object(zarr_json_bytes)
         if use_consolidated and group_metadata.get("consolidated_metadata") is None:
@@ -679,13 +733,15 @@ class AsyncGroup:
             # Drop consolidated metadata if it's there.
             group_metadata.pop("consolidated_metadata", None)
 
-        return cls.from_dict(store_path, group_metadata)
+        return cls.from_dict(store_path, group_metadata, context=context)
 
     @classmethod
     def from_dict(
         cls,
         store_path: StorePath,
         data: dict[str, Any],
+        *,
+        context: Context | None = None,
     ) -> AsyncGroup:
         node_type = data.pop("node_type", None)
         if node_type == "array":
@@ -694,9 +750,11 @@ class AsyncGroup:
         elif node_type not in ("group", None):
             msg = f"Node type in metadata ({node_type}) is not 'group'"
             raise GroupNotFoundError(msg)
+        context = Context.default() if context is None else context
         return cls(
-            metadata=GroupMetadata.from_dict(data),
+            metadata=GroupMetadata.from_dict(data, context=context),
             store_path=store_path,
+            context=context,
         )
 
     async def setitem(self, key: str, value: Any) -> None:
@@ -740,7 +798,10 @@ class AsyncGroup:
             return self._getitem_consolidated(store_path, key, prefix=self.name)
         try:
             return await get_node(
-                store=store_path.store, path=store_path.path, zarr_format=self.metadata.zarr_format
+                store=store_path.store,
+                path=store_path.path,
+                zarr_format=self.metadata.zarr_format,
+                context=self.context,
             )
         except FileNotFoundError as e:
             raise KeyError(key) from e
@@ -786,7 +847,7 @@ class AsyncGroup:
         store_path = StorePath(store=store_path.store, path=key)
 
         if isinstance(metadata, GroupMetadata):
-            return AsyncGroup(metadata=metadata, store_path=store_path)
+            return AsyncGroup(metadata=metadata, store_path=store_path, context=self.context)
         else:
             return AsyncArray(metadata=metadata, store_path=store_path)
 
@@ -1030,6 +1091,7 @@ class AsyncGroup:
             attributes=attributes,
             overwrite=overwrite,
             zarr_format=self.metadata.zarr_format,
+            context=self.context,
         )
 
     async def require_group(self, name: str, overwrite: bool = False) -> AsyncGroup:
@@ -1520,6 +1582,9 @@ class AsyncGroup:
                 out_key = key
             else:
                 out_key = key.removeprefix(prefix + "/")
+            if isinstance(node, AsyncGroup):
+                # groups created in this group read their members with its context
+                node = replace(node, context=self.context)
             yield out_key, node
 
     async def keys(self) -> AsyncGenerator[str, None]:
@@ -1818,6 +1883,7 @@ class Group(SyncMixin):
         attributes: dict[str, Any] | None = None,
         zarr_format: ZarrFormat = 3,
         overwrite: bool = False,
+        context: Context | None = None,
     ) -> Group:
         """Instantiate a group from an initialized store.
 
@@ -1833,6 +1899,9 @@ class Group(SyncMixin):
             Zarr storage format version.
         overwrite : bool, optional
             If True, do not raise an error if the group already exists.
+        context : Context | None, optional
+            The extensions to read the metadata of the group's members with. The default is
+            `Context.default()`.
 
         Returns
         -------
@@ -1850,6 +1919,7 @@ class Group(SyncMixin):
                 attributes=attributes,
                 overwrite=overwrite,
                 zarr_format=zarr_format,
+                context=context,
             ),
         )
 
@@ -1860,6 +1930,8 @@ class Group(SyncMixin):
         cls,
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
+        *,
+        context: Context | None = None,
     ) -> Group:
         """Open a group from an initialized store.
 
@@ -1871,13 +1943,16 @@ class Group(SyncMixin):
             for a description of all valid StoreLike values.
         zarr_format : {2, 3, None}, optional
             Zarr storage format version.
+        context : Context | None, optional
+            The extensions to read the metadata of the group and its members with. The default is
+            `Context.default()`.
 
         Returns
         -------
         Group
             Group instantiated from the store.
         """
-        obj = sync(AsyncGroup.open(store, zarr_format=zarr_format))
+        obj = sync(AsyncGroup.open(store, zarr_format=zarr_format, context=context))
         return cls(obj)
 
     def __getitem__(self, path: str) -> AnyArray | Group:
@@ -3493,7 +3568,9 @@ async def _iter_members_deep(
             yield key, node
 
 
-async def _read_metadata_v3(store: Store, path: str) -> ArrayV3Metadata | GroupMetadata:
+async def _read_metadata_v3(
+    store: Store, path: str, *, context: Context | None = None
+) -> ArrayV3Metadata | GroupMetadata:
     """
     Given a store_path, return ArrayV3Metadata or GroupMetadata defined by the metadata
     document stored at store_path.path / zarr.json. If no such document is found, raise a
@@ -3504,10 +3581,12 @@ async def _read_metadata_v3(store: Store, path: str) -> ArrayV3Metadata | GroupM
     )
     if zarr_json_bytes is None:
         raise FileNotFoundError(path)
-    return _build_metadata_v3(buffer_to_json_object(zarr_json_bytes))
+    return _build_metadata_v3(buffer_to_json_object(zarr_json_bytes), context=context)
 
 
-async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupMetadata:
+async def _read_metadata_v2(
+    store: Store, path: str, *, context: Context | None = None
+) -> ArrayV2Metadata | GroupMetadata:
     """
     Given a store_path, return ArrayV2Metadata or GroupMetadata defined by the metadata
     document stored at store_path.path / (.zgroup | .zarray). If no such document is found,
@@ -3539,7 +3618,7 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
         else:
             zmeta = buffer_to_json_object(zgroup_bytes)
 
-    return _build_metadata_v2(zmeta, zattrs)
+    return _build_metadata_v2(zmeta, zattrs, context=context)
 
 
 async def _read_group_metadata_v2(store: Store, path: str) -> GroupMetadata:
@@ -3570,7 +3649,9 @@ async def _read_group_metadata(
     return await _read_group_metadata_v3(store=store, path=path)
 
 
-def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMetadata:
+def _build_metadata_v3(
+    zarr_json: dict[str, JSON], *, context: Context | None = None
+) -> ArrayV3Metadata | GroupMetadata:
     """
     Convert a dict representation of Zarr V3 metadata into the corresponding metadata class.
     """
@@ -3579,9 +3660,9 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
         raise MetadataValidationError(msg)
     match zarr_json:
         case {"node_type": "array"}:
-            return ArrayV3Metadata.from_dict(zarr_json)
+            return ArrayV3Metadata.from_dict(zarr_json, context=context)
         case {"node_type": "group"}:
-            return GroupMetadata.from_dict(zarr_json)
+            return GroupMetadata.from_dict(zarr_json, context=context)
         case _:  # pragma: no cover
             raise ValueError(
                 "invalid value for `node_type` key in metadata document"
@@ -3589,47 +3670,66 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
 
 
 def _build_metadata_v2(
-    zarr_json: dict[str, JSON], attrs_json: dict[str, JSON]
+    zarr_json: dict[str, JSON], attrs_json: dict[str, JSON], *, context: Context | None = None
 ) -> ArrayV2Metadata | GroupMetadata:
     """
     Convert a dict representation of Zarr V2 metadata into the corresponding metadata class.
     """
     match zarr_json:
         case {"shape": _}:
-            return ArrayV2Metadata.from_dict(zarr_json | {"attributes": attrs_json})
+            return ArrayV2Metadata.from_dict(
+                zarr_json | {"attributes": attrs_json}, context=context
+            )
         case _:  # pragma: no cover
-            return GroupMetadata.from_dict(zarr_json | {"attributes": attrs_json})
+            return GroupMetadata.from_dict(zarr_json | {"attributes": attrs_json}, context=context)
 
 
 @overload
-def _build_node(*, store: Store, path: str, metadata: ArrayV2Metadata) -> AsyncArrayV2: ...
+def _build_node(
+    *, store: Store, path: str, metadata: ArrayV2Metadata, context: Context | None = None
+) -> AsyncArrayV2: ...
 
 
 @overload
-def _build_node(*, store: Store, path: str, metadata: ArrayV3Metadata) -> AsyncArrayV3: ...
+def _build_node(
+    *, store: Store, path: str, metadata: ArrayV3Metadata, context: Context | None = None
+) -> AsyncArrayV3: ...
 
 
 @overload
-def _build_node(*, store: Store, path: str, metadata: GroupMetadata) -> AsyncGroup: ...
+def _build_node(
+    *, store: Store, path: str, metadata: GroupMetadata, context: Context | None = None
+) -> AsyncGroup: ...
 
 
 def _build_node(
-    *, store: Store, path: str, metadata: ArrayV3Metadata | ArrayV2Metadata | GroupMetadata
+    *,
+    store: Store,
+    path: str,
+    metadata: ArrayV3Metadata | ArrayV2Metadata | GroupMetadata,
+    context: Context | None = None,
 ) -> AnyAsyncArray | AsyncGroup:
     """
-    Take a metadata object and return a node (AsyncArray or AsyncGroup).
+    Take a metadata object and return a node (AsyncArray or AsyncGroup). A group reads the metadata
+    of its members with `context`, or `Context.default()` if it is None.
     """
     store_path = StorePath(store=store, path=path)
     match metadata:
         case ArrayV2Metadata() | ArrayV3Metadata():
             return AsyncArray(metadata, store_path=store_path)
         case GroupMetadata():
-            return AsyncGroup(metadata, store_path=store_path)
+            return AsyncGroup(
+                metadata,
+                store_path=store_path,
+                context=Context.default() if context is None else context,
+            )
         case _:  # pragma: no cover
             raise ValueError(f"Unexpected metadata type: {type(metadata)}")  # pragma: no cover
 
 
-async def _get_node_v2(store: Store, path: str) -> AsyncArrayV2 | AsyncGroup:
+async def _get_node_v2(
+    store: Store, path: str, *, context: Context | None = None
+) -> AsyncArrayV2 | AsyncGroup:
     """
     Read a Zarr v2 AsyncArray or AsyncGroup from a path in a Store.
 
@@ -3644,11 +3744,13 @@ async def _get_node_v2(store: Store, path: str) -> AsyncArrayV2 | AsyncGroup:
     -------
     AsyncArray | AsyncGroup
     """
-    metadata = await _read_metadata_v2(store=store, path=path)
-    return _build_node(store=store, path=path, metadata=metadata)
+    metadata = await _read_metadata_v2(store=store, path=path, context=context)
+    return _build_node(store=store, path=path, metadata=metadata, context=context)
 
 
-async def _get_node_v3(store: Store, path: str) -> AsyncArrayV3 | AsyncGroup:
+async def _get_node_v3(
+    store: Store, path: str, *, context: Context | None = None
+) -> AsyncArrayV3 | AsyncGroup:
     """
     Read a Zarr v3 AsyncArray or AsyncGroup from a path in a Store.
 
@@ -3663,11 +3765,13 @@ async def _get_node_v3(store: Store, path: str) -> AsyncArrayV3 | AsyncGroup:
     -------
     AsyncArray | AsyncGroup
     """
-    metadata = await _read_metadata_v3(store=store, path=path)
-    return _build_node(store=store, path=path, metadata=metadata)
+    metadata = await _read_metadata_v3(store=store, path=path, context=context)
+    return _build_node(store=store, path=path, metadata=metadata, context=context)
 
 
-async def get_node(store: Store, path: str, zarr_format: ZarrFormat) -> AnyAsyncArray | AsyncGroup:
+async def get_node(
+    store: Store, path: str, zarr_format: ZarrFormat, *, context: Context | None = None
+) -> AnyAsyncArray | AsyncGroup:
     """
     Get an AsyncArray or AsyncGroup from a path in a Store.
 
@@ -3679,6 +3783,8 @@ async def get_node(store: Store, path: str, zarr_format: ZarrFormat) -> AnyAsync
         The path to the node to read.
     zarr_format : {2, 3}
         The zarr format of the node to read.
+    context : Context | None
+        The extensions to read the metadata with. The default is `Context.default()`.
 
     Returns
     -------
@@ -3687,9 +3793,9 @@ async def get_node(store: Store, path: str, zarr_format: ZarrFormat) -> AnyAsync
 
     match zarr_format:
         case 2:
-            return await _get_node_v2(store=store, path=path)
+            return await _get_node_v2(store=store, path=path, context=context)
         case 3:
-            return await _get_node_v3(store=store, path=path)
+            return await _get_node_v3(store=store, path=path, context=context)
         case _:  # pragma: no cover
             raise ValueError(f"Unexpected zarr format: {zarr_format}")  # pragma: no cover
 
