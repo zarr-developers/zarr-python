@@ -609,24 +609,26 @@ def canonicalize(
 ) -> tuple[JSONValue | None, Problems]:
     """`data`, one metadata field, in its simplest equivalent spelling, and every problem.
 
-    Only a field that reads has one. Its configuration holds what its
-    TypedDict admits, each nested field goes in its own canonical form,
-    and then the definition's `canonical` has the rest -- judged again,
-    so a `canonical` that gives a configuration that does not hold is a
-    `ValueError`, a fault in the definition rather than the field. The
-    envelope takes the fewest words: the bare name when nothing is
-    configured, and no `must_understand`, since `true` is what absence
-    means and `false` is refused, a problem reported with the field. A
-    name nothing in scope claims comes back as written, since what it
-    simplifies to is its own definition's call; a field that does not
-    read has no canonical form, and comes back None.
+    Only a field without problems has one. A simplest spelling says what
+    the author wrote in fewer words, and a key the TypedDict does not
+    declare, a stray envelope member or a `must_understand` of `false` is
+    something the author wrote that it would erase, so a field with any
+    problem comes back None, with its problems. Otherwise each nested
+    field goes in its own simplest spelling, and then the definition's
+    `canonical` has the rest -- judged again, so a `canonical` that gives
+    a configuration that does not hold is a `ValueError`, a fault in the
+    definition rather than the field. The envelope takes the fewest
+    words: the bare name when nothing is configured, and no
+    `must_understand`, since `true` is what absence means. A name nothing
+    in scope claims comes back as written, since what it simplifies to is
+    its own definition's call.
     """
     resolved, problems = resolve(data, kind, context, loc)
-    if resolved.resolution == "out_of_scope":
-        return resolved.json, problems
-    if resolved.resolution != "read" or resolved.definition is None:
+    if len(problems) != 0:
         return None, problems
-    return _canonical_field(resolved.definition, resolved, context), problems
+    if resolved.definition is None:
+        return resolved.json, ()
+    return _canonical_field(resolved.definition, resolved, context), ()
 
 
 def _canonical_field(

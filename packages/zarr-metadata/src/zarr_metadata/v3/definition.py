@@ -64,9 +64,10 @@ its own by a caller that holds nothing but JSON:
 
 Problems are values, not exceptions: `ValidationProblem(loc, message,
 kind)`, with `kind` one of `invalid_type`, `invalid_value`,
-`missing_key`, `unknown_key` and `invalid_json`. An unknown key is
-survivable -- the field is still read, the key reported, and the
-configuration comes back without it.
+`missing_key`, `unknown_key` and `invalid_json`. A field with an
+unknown key is still read -- the key reported, the configuration judged
+without it -- so a consumer that tolerates one filters by kind and uses
+what was read; the field is valid only when there is no problem at all.
 
 **Writing an extension.** A TypedDict, a function for its rules, and a
 definition; then a scope that holds it:
@@ -118,13 +119,14 @@ the raw-bytes family claims every `r<N>`. An extension with nothing to
 configure takes `EmptyConfiguration`, and is written as its bare name.
 
 **The simplest spelling.** `canonicalize(field, kind, scope)` gives a
-field that reads in its simplest equivalent spelling: the configuration
-its TypedDict admits, each nested field in its own simplest spelling,
-then the definition's `canonical` -- blosc drops a `typesize` that
-`noshuffle` ignores, a rectilinear grid run-length encodes its chunk
-shapes -- and the envelope in the fewest words. What `canonical` gives
-is judged again: one that does not hold is a `ValueError`, a fault in
-the definition.
+field without problems in its simplest equivalent spelling: each nested
+field in its own simplest spelling, then the definition's `canonical` --
+blosc drops a `typesize` that `noshuffle` ignores, a rectilinear grid
+run-length encodes its chunk shapes -- and the envelope in the fewest
+words. A field with any problem, an unknown key included, has none: a
+simpler spelling of it would erase what its author wrote. What
+`canonical` gives is judged again: one that does not hold is a
+`ValueError`, a fault in the definition.
 
 A definition checks itself when it is built, and each of these is a
 `TypeError` saying what is wrong: a `configuration` that is not a

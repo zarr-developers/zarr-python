@@ -242,32 +242,52 @@ def test_the_simplest_spelling(field: dict[str, Any], simplest: object) -> None:
     assert canonicalize(field, kind, CORE_AND_EXTENSIONS) == (simplest, ())
 
 
-def test_an_unread_field_has_no_simplest_spelling_and_an_unclaimed_one_keeps_its_own() -> None:
-    assert (
-        canonicalize({"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, CORE)[0]
-        is None
-    )
+def test_an_unclaimed_field_keeps_its_own_spelling() -> None:
     assert canonicalize({"name": "zfpy"}, CodecDefinition, CORE) == ({"name": "zfpy"}, ())
 
 
-def test_the_simplest_spelling_holds_only_what_the_typeddict_admits_at_any_depth() -> None:
-    # A key a closed TypedDict does not declare is reported and left out,
-    # inside a struct's fields as at the top.
-    simplest, problems = canonicalize(
-        {
-            "name": "struct",
-            "configuration": {"fields": [{"name": "a", "data_type": "int8", "x": 1}]},
-        },
-        DataTypeDefinition,
-        CORE_AND_EXTENSIONS,
-    )
-    assert simplest == {
-        "name": "struct",
-        "configuration": {"fields": ({"name": "a", "data_type": "int8"},)},
-    }
-    assert [(found.loc, found.kind) for found in problems] == [
-        (("configuration", "fields", 0, "x"), "unknown_key")
-    ]
+@pytest.mark.parametrize(
+    ("field", "kind", "found"),
+    [
+        (
+            {"name": "gzip", "configuration": {"level": 12}},
+            CodecDefinition,
+            [(("configuration", "level"), "invalid_value")],
+        ),
+        (
+            {"name": "bytes", "configuration": {"endain": "big"}},
+            CodecDefinition,
+            [(("configuration", "endain"), "unknown_key")],
+        ),
+        (
+            {
+                "name": "struct",
+                "configuration": {"fields": [{"name": "a", "data_type": "int8", "x": 1}]},
+            },
+            DataTypeDefinition,
+            [(("configuration", "fields", 0, "x"), "unknown_key")],
+        ),
+        (
+            {"name": "crc32c", "must_understand": False},
+            CodecDefinition,
+            [(("must_understand",), "invalid_value")],
+        ),
+        (
+            {"name": "zfpy", "configuration": {}, "extra": 1},
+            CodecDefinition,
+            [(("extra",), "invalid_value")],
+        ),
+    ],
+    ids=["refused-value", "unknown-key", "unknown-key-nested", "must-understand-false", "stray"],
+)
+def test_error_a_field_with_a_problem_has_no_simplest_spelling(
+    field: dict[str, Any], kind: type[Definition[Any]], found: list[object]
+) -> None:
+    # Whatever the author wrote stays theirs: a simpler spelling would
+    # drop the unknown key, the stray member or the `must_understand`.
+    simplest, problems = canonicalize(field, kind, CORE_AND_EXTENSIONS)
+    assert simplest is None
+    assert [(problem.loc, problem.kind) for problem in problems] == found
 
 
 def test_error_a_canonical_that_does_not_hold_is_the_definitions_fault() -> None:
