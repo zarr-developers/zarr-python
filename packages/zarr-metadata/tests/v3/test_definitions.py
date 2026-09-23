@@ -397,6 +397,16 @@ def test_error_must_understand_false_is_refused_wherever_the_model_refuses_it(
     assert by_model == [(("must_understand",), "invalid_value")]
 
 
+def test_error_null_is_not_a_field() -> None:
+    # JSON's null is JSON: refined, it is None with no problem, which is
+    # not a verdict. Read as a field or checked as a configuration, it is
+    # a value of the wrong type.
+    resolved, found = resolve(None, CodecDefinition, SCOPE)
+    assert (resolved.resolution, _locs(found)) == ("invalid", [((), "invalid_type")])
+    configuration, found = GZIP_CODEC.judge(None)
+    assert (configuration, _locs(found)) == (None, [((), "invalid_type")])
+
+
 def test_error_a_value_that_is_not_json() -> None:
     resolved, found = resolve(
         {"name": "gzip", "configuration": {"level": math.nan}}, CodecDefinition, SCOPE

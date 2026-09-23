@@ -277,11 +277,19 @@ def test_an_unclaimed_field_keeps_its_own_spelling() -> None:
             CodecDefinition,
             [(("extra",), "invalid_value")],
         ),
+        (None, CodecDefinition, [((), "invalid_type")]),
     ],
-    ids=["refused-value", "unknown-key", "unknown-key-nested", "must-understand-false", "stray"],
+    ids=[
+        "refused-value",
+        "unknown-key",
+        "unknown-key-nested",
+        "must-understand-false",
+        "stray",
+        "null",
+    ],
 )
 def test_error_a_field_with_a_problem_has_no_simplest_spelling(
-    field: dict[str, Any], kind: type[Definition[Any]], found: list[object]
+    field: dict[str, Any] | None, kind: type[Definition[Any]], found: list[object]
 ) -> None:
     # Whatever the author wrote stays theirs: a simpler spelling would
     # drop the unknown key, the stray member or the `must_understand`.

@@ -464,7 +464,7 @@ def _configuration_checked(
         msg = f"{shape!r} is not a TypedDict"
         raise TypeError(msg)
     refined, problems = refine_json(value, loc)
-    if refined is None:
+    if len(problems) != 0:
         return None, problems
     typed, found, nested = _checked(shape, refined, loc)
     problems = (*found, *(problem for field in nested for problem in _envelope(field)))
@@ -517,7 +517,7 @@ class Resolved(Generic[D]):
     """
 
     json: JSONValue
-    """The field as written, refined: arrays as tuples. `None` for a value that was not JSON."""
+    """The field as written, refined: arrays as tuples. `None` for a value that was not JSON, as for `null`."""
     resolution: Resolution
     definition: D | None
     """The definition that claims the field's name; None when nothing in scope does, or it names none."""
@@ -555,7 +555,7 @@ def resolve(
     """
     asked = as_kind(kind)
     refined, problems = refine_json(data, loc)
-    if refined is None:
+    if len(problems) != 0:
         return Resolved(None, "invalid", None, None), problems
     resolved, found = _resolve_field(refined, asked, context, loc)
     return cast("Resolved[D]", resolved), found
