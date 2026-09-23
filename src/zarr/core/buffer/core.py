@@ -28,6 +28,15 @@ if TYPE_CHECKING:
 __all__: list[str] = []
 
 
+# Integer dtypes used to compare raw bytes when `fill_value` is zero, keyed by
+# itemsize. A view to a dtype of the same width is always permitted by numpy.
+_BITWISE_DTYPE = {1: "u1", 2: "u2", 4: "u4", 8: "u8"}
+
+# Elements in the first slice examined by `NDBuffer.all_equal`. Large enough to
+# amortise one numpy call, small enough that a mismatch in it is nearly free.
+_ALL_EQUAL_BLOCK = 1 << 14
+
+
 @runtime_checkable
 class ArrayLike(Protocol):
     """Protocol for the array-like type that underlie Buffer"""
@@ -531,31 +540,65 @@ class NDBuffer:
     def __repr__(self) -> str:
         return f"<NDBuffer shape={self.shape} dtype={self.dtype} {self._data!r}>"
 
+    @staticmethod
+    def _compare_all(data: NDArrayLike, other: Any, equal_nan: bool) -> bool:
+        """Whether every element of `data` equals `other`, inspecting all of it."""
+        # Handle positive and negative zero by comparing bit patterns:
+        if (
+            np.asarray(other).dtype.kind == "f"
+            and other == 0.0
+            and data.dtype.kind not in ("U", "S", "T", "O", "V")
+        ):
+            _data, other = np.broadcast_arrays(data, np.asarray(other, data.dtype))
+            # Read the bytes as unsigned integers rather than as a void dtype.
+            # Both compare bit patterns, so both keep -0.0 distinct from 0.0,
+            # but numpy has vectorised integer comparison loops and no void
+            # one: the void form falls back to a generic elementwise path that
+            # is more than an order of magnitude slower. Widths with no integer
+            # of the same size (longdouble, complex128) keep the void form.
+            bitwise_dtype = _BITWISE_DTYPE.get(_data.dtype.itemsize, f"V{_data.dtype.itemsize}")
+            return bool(np.array_equal(_data.view(bitwise_dtype), other.view(bitwise_dtype)))
+        # use array_equal to obtain equal_nan=True functionality
+        _data, other = np.broadcast_arrays(data, other)
+        return bool(
+            np.array_equal(
+                _data,
+                other,
+                equal_nan=equal_nan if data.dtype.kind not in ("U", "S", "T", "O", "V") else False,
+            )
+        )
+
     def all_equal(self, other: Any, equal_nan: bool = True) -> bool:
         """Compare to `other` using np.array_equal."""
         if other is None:
             # Handle None fill_value for Zarr V2
             return False
-        # Handle positive and negative zero by comparing bit patterns:
-        if (
-            np.asarray(other).dtype.kind == "f"
-            and other == 0.0
-            and self._data.dtype.kind not in ("U", "S", "T", "O", "V")
-        ):
-            _data, other = np.broadcast_arrays(self._data, np.asarray(other, self._data.dtype))
-            void_dtype = f"V{_data.dtype.itemsize}"
-            return np.array_equal(_data.view(void_dtype), other.view(void_dtype))
-        # use array_equal to obtain equal_nan=True functionality
-        # Since fill-value is a scalar, isn't there a faster path than allocating a new array for fill value
-        # every single time we have to write data?
-        _data, other = np.broadcast_arrays(self._data, other)
-        return np.array_equal(
-            _data,
-            other,
-            equal_nan=equal_nan
-            if self._data.dtype.kind not in ("U", "S", "T", "O", "V")
-            else False,
-        )
+        data = self._data
+        # A buffer that is not uniformly `other` still has to be read in full
+        # before a whole-buffer comparison can report the first mismatch, and
+        # on the write path that is the common case. Walking it in slices of
+        # the leading axis returns as soon as one slice differs. Slices double
+        # in length, so a buffer that really is uniform is covered in O(log n)
+        # comparisons and costs the same as the single scan this replaces.
+        #
+        # The leading axis is used rather than a flattened view because a chunk
+        # is usually a strided view into a larger array, which cannot be
+        # flattened without copying it. Slicing axis 0 is a view whatever the
+        # layout.
+        if data.ndim > 0 and np.ndim(other) == 0 and data.size > _ALL_EQUAL_BLOCK:
+            leading = data.shape[0]
+            per_index = data.size // leading if leading else 0
+            if leading > 1 and per_index:
+                step = max(1, _ALL_EQUAL_BLOCK // per_index)
+                start = 0
+                while start < leading:
+                    stop = min(start + step, leading)
+                    if not self._compare_all(data[start:stop], other, equal_nan):
+                        return False
+                    start = stop
+                    step *= 2
+                return True
+        return self._compare_all(data, other, equal_nan)
 
     def fill(self, value: Any) -> None:
         self._data.fill(value)
