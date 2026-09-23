@@ -1,42 +1,37 @@
-"""The checker: parsers and writers compiled from annotations for the shapes JSON takes.
+"""The checker: parsers compiled from annotations for the shapes JSON takes.
 
-Tested on its own, with no entity in sight. A leaf stands in for
-whatever a caller adds -- the entity layer adds the shape of a field
-holding another entity -- and `no_leaf` adds nothing.
+Tested on its own, with no metadata field in sight. A leaf stands in for
+whatever a caller adds -- the definition layer adds the shape of a member
+holding another metadata field -- and `no_leaf` adds nothing.
 """
 
 from __future__ import annotations
 
+import itertools
+import sys
+import textwrap
+import types
 from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import ClassVar, Literal, NewType, NotRequired, cast
+from typing import Generic, Literal, Never, NewType, NotRequired, TypeVar
 
 import pytest
-from typing_extensions import ReadOnly, TypedDict
+from typing_extensions import ReadOnly, TypeAliasType, TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.model import UNSET
 from zarr_metadata.v3._typed_json import (
     Loc,
     Parsed,
     Parser,
-    declared_class_vars,
     describe,
-    field_hints,
-    is_class_var,
-    is_not_required,
-    is_optional,
     no_leaf,
-    no_writer_leaf,
     parser,
     parser_for,
-    record_writer,
     shape_of,
-    writer,
-    writer_for,
+    typeddict_keys,
 )
 
 Level = NewType("Level", int)
+Width = TypeAliasType("Width", int)
 
 
 class Options(TypedDict, closed=True):
@@ -45,29 +40,34 @@ class Options(TypedDict, closed=True):
     tag: ReadOnly[NotRequired[str]]
 
 
-@dataclass(frozen=True)
-class Record:
-    level: int
-    note: str | UNSET = UNSET
-
-
-@dataclass(frozen=True)
-class Checked:
+class WithExtras(TypedDict, extra_items=int):
     level: int
 
-    def __post_init__(self) -> None:
-        return None
 
-
-@dataclass(frozen=True)
-class Declared:
+class Open(TypedDict, closed=False):
     level: int
-    identifier: ClassVar[str] = "declared"
-    owed: ClassVar[int]
+
+
+class Small(TypedDict, closed=True):
+    x: int
+
+
+class Large(TypedDict, closed=True):
+    x: int
+    y: int
+
+
+class Tree(TypedDict, closed=True):
+    label: str
+    children: tuple[Tree, ...]
 
 
 def _read(annotation: object, value: object) -> Parsed:
-    return parser(annotation, no_leaf)(value, (), None)
+    return parser(annotation, no_leaf)(value, ())
+
+
+def _found(parsed: Parsed) -> list[tuple[Loc, str]]:
+    return [(found.loc, found.kind) for found in parsed[1]]
 
 
 @pytest.mark.parametrize(
@@ -78,15 +78,17 @@ def _read(annotation: object, value: object) -> Parsed:
         (float, 2.5, 2.5),
         (bool, True, True),
         (str, "x", "x"),
+        (None, None, None),
         (Literal["a", "b"], "a", "a"),
         (Literal[1, 2], 2, 2),
         (tuple[int, ...], [1, 2], (1, 2)),
         (tuple[int, str], (1, "a"), (1, "a")),
+        (tuple[str | None, ...], ["a", None], ("a", None)),
         (int | str, "a", "a"),
         (Mapping[str, int], {"k": 1}, {"k": 1}),
         (JSONValue, {"any": [1, None]}, {"any": [1, None]}),
         (Level, 5, 5),
-        (int | UNSET, 4, 4),
+        (Width, 5, 5),
     ],
     ids=[
         "int",
@@ -94,15 +96,17 @@ def _read(annotation: object, value: object) -> Parsed:
         "number",
         "bool",
         "str",
+        "null",
         "literal-str",
         "literal-int",
         "sequence",
         "fixed-tuple",
+        "sequence-of-optional",
         "union",
         "mapping",
         "json",
         "newtype",
-        "optional-present",
+        "alias",
     ],
 )
 def test_a_value_of_the_shape_reads_as_itself(
@@ -120,6 +124,7 @@ def test_a_value_of_the_shape_reads_as_itself(
         (int, 2.0, (), "invalid_type"),
         (float, "2", (), "invalid_type"),
         (str, 1, (), "invalid_type"),
+        (None, 0, (), "invalid_type"),
         (Literal["a"], "b", (), "invalid_value"),
         (Literal[1], True, (), "invalid_value"),
         (tuple[int, ...], (1, "x"), (1,), "invalid_type"),
@@ -133,6 +138,7 @@ def test_a_value_of_the_shape_reads_as_itself(
         "float-is-not-int",
         "str-is-not-number",
         "int-is-not-str",
+        "zero-is-not-null",
         "literal-other",
         "literal-bool-is-not-int",
         "element",
@@ -150,53 +156,355 @@ def test_error_a_value_of_another_shape_is_located(
     assert [(problem.loc, problem.kind) for problem in problems] == [(loc, kind)]
 
 
-def test_a_typed_dict_keeps_what_the_document_said() -> None:
-    # A closed TypedDict member reports a key it does not declare and
-    # keeps it: the member still says what the document said. An
-    # optional key left out stays out.
-    read = parser(Options, no_leaf)
-    assert read({"level": 1}, (), None) == ({"level": 1}, ())
-    value, problems = read({"level": 1, "extra": 2}, (), None)
-    assert value == {"level": 1, "extra": 2}
-    assert [(problem.loc, problem.kind) for problem in problems] == [(("extra",), "unknown_key")]
+@pytest.mark.parametrize(
+    ("annotation", "value", "parsed", "found"),
+    [
+        (Options, {"level": 1}, {"level": 1}, []),
+        (Options, {"note": "n", "level": 1}, {"note": "n", "level": 1}, []),
+        (Options, {"level": 1, "extra": 2}, {"level": 1}, [(("extra",), "unknown_key")]),
+        (WithExtras, {"level": 1, "more": 2}, {"level": 1, "more": 2}, []),
+        (
+            WithExtras,
+            {"level": 1, "more": "two"},
+            {"level": 1, "more": "two"},
+            [(("more",), "invalid_type")],
+        ),
+        (Open, {"level": 1, "more": [2]}, {"level": 1, "more": [2]}, []),
+        (Small | Large, {"x": 1, "y": 2}, {"x": 1, "y": 2}, []),
+        (Small | Large, {"x": 1, "z": 2}, {"x": 1}, [(("z",), "unknown_key")]),
+        (
+            Tree,
+            {"label": "a", "children": [{"label": "b", "children": []}]},
+            {"label": "a", "children": ({"label": "b", "children": ()},)},
+            [],
+        ),
+        (
+            Tree,
+            {"label": "a", "children": [{"label": 1, "children": []}]},
+            {"label": "a", "children": ({"label": 1, "children": ()},)},
+            [(("children", 0, "label"), "invalid_type")],
+        ),
+    ],
+    ids=[
+        "closed",
+        "closed-keeps-the-order-keys-came-in",
+        "closed-leaves-an-unknown-key-out",
+        "extra-items",
+        "extra-items-of-the-wrong-type",
+        "open",
+        "union-takes-the-branch-that-accepts",
+        "union-falls-back-to-the-first-that-tried",
+        "recursive",
+        "recursive-located",
+    ],
+)
+def test_an_object_reads_as_what_its_typeddict_admits(
+    annotation: object, value: object, parsed: dict[str, object], found: list[tuple[Loc, str]]
+) -> None:
+    # A new dict of the keys the type admits, in the order they came: a
+    # closed TypedDict reports a key it does not declare and leaves it
+    # out, `extra_items` types every other key, an open one keeps them.
+    result = _read(annotation, value)
+    assert result[0] == parsed
+    assert list(cast_dict(result[0])) == list(parsed)
+    assert _found(result) == found
+
+
+def cast_dict(value: object) -> dict[str, object]:
+    assert isinstance(value, dict)
+    return value
 
 
 def test_error_a_typed_dict_misses_a_required_key() -> None:
-    value, problems = parser(Options, no_leaf)({"note": "n"}, (), None)
+    value, problems = parser(Options, no_leaf)({"note": "n"}, ())
     assert value == {"note": "n"}
     assert [(problem.loc, problem.kind) for problem in problems] == [(("level",), "missing_key")]
 
 
-def test_a_record_is_built_when_every_member_reads() -> None:
-    # An optional member left out is `UNSET` in the record, so no
-    # default of the record's own decides what a document said; an
-    # unknown key is reported and survives.
-    read = parser(Record, no_leaf)
-    assert read({"level": 1}, (), None) == (Record(level=1, note=UNSET), ())
-    record, problems = read({"level": 1, "typo": 0}, (), None)
-    assert record == Record(level=1)
-    assert [(problem.loc, problem.kind) for problem in problems] == [(("typo",), "unknown_key")]
+# --- a TypedDict, read as the typing spec defines it -----------------------
+
+_PRELUDE = """\
+import typing
+from typing import Annotated, Generic, NotRequired, Required, TypeVar
+from typing_extensions import Never, ReadOnly, TypedDict
+V = TypeVar("V")
+"""
+
+_modules = itertools.count()
 
 
-def test_error_a_record_is_not_built_around_a_member_that_did_not_read() -> None:
-    value, problems = parser(Record, no_leaf)({"level": "high"}, (), None)
-    assert value == {"level": "high"}
-    assert [(problem.loc, problem.kind, problem.message) for problem in problems] == [
-        (("level",), "invalid_type", "expected an integer, got 'high'")
-    ]
+def _declared(source: str, *, postponed: bool, monkeypatch: pytest.MonkeyPatch) -> types.ModuleType:
+    """The module `source` defines, written with or without `from __future__ import annotations`.
+
+    Registered in `sys.modules`, because a string annotation is resolved
+    in the module its class was defined in.
+    """
+    name = f"tests.v3._typeddicts_{next(_modules)}"
+    module = types.ModuleType(name)
+    monkeypatch.setitem(sys.modules, name, module)
+    header = "from __future__ import annotations\n" if postponed else ""
+    exec(header + _PRELUDE + textwrap.dedent(source), module.__dict__)  # noqa: S102 - the declaration under test
+    return module
 
 
-def test_error_a_record_may_not_define_post_init() -> None:
-    # A record is plain data, built whenever its keys read; a rule about
-    # it belongs where the caller asks for rules.
-    with pytest.raises(TypeError, match="Checked defines __post_init__; a record is plain data"):
-        parser(Checked, no_leaf)
+@pytest.mark.parametrize(
+    ("source", "members", "required", "extra_items", "declared"),
+    [
+        (
+            """
+                class T(TypedDict, closed=True):
+                    a: int
+                    b: NotRequired[int]
+                    c: ReadOnly[NotRequired[str]]
+                    d: Annotated[NotRequired[int], 'meta']
+            """,
+            {"a", "b", "c", "d"},
+            {"a"},
+            Never,
+            True,
+        ),
+        (
+            """
+                class T(TypedDict, total=False, closed=True):
+                    a: int
+                    b: Required[int]
+                    c: Annotated[Required[int], 'meta']
+            """,
+            {"a", "b", "c"},
+            {"b", "c"},
+            Never,
+            True,
+        ),
+        (
+            """
+                class Base(TypedDict, total=False):
+                    a: int
+                    b: Required[int]
+                class T(Base, closed=True):
+                    c: int
+                    d: NotRequired[int]
+            """,
+            {"a", "b", "c", "d"},
+            {"b", "c"},
+            Never,
+            True,
+        ),
+        (
+            """
+                class Base(TypedDict):
+                    a: ReadOnly[NotRequired[int]]
+                class T(Base):
+                    a: ReadOnly[int]
+            """,
+            {"a"},
+            {"a"},
+            object,
+            False,
+        ),
+        (
+            """
+                class T(typing.TypedDict):
+                    a: int
+                    b: typing.NotRequired[int]
+            """,
+            {"a", "b"},
+            {"a"},
+            object,
+            False,
+        ),
+        ("class T(TypedDict):\n    a: int\n", {"a"}, {"a"}, object, False),
+        ("class T(TypedDict, closed=False):\n    a: int\n", {"a"}, {"a"}, object, True),
+        ("class T(TypedDict, extra_items=int):\n    a: int\n", {"a"}, {"a"}, int, True),
+        ("class T(TypedDict, extra_items='int'):\n    a: int\n", {"a"}, {"a"}, int, True),
+        (
+            """
+                class T(TypedDict, extra_items=ReadOnly[str]):
+                    a: int
+            """,
+            {"a"},
+            {"a"},
+            str,
+            True,
+        ),
+        (
+            """
+                class Base(TypedDict, closed=True):
+                    a: int
+                class T(Base):
+                    pass
+            """,
+            {"a"},
+            {"a"},
+            Never,
+            True,
+        ),
+        (
+            """
+                class Base(TypedDict, extra_items=ReadOnly[int]):
+                    a: int
+                class T(Base):
+                    b: NotRequired[int]
+            """,
+            {"a", "b"},
+            {"a"},
+            int,
+            True,
+        ),
+        (
+            """
+                class Base(TypedDict):
+                    a: int
+                class T(Base, closed=True):
+                    pass
+            """,
+            {"a"},
+            {"a"},
+            Never,
+            True,
+        ),
+        (
+            """
+                class Base(TypedDict, closed=False):
+                    a: int
+                class T(Base):
+                    pass
+            """,
+            {"a"},
+            {"a"},
+            object,
+            True,
+        ),
+        (
+            """
+                class G(TypedDict, Generic[V], closed=True):
+                    a: int
+                class T(G[int]):
+                    pass
+            """,
+            {"a"},
+            {"a"},
+            Never,
+            True,
+        ),
+        (
+            """
+                class A(TypedDict, closed=True):
+                    a: int
+                class B(TypedDict, closed=True):
+                    b: NotRequired[int]
+                class T(A, B):
+                    pass
+            """,
+            {"a", "b"},
+            {"a"},
+            Never,
+            True,
+        ),
+    ],
+    ids=[
+        "qualifiers-in-any-order",
+        "total-false-and-required",
+        "totality-is-per-class",
+        "read-only-key-required-by-a-subclass",
+        "stdlib-typeddict",
+        "open-by-default",
+        "open-when-said",
+        "extra-items",
+        "extra-items-written-as-a-string",
+        "extra-items-read-only",
+        "closed-is-inherited",
+        "extra-items-are-inherited",
+        "a-subclass-closes-an-open-base",
+        "open-said-by-a-base",
+        "through-a-generic-base",
+        "bases-that-agree",
+    ],
+)
+@pytest.mark.parametrize("postponed", [False, True], ids=["evaluated", "postponed"])
+def test_typeddict_keys_follow_the_typing_spec(
+    source: str,
+    members: set[str],
+    required: set[str],
+    extra_items: object,
+    declared: bool,
+    postponed: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Written as strings, as `from __future__ import annotations` writes
+    # every annotation, a qualifier is invisible to `__required_keys__`;
+    # read off the evaluated annotations it is not, so both spellings of
+    # a declaration read alike. Openness is inherited, which the runtime
+    # does not record.
+    keys = typeddict_keys(_declared(source, postponed=postponed, monkeypatch=monkeypatch).T)
+    assert set(keys.members) == members
+    assert keys.required == required
+    assert keys.extra_items is extra_items
+    assert keys.declared is declared
 
 
-def test_error_an_annotation_outside_the_shapes_has_no_parser() -> None:
-    assert parser_for(set[int], no_leaf) is None
+def test_error_a_typeddict_whose_bases_disagree_on_other_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _declared(
+        """
+            class A(TypedDict, closed=True):
+                a: int
+            class B(TypedDict, extra_items=int):
+                b: int
+            class T(A, B):
+                pass
+        """,
+        postponed=False,
+        monkeypatch=monkeypatch,
+    )
+    with pytest.raises(TypeError, match="T: its bases disagree"):
+        typeddict_keys(module.T)
+
+
+@pytest.mark.parametrize("name", ["T", "Outer"])
+def test_error_a_typeddict_whose_annotations_do_not_resolve(
+    name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Named by the TypedDict that holds the annotation, at any depth: a
+    # parser compiled around it cannot be.
+    module = _declared(
+        """
+            class T(TypedDict):
+                a: Missing
+            class Outer(TypedDict):
+                inner: T
+        """,
+        postponed=True,
+        monkeypatch=monkeypatch,
+    )
+    with pytest.raises(TypeError, match="T: name 'Missing' is not defined"):
+        parser_for(getattr(module, name), no_leaf)
+
+
+T = TypeVar("T")
+
+
+class Generic_(TypedDict, Generic[T], closed=True):
+    x: T
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [set[int], list[int], Literal[b"x"], Generic_, Generic_[int]],
+    ids=["set", "list", "literal-bytes", "generic-typeddict", "generic-alias"],
+)
+def test_error_an_annotation_outside_the_shapes_has_no_parser(annotation: object) -> None:
+    assert parser_for(annotation, no_leaf) is None
     with pytest.raises(TypeError, match="is not a shape JSON takes"):
-        parser(set[int], no_leaf)
+        parser(annotation, no_leaf)
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="the `type` statement is 3.12 syntax")
+def test_a_type_statement_alias_may_hold_itself(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _declared(
+        "type Nested = int | tuple[Nested, ...]\n", postponed=False, monkeypatch=monkeypatch
+    )
+    assert parser(module.Nested, no_leaf)([1, [2, [3]]], ()) == ((1, (2, (3,))), ())
 
 
 def test_a_leaf_is_asked_first_at_every_depth() -> None:
@@ -205,11 +513,11 @@ def test_a_leaf_is_asked_first_at_every_depth() -> None:
     class Marker:
         pass
 
-    def leaf(annotation: object) -> Parser[None] | None:
+    def leaf(annotation: object) -> Parser | None:
         if annotation is not Marker:
             return None
 
-        def parse(value: object, loc: Loc, state: None) -> Parsed:
+        def parse(value: object, loc: Loc) -> Parsed:
             if isinstance(value, str) and value.startswith("m:"):
                 return value[2:], ()
             return value, ((loc, "expected a marker"),)  # pyright: ignore[reportReturnType]
@@ -217,58 +525,7 @@ def test_a_leaf_is_asked_first_at_every_depth() -> None:
         return parse
 
     read = parser(tuple[Marker, ...], leaf)
-    assert read(["m:a", "m:b"], (), None) == (("a", "b"), ())
-
-
-def test_writers_are_the_parsers_inverse() -> None:
-    # What a parser reads from a document, a writer puts back: a record
-    # as the object of its present members, an absent optional member
-    # left out, a JSON-valued member copied rather than shared.
-    assert record_writer(Record, no_writer_leaf)(Record(level=1)) == {"level": 1}
-    assert record_writer(Record, no_writer_leaf)(Record(level=1, note="n")) == {
-        "level": 1,
-        "note": "n",
-    }
-    assert writer(tuple[int, str], no_writer_leaf)((1, "a")) == (1, "a")
-    held = {"k": [1, 2]}
-    written = writer(JSONValue, no_writer_leaf)(held)
-    assert written == held
-    assert written is not held
-
-
-def test_error_a_fixed_tuple_of_the_wrong_length_is_not_written() -> None:
-    write = writer_for(tuple[int, str], no_writer_leaf)
-    assert write is not None
-    with pytest.raises(TypeError, match="is not a JSON value"):
-        write((1,))
-
-
-def test_field_hints_resolve_per_class_and_skip_class_variables() -> None:
-    # Under PEP 649 the annotations are strings, resolved where the class
-    # is; a class variable is not a field, and one a base annotates and
-    # nothing sets is owed.
-    assert dict(field_hints(Declared)) == {"level": int}
-    assert declared_class_vars(Declared) == {"identifier": Declared, "owed": Declared}
-    hints = field_hints(Declared)
-    assert field_hints(Declared) is hints
-    with pytest.raises(TypeError, match="does not support item assignment"):
-        cast("dict[str, object]", hints)["level"] = str
-
-
-@pytest.mark.parametrize(
-    ("annotation", "expected"),
-    [
-        ("ClassVar[str]", True),
-        ("ClassVar", True),
-        ("typing.ClassVar[str]", True),
-        ("t.ClassVar[str]", True),
-        ("str", False),
-        ("ClassVarLike[str]", False),
-        ("Final[ClassVar[str]]", False),
-    ],
-)
-def test_a_class_var_is_read_from_any_spelling(annotation: str, expected: bool) -> None:
-    assert is_class_var(annotation) is expected
+    assert read(["m:a", "m:b"], ()) == (("a", "b"), ())
 
 
 @pytest.mark.parametrize(
@@ -278,8 +535,10 @@ def test_a_class_var_is_read_from_any_spelling(annotation: str, expected: bool) 
         (Literal[1, 2], "int"),
         (Literal["a", "b"], "str"),
         (Literal[0, "auto"], None),
+        (None, "null"),
         (tuple[int, ...], "tuple"),
         (Options, "mapping"),
+        (Width, "int"),
         (JSONValue, None),
     ],
 )
@@ -289,10 +548,4 @@ def test_a_shape_is_what_a_union_dispatches_on(annotation: object, shape: str | 
 
 def test_a_mixed_literal_is_described() -> None:
     assert describe(Literal[0, "auto"]) == "one of ('auto', 0)"
-
-
-def test_optional_and_not_required_are_read_off_the_annotation() -> None:
-    assert is_optional(int | UNSET)
-    assert not is_optional(int)
-    assert is_not_required(NotRequired[int])
-    assert not is_not_required(int)
+    assert describe(int | None) == "an integer or null"
