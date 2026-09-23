@@ -369,7 +369,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             True if the JSON input is a valid representation of this class,
             otherwise False.
         """
-        if not check_dtype_spec_v2(data):
+        if not check_dtype_spec_v2(data) or data["object_codec_id"] is not None:
             return False
         name = data["name"]
         # match <m[ns], >m[M], etc
@@ -644,7 +644,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
             True if the input is a valid JSON representation of a NumPy datetime64 data type,
             otherwise False.
         """
-        if not check_dtype_spec_v2(data):
+        if not check_dtype_spec_v2(data) or data["object_codec_id"] is not None:
             return False
         name = data["name"]
         if not isinstance(name, str):

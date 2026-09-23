@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Self
 
@@ -14,6 +15,26 @@ if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
     from zarr.core.dtype.common import DTypeJSON
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+
+
+# Zarr V2 data type names are NumPy typestrs, whose first character is the byte order: "<", ">", or
+# "|" (not relevant). For these kinds the byte order is not relevant, so "<" and ">" spell the same
+# data type as "|". Other implementations write them (e.g. netCDF-C writes "<i1" and "<u1").
+_V2_BYTE_ORDER_IRRELEVANT = re.compile(r"^[<>](b1|i1|u1|V\d+)$")
+
+
+def _v2_canonical_alias(data: DTypeJSON) -> DTypeJSON | None:
+    """
+    Return the canonical spelling of a Zarr V2 data type name whose byte order is not relevant,
+    or None if the name has no other spelling.
+    """
+    if (
+        isinstance(data, dict)
+        and isinstance(name := data.get("name"), str)
+        and _V2_BYTE_ORDER_IRRELEVANT.match(name)
+    ):
+        return {**data, "name": "|" + name[1:]}
+    return None
 
 
 # This class is different from the other registry classes, which inherit from
@@ -202,9 +223,15 @@ class DataTypeRegistry:
             If no matching Zarr data type is found for the given JSON data.
         """
 
-        for val in self.contents.values():
-            try:
-                return val.from_json(data, zarr_format=zarr_format)
-            except DataTypeValidationError:
-                pass
+        # A data type that declares a non-canonical spelling takes precedence over the canonical
+        # alias, so the alias is only tried after the name as written fails to match.
+        candidates = [data]
+        if zarr_format == 2 and (alias := _v2_canonical_alias(data)) is not None:
+            candidates.append(alias)
+        for candidate in candidates:
+            for val in self.contents.values():
+                try:
+                    return val.from_json(candidate, zarr_format=zarr_format)
+                except DataTypeValidationError:
+                    pass
         raise ValueError(f"No Zarr data type found that matches {data!r}")

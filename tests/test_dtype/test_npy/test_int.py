@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
-from zarr.core.dtype import get_data_type_from_json
 from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
-from zarr.errors import DataTypeValidationError
 
 
 class TestInt8(BaseTestZDType):
@@ -21,9 +18,10 @@ class TestInt8(BaseTestZDType):
     valid_json_v2 = ({"name": "|i1", "object_codec_id": None},)
     valid_json_v3 = ("int8",)
     invalid_json_v2 = (
-        ">i1",
-        "int8",
-        "|f8",
+        {"name": "|u1", "object_codec_id": None},
+        {"name": "int8", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "|i1", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|i1",
@@ -56,9 +54,10 @@ class TestInt16(BaseTestZDType):
     )
     valid_json_v3 = ("int16",)
     invalid_json_v2 = (
-        "|i2",
-        "int16",
-        "|f8",
+        {"name": "|i2", "object_codec_id": None},
+        {"name": "int16", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "<i2", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|i2",
@@ -94,9 +93,10 @@ class TestInt32(BaseTestZDType):
     )
     valid_json_v3 = ("int32",)
     invalid_json_v2 = (
-        "|i4",
-        "int32",
-        "|f8",
+        {"name": "|i4", "object_codec_id": None},
+        {"name": "int32", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "<i4", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|i4",
@@ -129,9 +129,10 @@ class TestInt64(BaseTestZDType):
     )
     valid_json_v3 = ("int64",)
     invalid_json_v2 = (
-        "|i8",
-        "int64",
-        "|f8",
+        {"name": "|i8", "object_codec_id": None},
+        {"name": "int64", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "<i8", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|i8",
@@ -161,9 +162,10 @@ class TestUInt8(BaseTestZDType):
     valid_json_v2 = ({"name": "|u1", "object_codec_id": None},)
     valid_json_v3 = ("uint8",)
     invalid_json_v2 = (
-        "|u1",
-        "uint8",
-        "|f8",
+        {"name": "|i1", "object_codec_id": None},
+        {"name": "uint8", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "|u1", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|u1",
@@ -196,9 +198,10 @@ class TestUInt16(BaseTestZDType):
     )
     valid_json_v3 = ("uint16",)
     invalid_json_v2 = (
-        "|u2",
-        "uint16",
-        "|f8",
+        {"name": "|u2", "object_codec_id": None},
+        {"name": "uint16", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "<u2", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|u2",
@@ -240,9 +243,10 @@ class TestUInt32(BaseTestZDType):
     )
     valid_json_v3 = ("uint32",)
     invalid_json_v2 = (
-        "|u4",
-        "uint32",
-        "|f8",
+        {"name": "|u4", "object_codec_id": None},
+        {"name": "uint32", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "<u4", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|u4",
@@ -275,9 +279,10 @@ class TestUInt64(BaseTestZDType):
     )
     valid_json_v3 = ("uint64",)
     invalid_json_v2 = (
-        "|u8",
-        "uint64",
-        "|f8",
+        {"name": "|u8", "object_codec_id": None},
+        {"name": "uint64", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "<u8", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|u8",
@@ -332,30 +337,3 @@ def test_string_integer_from_json_scalar() -> None:
     # Test that it works for v2 format too
     result = dtype_instance.from_json_scalar("123", zarr_format=2)
     assert result == np.int32(123)
-
-
-@pytest.mark.parametrize("name", ["|u1", "<u1", ">u1"])
-def test_uint8_v2_aliases(name: str) -> None:
-    data = {"name": name, "object_codec_id": None}
-    dtype = UInt8.from_json(data, zarr_format=2)
-    assert dtype == UInt8()
-    assert get_data_type_from_json(data, zarr_format=2) == dtype
-    assert dtype.to_native_dtype() == np.dtype("uint8")
-    serialized = dtype.to_json(zarr_format=2)
-    assert serialized["name"] == "|u1"
-    assert serialized["object_codec_id"] is None
-    assert dtype.to_json(zarr_format=3) == "uint8"
-    with pytest.raises(DataTypeValidationError):
-        UInt8.from_json(name, zarr_format=3)
-
-
-@pytest.mark.parametrize("name", ["|u1", "<u1", ">u1"])
-def test_uint8_v2_aliases_reject_object_codec(name: str) -> None:
-    with pytest.raises(DataTypeValidationError):
-        UInt8.from_json({"name": name, "object_codec_id": "vlen-utf8"}, zarr_format=2)
-
-
-@pytest.mark.parametrize("name", ["|i1", "<u2", ">u2", "uint8", "invalid"])
-def test_uint8_v2_rejects_other_types(name: str) -> None:
-    with pytest.raises(DataTypeValidationError):
-        UInt8.from_json({"name": name, "object_codec_id": None}, zarr_format=2)
