@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import http.server
 import json
 import re
@@ -567,12 +568,26 @@ async def test_list_dir_http_yields_only_children(tmp_path: pathlib.Path) -> Non
     """list_dir over HTTP yields each direct child once, by bare name.
 
     An HTTP listing is scraped from an HTML index page, whose links include the site
-    root, the parent, in-page anchors, queries, and directories with a trailing "/".
+    root, the parent, in-page anchors, queries, "./" relative links, and directories
+    with a trailing "/".
     Regression test for https://github.com/zarr-developers/zarr-python/issues/3575,
     where the site-root link surfaced as a group member named "".
     """
     pytest.importorskip("aiohttp")
-    links = ["/", "../", "#", "#usage", "?sort=name", "a/", "a", "b", "/group/c/"]
+    links = [
+        "/",
+        "../",
+        "./",
+        "#",
+        "#usage",
+        "?sort=name",
+        "a/",
+        "a",
+        "b",
+        "./d",
+        ".zgroup",
+        "/group/c/",
+    ]
     group = tmp_path / "group"
     group.mkdir()
     (group / "index.html").write_text(
@@ -581,14 +596,12 @@ async def test_list_dir_http_yields_only_children(tmp_path: pathlib.Path) -> Non
         + "</body></html>"
     )
 
-    class Handler(http.server.SimpleHTTPRequestHandler):
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            super().__init__(*args, directory=str(tmp_path), **kwargs)
-
+    class QuietHandler(http.server.SimpleHTTPRequestHandler):
         def log_message(self, format: str, *args: Any) -> None:
             pass
 
-    with http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
+    handler = functools.partial(QuietHandler, directory=str(tmp_path))
+    with http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
         threading.Thread(target=server.serve_forever, daemon=True).start()
         store = FsspecStore.from_url(f"http://127.0.0.1:{server.server_port}/group")
         try:
@@ -597,7 +610,7 @@ async def test_list_dir_http_yields_only_children(tmp_path: pathlib.Path) -> Non
             store.close()
             server.shutdown()
 
-    assert sorted(observed) == ["a", "b", "c"]
+    assert sorted(observed) == [".zgroup", "a", "b", "c", "d"]
 
 
 async def test_close_does_not_close_filesystem_session() -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import posixpath
 import warnings
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any
@@ -433,19 +434,18 @@ class FsspecStore(Store):
             return
         seen: set[str] = set()
         for onefile in allfiles:
-            # An HTTP listing is scraped from the links on an HTML page, so it can hold
-            # in-page anchors and queries; those name the page itself, not an object.
-            if onefile.startswith(("http://", "https://")) and ("#" in onefile or "?" in onefile):
-                continue
-            name = (
-                onefile.replace(f"{prefix}/", "")
-                .removeprefix(self.path)
-                .removeprefix("/")
-                .rstrip("/")
-            )
+            name = onefile.replace(f"{prefix}/", "").removeprefix(self.path).removeprefix("/")
+            if onefile.startswith(("http://", "https://")):
+                # An HTTP listing is scraped from the links on an HTML page. In-page anchors
+                # and queries name the page itself, not an object, and relative links such
+                # as "./a" need normalizing.
+                if "#" in name or "?" in name:
+                    continue
+                name = posixpath.normpath(name)
             # Only direct children, each once: an HTTP listing marks directories with a
-            # trailing "/", and a link back to the listed directory reduces to "".
-            if name == "" or "/" in name or name in seen:
+            # trailing "/", and a link back to the listed directory reduces to "" or ".".
+            name = name.rstrip("/")
+            if name in ("", ".", "..") or "/" in name or name in seen:
                 continue
             seen.add(name)
             yield name
