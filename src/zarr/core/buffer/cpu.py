@@ -4,6 +4,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
+    cast,
 )
 
 import numpy as np
@@ -156,21 +157,54 @@ class NDBuffer(core.NDBuffer):
         order: Literal["C", "F"] = "C",
         fill_value: Any | None = None,
     ) -> Self:
+        parsed_dtype = np.dtype(dtype)
+        zero_fill = fill_value is None or (isinstance(fill_value, int) and fill_value == 0)
+        if parsed_dtype.kind in "mM":
+            # NumPy allocation can drop a generic time unit's scale factor and byte order
+            # (`np.zeros(1, ">M8[2generic]").dtype` is `<M8`). A view restores both, and
+            # must precede assignment so values are encoded in the requested byte order.
+            data = np.zeros(shape=tuple(shape), dtype=parsed_dtype, order=order).view(parsed_dtype)
+            if not zero_fill:
+                data[...] = fill_value
         # np.zeros is much faster than np.full, and therefore using it when possible is better.
-        if fill_value is None or (isinstance(fill_value, int) and fill_value == 0):
-            return cls(np.zeros(shape=tuple(shape), dtype=dtype, order=order))
+        elif zero_fill:
+            data = np.zeros(shape=tuple(shape), dtype=dtype, order=order)
         else:
-            return cls(np.full(shape=tuple(shape), fill_value=fill_value, dtype=dtype, order=order))
+            data = np.full(shape=tuple(shape), fill_value=fill_value, dtype=dtype, order=order)
+        return cls(data)
 
     @classmethod
     def empty(
         cls, shape: tuple[int, ...], dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
     ) -> Self:
-        return cls(np.empty(shape=shape, dtype=dtype, order=order))
+        data = np.empty(shape=shape, dtype=dtype, order=order)
+        if data.dtype.kind in "mM":
+            # See `create`: a view restores what allocation drops from generic time dtypes.
+            data = data.view(dtype=dtype)
+        return cls(data)
 
     @classmethod
     def from_numpy_array(cls, array_like: npt.ArrayLike) -> Self:
         return cls.from_ndarray_like(np.asanyarray(array_like))
+
+    def astype(self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = "K") -> Self:
+        target = np.dtype(dtype)
+        if (
+            self.dtype.kind in "mM"
+            and isinstance(target, np.dtypes.DateTime64DType | np.dtypes.TimeDelta64DType)
+            and target.kind == self.dtype.kind
+            and np.datetime_data(self.dtype)[0] == "generic"
+            and np.datetime_data(self.dtype)
+            == np.datetime_data(
+                cast("np.dtypes.DateTime64DType | np.dtypes.TimeDelta64DType", target)
+            )
+        ):
+            # NumPy's astype between generic time dtypes ignores the target and keeps the
+            # source byte order. Convert the underlying counts for an endian-only cast.
+            counts = self.as_numpy_array().view(self.dtype.byteorder + "i8")
+            converted = counts.astype(target.byteorder + "i8", order=order)
+            return self.__class__(converted.view(target))
+        return super().astype(dtype, order=order)
 
     def as_numpy_array(self) -> npt.NDArray[Any]:
         """Returns the buffer as a NumPy array (host memory).
