@@ -233,6 +233,11 @@ class TimeDTypeBase[
             raise ValueError(f"scale_factor must be < 2147483648, got {self.scale_factor}.")
         if self.unit not in get_args(DateTimeUnit):
             raise ValueError(f"unit must be one of {get_args(DateTimeUnit)}, got {self.unit!r}.")
+        if self.unit == "μs":
+            # NumPy spells the microsecond unit "us" and resolves "μs" to it, so an
+            # instance built with "μs" would not round-trip through to_native_dtype().
+            # Store the NumPy spelling; "μs" stays accepted as input and in stored metadata.
+            object.__setattr__(self, "unit", "us")
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
@@ -256,7 +261,7 @@ class TimeDTypeBase[
         """
 
         if cls._check_native_dtype(dtype):
-            unit, scale_factor = np.datetime_data(dtype.name)
+            unit, scale_factor = np.datetime_data(dtype)
             unit = cast("DateTimeUnit", unit)
             return cls(
                 unit=unit,
@@ -492,7 +497,10 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             If the zarr_format is not 2 or 3.
         """
         if zarr_format == 2:
-            name = self.to_native_dtype().str
+            name: str = self.to_native_dtype().str
+            if self.unit == "generic" and self.scale_factor != 1:
+                # NumPy omits generic scale from dtype.str; preserve it explicitly.
+                name += f"[{self.scale_factor}generic]"
             return {"name": name, "object_codec_id": None}
         elif zarr_format == 3:
             return {
@@ -777,7 +785,10 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
             If the zarr_format is not 2 or 3.
         """
         if zarr_format == 2:
-            name = self.to_native_dtype().str
+            name: str = self.to_native_dtype().str
+            if self.unit == "generic" and self.scale_factor != 1:
+                # NumPy omits generic scale from dtype.str; preserve it explicitly.
+                name += f"[{self.scale_factor}generic]"
             return {"name": name, "object_codec_id": None}
         elif zarr_format == 3:
             return {
@@ -818,6 +829,9 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         numpy.datetime64
             The input cast to a NumPy datetime scalar.
         """
+        if isinstance(data, int):
+            # The scalar constructor rejects integer counts with a generic unit.
+            return datetime_from_int(data, unit=self.unit, scale_factor=self.scale_factor)
         # numpy 2.x stub: datetime64(scalar, formatted_unit_str) is runtime-valid
         # but no overload matches the dynamic f-string unit argument.
         return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")  # type: ignore[call-overload, no-any-return]
