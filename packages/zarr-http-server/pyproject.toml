@@ -64,14 +64,16 @@ examples = [
 ]
 docs = [
     # Pins match the zarr-python docs environment in the repo-root
-    # pyproject.toml so the two sites render with the same toolchain.
+    # pyproject.toml so every site renders with the same toolchain, and the
+    # shared packages/mkdocs-base.yml sees one set of plugin versions.
+    # Bump them together with the root.
     "mkdocs-material==9.7.7",
     "mkdocs==1.6.1",
     "mkdocstrings==1.0.6",
-    "mkdocstrings-python==2.0.5",
+    "mkdocstrings-python==2.0.8",
     "griffe-inherited-docstrings==1.1.3",
     # mkdocstrings uses ruff to format rendered signatures
-    "ruff==0.16.0",
+    "ruff==0.16.8",
 ]
 
 # Dev-only: resolve zarr from the repo root so package tests run against
