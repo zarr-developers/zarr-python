@@ -49,6 +49,9 @@ def _unsupported_field_feature(dtype: np.dtype[np.void]) -> str | None:
     - field titles, e.g. `np.dtype([(("title", "name"), "i4")])`
     - subarray fields, e.g. `np.dtype([("name", "i4", (2,))])`
 
+    These are implementation restrictions. In particular, Zarr V2 supports subarray
+    field descriptors; this implementation does not preserve them.
+
     Returns
     -------
     str | None
@@ -563,7 +566,22 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             cast to this structured data type.
         """
 
-        return self._cast_scalar_unchecked(0)
+        values: list[object] = []
+        for _, field in self.fields:
+            dtype = field.to_native_dtype()
+            if isinstance(field, Structured):
+                value = field.default_scalar()
+            elif (
+                isinstance(dtype, np.dtypes.DateTime64DType)
+                and np.datetime_data(cast("np.dtypes.DateTime64DType", dtype))[0] == "generic"
+            ):
+                # NumPy rejects casting integer zero to generic datetime, but a
+                # zero count is representable by viewing the integer storage.
+                value = np.zeros(1, dtype=dtype.byteorder + "i8").view(dtype)[0]
+            else:
+                value = np.array([0], dtype=dtype)[0]
+            values.append(value)
+        return self._cast_scalar_unchecked(tuple(values))
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
         """
