@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import Codec
     from zarr.core.common import JSON
+    from zarr.core.dtype.common import DTypeName_V2
 
 
 def test_parse_zarr_format_valid() -> None:
@@ -32,7 +33,7 @@ def test_parse_zarr_format_valid() -> None:
 # The explicit id for "3" avoids colliding with the auto-generated id for the int 3.
 @pytest.mark.parametrize("data", [None, 1, 3, 4, 5, pytest.param("3", id="3-str")])
 def test_parse_zarr_format_invalid(data: Any) -> None:
-    with pytest.raises(ValueError, match=f"Invalid value. Expected 2. Got {data}"):
+    with pytest.raises(ValueError, match="Failed to parse input for 'zarr_format'"):
         parse_zarr_format(data)
 
 
@@ -399,3 +400,45 @@ def test_structured_dtype_fill_value_serialization(
     root_group = zarr.open_group(group_path, mode="r")
     observed = root_group.metadata.consolidated_metadata.metadata["structured_dtype"].fill_value  # type: ignore[union-attr]
     assert observed == fill_value
+
+
+@pytest.mark.parametrize(
+    ("stored", "canonical", "values"),
+    [
+        *((f"{b}b1", "|b1", np.array([True, False, True])) for b in "<>|"),
+        *((f"{b}i1", "|i1", np.array([-128, 0, 127], dtype=np.int8)) for b in "<>|"),
+        *((f"{b}u1", "|u1", np.array([0, 128, 255], dtype=np.uint8)) for b in "<>|"),
+        (
+            [["a", "<i1"], ["b", ">u1"]],
+            [["a", "|i1"], ["b", "|u1"]],
+            np.array([(-1, 1), (0, 128), (1, 255)], dtype=[("a", "i1"), ("b", "u1")]),
+        ),
+    ],
+    ids=str,
+)
+def test_open_v2_byte_order_irrelevant_dtype(
+    tmp_path: Path, stored: DTypeName_V2, canonical: DTypeName_V2, values: np.ndarray[Any, Any]
+) -> None:
+    """
+    An array whose data type is written with any byte order character, where the byte order is not
+    relevant, reads the stored data and writes the data type back with the canonical "|".
+    """
+    metadata = {
+        "zarr_format": 2,
+        "shape": [3],
+        "chunks": [3],
+        "dtype": stored,
+        "compressor": None,
+        "fill_value": None,
+        "order": "C",
+        "filters": None,
+    }
+    metadata_path = tmp_path / ".zarray"
+    metadata_path.write_text(json.dumps(metadata))
+    (tmp_path / "0").write_bytes(values.tobytes())
+
+    array = zarr.open_array(tmp_path, mode="r+")
+    np.testing.assert_array_equal(array[:], values)
+
+    array.update_attributes({"foo": "bar"})
+    assert json.loads(metadata_path.read_text())["dtype"] == canonical

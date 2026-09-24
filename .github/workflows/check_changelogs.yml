@@ -22,13 +22,22 @@ jobs:
           persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+
+      - name: Install just
+        uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+        with:
+          repo: casey/just
+          version: 1.58.0
 
       - name: Check zarr-python changelog entries
-        run: uv run --no-sync python ci/check_changelog_entries.py
+        run: just check-changelogs
 
       - name: Check zarr-metadata changelog entries
-        run: uv run --no-sync python ci/check_changelog_entries.py packages/zarr-metadata/changes
+        run: just check-changelogs packages/zarr-metadata/changes
 
       - name: Check zarr-indexing changelog entries
-        run: uv run --no-sync python ci/check_changelog_entries.py packages/zarr-indexing/changes
+        run: just check-changelogs packages/zarr-indexing/changes
+
+      - name: Check zarr-http-server changelog entries
+        run: just check-changelogs packages/zarr-http-server/changes

@@ -1,8 +1,12 @@
 # Shared Material for MkDocs configuration for the sub-package docs sites.
 # Each package's mkdocs.yml pulls this in via INHERIT and defines only its
 # identity (site_name, repo_*, site_description, site_url) and nav.
-# The inventories list below is the superset used by all packages; an
-# inventory a package never references is harmless.
+#
+# INHERIT deep-merges mappings but *replaces* lists: a package that sets
+# theme.features or markdown_extensions drops every entry below. So the lists
+# here are the superset used by all packages (features, extensions, snippet
+# base paths, and inventories a package never exercises are harmless); add to
+# them here rather than in a package's mkdocs.yml.
 site_author: Davis Bennett
 use_directory_urls: true
 
@@ -37,6 +41,7 @@ theme:
   features:
     - content.code.annotate
     - content.code.copy
+    - content.tabs.link
     - navigation.indexes
     - navigation.instant
     - navigation.tracking
@@ -92,3 +97,18 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
+  # Content tabs; content.tabs.link in the theme features keeps tab sets
+  # switched together.
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets:
+      # The package root is last so docs/release-notes.md can include the
+      # towncrier-managed CHANGELOG.md without moving it out of the package
+      # root, where it is distributed and linked from the package metadata.
+      # examples/ holds runnable example scripts (zarr-indexing); a missing
+      # base path is skipped.
+      base_path: [docs, examples, .]
+      # Fail the build on an unresolvable include or missing region instead
+      # of silently rendering nothing. zarr-indexing's
+      # tests/test_doc_examples.py mirrors base_path.
+      check_paths: true

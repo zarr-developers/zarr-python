@@ -17,7 +17,7 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Final, Literal, NoReturn, cast
+from typing import Final, Literal, NoReturn, cast
 
 from typing_extensions import TypeIs
 
@@ -62,27 +62,33 @@ class ValidationProblem:
 class MetadataValidationError(ValueError):
     """Raised when a value fails structural metadata validation.
 
-    Carries every problem found (not just the first) in `.problems`.
+    Carries every problem found (not just the first) in `.problems`, as an
+    immutable tuple: a raised error is a finished report, and a caller
+    inspecting it must not be able to edit the record.
     """
 
-    def __init__(self, problems: list[ValidationProblem]) -> None:
-        self.problems = problems
-        super().__init__("\n".join(str(problem) for problem in problems))
+    problems: tuple[ValidationProblem, ...]
+
+    def __init__(self, problems: Sequence[ValidationProblem]) -> None:
+        self.problems = tuple(problems)
+        super().__init__("\n".join(str(problem) for problem in self.problems))
 
 
-def _prefix(loc_head: str | int, problems: list[ValidationProblem]) -> list[ValidationProblem]:
+def _prefix(
+    loc_head: str | int, problems: Sequence[ValidationProblem]
+) -> tuple[ValidationProblem, ...]:
     """Prepend `loc_head` to the `loc` of every problem (for nested validators)."""
-    return [ValidationProblem((loc_head, *p.loc), p.message, p.kind) for p in problems]
+    return tuple(ValidationProblem((loc_head, *p.loc), p.message, p.kind) for p in problems)
 
 
-def validate_json(value: object) -> list[ValidationProblem]:
+def validate_json(value: object) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not JSON-serializable (recursively)."""
     if isinstance(value, float):
         if math.isfinite(value):
-            return []
-        return [ValidationProblem((), f"non-finite float {value!r} is not JSON", "invalid_value")]
+            return ()
+        return (ValidationProblem((), f"non-finite float {value!r} is not JSON", "invalid_value"),)
     if isinstance(value, (str, int, bool)) or value is None:
-        return []
+        return ()
     problems: list[ValidationProblem] = []
     if isinstance(value, Mapping):
         for key, item in cast("Mapping[object, object]", value).items():
@@ -92,12 +98,12 @@ def validate_json(value: object) -> list[ValidationProblem]:
                 )
                 continue
             problems.extend(_prefix(key, validate_json(item)))
-        return problems
+        return tuple(problems)
     if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
         for index, item in enumerate(cast("Sequence[object]", value)):
             problems.extend(_prefix(index, validate_json(item)))
-        return problems
-    return [ValidationProblem((), f"not a JSON-serializable value: {value!r}", "invalid_type")]
+        return tuple(problems)
+    return (ValidationProblem((), f"not a JSON-serializable value: {value!r}", "invalid_type"),)
 
 
 def _is_canonical_json(value: object) -> TypeIs[JSONValue]:
@@ -126,7 +132,7 @@ def parse_json(value: object) -> JSONValue:
     """Return a canonical `JSONValue`, or raise `MetadataValidationError`."""
     normalized = arrays_to_tuples(value)
     problems = validate_json(normalized)
-    if problems:
+    if len(problems) != 0:
         raise MetadataValidationError(problems)
     return cast(JSONValue, normalized)
 
@@ -177,17 +183,19 @@ GROUP_METADATA_STANDARD_KEYS_V2: Final[frozenset[str]] = (
 )
 
 
-def _missing_keys(required: frozenset[str], doc: Mapping[str, object]) -> list[ValidationProblem]:
+def _missing_keys(
+    required: frozenset[str], doc: Mapping[str, object]
+) -> tuple[ValidationProblem, ...]:
     """One `missing_key` problem per required key absent from `doc`."""
-    return [
+    return tuple(
         ValidationProblem((key,), "missing required key", "missing_key")
         for key in sorted(required - doc.keys())
-    ]
+    )
 
 
 def _unexpected_keys(
     allowed: frozenset[str], doc: Mapping[object, object]
-) -> list[ValidationProblem]:
+) -> tuple[ValidationProblem, ...]:
     """One problem per member outside a closed document's declared shape."""
     problems: list[ValidationProblem] = []
     for key in doc:
@@ -199,18 +207,18 @@ def _unexpected_keys(
             problems.append(
                 ValidationProblem((key,), "unexpected document member", "invalid_value")
             )
-    return problems
+    return tuple(problems)
 
 
 def _check_literal(
     doc: Mapping[str, object], key: str, expected: object
-) -> list[ValidationProblem]:
+) -> tuple[ValidationProblem, ...]:
     """One `invalid_value` problem if `doc[key]` is present but not `expected`."""
     if key in doc and (type(doc[key]) is not type(expected) or doc[key] != expected):
-        return [
-            ValidationProblem((key,), f"expected {expected!r}, got {doc[key]!r}", "invalid_value")
-        ]
-    return []
+        return (
+            ValidationProblem((key,), f"expected {expected!r}, got {doc[key]!r}", "invalid_value"),
+        )
+    return ()
 
 
 def _validate_extension_fields_v3(
@@ -218,7 +226,7 @@ def _validate_extension_fields_v3(
     standard_keys: frozenset[str],
     *,
     additional_reserved_keys: frozenset[str] = frozenset(),
-) -> list[ValidationProblem]:
+) -> tuple[ValidationProblem, ...]:
     """Validate v3 top-level key types and unknown-field JSON payloads."""
     problems: list[ValidationProblem] = []
     reserved_keys = standard_keys | additional_reserved_keys
@@ -231,27 +239,27 @@ def _validate_extension_fields_v3(
         if key in reserved_keys:
             continue
         problems.extend(_prefix(key, validate_json(value)))
-    return problems
+    return tuple(problems)
 
 
 def validate_metadata_field_v3(
     value: object, *, allow_must_understand_false: bool = True
-) -> list[ValidationProblem]:
+) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not a v3 metadata field.
 
     A metadata field is a bare name string or a mapping containing `name` and
     optional `configuration` and `must_understand` members.
     """
     if isinstance(value, str):
-        return []
+        return ()
     if not isinstance(value, Mapping):
-        return [
+        return (
             ValidationProblem(
                 (),
                 "expected a metadata field (string or extension object)",
                 "invalid_type",
-            )
-        ]
+            ),
+        )
     field = cast("Mapping[object, object]", value)
     problems: list[ValidationProblem] = []
     allowed_keys = frozenset({"name", "configuration", "must_understand"})
@@ -293,7 +301,7 @@ def validate_metadata_field_v3(
                     "invalid_value",
                 )
             )
-    return problems
+    return tuple(problems)
 
 
 def is_metadata_field_v3(value: object) -> TypeIs[ZarrV3MetadataFieldJSON]:
@@ -310,7 +318,7 @@ def parse_metadata_field_v3(value: object) -> ZarrV3MetadataFieldJSON:
     """Return `value` narrowed to `ZarrV3MetadataFieldJSON`, or raise `MetadataValidationError`."""
     normalized = arrays_to_tuples(value)
     problems = validate_metadata_field_v3(normalized)
-    if problems:
+    if len(problems) != 0:
         raise MetadataValidationError(problems)
     return cast(ZarrV3MetadataFieldJSON, normalized)
 
@@ -331,19 +339,19 @@ def _is_int_sequence(value: object) -> bool:
     )
 
 
-def _validate_dim_sequence(doc: Mapping[str, object], key: str) -> list[ValidationProblem]:
+def _validate_dim_sequence(doc: Mapping[str, object], key: str) -> tuple[ValidationProblem, ...]:
     """Validate a dimension sequence (`shape` / `chunks`) if present in `doc`.
 
     Dimension lengths are non-negative integers.
     """
     if key not in doc:
-        return []
+        return ()
     value = doc[key]
     if not _is_int_sequence(value):
-        return [ValidationProblem((key,), "expected a sequence of int", "invalid_type")]
+        return (ValidationProblem((key,), "expected a sequence of int", "invalid_type"),)
     if any(item < 0 for item in cast("Sequence[int]", value)):
-        return [ValidationProblem((key,), "expected non-negative integers", "invalid_value")]
-    return []
+        return (ValidationProblem((key,), "expected non-negative integers", "invalid_value"),)
+    return ()
 
 
 def _is_dtype_v2(value: object) -> bool:
@@ -447,18 +455,18 @@ def _is_codec_v2(value: object) -> bool:
     )
 
 
-def _validate_codec_v2(value: object) -> list[ValidationProblem]:
+def _validate_codec_v2(value: object) -> tuple[ValidationProblem, ...]:
     """Validate a v2 codec's required shape and JSON-valued configuration."""
     if not _is_codec_v2(value):
-        return [
+        return (
             ValidationProblem(
                 (), "expected a codec configuration with a string 'id'", "invalid_type"
-            )
-        ]
+            ),
+        )
     return validate_json(value)
 
 
-def _validate_attributes(value: object) -> list[ValidationProblem]:
+def _validate_attributes(value: object) -> tuple[ValidationProblem, ...]:
     """Validate an `attributes` value: a mapping with string keys.
 
     Returns a problem at `("attributes",)` if it is not, else `[]`. Shared by the
@@ -470,27 +478,27 @@ def _validate_attributes(value: object) -> list[ValidationProblem]:
     if not isinstance(value, Mapping) or not all(
         isinstance(k, str) for k in cast("Mapping[object, object]", value)
     ):
-        return [
+        return (
             ValidationProblem(
                 ("attributes",), "expected a mapping with string keys", "invalid_type"
-            )
-        ]
+            ),
+        )
     problems: list[ValidationProblem] = []
     for key, item in cast("Mapping[str, object]", value).items():
         problems.extend(_prefix("attributes", _prefix(key, validate_json(item))))
-    return problems
+    return tuple(problems)
 
 
-def validate_array_metadata_v3(value: object) -> list[ValidationProblem]:
+def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not a structurally-valid v3 array doc.
 
     Checks structure, not domain validity. Unknown top-level keys are allowed
     (they map to `extra_fields`).
     """
     if not isinstance(value, Mapping):
-        return [ValidationProblem((), "expected a mapping", "invalid_type")]
+        return (ValidationProblem((), "expected a mapping", "invalid_type"),)
     doc = cast("Mapping[str, object]", value)
-    problems: list[ValidationProblem] = _missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V3, doc)
+    problems: list[ValidationProblem] = list(_missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V3, doc))
     problems.extend(
         _validate_extension_fields_v3(
             cast("Mapping[object, object]", value), ARRAY_METADATA_STANDARD_KEYS_V3
@@ -552,7 +560,7 @@ def validate_array_metadata_v3(value: object) -> list[ValidationProblem]:
                     "invalid_value",
                 )
             )
-    return problems
+    return tuple(problems)
 
 
 def is_array_metadata_v3(value: object) -> TypeIs[ZarrV3ArrayMetadataJSON]:
@@ -568,12 +576,12 @@ def parse_array_metadata_v3(value: object) -> ZarrV3ArrayMetadataJSON:
     """Return `value` as `ZarrV3ArrayMetadataJSON`, or raise `MetadataValidationError`."""
     normalized = arrays_to_tuples(value)
     problems = validate_array_metadata_v3(normalized)
-    if problems:
+    if len(problems) != 0:
         raise MetadataValidationError(problems)
     return cast("ZarrV3ArrayMetadataJSON", normalized)
 
 
-def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
+def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not a structurally-valid v2 array doc.
 
     Checks structure, not domain validity: `dtype` must be a string or field
@@ -582,20 +590,22 @@ def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
     codec configurations (mappings with a string `id`).
     """
     if not isinstance(value, Mapping):
-        return [ValidationProblem((), "expected a mapping", "invalid_type")]
+        return (ValidationProblem((), "expected a mapping", "invalid_type"),)
     doc = cast("Mapping[str, object]", value)
-    problems: list[ValidationProblem] = _missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc)
-    problems.extend(
-        _unexpected_keys(ARRAY_METADATA_STANDARD_KEYS_V2, cast("Mapping[object, object]", value))
-    )
+    # Unlike the group document ("Other keys MUST NOT be present",
+    # https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313), the v2 array document is open: other keys "SHOULD NOT be
+    # present within the metadata object and SHOULD be ignored by
+    # implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), so members outside
+    # ARRAY_METADATA_STANDARD_KEYS_V2 are not problems.
+    problems: list[ValidationProblem] = list(_missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc))
     problems.extend(_check_literal(doc, "zarr_format", 2))
     shape_problems = _validate_dim_sequence(doc, "shape")
     chunks_problems = _validate_dim_sequence(doc, "chunks")
     problems.extend(shape_problems)
     problems.extend(chunks_problems)
     if (
-        not shape_problems
-        and not chunks_problems
+        len(shape_problems) == 0
+        and len(chunks_problems) == 0
         and _is_int_sequence(doc.get("shape"))
         and _is_int_sequence(doc.get("chunks"))
     ):
@@ -642,10 +652,8 @@ def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
                 )
             )
         elif filters is not None:
-            if len(cast("Sequence[object]", filters)) == 0:
-                problems.append(
-                    ValidationProblem(("filters",), "expected at least one filter", "invalid_value")
-                )
+            # "A list of JSON objects providing codec configurations, or
+            # null" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79): an empty list is a list.
             for index, item in enumerate(cast("Sequence[object]", filters)):
                 problems.extend(_prefix("filters", _prefix(index, validate_json(item))))
     if "dimension_separator" in doc and doc["dimension_separator"] not in (".", "/"):
@@ -660,7 +668,7 @@ def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
         problems.extend(_prefix("fill_value", validate_json(doc["fill_value"])))
     if "attributes" in doc:
         problems.extend(_validate_attributes(doc["attributes"]))
-    return problems
+    return tuple(problems)
 
 
 def is_array_metadata_v2(value: object) -> TypeIs[ZarrV2ArrayMetadataJSON]:
@@ -676,12 +684,12 @@ def parse_array_metadata_v2(value: object) -> ZarrV2ArrayMetadataJSON:
     """Return `value` as `ZarrV2ArrayMetadataJSON`, or raise `MetadataValidationError`."""
     normalized = arrays_to_tuples(value)
     problems = validate_array_metadata_v2(normalized)
-    if problems:
+    if len(problems) != 0:
         raise MetadataValidationError(problems)
     return cast("ZarrV2ArrayMetadataJSON", normalized)
 
 
-def validate_consolidated_metadata_v3(value: object) -> list[ValidationProblem]:
+def validate_consolidated_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not a valid inline consolidated envelope.
 
     Locs are value-relative (the caller prefixes with `consolidated_metadata`
@@ -690,7 +698,7 @@ def validate_consolidated_metadata_v3(value: object) -> list[ValidationProblem]:
     `ZarrV3ConsolidatedMetadata.from_json` accepts.
     """
     if not isinstance(value, Mapping):
-        return [ValidationProblem((), "expected a mapping", "invalid_type")]
+        return (ValidationProblem((), "expected a mapping", "invalid_type"),)
     env = cast("Mapping[str, object]", value)
     problems: list[ValidationProblem] = [
         ValidationProblem((key,), "missing required key", "missing_key")
@@ -737,10 +745,10 @@ def validate_consolidated_metadata_v3(value: object) -> list[ValidationProblem]:
                             "invalid_value",
                         )
                     )
-    return problems
+    return tuple(problems)
 
 
-def validate_group_metadata_v3(value: object) -> list[ValidationProblem]:
+def validate_group_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not a structurally-valid v3 group doc.
 
     Checks structure, not domain validity. Unknown top-level keys are allowed
@@ -749,9 +757,9 @@ def validate_group_metadata_v3(value: object) -> list[ValidationProblem]:
     `validate_consolidated_metadata_v3`.
     """
     if not isinstance(value, Mapping):
-        return [ValidationProblem((), "expected a mapping", "invalid_type")]
+        return (ValidationProblem((), "expected a mapping", "invalid_type"),)
     doc = cast("Mapping[str, object]", value)
-    problems: list[ValidationProblem] = _missing_keys(GROUP_METADATA_REQUIRED_KEYS_V3, doc)
+    problems: list[ValidationProblem] = list(_missing_keys(GROUP_METADATA_REQUIRED_KEYS_V3, doc))
     problems.extend(
         _validate_extension_fields_v3(
             cast("Mapping[object, object]", value),
@@ -773,7 +781,7 @@ def validate_group_metadata_v3(value: object) -> list[ValidationProblem]:
                 validate_consolidated_metadata_v3(doc["consolidated_metadata"]),
             )
         )
-    return problems
+    return tuple(problems)
 
 
 def is_group_metadata_v3(value: object) -> TypeIs[ZarrV3GroupMetadataJSON]:
@@ -785,28 +793,28 @@ def parse_group_metadata_v3(value: object) -> ZarrV3GroupMetadataJSON:
     """Return `value` narrowed to `ZarrV3GroupMetadataJSON`, or raise `MetadataValidationError`."""
     normalized = arrays_to_tuples(value)
     problems = validate_group_metadata_v3(normalized)
-    if problems:
+    if len(problems) != 0:
         raise MetadataValidationError(problems)
     return cast(ZarrV3GroupMetadataJSON, normalized)
 
 
-def validate_group_metadata_v2(value: object) -> list[ValidationProblem]:
+def validate_group_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not a structurally-valid v2 group doc.
 
     Validates the in-memory merged form: the `.zgroup` fields plus an
     optional `attributes` mapping folded in from `.zattrs`.
     """
     if not isinstance(value, Mapping):
-        return [ValidationProblem((), "expected a mapping", "invalid_type")]
+        return (ValidationProblem((), "expected a mapping", "invalid_type"),)
     doc = cast("Mapping[str, object]", value)
-    problems: list[ValidationProblem] = _missing_keys(GROUP_METADATA_REQUIRED_KEYS_V2, doc)
+    problems: list[ValidationProblem] = list(_missing_keys(GROUP_METADATA_REQUIRED_KEYS_V2, doc))
     problems.extend(
         _unexpected_keys(GROUP_METADATA_STANDARD_KEYS_V2, cast("Mapping[object, object]", value))
     )
     problems.extend(_check_literal(doc, "zarr_format", 2))
     if "attributes" in doc:
         problems.extend(_validate_attributes(doc["attributes"]))
-    return problems
+    return tuple(problems)
 
 
 def is_group_metadata_v2(value: object) -> TypeIs[ZarrV2GroupMetadataJSON]:
@@ -818,7 +826,7 @@ def parse_group_metadata_v2(value: object) -> ZarrV2GroupMetadataJSON:
     """Return `value` narrowed to `ZarrV2GroupMetadataJSON`, or raise `MetadataValidationError`."""
     normalized = arrays_to_tuples(value)
     problems = validate_group_metadata_v2(normalized)
-    if problems:
+    if len(problems) != 0:
         raise MetadataValidationError(problems)
     return cast(ZarrV2GroupMetadataJSON, normalized)
 
@@ -828,8 +836,12 @@ def _reject_json_constant(constant: str) -> NoReturn:
     raise ValueError(f"non-standard JSON constant {constant!r}")
 
 
-def load_store_json(mapping: Mapping[str, bytes], key: str) -> Any:
+def load_store_json(mapping: Mapping[str, bytes], key: str) -> object:
     """Decode the JSON document stored at `key` in `mapping`.
+
+    Returns `object`, not `Any`: what a store holds is unknown until a
+    validator says otherwise, and `Any` would let unchecked values flow
+    into typed positions silently. Narrow the result with a `parse_*`.
 
     Every ingestion failure surfaces as `MetadataValidationError`: a missing
     store key is a `missing_key` problem and undecodable bytes are an

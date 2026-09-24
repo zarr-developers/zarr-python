@@ -27,20 +27,22 @@ DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR: Final = ("/", ".")
 """Tuple of permitted values for the `separator` field of the default chunk key encoding."""
 
 
-class DefaultChunkKeyEncodingConfiguration(TypedDict):
+class DefaultChunkKeyEncodingConfiguration(TypedDict, closed=True):
     """Configuration for the default chunk key encoding.
 
     `separator` is optional and defaults to `"/"` per spec.
+      https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-key-encodings/default/index.rst#L27-L29
     """
 
     separator: NotRequired[DefaultChunkKeyEncodingSeparator]
 
 
-class DefaultChunkKeyEncodingObject(TypedDict):
+class DefaultChunkKeyEncodingObject(TypedDict, closed=True):
     """Default chunk key encoding metadata in object form."""
 
     name: DefaultChunkKeyEncodingName
     configuration: NotRequired[DefaultChunkKeyEncodingConfiguration]
+    must_understand: NotRequired[bool]
 
 
 DefaultChunkKeyEncodingMetadata = DefaultChunkKeyEncodingObject | DefaultChunkKeyEncodingName

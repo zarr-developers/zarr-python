@@ -13,15 +13,14 @@ from zarr.core.common import (
     NamedConfig,
     parse_named_configuration,
 )
+from zarr.core.json_parse import parse_field
 from zarr.registry import get_chunk_key_encoding_class, register_chunk_key_encoding
 
 SeparatorLiteral = Literal[".", "/"]
 
 
 def parse_separator(data: JSON) -> SeparatorLiteral:
-    if data not in (".", "/"):
-        raise ValueError(f"Expected an '.' or '/' separator. Got {data} instead.")
-    return cast("SeparatorLiteral", data)
+    return cast("SeparatorLiteral", parse_field(data, Literal[".", "/"], "separator"))
 
 
 class ChunkKeyEncodingParams(TypedDict):

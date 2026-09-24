@@ -13,10 +13,15 @@
   const REPO = segments.slice(0, 2).join("/")
   const PREFIX = segments[segments.length - 1].replace(/-/g, "_") + "-"
 
+  /* Final releases only (v1.2.3), matching the theme's own releases/latest
+     lookup; pre-release parts like 0rc1 would otherwise parse as 0 and tie
+     with (or outrank) the final release. */
+  const RELEASE = /^v?\d+(\.\d+)*$/
+
   const parse = version => version
     .replace(/^v/, "")
-    .split(/[.+-]/)
-    .map(part => parseInt(part, 10) || 0)
+    .split(".")
+    .map(part => parseInt(part, 10))
 
   const newestFirst = (a, b) => {
     const va = parse(a), vb = parse(b)
@@ -45,6 +50,7 @@
       .map(tag => tag.name)
       .filter(name => name.startsWith(PREFIX))
       .map(name => name.slice(PREFIX.length))
+      .filter(version => RELEASE.test(version))
       .sort(newestFirst)
     if (versions[0])
       sessionStorage.setItem(CACHE_KEY, versions[0])

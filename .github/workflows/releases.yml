@@ -38,7 +38,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install Hatch
-        uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+        uses: pypa/hatch@f647ed70d49adb885f53a27d1c7f5bdaeacf2c60
         with:
           version: '1.16.5'
       - name: Build wheel and sdist
@@ -81,7 +81,7 @@ jobs:
           name: releases
           path: dist
       - name: Generate artifact attestation
-        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: dist/*
       - name: Publish package to PyPI

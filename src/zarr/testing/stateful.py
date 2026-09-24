@@ -152,31 +152,12 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         )
         note(f"Adding array:  path='{path}'  shape={a.shape}  chunks={a.metadata.chunk_grid}")
 
-        # Recreate the same array in the store under test
-        from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
-
-        chunk_grid = a.metadata.chunk_grid
-        chunks_param: tuple[int, ...] | list[list[int]]
-        if isinstance(chunk_grid, RectilinearChunkGridMetadata):
-            chunks_param = [
-                list(dim) if isinstance(dim, tuple) else [dim] for dim in chunk_grid.chunk_shapes
-            ]
-        elif isinstance(chunk_grid, RegularChunkGridMetadata):
-            chunks_param = chunk_grid.chunk_shape
-        else:
-            chunks_param = a.chunks
-
-        root = zarr.open_group(store=self.store, mode="a")
-        arr = root.create_array(
-            path,
-            shape=a.shape,
-            chunks=chunks_param,
-            dtype=a.dtype,
-            fill_value=a.fill_value,
-            dimension_names=a.metadata.dimension_names,  # type: ignore[union-attr]
-            compressors=None,
+        # Recreate the same array, including its data, in the store under test.
+        zarr.from_array(
+            self.store,
+            data=a,
+            name=path,
         )
-        arr[:] = a[:]
         self.all_arrays.add(path)
 
     @rule()

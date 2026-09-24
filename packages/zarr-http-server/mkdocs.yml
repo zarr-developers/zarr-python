@@ -1,0 +1,18 @@
+INHERIT: ../mkdocs-base.yml
+
+site_name: zarr-http-server
+# The package lives in the zarr-python monorepo; point the header source
+# widget at the package directory rather than the repository root.
+repo_name: zarr-python/packages/zarr-http-server
+repo_url: https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-http-server
+# Absolute because mkdocs would otherwise append this to repo_url's subpath.
+edit_uri: https://github.com/zarr-developers/zarr-python/edit/main/packages/zarr-http-server/docs/
+site_description: HTTP server for Zarr stores, arrays, and groups.
+site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr-http-server.readthedocs.io/']
+
+nav:
+  - index.md
+  - guide.md
+  - API Reference:
+      - api/index.md
+  - Release notes: release-notes.md

@@ -25,6 +25,9 @@ jobs:
 
   hypothesis:
     name: Slow Hypothesis Tests
+    permissions:
+      contents: read
+      issues: write
     environment:
       name: codecov-upload
       deployment: false
@@ -57,17 +60,21 @@ jobs:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
     - name: Install uv
-      uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
     - name: Install Hatch
-      uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+      uses: pypa/hatch@f647ed70d49adb885f53a27d1c7f5bdaeacf2c60
       with:
         version: '1.16.5'
+    - name: Install just
+      uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+      with:
+        repo: casey/just
+        version: 1.58.0
     - name: Set Up Hatch Env
       env:
         HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
       run: |
-        hatch env create "$HATCH_ENV"
-        hatch env run -e "$HATCH_ENV" list-env
+        just setup
     # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache
     - name: Restore cached hypothesis directory
       id: restore-hypothesis-cache
@@ -83,9 +90,10 @@ jobs:
       id: status
       env:
         HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
+        PYTEST_ADDOPTS: "--report-log=output-${{ matrix.python-version }}-log.jsonl"
       run: |
         echo "Using Hypothesis profile: $HYPOTHESIS_PROFILE"
-        hatch env run --env "$HATCH_ENV" run-hypothesis
+        just hypothesis
 
     # explicitly save the cache so it gets updated, also do this even if it fails.
     - name: Save cached hypothesis directory
@@ -97,7 +105,7 @@ jobs:
         key: cache-hypothesis-${{ runner.os }}-${{ github.run_id }}
 
     - name: Upload coverage
-      uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+      uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: tests
@@ -109,8 +117,8 @@ jobs:
         && steps.status.outcome == 'failure'
         && github.event_name == 'schedule'
         && github.repository_owner == 'zarr-developers'
-      uses: scientific-python/issue-from-pytest-log-action@054799b34bd75a5fd6c86277a4a8a575224e60c6 # v1.6.1
+      uses: scientific-python/issue-from-pytest-log-action@35b4e0a9e06f8e7e261778289cf4b968b722662d # v1.6.2
       with:
         log-path: output-${{ matrix.python-version }}-log.jsonl
         issue-title: "Nightly Hypothesis tests failed"
-        issue-label: "topic-hypothesis"
+        issue-label: "automated issue"

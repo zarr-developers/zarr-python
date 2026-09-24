@@ -94,5 +94,5 @@ and everything past that belongs to consumer libraries.
 ## Reference
 
 - [API reference](api/index.md)
-- [Changelog](https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-metadata/CHANGELOG.md)
+- [Release notes](release-notes.md)
 - [License (MIT)](https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-metadata/LICENSE.txt)

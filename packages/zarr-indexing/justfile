@@ -2,29 +2,39 @@
 # directory as the working directory regardless of where `just` is invoked.
 
 # List available recipes
+# Quoted arguments must survive delegation from the root Justfile.
+set positional-arguments
+
 default:
     @just --list
 
-# The chunk-resolution tests exercise this package against zarr's ChunkGrid, so
-# they need an environment that has both `zarr` and this package installed.
-# `zarr` is deliberately not a dependency of this package, and the repo is not
-# a uv workspace, so run against the repo-root environment (which provides
-# `zarr`) with this package layered in as an editable overlay — the same
-# invocation CI uses.
+# The suite runs against the root test environment, which also supplies
+# Zarr for the Dask example. This package is layered in as an editable
+# overlay, using the same test invocation as CI.
 # Run the test suite; extra args are passed to pytest
 test *args:
-    uv run --project ../.. --group test --with-editable . python -m pytest tests {{ args }}
+    uv run --project ../.. --group test --with-editable . python -m pytest tests src/zarr_indexing "$@"
 
-# Lint with the same invocation CI uses
+# TensorStore is the oracle for the parity suites, which skip without it. It
+# ships binary wheels only, so it rides in as a run-time overlay rather than
+# joining a dependency group; if a future Python lacks a tensorstore wheel,
+# gate the CI job that calls this on the matrix version.
+# Run the tensorstore parity suites; extra args are passed to pytest
+test-tensorstore *args:
+    uv run --project ../.. --group test --with-editable . --with 'tensorstore>=0.1.84' python -m pytest tests/test_ndsel_tensorstore.py tests/test_tensorstore_parity.py "$@"
+
+# Lint with the same invocation CI uses. Ruff is pinned to the repo-wide
+# version in the root .pre-commit-config.yaml; bump together.
 lint:
-    uvx ruff check .
+    uvx ruff@0.16.0 check .
 
-# Type-check the package sources
+# Type-check the package sources, documentation Python, and their contract tests
 typecheck:
-    uv run --group test --with pyright pyright src
+    uv run --group test --with pyright pyright
 
-# Run everything CI runs for this package
-check: lint typecheck test docs-check
+# Run these checks with the locally selected interpreter and dependencies;
+# CI also exercises its configured Python-version matrix
+check: lint typecheck test test-tensorstore docs-check
 
 # Preview the changelog that the next release would generate
 changelog-draft:

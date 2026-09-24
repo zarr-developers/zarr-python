@@ -5,21 +5,41 @@ Composable, lazy coordinate transforms for Zarr array indexing.
 Documentation: <https://zarr-indexing.readthedocs.io/>
 
 This package implements TensorStore-inspired index transforms. The core idea:
-every indexing operation (slicing, fancy indexing, etc.) produces a coordinate
-mapping from user space to storage space. These mappings compose lazily — no
-I/O until you explicitly read or write.
+each supported indexing operation (slicing, fancy indexing, etc.) produces a coordinate
+mapping from user space to storage space. These mappings compose without reading selected source values. `LazyArray`
+materializes them on request; the transform algebra itself performs no source I/O.
 
 Key types:
 
+- `LazyArray` — wraps a system-memory/basic-indexing source with lazy indexing:
+  `LazyArray.from_numpy(numpy_array)[10:50, ::2].oindex[[3, 1, 1], :]`.
+  The key's type picks the frame: NumPy keys are positions relative to the
+  view, while an `IndexDomain` or `IndexTransform` key addresses the view's
+  absolute domain, which every view keeps.
+  composes a transform and returns a new view without reading data, and
+  `result()` materializes it into owned system memory. `LazyArray(source)` uses
+  the basic reader; `from_numpy` selects `numpy_reader`, which currently uses
+  the same slab-and-gather implementation. Device sources that refuse NumPy
+  conversion need a custom reader to transfer values into the output buffer.
+- `Reader` — the explicit backend execution boundary: transforms say which
+  values belong in the result, while readers say how a backend obtains them
 - `IndexDomain` — a rectangular region of integer coordinates
 - `IndexTransform` — maps input coordinates to storage coordinates
+- `ChunkPlan` and `ChunkProjection` — lazily partition a selection over a
+  caller-selected grid and pair each chunk-local transform with its placement in
+  the request, without binding a storage backend or scheduler
+- `GridPartition` — the plan's factored, columnar form: one table per axis
+  (`StridedSet`, `IndexedSet`) plus `joint_sets` for connected index-array components,
+  from which projections are derived on demand
 - `ConstantMap`, `DimensionMap`, `ArrayMap` — the three ways a single output
   dimension can depend on the input
 - `compose` — chain two transforms into one
 
-The package depends only on NumPy and the standard library; it does not import
-`zarr`. It is developed in the [zarr-python](https://github.com/zarr-developers/zarr-python)
-repository and consumed by `zarr` to resolve array indexing operations.
+The base package depends on NumPy and the standard library; its optional testing
+module also requires Hypothesis. The package does not import `zarr`. It is developed
+in the [zarr-python](https://github.com/zarr-developers/zarr-python) repository,
+and its examples include reading Zarr arrays through Dask. Installing it does not
+replace Zarr's indexing implementation.
 
 ## Installation
 
@@ -27,27 +47,14 @@ repository and consumed by `zarr` to resolve array indexing operations.
 pip install zarr-indexing
 ```
 
-## Developing
+## Examples
 
-Package-scoped development commands live in the [`justfile`](./justfile)
-(requires [just](https://github.com/casey/just)):
+- [Lazy indexing a NumPy array](examples/lazy_indexing_numpy/README.md)
+- [Lazy indexing with Dask](examples/lazy_indexing_dask/README.md)
 
-```
-just test        # run the test suite (extra args go to pytest)
-just lint        # ruff, same invocation as CI
-just typecheck   # pyright, same invocation as CI
-just docs-check  # strict build of the docs site
-just check       # all of the above
-just docs-serve  # serve the docs site locally
-```
+## Contributing
 
-Run them from this directory, or from anywhere in the repository as
-`just packages/zarr-indexing/<recipe>`.
-
-The test recipe runs against the workspace-root environment, because the
-chunk-resolution tests exercise this package against `zarr`'s chunk grids and
-`zarr` is deliberately not a dependency of this package.
-
-## License
-
-MIT
+Development commands, the test suite and the docs build are described in
+[CONTRIBUTING.md](https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-indexing/CONTRIBUTING.md)
+in the repository. Issues and pull requests go to
+[zarr-developers/zarr-python](https://github.com/zarr-developers/zarr-python).

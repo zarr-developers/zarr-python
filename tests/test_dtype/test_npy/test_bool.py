@@ -18,9 +18,9 @@ class TestBool(BaseTestZDType):
     valid_json_v2 = ({"name": "|b1", "object_codec_id": None},)
     valid_json_v3 = ("bool",)
     invalid_json_v2 = (
-        "|b1",
-        "bool",
-        "|f8",
+        {"name": "|b1", "object_codec_id": "vlen-utf8"},
+        {"name": "bool", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
     )
     invalid_json_v3 = (
         "|b1",

@@ -28,13 +28,22 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - name: Install Hatch
-      uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+      uses: pypa/hatch@f647ed70d49adb885f53a27d1c7f5bdaeacf2c60
       with:
         version: '1.16.5'
+    # No interpreter is set up in this job on purpose. Benchmarks are only comparable
+    # across runs if the interpreter underneath them does not move: adding a pinned
+    # Python here measured a uniform ~13% slowdown on every benchmark, because hatch
+    # then built the environment on that interpreter instead of the runner's own.
+    - name: Install just
+      uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+      with:
+        repo: casey/just
+        version: 1.58.0
     - name: Run the benchmarks
-      uses: CodSpeedHQ/action@88472375d0a4572cf70a9f1fe3a4e0ab8da1b924 # v5.0.1
+      uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
       env:
         ZARR_BENCHMARK_CLEAR_CACHE: '1'
       with:
           mode: walltime
-          run: hatch run test.py3.12-minimal:pytest tests/benchmarks --codspeed
+          run: HATCH_ENV=test.py3.12-minimal just benchmark-codspeed

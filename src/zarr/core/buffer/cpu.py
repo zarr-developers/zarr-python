@@ -22,6 +22,10 @@ if TYPE_CHECKING:
     from zarr.core.buffer.core import ArrayLike, NDArrayLike
     from zarr.core.common import BytesLike
 
+# Elements in the first slice examined by `NDBuffer.all_equal`. Large enough to
+# amortise one numpy call, small enough that a mismatch in it is nearly free.
+_ALL_EQUAL_BLOCK = 1 << 14
+
 
 class Buffer(core.Buffer):
     """A flat contiguous memory block
@@ -111,7 +115,6 @@ class Buffer(core.Buffer):
         data = [np.asanyarray(self._data)]
         for buf in others:
             other_array = buf.as_array_like()
-            assert other_array.dtype == np.dtype("B")
             data.append(np.asanyarray(other_array))
         return self.__class__(np.concatenate(data))
 
@@ -189,6 +192,42 @@ class NDBuffer(core.NDBuffer):
         if isinstance(value, NDBuffer):
             value = value._data
         self._data.__setitem__(key, value)
+
+    def all_equal(self, other: Any, equal_nan: bool = True) -> bool:
+        """Whether every element of this buffer equals `other`.
+
+        Returns as soon as part of the buffer is found to differ, rather than
+        reading all of it.
+        """
+        if other is None:
+            # Handle None fill_value for Zarr V2
+            return False
+        data = self._data
+        if data.size == 0 or data.ndim == 0 or np.ndim(other) > 0:
+            # nothing to slice, or `other` has to broadcast against all of `data`
+            return core._array_all_equal(data, other, equal_nan)
+        # A buffer that is not uniformly `other` still has to be read in full
+        # before a whole-buffer comparison can report the first mismatch, and
+        # on the write path that is the common case. Walking it in slices of
+        # the leading axis returns as soon as one slice differs. Slices double
+        # in length, so a buffer that really is uniform is covered in O(log n)
+        # comparisons and costs the same as a single scan. A buffer no larger
+        # than one block is covered by the first slice.
+        #
+        # The leading axis is used rather than a flattened view because a chunk
+        # is usually a strided view into a larger array, which cannot be
+        # flattened without copying it. Slicing axis 0 is a view whatever the
+        # layout.
+        leading = data.shape[0]
+        step = max(1, _ALL_EQUAL_BLOCK // (data.size // leading))
+        start = 0
+        while start < leading:
+            stop = min(start + step, leading)
+            if not core._array_all_equal(data[start:stop], other, equal_nan):
+                return False
+            start = stop
+            step *= 2
+        return True
 
 
 def as_numpy_array_wrapper(

@@ -238,3 +238,61 @@ def test_empty(
         assert result.flags.c_contiguous  # type: ignore[attr-defined]
     else:
         assert result.flags.f_contiguous  # type: ignore[attr-defined]
+
+
+def _all_equal_reference(data: np.ndarray, fill: float) -> bool:
+    """`NDBuffer.all_equal` as it was before the fast paths: one full scan,
+    comparing a zero `fill` bitwise through a void view."""
+    if np.asarray(fill).dtype.kind == "f" and fill == 0.0:
+        void = f"V{data.dtype.itemsize}"
+        expected = np.broadcast_to(np.asarray(fill, data.dtype), data.shape)
+        return bool(np.array_equal(data.view(void), expected.view(void)))
+    return bool(np.array_equal(data, np.broadcast_to(fill, data.shape), equal_nan=True))
+
+
+_BLOCK = 1 << 14
+
+
+def _layouts(dtype: str) -> dict[str, np.ndarray]:
+    """Buffers larger than one scan block and not a whole number of blocks."""
+    side = 211
+    return {
+        "1d": np.zeros(_BLOCK * 3 + 7, dtype=dtype),
+        "C": np.zeros((side, side), dtype=dtype),
+        "F": np.zeros((side, side), dtype=dtype, order="F"),
+        # a chunk carved out of a larger array, which is what the write path passes
+        "strided": np.zeros((2 * side, 2 * side), dtype=dtype)[5 : side + 5, 7 : side + 7],
+        "leading-1": np.zeros((1, _BLOCK * 2), dtype=dtype),
+    }
+
+
+@pytest.mark.parametrize(
+    "dtype", ["float16", "float32", "float64", "complex64", "longdouble", "int32"]
+)
+@pytest.mark.parametrize("layout", ["1d", "C", "F", "strided", "leading-1"])
+@pytest.mark.parametrize("contents", [0.0, -0.0, np.nan, 1.0])
+@pytest.mark.parametrize("mismatch", [None, "first", "last"])
+@pytest.mark.parametrize("fill", [0.0, -0.0, np.nan, 1.0, 0])
+def test_all_equal(
+    dtype: str, layout: str, contents: float, mismatch: str | None, fill: float
+) -> None:
+    """`all_equal` agrees with a full scan, whatever the layout or where a mismatch sits."""
+    data = _layouts(dtype)[layout]
+    if np.dtype(dtype).kind == "i" and contents != 1.0:
+        contents = 0
+    data[...] = contents
+    if mismatch is not None:
+        index = tuple(0 if mismatch == "first" else n - 1 for n in data.shape)
+        data[index] = 7
+    assert cpu.NDBuffer.from_numpy_array(data).all_equal(fill) == _all_equal_reference(data, fill)
+
+
+@pytest.mark.parametrize("dtype", ["float16", "float32", "float64"])
+def test_all_equal_distinguishes_negative_zero(dtype: str) -> None:
+    """Regression test for #3144: -0.0 is not the same chunk as 0.0."""
+    positive = np.zeros(_BLOCK * 2 + 3, dtype=dtype)
+    negative = np.full_like(positive, -0.0)
+    assert cpu.NDBuffer.from_numpy_array(positive).all_equal(0.0)
+    assert not cpu.NDBuffer.from_numpy_array(negative).all_equal(0.0)
+    assert cpu.NDBuffer.from_numpy_array(negative).all_equal(-0.0)
+    assert not cpu.NDBuffer.from_numpy_array(positive).all_equal(-0.0)

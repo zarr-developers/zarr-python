@@ -1,7 +1,8 @@
+import dataclasses
 import itertools
 import math
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal
 
 import hypothesis.extra.numpy as npst
@@ -12,6 +13,7 @@ from hypothesis import event
 from hypothesis.strategies import SearchStrategy
 
 import zarr
+from zarr.abc.codec import Codec
 from zarr.abc.store import (
     ByteRequest,
     OffsetByteRequest,
@@ -26,7 +28,11 @@ from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array import Array, CompressorsLike, SerializerLike
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.common import JSON, AccessModeLiteral, ZarrFormat
-from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.dtype import data_type_registry, get_data_type_from_native_dtype
+from zarr.core.dtype.common import HasItemSize
+from zarr.core.dtype.npy.common import DATETIME_UNIT
+from zarr.core.dtype.npy.structured import Struct
+from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
 from zarr.core.sync import sync
@@ -67,6 +73,123 @@ def dtypes() -> st.SearchStrategy[np.dtype[Any]]:
         | npst.datetime64_dtypes(endianness="=")
         | npst.timedelta64_dtypes(endianness="=")
     )
+
+
+_field_names = st.text(
+    alphabet=st.characters(min_codepoint=97, max_codepoint=122), min_size=1, max_size=4
+)
+_field_titles = st.text(
+    alphabet=st.characters(min_codepoint=65, max_codepoint=90), min_size=1, max_size=4
+)
+
+
+def _leaf_zdtypes(cls: type[ZDType[TBaseDType, TBaseScalar]]) -> SearchStrategy[ZDType[Any, Any]]:
+    """
+    A strategy for instances of a single non-struct `ZDType` class, drawing each constructor
+    parameter the class declares from its valid range.
+    """
+    params = {f.name for f in dataclasses.fields(cls)}
+    kwargs: dict[str, SearchStrategy[Any]] = {}
+    if "endianness" in params:
+        kwargs["endianness"] = st.sampled_from(["little", "big"])
+    if "length" in params:
+        kwargs["length"] = st.integers(min_value=1, max_value=16)
+    if "unit" in params:
+        # NumPy spells the microsecond unit "us", so the "μs" alias never round-trips as-is.
+        kwargs["unit"] = st.sampled_from([u for u in DATETIME_UNIT if u != "μs"])
+        kwargs["scale_factor"] = st.integers(min_value=1, max_value=2**31 - 1)
+        return st.builds(cls, **kwargs).map(_normalize_generic_scale_factor)
+    return st.builds(cls, **kwargs)
+
+
+def _normalize_generic_scale_factor(zdtype: Any) -> Any:
+    """
+    NumPy retains generic scale factors internally, but its dtype string omits them.
+    Use `scale_factor=1` so the generated dtype survives Zarr V2 string serialization.
+    """
+    if zdtype.unit == "generic":
+        return dataclasses.replace(zdtype, scale_factor=1)
+    return zdtype
+
+
+def _struct_zdtypes(
+    children: SearchStrategy[ZDType[Any, Any]],
+) -> SearchStrategy[ZDType[Any, Any]]:
+    """A strategy for `Struct` instances whose field data types are drawn from `children`."""
+
+    @st.composite
+    def _draw(draw: st.DrawFn) -> ZDType[Any, Any]:
+        num_fields = draw(st.integers(min_value=1, max_value=4))
+        # suffix with the index so that names are unique without filtering
+        names = [f"{draw(_field_names)}{i}" for i in range(num_fields)]
+        return Struct(fields=tuple((name, draw(children)) for name in names))
+
+    return _draw()
+
+
+def zdtypes(*, max_leaves: int = 6) -> SearchStrategy[ZDType[Any, Any]]:
+    """
+    Generate instances of the built-in registered `ZDType` classes, including nested `Struct`.
+
+    Struct fields are restricted to fixed-size data types, as required by the V3 `struct`
+    extension. This strategy samples bounded lengths and normalized datetime units/scales;
+    it does not cover every valid instance or arbitrary third-party dtype constructors.
+    """
+    leaf_classes = [cls for cls in data_type_registry.contents.values() if cls is not Struct]
+    leaves = st.one_of([_leaf_zdtypes(cls) for cls in leaf_classes])
+    fixed_size_leaves = st.one_of(
+        [_leaf_zdtypes(cls) for cls in leaf_classes if issubclass(cls, HasItemSize)]
+    )
+    structs = st.recursive(fixed_size_leaves, _struct_zdtypes, max_leaves=max_leaves).filter(
+        lambda dt: isinstance(dt, Struct)
+    )
+    return leaves | structs
+
+
+@st.composite
+def structured_dtypes(
+    draw: st.DrawFn, *, allow_extended: bool = False, max_depth: int = 3
+) -> np.dtype[np.void]:
+    """
+    A strategy for native NumPy structured dtypes, flat or nested.
+
+    With `allow_extended=False` (the default), generate packed fields without titles or
+    subarray shapes. With `allow_extended=True`, also generate field titles, subarray fields,
+    and `align=True` layouts, independently. The current native dtype conversion rejects
+    titles and subarray fields and accepts padding with a warning. These are implementation
+    behaviors, not restrictions imposed by the V2 format.
+    """
+    fixed_size_leaves = st.one_of(
+        [
+            _leaf_zdtypes(cls)
+            for cls in data_type_registry.contents.values()
+            if cls is not Struct and issubclass(cls, HasItemSize)
+        ]
+    )
+
+    def build(depth: int) -> np.dtype[np.void]:
+        num_fields = draw(st.integers(min_value=1, max_value=4))
+        # suffix with the index so that names and titles are unique without filtering; titles
+        # draw from a different alphabet so they never collide with names either
+        names = [f"{draw(_field_names)}{i}" for i in range(num_fields)]
+        titles = [f"{draw(_field_titles)}{i}" for i in range(num_fields)]
+        specs: list[tuple[Any, Any]] = []
+        for name, title in zip(names, titles, strict=True):
+            field_dtype: Any
+            if depth < max_depth and draw(st.booleans()):
+                field_dtype = build(depth + 1)
+            else:
+                field_dtype = draw(fixed_size_leaves).to_native_dtype()
+            key: Any = name
+            if allow_extended and draw(st.booleans()):
+                key = (title, name)
+            if allow_extended and draw(st.booleans()):
+                field_dtype = (field_dtype, draw(npst.array_shapes(max_dims=2, max_side=3)))
+            specs.append((key, field_dtype))
+        align = allow_extended and draw(st.booleans())
+        return np.dtype(specs, align=align)
+
+    return build(0)
 
 
 def v3_dtypes() -> st.SearchStrategy[np.dtype[Any]]:
@@ -256,6 +379,30 @@ def shard_shapes(
 
 
 @st.composite
+def _sharding_codecs(
+    draw: st.DrawFn,
+    *,
+    chunk_shape: tuple[int, ...],
+    codecs: Sequence[Codec] | None = None,
+) -> ShardingCodec:
+    """A ``ShardingCodec`` over ``chunk_shape`` with a drawn subchunk write order.
+
+    The inner codec chain is drawn from ``sharding_inner_codecs`` unless ``codecs``
+    is given, which lets a caller nest another ``ShardingCodec`` inside.
+    """
+    subchunk_write_order = draw(subchunk_write_orders)
+    inner_codecs: Sequence[Codec] = (
+        draw(sharding_inner_codecs, label="sharding inner codecs") if codecs is None else codecs
+    )
+    return ShardingCodec(
+        subchunk_write_order=subchunk_write_order,
+        codecs=inner_codecs,
+        index_codecs=[BytesCodec(), Crc32cCodec()],
+        chunk_shape=chunk_shape,
+    )
+
+
+@st.composite
 def np_array_and_chunks(
     draw: st.DrawFn,
     *,
@@ -312,36 +459,29 @@ def arrays(
     # - RegularChunkGridMetadata -> flat tuple of ints
     # - RectilinearChunkGridMetadata -> nested list of ints (triggers rectilinear path)
     # - v2 -> flat tuple of ints
-    chunks_param: tuple[int, ...] | list[list[int]]
+    chunks_param: tuple[int, ...] | list[int | list[int]]
     shard_shape = None
     dim_names = None
     if zarr_format == 3:
         chunk_grid_meta = draw(st.none() | chunk_grids(shape=nparray.shape), label="chunk grid")
         dim_names = draw(dimension_names(ndim=nparray.ndim), label="dimension names")
         if isinstance(chunk_grid_meta, RectilinearChunkGridMetadata):
-            chunks_param = [
-                list(dim) if isinstance(dim, tuple) else [dim]
-                for dim in chunk_grid_meta.chunk_shapes
-            ]
+            chunks_param = chunks_param_from_rectilinear(chunk_grid_meta)
         elif isinstance(chunk_grid_meta, RegularChunkGridMetadata):
             chunks_param = chunk_grid_meta.chunk_shape
         else:
             chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
 
-            if all(s > c > 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
+            # Any chunk that fits the array can be sharded: shard_shapes draws a
+            # whole number of chunks per axis, one inner chunk included.
+            if all(s >= c >= 1 for s, c in zip(nparray.shape, chunks_param, strict=True)):
                 shard_shape = draw(
                     st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunks_param),
                     label="shard shape",
                 )
+                event("sharded" if shard_shape is not None else "unsharded")
                 if shard_shape is not None:
-                    subchunk_write_order = draw(subchunk_write_orders)
-                    inner_codecs = draw(sharding_inner_codecs, label="sharding inner codecs")
-                    serializer = ShardingCodec(
-                        subchunk_write_order=subchunk_write_order,
-                        codecs=inner_codecs,
-                        index_codecs=[BytesCodec(), Crc32cCodec()],
-                        chunk_shape=chunks_param,
-                    )
+                    serializer = draw(_sharding_codecs(chunk_shape=chunks_param))
                     compressors_unsearched = None
     else:
         chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
@@ -402,6 +542,19 @@ def simple_arrays(
             compressors=st.sampled_from([None, "default"]),
         )
     )
+
+
+def chunks_param_from_rectilinear(
+    meta: RectilinearChunkGridMetadata,
+) -> list[int | list[int]]:
+    """Convert rectilinear chunk grid metadata into a `chunks=` argument.
+
+    Explicit edge tuples become lists. Bare ints — the spec's step-size
+    shorthand meaning "repeat to cover the axis" — pass through unchanged;
+    wrapping one in a single-element list would instead declare exactly one
+    chunk, which fails normalization whenever the axis needs more than one.
+    """
+    return [list(dim) if isinstance(dim, tuple) else dim for dim in meta.chunk_shapes]
 
 
 @st.composite
@@ -520,6 +673,83 @@ def rectilinear_arrays(
     return a
 
 
+# Sharded arrays need min_side >= 1: a shard must hold at least one chunk on every axis.
+_sharded_shapes = npst.array_shapes(max_dims=4, min_side=1, max_side=8)
+
+
+@st.composite
+def sharded_arrays(
+    draw: st.DrawFn,
+    *,
+    shapes: st.SearchStrategy[tuple[int, ...]] = _sharded_shapes,
+    nested: bool | None = None,
+) -> Any:
+    """Generate a zarr v3 array whose chunks are grouped into shards.
+
+    ``arrays`` shards only a small fraction of its draws (a v3 array with a
+    regular chunk grid, every axis larger than a chunk that is itself larger
+    than 1, and then only half the time), so a property test that must
+    exercise the sharding codec should draw from this strategy directly. Every
+    draw is sharded: the chunk shape and the shard shape (an integral number of
+    chunks per axis, possibly a single chunk) are drawn from ``shapes``, and
+    the codec's subchunk write order and inner codec chain are drawn as in
+    ``arrays``. ``shapes`` must generate shapes with at least one element on
+    every axis.
+
+    ``nested`` selects one level of recursive sharding: the drawn chunks are
+    grouped into inner shards, which are themselves grouped into the shards
+    stored in the array, so the outer ``ShardingCodec`` wraps an inner one with
+    its own subchunk write order. ``None`` (the default) draws it, so half the
+    examples nest. For a nested array ``Array.chunks`` is the inner shard shape
+    (the outer codec's chunk shape); the innermost chunk shape is the inner
+    codec's ``chunk_shape``.
+    """
+    shape = draw(shapes)
+    chunk_shape = draw(chunk_shapes(shape=shape), label="chunk shape")
+    serializer = draw(_sharding_codecs(chunk_shape=chunk_shape))
+    nest = draw(st.booleans(), label="nested sharding") if nested is None else nested
+    if nest:
+        # Each level's shard is an integral number of the level below's chunks.
+        codec_chunk_shape = draw(
+            shard_shapes(shape=shape, chunk_shape=chunk_shape), label="inner shard shape"
+        )
+        serializer = draw(_sharding_codecs(chunk_shape=codec_chunk_shape, codecs=[serializer]))
+    else:
+        codec_chunk_shape = chunk_shape
+    shard_shape = draw(
+        shard_shapes(shape=shape, chunk_shape=codec_chunk_shape), label="shard shape"
+    )
+    event("nested sharding" if nest else "single-level sharding")
+
+    nparray = draw(numpy_arrays(shapes=st.just(shape)), label="array data")
+    fill_value = draw(st.one_of([st.none(), npst.from_dtype(nparray.dtype)]))
+    dim_names = draw(dimension_names(ndim=len(shape)), label="dimension names")
+
+    # The shard is the array's chunk grid and the drawn codec is its serializer.
+    # Passing ``shards=`` instead would make ``create_array`` wrap the codec in a
+    # second ``ShardingCodec`` of the same chunk shape, hiding the drawn write
+    # order behind a default outer one.
+    a = zarr.create_array(
+        store=MemoryStore(),
+        shape=shape,
+        chunks=shard_shape,
+        dtype=nparray.dtype,
+        fill_value=fill_value,
+        dimension_names=dim_names,
+        serializer=serializer,
+        filters=None,
+        compressors=None,
+    )
+    assert a.shards == shard_shape
+    assert a.chunks == codec_chunk_shape
+    assert isinstance(a.metadata, ArrayV3Metadata)
+    (codec,) = a.metadata.codecs
+    assert isinstance(codec, ShardingCodec)
+    assert codec.subchunk_write_order == serializer.subchunk_write_order
+    a[:] = nparray
+    return a
+
+
 def is_negative_slice(idx: Any) -> bool:
     return isinstance(idx, slice) and idx.step is not None and idx.step < 0
 
@@ -572,20 +802,30 @@ def basic_indices(
 @st.composite
 def orthogonal_indices(
     draw: st.DrawFn, *, shape: tuple[int, ...]
-) -> tuple[tuple[np.ndarray[Any, Any], ...], tuple[np.ndarray[Any, Any], ...]]:
+) -> tuple[tuple[int | slice | np.ndarray[Any, Any], ...], tuple[np.ndarray[Any, Any], ...]]:
     """
     Strategy that returns
-    (1) a tuple of integer arrays used for orthogonal indexing of Zarr arrays.
-    (2) a tuple of integer arrays that can be used for equivalent indexing of numpy arrays
+    (1) a tuple of per-axis selectors (integer array, slice, or bare integer) for
+        orthogonal indexing of Zarr arrays.
+    (2) a tuple of broadcast integer arrays that index a numpy array to the same
+        result. A bare integer drops its axis, as ``oindex`` does, so it is
+        given as a 0-d array and does not contribute a result dimension.
     """
-    zindexer = []
-    npindexer = []
-    ndim = len(shape)
+    zindexer: list[int | slice | np.ndarray[Any, Any]] = []
+    kept: list[tuple[int, np.ndarray[Any, Any]]] = []
+    npindexer: dict[int, np.ndarray[Any, Any]] = {}
     for axis, size in enumerate(shape):
         if size != 0:
-            strategy = npst.integer_array_indices(
-                shape=(size,), result_shape=npst.array_shapes(min_side=1, max_side=size, max_dims=1)
-            ) | basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
+            strategy = (
+                npst.integer_array_indices(
+                    shape=(size,),
+                    result_shape=npst.array_shapes(min_side=1, max_side=size, max_dims=1),
+                )
+                | basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
+                # basic_indices(min_dims=1) never yields a bare integer, so draw
+                # one explicitly: it is the only selector that drops an axis.
+                | st.integers(min_value=-size, max_value=size - 1)
+            )
         else:
             strategy = basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
 
@@ -597,19 +837,25 @@ def orthogonal_indices(
             .filter(bool)
         )
         (idxr,) = val
-        if isinstance(idxr, int):
-            idxr = np.array([idxr])
         zindexer.append(idxr)
+        if isinstance(idxr, int):
+            npindexer[axis] = np.array(idxr)
+            continue
         if isinstance(idxr, slice):
             idxr = np.arange(*idxr.indices(size))
-        elif isinstance(idxr, (tuple, int)):
+        elif isinstance(idxr, tuple):
             idxr = np.array(idxr)
-        newshape = [1] * ndim
-        newshape[axis] = idxr.size
-        npindexer.append(idxr.reshape(newshape))
+        kept.append((axis, idxr))
+
+    for pos, (axis, idxr) in enumerate(kept):
+        newshape = [1] * len(kept)
+        newshape[pos] = idxr.size
+        npindexer[axis] = idxr.reshape(newshape)
 
     # casting the output of broadcast_arrays is needed for numpy < 2
-    return tuple(zindexer), tuple(np.broadcast_arrays(*npindexer))
+    return tuple(zindexer), tuple(
+        np.broadcast_arrays(*(npindexer[axis] for axis in range(len(shape))))
+    )
 
 
 @st.composite

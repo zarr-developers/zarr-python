@@ -21,9 +21,9 @@ class TestNullTerminatedBytes(BaseTestZDType):
     )
     valid_json_v3 = ({"name": "null_terminated_bytes", "configuration": {"length_bytes": 10}},)
     invalid_json_v2 = (
-        "|S",
-        "|U10",
-        "|f8",
+        {"name": "|S", "object_codec_id": None},
+        {"name": "|U10", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
         {"name": "|S4", "object_codec_id": "vlen-bytes"},
     )
     invalid_json_v3 = (
@@ -69,9 +69,9 @@ class TestRawBytes(BaseTestZDType):
     )
 
     invalid_json_v2 = (
-        "|V",
-        "|S10",
-        "|f8",
+        {"name": "|V", "object_codec_id": None},
+        {"name": "|S10", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
     )
     invalid_json_v3 = (
         {"name": "r10"},
@@ -112,9 +112,10 @@ class TestVariableLengthBytes(BaseTestZDType):
     valid_json_v2 = ({"name": "|O", "object_codec_id": "vlen-bytes"},)
     valid_json_v3 = ("variable_length_bytes",)
     invalid_json_v2 = (
-        "|S",
-        "|U10",
-        "|f8",
+        {"name": "|S", "object_codec_id": None},
+        {"name": "|U10", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "|O", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         {"name": "fixed_length_ascii", "configuration": {"length_bits": 0}},

@@ -34,7 +34,7 @@ jobs:
           python-version: '3.14'
 
       - name: Install Hatch
-        uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+        uses: pypa/hatch@f647ed70d49adb885f53a27d1c7f5bdaeacf2c60
         with:
           version: '1.16.5'
 
@@ -42,7 +42,7 @@ jobs:
         run: hatch build
 
       - name: Upload nightly wheels
-        uses: scientific-python/upload-nightly-action@e76cfec8a4611fd02808a801b0ff5a7d7c1b2d99
+        uses: scientific-python/upload-nightly-action@16fa02eacee1655195143de09f03676e60ef2bf5
         with:
           artifacts_path: dist
           anaconda_nightly_upload_token: ${{ secrets.ANACONDA_ORG_UPLOAD_TOKEN }}

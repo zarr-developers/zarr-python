@@ -22,15 +22,17 @@ class Empty(TypedDict, closed=True):
     """An empty mapping"""
 
 
-class Crc32cCodecObject(TypedDict):
+class Crc32cCodecObject(TypedDict, closed=True):
     """`crc32c` codec metadata in object form.
 
     Per spec the codec has no configuration fields. `configuration` is
     optional and, if present, should be an empty mapping.
+      https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/crc32c/index.rst#L63-L66
     """
 
     name: Crc32cCodecName
     configuration: NotRequired[Empty]
+    must_understand: NotRequired[bool]
 
 
 Crc32cCodecMetadata = Crc32cCodecObject | Crc32cCodecName
@@ -39,6 +41,7 @@ Crc32cCodecMetadata = Crc32cCodecObject | Crc32cCodecName
 The spec's Extension definition allows extensions with no required
 configuration to be encoded as a bare short-hand name. CRC32C has no
 configuration, so both forms are valid.
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564
 """
 
 

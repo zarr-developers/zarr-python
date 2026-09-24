@@ -34,6 +34,12 @@ dependencies = [
     "numpy>=2",
 ]
 
+[project.optional-dependencies]
+# `zarr_indexing.testing` — a Hypothesis state machine and selection strategies
+# for projects checking their own array against this package. Nothing else in
+# the package imports hypothesis.
+testing = ["hypothesis>=6.160.0"]
+
 [project.urls]
 Homepage = "https://github.com/zarr-developers/zarr-python"
 Source = "https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-indexing"
@@ -42,22 +48,21 @@ Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/z
 Documentation = "https://zarr-indexing.readthedocs.io/"
 
 [dependency-groups]
-# The transform tests exercise chunk resolution against zarr's ChunkGrid
-# (tests/test_chunk_resolution.py) and are collected by the parent zarr-python
-# test suite, which already has zarr installed. `zarr` is intentionally NOT
-# listed here to avoid a workspace dependency cycle; run these tests from the
-# repo root (`uv run pytest packages/zarr-indexing/tests`), not in isolation.
-test = ["pytest"]
+# Package tests use the local grid protocol and grid implementations. The
+# repository recipes layer this package into the root test environment.
+# This test group and the optional testing extra both declare Hypothesis;
+# keep their supported minimum versions aligned.
+test = ["pytest", "hypothesis>=6.160.0"]
 docs = [
-    # Pins match the zarr-python docs environment in the repo-root
-    # pyproject.toml so the two sites render with the same toolchain.
-    "mkdocs-material==9.7.6",
+    # Documentation tooling for this package. These pins are maintained here
+    # and can differ from the parent project's tooling versions.
+    "mkdocs-material==9.7.7",
     "mkdocs==1.6.1",
-    "mkdocstrings==1.0.4",
+    "mkdocstrings==1.0.6",
     "mkdocstrings-python==2.0.5",
     "griffe-inherited-docstrings==1.1.3",
     # mkdocstrings uses ruff to format rendered signatures
-    "ruff==0.15.20",
+    "ruff==0.15.22",
 ]
 
 [tool.hatch.version]
@@ -71,31 +76,64 @@ raw-options = { root = "../..", git_describe_command = "git describe --dirty --t
 [tool.hatch.build.targets.wheel]
 packages = ["src/zarr_indexing"]
 
+# An allowlist, so nothing that merely happens to sit in the package directory
+# — a scratch script, a stray notebook — can ride along in a release. The list
+# includes test assets in the sdist: `tests/` carries the vendored ndsel conformance
+# corpus, and `tests/test_doc_examples.py` executes `docs/snippets/*.py` and
+# `examples/*/*.py`, so those are part of the suite rather than decoration.
+# `pyproject.toml`, `README.md` and `LICENSE.txt` are added by hatchling itself.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/docs",
+    "/examples",
+    "/mkdocs.yml",
+    "/justfile",
+    "/CHANGELOG.md",
+    "/CONTRIBUTING.md",
+]
+
 [tool.ruff]
 extend = "../../pyproject.toml"
 target-version = "py312"
 
+[tool.ruff.lint.per-file-ignores]
+# Chunk discovery deliberately catches Exception: a foreign source's
+# attributes may fail, so this path provides fallback metadata. Configured here (not as
+# noqa comments) because different ruff versions
+# have differed on whether these rules fire; RUF100 can remove unused noqa comments.
+"src/zarr_indexing/lazy_array.py" = ["BLE001", "S110"]
+
 [tool.pytest.ini_options]
 minversion = "7"
-testpaths = ["tests"]
+# src is collected for its doctests: every public object's Examples section
+# is eligible for --doctest-modules. Passing examples do not verify all prose
+# contracts or optional-dependency paths.
+testpaths = ["tests", "src/zarr_indexing"]
+pythonpath = ["."]
 xfail_strict = true
-addopts = ["-ra", "--strict-config", "--strict-markers"]
+addopts = ["-ra", "--strict-config", "--strict-markers", "--doctest-modules"]
+doctest_optionflags = [
+    "NORMALIZE_WHITESPACE",
+    "ELLIPSIS",
+    "IGNORE_EXCEPTION_DETAIL",
+]
 filterwarnings = [
     "error",
 ]
 
 [tool.pyright]
-include = ["src"]
+include = [
+    "src",
+    "docs/snippets",
+    "tests/test_doc_examples.py",
+]
 enableExperimentalFeatures = true
 typeCheckingMode = "strict"
 pythonVersion = "3.12"
-# This strict config was written for zarr-metadata's JSON/dataclass-shaped
-# code. zarr-indexing is numpy-heavy, and numpy's stubs return partially
-# unknown types (e.g. `ndarray[Unknown, Unknown]`, `dtype[Unknown]`) even for
-# fully-typed call sites, so the reportUnknown* family below cannot reasonably
-# be satisfied here. Downgraded to warnings (not silenced) rather than
-# disabled outright, and CI (which only fails the pyright job on errors, not
-# warnings) still surfaces them for visibility.
+# Partially unknown types from NumPy stubs are reported as warnings. CI's
+# pyright invocation fails on errors, while retaining these warnings in its output.
 reportUnknownVariableType = "warning"
 reportUnknownArgumentType = "warning"
 reportUnknownMemberType = "warning"

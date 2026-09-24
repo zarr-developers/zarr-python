@@ -2,11 +2,25 @@
 requires = ["hatchling>=1.29.0", "hatch-vcs"]
 build-backend = "hatchling.build"
 
+# An allowlist, not a blocklist: anything new — a subpackage under `packages/`, a
+# config file in the repository root — stays out of the sdist unless it is named
+# here. Beyond `src` and `tests`, the entries are what keeps the shipped test
+# suite and docs build runnable from an unpacked sdist: `tests/test_docs.py`
+# walks `docs/` and `testpaths` collects `docs/user-guide`; the pages under
+# `docs/user-guide/examples/` pull their source out of `examples/` via pymdownx
+# snippet includes; `mkdocs.yml` and `mkdocs_hooks.py` let `mkdocs build` run
+# too. `pyproject.toml`, `README.md`, `LICENSE.txt` and `.gitignore` are added by
+# hatchling itself.
 [tool.hatch.build.targets.sdist]
-exclude = [
-  "/.github",
-  "/bench",
+include = [
+  "/src",
+  "/tests",
   "/docs",
+  "/examples",
+  "/mkdocs.yml",
+  "/mkdocs_hooks.py",
+  "/Justfile",
+  "/ci",
 ]
 
 [project]
@@ -33,10 +47,11 @@ requires-python = ">=3.12"
 dependencies = [
     'packaging>=22.0',
     'numpy>=2',
-    'numcodecs>=0.14',
+    'numcodecs>=0.16',
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
     'donfig>=0.8',
+    'msgspec>=0.19',
 ]
 
 dynamic = [
@@ -68,7 +83,7 @@ remote = [
 gpu = [
     "cupy-cuda12x; sys_platform != 'darwin'",
 ]
-cast-value-rs = ["cast-value-rs"]
+cast-value-rs = ["cast-value-rs>=0.4.2"]
 cli = ["typer"]
 optional = ["universal-pathlib"]
 
@@ -94,18 +109,19 @@ homepage = "https://github.com/zarr-developers/zarr-python"
 # pins deliberately, e.g. via dependabot or `uv lock --upgrade`.
 [dependency-groups]
 test = [
-    "coverage==7.15.2",
+    "coverage==7.16.1",
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "pytest-cov==7.1.0",
     "pytest-accept==0.3.0",
-    "numpydoc==1.10.0",
-    "hypothesis==6.160.0",
+    "numpydoc==1.11.0",
+    "hypothesis==6.168.0",
+    "pytest-reportlog==1.0.0",
     "pytest-xdist==3.8.0",
-    "pytest-benchmark==5.2.3",
+    "pytest-benchmark==5.3.0",
     "pytest-codspeed==5.0.3",
     "tomlkit==0.15.1",
-    "uv==0.11.31",
+    "uv==0.12.15",
 ]
 remote-tests = [
     {include-group = "test"},
@@ -113,29 +129,29 @@ remote-tests = [
     "obstore>=0.5.1",
     "botocore",
     "s3fs>=2023.10.0",
-    "moto[s3,server]==5.2.2",
+    "moto[s3,server]==5.2.3",
     "requests==2.34.2",
 ]
 release = [
-    "towncrier==25.8.0",
+    "towncrier==26.9.0",
 ]
 docs = [
     # Doc building
     "mkdocs-material[imaging]==9.7.7",
     "mkdocs==1.6.1",
     "mkdocstrings==1.0.6",
-    "mkdocstrings-python==2.0.5",
+    "mkdocstrings-python==2.0.8",
     "mike==2.2.0",
     "mkdocs-redirects==1.2.3",
     "markdown-exec[ansi]==1.12.3",
     "griffe-inherited-docstrings==1.1.3",
-    "ruff==0.16.0",
+    "ruff==0.16.8",
     # Changelog generation
     {include-group = "release"},
     # Optional dependencies to run examples
     "numcodecs[msgpack]",
     "s3fs>=2023.10.0",
-    "astroid==4.1.2",
+    "astroid==4.3.1",
     "pytest==9.1.1",
 ]
 dev = [
@@ -143,7 +159,7 @@ dev = [
     {include-group = "remote-tests"},
     {include-group = "docs"},
     "universal-pathlib",
-    "mypy==2.3.0",
+    "mypy==2.3.1",
 ]
 
 [tool.coverage.report]
@@ -160,9 +176,9 @@ omit = [
 version.source = "vcs"
 # Only consider zarr-python's own `v*` tags when deriving the version. Without
 # this filter `git describe` matches the most recent tag of any shape,
-# including the `zarr_metadata-v*` tags used to release the zarr-metadata
-# subpackage — which would make a from-source build report a `0.2.x` version
-# instead of `3.x`.
+# including the `zarr_metadata-v*` and `zarr_http_server-v*` tags used to
+# release the subpackages under `packages/` — which would make a from-source
+# build report e.g. a `0.2.x` version instead of `3.x`.
 version.raw-options = { git_describe_command = "git describe --dirty --tags --long --match v*" }
 
 [tool.hatch.build]
@@ -191,25 +207,6 @@ matrix.deps.dependency-groups = [
   {value = "remote-tests", if = ["optional"]},
 ]
 
-[tool.hatch.envs.test.scripts]
-run-coverage = [
-    "coverage run --source=src -m pytest --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
-    "coverage xml",
-]
-run-coverage-html = [
-    "coverage run --source=src -m pytest --ignore tests/benchmarks {args:}",
-    "coverage html",
-]
-run = "pytest --ignore tests/benchmarks"
-run-verbose = "run-coverage --verbose"
-run-hypothesis = [
-    "coverage run --source=src -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
-    "coverage xml",
-]
-run-benchmark = "pytest --benchmark-enable tests/benchmarks"
-serve-coverage-html = "python -m http.server -d htmlcov 8000"
-list-env = "pip list"
-
 [tool.hatch.envs.gputest]
 template = "test"
 extra-dependencies = [
@@ -223,13 +220,6 @@ features = ["gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
 python = ["3.12", "3.13"]
-
-[tool.hatch.envs.gputest.scripts]
-run-coverage = [
-    "coverage run --source=src -m pytest -m gpu --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks {args:}",
-    "coverage xml",
-]
-run = "pytest -m gpu --ignore tests/benchmarks"
 
 [tool.hatch.envs.upstream]
 template = 'test'
@@ -262,31 +252,18 @@ dependency-groups = ["remote-tests"]
 extra-dependencies = [
     'packaging==22.*',
     'numpy==2.0.*',
-    'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
+    'numcodecs==0.16.*',
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
     'universal_pathlib==0.2.0',
     'typing_extensions==4.14.*',
     'donfig==0.8.*',
     'obstore==0.5.*',
+    'msgspec==0.19.*',
 ]
 
 [tool.hatch.envs.default]
 installer = "uv"
-
-[tool.hatch.envs.docs]
-features = ['remote']
-dependency-groups = ['docs']
-
-[tool.hatch.envs.docs.env-vars]
-DISABLE_MKDOCS_2_WARNING = "true"
-NO_MKDOCS_2_WARNING = "true"
-
-[tool.hatch.envs.docs.scripts]
-serve = "mkdocs serve --watch src"
-build = "mkdocs build"
-check = "mkdocs build --strict"
-readthedocs = "rm -rf $READTHEDOCS_OUTPUT/html && cp -r site $READTHEDOCS_OUTPUT/html"
 
 [tool.hatch.envs.doctest]
 description = "Test environment for validating executable code blocks in documentation"
@@ -295,10 +272,6 @@ dependency-groups = ['remote-tests']
 extra-dependencies = [
     "pytest-examples",
 ]
-
-[tool.hatch.envs.doctest.scripts]
-test = "pytest tests/test_docs.py -v"
-list-env = "pip list"
 
 [tool.ruff]
 line-length = 100
@@ -346,6 +319,7 @@ extend-select = [
     "RET",  # flake8-return
     "RSE",  # flake8-raise
     "RUF",
+    "S101", # flake8-bandit: no assert in runtime code
     "SIM",  # flake8-simplify
     "SLOT", # flake8-slots
     "TC",  # flake8-type-checking
@@ -380,6 +354,12 @@ ignore = [
 
 [tool.ruff.lint.extend-per-file-ignores]
 "tests/**" = ["ANN001", "ANN201", "RUF029", "SIM117", "SIM300"]
+# S101 (no assert) is for runtime code only. Tests, examples, and test-support
+# packages (store conformance suite, hypothesis strategies) assert on purpose.
+# The globs cover the root package and every package under packages/.
+"**/tests/**" = ["S101"]
+"**/examples/**" = ["S101"]
+"**/testing/**" = ["S101"]
 
 [tool.mypy]
 files = ["src", "tests"]

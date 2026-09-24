@@ -10,7 +10,6 @@ from itertools import accumulate
 from typing import TYPE_CHECKING, Literal, assert_never, cast, overload
 
 import numpy as np
-import numpy.typing as npt
 
 import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
@@ -46,6 +45,8 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config
+from zarr.core.dtype import parse_data_type
+from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.io import save_metadata
 from zarr.core.sync import SyncMixin, sync
@@ -55,6 +56,7 @@ from zarr.errors import (
     ContainsGroupError,
     GroupNotFoundError,
     MetadataValidationError,
+    NodeTypeValidationError,
     ZarrUserWarning,
 )
 from zarr.storage import StoreLike, StorePath
@@ -85,18 +87,15 @@ logger = logging.getLogger("zarr.group")
 
 def parse_zarr_format(data: Any) -> ZarrFormat:
     """Parse the zarr_format field from metadata."""
-    if data in (2, 3):
-        return cast("ZarrFormat", data)
-    msg = f"Invalid zarr_format. Expected one of 2 or 3. Got {data}."
-    raise ValueError(msg)
+    return cast("ZarrFormat", parse_field(data, Literal[2, 3], "zarr_format"))
 
 
 def parse_node_type(data: Any) -> NodeType:
     """Parse the node_type field from metadata."""
-    if data in ("array", "group"):
-        return cast("Literal['array', 'group']", data)
-    msg = f"Invalid value for 'node_type'. Expected 'array' or 'group'. Got '{data}'."
-    raise MetadataValidationError(msg)
+    return cast(
+        "Literal['array', 'group']",
+        parse_field(data, Literal["array", "group"], "node_type", error=MetadataValidationError),
+    )
 
 
 # todo: convert None to empty dict
@@ -374,7 +373,11 @@ class GroupMetadata(Metadata):
                     ZATTRS_JSON: self.attributes,
                 }
                 consolidated_metadata = self.consolidated_metadata.to_dict()["metadata"]
-                assert isinstance(consolidated_metadata, dict)
+                if not isinstance(consolidated_metadata, dict):
+                    raise TypeError(
+                        "Expected consolidated metadata to serialize to a dict, "
+                        f"got {type(consolidated_metadata).__name__}."
+                    )
                 for k, v in consolidated_metadata.items():
                     attrs = v.pop("attributes", {})
                     d[f"{k}/{ZATTRS_JSON}"] = attrs
@@ -414,7 +417,11 @@ class GroupMetadata(Metadata):
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
         data = dict(data)
-        assert data.pop("node_type", None) in ("group", None)
+        node_type = data.pop("node_type", None)
+        if node_type not in ("group", None):
+            raise NodeTypeValidationError(
+                f"Invalid value for 'node_type'. Expected 'group' or None. Got {node_type!r}."
+            )
         consolidated_metadata = data.pop("consolidated_metadata", None)
         if consolidated_metadata:
             data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(consolidated_metadata)
@@ -585,8 +592,8 @@ class AsyncGroup:
             raise MetadataValidationError(msg)
 
         if zarr_format == 2:
-            # this is checked above, asserting here for mypy
-            assert zgroup_bytes is not None
+            if zgroup_bytes is None:
+                raise FileNotFoundError(store_path)
 
             if use_consolidated and maybe_consolidated_metadata_bytes is None:
                 # the user requested consolidated metadata, but it was missing
@@ -602,7 +609,8 @@ class AsyncGroup:
             )
         else:
             # V3 groups are comprised of a zarr.json object
-            assert zarr_json_bytes is not None
+            if zarr_json_bytes is None:
+                raise FileNotFoundError(store_path)
             if not isinstance(use_consolidated, bool | None):
                 raise TypeError("use_consolidated must be a bool or None for Zarr format 3.")
 
@@ -743,9 +751,6 @@ class AsyncGroup:
         # getitem, in the special case where we have consolidated metadata.
         # Note that this is a regular def (non async) function.
         # This shouldn't do any additional I/O.
-
-        # the caller needs to verify this!
-        assert self.metadata.consolidated_metadata is not None
 
         # we support nested getitems like group/subgroup/array
         indexers = normalize_path(key).split("/")
@@ -1051,7 +1056,6 @@ class AsyncGroup:
                     raise TypeError(
                         f"Incompatible object ({item.__class__.__name__}) already exists"
                     )
-                assert isinstance(item, AsyncGroup)  # make mypy happy
                 grp = item
             except KeyError:
                 grp = await self.create_group(name)
@@ -1225,7 +1229,7 @@ class AsyncGroup:
         name: str,
         *,
         shape: ShapeLike,
-        dtype: npt.DTypeLike | None = None,
+        dtype: ZDTypeLike | None = None,
         exact: bool = False,
         **kwargs: Any,
     ) -> AnyAsyncArray:
@@ -1239,8 +1243,9 @@ class AsyncGroup:
             Array name.
         shape : int or tuple of ints
             Array shape.
-        dtype : str or dtype, optional
-            NumPy dtype.
+        dtype : ZDTypeLike, optional
+            The data type of the array, given as a string, a NumPy dtype, or a
+            Zarr data type.
         exact : bool, optional
             If True, require `dtype` to match exactly. If false, require
             `dtype` can be cast from array dtype.
@@ -1258,7 +1263,11 @@ class AsyncGroup:
             if shape != ds.shape:
                 raise TypeError(f"Incompatible shape ({ds.shape} vs {shape})")
 
-            dtype = np.dtype(dtype)
+            # `np.dtype(None)` used to resolve to float64 here; keep that default.
+            dtype = parse_data_type(
+                "float64" if dtype is None else dtype,
+                zarr_format=self.metadata.zarr_format,
+            ).to_native_dtype()
             if exact:
                 if ds.dtype != dtype:
                     raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
