@@ -23,7 +23,7 @@ from zarr.core.dtype.common import (
     DTypeJSON,
     HasEndianness,
     HasItemSize,
-    check_dtype_spec_v2,
+    check_dtype_spec_no_object_codec_v2,
 )
 from zarr.core.dtype.npy.common import (
     DATETIME_UNIT,
@@ -369,7 +369,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             True if the JSON input is a valid representation of this class,
             otherwise False.
         """
-        if not check_dtype_spec_v2(data):
+        if not check_dtype_spec_no_object_codec_v2(data):
             return False
         name = data["name"]
         # match <m[ns], >m[M], etc
@@ -644,7 +644,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
             True if the input is a valid JSON representation of a NumPy datetime64 data type,
             otherwise False.
         """
-        if not check_dtype_spec_v2(data):
+        if not check_dtype_spec_no_object_codec_v2(data):
             return False
         name = data["name"]
         if not isinstance(name, str):

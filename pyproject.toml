@@ -19,6 +19,8 @@ include = [
   "/examples",
   "/mkdocs.yml",
   "/mkdocs_hooks.py",
+  "/Justfile",
+  "/ci",
 ]
 
 [project]
@@ -45,7 +47,7 @@ requires-python = ">=3.12"
 dependencies = [
     'packaging>=22.0',
     'numpy>=2',
-    'numcodecs>=0.14',
+    'numcodecs>=0.16',
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
     'donfig>=0.8',
@@ -107,19 +109,19 @@ homepage = "https://github.com/zarr-developers/zarr-python"
 # pins deliberately, e.g. via dependabot or `uv lock --upgrade`.
 [dependency-groups]
 test = [
-    "coverage==7.16.0",
+    "coverage==7.16.1",
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "pytest-cov==7.1.0",
     "pytest-accept==0.3.0",
-    "numpydoc==1.10.0",
-    "hypothesis==6.167.1",
+    "numpydoc==1.11.0",
+    "hypothesis==6.168.0",
     "pytest-reportlog==1.0.0",
     "pytest-xdist==3.8.0",
     "pytest-benchmark==5.3.0",
     "pytest-codspeed==5.0.3",
     "tomlkit==0.15.1",
-    "uv==0.12.9",
+    "uv==0.12.15",
 ]
 remote-tests = [
     {include-group = "test"},
@@ -131,7 +133,7 @@ remote-tests = [
     "requests==2.34.2",
 ]
 release = [
-    "towncrier==25.8.0",
+    "towncrier==26.9.0",
 ]
 docs = [
     # Doc building
@@ -143,7 +145,7 @@ docs = [
     "mkdocs-redirects==1.2.3",
     "markdown-exec[ansi]==1.12.3",
     "griffe-inherited-docstrings==1.1.3",
-    "ruff==0.16.5",
+    "ruff==0.16.8",
     # Changelog generation
     {include-group = "release"},
     # Optional dependencies to run examples
@@ -205,25 +207,6 @@ matrix.deps.dependency-groups = [
   {value = "remote-tests", if = ["optional"]},
 ]
 
-[tool.hatch.envs.test.scripts]
-run-coverage = [
-    "coverage run --source=src -m pytest --ignore tests/benchmarks --junitxml=junit.xml -o junit_family=legacy {args:}",
-    "coverage xml",
-]
-run-coverage-html = [
-    "coverage run --source=src -m pytest --ignore tests/benchmarks {args:}",
-    "coverage html",
-]
-run = "pytest --ignore tests/benchmarks"
-run-verbose = "run-coverage --verbose"
-run-hypothesis = [
-    "coverage run --source=src -m pytest -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful* {args:}",
-    "coverage xml",
-]
-run-benchmark = "pytest --benchmark-enable tests/benchmarks"
-serve-coverage-html = "python -m http.server -d htmlcov 8000"
-list-env = "pip list"
-
 [tool.hatch.envs.gputest]
 template = "test"
 extra-dependencies = [
@@ -237,13 +220,6 @@ features = ["gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
 python = ["3.12", "3.13"]
-
-[tool.hatch.envs.gputest.scripts]
-run-coverage = [
-    "coverage run --source=src -m pytest -m gpu --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks {args:}",
-    "coverage xml",
-]
-run = "pytest -m gpu --ignore tests/benchmarks"
 
 [tool.hatch.envs.upstream]
 template = 'test'
@@ -276,7 +252,7 @@ dependency-groups = ["remote-tests"]
 extra-dependencies = [
     'packaging==22.*',
     'numpy==2.0.*',
-    'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
+    'numcodecs==0.16.*',
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
     'universal_pathlib==0.2.0',
@@ -289,20 +265,6 @@ extra-dependencies = [
 [tool.hatch.envs.default]
 installer = "uv"
 
-[tool.hatch.envs.docs]
-features = ['remote']
-dependency-groups = ['docs']
-
-[tool.hatch.envs.docs.env-vars]
-DISABLE_MKDOCS_2_WARNING = "true"
-NO_MKDOCS_2_WARNING = "true"
-
-[tool.hatch.envs.docs.scripts]
-serve = "mkdocs serve --watch src"
-build = "mkdocs build"
-check = "mkdocs build --strict"
-readthedocs = "rm -rf $READTHEDOCS_OUTPUT/html && cp -r site $READTHEDOCS_OUTPUT/html"
-
 [tool.hatch.envs.doctest]
 description = "Test environment for validating executable code blocks in documentation"
 features = ['remote']
@@ -310,10 +272,6 @@ dependency-groups = ['remote-tests']
 extra-dependencies = [
     "pytest-examples",
 ]
-
-[tool.hatch.envs.doctest.scripts]
-test = "pytest tests/test_docs.py -v"
-list-env = "pip list"
 
 [tool.ruff]
 line-length = 100
@@ -361,6 +319,7 @@ extend-select = [
     "RET",  # flake8-return
     "RSE",  # flake8-raise
     "RUF",
+    "S101", # flake8-bandit: no assert in runtime code
     "SIM",  # flake8-simplify
     "SLOT", # flake8-slots
     "TC",  # flake8-type-checking
@@ -395,6 +354,12 @@ ignore = [
 
 [tool.ruff.lint.extend-per-file-ignores]
 "tests/**" = ["ANN001", "ANN201", "RUF029", "SIM117", "SIM300"]
+# S101 (no assert) is for runtime code only. Tests, examples, and test-support
+# packages (store conformance suite, hypothesis strategies) assert on purpose.
+# The globs cover the root package and every package under packages/.
+"**/tests/**" = ["S101"]
+"**/examples/**" = ["S101"]
+"**/testing/**" = ["S101"]
 
 [tool.mypy]
 files = ["src", "tests"]

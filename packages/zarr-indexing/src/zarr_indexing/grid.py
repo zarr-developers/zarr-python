@@ -41,7 +41,9 @@ class DimensionGridLike(Protocol):
     def index_to_chunk(self, idx: int) -> int:
         """Map a global source index to the index of the chunk that contains it.
 
-        Implementers must raise `IndexError` when `idx` lies outside `[0, extent)`.
+        Raise `IndexError` outside the coordinates supported by the grid.
+        The built-in bounded grids use `[0, extent)`; custom grids may support
+        negative coordinates or an unbounded region.
         """
         ...
 
@@ -56,7 +58,8 @@ class DimensionGridLike(Protocol):
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
         """Vectorized `index_to_chunk`: map global source indices to chunk indices.
 
-        Implementers must raise `IndexError` if any index lies outside `[0, extent)`.
+        Raise `IndexError` if any index is outside the grid's supported region,
+        consistently with the scalar method.
         """
         ...
 
@@ -163,7 +166,10 @@ class FixedDimension:
         return FixedDimension(size=self.size, extent=new_extent)
 
     def resize(self, new_extent: int) -> FixedDimension:
-        """Return a copy resized to `new_extent`; the fixed chunk size covers any new extent."""
+        """Return a copy resized to `new_extent`, retaining the chunk size.
+
+        A zero chunk size is supported only for an empty extent and cannot grow.
+        """
         return FixedDimension(size=self.size, extent=new_extent)
 
     @property
@@ -351,8 +357,9 @@ class DimensionGrid(Protocol):
     def with_extent(self, new_extent: int) -> DimensionGrid:
         """Return a grid with the existing chunk layout re-clipped to `new_extent`.
 
-        Implementers must not invent new grid cells: raise `ValueError` when the declared
-        layout cannot cover `new_extent`.
+        Preserve the existing layout rule: a fixed positive chunk size can
+        cover a larger extent without changing its size; explicit edge lists
+        raise `ValueError` if their sum cannot cover `new_extent`.
         """
         ...
 

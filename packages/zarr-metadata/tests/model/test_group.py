@@ -474,7 +474,7 @@ def test_group_v3_valid_consolidated_passes_validator() -> None:
             "metadata": {"a": child, "g": {"zarr_format": 3, "node_type": "group"}},
         },
     }
-    assert validate_group_metadata_v3(doc) == []
+    assert validate_group_metadata_v3(doc) == ()
 
 
 def test_v3_consolidated_rejects_unknown_envelope_member() -> None:
@@ -503,7 +503,10 @@ def test_v2_consolidated_rejects_unknown_document_member() -> None:
 
 def test_group_must_understand_fields_partition() -> None:
     """The group model partitions extra fields by the spec's implicit-true rule,
-    like the array model."""
+    like the array model.
+
+    https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1573
+    """
     model = ZarrV3GroupMetadata.create_default(
         extra_fields={
             "waived": {"name": "w", "must_understand": False},
@@ -519,7 +522,7 @@ def test_group_v3_null_consolidated_metadata_repaired_to_absence() -> None:
     it is read as absence (UNSET) and never written back — the round-trip
     deliberately repairs the document rather than preserving the bug."""
     null_doc = {"zarr_format": 3, "node_type": "group", "consolidated_metadata": None}
-    assert validate_group_metadata_v3(null_doc) == []
+    assert validate_group_metadata_v3(null_doc) == ()
     model = ZarrV3GroupMetadata.from_json(null_doc)
     assert model.consolidated_metadata is UNSET
     assert "consolidated_metadata" not in model.to_json()
