@@ -163,6 +163,14 @@ def _delete_dir(path: Path, prefix: str) -> None:
     # A non-existent directory is a no-op; test_group:test_create_creates_parents relies on it.
 
 
+def _exists(path: Path) -> bool:
+    return path.is_file()
+
+
+def _getsize(path: Path) -> int:
+    return path.stat().st_size
+
+
 def _list_files(root: Path, prefix: str) -> list[str]:
     """Keys (paths relative to `root`, POSIX style) of every file under `root / prefix`."""
     to_strip = root.as_posix() + "/"
@@ -269,14 +277,14 @@ class LocalStore(Store):
     async def _ensure_open(self) -> None:
         # docstring inherited
         if not self._is_open:
+            # Concurrent lazy opens (every `set` of a `set_many`, say) can all get here
+            # before any of them finishes, so each one verifies the root. That is
+            # idempotent, and so is setting the flag, so the calls cannot conflict.
+            # Going through `self._open()` instead would make every call after the first
+            # fail, because `Store._open` raises on a store that is already open.
+            # As in `_ensure_open_sync`, a subclass's `_open` override is not run here.
             await asyncio.to_thread(_ensure_root, self.root, create=not self.read_only)
-            # Concurrent lazy opens (every `set` of a `set_many`, say) all pass the check
-            # above and each verifies the root, which is idempotent; only the first may
-            # flip the flag, since `Store._open` refuses to open an open store.
-            # Note this calls `Store._open` directly, so a subclass's `_open` override is
-            # bypassed on the lazy-open path.
-            if not self._is_open:
-                await super()._open()
+            self._is_open = True
 
     async def clear(self) -> None:
         # docstring inherited
@@ -407,8 +415,7 @@ class LocalStore(Store):
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
-        path = self.root / key
-        return await asyncio.to_thread(path.is_file)
+        return await asyncio.to_thread(_exists, self.root / key)
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
@@ -436,5 +443,4 @@ class LocalStore(Store):
 
     async def getsize(self, key: str) -> int:
         # docstring inherited
-        stat = await asyncio.to_thread((self.root / key).stat)
-        return stat.st_size
+        return await asyncio.to_thread(_getsize, self.root / key)

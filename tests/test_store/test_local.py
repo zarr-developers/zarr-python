@@ -23,7 +23,7 @@ from zarr.testing.store import StoreTests
 from zarr.testing.utils import assert_bytes_equal
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 
 _LOCAL_STORE_FILE = zarr.storage._local.__file__
 _ASYNC_CODE_FLAGS = inspect.CO_COROUTINE | inspect.CO_ASYNC_GENERATOR
@@ -98,6 +98,10 @@ class _FilesystemCalls:
             self.on_loop.append(site)
 
 
+async def _collect(keys: AsyncIterator[str]) -> list[str]:
+    return [key async for key in keys]
+
+
 class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
     store_cls = LocalStore
     buffer_cls = cpu.Buffer
@@ -135,14 +139,58 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
             calls.on_loop
         )
 
+    @pytest.mark.parametrize(
+        ("method", "helper"),
+        [
+            ("open", "_ensure_root"),
+            ("lazy_open", "_ensure_root"),
+            ("get", "_get"),
+            ("get_partial_values", "_get"),
+            ("set", "_put"),
+            ("set_if_not_exists", "_put"),
+            ("exists", "_exists"),
+            ("getsize", "_getsize"),
+            ("delete", "_delete"),
+            ("delete_dir", "_delete_dir"),
+            ("list", "_list_files"),
+            ("list_prefix", "_list_files"),
+            ("list_dir", "_list_dir"),
+            ("clear", "_clear"),
+            ("move", "_move"),
+        ],
+    )
     async def test_filesystem_calls_are_observed(
-        self, store: LocalStore, filesystem_calls: _FilesystemCalls
+        self,
+        store: LocalStore,
+        filesystem_calls: _FilesystemCalls,
+        tmp_path_factory: pytest.TempPathFactory,
+        method: str,
+        helper: str,
     ) -> None:
-        """The detector must actually see LocalStore's I/O, or its silence means nothing."""
-        await store.set("foo", self.buffer_cls.from_bytes(b"x"))
-        await store.get("foo")
-        assert ("_put", "io.open") in filesystem_calls.off_loop
-        assert ("_get", "io.open") in filesystem_calls.off_loop
+        """The detector must see each async method's I/O, or its silence means nothing."""
+        data = self.buffer_cls.from_bytes(b"x")
+        await self.set(store, "a/b", data)
+        ops: dict[str, Callable[[], Awaitable[object]]] = {
+            "open": lambda: LocalStore.open(store.root),
+            "lazy_open": lambda: LocalStore(store.root).get("a/b"),
+            "get": lambda: store.get("a/b"),
+            "get_partial_values": lambda: store.get_partial_values(
+                cpu.buffer_prototype, [("a/b", None)]
+            ),
+            "set": lambda: store.set("a/c", data),
+            "set_if_not_exists": lambda: store.set_if_not_exists("a/c", data),
+            "exists": lambda: store.exists("a/b"),
+            "getsize": lambda: store.getsize("a/b"),
+            "delete": lambda: store.delete("a/b"),
+            "delete_dir": lambda: store.delete_dir("a"),
+            "list": lambda: _collect(store.list()),
+            "list_prefix": lambda: _collect(store.list_prefix("a")),
+            "list_dir": lambda: _collect(store.list_dir("a")),
+            "clear": store.clear,
+            "move": lambda: store.move(tmp_path_factory.mktemp("dest") / "moved"),
+        }
+        await ops[method]()
+        assert helper in {function for function, _ in filesystem_calls.off_loop}
 
     async def test_concurrent_lazy_open(self, store_not_open: LocalStore) -> None:
         """Concurrent first calls on an unopened store all succeed.
