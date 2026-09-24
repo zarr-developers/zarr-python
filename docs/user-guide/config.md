@@ -40,6 +40,7 @@ Configuration options include the following:
 - Whether empty chunks are written to storage `array.write_empty_chunks`
 - Enable experimental rectilinear chunks `array.rectilinear_chunks`
 - Whether missing chunks are filled with the array's fill value on read `array.read_missing_chunks` (default `True`). Set to `False` to raise a [`ChunkNotFoundError`][zarr.errors.ChunkNotFoundError] instead.
+- How attributes that are not valid JSON are written: `attributes.non_string_keys` (default `"warn"`) and `attributes.non_finite_floats` (default `"allow"`). Each takes `"allow"`, `"warn"` or `"raise"`. See [Working with attributes](attributes.md).
 - Async and threading options, e.g. `async.concurrency` and `threading.max_workers`
 - Selections of implementations of codecs, codec pipelines and buffers
 - Enabling GPU support with `zarr.config.enable_gpu()`. See [GPU support](gpu.md) for more.

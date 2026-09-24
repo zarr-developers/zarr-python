@@ -35,7 +35,7 @@ from zarr.core.config import config
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field
-from zarr.core.metadata.common import parse_attributes
+from zarr.core.metadata.common import check_attributes_json, parse_attributes
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
 
@@ -627,7 +627,9 @@ class ArrayV3Metadata(Metadata):
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         indent = config.get("json_indent")
-        return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype, indent=indent)}
+        zarr_json = self.to_dict()
+        check_attributes_json(self.attributes)
+        return {ZARR_JSON: json_to_buffer(zarr_json, prototype=prototype, indent=indent)}
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
