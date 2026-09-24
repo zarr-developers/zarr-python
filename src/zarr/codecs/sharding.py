@@ -422,6 +422,21 @@ def _drops_only_unit_axes(shape: tuple[int, ...], full: tuple[int, ...]) -> bool
     return all(full_size == 1 for full_size in remaining)
 
 
+def _check_index_codecs_fixed_size(index_codecs: tuple[Codec, ...]) -> None:
+    """Reject index codecs whose encoded size is not fixed.
+
+    The spec forbids variable-size codecs (such as compressors) in `index_codecs`:
+    the shard index is located by its byte size, which must be known before the
+    index is read.
+    """
+    variable_size = [codec for codec in index_codecs if not codec.is_fixed_size]
+    if variable_size:
+        raise ValueError(
+            "Sharding `index_codecs` must produce a fixed-size encoding, but these codecs "
+            f"do not: {variable_size}. Compression codecs cannot be used for the shard index."
+        )
+
+
 @dataclass(frozen=True)
 class ShardingCodec(
     ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
@@ -453,6 +468,7 @@ class ShardingCodec(
         chunk_shape_parsed = parse_shapelike(chunk_shape)
         codecs_parsed = parse_codecs(codecs)
         index_codecs_parsed = parse_codecs(index_codecs)
+        _check_index_codecs_fixed_size(index_codecs_parsed)
         index_location_coerced = _coerce_enum_input(
             index_location, "index_location", "ShardingCodec"
         )
