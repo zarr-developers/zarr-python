@@ -202,6 +202,8 @@ def test_array_name_properties_no_group(
         (3, None, None),
         (3, ["x", "y"], ("x", "y")),
         (3, ["x", None], ("x", None)),
+        # names are not required to be unique
+        (3, ["x", "x"], ("x", "x")),
     ],
 )
 async def test_array_dimension_names(

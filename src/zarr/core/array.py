@@ -963,6 +963,11 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Returns None if the array has no dimension names, which is always the
         case for Zarr format 2 arrays.
 
+        Dimension names are not required to be unique: two dimensions of the
+        same array may share a name. The Zarr v3 specification recommends, but
+        does not require, that non-null names are distinct. See the
+        [`dimension_names` section of the Zarr v3 core specification](https://github.com/zarr-developers/zarr-specs/blob/ad8fc8df42441c84039c94569980e485e4c09870/docs/v3/core/index.rst#L632-L647).
+
         Returns
         -------
         tuple[str | None, ...] | None
@@ -2178,6 +2183,11 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         Returns None if the array has no dimension names, which is always the
         case for Zarr format 2 arrays.
+
+        Dimension names are not required to be unique: two dimensions of the
+        same array may share a name. The Zarr v3 specification recommends, but
+        does not require, that non-null names are distinct. See the
+        [`dimension_names` section of the Zarr v3 core specification](https://github.com/zarr-developers/zarr-specs/blob/ad8fc8df42441c84039c94569980e485e4c09870/docs/v3/core/index.rst#L632-L647).
 
         Returns
         -------
