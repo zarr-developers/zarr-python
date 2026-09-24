@@ -76,8 +76,8 @@ packages = ["src/zarr_metadata"]
 # keeps an sdist self-testing and self-documenting: every fixture this suite
 # reads is a JSON file sitting next to the test module that loads it, so
 # `/tests` is the whole test dependency, and `/docs` plus `/mkdocs.yml` are a
-# self-contained site (mkdocstrings reads `src`, nothing reaches outside the
-# package) so `just docs-check` runs from an unpacked sdist too. `changes/`
+# self-contained site (mkdocstrings reads `src`; the shared config and header
+# script are copied in below) so `just docs-check` runs from an unpacked sdist too. `changes/`
 # and `.readthedocs.yaml` are deliberately absent: towncrier fragments are
 # repo bookkeeping, and the RTD config addresses paths from the repo root.
 # `pyproject.toml`, `README.md` and `LICENSE.txt` are added by hatchling itself.
@@ -90,6 +90,14 @@ include = [
     "/justfile",
     "/CHANGELOG.md",
 ]
+# The shared docs config and header script are symlinks into packages/ in the
+# repository; ship the files they point at, since a link out of the sdist
+# dangles and pip refuses to unpack it.
+exclude = ["/mkdocs-base.yml", "/docs/_static/source-version.js"]
+
+[tool.hatch.build.targets.sdist.force-include]
+"../mkdocs-base.yml" = "mkdocs-base.yml"
+"../source-version.js" = "docs/_static/source-version.js"
 
 [tool.ruff]
 extend = "../../pyproject.toml"

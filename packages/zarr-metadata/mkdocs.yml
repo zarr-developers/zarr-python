@@ -1,4 +1,4 @@
-INHERIT: ../mkdocs-base.yml
+INHERIT: mkdocs-base.yml
 
 site_name: zarr-metadata
 # The package lives in the zarr-python monorepo; point the header source

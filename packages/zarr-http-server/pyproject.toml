@@ -111,6 +111,14 @@ include = [
     "/justfile",
     "/CHANGELOG.md",
 ]
+# The shared docs config and header script are symlinks into packages/ in the
+# repository; ship the files they point at, since a link out of the sdist
+# dangles and pip refuses to unpack it.
+exclude = ["/mkdocs-base.yml", "/docs/_static/source-version.js"]
+
+[tool.hatch.build.targets.sdist.force-include]
+"../mkdocs-base.yml" = "mkdocs-base.yml"
+"../source-version.js" = "docs/_static/source-version.js"
 
 [tool.ruff]
 extend = "../../pyproject.toml"
