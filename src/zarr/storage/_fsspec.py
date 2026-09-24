@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import posixpath
 import warnings
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any
@@ -431,8 +432,23 @@ class FsspecStore(Store):
             allfiles = await self.fs._ls(prefix, detail=False)
         except FileNotFoundError:
             return
-        for onefile in (a.replace(f"{prefix}/", "") for a in allfiles):
-            yield onefile.removeprefix(self.path).removeprefix("/")
+        seen: set[str] = set()
+        for onefile in allfiles:
+            name = onefile.replace(f"{prefix}/", "").removeprefix(self.path).removeprefix("/")
+            if onefile.startswith(("http://", "https://")):
+                # An HTTP listing is scraped from the links on an HTML page. In-page anchors
+                # and queries name the page itself, not an object, and relative links such
+                # as "./a" need normalizing.
+                if "#" in name or "?" in name:
+                    continue
+                name = posixpath.normpath(name)
+            # Only direct children, each once: an HTTP listing marks directories with a
+            # trailing "/", and a link back to the listed directory reduces to "" or ".".
+            name = name.rstrip("/")
+            if name in ("", ".", "..") or "/" in name or name in seen:
+                continue
+            seen.add(name)
+            yield name
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
