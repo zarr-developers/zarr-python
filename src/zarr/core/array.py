@@ -4367,6 +4367,23 @@ async def from_array(
     if not hasattr(data, "dtype") or not hasattr(data, "shape"):
         data = np.array(data)
 
+    # init_array deletes everything under the destination before the copy streams from the
+    # source, so a destination that overlaps the source would copy only fill values.
+    if (
+        write_data
+        and overwrite
+        and isinstance(data, Array)
+        and data.store_path.store == store_path.store
+    ):
+        src_prefix = f"{data.store_path.path}/" if data.store_path.path else ""
+        dest_prefix = f"{store_path.path}/" if store_path.path else ""
+        if src_prefix.startswith(dest_prefix) or dest_prefix.startswith(src_prefix):
+            raise ValueError(
+                f"Cannot overwrite {store_path.path!r} with the array at "
+                f"{data.store_path.path!r} because the paths overlap. Write to a different "
+                "path, or pass data=array[...]."
+            )
+
     result = await init_array(
         store_path=store_path,
         shape=data.shape,
