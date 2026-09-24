@@ -28,6 +28,7 @@ These can be installed using `pip install "zarr[<extra>]"`, e.g. `pip install "z
 - `cli`: support for the `zarr` [command-line interface](cli.md) (typer)
 - `optional`: support for path-like access to local and remote stores (universal-pathlib)
 - `cast-value-rs`: support for the `cast_value` codec (cast-value-rs)
+- `testing`: the store test harness and hypothesis strategies in `zarr.testing` (pytest, hypothesis)
 
 ## conda
 

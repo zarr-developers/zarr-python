@@ -86,6 +86,9 @@ gpu = [
 cast-value-rs = ["cast-value-rs>=0.4.2"]
 cli = ["typer"]
 optional = ["universal-pathlib"]
+# `zarr.testing` — the store conformance suite and hypothesis strategies, for projects
+# testing their own stores and arrays against zarr. Nothing else in zarr imports these.
+testing = ["pytest>=8", "hypothesis>=6.160.0"]
 
 [project.scripts]
 zarr = "zarr._cli.cli:app"
