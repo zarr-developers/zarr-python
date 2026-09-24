@@ -47,7 +47,7 @@ requires-python = ">=3.12"
 dependencies = [
     'packaging>=22.0',
     'numpy>=2',
-    'numcodecs>=0.14',
+    'numcodecs>=0.16',
     'google-crc32c>=1.5',
     'typing_extensions>=4.14',
     'donfig>=0.8',
@@ -112,19 +112,19 @@ homepage = "https://github.com/zarr-developers/zarr-python"
 # pins deliberately, e.g. via dependabot or `uv lock --upgrade`.
 [dependency-groups]
 test = [
-    "coverage==7.16.0",
+    "coverage==7.16.1",
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "pytest-cov==7.1.0",
     "pytest-accept==0.3.0",
-    "numpydoc==1.10.0",
+    "numpydoc==1.11.0",
     "hypothesis==6.168.0",
     "pytest-reportlog==1.0.0",
     "pytest-xdist==3.8.0",
     "pytest-benchmark==5.3.0",
     "pytest-codspeed==5.0.3",
     "tomlkit==0.15.1",
-    "uv==0.12.12",
+    "uv==0.12.15",
 ]
 remote-tests = [
     {include-group = "test"},
@@ -148,7 +148,7 @@ docs = [
     "mkdocs-redirects==1.2.3",
     "markdown-exec[ansi]==1.12.3",
     "griffe-inherited-docstrings==1.1.3",
-    "ruff==0.16.6",
+    "ruff==0.16.8",
     # Changelog generation
     {include-group = "release"},
     # Optional dependencies to run examples
@@ -255,7 +255,7 @@ dependency-groups = ["remote-tests"]
 extra-dependencies = [
     'packaging==22.*',
     'numpy==2.0.*',
-    'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
+    'numcodecs==0.16.*',
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
     'universal_pathlib==0.2.0',
