@@ -556,8 +556,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         """
         if self._check_scalar(data):
             if isinstance(data, np.timedelta64) and np.isnat(data):
-                # numpy 2.x stub: 'generic' is a runtime-valid unit but not in the Literal overload.
-                return np.timedelta64("NaT", self.unit)  # type: ignore[arg-type]
+                return self._cast_scalar_unchecked("NaT")
             return self._cast_scalar_unchecked(data)
         msg = (
             f"Cannot convert object {data!r} with type {type(data)} to a scalar compatible with the "
@@ -572,8 +571,9 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         This method provides a default value for the timedelta64 scalar, which is
         a 'Not-a-Time' (NaT) value.
         """
-        # numpy 2.x stub: 'generic' is a runtime-valid unit but not in the Literal overload.
-        return np.timedelta64("NaT", self.unit)  # type: ignore[arg-type]
+        # Carry the scale factor: NumPy < 2.2 turns a timedelta NaT into a count when
+        # casting it between scales, e.g. NaT[us] into a [2us] array.
+        return self._cast_scalar_unchecked("NaT")
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.timedelta64:
         """
@@ -872,9 +872,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         numpy.datetime64
             The default scalar value, which is a 'Not-a-Time' (NaT) value
         """
-
-        # numpy 2.x stub: 'generic' is a runtime-valid unit but not in the Literal overload.
-        return np.datetime64("NaT", self.unit)  # type: ignore[arg-type]
+        return self._cast_scalar_unchecked("NaT")
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.datetime64:
         """

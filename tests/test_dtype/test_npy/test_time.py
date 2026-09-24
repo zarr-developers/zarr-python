@@ -182,10 +182,25 @@ def test_time_scale_factor_too_low() -> None:
         TimeDelta64(scale_factor=scale_factor)
 
 
-def test_default_is_NaT() -> None:
-    np.testing.assert_equal(
-        TimeDelta64(unit="ns", scale_factor=1).default_scalar(), np.timedelta64("NaT", "ns")
-    )
+@pytest.mark.parametrize("cls", [DateTime64, TimeDelta64])
+@pytest.mark.parametrize("unit", _UNITS)
+@pytest.mark.parametrize("scale_factor", _SCALES)
+@pytest.mark.filterwarnings(
+    "ignore:The 'generic' unit for NumPy timedelta is deprecated:DeprecationWarning"
+)
+def test_nat_scalars_carry_scale(
+    cls: type[DateTime64 | TimeDelta64], unit: DateTimeUnit, scale_factor: int
+) -> None:
+    """
+    The default scalar and a cast NaT are NaT in this dtype's unit and scale. NumPy < 2.2
+    turns a timedelta NaT into a count when casting it between scales.
+    """
+    zdtype = cls(unit=unit, scale_factor=scale_factor)
+    nat = np.timedelta64("NaT", "ns") if cls is TimeDelta64 else np.datetime64("NaT", "ns")
+    expected_unit = "us" if unit == "μs" else unit
+    for scalar in (zdtype.default_scalar(), zdtype.cast_scalar(nat)):
+        assert np.isnat(scalar)
+        assert np.datetime_data(scalar.dtype) == (expected_unit, scale_factor)
 
 
 def test_time_scale_factor_too_high() -> None:
