@@ -7,6 +7,9 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+# Written by ci/conda_recipe_for_sdist.py when checking the sdist against the
+# conda-forge recipe; generated per run, never committed.
+conda.recipe/
 env/
 .venv/
 build/
