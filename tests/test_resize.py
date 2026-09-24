@@ -65,19 +65,26 @@ async def test_resize_bounds_pending_deletions(limit: int | None) -> None:
     store = MemoryStore()
     array = await create_array(store, shape=(3000,), chunks=(1,), dtype="uint8")
     initial_tasks = len(asyncio.all_tasks())
+    workers = limit if limit is not None else 1000
     peak_tasks = 0
-    calls = 0
+    in_flight = 0
+    in_flight_at_start: list[int] = []
 
     async def delete(key: str) -> None:
-        nonlocal peak_tasks, calls
+        nonlocal peak_tasks, in_flight
         peak_tasks = max(peak_tasks, len(asyncio.all_tasks()) - initial_tasks)
-        calls += 1
+        in_flight_at_start.append(in_flight)
+        in_flight += 1
         await asyncio.sleep(0)
+        in_flight -= 1
 
     with config.set({"async.concurrency": limit}), mock.patch.object(store, "delete", delete):
         await array.resize((0,))
-    assert calls == 3000
-    assert 0 < peak_tasks <= (limit if limit is not None else 1000)
+    assert len(in_flight_at_start) == 3000
+    assert 0 < peak_tasks <= workers
+    # Once the pool is full, each deletion replaces a finished one instead of
+    # waiting for a whole batch to drain.
+    assert set(in_flight_at_start[workers:]) == {workers - 1}
 
 
 @pytest.mark.parametrize("new_shape", [(4, 5), (10, 5), (4, 12), (7, 8), (0, 9)])

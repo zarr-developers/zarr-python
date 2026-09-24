@@ -6,7 +6,7 @@ import warnings
 from asyncio import gather
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from itertools import batched, starmap
+from itertools import starmap
 from logging import getLogger
 from typing import (
     TYPE_CHECKING,
@@ -5931,18 +5931,16 @@ async def _resize(
             array._chunk_grid.grid_shape, new_chunk_grid.grid_shape
         )
 
-        async def _delete_key(key: str) -> None:
-            await (array.store_path / key).delete()
+        async def _delete_worker() -> None:
+            # Workers share one lazy iterator, so a new deletion starts as soon
+            # as any finishes and nothing beyond the workers is scheduled.
+            for coords in chunk_coords:
+                await (array.store_path / array.metadata.encode_chunk_key(coords)).delete()
 
-        concurrency = zarr_config.get("async.concurrency")
-        # concurrent_map schedules all inputs up front. Bound each batch even
-        # when the user has disabled the I/O concurrency limit with None.
-        for batch in batched(chunk_coords, concurrency or 1000):
-            await concurrent_map(
-                ((array.metadata.encode_chunk_key(coords),) for coords in batch),
-                _delete_key,
-                concurrency,
-            )
+        # Bound the worker count even when the user has disabled the I/O
+        # concurrency limit with None.
+        concurrency = zarr_config.get("async.concurrency") or 1000
+        await gather(*(_delete_worker() for _ in range(concurrency)))
 
     # Write new metadata
     await save_metadata(array.store_path, new_metadata)
