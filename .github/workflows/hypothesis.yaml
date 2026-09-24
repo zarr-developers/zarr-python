@@ -60,17 +60,21 @@ jobs:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
     - name: Install uv
-      uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
     - name: Install Hatch
       uses: pypa/hatch@f647ed70d49adb885f53a27d1c7f5bdaeacf2c60
       with:
         version: '1.16.5'
+    - name: Install just
+      uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+      with:
+        repo: casey/just
+        version: 1.58.0
     - name: Set Up Hatch Env
       env:
         HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
       run: |
-        hatch env create "$HATCH_ENV"
-        hatch env run -e "$HATCH_ENV" list-env
+        just setup
     # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache
     - name: Restore cached hypothesis directory
       id: restore-hypothesis-cache
@@ -89,7 +93,7 @@ jobs:
         PYTEST_ADDOPTS: "--report-log=output-${{ matrix.python-version }}-log.jsonl"
       run: |
         echo "Using Hypothesis profile: $HYPOTHESIS_PROFILE"
-        hatch env run --env "$HATCH_ENV" run-hypothesis
+        just hypothesis
 
     # explicitly save the cache so it gets updated, also do this even if it fails.
     - name: Save cached hypothesis directory
@@ -101,7 +105,7 @@ jobs:
         key: cache-hypothesis-${{ runner.os }}-${{ github.run_id }}
 
     - name: Upload coverage
-      uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+      uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: tests

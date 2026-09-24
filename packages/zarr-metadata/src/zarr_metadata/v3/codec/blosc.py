@@ -27,7 +27,7 @@ BLOSC_CNAME: Final = ("lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd")
 """Tuple of permitted values for the `cname` field of the `blosc` codec."""
 
 
-class BloscCodecConfiguration(TypedDict):
+class BloscCodecConfiguration(TypedDict, closed=True):
     """Configuration for the Zarr v3 `blosc` codec."""
 
     cname: BloscCName
@@ -37,11 +37,12 @@ class BloscCodecConfiguration(TypedDict):
     typesize: NotRequired[int]
 
 
-class BloscCodecObject(TypedDict):
+class BloscCodecObject(TypedDict, closed=True):
     """`blosc` codec metadata in object form."""
 
     name: BloscCodecName
     configuration: BloscCodecConfiguration
+    must_understand: NotRequired[bool]
 
 
 BloscCodecMetadata = BloscCodecObject

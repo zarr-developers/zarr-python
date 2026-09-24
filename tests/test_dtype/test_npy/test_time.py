@@ -45,9 +45,11 @@ class TestDateTime64(_TestTimeBase):
         {"name": "numpy.datetime64", "configuration": {"unit": "us", "scale_factor": 1}},
     )
     invalid_json_v2 = (
-        "datetime64",
-        "|f8",
-        "timedelta64[ns]",
+        {"name": "datetime64", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "timedelta64[ns]", "object_codec_id": None},
+        {"name": "<m8[ns]", "object_codec_id": None},
+        {"name": "<M8[ns]", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         {"name": "datetime64", "configuration": {"unit": "invalid"}},
@@ -95,9 +97,11 @@ class TestTimeDelta64(_TestTimeBase):
         {"name": "numpy.timedelta64", "configuration": {"unit": "us", "scale_factor": 1}},
     )
     invalid_json_v2 = (
-        "timedelta64",
-        "|f8",
-        "datetime64[ns]",
+        {"name": "timedelta64", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "datetime64[ns]", "object_codec_id": None},
+        {"name": "<M8[ns]", "object_codec_id": None},
+        {"name": "<m8[ns]", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         {"name": "timedelta64", "configuration": {"unit": 1, "scale_factor": 10}},

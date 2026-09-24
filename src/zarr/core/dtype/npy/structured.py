@@ -1,18 +1,22 @@
 from __future__ import annotations
 
+import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypeGuard, cast, overload
 
 import numpy as np
+from numpy.lib.recfunctions import repack_fields
 
 from zarr.core.common import NamedConfig
+from zarr.core.context import Context, Resolver
 from zarr.core.dtype.common import (
     DTypeConfig_V2,
     DTypeJSON,
     HasItemSize,
     StructuredName_V2,
-    check_dtype_spec_v2,
+    check_dtype_spec_no_object_codec_v2,
     check_structured_dtype_name_v2,
     v3_unstable_dtype_warning,
 )
@@ -21,13 +25,73 @@ from zarr.core.dtype.npy.common import (
     bytes_to_json,
     check_json_str,
 )
+from zarr.core.dtype.registry import _NestedDataTypeValidationError
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-from zarr.errors import DataTypeValidationError
+from zarr.errors import DataTypeValidationError, ZarrUserWarning
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
 
 StructuredScalarLike = list[object] | tuple[object, ...] | bytes | int
+
+# The root of the zarr package, used to attribute layout warnings to the caller outside zarr.
+_ZARR_PACKAGE_ROOT = str(Path(__file__).parents[3])
+
+
+def _unsupported_field_feature(dtype: np.dtype[np.void]) -> str | None:
+    """
+    Check for field features unsupported by this implementation's native dtype conversion.
+
+    `Structured.fields` stores `(name, ZDType)` pairs and `to_native_dtype` packs them
+    contiguously. This conversion does not preserve NumPy field titles or subarray shapes.
+    Reject those features, including in nested fields, rather than silently losing them:
+
+    - field titles, e.g. `np.dtype([(("title", "name"), "i4")])`
+    - subarray fields, e.g. `np.dtype([("name", "i4", (2,))])`
+
+    Returns
+    -------
+    str | None
+        `None` if these field features are supported, otherwise a description of the problem.
+
+    Notes
+    -----
+    This is an implementation limitation, not a statement about the V2 format, which has
+    an encoding for subarray fields.
+    """
+    names = dtype.names
+    fields = dtype.fields
+    if names is None or fields is None:  # pragma: no cover - only called on structured dtypes
+        return None
+    for name in names:
+        field_dtype, _offset, *title = fields[name]
+        if title:
+            return f"field {name!r} has a title ({title[0]!r})"
+        if field_dtype.subdtype is not None:
+            return f"field {name!r} is a subarray with shape {field_dtype.shape}"
+        if field_dtype.names is not None:
+            reason = _unsupported_field_feature(field_dtype)
+            if reason is not None:
+                return f"within field {name!r}: {reason}"
+    return None
+
+
+def _default_resolver(*, zarr_format: ZarrFormat) -> Resolver:
+    """A resolver for the default registry, at the top of a document."""
+    return Resolver(context=Context.default(), zarr_format=zarr_format)
+
+
+def _resolve_field(data: DTypeJSON, resolver: Resolver) -> ZDType[TBaseDType, TBaseScalar]:
+    """
+    Resolve the data type of a structured field. A field data type that matches nothing makes the
+    structured data type invalid, rather than a different data type.
+    """
+    try:
+        return resolver.resolve_data_type(data)
+    except DataTypeValidationError:
+        raise
+    except ValueError as e:
+        raise _NestedDataTypeValidationError(str(e)) from e
 
 
 class StructuredJSON_V2(DTypeConfig_V2[StructuredName_V2, None]):
@@ -175,6 +239,15 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
         DataTypeValidationError
             If the input data type is not an instance of np.dtypes.VoidDType with a non-null
             ``fields`` attribute.
+        ValueError
+            If the input has field titles or subarray fields, which this implementation's
+            native dtype conversion does not support.
+
+        Warns
+        -----
+        ZarrUserWarning
+            If a non-default field layout is converted to a packed layout. Field values are
+            preserved when writing arrays, but offsets and itemsize may change.
 
         Notes
         -----
@@ -185,10 +258,38 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
         fields: list[tuple[str, ZDType[TBaseDType, TBaseScalar]]] = []
         if cls._check_native_dtype(dtype):
-            # fields of a structured numpy dtype are either 2-tuples or 3-tuples. we only
-            # care about the first element in either case.
-            for key, (dtype_instance, *_) in dtype.fields.items():  # type: ignore[union-attr]
-                dtype_wrapped = get_data_type_from_native_dtype(dtype_instance)
+            reason = _unsupported_field_feature(dtype)
+            if reason is not None:
+                # NOTE: this is a ValueError rather than a DataTypeValidationError on purpose.
+                # The data type registry suppresses DataTypeValidationError (treating it as
+                # "this dtype does not match"), but a dtype with an unsupported field feature
+                # *does* match this dtype class -- it simply cannot be represented faithfully --
+                # so we must raise an error the registry propagates to the caller.
+                raise ValueError(
+                    f"Cannot convert the structured data type {dtype}: {reason}. "
+                    "Zarr-Python's current structured dtype conversion does not support "
+                    "field titles or subarray fields."
+                )
+            # Repack once, at the top level, before resolving the fields. Nested fields then
+            # reach the registry already packed, so a padded nested field warns exactly once,
+            # here, rather than once per level of nesting.
+            packed = cast("np.dtype[np.void]", repack_fields(dtype, recurse=True))
+            if packed != dtype:
+                warnings.warn(
+                    "The structured dtype is converted to a packed field layout. "
+                    "Field values are preserved when writing arrays, but field offsets and "
+                    "itemsize may change.",
+                    ZarrUserWarning,
+                    # Attribute the warning to the first frame outside the zarr package, since
+                    # the depth of the call chain that leads here varies by entry point. This
+                    # reaches the caller for direct uses of the dtype API; the synchronous array
+                    # API runs on the event loop thread, where no caller frame is available.
+                    skip_file_prefixes=(_ZARR_PACKAGE_ROOT,),
+                )
+            # Iterate over `names` rather than `fields`: the `fields` mapping also
+            # contains an entry for every field title, which would duplicate titled fields.
+            for key in packed.names:  # type: ignore[union-attr]
+                dtype_wrapped = get_data_type_from_native_dtype(packed.fields[key][0])  # type: ignore[index]
                 fields.append((key, dtype_wrapped))
 
             return cls(fields=tuple(fields))
@@ -239,10 +340,9 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             for Zarr V2, False otherwise.
         """
         return (
-            check_dtype_spec_v2(data)
+            check_dtype_spec_no_object_codec_v2(data)
             and not isinstance(data["name"], str)
             and check_structured_dtype_name_v2(data["name"])
-            and data["object_codec_id"] is None
         )
 
     @classmethod
@@ -271,39 +371,60 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
-        # avoid circular import
-        from zarr.core.dtype import get_data_type_from_json
+        # the fields are resolved from the default registry
+        return cls._from_json_resolved_v2(data, resolver=_default_resolver(zarr_format=2))
 
+    @classmethod
+    def _from_json_v3(cls, data: DTypeJSON) -> Self:
+        # the fields are resolved from the default registry
+        return cls._from_json_resolved_v3(data, resolver=_default_resolver(zarr_format=3))
+
+    @classmethod
+    def _from_json_resolved(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
+        if resolver.zarr_format == 2:
+            return cls._from_json_resolved_v2(data, resolver=resolver)
+        if resolver.zarr_format == 3:
+            return cls._from_json_resolved_v3(data, resolver=resolver)
+        raise ValueError(
+            f"zarr_format must be 2 or 3, got {resolver.zarr_format}"
+        )  # pragma: no cover
+
+    @classmethod
+    def _from_json_resolved_v2(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
         if cls._check_json_v2(data):
             # structured dtypes are constructed directly from a list of lists
             # note that we do not handle the object codec here! this will prevent structured
             # dtypes from containing object dtypes.
             name = data["name"]
             return cls(
-                fields=tuple(  # type: ignore[str-unpack]
+                fields=tuple(
                     (  # type: ignore[misc]
                         f_name,
-                        get_data_type_from_json(
-                            {"name": f_dtype, "object_codec_id": None}, zarr_format=2
+                        _resolve_field(
+                            {"name": f_dtype, "object_codec_id": None},
+                            # the location in the data type as written in the document, which
+                            # is the "name" of the Zarr V2 data type JSON
+                            resolver.at(index, 1),
                         ),
                     )
-                    for f_name, f_dtype in name
+                    for index, (f_name, f_dtype) in enumerate(name)
                 )
             )
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON array of arrays"
         raise DataTypeValidationError(msg)
 
     @classmethod
-    def _from_json_v3(cls, data: DTypeJSON) -> Self:
-        from zarr.core.dtype import get_data_type_from_json
-
+    def _from_json_resolved_v3(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
         if cls._check_json_v3(data):
             config = data["configuration"]
             meta_fields = config["fields"]
             return cls(
                 fields=tuple(
-                    (f_name, get_data_type_from_json(f_dtype, zarr_format=3))  # type: ignore[misc]
-                    for f_name, f_dtype in meta_fields
+                    (  # type: ignore[misc]
+                        f_name,
+                        _resolve_field(f_dtype, resolver.at("configuration", "fields", index, 1)),
+                    )
+                    for index, (f_name, f_dtype) in enumerate(meta_fields)
                 )
             )
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON object with the key {cls._zarr_v3_name!r}"
@@ -556,21 +677,21 @@ class Struct(Structured):
         )
 
     @classmethod
-    def _from_json_v3(cls, data: DTypeJSON) -> Self:
-        from zarr.core.dtype import get_data_type_from_json
-
+    def _from_json_resolved_v3(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
         if cls._check_json_v3(data):
             config = data["configuration"]
             meta_fields = config["fields"]
             parsed_fields: list[tuple[str, ZDType[TBaseDType, TBaseScalar]]] = []
-            for field in meta_fields:
+            for index, field in enumerate(meta_fields):
                 if isinstance(field, dict):
                     f_name = field["name"]
                     f_dtype = field["data_type"]
+                    f_resolver = resolver.at("configuration", "fields", index, "data_type")
                 else:
                     # Legacy tuple-style field format from "structured" dtype
                     f_name, f_dtype = field  # type: ignore[unreachable]
-                parsed_fields.append((f_name, get_data_type_from_json(f_dtype, zarr_format=3)))  # type: ignore[arg-type]
+                    f_resolver = resolver.at("configuration", "fields", index, 1)
+                parsed_fields.append((f_name, _resolve_field(f_dtype, f_resolver)))  # type: ignore[arg-type]
             return cls(fields=tuple(parsed_fields))
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON object with the key {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)

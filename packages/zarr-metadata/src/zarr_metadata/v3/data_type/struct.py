@@ -5,7 +5,7 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from collections.abc import Mapping
-from typing import Final, Literal
+from typing import Final, Literal, NotRequired
 
 from typing_extensions import ReadOnly, TypedDict
 
@@ -19,7 +19,7 @@ StructDataTypeName = Literal["struct"]
 """Literal type of the `name` field of the `struct` data type."""
 
 
-class StructField(TypedDict):
+class StructField(TypedDict, closed=True):
     """
     A single field entry inside a structured dtype.
 
@@ -36,17 +36,18 @@ class StructField(TypedDict):
     data_type: ReadOnly[ZarrV3MetadataFieldJSON]
 
 
-class StructConfiguration(TypedDict):
+class StructConfiguration(TypedDict, closed=True):
     """Configuration for the `struct` data type."""
 
     fields: ReadOnly[tuple[StructField, ...]]
 
 
-class Struct(TypedDict):
+class Struct(TypedDict, closed=True):
     """`struct` data type metadata."""
 
     name: StructDataTypeName
     configuration: StructConfiguration
+    must_understand: NotRequired[bool]
 
 
 StructFillValue = Mapping[str, JSONValue]

@@ -27,7 +27,7 @@ DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR: Final = ("/", ".")
 """Tuple of permitted values for the `separator` field of the default chunk key encoding."""
 
 
-class DefaultChunkKeyEncodingConfiguration(TypedDict):
+class DefaultChunkKeyEncodingConfiguration(TypedDict, closed=True):
     """Configuration for the default chunk key encoding.
 
     `separator` is optional and defaults to `"/"` per spec.
@@ -37,11 +37,12 @@ class DefaultChunkKeyEncodingConfiguration(TypedDict):
     separator: NotRequired[DefaultChunkKeyEncodingSeparator]
 
 
-class DefaultChunkKeyEncodingObject(TypedDict):
+class DefaultChunkKeyEncodingObject(TypedDict, closed=True):
     """Default chunk key encoding metadata in object form."""
 
     name: DefaultChunkKeyEncodingName
     configuration: NotRequired[DefaultChunkKeyEncodingConfiguration]
+    must_understand: NotRequired[bool]
 
 
 DefaultChunkKeyEncodingMetadata = DefaultChunkKeyEncodingObject | DefaultChunkKeyEncodingName

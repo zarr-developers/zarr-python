@@ -2,6 +2,9 @@
 # directory as the working directory regardless of where `just` is invoked.
 
 # List available recipes
+# Quoted arguments must survive delegation from the root Justfile.
+set positional-arguments
+
 default:
     @just --list
 
@@ -10,7 +13,7 @@ default:
 # overlay, using the same test invocation as CI.
 # Run the test suite; extra args are passed to pytest
 test *args:
-    uv run --project ../.. --group test --with-editable . python -m pytest tests src/zarr_indexing {{ args }}
+    uv run --project ../.. --group test --with-editable . python -m pytest tests src/zarr_indexing "$@"
 
 # TensorStore is the oracle for the parity suites, which skip without it. It
 # ships binary wheels only, so it rides in as a run-time overlay rather than
@@ -18,7 +21,7 @@ test *args:
 # gate the CI job that calls this on the matrix version.
 # Run the tensorstore parity suites; extra args are passed to pytest
 test-tensorstore *args:
-    uv run --project ../.. --group test --with-editable . --with 'tensorstore>=0.1.84' python -m pytest tests/test_ndsel_tensorstore.py tests/test_tensorstore_parity.py {{ args }}
+    uv run --project ../.. --group test --with-editable . --with 'tensorstore>=0.1.84' python -m pytest tests/test_ndsel_tensorstore.py tests/test_tensorstore_parity.py "$@"
 
 # Lint with the same invocation CI uses. Ruff is pinned to the repo-wide
 # version in the root .pre-commit-config.yaml; bump together.
