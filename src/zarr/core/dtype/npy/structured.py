@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypeGuard, cast, over
 import numpy as np
 
 from zarr.core.common import NamedConfig
+from zarr.core.context import Context, Resolver
 from zarr.core.dtype.common import (
     DTypeConfig_V2,
     DTypeJSON,
@@ -22,7 +23,7 @@ from zarr.core.dtype.npy.common import (
     check_json_str,
 )
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-from zarr.errors import DataTypeValidationError
+from zarr.errors import DataTypeValidationError, NestedDataTypeValidationError
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -30,20 +31,17 @@ if TYPE_CHECKING:
 StructuredScalarLike = list[object] | tuple[object, ...] | bytes | int
 
 
-def _field_from_json(
-    data: DTypeJSON, *, zarr_format: ZarrFormat
-) -> ZDType[TBaseDType, TBaseScalar]:
+def _resolve_field(data: DTypeJSON, resolver: Resolver) -> ZDType[TBaseDType, TBaseScalar]:
     """
-    Parse the data type of a structured field, reporting an unrecognized field data type as an
-    invalid structured data type.
+    Resolve the data type of a structured field. A field data type that matches nothing makes the
+    structured data type invalid, rather than a different data type.
     """
-    # avoid circular import
-    from zarr.core.dtype import get_data_type_from_json
-
     try:
-        return get_data_type_from_json(data, zarr_format=zarr_format)
+        return resolver.resolve_data_type(data)
+    except DataTypeValidationError:
+        raise
     except ValueError as e:
-        raise DataTypeValidationError(f"Invalid structured field data type: {e}") from e
+        raise NestedDataTypeValidationError(str(e)) from e
 
 
 class StructuredJSON_V2(DTypeConfig_V2[StructuredName_V2, None]):
@@ -285,33 +283,91 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
         )
 
     @classmethod
+    def from_json(
+        cls,
+        data: DTypeJSON,
+        *,
+        zarr_format: ZarrFormat,
+        context: Context | None = None,
+    ) -> Self:
+        """
+        Create a structured data type from JSON data, resolving the data types of its fields from
+        `context`.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON representation of the data type.
+        zarr_format : ZarrFormat
+            The zarr format version.
+        context : Context | None
+            The extensions to resolve the field data types from. The default is
+            `Context.default()`.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+        """
+        resolver = Resolver(
+            context=Context.default() if context is None else context, zarr_format=zarr_format
+        )
+        return cls._from_json_resolved(data, resolver=resolver)
+
+    @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
+        return cls.from_json(data, zarr_format=2)
+
+    @classmethod
+    def _from_json_v3(cls, data: DTypeJSON) -> Self:
+        return cls.from_json(data, zarr_format=3)
+
+    @classmethod
+    def _from_json_resolved(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
+        if resolver.zarr_format == 2:
+            return cls._from_json_resolved_v2(data, resolver=resolver)
+        if resolver.zarr_format == 3:
+            return cls._from_json_resolved_v3(data, resolver=resolver)
+        raise ValueError(
+            f"zarr_format must be 2 or 3, got {resolver.zarr_format}"
+        )  # pragma: no cover
+
+    @classmethod
+    def _from_json_resolved_v2(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
         if cls._check_json_v2(data):
             # structured dtypes are constructed directly from a list of lists
             # note that we do not handle the object codec here! this will prevent structured
             # dtypes from containing object dtypes.
             name = data["name"]
             return cls(
-                fields=tuple(  # type: ignore[str-unpack]
+                fields=tuple(
                     (  # type: ignore[misc]
                         f_name,
-                        _field_from_json({"name": f_dtype, "object_codec_id": None}, zarr_format=2),
+                        _resolve_field(
+                            {"name": f_dtype, "object_codec_id": None},
+                            # the location in the data type as written in the document, which
+                            # is the "name" of the Zarr V2 data type JSON
+                            resolver.at(index, 1),
+                        ),
                     )
-                    for f_name, f_dtype in name
+                    for index, (f_name, f_dtype) in enumerate(name)
                 )
             )
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON array of arrays"
         raise DataTypeValidationError(msg)
 
     @classmethod
-    def _from_json_v3(cls, data: DTypeJSON) -> Self:
+    def _from_json_resolved_v3(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
         if cls._check_json_v3(data):
             config = data["configuration"]
             meta_fields = config["fields"]
             return cls(
                 fields=tuple(
-                    (f_name, _field_from_json(f_dtype, zarr_format=3))  # type: ignore[misc]
-                    for f_name, f_dtype in meta_fields
+                    (  # type: ignore[misc]
+                        f_name,
+                        _resolve_field(f_dtype, resolver.at("configuration", "fields", index, 1)),
+                    )
+                    for index, (f_name, f_dtype) in enumerate(meta_fields)
                 )
             )
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON object with the key {cls._zarr_v3_name!r}"
@@ -564,19 +620,21 @@ class Struct(Structured):
         )
 
     @classmethod
-    def _from_json_v3(cls, data: DTypeJSON) -> Self:
+    def _from_json_resolved_v3(cls, data: DTypeJSON, *, resolver: Resolver) -> Self:
         if cls._check_json_v3(data):
             config = data["configuration"]
             meta_fields = config["fields"]
             parsed_fields: list[tuple[str, ZDType[TBaseDType, TBaseScalar]]] = []
-            for field in meta_fields:
+            for index, field in enumerate(meta_fields):
                 if isinstance(field, dict):
                     f_name = field["name"]
                     f_dtype = field["data_type"]
+                    f_resolver = resolver.at("configuration", "fields", index, "data_type")
                 else:
                     # Legacy tuple-style field format from "structured" dtype
                     f_name, f_dtype = field  # type: ignore[unreachable]
-                parsed_fields.append((f_name, _field_from_json(f_dtype, zarr_format=3)))  # type: ignore[arg-type]
+                    f_resolver = resolver.at("configuration", "fields", index, 1)
+                parsed_fields.append((f_name, _resolve_field(f_dtype, f_resolver)))  # type: ignore[arg-type]
             return cls(fields=tuple(parsed_fields))
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON object with the key {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)

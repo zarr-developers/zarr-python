@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.numcodec import Numcodec, _is_numcodec
-from zarr.core.dtype import get_data_type_from_json
+from zarr.core.context import Context, Resolver
 from zarr.core.dtype.common import OBJECT_CODEC_IDS, DTypeSpec_V2
 from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
@@ -149,7 +149,17 @@ class ArrayV2Metadata(Metadata):
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
+    def from_dict(cls, data: dict[str, Any], *, context: Context | None = None) -> ArrayV2Metadata:
+        """
+        Read Zarr V2 array metadata from a JSON metadata document.
+
+        Parameters
+        ----------
+        data : dict
+            The JSON metadata document.
+        context : Context | None
+            The extensions to read the document with. The default is `Context.default()`.
+        """
         # Make a copy to protect the original from modification.
         _data = data.copy()
         # Check that the zarr_format attribute is correct.
@@ -171,7 +181,10 @@ class ArrayV2Metadata(Metadata):
             "name": data["dtype"],
             "object_codec_id": object_codec_id,
         }
-        dtype = get_data_type_from_json(dtype_spec, zarr_format=2)
+        resolver = Resolver(
+            context=Context.default() if context is None else context, zarr_format=2, loc=("dtype",)
+        )
+        dtype = resolver.resolve_data_type(dtype_spec)
 
         _data["dtype"] = dtype
         fill_value_encoded = _data.get("fill_value")

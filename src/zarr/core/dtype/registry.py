@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, Final, Self
 
 import numpy as np
 
-from zarr.errors import DataTypeValidationError
+from zarr.core.context import Context, Resolver, json_pointer
+from zarr.errors import DataTypeValidationError, NestedDataTypeValidationError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -100,7 +101,8 @@ class DataTypeRegistry:
         the registry. After loading, clear the lazy load list.
         """
         for e in self._lazy_load_list:
-            self.register(e.load()._zarr_v3_name, e.load())
+            cls = e.load()
+            self.register(cls._zarr_v3_name, cls)
 
         self._lazy_load_list.clear()
 
@@ -166,6 +168,7 @@ class DataTypeRegistry:
             If the key is not found in the registry.
         """
 
+        self._lazy_load()
         return self.contents[key]
 
     def match_dtype(self, dtype: TBaseDType) -> ZDType[TBaseDType, TBaseScalar]:
@@ -200,6 +203,7 @@ class DataTypeRegistry:
         constructed.
         """
 
+        self._lazy_load()
         if dtype == np.dtype("O"):
             msg = (
                 f"Zarr data type resolution from {dtype} failed. "
@@ -256,11 +260,27 @@ class DataTypeRegistry:
             If no matching Zarr data type is found for the given JSON data.
         """
 
-        candidates = _v2_spellings(data) if zarr_format == 2 else (data,)
+        resolver = Resolver(context=Context(data_types=self), zarr_format=zarr_format)
+        return self._match_json(data, resolver=resolver)
+
+    def _match_json(
+        self, data: DTypeJSON, *, resolver: Resolver
+    ) -> ZDType[TBaseDType, TBaseScalar]:
+        """
+        Match a JSON representation of a data type to a registered ZDType, at `resolver`'s location.
+        """
+        self._lazy_load()
+        candidates = _v2_spellings(data) if resolver.zarr_format == 2 else (data,)
         for candidate in candidates:
             for val in self.contents.values():
                 try:
-                    return val.from_json(candidate, zarr_format=zarr_format)
+                    return val._from_json_resolved(candidate, resolver=resolver)
+                except NestedDataTypeValidationError:
+                    # the JSON is this data type, and a data type it contains is invalid
+                    raise
                 except DataTypeValidationError:
                     pass
-        raise ValueError(f"No Zarr data type found that matches {data!r}")
+        msg = f"No Zarr data type found that matches {data!r}"
+        if resolver.loc:
+            msg += f" at {json_pointer(resolver.loc)}"
+        raise ValueError(msg)

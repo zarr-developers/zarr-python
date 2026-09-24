@@ -32,7 +32,8 @@ from zarr.core.common import (
     validate_rectilinear_kind,
 )
 from zarr.core.config import config
-from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
+from zarr.core.context import Context, Resolver
+from zarr.core.dtype import VariableLengthUTF8, ZDType
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
@@ -630,7 +631,17 @@ class ArrayV3Metadata(Metadata):
         return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype, indent=indent)}
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
+    def from_dict(cls, data: dict[str, JSON], *, context: Context | None = None) -> Self:
+        """
+        Read Zarr V3 array metadata from a JSON metadata document.
+
+        Parameters
+        ----------
+        data : dict
+            The JSON metadata document.
+        context : Context | None
+            The extensions to read the document with. The default is `Context.default()`.
+        """
         # make a copy because we are modifying the dict
         _data = data.copy()
 
@@ -642,7 +653,12 @@ class ArrayV3Metadata(Metadata):
         data_type_json = _data.pop("data_type")
         if not check_dtype_spec_v3(data_type_json):
             raise ValueError(f"Invalid data_type: {data_type_json!r}")
-        data_type = get_data_type_from_json(data_type_json, zarr_format=3)
+        resolver = Resolver(
+            context=Context.default() if context is None else context,
+            zarr_format=3,
+            loc=("data_type",),
+        )
+        data_type = resolver.resolve_data_type(data_type_json)
 
         # check that the fill value is consistent with the data type
         try:

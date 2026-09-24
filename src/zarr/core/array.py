@@ -159,6 +159,7 @@ if TYPE_CHECKING:
     from zarr.abc.store import Store
     from zarr.codecs.sharding import IndexLocation, ShardingCodec
     from zarr.core.buffer import Buffer
+    from zarr.core.context import Context
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.storage import StoreLike
     from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
@@ -201,13 +202,13 @@ def _chunk_sizes_from_shape(
     return tuple(result)
 
 
-def parse_array_metadata(data: Any) -> ArrayMetadata:
+def parse_array_metadata(data: Any, *, context: Context | None = None) -> ArrayMetadata:
     if isinstance(data, ArrayMetadata):
         return data
     elif isinstance(data, dict):
         zarr_format = data.get("zarr_format")
         if zarr_format == 3:
-            meta_out = ArrayV3Metadata.from_dict(data)
+            meta_out = ArrayV3Metadata.from_dict(data, context=context)
             if len(meta_out.storage_transformers) > 0:
                 msg = (
                     f"Array metadata contains storage transformers: {meta_out.storage_transformers}."
@@ -216,7 +217,7 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
                 raise ValueError(msg)
             return meta_out
         elif zarr_format == 2:
-            return ArrayV2Metadata.from_dict(data)
+            return ArrayV2Metadata.from_dict(data, context=context)
         else:
             raise ValueError(f"Invalid zarr_format: {zarr_format}. Expected 2 or 3")
     raise TypeError  # pragma: no cover
@@ -741,6 +742,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         cls,
         store_path: StorePath,
         data: dict[str, JSON],
+        *,
+        context: Context | None = None,
     ) -> AnyAsyncArray:
         """
         Create a Zarr array from a dictionary, with support for both Zarr format 2 and 3 metadata.
@@ -755,6 +758,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             for the array, such as shape, dtype, and other attributes. The format of the metadata
             will determine whether a Zarr format 2 or 3 array is created.
 
+        context : Context | None
+            The extensions to read the metadata with. The default is `Context.default()`.
+
         Returns
         -------
         AsyncArrayV3 or AsyncArrayV2
@@ -765,7 +771,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ValueError
             If the dictionary data is invalid or incompatible with either Zarr format 2 or 3 array creation.
         """
-        metadata = parse_array_metadata(data)
+        metadata = parse_array_metadata(data, context=context)
         return cls(metadata=metadata, store_path=store_path)
 
     @classmethod
@@ -773,6 +779,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         cls,
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
+        *,
+        context: Context | None = None,
     ) -> AnyAsyncArray:
         """
         Async method to open an existing Zarr array from a given store.
@@ -785,6 +793,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             for a description of all valid StoreLike values.
         zarr_format : ZarrFormat | None, optional
             The Zarr format version (default is 3).
+        context : Context | None, optional
+            The extensions to read the metadata with. The default is `Context.default()`.
 
         Returns
         -------
@@ -814,9 +824,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         store_path = await make_store_path(store)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
-        # TODO: remove this cast when we have better type hints
-        _metadata_dict = cast("ArrayMetadataJSON_V3", metadata_dict)
-        return cls(store_path=store_path, metadata=_metadata_dict)
+        metadata = parse_array_metadata(metadata_dict, context=context)
+        return cls(store_path=store_path, metadata=metadata)
 
     @property
     def store(self) -> Store:
@@ -1973,6 +1982,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         cls,
         store_path: StorePath,
         data: dict[str, JSON],
+        *,
+        context: Context | None = None,
     ) -> Self:
         """
         Create a Zarr array from a dictionary.
@@ -1986,6 +1997,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             A dictionary representing the array data. This dictionary should include necessary metadata
             for the array, such as shape, dtype, fill value, and attributes.
 
+        context : Context | None
+            The extensions to read the metadata with. The default is `Context.default()`.
+
         Returns
         -------
         Array
@@ -1996,13 +2010,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ValueError
             If the dictionary data is invalid or missing required fields for array creation.
         """
-        async_array = AsyncArray.from_dict(store_path=store_path, data=data)
+        async_array = AsyncArray.from_dict(store_path=store_path, data=data, context=context)
         return cls(async_array)
 
     @classmethod
     def open(
         cls,
         store: StoreLike,
+        *,
+        context: Context | None = None,
     ) -> Self:
         """Opens an existing Array from a store.
 
@@ -2012,13 +2028,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             Store containing the Array. See the
             [storage documentation in the user guide][user-guide-store-like]
             for a description of all valid StoreLike values.
+        context : Context | None
+            The extensions to read the metadata with. The default is `Context.default()`.
 
         Returns
         -------
         Array
             Array opened from the store.
         """
-        async_array = sync(AsyncArray.open(store))
+        async_array = sync(AsyncArray.open(store, context=context))
         return cls(async_array)
 
     @property
