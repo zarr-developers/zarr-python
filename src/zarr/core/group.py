@@ -49,6 +49,7 @@ from zarr.core.dtype import parse_data_type
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.io import save_metadata
+from zarr.core.metadata.v3 import AllowedExtraField, check_allowed_extra_field
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
     ArrayNotFoundError,
@@ -355,6 +356,7 @@ class GroupMetadata(Metadata):
     zarr_format: ZarrFormat = 3
     consolidated_metadata: ConsolidatedMetadata | None = None
     node_type: Literal["group"] = field(default="group", init=False)
+    extra_fields: dict[str, AllowedExtraField] = field(default_factory=dict)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         indent = config.get("json_indent")
@@ -406,6 +408,7 @@ class GroupMetadata(Metadata):
         attributes: dict[str, Any] | None = None,
         zarr_format: ZarrFormat = 3,
         consolidated_metadata: ConsolidatedMetadata | None = None,
+        extra_fields: dict[str, AllowedExtraField] | None = None,
     ) -> None:
         attributes_parsed = parse_attributes(attributes)
         zarr_format_parsed = parse_zarr_format(zarr_format)
@@ -413,6 +416,7 @@ class GroupMetadata(Metadata):
         object.__setattr__(self, "attributes", attributes_parsed)
         object.__setattr__(self, "zarr_format", zarr_format_parsed)
         object.__setattr__(self, "consolidated_metadata", consolidated_metadata)
+        object.__setattr__(self, "extra_fields", dict(extra_fields or {}))
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
@@ -433,11 +437,24 @@ class GroupMetadata(Metadata):
             # extra key in the metadata.
             expected = {x.name for x in fields(cls)}
             data = {k: v for k, v in data.items() if k in expected}
+        else:
+            # Zarr v3 allows an extra key only if it is an object with "must_understand": false.
+            known = {"attributes", "zarr_format", "consolidated_metadata"}
+            extra = {k: data.pop(k) for k in set(data) - known}
+            invalid = sorted(k for k, v in extra.items() if not check_allowed_extra_field(v))
+            if invalid:
+                raise MetadataValidationError(
+                    f"Got a Zarr V3 group metadata document with disallowed extra fields: {invalid}. "
+                    'Extra fields are only allowed if they are an object with "must_understand" '
+                    "set to false."
+                )
+            data["extra_fields"] = extra
 
         return cls(**data)
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(replace(self, consolidated_metadata=None))
+        result.update(result.pop("extra_fields"))
         if self.consolidated_metadata is not None:
             result["consolidated_metadata"] = self.consolidated_metadata.to_dict()
         else:

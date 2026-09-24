@@ -1724,6 +1724,39 @@ class TestGroupMetadata:
         expected = GroupMetadata(attributes={"key": "value"}, zarr_format=2)
         assert result == expected
 
+    def test_from_dict_v3_allowed_extra_fields(self) -> None:
+        # https://github.com/zarr-developers/zarr-python/issues/3523
+        extension = {"must_understand": False, "version": 1}
+        data = {"zarr_format": 3, "node_type": "group", "my_extension": extension}
+        result = GroupMetadata.from_dict(data)
+        assert result.extra_fields == {"my_extension": extension}
+        assert result.to_dict() == {**data, "attributes": {}}
+
+    @pytest.mark.parametrize("value", [{"must_understand": True}, {}, "not an object", 1])
+    def test_from_dict_v3_disallowed_extra_fields(self, value: object) -> None:
+        data = {"zarr_format": 3, "node_type": "group", "my_extension": value}
+        with pytest.raises(MetadataValidationError, match="my_extension"):
+            GroupMetadata.from_dict(data)
+
+    def test_extra_fields_survive_rewrite(self) -> None:
+        store = MemoryStore()
+        extension = {"must_understand": False}
+        doc = {"zarr_format": 3, "node_type": "group", "attributes": {}, "ext": extension}
+        sync(
+            store.set(
+                "zarr.json", default_buffer_prototype().buffer.from_bytes(json.dumps(doc).encode())
+            )
+        )
+
+        group = zarr.open_group(store=store, mode="r+")
+        group.attrs["key"] = "value"
+
+        written = json.loads(
+            sync(store.get("zarr.json", prototype=default_buffer_prototype())).to_bytes()
+        )
+        assert written["ext"] == extension
+        assert written["attributes"] == {"key": "value"}
+
 
 class TestInfo:
     def test_info(self):
