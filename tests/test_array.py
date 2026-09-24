@@ -1982,13 +1982,21 @@ def test_from_array_overwrite_overlapping_source_raises(
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_from_array_overwrite_non_overlapping_source(store: Store) -> None:
     """Overlap checks respect path boundaries, and metadata-only copies are allowed."""
-    src = zarr.create_array(store, name="ab", data=np.arange(4.0), fill_value=-1.0)
+    src = zarr.create_array(
+        store,
+        name="ab",
+        data=np.arange(4.0),
+        chunks=(2,),
+        fill_value=-1.0,
+        attributes={"units": "K"},
+    )
     zarr.create_array(store, name="a", shape=(2,), dtype="int8")
     result = zarr.from_array(store, name="a", data=src, overwrite=True)
     np.testing.assert_array_equal(result[...], np.arange(4.0))
 
     meta_only = zarr.from_array(store, name="ab", data=src, overwrite=True, write_data=False)
     np.testing.assert_array_equal(meta_only[...], np.full(4, -1.0))
+    assert zarr.open_array(store, path="ab").metadata == src.metadata
 
 
 def test_from_array_F_order() -> None:
