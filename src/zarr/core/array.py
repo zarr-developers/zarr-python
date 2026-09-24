@@ -957,6 +957,21 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return self.metadata.shards
 
     @property
+    def dimension_names(self) -> tuple[str | None, ...] | None:
+        """Returns the names of the array's dimensions.
+
+        Returns None if the array has no dimension names, which is always the
+        case for Zarr format 2 arrays.
+
+        Returns
+        -------
+        tuple[str | None, ...] | None
+            One name per dimension, where an unnamed dimension is None, or None
+            if the array has no dimension names.
+        """
+        return self.metadata.dimension_names
+
+    @property
     def size(self) -> int:
         """Returns the total number of elements in the array
 
@@ -2156,6 +2171,21 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             A tuple of integers representing the length of each dimension of a shard or None if sharding is not used.
         """
         return self.async_array.shards
+
+    @property
+    def dimension_names(self) -> tuple[str | None, ...] | None:
+        """Returns the names of the array's dimensions.
+
+        Returns None if the array has no dimension names, which is always the
+        case for Zarr format 2 arrays.
+
+        Returns
+        -------
+        tuple[str | None, ...] | None
+            One name per dimension, where an unnamed dimension is None, or None
+            if the array has no dimension names.
+        """
+        return self.async_array.dimension_names
 
     @property
     def size(self) -> int:
@@ -4963,8 +4993,8 @@ def _parse_keep_array_attr(
                 chunk_key_encoding = {"name": "v2", "separator": data.metadata.dimension_separator}
             elif isinstance(data.metadata, ArrayV3Metadata):
                 chunk_key_encoding = data.metadata.chunk_key_encoding
-        if dimension_names is None and data.metadata.zarr_format == 3:
-            dimension_names = data.metadata.dimension_names
+        if dimension_names is None:
+            dimension_names = data.dimension_names
         if attributes is None:
             # Deep copy so nested containers are not shared between the source
             # array's in-memory metadata and the new array's.

@@ -139,6 +139,11 @@ class ArrayV2Metadata(Metadata):
     def shards(self) -> tuple[int, ...] | None:
         return None
 
+    @property
+    def dimension_names(self) -> None:
+        """Always `None`: Zarr format 2 has no dimension names."""
+        return None
+
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         zarray_dict = self.to_dict()
         zattrs_dict = zarray_dict.pop("attributes", {})

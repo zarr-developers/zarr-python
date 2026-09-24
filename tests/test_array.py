@@ -195,6 +195,39 @@ def test_array_name_properties_no_group(
     assert arr.basename == ""
 
 
+@pytest.mark.parametrize(
+    ("zarr_format", "dimension_names", "expected"),
+    [
+        (2, None, None),
+        (3, None, None),
+        (3, ["x", "y"], ("x", "y")),
+        (3, ["x", None], ("x", None)),
+    ],
+)
+async def test_array_dimension_names(
+    zarr_format: ZarrFormat,
+    dimension_names: list[str | None] | None,
+    expected: tuple[str | None, ...] | None,
+) -> None:
+    """
+    `Array.dimension_names` and `AsyncArray.dimension_names` return the array's
+    dimension names as a tuple, or None when it has none, as for every Zarr
+    format 2 array. They are preserved when the array is reopened.
+    """
+    store = MemoryStore()
+    arr = zarr.create_array(
+        store=store,
+        shape=(2, 3),
+        dtype="i1",
+        zarr_format=zarr_format,
+        dimension_names=dimension_names,
+    )
+    assert arr.dimension_names == expected
+    assert arr.async_array.dimension_names == expected
+    reopened = await zarr.api.asynchronous.open_array(store=store)
+    assert reopened.dimension_names == expected
+
+
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 @pytest.mark.parametrize("zarr_format", [2, 3])
 def test_array_name_properties_with_group(
