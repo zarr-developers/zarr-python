@@ -96,7 +96,10 @@ the short-hand-name form is not permitted by the spec for this codec.
 
 
 CAST_VALUE_CODEC: Final = CodecDefinition(
-    name=CAST_VALUE_CODEC_NAME, configuration=CastValueCodecConfiguration, kind="array_array"
+    name=CAST_VALUE_CODEC_NAME,
+    configuration=CastValueCodecConfiguration,
+    kind="array_array",
+    size="static",
 )
 """The `cast_value` codec.
 

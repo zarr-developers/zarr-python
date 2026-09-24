@@ -48,7 +48,7 @@ configuration, so both forms are valid.
 
 
 CRC32C_CODEC: Final = CodecDefinition(
-    name=CRC32C_CODEC_NAME, configuration=Empty, kind="bytes_bytes"
+    name=CRC32C_CODEC_NAME, configuration=Empty, kind="bytes_bytes", size="static"
 )
 """The `crc32c` codec: a checksum has nothing to configure."""
 

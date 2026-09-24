@@ -231,17 +231,28 @@ class ChunkKeyEncodingDefinition(Definition[C]):
 CodecKind = Literal["array_array", "array_bytes", "bytes_bytes"]
 """What a codec does to what it is handed: the three positions a pipeline orders."""
 
+CodecSize = Literal["static", "dynamic"]
+"""Whether the size of what a codec gives out is fixed by the size of what it is handed.
+
+`static`: it is -- `bytes` writes each element in its width, `crc32c` adds
+four bytes. `dynamic`: it depends on the values -- every compressor.
+"""
+
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class CodecDefinition(Definition[C]):
-    """A codec, and what it does to what it is handed."""
+    """A codec: what it does to what it is handed, and whether the size of what it gives out is static."""
 
     kind: CodecKind
+    size: CodecSize
 
     def _refusal(self) -> str | None:
         kind: object = self.kind
         if kind not in get_args(CodecKind):
             return f"{self.name!r}: kind is one of {get_args(CodecKind)!r}, got {kind!r}"
+        size: object = self.size
+        if size not in get_args(CodecSize):
+            return f"{self.name!r}: size is one of {get_args(CodecSize)!r}, got {size!r}"
         return None
 
 
@@ -290,6 +301,10 @@ ChunkKeyEncodingField = TypeAliasType("ChunkKeyEncodingField", ZarrV3MetadataFie
 """A configuration member holding a chunk key encoding."""
 CodecField = TypeAliasType("CodecField", ZarrV3MetadataFieldJSON)
 """A configuration member holding a codec: a shard's `codecs` is `tuple[CodecField, ...]`."""
+StaticCodecField = TypeAliasType("StaticCodecField", ZarrV3MetadataFieldJSON)
+"""A configuration member holding a codec of static size: a shard's `index_codecs` is one,
+since a reader finds the index by a size it knows before reading it.
+"""
 StorageTransformerField = TypeAliasType("StorageTransformerField", ZarrV3MetadataFieldJSON)
 """A configuration member holding a storage transformer."""
 
@@ -298,8 +313,12 @@ _FIELD_KINDS: Final[Mapping[object, type[Definition[Any]]]] = {
     ChunkGridField: ChunkGridDefinition,
     ChunkKeyEncodingField: ChunkKeyEncodingDefinition,
     CodecField: CodecDefinition,
+    StaticCodecField: CodecDefinition,
     StorageTransformerField: StorageTransformerDefinition,
 }
+
+_STATIC_SIZE: Final[frozenset[object]] = frozenset({StaticCodecField})
+"""The field aliases whose codec must be of static size."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,6 +334,8 @@ class _NestedField:
     loc: Loc
     kind: type[Definition[Any]]
     json: JSONValue
+    static: bool
+    """Whether the member holding it takes a codec of static size only."""
 
 
 def _field(annotation: object) -> Parser | None:
@@ -330,12 +351,13 @@ def _field(annotation: object) -> Parser | None:
         return None
     if kind is None:
         return None
+    static = annotation in _STATIC_SIZE
 
     def parse(value: object, loc: Loc) -> Parsed:
         if not isinstance(value, (str, Mapping)):
             return value, problem(loc, f"expected a metadata field, got {value!r}")
         # Refined JSON, which the checker only knows as `object`.
-        return _NestedField(loc, kind, cast("JSONValue", value)), ()
+        return _NestedField(loc, kind, cast("JSONValue", value), static), ()
 
     return parse
 
@@ -617,10 +639,30 @@ def _read(
         problems.extend(_ruled(definition, lambda: definition.rules(configuration), at))
     for field, envelope in zip(nested, envelopes, strict=True):
         problems.extend(envelope)
-        problems.extend(_read(field.json, field.kind, context, field.loc)[1])
+        inner, found = _read(field.json, field.kind, context, field.loc)
+        problems.extend(found)
+        problems.extend(_sized(field, inner.definition))
     if not _usable(problems):
         return Resolved(data, "invalid", definition, None), tuple(problems)
     return Resolved(data, "read", definition, configuration), tuple(problems)
+
+
+def _sized(field: _NestedField, definition: Definition[Any] | None) -> Problems:
+    """A codec of dynamic size in a member that takes codecs of static size, as a problem at the field.
+
+    A name nothing in scope claims is left unjudged, its size unknown, as
+    everything else about it is.
+    """
+    if not field.static or not isinstance(definition, CodecDefinition):
+        return ()
+    if definition.size == "static":
+        return ()
+    name, _, _ = named_configuration(field.json)
+    return problem(
+        field.loc,
+        f"{name!r} is a codec of dynamic size, and only codecs of static size may be used here",
+        "invalid_value",
+    )
 
 
 def canonicalize(
@@ -696,12 +738,14 @@ __all__ = [
     "CodecDefinition",
     "CodecField",
     "CodecKind",
+    "CodecSize",
     "DataTypeDefinition",
     "DataTypeField",
     "Definition",
     "EmptyConfiguration",
     "Resolution",
     "Resolved",
+    "StaticCodecField",
     "StorageTransformerDefinition",
     "StorageTransformerField",
     "Unread",

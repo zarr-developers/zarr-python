@@ -63,7 +63,11 @@ def _rules(configuration: GzipCodecConfiguration) -> Iterator[ValidationProblem]
 
 
 GZIP_CODEC: Final = CodecDefinition(
-    name=GZIP_CODEC_NAME, configuration=GzipCodecConfiguration, kind="bytes_bytes", rules=_rules
+    name=GZIP_CODEC_NAME,
+    configuration=GzipCodecConfiguration,
+    kind="bytes_bytes",
+    size="dynamic",
+    rules=_rules,
 )
 """The `gzip` codec."""
 

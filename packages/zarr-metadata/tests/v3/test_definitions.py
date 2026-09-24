@@ -63,6 +63,7 @@ ACME_STACK = CodecDefinition(
     name="acme.stack",
     configuration=AcmeStackConfiguration,
     kind="bytes_bytes",
+    size="dynamic",
     rules=acme_stack_rules,
 )
 
@@ -147,30 +148,35 @@ def acme_paired_rules(configuration: AcmePairedConfiguration) -> Iterator[Valida
 
 
 ACME_LEVEL = CodecDefinition(
-    name="acme.level", configuration=AcmeLevelConfiguration, kind="bytes_bytes"
+    name="acme.level", configuration=AcmeLevelConfiguration, kind="bytes_bytes", size="dynamic"
 )
 ACME_TOTAL = CodecDefinition(
-    name="acme.total", configuration=AcmeTotalConfiguration, kind="bytes_bytes"
+    name="acme.total", configuration=AcmeTotalConfiguration, kind="bytes_bytes", size="dynamic"
 )
 ACME_TREE = CodecDefinition(
-    name="acme.tree", configuration=AcmeTreeConfiguration, kind="bytes_bytes"
+    name="acme.tree", configuration=AcmeTreeConfiguration, kind="bytes_bytes", size="dynamic"
 )
 ACME_FALLBACK = CodecDefinition(
-    name="acme.fallback", configuration=AcmeFallbackConfiguration, kind="bytes_bytes"
+    name="acme.fallback",
+    configuration=AcmeFallbackConfiguration,
+    kind="bytes_bytes",
+    size="dynamic",
 )
 ACME_ROUTES = CodecDefinition(
-    name="acme.routes", configuration=AcmeRoutesConfiguration, kind="bytes_bytes"
+    name="acme.routes", configuration=AcmeRoutesConfiguration, kind="bytes_bytes", size="dynamic"
 )
 ACME_BOUNDED = CodecDefinition(
     name="acme.bounded",
     configuration=AcmeBoundedConfiguration,
     kind="bytes_bytes",
+    size="dynamic",
     rules=acme_bounded_rules,
 )
 ACME_PAIRED = CodecDefinition(
     name="acme.paired",
     configuration=AcmePairedConfiguration,
     kind="bytes_bytes",
+    size="dynamic",
     rules=acme_paired_rules,
 )
 
@@ -621,6 +627,7 @@ def test_a_scope_takes_a_name_over() -> None:
         name="gzip",
         configuration=GzipCodecConfiguration,
         kind="bytes_bytes",
+        size="dynamic",
         rules=lambda configuration: (
             [ValidationProblem(("level",), "level 0 stores uncompressed", "invalid_value")]
             if configuration["level"] == 0
@@ -660,24 +667,31 @@ class AcmeCodecDefinition(CodecDefinition[Any]):
 
 def test_error_a_definition_configuration_is_a_typeddict() -> None:
     with pytest.raises(TypeError, match="give the TypedDict"):
-        CodecDefinition(name="acme.bad", configuration=dict, kind="bytes_bytes")
+        CodecDefinition(name="acme.bad", configuration=dict, kind="bytes_bytes", size="dynamic")
 
 
 def test_error_a_definition_member_is_a_shape_json_takes() -> None:
     with pytest.raises(TypeError, match="Unreadable: members is not a shape JSON takes"):
-        CodecDefinition(name="acme.bad", configuration=Unreadable, kind="bytes_bytes")
+        CodecDefinition(
+            name="acme.bad", configuration=Unreadable, kind="bytes_bytes", size="dynamic"
+        )
 
 
 def test_error_a_configuration_says_what_its_other_keys_are() -> None:
     # Open by default, it would take a misspelled key without a word.
     with pytest.raises(TypeError, match="Loose says nothing of the keys it does not declare"):
-        CodecDefinition(name="acme.loose", configuration=Loose, kind="bytes_bytes")
+        CodecDefinition(name="acme.loose", configuration=Loose, kind="bytes_bytes", size="dynamic")
 
 
 def test_error_a_member_typed_as_plain_field_json_is_refused() -> None:
     # It checks as JSON, and its name would never be related to a definition.
     with pytest.raises(TypeError, match="annotate it with the field alias of its kind"):
-        CodecDefinition(name="acme.plain", configuration=AcmePlainConfiguration, kind="bytes_bytes")
+        CodecDefinition(
+            name="acme.plain",
+            configuration=AcmePlainConfiguration,
+            kind="bytes_bytes",
+            size="dynamic",
+        )
 
 
 def test_error_a_configuration_whose_annotations_do_not_resolve() -> None:
@@ -687,22 +701,29 @@ def test_error_a_configuration_whose_annotations_do_not_resolve() -> None:
             name="acme.unresolved",
             configuration=AcmeUnresolvedConfiguration,
             kind="bytes_bytes",
+            size="dynamic",
         )
 
 
 def test_error_a_definition_name_is_a_string() -> None:
     with pytest.raises(TypeError, match="a definition's name is a string"):
-        CodecDefinition(name=5, configuration=Empty, kind="bytes_bytes")  # pyright: ignore[reportArgumentType]
+        CodecDefinition(name=5, configuration=Empty, kind="bytes_bytes", size="dynamic")  # pyright: ignore[reportArgumentType]
 
 
 def test_error_a_codec_kind_is_one_of_three() -> None:
     with pytest.raises(TypeError, match="kind is one of"):
-        CodecDefinition(name="acme.k", configuration=Empty, kind="bytes_to_array")  # pyright: ignore[reportArgumentType]
+        CodecDefinition(name="acme.k", configuration=Empty, kind="bytes_to_array", size="dynamic")  # pyright: ignore[reportArgumentType]
 
 
 def test_error_a_family_names_its_names_with_a_function() -> None:
     with pytest.raises(TypeError, match="names is a function"):
-        CodecDefinition(name="acme.n", configuration=Empty, kind="bytes_bytes", names="acme.n")  # pyright: ignore[reportArgumentType]
+        CodecDefinition(
+            name="acme.n",
+            configuration=Empty,
+            kind="bytes_bytes",
+            size="dynamic",
+            names="acme.n",  # pyright: ignore[reportArgumentType]
+        )
 
 
 @pytest.mark.parametrize("kind", [Definition, AcmeCodecDefinition])

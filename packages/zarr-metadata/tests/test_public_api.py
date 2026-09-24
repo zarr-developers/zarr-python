@@ -286,6 +286,7 @@ _STANDALONE_VOCAB = frozenset(
         "BloscCName",
         "BloscShuffle",
         "CodecKind",
+        "CodecSize",
         "Context",
         "Definition",
         "Loc",

@@ -115,6 +115,7 @@ BLOSC_CODEC: Final = CodecDefinition(
     name=BLOSC_CODEC_NAME,
     configuration=BloscCodecConfiguration,
     kind="bytes_bytes",
+    size="dynamic",
     rules=_rules,
     canonical=_canonical,
 )

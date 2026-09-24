@@ -18,7 +18,9 @@ to subclass:
   configuration.
 
 What kind of metadata a definition defines is its type: `CodecDefinition`
-(with the codec's `kind`), `DataTypeDefinition`, `ChunkGridDefinition`,
+(with the codec's `kind`, and its `size`: whether the size of what it gives
+out is fixed by the size of what it is handed, `"static"`, or depends on
+the values, `"dynamic"`), `DataTypeDefinition`, `ChunkGridDefinition`,
 `ChunkKeyEncodingDefinition`, `StorageTransformerDefinition`.
 
 **Reading JSON.** Three steps, each feeding the next, and each usable on
@@ -99,6 +101,7 @@ supports.
         name="acme.lz4",
         configuration=AcmeLz4Configuration,
         kind="bytes_bytes",
+        size="dynamic",
         rules=acme_lz4_rules,
     )
     SCOPE = CORE_AND_EXTENSIONS.extended_with(ACME_LZ4)
@@ -114,7 +117,12 @@ word, so a definition refuses it. Its members are the shapes JSON takes:
 
 A member holding another metadata field is annotated with the field alias
 of its kind -- a shard's `codecs: tuple[CodecField, ...]` -- and read in
-the scope its field is read in. `ZarrV3MetadataFieldJSON` is the same
+the scope its field is read in. A member that takes codecs of static size
+only is annotated `StaticCodecField` -- a shard's `index_codecs`, since a
+reader finds the index by a size it knows before reading it -- and a codec
+of dynamic size there is a problem at its place, where the field is read
+in a scope; a name nothing claims is left unjudged, its size unknown with
+the rest of it. `ZarrV3MetadataFieldJSON` is the same
 JSON, but checks as JSON and nothing more, so a definition refuses a
 member typed with it. A family, one definition for many names, claims
 them through `names` and says which are allowed through `name_rules`:
@@ -136,7 +144,8 @@ A definition checks itself when it is built, and each of these is a
 TypedDict, says nothing of the keys it does not declare, or has a member
 no checker reads, named down to the TypedDict that holds it; a `name`
 that is not a string; `rules`, `name_rules`, `canonical` or `names`
-that are not functions; a codec `kind` that is not one of the three. A scope refuses
+that are not functions; a codec `kind` that is not one of the three, or a
+`size` that is not `"static"` or `"dynamic"`. A scope refuses
 a definition of no kind. Nothing happens at class creation.
 """
 
@@ -152,12 +161,14 @@ from zarr_metadata.v3._definition import (
     CodecDefinition,
     CodecField,
     CodecKind,
+    CodecSize,
     DataTypeDefinition,
     DataTypeField,
     Definition,
     EmptyConfiguration,
     Resolution,
     Resolved,
+    StaticCodecField,
     StorageTransformerDefinition,
     StorageTransformerField,
     Unread,
@@ -177,6 +188,7 @@ __all__ = [
     "CodecDefinition",
     "CodecField",
     "CodecKind",
+    "CodecSize",
     "Context",
     "DataTypeDefinition",
     "DataTypeField",
@@ -188,6 +200,7 @@ __all__ = [
     "ProblemKind",
     "Resolution",
     "Resolved",
+    "StaticCodecField",
     "StorageTransformerDefinition",
     "StorageTransformerField",
     "Unread",

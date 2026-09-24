@@ -67,6 +67,7 @@ TRANSPOSE_CODEC: Final = CodecDefinition(
     name=TRANSPOSE_CODEC_NAME,
     configuration=TransposeCodecConfiguration,
     kind="array_array",
+    size="static",
     rules=_rules,
 )
 """The `transpose` codec."""

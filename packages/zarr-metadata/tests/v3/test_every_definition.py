@@ -384,6 +384,74 @@ def test_error_sharding_inner_chunk_extent_is_zero() -> None:
     ]
 
 
+STATIC_SIZE = ("bytes", "cast_value", "crc32c", "scale_offset", "transpose")
+DYNAMIC_SIZE = ("blosc", "gzip", "sharding_indexed", "zstd")
+
+
+def test_every_codec_says_whether_its_size_is_static() -> None:
+    # As zarr-python's `is_fixed_size` says: a compressor, and a shard,
+    # whose empty inner chunks take no bytes, give out a size that depends
+    # on the values.
+    sizes = {
+        definition.name: definition.size
+        for definition in CORE_AND_EXTENSIONS.definitions()
+        if isinstance(definition, CodecDefinition)
+    }
+    assert sizes == dict.fromkeys(STATIC_SIZE, "static") | dict.fromkeys(DYNAMIC_SIZE, "dynamic")
+
+
+@pytest.mark.parametrize(
+    "index_codecs",
+    [
+        ["bytes"],
+        ["bytes", "crc32c"],
+        [{"name": "bytes", "configuration": {"endian": "little"}}, {"name": "crc32c"}],
+        # A name nothing in scope claims is left unjudged, its size unknown.
+        ["bytes", {"name": "acme.lz9"}],
+    ],
+    ids=["bytes", "bytes-crc32c", "spelled-out", "unclaimed"],
+)
+def test_a_shard_s_index_codecs_are_of_static_size(index_codecs: list[object]) -> None:
+    # The inner chunks' own codecs may be of either size.
+    configuration = {
+        "chunk_shape": [2],
+        "codecs": ["bytes", {"name": "gzip", "configuration": {"level": 5}}],
+        "index_codecs": index_codecs,
+    }
+    assert _one("codecs:sharding_indexed", configuration) == []
+
+
+@pytest.mark.parametrize(
+    "codec",
+    [
+        {"name": "gzip", "configuration": {"level": 5}},
+        {"name": "zstd", "configuration": {"level": 3}},
+        {
+            "name": "blosc",
+            "configuration": {
+                "cname": "lz4",
+                "clevel": 5,
+                "shuffle": "noshuffle",
+                "blocksize": 0,
+            },
+        },
+    ],
+    ids=["gzip", "zstd", "blosc"],
+)
+def test_error_a_shard_s_index_codec_is_of_dynamic_size(codec: dict[str, object]) -> None:
+    # The spec: "Codecs that produce variable-sized encoded representation,
+    # such as compression codecs, MUST NOT be used for index codecs."
+    configuration = {"chunk_shape": [2], "codecs": ["bytes"], "index_codecs": ["bytes", codec]}
+    assert _one("codecs:sharding_indexed", configuration) == [
+        (("configuration", "index_codecs", 1), "invalid_value")
+    ]
+
+
+def test_error_a_codec_size_that_is_neither() -> None:
+    with pytest.raises(TypeError, match="size is one of"):
+        dataclasses.replace(GZIP_CODEC, size="fixed")
+
+
 def test_error_a_codec_inside_a_shard_is_judged_where_it_sits() -> None:
     configuration = {
         "chunk_shape": [2],

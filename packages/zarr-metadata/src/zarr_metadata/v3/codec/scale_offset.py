@@ -76,6 +76,7 @@ SCALE_OFFSET_CODEC: Final = CodecDefinition(
     name=SCALE_OFFSET_CODEC_NAME,
     configuration=ScaleOffsetCodecConfiguration,
     kind="array_array",
+    size="static",
     rules=_rules,
 )
 """The `scale_offset` codec."""

@@ -70,7 +70,11 @@ def _rules(configuration: ZstdCodecConfiguration) -> Iterator[ValidationProblem]
 
 
 ZSTD_CODEC: Final = CodecDefinition(
-    name=ZSTD_CODEC_NAME, configuration=ZstdCodecConfiguration, kind="bytes_bytes", rules=_rules
+    name=ZSTD_CODEC_NAME,
+    configuration=ZstdCodecConfiguration,
+    kind="bytes_bytes",
+    size="dynamic",
+    rules=_rules,
 )
 """The `zstd` codec."""
 

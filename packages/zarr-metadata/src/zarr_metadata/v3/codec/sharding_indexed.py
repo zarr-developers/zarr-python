@@ -10,7 +10,7 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import CodecDefinition, CodecField
+from zarr_metadata.v3._definition import CodecDefinition, CodecField, StaticCodecField
 
 SHARDING_INDEXED_CODEC_NAME: Final = "sharding_indexed"
 """The `name` field value of the `sharding_indexed` codec."""
@@ -35,8 +35,9 @@ class ShardingIndexedCodecConfiguration(TypedDict, closed=True):
     `codecs` is the codec pipeline applied to each inner chunk; exactly
     one array-to-bytes codec is required.
 
-    `index_codecs` is the codec pipeline applied to the shard index;
-    it must be deterministic (no variable-size compression).
+    `index_codecs` is the codec pipeline applied to the shard index, of
+    codecs of static size only: a reader finds the index by a size it knows
+    before reading it, so a compressor there is refused.
       https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L147-L155
 
     `index_location` defaults to `"end"` per the spec.
@@ -45,7 +46,7 @@ class ShardingIndexedCodecConfiguration(TypedDict, closed=True):
 
     chunk_shape: tuple[int, ...]
     codecs: tuple[CodecField, ...]
-    index_codecs: tuple[CodecField, ...]
+    index_codecs: tuple[StaticCodecField, ...]
     index_location: NotRequired[ShardingIndexLocation]
 
 
@@ -81,6 +82,7 @@ SHARDING_INDEXED_CODEC: Final = CodecDefinition(
     name=SHARDING_INDEXED_CODEC_NAME,
     configuration=ShardingIndexedCodecConfiguration,
     kind="array_bytes",
+    size="dynamic",
     rules=_rules,
 )
 """The `sharding_indexed` codec.

@@ -59,7 +59,7 @@ omit `configuration` entirely.
 """
 
 BYTES_CODEC: Final = CodecDefinition(
-    name=BYTES_CODEC_NAME, configuration=BytesCodecConfiguration, kind="array_bytes"
+    name=BYTES_CODEC_NAME, configuration=BytesCodecConfiguration, kind="array_bytes", size="static"
 )
 """The `bytes` codec.
 
