@@ -58,6 +58,13 @@ _FILESYSTEM_CALLS: tuple[tuple[Any, str], ...] = (
     (os, "open"),
     (os, "fsync"),
     (io, "open"),
+    # On Windows these are builtins (nt._path_isfile and friends) that never reach
+    # os.stat, and from Python 3.14 Path.is_file, is_dir and exists call them.
+    (os.path, "isfile"),
+    (os.path, "isdir"),
+    (os.path, "islink"),
+    (os.path, "exists"),
+    (os.path, "lexists"),
 )
 
 
