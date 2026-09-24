@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import math
 import warnings
-from asyncio import gather
+from asyncio import TaskGroup, gather
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import starmap
@@ -5940,7 +5940,15 @@ async def _resize(
         # Bound the worker count even when the user has disabled the I/O
         # concurrency limit with None.
         concurrency = zarr_config.get("async.concurrency") or 1000
-        await gather(*(_delete_worker() for _ in range(concurrency)))
+        # A TaskGroup cancels the remaining workers on the first failure, so no
+        # deletions continue after resize has raised.
+        try:
+            async with TaskGroup() as tg:
+                for _ in range(concurrency):
+                    tg.create_task(_delete_worker())
+        except ExceptionGroup as eg:
+            # Keep resize's contract of raising the store's own exception.
+            raise eg.exceptions[0] from None
 
     # Write new metadata
     await save_metadata(array.store_path, new_metadata)

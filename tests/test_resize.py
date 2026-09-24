@@ -155,3 +155,29 @@ async def test_resize_delete_failure_preserves_metadata() -> None:
     assert metadata_before.to_bytes() == metadata_after.to_bytes()
     assert array.shape == (4,)
     assert array._chunk_grid is grid_before
+
+
+async def test_resize_delete_failure_stops_remaining_deletions() -> None:
+    store = MemoryStore()
+    array = await create_array(store, shape=(3000,), chunks=(1,), dtype="uint8")
+    calls = 0
+
+    async def delete(key: str) -> None:
+        nonlocal calls
+        calls += 1
+        call = calls
+        await asyncio.sleep(0)
+        if call == 10:
+            raise OSError("delete failed")
+
+    with (
+        config.set({"async.concurrency": 4}),
+        mock.patch.object(store, "delete", delete),
+    ):
+        with pytest.raises(OSError, match="delete failed"):
+            await array.resize((0,))
+        calls_at_raise = calls
+        # Give any surviving workers a chance to run.
+        for _ in range(10):
+            await asyncio.sleep(0)
+    assert calls == calls_at_raise < 3000
