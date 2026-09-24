@@ -26,7 +26,7 @@ from zarr.codecs.sharding import SUBCHUNK_WRITE_ORDER, ShardingCodec, SubchunkWr
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array import Array, CompressorsLike, SerializerLike
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
-from zarr.core.common import JSON, AccessModeLiteral, ZarrFormat, compress_rle
+from zarr.core.common import JSON, AccessModeLiteral, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
@@ -507,9 +507,11 @@ def rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[int |
     dimension is an edge list, since bare ints alone declare a regular grid.
     Run-length encoding is not part of the `chunks=` syntax; it belongs to
     stored metadata, see `rectilinear_chunk_shape_declarations`.
+
+    `shape` must have at least one dimension: a 0-d array has no dimension
+    to hold an edge list, so it cannot have a rectilinear grid.
     """
-    if not shape:
-        return []
+    assert shape, "a rectilinear grid needs at least one dimension"
     forced_list = draw(st.integers(min_value=0, max_value=len(shape) - 1))
     chunks: list[int | list[int]] = []
     for i, extent in enumerate(shape):
@@ -527,28 +529,29 @@ def rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[int |
     return chunks
 
 
-RectilinearDimDeclaration = int | list[int | list[int]]
+_RectilinearDimDeclaration = int | list[int | list[int]]
 
 
 def _rle_encode(draw: st.DrawFn, edges: list[int]) -> list[int | list[int]]:
     """Run-length encode `edges` as the spec allows: a mix of bare ints and
-    `[size, count]` pairs. Either the canonical form or an arbitrary
-    grouping, which may split a run across pairs and use `count == 1`."""
-    if draw(st.booleans(), label="canonical rle"):
-        event("rectilinear rle: canonical")
-        return compress_rle(edges)
-    event("rectilinear rle: arbitrary grouping")
+    `[size, count]` pairs. Either the canonical form (each run as one pair,
+    a run of one as a bare int) or an arbitrary grouping, which may split a
+    run across pairs and use `count == 1`."""
+    canonical = draw(st.booleans(), label="canonical rle")
+    event("rectilinear rle: canonical" if canonical else "rectilinear rle: arbitrary grouping")
     encoded: list[int | list[int]] = []
     i = 0
     while i < len(edges):
         run = 1
         while i + run < len(edges) and edges[i + run] == edges[i]:
             run += 1
-        count = draw(st.integers(min_value=1, max_value=run))
-        if count == 1 and draw(st.booleans(), label="bare edge"):
-            encoded.append(edges[i])
+        if canonical:
+            count = run
+            bare = run == 1
         else:
-            encoded.append([edges[i], count])
+            count = draw(st.integers(min_value=1, max_value=run))
+            bare = count == 1 and draw(st.booleans(), label="bare edge")
+        encoded.append(edges[i] if bare else [edges[i], count])
         i += count
     return encoded
 
@@ -556,7 +559,7 @@ def _rle_encode(draw: st.DrawFn, edges: list[int]) -> list[int | list[int]]:
 @st.composite
 def rectilinear_chunk_shape_declarations(
     draw: st.DrawFn, *, shape: tuple[int, ...], overhang: bool = True
-) -> tuple[list[RectilinearDimDeclaration], tuple[int | tuple[int, ...], ...]]:
+) -> tuple[list[_RectilinearDimDeclaration], tuple[int | tuple[int, ...], ...]]:
     """The `chunk_shapes` of a stored rectilinear chunk grid, with its meaning.
 
     Samples the whole declaration space of the spec. Per dimension: a bare
@@ -568,7 +571,7 @@ def rectilinear_chunk_shape_declarations(
     Returns `(declaration, chunk_shapes)`: the JSON value to store, and the
     `chunk_shapes` that parsing it must produce.
     """
-    declaration: list[RectilinearDimDeclaration] = []
+    declaration: list[_RectilinearDimDeclaration] = []
     chunk_shapes: list[int | tuple[int, ...]] = []
     for extent in shape:
         assert extent > 0
