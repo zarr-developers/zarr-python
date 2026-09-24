@@ -13,6 +13,48 @@ from zarr.core.dtype.npy.time import DateTime64, TimeDelta64, datetime_from_int
 
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
+    from zarr.core.dtype.common import DTypeSpec_V2, DTypeSpec_V3
+
+# Every unit at the smallest, a small, and the largest scale NumPy accepts, in both byte
+# orders. "μs" is left out of the JSON cases because it is written back as "us" (see
+# test_time_microsecond_alias_normalized).
+_UNITS = get_args(DateTimeUnit)
+_SCALES = (1, 2, 2**31 - 1)
+_BYTEORDERS = ("<", ">")
+
+
+def _native_dtypes(kind: str) -> tuple[np.dtype[np.generic], ...]:
+    return tuple(
+        np.dtype(f"{byteorder}{kind}[{scale}{unit}]")
+        for unit in _UNITS
+        for scale in _SCALES
+        for byteorder in _BYTEORDERS
+    )
+
+
+def _v2_names(kind: str) -> tuple[DTypeSpec_V2, ...]:
+    # NumPy's spelling, except that a generic scale is written explicitly.
+    def suffix(unit: str, scale: int) -> str:
+        if unit == "generic" and scale == 1:
+            return ""
+        return f"[{unit}]" if scale == 1 else f"[{scale}{unit}]"
+
+    return tuple(
+        {"name": f"{byteorder}{kind}{suffix(unit, scale)}", "object_codec_id": None}
+        for unit in _UNITS
+        if unit != "μs"
+        for scale in _SCALES
+        for byteorder in _BYTEORDERS
+    )
+
+
+def _v3_configurations(name: str) -> tuple[DTypeSpec_V3, ...]:
+    return tuple(
+        {"name": name, "configuration": {"unit": unit, "scale_factor": scale}}
+        for unit in _UNITS
+        if unit != "μs"
+        for scale in _SCALES
+    )
 
 
 class _TestTimeBase(BaseTestZDType):
@@ -32,23 +74,14 @@ class _TestTimeBase(BaseTestZDType):
 
 class TestDateTime64(_TestTimeBase):
     test_cls = DateTime64
-    valid_dtype = (np.dtype("datetime64[10ns]"), np.dtype("datetime64[us]"), np.dtype("datetime64"))
+    valid_dtype = (np.dtype("datetime64"), *_native_dtypes("M8"))
     invalid_dtype = (
         np.dtype(np.int8),
         np.dtype(np.float64),
         np.dtype("timedelta64[ns]"),
     )
-    valid_json_v2 = (
-        {"name": ">M8", "object_codec_id": None},
-        {"name": ">M8[s]", "object_codec_id": None},
-        {"name": "<M8[10s]", "object_codec_id": None},
-        {"name": "<M8[10us]", "object_codec_id": None},
-    )
-    valid_json_v3 = (
-        {"name": "numpy.datetime64", "configuration": {"unit": "ns", "scale_factor": 10}},
-        {"name": "numpy.datetime64", "configuration": {"unit": "us", "scale_factor": 1}},
-        {"name": "numpy.datetime64", "configuration": {"unit": "generic", "scale_factor": 1}},
-    )
+    valid_json_v2 = _v2_names("M8")
+    valid_json_v3 = _v3_configurations("numpy.datetime64")
     invalid_json_v2 = (
         {"name": "datetime64", "object_codec_id": None},
         {"name": "|f8", "object_codec_id": None},
@@ -84,24 +117,15 @@ class TestDateTime64(_TestTimeBase):
 
 class TestTimeDelta64(_TestTimeBase):
     test_cls = TimeDelta64
-    valid_dtype = (np.dtype("timedelta64[ns]"), np.dtype("timedelta64[us]"))
+    valid_dtype = _native_dtypes("m8")
     invalid_dtype = (
         np.dtype(np.int8),
         np.dtype(np.float64),
         np.dtype("datetime64[ns]"),
     )
 
-    valid_json_v2 = (
-        {"name": ">m8", "object_codec_id": None},
-        {"name": ">m8[s]", "object_codec_id": None},
-        {"name": "<m8[10s]", "object_codec_id": None},
-        {"name": "<m8[10us]", "object_codec_id": None},
-    )
-    valid_json_v3 = (
-        {"name": "numpy.timedelta64", "configuration": {"unit": "ns", "scale_factor": 10}},
-        {"name": "numpy.timedelta64", "configuration": {"unit": "us", "scale_factor": 1}},
-        {"name": "numpy.timedelta64", "configuration": {"unit": "generic", "scale_factor": 1}},
-    )
+    valid_json_v2 = _v2_names("m8")
+    valid_json_v3 = _v3_configurations("numpy.timedelta64")
     invalid_json_v2 = (
         {"name": "timedelta64", "object_codec_id": None},
         {"name": "|f8", "object_codec_id": None},
@@ -174,35 +198,6 @@ def test_time_scale_factor_too_high() -> None:
         DateTime64(scale_factor=scale_factor)
     with pytest.raises(ValueError, match=msg):
         TimeDelta64(scale_factor=scale_factor)
-
-
-@pytest.mark.parametrize("cls", [DateTime64, TimeDelta64])
-@pytest.mark.parametrize("unit", get_args(DateTimeUnit))
-@pytest.mark.parametrize("scale_factor", [1, 2, 2**31 - 1])
-@pytest.mark.parametrize("byteorder", ["<", ">"])
-def test_time_dtype_roundtrip(
-    cls: type[DateTime64 | TimeDelta64],
-    unit: DateTimeUnit,
-    scale_factor: int,
-    byteorder: str,
-) -> None:
-    """Native and JSON conversions must preserve temporal parameters, including generic scale."""
-    kind = "M8" if cls is DateTime64 else "m8"
-    native = np.dtype(f"{byteorder}{kind}[{scale_factor}{unit}]")
-    expected_unit = "us" if unit == "μs" else unit
-    dtype = cls.from_native_dtype(native)
-    assert (dtype.unit, dtype.scale_factor) == (expected_unit, scale_factor)
-    restored_native = dtype.to_native_dtype()
-    assert np.datetime_data(restored_native) == (expected_unit, scale_factor)
-    assert restored_native == native
-    json_v2 = dtype.to_json(zarr_format=2)
-    assert np.datetime_data(np.dtype(json_v2["name"])) == (expected_unit, scale_factor)
-    assert cls.from_json(json_v2, zarr_format=2) == dtype
-    json_v3 = dtype.to_json(zarr_format=3)
-    assert json_v3["configuration"]["unit"] == expected_unit
-    assert json_v3["configuration"]["scale_factor"] == scale_factor
-    restored_v3 = cls.from_json(json_v3, zarr_format=3)
-    assert np.datetime_data(restored_v3.to_native_dtype()) == (expected_unit, scale_factor)
 
 
 @pytest.mark.parametrize("cls", [DateTime64, TimeDelta64])
