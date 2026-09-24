@@ -18,9 +18,11 @@ from zarr.codecs import (
     BloscCodec,
     BytesCodec,
     Crc32cCodec,
+    GzipCodec,
     ShardingCodec,
     TransposeCodec,
 )
+from zarr.codecs.numcodecs import CRC32
 from zarr.codecs.sharding import (
     INDEX_LOCATION,
     MAX_UINT_64,
@@ -1117,6 +1119,44 @@ def test_sharding_codec_rejects_unknown_index_location() -> None:
     kwargs: dict[str, Any] = {"chunk_shape": (1,), "index_location": "middle"}
     with pytest.raises(ValueError, match="index_location must be one of"):
         ShardingCodec(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "index_codecs",
+    [
+        (BytesCodec(),),
+        (BytesCodec(), Crc32cCodec()),
+        (TransposeCodec(order=(1, 0)), BytesCodec(), Crc32cCodec()),
+        (BytesCodec(), CRC32()),
+    ],
+)
+def test_sharding_fixed_size_index_codecs_roundtrip(index_codecs: tuple[Any, ...]) -> None:
+    """
+    Any chain of fixed-size codecs is accepted as `index_codecs`, and data
+    written through it reads back unchanged.
+    """
+    data = np.arange(16, dtype="uint16")
+    arr = zarr.create_array(
+        MemoryStore(),
+        shape=data.shape,
+        dtype=data.dtype,
+        chunks=(2,),
+        shards=(8,),
+        compressors=None,
+        serializer=ShardingCodec(chunk_shape=(2,), index_codecs=index_codecs),
+    )
+    arr[:] = data
+    np.testing.assert_array_equal(arr[:], data)
+
+
+@pytest.mark.parametrize("compressor", [GzipCodec(), BloscCodec()])
+def test_sharding_codec_rejects_variable_size_index_codecs(compressor: Any) -> None:
+    """
+    ShardingCodec rejects an `index_codecs` chain containing a codec whose
+    encoded size is not fixed, as the spec requires.
+    """
+    with pytest.raises(ValueError, match="must produce a fixed-size encoding"):
+        ShardingCodec(chunk_shape=(2,), index_codecs=(BytesCodec(), compressor))
 
 
 def test_sharding_index_location_attribute_error_for_unknown_member() -> None:
