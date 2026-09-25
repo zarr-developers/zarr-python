@@ -226,7 +226,7 @@ class ZarrV3ConsolidatedMetadata:
     def from_json(cls, data: object) -> ZarrV3ConsolidatedMetadata:
         normalized = arrays_to_tuples(data)
         problems = validate_consolidated_metadata_v3(normalized)
-        if problems:
+        if len(problems) != 0:
             raise MetadataValidationError(problems)
         env = cast("Mapping[str, object]", normalized)
         entries: dict[str, ZarrV3ArrayMetadata | ZarrV3GroupMetadata] = {}
@@ -315,7 +315,7 @@ class ZarrV2GroupMetadata:
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV2GroupMetadata:
-        zgroup_raw = cast("object", load_store_json(mapping, ZARR_V2_GROUP_METADATA_STORE_KEY))
+        zgroup_raw = load_store_json(mapping, ZARR_V2_GROUP_METADATA_STORE_KEY)
         if not isinstance(zgroup_raw, Mapping):
             return cls.from_json(zgroup_raw)
         zgroup = cast("Mapping[str, object]", zgroup_raw)
@@ -330,7 +330,7 @@ class ZarrV2GroupMetadata:
                 ]
             )
         if ZARR_V2_ATTRIBUTES_STORE_KEY in mapping:
-            zattrs = cast("object", load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY))
+            zattrs = load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY)
             return cls.from_json({**zgroup, "attributes": zattrs})
         return cls.from_json(zgroup)
 
@@ -417,7 +417,7 @@ class ZarrV2ConsolidatedMetadata:
                         )
                         for problem in validate_json(value)
                     )
-        if problems:
+        if len(problems) != 0:
             raise MetadataValidationError(problems)
         entries_tupled = cast(
             "dict[str, JSONValue]",

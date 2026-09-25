@@ -17,7 +17,7 @@ ZstdCodecName = Literal["zstd"]
 """Literal type of the `name` field of the `zstd` codec."""
 
 
-class ZstdCodecConfiguration(TypedDict):
+class ZstdCodecConfiguration(TypedDict, closed=True):
     """
     Configuration for the Zarr v3 `zstd` codec.
 
@@ -30,11 +30,12 @@ class ZstdCodecConfiguration(TypedDict):
     checksum: NotRequired[bool]
 
 
-class ZstdCodecObject(TypedDict):
+class ZstdCodecObject(TypedDict, closed=True):
     """`zstd` codec metadata in object form."""
 
     name: ZstdCodecName
     configuration: ZstdCodecConfiguration
+    must_understand: NotRequired[bool]
 
 
 ZstdCodecMetadata = ZstdCodecObject
