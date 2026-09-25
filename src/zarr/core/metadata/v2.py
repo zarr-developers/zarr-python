@@ -43,7 +43,7 @@ from zarr.core.common import (
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes, parse_chunk_edge
-from zarr.core.metadata.upgrades import V2_ARRAY_UPGRADES, upgrade_array_document
+from zarr.core.metadata.upgrades import V2_ARRAY_UPGRADES, upgrade_array_document, warn_readings
 
 
 class ArrayV2MetadataDict(TypedDict):
@@ -148,7 +148,8 @@ class ArrayV2Metadata(Metadata):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
-        data = dict(upgrade_array_document(data, V2_ARRAY_UPGRADES))
+        upgraded, readings = upgrade_array_document(data, V2_ARRAY_UPGRADES)
+        data = dict(upgraded)
         _data = data.copy()
         # Check that the zarr_format attribute is correct.
         _ = parse_zarr_format(_data.pop("zarr_format"))
@@ -200,7 +201,9 @@ class ArrayV2Metadata(Metadata):
 
         _data = {k: v for k, v in _data.items() if k in expected}
 
-        return cls(**_data)
+        metadata = cls(**_data)
+        warn_readings(readings)
+        return metadata
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()

@@ -36,7 +36,11 @@ from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes, parse_chunk_edge
-from zarr.core.metadata.upgrades import V3_ARRAY_UPGRADES, upgrade_array_document
+from zarr.core.metadata.upgrades import (
+    V3_ARRAY_UPGRADES,
+    upgrade_array_document,
+    warn_readings,
+)
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
 
@@ -628,8 +632,9 @@ class ArrayV3Metadata(Metadata):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
+        upgraded, readings = upgrade_array_document(data, V3_ARRAY_UPGRADES)
         # a new dict, because we are modifying it
-        _data = dict(upgrade_array_document(data, V3_ARRAY_UPGRADES))
+        _data = dict(upgraded)
 
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format(_data.pop("zarr_format"))
@@ -669,7 +674,7 @@ class ArrayV3Metadata(Metadata):
         # TODO: replace this with a real type check!
         _data_typed = cast(ArrayMetadataJSON_V3, _data)
 
-        return cls(
+        metadata = cls(
             shape=_data_typed["shape"],
             chunk_grid=_data_typed["chunk_grid"],  # type: ignore[arg-type]
             chunk_key_encoding=_data_typed["chunk_key_encoding"],  # type: ignore[arg-type]
@@ -683,6 +688,8 @@ class ArrayV3Metadata(Metadata):
             extra_fields=allowed_extra_fields,
             storage_transformers=_data_typed.get("storage_transformers", ()),  # type: ignore[arg-type]
         )
+        warn_readings(readings)
+        return metadata
 
     def to_dict(self) -> dict[str, JSON]:
         out_dict = super().to_dict()
