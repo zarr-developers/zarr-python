@@ -500,7 +500,7 @@ def _parse_stored_regular_chunk_grid(
     Anything else is not a regular chunk shape and is left for the chunk grid
     parser: other grids define their own chunk semantics. zarr-python 3.0 and
     3.1 stored `chunk_shape: [0]` (and 3.0 `[false]`) for an array created with
-    a zero-length axis. This runs here rather than in the grid parser because
+    a zero-length axis, and 3.1 kept it when the axis grew. This runs here rather than in the grid parser because
     it needs the array shape, which chunk grid metadata does not carry.
     """
     if not isinstance(chunk_grid, Mapping) or chunk_grid.get("name") != "regular":
