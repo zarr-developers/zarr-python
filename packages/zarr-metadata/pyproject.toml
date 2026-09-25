@@ -50,14 +50,16 @@ Documentation = "https://zarr-metadata.readthedocs.io/"
 test = ["pytest", "pydantic>=2.13", "jsonschema"]
 docs = [
     # Pins match the zarr-python docs environment in the repo-root
-    # pyproject.toml so the two sites render with the same toolchain.
+    # pyproject.toml so every site renders with the same toolchain, and the
+    # shared packages/mkdocs-base.yml sees one set of plugin versions.
+    # Bump them together with the root.
     "mkdocs-material==9.7.7",
     "mkdocs==1.6.1",
-    "mkdocstrings==1.0.4",
-    "mkdocstrings-python==2.0.5",
+    "mkdocstrings==1.0.6",
+    "mkdocstrings-python==2.0.8",
     "griffe-inherited-docstrings==1.1.3",
     # mkdocstrings uses ruff to format rendered signatures
-    "ruff==0.15.20",
+    "ruff==0.16.8",
 ]
 
 [tool.hatch.version]
@@ -76,8 +78,8 @@ packages = ["src/zarr_metadata"]
 # keeps an sdist self-testing and self-documenting: every fixture this suite
 # reads is a JSON file sitting next to the test module that loads it, so
 # `/tests` is the whole test dependency, and `/docs` plus `/mkdocs.yml` are a
-# self-contained site (mkdocstrings reads `src`, nothing reaches outside the
-# package) so `just docs-check` runs from an unpacked sdist too. `changes/`
+# self-contained site (mkdocstrings reads `src`; the shared config and header
+# script are copied in below) so `just docs-check` runs from an unpacked sdist too. `changes/`
 # and `.readthedocs.yaml` are deliberately absent: towncrier fragments are
 # repo bookkeeping, and the RTD config addresses paths from the repo root.
 # `pyproject.toml`, `README.md` and `LICENSE.txt` are added by hatchling itself.
@@ -90,6 +92,14 @@ include = [
     "/justfile",
     "/CHANGELOG.md",
 ]
+# The shared docs config and header script are symlinks into packages/ in the
+# repository; ship the files they point at, since a link out of the sdist
+# dangles and pip refuses to unpack it.
+exclude = ["/mkdocs-base.yml", "/docs/_static/source-version.js"]
+
+[tool.hatch.build.targets.sdist.force-include]
+"../mkdocs-base.yml" = "mkdocs-base.yml"
+"../source-version.js" = "docs/_static/source-version.js"
 
 [tool.ruff]
 extend = "../../pyproject.toml"

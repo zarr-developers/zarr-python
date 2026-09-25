@@ -11,6 +11,9 @@ on:
     paths:
       - 'packages/zarr-http-server/**'
       - '.github/workflows/zarr-http-server.yml'
+      # The docs config and header script shared by all package sites.
+      - 'packages/mkdocs-base.yml'
+      - 'packages/source-version.js'
       # The package resolves zarr from the repo root for its own tests, so a
       # core change can break it. Run this suite when core changes too.
       - 'src/zarr/**'
@@ -18,6 +21,9 @@ on:
     paths:
       - 'packages/zarr-http-server/**'
       - '.github/workflows/zarr-http-server.yml'
+      # The docs config and header script shared by all package sites.
+      - 'packages/mkdocs-base.yml'
+      - 'packages/source-version.js'
       # The package resolves zarr from the repo root for its own tests, so a
       # core change can break it. Run this suite when core changes too.
       - 'src/zarr/**'
