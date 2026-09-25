@@ -110,8 +110,6 @@ class ArrayV2Metadata(Metadata):
         object.__setattr__(self, "fill_value", fill_value_parsed)
         object.__setattr__(self, "attributes", attributes_parsed)
 
-        # ensure that the metadata document is consistent
-
     @property
     def ndim(self) -> int:
         return len(self.shape)
