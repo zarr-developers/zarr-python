@@ -3047,12 +3047,16 @@ pytest.importorskip("hypothesis")
 import hypothesis.strategies as st
 from hypothesis import event, given, settings
 
+from tests.conftest import declared_chunk_data_sizes
 from zarr.testing.strategies import rectilinear_chunks
 
 
 @st.composite
-def rectilinear_arrays_st(draw: st.DrawFn) -> tuple[zarr.Array[Any], np.ndarray[Any, Any]]:
-    """Generate a rectilinear zarr array with random data, shape, and chunks."""
+def rectilinear_arrays_st(
+    draw: st.DrawFn,
+) -> tuple[zarr.Array[Any], np.ndarray[Any, Any], list[int | list[int]]]:
+    """Generate a rectilinear zarr array with random data, shape, and chunks,
+    with the `chunks=` it was created with."""
     from zarr.storage import MemoryStore
 
     ndim = draw(st.integers(min_value=1, max_value=3))
@@ -3064,23 +3068,22 @@ def rectilinear_arrays_st(draw: st.DrawFn) -> tuple[zarr.Array[Any], np.ndarray[
     store = MemoryStore()
     z = zarr.create_array(store=store, shape=shape, chunks=chunk_shapes, dtype="int32")
     z[:] = a
-    return z, a
+    return z, a, chunk_shapes
 
 
 @settings(deadline=None, max_examples=50)
 @given(data=st.data())
 def test_property_block_indexing_rectilinear(data: st.DataObject) -> None:
     """Property test: block indexing on rectilinear arrays matches numpy."""
-    z, a = data.draw(rectilinear_arrays_st())
-    grid = ChunkGrid.from_metadata(z.metadata)
+    z, a, chunks = data.draw(rectilinear_arrays_st())
 
     for dim in range(a.ndim):
-        dim_grid = grid._dimensions[dim]
-        block_ix = data.draw(st.integers(min_value=0, max_value=dim_grid.nchunks - 1))
+        # The block extents come from the declaration, not from zarr's grid code.
+        sizes = declared_chunk_data_sizes(chunks[dim], a.shape[dim])
+        block_ix = data.draw(st.integers(min_value=0, max_value=len(sizes) - 1))
         sel = [slice(None)] * a.ndim
-        start = dim_grid.chunk_offset(block_ix)
-        stop = start + dim_grid.data_size(block_ix)
-        sel[dim] = slice(start, stop)
+        start = sum(sizes[:block_ix])
+        sel[dim] = slice(start, start + sizes[block_ix])
         block_sel: list[slice | int] = [slice(None)] * a.ndim
         block_sel[dim] = block_ix
         np.testing.assert_array_equal(

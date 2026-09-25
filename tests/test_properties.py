@@ -19,6 +19,7 @@ import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
 from hypothesis import assume, event, given, settings
 
+from tests.conftest import declared_chunk_data_sizes
 from zarr.abc.store import Store
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
 from zarr.core.dtype import get_data_type_from_json, get_data_type_from_native_dtype
@@ -301,7 +302,18 @@ def test_block_indexing(data: st.DataObject) -> None:
     # across that matrix (rectilinear + sharded is unsupported and not drawn).
     zarray, nparray = data.draw(block_test_arrays())
 
-    block_indexer, array_indexer = data.draw(block_indices(chunk_sizes=zarray.write_chunk_sizes))
+    # The block grid is worked out from the stored declaration, not by zarr's grid code.
+    assert isinstance(zarray.metadata, ArrayV3Metadata)
+    grid = zarray.metadata.chunk_grid
+    declared = (
+        grid.chunk_shapes if isinstance(grid, RectilinearChunkGridMetadata) else grid.chunk_shape
+    )
+    chunk_sizes = tuple(
+        declared_chunk_data_sizes(d, n) for d, n in zip(declared, zarray.shape, strict=True)
+    )
+    assert zarray.write_chunk_sizes == chunk_sizes
+
+    block_indexer, array_indexer = data.draw(block_indices(chunk_sizes=chunk_sizes))
     expected = nparray[array_indexer]
 
     # sync get, via both the .blocks interface and the dedicated method
@@ -634,12 +646,25 @@ def test_rectilinear_chunk_grid_declarations(data: st.DataObject) -> None:
     assert ArrayV3Metadata.from_dict(document).chunk_grid == meta  # type: ignore[arg-type]
 
 
+def _rle_expand(dim: list[Any]) -> list[int]:
+    """Expand one stored run-length encoded dimension: bare edges and
+    `[size, count]` pairs."""
+    edges: list[int] = []
+    for item in dim:
+        if type(item) is int:
+            edges.append(item)
+        else:
+            size, count = item
+            edges.extend([size] * count)
+    return edges
+
+
 @given(data=st.data())
 def test_create_array_stores_declared_rectilinear_chunks(data: st.DataObject) -> None:
     """A `chunks=` specification mixing bare ints and edge lists in any
     arrangement is stored as a rectilinear grid whose `chunk_shapes` are
-    exactly the specification. Checked on the stored JSON, not only the
-    in-memory metadata: zarr 3.2.x stored such grids as "regular" (gh-4374)."""
+    exactly the specification: bare ints stay bare ints, and edge lists keep
+    their edges (gh-4374, gh-4272). Checked on the stored JSON."""
     shape = data.draw(npst.array_shapes(max_dims=3, min_side=0, max_side=20), label="shape")
     chunks = data.draw(rectilinear_chunks(shape=shape), label="chunks")
     arr = zarr.create_array(MemoryStore(), shape=shape, chunks=chunks, dtype="uint8")
@@ -648,8 +673,6 @@ def test_create_array_stores_declared_rectilinear_chunks(data: st.DataObject) ->
     assert zarr_json is not None
     stored = json.loads(zarr_json.to_bytes())["chunk_grid"]
     assert stored["name"] == "rectilinear"
-    declared = RectilinearChunkGridMetadata(
-        chunk_shapes=tuple(tuple(c) if isinstance(c, list) else c for c in chunks)
-    )
-    assert RectilinearChunkGridMetadata.from_dict(stored) == declared
-    assert arr.metadata.chunk_grid == declared
+    assert stored["configuration"]["kind"] == "inline"
+    stored_dims = stored["configuration"]["chunk_shapes"]
+    assert [dim if type(dim) is int else _rle_expand(dim) for dim in stored_dims] == chunks
