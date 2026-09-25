@@ -676,3 +676,36 @@ def test_create_array_stores_declared_rectilinear_chunks(data: st.DataObject) ->
     assert stored["configuration"]["kind"] == "inline"
     stored_dims = stored["configuration"]["chunk_shapes"]
     assert [dim if type(dim) is int else _rle_expand(dim) for dim in stored_dims] == chunks
+
+
+@given(data=st.data())
+def test_rectilinear_zero_length_axis_round_trip(data: st.DataObject) -> None:
+    """An array declared with rectilinear `chunks=` over a zero-length axis
+    holds the data written after that axis grows, by `append` or by `resize`,
+    also when it grows past the declared edges."""
+    shape = list(data.draw(npst.array_shapes(max_dims=3, min_side=0, max_side=6), label="shape"))
+    axis = data.draw(st.integers(0, len(shape) - 1), label="zero-length axis")
+    shape[axis] = 0
+    chunks = data.draw(rectilinear_chunks(shape=tuple(shape)), label="chunks")
+    store = MemoryStore()
+    arr = zarr.create_array(store, shape=tuple(shape), chunks=chunks, dtype="int16", fill_value=-1)
+    assert_array_equal(arr[...], np.full(shape, -1, dtype="int16"))
+
+    declared = chunks[axis]
+    declared_span = sum(declared) if isinstance(declared, list) else declared
+    rows = data.draw(st.integers(1, 2 * declared_span + 2), label="rows")
+    if isinstance(declared, list):
+        event("grown axis declared as an edge list")
+        if rows > declared_span:
+            event("grown past the declared edges")
+    grown = [*shape]
+    grown[axis] = rows
+    values = data.draw(npst.arrays(np.dtype("int16"), tuple(grown)), label="values")
+    if data.draw(st.booleans(), label="append"):
+        arr.append(values, axis=axis)
+    else:
+        arr.resize(tuple(grown))
+        arr[...] = values
+    assert arr.shape == tuple(grown)
+    assert_array_equal(arr[...], values)
+    assert_array_equal(zarr.open_array(store, mode="r")[...], values)
