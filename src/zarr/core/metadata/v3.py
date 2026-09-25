@@ -550,14 +550,11 @@ def _read_stored_regular_chunk_grid(
     the whole grid, and one of them needs the array shape, which chunk grid
     metadata does not carry. Two invalid forms are read, each with a warning:
 
-    - A `chunk_shape` that lists chunk edges for some dimensions, which zarr
-      3.2.0 and 3.2.1 wrote for mixed specifications such as `(2, (5, 10, 5))`,
-      is read as the rectilinear grid it describes.
+    - A `chunk_shape` that lists chunk edges for some dimensions, such as
+      `[2, [5, 10, 5]]`, is read as the rectilinear grid it describes.
     - An all-integer `chunk_shape` is handed to
       `parse_stored_regular_chunk_shape`, which reads a chunk size of 0 (or
-      JSON `false`) as one chunk spanning the axis. zarr 3.0 and 3.1 wrote
-      these for an array created with a zero-length axis, and 3.1 kept them
-      when the axis grew.
+      JSON `false`) as one chunk spanning the axis.
 
     Any other grid is returned unchanged for `parse_chunk_grid`; other grids
     define their own chunk semantics.
@@ -577,7 +574,7 @@ def _read_stored_regular_chunk_grid(
         return _parse_mixed_regular_chunk_grid(dims)
     if not all(isinstance(dim, int | np.integer) for dim in dims):
         return chunk_grid
-    parsed = parse_stored_regular_chunk_shape(dims, shape, legacy_writers="zarr 3.0 and 3.1")
+    parsed = parse_stored_regular_chunk_shape(dims, shape)
     corrected: dict[str, Any] = dict(chunk_grid)
     corrected["configuration"] = {**configuration, "chunk_shape": list(parsed)}
     return corrected
