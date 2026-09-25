@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-import numpy as np
 import pytest
 
 from tests.conftest import Expect, ExpectFail
@@ -20,7 +19,6 @@ from zarr.core.metadata.v3 import (
     ARRAY_METADATA_KEYS,
     ArrayMetadataJSON_V3,
     ArrayV3Metadata,
-    RectilinearChunkGridMetadata,
     RegularChunkGridMetadata,
     create_chunk_grid_metadata,
     parse_codecs,
@@ -32,7 +30,6 @@ from zarr.errors import (
     MetadataValidationError,
     NodeTypeValidationError,
     UnknownCodecError,
-    ZarrUserWarning,
 )
 
 if TYPE_CHECKING:
@@ -157,44 +154,6 @@ def test_create_chunk_grid_metadata_unknown_dimension_type() -> None:
     grid = ChunkGrid(dimensions=(object(),))  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="Unknown dimension grid type"):
         create_chunk_grid_metadata(grid)
-
-
-@pytest.mark.parametrize(
-    "case",
-    [
-        Expect(input=(2, 3), output=(2, 3), id="python_ints"),
-        Expect(input=(np.int64(2), np.uint8(3)), output=(2, 3), id="numpy_ints"),
-    ],
-    ids=lambda case: case.id,
-)
-def test_regular_chunk_grid_normalizes_ints(case: Expect[tuple[Any, ...], tuple[int, ...]]) -> None:
-    """A regular chunk grid accepts Python and numpy integers and stores Python ints."""
-    grid = RegularChunkGridMetadata(chunk_shape=case.input)
-    assert grid.chunk_shape == case.output
-    assert all(type(c) is int for c in grid.chunk_shape)
-
-
-@pytest.mark.parametrize(
-    "case",
-    [
-        Expect(input=(2, (5, 10, 5)), output=(2, (5, 10, 5)), id="python_values"),
-        Expect(
-            input=(np.int64(2), np.array([5, 10, 5])), output=(2, (5, 10, 5)), id="numpy_values"
-        ),
-        Expect(input=(2, [5, 10, 5]), output=(2, (5, 10, 5)), id="list_edges"),
-    ],
-    ids=lambda case: case.id,
-)
-def test_rectilinear_chunk_grid_normalizes_ints(
-    case: Expect[tuple[Any, ...], tuple[int | tuple[int, ...], ...]],
-) -> None:
-    """A rectilinear chunk grid accepts any sequence of Python or numpy integers
-    as a dimension's edges and stores Python ints in tuples."""
-    with config.set({"array.rectilinear_chunks": True}):
-        grid = RectilinearChunkGridMetadata(chunk_shapes=case.input)
-        assert grid.chunk_shapes == case.output
-    flat = [e for dim in grid.chunk_shapes for e in (dim if isinstance(dim, tuple) else (dim,))]
-    assert all(type(e) is int for e in flat)
 
 
 @pytest.mark.parametrize(
@@ -505,6 +464,7 @@ def test_group_metadata_to_dict(attributes: dict[str, Any] | None) -> None:
 def test_group_metadata_to_dict_consolidated(attributes: dict[str, Any] | None) -> None:
     """GroupMetadata.to_dict includes consolidated_metadata when present."""
     from zarr import consolidate_metadata, create_group
+    from zarr.errors import ZarrUserWarning
 
     store: dict[str, object] = {}
     group = create_group(store, attributes=attributes, zarr_format=3)

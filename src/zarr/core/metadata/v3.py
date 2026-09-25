@@ -5,7 +5,6 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
 
-import numpy as np
 from typing_extensions import TypedDict
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
@@ -26,7 +25,6 @@ from zarr.core.common import (
     NamedConfig,
     NamedRequiredConfig,
     compress_rle,
-    declares_chunk_edges,
     expand_rle,
     parse_named_configuration,
     parse_shapelike,
@@ -229,18 +227,15 @@ def _parse_chunk_shape(chunk_shape: Iterable[int]) -> tuple[int, ...]:
     let a rectilinear chunk shape be stored as a regular grid (gh-4374).
     """
     parsed: list[int] = []
+    # Typed as ints, but a stored document can hold anything here.
     for dim_idx, dim_spec in enumerate(cast("Iterable[object]", chunk_shape)):
-        if not isinstance(dim_spec, int | np.integer):
+        if not isinstance(dim_spec, int):
             raise TypeError(
                 f"Dimension {dim_idx}: a regular chunk grid requires an integer chunk "
-                f"edge length, got {dim_spec!r}. Lists of chunk edge lengths belong "
-                "to a rectilinear chunk grid."
+                f"edge length, got a {type(dim_spec).__name__}. Lists of chunk edge "
+                "lengths belong to a rectilinear chunk grid."
             )
-        parsed.append(
-            parse_chunk_edge(
-                int(dim_spec) if isinstance(dim_spec, np.integer) else dim_spec, dim_idx
-            )
-        )
+        parsed.append(parse_chunk_edge(dim_spec, dim_idx))
     return tuple(parsed)
 
 
@@ -254,10 +249,10 @@ def _validate_chunk_shapes(
     """
     result: list[int | tuple[int, ...]] = []
     for dim_idx, dim_spec in enumerate(chunk_shapes):
-        if isinstance(dim_spec, int | np.integer):
-            result.append(parse_chunk_edge(int(dim_spec), dim_idx))
+        if isinstance(dim_spec, int):
+            result.append(parse_chunk_edge(dim_spec, dim_idx))
         else:
-            edges = tuple(int(edge) for edge in dim_spec)
+            edges = tuple(dim_spec)
             if not edges:
                 raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
             bad = [i for i, e in enumerate(edges) if isinstance(e, bool) or e < 1]
@@ -298,8 +293,7 @@ class RegularChunkGridMetadata(Metadata):
     def from_dict(cls, data: RegularChunkGridMetadataJSON) -> Self:  # type: ignore[override]
         parse_named_configuration(data, "regular")  # validate name
         configuration = data["configuration"]
-        # `__post_init__` parses, so this only has to hand over the dimensions.
-        return cls(chunk_shape=tuple(configuration["chunk_shape"]))
+        return cls(chunk_shape=_parse_chunk_shape(configuration["chunk_shape"]))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -380,17 +374,14 @@ class RectilinearChunkGridMetadata(Metadata):
         raw_shapes = configuration["chunk_shapes"]
         parsed: list[int | tuple[int, ...]] = []
         for dim_spec in raw_shapes:
-            if declares_chunk_edges(dim_spec):
+            if isinstance(dim_spec, int):
+                # `__post_init__` range-checks it, naming the dimension.
+                parsed.append(dim_spec)
+            elif isinstance(dim_spec, list):
                 parsed.append(tuple(expand_rle(dim_spec)))
-            elif isinstance(dim_spec, int | np.integer):
-                # Range checks belong to `_validate_chunk_shapes`, which
-                # `__post_init__` runs over the result and which names the
-                # offending dimension.
-                parsed.append(int(dim_spec))
             else:
                 raise TypeError(
-                    "Invalid chunk_shapes entry: expected an integer or a sequence of "
-                    f"chunk edge lengths, got {type(dim_spec)}"
+                    f"Invalid chunk_shapes entry: expected int or list, got {type(dim_spec)}"
                 )
         return cls(chunk_shapes=tuple(parsed))
 
