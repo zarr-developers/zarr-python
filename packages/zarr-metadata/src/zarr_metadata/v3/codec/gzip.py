@@ -26,6 +26,7 @@ class GzipCodecConfiguration(TypedDict):
     is required for the metadata to fulfill its reproducibility role,
     even though the spec text does not mark it required with RFC 2119
     keywords.
+      https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/gzip/index.rst#L57-L66
     """
 
     level: int

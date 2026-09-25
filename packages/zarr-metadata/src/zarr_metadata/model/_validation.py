@@ -584,10 +584,12 @@ def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
     if not isinstance(value, Mapping):
         return [ValidationProblem((), "expected a mapping", "invalid_type")]
     doc = cast("Mapping[str, object]", value)
+    # Unlike the group document ("Other keys MUST NOT be present",
+    # https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313), the v2 array document is open: other keys "SHOULD NOT be
+    # present within the metadata object and SHOULD be ignored by
+    # implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), so members outside
+    # ARRAY_METADATA_STANDARD_KEYS_V2 are not problems.
     problems: list[ValidationProblem] = _missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc)
-    problems.extend(
-        _unexpected_keys(ARRAY_METADATA_STANDARD_KEYS_V2, cast("Mapping[object, object]", value))
-    )
     problems.extend(_check_literal(doc, "zarr_format", 2))
     shape_problems = _validate_dim_sequence(doc, "shape")
     chunks_problems = _validate_dim_sequence(doc, "chunks")
@@ -642,10 +644,8 @@ def validate_array_metadata_v2(value: object) -> list[ValidationProblem]:
                 )
             )
         elif filters is not None:
-            if len(cast("Sequence[object]", filters)) == 0:
-                problems.append(
-                    ValidationProblem(("filters",), "expected at least one filter", "invalid_value")
-                )
+            # "A list of JSON objects providing codec configurations, or
+            # null" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79): an empty list is a list.
             for index, item in enumerate(cast("Sequence[object]", filters)):
                 problems.extend(_prefix("filters", _prefix(index, validate_json(item))))
     if "dimension_separator" in doc and doc["dimension_separator"] not in (".", "/"):

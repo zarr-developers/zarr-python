@@ -14,7 +14,10 @@ Float64DataTypeName = Literal["float64"]
 """Literal type of the `data_type` field for `float64`."""
 
 Float64SpecialFillValue = Literal["NaN", "Infinity", "-Infinity"]
-"""Named non-finite fill values permitted by the spec for IEEE 754 floats."""
+"""Named non-finite fill values permitted by the spec for IEEE 754 floats.
+
+https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L63-L79
+"""
 
 HexFloat64 = NewType("HexFloat64", str)
 """An 18-character hex string (`0x` + 16 hex digits) encoding the
@@ -46,7 +49,7 @@ value).
 CANONICAL_NAN_HEX_FLOAT64: Final = "0x7ff8000000000000"
 """Canonical hex form of the float64 NaN sentinel `"NaN"`.
 
-Per spec the named `"NaN"` sentinel denotes the float with sign=0, the
+Per spec (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L72-L74) the named `"NaN"` sentinel denotes the float with sign=0, the
 most significant mantissa bit set, and all other mantissa bits zero
 (the IEEE 754 default quiet NaN). Other NaN bit patterns must be
 encoded with the explicit hex-string form.

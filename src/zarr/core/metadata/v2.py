@@ -42,7 +42,7 @@ from zarr.core.common import (
 )
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.json_parse import parse_field
-from zarr.core.metadata.common import parse_attributes
+from zarr.core.metadata.common import parse_attributes, parse_stored_regular_chunk_shape
 
 
 class ArrayV2MetadataDict(TypedDict):
@@ -88,7 +88,11 @@ class ArrayV2Metadata(Metadata):
         Metadata for a Zarr format 2 array.
         """
         shape_parsed = parse_shapelike(shape)
-        chunks_parsed = parse_shapelike(chunks)
+        chunks_parsed = parse_stored_regular_chunk_shape(
+            parse_shapelike(chunks),
+            shape_parsed,
+            legacy_writers="zarr-python 2.x, and by 3.x before 3.4",
+        )
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
@@ -111,7 +115,6 @@ class ArrayV2Metadata(Metadata):
         object.__setattr__(self, "attributes", attributes_parsed)
 
         # ensure that the metadata document is consistent
-        _ = parse_metadata(self)
 
     @property
     def ndim(self) -> int:
@@ -321,16 +324,6 @@ def parse_compressor(data: object) -> Numcodec | None:
         return get_numcodec(data)  # type: ignore[arg-type]
     msg = f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
     raise ValueError(msg)
-
-
-def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
-    if (l_chunks := len(data.chunks)) != (l_shape := len(data.shape)):
-        msg = (
-            f"The `shape` and `chunks` attributes must have the same length. "
-            f"`chunks` has length {l_chunks}, but `shape` has length {l_shape}."
-        )
-        raise ValueError(msg)
-    return data
 
 
 def get_object_codec_id(maybe_object_codecs: Sequence[JSON]) -> str | None:
