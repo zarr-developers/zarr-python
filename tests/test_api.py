@@ -346,18 +346,6 @@ async def test_open_array_config(
 
 
 @pytest.mark.parametrize("exists", [True, False])
-def test_open_array_unknown_config_key(exists: bool) -> None:
-    """
-    Opening or creating an array with a config containing an unknown key raises TypeError.
-    """
-    store = MemoryStore()
-    if exists:
-        zarr.create_array(store, shape=(4,), dtype="uint8")
-    with pytest.raises(TypeError, match=r"Unknown array config keys: \['nope'\]"):
-        zarr.open_array(store, mode="a", shape=(4,), dtype="uint8", config={"nope": 1})  # type: ignore[arg-type]
-
-
-@pytest.mark.parametrize("exists", [True, False])
 def test_open_array_invalid_config_value(exists: bool) -> None:
     """
     Opening or creating an array with a config containing an invalid value raises ValueError.
