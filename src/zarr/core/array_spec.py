@@ -92,8 +92,15 @@ class ArrayConfig:
         """
         Create an ArrayConfig from a dict. The keys of that dict are a subset of the
         attributes of the ArrayConfig class. Any keys missing from that dict will be set to the
-        the values in the ``array`` namespace of ``zarr.config``.
+        the values in the ``array`` namespace of ``zarr.config``. Keys that are not
+        attributes of the ArrayConfig class raise a `TypeError`.
         """
+        unknown = set(data) - {f.name for f in fields(ArrayConfig)}
+        if unknown:
+            raise TypeError(
+                f"Unknown array config keys: {sorted(unknown)}. "
+                f"Valid keys are {[f.name for f in fields(ArrayConfig)]}."
+            )
         kwargs_out: ArrayConfigParams = {}
         for f in fields(ArrayConfig):
             field_name = cast(
