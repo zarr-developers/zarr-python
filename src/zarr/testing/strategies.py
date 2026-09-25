@@ -468,12 +468,12 @@ def arrays(
         if isinstance(chunk_grid_meta, RectilinearChunkGridMetadata):
             # The per-dimension list form of `chunks=` can only express a grid with
             # at least one edge list (bare ints alone declare a regular grid) whose
-            # edge lists sum exactly to the extent. Other grids are passed as the
+            # edge lists sum exactly to the extent, or belong to a zero-length axis. Other grids are passed as the
             # metadata object, which `create_array` also accepts.
             expressible_as_lists = any(
                 isinstance(dim, tuple) for dim in chunk_grid_meta.chunk_shapes
             ) and all(
-                isinstance(dim, int) or sum(dim) == extent
+                isinstance(dim, int) or extent == 0 or sum(dim) == extent
                 for dim, extent in zip(chunk_grid_meta.chunk_shapes, nparray.shape, strict=True)
             )
             if expressible_as_lists and draw(st.booleans(), label="chunks as lists"):
@@ -578,12 +578,19 @@ def chunks_param_from_rectilinear(
 def rectilinear_dim_edges(draw: st.DrawFn, *, extent: int) -> list[int]:
     """Explicit chunk edge lengths summing exactly to `extent`.
 
+    A zero `extent` has no chunks for edges to cover, and no non-empty list
+    of positive edges sums to 0; its edges are the chunks the axis grows into
+    on `append` or `resize`, so any non-empty list of positive edges is drawn.
+
     Two modes: "uneven" cuts the extent at random dividers; "uniform" repeats
     one size with an optional remainder, optionally shuffled so equal edges
     are not all adjacent. At most 20 chunks per dimension keeps property
     tests fast.
     """
-    assert extent > 0
+    assert extent >= 0
+    if extent == 0:
+        event("rectilinear edges: zero extent")
+        return draw(st.lists(st.integers(min_value=1, max_value=10), min_size=1, max_size=5))
     if extent == 1:
         return [1]
     if draw(st.booleans(), label="uneven edges"):
@@ -615,7 +622,7 @@ def _rectilinear_step(draw: st.DrawFn, *, extent: int) -> int:
     """A bare-int chunk size for one dimension: a step that repeats to cover
     the extent, with the last chunk possibly smaller. A step larger than the
     extent (one overhanging chunk) is allowed, as for a regular grid."""
-    step = draw(st.integers(min_value=math.ceil(extent / 20), max_value=extent + 3))
+    step = draw(st.integers(min_value=max(1, math.ceil(extent / 20)), max_value=extent + 3))
     event("rectilinear dim: bare int" + (", larger than extent" if step > extent else ""))
     return step
 
@@ -625,7 +632,8 @@ def rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[int |
     """A `chunks=` specification declaring a rectilinear grid over `shape`.
 
     Each dimension is either a bare int (a step size; the last chunk may be
-    smaller) or an explicit edge list summing to the extent. At least one
+    smaller) or an explicit edge list summing to the extent (any edges, for a
+    zero extent). At least one
     dimension is an edge list, since bare ints alone declare a regular grid.
     Run-length encoding is not part of the `chunks=` syntax; it belongs to
     stored metadata, see `rectilinear_chunk_shape_declarations`.
@@ -637,7 +645,6 @@ def rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[int |
     forced_list = draw(st.integers(min_value=0, max_value=len(shape) - 1))
     chunks: list[int | list[int]] = []
     for i, extent in enumerate(shape):
-        assert extent > 0
         if i != forced_list and draw(st.booleans(), label="bare int"):
             chunks.append(_rectilinear_step(draw, extent=extent))
         else:
@@ -696,7 +703,6 @@ def rectilinear_chunk_shape_declarations(
     declaration: list[_RectilinearDimDeclaration] = []
     chunk_shapes: list[int | tuple[int, ...]] = []
     for extent in shape:
-        assert extent > 0
         if draw(st.booleans(), label="bare int"):
             step = _rectilinear_step(draw, extent=extent)
             declaration.append(step)
@@ -742,12 +748,6 @@ def chunk_grids(
 
     This allows property tests to exercise both chunk grid types.
     """
-    # RectilinearChunkGridMetadata doesn't support zero-sized dimensions,
-    # so use RegularChunkGridMetadata if any dimension is 0
-    if any(s == 0 for s in shape):
-        event("using RegularChunkGridMetadata (zero-sized dimensions)")
-        return RegularChunkGridMetadata(chunk_shape=draw(chunk_shapes(shape=shape)))
-
     if zarr.config.get("array.rectilinear_chunks") and draw(st.booleans()):
         event("using RectilinearChunkGridMetadata")
         return draw(rectilinear_chunk_grids(shape=shape))

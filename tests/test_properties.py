@@ -604,7 +604,7 @@ def test_rectilinear_chunk_grid_declarations(data: st.DataObject) -> None:
     steps, edge lists written in full or run-length encoded in any grouping,
     edges overhanging the extent — parses to its expanded edges, and the
     re-serialized form parses back to the same grid."""
-    shape = data.draw(npst.array_shapes(max_dims=3, min_side=1, max_side=20), label="shape")
+    shape = data.draw(npst.array_shapes(max_dims=3, min_side=0, max_side=20), label="shape")
     declaration, chunk_shapes = data.draw(
         rectilinear_chunk_shape_declarations(shape=shape), label="declaration"
     )
@@ -640,7 +640,7 @@ def test_create_array_stores_declared_rectilinear_chunks(data: st.DataObject) ->
     arrangement is stored as a rectilinear grid whose `chunk_shapes` are
     exactly the specification. Checked on the stored JSON, not only the
     in-memory metadata: zarr 3.2.x stored such grids as "regular" (gh-4374)."""
-    shape = data.draw(npst.array_shapes(max_dims=3, min_side=1, max_side=20), label="shape")
+    shape = data.draw(npst.array_shapes(max_dims=3, min_side=0, max_side=20), label="shape")
     chunks = data.draw(rectilinear_chunks(shape=shape), label="chunks")
     arr = zarr.create_array(MemoryStore(), shape=shape, chunks=chunks, dtype="uint8")
 
