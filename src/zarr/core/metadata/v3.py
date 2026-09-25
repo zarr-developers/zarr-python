@@ -498,10 +498,9 @@ def _parse_stored_regular_chunk_grid(
     Only a `regular` grid whose `chunk_shape` is all integers is a regular chunk
     shape, and only that is handed to `parse_stored_regular_chunk_shape`.
     Anything else is not a regular chunk shape and is left for the chunk grid
-    parser: other grids define their own chunk semantics. zarr-python 3.0 and
-    3.1 stored `chunk_shape: [0]` (and 3.0 `[false]`) for an array created with
-    a zero-length axis, and 3.1 kept it when the axis grew. This runs here rather than in the grid parser because
-    it needs the array shape, which chunk grid metadata does not carry.
+    parser: other grids define their own chunk semantics. This runs here rather
+    than in the grid parser because it needs the array shape, which chunk grid
+    metadata does not carry.
     """
     if not isinstance(chunk_grid, Mapping) or chunk_grid.get("name") != "regular":
         return chunk_grid
@@ -511,9 +510,7 @@ def _parse_stored_regular_chunk_grid(
     chunk_shape = configuration.get("chunk_shape")
     if not _is_regular_chunk_shape(chunk_shape):
         return chunk_grid
-    parsed = parse_stored_regular_chunk_shape(
-        chunk_shape, shape, legacy_writers="zarr-python 3.0 and 3.1"
-    )
+    parsed = parse_stored_regular_chunk_shape(chunk_shape, shape)
     corrected: dict[str, Any] = dict(chunk_grid)
     corrected["configuration"] = {**configuration, "chunk_shape": list(parsed)}
     return corrected

@@ -7,8 +7,8 @@ stored chunk sizes of 0 that zarr-python wrote for empty arrays before 3.4.
 
 `resize` deletes only the chunks that fall entirely outside the new shape, so
 cells cut off by a shrink can come back with their old values when the axis
-grows again (as in zarr-python 2.x). The model does not encode that chunk-level
-behaviour: a cell cut off and brought back is unknown until it is written.
+grows again. The model does not encode that chunk-level behaviour: a cell cut
+off and brought back is unknown until it is written.
 """
 
 from __future__ import annotations

@@ -29,7 +29,7 @@ def parse_attributes(data: dict[str, JSON] | None) -> dict[str, JSON]:
 
 
 def parse_stored_regular_chunk_shape(
-    chunk_shape: Sequence[int], shape: Sequence[int], *, legacy_writers: str
+    chunk_shape: Sequence[int], shape: Sequence[int]
 ) -> tuple[int, ...]:
     """Validate a stored regular chunk grid's chunk shape against the array shape.
 
@@ -39,15 +39,13 @@ def parse_stored_regular_chunk_shape(
     length 0, so its chunk sizes must not be passed here.
 
     The chunk shape must have one entry per array axis, and every chunk size
-    must be at least 1, with one exception. `legacy_writers` stored a chunk
-    size of 0 (or JSON `false`) for an array created with a zero-length axis
-    and a chunk spec meaning "one chunk spanning the axis". That is how the
-    size is read, `max(extent, 1)`, with a `ZarrUserWarning` that says how to
-    re-save valid metadata. The axis may have grown since: those writers let
-    the array be resized or appended to, but a chunk size of 0 gives a grid of
-    zero chunks, so no chunk was ever stored for it and any chunk size reads
-    the store correctly. The warning then says that the appended data was not
-    saved. A negative chunk size is rejected.
+    must be at least 1, with one exception: a chunk size of 0 (or JSON
+    `false`) is read as one chunk spanning its axis, `max(extent, 1)`, with a
+    `ZarrUserWarning` that says how to re-save valid metadata. A chunk size of
+    0 gives a grid of zero chunks, so no chunk can be stored under it and any
+    positive chunk size reads the store correctly; if the axis has positive
+    length, the warning also says that it holds only the fill value. A
+    negative chunk size is rejected.
     """
     if len(chunk_shape) != len(shape):
         raise ValueError(
@@ -61,15 +59,13 @@ def parse_stored_regular_chunk_shape(
         if size == 0:
             corrected = max(extent, 1)
             msg = (
-                f"Dimension {dim_idx}: chunk edge length {size!r} (as written by "
-                f"{legacy_writers} for an array created with a zero-length axis) is read "
+                f"Dimension {dim_idx}: chunk edge length {size!r} is invalid and is read "
                 f"as one chunk spanning the axis, of size {corrected}."
             )
             if extent > 0:
                 msg += (
-                    f" The axis has since grown to {extent}, but no chunk can be stored "
-                    "under a chunk size of 0, so data written to it before now was not "
-                    "saved and reads as the fill value."
+                    f" No chunk can be stored under a chunk size of 0, so the {extent} "
+                    "elements along this axis hold only the fill value."
                 )
             warnings.warn(f"{msg} {RESAVE_METADATA_HINT}", ZarrUserWarning, stacklevel=3)
             size = corrected

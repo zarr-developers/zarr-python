@@ -88,11 +88,7 @@ class ArrayV2Metadata(Metadata):
         Metadata for a Zarr format 2 array.
         """
         shape_parsed = parse_shapelike(shape)
-        chunks_parsed = parse_stored_regular_chunk_shape(
-            parse_shapelike(chunks),
-            shape_parsed,
-            legacy_writers="zarr-python 2.x, and by 3.x before 3.4",
-        )
+        chunks_parsed = parse_stored_regular_chunk_shape(parse_shapelike(chunks), shape_parsed)
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
