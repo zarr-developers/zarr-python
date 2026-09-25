@@ -558,46 +558,40 @@ def _store_legacy_zero_chunk(path: Any, zarr_format: Literal[2, 3], stored: Any)
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("stored", [0, False], ids=["zero", "false"])
-def test_legacy_zero_chunk_on_empty_axis_round_trip(
-    tmp_path: Path, zarr_format: Literal[2, 3], stored: Any
+@pytest.mark.parametrize("extent", [0, 3], ids=["empty-axis", "grown-axis"])
+def test_legacy_zero_chunk_round_trip(
+    tmp_path: Path, zarr_format: Literal[2, 3], stored: Any, extent: int
 ) -> None:
-    """An empty array whose stored chunk size is 0 opens, appends without losing
-    data, and re-saves as a valid chunk size.
+    """An array whose stored chunk size is 0 opens with one chunk spanning the
+    axis, appends without losing data, and re-saves as a valid chunk size.
 
-    zarr-python wrote such metadata for an empty array until 3.4: Zarr format 2
-    through 3.3, and Zarr format 3 in 3.0 and 3.1, which also wrote JSON `false`
-    for `chunks=False`. Appending to one of these arrays used to report success
-    while writing no chunk, so the data read back as the fill value.
+    zarr-python wrote such metadata for an array created with a zero-length axis
+    until 3.4: Zarr format 2 through 3.3, and Zarr format 3 in 3.0 and 3.1, which
+    also wrote JSON `false` for `chunks=False`. Those versions could then grow
+    the axis (a 3.4.0 append, a 3.1 resize) while storing no chunk, so the
+    grown axis holds only the fill value.
     """
     path = tmp_path / "legacy.zarr"
-    zarr.create_array(store=path, shape=(0,), chunks=(4,), dtype="int64", zarr_format=zarr_format)
+    zarr.create_array(
+        store=path, shape=(extent,), chunks=(4,), dtype="int64", zarr_format=zarr_format
+    )
     _store_legacy_zero_chunk(path, zarr_format, stored)
 
-    with pytest.warns(ZarrUserWarning, match="zero-length axis"):
+    with pytest.warns(ZarrUserWarning, match="one chunk spanning the axis"):
         arr = zarr.open_array(store=path, mode="a")
-    assert arr.chunks == (1,)
+    assert arr.chunks == (max(extent, 1),)
+    np.testing.assert_array_equal(arr[...], np.zeros(extent, dtype="int64"))
 
     arr.append(np.arange(3, dtype="int64"))
-    np.testing.assert_array_equal(zarr.open_array(store=path)[...], np.arange(3))
+    expected = np.concatenate([np.zeros(extent, dtype="int64"), np.arange(3)])
+    np.testing.assert_array_equal(zarr.open_array(store=path)[...], expected)
 
     # The warning says to do this; it must leave metadata that reopens cleanly.
     arr.update_attributes({})
     with warnings.catch_warnings():
         warnings.simplefilter("error", ZarrUserWarning)
         reopened = zarr.open_array(store=path)
-    assert reopened.chunks == (1,)
-
-
-@pytest.mark.parametrize("zarr_format", [2, 3])
-def test_stored_zero_chunk_on_positive_axis_rejected(
-    tmp_path: Path, zarr_format: Literal[2, 3]
-) -> None:
-    """A stored chunk size of 0 is only tolerated on a zero-length axis."""
-    path = tmp_path / "bad.zarr"
-    zarr.create_array(store=path, shape=(5,), chunks=(4,), dtype="int64", zarr_format=zarr_format)
-    _store_legacy_zero_chunk(path, zarr_format, 0)
-    with pytest.raises(ValueError, match="must be >= 1"):
-        zarr.open_array(store=path)
+    assert reopened.chunks == (max(extent, 1),)
 
 
 def test_normalize_chunks_1d_zero_span_accepts_any_edges() -> None:
