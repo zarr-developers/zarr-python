@@ -1,0 +1,1 @@
+`zarr.open_array` (sync and async) now applies the `config` argument when opening an existing array. Previously `config` was only used when `open_array` created a new array, so `zarr.open_array(store, config={"read_missing_chunks": False})` silently ran an existing array with the global defaults. An invalid `config` now raises instead of being ignored.

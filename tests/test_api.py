@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from zarr.abc.store import Store
+    from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.common import JSON, MemoryOrder, ZarrFormat
     from zarr.types import AnyArray
 
@@ -42,6 +43,7 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
+from zarr.core.array_spec import ArrayConfig
 from zarr.core.buffer import NDArrayLike
 from zarr.errors import (
     ArrayNotFoundError,
@@ -283,6 +285,66 @@ def test_open_array_respects_write_empty_chunks_config(zarr_format: ZarrFormat) 
 
     arr2[0:5] = np.zeros(5)
     assert arr2.nchunks_initialized == 1
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("api", ["sync", "async"])
+@pytest.mark.parametrize(
+    ("config", "expected"),
+    [
+        (None, ArrayConfig.from_dict({})),
+        (
+            {"read_missing_chunks": False},
+            ArrayConfig.from_dict({"read_missing_chunks": False}),
+        ),
+        (
+            {"order": "F", "write_empty_chunks": True},
+            ArrayConfig.from_dict({"order": "F", "write_empty_chunks": True}),
+        ),
+        (
+            ArrayConfig.from_dict({"read_missing_chunks": False}),
+            ArrayConfig.from_dict({"read_missing_chunks": False}),
+        ),
+    ],
+)
+async def test_open_array_existing_applies_config(
+    zarr_format: ZarrFormat,
+    api: Literal["sync", "async"],
+    config: ArrayConfigLike | None,
+    expected: ArrayConfig,
+) -> None:
+    """
+    Opening an existing array with open_array applies the config argument, with keys
+    missing from a partial config taken from the global defaults.
+    """
+    store = MemoryStore()
+    zarr.create_array(store, shape=(4,), dtype="uint8", zarr_format=zarr_format)
+    kwargs: dict[str, Any] = {} if config is None else {"config": config}
+    if api == "sync":
+        observed = zarr.api.synchronous.open_array(store, **kwargs).config
+    else:
+        observed = (await zarr.api.asynchronous.open_array(store=store, **kwargs)).config
+    assert observed == expected
+
+
+def test_open_array_existing_unknown_config_key() -> None:
+    """
+    Opening an existing array with a config containing an unknown key raises TypeError.
+    """
+    store = MemoryStore()
+    zarr.create_array(store, shape=(4,), dtype="uint8")
+    with pytest.raises(TypeError, match="unexpected keyword argument 'nope'"):
+        zarr.open_array(store, config={"nope": 1})
+
+
+def test_open_array_existing_invalid_config_value() -> None:
+    """
+    Opening an existing array with a config containing an invalid value raises ValueError.
+    """
+    store = MemoryStore()
+    zarr.create_array(store, shape=(4,), dtype="uint8")
+    with pytest.raises(ValueError, match="Expected instance of bool"):
+        zarr.open_array(store, config={"read_missing_chunks": "yes"})
 
 
 @pytest.mark.parametrize("path", ["foo", "/", "/foo", "///foo/bar"])

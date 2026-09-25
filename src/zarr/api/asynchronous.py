@@ -1267,7 +1267,7 @@ async def open_array(
         _warn_write_empty_chunks_kwarg()
 
     try:
-        return await AsyncArray.open(store_path, zarr_format=zarr_format)
+        array = await AsyncArray.open(store_path, zarr_format=zarr_format)
     except FileNotFoundError as err:
         if not store_path.read_only and mode in _CREATE_MODES:
             overwrite = _infer_overwrite(mode)
@@ -1280,6 +1280,10 @@ async def open_array(
             )
         msg = f"No array found in store {store_path.store} at path {store_path.path}"
         raise ArrayNotFoundError(msg) from err
+    config = kwargs.get("config")
+    if config is not None:
+        return array.with_config(config)
+    return array
 
 
 async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyAsyncArray:
