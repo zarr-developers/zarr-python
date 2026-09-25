@@ -205,7 +205,14 @@ def test_chunk_layout_nested() -> None:
             input=(True, 100),
             exception=TypeError,
             id="bool-scalar",
-            msg="got True of type bool",
+            msg="A bool is not a chunk size; got True",
+        ),
+        # an integral float is still not an integer
+        ExpectFail(
+            input=(10.0, 100),
+            exception=TypeError,
+            id="integral-float-scalar",
+            msg="got 10.0 of type float",
         ),
         ExpectFail(
             input=([10, -1, 10], 100),
@@ -258,9 +265,9 @@ def test_normalize_chunks_1d_errors(case: ExpectFail[tuple[Any, int]]) -> None:
     [
         ExpectFail(
             input=(None, (100,)),
-            exception=ValueError,
+            exception=TypeError,
             id="none",
-            msg="None is not a valid chunk input",
+            msg="got None of type NoneType",
         ),
         # `True` is rejected explicitly because bool is a subclass of int — without
         # this guard, `chunks=True` would silently produce size-1 chunks.

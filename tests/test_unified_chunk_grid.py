@@ -8,6 +8,7 @@ and end-to-end array creation + read/write.
 
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -300,9 +301,12 @@ def test_chunk_spec(
         ((100, 200), (10, 20), True, 2, (10, 20)),
         ((), (), True, 0, ()),
         ((60, 100), [[10, 20, 30], [25, 25, 25, 25]], False, 2, None),
-        ((30, 50), [[10, 10, 10], [25, 25]], True, 2, (10, 25)),  # uniform edges → regular
+        # explicit edge lists stay rectilinear even when uniform (gh-4272), including
+        # uniform edges overhanging the extent after a shrinking resize
+        ((30, 50), [[10, 10, 10], [25, 25]], False, 2, None),
+        ((35,), [[10, 10, 10, 10]], False, 1, None),
     ],
-    ids=["regular", "zero-dim", "rectilinear", "uniform-becomes-regular"],
+    ids=["regular", "zero-dim", "rectilinear", "uniform-edges", "uniform-edges-overhang"],
 )
 def test_chunk_grid_construction(
     array_shape: tuple[int, ...],
@@ -320,13 +324,6 @@ def test_chunk_grid_construction(
     else:
         with pytest.raises(ValueError, match="only available for regular"):
             _ = g.chunk_shape
-
-
-def test_chunk_grid_rectilinear_uniform_dim_is_fixed() -> None:
-    """A rectilinear grid with all-same sizes in one dim stores it as Fixed."""
-    g = ChunkGrid.from_sizes((60, 100), [[10, 20, 30], [25, 25, 25, 25]])
-    assert isinstance(g._dimensions[0], VaryingDimension)
-    assert isinstance(g._dimensions[1], FixedDimension)
 
 
 # ---------------------------------------------------------------------------
@@ -594,7 +591,7 @@ def test_from_metadata_unknown_chunk_grid_type() -> None:
 
 def test_from_sizes_rejects_empty_edge_list() -> None:
     """ChunkGrid.from_sizes raises ValueError when a dimension has an empty edge list."""
-    with pytest.raises(ValueError, match="at least one chunk"):
+    with pytest.raises(ValueError, match="edges must not be empty"):
         ChunkGrid.from_sizes((10,), ([],))
 
 
@@ -1149,12 +1146,23 @@ def test_iter_shard_regions_bounds_check() -> None:
 
 
 @pytest.mark.parametrize(
-    "chunks", [(5, [10, 20, 70]), ([10, 20, 70], 5)], ids=["int-first", "list-first"]
+    ("shape", "chunks"),
+    [
+        ((30, 100), (5, [10, 20, 70])),
+        ((100, 30), ([10, 20, 70], 5)),
+        # uniform edges are still rectilinear, whether given as lists or as
+        # stored metadata (gh-4272)
+        ((30, 100), ([10, 10, 10], 50)),
+        # (metadata is built lazily: constructing it needs the rectilinear flag)
+        ((30, 100), partial(RectilinearChunkGridMetadata, chunk_shapes=((10, 10, 10), 50))),
+    ],
+    ids=["int-first", "list-first", "uniform-list", "uniform-metadata"],
 )
-def test_mixed_chunks_gates_are_order_independent(chunks: Any) -> None:
-    """The v2 and chunks+shards gates must recognize a mixed per-dimension spec
-    as rectilinear regardless of which dimension carries the sequence."""
-    shape = (30, 100) if isinstance(chunks[0], int) else (100, 30)
+def test_rectilinear_chunks_gates(shape: tuple[int, ...], chunks: Any) -> None:
+    """The v2 and chunks+shards gates recognize every rectilinear spec as
+    rectilinear, regardless of which dimension carries the sequence and
+    whether its edges happen to be uniform."""
+    chunks = chunks() if callable(chunks) else chunks
     with pytest.raises(ValueError, match="Rectilinear chunks with sharding is not supported"):
         zarr.create_array(MemoryStore(), shape=shape, chunks=chunks, shards=(10, 10), dtype="uint8")
     with pytest.raises(ValueError, match="Zarr format 2 does not support rectilinear chunk grids"):
@@ -1237,15 +1245,22 @@ def test_from_array_keep_is_o1_in_chunk_count() -> None:
     assert grid.chunk_shapes == (3, (10, 20))
 
 
-def test_resize_uniform_rectilinear_appends_edge() -> None:
+@pytest.mark.parametrize(
+    "rect_chunks",
+    [[[10, 10, 10]], partial(RectilinearChunkGridMetadata, chunk_shapes=((10, 10, 10),))],
+    ids=["list", "metadata"],
+)
+def test_resize_uniform_rectilinear_appends_edge(rect_chunks: Any) -> None:
     """Growing an explicitly rectilinear array whose edges look regular appends
     a new edge chunk, while the same sizes declared as a scalar extend the
     uniform pattern instead (gh-4272), so an append-only workload writing the
     grown region touches exactly one new chunk."""
     from zarr.core.metadata.v3 import ArrayV3Metadata
 
+    rect_chunks = rect_chunks() if callable(rect_chunks) else rect_chunks
     rect_store: dict[str, Any] = {}
-    rect = zarr.create_array(store=rect_store, shape=(30,), chunks=[[10, 10, 10]], dtype="int32")
+    rect = zarr.create_array(store=rect_store, shape=(30,), chunks=rect_chunks, dtype="int32")
+    assert isinstance(rect.metadata.chunk_grid, RectilinearChunkGridMetadata)
     rect.resize((45,))
     assert isinstance(rect.metadata, ArrayV3Metadata)
     rect_grid = rect.metadata.chunk_grid
@@ -2166,15 +2181,6 @@ def test_overflow_multidim() -> None:
     assert spec is not None
     assert spec.shape == (15, 20)
     assert spec.codec_shape == (30, 40)
-
-
-def test_overflow_uniform_edges_collapses_to_fixed() -> None:
-    """Uniform edges where len == ceildiv(extent, edge) collapse to FixedDimension."""
-    g = ChunkGrid.from_sizes((35,), [[10, 10, 10, 10]])
-    assert isinstance(g._dimensions[0], FixedDimension)
-    assert g.is_regular
-    assert g.chunk_sizes == ((10, 10, 10, 5),)
-    assert g._dimensions[0].nchunks == 4
 
 
 def test_overflow_index_to_chunk_near_extent() -> None:

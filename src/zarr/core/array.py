@@ -4538,9 +4538,8 @@ async def init_array(
         chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
 
     # Validate rectilinear chunks constraints. The normalized grid is the one
-    # judge of what the user declared; stored rectilinear metadata counts as
-    # rectilinear even when its edges happen to be uniform.
-    if isinstance(chunks, RectilinearChunkGridMetadata) or not chunks_normalized.is_regular:
+    # judge of what the user declared.
+    if not chunks_normalized.is_regular:
         if zarr_format == 2:
             raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
         if shards is not None:
@@ -4861,10 +4860,9 @@ def _stored_rectilinear_grid_or_none(
     """The *stored* rectilinear chunk grid, or None if the stored grid is regular
     (in which case `.chunks` and `.shards` are defined).
 
-    Dispatches on the stored metadata, not the runtime ``ChunkGrid``: the
-    runtime grid collapses a rectilinear dimension whose edges happen to be
-    uniform to a ``FixedDimension`` as an optimization, so it can report regular
-    for an array whose stored metadata — and therefore `.chunks` — is
+    Dispatches on the stored metadata, not the runtime `ChunkGrid`: a
+    rectilinear grid whose dimensions are all bare-int step sizes is regular at
+    runtime, while its stored metadata — and therefore `.chunks` — is
     rectilinear. Zarr format 2 grids are always regular.
     """
     if isinstance(metadata, ArrayV3Metadata) and isinstance(
