@@ -9,6 +9,7 @@ from zarr.errors import ContainsArrayError
 from zarr.storage._common import StorePath, ensure_no_existing_node
 
 if TYPE_CHECKING:
+    from zarr.core.buffer import Buffer
     from zarr.core.common import ZarrFormat
     from zarr.core.group import GroupMetadata
     from zarr.core.metadata import ArrayMetadata
@@ -52,11 +53,53 @@ async def save_metadata(
     ValueError
     """
     to_save = metadata.to_buffer_dict(default_buffer_prototype())
+    await _write_metadata(store_path, to_save, metadata.zarr_format, ensure_parents=ensure_parents)
+
+
+async def save_new_metadata(
+    store_path: StorePath,
+    metadata: ArrayMetadata | GroupMetadata,
+    *,
+    overwrite: bool,
+    ensure_parents: bool = False,
+) -> None:
+    """Save the metadata of a new array or group, replacing any existing node if requested.
+
+    The metadata is encoded before the store is modified, so metadata that cannot be
+    encoded raises without deleting an existing node.
+
+    Parameters
+    ----------
+    store_path : StorePath
+        Location of the new node.
+    metadata : ArrayMetadata | GroupMetadata
+        Metadata of the new node.
+    overwrite : bool
+        If true and the store supports deletes, delete any existing node at `store_path`.
+        Otherwise, raise if a node already exists at `store_path`.
+    ensure_parents : bool, optional
+        Create any missing parent groups, and check no existing parents are arrays.
+    """
+    to_save = metadata.to_buffer_dict(default_buffer_prototype())
+    if overwrite and store_path.store.supports_deletes:
+        await store_path.delete_dir()
+    else:
+        await ensure_no_existing_node(store_path, zarr_format=metadata.zarr_format)
+    await _write_metadata(store_path, to_save, metadata.zarr_format, ensure_parents=ensure_parents)
+
+
+async def _write_metadata(
+    store_path: StorePath,
+    to_save: dict[str, Buffer],
+    zarr_format: ZarrFormat,
+    *,
+    ensure_parents: bool,
+) -> None:
     set_awaitables = [set_or_delete(store_path / key, value) for key, value in to_save.items()]
 
     if ensure_parents:
         # To enable zarr.create(store, path="a/b/c"), we need to create all the intermediate groups.
-        parents = _build_parents(store_path, metadata.zarr_format)
+        parents = _build_parents(store_path, zarr_format)
         ensure_array_awaitables = []
 
         for parent_path, parent_metadata in parents.items():
