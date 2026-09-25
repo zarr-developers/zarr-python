@@ -23,8 +23,8 @@ from zarr.errors import ZarrUserWarning
         ((np.int64(0),), (0,), (1,), "of size 1"),
         ((4, 0), (4, 0), (4, 1), "Dimension 1"),
         ((0, 0), (0, 0), (1, 1), "Dimension 0"),
-        ((0,), (5,), (5,), "grown to 5.*was not saved"),
-        ((4, 0), (4, 3), (4, 3), "grown to 3.*was not saved"),
+        ((0,), (5,), (5,), "5 elements along this axis hold only the fill value"),
+        ((4, 0), (4, 3), (4, 3), "3 elements along this axis hold only the fill value"),
     ],
     ids=[
         "valid",
@@ -45,13 +45,11 @@ def test_parse_stored_regular_chunk_shape(
     warning: str | None,
 ) -> None:
     """A valid chunk shape is returned as is; a chunk size of 0 is read as one
-    chunk spanning the axis, with a warning naming the writer and how to re-save,
-    and, if the axis has grown, that data written to it was not saved."""
+    chunk spanning the axis, with a warning saying how to re-save and, on an axis
+    of positive length, that it holds only the fill value."""
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
-        parsed = parse_stored_regular_chunk_shape(
-            chunk_shape, shape, legacy_writers="an old writer"
-        )
+        parsed = parse_stored_regular_chunk_shape(chunk_shape, shape)
     assert parsed == expected
     messages = [str(w.message) for w in record if issubclass(w.category, ZarrUserWarning)]
     if warning is None:
@@ -59,17 +57,16 @@ def test_parse_stored_regular_chunk_shape(
     else:
         assert any(re.search(warning, message) for message in messages)
     for message in messages:
-        assert "an old writer" in message
         assert "update_attributes({})" in message
 
 
 def test_parse_stored_regular_chunk_shape_rejects_dimension_mismatch() -> None:
     """The chunk shape needs one entry per array axis."""
     with pytest.raises(ValueError, match="same number of dimensions"):
-        parse_stored_regular_chunk_shape((4,), (10, 10), legacy_writers="an old writer")
+        parse_stored_regular_chunk_shape((4,), (10, 10))
 
 
 def test_parse_stored_regular_chunk_shape_rejects_negative() -> None:
     """A negative chunk size is rejected even on a zero-length axis."""
     with pytest.raises(ValueError, match="chunk edge length must be >= 1, got -1"):
-        parse_stored_regular_chunk_shape((-1,), (0,), legacy_writers="an old writer")
+        parse_stored_regular_chunk_shape((-1,), (0,))
