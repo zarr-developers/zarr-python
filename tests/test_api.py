@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import itertools
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -288,7 +289,14 @@ def test_open_array_respects_write_empty_chunks_config(zarr_format: ZarrFormat) 
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
-@pytest.mark.parametrize("api", ["sync", "async"])
+@pytest.mark.parametrize(
+    ("func", "exists"),
+    [
+        *itertools.product(["open_array-sync", "open_array-async", "open-shape"], [True, False]),
+        # without a shape, zarr.open can only open an existing array
+        ("open", True),
+    ],
+)
 @pytest.mark.parametrize(
     ("config", "expected"),
     [
@@ -307,44 +315,76 @@ def test_open_array_respects_write_empty_chunks_config(zarr_format: ZarrFormat) 
         ),
     ],
 )
-async def test_open_array_existing_applies_config(
+async def test_open_array_config(
     zarr_format: ZarrFormat,
-    api: Literal["sync", "async"],
+    func: str,
+    exists: bool,
     config: ArrayConfigLike | None,
     expected: ArrayConfig,
 ) -> None:
     """
-    Opening an existing array with open_array applies the config argument, with keys
-    missing from a partial config taken from the global defaults.
+    open_array and zarr.open apply the config argument whether they open an existing array
+    or create one, with keys missing from a partial config taken from the global defaults.
     """
     store = MemoryStore()
-    zarr.create_array(store, shape=(4,), dtype="uint8", zarr_format=zarr_format)
-    kwargs: dict[str, Any] = {} if config is None else {"config": config}
-    if api == "sync":
-        observed = zarr.api.synchronous.open_array(store, **kwargs).config
+    if exists:
+        zarr.create_array(store, shape=(4,), dtype="uint8", zarr_format=zarr_format)
+    kwargs: dict[str, Any] = {"shape": (4,), "dtype": "uint8", "zarr_format": zarr_format}
+    if config is not None:
+        kwargs["config"] = config
+    if func == "open_array-sync":
+        observed = zarr.api.synchronous.open_array(store, mode="a", **kwargs).config
+    elif func == "open_array-async":
+        observed = (await zarr.api.asynchronous.open_array(store=store, mode="a", **kwargs)).config
     else:
-        observed = (await zarr.api.asynchronous.open_array(store=store, **kwargs)).config
+        if func == "open":
+            del kwargs["shape"], kwargs["dtype"]
+        node = zarr.open(store=store, mode="a", **kwargs)
+        assert isinstance(node, Array)
+        observed = node.config
     assert observed == expected
 
 
-def test_open_array_existing_unknown_config_key() -> None:
+@pytest.mark.parametrize("exists", [True, False])
+def test_open_array_unknown_config_key(exists: bool) -> None:
     """
-    Opening an existing array with a config containing an unknown key raises TypeError.
-    """
-    store = MemoryStore()
-    zarr.create_array(store, shape=(4,), dtype="uint8")
-    with pytest.raises(TypeError, match="unexpected keyword argument 'nope'"):
-        zarr.open_array(store, config={"nope": 1})
-
-
-def test_open_array_existing_invalid_config_value() -> None:
-    """
-    Opening an existing array with a config containing an invalid value raises ValueError.
+    Opening or creating an array with a config containing an unknown key raises TypeError.
     """
     store = MemoryStore()
-    zarr.create_array(store, shape=(4,), dtype="uint8")
+    if exists:
+        zarr.create_array(store, shape=(4,), dtype="uint8")
+    with pytest.raises(TypeError, match=r"Unknown array config keys: \['nope'\]"):
+        zarr.open_array(store, mode="a", shape=(4,), dtype="uint8", config={"nope": 1})  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("exists", [True, False])
+def test_open_array_invalid_config_value(exists: bool) -> None:
+    """
+    Opening or creating an array with a config containing an invalid value raises ValueError.
+    """
+    store = MemoryStore()
+    if exists:
+        zarr.create_array(store, shape=(4,), dtype="uint8")
     with pytest.raises(ValueError, match="Expected instance of bool"):
-        zarr.open_array(store, config={"read_missing_chunks": "yes"})
+        zarr.open_array(
+            store,
+            mode="a",
+            shape=(4,),
+            dtype="uint8",
+            config={"read_missing_chunks": "yes"},  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize("exists", [True, False])
+def test_open_group_with_config(exists: bool) -> None:
+    """
+    zarr.open with a config raises TypeError when it opens or creates a group.
+    """
+    store = MemoryStore()
+    if exists:
+        zarr.create_group(store)
+    with pytest.raises(TypeError, match="resolves to a group"):
+        zarr.open(store=store, mode="a", config={"order": "F"})
 
 
 @pytest.mark.parametrize("path", ["foo", "/", "/foo", "///foo/bar"])

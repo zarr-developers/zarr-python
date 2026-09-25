@@ -339,6 +339,7 @@ async def open(
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
+    config: ArrayConfigLike | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to open_array
 ) -> AnyAsyncArray | AsyncGroup:
     """Convenience function to open a group or array using file-mode-like semantics.
@@ -362,6 +363,11 @@ async def open(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    config : ArrayConfigLike or None, default=None
+        Runtime configuration for the array, whether it is opened or created. Keys not
+        specified are taken from the global configuration. Groups have no runtime
+        configuration, so passing `config` when a group is opened or created raises a
+        `TypeError`.
     **kwargs
         Additional parameters are passed through to `zarr.open_array` or
         `zarr.open_group`.
@@ -400,20 +406,31 @@ async def open(
             zarr_format = _metadata_dict["zarr_format"]
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
             if is_v3_array or zarr_format == 2:
-                return AsyncArray(
-                    store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
-                )
+                return AsyncArray(store_path=store_path, metadata=_metadata_dict, config=config)
         except (FileNotFoundError, NodeTypeValidationError):
             pass
+        _check_no_group_config(config, store_path)
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
     try:
-        return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+        return await open_array(
+            store=store_path, zarr_format=zarr_format, mode=mode, config=config, **kwargs
+        )
     except (KeyError, NodeTypeValidationError):
         # KeyError for a missing key
         # NodeTypeValidationError for failing to parse node metadata as an array when it's
         # actually a group
+        _check_no_group_config(config, store_path)
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+
+
+def _check_no_group_config(config: ArrayConfigLike | None, store_path: StorePath) -> None:
+    """Raise if `config` is given for a node that `open` resolves to a group."""
+    if config is not None:
+        raise TypeError(
+            f"config is the runtime configuration of an array, but {store_path} resolves to a "
+            "group. Groups have no runtime configuration."
+        )
 
 
 async def open_consolidated(
@@ -1234,6 +1251,7 @@ async def open_array(
     zarr_format: ZarrFormat | None = None,
     path: PathLike = "",
     storage_options: dict[str, Any] | None = None,
+    config: ArrayConfigLike | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to save
 ) -> AnyAsyncArray:
     """Open an array using file-mode-like semantics.
@@ -1251,6 +1269,9 @@ async def open_array(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    config : ArrayConfigLike or None, default=None
+        Runtime configuration for the array, whether it is opened or created. Keys not
+        specified are taken from the global configuration.
     **kwargs
         Any keyword arguments to pass to [`create`][zarr.api.asynchronous.create].
 
@@ -1267,7 +1288,7 @@ async def open_array(
         _warn_write_empty_chunks_kwarg()
 
     try:
-        array = await AsyncArray.open(store_path, zarr_format=zarr_format)
+        return await AsyncArray.open(store_path, zarr_format=zarr_format, config=config)
     except FileNotFoundError as err:
         if not store_path.read_only and mode in _CREATE_MODES:
             overwrite = _infer_overwrite(mode)
@@ -1276,14 +1297,11 @@ async def open_array(
                 store=store_path,
                 zarr_format=_zarr_format,
                 overwrite=overwrite,
+                config=config,
                 **kwargs,
             )
         msg = f"No array found in store {store_path.store} at path {store_path.path}"
         raise ArrayNotFoundError(msg) from err
-    config = kwargs.get("config")
-    if config is not None:
-        return array.with_config(config)
-    return array
 
 
 async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyAsyncArray:
