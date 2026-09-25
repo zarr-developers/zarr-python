@@ -259,6 +259,7 @@ def save(
     *args: NDArrayLike,
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
+    storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save
 ) -> None:
     """Save an array or group of arrays to the local file system.
@@ -275,10 +276,22 @@ def save(
         The zarr format to use when saving.
     path : str or None, optional
         The path within the group where the arrays will be saved.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
     **kwargs
         NumPy arrays with data to save.
     """
-    return sync(async_api.save(store, *args, zarr_format=zarr_format, path=path, **kwargs))
+    return sync(
+        async_api.save(
+            store,
+            *args,
+            zarr_format=zarr_format,
+            path=path,
+            storage_options=storage_options,
+            **kwargs,
+        )
+    )
 
 
 def save_array(
