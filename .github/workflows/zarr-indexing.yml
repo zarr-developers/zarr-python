@@ -37,10 +37,8 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ['3.12', '3.13', '3.14']
-    # The recipes run `uv run --project ../..`, which would otherwise honour
-    # the root .python-version pin and rebuild the venv on that interpreter.
-    # UV_PYTHON reaches every uv call inside them, keeping the justfile
-    # interpreter-agnostic for local use.
+    # UV_PYTHON reaches every uv call inside the recipes, selecting the matrix
+    # interpreter while keeping the justfile interpreter-agnostic for local use.
     env:
       UV_PYTHON: ${{ matrix.python-version }}
     steps:
@@ -64,10 +62,10 @@ jobs:
       # invocation; this step installs dependencies up front so their
       # install time is reported separately from the tests.
       - name: Sync test dependency group
-        run: uv sync --project ../.. --group test
+        run: uv sync --group test
       - name: Check interpreter
         run: >-
-          uv run --project ../.. --group test python -c
+          uv run --group test python -c
           "import sys; v = '%d.%d' % sys.version_info[:2];
           assert v == '${{ matrix.python-version }}', v"
       - name: Run pytest

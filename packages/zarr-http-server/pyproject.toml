@@ -76,11 +76,6 @@ docs = [
     "ruff==0.16.8",
 ]
 
-# Dev-only: resolve zarr from the repo root so package tests run against
-# in-repo zarr. Affects uv resolution only, not published metadata.
-[tool.uv.sources]
-zarr = { path = "../..", editable = true }
-
 [tool.hatch.version]
 source = "vcs"
 tag-pattern = '^zarr_http_server-v(?P<version>.+)$'
