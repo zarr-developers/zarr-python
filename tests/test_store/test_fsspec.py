@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import functools
+import http.server
 import json
 import re
+import threading
+import warnings
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -248,6 +252,47 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         assert result.fs.endpoint_url == endpoint_url
         assert result.fs.asynchronous
         assert result.path == f"{test_bucket_name}/foo/bar"
+
+    @pytest.mark.skipif(
+        parse_version(fsspec.__version__) < parse_version("2024.03.01"),
+        reason="Prior bug in from_upath",
+    )
+    def test_from_upath_sync_filesystem(self, endpoint_url: str) -> None:
+        """
+        A UPath built without ``asynchronous=True`` -- the common case -- yields an async-mode
+        filesystem that keeps the original storage options.
+        """
+        upath = pytest.importorskip("upath")
+        path = upath.UPath(
+            f"s3://{test_bucket_name}/foo/bar/",
+            endpoint_url=endpoint_url,
+            anon=False,
+        )
+        assert not path.fs.asynchronous
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", ZarrUserWarning)
+            result = FsspecStore.from_upath(path)
+        assert result.fs.asynchronous
+        assert result.fs.endpoint_url == endpoint_url
+        assert result.path == f"{test_bucket_name}/foo/bar"
+
+    async def test_open_group_from_upath(self, endpoint_url: str) -> None:
+        """
+        Passing a remote UPath to the top-level API works.
+
+        Regression test for https://github.com/zarr-developers/zarr-python/issues/4244.
+        """
+        upath = pytest.importorskip("upath")
+        path = upath.UPath(
+            f"s3://{test_bucket_name}/upath-group",
+            endpoint_url=endpoint_url,
+            anon=False,
+        )
+        group = await zarr.api.asynchronous.open_group(path, mode="w", attributes={"key": "value"})
+        assert isinstance(group.store_path.store, FsspecStore)
+
+        reopened = await zarr.api.asynchronous.open_group(path, mode="r")
+        assert dict(reopened.attrs) == {"key": "value"}
 
     def test_init_warns_if_fs_asynchronous_is_false(self, endpoint_url: str) -> None:
         try:
@@ -519,6 +564,55 @@ def test_open_s3map_raises(endpoint_url: str) -> None:
         zarr.open(store=mapper, storage_options={"anon": True}, mode="w", shape=(3, 3))
 
 
+async def test_list_dir_http_yields_only_children(tmp_path: pathlib.Path) -> None:
+    """list_dir over HTTP yields each direct child once, by bare name.
+
+    An HTTP listing is scraped from an HTML index page, whose links include the site
+    root, the parent, in-page anchors, queries, "./" relative links, and directories
+    with a trailing "/".
+    Regression test for https://github.com/zarr-developers/zarr-python/issues/3575,
+    where the site-root link surfaced as a group member named "".
+    """
+    pytest.importorskip("aiohttp")
+    links = [
+        "/",
+        "../",
+        "./",
+        "#",
+        "#usage",
+        "?sort=name",
+        "a/",
+        "a",
+        "b",
+        "./d",
+        ".zgroup",
+        "/group/c/",
+    ]
+    group = tmp_path / "group"
+    group.mkdir()
+    (group / "index.html").write_text(
+        "<html><body>"
+        + "".join(f'<a href="{link}">{link}</a>' for link in links)
+        + "</body></html>"
+    )
+
+    class QuietHandler(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+    handler = functools.partial(QuietHandler, directory=str(tmp_path))
+    with http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        store = FsspecStore.from_url(f"http://127.0.0.1:{server.server_port}/group")
+        try:
+            observed = await _collect_aiterator(store.list_dir(""))
+        finally:
+            store.close()
+            server.shutdown()
+
+    assert sorted(observed) == [".zgroup", "a", "b", "c", "d"]
+
+
 async def test_close_does_not_close_filesystem_session() -> None:
     """close() must not touch the filesystem's session.
 
@@ -582,6 +676,24 @@ def test_with_read_only_shares_filesystem(tmp_path: pathlib.Path) -> None:
     assert derived.fs is source.fs
     assert derived.read_only
     assert not source.read_only
+
+
+def test_make_async_preserves_unserializable_storage_options() -> None:
+    """A sync instance of an async filesystem whose storage options hold objects that
+    cannot round-trip through JSON (e.g. an Azure credential) must still convert.
+
+    See https://github.com/zarr-developers/zarr-python/issues/4220
+    """
+    pytest.importorskip("aiohttp")
+    credential = object()  # stand-in for e.g. azure.identity.DefaultAzureCredential
+    sync_fs = fsspec.filesystem("http", client_kwargs={"auth": credential})
+    assert sync_fs.async_impl
+    assert not sync_fs.asynchronous
+
+    async_fs = _make_async(sync_fs)
+
+    assert async_fs.asynchronous
+    assert async_fs.client_kwargs["auth"] is credential
 
 
 @pytest.mark.parametrize("asynchronous", [True, False])

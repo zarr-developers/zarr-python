@@ -2,7 +2,7 @@
 
 Python types, models, and validators for Zarr v2 and v3 metadata.
 
-Documentation: <https://zarr-metadata.readthedocs.io/en/stable/>
+Documentation: <https://zarr-metadata.readthedocs.io/>
 
 ## What this is
 

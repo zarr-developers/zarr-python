@@ -24,7 +24,7 @@ from zarr.core.common import (
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.storage._local import LocalStore
 from zarr.storage._memory import ManagedMemoryStore, MemoryStore
-from zarr.storage._utils import _join_paths, normalize_path, parse_store_url
+from zarr.storage._utils import UPath, _join_paths, normalize_path, parse_store_url
 
 _has_fsspec = importlib.util.find_spec("fsspec")
 if _has_fsspec:
@@ -297,12 +297,11 @@ class StorePath:
         """
         try:
             return self.store == other.store and self.path == other.path  # type: ignore[attr-defined, no-any-return]
-        except Exception:
-            pass
-        return False
+        except AttributeError:
+            return False
 
 
-type StoreLike = Store | StorePath | FSMap | Path | str | dict[str, Buffer]
+type StoreLike = Store | StorePath | FSMap | Path | UPath | str | dict[str, Buffer]
 
 
 async def make_store(
@@ -322,6 +321,7 @@ async def make_store(
     - `dict[str, Buffer]` = `MemoryStore` object.
     - `None` = `MemoryStore` object.
     - `FSMap` = `FsspecStore` object.
+    - `UPath` = `FsspecStore` object, or `LocalStore` for a local `UPath`.
 
     Parameters
     ----------
@@ -360,7 +360,8 @@ async def make_store(
                 "'storage_options' is only used when the store is passed as an FSSpec URI string.",
             )
 
-    assert mode in (None, "r", "r+", "a", "w", "w-")
+    if mode is not None and mode not in ANY_ACCESS_MODE:
+        raise ValueError(f"Invalid mode: {mode}, expected one of {ANY_ACCESS_MODE}")
     _read_only = mode == "r"
 
     if isinstance(store_like, StorePath):
@@ -381,6 +382,17 @@ async def make_store(
     elif store_like is None:
         # Create a new in-memory store
         return await make_store({}, mode=mode, storage_options=storage_options)
+
+    elif isinstance(store_like, UPath):
+        # This must be checked before Path: in universal-pathlib < 0.3 every UPath, including
+        # remote ones like S3Path, subclasses pathlib.Path, and would otherwise be misrouted to a
+        # LocalStore. Local UPaths get a LocalStore so that UPath("/data") and Path("/data") agree,
+        # mirroring how the equivalent strings are routed below.
+        if store_like.protocol in ("", "file"):
+            return await make_store(
+                Path(store_like.path), mode=mode, storage_options=storage_options
+            )
+        return FsspecStore.from_upath(store_like, read_only=_read_only)
 
     elif isinstance(store_like, Path):
         # Create a new LocalStore

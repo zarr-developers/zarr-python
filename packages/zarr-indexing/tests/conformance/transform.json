@@ -53,5 +53,42 @@
         { "offset": 0, "stride": 1, "index_array": [1, 2, 3], "index_array_bounds": ["-inf", "+inf"] }
       ]
     }
+  },
+  {
+    "name": "transform/empty-index-array-carried-verbatim",
+    "input": {
+      "kind": "transform",
+      "input_inclusive_min": [0, 0],
+      "input_exclusive_max": [0, 3],
+      "output": [{ "index_array": [] }, { "input_dimension": 1 }]
+    },
+    "normalized": {
+      "input_rank": 2, "input_inclusive_min": [0, 0], "input_exclusive_max": [0, 3],
+      "input_labels": ["", ""],
+      "output": [
+        { "offset": 0, "stride": 1, "index_array": [], "index_array_bounds": ["-inf", "+inf"] },
+        { "offset": 0, "stride": 1, "input_dimension": 1 }
+      ]
+    }
+  },
+  {
+    "name": "transform/empty-index-array-is-idempotent",
+    "input": {
+      "input_rank": 2, "input_inclusive_min": [0, 0], "input_exclusive_max": [0, 3],
+      "input_labels": ["", ""],
+      "kind": "transform",
+      "output": [
+        { "offset": 0, "stride": 1, "index_array": [], "index_array_bounds": ["-inf", "+inf"] },
+        { "offset": 0, "stride": 1, "input_dimension": 1 }
+      ]
+    },
+    "normalized": {
+      "input_rank": 2, "input_inclusive_min": [0, 0], "input_exclusive_max": [0, 3],
+      "input_labels": ["", ""],
+      "output": [
+        { "offset": 0, "stride": 1, "index_array": [], "index_array_bounds": ["-inf", "+inf"] },
+        { "offset": 0, "stride": 1, "input_dimension": 1 }
+      ]
+    }
   }
 ]

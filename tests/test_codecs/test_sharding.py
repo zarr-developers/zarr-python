@@ -1,4 +1,5 @@
 import enum
+import math
 import pickle
 import warnings
 from typing import Any, cast, get_args
@@ -17,9 +18,11 @@ from zarr.codecs import (
     BloscCodec,
     BytesCodec,
     Crc32cCodec,
+    GzipCodec,
     ShardingCodec,
     TransposeCodec,
 )
+from zarr.codecs.numcodecs import CRC32
 from zarr.codecs.sharding import (
     INDEX_LOCATION,
     MAX_UINT_64,
@@ -1118,6 +1121,44 @@ def test_sharding_codec_rejects_unknown_index_location() -> None:
         ShardingCodec(**kwargs)
 
 
+@pytest.mark.parametrize(
+    "index_codecs",
+    [
+        (BytesCodec(),),
+        (BytesCodec(), Crc32cCodec()),
+        (TransposeCodec(order=(1, 0)), BytesCodec(), Crc32cCodec()),
+        (BytesCodec(), CRC32()),
+    ],
+)
+def test_sharding_fixed_size_index_codecs_roundtrip(index_codecs: tuple[Any, ...]) -> None:
+    """
+    Any chain of fixed-size codecs is accepted as `index_codecs`, and data
+    written through it reads back unchanged.
+    """
+    data = np.arange(16, dtype="uint16")
+    arr = zarr.create_array(
+        MemoryStore(),
+        shape=data.shape,
+        dtype=data.dtype,
+        chunks=(2,),
+        shards=(8,),
+        compressors=None,
+        serializer=ShardingCodec(chunk_shape=(2,), index_codecs=index_codecs),
+    )
+    arr[:] = data
+    np.testing.assert_array_equal(arr[:], data)
+
+
+@pytest.mark.parametrize("compressor", [GzipCodec(), BloscCodec()])
+def test_sharding_codec_rejects_variable_size_index_codecs(compressor: Any) -> None:
+    """
+    ShardingCodec rejects an `index_codecs` chain containing a codec whose
+    encoded size is not fixed, as the spec requires.
+    """
+    with pytest.raises(ValueError, match="must produce a fixed-size encoding"):
+        ShardingCodec(chunk_shape=(2,), index_codecs=(BytesCodec(), compressor))
+
+
 def test_sharding_index_location_attribute_error_for_unknown_member() -> None:
     """
     Attribute access for a name that is not a known member of the deprecated
@@ -1262,3 +1303,77 @@ def test_shard_reader_to_dict_vectorized(chunks_per_shard: tuple[int, ...]) -> N
             assert buf.to_bytes() == present[coords]
         else:
             assert buf is None
+
+
+@pytest.mark.parametrize(
+    "pipeline_path",
+    [
+        "zarr.core.codec_pipeline.FusedCodecPipeline",
+        "zarr.core.codec_pipeline.BatchedCodecPipeline",
+    ],
+)
+@pytest.mark.parametrize("nested", [False, True], ids=["single", "nested"])
+@pytest.mark.parametrize(
+    "selection",
+    [
+        pytest.param((np.array([3, 1, 2]), np.array([0, 2])), id="2d-arr-arr"),
+        pytest.param((np.array([3, 0]), np.array([2, 0])), id="2d-arr-arr-unsorted-two-shards"),
+        pytest.param((np.array([3, 1, 2]), 1, np.array([0, 2])), id="3d-arr-int-arr"),
+        pytest.param((1, np.array([0, 2]), np.array([1, 3])), id="3d-int-arr-arr"),
+        pytest.param((np.array([3, 1]), np.array([0, 2]), 2), id="3d-arr-arr-int"),
+        pytest.param(
+            (np.array([3, 1, 2]), np.array([0, 2]), np.array([1, 3])), id="3d-arr-arr-arr"
+        ),
+        pytest.param((np.array([3]), np.array([0, 2]), 1), id="3d-arr1-arr-int"),
+    ],
+)
+def test_sharding_orthogonal_set_multiple_array_dims(
+    selection: tuple[int | npt.NDArray[np.intp], ...], nested: bool, pipeline_path: str
+) -> None:
+    """Orthogonal set with more than one array-indexed dimension.
+
+    ``OrthogonalIndexer`` converts such a chunk selection to an ``np.ix_`` tuple
+    of broadcastable arrays before handing it to the codec pipeline. The
+    sharding codec re-derives an indexer from that selection and gets a
+    ``CoordinateIndexer``, whose projections address the value buffer flat.
+    Regression test for the resulting shape mismatch on write.
+
+    An integer index alongside the arrays is the case that a shape-equality
+    guard misses: ``OrthogonalIndexer`` drops that axis from the value but
+    ``np.ix_`` keeps it as a length-1 axis in the chunk selection, so the value
+    and the re-derived indexer's ``sel_shape`` differ in rank while agreeing in
+    element count.
+
+    Parametrized over both pipelines because the partial-encode path is
+    written twice -- ``_encode_partial_single`` for ``BatchedCodecPipeline``
+    and ``_encode_partial_sync`` for ``FusedCodecPipeline``.
+    """
+    ndim = len(selection)
+    shape = (4,) * ndim
+    inner = ShardingCodec(chunk_shape=(1,) * ndim, codecs=(BytesCodec(),))
+    serializer = ShardingCodec(
+        chunk_shape=(2,) * ndim, codecs=((inner,) if nested else (BytesCodec(),))
+    )
+    base = np.arange(4**ndim, dtype="int32").reshape(shape)
+    ix = np.ix_(*(np.atleast_1d(s) for s in selection))
+    # The value is shaped like the orthogonal result: integer axes dropped.
+    value_shape = tuple(len(s) for s in selection if not isinstance(s, int))
+    value = np.arange(math.prod(value_shape), dtype="int32").reshape(value_shape) + 100
+
+    with zarr.config.set({"codec_pipeline.path": pipeline_path}):
+        a = zarr.create_array(
+            MemoryStore(),
+            shape=shape,
+            chunks=(2,) + (4,) * (ndim - 1),
+            dtype=base.dtype,
+            serializer=serializer,
+            compressors=None,
+            fill_value=0,
+        )
+        a[:] = base
+        a.oindex[selection] = value
+
+        expected = base.copy()
+        expected[ix] = value.reshape(expected[ix].shape)
+        assert np.array_equal(a[:], expected)
+        assert np.array_equal(a.oindex[selection], value)

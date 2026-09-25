@@ -79,7 +79,7 @@ def test_create(memory_store: Store) -> None:
         z = create(shape=(400.5, 100), store=store, overwrite=True)  # type: ignore[arg-type]
 
     # create array with float chunk shape
-    with pytest.raises(TypeError, match="'float' object is not iterable"):
+    with pytest.raises(TypeError, match="Chunk specification must be an integer or an iterable"):
         z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore[arg-type]
 
 
@@ -419,7 +419,7 @@ async def test_open_group_unspecified_version(tmp_path: Path, zarr_format: ZarrF
 @pytest.mark.parametrize("n_args", [10, 1, 0])
 @pytest.mark.parametrize("n_kwargs", [10, 1, 0])
 @pytest.mark.parametrize("path", [None, "some_path"])
-def test_save(store: Store, n_args: int, n_kwargs: int, path: None | str) -> None:
+def test_save(store: Store, n_args: int, n_kwargs: int, path: str | None) -> None:
     data = np.arange(10)
     args = [np.arange(10) for _ in range(n_args)]
     kwargs = {f"arg_{i}": data for i in range(n_kwargs)}

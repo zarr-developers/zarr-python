@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Literal, get_args
+from typing import TYPE_CHECKING, Any, Literal, Self, get_args
 
 import numpy as np
 import pytest
@@ -18,15 +18,22 @@ from zarr.core.dtype.common import unpack_dtype_json
 from zarr.dtype import (  # type: ignore[attr-defined]
     Bool,
     FixedLengthUTF32,
+    Int8,
+    Int16,
+    RawBytes,
+    Struct,
+    UInt8,
     VariableLengthUTF8,
     ZDType,
     data_type_registry,
     parse_data_type,
     parse_dtype,
 )
+from zarr.errors import DataTypeValidationError
 
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
+    from zarr.core.dtype.common import DTypeJSON, DTypeName_V2
 
 from .test_dtype.conftest import zdtype_examples
 
@@ -155,7 +162,7 @@ class TestRegistry:
 def test_entrypoint_dtype(zarr_format: ZarrFormat) -> None:
     from package_with_entrypoint import TestDataType
 
-    data_type_registry._lazy_load()
+    # the registry loads entry point data types when it is first used
     instance = TestDataType()
     dtype_json = instance.to_json(zarr_format=zarr_format)
     assert get_data_type_from_json(dtype_json, zarr_format=zarr_format) == instance
@@ -170,7 +177,7 @@ def test_entrypoint_dtype(zarr_format: ZarrFormat) -> None:
 )
 def test_parse_data_type(
     data_type: ZDType[Any, Any],
-    json_style: tuple[ZarrFormat, None | Literal["internal", "metadata"]],
+    json_style: tuple[ZarrFormat, Literal["internal", "metadata"] | None],
     dtype_parser_func: Any,
 ) -> None:
     """
@@ -215,3 +222,167 @@ def test_parse_data_type(
     else:
         observed = dtype_parser_func(dtype_spec, zarr_format=zarr_format)
         assert observed == data_type
+
+
+class _LittleEndianUInt8(UInt8):
+    """A data type that declares the non-canonical spelling "<u1" as its own Zarr V2 name."""
+
+    _zarr_v3_name = "test.little_endian_uint8"  # type: ignore[assignment]
+    _zarr_v2_names = ("<u1",)  # type: ignore[assignment]
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        *((name, Bool()) for name in ("|b1", "<b1", ">b1")),
+        *((name, Int8()) for name in ("|i1", "<i1", ">i1")),
+        *((name, UInt8()) for name in ("|u1", "<u1", ">u1")),
+        *((name, RawBytes(length=4)) for name in ("|V4", "<V4", ">V4")),
+        ("<i2", Int16(endianness="little")),
+        (">i2", Int16(endianness="big")),
+        ([["a", "<i1"], ["b", ">b1"]], Struct(fields=(("a", Int8()), ("b", Bool())))),
+    ],
+    ids=str,
+)
+def test_match_json_v2_byte_order(name: DTypeName_V2, expected: ZDType[Any, Any]) -> None:
+    """
+    A Zarr V2 data type name whose byte order is not relevant matches the same data type for any
+    byte order character, and serializes with the canonical "|".
+    """
+    observed = data_type_registry.match_json({"name": name, "object_codec_id": None}, zarr_format=2)
+    assert observed == expected
+    assert observed.to_json(zarr_format=2) == expected.to_json(zarr_format=2)
+
+
+def test_match_json_v2_declared_spelling_takes_precedence(
+    data_type_registry_fixture: DataTypeRegistry,
+) -> None:
+    """
+    A data type that declares a non-canonical spelling matches that spelling, and the other
+    spellings still match the canonical data type.
+    """
+    data_type_registry_fixture.register(UInt8._zarr_v3_name, UInt8)
+    data_type_registry_fixture.register(_LittleEndianUInt8._zarr_v3_name, _LittleEndianUInt8)
+    for name, expected in (("<u1", _LittleEndianUInt8()), (">u1", UInt8()), ("|u1", UInt8())):
+        observed = data_type_registry_fixture.match_json(
+            {"name": name, "object_codec_id": None}, zarr_format=2
+        )
+        assert type(observed) is type(expected)
+        assert observed.to_json(zarr_format=2)["name"] == ("<u1" if name == "<u1" else "|u1")
+
+
+@pytest.mark.parametrize("name", ["|i2", "|f4", "|U1", "|M8[ns]"])
+def test_match_json_v2_byte_order_relevant(name: str) -> None:
+    """The byte order of a multi-byte data type is part of its name, so "|" is rejected."""
+    with pytest.raises(ValueError, match="No Zarr data type found"):
+        data_type_registry.match_json({"name": name, "object_codec_id": None}, zarr_format=2)
+
+
+@pytest.mark.parametrize("name", ["=u1", "=i2"])
+def test_match_json_v2_native_byte_order(name: str) -> None:
+    """The Zarr V2 byte order character is one of "<", ">", or "|"; NumPy's "=" is not allowed."""
+    with pytest.raises(ValueError, match="No Zarr data type found"):
+        data_type_registry.match_json({"name": name, "object_codec_id": None}, zarr_format=2)
+
+
+def test_match_json_v2_byte_order_alias_object_codec() -> None:
+    """Normalizing the byte order does not relax the other members of the data type."""
+    with pytest.raises(ValueError, match="No Zarr data type found"):
+        data_type_registry.match_json(
+            {"name": "<u1", "object_codec_id": "vlen-utf8"}, zarr_format=2
+        )
+
+
+@pytest.mark.parametrize("name", ["<V", ">V", "<V-1", "<V4x", "<V٤"])
+def test_match_json_v2_byte_order_alias_malformed_length(name: str) -> None:
+    """A fixed-length bytes name needs a length of ASCII digits to have a canonical alias."""
+    with pytest.raises(ValueError, match="No Zarr data type found"):
+        data_type_registry.match_json({"name": name, "object_codec_id": None}, zarr_format=2)
+
+
+class _Byte(UInt8):
+    """A data type that is not in the default registry, spelled "<u1" in Zarr V2."""
+
+    _zarr_v3_name = "test.byte"  # type: ignore[assignment]
+    _zarr_v2_names = ("<u1",)  # type: ignore[assignment]
+
+
+def _registry_with(*classes: type[ZDType[Any, Any]]) -> DataTypeRegistry:
+    registry = DataTypeRegistry()
+    for cls in classes:
+        registry.register(cls._zarr_v3_name, cls)
+    return registry
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_resolve_struct_fields_with_registry(zarr_format: ZarrFormat) -> None:
+    """
+    The fields of a structured data type are resolved from the registry that resolves the
+    structured data type.
+    """
+    registry = _registry_with(Struct, _Byte, Int8)
+    expected = Struct(fields=(("a", _Byte()), ("b", Int8())))
+    observed = registry.match_json(
+        expected.to_json(zarr_format=zarr_format), zarr_format=zarr_format
+    )
+    assert observed == expected
+    assert type(observed.fields[0][1]) is _Byte
+
+
+def test_resolve_struct_fields_default_registry() -> None:
+    """Resolved from the default registry, which lacks _Byte, the field matches nothing."""
+    data = Struct(fields=(("a", _Byte()),)).to_json(zarr_format=3)
+    with pytest.raises(DataTypeValidationError, match="at /configuration/fields/0/data_type$"):
+        get_data_type_from_json(data, zarr_format=3)
+
+
+def test_resolve_struct_fields_missing_from_registry() -> None:
+    """A registry that lacks a field's data type rejects the struct, although the default has it."""
+    data = Struct(fields=(("a", UInt8()),)).to_json(zarr_format=3)
+    with pytest.raises(DataTypeValidationError, match="at /configuration/fields/0/data_type$"):
+        _registry_with(Struct).match_json(data, zarr_format=3)
+
+
+class _OverridesFromJSON(Int8):
+    """A data type that overrides `from_json` itself, as data types that contain none may."""
+
+    _zarr_v3_name = "test.overrides_from_json"  # type: ignore[assignment]
+
+    @classmethod
+    def from_json(cls, data: DTypeJSON, *, zarr_format: ZarrFormat) -> Self:
+        if zarr_format == 3 and data == cls._zarr_v3_name:
+            return cls()
+        raise DataTypeValidationError(f"Invalid JSON representation of {cls.__name__}: {data!r}")
+
+
+def test_resolve_data_type_overriding_from_json() -> None:
+    """A registry creates a data type that contains no other data types with its `from_json`."""
+    registry = _registry_with(Struct, _OverridesFromJSON)
+    expected = Struct(fields=(("a", _OverridesFromJSON()),))
+    observed = registry.match_json(expected.to_json(zarr_format=3), zarr_format=3)
+    assert observed == expected
+
+
+@pytest.mark.parametrize(
+    ("zarr_format", "zdtype", "pointer"),
+    [
+        (2, Struct(fields=(("x", Int8()), ("y", _Byte()))), "/1/1"),
+        # Zarr V2 structured data types nested in structured data types do not round trip
+        (
+            3,
+            Struct(fields=(("outer", Struct(fields=(("x", Int8()), ("y", _Byte())))),)),
+            "/configuration/fields/0/data_type/configuration/fields/1/data_type",
+        ),
+    ],
+    ids=str,
+)
+def test_resolve_struct_field_missing_location(
+    zarr_format: ZarrFormat, zdtype: Struct, pointer: str
+) -> None:
+    """
+    A field data type that matches no data type is reported with its location in the JSON, through
+    the structured data types that contain it, rather than as a mismatch of the outermost data type.
+    """
+    registry = _registry_with(Struct, Int8)
+    with pytest.raises(DataTypeValidationError, match=f"at {re.escape(pointer)}$"):
+        registry.match_json(zdtype.to_json(zarr_format=zarr_format), zarr_format=zarr_format)

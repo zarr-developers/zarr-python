@@ -208,6 +208,178 @@ class TestStrictContainment:
             _a()[sel]
 
 
+class TestNegativeStep:
+    """Section 1 of the negative-step study: one desugaring rule, both signs.
+
+    Every expectation below is TensorStore 0.1.84's recorded output (study
+    sections 1.3-1.5), which an exhaustive 32,980-case sweep found zero
+    disagreements with.
+    """
+
+    # (domain, slice, expected domain, expected offset, expected stride, cells)
+    RECORDED: ClassVar[list[tuple[tuple[int, int], slice, tuple[int, int], int, int]]] = [
+        ((0, 20), slice(15, 5, -1), (-15, -5), 0, -1),
+        ((0, 20), slice(15, 5, -2), (-7, -2), 1, -2),
+        ((0, 20), slice(15, 4, -2), (-7, -1), 1, -2),
+        ((0, 20), slice(None, None, -1), (-19, 1), 0, -1),
+        ((0, 20), slice(None, None, -2), (-9, 1), 1, -2),
+        ((0, 20), slice(5, None, -1), (-5, 1), 0, -1),
+        ((0, 20), slice(None, 5, -1), (-19, -5), 0, -1),
+        ((0, 20), slice(5, 5, -1), (-5, -5), 0, -1),
+        ((0, 20), slice(5, 4, -1), (-5, -4), 0, -1),
+        ((0, 20), slice(5, 4, -3), (-1, 0), 2, -3),
+        ((0, 20), slice(15, 5, -4), (-3, 0), 3, -4),
+        ((0, 20), slice(15, 5, -7), (-2, 0), 1, -7),
+        ((5, 25), slice(None, None, -2), (-12, -2), 0, -2),
+        ((-10, 10), slice(-1, -6, -2), (0, 3), -1, -2),
+        ((-10, 10), slice(-2, -9, -3), (0, 3), -2, -3),
+    ]
+
+    @pytest.mark.parametrize(
+        ("domain", "sel", "expected_domain", "offset", "stride"),
+        RECORDED,
+        ids=[f"{d}{s}" for d, s, _, _, _ in RECORDED],
+    )
+    def test_recorded_desugaring(
+        self,
+        domain: tuple[int, int],
+        sel: slice,
+        expected_domain: tuple[int, int],
+        offset: int,
+        stride: int,
+    ) -> None:
+        t = _identity(*domain)[sel]
+        assert (t.domain.inclusive_min[0], t.domain.exclusive_max[0]) == expected_domain
+        m = _dim(t)
+        assert (m.offset, m.stride) == (offset, stride)
+
+    @pytest.mark.parametrize(
+        ("domain", "sel", "cells"),
+        [
+            ((0, 20), slice(15, 5, -1), list(range(15, 5, -1))),
+            ((0, 20), slice(15, 5, -2), [15, 13, 11, 9, 7]),
+            ((0, 20), slice(None, None, -1), list(range(19, -1, -1))),
+            ((0, 20), slice(15, 5, -7), [15, 8]),
+            ((5, 25), slice(None, None, -2), list(range(24, 4, -2))),
+            ((-10, 10), slice(-1, -6, -2), [-1, -3, -5]),
+            ((-10, 10), slice(-2, -9, -3), [-2, -5, -8]),
+        ],
+    )
+    def test_recorded_cells(self, domain: tuple[int, int], sel: slice, cells: list[int]) -> None:
+        assert _base_cells(_identity(*domain)[sel]) == cells
+
+    def test_trunc_not_floor_or_ceil(self) -> None:
+        """The three rows of study section 1.2 that discriminate the rounding."""
+        # floor would give -8 here, trunc gives -7.
+        assert _identity(0, 20)[15:5:-2].domain.inclusive_min[0] == -7
+        # ceil would give 1 for both of these; trunc gives 0.
+        assert _identity(-10, 10)[-1:-6:-2].domain.inclusive_min[0] == 0
+        assert _identity(-10, 10)[-2:-9:-3].domain.inclusive_min[0] == 0
+
+    @pytest.mark.parametrize("sel", [slice(5, 15, -1), slice(5, 6, -1)])
+    def test_inverted_interval_raises(self, sel: slice) -> None:
+        with pytest.raises(IndexError, match="valid.*interval"):
+            _identity(0, 20)[sel]
+
+    @pytest.mark.parametrize("sel", [slice(20, 0, -1), slice(20, 19, -1), slice(15, -5, -1)])
+    def test_uncontained_interval_raises(self, sel: slice) -> None:
+        with pytest.raises(BoundsCheckError, match="not contained"):
+            _identity(0, 20)[sel]
+
+    def test_zero_step_raises(self) -> None:
+        with pytest.raises(IndexError, match="step must not be zero"):
+            _identity(0, 20)[15:5:0]
+
+    def test_empty_interval_legal_outside_the_domain(self) -> None:
+        t = _identity(0, 20)[25:25:-1]
+        assert t.domain.shape == (0,)
+        assert t.domain.inclusive_min[0] == -25
+
+    @pytest.mark.parametrize(
+        ("domain", "first", "second", "expected_domain", "offset", "stride", "cells"),
+        [
+            # Study section 1.5, recorded verbatim. Each row applies `second`
+            # to the view `first` produced — strides multiply, and a double
+            # reverse recovers the identity.
+            (
+                (0, 20),
+                slice(0, 20, 2),
+                slice(None, None, -1),
+                (-9, 1),
+                0,
+                -2,
+                list(range(18, -2, -2)),
+            ),
+            ((0, 20), slice(0, 20, 2), slice(None, None, -2), (-4, 1), 2, -4, [18, 14, 10, 6, 2]),
+            (
+                (0, 20),
+                slice(None, None, -1),
+                slice(None, None, -1),
+                (0, 20),
+                0,
+                1,
+                list(range(20)),
+            ),
+            (
+                (0, 20),
+                slice(None, None, -1),
+                slice(None, None, 2),
+                (-9, 1),
+                1,
+                -2,
+                list(range(19, -1, -2)),
+            ),
+            (
+                (-10, 10),
+                slice(None, None, -1),
+                slice(None, None, -3),
+                (-3, 4),
+                -1,
+                3,
+                [-10, -7, -4, -1, 2, 5, 8],
+            ),
+        ],
+        ids=[
+            "strided-then-reverse",
+            "strided-then-reverse-by-two",
+            "double-reverse-is-identity",
+            "reverse-then-strided",
+            "reverse-then-strided-on-negative-origin",
+        ],
+    )
+    def test_recorded_composition(
+        self,
+        domain: tuple[int, int],
+        first: slice,
+        second: slice,
+        expected_domain: tuple[int, int],
+        offset: int,
+        stride: int,
+        cells: list[int],
+    ) -> None:
+        t = _identity(*domain)[first][second]
+        assert (t.domain.inclusive_min[0], t.domain.exclusive_max[0]) == expected_domain
+        m = _dim(t)
+        assert (m.offset, m.stride) == (offset, stride)
+        assert _base_cells(t) == cells
+
+    def test_negative_step_over_an_index_array_reverses_it(self) -> None:
+        """Study section 1.5: a reversing step materializes, it does not stride.
+
+        Recorded: `oindex[[3, 1, 2]]` then `[2:-1:-1]` gives index array
+        `[[2], [1], [3]]` over domain `[-2, 1)`.
+        """
+        base = IndexTransform.identity(IndexDomain(inclusive_min=(0, 0), exclusive_max=(4, 5)))
+        gathered = base.oindex[np.array([3, 1, 2]), slice(None)]
+        reversed_view = gathered[2:-1:-1, :]
+
+        assert reversed_view.domain.inclusive_min[0] == -2
+        assert reversed_view.domain.exclusive_max[0] == 1
+        m = reversed_view.output[0]
+        assert isinstance(m, ArrayMap)
+        np.testing.assert_array_equal(m.index_array.reshape(-1), np.array([2, 1, 3]))
+
+
 class TestTranslate:
     """Oracle sections 4 and 12: translate_by / translate_to preserve the cell mapping."""
 

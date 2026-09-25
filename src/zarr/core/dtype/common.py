@@ -52,7 +52,7 @@ StructuredName_V2 = Sequence["str | StructuredName_V2"]
 DTypeName_V2 = StructuredName_V2 | str
 
 
-class DTypeConfig_V2[TDTypeNameV2: DTypeName_V2, TObjectCodecID: None | str](TypedDict):
+class DTypeConfig_V2[TDTypeNameV2: DTypeName_V2, TObjectCodecID: str | None](TypedDict):
     name: ReadOnly[TDTypeNameV2]
     object_codec_id: ReadOnly[TObjectCodecID]
 
@@ -80,7 +80,10 @@ def check_structured_dtype_v2_inner(data: object) -> TypeGuard[StructuredName_V2
     if isinstance(data[-1], str):
         return True
     elif isinstance(data[-1], Sequence):
-        return check_structured_dtype_v2_inner(data[-1])
+        # A nested structured dtype's field has the form [name, [[sub_name, sub_dtype], ...]],
+        # i.e. the last element is itself a sequence of field pairs rather than a single
+        # [name, dtype] pair, so it must be validated as a list of fields, not a single field.
+        return check_structured_dtype_name_v2(data[-1])
     return False
 
 
@@ -113,6 +116,19 @@ def check_dtype_spec_v2(data: object) -> TypeGuard[DTypeSpec_V2]:
     if not check_dtype_name_v2(data["name"]):
         return False
     return isinstance(data["object_codec_id"], str | None)
+
+
+def check_dtype_spec_no_object_codec_v2(
+    data: object,
+) -> TypeGuard[DTypeConfig_V2[DTypeName_V2, None]]:
+    """
+    Type guard for narrowing a python object to a Zarr V2 data type without an object codec.
+
+    Only the data types stored with the NumPy "O" data type have an object codec, so every other
+    data type should check its Zarr V2 JSON with this function rather than
+    [`check_dtype_spec_v2`][zarr.dtype.check_dtype_spec_v2].
+    """
+    return check_dtype_spec_v2(data) and data["object_codec_id"] is None
 
 
 # By comparison, The JSON representation of a dtype in zarr v3 is much simpler.

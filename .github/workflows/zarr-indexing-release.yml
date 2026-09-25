@@ -22,13 +22,13 @@ jobs:
         shell: bash
         working-directory: packages/zarr-indexing
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0          # hatch-vcs needs full history + tags
 
       - name: Install Hatch
-        uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+        uses: pypa/hatch@f647ed70d49adb885f53a27d1c7f5bdaeacf2c60
         with:
           version: '1.16.5'
 
@@ -51,7 +51,7 @@ jobs:
           path: dist
 
       - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           enable-cache: false
 
@@ -63,6 +63,34 @@ jobs:
           wheel=$(ls dist/*.whl)
           uv run --with "${wheel}" --python 3.12 --no-project \
             python -c "import zarr_indexing; print('zarr_indexing', zarr_indexing.__version__)"
+
+      # The sdist has to stand alone, and `hatch build` above builds the wheel
+      # from the source tree, not from the sdist. So build a wheel from the
+      # sdist with pip, which unpacks it under the sdist format's rules (no
+      # links out of the archive), then run the package's own tests and strict
+      # docs build from the unpacked sdist. This job has no checkout, so
+      # nothing comes from the repository; zarr, where a package uses it,
+      # resolves from PyPI.
+      - name: Build a wheel from the sdist with pip
+        run: |
+          sdist=$(ls dist/*.tar.gz)
+          uvx --python 3.12 pip@26.2.1 wheel --no-deps --wheel-dir sdist-wheel "${sdist}"
+
+      - name: Install just
+        uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+        with:
+          repo: casey/just
+          version: 1.58.0
+
+      - name: Test and build docs from the unpacked sdist
+        env:
+          UV_PYTHON: '3.12'
+        run: |
+          mkdir sdist
+          tar -xzf dist/*.tar.gz -C sdist
+          cd sdist/*/
+          just test
+          just docs-check
 
   upload_pypi:
     name: Upload to PyPI
@@ -82,12 +110,12 @@ jobs:
           path: dist
 
       - name: Generate artifact attestation
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: dist/*
 
       - name: Publish package to PyPI
-        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 
   upload_testpypi:
     name: Upload to TestPyPI
@@ -107,11 +135,11 @@ jobs:
           path: dist
 
       - name: Generate artifact attestation
-        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: dist/*
 
       - name: Publish package to TestPyPI
-        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           repository-url: https://test.pypi.org/legacy/

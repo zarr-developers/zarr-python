@@ -4,7 +4,7 @@ Regular chunk grid (Zarr v3 core spec).
 See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#regular-grids
 """
 
-from typing import Final, Literal
+from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -15,17 +15,18 @@ RegularChunkGridName = Literal["regular"]
 """Literal type of the `name` field of the regular chunk grid."""
 
 
-class RegularChunkGridConfiguration(TypedDict):
+class RegularChunkGridConfiguration(TypedDict, closed=True):
     """Configuration for the regular chunk grid."""
 
     chunk_shape: tuple[int, ...]
 
 
-class RegularChunkGridObject(TypedDict):
+class RegularChunkGridObject(TypedDict, closed=True):
     """Regular chunk grid metadata in object form."""
 
     name: RegularChunkGridName
     configuration: RegularChunkGridConfiguration
+    must_understand: NotRequired[bool]
 
 
 RegularChunkGridMetadata = RegularChunkGridObject
@@ -33,6 +34,8 @@ RegularChunkGridMetadata = RegularChunkGridObject
 
 `chunk_shape` is required and has no default, so only the object form is
 valid; the short-hand-name form is not permitted by the spec for this grid.
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L528-L537 ("must be an object with the names name and configuration")
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564
 """
 
 __all__ = [

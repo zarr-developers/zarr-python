@@ -58,6 +58,14 @@ conda install -c conda-forge zarr
     which parameters can be used. It assumes that you have an understanding of the
     key concepts.
 
+- [:material-package-variant:{ .lg .middle } __Related projects__](subprojects.md)
+
+    ---
+
+    Companion packages developed in the zarr-python repository and released
+    independently, such as `zarr-metadata` and `zarr-indexing`, plus pointers to
+    the wider Zarr ecosystem.
+
 - [:material-account-group:{ .lg .middle } __Contributor's Guide__](contributing.md)
 
     ---

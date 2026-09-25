@@ -1,521 +1,1102 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any
 
 import numpy as np
-from zarr.core.chunk_grids import ChunkGrid, FixedDimension, VaryingDimension
+import pytest
+from hypothesis import assume, given, settings
+from hypothesis import strategies as st
 
-from zarr_indexing import chunk_resolution
-from zarr_indexing.chunk_resolution import iter_chunk_transforms, sub_transform_to_selections
+import zarr_indexing
+from zarr_indexing import (
+    ChunkGrid,
+    ChunkPlan,
+    ChunkProjection,
+    EdgeDimensionGrid,
+    FixedDimension,
+    VaryingDimension,
+    chunk_resolution,
+    plan_chunks,
+)
 from zarr_indexing.domain import IndexDomain
+from zarr_indexing.grid import dimension_grids_from_chunks
 from zarr_indexing.output_map import ArrayMap, ConstantMap, DimensionMap
 from zarr_indexing.transform import IndexTransform
 
-if TYPE_CHECKING:
-    import pytest
 
-
-class TestChunkResolutionIdentity:
-    def test_single_chunk(self) -> None:
-        """Array fits in one chunk."""
-        t = IndexTransform.from_shape((10,))
-        grid = ChunkGrid(dimensions=(FixedDimension(size=10, extent=10),))
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-        assert len(results) == 1
-        coords, sub_t, _ = results[0]
-        assert coords == (0,)
-        assert sub_t.domain.shape == (10,)
-
-    def test_multiple_chunks_1d(self) -> None:
-        """1D array spanning 3 chunks."""
-        t = IndexTransform.from_shape((30,))
-        grid = ChunkGrid(dimensions=(FixedDimension(size=10, extent=30),))
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-        assert len(results) == 3
-        coords_list = [r[0] for r in results]
-        assert (0,) in coords_list
-        assert (1,) in coords_list
-        assert (2,) in coords_list
-
-    def test_multiple_chunks_2d(self) -> None:
-        """2D array spanning 2x3 chunks."""
-        t = IndexTransform.from_shape((20, 30))
-        grid = ChunkGrid(
-            dimensions=(
-                FixedDimension(size=10, extent=20),
-                FixedDimension(size=10, extent=30),
+def _storage_of(transform: IndexTransform, point: tuple[int, ...]) -> tuple[int, ...]:
+    """Evaluate the three map forms at one point, independently of planning."""
+    result: list[int] = []
+    for output_map in transform.output:
+        if isinstance(output_map, ConstantMap):
+            result.append(output_map.offset)
+        elif isinstance(output_map, DimensionMap):
+            result.append(output_map.offset + output_map.stride * point[output_map.input_dimension])
+        else:
+            index = tuple(
+                0
+                if output_map.index_array.shape[axis] == 1
+                else point[axis] - transform.domain.inclusive_min[axis]
+                for axis in range(output_map.index_array.ndim)
             )
-        )
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-        assert len(results) == 6
-        coords_list = [r[0] for r in results]
-        assert (0, 0) in coords_list
-        assert (1, 2) in coords_list
-
-
-class TestChunkResolutionSliced:
-    def test_slice_within_chunk(self) -> None:
-        """Slice that falls within a single chunk."""
-        # Chunk resolution consumes zero-origin transforms: the I/O layer
-        # normalizes preserved (user-facing) domains via translate_domain_to
-        # before resolving, so mirror that contract here.
-        t = IndexTransform.from_shape((100,))[5:8].translate_domain_to((0,))
-        grid = ChunkGrid(dimensions=(FixedDimension(size=10, extent=100),))
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-        assert len(results) == 1
-        coords, sub_t, _ = results[0]
-        assert coords == (0,)
-        assert isinstance(sub_t.output[0], DimensionMap)
-        assert sub_t.output[0].offset == 5
-
-    def test_slice_across_chunks(self) -> None:
-        """Slice that spans two chunks."""
-        t = IndexTransform.from_shape((100,))[8:15]
-        grid = ChunkGrid(dimensions=(FixedDimension(size=10, extent=100),))
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-        assert len(results) == 2
-        coords_list = [r[0] for r in results]
-        assert (0,) in coords_list
-        assert (1,) in coords_list
-
-
-class TestChunkResolutionConstant:
-    def test_integer_index(self) -> None:
-        """Integer index produces constant map — single chunk per constant dim."""
-        t = IndexTransform.from_shape((100, 100))[25, :]
-        grid = ChunkGrid(
-            dimensions=(
-                FixedDimension(size=10, extent=100),
-                FixedDimension(size=10, extent=100),
+            result.append(
+                output_map.offset + output_map.stride * int(output_map.index_array[index])
             )
+    return tuple(result)
+
+
+def _points(domain: IndexDomain) -> list[tuple[int, ...]]:
+    """Enumerate a small finite domain in its own coordinates."""
+    return [
+        tuple(
+            coordinate + origin
+            for coordinate, origin in zip(position, domain.inclusive_min, strict=True)
         )
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-        assert len(results) == 10
-        for coords, _, _ in results:
-            assert coords[0] == 2
+        for position in np.ndindex(*domain.shape)
+    ]
 
 
-class TestChunkResolutionArray:
-    def test_array_index(self) -> None:
-        """Array index map — chunks determined by array values."""
-        idx = np.array([5, 15, 25], dtype=np.intp)
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((3,)),
-            output=(ArrayMap(index_array=idx),),
+@pytest.mark.parametrize("shape", [(4,), (2, 2)])
+@pytest.mark.parametrize(
+    "coordinates",
+    [
+        [(-1, 0), (0, -1), (-1, 0), (0, 0)],
+        [(-2, -1), (-1, -2), (-2, -2), (-1, -1)],
+        [(0, 1), (1, 0), (0, 1), (0, 0)],
+        [(-(2**63), 0), (0, -(2**63)), (-1, -1), (0, 0)],
+    ],
+)
+def test_correlated_plan_with_signed_chunk_ids(
+    shape: tuple[int, ...], coordinates: list[tuple[int, int]]
+) -> None:
+    """Shared-axis lookups group distinct signed chunk tuples without collisions."""
+
+    class SignedUnitGrid:
+        def index_to_chunk(self, index: int) -> int:
+            return index
+
+        def indices_to_chunks(self, indices: Any) -> Any:
+            return indices
+
+        def chunk_offset(self, chunk: int) -> int:
+            return chunk
+
+        def chunk_size(self, chunk: int) -> int:
+            return 1
+
+    values = np.array(coordinates, dtype=np.intp)
+    transform = IndexTransform(
+        IndexDomain.from_shape(shape),
+        tuple(ArrayMap(values[:, axis].reshape(shape)) for axis in range(2)),
+    )
+    plan = plan_chunks(transform, (SignedUnitGrid(), SignedUnitGrid()))
+    expected_chunks = sorted(set(coordinates))
+    assert [tuple(row) for row in plan.partition().chunk_coords()] == expected_chunks
+    seen = []
+    for projection in plan:
+        for point in _points(projection.chunk_transform.domain):
+            assert _storage_of(projection.chunk_transform, point) == (0, 0)
+            request_point = _storage_of(projection.cell_transform, point)
+            assert _storage_of(transform, request_point) == projection.chunk_coords
+            seen.append(request_point)
+    assert sorted(seen) == sorted(_points(transform.domain))
+
+
+def test_basic_plan_is_reiterable_and_projects_both_spaces() -> None:
+    """A plan can be revisited without losing either side of each projection."""
+    transform = IndexTransform.from_shape((6,))[1:6]
+    grids = dimension_grids_from_chunks((3,), (6,))
+
+    plan = plan_chunks(transform, grids)
+    first = list(plan)
+    second = list(plan.projections())
+
+    assert isinstance(plan, ChunkPlan)
+    assert all(isinstance(projection, ChunkProjection) for projection in first)
+    assert [projection.chunk_coords for projection in first] == [(0,), (1,)]
+    assert [projection.chunk_domain for projection in first] == [
+        IndexDomain((0,), (3,)),
+        IndexDomain((3,), (6,)),
+    ]
+    assert [projection.coverage for projection in first] == ["partial", "full"]
+    assert first == second
+    assert all(
+        projection.chunk_transform.domain == projection.cell_transform.domain
+        for projection in first
+    )
+    assert all(projection.chunk_transform.domain.origin == (0,) for projection in first)
+
+
+def test_projection_requires_one_shared_synthetic_domain() -> None:
+    """Paired transforms with different cell domains are rejected as incoherent."""
+    with pytest.raises(ValueError, match="must share an input domain"):
+        ChunkProjection(
+            chunk_coords=(0,),
+            chunk_domain=IndexDomain.from_shape((3,)),
+            chunk_transform=IndexTransform.identity(IndexDomain.from_shape((2,))),
+            cell_transform=IndexTransform.identity(IndexDomain.from_shape((1,))),
+            coverage="partial",
         )
-        grid = ChunkGrid(dimensions=(FixedDimension(size=10, extent=30),))
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-        coords_list = [r[0] for r in results]
-        assert (0,) in coords_list
-        assert (1,) in coords_list
-        assert (2,) in coords_list
 
 
-class TestChunkResolutionSorted1D:
-    def test_matches_general_resolution_for_randomized_sorted_selections(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Direct partitioning matches the original resolver across varied inputs."""
-        rng = np.random.default_rng(0)
-        grids = (
-            ChunkGrid(dimensions=(FixedDimension(size=7, extent=30),)),
-            ChunkGrid(dimensions=(VaryingDimension(edges=(3, 4, 8, 5, 10), extent=30),)),
-        )
+def test_projection_plan_is_the_only_public_chunk_resolution_surface() -> None:
+    """The greenfield API does not retain tuple or NumPy-selector bridges."""
+    assert {"ChunkCoverage", "ChunkPlan", "ChunkProjection", "plan_chunks"} <= set(
+        zarr_indexing.__all__
+    )
+    assert "iter_chunk_transforms" not in zarr_indexing.__all__
+    assert "sub_transform_to_selections" not in zarr_indexing.__all__
 
-        for grid in grids:
-            for _ in range(50):
-                idx = np.sort(rng.integers(0, 30, size=int(rng.integers(1, 80)))).astype(np.intp)
-                transform = IndexTransform.from_shape((30,)).vindex[idx]
-                direct = list(iter_chunk_transforms(transform, grid._dimensions))
 
-                with monkeypatch.context() as context:
-                    context.setattr(
-                        chunk_resolution,
-                        "_one_dimensional_correlated_array_map",
-                        lambda _transform: None,
-                    )
-                    general = list(iter_chunk_transforms(transform, grid._dimensions))
+def test_plan_rejects_grid_rank_different_from_transform_output_rank() -> None:
+    """A missing storage grid dimension is rejected before iteration."""
+    transform = IndexTransform.from_shape((2, 3))
 
-                assert [result[0] for result in direct] == [result[0] for result in general]
-                for direct_result, general_result in zip(direct, general, strict=True):
-                    _, direct_t, direct_out = direct_result
-                    _, general_t, general_out = general_result
-                    assert direct_t.domain == general_t.domain
+    with pytest.raises(ValueError, match="1 grids for output rank 2"):
+        plan_chunks(transform, dimension_grids_from_chunks((2,), (2,)))
 
-                    direct_chunk_sel, direct_out_sel, direct_drop = sub_transform_to_selections(
-                        direct_t, direct_out
-                    )
-                    general_chunk_sel, general_out_sel, general_drop = sub_transform_to_selections(
-                        general_t, general_out
-                    )
-                    assert direct_drop == general_drop
-                    np.testing.assert_array_equal(direct_chunk_sel[0], general_chunk_sel[0])
-                    np.testing.assert_array_equal(direct_out_sel[0], general_out_sel[0])
 
-    def test_sorted_vindex_partitions_chunks_without_intersection(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Sorted vectorized coordinates are sliced directly per touched chunk."""
-        idx = np.array([0, 3, 4, 4, 9, 11], dtype=np.intp)
-        t = IndexTransform.from_shape((12,)).vindex[idx]
-        grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=12),))
+@pytest.mark.parametrize(
+    ("transform", "expected"),
+    [
+        (IndexTransform.from_shape((5,)), ["full", "full"]),
+        (IndexTransform.from_shape((5,))[::-1], ["full", "full"]),
+        (IndexTransform.from_shape((5,))[::2], ["partial", "partial"]),
+        (IndexTransform.from_shape((5,))[2], ["partial"]),
+        (
+            IndexTransform.from_shape((5,)).oindex[np.array([0, 1, 2, 3, 4])],
+            ["unknown", "unknown"],
+        ),
+    ],
+    ids=["clipped-edge", "reverse", "strided", "scalar", "fancy-is-conservative"],
+)
+def test_coverage_classification(transform: IndexTransform, expected: list[str]) -> None:
+    """Coverage is exact for affine requests and conservative for gathers."""
+    grids = dimension_grids_from_chunks((3,), (5,))
 
-        calls = _count_intersect_calls(monkeypatch)
-        results = list(iter_chunk_transforms(t, grid._dimensions))
+    assert [projection.coverage for projection in plan_chunks(transform, grids)] == expected
 
-        assert [result[0] for result in results] == [(0,), (1,), (2,)]
-        assert calls["n"] == 0
 
-        expected_chunk_indices = ([0, 3], [0, 0], [1, 3])
-        expected_out_indices = ([0, 1], [2, 3], [4, 5])
-        for result, expected_chunk, expected_out in zip(
-            results, expected_chunk_indices, expected_out_indices, strict=True
-        ):
-            _, sub_t, out_indices = result
-            chunk_sel, out_sel, drop_axes = sub_transform_to_selections(sub_t, out_indices)
-            np.testing.assert_array_equal(chunk_sel[0], expected_chunk)
-            np.testing.assert_array_equal(out_sel[0], expected_out)
-            assert drop_axes == ()
+def test_repeated_input_dependency_partition_is_rejected() -> None:
+    """The per-output-axis table API cannot represent a diagonal."""
+    transform = IndexTransform(
+        domain=IndexDomain.from_shape((2,)),
+        output=(DimensionMap(input_dimension=0), DimensionMap(input_dimension=0)),
+    )
+    grids = dimension_grids_from_chunks((2, 2), (2, 2))
 
-    def test_sorted_array_map_preserves_offset_and_stride(self) -> None:
-        """Storage partitioning retains the ArrayMap's offset and stride."""
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((3,)),
-            output=(
-                ArrayMap(
-                    index_array=np.array([0, 1, 2], dtype=np.intp),
-                    offset=1,
-                    stride=3,
+    with pytest.raises(ValueError, match="read input axis 0"):
+        plan_chunks(transform, grids).partition()
+
+
+def test_unused_input_axis_is_not_full_coverage() -> None:
+    transform = IndexTransform(
+        domain=IndexDomain.from_shape((2, 2)),
+        output=(DimensionMap(input_dimension=0),),
+    )
+    grids = dimension_grids_from_chunks((2,), (2,))
+
+    assert [projection.coverage for projection in plan_chunks(transform, grids)] == ["partial"]
+
+
+@pytest.mark.parametrize(
+    ("transform", "grids"),
+    [
+        (
+            IndexTransform.from_shape((2, 3)),
+            dimension_grids_from_chunks((2, 3), (2, 3)),
+        ),
+        (
+            IndexTransform(
+                domain=IndexDomain.from_shape((2, 3)),
+                output=(DimensionMap(input_dimension=1), DimensionMap(input_dimension=0)),
+            ),
+            dimension_grids_from_chunks((3, 2), (3, 2)),
+        ),
+        (
+            IndexTransform.from_shape((2, 3))[::-1, ::-1],
+            dimension_grids_from_chunks((2, 3), (2, 3)),
+        ),
+        (
+            IndexTransform(
+                domain=IndexDomain((4, 7), (6, 10)),
+                output=(
+                    DimensionMap(input_dimension=0, offset=-4),
+                    DimensionMap(input_dimension=1, offset=-7),
                 ),
             ),
-        )
-        grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=8),))
-
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-
-        assert [result[0] for result in results] == [(0,), (1,)]
-        expected_chunk_indices = ([1], [0, 3])
-        expected_out_indices = ([0], [1, 2])
-        for result, expected_chunk, expected_out in zip(
-            results, expected_chunk_indices, expected_out_indices, strict=True
-        ):
-            _, sub_t, out_indices = result
-            chunk_sel, out_sel, _ = sub_transform_to_selections(sub_t, out_indices)
-            np.testing.assert_array_equal(chunk_sel[0], expected_chunk)
-            np.testing.assert_array_equal(out_sel[0], expected_out)
-
-    def test_sorted_vindex_with_varying_chunks(self) -> None:
-        """Touched-boundary searches also support a non-uniform 1-D grid."""
-        idx = np.array([0, 1, 2, 3, 5, 9], dtype=np.intp)
-        t = IndexTransform.from_shape((10,)).vindex[idx]
-        grid = ChunkGrid(dimensions=(VaryingDimension(edges=(2, 3, 5), extent=10),))
-
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-
-        assert [result[0] for result in results] == [(0,), (1,), (2,)]
-        expected_chunk_indices = ([0, 1], [0, 1], [0, 4])
-        for result, expected_chunk in zip(results, expected_chunk_indices, strict=True):
-            _, sub_t, out_indices = result
-            chunk_sel, _, _ = sub_transform_to_selections(sub_t, out_indices)
-            np.testing.assert_array_equal(chunk_sel[0], expected_chunk)
-
-    def test_sorted_vindex_with_zero_sized_dimension_uses_general_resolution(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """A zero-sized grid cannot be partitioned by touched boundaries."""
-        t = IndexTransform.from_shape((10,)).vindex[np.array([1], dtype=np.intp)]
-        grid = ChunkGrid(dimensions=(FixedDimension(size=0, extent=10),))
-
-        calls = _count_intersect_calls(monkeypatch)
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-
-        assert results == []
-        assert calls["n"] == 1
-
-    def test_unsorted_vindex_uses_general_resolution(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Unsorted coordinates continue through the general intersection logic."""
-        t = IndexTransform.from_shape((12,)).vindex[np.array([9, 0, 4], dtype=np.intp)]
-        grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=12),))
-
-        calls = _count_intersect_calls(monkeypatch)
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-
-        assert [result[0] for result in results] == [(0,), (1,), (2,)]
-        assert calls["n"] == 3
-
-    def test_sorted_oindex_uses_general_resolution(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Orthogonal ArrayMaps retain their existing domain-aware resolution."""
-        t = IndexTransform.from_shape((12,)).oindex[np.array([0, 4, 9], dtype=np.intp)]
-        grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=12),))
-
-        calls = _count_intersect_calls(monkeypatch)
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-
-        assert [result[0] for result in results] == [(0,), (1,), (2,)]
-        assert calls["n"] == 3
+            dimension_grids_from_chunks((2, 3), (2, 3)),
+        ),
+    ],
+    ids=["identity", "axis-permutation", "reversal", "translated-unit-affine"],
+)
+def test_bijective_unit_affine_transforms_retain_full_coverage(
+    transform: IndexTransform, grids: tuple[Any, ...]
+) -> None:
+    assert [projection.coverage for projection in plan_chunks(transform, grids)] == ["full"]
 
 
-def _count_intersect_calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
-    """Wrap `IndexTransform.intersect` with a call counter.
+def test_rank_zero_transform_has_full_coverage() -> None:
+    transform = IndexTransform.identity(IndexDomain((), ()))
 
-    Returns a mutable dict whose `"n"` entry is the number of times
-    `intersect` is invoked. Used to assert that candidate-chunk enumeration is
-    proportional to the *touched* chunks, not the dense bounding box between the
-    min and max touched chunk.
-    """
-    calls = {"n": 0}
-    original = IndexTransform.intersect
-
-    def counting(self: IndexTransform, output_domain: IndexDomain) -> object:
-        calls["n"] += 1
-        return original(self, output_domain)
-
-    monkeypatch.setattr(IndexTransform, "intersect", counting)
-    return calls
+    assert [projection.coverage for projection in plan_chunks(transform, ())] == ["full"]
 
 
-class TestChunkResolutionTouchedOnly:
-    """`iter_chunk_transforms` must enumerate only the chunks a fancy selection
-    actually touches — never the dense `range(min_chunk, max_chunk + 1)` bounding
-    box. These guard against a regression to bounding-box enumeration, whose cost
-    scales with grid size rather than with the number of selected coordinates.
-    """
+@pytest.mark.parametrize(
+    ("transform", "grids", "expected_coords"),
+    [
+        (
+            IndexTransform.from_shape((30,)),
+            dimension_grids_from_chunks((10,), (30,)),
+            [(0,), (1,), (2,)],
+        ),
+        (
+            IndexTransform.from_shape((20, 30)),
+            dimension_grids_from_chunks((10, 10), (20, 30)),
+            [(i, j) for i in range(2) for j in range(3)],
+        ),
+        (
+            IndexTransform.from_shape((100, 100))[25, :],
+            dimension_grids_from_chunks((10, 10), (100, 100)),
+            [(2, j) for j in range(10)],
+        ),
+        (
+            IndexTransform.from_shape((100,))[8:15],
+            dimension_grids_from_chunks((10,), (100,)),
+            [(0,), (1,)],
+        ),
+    ],
+    ids=["one-dimensional", "two-dimensional", "constant-map", "slice"],
+)
+def test_affine_plans_touch_the_expected_chunks(
+    transform: IndexTransform,
+    grids: tuple[Any, ...],
+    expected_coords: list[tuple[int, ...]],
+) -> None:
+    """Identity, constant, and sliced transforms enumerate literal grid cells."""
+    assert [projection.chunk_coords for projection in plan_chunks(transform, grids)] == (
+        expected_coords
+    )
 
-    def test_1d_sparse_vindex_enumerates_only_touched_chunks(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Two far-apart coordinates on a 1000-chunk grid touch exactly 2 chunks.
 
-        A dense bounding-box enumeration would intersect ~1000 candidate chunks;
-        touched-only enumeration intersects exactly 2.
-        """
-        # 4000 elements, chunk size 4 -> 1000 chunks. coords 1 and 3997 land in
-        # chunk 0 and chunk 999 respectively (998 empty chunks between them).
-        grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=4000),))
-        t = IndexTransform.from_shape((4000,)).vindex[np.array([1, 3997], dtype=np.intp)]
+@pytest.mark.parametrize(
+    ("transform", "grids"),
+    [
+        (
+            IndexTransform.from_shape((6,)).oindex[np.array([4, 0, 4, 2])],
+            dimension_grids_from_chunks((3,), (6,)),
+        ),
+        (
+            IndexTransform.from_shape((4, 5)).oindex[np.array([3, 0]), np.array([4, 1, 1])],
+            dimension_grids_from_chunks(((1, 3), (2, 3)), (4, 5)),
+        ),
+        (
+            IndexTransform.from_shape((2, 4, 5)).vindex[
+                ..., np.array([3, 0, 3]), np.array([4, 1, 1])
+            ],
+            dimension_grids_from_chunks((1, 2, 3), (2, 4, 5)),
+        ),
+    ],
+    ids=["repeated-oindex", "irregular-oindex", "vindex-with-residual"],
+)
+def test_projection_invariants_for_fancy_selections(
+    transform: IndexTransform, grids: tuple[Any, ...]
+) -> None:
+    """Both transforms agree pointwise and cell ranges tile request space once."""
+    plan = plan_chunks(transform, grids)
+    request_points: list[tuple[int, ...]] = []
 
-        calls = _count_intersect_calls(monkeypatch)
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-
-        coords = sorted(r[0] for r in results)
-        assert coords == [(0,), (999,)]
-        # Sorted 1-D coordinates are partitioned directly, without intersecting
-        # either the touched chunks or the 998 empty chunks between them.
-        assert calls["n"] == 0
-
-    def test_2d_orthogonal_enumerates_only_touched_chunks(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Orthogonal outer product of two 2-coordinate arrays touches 2x2 chunks.
-
-        Per-dimension distinct touched chunks: {0, 999} on each axis. The outer
-        product is 2*2 = 4 candidate chunks (all survive), versus ~1e6 for a
-        dense 1000x1000 bounding box.
-        """
-        grid = ChunkGrid(
-            dimensions=(
-                FixedDimension(size=4, extent=4000),
-                FixedDimension(size=4, extent=4000),
+    for projection in plan:
+        assert projection.coverage == "unknown"
+        assert projection.chunk_transform.domain == projection.cell_transform.domain
+        for cell_point in _points(projection.cell_transform.domain):
+            request_point = _storage_of(projection.cell_transform, cell_point)
+            chunk_point = _storage_of(projection.chunk_transform, cell_point)
+            storage_point = _storage_of(plan.transform, request_point)
+            chunk_origin = projection.chunk_domain.inclusive_min
+            assert chunk_point == tuple(
+                value - origin for value, origin in zip(storage_point, chunk_origin, strict=True)
             )
-        )
-        t = IndexTransform.from_shape((4000, 4000)).oindex[
-            np.array([1, 3997], dtype=np.intp), np.array([2, 3998], dtype=np.intp)
-        ]
-
-        calls = _count_intersect_calls(monkeypatch)
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-
-        coords = sorted(r[0] for r in results)
-        assert coords == [(0, 0), (0, 999), (999, 0), (999, 999)]
-        assert calls["n"] == 4
-
-    def test_2d_correlated_vindex_enumerates_joint_touched_chunks(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Two correlated (vindex) coordinate arrays scatter to 2 diagonal chunks.
-
-        The two points (1, 2) and (3997, 3998) touch chunks (0, 0) and
-        (999, 999). Correlated coordinate arrays are grouped *jointly*, so
-        enumeration intersects exactly the 2 touched chunks — never the 2x2
-        cartesian product of per-dimension distinct chunks, and never the dense
-        1e6 grid.
-        """
-        grid = ChunkGrid(
-            dimensions=(
-                FixedDimension(size=4, extent=4000),
-                FixedDimension(size=4, extent=4000),
+            assert all(
+                0 <= value < extent
+                for value, extent in zip(chunk_point, projection.chunk_domain.shape, strict=True)
             )
-        )
-        t = IndexTransform.from_shape((4000, 4000)).vindex[
-            np.array([1, 3997], dtype=np.intp), np.array([2, 3998], dtype=np.intp)
-        ]
+            request_points.append(request_point)
 
-        calls = _count_intersect_calls(monkeypatch)
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-
-        coords = sorted(r[0] for r in results)
-        assert coords == [(0, 0), (999, 999)]
-        assert calls["n"] == 2
-
-    def test_2d_correlated_vindex_diagonal_is_linear_in_points(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """A diagonal of P correlated points touches P chunks with O(P) intersections.
-
-        Enumerating the cartesian product of per-dimension distinct chunk sets
-        would cost P**2 intersections (2500 here) — quadratic in the number of
-        selected points for the scattered selections of zarr-python gh-4174.
-        Joint grouping keeps resolution work proportional to the touched chunks.
-        """
-        p = 50
-        grid = ChunkGrid(
-            dimensions=(
-                FixedDimension(size=4, extent=4000),
-                FixedDimension(size=4, extent=4000),
-            )
-        )
-        # point i lands in chunk (2i, 2i): all per-dimension chunks distinct
-        coords_1d = np.arange(p, dtype=np.intp) * 8
-        t = IndexTransform.from_shape((4000, 4000)).vindex[coords_1d, coords_1d]
-
-        calls = _count_intersect_calls(monkeypatch)
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-
-        assert sorted(r[0] for r in results) == [(2 * i, 2 * i) for i in range(p)]
-        assert calls["n"] == p
+    assert sorted(request_points) == sorted(_points(transform.domain))
 
 
-class TestSubTransformToSelections:
-    def test_constant_map(self) -> None:
-        """ConstantMap produces int selection + drop axis."""
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((10,)),
-            output=(ConstantMap(offset=5),),
-        )
-        chunk_sel, out_sel, drop_axes = sub_transform_to_selections(t)
-        assert chunk_sel == (5,)
-        assert out_sel == ()
-        assert drop_axes == ()
+@pytest.mark.parametrize(
+    "grid",
+    [
+        pytest.param(FixedDimension(size=2, extent=4), id="fixed"),
+        pytest.param(VaryingDimension(edges=(1, 3), extent=4), id="varying"),
+    ],
+)
+def test_orthogonal_array_map_plan_rejects_coordinate_below_grid(grid: Any) -> None:
+    transform = IndexTransform(
+        domain=IndexDomain.from_shape((2,)),
+        output=(ArrayMap(np.array([-1, 1], dtype=np.intp)),),
+    )
 
-    def test_dimension_map_stride_1(self) -> None:
-        """DimensionMap with stride=1 produces contiguous slice."""
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((10,)),
-            output=(DimensionMap(input_dimension=0, offset=3, stride=1),),
-        )
-        chunk_sel, out_sel, drop_axes = sub_transform_to_selections(t)
-        assert chunk_sel == (slice(3, 13, 1),)
-        assert out_sel == (slice(0, 10),)
-        assert drop_axes == ()
+    # The sorted 1-D fast path reports the first offending coordinate.
+    with pytest.raises(IndexError, match=r"index -1 is out of bounds"):
+        list(plan_chunks(transform, (grid,)))
 
-    def test_dimension_map_strided(self) -> None:
-        """DimensionMap with stride>1 produces strided slice."""
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((5,)),
-            output=(DimensionMap(input_dimension=0, offset=2, stride=3),),
-        )
-        chunk_sel, out_sel, drop_axes = sub_transform_to_selections(t)
-        assert chunk_sel == (slice(2, 17, 3),)
-        assert out_sel == (slice(0, 5),)
-        assert drop_axes == ()
 
-    def test_array_map(self) -> None:
-        """ArrayMap produces integer array selection."""
-        arr = np.array([1, 5, 9], dtype=np.intp)
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((3,)),
-            output=(ArrayMap(index_array=arr, offset=0, stride=1),),
-        )
-        chunk_sel, out_sel, drop_axes = sub_transform_to_selections(t)
-        assert isinstance(chunk_sel[0], np.ndarray)
-        np.testing.assert_array_equal(chunk_sel[0], arr)
-        # Without chunk_mask, out_sel falls back to domain-based slices
-        assert out_sel == (slice(0, 3),)
-        assert drop_axes == ()
+@pytest.mark.parametrize(
+    "grid",
+    [
+        pytest.param(FixedDimension(size=2, extent=4), id="fixed"),
+        pytest.param(VaryingDimension(edges=(1, 3), extent=4), id="varying"),
+    ],
+)
+def test_orthogonal_array_map_plan_rejects_coordinate_above_grid(grid: Any) -> None:
+    transform = IndexTransform(
+        domain=IndexDomain.from_shape((2,)),
+        output=(ArrayMap(np.array([1, 4], dtype=np.intp)),),
+    )
 
-    def test_array_map_with_offset_stride(self) -> None:
-        """ArrayMap with offset and stride computes storage coords."""
-        arr = np.array([0, 1, 2], dtype=np.intp)
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((3,)),
-            output=(ArrayMap(index_array=arr, offset=10, stride=5),),
-        )
-        chunk_sel, _out_sel, drop_axes = sub_transform_to_selections(t)
-        assert isinstance(chunk_sel[0], np.ndarray)
-        np.testing.assert_array_equal(chunk_sel[0], np.array([10, 15, 20]))
-        assert drop_axes == ()
+    # The sorted 1-D fast path reports the first offending coordinate.
+    with pytest.raises(IndexError, match=r"index 4 is out of bounds"):
+        list(plan_chunks(transform, (grid,)))
 
-    def test_mixed_maps_2d(self) -> None:
-        """Mix of ConstantMap and DimensionMap."""
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((10,)),
-            output=(
-                ConstantMap(offset=5),
-                DimensionMap(input_dimension=0, offset=0, stride=1),
+
+def test_nonempty_identity_plan_rejects_zero_size_fixed_dimension() -> None:
+    transform = IndexTransform.from_shape((4,))
+
+    with pytest.raises(ValueError, match="size must be > 0 when extent is nonzero"):
+        list(plan_chunks(transform, (FixedDimension(size=0, extent=4),)))
+
+
+@given(
+    origin=st.integers(min_value=-4, max_value=4),
+    extent=st.integers(min_value=0, max_value=8),
+    stride=st.integers(min_value=-3, max_value=3),
+)
+def test_affine_projection_pairs_reconstruct_independent_source_coordinates(
+    origin: int, extent: int, stride: int
+) -> None:
+    """Bounded literal-domain examples preserve every request/storage pair."""
+    anchor = extent - 1 if stride < 0 else 0
+    offset = anchor - stride * origin
+    expected_pairs = [
+        ((coordinate,), (source_coordinate,))
+        for coordinate in range(origin, origin + extent)
+        if 0 <= (source_coordinate := offset + stride * coordinate) < extent
+    ]
+    assume(expected_pairs)
+
+    unrestricted = IndexTransform(
+        domain=IndexDomain((origin,), (origin + extent,)),
+        output=(DimensionMap(input_dimension=0, offset=offset, stride=stride),),
+    )
+    intersection = unrestricted.intersect(IndexDomain.from_shape((extent,)))
+    assume(intersection is not None)
+    transform, _ = intersection
+    grids = dimension_grids_from_chunks((min(3, extent),), (extent,))
+
+    reconstructed_pairs = [
+        (
+            _storage_of(projection.cell_transform, cell_coordinate),
+            tuple(
+                local_coordinate + chunk_origin
+                for local_coordinate, chunk_origin in zip(
+                    _storage_of(projection.chunk_transform, cell_coordinate),
+                    projection.chunk_domain.inclusive_min,
+                    strict=True,
+                )
             ),
         )
-        chunk_sel, _out_sel, drop_axes = sub_transform_to_selections(t)
-        assert chunk_sel[0] == 5
-        assert chunk_sel[1] == slice(0, 10, 1)
-        # drop_axes is empty — integer in chunk_sel naturally drops the dim via numpy
-        assert drop_axes == ()
+        for projection in plan_chunks(transform, grids)
+        for cell_coordinate in _points(projection.cell_transform.domain)
+    ]
+
+    assert sorted(reconstructed_pairs) == sorted(expected_pairs)
 
 
-class TestChunkResolutionArrayMapFlavours:
-    """Chunk resolution must yield outer-product (np.ix_) selectors for
-    orthogonal ArrayMaps and shared flat-scatter selectors for correlated ones,
-    and must return early for empty fancy selections."""
+def test_correlated_projection_preserves_nonzero_request_coordinates() -> None:
+    base = IndexTransform.identity(IndexDomain((2, 5), (4, 8)))
+    transform = base.vindex[np.array([2, 3], dtype=np.intp), :]
+    grids = dimension_grids_from_chunks((2, 4), (4, 8))
 
-    def test_empty_array_selection_yields_nothing(self) -> None:
-        """An empty ArrayMap selection produces no chunk transforms (no crash)."""
-        t = IndexTransform(
-            domain=IndexDomain.from_shape((0,)),
-            output=(ArrayMap(index_array=np.array([], dtype=np.intp)),),
+    points = [
+        transform.apply(projection.cell_transform.apply(cell))
+        for projection in plan_chunks(transform, grids)
+        for cell in _points(projection.cell_transform.domain)
+    ]
+
+    assert sorted(points) == [(2, 5), (2, 6), (2, 7), (3, 5), (3, 6), (3, 7)]
+
+
+def test_correlated_projection_preserves_translated_advanced_axis_coordinates() -> None:
+    transform = (
+        IndexTransform.from_shape((4,))
+        .vindex[np.array([0, 3], dtype=np.intp)]
+        .translate_domain_by((5,))
+    )
+    grids = dimension_grids_from_chunks((2,), (4,))
+
+    request_points = [
+        projection.cell_transform.apply(cell)
+        for projection in plan_chunks(transform, grids)
+        for cell in _points(projection.cell_transform.domain)
+    ]
+
+    assert sorted(request_points) == [(5,), (6,)]
+
+
+def test_empty_request_has_no_projections() -> None:
+    """An empty fancy selection does not fabricate a touched chunk."""
+    transform = IndexTransform.from_shape((10,)).oindex[np.array([], dtype=np.intp)]
+    grids = dimension_grids_from_chunks((3,), (10,))
+
+    assert list(plan_chunks(transform, grids)) == []
+
+
+class TestSortedOneDimensionalPlan:
+    def test_sorted_coordinates_bypass_intersection(self) -> None:
+        """Sorted coordinates partition directly at touched chunk boundaries."""
+        transform = IndexTransform.from_shape((12,)).vindex[
+            np.array([0, 3, 4, 4, 9, 11], dtype=np.intp)
+        ]
+        grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=12),))
+
+        projections = list(plan_chunks(transform, grid.dimensions))
+
+        assert [projection.chunk_coords for projection in projections] == [(0,), (1,), (2,)]
+        assert [
+            [
+                _storage_of(projection.cell_transform, point)[0]
+                for point in _points(projection.cell_transform.domain)
+            ]
+            for projection in projections
+        ] == [[0, 1], [2, 3], [4, 5]]
+
+    def test_unsorted_coordinates_use_intersection(self) -> None:
+        """Unsorted coordinates are grouped by chunk, in chunk order."""
+        transform = IndexTransform.from_shape((12,)).vindex[np.array([9, 0, 4], dtype=np.intp)]
+        grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=12),))
+
+        projections = list(plan_chunks(transform, grid.dimensions))
+
+        assert [projection.chunk_coords for projection in projections] == [(0,), (1,), (2,)]
+
+
+class CountingUnitGrid:
+    """A real unit grid that counts every planner-grid operation."""
+
+    def __init__(self, extent: int) -> None:
+        self._grid = FixedDimension(size=1, extent=extent)
+        self.calls = 0
+
+    def index_to_chunk(self, idx: int) -> int:
+        self.calls += 1
+        return self._grid.index_to_chunk(idx)
+
+    def chunk_offset(self, chunk_ix: int) -> int:
+        self.calls += 1
+        return self._grid.chunk_offset(chunk_ix)
+
+    def chunk_size(self, chunk_ix: int) -> int:
+        self.calls += 1
+        return self._grid.chunk_size(chunk_ix)
+
+    def indices_to_chunks(
+        self, indices: np.ndarray[Any, np.dtype[np.intp]]
+    ) -> np.ndarray[Any, np.dtype[np.intp]]:
+        self.calls += 1
+        return self._grid.indices_to_chunks(indices)
+
+
+def test_sparse_affine_plan_does_not_visit_intervening_chunks() -> None:
+    grid = CountingUnitGrid(extent=100_001)
+    transform = IndexTransform.from_shape((100_001,))[::100_000]
+
+    assert [projection.chunk_coords for projection in plan_chunks(transform, (grid,))] == [
+        (0,),
+        (100_000,),
+    ]
+    assert grid.calls <= 12
+
+
+def test_sparse_affine_plan_handles_large_origin_cancellation() -> None:
+    origin = int(np.iinfo(np.intp).max)
+    transform = IndexTransform(
+        domain=IndexDomain((origin,), (origin + 2,)),
+        output=(DimensionMap(input_dimension=0, offset=-2 * origin, stride=2),),
+    )
+    grids = dimension_grids_from_chunks((1,), (3,))
+
+    assert [projection.chunk_coords for projection in plan_chunks(transform, grids)] == [
+        (0,),
+        (2,),
+    ]
+
+
+class TestTouchedOnlyCandidateEnumeration:
+    def test_sparse_one_dimensional_selection_skips_the_dense_span(
+        self,
+    ) -> None:
+        """Two sorted points on a 1000-cell grid touch two chunks."""
+        transform = IndexTransform.from_shape((4000,)).vindex[np.array([1, 3997], dtype=np.intp)]
+        grid = ChunkGrid(dimensions=(FixedDimension(size=4, extent=4000),))
+
+        projections = list(plan_chunks(transform, grid.dimensions))
+
+        assert [projection.chunk_coords for projection in projections] == [(0,), (999,)]
+
+    @pytest.mark.parametrize(
+        ("mode", "expected_coords"),
+        [
+            ("orthogonal", [(0, 0), (0, 999), (999, 0), (999, 999)]),
+            ("correlated", [(0, 0), (999, 999)]),
+        ],
+    )
+    def test_sparse_two_dimensional_selection_uses_only_touched_combinations(
+        self,
+        mode: str,
+        expected_coords: list[tuple[int, int]],
+    ) -> None:
+        """Orthogonal points use their outer product; correlated points remain paired."""
+        base = IndexTransform.from_shape((4000, 4000))
+        first = np.array([1, 3997], dtype=np.intp)
+        second = np.array([2, 3998], dtype=np.intp)
+        transform = (
+            base.oindex[first, second] if mode == "orthogonal" else base.vindex[first, second]
         )
-        grid = ChunkGrid(dimensions=(FixedDimension(size=3, extent=10),))
-        assert list(iter_chunk_transforms(t, grid._dimensions)) == []
-
-    def test_orthogonal_outer_product_selectors(self) -> None:
-        """Two independent arrays produce np.ix_-style (mesh) chunk/out selectors."""
-        t = IndexTransform.from_shape((10, 10)).oindex[np.array([1, 3]), np.array([2, 4, 6])]
-        grid = ChunkGrid(
-            dimensions=(FixedDimension(size=10, extent=10), FixedDimension(size=10, extent=10))
-        )
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-        assert len(results) == 1
-        _coords, sub_t, out_indices = results[0]
-        chunk_sel, out_sel, drop_axes = sub_transform_to_selections(sub_t, out_indices)
-        # np.ix_ produces one 2-D open-mesh selector per axis, for both sides.
-        assert len(chunk_sel) == 2
-        assert len(out_sel) == 2
-        assert isinstance(chunk_sel[0], np.ndarray)
-        assert isinstance(chunk_sel[1], np.ndarray)
-        assert chunk_sel[0].shape == (2, 1)
-        assert chunk_sel[1].shape == (1, 3)
-        assert drop_axes == ()
-
-    def test_correlated_scatter_with_residual_slice(self) -> None:
-        """Correlated arrays + a residual slice dim scatter through a single flat
-        index whose shape matches the (points, slice) block read from the chunk."""
-        t = IndexTransform.from_shape((4, 3, 5)).vindex[np.array([1, 3]), np.array([2, 0])]
         grid = ChunkGrid(
             dimensions=(
-                FixedDimension(size=4, extent=4),
-                FixedDimension(size=3, extent=3),
-                FixedDimension(size=5, extent=5),
+                FixedDimension(size=4, extent=4000),
+                FixedDimension(size=4, extent=4000),
             )
         )
-        # One chunk holds everything: both points survive, slice dim spans [0,5).
-        results = list(iter_chunk_transforms(t, grid._dimensions))
-        assert len(results) == 1
-        _coords, sub_t, out_indices = results[0]
-        chunk_sel, out_sel, _drop = sub_transform_to_selections(sub_t, out_indices)
-        # Chunk side: flat coordinate arrays for the two correlated dims plus a
-        # slice for the residual dim.
-        assert len(chunk_sel) == 3
-        np.testing.assert_array_equal(np.asarray(chunk_sel[0]), [1, 3])
-        np.testing.assert_array_equal(np.asarray(chunk_sel[1]), [2, 0])
-        assert chunk_sel[2] == slice(0, 5, 1)
-        # Output side: a single flat scatter index of shape (points, slice) = (2, 5).
-        assert len(out_sel) == 1
-        assert np.asarray(out_sel[0]).shape == (2, 5)
+
+        projections = list(plan_chunks(transform, grid.dimensions))
+
+        assert sorted(projection.chunk_coords for projection in projections) == expected_coords
+
+    def test_correlated_diagonal_scales_with_points_not_their_product(
+        self,
+    ) -> None:
+        """Fifty diagonal points touch fifty chunks, not 2500."""
+        n_points = 50
+        coordinates = np.arange(n_points, dtype=np.intp) * 8
+        transform = IndexTransform.from_shape((4000, 4000)).vindex[coordinates, coordinates]
+        grid = ChunkGrid(
+            dimensions=(
+                FixedDimension(size=4, extent=4000),
+                FixedDimension(size=4, extent=4000),
+            )
+        )
+
+        projections = list(plan_chunks(transform, grid.dimensions))
+
+        assert sorted(projection.chunk_coords for projection in projections) == [
+            (2 * index, 2 * index) for index in range(n_points)
+        ]
+
+
+# ---------------------------------------------------------------------------
+# GridPartition: the factored form
+# ---------------------------------------------------------------------------
+
+
+def _partition_cases() -> list[tuple[str, IndexTransform, tuple[Any, ...]]]:
+    base = IndexTransform.from_shape((7, 9, 5))
+    fixed = dimension_grids_from_chunks((3, 4, 2), shape=(7, 9, 5))
+    varying = (
+        VaryingDimension(edges=(2, 5), extent=7),
+        VaryingDimension(edges=(1, 4, 4), extent=9),
+        FixedDimension(size=2, extent=5),
+    )
+    # Declared edges past the extent: the last chunk's data extent is shorter
+    # than its declared size, which is where `data_size` and `chunk_size` part.
+    clipped = (
+        VaryingDimension(edges=(5, 10), extent=7),
+        VaryingDimension(edges=(4, 4, 4), extent=9),
+        FixedDimension(size=3, extent=5),
+    )
+    # The minimal grid protocol: no `data_size`, so resolution falls back to `chunk_size`.
+    edges = (EdgeDimensionGrid([3, 4]), EdgeDimensionGrid([4, 5]), EdgeDimensionGrid([2, 3]))
+    return [
+        ("identity", base, fixed),
+        ("strided", base[1:6:2, 5:, ::3], fixed),
+        ("strided varying", base[1:6:2, 5:, ::3], varying),
+        ("scalars", base[3, :, 4], fixed),
+        ("reversed", base[::-1, 8:1:-1, :], fixed),
+        ("empty", base[3:3, :, :], fixed),
+        ("oindex arrays", base.oindex[np.array([6, 0, 0, 2]), :, np.array([4, 1])], fixed),
+        ("oindex mixed", base.oindex[np.array([1, 5]), 2, 1:5:2], varying),
+        ("oindex one element", base.oindex[np.array([2]), :, :], fixed),
+        ("vindex", base.vindex[np.array([0, 6, 6, 1]), np.array([8, 0, 1, 8]), :], fixed),
+        ("vindex varying", base.vindex[np.array([0, 6, 6, 1]), np.array([8, 0, 1, 8]), 2], varying),
+        ("strided clipped", base[1:7:2, 5:, ::3], clipped),
+        ("oindex clipped", base.oindex[np.array([6, 0, 6]), 8, 1:5:2], clipped),
+        ("vindex clipped", base.vindex[np.array([6, 6, 1]), np.array([8, 0, 8]), :], clipped),
+        ("strided edge grid", base[1:7:2, 5:, ::3], edges),
+        ("vindex edge grid", base.vindex[np.array([6, 6, 1]), np.array([8, 0, 8]), :], edges),
+        (
+            "vindex 2-d block",
+            base.vindex[
+                np.array([[0, 6], [3, 1]]), np.array([[8, 0], [2, 8]]), np.array([[4, 0], [1, 1]])
+            ],
+            fixed,
+        ),
+        (
+            "vindex 1-d sorted",
+            IndexTransform.from_shape((20,)).vindex[np.array([1, 5, 9, 17])],
+            dimension_grids_from_chunks((4,), shape=(20,)),
+        ),
+        ("rank 0", IndexTransform.from_shape(()), ()),
+    ]
+
+
+def _check_projections(transform: IndexTransform, projections: list[ChunkProjection]) -> None:
+    """The evaluation oracle: both transforms agree pointwise, cells tile the
+    request exactly once, chunk-local coordinates lie in the chunk, and
+    `coverage` is `full` exactly when a chunk's cells are each read once."""
+    has_array = any(isinstance(m, ArrayMap) for m in transform.output)
+    request_points: list[tuple[int, ...]] = []
+    for projection in projections:
+        assert projection.chunk_transform.domain == projection.cell_transform.domain
+        chunk_points: list[tuple[int, ...]] = []
+        for cell_point in _points(projection.cell_transform.domain):
+            request_point = _storage_of(projection.cell_transform, cell_point)
+            chunk_point = _storage_of(projection.chunk_transform, cell_point)
+            storage_point = _storage_of(transform, request_point)
+            chunk_origin = projection.chunk_domain.inclusive_min
+            assert chunk_point == tuple(
+                value - origin for value, origin in zip(storage_point, chunk_origin, strict=True)
+            )
+            assert all(
+                0 <= value < extent
+                for value, extent in zip(chunk_point, projection.chunk_domain.shape, strict=True)
+            )
+            request_points.append(request_point)
+            chunk_points.append(chunk_point)
+        if has_array:
+            assert projection.coverage == "unknown"
+        else:
+            covers = sorted(chunk_points) == sorted(
+                tuple(int(c) for c in cell) for cell in np.ndindex(*projection.chunk_domain.shape)
+            )
+            assert (projection.coverage == "full") == covers, projection
+    assert sorted(request_points) == sorted(_points(transform.domain))
+
+
+@pytest.mark.parametrize("case", _partition_cases(), ids=lambda case: case[0])
+def test_partition_rows_are_the_plan_and_satisfy_the_oracle(
+    case: tuple[str, IndexTransform, tuple[Any, ...]],
+) -> None:
+    _, transform, grids = case
+    plan = plan_chunks(transform, grids)
+    partition = plan.partition()
+    rows = list(partition)
+    assert rows == list(plan)
+    assert len(partition) == len(rows)
+    _check_projections(transform, rows)
+
+
+@pytest.mark.parametrize("case", _partition_cases(), ids=lambda case: case[0])
+def test_partition_chunk_coords_are_vectorized_rows(
+    case: tuple[str, IndexTransform, tuple[Any, ...]],
+) -> None:
+    """`chunk_coords` reads the tables without materializing a row per chunk."""
+    _, transform, grids = case
+    partition = plan_chunks(transform, grids).partition()
+    coords = partition.chunk_coords()
+    assert coords.shape == (len(partition), transform.output_rank)
+    assert coords.tolist() == [list(p.chunk_coords) for p in partition]
+
+
+def test_partition_tables_describe_chunk_local_coordinates() -> None:
+    """The columnar tables carry exactly what each row's chunk transform maps to."""
+    transform = IndexTransform.from_shape((7, 9)).oindex[np.array([6, 0, 0, 2]), 5:]
+    grids = dimension_grids_from_chunks((3, 4), shape=(7, 9))
+    partition = plan_chunks(transform, grids).partition()
+    indexed, strided = partition.sets
+    assert isinstance(indexed, chunk_resolution.IndexedSet)
+    assert isinstance(strided, chunk_resolution.StridedSet)
+    # rows are in chunk order; the array [6, 0, 0, 2] lands in chunks 0, 0, 0, 2
+    assert indexed.chunk.tolist() == [0, 2]
+    assert indexed.pointer.tolist() == [0, 3, 4]
+    assert indexed.local.tolist() == [0, 0, 2, 0]
+    assert indexed.positions.tolist() == [1, 2, 3, 0]
+    assert strided.chunk.tolist() == [1, 2]
+    assert strided.local_start.tolist() == [1, 0]
+    assert strided.extent.tolist() == [3, 1]
+    assert strided.origin.tolist() == [0, 3]  # positions along the request axis
+    assert strided.full.tolist() == [False, True]
+    for row, projection in enumerate(partition):
+        table_rows = np.unravel_index(row, partition.row_shape)
+        run = indexed.run(int(table_rows[0]))
+        storage = projection.chunk_transform.apply_many(
+            np.array(list(np.ndindex(*projection.chunk_transform.domain.shape)))
+        )
+        assert sorted(set(storage[:, 0].tolist())) == sorted(set(indexed.local[run].tolist()))
+
+
+def test_joint_set_groups_points_by_chunk() -> None:
+    transform = IndexTransform.from_shape((7, 9)).vindex[
+        np.array([0, 6, 6, 1]), np.array([8, 0, 1, 8])
+    ]
+    grids = dimension_grids_from_chunks((3, 4), shape=(7, 9))
+    joint = plan_chunks(transform, grids).partition().joint_sets[0]
+    assert joint is not None
+    assert joint.chunk.tolist() == [[0, 2], [2, 0]]
+    assert joint.pointer.tolist() == [0, 2, 4]
+    assert joint.positions.tolist() == [0, 3, 1, 2]
+    assert joint.local.tolist() == [[0, 0], [1, 0], [0, 0], [0, 1]]
+
+
+def test_partition_rejects_correlated_residual_diagonal() -> None:
+    """A diagonal among the residual slice axes of a correlated transform is rejected too."""
+    transform = IndexTransform(
+        domain=IndexDomain.from_shape((2, 3)),
+        output=(
+            ArrayMap(np.array([[0], [2]])),
+            ArrayMap(np.array([[1], [0]])),
+            DimensionMap(input_dimension=1),
+            DimensionMap(input_dimension=1),
+        ),
+    )
+    grids = dimension_grids_from_chunks((2, 2, 2, 2), shape=(3, 3, 3, 3))
+    with pytest.raises(ValueError, match="read input axis 1"):
+        plan_chunks(transform, grids).partition()
+    with pytest.raises(ValueError, match="read input axis 1"):
+        list(plan_chunks(transform, grids))
+
+
+def test_correlated_plan_checks_storage_bounds_with_any_grid() -> None:
+    """Out-of-range coordinates raise even on grids whose vectorized lookup does not check."""
+
+    class UncheckedGrid:  # like zarr's FixedDimension: only the scalar lookup validates
+        def __init__(self, size: int, extent: int) -> None:
+            self.size, self.extent = size, extent
+
+        def index_to_chunk(self, index: int) -> int:
+            if not 0 <= index < self.extent:
+                raise IndexError(f"index {index} is out of bounds for extent {self.extent}")
+            return index // self.size
+
+        def chunk_offset(self, chunk: int) -> int:
+            return chunk * self.size
+
+        def chunk_size(self, chunk: int) -> int:
+            return self.size
+
+        def indices_to_chunks(self, indices: Any) -> Any:
+            return indices // self.size
+
+    transform = IndexTransform.from_shape((10, 10)).vindex[np.array([1, 9]), np.array([2, 9])]
+    with pytest.raises(IndexError, match="out of bounds"):
+        list(plan_chunks(transform, (UncheckedGrid(2, 5), UncheckedGrid(2, 5))))
+
+
+def test_wide_request_extent_is_preserved() -> None:
+    """A zero-stride map over a domain wider than np.intp touches one cell and keeps its extent."""
+    width = 2**63
+    transform = IndexTransform(
+        domain=IndexDomain((0,), (width,)),
+        output=(DimensionMap(input_dimension=0, offset=3, stride=0),),
+    )
+    (projection,) = plan_chunks(transform, dimension_grids_from_chunks((2,), shape=(5,)))
+    assert projection.chunk_coords == (1,)
+    assert projection.chunk_transform.domain.shape == (width,)
+    assert projection.coverage == "partial"
+
+
+@pytest.mark.parametrize("width", [3, 10_000])
+def test_correlated_projection_keeps_residual_slices_compact(width: int) -> None:
+    indices = np.array([0, 2, 1])
+    transform = IndexTransform.from_shape((3, 3, width)).vindex[indices, indices, :]
+    grids = dimension_grids_from_chunks((3, 3, width), shape=(3, 3, width))
+    (projection,) = plan_chunks(transform, grids)
+    assert projection.cell_transform.apply((2, width - 1)) == (2, width - 1)
+    assert projection.chunk_transform.apply((2, width - 1)) == (1, 1, width - 1)
+    coordinate_bytes = sum(
+        m.index_array.nbytes for m in projection.cell_transform.output if isinstance(m, ArrayMap)
+    )
+    # Request placement needs only the three point positions, regardless of slab width.
+    assert coordinate_bytes <= indices.nbytes
+
+
+def test_mixed_affine_array_dependency_is_rejected() -> None:
+    """A slice map and an index array reading one input axis is a diagonal too."""
+    transform = IndexTransform(
+        IndexDomain.from_shape((4,)), (DimensionMap(0), ArrayMap(np.array([3, 2, 1, 0])))
+    )
+    grids = dimension_grids_from_chunks((2, 2), shape=(4, 4))
+    with pytest.raises(NotImplementedError, match="also bound by a slice map"):
+        list(plan_chunks(transform, grids))
+
+
+def test_partition_tables_are_memoized_and_immutable() -> None:
+    """The plan builds its tables once, and nothing a consumer does to a column can change them."""
+    base = IndexTransform.from_shape((7, 9))
+    indices = np.array([6, 0, 6, 1])
+    for transform in (base.oindex[indices, 5:], base.vindex[indices, indices]):
+        plan = plan_chunks(transform, dimension_grids_from_chunks((3, 4), (7, 9)))
+        partition = plan.partition()
+        assert plan.partition() is partition
+        tables: list[Any] = [*partition.sets, *partition.joint_sets]
+        for table in tables:
+            columns = [table.chunk, table.chunk_start, table.chunk_extent]
+            if hasattr(table, "pointer"):
+                assert table.local is table.local
+                columns += [table.local, table.pointer, table.index, table.positions]
+            else:
+                columns += [table.origin, table.extent]
+            for column in columns:
+                assert not column.flags.writeable
+                with pytest.raises(ValueError):
+                    column.setflags(write=True)
+
+
+def test_independent_correlated_groups_stay_compact() -> None:
+    n = 1000
+    indices = np.arange(n)
+    transform = IndexTransform.from_shape((n, n, n)).vindex[
+        indices[:, None], indices[:, None], indices[None, :]
+    ]
+    assert sum(m.index_array.size for m in transform.output if isinstance(m, ArrayMap)) == 3 * n
+    partition = plan_chunks(
+        transform, dimension_grids_from_chunks((n, n, n), (n, n, n))
+    ).partition()
+    assert [j.output_dimensions for j in partition.joint_sets] == [(0, 1), (2,)]
+    assert sum(j.index.size for j in partition.joint_sets) == 3 * n
+    assert partition.row_shape == (1, 1)
+    (projection,) = partition
+    assert projection.chunk_transform.domain.shape == (n, n)
+    assert projection.chunk_transform.apply((5, 9)) == (5, 5, 9)
+    assert projection.cell_transform.apply((5, 9)) == (5, 9)
+
+
+@pytest.mark.parametrize("origin", [0, 5])
+@pytest.mark.parametrize("transpose", [False, True])
+def test_component_projections_preserve_request_cells(origin: int, transpose: bool) -> None:
+    maps = (
+        ArrayMap(np.array([2, 0, 2]).reshape(3, 1, 1, 1)),
+        ArrayMap(np.array([0, 3, 1]).reshape(3, 1, 1, 1)),
+        ArrayMap(np.array([4, 0, 4, 2]).reshape(1, 4, 1, 1)),
+        DimensionMap(2, offset=-origin),
+    )
+    transform = IndexTransform(
+        IndexDomain((origin,) * 4, (origin + 3, origin + 4, origin + 2, origin + 1)), maps
+    )
+    if transpose:
+        transform = IndexTransform(transform.domain, (maps[2], maps[0], maps[3], maps[1]))
+    shape = (5, 3, 2, 4) if transpose else (3, 4, 5, 2)
+    grids = dimension_grids_from_chunks((2, 2, 2, 2), shape)
+    partition = plan_chunks(transform, grids).partition()
+    assert len(partition.joint_sets) == 2
+    rows = list(partition)
+    _check_projections(transform, rows)
+    assert partition.chunk_coords().tolist() == [list(p.chunk_coords) for p in rows]
+
+
+@pytest.mark.parametrize("origin", [0, 5])
+@pytest.mark.parametrize("shape", [(6,), (2, 3)])
+@pytest.mark.parametrize("reverse_outputs", [False, True])
+def test_single_component_projection_coordinates(
+    origin: int, shape: tuple[int, ...], reverse_outputs: bool
+) -> None:
+    """A sole component preserves repeated points, affine maps, and input origins."""
+    values = np.array([4, 0, 4, 2, 1, 3]).reshape(shape)
+    maps = (ArrayMap(values, offset=1, stride=2), ArrayMap(values, offset=9, stride=-2))
+    transform = IndexTransform(
+        IndexDomain((origin,) * len(shape), tuple(origin + size for size in shape)),
+        maps[::-1] if reverse_outputs else maps,
+    )
+    partition = plan_chunks(
+        transform, dimension_grids_from_chunks(((2, 3, 5), (4, 6)), (10, 10))
+    ).partition()
+    assert len(partition.joint_sets) == 1
+    assert not partition.sets
+    projections = list(partition)
+    _check_projections(transform, projections)
+    assert partition.chunk_coords().tolist() == [list(p.chunk_coords) for p in projections]
+
+
+def test_index_array_components_merge_transitively() -> None:
+    transform = IndexTransform(
+        IndexDomain.from_shape((2, 3, 4)),
+        (
+            ArrayMap(np.zeros((2, 1, 1), dtype=np.intp)),
+            ArrayMap(np.zeros((1, 1, 4), dtype=np.intp)),
+            ArrayMap(np.zeros((2, 3, 1), dtype=np.intp)),
+            ArrayMap(np.zeros((1, 3, 4), dtype=np.intp)),
+        ),
+    )
+    partition = plan_chunks(transform, dimension_grids_from_chunks((1,) * 4, (1,) * 4)).partition()
+    assert len(partition.joint_sets) == 1
+    _check_projections(transform, list(partition))
+
+
+@pytest.mark.parametrize("reader_kind", ["basic", "numpy"])
+def test_independent_components_scatter_through_lazy_array(reader_kind: str) -> None:
+    from zarr_indexing import LazyArray
+
+    source = np.arange(5 * 6 * 7 * 3).reshape(5, 6, 7, 3)
+    a = np.array([4, 0, 4])[:, None]
+    b = np.array([5, 1, 3])[:, None]
+    c = np.array([6, 0, 6, 2])[None, :]
+    wrapped = LazyArray.from_numpy(source) if reader_kind == "numpy" else LazyArray(source)
+    view = wrapped.with_parts((2, 3, 2, 2)).vindex[a, b, c, ...]
+    assert (
+        len(
+            plan_chunks(view.transform, dimension_grids_from_chunks((2, 3, 2, 2), source.shape))
+            .partition()
+            .joint_sets
+        )
+        == 2
+    )
+    np.testing.assert_array_equal(view.result(), source[a, b, c, :])
+
+
+class SignedGrid:
+    """An unbounded grid with translated boundaries and signed chunk identifiers."""
+
+    def __init__(self, size: int, origin: int) -> None:
+        self.size = size
+        self.origin = origin
+
+    def index_to_chunk(self, index: int) -> int:
+        return (index - self.origin) // self.size
+
+    def indices_to_chunks(
+        self, indices: np.ndarray[Any, np.dtype[np.intp]]
+    ) -> np.ndarray[Any, np.dtype[np.intp]]:
+        return (indices - self.origin) // self.size
+
+    def chunk_offset(self, chunk: int) -> int:
+        return self.origin + chunk * self.size
+
+    def chunk_size(self, chunk: int) -> int:
+        return self.size
+
+
+@settings(max_examples=300)
+@given(data=st.data(), shape=st.lists(st.integers(0, 3), min_size=0, max_size=3))
+def test_component_dependency_graph_matches_pointwise_oracle(
+    data: st.DataObject, shape: list[int]
+) -> None:
+    """Catch lost duplicates, signed chunk collisions, and incorrect request origins.
+
+    Enumerate the transform's small domain directly: no planner intersection,
+    grouping, or dependency helpers contribute to the expected mapping.
+    """
+    origin = tuple(data.draw(st.integers(-4, 4)) for _ in shape)
+    output_rank = data.draw(st.integers(1, 5))
+    affine_axes = {axis for axis in range(len(shape)) if data.draw(st.booleans())}
+    maps: list[ArrayMap | ConstantMap | DimensionMap] = [
+        DimensionMap(
+            axis, offset=data.draw(st.integers(-3, 3)), stride=data.draw(st.integers(-2, 2))
+        )
+        for axis in sorted(affine_axes)
+    ]
+    for _ in range(output_rank):
+        if data.draw(st.booleans()):
+            maps.append(ConstantMap(data.draw(st.integers(-3, 3))))
+            continue
+        # Reserve affine axes for one DimensionMap each. Unsupported shared
+        # affine dependencies are exercised explicitly in the error properties.
+        dependencies = [
+            axis not in affine_axes and data.draw(st.booleans()) for axis in range(len(shape))
+        ]
+        array_shape = tuple(
+            size if dependent else 1 for size, dependent in zip(shape, dependencies, strict=True)
+        )
+        count = int(np.prod(array_shape))
+        # A small value range produces repeated storage points at distinct request positions.
+        values = data.draw(st.lists(st.integers(-2, 2), min_size=count, max_size=count))
+        maps.append(
+            ArrayMap(
+                np.array(values, dtype=np.intp).reshape(array_shape),
+                offset=data.draw(st.integers(-3, 3)),
+                stride=data.draw(st.integers(-2, 2)),
+            )
+        )
+    grids = [SignedGrid(data.draw(st.integers(1, 3)), data.draw(st.integers(-3, 3))) for _ in maps]
+    transform = IndexTransform(
+        IndexDomain(origin, tuple(lo + size for lo, size in zip(origin, shape, strict=True))),
+        tuple(maps),
+    )
+    expected = {point: _storage_of(transform, point) for point in _points(transform.domain)}
+    expected_chunks = {
+        tuple(grid.index_to_chunk(value) for grid, value in zip(grids, storage, strict=True))
+        for storage in expected.values()
+    }
+    partition = plan_chunks(transform, tuple(grids)).partition()
+    rows = list(partition)
+    _check_projections(transform, rows)
+    assert {row.chunk_coords for row in rows} == expected_chunks
+    assert len(rows) == len(expected_chunks)
+    assert partition.chunk_coords().tolist() == [list(row.chunk_coords) for row in rows]
+    reconstructed = []
+    for row in rows:
+        assert row.chunk_domain.inclusive_min == tuple(
+            grid.chunk_offset(chunk) for grid, chunk in zip(grids, row.chunk_coords, strict=True)
+        )
+        for cell in _points(row.cell_transform.domain):
+            request = _storage_of(row.cell_transform, cell)
+            storage = tuple(
+                local + grid.chunk_offset(chunk)
+                for local, grid, chunk in zip(
+                    _storage_of(row.chunk_transform, cell), grids, row.chunk_coords, strict=True
+                )
+            )
+            reconstructed.append((request, storage))
+    # A list comparison retains multiplicity: repeating one position cannot hide a missing one.
+    assert sorted(reconstructed) == sorted(expected.items())
+
+
+@given(origin=st.integers(-4, 4), size=st.integers(2, 5), stride=st.sampled_from([-2, -1, 1, 2]))
+def test_generated_shared_affine_dependency_is_rejected(
+    origin: int, size: int, stride: int
+) -> None:
+    transform = IndexTransform(
+        IndexDomain((origin,), (origin + size,)),
+        (DimensionMap(0, stride=stride), DimensionMap(0, offset=3)),
+    )
+    with pytest.raises(ValueError, match="read input axis 0"):
+        list(plan_chunks(transform, (SignedGrid(2, -1), SignedGrid(3, 1))))
+
+
+@given(origin=st.integers(-4, 4), size=st.integers(2, 5), stride=st.sampled_from([-2, -1, 1, 2]))
+def test_generated_mixed_affine_array_dependency_is_rejected(
+    origin: int, size: int, stride: int
+) -> None:
+    transform = IndexTransform(
+        IndexDomain((origin,), (origin + size,)),
+        (DimensionMap(0, stride=stride), ArrayMap(np.zeros(size, dtype=np.intp))),
+    )
+    with pytest.raises(NotImplementedError, match="also bound by a slice map"):
+        list(plan_chunks(transform, (SignedGrid(2, -1), SignedGrid(3, 1))))
+
+
+@pytest.mark.parametrize("stride", [0, 1, 2, -2])
+@pytest.mark.parametrize("count", [1, 2])
+def test_singleton_coverage(stride: int, count: int) -> None:
+    transform = IndexTransform(IndexDomain.from_shape((count,)), (DimensionMap(0, stride=stride),))
+    shape = (5,) * transform.output_rank
+
+    class SingletonGrid:
+        def index_to_chunk(self, index: int) -> int:
+            return index
+
+        def chunk_offset(self, chunk: int) -> int:
+            return chunk
+
+        def chunk_size(self, chunk: int) -> int:
+            return 1
+
+        def indices_to_chunks(self, indices: Any) -> Any:
+            return indices
+
+    grids = (SingletonGrid(),) * len(shape)
+    expected = "partial" if stride == 0 and count > 1 else "full"
+    assert all(p.coverage == expected for p in plan_chunks(transform, grids))
+    partition = plan_chunks(transform, grids).partition()
+    assert all(bool(full) == (expected == "full") for full in partition.sets[0].full)

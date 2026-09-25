@@ -1,14 +1,14 @@
 """Cross-check canonical ndsel bodies against a real TensorStore.
 
-A normalized ndsel `transform` body is, field-for-field, a TensorStore
-`IndexTransform` (minus the `kind` discriminator, which the canonical body never
-carries). This test loads a handful of finite-bound canonical bodies into
+Canonical ndsel bodies use TensorStore's `IndexTransform` field vocabulary,
+but the consumers have different validation constraints. This test loads a
+handful of finite-bound canonical bodies supported by both implementations into
 `tensorstore.IndexTransform(json=...)` and confirms that TensorStore's own
 `to_json()` re-loads, through our engine layer, into an equivalent transform.
 
 Skipped when tensorstore is not installed. Run it explicitly with:
 
-    uv run --with tensorstore pytest \
+    hatch run test.py3.12-optional:pytest \
         packages/zarr-indexing/tests/test_ndsel_tensorstore.py -q
 """
 
@@ -17,7 +17,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from zarr_indexing.json import transform_from_canonical, transform_to_canonical
 from zarr_indexing.transform import IndexTransform
 
 ts = pytest.importorskip("tensorstore")
@@ -38,7 +37,7 @@ def _canonical_transforms() -> list[IndexTransform]:
 
 @pytest.mark.parametrize("transform", _canonical_transforms())
 def test_body_loads_in_tensorstore_and_round_trips(transform: IndexTransform) -> None:
-    body = transform_to_canonical(transform)
+    body = transform.to_json()
 
     # (1) The canonical body loads directly as a TensorStore IndexTransform.
     ts_transform = ts.IndexTransform(json=body)
@@ -48,5 +47,5 @@ def test_body_loads_in_tensorstore_and_round_trips(transform: IndexTransform) ->
     #     representational choices (index_array_bounds, default omissions) that
     #     both sides make differently but that denote the same selection.
     ts_json = ts_transform.to_json()
-    reloaded = transform_from_canonical(ts_json)
-    assert transform_to_canonical(reloaded) == transform_to_canonical(transform)
+    reloaded = IndexTransform.from_json(ts_json)
+    assert reloaded.to_json() == transform.to_json()

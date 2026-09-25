@@ -56,34 +56,38 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         fetch-depth: 0  # grab all branches and tags
         persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
     - name: Install uv
-      uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
     - name: Install Hatch
       run: python -m pip install hatch==1.16.5
+    - name: Install just
+      uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+      with:
+        repo: casey/just
+        version: 1.58.0
     - name: Set Up Hatch Env
       env:
         HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
       run: |
-        hatch env create "$HATCH_ENV"
-        hatch env run -e "$HATCH_ENV" list-env
+        just setup
     - name: Run Tests
       env:
         HYPOTHESIS_PROFILE: ci
         HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
       run: |
-        hatch env run --env "$HATCH_ENV" run-coverage
+        just coverage
     - name: Upload coverage
       if: ${{ matrix.dependency-set == 'optional' && matrix.os == 'ubuntu-latest' }}
-      uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+      uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: tests
@@ -105,32 +109,36 @@ jobs:
           - python-version: "3.12"
             dependency-set: upstream
     steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         fetch-depth: 0
         persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
     - name: Install uv
-      uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
     - name: Install Hatch
       run: python -m pip install hatch==1.16.5
+    - name: Install just
+      uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+      with:
+        repo: casey/just
+        version: 1.58.0
     - name: Set Up Hatch Env
       env:
         HATCH_ENV: ${{ matrix.dependency-set }}
       run: |
-        hatch env create "$HATCH_ENV"
-        hatch env run -e "$HATCH_ENV" list-env
+        just setup
     - name: Run Tests
       env:
         HATCH_ENV: ${{ matrix.dependency-set }}
       run: |
-        hatch env run --env "$HATCH_ENV" run-coverage
+        just coverage
     - name: Upload coverage
-      uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+      uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: tests
@@ -140,48 +148,58 @@ jobs:
     name: doctests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         fetch-depth: 0 # required for hatch version discovery, which is needed for numcodecs.zarr3
         persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: '3.13'
         cache: 'pip'
     - name: Install uv
-      uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
     - name: Install Hatch
       run: python -m pip install hatch==1.16.5
+    - name: Install just
+      uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+      with:
+        repo: casey/just
+        version: 1.58.0
     - name: Set Up Hatch Env
       run: |
-        hatch run doctest:pip list
+        HATCH_ENV=doctest just setup
     - name: Run Tests
       run: |
-        hatch run doctest:test
+        just doctest
 
   benchmarks:
     name: Benchmark smoke test
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         fetch-depth: 0
         persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: '3.13'
         cache: 'pip'
     - name: Install uv
-      uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
     - name: Install Hatch
       run: python -m pip install hatch==1.16.5
+    - name: Install just
+      uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+      with:
+        repo: casey/just
+        version: 1.58.0
     - name: Run Benchmarks
       env:
         ZARR_BENCHMARK_CLEAR_CACHE: '1'
       run: |
-        hatch env run --env "test.py3.13-minimal" run-benchmark
+        HATCH_ENV=test.py3.13-minimal just benchmark
 
   test-complete:
     name: Test complete
