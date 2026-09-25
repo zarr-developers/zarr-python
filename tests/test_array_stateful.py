@@ -40,6 +40,7 @@ from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.sync import sync
 from zarr.errors import ZarrUserWarning
 from zarr.storage import MemoryStore
+from zarr.testing.strategies import rectilinear_chunks
 
 pytestmark = [
     pytest.mark.slow_hypothesis,
@@ -48,24 +49,6 @@ pytestmark = [
 
 DTYPE = np.dtype("int16")
 MAX_SIDE = 6
-
-
-def _rectilinear_dim(extent: int) -> st.SearchStrategy[int | list[int]]:
-    """A bare step, or an edge list covering `extent` (any edges for extent 0).
-
-    A small local copy of what `zarr.testing.strategies` draws for rectilinear
-    declarations, so this test does not depend on that module's experimental API.
-    """
-    steps = st.integers(min_value=1, max_value=MAX_SIDE)
-    if extent == 0:
-        return steps | st.lists(steps, min_size=1, max_size=3)
-    if extent == 1:
-        return steps | st.just([1])
-    cuts = st.lists(st.integers(min_value=1, max_value=extent - 1), unique=True, max_size=3)
-    edges = cuts.map(
-        lambda c: [b - a for a, b in zip([0, *sorted(c)], [*sorted(c), extent], strict=True)]
-    )
-    return steps | edges
 
 
 class ArrayLifecycle(RuleBasedStateMachine):
@@ -105,9 +88,7 @@ class ArrayLifecycle(RuleBasedStateMachine):
         elif spelling == "auto":
             chunks = "auto"
         elif spelling == "rectilinear":
-            chunks = [data.draw(_rectilinear_dim(s)) for s in shape]
-            if not any(isinstance(c, list) for c in chunks):
-                chunks[0] = [chunks[0]] if shape[0] == 0 else [shape[0]]
+            chunks = data.draw(rectilinear_chunks(shape=shape), label="rectilinear chunks")
         else:
             chunks = tuple(data.draw(st.integers(1, 3)) for _ in shape)
             if spelling == "sharded":
