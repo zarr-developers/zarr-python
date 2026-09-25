@@ -24,6 +24,7 @@ from typing import Literal
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
+from packaging.version import parse as parse_version
 
 import zarr
 import zarr.api.asynchronous
@@ -490,7 +491,11 @@ def test_save_storage_options_is_not_an_array(tmp_path: Path) -> None:
 def test_save_group_storage_options_positional_args(tmp_path: Path) -> None:
     # `storage_options` has to reach the store for positional arrays too, exactly as it
     # does for keyword arrays.
-    pytest.importorskip("fsspec")
+    fsspec = pytest.importorskip("fsspec")
+    # An fsspec URL for a sync filesystem needs AsyncFileSystemWrapper, which landed in
+    # fsspec 2024.12.0. The min-deps CI job pins an older one.
+    if parse_version(fsspec.__version__) < parse_version("2024.12.0"):
+        pytest.skip("No AsyncFileSystemWrapper")
     data = np.arange(10)
     url = f"local://{tmp_path}/group.zarr"
     save_group(url, data, data, storage_options={"auto_mkdir": True})
