@@ -1979,6 +1979,25 @@ def test_from_array_overwrite_overlapping_source_raises(
     np.testing.assert_array_equal(src[...], np.arange(4.0))
 
 
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=True)
+def test_from_array_overwrite_read_only_source_raises(store: Store) -> None:
+    """A read-only view of the destination store still counts as overlapping."""
+    zarr.create_array(store, name="a", data=np.arange(4.0), fill_value=-1.0)
+    src = zarr.open_array(store.with_read_only(True), path="a")
+    with pytest.raises(ValueError, match="paths overlap"):
+        zarr.from_array(store, name="a", data=src, overwrite=True)
+    np.testing.assert_array_equal(src[...], np.arange(4.0))
+
+
+def test_from_array_overwrite_equal_memory_stores() -> None:
+    """Distinct MemoryStores with equal contents don't overlap."""
+    src_store, dest_store = MemoryStore(), MemoryStore()
+    src = zarr.create_array(src_store, name="a", data=np.arange(4.0), fill_value=-1.0)
+    zarr.create_array(dest_store, name="a", data=np.arange(4.0), fill_value=-1.0)
+    result = zarr.from_array(dest_store, name="a", data=src, overwrite=True)
+    np.testing.assert_array_equal(result[...], np.arange(4.0))
+
+
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_from_array_overwrite_non_overlapping_source(store: Store) -> None:
     """Overlap checks respect path boundaries, and metadata-only copies are allowed."""
