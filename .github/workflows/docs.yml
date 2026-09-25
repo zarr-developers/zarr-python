@@ -23,18 +23,22 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
-      - run: uv sync --group docs
+      - name: Install just
+        uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+        with:
+          repo: casey/just
+          version: 1.58.0
       # Fast source-level guards that need no built site, so they run before the (slower)
       # build for a quick failure: every public export is in the API reference, and no
       # docstring/Markdown carries reStructuredText markup that MkDocs won't render.
-      - run: uv run python ci/check_documented_exports.py docs/api
-      - run: uv run python ci/lint_docs.py
+      - run: just check-doc-exports
+      - run: just lint-docs
       # --strict turns warnings into errors, so a docs code block that fails to execute
       # at build time (e.g. a non-exec python fence disrupting a later exec="true" block)
       # fails CI instead of merging as a silent warning.
-      - run: uv run mkdocs build --strict
+      - run: just docs-build
         env:
           DISABLE_MKDOCS_2_WARNING: "true"
           NO_MKDOCS_2_WARNING: "true"
-      - run: uv run python ci/check_unlinked_types.py
+      - run: just check-doc-links
         continue-on-error: true

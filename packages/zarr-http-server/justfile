@@ -10,7 +10,15 @@
 # newest release: when ruff 0.16 began selecting BLE001 under the root
 # config's `B` prefix, this job failed on rules the pinned ruff never enforced,
 # with no code change to blame. Bump alongside the pre-commit rev.
+# Quoted arguments must survive delegation from the root Justfile.
+set positional-arguments
+
 ruff_version := "0.16.0"
+
+# In the repository, recipes overlay the in-repo zarr (editable) so they run
+# against the code beside them. pyproject.toml stays standalone, so from an
+# unpacked sdist, where ../.. is not the repository, zarr resolves from PyPI.
+repo_zarr := if path_exists("../../src/zarr/__init__.py") == "true" { "--with-editable ../.." } else { "" }
 
 # List available recipes
 default:
@@ -21,7 +29,7 @@ default:
 # silently skipping.
 # Run the test suite; extra args are passed to pytest
 test *args:
-    uv run --group test --group examples pytest tests {{ args }}
+    uv run {{ repo_zarr }} --group test --group examples pytest tests "$@"
 
 # Lint the package sources and tests
 lint:
@@ -31,7 +39,7 @@ lint:
 # rather than the pyright used by the other packages under packages/.
 # Type-check the package sources
 typecheck:
-    uv run --group test --with mypy mypy src
+    uv run {{ repo_zarr }} --group test --with mypy mypy src
 
 # Run everything CI runs for this package
 check: lint typecheck test docs-check
@@ -42,7 +50,7 @@ changelog-draft:
 
 # Build this package's documentation site, warnings as errors
 docs-check:
-    env DISABLE_MKDOCS_2_WARNING=true uv run --group docs mkdocs build --strict
+    env DISABLE_MKDOCS_2_WARNING=true uv run {{ repo_zarr }} --group docs mkdocs build --strict
 
 # With no argument, uses port 8000 if free, otherwise an ephemeral free port;
 # an explicitly requested port is used as-is so a conflict fails loudly.
@@ -65,4 +73,4 @@ docs-serve port="":
     s.close()
     ')
     fi
-    exec env DISABLE_MKDOCS_2_WARNING=true uv run --group docs mkdocs serve -a "localhost:$port"
+    exec env DISABLE_MKDOCS_2_WARNING=true uv run {{ repo_zarr }} --group docs mkdocs serve -a "localhost:$port"

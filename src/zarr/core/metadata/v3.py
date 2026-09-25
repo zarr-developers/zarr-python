@@ -555,7 +555,9 @@ def _read_stored_regular_chunk_grid(
       is read as the rectilinear grid it describes.
     - An all-integer `chunk_shape` is handed to
       `parse_stored_regular_chunk_shape`, which reads a chunk size of 0 (or
-      JSON `false`) on a zero-length axis as 1. zarr 3.0 and 3.1 wrote these.
+      JSON `false`) as one chunk spanning the axis. zarr 3.0 and 3.1 wrote
+      these for an array created with a zero-length axis, and 3.1 kept them
+      when the axis grew.
 
     Any other grid is returned unchanged for `parse_chunk_grid`; other grids
     define their own chunk semantics.

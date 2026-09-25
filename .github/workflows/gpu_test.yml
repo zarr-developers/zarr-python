@@ -67,20 +67,27 @@ jobs:
       uses: pypa/hatch@f647ed70d49adb885f53a27d1c7f5bdaeacf2c60
       with:
         version: '1.16.5'
+    - name: Install just
+      uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+      with:
+        repo: casey/just
+        version: 1.58.0
+    # Two names for the same environment on purpose: `just setup` builds whatever
+    # HATCH_ENV points at, while `just gpu` reads GPU_HATCH_ENV so that an
+    # ambient HATCH_ENV can never redirect `pytest -m gpu` into a CPU environment.
     - name: Set Up Hatch Env
       env:
         HATCH_ENV: gputest.py${{ matrix.python-version }}
       run: |
-        hatch env create "$HATCH_ENV"
-        hatch env run -e "$HATCH_ENV" list-env
+        just setup
     - name: Run Tests
       env:
-        HATCH_ENV: gputest.py${{ matrix.python-version }}
+        GPU_HATCH_ENV: gputest.py${{ matrix.python-version }}
       run: |
-        hatch env run --env "$HATCH_ENV" run-coverage
+        just gpu
 
     - name: Upload coverage
-      uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f  # v7.0.0
+      uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5  # v7.1.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: gpu

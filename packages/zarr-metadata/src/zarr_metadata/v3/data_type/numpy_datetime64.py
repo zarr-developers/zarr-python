@@ -4,7 +4,7 @@ Zarr `numpy.datetime64` data type (zarr-extensions).
 See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.datetime64/README.md
 """
 
-from typing import Final, Literal
+from typing import Final, Literal, NotRequired
 
 from typing_extensions import ReadOnly, TypedDict
 
@@ -20,7 +20,7 @@ NumpyTimeUnit = Literal[
 """Time unit codes used by numpy.datetime64."""
 
 
-class NumpyDatetime64Configuration(TypedDict):
+class NumpyDatetime64Configuration(TypedDict, closed=True):
     """
     Configuration for the `numpy.datetime64` data type.
 
@@ -36,11 +36,12 @@ class NumpyDatetime64Configuration(TypedDict):
     scale_factor: ReadOnly[int]
 
 
-class NumpyDatetime64(TypedDict):
+class NumpyDatetime64(TypedDict, closed=True):
     """`numpy.datetime64` data type metadata."""
 
     name: NumpyDatetime64DataTypeName
     configuration: NumpyDatetime64Configuration
+    must_understand: NotRequired[bool]
 
 
 NumpyDatetime64FillValue = int | Literal["NaT"]

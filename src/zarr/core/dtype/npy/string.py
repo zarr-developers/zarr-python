@@ -24,6 +24,7 @@ from zarr.core.dtype.common import (
     HasItemSize,
     HasLength,
     HasObjectCodec,
+    check_dtype_spec_no_object_codec_v2,
     check_dtype_spec_v2,
 )
 from zarr.core.dtype.npy.common import (
@@ -191,10 +192,9 @@ class FixedLengthUTF32(
             Whether the input is a valid JSON representation of a NumPy U dtype.
         """
         return (
-            check_dtype_spec_v2(data)
+            check_dtype_spec_no_object_codec_v2(data)
             and isinstance(data["name"], str)
             and re.match(r"^[><]U\d+$", data["name"]) is not None
-            and data["object_codec_id"] is None
         )
 
     @classmethod
