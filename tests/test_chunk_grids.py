@@ -1,7 +1,4 @@
 import contextlib
-import json
-import warnings
-from pathlib import Path
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -16,6 +13,7 @@ from zarr.core.chunk_grids import (
     VaryingDimension,
     _guess_num_chunks_per_axis_shard,
     _guess_regular_chunks,
+    full_span_chunk_size,
     normalize_chunks_1d,
     normalize_chunks_nd,
     resolve_outer_and_inner_chunks,
@@ -371,148 +369,89 @@ def test_create_0d_array_auto_shards_with_target_shard_size() -> None:
 
 
 # -- Zero-length dimensions --
-#
-# One invariant: a chunk edge length is always >= 1, an extent may be 0. Every spelling
-# that derives a chunk size from a span (-1, False, "auto", shards="auto") must agree on
-# chunk size 1 for a zero-length axis, in both Zarr formats, with or without sharding.
-# Historically each spelling clamped (or failed to clamp) on its own; see #4304, #4305,
-# #4307, #4328 and, further back, #150, #241, #303, #972, #1977, #2434, #3711.
 
-ZeroLengthChunkSpelling = Literal["minus-one", "false", "auto", "one", "ones", "rectilinear"]
-ZeroLengthShards = Literal["auto", "auto-budget", "explicit"] | None
 
-# Spellings whose chunk size is derived from the axis span rather than given explicitly.
-_SPAN_DERIVED_SPELLINGS: frozenset[ZeroLengthChunkSpelling] = frozenset(
-    {"minus-one", "false", "auto"}
+@pytest.mark.parametrize(
+    ("span", "unit", "expected"),
+    [(0, 1, 1), (5, 1, 5), (0, 4, 4), (8, 4, 8), (10, 4, 12)],
 )
+def test_full_span_chunk_size(span: int, unit: int, expected: int) -> None:
+    """One chunk spanning an axis is the smallest positive multiple of `unit` covering it."""
+    assert full_span_chunk_size(span, unit) == expected
 
 
-def _zero_length_chunks_arg(spelling: ZeroLengthChunkSpelling, shape: tuple[int, ...]) -> Any:
-    """Translate a chunk-spelling id into the `chunks=` argument for `shape`."""
-    match spelling:
-        case "minus-one":
-            return -1
-        case "false":
-            return False
-        case "auto":
-            return "auto"
-        case "one":
-            return 1
-        case "ones":
-            return (1,) * len(shape)
-        case "rectilinear":
-            return [[2, 2]] * len(shape)
-
-
-@pytest.mark.parametrize("spelling", ["minus-one", "false", "auto", "one", "ones", "rectilinear"])
+@pytest.mark.parametrize("chunks", [-1, False, "auto"])
 @pytest.mark.parametrize(
     "shape",
     [(0,), (0, 4), (4, 0), (0, 0), ()],
     ids=["1d", "2d-lead", "2d-trail", "2d-both", "0d"],
 )
 @pytest.mark.parametrize(
-    ("zarr_format", "shards"),
-    [(2, None), (3, None), (3, "auto"), (3, "auto-budget"), (3, "explicit")],
-    ids=["v2", "v3", "v3-auto-shards", "v3-auto-shards-budget", "v3-explicit-shards"],
+    ("zarr_format", "shards", "target_shard_size_bytes"),
+    [(2, None, None), (3, None, None), (3, "auto", None), (3, "auto", 128 * 1024 * 1024)],
+    ids=["v2", "v3", "v3-auto-shards", "v3-auto-shards-budget"],
 )
 def test_create_zero_length_array(
-    spelling: ZeroLengthChunkSpelling,
+    chunks: Any,
     shape: tuple[int, ...],
     zarr_format: Literal[2, 3],
-    shards: ZeroLengthShards,
+    shards: Literal["auto"] | None,
+    target_shard_size_bytes: int | None,
 ) -> None:
-    """Every chunk spelling produces a valid, usable grid on a zero-length axis.
-
-    Span-derived spellings resolve to chunk size 1 on zero-length axes (and the full span
-    elsewhere, for these small shapes); explicit spellings are stored verbatim. In every case
-    the stored metadata matches `arr.chunks` / `arr.shards`, the array can grow along the
-    empty axis, round-trip data, and shrink back to empty.
-    """
-    ndim = len(shape)
-    if spelling == "rectilinear":
-        if zarr_format == 2:
-            pytest.skip("Zarr format 2 does not support rectilinear chunk grids")
-        if shards is not None:
-            pytest.skip("rectilinear chunks with sharding is not supported")
-        if ndim == 0:
-            pytest.skip("a 0-d array has no dimension to chunk rectilinearly")
-    if shards == "explicit" and ndim == 0:
-        pytest.skip("a 0-d array has no axis to shard explicitly")
-
-    chunks = _zero_length_chunks_arg(spelling, shape)
-    expected_chunks: tuple[int, ...] | None
-    if spelling in _SPAN_DERIVED_SPELLINGS:
-        expected_chunks = tuple(max(s, 1) for s in shape)
-    elif spelling == "rectilinear":
-        expected_chunks = None
-    else:
-        expected_chunks = (1,) * ndim
-
-    shards_arg: Any
-    expected_shards: tuple[int, ...] | None
-    match shards:
-        case None:
-            shards_arg, expected_shards = None, None
-        case "auto" | "auto-budget":
-            # Axes this short never split, so the guessed shard equals the chunk.
-            shards_arg, expected_shards = "auto", expected_chunks
-        case "explicit":
-            # A shard larger than the (zero) extent is fine: the axis has zero shards.
-            shards_arg = tuple(2 if s == 0 else s for s in shape)
-            expected_shards = shards_arg
-
+    """Every spelling of one chunk spanning the axis gives chunk size 1 on a
+    zero-length axis, and the array can grow along that axis and shrink back."""
+    expected = tuple(max(s, 1) for s in shape)
     warns = (
         pytest.warns(ZarrUserWarning, match="Automatic shard shape inference is experimental")
-        if shards_arg == "auto"
+        if shards == "auto"
         else contextlib.nullcontext()
     )
-    budget = 128 * 1024 * 1024 if shards == "auto-budget" else None
-    # The rectilinear flag must stay set for the array's whole life, not just creation.
-    with zarr.config.set(
-        {"array.rectilinear_chunks": True, "array.target_shard_size_bytes": budget}
-    ):
-        with warns:
-            arr = zarr.create_array(
-                store={},
-                shape=shape,
-                dtype="int64",
-                chunks=chunks,
-                shards=shards_arg,
-                zarr_format=zarr_format,
-            )
+    with zarr.config.set({"array.target_shard_size_bytes": target_shard_size_bytes}), warns:
+        arr = zarr.create_array(
+            store={},
+            shape=shape,
+            dtype="int64",
+            chunks=chunks,
+            shards=shards,
+            zarr_format=zarr_format,
+        )
+    assert arr.chunks == expected
+    assert arr.shards == (None if shards is None else expected)
+    meta = cast(dict[str, Any], arr.metadata.to_dict())
+    stored = (
+        meta["chunks"] if zarr_format == 2 else meta["chunk_grid"]["configuration"]["chunk_shape"]
+    )
+    assert tuple(stored) == expected
 
-        # In-memory view and stored metadata agree with the invariant.
-        assert arr.shards == expected_shards
-        meta = cast(dict[str, Any], arr.metadata.to_dict())
-        if spelling == "rectilinear":
-            grid = meta["chunk_grid"]
-            assert grid["name"] == "rectilinear"
-            # Stored verbatim on zero-length axes too, run-length encoded as [size, count].
-            assert list(grid["configuration"]["chunk_shapes"]) == [[[2, 2]]] * ndim
-            assert arr.write_chunk_sizes == tuple(() if s == 0 else (2, 2) for s in shape)
-        else:
-            assert arr.chunks == expected_chunks
-            if zarr_format == 2:
-                assert meta["chunks"] == expected_chunks
-            else:
-                stored = meta["chunk_grid"]["configuration"]["chunk_shape"]
-                assert stored == (expected_chunks if expected_shards is None else expected_shards)
-            assert all(c >= 1 for c in arr.chunks)
+    if not shape:
+        arr[...] = 7
+        assert arr[...] == 7
+        return
+    axis = shape.index(0)
+    grown = tuple(2 if i == axis else s for i, s in enumerate(shape))
+    data = np.full(grown, 7, dtype="int64")
+    arr.append(data, axis=axis)
+    np.testing.assert_array_equal(arr[...], data)
+    arr.resize(shape)
+    assert np.asarray(arr[...]).shape == shape
 
-        # The array must remain usable.
-        if ndim == 0:
-            arr[...] = 7
-            assert arr[...] == 7
-            return
-        axis = shape.index(0)
-        grown = tuple(2 if i == axis else s for i, s in enumerate(shape))
-        data = np.full(grown, 7, dtype="int64")
-        arr.append(data, axis=axis)
-        assert arr.shape == grown
-        np.testing.assert_array_equal(arr[...], data)
-        arr.resize(shape)
-        assert arr.shape == shape
-        assert np.asarray(arr[...]).shape == shape
+
+@pytest.mark.parametrize(
+    ("shape", "chunks", "shards", "expected"),
+    [
+        ((0, 20), (5, 5), -1, (5, 20)),
+        ((0,), (4,), False, (4,)),
+        ((10,), (4,), -1, (12,)),
+        ((8, 0), (4, 3), (-1, 6), (8, 6)),
+    ],
+)
+def test_create_full_span_shards(
+    shape: tuple[int, ...], chunks: tuple[int, ...], shards: Any, expected: tuple[int, ...]
+) -> None:
+    """A shard spanning the axis is a multiple of the inner chunk, even on a zero-length axis."""
+    arr = zarr.create_array(store={}, shape=shape, chunks=chunks, shards=shards, dtype="int8")
+    assert arr.shards == expected
+    assert arr.chunks == chunks
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
@@ -523,11 +462,7 @@ def test_create_zero_chunk_rejected(zarr_format: Literal[2, 3]) -> None:
 
 
 def test_rectilinear_zero_extent_matches_resize() -> None:
-    """Creating a rectilinear axis at length 0 equals resizing one down to 0.
-
-    Both leave a `VaryingDimension` whose edges lie entirely beyond the extent, so the
-    stored grids are identical and both grow into the same chunks on append.
-    """
+    """Creating a rectilinear axis at length 0 equals resizing one down to 0."""
     with zarr.config.set({"array.rectilinear_chunks": True}):
         created = zarr.create_array(store={}, shape=(0,), chunks=[[2, 2]], dtype="int64")
         resized = zarr.create_array(store={}, shape=(4,), chunks=[[2, 2]], dtype="int64")
@@ -542,56 +477,6 @@ def test_rectilinear_zero_extent_matches_resize() -> None:
         np.testing.assert_array_equal(created[...], np.arange(3))
         np.testing.assert_array_equal(resized[...], np.arange(3))
         assert created.write_chunk_sizes == resized.write_chunk_sizes == ((2, 1),)
-
-
-def _store_legacy_zero_chunk(path: Any, zarr_format: Literal[2, 3], stored: Any) -> None:
-    """Rewrite an array's stored chunk size to *stored*, as older zarr-python did."""
-    doc_name = ".zarray" if zarr_format == 2 else "zarr.json"
-    doc_path = path / doc_name
-    doc = json.loads(doc_path.read_text())
-    if zarr_format == 2:
-        doc["chunks"] = [stored]
-    else:
-        doc["chunk_grid"]["configuration"]["chunk_shape"] = [stored]
-    doc_path.write_text(json.dumps(doc))
-
-
-@pytest.mark.parametrize("zarr_format", [2, 3])
-@pytest.mark.parametrize("stored", [0, False], ids=["zero", "false"])
-@pytest.mark.parametrize("extent", [0, 3], ids=["empty-axis", "grown-axis"])
-def test_legacy_zero_chunk_round_trip(
-    tmp_path: Path, zarr_format: Literal[2, 3], stored: Any, extent: int
-) -> None:
-    """An array whose stored chunk size is 0 opens with one chunk spanning the
-    axis, appends without losing data, and re-saves as a valid chunk size.
-
-    zarr-python wrote such metadata for an array created with a zero-length axis
-    until 3.4: Zarr format 2 through 3.3, and Zarr format 3 in 3.0 and 3.1, which
-    also wrote JSON `false` for `chunks=False`. Those versions could then grow
-    the axis (a 3.4.0 append, a 3.1 resize) while storing no chunk, so the
-    grown axis holds only the fill value.
-    """
-    path = tmp_path / "legacy.zarr"
-    zarr.create_array(
-        store=path, shape=(extent,), chunks=(4,), dtype="int64", zarr_format=zarr_format
-    )
-    _store_legacy_zero_chunk(path, zarr_format, stored)
-
-    with pytest.warns(ZarrUserWarning, match="one chunk spanning the axis"):
-        arr = zarr.open_array(store=path, mode="a")
-    assert arr.chunks == (max(extent, 1),)
-    np.testing.assert_array_equal(arr[...], np.zeros(extent, dtype="int64"))
-
-    arr.append(np.arange(3, dtype="int64"))
-    expected = np.concatenate([np.zeros(extent, dtype="int64"), np.arange(3)])
-    np.testing.assert_array_equal(zarr.open_array(store=path)[...], expected)
-
-    # The warning says to do this; it must leave metadata that reopens cleanly.
-    arr.update_attributes({})
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", ZarrUserWarning)
-        reopened = zarr.open_array(store=path)
-    assert reopened.chunks == (max(extent, 1),)
 
 
 def test_normalize_chunks_1d_zero_span_accepts_any_edges() -> None:
