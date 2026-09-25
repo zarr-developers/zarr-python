@@ -1,18 +1,22 @@
 """A stateful test of one array's life: create, append, resize, write, reopen.
 
-The model is a NumPy array, not a second zarr array, so a bug in zarr's chunk
-grid logic cannot hide by being made on both sides. Zero-length axes are drawn
-on purpose, both at creation and by resizing and appending, and so are the
-stored chunk sizes of 0 that zarr-python wrote for empty arrays before 3.4.
+The model is a NumPy array of what the store holds, not a second zarr array, so a bug
+in zarr's chunk grid logic cannot hide by being made on both sides. Zero-length axes
+are drawn on purpose, both at creation and by resizing and appending, and so are
+stored chunk sizes of 0.
 
-`resize` deletes only the chunks that fall entirely outside the new shape, so
-cells cut off by a shrink can come back with their old values when the axis
-grows again. The model does not encode that chunk-level behaviour: a cell cut
-off and brought back is unknown until it is written.
+The model tracks cells beyond the array's shape too, because chunks do: a shrinking
+`resize` deletes exactly the chunks outside the new grid, a chunk it keeps keeps its
+cells beyond the new shape (and they come back if the array grows again), and a write
+that covers every in-bounds cell of an unsharded chunk rewrites the whole chunk,
+resetting its cells beyond the shape to the fill value. A sharded array rewrites a
+shard through its inner chunks, each judged against the shard rather than the array
+shape, so a write never resets cells beyond the shape.
 """
 
 from __future__ import annotations
 
+import itertools
 import json
 import warnings
 from typing import Any, Literal
@@ -21,30 +25,37 @@ import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
 import numpy as np
 import pytest
-from hypothesis import event, note, settings
+from hypothesis import event, note
 from hypothesis.stateful import (
     RuleBasedStateMachine,
     initialize,
     invariant,
+    precondition,
     rule,
 )
 
 import zarr
 from zarr.core.buffer import cpu, default_buffer_prototype
+from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.sync import sync
 from zarr.errors import ZarrUserWarning
 from zarr.storage import MemoryStore
 
-pytestmark = pytest.mark.filterwarnings(
-    "ignore::zarr.core.dtype.common.UnstableSpecificationWarning"
-)
+pytestmark = [
+    pytest.mark.slow_hypothesis,
+    pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning"),
+]
 
 DTYPE = np.dtype("int16")
 MAX_SIDE = 6
 
 
 def _rectilinear_dim(extent: int) -> st.SearchStrategy[int | list[int]]:
-    """A bare step, or an edge list covering `extent` (any edges for extent 0)."""
+    """A bare step, or an edge list covering `extent` (any edges for extent 0).
+
+    A small local copy of what `zarr.testing.strategies` draws for rectilinear
+    declarations, so this test does not depend on that module's experimental API.
+    """
     steps = st.integers(min_value=1, max_value=MAX_SIDE)
     if extent == 0:
         return steps | st.lists(steps, min_size=1, max_size=3)
@@ -64,39 +75,33 @@ class ArrayLifecycle(RuleBasedStateMachine):
         self._rectilinear.__enter__()
         self.store = MemoryStore()
         self.path = "a"
-        self.model: np.ndarray[Any, np.dtype[np.int16]] = np.zeros((0,), dtype=DTYPE)
-        # Cells whose value the model knows; see the module docstring.
-        self.known: np.ndarray[Any, np.dtype[np.bool_]] = np.ones((0,), dtype=bool)
-        # Every shape the array has had, to find cells a resize brings back.
-        self.past_shapes: list[tuple[int, ...]] = []
+        self.shape: tuple[int, ...] = (0,)
         self.fill = 0
-        # A legacy store warns until its metadata is re-saved.
+        # What the store holds, indexed like the array and extending past its shape.
+        self.stored: np.ndarray[Any, np.dtype[np.int16]] = np.zeros((0,), dtype=DTYPE)
+        # A store with an invalid stored chunk size warns until its metadata is re-saved.
         self.expect_open_warning = False
 
     # -------------------------------------------------------------- creation
     @initialize(data=st.data())
     def create(self, data: st.DataObject) -> None:
-        zarr_format: Literal[2, 3] = data.draw(st.sampled_from([2, 3]), label="zarr_format")
+        zarr_format: Literal[2, 3] = data.draw(st.sampled_from([3, 2]), label="zarr_format")
         shape = data.draw(
             npst.array_shapes(min_dims=1, max_dims=3, min_side=0, max_side=MAX_SIDE),
             label="shape",
         )
         self.fill = data.draw(st.integers(-3, 3), label="fill_value")
         # sampled_from favours early entries; the less common spellings go first.
-        spellings = ["ints", "legacy-zero", "-1", "False", "auto"]
+        spellings = ["ints", "-1", "False", "auto"]
         if zarr_format == 3:
-            spellings.insert(1, "rectilinear")
+            spellings[:0] = ["sharded", "rectilinear"]
         spelling = data.draw(st.sampled_from(spellings), label="chunk spelling")
         event(f"chunks: {spelling}")
-        if any(s == 0 for s in shape):
-            event("created with a zero-length axis")
 
         chunks: Any
         shards: Any = None
-        if spelling == "-1":
-            chunks = -1
-        elif spelling == "False":
-            chunks = False
+        if spelling in ("-1", "False"):
+            chunks = {"-1": -1, "False": False}[spelling]
         elif spelling == "auto":
             chunks = "auto"
         elif spelling == "rectilinear":
@@ -104,14 +109,9 @@ class ArrayLifecycle(RuleBasedStateMachine):
             if not any(isinstance(c, list) for c in chunks):
                 chunks[0] = [chunks[0]] if shape[0] == 0 else [shape[0]]
         else:
-            chunks = tuple(data.draw(st.integers(1, 4)) for _ in shape)
-            if (
-                spelling == "ints"
-                and zarr_format == 3
-                and data.draw(st.booleans(), label="sharded")
-            ):
-                shards = tuple(c * data.draw(st.integers(1, 2)) for c in chunks)
-                event("sharded")
+            chunks = tuple(data.draw(st.integers(1, 3)) for _ in shape)
+            if spelling == "sharded":
+                shards = tuple(c * data.draw(st.integers(1, 3)) for c in chunks)
         note(f"create {shape=} {chunks=} {shards=} {zarr_format=} fill={self.fill}")
         zarr.create_array(
             self.store,
@@ -123,14 +123,13 @@ class ArrayLifecycle(RuleBasedStateMachine):
             fill_value=self.fill,
             zarr_format=zarr_format,
         )
-        self.model = np.full(shape, self.fill, dtype=DTYPE)
-        self.known = np.ones(shape, dtype=bool)
-        self.past_shapes = [shape]
+        self.shape = shape
+        self.stored = np.full(shape, self.fill, dtype=DTYPE)
 
-        if spelling == "legacy-zero":
-            # What zarr-python wrote before 3.4 for an array created with a
-            # zero-length axis and one chunk spanning it; older releases could
-            # grow that axis without storing a chunk, so any extent is possible.
+        if spelling != "rectilinear" and data.draw(st.booleans(), label="legacy zero"):
+            # A stored chunk size of 0, as zarr-python wrote for arrays created with a
+            # zero-length axis; older releases could then grow the axis without storing
+            # a chunk, so any extent is possible. Sharded arrays store it in the outer grid.
             zero_axes = data.draw(
                 st.lists(st.integers(0, len(shape) - 1), min_size=1, unique=True),
                 label="axes stored with chunk size 0",
@@ -138,8 +137,7 @@ class ArrayLifecycle(RuleBasedStateMachine):
             stored_zero = data.draw(st.sampled_from([0, False]), label="stored zero")
             self._rewrite_stored_chunks(zarr_format, zero_axes, stored_zero)
             self.expect_open_warning = True
-            if any(shape[i] > 0 for i in zero_axes):
-                event("legacy zero chunk on a grown axis")
+            event("legacy zero chunk size")
 
     def _rewrite_stored_chunks(
         self, zarr_format: Literal[2, 3], axes: list[int], value: Any
@@ -163,26 +161,68 @@ class ArrayLifecycle(RuleBasedStateMachine):
         assert warned is self.expect_open_warning, [str(w.message) for w in record]
         return arr
 
+    # ----------------------------------------------------------------- model
+    def _cover(self, shape: tuple[int, ...]) -> None:
+        """Grow `stored` with the fill value so that it covers `shape`."""
+        pad = [(0, max(0, n - s)) for n, s in zip(shape, self.stored.shape, strict=True)]
+        if any(after for _, after in pad):
+            self.stored = np.pad(self.stored, pad, constant_values=self.fill)
+
+    def _model_resize(self, grid: ChunkGrid, new_shape: tuple[int, ...]) -> None:
+        """Delete exactly the chunks of `grid` outside the grid for `new_shape`."""
+        kept = []
+        for dim, old, new in zip(grid.dimensions, self.shape, new_shape, strict=True):
+            if new >= old:
+                kept.append(slice(None))
+            elif new == 0:
+                kept.append(slice(0, 0))
+            else:
+                last = dim.index_to_chunk(new - 1)
+                kept.append(slice(0, dim.chunk_offset(last) + dim.chunk_size(last)))
+        stored = np.full_like(self.stored, self.fill)
+        stored[tuple(kept)] = self.stored[tuple(kept)]
+        self.stored = stored
+        self.shape = new_shape
+        self._cover(new_shape)
+
+    def _model_write(self, arr: zarr.Array[Any], region: tuple[slice, ...], values: Any) -> None:
+        """Write `values`; an unsharded chunk whose in-bounds cells are all written is
+        rewritten whole."""
+        grid = ChunkGrid.from_metadata(arr.metadata)
+        if arr.shards is None and all(r.stop > r.start for r in region):
+            # Per axis, each chunk the region touches: (start, stop, all in-bounds cells written).
+            per_axis: list[list[tuple[int, int, bool]]] = []
+            for dim, r, extent in zip(grid.dimensions, region, self.shape, strict=True):
+                spans = []
+                for c in range(dim.index_to_chunk(r.start), dim.index_to_chunk(r.stop - 1) + 1):
+                    lo = dim.chunk_offset(c)
+                    hi = lo + dim.chunk_size(c)
+                    spans.append((lo, hi, r.start <= lo and r.stop >= min(hi, extent)))
+                per_axis.append(spans)
+            self._cover(tuple(max(hi for _, hi, _ in axis) for axis in per_axis))
+            for combo in itertools.product(*per_axis):
+                if all(complete for *_, complete in combo):
+                    self.stored[tuple(slice(lo, hi) for lo, hi, _ in combo)] = self.fill
+        self.stored[region] = values
+
     # ----------------------------------------------------------------- rules
     @rule(data=st.data())
     def append(self, data: st.DataObject) -> None:
         arr = self._open()
-        axis = data.draw(st.integers(0, self.model.ndim - 1), label="axis")
-        block_shape = list(self.model.shape)
+        axis = data.draw(st.integers(0, len(self.shape) - 1), label="axis")
+        block_shape = list(self.shape)
         block_shape[axis] = data.draw(st.integers(0, 4), label="rows")
         block = data.draw(npst.arrays(DTYPE, tuple(block_shape)), label="block")
-        note(f"append {block.shape} along {axis} to {self.model.shape}")
-        if self.model.shape[axis] == 0:
+        note(f"append {block.shape} along {axis} to {self.shape}")
+        if self.shape[axis] == 0 and block.shape[axis]:
             event("append to a zero-length axis")
+        old_extent = self.shape[axis]
         arr.append(block, axis=axis)
-        self._reshape_model(arr.shape)
-        tail = tuple(
-            slice(-block.shape[axis], None) if i == axis and block.shape[axis] else slice(None)
-            for i in range(self.model.ndim)
+        self._model_resize(ChunkGrid.from_metadata(arr.metadata), arr.shape)
+        region = tuple(
+            slice(old_extent, s) if i == axis else slice(0, s) for i, s in enumerate(arr.shape)
         )
-        if block.shape[axis]:
-            self.model[tail] = block
-            self.known[tail] = True
+        self._model_write(arr, region, block)
         # Growing the array rewrites its metadata, which stores any correction.
         self.expect_open_warning = False
 
@@ -190,49 +230,31 @@ class ArrayLifecycle(RuleBasedStateMachine):
     def resize(self, data: st.DataObject) -> None:
         arr = self._open()
         new_shape = data.draw(
-            st.tuples(*(st.integers(0, MAX_SIDE) for _ in self.model.shape)), label="new shape"
+            st.tuples(*(st.integers(0, MAX_SIDE) for _ in self.shape)), label="new shape"
         )
-        note(f"resize {self.model.shape} -> {new_shape}")
-        if any(o == 0 and n > 0 for o, n in zip(self.model.shape, new_shape, strict=True)):
-            event("resize grows a zero-length axis")
+        note(f"resize {self.shape} -> {new_shape}")
+        grid = ChunkGrid.from_metadata(arr.metadata)
         arr.resize(new_shape)
-        self._reshape_model(new_shape)
+        self._model_resize(grid, new_shape)
         self.expect_open_warning = False
-
-    def _reshape_model(self, new_shape: tuple[int, ...]) -> None:
-        """Resize the model: kept cells keep their values, new cells hold the fill
-        value, and cells that an earlier shape held but the current one cut off
-        become unknown."""
-        overlap = tuple(
-            slice(0, min(o, n)) for o, n in zip(self.model.shape, new_shape, strict=True)
-        )
-        model = np.full(new_shape, self.fill, dtype=DTYPE)
-        known = np.ones(new_shape, dtype=bool)
-        for past in self.past_shapes:
-            known[tuple(slice(0, min(p, n)) for p, n in zip(past, new_shape, strict=True))] = False
-        model[overlap] = self.model[overlap]
-        known[overlap] = self.known[overlap]
-        if not known.all():
-            event("resize brings back cells cut off earlier")
-        self.model, self.known = model, known
-        self.past_shapes.append(tuple(new_shape))
 
     @rule(data=st.data())
     def write(self, data: st.DataObject) -> None:
         arr = self._open()
         region = tuple(
             slice(*sorted(data.draw(st.tuples(st.integers(0, s), st.integers(0, s)))))
-            for s in self.model.shape
+            for s in self.shape
         )
-        values = data.draw(npst.arrays(DTYPE, self.model[region].shape), label="values")
+        shape = tuple(r.stop - r.start for r in region)
+        values = data.draw(npst.arrays(DTYPE, shape), label="values")
         note(f"write {region}")
         arr[region] = values
-        self.model[region] = values
-        self.known[region] = True
+        self._model_write(arr, region, values)
 
+    @precondition(lambda self: self.expect_open_warning)
     @rule()
     def resave_metadata(self) -> None:
-        """What the legacy warning tells users to do."""
+        """What the warning for an invalid stored chunk size tells users to do."""
         self._open().update_attributes({})
         self.expect_open_warning = False
 
@@ -243,10 +265,9 @@ class ArrayLifecycle(RuleBasedStateMachine):
     @invariant()
     def matches_model(self) -> None:
         arr = self._open()
-        assert arr.shape == self.model.shape
-        actual = np.asarray(arr[...])
-        np.testing.assert_array_equal(actual[self.known], self.model[self.known])
+        assert arr.shape == self.shape
+        expected = self.stored[tuple(slice(0, s) for s in self.shape)]
+        np.testing.assert_array_equal(np.asarray(arr[...]), expected)
 
 
-ArrayLifecycle.TestCase.settings = settings(max_examples=200, stateful_step_count=12, deadline=None)
 TestArrayLifecycle = ArrayLifecycle.TestCase
