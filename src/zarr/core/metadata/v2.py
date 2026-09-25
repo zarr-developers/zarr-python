@@ -91,7 +91,7 @@ class ArrayV2Metadata(Metadata):
         chunks_parsed = parse_stored_regular_chunk_shape(
             parse_shapelike(chunks),
             shape_parsed,
-            legacy_writers="zarr-python 2.x, and by 3.x before 3.4",
+            legacy_writers="zarr 2.x, and by 3.x before 3.4",
         )
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
@@ -113,8 +113,6 @@ class ArrayV2Metadata(Metadata):
         object.__setattr__(self, "filters", filters_parsed)
         object.__setattr__(self, "fill_value", fill_value_parsed)
         object.__setattr__(self, "attributes", attributes_parsed)
-
-        # ensure that the metadata document is consistent
 
     @property
     def ndim(self) -> int:
