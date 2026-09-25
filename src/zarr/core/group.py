@@ -1275,8 +1275,13 @@ class AsyncGroup:
                 if not np.can_cast(ds.dtype, dtype):
                     raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
         except KeyError:
-            ds = await self.create_array(name, shape=shape, dtype=dtype, **kwargs)
+            return await self.create_array(name, shape=shape, dtype=dtype, **kwargs)
 
+        # `config` is the runtime configuration of the returned array, not stored metadata,
+        # so it applies to an existing array too.
+        config = kwargs.get("config")
+        if config is not None:
+            return ds.with_config(config)
         return ds
 
     async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
