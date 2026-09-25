@@ -3,7 +3,6 @@ from __future__ import annotations
 import bisect
 import itertools
 import math
-import numbers
 import operator
 import warnings
 from dataclasses import dataclass, field
@@ -14,6 +13,7 @@ from typing import (
     Literal,
     NamedTuple,
     Protocol,
+    SupportsIndex,
     runtime_checkable,
 )
 
@@ -331,6 +331,23 @@ def _is_keep(spec: object) -> TypeIs[Literal["keep"]]:
     See `_is_auto` for why this is not a bare ``==`` comparison.
     """
     return isinstance(spec, str) and spec == "keep"
+
+
+def _chunk_int(value: object) -> int | None:
+    """Return `value` as an `int` if it is an integer chunk size, else `None`.
+
+    This is the chunk normalizer's one integer test. An integer is anything
+    Python's integer protocol (`__index__`) accepts: `int`, numpy integer
+    scalars and 0-d integer arrays. `bool` is a flag, not a size, so it is not
+    an integer here; floats and arrays with dimensions are not integers either.
+    """
+    if isinstance(value, bool) or not isinstance(value, SupportsIndex):
+        return None
+    try:
+        return operator.index(value)
+    except TypeError:
+        # numpy arrays define `__index__` but only 0-d integer arrays honour it.
+        return None
 
 
 def is_regular_1d(dim_chunks: Sequence[int]) -> bool:
@@ -727,14 +744,8 @@ def normalize_chunks_1d(chunks: int | Iterable[object], span: int) -> DimensionG
     which would change how the dimension grows on resize. For scalar sizes
     the last chunk may overhang the span.
     """
-    # `numbers.Integral` rather than `int` so that numpy integer scalars (which are not
-    # `int` subclasses) take the uniform-chunk path instead of being treated as a sequence.
-    # The `-1` sentinel check lives inside this branch so that numpy-array chunk
-    # specifications never hit an ambiguous-truth-value error on `chunks == -1`.
-    if isinstance(chunks, np.ndarray) and chunks.ndim == 0:
-        chunks = chunks[()]
-    if isinstance(chunks, numbers.Integral):
-        chunk_size = int(chunks)
+    chunk_size = _chunk_int(chunks)
+    if chunk_size is not None:
         if chunk_size < -1 or chunk_size == 0:
             raise ValueError(f"Chunk size must be positive or -1, got {chunk_size}")
         if chunk_size == -1:
@@ -752,8 +763,11 @@ def normalize_chunks_1d(chunks: int | Iterable[object], span: int) -> DimensionG
             ) from None
         if not chunk_list:
             raise ValueError("Chunk specification must not be empty")
+        as_ints = [_chunk_int(c) for c in chunk_list]
         non_int = [
-            (idx, c) for idx, c in enumerate(chunk_list) if not isinstance(c, numbers.Integral)
+            (idx, c)
+            for idx, (c, i) in enumerate(zip(chunk_list, as_ints, strict=True))
+            if i is None
         ]
         if non_int:
             non_int_idxs, non_int_vals = [*zip(*non_int, strict=False)]
@@ -762,7 +776,7 @@ def normalize_chunks_1d(chunks: int | Iterable[object], span: int) -> DimensionG
                 f"at indices {non_int_idxs!r}. Chunk sizes must be declared as a flat sequence of "
                 f"positive integers (e.g. [3, 3, 1])."
             )
-        ints: list[int] = [int(c) for c in chunk_list]  # type: ignore[call-overload]
+        ints = [i for i in as_ints if i is not None]
         if any(c <= 0 for c in ints):
             raise ValueError(f"All chunk sizes must be positive, got {ints}")
         if sum(ints) != span:
@@ -810,22 +824,21 @@ def normalize_chunks_nd(
     if chunks is False:
         chunks = -1
 
-    # handle 1D convenience form. bool is excluded above so this only catches actual ints.
-    if isinstance(chunks, np.ndarray) and chunks.ndim == 0:
-        chunks = chunks[()]
-    if isinstance(chunks, numbers.Integral):
-        chunks = tuple(int(chunks) for _ in shape)
+    # handle 1D convenience form: one integer applies to every dimension.
+    chunk_size = _chunk_int(chunks)
+    if chunk_size is not None:
+        chunks = (chunk_size,) * len(shape)
 
-    if not hasattr(chunks, "__len__"):
+    try:
+        ndim = len(chunks)
+    except TypeError:
         raise TypeError(
             f"Chunk specification must be an integer or an iterable of integers; got "
             f"{chunks!r} of type {type(chunks).__name__}."
-        )
+        ) from None
     # handle bad dimensionality
-    if len(chunks) != len(shape):
-        raise ValueError(
-            f"chunks has {len(chunks)} dimensions but shape has {len(shape)} dimensions"
-        )
+    if ndim != len(shape):
+        raise ValueError(f"chunks has {ndim} dimensions but shape has {len(shape)} dimensions")
 
     return ChunkGrid(
         dimensions=tuple(normalize_chunks_1d(c, span=s) for c, s in zip(chunks, shape, strict=True))

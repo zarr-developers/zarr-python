@@ -103,6 +103,9 @@ def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
         ((1, 3, np.int64(16), np.int64(16)), (1, 3, 32, 32), (1, 3, 16, 16)),
         ((np.int32(30), np.int64(-1)), (100, 20), (30, 20)),
         (np.array([10, 10]), (100, 100), (10, 10)),
+        # 0-d integer arrays are integers, as the scalar form and per dimension
+        (np.array(10), (100, 100), (10, 10)),
+        ((np.array(5), np.int64(-1)), (10, 6), (5, 6)),
         # rectilinear chunks given as numpy arrays
         ((np.array([60, 40]), np.array([50, 50])), (100, 100), ((60, 40), (50, 50))),
     ],
@@ -197,6 +200,13 @@ def test_chunk_layout_nested() -> None:
             msg="must be an integer or an iterable of integers; got 2.5 of type float",
             escape=True,
         ),
+        # bool is a flag, not a chunk size.
+        ExpectFail(
+            input=(True, 100),
+            exception=TypeError,
+            id="bool-scalar",
+            msg="got True of type bool",
+        ),
         ExpectFail(
             input=([10, -1, 10], 100),
             exception=ValueError,
@@ -261,6 +271,13 @@ def test_normalize_chunks_1d_errors(case: ExpectFail[tuple[Any, int]]) -> None:
             msg="True is not a valid chunk input",
         ),
         ExpectFail(input=("foo", (100,)), exception=ValueError, id="string", msg="dimensions"),
+        # A 0-d array is an integer only if its dtype is.
+        ExpectFail(
+            input=(np.array(2.0), (100,)),
+            exception=TypeError,
+            id="0-d-float-array",
+            msg="must be an integer or an iterable of integers",
+        ),
         ExpectFail(
             input=((100, 10), (100,)), exception=ValueError, id="too-many-dims", msg="dimensions"
         ),
