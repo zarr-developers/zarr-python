@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.29.0", "hatch-vcs"]
+requires = ["hatchling>=1.29.0", "hatch-vcs", "setuptools-scm>=9"]
 build-backend = "hatchling.build"
 
 # An allowlist, not a blocklist: anything new — a subpackage under `packages/`, a
@@ -179,7 +179,7 @@ version.source = "vcs"
 # including the `zarr_metadata-v*` and `zarr_http_server-v*` tags used to
 # release the subpackages under `packages/` — which would make a from-source
 # build report e.g. a `0.2.x` version instead of `3.x`.
-version.raw-options = { git_describe_command = "git describe --dirty --tags --long --match v*" }
+version.raw-options = { scm = { git = { describe_command = "git describe --dirty --tags --long --match v*" } } }
 
 [tool.hatch.build]
 hooks.vcs.version-file = "src/zarr/_version.py"
