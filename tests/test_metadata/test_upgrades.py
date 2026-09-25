@@ -17,7 +17,7 @@ from zarr.core.metadata.upgrades import (
     V3_ARRAY_UPGRADES,
     upgrade_array_document,
 )
-from zarr.core.metadata.v3 import RegularChunkGridMetadata
+from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
 from zarr.dtype import Int16
 from zarr.errors import ZarrUserWarning
 
@@ -307,3 +307,124 @@ def test_legacy_chunk_size_consolidated(tmp_path: Path, zarr_format: Literal[2, 
             reopened = zarr.open_group(path, mode="r", use_consolidated=use_consolidated)["a"]
             assert isinstance(reopened, zarr.Array)
             assert reopened.chunks == (1,)
+
+
+# A document copied verbatim from a store that zarr 3.2.1 wrote for
+# `create_array(shape=(6, 20), chunks=(2, (5, 10, 5)), dtype="float32")`.
+MIXED_REGULAR_GRID_DOC = """{
+  "shape": [6, 20],
+  "data_type": "float32",
+  "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [2, [5, 10, 5]]}},
+  "chunk_key_encoding": {"name": "default", "configuration": {"separator": "/"}},
+  "fill_value": 0.0,
+  "codecs": [
+    {"name": "bytes", "configuration": {"endian": "little"}},
+    {"name": "zstd", "configuration": {"level": 0, "checksum": false}}
+  ],
+  "attributes": {},
+  "zarr_format": 3,
+  "node_type": "array",
+  "storage_transformers": []
+}"""
+
+
+def _mixed_doc(shape: list[int], chunk_shape: list[Any]) -> dict[str, JSON]:
+    doc: dict[str, JSON] = json.loads(MIXED_REGULAR_GRID_DOC)
+    doc["shape"] = shape
+    doc["chunk_grid"] = {"name": "regular", "configuration": {"chunk_shape": chunk_shape}}
+    return doc
+
+
+@pytest.mark.parametrize(
+    ("doc", "expected", "axes"),
+    [
+        (json.loads(MIXED_REGULAR_GRID_DOC), (2, (5, 10, 5)), [1]),
+        (_mixed_doc([6, 20, 4], [2, [5, 10, 5], [1, 3]]), (2, (5, 10, 5), (1, 3)), [1, 2]),
+        (_mixed_doc([6, 20], [[1, 5], [5, 10, 5]]), ((1, 5), (5, 10, 5)), [0, 1]),
+        (_mixed_doc([6, 12], [2, [5, 10, 5]]), (2, (5, 10, 5)), [1]),
+        (_mixed_doc([0, 20], [2, [5, 10, 5]]), (2, (5, 10, 5)), [1]),
+        (_mixed_doc([6, 0], [2, [5, 10, 5]]), (2, (5, 10, 5)), [1]),
+        (_mixed_doc([4, 10_000], [2, [10] * 1000]), (2, (10,) * 1000), [1]),
+    ],
+    ids=["written", "3d", "every-axis", "shrunk", "empty-regular-axis", "empty-edge-axis", "long"],
+)
+def test_read_edge_lists_in_regular_grid(
+    doc: dict[str, JSON], expected: tuple[int | tuple[int, ...], ...], axes: list[int]
+) -> None:
+    """A `regular` chunk grid whose `chunk_shape` lists chunk edges is read as the
+    rectilinear grid it describes, without the rectilinear chunks flag, with one
+    warning that names the axes, quotes at most a bounded part of the chunk shape and
+    says how to re-save."""
+    with (
+        zarr.config.set({"array.rectilinear_chunks": False}),
+        warnings.catch_warnings(record=True) as record,
+    ):
+        warnings.simplefilter("always")
+        metadata = ArrayV3Metadata.from_dict(doc)
+    assert metadata.chunk_grid == RectilinearChunkGridMetadata(chunk_shapes=expected)
+    [message] = [str(w.message) for w in record]
+    assert f"lists chunk edge lengths on axes {axes}" in message
+    assert "array.rectilinear_chunks" in message
+    assert "update_attributes({})" in message
+    assert len(message) < 1000
+
+
+def test_edge_lists_in_regular_grid_rle_rejected() -> None:
+    """Run-length encoded edges were never written inside a `regular` chunk_shape, so
+    such a document is not read as rectilinear."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ZarrUserWarning)
+        with pytest.raises(TypeError, match="Dimension 1: a regular chunk grid requires"):
+            ArrayV3Metadata.from_dict(_mixed_doc([6, 20], [2, [[5, 2], 10]]))
+
+
+@pytest.mark.parametrize("edges", [[10.0, 10.0], [True, True]], ids=["float", "bool"])
+def test_edge_lists_in_regular_grid_non_integer_edges_rejected(edges: list[Any]) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ZarrUserWarning)
+        with pytest.raises(TypeError, match="Dimension 1: a regular chunk grid requires"):
+            ArrayV3Metadata.from_dict(_mixed_doc([6, 20], [2, edges]))
+
+
+def test_edge_lists_in_regular_grid_nonpositive_edge_rejected() -> None:
+    """The upgraded grid is validated before any warning, so the real error surfaces."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ZarrUserWarning)
+        with pytest.raises(ValueError, match="must be >= 1, got 0"):
+            ArrayV3Metadata.from_dict(_mixed_doc([6, 20], [2, [0, 20]]))
+
+
+def test_edge_lists_in_regular_grid_short_edges_rejected() -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ZarrUserWarning)
+        with pytest.raises(ValueError, match="sum to 15 but array shape extent is 20"):
+            ArrayV3Metadata.from_dict(_mixed_doc([6, 20], [2, [5, 10]]))
+
+
+def test_edge_lists_in_regular_grid_round_trip(tmp_path: Path) -> None:
+    """A store holding the verbatim document opens without the rectilinear chunks flag,
+    reads its data, re-saves as rectilinear with the flag, and then opens cleanly."""
+    path = tmp_path / "mixed.zarr"
+    data = np.arange(120, dtype="float32").reshape(6, 20)
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        arr = zarr.create_array(path, shape=data.shape, chunks=(2, (5, 10, 5)), dtype="float32")
+    arr[...] = data
+    (path / "zarr.json").write_text(MIXED_REGULAR_GRID_DOC)
+
+    with (
+        zarr.config.set({"array.rectilinear_chunks": False}),
+        pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"),
+    ):
+        arr = zarr.open_array(path, mode="a")
+    np.testing.assert_array_equal(arr[...], data)
+
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        arr.update_attributes({})
+        assert json.loads((path / "zarr.json").read_text())["chunk_grid"] == {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": [2, [5, 10, 5]]},
+        }
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", ZarrUserWarning)
+            reopened = zarr.open_array(path)
+    np.testing.assert_array_equal(reopened[...], data)

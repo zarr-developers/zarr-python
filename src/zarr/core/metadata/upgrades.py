@@ -136,8 +136,61 @@ def _invalid_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, str] | N
     }, reading
 
 
+def _abbreviate(value: JSON, limit: int = 60) -> str:
+    """`value` as JSON, cut to at most `limit` characters."""
+    text = json.dumps(value)
+    return text if len(text) <= limit else f"{text[: limit - 3]}..."
+
+
+def _is_json_int(value: object) -> TypeIs[int]:
+    """Whether `value` is a JSON integer (not `true` or `false`)."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_edge_list(value: object) -> TypeIs[list[int]]:
+    """Whether `value` is a JSON array of integers (not `true` or `false`)."""
+    return isinstance(value, list) and all(_is_json_int(edge) for edge in value)
+
+
+def _edge_lists_in_regular_grid(doc: ArrayDocument) -> tuple[ArrayDocument, str] | None:
+    """Read a `regular` chunk grid whose `chunk_shape` lists chunk edges as rectilinear.
+
+    Such a `chunk_shape` holds, per axis, an integer chunk size or a flat list of
+    integer chunk edge lengths, e.g. `[2, [5, 10, 5]]`. That is the `chunk_shapes` of
+    the rectilinear chunk grid it describes. Any other `chunk_shape` is left for the
+    metadata constructors to reject.
+    """
+    grid = doc.get("chunk_grid")
+    if not isinstance(grid, Mapping) or grid.get("name") != "regular":
+        return None
+    configuration = grid.get("configuration")
+    if not isinstance(configuration, Mapping):
+        return None
+    chunk_shape = configuration.get("chunk_shape")
+    if not isinstance(chunk_shape, list):
+        return None
+    edge_axes = [axis for axis, dim in enumerate(chunk_shape) if isinstance(dim, list)]
+    if not edge_axes or not all(_is_json_int(dim) or _is_edge_list(dim) for dim in chunk_shape):
+        return None
+    reading = (
+        f"The stored chunk grid is named 'regular', but its chunk_shape "
+        f"{_abbreviate(chunk_shape)} lists chunk edge lengths on axes {edge_axes}, which "
+        "only a rectilinear chunk grid can declare. It is read as that rectilinear chunk "
+        "grid. Storing or reading a rectilinear chunk grid requires "
+        "`zarr.config.set({'array.rectilinear_chunks': True})`."
+    )
+    rectilinear: JSON = {
+        "name": "rectilinear",
+        "configuration": {"kind": "inline", "chunk_shapes": chunk_shape},
+    }
+    return {**doc, "chunk_grid": rectilinear}, reading
+
+
 V2_ARRAY_UPGRADES: Final[tuple[Upgrade, ...]] = (_invalid_chunk_sizes_v2,)
-V3_ARRAY_UPGRADES: Final[tuple[Upgrade, ...]] = (_invalid_chunk_sizes_v3,)
+V3_ARRAY_UPGRADES: Final[tuple[Upgrade, ...]] = (
+    _invalid_chunk_sizes_v3,
+    _edge_lists_in_regular_grid,
+)
 
 
 def upgrade_array_document(

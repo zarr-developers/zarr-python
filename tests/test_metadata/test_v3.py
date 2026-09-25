@@ -8,10 +8,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-import zarr
 from tests.conftest import Expect, ExpectFail
 from tests.test_metadata.conftest import minimal_metadata_dict_v3
-from zarr.core.buffer import cpu, default_buffer_prototype
+from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_grids import ChunkGrid, is_regular_1d, is_regular_nd
 from zarr.core.config import config
 from zarr.core.dtype import Float64, UInt8
@@ -37,7 +36,7 @@ from zarr.errors import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable
     from typing import Any
 
 
@@ -227,104 +226,6 @@ def test_regular_chunk_grid_rejects_edge_lists() -> None:
     """A regular chunk grid only accepts integer chunk edge lengths."""
     with pytest.raises(TypeError, match="Dimension 1: a regular chunk grid requires an integer"):
         RegularChunkGridMetadata(chunk_shape=(2, (5, 10, 5)))  # type: ignore[arg-type]
-
-
-# ---------------------------------------------------------------------------
-# "regular" chunk grids whose chunk_shape contains edge lists
-#
-# zarr 3.2.0 and 3.2.1 wrote mixed specs such as (2, (5, 10, 5)) this way
-# (https://github.com/zarr-developers/zarr-python/issues/4374). The reader
-# accepts any such grid, not only the shapes 3.2.x could produce.
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "case",
-    [
-        Expect(
-            input=((6, 20), [2, [5, 10, 5]]),
-            output=(2, (5, 10, 5)),
-            id="edges_in_last_dim",
-        ),
-        Expect(
-            input=((6, 20, 4), [2, [5, 10, 5], 4]),
-            output=(2, (5, 10, 5), 4),
-            id="edges_in_middle_dim",
-        ),
-        Expect(
-            input=((6, 20), [[1, 5], [5, 10, 5]]),
-            output=((1, 5), (5, 10, 5)),
-            id="edges_in_every_dim",
-        ),
-        Expect(
-            input=((6, 20), [2, [[5, 2], 10]]),
-            output=(2, (5, 5, 10)),
-            id="run_length_encoded_edges",
-        ),
-        Expect(
-            input=((6, 20), (2, (5, 10, 5))),
-            output=(2, (5, 10, 5)),
-            id="tuples_from_python",
-        ),
-        Expect(
-            input=((6, 20), [2, np.array([5, 10, 5])]),
-            output=(2, (5, 10, 5)),
-            id="numpy_array_edges",
-        ),
-    ],
-    ids=lambda case: case.id,
-)
-def test_read_mixed_regular_chunk_grid(
-    case: Expect[tuple[tuple[int, ...], Sequence[Any]], tuple[Any, ...]],
-) -> None:
-    """A "regular" chunk grid whose chunk_shape lists edges is read as rectilinear."""
-    shape, chunk_shape = case.input
-    d = minimal_metadata_dict_v3(
-        shape=shape,
-        chunk_grid={"name": "regular", "configuration": {"chunk_shape": chunk_shape}},
-    )
-    with config.set({"array.rectilinear_chunks": True}):
-        with pytest.warns(ZarrUserWarning, match="only a rectilinear chunk grid can declare"):
-            meta = ArrayV3Metadata.from_dict(d)  # type: ignore[arg-type]
-        assert meta.chunk_grid == RectilinearChunkGridMetadata(chunk_shapes=case.output)
-
-
-def test_read_mixed_regular_chunk_grid_requires_rectilinear_chunks() -> None:
-    """Reading a mixed "regular" chunk grid explains why rectilinear chunks must be enabled."""
-    d = minimal_metadata_dict_v3(
-        shape=(6, 20),
-        chunk_grid={"name": "regular", "configuration": {"chunk_shape": [2, [5, 10, 5]]}},
-    )
-    with (
-        config.set({"array.rectilinear_chunks": False}),
-        pytest.raises(ValueError, match="only a rectilinear chunk grid can declare"),
-    ):
-        ArrayV3Metadata.from_dict(d)  # type: ignore[arg-type]
-
-
-def test_open_array_with_mixed_regular_chunk_grid() -> None:
-    """An array stored with zarr 3.2.x's mixed chunk grid reads correctly and re-saves as rectilinear."""
-    data = np.arange(120, dtype="float32").reshape(6, 20)
-    store = zarr.storage.MemoryStore()
-    with config.set({"array.rectilinear_chunks": True}):
-        arr = zarr.create_array(store, shape=data.shape, chunks=(2, (5, 10, 5)), dtype=data.dtype)
-        arr[:] = data
-        # Rewrite the metadata the way zarr 3.2.0 and 3.2.1 stored it. The chunk
-        # layout is unchanged: 3.2.x wrote the chunks as a rectilinear grid.
-        doc = json.loads(store._store_dict["zarr.json"].to_bytes())
-        doc["chunk_grid"] = {"name": "regular", "configuration": {"chunk_shape": [2, [5, 10, 5]]}}
-        store._store_dict["zarr.json"] = cpu.Buffer.from_bytes(json.dumps(doc).encode())
-
-        with pytest.warns(ZarrUserWarning, match="only a rectilinear chunk grid can declare"):
-            arr = zarr.open_array(store)
-        np.testing.assert_array_equal(arr[:], data)
-
-        arr.update_attributes({})
-        doc = json.loads(store._store_dict["zarr.json"].to_bytes())
-        assert doc["chunk_grid"] == {
-            "name": "rectilinear",
-            "configuration": {"kind": "inline", "chunk_shapes": [2, [5, 10, 5]]},
-        }
 
 
 # ---------------------------------------------------------------------------
@@ -604,7 +505,6 @@ def test_group_metadata_to_dict(attributes: dict[str, Any] | None) -> None:
 def test_group_metadata_to_dict_consolidated(attributes: dict[str, Any] | None) -> None:
     """GroupMetadata.to_dict includes consolidated_metadata when present."""
     from zarr import consolidate_metadata, create_group
-    from zarr.errors import ZarrUserWarning
 
     store: dict[str, object] = {}
     group = create_group(store, attributes=attributes, zarr_format=3)
