@@ -199,12 +199,7 @@ def test_fixed_dimension_indices_to_chunks() -> None:
     ids=["negative-size", "zero-size", "zero-size-zero-extent", "negative-extent"],
 )
 def test_fixed_dimension_rejects_invalid(size: int, extent: int, match: str) -> None:
-    """FixedDimension raises ValueError for a size below 1 or a negative extent.
-
-    A chunk edge length of 0 is never valid, whatever the extent: the metadata layer
-    requires every chunk edge length to be >= 1, and the in-memory model enforces the
-    same invariant so the two can never disagree.
-    """
+    """FixedDimension raises ValueError for a size below 1 or a negative extent."""
     with pytest.raises(ValueError, match=match):
         FixedDimension(size=size, extent=extent)
 
@@ -1433,12 +1428,7 @@ def test_edge_case_chunk_grid_boundary_shape() -> None:
 
 @pytest.mark.parametrize("size", [1, 10], ids=["size-1", "size-10"])
 def test_fixed_dimension_zero_extent(size: int) -> None:
-    """A zero-length axis has zero chunks and behaves like an empty grid.
-
-    The extent may be 0 even though the chunk size may not: `ceildiv(0, size)` is 0,
-    so there is nothing to look up, and the vectorized index mapping of an empty index
-    array is empty.
-    """
+    """A zero-length axis has zero chunks and behaves like an empty grid."""
     d = FixedDimension(size=size, extent=0)
     assert d.nchunks == 0
     assert d.ngridcells == 0

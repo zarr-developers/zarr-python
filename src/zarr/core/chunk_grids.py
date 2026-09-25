@@ -895,10 +895,8 @@ def _guess_num_chunks_per_axis_shard(
     In other words the shard would be a (2,2,2) grid of (2,2,2) chunks
     i.e., prod(chunk_shape) * (returned_val ** len(chunk_shape)) * item_size = 256 bytes.
 
-    Degenerate inputs — a 0-dimensional chunk shape, or a zero-byte chunk (``item_size``
-    of 0; chunk edge lengths themselves are always at least 1) — return 1, as the
-    search loop's stopping conditions can never be met. A zero-length *array* axis
-    needs no special case: the array-bound check fails immediately for it.
+    Degenerate inputs — a 0-dimensional chunk shape, or a zero-byte chunk — return 1,
+    as the search loop's stopping conditions can never be met.
 
     Parameters
     ----------
