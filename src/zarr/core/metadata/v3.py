@@ -38,11 +38,8 @@ from zarr.core.config import config
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field
-from zarr.core.metadata.common import (
-    RESAVE_METADATA_HINT,
-    parse_attributes,
-    parse_stored_regular_chunk_shape,
-)
+from zarr.core.metadata.common import parse_attributes, parse_chunk_edge
+from zarr.core.metadata.upgrades import RESAVE_HINT, V3_ARRAY_UPGRADES, upgrade_array_document
 from zarr.errors import MetadataValidationError, NodeTypeValidationError, ZarrUserWarning
 from zarr.registry import get_codec_class
 
@@ -229,16 +226,18 @@ def _parse_chunk_shape(chunk_shape: Iterable[int]) -> tuple[int, ...]:
     let a rectilinear chunk shape be stored as a regular grid (gh-4374).
     """
     parsed: list[int] = []
-    for dim_idx, dim_spec in enumerate(chunk_shape):
+    for dim_idx, dim_spec in enumerate(cast("Iterable[object]", chunk_shape)):
         if not isinstance(dim_spec, int | np.integer):
             raise TypeError(
                 f"Dimension {dim_idx}: a regular chunk grid requires an integer chunk "
                 f"edge length, got {dim_spec!r}. Lists of chunk edge lengths belong "
                 "to a rectilinear chunk grid."
             )
-        if dim_spec < 1:
-            raise ValueError(f"Dimension {dim_idx}: chunk size must be >= 1, got {dim_spec}")
-        parsed.append(int(dim_spec))
+        parsed.append(
+            parse_chunk_edge(
+                int(dim_spec) if isinstance(dim_spec, np.integer) else dim_spec, dim_idx
+            )
+        )
     return tuple(parsed)
 
 
@@ -253,16 +252,12 @@ def _validate_chunk_shapes(
     result: list[int | tuple[int, ...]] = []
     for dim_idx, dim_spec in enumerate(chunk_shapes):
         if isinstance(dim_spec, int | np.integer):
-            if dim_spec < 1:
-                raise ValueError(
-                    f"Dimension {dim_idx}: integer chunk edge length must be >= 1, got {dim_spec}"
-                )
-            result.append(int(dim_spec))
+            result.append(parse_chunk_edge(int(dim_spec), dim_idx))
         else:
             edges = tuple(int(edge) for edge in dim_spec)
             if not edges:
                 raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
-            bad = [i for i, e in enumerate(edges) if e < 1]
+            bad = [i for i, e in enumerate(edges) if isinstance(e, bool) or e < 1]
             if bad:
                 raise ValueError(
                     f"Dimension {dim_idx} has invalid edge lengths at indices {bad}: "
@@ -486,7 +481,7 @@ def _parse_mixed_regular_chunk_grid(
             "zarr.config.set({'array.rectilinear_chunks': True})"
         )
     warnings.warn(
-        msg + f"Reading it as a rectilinear chunk grid. {RESAVE_METADATA_HINT}",
+        msg + f"Reading it as a rectilinear chunk grid. {RESAVE_HINT}",
         ZarrUserWarning,
         stacklevel=2,
     )
@@ -539,24 +534,11 @@ ARRAY_METADATA_KEYS: Final[set[str]] = {
 
 def _read_stored_regular_chunk_grid(
     chunk_grid: dict[str, JSON] | ChunkGridMetadata | NamedConfig[str, Any],
-    shape: tuple[int, ...],
 ) -> dict[str, JSON] | ChunkGridMetadata | NamedConfig[str, Any]:
-    """Read a stored `regular` chunk grid, including the invalid forms earlier releases wrote.
+    """Read a stored `regular` chunk grid whose `chunk_shape` lists chunk edges.
 
-    This is the one place a stored regular grid is checked against the array
-    shape and read under a compatibility policy; `parse_chunk_grid` accepts
-    only what the spec allows. It runs here because both policies need to see
-    the whole grid, and one of them needs the array shape, which chunk grid
-    metadata does not carry. Two invalid forms are read, each with a warning:
-
-    - A `chunk_shape` that lists chunk edges for some dimensions, such as
-      `[2, [5, 10, 5]]`, is read as the rectilinear grid it describes.
-    - An all-integer `chunk_shape` is handed to
-      `parse_stored_regular_chunk_shape`, which reads a chunk size of 0 (or
-      JSON `false`) as one chunk spanning the axis.
-
-    Any other grid is returned unchanged for `parse_chunk_grid`; other grids
-    define their own chunk semantics.
+    Such a grid, e.g. `[2, [5, 10, 5]]`, is read as the rectilinear grid it
+    describes. Any other grid is returned unchanged for `parse_chunk_grid`.
     """
     if not isinstance(chunk_grid, Mapping) or chunk_grid.get("name") != "regular":
         return chunk_grid
@@ -564,19 +546,12 @@ def _read_stored_regular_chunk_grid(
     if not isinstance(configuration, Mapping):
         return chunk_grid
     chunk_shape = configuration.get("chunk_shape")
-    # The outer check asks whether chunk_shape is an iterable at all, so a
-    # malformed scalar falls through to the regular parser's own error.
     if not declares_chunk_edges(chunk_shape):
         return chunk_grid
     dims = list(chunk_shape)
     if any(declares_chunk_edges(dim) for dim in dims):
         return _parse_mixed_regular_chunk_grid(dims)
-    if not all(isinstance(dim, int | np.integer) for dim in dims):
-        return chunk_grid
-    parsed = parse_stored_regular_chunk_shape(dims, shape)
-    corrected: dict[str, Any] = dict(chunk_grid)
-    corrected["configuration"] = {**configuration, "chunk_shape": list(parsed)}
-    return corrected
+    return chunk_grid
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -613,9 +588,7 @@ class ArrayV3Metadata(Metadata):
         """
 
         shape_parsed = parse_shapelike(shape)
-        chunk_grid_parsed = parse_chunk_grid(
-            _read_stored_regular_chunk_grid(chunk_grid, shape_parsed)
-        )
+        chunk_grid_parsed = parse_chunk_grid(_read_stored_regular_chunk_grid(chunk_grid))
         chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
         # Note: relying on a type method is numpy-specific
@@ -736,8 +709,8 @@ class ArrayV3Metadata(Metadata):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        # make a copy because we are modifying the dict
-        _data = data.copy()
+        # a new dict, because we are modifying it
+        _data = dict(upgrade_array_document(data, V3_ARRAY_UPGRADES))
 
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format(_data.pop("zarr_format"))

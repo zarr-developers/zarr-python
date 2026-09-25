@@ -217,7 +217,9 @@ def test_regular_chunk_grid_rejects_nonpositive_chunk_size(
     """A regular chunk size below 1 is rejected, naming the dimension, whether
     the grid is built directly or parsed from stored metadata."""
     dim = 0 if chunk_shape[0] < 1 else 1
-    with pytest.raises(ValueError, match=f"Dimension {dim}: chunk size must be >= 1"):
+    with pytest.raises(
+        ValueError, match=f"Dimension {dim}: chunk edge length must be an integer >= 1"
+    ):
         build(chunk_shape)
 
 
