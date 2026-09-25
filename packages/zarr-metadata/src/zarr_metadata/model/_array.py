@@ -51,7 +51,7 @@ class ZarrV3NamedConfig:
 
     Bare names and missing configurations normalize to an empty configuration.
     Bare names and missing `must_understand` members normalize to the spec's
-    implicit `True` value.
+    implicit `True` value (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1573).
     """
 
     name: str
@@ -61,10 +61,14 @@ class ZarrV3NamedConfig:
     def to_json(self) -> ZarrV3MetadataFieldJSON:
         if not self.configuration and self.must_understand:
             return self.name
-        out: ZarrV3NamedConfigJSON = {"name": self.name}
-        if self.configuration:
-            # to_json output shares no mutable state with the model.
-            out["configuration"] = copy.deepcopy(self.configuration)
+        # `configuration` is ReadOnly, so it is set in the literal rather than
+        # assigned afterwards. to_json output shares no mutable state with the
+        # model.
+        out: ZarrV3NamedConfigJSON = (
+            {"name": self.name, "configuration": copy.deepcopy(self.configuration)}
+            if self.configuration
+            else {"name": self.name}
+        )
         if not self.must_understand:
             out["must_understand"] = False
         return out
@@ -107,8 +111,8 @@ def must_understand_subset(
 ) -> dict[str, ZarrV3ExtensionField]:
     """The subset of `extra_fields` the reader is obligated to understand.
 
-    Per the v3 spec, an extension field is implicitly `must_understand: True`
-    unless it explicitly says otherwise, and an implementation MUST fail to
+    Per the v3 spec (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1578), an extension field is implicitly `must_understand:
+    True` unless it explicitly says otherwise, and an implementation MUST fail to
     open a group or array carrying fields it does not recognize that are not
     explicitly `must_understand: false`. A non-mapping field value cannot
     carry the explicit waiver, so it always requires understanding (the
@@ -310,7 +314,7 @@ class ZarrV3ArrayMetadata:
         """Extra fields the reader is obligated to understand.
 
         Everything in `extra_fields` not explicitly waived with
-        `must_understand: false` (the spec's implicit-true rule). A compliant
+        `must_understand: false` (the spec's implicit-true rule, https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1578). A compliant
         reader MUST fail to open the array if this contains any field it does
         not recognize; the model layer only partitions by obligation, since
         recognition is reader-specific.
@@ -428,7 +432,8 @@ class ZarrV2ArrayMetadata:
         `attributes` is included when set (even empty). This is not the
         on-disk `.zarray` content: a conforming `.zarray` must exclude
         `attributes` (they live in the sibling `.zattrs` file). Use
-        `to_key_value` to produce the spec-conforming split for storage.
+        `to_key_value` to produce the spec-conforming split for storage
+        (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L323-L330).
         """
         # to_json output shares no mutable state with the model: every value
         # that can hold a mutable container is deep-copied.
@@ -464,7 +469,7 @@ class ZarrV2ArrayMetadata:
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV2ArrayMetadata:
-        zarray_raw = cast("object", load_store_json(mapping, ZARR_V2_ARRAY_METADATA_STORE_KEY))
+        zarray_raw = load_store_json(mapping, ZARR_V2_ARRAY_METADATA_STORE_KEY)
         if not isinstance(zarray_raw, Mapping):
             return cls.from_json(zarray_raw)
         zarray = cast("Mapping[str, object]", zarray_raw)
@@ -479,7 +484,7 @@ class ZarrV2ArrayMetadata:
                 ]
             )
         if ZARR_V2_ATTRIBUTES_STORE_KEY in mapping:
-            zattrs = cast("object", load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY))
+            zattrs = load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY)
             return cls.from_json({**zarray, "attributes": zattrs})
         return cls.from_json(zarray)
 

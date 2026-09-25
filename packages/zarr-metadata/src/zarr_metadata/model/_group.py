@@ -168,7 +168,7 @@ class ZarrV3GroupMetadata:
         """Extra fields the reader is obligated to understand.
 
         Everything in `extra_fields` not explicitly waived with
-        `must_understand: false` (the spec's implicit-true rule). A compliant
+        `must_understand: false` (the spec's implicit-true rule, https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1578). A compliant
         reader MUST fail to open the group if this contains any field it does
         not recognize; the model layer only partitions by obligation, since
         recognition is reader-specific.
@@ -226,7 +226,7 @@ class ZarrV3ConsolidatedMetadata:
     def from_json(cls, data: object) -> ZarrV3ConsolidatedMetadata:
         normalized = arrays_to_tuples(data)
         problems = validate_consolidated_metadata_v3(normalized)
-        if problems:
+        if len(problems) != 0:
             raise MetadataValidationError(problems)
         env = cast("Mapping[str, object]", normalized)
         entries: dict[str, ZarrV3ArrayMetadata | ZarrV3GroupMetadata] = {}
@@ -299,7 +299,8 @@ class ZarrV2GroupMetadata:
         `attributes` is included when set (even empty). This is not the
         on-disk `.zgroup` content: a conforming `.zgroup` must exclude
         `attributes` (they live in the sibling `.zattrs` file). Use
-        `to_key_value` to produce the spec-conforming split for storage.
+        `to_key_value` to produce the spec-conforming split for storage
+        (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313; https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L323-L330).
         """
         # to_json output shares no mutable state with the model.
         out: ZarrV2GroupMetadataJSON = {"zarr_format": self.zarr_format}
@@ -314,7 +315,7 @@ class ZarrV2GroupMetadata:
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV2GroupMetadata:
-        zgroup_raw = cast("object", load_store_json(mapping, ZARR_V2_GROUP_METADATA_STORE_KEY))
+        zgroup_raw = load_store_json(mapping, ZARR_V2_GROUP_METADATA_STORE_KEY)
         if not isinstance(zgroup_raw, Mapping):
             return cls.from_json(zgroup_raw)
         zgroup = cast("Mapping[str, object]", zgroup_raw)
@@ -329,7 +330,7 @@ class ZarrV2GroupMetadata:
                 ]
             )
         if ZARR_V2_ATTRIBUTES_STORE_KEY in mapping:
-            zattrs = cast("object", load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY))
+            zattrs = load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY)
             return cls.from_json({**zgroup, "attributes": zattrs})
         return cls.from_json(zgroup)
 
@@ -416,7 +417,7 @@ class ZarrV2ConsolidatedMetadata:
                         )
                         for problem in validate_json(value)
                     )
-        if problems:
+        if len(problems) != 0:
             raise MetadataValidationError(problems)
         entries_tupled = cast(
             "dict[str, JSONValue]",

@@ -56,7 +56,7 @@ zarr_chunks = {
     for chunk_column in range(2)
 }
 zarr_source = RecordingChunkSource(zarr_chunks)
-zarr_view = LazyArray.from_numpy(zarr_image).with_parts((2, 2)).lazy[1, 0:4]
+zarr_view = LazyArray.from_numpy(zarr_image).with_parts((2, 2))[1, 0:4]
 ZARR_RESULT = np.empty(zarr_view.shape, dtype=zarr_image.dtype)
 shared_domains: list[tuple[IndexDomain, IndexDomain]] = []
 chunk_local_coords: list[tuple[tuple[int, ...], ...]] = []
@@ -123,7 +123,7 @@ class RecordingArray:
 
 
 viewport_source = RecordingArray(np.arange(12).reshape(3, 4), chunks=(2, 2))
-viewport = LazyArray(viewport_source).lazy[1, 0:4]
+viewport = LazyArray(viewport_source)[1, 0:4]
 VIEWPORT_READS_BEFORE_RESULT = tuple(viewport_source.keys)
 assert VIEWPORT_READS_BEFORE_RESULT == ()
 assert viewport.result().tolist() == [4, 5, 6, 7]
@@ -152,12 +152,12 @@ def materialize(view: LazyArray) -> Any:
 slab_source = RecordingArray(np.arange(100).reshape(10, 10), chunks=(4, 4))
 slab = LazyArray(slab_source)
 
-dense = slab.lazy[2:9, 1:8]  # a dense box: every stride 1
+dense = slab[2:9, 1:8]  # a dense box: every stride 1
 assert materialize(dense).shape == (7, 7)
 assert len(slab_source.keys) == 1  # one slab read; the source dispatches
 
 slab_source.keys.clear()
-gather = slab.lazy.oindex[[0, 9], [0, 9]]  # a query: keep the chunk parts
+gather = slab.oindex[[0, 9], [0, 9]]  # a query: keep the chunk parts
 assert materialize(gather).tolist() == [[0, 9], [90, 99]]
 assert len(slab_source.keys) == 4  # four covers, each inside one chunk
 assert all(

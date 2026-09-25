@@ -15,6 +15,7 @@ A JSON object holding user-defined attributes for a v2 array or group.
 Spec-defined keys for arrays / groups live in sibling `.zarray` / `.zgroup`
 files (modeled by `ZarrV2ZArrayJSON` / `ZarrV2ZGroupJSON`). This type does not
 constrain the keys or values of the attributes mapping.
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L323-L330
 """
 
 

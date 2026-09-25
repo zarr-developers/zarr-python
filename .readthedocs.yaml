@@ -19,15 +19,24 @@ build:
         fi
     install:
       - pip install --upgrade pip
-      - pip install .[remote] --group docs
+      # The docs recipes resolve their toolchain from uv.lock, so uv is all that is
+      # needed here besides just itself.
+      - pip install uv==0.12.9
+      # No GitHub Action is available on Read the Docs, so fetch the official just
+      # release and verify it against the checksum casey/just publishes. Installed
+      # into the build virtualenv's bin, which is already on PATH.
+      - |
+        curl -fsSL -o /tmp/just.tar.gz https://github.com/casey/just/releases/download/1.58.0/just-1.58.0-x86_64-unknown-linux-musl.tar.gz
+        echo "4a5cc2f53e6f0f8c59092a6cc38291eb729d46a7dd95d3ae582008881b84931d  /tmp/just.tar.gz" | sha256sum -c -
+        tar -xzf /tmp/just.tar.gz -C "$READTHEDOCS_VIRTUALENV_PATH/bin" just
     pre_build:
       - |
         if [ "$READTHEDOCS_VERSION_TYPE" != "tag" ];
         then
-          towncrier build --version Unreleased --yes;
+          just changelog-build --version Unreleased --yes;
         fi
     build:
         html:
-          - mkdocs build --strict --site-dir $READTHEDOCS_OUTPUT/html
+          - just docs-build --site-dir $READTHEDOCS_OUTPUT/html
 mkdocs:
   configuration: mkdocs.yml

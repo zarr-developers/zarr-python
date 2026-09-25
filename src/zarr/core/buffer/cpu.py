@@ -4,6 +4,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
+    cast,
 )
 
 import numpy as np
@@ -21,6 +22,10 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer.core import ArrayLike, NDArrayLike
     from zarr.core.common import BytesLike
+
+# Elements in the first slice examined by `NDBuffer.all_equal`. Large enough to
+# amortise one numpy call, small enough that a mismatch in it is nearly free.
+_ALL_EQUAL_BLOCK = 1 << 14
 
 
 class Buffer(core.Buffer):
@@ -111,7 +116,6 @@ class Buffer(core.Buffer):
         data = [np.asanyarray(self._data)]
         for buf in others:
             other_array = buf.as_array_like()
-            assert other_array.dtype == np.dtype("B")
             data.append(np.asanyarray(other_array))
         return self.__class__(np.concatenate(data))
 
@@ -153,21 +157,54 @@ class NDBuffer(core.NDBuffer):
         order: Literal["C", "F"] = "C",
         fill_value: Any | None = None,
     ) -> Self:
+        parsed_dtype = np.dtype(dtype)
+        zero_fill = fill_value is None or (isinstance(fill_value, int) and fill_value == 0)
+        if parsed_dtype.kind in "mM":
+            # NumPy allocation can drop a generic time unit's scale factor and byte order
+            # (`np.zeros(1, ">M8[2generic]").dtype` is `<M8`). A view restores both, and
+            # must precede assignment so values are encoded in the requested byte order.
+            data = np.zeros(shape=tuple(shape), dtype=parsed_dtype, order=order).view(parsed_dtype)
+            if not zero_fill:
+                data[...] = fill_value
         # np.zeros is much faster than np.full, and therefore using it when possible is better.
-        if fill_value is None or (isinstance(fill_value, int) and fill_value == 0):
-            return cls(np.zeros(shape=tuple(shape), dtype=dtype, order=order))
+        elif zero_fill:
+            data = np.zeros(shape=tuple(shape), dtype=dtype, order=order)
         else:
-            return cls(np.full(shape=tuple(shape), fill_value=fill_value, dtype=dtype, order=order))
+            data = np.full(shape=tuple(shape), fill_value=fill_value, dtype=dtype, order=order)
+        return cls(data)
 
     @classmethod
     def empty(
         cls, shape: tuple[int, ...], dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
     ) -> Self:
-        return cls(np.empty(shape=shape, dtype=dtype, order=order))
+        data = np.empty(shape=shape, dtype=dtype, order=order)
+        if data.dtype.kind in "mM":
+            # See `create`: a view restores what allocation drops from generic time dtypes.
+            data = data.view(dtype=dtype)
+        return cls(data)
 
     @classmethod
     def from_numpy_array(cls, array_like: npt.ArrayLike) -> Self:
         return cls.from_ndarray_like(np.asanyarray(array_like))
+
+    def astype(self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = "K") -> Self:
+        target = np.dtype(dtype)
+        if (
+            self.dtype.kind in "mM"
+            and isinstance(target, np.dtypes.DateTime64DType | np.dtypes.TimeDelta64DType)
+            and target.kind == self.dtype.kind
+            and np.datetime_data(self.dtype)[0] == "generic"
+            and np.datetime_data(self.dtype)
+            == np.datetime_data(
+                cast("np.dtypes.DateTime64DType | np.dtypes.TimeDelta64DType", target)
+            )
+        ):
+            # NumPy's astype between generic time dtypes ignores the target and keeps the
+            # source byte order. Convert the underlying counts for an endian-only cast.
+            counts = self.as_numpy_array().view(self.dtype.byteorder + "i8")
+            converted = counts.astype(target.byteorder + "i8", order=order)
+            return self.__class__(converted.view(target))
+        return super().astype(dtype, order=order)
 
     def as_numpy_array(self) -> npt.NDArray[Any]:
         """Returns the buffer as a NumPy array (host memory).
@@ -189,6 +226,42 @@ class NDBuffer(core.NDBuffer):
         if isinstance(value, NDBuffer):
             value = value._data
         self._data.__setitem__(key, value)
+
+    def all_equal(self, other: Any, equal_nan: bool = True) -> bool:
+        """Whether every element of this buffer equals `other`.
+
+        Returns as soon as part of the buffer is found to differ, rather than
+        reading all of it.
+        """
+        if other is None:
+            # Handle None fill_value for Zarr V2
+            return False
+        data = self._data
+        if data.size == 0 or data.ndim == 0 or np.ndim(other) > 0:
+            # nothing to slice, or `other` has to broadcast against all of `data`
+            return core._array_all_equal(data, other, equal_nan)
+        # A buffer that is not uniformly `other` still has to be read in full
+        # before a whole-buffer comparison can report the first mismatch, and
+        # on the write path that is the common case. Walking it in slices of
+        # the leading axis returns as soon as one slice differs. Slices double
+        # in length, so a buffer that really is uniform is covered in O(log n)
+        # comparisons and costs the same as a single scan. A buffer no larger
+        # than one block is covered by the first slice.
+        #
+        # The leading axis is used rather than a flattened view because a chunk
+        # is usually a strided view into a larger array, which cannot be
+        # flattened without copying it. Slicing axis 0 is a view whatever the
+        # layout.
+        leading = data.shape[0]
+        step = max(1, _ALL_EQUAL_BLOCK // (data.size // leading))
+        start = 0
+        while start < leading:
+            stop = min(start + step, leading)
+            if not core._array_all_equal(data[start:stop], other, equal_nan):
+                return False
+            start = stop
+            step *= 2
+        return True
 
 
 def as_numpy_array_wrapper(

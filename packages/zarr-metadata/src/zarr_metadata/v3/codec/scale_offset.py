@@ -1,7 +1,7 @@
 """
 Scale-offset codec types.
 
-See https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/scale_offset
+See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md
 """
 
 from typing import Final, Literal, NotRequired
@@ -17,7 +17,7 @@ ScaleOffsetCodecName = Literal["scale_offset"]
 """Literal type of the `name` field of the `scale_offset` codec."""
 
 
-class ScaleOffsetCodecConfiguration(TypedDict):
+class ScaleOffsetCodecConfiguration(TypedDict, closed=True):
     """
     Configuration for the Zarr v3 `scale_offset` codec.
 
@@ -32,16 +32,18 @@ class ScaleOffsetCodecConfiguration(TypedDict):
     scale: NotRequired[JSONValue]
 
 
-class ScaleOffsetCodecObject(TypedDict):
+class ScaleOffsetCodecObject(TypedDict, closed=True):
     """`scale_offset` codec metadata in object form.
 
     `configuration` is itself optional per spec — when both `offset` and
     `scale` are at their identity defaults, the codec is a no-op and the
     entire `configuration` field may be omitted.
+      https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md#L18 and #L35
     """
 
     name: ScaleOffsetCodecName
     configuration: NotRequired[ScaleOffsetCodecConfiguration]
+    must_understand: NotRequired[bool]
 
 
 ScaleOffsetCodecMetadata = ScaleOffsetCodecObject | ScaleOffsetCodecName
