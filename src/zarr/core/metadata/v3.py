@@ -464,11 +464,10 @@ def _parse_mixed_regular_chunk_grid(
 ) -> RectilinearChunkGridMetadata:
     """Read a "regular" chunk grid whose chunk_shape contains edge lists.
 
-    zarr 3.2.0 and 3.2.1 wrote mixed chunk specs such as ``(2, (5, 10, 5))``
-    as ``{"name": "regular", "configuration": {"chunk_shape": [2, [5, 10, 5]]}}``
-    while laying the chunks out as a rectilinear grid. That metadata is
-    invalid, but the data is intact, so it is read as the rectilinear grid
-    it describes. See https://github.com/zarr-developers/zarr-python/issues/4374.
+    A regular grid cannot list chunk edges, so metadata such as
+    ``{"name": "regular", "configuration": {"chunk_shape": [2, [5, 10, 5]]}}``
+    is invalid. It does describe one rectilinear grid unambiguously, so it is
+    read as that grid. See https://github.com/zarr-developers/zarr-python/issues/4374.
     """
     # Put the dimensions in the JSON forms the rectilinear parser reads: a
     # metadata dict built in Python holds a tuple where JSON holds a list.
@@ -478,8 +477,8 @@ def _parse_mixed_regular_chunk_grid(
     ]
     msg = (
         f"This array's chunk grid is named 'regular' but its chunk_shape {chunk_shapes!r} "
-        "lists explicit chunk edges for some dimensions. zarr 3.2.0 and 3.2.1 wrote "
-        "rectilinear chunk grids this way by mistake. "
+        "lists explicit chunk edges for some dimensions, which only a rectilinear chunk "
+        "grid can declare. "
     )
     if not config.get("array.rectilinear_chunks"):
         raise ValueError(

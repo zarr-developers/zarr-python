@@ -282,7 +282,7 @@ def test_read_mixed_regular_chunk_grid(
         chunk_grid={"name": "regular", "configuration": {"chunk_shape": chunk_shape}},
     )
     with config.set({"array.rectilinear_chunks": True}):
-        with pytest.warns(ZarrUserWarning, match="zarr 3.2.0 and 3.2.1"):
+        with pytest.warns(ZarrUserWarning, match="only a rectilinear chunk grid can declare"):
             meta = ArrayV3Metadata.from_dict(d)  # type: ignore[arg-type]
         assert meta.chunk_grid == RectilinearChunkGridMetadata(chunk_shapes=case.output)
 
@@ -295,7 +295,7 @@ def test_read_mixed_regular_chunk_grid_requires_rectilinear_chunks() -> None:
     )
     with (
         config.set({"array.rectilinear_chunks": False}),
-        pytest.raises(ValueError, match="zarr 3.2.0 and 3.2.1 wrote rectilinear chunk grids"),
+        pytest.raises(ValueError, match="only a rectilinear chunk grid can declare"),
     ):
         ArrayV3Metadata.from_dict(d)  # type: ignore[arg-type]
 
@@ -313,7 +313,7 @@ def test_open_array_with_mixed_regular_chunk_grid() -> None:
         doc["chunk_grid"] = {"name": "regular", "configuration": {"chunk_shape": [2, [5, 10, 5]]}}
         store._store_dict["zarr.json"] = cpu.Buffer.from_bytes(json.dumps(doc).encode())
 
-        with pytest.warns(ZarrUserWarning, match="zarr 3.2.0 and 3.2.1"):
+        with pytest.warns(ZarrUserWarning, match="only a rectilinear chunk grid can declare"):
             arr = zarr.open_array(store)
         np.testing.assert_array_equal(arr[:], data)
 
