@@ -5,7 +5,6 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
 
-import numpy as np
 from typing_extensions import TypedDict
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
@@ -36,7 +35,8 @@ from zarr.core.config import config
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field
-from zarr.core.metadata.common import parse_attributes, parse_stored_regular_chunk_shape
+from zarr.core.metadata.common import parse_attributes, parse_chunk_edge
+from zarr.core.metadata.upgrades import V3_ARRAY_UPGRADES, upgrade_array_document
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
 
@@ -235,16 +235,12 @@ def _validate_chunk_shapes(
     result: list[int | tuple[int, ...]] = []
     for dim_idx, dim_spec in enumerate(chunk_shapes):
         if isinstance(dim_spec, int):
-            if dim_spec < 1:
-                raise ValueError(
-                    f"Dimension {dim_idx}: integer chunk edge length must be >= 1, got {dim_spec}"
-                )
-            result.append(dim_spec)
+            result.append(parse_chunk_edge(dim_spec, dim_idx))
         else:
             edges = tuple(dim_spec)
             if not edges:
                 raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
-            bad = [i for i, e in enumerate(edges) if e < 1]
+            bad = [i for i, e in enumerate(edges) if isinstance(e, bool) or e < 1]
             if bad:
                 raise ValueError(
                     f"Dimension {dim_idx} has invalid edge lengths at indices {bad}: "
@@ -477,45 +473,6 @@ ARRAY_METADATA_KEYS: Final[set[str]] = {
 }
 
 
-def _is_regular_chunk_shape(value: object) -> TypeGuard[Sequence[int]]:
-    """Whether a stored `chunk_shape` is a regular chunk shape: a sequence of integers.
-
-    JSON `false` counts, because `bool` is an integer type.
-    """
-    return (
-        isinstance(value, Sequence)
-        and not isinstance(value, str)
-        and all(isinstance(size, int | np.integer) for size in value)
-    )
-
-
-def _parse_stored_regular_chunk_grid(
-    chunk_grid: dict[str, JSON] | ChunkGridMetadata | NamedConfig[str, Any],
-    shape: tuple[int, ...],
-) -> dict[str, JSON] | ChunkGridMetadata | NamedConfig[str, Any]:
-    """Check a stored regular chunk grid's chunk shape against the array shape.
-
-    Only a `regular` grid whose `chunk_shape` is all integers is a regular chunk
-    shape, and only that is handed to `parse_stored_regular_chunk_shape`.
-    Anything else is not a regular chunk shape and is left for the chunk grid
-    parser: other grids define their own chunk semantics. This runs here rather
-    than in the grid parser because it needs the array shape, which chunk grid
-    metadata does not carry.
-    """
-    if not isinstance(chunk_grid, Mapping) or chunk_grid.get("name") != "regular":
-        return chunk_grid
-    configuration = chunk_grid.get("configuration")
-    if not isinstance(configuration, Mapping):
-        return chunk_grid
-    chunk_shape = configuration.get("chunk_shape")
-    if not _is_regular_chunk_shape(chunk_shape):
-        return chunk_grid
-    parsed = parse_stored_regular_chunk_shape(chunk_shape, shape)
-    corrected: dict[str, Any] = dict(chunk_grid)
-    corrected["configuration"] = {**configuration, "chunk_shape": list(parsed)}
-    return corrected
-
-
 @dataclass(frozen=True, kw_only=True)
 class ArrayV3Metadata(Metadata):
     shape: tuple[int, ...]
@@ -550,9 +507,7 @@ class ArrayV3Metadata(Metadata):
         """
 
         shape_parsed = parse_shapelike(shape)
-        chunk_grid_parsed = parse_chunk_grid(
-            _parse_stored_regular_chunk_grid(chunk_grid, shape_parsed)
-        )
+        chunk_grid_parsed = parse_chunk_grid(chunk_grid)
         chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
         # Note: relying on a type method is numpy-specific
@@ -673,8 +628,8 @@ class ArrayV3Metadata(Metadata):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        # make a copy because we are modifying the dict
-        _data = data.copy()
+        # a new dict, because we are modifying it
+        _data = dict(upgrade_array_document(data, V3_ARRAY_UPGRADES))
 
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format(_data.pop("zarr_format"))

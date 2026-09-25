@@ -42,7 +42,8 @@ from zarr.core.common import (
 )
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.json_parse import parse_field
-from zarr.core.metadata.common import parse_attributes, parse_stored_regular_chunk_shape
+from zarr.core.metadata.common import parse_attributes, parse_chunk_edge
+from zarr.core.metadata.upgrades import V2_ARRAY_UPGRADES, upgrade_array_document
 
 
 class ArrayV2MetadataDict(TypedDict):
@@ -88,7 +89,7 @@ class ArrayV2Metadata(Metadata):
         Metadata for a Zarr format 2 array.
         """
         shape_parsed = parse_shapelike(shape)
-        chunks_parsed = parse_stored_regular_chunk_shape(parse_shapelike(chunks), shape_parsed)
+        chunks_parsed = parse_chunks(chunks, shape_parsed)
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
@@ -109,8 +110,6 @@ class ArrayV2Metadata(Metadata):
         object.__setattr__(self, "filters", filters_parsed)
         object.__setattr__(self, "fill_value", fill_value_parsed)
         object.__setattr__(self, "attributes", attributes_parsed)
-
-        # ensure that the metadata document is consistent
 
     @property
     def ndim(self) -> int:
@@ -149,7 +148,7 @@ class ArrayV2Metadata(Metadata):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
-        # Make a copy to protect the original from modification.
+        data = dict(upgrade_array_document(data, V2_ARRAY_UPGRADES))
         _data = data.copy()
         # Check that the zarr_format attribute is correct.
         _ = parse_zarr_format(_data.pop("zarr_format"))
@@ -320,6 +319,17 @@ def parse_compressor(data: object) -> Numcodec | None:
         return get_numcodec(data)  # type: ignore[arg-type]
     msg = f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
     raise ValueError(msg)
+
+
+def parse_chunks(chunks: Iterable[int], shape: tuple[int, ...]) -> tuple[int, ...]:
+    """Check a chunk shape: one chunk edge length (an integer >= 1) per array axis."""
+    chunks_parsed = tuple(parse_chunk_edge(size, axis) for axis, size in enumerate(chunks))
+    if len(chunks_parsed) != len(shape):
+        raise ValueError(
+            f"The `shape` and `chunks` attributes must have the same length. "
+            f"`chunks` has length {len(chunks_parsed)}, but `shape` has length {len(shape)}."
+        )
+    return chunks_parsed
 
 
 def get_object_codec_id(maybe_object_codecs: Sequence[JSON]) -> str | None:
