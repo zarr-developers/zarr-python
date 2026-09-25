@@ -220,11 +220,8 @@ RectilinearChunkGridMetadataJSON = NamedRequiredConfig[
 def _parse_chunk_shape(chunk_shape: Iterable[int]) -> tuple[int, ...]:
     """Validate and normalize a regular chunk shape.
 
-    A regular chunk shape is one bare int per dimension, each >= 1. Lists of
-    chunk edge lengths belong to a rectilinear chunk grid and are rejected
-    here; `_validate_chunk_shapes` is the rectilinear counterpart. The two
-    grid kinds validate separately on purpose — sharing a validator is what
-    let a rectilinear chunk shape be stored as a regular grid (gh-4374).
+    A regular chunk shape is one int per dimension, each >= 1. Lists of chunk
+    edge lengths belong to a rectilinear chunk grid and are rejected.
     """
     parsed: list[int] = []
     # Typed as ints, but a stored document can hold anything here.
