@@ -113,28 +113,44 @@ def test_upgrade_array_document(
 ) -> None:
     """Valid documents pass unchanged and silently. A stored chunk size of 0 or `false`
     is read as one chunk spanning the axis (a multiple of the inner chunk when sharded)
-    and `true` as 1, with one warning that says how to re-save."""
+    and `true` as 1; `from_dict` warns once with the reading and how to re-save."""
     upgrades = V2_ARRAY_UPGRADES if doc["zarr_format"] == 2 else V3_ARRAY_UPGRADES
-    with warnings.catch_warnings(record=True) as record:
-        warnings.simplefilter("always")
-        upgraded = upgrade_array_document(doc, upgrades)
+    upgraded, readings = upgrade_array_document(doc, upgrades)
     assert _stored_chunks(dict(upgraded)) == expected
     assert {k: v for k, v in upgraded.items() if k not in ("chunks", "chunk_grid")} == {
         k: v for k, v in doc.items() if k not in ("chunks", "chunk_grid")
     }
+    metadata_cls = ArrayV2Metadata if doc["zarr_format"] == 2 else ArrayV3Metadata
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        metadata_cls.from_dict(dict(doc))
     messages = [str(w.message) for w in record]
     if warning is None:
         assert upgraded is doc
+        assert readings == []
         assert messages == []
     else:
+        assert len(readings) == 1
+        assert re.search(warning, readings[0])
         assert len(messages) == 1
-        assert re.search(warning, messages[0])
+        assert messages[0].startswith(readings[0])
         assert "update_attributes({})" in messages[0]
         assert "zarr.consolidate_metadata" in messages[0]
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [_v2_doc([4], [0]) | {"dtype": "<x2"}, _v3_doc([4], [0]) | {"data_type": "x"}],
+    ids=["v2", "v3"],
+)
+def test_invalid_upgraded_document_raises_without_warning(doc: dict[str, JSON]) -> None:
+    """A document that is invalid after its upgrade raises its own error, without first
+    warning how it was read."""
     metadata_cls = ArrayV2Metadata if doc["zarr_format"] == 2 else ArrayV3Metadata
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", ZarrUserWarning)
-        metadata_cls.from_dict(dict(doc))
+        warnings.simplefilter("error", ZarrUserWarning)
+        with pytest.raises(ValueError):
+            metadata_cls.from_dict(doc)
 
 
 @pytest.mark.parametrize("doc", [_v2_doc([4], [-1]), _v3_doc([4], [-1])], ids=["v2", "v3"])
