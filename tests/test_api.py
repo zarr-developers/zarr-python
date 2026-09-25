@@ -477,6 +477,28 @@ def test_save_errors() -> None:
         zarr.save("data/example.zarr", a, mode="w")
 
 
+def test_save_storage_options_is_not_an_array(tmp_path: Path) -> None:
+    # `storage_options` is an option of `save`, not one of the arrays to save, so a
+    # single array still lands as an array and not as a group holding `arr_0`.
+    data = np.arange(10)
+    save(str(tmp_path / "a.zarr"), data, storage_options=None)
+    node = zarr.api.synchronous.open(str(tmp_path / "a.zarr"))
+    assert isinstance(node, Array)
+    assert_array_equal(node[:], data)
+
+
+def test_save_group_storage_options_positional_args(tmp_path: Path) -> None:
+    # `storage_options` has to reach the store for positional arrays too, exactly as it
+    # does for keyword arrays.
+    pytest.importorskip("fsspec")
+    data = np.arange(10)
+    url = f"local://{tmp_path}/group.zarr"
+    save_group(url, data, data, storage_options={"auto_mkdir": True})
+    group = zarr.api.synchronous.open(str(tmp_path / "group.zarr"))
+    assert isinstance(group, Group)
+    assert sorted(group) == ["arr_0", "arr_1"]
+
+
 def test_open_with_mode_r(tmp_path: Path) -> None:
     # 'r' means read only (must exist)
     with pytest.raises(FileNotFoundError):
