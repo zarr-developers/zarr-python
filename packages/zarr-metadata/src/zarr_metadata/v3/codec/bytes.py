@@ -21,7 +21,7 @@ ENDIANNESS: Final = ("little", "big")
 """Tuple of permitted values for the `endian` field of the `bytes` codec."""
 
 
-class BytesCodecConfiguration(TypedDict):
+class BytesCodecConfiguration(TypedDict, closed=True):
     """
     Configuration for the Zarr v3 `bytes` codec.
 
@@ -31,7 +31,7 @@ class BytesCodecConfiguration(TypedDict):
     endian: NotRequired[Endianness]
 
 
-class BytesCodecObject(TypedDict):
+class BytesCodecObject(TypedDict, closed=True):
     """`bytes` codec metadata in object form.
 
     `configuration` is itself optional — when no configuration fields are
@@ -42,6 +42,7 @@ class BytesCodecObject(TypedDict):
 
     name: BytesCodecName
     configuration: NotRequired[BytesCodecConfiguration]
+    must_understand: NotRequired[bool]
 
 
 BytesCodecMetadata = BytesCodecObject | BytesCodecName
@@ -51,6 +52,8 @@ The configuration has no required keys (`endian` is conditionally required
 at runtime based on data type), so the spec's short-hand-name form is
 permitted in addition to the object form, and the object form may itself
 omit `configuration` entirely.
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/bytes/index.rst#L64-L69 ("endian: Required for data types for which endianness is applicable")
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564
 """
 
 __all__ = [

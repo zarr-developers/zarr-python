@@ -27,7 +27,29 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           enable-cache: true
-      - uses: j178/prek-action@4e14d07f9231acabce116ccfca13b13dd9755ece # v3.0.0
+      - name: Install just
+        uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+        with:
+          repo: casey/just
+          version: 1.58.0
+      # `uvx prek` builds each hook's environment from scratch, so cache them the
+      # way the prek action used to. Keyed on the hook config: a new pinned rev or
+      # a new hook is exactly when the cached environments stop being valid.
+      - name: Cache prek hook environments
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/prek
+          # Justfile is hashed too: prek_version lives there, and a bumped prek
+          # must not restore a store built by the previous one. No restore-keys
+          # fallback for the same reason.
+          key: prek-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml', 'Justfile') }}
+      - name: Lint
+        run: just lint
+      - name: Check justfile formatting
+        # After the linters, and never masking them: this is cosmetic, and a
+        # mis-formatted recipe should not cost someone their ruff/mypy results.
+        if: always()
+        run: just just-check

@@ -51,7 +51,7 @@ jobs:
           path: dist
 
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           enable-cache: false
 
@@ -63,6 +63,34 @@ jobs:
           wheel=$(ls dist/*.whl)
           uv run --with "${wheel}" --python 3.12 --no-project \
             python -c "import zarr_metadata; print('zarr_metadata', zarr_metadata.__version__)"
+
+      # The sdist has to stand alone, and `hatch build` above builds the wheel
+      # from the source tree, not from the sdist. So build a wheel from the
+      # sdist with pip, which unpacks it under the sdist format's rules (no
+      # links out of the archive), then run the package's own tests and strict
+      # docs build from the unpacked sdist. This job has no checkout, so
+      # nothing comes from the repository; zarr, where a package uses it,
+      # resolves from PyPI.
+      - name: Build a wheel from the sdist with pip
+        run: |
+          sdist=$(ls dist/*.tar.gz)
+          uvx --python 3.12 pip@26.2.1 wheel --no-deps --wheel-dir sdist-wheel "${sdist}"
+
+      - name: Install just
+        uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+        with:
+          repo: casey/just
+          version: 1.58.0
+
+      - name: Test and build docs from the unpacked sdist
+        env:
+          UV_PYTHON: '3.12'
+        run: |
+          mkdir sdist
+          tar -xzf dist/*.tar.gz -C sdist
+          cd sdist/*/
+          just test
+          just docs-check
 
   upload_pypi:
     name: Upload to PyPI
