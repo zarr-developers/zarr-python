@@ -466,10 +466,8 @@ def arrays(
                 for dim, extent in zip(chunk_grid_meta.chunk_shapes, nparray.shape, strict=True)
             )
             if expressible_as_lists and draw(st.booleans(), label="chunks as lists"):
-                event("rectilinear chunks=: per-dimension lists")
                 chunks_param = chunks_param_from_rectilinear(chunk_grid_meta)
             else:
-                event("rectilinear chunks=: metadata object")
                 chunks_param = chunk_grid_meta
         elif isinstance(chunk_grid_meta, RegularChunkGridMetadata):
             chunks_param = chunk_grid_meta.chunk_shape
@@ -583,7 +581,6 @@ def rectilinear_dim_edges(draw: st.DrawFn, *, extent: int) -> list[int]:
     if extent == 1:
         return [1]
     if draw(st.booleans(), label="uneven edges"):
-        event("rectilinear edges: uneven")
         nchunks = draw(st.integers(min_value=1, max_value=min(extent, 20)))
         dividers = sorted(
             draw(
@@ -601,9 +598,7 @@ def rectilinear_dim_edges(draw: st.DrawFn, *, extent: int) -> list[int]:
     if extent % size:
         edges.append(extent % size)
     if draw(st.booleans(), label="shuffle uniform edges"):
-        event("rectilinear edges: uniform, shuffled")
         return list(draw(st.permutations(edges)))
-    event("rectilinear edges: uniform")
     return edges
 
 
@@ -612,7 +607,8 @@ def _rectilinear_step(draw: st.DrawFn, *, extent: int) -> int:
     the extent, with the last chunk possibly smaller. A step larger than the
     extent (one overhanging chunk) is allowed, as for a regular grid."""
     step = draw(st.integers(min_value=max(1, math.ceil(extent / 20)), max_value=extent + 3))
-    event("rectilinear dim: bare int" + (", larger than extent" if step > extent else ""))
+    if step > extent:
+        event("rectilinear step: larger than extent")
     return step
 
 
@@ -622,8 +618,8 @@ def rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[int |
 
     Each dimension is either a bare int (a step size; the last chunk may be
     smaller) or an explicit edge list summing to the extent (any edges, for a
-    zero extent). At least one
-    dimension is an edge list, since bare ints alone declare a regular grid.
+    zero extent). At least one dimension is an edge list, since bare ints
+    alone declare a regular grid.
     Run-length encoding is not part of the `chunks=` syntax; it belongs to
     stored metadata, see `rectilinear_chunk_shape_declarations`.
 
@@ -637,13 +633,7 @@ def rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[int |
         if i != forced_list and draw(st.booleans(), label="bare int"):
             chunks.append(_rectilinear_step(draw, extent=extent))
         else:
-            event("rectilinear dim: edge list")
             chunks.append(draw(rectilinear_dim_edges(extent=extent)))
-    event(
-        "rectilinear chunks: mixed bare ints and edge lists"
-        if any(isinstance(c, int) for c in chunks)
-        else "rectilinear chunks: edge lists only"
-    )
     return chunks
 
 
@@ -656,7 +646,8 @@ def _rle_encode(draw: st.DrawFn, edges: list[int]) -> list[int | list[int]]:
     a run of one as a bare int) or an arbitrary grouping, which may split a
     run across pairs and use `count == 1`."""
     canonical = draw(st.booleans(), label="canonical rle")
-    event("rectilinear rle: canonical" if canonical else "rectilinear rle: arbitrary grouping")
+    if not canonical:
+        event("rectilinear rle: arbitrary grouping")
     encoded: list[int | list[int]] = []
     i = 0
     while i < len(edges):
@@ -674,54 +665,56 @@ def _rle_encode(draw: st.DrawFn, edges: list[int]) -> list[int | list[int]]:
     return encoded
 
 
+def _rectilinear_chunk_shape(draw: st.DrawFn, *, extent: int) -> int | tuple[int, ...]:
+    """One dimension of a stored rectilinear grid's `chunk_shapes`: a bare-int
+    step, or explicit edges. Edges may sum beyond the extent, which the spec
+    allows and a shrinking resize produces."""
+    if draw(st.booleans(), label="bare int"):
+        return _rectilinear_step(draw, extent=extent)
+    edges = draw(rectilinear_dim_edges(extent=extent))
+    if extent > 0 and draw(st.booleans(), label="overhang"):
+        event("rectilinear edges: overhang")
+        if draw(st.booleans(), label="trailing edge"):
+            edges = [*edges, draw(st.integers(min_value=1, max_value=5))]
+        else:
+            edges[-1] += draw(st.integers(min_value=1, max_value=5))
+    return tuple(edges)
+
+
 @st.composite
 def rectilinear_chunk_shape_declarations(
-    draw: st.DrawFn, *, shape: tuple[int, ...], overhang: bool = True
+    draw: st.DrawFn, *, shape: tuple[int, ...]
 ) -> tuple[list[_RectilinearDimDeclaration], tuple[int | tuple[int, ...], ...]]:
     """The `chunk_shapes` of a stored rectilinear chunk grid, with its meaning.
 
     Samples the whole declaration space of the spec. Per dimension: a bare
     int step, or an edge list written in full or run-length encoded
-    (canonically, or with arbitrary grouping). With `overhang`, edge lists
-    may sum beyond the extent, which the spec allows and a shrinking resize
-    produces.
+    (canonically, or with arbitrary grouping). Edge lists may sum beyond the
+    extent.
 
     Returns `(declaration, chunk_shapes)`: the JSON value to store, and the
     `chunk_shapes` that parsing it must produce.
     """
-    declaration: list[_RectilinearDimDeclaration] = []
-    chunk_shapes: list[int | tuple[int, ...]] = []
-    for extent in shape:
-        if draw(st.booleans(), label="bare int"):
-            step = _rectilinear_step(draw, extent=extent)
-            declaration.append(step)
-            chunk_shapes.append(step)
-            continue
-        edges = draw(rectilinear_dim_edges(extent=extent))
-        if overhang and draw(st.booleans(), label="overhang"):
-            if draw(st.booleans(), label="trailing edge"):
-                event("rectilinear edges: overhang, trailing edge beyond extent")
-                edges = [*edges, draw(st.integers(min_value=1, max_value=5))]
-            else:
-                event("rectilinear edges: overhang, last edge past extent")
-                edges[-1] += draw(st.integers(min_value=1, max_value=5))
-        if draw(st.booleans(), label="write edges in full"):
-            event("rectilinear edges: written in full")
-            declaration.append(list(edges))
-        else:
-            declaration.append(_rle_encode(draw, edges))
-        chunk_shapes.append(tuple(edges))
-    return declaration, tuple(chunk_shapes)
+    chunk_shapes = tuple(_rectilinear_chunk_shape(draw, extent=extent) for extent in shape)
+    declaration: list[_RectilinearDimDeclaration] = [
+        dim
+        if isinstance(dim, int)
+        else list(dim)
+        if draw(st.booleans(), label="write edges in full")
+        else _rle_encode(draw, list(dim))
+        for dim in chunk_shapes
+    ]
+    return declaration, chunk_shapes
 
 
 @st.composite
 def rectilinear_chunk_grids(
-    draw: st.DrawFn, *, shape: tuple[int, ...], overhang: bool = True
+    draw: st.DrawFn, *, shape: tuple[int, ...]
 ) -> RectilinearChunkGridMetadata:
-    """A `RectilinearChunkGridMetadata` parsed from a drawn stored declaration."""
-    declaration, _ = draw(rectilinear_chunk_shape_declarations(shape=shape, overhang=overhang))
-    return RectilinearChunkGridMetadata.from_dict(
-        {"name": "rectilinear", "configuration": {"kind": "inline", "chunk_shapes": declaration}}
+    """A `RectilinearChunkGridMetadata` over `shape`, per dimension a bare-int
+    step or explicit edges, which may sum beyond the extent."""
+    return RectilinearChunkGridMetadata(
+        chunk_shapes=tuple(_rectilinear_chunk_shape(draw, extent=extent) for extent in shape)
     )
 
 
