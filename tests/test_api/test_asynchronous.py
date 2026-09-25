@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.core.array import AsyncArray
+    from zarr.core.common import ZarrFormat
     from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
     from zarr.types import AnyArray
 
@@ -56,31 +57,48 @@ def test_get_shape_chunks(
     assert _get_shape_chunks(observed) == expected
 
 
+_V2_ARRAY = create_array(
+    {},
+    chunks=(10,),
+    shape=(100,),
+    dtype="f8",
+    compressors=None,
+    filters=None,
+    zarr_format=2,
+)._async_array
+_V2_ARRAY_ARGS = {
+    "chunks": (10,),
+    "shape": (100,),
+    "dtype": np.dtype("f8"),
+    "fill_value": np.float64(0.0),
+}
+
+
 @pytest.mark.parametrize(
-    ("observed", "expected"),
+    ("observed", "zarr_format", "expected"),
     [
-        (np.arange(10, dtype=np.dtype("int64")), {"shape": (10,), "dtype": np.dtype("int64")}),
-        (WithChunks(shape=(1, 2), chunks=(1, 2)), {"chunks": (1, 2), "shape": (1, 2)}),
         (
-            create_array(
-                {},
-                chunks=(10,),
-                shape=(100,),
-                dtype="f8",
-                compressors=None,
-                filters=None,
-                zarr_format=2,
-            )._async_array,
-            {
-                "chunks": (10,),
-                "shape": (100,),
-                "dtype": np.dtype("f8"),
-                "fill_value": np.float64(0.0),
-                "compressor": None,
-                "filters": None,
-                "order": "C",
-            },
+            np.arange(10, dtype=np.dtype("int64")),
+            None,
+            {"shape": (10,), "dtype": np.dtype("int64")},
         ),
+        (
+            np.arange(10, dtype=np.dtype("int64")),
+            2,
+            {"shape": (10,), "dtype": np.dtype("int64")},
+        ),
+        (WithChunks(shape=(1, 2), chunks=(1, 2)), None, {"chunks": (1, 2), "shape": (1, 2)}),
+        (
+            _V2_ARRAY,
+            None,
+            _V2_ARRAY_ARGS | {"zarr_format": 2, "compressor": None, "filters": None, "order": "C"},
+        ),
+        (
+            _V2_ARRAY,
+            2,
+            _V2_ARRAY_ARGS | {"compressor": None, "filters": None, "order": "C"},
+        ),
+        (_V2_ARRAY, 3, _V2_ARRAY_ARGS),
     ],
 )
 def test_like_args(
@@ -88,12 +106,13 @@ def test_like_args(
     | AsyncArray[ArrayV3Metadata]
     | AnyArray
     | npt.NDArray[Any],
+    zarr_format: ZarrFormat | None,
     expected: object,
 ) -> None:
     """
     Test the like_args function
     """
-    assert _like_args(observed) == expected
+    assert _like_args(observed, zarr_format) == expected
 
 
 async def test_open_no_array() -> None:

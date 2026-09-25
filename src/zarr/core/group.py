@@ -1619,6 +1619,20 @@ class AsyncGroup:
             raise NotImplementedError("'expand' is not yet implemented.")
         return await group_tree_async(self, max_depth=level, max_nodes=max_nodes, plain=plain)
 
+    def _member_zarr_format(self, zarr_format: ZarrFormat | None) -> ZarrFormat:
+        """
+        The zarr format of a new array in this group, which is the format of the group.
+
+        A group only lists members of its own format, so an array of another format
+        would be written into the group without becoming a member of it.
+        """
+        if zarr_format is not None and zarr_format != self.metadata.zarr_format:
+            raise ValueError(
+                f"Cannot create a zarr_format={zarr_format} array in a "
+                f"zarr_format={self.metadata.zarr_format} group."
+            )
+        return self.metadata.zarr_format
+
     async def empty(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
         """Create an empty array with the specified shape in this Group. The contents will
         be filled with the array's fill value or zeros if no fill value is provided.
@@ -1638,7 +1652,13 @@ class AsyncGroup:
         retrieve data from an empty Zarr array, any values may be returned,
         and these are not guaranteed to be stable from one access to the next.
         """
-        return await async_api.empty(shape=shape, store=self.store_path, path=name, **kwargs)
+        return await async_api.empty(
+            shape=shape,
+            store=self.store_path,
+            path=name,
+            zarr_format=self._member_zarr_format(kwargs.pop("zarr_format", None)),
+            **kwargs,
+        )
 
     async def zeros(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
         """Create an array, with zero being used as the default value for uninitialized portions of the array.
@@ -1657,7 +1677,13 @@ class AsyncGroup:
         AsyncArray
             The new array.
         """
-        return await async_api.zeros(shape=shape, store=self.store_path, path=name, **kwargs)
+        return await async_api.zeros(
+            shape=shape,
+            store=self.store_path,
+            path=name,
+            zarr_format=self._member_zarr_format(kwargs.pop("zarr_format", None)),
+            **kwargs,
+        )
 
     async def ones(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
         """Create an array, with one being used as the default value for uninitialized portions of the array.
@@ -1676,7 +1702,13 @@ class AsyncGroup:
         AsyncArray
             The new array.
         """
-        return await async_api.ones(shape=shape, store=self.store_path, path=name, **kwargs)
+        return await async_api.ones(
+            shape=shape,
+            store=self.store_path,
+            path=name,
+            zarr_format=self._member_zarr_format(kwargs.pop("zarr_format", None)),
+            **kwargs,
+        )
 
     async def full(
         self, *, name: str, shape: tuple[int, ...], fill_value: Any | None, **kwargs: Any
@@ -1704,6 +1736,7 @@ class AsyncGroup:
             fill_value=fill_value,
             store=self.store_path,
             path=name,
+            zarr_format=self._member_zarr_format(kwargs.pop("zarr_format", None)),
             **kwargs,
         )
 
@@ -1727,7 +1760,13 @@ class AsyncGroup:
         AsyncArray
             The new array.
         """
-        return await async_api.empty_like(a=data, store=self.store_path, path=name, **kwargs)
+        return await async_api.empty_like(
+            a=data,
+            store=self.store_path,
+            path=name,
+            zarr_format=self._member_zarr_format(kwargs.pop("zarr_format", None)),
+            **kwargs,
+        )
 
     async def zeros_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
@@ -1748,7 +1787,13 @@ class AsyncGroup:
         AsyncArray
             The new array.
         """
-        return await async_api.zeros_like(a=data, store=self.store_path, path=name, **kwargs)
+        return await async_api.zeros_like(
+            a=data,
+            store=self.store_path,
+            path=name,
+            zarr_format=self._member_zarr_format(kwargs.pop("zarr_format", None)),
+            **kwargs,
+        )
 
     async def ones_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
@@ -1769,7 +1814,13 @@ class AsyncGroup:
         AsyncArray
             The new array.
         """
-        return await async_api.ones_like(a=data, store=self.store_path, path=name, **kwargs)
+        return await async_api.ones_like(
+            a=data,
+            store=self.store_path,
+            path=name,
+            zarr_format=self._member_zarr_format(kwargs.pop("zarr_format", None)),
+            **kwargs,
+        )
 
     async def full_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
@@ -1790,7 +1841,13 @@ class AsyncGroup:
         AsyncArray
             The new array.
         """
-        return await async_api.full_like(a=data, store=self.store_path, path=name, **kwargs)
+        return await async_api.full_like(
+            a=data,
+            store=self.store_path,
+            path=name,
+            zarr_format=self._member_zarr_format(kwargs.pop("zarr_format", None)),
+            **kwargs,
+        )
 
     async def move(self, source: str, dest: str) -> None:
         """Move a sub-group or sub-array from one path to another.
