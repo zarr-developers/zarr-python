@@ -259,7 +259,7 @@ def test_stored_zero_inner_chunk_size_rejected() -> None:
     """No known writer stored an inner chunk size of 0, and no span defines one: it is
     rejected, not upgraded."""
     with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got 0$"):
-        _read_strictly(_v3_doc([4], [0], inner=[0]))
+        _read_strictly(_v3_doc([4], [4], inner=[0]))
 
 
 def _rectilinear_doc(shape: list[int], chunk_shapes: list[Any]) -> dict[str, JSON]:
@@ -700,30 +700,6 @@ def test_write_without_stored_document(zarr_format: Literal[2, 3]) -> None:
     assert not [key for key in store._store_dict if key.endswith((".zarray", "zarr.json"))]
 
 
-@pytest.mark.parametrize(("shape", "expected"), [((0,), (1,)), ((3,), (3,))])
-def test_array_from_metadata_with_chunk_size_zero(shape: tuple[int], expected: tuple[int]) -> None:
-    """`ArrayV2Metadata` accepts a chunk size of 0, as a stored document may hold it. An
-    array built from such metadata reads it as the upgrades read that document, silently
-    (no data was read or written under it): `create_hierarchy` stores the metadata as
-    given and yields such an array, which stores the upgrade before its first write."""
-    metadata = ArrayV2Metadata(shape=shape, chunks=(0,), dtype=Int16(), fill_value=0, order="C")
-    store = MemoryStore()
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", ZarrUserWarning)
-        nodes = dict(zarr.create_hierarchy(store=store, nodes={"a": metadata}))
-    array = nodes["a"]
-    assert isinstance(array, zarr.Array)
-    assert array.chunks == expected
-    assert json.loads(store._store_dict["a/.zarray"].to_bytes())["chunks"] == [0]
-
-    array[...] = 1
-
-    # Writing an empty selection stores no chunks, so it stores no metadata either.
-    resaved = list(expected) if array.size else [0]
-    assert json.loads(store._store_dict["a/.zarray"].to_bytes())["chunks"] == resaved
-    np.testing.assert_array_equal(zarr.open_array(store, path="a")[...], np.ones(shape))
-
-
 def _store_zero(doc: dict[str, Any]) -> None:
     _stored_chunks(doc)[0] = 0
 
@@ -997,7 +973,7 @@ def test_run_length_encoded_edges_in_regular_grid_rejected() -> None:
     assert info.match(re.escape("Dimension 1: chunk edge length must be an int, got [[5, 2], 10]"))
 
 
-@pytest.mark.parametrize("edge", [5.5, True], ids=["fractional", "bool"])
+@pytest.mark.parametrize("edge", [5.5, "5"], ids=["fractional", "string"])
 def test_non_int_edge_in_regular_grid_rejected(edge: object) -> None:
     """An edge that is not an int is reported as such, not blamed on its list."""
     info = _rejected_without_warning(_mixed_doc([6, 20], [2, [edge, 15]]))

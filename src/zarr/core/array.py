@@ -124,7 +124,6 @@ from zarr.core.metadata.io import (
     store_documents,
     upsert_metadata,
 )
-from zarr.core.metadata.upgrades import mark_upgraded, upgrade_array_document
 from zarr.core.metadata.v2 import (
     CompressorLikev2,
     get_object_codec_id,
@@ -207,29 +206,12 @@ def _chunk_sizes_from_shape(
     return tuple(result)
 
 
-def _as_json(value: Any) -> Any:
-    """`value`, as `to_dict` returns it, with its tuples as JSON arrays."""
-    match value:
-        case tuple() | list():
-            return [_as_json(item) for item in value]
-        case dict():
-            return {key: _as_json(item) for key, item in value.items()}
-    return value
-
-
 def parse_array_metadata(data: Any, path: str | None = None) -> ArrayMetadata:
     """Array metadata from a metadata object or a metadata document, naming the array at
-    `path` in warnings about how an invalid document was read.
-
-    The metadata constructors accept chunk sizes that only an invalid document holds
-    (such as 0), as they always have; such metadata is read as its document is (see
-    `zarr.core.metadata.upgrades`), so an array can be built from it. No data was read
-    or written under those chunk sizes, so none of its readings is a warning."""
+    `path` in warnings about how an invalid document was read. A metadata object is
+    valid as built: the metadata constructors are strict."""
     if isinstance(data, ArrayMetadata):
-        document, readings = upgrade_array_document(_as_json(data.to_dict()), data.zarr_format)
-        if not readings:
-            return data
-        return mark_upgraded(parse_array_metadata(dict(document)), [None for _ in readings], path)
+        return data
     if isinstance(data, dict):
         zarr_format = data.get("zarr_format")
         if zarr_format == 3:
