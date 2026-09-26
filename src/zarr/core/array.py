@@ -5909,30 +5909,26 @@ async def _resize(
 
     # ensure deletion is only run if array is shrinking as the delete_outside_chunks path is unbounded in memory
     only_growing = all(new >= old for new, old in zip(new_shape, array.metadata.shape, strict=True))
-
+    outside_keys: list[tuple[str]] = []
     if delete_outside_chunks and not only_growing:
-        # Remove all chunks outside of the new shape
         old_chunk_coords = set(array._chunk_grid.all_chunk_coords())
         new_chunk_coords = set(new_chunk_grid.all_chunk_coords())
+        outside_keys = [
+            (array.metadata.encode_chunk_key(chunk_coords),)
+            for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
+        ]
 
-        async def _delete_key(key: str) -> None:
-            await (array.store_path / key).delete()
-
-        await concurrent_map(
-            [
-                (array.metadata.encode_chunk_key(chunk_coords),)
-                for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
-            ],
-            _delete_key,
-            zarr_config.get("async.concurrency"),
-        )
-
-    # Write new metadata
+    # Store the new metadata before deleting any chunk: metadata that cannot be stored
+    # then fails with the store untouched, and a failed deletion leaves only chunks
+    # outside the new shape, as `delete_outside_chunks=False` does.
     await save_metadata(array.store_path, new_metadata)
-
-    # Update metadata and chunk_grid (in place)
     object.__setattr__(array, "metadata", new_metadata)
     object.__setattr__(array, "_chunk_grid", new_chunk_grid)
+
+    async def _delete_key(key: str) -> None:
+        await (array.store_path / key).delete()
+
+    await concurrent_map(outside_keys, _delete_key, zarr_config.get("async.concurrency"))
 
 
 async def _append(

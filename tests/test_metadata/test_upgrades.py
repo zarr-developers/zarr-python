@@ -559,3 +559,41 @@ def test_edge_lists_in_regular_grid_round_trip(tmp_path: Path) -> None:
             warnings.simplefilter("error", ZarrUserWarning)
             reopened = zarr.open_array(path)
     np.testing.assert_array_equal(reopened[...], data)
+
+
+def test_resize_without_flag_leaves_store_intact(tmp_path: Path) -> None:
+    """Resizing an array read from the verbatim document without the flag cannot store
+    its metadata, and fails before deleting any chunk."""
+    path = tmp_path / "mixed.zarr"
+    data = _store_mixed_array(path)
+    stored = {p: p.read_bytes() for p in path.rglob("*") if p.is_file()}
+    with zarr.config.set({"array.rectilinear_chunks": False}):
+        with pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"):
+            arr = zarr.open_array(path, mode="a")
+        with pytest.raises(ValueError, match="experimental and disabled by default"):
+            arr.resize((6, 5))
+    assert {p: p.read_bytes() for p in path.rglob("*") if p.is_file()} == stored
+    assert arr.shape == data.shape
+    np.testing.assert_array_equal(arr[...], data)
+
+
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+def test_consolidate_without_flag_leaves_group_readable(tmp_path: Path) -> None:
+    """Consolidating a group holding an array read from the verbatim document would
+    store its rectilinear chunk grid, so without the flag it fails with the store
+    untouched, and the group still opens without the flag."""
+    path = tmp_path / "group.zarr"
+    zarr.open_group(path, mode="w")
+    data = _store_mixed_array(path / "mixed")
+    group_doc = (path / "zarr.json").read_bytes()
+    with zarr.config.set({"array.rectilinear_chunks": False}):
+        with (
+            pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"),
+            pytest.raises(ValueError, match="experimental and disabled by default"),
+        ):
+            zarr.consolidate_metadata(path)
+        assert (path / "zarr.json").read_bytes() == group_doc
+        with pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"):
+            mixed = zarr.open_group(path, mode="r")["mixed"]
+    assert isinstance(mixed, zarr.Array)
+    np.testing.assert_array_equal(mixed[...], data)

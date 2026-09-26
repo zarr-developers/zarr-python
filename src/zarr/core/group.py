@@ -49,6 +49,7 @@ from zarr.core.dtype import parse_data_type
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.io import save_metadata
+from zarr.core.metadata.v3 import check_storable
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
     ArrayNotFoundError,
@@ -357,6 +358,10 @@ class GroupMetadata(Metadata):
     node_type: Literal["group"] = field(default="group", init=False)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
+        if self.consolidated_metadata is not None:
+            for member in self.consolidated_metadata.flattened_metadata.values():
+                if isinstance(member, ArrayV3Metadata):
+                    check_storable(member)
         indent = config.get("json_indent")
         if self.zarr_format == 3:
             return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype, indent=indent)}

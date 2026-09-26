@@ -370,6 +370,18 @@ def _check_rectilinear_chunks_enabled() -> None:
         )
 
 
+def check_storable(metadata: ArrayV3Metadata) -> None:
+    """Raise if `metadata` may not be stored: a rectilinear chunk grid requires the
+    rectilinear chunks flag.
+
+    Every serialization of array metadata for a store calls this, before the store is
+    touched: `ArrayV3Metadata.to_buffer_dict` and, for the arrays in a group's
+    consolidated metadata, `GroupMetadata.to_buffer_dict`.
+    """
+    if isinstance(metadata.chunk_grid, RectilinearChunkGridMetadata):
+        _check_rectilinear_chunks_enabled()
+
+
 def create_chunk_grid_metadata(
     chunks: ChunkGrid,
 ) -> ChunkGridMetadata:
@@ -612,8 +624,7 @@ class ArrayV3Metadata(Metadata):
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
-        if isinstance(self.chunk_grid, RectilinearChunkGridMetadata):
-            _check_rectilinear_chunks_enabled()
+        check_storable(self)
         indent = config.get("json_indent")
         return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype, indent=indent)}
 
