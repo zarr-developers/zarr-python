@@ -2437,3 +2437,102 @@ class TestAsync:
 
         with pytest.raises(IndexError):
             await async_zarr.oindex.getitem("invalid_indexer")
+
+
+# --- scalar return on __getitem__ / __setitem__ parity (Issue #3741) ---
+
+
+@pytest.mark.parametrize("chunk_shape", [(3,), (5,), (1,), (2,)])
+@pytest.mark.parametrize(("dtype", "scalar_type"), [
+    ("int8", np.int8),
+    ("int32", np.int32),
+    ("float64", np.float64),
+    ("uint16", np.uint16),
+    ("complex128", np.complex128),
+])
+def test_getitem_1d_scalar_returns_numpy_scalar(
+    store: StorePath,
+    chunk_shape: tuple[int, ...],
+    dtype: str,
+    scalar_type: type,
+) -> None:
+    """z[0] on a 1D array must return a numpy scalar, not 0-d ndarray (#3741)."""
+    z = zarr.create_array(
+        store=store, shape=(5,), chunks=chunk_shape, dtype=dtype
+    )
+    z[...] = np.arange(5)
+    result = z[0]
+    assert isinstance(result, scalar_type), (
+        f"z[0] with dtype={dtype!r}: expected {scalar_type.__name__}, "
+        f"got {type(result).__name__}"
+    )
+
+
+@pytest.mark.parametrize("chunk_shape", [(2, 3), (3, 4), (1, 1)])
+def test_getitem_2d_scalar_returns_numpy_scalar(store: StorePath, chunk_shape: tuple[int, ...]) -> None:
+    """z[i, j] on a 2D array must return a numpy scalar (#3741)."""
+    z = zarr.create_array(
+        store=store, shape=(3, 4), chunks=chunk_shape, dtype="int32"
+    )
+    z[...] = np.arange(12).reshape(3, 4)
+    result = z[1, 2]
+    assert isinstance(result, np.int32), (
+        f"z[1,2] expected np.int32, got {type(result).__name__}"
+    )
+    # Row slice still returns ndarray
+    row = z[0, :]
+    assert isinstance(row, np.ndarray)
+    assert row.ndim == 1
+
+
+def test_getitem_3d_scalar_returns_numpy_scalar(store: StorePath) -> None:
+    """z[i, j, k] on a 3D array must return a numpy scalar (#3741)."""
+    z = zarr.create_array(store=store, shape=(2, 3, 4), chunks=(2, 3, 4), dtype="int8")
+    z[...] = np.arange(24).reshape(2, 3, 4)
+    result = z[1, 2, 3]
+    assert isinstance(result, np.int8)
+
+
+def test_getitem_negative_index_returns_numpy_scalar(store: StorePath) -> None:
+    """z[-1] must return numpy scalar, same as positive indexing (#3741)."""
+    z = zarr.create_array(store=store, shape=(5,), chunks=(3,), dtype="int32")
+    z[...] = np.arange(5)
+    result = z[-1]
+    assert isinstance(result, np.int32)
+
+
+def test_getitem_structured_dtype_returns_numpy_void(store: StorePath) -> None:
+    """z[i] on structured dtype must return np.void (scalar) not 0-d ndarray (#3741)."""
+    sdtype = np.dtype([("x", "f8"), ("y", "i4")])
+    z = zarr.create_array(store=store, shape=(3,), chunks=(3,), dtype=sdtype)
+    z[...] = np.array([(1.0, 10), (2.0, 20), (3.0, 30)], dtype=sdtype)
+    result = z[0]
+    assert isinstance(result, np.void)
+    assert result["x"] == 1.0
+    assert result["y"] == 10
+
+
+def test_getitem_vindex_list_returns_array(store: StorePath) -> None:
+    """z.vindex[[0]] still returns a 1-d array (fancy indexing) (#3741 regression)."""
+    z = zarr.create_array(store=store, shape=(5,), chunks=(3,), dtype="int32")
+    z[...] = np.arange(5)
+    result = z.vindex[[0]]
+    assert isinstance(result, np.ndarray)
+    assert result.ndim == 1
+
+
+def test_getitem_blocks_returns_array(store: StorePath) -> None:
+    """z.blocks[0] always returns a chunk-shaped ndarray (#3741 regression)."""
+    z = zarr.create_array(store=store, shape=(5,), chunks=(2,), dtype="int32")
+    z[...] = np.arange(5)
+    result = z.blocks[0]
+    assert isinstance(result, np.ndarray)
+    assert result.shape == (2,)
+
+
+def test_getitem_orthogonal_int_indexing_returns_scalar(store: StorePath) -> None:
+    """z.oindex[0] on 1D array returns scalar (orthogonal path with shape==()) (#3741)."""
+    z = zarr.create_array(store=store, shape=(5,), chunks=(3,), dtype="int32")
+    z[...] = np.arange(5)
+    result = z.oindex[0]
+    assert isinstance(result, np.int32)

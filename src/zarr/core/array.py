@@ -2580,7 +2580,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Retrieve a single item:
 
             >>> z[5]
-            array(5, dtype=uint16)
+            np.uint16(5)
 
         Retrieve a region via slicing:
 
@@ -2614,7 +2614,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Retrieve an item:
 
             >>> z[2, 2]
-            array(22, dtype=uint16)
+            np.uint16(22)
 
         Retrieve a region via slicing:
 
@@ -5663,7 +5663,7 @@ async def _get_selection(
                     f"missing chunks with the fill value.\n"
                     f"Missing chunks:\n{chunks_str}"
                 )
-    if isinstance(indexer, BasicIndexer) and indexer.shape == ():
+    if indexer.shape == ():
         return out_buffer.as_scalar()
     return out_buffer.as_ndarray_like()
 
