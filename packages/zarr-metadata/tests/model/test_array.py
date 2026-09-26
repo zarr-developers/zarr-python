@@ -3,6 +3,7 @@
 import copy
 import dataclasses
 import json
+import math
 import pickle
 from collections import UserDict
 from collections.abc import Callable
@@ -1464,6 +1465,31 @@ def test_array_v2_ignores_unknown_document_member() -> None:
 
     assert validate_array_metadata_v2(doc) == ()
     assert "unexpected" not in ZarrV2ArrayMetadata.from_json(doc).to_json()
+
+
+@pytest.mark.parametrize(
+    ("member", "kind"),
+    [
+        (object(), "invalid_type"),
+        ({1, 2}, "invalid_type"),
+        (b"\x00", "invalid_type"),
+        (math.nan, "invalid_value"),
+    ],
+    ids=["object", "set", "bytes", "nan"],
+)
+def test_error_array_v2_unknown_member_that_is_not_json(member: object, kind: str) -> None:
+    """Ignored is not unchecked: an unknown member is a JSON value, as in v3."""
+    doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"unexpected": member}
+
+    assert [(p.loc, p.kind) for p in validate_array_metadata_v2(doc)] == [(("unexpected",), kind)]
+
+
+@pytest.mark.parametrize("key", [7, None, True, (1, 2)], ids=["int", "none", "bool", "tuple"])
+def test_error_array_v2_key_that_is_not_a_string(key: object) -> None:
+    """A document's keys are strings: `parse_array_metadata_v2` returned this one."""
+    doc: dict[object, object] = {**ZarrV2ArrayMetadata.create_default().to_json(), key: "x"}
+
+    assert [(p.loc, p.kind) for p in validate_array_metadata_v2(doc)] == [((), "invalid_type")]
 
 
 def test_array_v3_from_json_materializes_abstract_containers() -> None:

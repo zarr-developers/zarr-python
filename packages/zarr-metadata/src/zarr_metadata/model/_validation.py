@@ -319,13 +319,17 @@ def _check_literal(
     return ()
 
 
-def _validate_extension_fields_v3(
+def _validate_other_members(
     doc: Mapping[object, object],
     standard_keys: frozenset[str],
     *,
     additional_reserved_keys: frozenset[str] = frozenset(),
 ) -> tuple[ValidationProblem, ...]:
-    """Validate v3 top-level key types and unknown-field JSON payloads."""
+    """Every key a string, and every member outside `standard_keys` a JSON value.
+
+    For a document open to other members: v3 extension fields, and the
+    members a v2 array's readers ignore.
+    """
     problems: list[ValidationProblem] = []
     reserved_keys = standard_keys | additional_reserved_keys
     for key, value in doc.items():
@@ -597,7 +601,7 @@ def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
         return (ValidationProblem((), "expected a mapping", "invalid_type"),)
     doc = cast("Mapping[object, object]", value)
     problems: list[ValidationProblem] = list(_missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V3, doc))
-    problems.extend(_validate_extension_fields_v3(doc, ARRAY_METADATA_STANDARD_KEYS_V3))
+    problems.extend(_validate_other_members(doc, ARRAY_METADATA_STANDARD_KEYS_V3))
     problems.extend(_check_literal(doc, "zarr_format", 3))
     problems.extend(_check_literal(doc, "node_type", "array"))
     problems.extend(_validate_dim_sequence(doc, "shape"))
@@ -689,9 +693,11 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     # Unlike the group document ("Other keys MUST NOT be present",
     # https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313), the v2 array document is open: other keys "SHOULD NOT be
     # present within the metadata object and SHOULD be ignored by
-    # implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), so members outside
-    # ARRAY_METADATA_STANDARD_KEYS_V2 are not problems.
+    # implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), so a member outside
+    # ARRAY_METADATA_STANDARD_KEYS_V2 is not a problem for being there. Ignored
+    # is not unchecked: it is JSON, and its key a string, as in v3.
     problems: list[ValidationProblem] = list(_missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc))
+    problems.extend(_validate_other_members(doc, ARRAY_METADATA_STANDARD_KEYS_V2))
     problems.extend(_check_literal(doc, "zarr_format", 2))
     shape_problems = _validate_dim_sequence(doc, "shape")
     chunks_problems = _validate_dim_sequence(doc, "chunks")
@@ -850,7 +856,7 @@ def validate_group_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
     doc = cast("Mapping[object, object]", value)
     problems: list[ValidationProblem] = list(_missing_keys(GROUP_METADATA_REQUIRED_KEYS_V3, doc))
     problems.extend(
-        _validate_extension_fields_v3(
+        _validate_other_members(
             doc,
             GROUP_METADATA_STANDARD_KEYS_V3,
             additional_reserved_keys=frozenset({"consolidated_metadata"}),
