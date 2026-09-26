@@ -45,8 +45,9 @@ from zarr.core.chunk_utils import (
     merge_and_encode_chunk,
 )
 from zarr.core.common import (
-    parse_chunk_shape,
+    ShapeLike,
     parse_named_configuration,
+    parse_shapelike,
     product,
 )
 from zarr.core.config import config as zarr_config
@@ -458,13 +459,13 @@ class ShardingCodec(
     def __init__(
         self,
         *,
-        chunk_shape: tuple[int, ...] | list[int],
+        chunk_shape: ShapeLike,
         codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
         index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
         index_location: ShardingCodecIndexLocation | IndexLocation = "end",
         subchunk_write_order: SubchunkWriteOrder = "morton",
     ) -> None:
-        chunk_shape_parsed = parse_chunk_shape(chunk_shape)
+        chunk_shape_parsed = parse_shapelike(chunk_shape)
         codecs_parsed = parse_codecs(codecs)
         index_codecs_parsed = parse_codecs(index_codecs)
         _check_index_codecs_fixed_size(index_codecs_parsed)
@@ -503,7 +504,7 @@ class ShardingCodec(
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         config = state["configuration"]
-        object.__setattr__(self, "chunk_shape", parse_chunk_shape(config["chunk_shape"]))
+        object.__setattr__(self, "chunk_shape", parse_shapelike(config["chunk_shape"]))
         object.__setattr__(self, "codecs", parse_codecs(config["codecs"]))
         object.__setattr__(self, "index_codecs", parse_codecs(config["index_codecs"]))
         object.__setattr__(self, "index_location", _parse_index_location(config["index_location"]))
