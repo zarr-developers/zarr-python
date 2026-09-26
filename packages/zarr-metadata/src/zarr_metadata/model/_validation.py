@@ -282,7 +282,7 @@ GROUP_METADATA_STANDARD_KEYS_V2: Final[frozenset[str]] = (
 
 
 def _missing_keys(
-    required: frozenset[str], doc: Mapping[str, object]
+    required: frozenset[str], doc: Mapping[object, object]
 ) -> tuple[ValidationProblem, ...]:
     """One `missing_key` problem per required key absent from `doc`."""
     return tuple(
@@ -309,7 +309,7 @@ def _unexpected_keys(
 
 
 def _check_literal(
-    doc: Mapping[str, object], key: str, expected: object
+    doc: Mapping[object, object], key: str, expected: object
 ) -> tuple[ValidationProblem, ...]:
     """One `invalid_value` problem if `doc[key]` is present but not `expected`."""
     if key in doc and (type(doc[key]) is not type(expected) or doc[key] != expected):
@@ -437,7 +437,7 @@ def _is_int_sequence(value: object) -> bool:
     )
 
 
-def _validate_dim_sequence(doc: Mapping[str, object], key: str) -> tuple[ValidationProblem, ...]:
+def _validate_dim_sequence(doc: Mapping[object, object], key: str) -> tuple[ValidationProblem, ...]:
     """Validate a dimension sequence (`shape` / `chunks`) if present in `doc`.
 
     Dimension lengths are non-negative integers.
@@ -595,13 +595,9 @@ def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
     """
     if not isinstance(value, Mapping):
         return (ValidationProblem((), "expected a mapping", "invalid_type"),)
-    doc = cast("Mapping[str, object]", value)
+    doc = cast("Mapping[object, object]", value)
     problems: list[ValidationProblem] = list(_missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V3, doc))
-    problems.extend(
-        _validate_extension_fields_v3(
-            cast("Mapping[object, object]", value), ARRAY_METADATA_STANDARD_KEYS_V3
-        )
-    )
+    problems.extend(_validate_extension_fields_v3(doc, ARRAY_METADATA_STANDARD_KEYS_V3))
     problems.extend(_check_literal(doc, "zarr_format", 3))
     problems.extend(_check_literal(doc, "node_type", "array"))
     problems.extend(_validate_dim_sequence(doc, "shape"))
@@ -689,7 +685,7 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     """
     if not isinstance(value, Mapping):
         return (ValidationProblem((), "expected a mapping", "invalid_type"),)
-    doc = cast("Mapping[str, object]", value)
+    doc = cast("Mapping[object, object]", value)
     # Unlike the group document ("Other keys MUST NOT be present",
     # https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313), the v2 array document is open: other keys "SHOULD NOT be
     # present within the metadata object and SHOULD be ignored by
@@ -797,18 +793,13 @@ def validate_consolidated_metadata_v3(value: object) -> tuple[ValidationProblem,
     """
     if not isinstance(value, Mapping):
         return (ValidationProblem((), "expected a mapping", "invalid_type"),)
-    env = cast("Mapping[str, object]", value)
+    env = cast("Mapping[object, object]", value)
     problems: list[ValidationProblem] = [
         ValidationProblem((key,), "missing required key", "missing_key")
         for key in ("kind", "must_understand", "metadata")
         if key not in env
     ]
-    problems.extend(
-        _unexpected_keys(
-            frozenset({"kind", "must_understand", "metadata"}),
-            cast("Mapping[object, object]", value),
-        )
-    )
+    problems.extend(_unexpected_keys(frozenset({"kind", "must_understand", "metadata"}), env))
     problems.extend(_check_literal(env, "kind", "inline"))
     if "must_understand" in env and env["must_understand"] is not False:
         problems.append(ValidationProblem(("must_understand",), "expected False", "invalid_value"))
@@ -826,7 +817,7 @@ def validate_consolidated_metadata_v3(value: object) -> tuple[ValidationProblem,
                 entry_obj: object = entry
                 node_type: object = None
                 if isinstance(entry, Mapping):
-                    node_type = cast("Mapping[str, object]", entry).get("node_type")
+                    node_type = cast("Mapping[object, object]", entry).get("node_type")
                 if node_type == "array":
                     problems.extend(
                         _prefix("metadata", _prefix(key, validate_array_metadata_v3(entry_obj)))
@@ -856,11 +847,11 @@ def validate_group_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
     """
     if not isinstance(value, Mapping):
         return (ValidationProblem((), "expected a mapping", "invalid_type"),)
-    doc = cast("Mapping[str, object]", value)
+    doc = cast("Mapping[object, object]", value)
     problems: list[ValidationProblem] = list(_missing_keys(GROUP_METADATA_REQUIRED_KEYS_V3, doc))
     problems.extend(
         _validate_extension_fields_v3(
-            cast("Mapping[object, object]", value),
+            doc,
             GROUP_METADATA_STANDARD_KEYS_V3,
             additional_reserved_keys=frozenset({"consolidated_metadata"}),
         )
@@ -904,11 +895,9 @@ def validate_group_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     """
     if not isinstance(value, Mapping):
         return (ValidationProblem((), "expected a mapping", "invalid_type"),)
-    doc = cast("Mapping[str, object]", value)
+    doc = cast("Mapping[object, object]", value)
     problems: list[ValidationProblem] = list(_missing_keys(GROUP_METADATA_REQUIRED_KEYS_V2, doc))
-    problems.extend(
-        _unexpected_keys(GROUP_METADATA_STANDARD_KEYS_V2, cast("Mapping[object, object]", value))
-    )
+    problems.extend(_unexpected_keys(GROUP_METADATA_STANDARD_KEYS_V2, doc))
     problems.extend(_check_literal(doc, "zarr_format", 2))
     if "attributes" in doc:
         problems.extend(_validate_attributes(doc["attributes"]))
