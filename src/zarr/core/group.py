@@ -13,6 +13,7 @@ import numpy as np
 
 import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
+from zarr.abc.store import Store, set_or_delete
 from zarr.core._info import GroupInfo
 from zarr.core._json import buffer_to_json_object, json_to_buffer
 from zarr.core.array import (
@@ -47,13 +48,7 @@ from zarr.core.config import config
 from zarr.core.dtype import parse_data_type
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.io import (
-    EncodedNode,
-    encode_documents,
-    encode_node,
-    save_metadata,
-    store_node,
-)
+from zarr.core.metadata.io import encode_documents, save_metadata, store_documents
 from zarr.core.metadata.v3 import check_storable
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
@@ -81,7 +76,6 @@ if TYPE_CHECKING:
     )
     from typing import Any
 
-    from zarr.abc.store import Store
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
@@ -154,11 +148,16 @@ class ConsolidatedMetadata:
     must_understand: Literal[False] = False
 
     def to_dict(self) -> dict[str, JSON]:
+        """The consolidated metadata document. An array read from a stored document that
+        had to be upgraded is written as that document was stored: only the array's
+        own first chunk write stores its upgrade."""
         return {
             "kind": self.kind,
             "must_understand": self.must_understand,
             "metadata": {
                 k: v.to_dict()
+                if isinstance(v, GroupMetadata) or v._stored_document is None
+                else dict(v._stored_document)
                 for k, v in sorted(
                     self.flattened_metadata.items(),
                     key=lambda item: (
@@ -376,7 +375,9 @@ class GroupMetadata(Metadata):
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         if self.consolidated_metadata is not None:
             for path, member in self.consolidated_metadata.flattened_metadata.items():
-                if isinstance(member, ArrayV3Metadata):
+                # A member read from a document that had to be upgraded is stored as it
+                # was stored (see `ConsolidatedMetadata.to_dict`).
+                if isinstance(member, ArrayV3Metadata) and member._stored_document is None:
                     try:
                         check_storable(member)
                     except ValueError as e:
@@ -837,23 +838,15 @@ class AsyncGroup:
         # stored is encoded after the deletion, from the metadata as it then is, so
         # concurrent deletions each store the deletions made before them.
         members = {name: node for name, node in consolidated.metadata.items() if name != key}
-        encoded = await encode_node(
+        encode_documents(
             self.store_path,
             replace(self.metadata, consolidated_metadata=replace(consolidated, metadata=members)),
         )
         await store_path.delete_dir()
         # In place, so every handle sharing this consolidated metadata (a parent's or a
-        # subgroup's) sees the deletion, and the members the encoding above read again,
-        # which are not read twice.
+        # subgroup's) sees the deletion.
         consolidated.metadata.pop(key, None)
-        refreshed = [
-            member._replace(members=consolidated.metadata) if member.members is members else member
-            for member in encoded.members
-        ]
-        for member in refreshed:
-            member.adopt()
-        documents = encode_documents(self.store_path, self.metadata)
-        await store_node(self.store_path, EncodedNode(documents, refreshed))
+        await store_documents(self.store_path, encode_documents(self.store_path, self.metadata))
 
     async def get[DefaultT](
         self, key: str, default: DefaultT | None = None
@@ -2158,7 +2151,9 @@ class Group(SyncMixin):
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
-        await save_metadata(self.store_path, new_metadata)
+        to_save = new_metadata.to_buffer_dict(default_buffer_prototype())
+        awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
+        await asyncio.gather(*awaitables)
 
         async_group = replace(self._async_group, metadata=new_metadata)
         return replace(self, _async_group=async_group)
@@ -3075,8 +3070,6 @@ async def create_hierarchy(
     ```{'': GroupMetadata, 'a': GroupMetadata, 'b': Groupmetadata}```
 
     After input parsing, this function then creates all the nodes in the hierarchy concurrently.
-    The metadata of each node is stored as given: the consolidated metadata of a group is
-    stored as it is, without reading the documents of its members.
 
     Arrays and Groups are yielded in the order they are created. This order is not stable and
     should not be relied on.

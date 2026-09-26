@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import replace
 from enum import Enum
 from itertools import zip_longest
 from typing import TYPE_CHECKING, Final, NamedTuple
@@ -12,7 +11,6 @@ from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
 from zarr.core.metadata.upgrades import mark_upgraded, upgrade_array_document
-from zarr.core.metadata.v3 import RectilinearChunksDisabledError
 from zarr.errors import ArrayNotFoundError, ContainsArrayError
 from zarr.storage._common import StorePath, ensure_no_existing_node
 
@@ -160,140 +158,8 @@ def parse_stored_array(
     else:
         raise ArrayNotFoundError(f"No Zarr format {zarr_format} array metadata document.")
     upgraded, readings = upgrade_array_document(stored, zarr_format)
-    return mark_upgraded(parse_array_metadata(dict(upgraded), path), [None] * len(readings), None)
-
-
-class RefreshedMember(NamedTuple):
-    """A member of consolidated metadata read again from its own documents (see
-    `_refresh_consolidated`)."""
-
-    members: dict[str, ArrayMetadata | GroupMetadata]
-    """The consolidated metadata that holds the member, by member name."""
-    name: str
-    stale: ArrayMetadata
-    """The member as the consolidated metadata holds it."""
-    store_path: StorePath
-    stored: dict[str, Buffer]
-    """The member's documents as `read_documents` read them."""
-    current: ArrayMetadata
-    """The member read from `stored` (see `parse_stored_array`): marked while the
-    documents' upgrade is not stored."""
-
-    async def store_upgrade(self) -> None:
-        """Store the upgrade of the member's documents, if they need one."""
-        if self.current._stored_document_upgraded:
-            await upsert_metadata(self.store_path, self.current, self.stored)
-            object.__setattr__(self.current, "_stored_document_upgraded", False)
-
-    def adopt(self) -> None:
-        """Replace the stale member with the current one in place, so every handle that
-        shares this consolidated metadata sees it; unless the member was deleted or
-        replaced since it was read."""
-        if self.members.get(self.name) is self.stale:
-            self.members[self.name] = self.current
-
-
-async def _read_array(
-    store_path: StorePath, zarr_format: ZarrFormat
-) -> tuple[dict[str, Buffer], ArrayMetadata] | None:
-    """The documents of the array stored at `store_path` and the metadata read from them
-    (see `parse_stored_array`); `None` if no array document that can be read is stored
-    there (it was deleted, or replaced by a group)."""
-    documents = await read_documents(store_path, ARRAY_DOCUMENTS[zarr_format])
-    try:
-        return documents, parse_stored_array(documents, zarr_format, str(store_path))
-    except RectilinearChunksDisabledError:
-        raise  # A document that can be read, but only with the flag.
-    except (KeyError, TypeError, ValueError):
-        return None
-
-
-async def _refresh_consolidated(
-    store_path: StorePath, metadata: GroupMetadata
-) -> tuple[GroupMetadata, list[RefreshedMember]]:
-    """`metadata` with each member of its consolidated metadata that was read from a
-    document that had to be upgraded, at any depth, replaced by the metadata of the
-    member's own documents as they now are, read concurrently, and the members it
-    replaced: the member documents may have changed since, so the consolidated copy is
-    never stored as if it were valid. A member with no array document that can be read
-    is kept. Reads the store; writes nothing, and leaves `metadata` as it is, for the
-    group to adopt the members once they are stored (see `store_node`)."""
-    from zarr.core.group import GroupMetadata
-
-    consolidated = metadata.consolidated_metadata
-    if consolidated is None:
-        return metadata, []
-    groups = {
-        name: member
-        for name, member in consolidated.metadata.items()
-        if isinstance(member, GroupMetadata)
-    }
-    arrays = {
-        name: member
-        for name, member in consolidated.metadata.items()
-        if not isinstance(member, GroupMetadata) and member._stored_document_upgraded
-    }
-    nested, read = await asyncio.gather(
-        asyncio.gather(*(_refresh_consolidated(store_path / n, m) for n, m in groups.items())),
-        asyncio.gather(*(_read_array(store_path / n, m.zarr_format) for n, m in arrays.items())),
-    )
-    refreshed = [
-        RefreshedMember(consolidated.metadata, name, stale, store_path / name, *documents)
-        for (name, stale), documents in zip(arrays.items(), read, strict=True)
-        if documents is not None
-    ]
-    members = dict(consolidated.metadata)
-    members.update({member.name: member.current for member in refreshed})
-    for name, (group, inner) in zip(groups, nested, strict=True):
-        members[name] = group
-        refreshed.extend(inner)
-    if not refreshed:
-        return metadata, []
-    consolidated = replace(consolidated, metadata=members)
-    return replace(metadata, consolidated_metadata=consolidated), refreshed
-
-
-class EncodedNode(NamedTuple):
-    """What storing a node's metadata writes, encoded before anything is written (see
-    `encode_node`)."""
-
-    documents: dict[str, Buffer]
-    """The node's own documents, by key (see `encode_documents`)."""
-    members: list[RefreshedMember]
-    """Members of a group's consolidated metadata read again to encode it, whose own
-    stored documents are upgraded along with it."""
-
-
-async def encode_node(
-    store_path: StorePath, metadata: ArrayMetadata | GroupMetadata
-) -> EncodedNode:
-    """Encode what storing `metadata` under `store_path` writes, so metadata that cannot
-    be stored fails with the store untouched. Group metadata is stored with its
-    consolidated metadata, whose upgraded members are first read again from their own
-    stored documents (see `_refresh_consolidated`); encoding the group then encodes
-    them too."""
-    from zarr.core.group import GroupMetadata
-
-    members: list[RefreshedMember] = []
-    if isinstance(metadata, GroupMetadata):
-        try:
-            metadata, members = await _refresh_consolidated(store_path, metadata)
-        except RectilinearChunksDisabledError as e:
-            e.add_note(f"Group {str(store_path)!r}: nothing was stored.")
-            raise
-    return EncodedNode(encode_documents(store_path, metadata), members)
-
-
-async def store_node(store_path: StorePath, encoded: EncodedNode) -> None:
-    """Store what `encode_node` encoded under `store_path`, then adopt the members read
-    again in place (see `RefreshedMember.adopt`). A store that fails adopts nothing, so
-    the members are read again by the next one."""
-    await asyncio.gather(
-        store_documents(store_path, encoded.documents),
-        *(member.store_upgrade() for member in encoded.members),
-    )
-    for member in encoded.members:
-        member.adopt()
+    metadata = parse_array_metadata(dict(upgraded), path)
+    return mark_upgraded(metadata, stored, [None] * len(readings), None)
 
 
 def _build_parents(store_path: StorePath, zarr_format: ZarrFormat) -> dict[str, GroupMetadata]:
@@ -318,8 +184,7 @@ def _build_parents(store_path: StorePath, zarr_format: ZarrFormat) -> dict[str, 
 async def save_metadata(
     store_path: StorePath, metadata: ArrayMetadata | GroupMetadata, ensure_parents: bool = False
 ) -> None:
-    """Asynchronously save the array or group metadata. A group adopts, in place, the
-    members of its consolidated metadata read again to store it (see `store_node`).
+    """Asynchronously save the array or group metadata.
 
     Parameters
     ----------
@@ -334,8 +199,7 @@ async def save_metadata(
     ------
     ValueError
     """
-    encoded = await encode_node(store_path, metadata)
-    set_awaitables = [store_node(store_path, encoded)]
+    set_awaitables = [store_documents(store_path, encode_documents(store_path, metadata))]
 
     if ensure_parents:
         # To enable zarr.create(store, path="a/b/c"), we need to create all the intermediate groups.

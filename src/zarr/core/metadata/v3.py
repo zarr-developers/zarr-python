@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
+    from zarr.core.metadata.upgrades import ArrayDocument
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
@@ -493,10 +494,9 @@ class ArrayV3Metadata(Metadata):
     node_type: Literal["array"] = field(default="array", init=False)
     storage_transformers: tuple[dict[str, JSON], ...]
     extra_fields: dict[str, AllowedExtraField]
-    _stored_document_upgraded: ClassVar[bool] = False
-    """Whether `from_dict` read this metadata from a stored document it had to upgrade
-    (set on the instance by `mark_upgraded`), so the store may still hold that invalid
-    document."""
+    _stored_document: ClassVar[ArrayDocument | None] = None
+    """The stored document `from_dict` read this metadata from, if it had to upgrade it
+    (set on the instance by `mark_upgraded`): the store may still hold it."""
 
     def __init__(
         self,
@@ -708,7 +708,7 @@ class ArrayV3Metadata(Metadata):
             extra_fields=allowed_extra_fields,
             storage_transformers=_data_typed.get("storage_transformers", ()),  # type: ignore[arg-type]
         )
-        return mark_upgraded(metadata, readings, path)
+        return mark_upgraded(metadata, data, readings, path)
 
     def to_dict(self) -> dict[str, JSON]:
         out_dict = super().to_dict()
