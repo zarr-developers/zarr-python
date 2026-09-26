@@ -979,7 +979,7 @@ def arrays_to_tuples(obj: object) -> object:
             converted is original
             for converted, original in zip(converted_sequence, sequence, strict=True)
         ):
-            return cast("tuple[object, ...]", obj)
+            return sequence
         return converted_sequence
     if isinstance(obj, Mapping):
         mapping = cast("Mapping[object, object]", obj)
@@ -987,6 +987,6 @@ def arrays_to_tuples(obj: object) -> object:
             key: arrays_to_tuples(value) for key, value in mapping.items()
         }
         if isinstance(obj, dict) and all(converted[key] is value for key, value in mapping.items()):
-            return cast("object", obj)
+            return mapping
         return converted
     return obj
