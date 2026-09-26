@@ -200,13 +200,6 @@ def test_chunk_layout_nested() -> None:
             msg="must be an integer or an iterable of integers; got 2.5 of type float",
             escape=True,
         ),
-        # bool is a flag, not a chunk size.
-        ExpectFail(
-            input=(True, 100),
-            exception=TypeError,
-            id="bool-scalar",
-            msg="A bool is not a chunk size; got True",
-        ),
         # an integral float is still not an integer
         ExpectFail(
             input=(10.0, 100),
@@ -269,14 +262,6 @@ def test_normalize_chunks_1d_errors(case: ExpectFail[tuple[Any, int]]) -> None:
             id="none",
             msg="got None of type NoneType",
         ),
-        # `True` is rejected explicitly because bool is a subclass of int — without
-        # this guard, `chunks=True` would silently produce size-1 chunks.
-        ExpectFail(
-            input=(True, (100,)),
-            exception=ValueError,
-            id="true",
-            msg="True is not a valid chunk input",
-        ),
         ExpectFail(input=("foo", (100,)), exception=ValueError, id="string", msg="dimensions"),
         # A 0-d array is an integer only if its dtype is.
         ExpectFail(
@@ -307,6 +292,29 @@ def test_normalize_chunks_nd_errors(case: ExpectFail[tuple[Any, tuple[int, ...]]
     chunks, shape = case.input
     with case.raises():
         normalize_chunks_nd(chunks, shape)
+
+
+@pytest.mark.parametrize(
+    "chunks",
+    [
+        True,
+        np.True_,
+        np.array(True),
+        np.array([True, True]),
+        (True, 5),
+        (np.True_, 5),
+        (np.array(True), 5),
+        [[True, 9], 10],
+        [[np.True_, 9], 10],
+    ],
+    ids=repr,
+)
+def test_normalize_chunks_nd_rejects_bool(chunks: Any) -> None:
+    """A boolean is a flag, not a chunk size: every spelling of one, as the whole
+    specification, as a dimension's size, or as an edge in a dimension's list, is
+    rejected with the same error rather than read as a size of 0 or 1."""
+    with pytest.raises(TypeError, match="A bool is not a chunk size"):
+        normalize_chunks_nd(chunks, (10, 10))
 
 
 @pytest.mark.parametrize(
