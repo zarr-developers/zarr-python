@@ -4,6 +4,9 @@ Validators check JSON structure (key presence, value shapes, and fixed
 literals like `zarr_format`), not domain validity. Each concept gets a
 `validate_*` function returning every problem found, an `is_*` type guard,
 and a `parse_*` function that narrows or raises `MetadataValidationError`.
+The guards are `TypeGuard`s, not `TypeIs`: True narrows a value to its
+document type, and False says nothing about its type, since a value can be
+well typed and still not a valid document.
 
 Every `ValidationProblem` carries a machine-readable `kind` alongside its
 human-readable `message`, so consumers can dispatch on the failure mode
@@ -17,9 +20,7 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Final, Literal, TypeVar, cast, get_args
-
-from typing_extensions import TypeIs
+from typing import Final, Literal, TypeGuard, TypeVar, cast, get_args
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
@@ -200,7 +201,7 @@ def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refi
     )
 
 
-def _is_canonical_json(value: object, *, finite: bool = True) -> TypeIs[JSONValue]:
+def _is_canonical_json(value: object, *, finite: bool = True) -> TypeGuard[JSONValue]:
     """Whether `value` already uses the concrete containers in `JSONValue`.
 
     A non-finite number counts only when `finite` is false, as a document's
@@ -222,7 +223,7 @@ def _is_canonical_json(value: object, *, finite: bool = True) -> TypeIs[JSONValu
     return False
 
 
-def is_json(value: object) -> TypeIs[JSONValue]:
+def is_json(value: object) -> TypeGuard[JSONValue]:
     """Whether `value` is a canonical JSON structure (recursively)."""
     return _is_canonical_json(value)
 
@@ -402,7 +403,7 @@ def validate_metadata_field_v3(
     return tuple(problems)
 
 
-def is_metadata_field_v3(value: object) -> TypeIs[ZarrV3MetadataFieldJSON]:
+def is_metadata_field_v3(value: object) -> TypeGuard[ZarrV3MetadataFieldJSON]:
     """Whether `value` is a v3 metadata field: a bare name or a named config."""
     if isinstance(value, str):
         return True
@@ -657,7 +658,7 @@ def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
     return tuple(problems)
 
 
-def is_array_metadata_v3(value: object) -> TypeIs[ZarrV3ArrayMetadataJSON]:
+def is_array_metadata_v3(value: object) -> TypeGuard[ZarrV3ArrayMetadataJSON]:
     """Whether `value` is a structurally-valid v3 array metadata document."""
     return (
         _is_canonical_json(value, finite=False)
@@ -765,7 +766,7 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     return tuple(problems)
 
 
-def is_array_metadata_v2(value: object) -> TypeIs[ZarrV2ArrayMetadataJSON]:
+def is_array_metadata_v2(value: object) -> TypeGuard[ZarrV2ArrayMetadataJSON]:
     """Whether `value` is a structurally-valid v2 array metadata document."""
     return (
         _is_canonical_json(value, finite=False)
@@ -873,7 +874,7 @@ def validate_group_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
     return tuple(problems)
 
 
-def is_group_metadata_v3(value: object) -> TypeIs[ZarrV3GroupMetadataJSON]:
+def is_group_metadata_v3(value: object) -> TypeGuard[ZarrV3GroupMetadataJSON]:
     """Whether `value` is a structurally-valid v3 group metadata document."""
     return _is_canonical_json(value, finite=False) and not validate_group_metadata_v3(value)
 
@@ -904,7 +905,7 @@ def validate_group_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     return tuple(problems)
 
 
-def is_group_metadata_v2(value: object) -> TypeIs[ZarrV2GroupMetadataJSON]:
+def is_group_metadata_v2(value: object) -> TypeGuard[ZarrV2GroupMetadataJSON]:
     """Whether `value` is a structurally-valid v2 group metadata document."""
     return _is_canonical_json(value, finite=False) and not validate_group_metadata_v2(value)
 
