@@ -26,6 +26,7 @@ from zarr.core.common import (
     NamedRequiredConfig,
     compress_rle,
     expand_rle,
+    parse_chunk_edge,
     parse_named_configuration,
     parse_shapelike,
     validate_rectilinear_edges,
@@ -35,7 +36,7 @@ from zarr.core.config import config
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field
-from zarr.core.metadata.common import parse_attributes, parse_chunk_edge
+from zarr.core.metadata.common import parse_attributes
 from zarr.core.metadata.upgrades import (
     V3_ARRAY_UPGRADES,
     upgrade_array_document,
@@ -238,19 +239,13 @@ def _validate_chunk_shapes(
     """
     result: list[int | tuple[int, ...]] = []
     for dim_idx, dim_spec in enumerate(chunk_shapes):
-        if isinstance(dim_spec, int):
-            result.append(parse_chunk_edge(dim_spec, dim_idx))
-        else:
-            edges = tuple(dim_spec)
+        if isinstance(dim_spec, Iterable):
+            edges = tuple(parse_chunk_edge(edge, dim_idx) for edge in dim_spec)
             if not edges:
                 raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
-            bad = [i for i, e in enumerate(edges) if isinstance(e, bool) or e < 1]
-            if bad:
-                raise ValueError(
-                    f"Dimension {dim_idx} has invalid edge lengths at indices {bad}: "
-                    f"{[edges[i] for i in bad]}"
-                )
             result.append(edges)
+        else:
+            result.append(parse_chunk_edge(dim_spec, dim_idx))
     return tuple(result)
 
 
@@ -367,18 +362,10 @@ class RectilinearChunkGridMetadata(Metadata):
         configuration = data["configuration"]
         validate_rectilinear_kind(configuration.get("kind"))
         raw_shapes = configuration["chunk_shapes"]
-        parsed: list[int | tuple[int, ...]] = []
-        for dim_spec in raw_shapes:
-            if isinstance(dim_spec, int):
-                if dim_spec < 1:
-                    raise ValueError(f"Integer chunk edge length must be >= 1, got {dim_spec}")
-                parsed.append(dim_spec)
-            elif isinstance(dim_spec, list):
-                parsed.append(tuple(expand_rle(dim_spec)))
-            else:
-                raise TypeError(
-                    f"Invalid chunk_shapes entry: expected int or list, got {type(dim_spec)}"
-                )
+        parsed = [
+            tuple(expand_rle(dim_spec)) if isinstance(dim_spec, list) else dim_spec
+            for dim_spec in raw_shapes
+        ]
         return cls(chunk_shapes=tuple(parsed))
 
 
@@ -631,7 +618,9 @@ class ArrayV3Metadata(Metadata):
         return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype, indent=indent)}
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
+    def from_dict(cls, data: dict[str, JSON], *, path: str | None = None) -> Self:
+        """Read a stored `zarr.json` array document. An invalid document that
+        `zarr.core.metadata.upgrades` can read warns, naming the array at `path`."""
         upgraded, readings = upgrade_array_document(data, V3_ARRAY_UPGRADES)
         # a new dict, because we are modifying it
         _data = dict(upgraded)
@@ -688,7 +677,7 @@ class ArrayV3Metadata(Metadata):
             extra_fields=allowed_extra_fields,
             storage_transformers=_data_typed.get("storage_transformers", ()),  # type: ignore[arg-type]
         )
-        warn_readings(readings)
+        warn_readings(readings, path)
         return metadata
 
     def to_dict(self) -> dict[str, JSON]:

@@ -276,7 +276,32 @@ def _default_zarr_format() -> ZarrFormat:
     return cast("ZarrFormat", int(zarr_config.get("default_zarr_format", 3)))
 
 
-def expand_rle(data: Sequence[int | list[int]]) -> list[int]:
+def _parse_positive_int(value: object, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{name} must be an int, got {value!r}")
+    if value < 1:
+        raise ValueError(f"{name} must be >= 1, got {value!r}")
+    return value
+
+
+def parse_chunk_edge(size: object, axis: int | None = None) -> int:
+    """Check that `size` is a chunk edge length: an `int` (not a `bool`) of at least 1.
+
+    This is the one rule for chunk edge lengths in metadata: bare chunk sizes, explicit
+    edges and run-length encoded sizes. `axis`, when given, is named in the error.
+    """
+    where = "" if axis is None else f"Dimension {axis}: "
+    return _parse_positive_int(size, f"{where}Chunk edge length")
+
+
+def parse_chunk_shape(data: object) -> tuple[int, ...]:
+    """Check a regular chunk shape: one chunk edge length per axis (see `parse_chunk_edge`)."""
+    if not isinstance(data, Iterable):
+        raise TypeError(f"A chunk shape must be a sequence of chunk edge lengths, got {data!r}")
+    return tuple(parse_chunk_edge(size, axis) for axis, size in enumerate(data))
+
+
+def expand_rle(data: Sequence[object]) -> list[int]:
     """Expand a mixed array of bare integers and RLE pairs.
 
     Per the rectilinear chunk grid spec, each element can be:
@@ -285,20 +310,13 @@ def expand_rle(data: Sequence[int | list[int]]) -> list[int]:
     """
     result: list[int] = []
     for item in data:
-        if isinstance(item, (int, float)) and not isinstance(item, bool):
-            val = int(item)
-            if val < 1:
-                raise ValueError(f"Chunk edge length must be >= 1, got {val}")
-            result.append(val)
-        elif isinstance(item, list) and len(item) == 2:
-            size, count = int(item[0]), int(item[1])
-            if size < 1:
-                raise ValueError(f"Chunk edge length must be >= 1, got {size}")
-            if count < 1:
-                raise ValueError(f"RLE repeat count must be >= 1, got {count}")
-            result.extend([size] * count)
+        if isinstance(item, list):
+            if len(item) != 2:
+                raise ValueError(f"RLE entries must be an integer or [size, count], got {item}")
+            size, count = item
+            result.extend([parse_chunk_edge(size)] * _parse_positive_int(count, "RLE repeat count"))
         else:
-            raise ValueError(f"RLE entries must be an integer or [size, count], got {item}")
+            result.append(parse_chunk_edge(item))
     return result
 
 

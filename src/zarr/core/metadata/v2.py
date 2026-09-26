@@ -38,11 +38,12 @@ from zarr.core.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
     MemoryOrder,
+    parse_chunk_shape,
     parse_shapelike,
 )
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.json_parse import parse_field
-from zarr.core.metadata.common import parse_attributes, parse_chunk_edge
+from zarr.core.metadata.common import parse_attributes
 from zarr.core.metadata.upgrades import V2_ARRAY_UPGRADES, upgrade_array_document, warn_readings
 
 
@@ -147,7 +148,9 @@ class ArrayV2Metadata(Metadata):
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
+    def from_dict(cls, data: dict[str, Any], *, path: str | None = None) -> ArrayV2Metadata:
+        """Read a stored `.zarray` document (with its attributes). An invalid document
+        that `zarr.core.metadata.upgrades` can read warns, naming the array at `path`."""
         upgraded, readings = upgrade_array_document(data, V2_ARRAY_UPGRADES)
         data = dict(upgraded)
         _data = data.copy()
@@ -202,7 +205,7 @@ class ArrayV2Metadata(Metadata):
         _data = {k: v for k, v in _data.items() if k in expected}
 
         metadata = cls(**_data)
-        warn_readings(readings)
+        warn_readings(readings, path)
         return metadata
 
     def to_dict(self) -> dict[str, JSON]:
@@ -325,8 +328,8 @@ def parse_compressor(data: object) -> Numcodec | None:
 
 
 def parse_chunks(chunks: Iterable[int], shape: tuple[int, ...]) -> tuple[int, ...]:
-    """Check a chunk shape: one chunk edge length (an integer >= 1) per array axis."""
-    chunks_parsed = tuple(parse_chunk_edge(size, axis) for axis, size in enumerate(chunks))
+    """Check a chunk shape: one chunk edge length (an `int` >= 1) per array axis."""
+    chunks_parsed = parse_chunk_shape(chunks)
     if len(chunks_parsed) != len(shape):
         raise ValueError(
             f"The `shape` and `chunks` attributes must have the same length. "
