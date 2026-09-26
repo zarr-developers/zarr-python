@@ -1657,8 +1657,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         else:
             if _chunk_layout(current) != _chunk_layout(self.metadata):
                 raise ValueError(
-                    f"The metadata stored for the array at {str(self.store_path)!r} has "
-                    "changed since this array was opened: reopen the array to write to it."
+                    f"Array {str(self.store_path)!r}: the metadata stored has changed since "
+                    "this array was opened; reopen the array to write to it. Nothing was stored."
                 )
             if current._stored_document_upgraded:
                 await upsert_metadata(self.store_path, current, documents)

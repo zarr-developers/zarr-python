@@ -773,7 +773,7 @@ def test_stale_handle_write_after_chunk_grid_change_raises(
     _rewrite_doc(path, zarr_format, change)
     documents = {p.name: p.read_bytes() for p in path.iterdir()}
 
-    with pytest.raises(ValueError, match="has changed since this array was opened: reopen"):
+    with pytest.raises(ValueError, match="has changed since this array was opened; reopen"):
         stale[0:3] = [7, 8, 9]
 
     assert stale.metadata._stored_document_upgraded

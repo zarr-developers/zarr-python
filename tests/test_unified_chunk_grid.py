@@ -141,6 +141,19 @@ def test_rectilinear_feature_flag_blocked(action: Any) -> None:
             action()
 
 
+def test_rectilinear_feature_flag_names_stored_array() -> None:
+    """Opening a stored array whose document the flag refuses names the array."""
+    store = MemoryStore()
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        zarr.create_array(store, name="r", shape=(30,), chunks=[[10, 20]], dtype="int32")
+    with (
+        zarr.config.set({"array.rectilinear_chunks": False}),
+        pytest.raises(ValueError, match="experimental and disabled by default") as info,
+    ):
+        zarr.open_array(store, path="r")
+    assert info.value.__notes__ == [f"Array {str(store) + '/r'!r}: nothing was read."]
+
+
 def test_rectilinear_metadata_classes_not_gated() -> None:
     """The flag gates stored documents, not the chunk grid metadata classes."""
     with zarr.config.set({"array.rectilinear_chunks": False}):
