@@ -498,6 +498,19 @@ def test_v2_consolidated_rejects_unknown_document_member() -> None:
         ZarrV2ConsolidatedMetadata.from_json(doc)
 
 
+@pytest.mark.parametrize("key", [1, None], ids=["int", "none"])
+def test_v2_consolidated_rejects_non_string_document_key(key: object) -> None:
+    """A non-string key is a problem at the document: not a member at a
+    location that reads as an index, nor a `TypeError`."""
+    doc = {"zarr_consolidated_format": 1, "metadata": {}, key: "x"}
+
+    with pytest.raises(MetadataValidationError) as exc_info:
+        ZarrV2ConsolidatedMetadata.from_json(doc)
+    assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
+        ((), "invalid_type")
+    ]
+
+
 # --- must_understand partition ------------------------------------------------
 
 

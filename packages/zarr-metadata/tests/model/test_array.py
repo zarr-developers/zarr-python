@@ -3,6 +3,7 @@
 import copy
 import dataclasses
 import json
+import pickle
 from collections import UserDict
 from collections.abc import Callable
 from typing import TYPE_CHECKING, get_args
@@ -1250,6 +1251,65 @@ def test_metadata_validation_error_holds_problems() -> None:
     assert err.problems == tuple(problems)
     assert "shape: missing required key" in str(err)
     assert "data_type: expected a metadata field" in str(err)
+
+
+def test_the_error_pickles_and_copies_as_its_problems() -> None:
+    error = MetadataValidationError([ValidationProblem(("a",), "bad a", "invalid_value")])
+    error.add_note("while reading a")
+    for again in (pickle.loads(pickle.dumps(error)), copy.copy(error), copy.deepcopy(error)):
+        assert type(again) is MetadataValidationError
+        assert again.problems == error.problems
+        assert str(again) == str(error)
+        assert again.__notes__ == ["while reading a"]
+
+
+def test_error_a_problem_refuses_a_loc_that_is_not_a_tuple() -> None:
+    # The missing comma: `("level")` is a string, and read as a location
+    # it would be the path through each of its characters.
+    with pytest.raises(TypeError, match="loc is a tuple of keys and indices"):
+        ValidationProblem(("level"), "bad level", "invalid_value")  # pyright: ignore[reportArgumentType]
+
+
+@pytest.mark.parametrize("part", [True, 1.5], ids=["bool", "float"])
+def test_error_a_problem_refuses_a_loc_part_that_is_not_a_key_or_an_index(part: object) -> None:
+    # `True` passes as an `int`, and would index a sequence as 1.
+    with pytest.raises(TypeError, match="loc is a tuple of keys and indices"):
+        ValidationProblem(("a", part), "bad a", "invalid_value")  # pyright: ignore[reportArgumentType]
+
+
+def test_error_a_problem_refuses_a_message_that_is_not_a_string() -> None:
+    with pytest.raises(TypeError, match="message is a string"):
+        ValidationProblem(("level",), 7, "invalid_value")  # pyright: ignore[reportArgumentType]
+
+
+def test_error_a_problem_refuses_a_kind_that_is_not_one() -> None:
+    # A kind outside the set is one a consumer that dispatches on kinds
+    # never sees.
+    with pytest.raises(TypeError, match="kind is one of"):
+        ValidationProblem(("level",), "bad level", "invalid")  # pyright: ignore[reportArgumentType]
+
+
+class _EqualToEveryKind:
+    """Not a kind, though it compares equal to each."""
+
+    def __eq__(self, other: object) -> bool:
+        return True
+
+    def __hash__(self) -> int:
+        return 0
+
+
+def test_error_a_problem_refuses_a_kind_that_only_compares_equal_to_one() -> None:
+    # `in` tests equality, which any object can claim.
+    with pytest.raises(TypeError, match="kind is one of"):
+        ValidationProblem(("level",), "bad level", _EqualToEveryKind())  # pyright: ignore[reportArgumentType]
+
+
+def test_error_the_error_refuses_what_is_not_a_problem() -> None:
+    # A list of one-element tuples of problems is the likely slip: it
+    # would otherwise fail far away, where a `loc` is read off an entry.
+    with pytest.raises(TypeError, match="takes ValidationProblem values, got tuple"):
+        MetadataValidationError([(ValidationProblem(("a",), "bad a", "invalid_value"),)])  # pyright: ignore[reportArgumentType]
 
 
 def test_prefix_prepends_loc_head() -> None:

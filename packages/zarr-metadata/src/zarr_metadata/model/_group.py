@@ -387,7 +387,7 @@ class ZarrV2ConsolidatedMetadata:
             raise MetadataValidationError(
                 [ValidationProblem((), "expected a mapping", "invalid_type")]
             )
-        doc = cast("Mapping[str, object]", normalized)
+        doc = cast("Mapping[object, object]", normalized)
         problems: list[ValidationProblem] = [
             ValidationProblem((key,), "missing required key", "missing_key")
             for key in ("zarr_consolidated_format", "metadata")
@@ -395,7 +395,10 @@ class ZarrV2ConsolidatedMetadata:
         ]
         problems.extend(
             ValidationProblem((key,), "unexpected document member", "invalid_value")
-            for key in doc.keys() - {"zarr_consolidated_format", "metadata"}
+            if isinstance(key, str)
+            else ValidationProblem((), f"non-string document key {key!r}", "invalid_type")
+            for key in doc
+            if key not in {"zarr_consolidated_format", "metadata"}
         )
         if "zarr_consolidated_format" in doc and (
             not isinstance(doc["zarr_consolidated_format"], int)
