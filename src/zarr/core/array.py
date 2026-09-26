@@ -349,6 +349,18 @@ async def _prepare_overwrite(
         await ensure_no_existing_node(store_path, zarr_format=zarr_format)
 
 
+def _v2_chunks_given(chunks: object) -> bool:
+    """Whether the legacy Zarr format 2 `chunks` argument is given.
+
+    A falsy `chunks` (such as `None`, 0, `[]` or `False`) is read as not given. A numpy
+    array with more than one element has no truth value and is always given; a shorter
+    one is given when its element is nonzero (an empty array is not given).
+    """
+    if isinstance(chunks, np.ndarray):
+        return chunks.size > 1 or bool(chunks.any())
+    return bool(chunks)
+
+
 @dataclass(frozen=True)
 class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     """
@@ -518,14 +530,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             item_size = 1
             if isinstance(dtype_parsed, HasItemSize):
                 item_size = dtype_parsed.item_size
-            # Zarr format 2 reads a falsy `chunks` (such as 0, [] or False) as not given. A
-            # numpy array with more than one element has no truth value and is always given;
-            # a shorter one is read by `.any()`, its truth value (False when empty).
-            _raw_v2 = (
-                chunks
-                if (chunks.size > 1 or chunks.any() if isinstance(chunks, np.ndarray) else chunks)
-                else chunk_shape
-            )
+            _raw_v2 = chunks if _v2_chunks_given(chunks) else chunk_shape
             if _raw_v2 is None:
                 outer_chunks = guess_chunks(shape, item_size)
             else:
