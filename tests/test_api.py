@@ -356,6 +356,61 @@ def test_array_open_array_not_found_sync() -> None:
         Array.open(store)
 
 
+@pytest.mark.parametrize("func", [zarr.empty_like, zarr.zeros_like, zarr.ones_like, zarr.full_like])
+@pytest.mark.parametrize("source_format", [2, 3])
+@pytest.mark.parametrize("zarr_format", [None, 2, 3])
+def test_like_zarr_format(
+    func: Callable[..., AnyArray], source_format: ZarrFormat, zarr_format: ZarrFormat | None
+) -> None:
+    """
+    An array created like a zarr array has the zarr format of the source unless another is
+    requested, and keeps the codecs of the source only when the formats match.
+    """
+    source = zarr.create_array(
+        {},
+        shape=(4,),
+        dtype="int32",
+        compressors=None,
+        zarr_format=source_format,
+        fill_value=7,
+    )
+    kwargs = {} if zarr_format is None else {"zarr_format": zarr_format}
+    new = func(source, **kwargs)
+    expected_format = source_format if zarr_format is None else zarr_format
+    assert new.metadata.zarr_format == expected_format
+    assert new.shape == source.shape
+    assert new.dtype == source.dtype
+    if expected_format == source_format:
+        assert new.compressors == source.compressors
+    else:
+        assert (
+            new.compressors
+            == zarr.create_array(
+                {}, shape=(4,), dtype="int32", zarr_format=expected_format
+            ).compressors
+        )
+
+
+@pytest.mark.parametrize("source_format", [2, 3])
+@pytest.mark.parametrize("target_format", [None, 2, 3])
+def test_open_like_zarr_format(source_format: ZarrFormat, target_format: ZarrFormat | None) -> None:
+    """
+    open_like does not inherit the zarr format of the source: it opens an existing array of
+    any format, and creates a missing one in the default zarr format.
+    """
+    source = zarr.zeros(store={}, shape=(4,), dtype="int32", zarr_format=source_format)
+    store = MemoryStore()
+    if target_format is not None:
+        zarr.create_array(
+            store, name="existing", shape=(4,), dtype="int32", zarr_format=target_format
+        )
+    opened = zarr.open_like(source, path="existing", store=store)
+    assert opened.metadata.zarr_format == (target_format or zarr.config.get("default_zarr_format"))
+    assert set(store._store_dict) & {"existing/zarr.json", "existing/.zarray"} == {
+        "existing/zarr.json" if opened.metadata.zarr_format == 3 else "existing/.zarray"
+    }
+
+
 @pytest.mark.parametrize("store", ["memory", "local", "zip"], indirect=True)
 def test_v2_and_v3_exist_at_same_path(store: Store) -> None:
     zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=3)

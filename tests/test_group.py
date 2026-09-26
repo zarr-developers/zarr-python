@@ -908,6 +908,46 @@ def test_group_array_like_creation(
     assert np.all(new_arr[:] == expect_fill)
 
 
+@pytest.mark.parametrize("group_format", [2, 3])
+@pytest.mark.parametrize(
+    "method_name",
+    ["empty", "zeros", "ones", "full", "empty_like", "zeros_like", "ones_like", "full_like"],
+)
+@pytest.mark.parametrize("source_format", [2, 3])
+@pytest.mark.parametrize("pass_zarr_format", [False, True])
+def test_group_array_helpers_use_group_format(
+    group_format: ZarrFormat,
+    method_name: str,
+    source_format: ZarrFormat,
+    pass_zarr_format: bool,
+) -> None:
+    """
+    Group.{empty, zeros, ones, full} and their *_like versions create an array in the zarr
+    format of the group, which makes it a member of the group. For the *_like versions this
+    holds whatever the format of the source array.
+    """
+    group = Group.from_store(MemoryStore(), zarr_format=group_format)
+    kwargs: dict[str, Any] = {"zarr_format": group_format} if pass_zarr_format else {}
+    if method_name == "full":
+        kwargs["fill_value"] = 3
+    if method_name.endswith("_like"):
+        source = zarr.zeros(store={}, shape=(4,), dtype="int32", zarr_format=source_format)
+        arr = getattr(group, method_name)(name="a", data=source, **kwargs)
+    else:
+        arr = getattr(group, method_name)(name="a", shape=(4,), **kwargs)
+    assert arr.metadata.zarr_format == group_format
+    assert list(group.array_keys()) == ["a"]
+
+
+def test_group_array_helpers_other_format() -> None:
+    """
+    Asking a group helper for an array in a zarr format other than the group's raises.
+    """
+    group = Group.from_store(MemoryStore(), zarr_format=2)
+    with pytest.raises(ValueError, match="zarr_format=3 array in a zarr_format=2 group"):
+        group.zeros(name="a", shape=(4,), zarr_format=3)
+
+
 def test_group_array_creation(
     store: Store,
     zarr_format: ZarrFormat,
