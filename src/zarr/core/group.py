@@ -2134,7 +2134,7 @@ class Group(SyncMixin):
         """
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
-        await store_documents(self.store_path, encode_documents(self.store_path, new_metadata))
+        await save_metadata(self.store_path, new_metadata)
 
         async_group = replace(self._async_group, metadata=new_metadata)
         return replace(self, _async_group=async_group)
@@ -3195,11 +3195,11 @@ async def create_hierarchy(
             else:
                 nodes_explicit[k] = v
 
-    # Encode every node before deleting anything: a node whose metadata cannot be stored
-    # then fails with the store untouched.
-    documents = _encode_nodes(store, nodes_explicit)
+    # Build and encode every node before deleting anything: a node that cannot be built
+    # or whose metadata cannot be stored then fails with the store untouched.
+    built, documents = _prepare_nodes(store, nodes_explicit)
     await asyncio.gather(*(store.delete_dir(key) for key in to_delete_keys))
-    async for key, node in _store_nodes(store, nodes_explicit, documents):
+    async for key, node in _store_nodes(store, nodes_explicit, built, documents):
         yield key, node
 
 
@@ -3229,27 +3229,35 @@ async def create_nodes(
     AsyncGroup | AsyncArray
         The created nodes in the order they are created.
     """
-    async for key, node in _store_nodes(store, nodes, _encode_nodes(store, nodes)):
+    async for key, node in _store_nodes(store, nodes, *_prepare_nodes(store, nodes)):
         yield key, node
 
 
-def _encode_nodes(
+def _prepare_nodes(
     store: Store, nodes: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]
-) -> dict[str, Buffer]:
-    """The metadata documents of `nodes` in `store`, by their keys in the store."""
-    return {
+) -> tuple[dict[str, AsyncGroup | AnyAsyncArray], dict[str, Buffer]]:
+    """The array or group each of `nodes` describes, at its path in `store`, and the
+    metadata documents of `nodes`, by their keys in the store: every node is built and
+    encoded before anything is stored."""
+    built = {
+        path: _build_node(store=store, path=path, metadata=meta) for path, meta in nodes.items()
+    }
+    documents = {
         _join_paths([path, key]): value
         for path, metadata in nodes.items()
         for key, value in encode_documents(StorePath(store, path), metadata).items()
     }
+    return built, documents
 
 
 async def _store_nodes(
     store: Store,
     nodes: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+    built: Mapping[str, AsyncGroup | AnyAsyncArray],
     documents: Mapping[str, Buffer],
 ) -> AsyncIterator[tuple[str, AsyncGroup | AnyAsyncArray]]:
-    """Store the `documents` encoded from `nodes` (see `create_nodes`)."""
+    """Store the `documents` encoded from `nodes` and yield the nodes built from them, as
+    `_prepare_nodes` returns them (see `create_nodes`)."""
     # Note: the only way to alter this value is via the config. If that's undesirable for some reason,
     # then we should consider adding a keyword argument to this function
     semaphore = asyncio.Semaphore(config.get("async.concurrency"))
@@ -3276,7 +3284,7 @@ async def _store_nodes(
             node_name = created_key[: created_key.rfind("/")]
             meta_out = nodes[node_name]
         if meta_out.zarr_format == 3:
-            yield node_name, _build_node(store=store, path=node_name, metadata=meta_out)
+            yield node_name, built[node_name]
         else:
             # For zarr v2
             # we only want to yield when both the metadata and attributes are created
@@ -3291,7 +3299,7 @@ async def _store_nodes(
                 meta_done = _join_paths([node_name, ZARRAY_JSON]) in created_object_keys
 
             if meta_done and attrs_done:
-                yield node_name, _build_node(store=store, path=node_name, metadata=meta_out)
+                yield node_name, built[node_name]
 
             continue
 

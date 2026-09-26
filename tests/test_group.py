@@ -1945,6 +1945,30 @@ async def test_create_hierarchy(
     assert expected_meta == {k: v.metadata for k, v in created.items()}
 
 
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_create_hierarchy_unbuildable_node_leaves_store_untouched(
+    monkeypatch: pytest.MonkeyPatch, zarr_format: ZarrFormat
+) -> None:
+    """`create_hierarchy` builds every node before it deletes or stores anything, so a
+    node that cannot be built fails with the store untouched, even when overwriting."""
+    store = MemoryStore()
+    group = zarr.create_group(store, zarr_format=zarr_format)
+    group.create_array("a", shape=(2,), chunks=(1,), dtype="int8")[:] = [1, 2]
+    before = dict(store._store_dict)
+
+    def unbuildable(**kwargs: object) -> None:
+        raise RuntimeError("cannot build this node")
+
+    monkeypatch.setattr(zarr.core.group, "_build_node", unbuildable)
+    with pytest.raises(RuntimeError, match="cannot build this node"):
+        dict(
+            zarr.create_hierarchy(
+                store=store, nodes={"a": GroupMetadata(zarr_format=zarr_format)}, overwrite=True
+            )
+        )
+    assert store._store_dict == before
+
+
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("extant_node", ["array", "group"])
 @pytest.mark.parametrize("impl", ["async", "sync"])

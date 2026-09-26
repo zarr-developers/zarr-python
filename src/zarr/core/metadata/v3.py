@@ -636,8 +636,9 @@ class ArrayV3Metadata(Metadata):
     @classmethod
     def from_dict(cls, data: dict[str, JSON], *, path: str | None = None) -> Self:
         """Read a stored `zarr.json` array document. An invalid document that
-        `zarr.core.metadata.upgrades` can read warns, and a document the rectilinear
-        chunks flag refuses raises, naming the array at `path`."""
+        `zarr.core.metadata.upgrades` can read is read as upgraded; a reading the user
+        must act on warns, and a document the rectilinear chunks flag refuses raises,
+        naming the array at `path`."""
         # The flag gates what the document declares, so it is checked before upgrades.
         chunk_grid = data.get("chunk_grid")
         if isinstance(chunk_grid, Mapping) and chunk_grid.get("name") == "rectilinear":

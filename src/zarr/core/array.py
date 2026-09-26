@@ -120,11 +120,12 @@ from zarr.core.metadata import (
 )
 from zarr.core.metadata.io import (
     encode_documents,
+    read_stored_array,
     save_metadata,
     store_documents,
     upsert_metadata,
 )
-from zarr.core.metadata.upgrades import upgrade_array_document
+from zarr.core.metadata.upgrades import mark_upgraded, upgrade_array_document
 from zarr.core.metadata.v2 import (
     CompressorLikev2,
     get_object_codec_id,
@@ -207,10 +208,30 @@ def _chunk_sizes_from_shape(
     return tuple(result)
 
 
+def _as_json(value: Any) -> Any:
+    """`value`, as `to_dict` returns it, with its tuples as JSON arrays."""
+    match value:
+        case tuple() | list():
+            return [_as_json(item) for item in value]
+        case dict():
+            return {key: _as_json(item) for key, item in value.items()}
+    return value
+
+
 def parse_array_metadata(data: Any, path: str | None = None) -> ArrayMetadata:
+    """Array metadata from a metadata object or a metadata document, naming the array at
+    `path` in warnings about how an invalid document was read.
+
+    The metadata constructors accept chunk sizes that only an invalid document holds
+    (such as 0), as they always have; such metadata is read as its document is (see
+    `zarr.core.metadata.upgrades`), so an array can be built from it. No data was read
+    or written under those chunk sizes, so none of its readings is a warning."""
     if isinstance(data, ArrayMetadata):
-        return data
-    elif isinstance(data, dict):
+        document, readings = upgrade_array_document(_as_json(data.to_dict()), data.zarr_format)
+        if not readings:
+            return data
+        return mark_upgraded(parse_array_metadata(dict(document)), [None for _ in readings], path)
+    if isinstance(data, dict):
         zarr_format = data.get("zarr_format")
         if zarr_format == 3:
             meta_out = ArrayV3Metadata.from_dict(data, path=path)
@@ -1622,23 +1643,31 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         await save_metadata(self.store_path, metadata, ensure_parents=ensure_parents)
 
     async def _store_upgraded_document(self) -> None:
-        """Store the upgrade of this array's current stored document, if it needs one.
+        """Store the upgrade of this array's current stored document, if it needs one,
+        before chunks are written under this handle's metadata.
 
         Only for metadata read from a document that had to be upgraded (see
         `zarr.core.metadata.upgrades`). The document is read again, because the store may
-        hold a newer one than this handle's metadata: if that one needs no upgrade (the
-        array was re-saved or resized since, possibly by another implementation), it is
-        left as written. Storing the same upgrade twice is harmless, so concurrent
-        callers need no coordination.
+        hold a newer one than this handle's metadata. If that one lays out chunks
+        differently (the array was resized since by software that kept the invalid chunk
+        size), this handle would write chunks no reader finds, so it raises and stores
+        nothing. If it needs no upgrade (the array was re-saved since, possibly by another
+        implementation), it is left as written; if there is none, there is nothing to
+        upgrade. Storing the same upgrade twice is harmless, so concurrent callers need
+        no coordination.
         """
         if not self.metadata._stored_document_upgraded:
             return
-        zarr_format = self.metadata.zarr_format
-        stored = await get_array_metadata(self.store_path, zarr_format=zarr_format)
-        upgraded, readings = upgrade_array_document(stored, zarr_format)
-        if readings:
-            metadata = parse_array_metadata(upgraded, str(self.store_path))
-            await upsert_metadata(self.store_path, metadata)
+        read = await read_stored_array(self.store_path, self.metadata.zarr_format)
+        if read is not None:
+            current, upgraded = read
+            if _chunk_layout(current) != _chunk_layout(self.metadata):
+                raise ValueError(
+                    f"The metadata stored for the array at {str(self.store_path)!r} has "
+                    "changed since this array was opened: reopen the array to write to it."
+                )
+            if upgraded:
+                await upsert_metadata(self.store_path, current)
         object.__setattr__(self.metadata, "_stored_document_upgraded", False)
 
     async def _set_selection(
@@ -4868,6 +4897,14 @@ async def create_array(
             overwrite=overwrite,
             config=config,
         )
+
+
+def _chunk_layout(metadata: ArrayMetadata) -> tuple[object, tuple[int, ...] | None]:
+    """How an array's chunks are laid out: its chunk grid and, if it is sharded, the
+    inner chunk shape."""
+    grid = metadata.chunks if isinstance(metadata, ArrayV2Metadata) else metadata.chunk_grid
+    sharding = _sharding_codec(metadata)
+    return grid, None if sharding is None else sharding.chunk_shape
 
 
 def _sharding_codec(metadata: ArrayMetadata) -> ShardingCodec | None:
