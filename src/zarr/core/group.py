@@ -13,7 +13,6 @@ import numpy as np
 
 import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
-from zarr.abc.store import Store, set_or_delete
 from zarr.core._info import GroupInfo
 from zarr.core._json import buffer_to_json_object, json_to_buffer
 from zarr.core.array import (
@@ -48,7 +47,7 @@ from zarr.core.config import config
 from zarr.core.dtype import parse_data_type
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.io import save_metadata, store_documents
+from zarr.core.metadata.io import encode_documents, save_metadata, store_documents
 from zarr.core.metadata.v3 import check_storable
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
@@ -76,6 +75,7 @@ if TYPE_CHECKING:
     )
     from typing import Any
 
+    from zarr.abc.store import Store
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
@@ -364,7 +364,11 @@ class GroupMetadata(Metadata):
         if self.consolidated_metadata is not None:
             for path, member in self.consolidated_metadata.flattened_metadata.items():
                 if isinstance(member, ArrayV3Metadata):
-                    check_storable(member, f"Array {path!r} in the consolidated metadata: ")
+                    try:
+                        check_storable(member)
+                    except ValueError as e:
+                        e.add_note(f"Array {path!r} in the consolidated metadata.")
+                        raise
         indent = config.get("json_indent")
         if self.zarr_format == 3:
             return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype, indent=indent)}
@@ -821,7 +825,7 @@ class AsyncGroup:
         )
         # Encode the group metadata before deleting the member: metadata that cannot be
         # stored then fails with the store untouched.
-        documents = metadata.to_buffer_dict(default_buffer_prototype())
+        documents = encode_documents(self.store_path, metadata)
         await store_path.delete_dir()
         await store_documents(self.store_path, documents)
         object.__setattr__(self, "metadata", metadata)
@@ -2128,10 +2132,7 @@ class Group(SyncMixin):
         """
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
-        # Write new metadata
-        to_save = new_metadata.to_buffer_dict(default_buffer_prototype())
-        awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
-        await asyncio.gather(*awaitables)
+        await store_documents(self.store_path, encode_documents(self.store_path, new_metadata))
 
         async_group = replace(self._async_group, metadata=new_metadata)
         return replace(self, _async_group=async_group)
@@ -3194,7 +3195,7 @@ async def create_hierarchy(
 
     # Encode every node before deleting anything: a node whose metadata cannot be stored
     # then fails with the store untouched.
-    documents = _encode_nodes(nodes_explicit)
+    documents = _encode_nodes(store, nodes_explicit)
     await asyncio.gather(*(store.delete_dir(key) for key in to_delete_keys))
     async for key, node in _store_nodes(store, nodes_explicit, documents):
         yield key, node
@@ -3226,19 +3227,18 @@ async def create_nodes(
     AsyncGroup | AsyncArray
         The created nodes in the order they are created.
     """
-    async for key, node in _store_nodes(store, nodes, _encode_nodes(nodes)):
+    async for key, node in _store_nodes(store, nodes, _encode_nodes(store, nodes)):
         yield key, node
 
 
 def _encode_nodes(
-    nodes: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+    store: Store, nodes: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]
 ) -> dict[str, Buffer]:
-    """The metadata documents of `nodes`, by their keys in the store."""
-    prototype = default_buffer_prototype()
+    """The metadata documents of `nodes` in `store`, by their keys in the store."""
     return {
         _join_paths([path, key]): value
         for path, metadata in nodes.items()
-        for key, value in metadata.to_buffer_dict(prototype).items()
+        for key, value in encode_documents(StorePath(store, path), metadata).items()
     }
 
 

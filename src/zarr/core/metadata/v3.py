@@ -356,30 +356,31 @@ class RectilinearChunkGridMetadata(Metadata):
 ChunkGridMetadata = RegularChunkGridMetadata | RectilinearChunkGridMetadata
 
 
-def _check_rectilinear_chunks_enabled(subject: str = "") -> None:
-    """Raise unless rectilinear chunks are enabled, with `subject` leading the error.
+def _check_rectilinear_chunks_enabled() -> None:
+    """Raise unless rectilinear chunks are enabled.
 
     The flag gates storing and reading array metadata documents that declare a
     rectilinear chunk grid; the chunk grid metadata classes themselves are not gated.
     """
     if not config.get("array.rectilinear_chunks"):
         raise ValueError(
-            f"{subject}Rectilinear chunk grids are experimental and disabled by default. "
+            "Rectilinear chunk grids are experimental and disabled by default. "
             "Enable them with: zarr.config.set({'array.rectilinear_chunks': True}) "
             "or set the environment variable ZARR_ARRAY__RECTILINEAR_CHUNKS=True"
         )
 
 
-def check_storable(metadata: ArrayV3Metadata, subject: str = "") -> None:
+def check_storable(metadata: ArrayV3Metadata) -> None:
     """Raise if `metadata` may not be stored: a rectilinear chunk grid requires the
-    rectilinear chunks flag. `subject`, when given, names the array in the error.
+    rectilinear chunks flag. `zarr.core.metadata.io.encode_documents` names the node in
+    the error.
 
     Every serialization of array metadata for a store calls this, before the store is
     touched: `ArrayV3Metadata.to_buffer_dict` and, for the arrays in a group's
     consolidated metadata, `GroupMetadata.to_buffer_dict`.
     """
     if isinstance(metadata.chunk_grid, RectilinearChunkGridMetadata):
-        _check_rectilinear_chunks_enabled(subject)
+        _check_rectilinear_chunks_enabled()
 
 
 def create_chunk_grid_metadata(
@@ -635,11 +636,17 @@ class ArrayV3Metadata(Metadata):
     @classmethod
     def from_dict(cls, data: dict[str, JSON], *, path: str | None = None) -> Self:
         """Read a stored `zarr.json` array document. An invalid document that
-        `zarr.core.metadata.upgrades` can read warns, naming the array at `path`."""
+        `zarr.core.metadata.upgrades` can read warns, and a document the rectilinear
+        chunks flag refuses raises, naming the array at `path`."""
         # The flag gates what the document declares, so it is checked before upgrades.
         chunk_grid = data.get("chunk_grid")
         if isinstance(chunk_grid, Mapping) and chunk_grid.get("name") == "rectilinear":
-            _check_rectilinear_chunks_enabled()
+            try:
+                _check_rectilinear_chunks_enabled()
+            except ValueError as e:
+                if path is not None:
+                    e.add_note(f"Array {path!r}.")
+                raise
         upgraded, readings = upgrade_array_document(data, 3)
         # a new dict, because we are modifying it
         _data = dict(upgraded)

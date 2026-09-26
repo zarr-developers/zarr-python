@@ -118,7 +118,12 @@ from zarr.core.metadata import (
     ArrayV2MetadataDict,
     ArrayV3Metadata,
 )
-from zarr.core.metadata.io import save_metadata, store_documents, upsert_metadata
+from zarr.core.metadata.io import (
+    encode_documents,
+    save_metadata,
+    store_documents,
+    upsert_metadata,
+)
 from zarr.core.metadata.upgrades import upgrade_array_document
 from zarr.core.metadata.v2 import (
     CompressorLikev2,
@@ -1631,7 +1636,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         zarr_format = self.metadata.zarr_format
         stored = await get_array_metadata(self.store_path, zarr_format=zarr_format)
         upgraded, _ = upgrade_array_document(stored, zarr_format)
-        await upsert_metadata(self.store_path, parse_array_metadata(upgraded))
+        metadata = parse_array_metadata(upgraded, str(self.store_path))
+        await upsert_metadata(self.store_path, metadata)
         object.__setattr__(self.metadata, "_stored_document_upgraded", False)
 
     async def _set_selection(
@@ -5877,7 +5883,7 @@ async def _resize(
 
     # Encode the new metadata before deleting any chunk: metadata that cannot be stored
     # then fails with the store untouched.
-    documents = new_metadata.to_buffer_dict(default_buffer_prototype())
+    documents = encode_documents(array.store_path, new_metadata)
 
     if delete_outside_chunks and not only_growing:
         # Remove all chunks outside of the new shape

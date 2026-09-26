@@ -69,8 +69,28 @@ def _diff(
             yield DocumentChange(path, stored, new)
 
 
+def encode_documents(
+    store_path: StorePath, metadata: ArrayMetadata | GroupMetadata
+) -> dict[str, Buffer]:
+    """The metadata documents `metadata` stores under `store_path`, by key (see
+    `to_buffer_dict`).
+
+    An operation that deletes or writes store content encodes its documents first, so
+    metadata that cannot be stored fails with the store untouched; the error then names
+    the node at `store_path`, as the warnings about stored documents do.
+    """
+    from zarr.core.group import GroupMetadata
+
+    try:
+        return metadata.to_buffer_dict(default_buffer_prototype())
+    except ValueError as e:
+        node = "Group" if isinstance(metadata, GroupMetadata) else "Array"
+        e.add_note(f"{node} {str(store_path)!r}: nothing was stored.")
+        raise
+
+
 async def store_documents(store_path: StorePath, documents: Mapping[str, Buffer]) -> None:
-    """Store metadata documents encoded by `to_buffer_dict` under `store_path`."""
+    """Store metadata documents encoded by `encode_documents` under `store_path`."""
     await asyncio.gather(
         *(set_or_delete(store_path / key, value) for key, value in documents.items())
     )
@@ -86,7 +106,7 @@ async def upsert_metadata(
     The documents are encoded before the store is read, so metadata that cannot be
     stored fails with the store untouched.
     """
-    documents = metadata.to_buffer_dict(default_buffer_prototype())
+    documents = encode_documents(store_path, metadata)
     stored = await asyncio.gather(
         *((store_path / key).get(prototype=cpu_buffer_prototype) for key in documents)
     )
@@ -140,8 +160,7 @@ async def save_metadata(
     ------
     ValueError
     """
-    to_save = metadata.to_buffer_dict(default_buffer_prototype())
-    set_awaitables = [store_documents(store_path, to_save)]
+    set_awaitables = [store_documents(store_path, encode_documents(store_path, metadata))]
 
     if ensure_parents:
         # To enable zarr.create(store, path="a/b/c"), we need to create all the intermediate groups.

@@ -808,14 +808,18 @@ def _overwrite_hierarchy(path: Path) -> None:
     list(zarr.create_hierarchy(store=LocalStore(path), nodes={"n": mixed.metadata}, overwrite=True))
 
 
+def _consolidate(path: Path) -> None:
+    zarr.consolidate_metadata(path)
+
+
 @pytest.mark.filterwarnings(
     "ignore:.*read as that rectilinear chunk grid:zarr.errors.ZarrUserWarning"
 )
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize(
     "action",
-    [_resize, _write_chunks, _delete_member, _overwrite_hierarchy],
-    ids=["resize", "write", "delete-member", "overwrite-hierarchy"],
+    [_resize, _write_chunks, _delete_member, _overwrite_hierarchy, _consolidate],
+    ids=["resize", "write", "delete-member", "overwrite-hierarchy", "consolidate"],
 )
 def test_store_untouched_without_flag(tmp_path: Path, action: Callable[[Path], None]) -> None:
     """An operation that would store the rectilinear chunk grid read from the verbatim
@@ -833,25 +837,40 @@ def test_store_untouched_without_flag(tmp_path: Path, action: Callable[[Path], N
 
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize("member", ["mixed", "sub/mixed"])
-def test_consolidate_without_flag_leaves_group_readable(tmp_path: Path, member: str) -> None:
-    """Consolidating a group holding an array read from the verbatim document would
-    store its rectilinear chunk grid, so without the flag it fails, naming the array,
-    with the store untouched, and the group still opens without the flag."""
+def test_consolidate_edge_lists_in_regular_grid(tmp_path: Path, member: str) -> None:
+    """Consolidating a group holding the verbatim document stores the member's
+    rectilinear chunk grid first, so without the flag it fails, naming the array, and
+    the group still opens without the flag; with the flag, the member and the
+    consolidated metadata store the rectilinear chunk grid."""
     path = tmp_path / "group.zarr"
     zarr.open_group(path, mode="w").create_group("sub")
     data = _store_mixed_array(path / member)
-    group_doc = (path / "zarr.json").read_bytes()
+    array_path = str(sync(make_store_path(path / member)))
     with zarr.config.set({"array.rectilinear_chunks": False}):
         with (
             pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"),
-            pytest.raises(
-                ValueError,
-                match=f"^Array '{member}' in the consolidated metadata: .* experimental and",
-            ),
+            pytest.raises(ValueError, match="experimental and disabled") as info,
         ):
             zarr.consolidate_metadata(path)
-        assert (path / "zarr.json").read_bytes() == group_doc
+        assert info.value.__notes__ == [f"Array {array_path!r}."]
         with pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"):
             mixed = zarr.open_group(path, mode="r")[member]
     assert isinstance(mixed, zarr.Array)
     np.testing.assert_array_equal(mixed[...], data)
+
+    rectilinear = {
+        "name": "rectilinear",
+        "configuration": {"kind": "inline", "chunk_shapes": [2, [5, 10, 5]]},
+    }
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        with pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"):
+            zarr.consolidate_metadata(path)
+        group_doc = json.loads((path / "zarr.json").read_text())
+        consolidated = group_doc["consolidated_metadata"]["metadata"][member]
+        assert consolidated["chunk_grid"] == rectilinear
+        assert json.loads((path / member / "zarr.json").read_text())["chunk_grid"] == rectilinear
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", ZarrUserWarning)
+            reopened = zarr.open_group(path, mode="r")[member]
+    assert isinstance(reopened, zarr.Array)
+    np.testing.assert_array_equal(reopened[...], data)

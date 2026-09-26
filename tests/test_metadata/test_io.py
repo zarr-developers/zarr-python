@@ -10,7 +10,6 @@ import pytest
 
 import zarr
 from zarr.core.buffer import cpu
-from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.io import ABSENT, DocumentChange, diff_documents, upsert_metadata
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StorePath
@@ -19,6 +18,7 @@ if TYPE_CHECKING:
     from zarr.abc.store import Store
     from zarr.core.buffer import Buffer
     from zarr.core.common import JSON
+    from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 
 V3_DOC: dict[str, JSON] = {
     "zarr_format": 3,
@@ -176,17 +176,21 @@ def test_upsert_metadata_identical_stores_nothing(zarr_format: Literal[2, 3]) ->
     assert store.sets == 0
 
 
-def test_upsert_metadata_unstorable_leaves_store_untouched(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Metadata that cannot be encoded fails before the store is read or written."""
-    store_path, metadata = _legacy(3)
+def test_upsert_metadata_unstorable_leaves_store_untouched() -> None:
+    """Metadata that may not be stored (a rectilinear chunk grid without the rectilinear
+    chunks flag) fails before the store is read or written, naming the array."""
+    store_path, _ = _legacy(3)
     before = _documents(store_path.store)
-
-    def refuse(*args: object) -> None:
-        raise ValueError("cannot be stored")
-
-    monkeypatch.setattr(ArrayV3Metadata, "to_buffer_dict", refuse)
-    with pytest.raises(ValueError, match="cannot be stored"):
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        metadata = zarr.create_array(
+            MemoryStore(), shape=(3,), chunks=[[1, 2]], dtype="int16"
+        ).metadata
+    with (
+        zarr.config.set({"array.rectilinear_chunks": False}),
+        pytest.raises(ValueError, match="experimental and disabled") as info,
+    ):
         sync(upsert_metadata(store_path, metadata))
+    assert info.value.__notes__ == [f"Array {str(store_path)!r}: nothing was stored."]
     assert _documents(store_path.store) == before
 
 
