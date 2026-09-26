@@ -11,6 +11,14 @@ raise `MetadataValidationError` for every ingestion failure, including
 missing store keys and undecodable bytes.
 """
 
+from zarr_metadata._json import (
+    MetadataValidationError,
+    ProblemKind,
+    ValidationProblem,
+    is_json,
+    parse_json,
+    validate_json,
+)
 from zarr_metadata.model._array import (
     ZarrV2ArrayMetadata,
     ZarrV2ArrayMetadataPartial,
@@ -37,26 +45,20 @@ from zarr_metadata.model._validation import (
     GROUP_METADATA_REQUIRED_KEYS_V2,
     GROUP_METADATA_REQUIRED_KEYS_V3,
     GROUP_METADATA_STANDARD_KEYS_V3,
-    MetadataValidationError,
-    ProblemKind,
-    ValidationProblem,
     is_array_metadata_v2,
     is_array_metadata_v3,
     is_group_metadata_v2,
     is_group_metadata_v3,
-    is_json,
     is_metadata_field_v3,
     parse_array_metadata_v2,
     parse_array_metadata_v3,
     parse_group_metadata_v2,
     parse_group_metadata_v3,
-    parse_json,
     parse_metadata_field_v3,
     validate_array_metadata_v2,
     validate_array_metadata_v3,
     validate_group_metadata_v2,
     validate_group_metadata_v3,
-    validate_json,
     validate_metadata_field_v3,
 )
 

@@ -10,6 +10,13 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from typing_extensions import TypedDict, Unpack
 
+from zarr_metadata._json import (
+    MetadataValidationError,
+    ValidationProblem,
+    arrays_to_tuples,
+    refine_json,
+    refine_user_data,
+)
 from zarr_metadata.model._array import (
     ZarrV3ArrayMetadata,
     must_understand_subset,
@@ -17,16 +24,11 @@ from zarr_metadata.model._array import (
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import (
     GROUP_METADATA_STANDARD_KEYS_V3,
-    MetadataValidationError,
     StoreKey,
-    ValidationProblem,
-    arrays_to_tuples,
     dump_store_json,
     load_store_json,
     parse_group_metadata_v2,
     parse_group_metadata_v3,
-    refine_json,
-    refine_user_data,
     validate_consolidated_metadata_v3,
 )
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY

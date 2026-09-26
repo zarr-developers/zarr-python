@@ -13,6 +13,7 @@ import pytest
 from typing_extensions import Unpack
 
 from tests.model._cases import Expect, ExpectFail, mutate_nested_containers
+from zarr_metadata._json import arrays_to_tuples, prefixed
 from zarr_metadata.model import (
     ARRAY_METADATA_OPTIONAL_KEYS_V3,
     ARRAY_METADATA_REQUIRED_KEYS_V3,
@@ -41,7 +42,6 @@ from zarr_metadata.model import (
     validate_json,
     validate_metadata_field_v3,
 )
-from zarr_metadata.model._validation import _prefix, arrays_to_tuples
 
 if TYPE_CHECKING:
     from zarr_metadata._common import JSONValue
@@ -1349,10 +1349,10 @@ def test_error_the_error_refuses_what_is_not_a_problem() -> None:
 
 
 def test_prefix_prepends_loc_head() -> None:
-    """_prefix prepends a loc head to each problem's loc."""
+    """`prefixed` prepends a loc head to each problem's loc."""
     problems = [ValidationProblem(loc=("name",), message="expected str", kind="invalid_type")]
-    prefixed = _prefix(0, problems)
-    assert prefixed == (
+    located = prefixed(0, problems)
+    assert located == (
         ValidationProblem(loc=(0, "name"), message="expected str", kind="invalid_type"),
     )
 

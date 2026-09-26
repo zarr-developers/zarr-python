@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from zarr_metadata.model._validation import refine_json, refine_user_data
+from zarr_metadata._json import refine_json, refine_user_data
 
 if TYPE_CHECKING:
     from collections.abc import Callable
