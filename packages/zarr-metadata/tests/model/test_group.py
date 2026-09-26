@@ -29,6 +29,11 @@ from zarr_metadata.model._validation import (
     validate_group_metadata_v2,
     validate_group_metadata_v3,
 )
+from zarr_metadata.v2.group import (
+    ZarrV2GroupMetadataJSON,
+    ZarrV2GroupMetadataJSONPartial,
+    ZarrV2ZGroupJSON,
+)
 
 # --- ZarrV3GroupMetadata ---------------------------------------------------
 
@@ -132,6 +137,17 @@ def test_group_v2_rejects_unknown_document_member() -> None:
     assert [(p.loc, p.kind) for p in validate_group_metadata_v2({"zarr_format": 2, "x": 1})] == [
         (("x",), "invalid_value")
     ]
+
+
+@pytest.mark.parametrize(
+    "document_type",
+    [ZarrV2ZGroupJSON, ZarrV2GroupMetadataJSON, ZarrV2GroupMetadataJSONPartial],
+    ids=lambda document_type: document_type.__name__,
+)
+def test_v2_group_document_types_are_closed(document_type: type) -> None:
+    """`.zgroup` "Other keys MUST NOT be present": the validator refuses them, and
+    the types say so."""
+    assert getattr(document_type, "__closed__", None) is True
 
 
 @pytest.mark.parametrize(
