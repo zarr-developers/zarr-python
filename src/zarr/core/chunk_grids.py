@@ -341,16 +341,8 @@ def _chunk_int(value: object) -> int | None:
     This is the chunk normalizer's one integer test. An integer is anything
     Python's integer protocol (`__index__`) accepts: `int`, numpy integer
     scalars and 0-d integer arrays. Floats and arrays with dimensions are not
-    integers.
-
-    A boolean (`bool`, `np.bool_`, a boolean array) is a flag, not a size: it
-    raises a `TypeError` here, the one place every spelling of a chunk size
-    passes through, rather than being read as a size of 0 or 1.
+    integers, nor are numpy booleans; a Python `bool` is an `int`, read as 0 or 1.
     """
-    if isinstance(value, bool | np.bool_) or (
-        isinstance(value, np.ndarray) and value.dtype == np.bool_
-    ):
-        raise TypeError(f"A bool is not a chunk size; got {value!r}.")
     if not isinstance(value, SupportsIndex):
         return None
     try:
@@ -792,7 +784,7 @@ def normalize_chunks_1d(chunks: int | Iterable[object], span: int) -> DimensionG
 
 
 def normalize_chunks_nd(
-    chunks: ChunksLike,
+    chunks: ChunksLike | None,
     shape: tuple[int, ...],
 ) -> ChunkGrid:
     """
@@ -820,6 +812,11 @@ def normalize_chunks_nd(
         return ChunkGrid.from_sizes(shape, tuple(chunks.chunk_shape))
     if isinstance(chunks, RectilinearChunkGridMetadata):
         return ChunkGrid.from_sizes(shape, chunks.chunk_shapes)
+
+    if chunks is None or chunks is True:
+        raise ValueError(
+            f'{chunks!r} is not a valid chunk input. Use chunks=None or chunks="auto" from the top-level API for auto-chunking, or pass an int / tuple of ints.'
+        )
 
     # handle no chunking: one chunk covering every axis. Routed through the -1 sentinel so
     # the zero-length-axis clamp lives in one place (normalize_chunks_1d).

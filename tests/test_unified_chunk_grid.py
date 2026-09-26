@@ -20,6 +20,7 @@ from zarr.core.chunk_grids import (
     ChunkSpec,
     FixedDimension,
     VaryingDimension,
+    guess_chunks,
 )
 from zarr.core.common import compress_rle, expand_rle
 from zarr.core.metadata.v3 import (
@@ -1169,6 +1170,15 @@ def test_rectilinear_chunks_gates(shape: tuple[int, ...], chunks: Any) -> None:
         zarr.create_array(MemoryStore(), shape=shape, chunks=chunks, zarr_format=2, dtype="uint8")
     with pytest.raises(ValueError, match="Zarr format 2 does not support rectilinear chunk grids"):
         zarr.create(store=MemoryStore(), shape=shape, chunks=chunks, zarr_format=2, dtype="uint8")
+
+
+@pytest.mark.parametrize("chunks", [None, 0, (), [], False], ids=repr)
+def test_legacy_create_v2_falsy_chunks_auto_chunk(chunks: Any) -> None:
+    """The legacy `zarr.create` Zarr format 2 path reads a falsy `chunks` as not
+    given, so it chunks automatically."""
+    shape = (2**24,)
+    arr = zarr.create(store=MemoryStore(), shape=shape, chunks=chunks, dtype="int32", zarr_format=2)
+    assert arr.chunks == guess_chunks(shape, 4).chunk_shape
 
 
 def test_legacy_create_v2_accepts_numpy_array_chunks() -> None:

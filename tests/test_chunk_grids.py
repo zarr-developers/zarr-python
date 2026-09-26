@@ -256,11 +256,25 @@ def test_normalize_chunks_1d_errors(case: ExpectFail[tuple[Any, int]]) -> None:
 @pytest.mark.parametrize(
     "case",
     [
+        # `None` and `True` mean auto-chunking only to the top-level API.
         ExpectFail(
             input=(None, (100,)),
-            exception=TypeError,
+            exception=ValueError,
             id="none",
-            msg="got None of type NoneType",
+            msg="None is not a valid chunk input",
+        ),
+        ExpectFail(
+            input=(True, (100,)),
+            exception=ValueError,
+            id="true",
+            msg="True is not a valid chunk input",
+        ),
+        # `False` means one chunk spanning the array only as the whole specification.
+        ExpectFail(
+            input=((False,), (100,)),
+            exception=ValueError,
+            id="false-size",
+            msg="Chunk size must be positive or -1, got 0",
         ),
         ExpectFail(input=("foo", (100,)), exception=ValueError, id="string", msg="dimensions"),
         # A 0-d array is an integer only if its dtype is.
@@ -295,25 +309,32 @@ def test_normalize_chunks_nd_errors(case: ExpectFail[tuple[Any, tuple[int, ...]]
 
 
 @pytest.mark.parametrize(
+    ("chunks", "as_ints"),
+    [((True, 5), (1, 5)), ([[True, 9], 10], [[1, 9], 10])],
+    ids=["bool-size", "bool-edge"],
+)
+def test_normalize_chunks_nd_reads_bool_as_int(chunks: Any, as_ints: Any) -> None:
+    """A Python `bool` inside a chunk specification is an `int`: `True` is a chunk size
+    of 1."""
+    assert normalize_chunks_nd(chunks, (10, 10)) == normalize_chunks_nd(as_ints, (10, 10))
+
+
+@pytest.mark.parametrize(
     "chunks",
     [
-        True,
         np.True_,
         np.array(True),
         np.array([True, True]),
-        (True, 5),
         (np.True_, 5),
         (np.array(True), 5),
-        [[True, 9], 10],
         [[np.True_, 9], 10],
     ],
     ids=repr,
 )
-def test_normalize_chunks_nd_rejects_bool(chunks: Any) -> None:
-    """A boolean is a flag, not a chunk size: every spelling of one, as the whole
-    specification, as a dimension's size, or as an edge in a dimension's list, is
-    rejected with the same error rather than read as a size of 0 or 1."""
-    with pytest.raises(TypeError, match="A bool is not a chunk size"):
+def test_normalize_chunks_nd_rejects_numpy_bool(chunks: Any) -> None:
+    """A numpy boolean is not an integer, whether it is the whole specification, a
+    dimension's size, or an edge in a dimension's list."""
+    with pytest.raises(TypeError, match="integer"):
         normalize_chunks_nd(chunks, (10, 10))
 
 
