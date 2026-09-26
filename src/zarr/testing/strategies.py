@@ -448,10 +448,6 @@ def arrays(
     array_path = _join_paths([path, name])
     root = zarr.open_group(store, mode=open_mode, zarr_format=zarr_format)
 
-    # Convert chunk grid metadata to a form create_array accepts:
-    # - RegularChunkGridMetadata -> flat tuple of ints
-    # - RectilinearChunkGridMetadata -> nested list of ints (triggers rectilinear path)
-    # - v2 -> flat tuple of ints
     chunks_param: tuple[int, ...] | list[int | list[int]] | RectilinearChunkGridMetadata
     shard_shape = None
     dim_names = None
@@ -459,19 +455,19 @@ def arrays(
         chunk_grid_meta = draw(st.none() | chunk_grids(shape=nparray.shape), label="chunk grid")
         dim_names = draw(dimension_names(ndim=nparray.ndim), label="dimension names")
         if isinstance(chunk_grid_meta, RectilinearChunkGridMetadata):
-            # The per-dimension list form of `chunks=` can only express a grid with
-            # at least one edge list (bare ints alone declare a regular grid) whose
-            # edge lists sum exactly to the extent, or belong to a zero-length axis. Other grids are passed as the
-            # metadata object, which `create_array` also accepts.
-            expressible_as_lists = any(
-                isinstance(dim, tuple) for dim in chunk_grid_meta.chunk_shapes
-            ) and all(
-                isinstance(dim, int) or extent == 0 or sum(dim) == extent
-                for dim, extent in zip(chunk_grid_meta.chunk_shapes, nparray.shape, strict=True)
-            )
-            if expressible_as_lists and draw(st.booleans(), label="chunks as lists"):
-                chunks_param = chunks_param_from_rectilinear(chunk_grid_meta)
+            # A rectilinear grid is passed either as the metadata object or in
+            # the list form of `chunks=`, drawn from its own strategy. A 0-d
+            # array has no dimension to hold an edge list.
+            if nparray.ndim > 0 and draw(st.booleans(), label="chunks as lists"):
+                event("rectilinear chunks= as lists")
+                chunks_param = draw(rectilinear_chunks(shape=nparray.shape), label="chunks")
+                chunk_grid_meta = RectilinearChunkGridMetadata(
+                    chunk_shapes=tuple(
+                        dim if isinstance(dim, int) else tuple(dim) for dim in chunks_param
+                    )
+                )
             else:
+                event("rectilinear chunks= as metadata")
                 chunks_param = chunk_grid_meta
         elif isinstance(chunk_grid_meta, RegularChunkGridMetadata):
             chunks_param = chunk_grid_meta.chunk_shape
@@ -523,7 +519,7 @@ def arrays(
             assert shard_shape == a.shards
         else:
             # The stored grid is exactly the declared one: bare ints stay bare
-            # ints, edge lists keep their edges (gh-4374, gh-4272).
+            # ints, edge lists keep their edges.
             assert a.metadata.chunk_grid == chunk_grid_meta
             assert shard_shape is None
 
