@@ -117,7 +117,10 @@ class TestInt32(BaseTestZDType):
 class TestInt64(BaseTestZDType):
     test_cls = Int64
     scalar_type = np.int64
-    valid_dtype = (np.dtype(">i8"), np.dtype("<i8"))
+    # np.dtype("q") is a np.dtypes.LongLongDType instance, not a np.dtypes.Int64DType
+    # instance, even though "long long" is 64-bit on this platform. It describes the
+    # same layout, so it is a valid Int64. See issue #3282.
+    valid_dtype = (np.dtype(">i8"), np.dtype("<i8"), np.dtype("q"))
     invalid_dtype = (
         np.dtype(np.int8),
         np.dtype(np.uint16),
@@ -267,7 +270,11 @@ class TestUInt32(BaseTestZDType):
 class TestUInt64(BaseTestZDType):
     test_cls = UInt64
     scalar_type = np.uint64
-    valid_dtype = (np.dtype(">u8"), np.dtype("<u8"))
+    # np.dtype("Q") is a np.dtypes.ULongLongDType instance, not a
+    # np.dtypes.UInt64DType instance, even though "unsigned long long" is 64-bit on
+    # this platform. It describes the same layout, so it is a valid UInt64.
+    # See issue #3282.
+    valid_dtype = (np.dtype(">u8"), np.dtype("<u8"), np.dtype("Q"))
     invalid_dtype = (
         np.dtype(np.int8),
         np.dtype(np.int16),

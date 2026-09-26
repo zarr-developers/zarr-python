@@ -20,9 +20,11 @@ from zarr.dtype import (  # type: ignore[attr-defined]
     FixedLengthUTF32,
     Int8,
     Int16,
+    Int64,
     RawBytes,
     Struct,
     UInt8,
+    UInt64,
     VariableLengthUTF8,
     ZDType,
     data_type_registry,
@@ -90,6 +92,22 @@ class TestRegistry:
         dtype: np.dtype[Any] = np.dtypes.StringDType(na_object=None)
         with pytest.raises(ValueError, match=r"Zarr data type resolution from StringDType.*failed"):
             data_type_registry_fixture.match_dtype(dtype)
+
+    @staticmethod
+    @pytest.mark.parametrize(("dtype_str", "expected_cls"), [("q", Int64), ("Q", UInt64)])
+    def test_match_dtype_c_type_spelling(dtype_str: str, expected_cls: type) -> None:
+        """
+        Test that the C type-name spellings resolve through the registry.
+
+        ``np.dtype("q")`` and ``np.dtype("Q")`` are ``LongLongDType`` and
+        ``ULongLongDType`` instances rather than ``Int64DType`` and ``UInt64DType``
+        instances, even though on this platform they describe the same layout. They
+        must still resolve to exactly one data type. See issue #3282.
+        """
+        dtype = np.dtype(dtype_str)
+        assert isinstance(data_type_registry.match_dtype(dtype), expected_cls)
+        for zarr_format in (2, 3):
+            assert isinstance(parse_dtype(dtype, zarr_format=zarr_format), expected_cls)
 
     @staticmethod
     def test_unregistered_dtype(data_type_registry_fixture: DataTypeRegistry) -> None:

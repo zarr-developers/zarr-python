@@ -84,7 +84,22 @@ class ZDType[DType: TBaseDType, Scalar: TBaseScalar](ABC):
         Bool
             True if the dtype matches, False otherwise.
         """
-        return type(dtype) is cls.dtype_cls
+        if type(dtype) is cls.dtype_cls:
+            return True
+        # NumPy's C type spellings do not always map to the canonical dtype class:
+        # ``np.dtype("q")`` is a ``LongLongDType`` instance rather than an
+        # ``Int64DType`` instance, even though the two describe the same memory
+        # layout. The width of ``long long`` depends on the platform NumPy was
+        # built for, so the dtype class alone is not a reliable test. Fall back to
+        # comparing the layout (kind and item size), which is what a Zarr data type
+        # actually encodes.
+        try:
+            expected = cls.dtype_cls()
+        except TypeError:
+            # Flexible/parametric dtypes (e.g. ``VoidDType``) have no fixed layout
+            # to compare against, so the exact dtype class check above stands.
+            return False
+        return dtype.kind == expected.kind and dtype.itemsize == expected.itemsize
 
     @classmethod
     @abstractmethod
