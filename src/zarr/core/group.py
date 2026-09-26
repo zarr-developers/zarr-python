@@ -147,11 +147,16 @@ class ConsolidatedMetadata:
     must_understand: Literal[False] = False
 
     def to_dict(self) -> dict[str, JSON]:
+        """The consolidated metadata document. An array read from a stored document that
+        had to be upgraded is written as that document was stored, so every reader of
+        the consolidated metadata reads it as upgraded again (see `mark_upgraded`)."""
         return {
             "kind": self.kind,
             "must_understand": self.must_understand,
             "metadata": {
                 k: v.to_dict()
+                if isinstance(v, GroupMetadata) or v._stored_document is None
+                else dict(v._stored_document)
                 for k, v in sorted(
                     self.flattened_metadata.items(),
                     key=lambda item: (
@@ -163,7 +168,9 @@ class ConsolidatedMetadata:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> ConsolidatedMetadata:
+    def from_dict(cls, data: dict[str, JSON], *, path: str | None = None) -> ConsolidatedMetadata:
+        """Read consolidated metadata, naming each member by its path under the group at
+        `path` (or relative to that group, when `path` is not given) in warnings."""
         data = dict(data)
 
         kind = data.get("kind")
@@ -177,6 +184,7 @@ class ConsolidatedMetadata:
         metadata: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] = {}
         if raw_metadata:
             for k, v in raw_metadata.items():
+                member = k if path is None else _join_paths([path, k])
                 if not isinstance(v, dict):
                     raise TypeError(
                         f"Invalid value for metadata items. key='{k}', type='{type(v).__name__}'"
@@ -188,16 +196,16 @@ class ConsolidatedMetadata:
                 if zarr_format == 3:
                     node_type = parse_node_type(v.get("node_type", None))
                     if node_type == "group":
-                        metadata[k] = GroupMetadata.from_dict(v)
+                        metadata[k] = GroupMetadata.from_dict(v, path=member)
                     elif node_type == "array":
-                        metadata[k] = ArrayV3Metadata.from_dict(v)
+                        metadata[k] = ArrayV3Metadata.from_dict(v, path=member)
                     else:
                         assert_never(node_type)
                 elif zarr_format == 2:
                     if "shape" in v:
-                        metadata[k] = ArrayV2Metadata.from_dict(v)
+                        metadata[k] = ArrayV2Metadata.from_dict(v, path=member)
                     else:
-                        metadata[k] = GroupMetadata.from_dict(v)
+                        metadata[k] = GroupMetadata.from_dict(v, path=member)
                 else:
                     assert_never(zarr_format)
 
@@ -415,7 +423,9 @@ class GroupMetadata(Metadata):
         object.__setattr__(self, "consolidated_metadata", consolidated_metadata)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
+    def from_dict(cls, data: dict[str, Any], *, path: str | None = None) -> GroupMetadata:
+        """Read a stored group document; `path` names the group in warnings about the
+        consolidated metadata it holds."""
         data = dict(data)
         node_type = data.pop("node_type", None)
         if node_type not in ("group", None):
@@ -424,7 +434,9 @@ class GroupMetadata(Metadata):
             )
         consolidated_metadata = data.pop("consolidated_metadata", None)
         if consolidated_metadata:
-            data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(consolidated_metadata)
+            data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(
+                consolidated_metadata, path=path
+            )
 
         zarr_format = data.get("zarr_format")
         if zarr_format == 2 or zarr_format is None:
@@ -695,7 +707,7 @@ class AsyncGroup:
             msg = f"Node type in metadata ({node_type}) is not 'group'"
             raise GroupNotFoundError(msg)
         return cls(
-            metadata=GroupMetadata.from_dict(data),
+            metadata=GroupMetadata.from_dict(data, path=str(store_path)),
             store_path=store_path,
         )
 
@@ -3078,6 +3090,7 @@ async def create_hierarchy(
     # ensure that all nodes have the same zarr_format, and add implicit groups as needed
     nodes_parsed = _parse_hierarchy_dict(data=nodes_normed_keys)
     redundant_implicit_groups = []
+    to_delete_keys: list[str] = []
 
     # empty hierarchies should be a no-op
     if len(nodes_parsed) > 0:
@@ -3110,13 +3123,7 @@ async def create_hierarchy(
         if overwrite:
             # we will remove any nodes that collide with arrays and non-implicit groups defined in
             # nodes
-
-            # track the keys of nodes we need to delete
-            to_delete_keys = []
-            to_delete_keys.extend(
-                [k for k, v in nodes_parsed.items() if k not in implicit_group_keys]
-            )
-            await asyncio.gather(*(store.delete_dir(key) for key in to_delete_keys))
+            to_delete_keys = [k for k in nodes_parsed if k not in implicit_group_keys]
         else:
             # This type is long.
             coros: (
@@ -3176,7 +3183,11 @@ async def create_hierarchy(
             else:
                 nodes_explicit[k] = v
 
-    async for key, node in create_nodes(store=store, nodes=nodes_explicit):
+    # Build every node before deleting or storing anything: metadata that no array or
+    # group can be built from then fails with the store untouched.
+    built = _build_nodes(store, nodes_explicit)
+    await asyncio.gather(*(store.delete_dir(key) for key in to_delete_keys))
+    async for key, node in _store_nodes(store, nodes_explicit, built):
         yield key, node
 
 
@@ -3206,7 +3217,26 @@ async def create_nodes(
     AsyncGroup | AsyncArray
         The created nodes in the order they are created.
     """
+    async for key, node in _store_nodes(store, nodes, _build_nodes(store, nodes)):
+        yield key, node
 
+
+def _build_nodes(
+    store: Store, nodes: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]
+) -> dict[str, AsyncGroup | AnyAsyncArray]:
+    """The array or group each of `nodes` describes, at its path in `store`."""
+    return {
+        path: _build_node(store=store, path=path, metadata=meta) for path, meta in nodes.items()
+    }
+
+
+async def _store_nodes(
+    store: Store,
+    nodes: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+    built: Mapping[str, AsyncGroup | AnyAsyncArray],
+) -> AsyncIterator[tuple[str, AsyncGroup | AnyAsyncArray]]:
+    """Store the metadata of `nodes` and yield the nodes `_build_nodes` built from them
+    (see `create_nodes`)."""
     # Note: the only way to alter this value is via the config. If that's undesirable for some reason,
     # then we should consider adding a keyword argument to this function
     semaphore = asyncio.Semaphore(config.get("async.concurrency"))
@@ -3234,7 +3264,7 @@ async def create_nodes(
             node_name = created_key[: created_key.rfind("/")]
             meta_out = nodes[node_name]
         if meta_out.zarr_format == 3:
-            yield node_name, _build_node(store=store, path=node_name, metadata=meta_out)
+            yield node_name, built[node_name]
         else:
             # For zarr v2
             # we only want to yield when both the metadata and attributes are created
@@ -3249,7 +3279,7 @@ async def create_nodes(
                 meta_done = _join_paths([node_name, ZARRAY_JSON]) in created_object_keys
 
             if meta_done and attrs_done:
-                yield node_name, _build_node(store=store, path=node_name, metadata=meta_out)
+                yield node_name, built[node_name]
 
             continue
 
@@ -3504,7 +3534,9 @@ async def _read_metadata_v3(store: Store, path: str) -> ArrayV3Metadata | GroupM
     )
     if zarr_json_bytes is None:
         raise FileNotFoundError(path)
-    return _build_metadata_v3(buffer_to_json_object(zarr_json_bytes))
+    return _build_metadata_v3(
+        buffer_to_json_object(zarr_json_bytes), path=str(StorePath(store, path))
+    )
 
 
 async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupMetadata:
@@ -3539,7 +3571,7 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
         else:
             zmeta = buffer_to_json_object(zgroup_bytes)
 
-    return _build_metadata_v2(zmeta, zattrs)
+    return _build_metadata_v2(zmeta, zattrs, path=str(StorePath(store, path)))
 
 
 async def _read_group_metadata_v2(store: Store, path: str) -> GroupMetadata:
@@ -3570,7 +3602,9 @@ async def _read_group_metadata(
     return await _read_group_metadata_v3(store=store, path=path)
 
 
-def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMetadata:
+def _build_metadata_v3(
+    zarr_json: dict[str, JSON], *, path: str | None = None
+) -> ArrayV3Metadata | GroupMetadata:
     """
     Convert a dict representation of Zarr V3 metadata into the corresponding metadata class.
     """
@@ -3579,9 +3613,9 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
         raise MetadataValidationError(msg)
     match zarr_json:
         case {"node_type": "array"}:
-            return ArrayV3Metadata.from_dict(zarr_json)
+            return ArrayV3Metadata.from_dict(zarr_json, path=path)
         case {"node_type": "group"}:
-            return GroupMetadata.from_dict(zarr_json)
+            return GroupMetadata.from_dict(zarr_json, path=path)
         case _:  # pragma: no cover
             raise ValueError(
                 "invalid value for `node_type` key in metadata document"
@@ -3589,16 +3623,16 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
 
 
 def _build_metadata_v2(
-    zarr_json: dict[str, JSON], attrs_json: dict[str, JSON]
+    zarr_json: dict[str, JSON], attrs_json: dict[str, JSON], *, path: str | None = None
 ) -> ArrayV2Metadata | GroupMetadata:
     """
     Convert a dict representation of Zarr V2 metadata into the corresponding metadata class.
     """
     match zarr_json:
         case {"shape": _}:
-            return ArrayV2Metadata.from_dict(zarr_json | {"attributes": attrs_json})
+            return ArrayV2Metadata.from_dict(zarr_json | {"attributes": attrs_json}, path=path)
         case _:  # pragma: no cover
-            return GroupMetadata.from_dict(zarr_json | {"attributes": attrs_json})
+            return GroupMetadata.from_dict(zarr_json | {"attributes": attrs_json}, path=path)
 
 
 @overload

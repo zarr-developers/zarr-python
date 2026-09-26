@@ -8,6 +8,7 @@ and end-to-end array creation + read/write.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -149,9 +150,9 @@ def test_rectilinear_feature_flag_enabled() -> None:
         (10, 100, 1, 10, 10, 10, 10),
         (10, 100, 9, 10, 10, 10, 90),
         (10, 95, 9, 10, 10, 5, 90),  # boundary chunk
-        (0, 0, None, 0, None, None, None),  # zero-size
+        (10, 0, None, 0, None, None, None),  # zero-extent: no chunks, size still >= 1
     ],
-    ids=["start", "middle", "end", "boundary", "zero-size"],
+    ids=["start", "middle", "end", "boundary", "zero-extent"],
 )
 def test_fixed_dimension(
     size: int,
@@ -190,11 +191,16 @@ def test_fixed_dimension_indices_to_chunks() -> None:
 
 @pytest.mark.parametrize(
     ("size", "extent", "match"),
-    [(-1, 100, "must be >= 0"), (10, -1, "must be >= 0")],
-    ids=["negative-size", "negative-extent"],
+    [
+        (-1, 100, "size must be >= 1"),
+        (0, 100, "size must be >= 1"),
+        (0, 0, "size must be >= 1"),
+        (10, -1, "extent must be >= 0"),
+    ],
+    ids=["negative-size", "zero-size", "zero-size-zero-extent", "negative-extent"],
 )
-def test_fixed_dimension_rejects_negative(size: int, extent: int, match: str) -> None:
-    """FixedDimension raises ValueError for negative size or extent"""
+def test_fixed_dimension_rejects_invalid(size: int, extent: int, match: str) -> None:
+    """FixedDimension raises ValueError for a size below 1 or a negative extent."""
     with pytest.raises(ValueError, match=match):
         FixedDimension(size=size, extent=extent)
 
@@ -489,6 +495,7 @@ def test_chunk_grid_iter() -> None:
     [
         ([[10, 3]], [10, 10, 10]),
         ([[10, 2], [20, 1]], [10, 10, 20]),
+        ([[True, 2], [3, 1]], [1, 1, 3]),
     ],
 )
 def test_rle_expand(compressed: list[Any], expected: list[int]) -> None:
@@ -542,19 +549,49 @@ def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
         expand_rle(rle_input)
 
 
-# -- expand_rle handles JSON floats --
+@pytest.mark.parametrize(
+    ("rle_input", "match"),
+    [
+        ([10.5], "Chunk edge length must be an int, got 10.5"),
+        ([10.0], "Chunk edge length must be an int, got 10.0"),
+        ([[10.0, 3]], "Chunk edge length must be an int, got 10.0"),
+        (["10"], "Chunk edge length must be an int, got '10'"),
+        ([[10, 3.5]], "RLE repeat count must be an int, got 3.5"),
+        ([[10, 3.0]], "RLE repeat count must be an int, got 3.0"),
+        ([np.int64(10)], "Chunk edge length must be an int, got np.int64(10)"),
+        ([[10, np.int64(3)]], "RLE repeat count must be an int, got np.int64(3)"),
+    ],
+    ids=[
+        "fractional-edge",
+        "float-edge",
+        "float-rle-size",
+        "string-edge",
+        "fractional-count",
+        "float-count",
+        "numpy-int-edge",
+        "numpy-int-count",
+    ],
+)
+def test_rle_expand_rejects_non_int(rle_input: list[Any], match: str) -> None:
+    """expand_rle reads `int`s (and `bool`s) only, not floats or NumPy integers."""
+    with pytest.raises(TypeError, match=re.escape(match)):
+        expand_rle(rle_input)
 
 
-def test_expand_rle_bare_integer_floats_accepted() -> None:
-    """JSON parsers may emit 10.0 for the integer 10; expand_rle should handle it."""
-    result = expand_rle([10.0, 20.0])  # type: ignore[list-item]
-    assert result == [10, 20]
-
-
-def test_expand_rle_pair_with_float_count() -> None:
-    """expand_rle accepts float repeat counts that are integer-valued"""
-    result = expand_rle([[10, 3.0]])  # type: ignore[list-item]
-    assert result == [10, 10, 10]
+@pytest.mark.parametrize(
+    ("rle_input", "match"),
+    [
+        ([0], "chunk edge length must be >= 1"),
+        ([10.5], "chunk edge length must be an int,"),
+        ([[5, 0]], "RLE repeat count must be >= 1"),
+        ([[5, 2, 1]], r"RLE entries must be an integer or \[size, count\]"),
+    ],
+    ids=["zero-edge", "fractional-edge", "zero-rle-count", "rle-entry-of-three"],
+)
+def test_rle_expand_names_dimension(rle_input: list[Any], match: str) -> None:
+    """Given the dimension `axis` the edges belong to, every error of expand_rle names it."""
+    with pytest.raises((TypeError, ValueError), match=f"^Dimension 2: {match}"):
+        expand_rle(rle_input, axis=2)
 
 
 # ---------------------------------------------------------------------------
@@ -1421,46 +1458,22 @@ def test_edge_case_chunk_grid_boundary_shape() -> None:
 # -- Zero-size and zero-extent --
 
 
-@pytest.mark.parametrize(
-    ("size", "extent"),
-    [(0, 0), (0, 5), (10, 0)],
-    ids=["zero-size-zero-extent", "zero-size-nonzero-extent", "zero-extent-nonzero-size"],
-)
-def test_edge_case_zero_size_or_extent(size: int, extent: int) -> None:
-    """FixedDimension with zero size or extent has zero chunks and getitem returns None"""
-    d = FixedDimension(size=size, extent=extent)
+@pytest.mark.parametrize("size", [1, 10], ids=["size-1", "size-10"])
+def test_fixed_dimension_zero_extent(size: int) -> None:
+    """A zero-length axis has zero chunks and behaves like an empty grid."""
+    d = FixedDimension(size=size, extent=0)
     assert d.nchunks == 0
+    assert d.ngridcells == 0
+    assert d.data_size(0) == 0
+    assert d.with_extent(0) == d
+    assert d.with_extent(3) == FixedDimension(size=size, extent=3)
+    empty = np.array([], dtype=np.intp)
+    np.testing.assert_array_equal(d.indices_to_chunks(empty), empty)
+    with pytest.raises(IndexError):
+        d.index_to_chunk(0)
     g = ChunkGrid(dimensions=(d,))
     assert g[0] is None
-
-
-def test_edge_case_zero_size_data_and_indices() -> None:
-    """FixedDimension(size=0) handles data_size, index_to_chunk, and indices_to_chunks safely."""
-    d = FixedDimension(size=0, extent=0)
-    # Zero-sized chunks have zero data
-    assert d.data_size(0) == 0
-    # Vectorized lookup maps every index to chunk 0 (avoids division by zero)
-    indices = np.array([0, 0, 0], dtype=np.intp)
-    np.testing.assert_array_equal(d.indices_to_chunks(indices), np.zeros(3, dtype=np.intp))
-
-
-def test_edge_case_zero_size_nonzero_extent_index() -> None:
-    """FixedDimension(size=0, extent>0) maps valid indices to chunk 0 without dividing by zero."""
-    d = FixedDimension(size=0, extent=5)
-    assert d.nchunks == 0
-    # index_to_chunk avoids division by zero and returns 0
-    assert d.index_to_chunk(0) == 0
-    assert d.index_to_chunk(4) == 0
-
-
-def test_edge_case_zero_size_data_and_index() -> None:
-    """FixedDimension(size=0) returns zero for data_size and maps indices to chunk 0."""
-    d = FixedDimension(size=0, extent=0)
-    # data_size returns 0 for a zero-sized chunk
-    assert d.data_size(0) == 0
-    # vectorized indices_to_chunks returns zeros
-    indices = np.array([0, 0, 0], dtype=np.intp)
-    np.testing.assert_array_equal(d.indices_to_chunks(indices), np.zeros(3, dtype=np.intp))
+    assert list(g) == []
 
 
 # -- 0-d grid --
