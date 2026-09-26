@@ -47,7 +47,13 @@ from zarr.core.config import config
 from zarr.core.dtype import parse_data_type
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.io import encode_documents, encode_node, save_metadata
+from zarr.core.metadata.io import (
+    EncodedNode,
+    encode_documents,
+    encode_node,
+    save_metadata,
+    store_node,
+)
 from zarr.core.metadata.v3 import check_storable
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
@@ -831,17 +837,23 @@ class AsyncGroup:
         # stored is encoded after the deletion, from the metadata as it then is, so
         # concurrent deletions each store the deletions made before them.
         members = {name: node for name, node in consolidated.metadata.items() if name != key}
-        await encode_node(
+        encoded = await encode_node(
             self.store_path,
             replace(self.metadata, consolidated_metadata=replace(consolidated, metadata=members)),
         )
         await store_path.delete_dir()
         # In place, so every handle sharing this consolidated metadata (a parent's or a
-        # subgroup's) sees the deletion; from the consolidated metadata this handle holds
-        # now, which a concurrent write may have replaced with the metadata it stored.
-        if (current := self.metadata.consolidated_metadata) is not None:
-            current.metadata.pop(key, None)
-        await self._save_metadata()
+        # subgroup's) sees the deletion, and the members the encoding above read again,
+        # which are not read twice.
+        consolidated.metadata.pop(key, None)
+        refreshed = [
+            member._replace(members=consolidated.metadata) if member.members is members else member
+            for member in encoded.members
+        ]
+        for member in refreshed:
+            member.adopt()
+        documents = encode_documents(self.store_path, self.metadata)
+        await store_node(self.store_path, EncodedNode(documents, refreshed))
 
     async def get[DefaultT](
         self, key: str, default: DefaultT | None = None
@@ -930,9 +942,7 @@ class AsyncGroup:
         return node
 
     async def _save_metadata(self, ensure_parents: bool = False) -> None:
-        # Adopt the metadata stored: its consolidated members may be newer.
-        stored = await save_metadata(self.store_path, self.metadata, ensure_parents=ensure_parents)
-        object.__setattr__(self, "metadata", stored)
+        await save_metadata(self.store_path, self.metadata, ensure_parents=ensure_parents)
 
     @property
     def path(self) -> str:
@@ -2147,7 +2157,8 @@ class Group(SyncMixin):
         """
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
-        new_metadata = await save_metadata(self.store_path, new_metadata)
+        # Write new metadata
+        await save_metadata(self.store_path, new_metadata)
 
         async_group = replace(self._async_group, metadata=new_metadata)
         return replace(self, _async_group=async_group)
