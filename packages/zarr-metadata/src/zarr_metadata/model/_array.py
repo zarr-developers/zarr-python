@@ -14,6 +14,7 @@ from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import (
     ARRAY_METADATA_STANDARD_KEYS_V3,
     MetadataValidationError,
+    StoreKey,
     ValidationProblem,
     arrays_to_tuples,
     dump_store_json,
@@ -322,7 +323,7 @@ class ZarrV3ArrayMetadata:
         return must_understand_subset(self.extra_fields)
 
     @classmethod
-    def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV3ArrayMetadata:
+    def from_key_value(cls, mapping: Mapping[StoreKey, bytes]) -> ZarrV3ArrayMetadata:
         return cls.from_json(load_store_json(mapping, ZARR_V3_ARRAY_METADATA_STORE_KEY))
 
     def to_key_value(
@@ -471,7 +472,7 @@ class ZarrV2ArrayMetadata:
         )
 
     @classmethod
-    def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV2ArrayMetadata:
+    def from_key_value(cls, mapping: Mapping[StoreKey, bytes]) -> ZarrV2ArrayMetadata:
         zarray_raw = load_store_json(mapping, ZARR_V2_ARRAY_METADATA_STORE_KEY)
         if not isinstance(zarray_raw, Mapping):
             return cls.from_json(zarray_raw)
