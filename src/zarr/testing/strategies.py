@@ -548,19 +548,27 @@ def simple_arrays(
     )
 
 
-# The most chunks a drawn rectilinear grid declares over the array, all axes
-# together. Indexing tests visit every chunk, so the product is what costs time.
+# The most chunks a drawn rectilinear grid declares along one axis, and over
+# the array, all axes together. Indexing tests visit every chunk, so the
+# product is what costs time.
+_RECTILINEAR_MAX_CHUNKS_PER_DIM = 20
 _RECTILINEAR_CHUNK_BUDGET = 400
 
 
 def _max_chunks_per_dim(ndim: int) -> int:
-    """At most 20 chunks per dimension, and at most `_RECTILINEAR_CHUNK_BUDGET`
-    in total over `ndim` dimensions."""
-    return max(k for k in range(1, 21) if k**ndim <= _RECTILINEAR_CHUNK_BUDGET)
+    """At most `_RECTILINEAR_MAX_CHUNKS_PER_DIM` chunks per dimension, and at
+    most `_RECTILINEAR_CHUNK_BUDGET` in total over `ndim` dimensions."""
+    return max(
+        k
+        for k in range(1, _RECTILINEAR_MAX_CHUNKS_PER_DIM + 1)
+        if k**ndim <= _RECTILINEAR_CHUNK_BUDGET
+    )
 
 
 @st.composite
-def rectilinear_dim_edges(draw: st.DrawFn, *, extent: int, max_chunks: int = 20) -> list[int]:
+def rectilinear_dim_edges(
+    draw: st.DrawFn, *, extent: int, max_chunks: int = _RECTILINEAR_MAX_CHUNKS_PER_DIM
+) -> list[int]:
     """Explicit chunk edge lengths summing exactly to `extent`.
 
     A zero `extent` has no chunks for edges to cover, and no non-empty list
@@ -656,22 +664,27 @@ def _rle_encode(draw: st.DrawFn, edges: list[int]) -> list[int | list[int]]:
     return encoded
 
 
-def _rectilinear_chunk_shape(
-    draw: st.DrawFn, *, extent: int, max_chunks: int
-) -> int | tuple[int, ...]:
-    """One dimension of a stored rectilinear grid's `chunk_shapes`: a bare-int
-    step, or explicit edges. Edges may sum beyond the extent, which the spec
-    allows and a shrinking resize produces."""
-    if draw(st.booleans(), label="bare int"):
-        return _rectilinear_step(draw, extent=extent, max_chunks=max_chunks)
-    edges = draw(rectilinear_dim_edges(extent=extent, max_chunks=max_chunks))
-    if extent > 0 and draw(st.booleans(), label="overhang"):
-        event("rectilinear edges: overhang")
-        if draw(st.booleans(), label="trailing edge"):
-            edges = [*edges, draw(st.integers(min_value=1, max_value=5))]
-        else:
-            edges[-1] += draw(st.integers(min_value=1, max_value=5))
-    return tuple(edges)
+def _rectilinear_chunk_shapes(
+    draw: st.DrawFn, shape: tuple[int, ...]
+) -> tuple[int | tuple[int, ...], ...]:
+    """The `chunk_shapes` of a stored rectilinear grid over `shape`: per
+    dimension a bare-int step, or explicit edges. Edges may sum beyond the
+    extent, which the spec allows and a shrinking resize produces."""
+    max_chunks = _max_chunks_per_dim(len(shape))
+    chunk_shapes: list[int | tuple[int, ...]] = []
+    for extent in shape:
+        if draw(st.booleans(), label="bare int"):
+            chunk_shapes.append(_rectilinear_step(draw, extent=extent, max_chunks=max_chunks))
+            continue
+        edges = draw(rectilinear_dim_edges(extent=extent, max_chunks=max_chunks))
+        if extent > 0 and draw(st.booleans(), label="overhang"):
+            event("rectilinear edges: overhang")
+            if draw(st.booleans(), label="trailing edge"):
+                edges = [*edges, draw(st.integers(min_value=1, max_value=5))]
+            else:
+                edges[-1] += draw(st.integers(min_value=1, max_value=5))
+        chunk_shapes.append(tuple(edges))
+    return tuple(chunk_shapes)
 
 
 @st.composite
@@ -688,10 +701,7 @@ def rectilinear_chunk_shape_declarations(
     Returns `(declaration, chunk_shapes)`: the JSON value to store, and the
     `chunk_shapes` that parsing it must produce.
     """
-    max_chunks = _max_chunks_per_dim(len(shape))
-    chunk_shapes = tuple(
-        _rectilinear_chunk_shape(draw, extent=extent, max_chunks=max_chunks) for extent in shape
-    )
+    chunk_shapes = _rectilinear_chunk_shapes(draw, shape)
     declaration: list[RectilinearDimSpecJSON] = [
         dim
         if isinstance(dim, int)
@@ -709,12 +719,7 @@ def rectilinear_chunk_grids(
 ) -> RectilinearChunkGridMetadata:
     """A `RectilinearChunkGridMetadata` over `shape`, per dimension a bare-int
     step or explicit edges, which may sum beyond the extent."""
-    max_chunks = _max_chunks_per_dim(len(shape))
-    return RectilinearChunkGridMetadata(
-        chunk_shapes=tuple(
-            _rectilinear_chunk_shape(draw, extent=extent, max_chunks=max_chunks) for extent in shape
-        )
-    )
+    return RectilinearChunkGridMetadata(chunk_shapes=_rectilinear_chunk_shapes(draw, shape))
 
 
 @st.composite
