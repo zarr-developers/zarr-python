@@ -57,6 +57,12 @@ def _is_int_list(value: object) -> TypeGuard[list[int]]:
     return isinstance(value, list) and all(isinstance(v, int) for v in value)
 
 
+def _abbreviate(value: JSON, limit: int = 60) -> str:
+    """`value` as JSON, cut to at most `limit` characters."""
+    text = json.dumps(value)
+    return text if len(text) <= limit else f"{text[: limit - 3]}..."
+
+
 def _read_chunk_size(size: JSON, span: int | None, unit: int) -> tuple[int, str | None] | None:
     """Read one entry of a stored regular chunk shape as a chunk edge length.
 
@@ -180,9 +186,61 @@ def _invalid_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, str] | N
     return None
 
 
+def _read_edge_length(edge: JSON) -> JSON:
+    """Read one stored chunk edge length of a rectilinear chunk grid: an integral JSON
+    float of at least 1 (`4.0`) is read as the `int` it equals. Anything else is kept,
+    for the metadata constructors to check."""
+    match edge:
+        case float() if edge.is_integer() and edge >= 1:
+            return int(edge)
+    return edge
+
+
+def _read_rectilinear_axis(spec: JSON) -> JSON:
+    """Read the stored chunk edge lengths of one axis of a rectilinear chunk grid (see
+    `_read_edge_length`): its explicit edges and the sizes of its run-length encoded
+    `[size, count]` pairs. A bare chunk size and a repeat count are kept as stored: no
+    writer stored them as floats."""
+    match spec:
+        case list():
+            return [_read_rectilinear_entry(entry) for entry in spec]
+    return spec
+
+
+def _read_rectilinear_entry(entry: JSON) -> JSON:
+    match entry:
+        case [size, count]:
+            return [_read_edge_length(size), count]
+    return _read_edge_length(entry)
+
+
+def _float_edge_lengths_v3(doc: ArrayDocument) -> tuple[ArrayDocument, str] | None:
+    grid = doc.get("chunk_grid")
+    if not (isinstance(grid, Mapping) and grid.get("name") == "rectilinear"):
+        return None
+    configuration = grid.get("configuration")
+    if not isinstance(configuration, Mapping):
+        return None
+    stored = configuration.get("chunk_shapes")
+    if not isinstance(stored, list):
+        return None
+    read = [_read_rectilinear_axis(axis) for axis in stored]
+    # An integral float and the `int` it equals compare equal, but not as JSON text.
+    axes = [axis for axis, spec in enumerate(stored) if json.dumps(spec) != json.dumps(read[axis])]
+    if not axes:
+        return None
+    reading = (
+        f"The stored chunk edge lengths {_abbreviate(stored)} are invalid: chunk edge "
+        f"lengths must be integers. They are read as {_abbreviate(read)}, reading each "
+        f"edge length stored as a float, in dimensions {axes}, as the integer it equals."
+    )
+    upgraded = {**configuration, "chunk_shapes": read}
+    return {**doc, "chunk_grid": {**grid, "configuration": upgraded}}, reading
+
+
 ARRAY_UPGRADES: Final[Mapping[ZarrFormat, tuple[Upgrade, ...]]] = {
     2: (_invalid_chunk_sizes_v2,),
-    3: (_invalid_inner_chunk_sizes_v3, _invalid_chunk_sizes_v3),
+    3: (_invalid_inner_chunk_sizes_v3, _invalid_chunk_sizes_v3, _float_edge_lengths_v3),
 }
 """The upgrades of an array document of each Zarr format, applied in order."""
 
