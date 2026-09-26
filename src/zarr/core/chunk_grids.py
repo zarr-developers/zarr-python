@@ -15,6 +15,7 @@ from typing import (
     NamedTuple,
     Protocol,
     SupportsIndex,
+    cast,
     runtime_checkable,
 )
 
@@ -343,12 +344,10 @@ def _chunk_int(value: object) -> int | None:
     scalars and 0-d integer arrays. Floats and arrays with dimensions are not
     integers, nor are numpy booleans; a Python `bool` is an `int`, read as 0 or 1.
     """
-    if not isinstance(value, SupportsIndex):
-        return None
     try:
-        return operator.index(value)
+        return operator.index(cast("SupportsIndex", value))
     except TypeError:
-        # numpy arrays define `__index__` but only 0-d integer arrays honour it.
+        # Not an integer; numpy arrays define `__index__` but only 0-d integer arrays honour it.
         return None
 
 
