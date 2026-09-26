@@ -16,7 +16,12 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer.core import BufferPrototype
 
-import pytest
+from zarr.testing._deps import missing_dependency
+
+try:
+    import pytest
+except ImportError as e:
+    raise missing_dependency("pytest", __name__) from e
 
 from zarr.abc.store import (
     ByteRequest,
