@@ -130,7 +130,8 @@ async def read_stored_array(
     """The metadata of the array document stored at `store_path` as it now is, read with
     the upgrades but without their warnings (the handle that asks has warned), and
     whether the document had to be upgraded; `None` if no array document is stored
-    there."""
+    there. Only operations that store metadata read it, so a document read as a
+    rectilinear chunk grid requires the rectilinear chunks flag, as storing it does."""
     from zarr.core.array import get_array_metadata, parse_array_metadata
 
     try:
@@ -141,30 +142,71 @@ async def read_stored_array(
     return parse_array_metadata(upgraded, str(store_path)), bool(readings)
 
 
-async def _refresh_consolidated(store_path: StorePath, metadata: GroupMetadata) -> GroupMetadata:
+async def _refresh_consolidated(
+    store_path: StorePath, metadata: GroupMetadata
+) -> tuple[GroupMetadata, list[tuple[StorePath, ArrayMetadata]]]:
     """`metadata` with each member of its consolidated metadata that was read from a
     document that had to be upgraded replaced by the metadata of the member's own
-    document as it now is, after storing that document's upgrade if it needs one: the
-    member document may have changed since, so the consolidated copy is never stored
-    as if it were valid."""
+    document as it now is (the member document may have changed since, so the
+    consolidated copy is never stored as if it were valid), and the members whose own
+    documents still need their upgrade stored. Reads the store; writes nothing."""
     from zarr.core.group import GroupMetadata
 
     consolidated = metadata.consolidated_metadata
     if consolidated is None:
-        return metadata
+        return metadata, []
     members = dict(consolidated.metadata)
+    to_upgrade: list[tuple[StorePath, ArrayMetadata]] = []
     for name, member in consolidated.metadata.items():
         if isinstance(member, GroupMetadata):
-            members[name] = await _refresh_consolidated(store_path / name, member)
+            members[name], nested = await _refresh_consolidated(store_path / name, member)
+            to_upgrade.extend(nested)
         elif member._stored_document_upgraded:
             read = await read_stored_array(store_path / name, member.zarr_format)
             if read is not None:
-                members[name], upgraded = read
+                current, upgraded = read
+                members[name] = current
                 if upgraded:
-                    await upsert_metadata(store_path / name, members[name])
+                    to_upgrade.append((store_path / name, current))
     if all(members[name] is member for name, member in consolidated.metadata.items()):
-        return metadata
-    return replace(metadata, consolidated_metadata=replace(consolidated, metadata=members))
+        return metadata, to_upgrade
+    refreshed = replace(metadata, consolidated_metadata=replace(consolidated, metadata=members))
+    return refreshed, to_upgrade
+
+
+class EncodedNode(NamedTuple):
+    """What storing a node's metadata writes, encoded before anything is written (see
+    `encode_node`)."""
+
+    documents: dict[str, Buffer]
+    """The node's own documents, by key (see `encode_documents`)."""
+    members: list[tuple[StorePath, ArrayMetadata]]
+    """Members of a group's consolidated metadata whose own stored documents are
+    upgraded along with it."""
+
+
+async def encode_node(
+    store_path: StorePath, metadata: ArrayMetadata | GroupMetadata
+) -> EncodedNode:
+    """Encode what storing `metadata` under `store_path` writes, so metadata that cannot
+    be stored fails with the store untouched. Group metadata is stored with its
+    consolidated metadata, whose upgraded members are first refreshed from their own
+    stored documents (see `_refresh_consolidated`); encoding the group then encodes
+    them too."""
+    from zarr.core.group import GroupMetadata
+
+    members: list[tuple[StorePath, ArrayMetadata]] = []
+    if isinstance(metadata, GroupMetadata):
+        metadata, members = await _refresh_consolidated(store_path, metadata)
+    return EncodedNode(encode_documents(store_path, metadata), members)
+
+
+async def store_node(store_path: StorePath, encoded: EncodedNode) -> None:
+    """Store what `encode_node` encoded under `store_path`."""
+    await asyncio.gather(
+        store_documents(store_path, encoded.documents),
+        *(upsert_metadata(path, member) for path, member in encoded.members),
+    )
 
 
 def _build_parents(store_path: StorePath, zarr_format: ZarrFormat) -> dict[str, GroupMetadata]:
@@ -204,12 +246,7 @@ async def save_metadata(
     ------
     ValueError
     """
-    from zarr.core.group import GroupMetadata
-
-    if isinstance(metadata, GroupMetadata):
-        # The one place group metadata is stored, and with it consolidated metadata.
-        metadata = await _refresh_consolidated(store_path, metadata)
-    set_awaitables = [store_documents(store_path, encode_documents(store_path, metadata))]
+    set_awaitables = [store_node(store_path, await encode_node(store_path, metadata))]
 
     if ensure_parents:
         # To enable zarr.create(store, path="a/b/c"), we need to create all the intermediate groups.

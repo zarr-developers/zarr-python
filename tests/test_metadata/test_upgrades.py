@@ -990,19 +990,13 @@ def _mixed_doc(shape: list[int], chunk_shape: list[Any]) -> dict[str, JSON]:
         (_mixed_doc([6, 12], [2, [5, 10, 5]]), (2, (5, 10, 5)), r"^The stored chunk grid"),
         (_mixed_doc([0, 20], [2, [5, 10, 5]]), (2, (5, 10, 5)), r"^The stored chunk grid"),
         (_mixed_doc([6, 0], [2, [5, 10, 5]]), (2, (5, 10, 5)), r"^The stored chunk grid"),
-        (
-            _mixed_doc([6, 20], [True, [5, 10, 5]]),
-            (1, (5, 10, 5)),
-            (
-                r"^The stored chunk shape \[true, \[5, 10, 5\]\] is invalid: .* read as "
-                r"\[1, \[5, 10, 5\]\], reading true in dimension 0 as 1\. The stored chunk grid"
-            ),
-        ),
+        # JSON true is read as 1 silently; only the grid reading warns.
+        (_mixed_doc([6, 20], [True, [5, 10, 5]]), (1, (5, 10, 5)), r"^The stored chunk grid"),
         (_mixed_doc([6, 20], [2, [5.0, 10.0, 5.0]]), (2, (5, 10, 5)), r"^The stored chunk grid"),
         (
-            _mixed_doc([4, 10_000], [True, [10] * 1000]),
-            (1, (10,) * 1000),
-            r"^The stored chunk shape \[true, \[10, 10, .*\.\.\. is invalid: .* read as \[1, \[10, .*\.\.\.,",
+            _mixed_doc([4, 10_000], [0, [10] * 1000]),
+            (4, (10,) * 1000),
+            r"^The stored chunk shape \[0, \[10, 10, .*\.\.\. is invalid: .* read as \[4, \[10, .*\.\.\.,",
         ),
     ],
     ids=[
@@ -1055,22 +1049,20 @@ def test_regular_grid_of_only_edge_lists_rejected() -> None:
     """A regular chunk shape made only of edge lists was never stored (a rectilinear
     chunk grid was), so it is not read as rectilinear."""
     info = _rejected_without_warning(_mixed_doc([6, 20], [[1, 5], [5, 10, 5]]))
-    assert info.match(re.escape("Dimension 0: chunk edge length must be an integer, got [1, 5]"))
+    assert info.match(re.escape("Dimension 0: chunk edge length must be an int, got [1, 5]"))
 
 
 def test_run_length_encoded_edges_in_regular_grid_rejected() -> None:
     """Run-length encoded edges were never stored in a regular chunk shape."""
     info = _rejected_without_warning(_mixed_doc([6, 20], [2, [[5, 2], 10]]))
-    assert info.match(
-        re.escape("Dimension 1: chunk edge length must be an integer, got [[5, 2], 10]")
-    )
+    assert info.match(re.escape("Dimension 1: chunk edge length must be an int, got [[5, 2], 10]"))
 
 
 @pytest.mark.parametrize("edge", [5.5, "5"], ids=["fractional", "string"])
 def test_non_int_edge_in_regular_grid_rejected(edge: object) -> None:
     """An edge that is not an integer is reported as such, not blamed on its list."""
     info = _rejected_without_warning(_mixed_doc([6, 20], [2, [edge, 15]]))
-    assert info.match(re.escape(f"Dimension 1: chunk edge length must be an integer, got {edge!r}"))
+    assert info.match(re.escape(f"Dimension 1: chunk edge length must be an int, got {edge!r}"))
 
 
 def test_edge_below_one_in_regular_grid_rejected() -> None:
@@ -1168,14 +1160,25 @@ def _consolidate(path: Path) -> None:
     zarr.consolidate_metadata(path)
 
 
+def _set_group_attribute(path: Path) -> None:
+    zarr.open_group(path, mode="a").attrs["x"] = 1
+
+
 @pytest.mark.filterwarnings(
     "ignore:.*read as that rectilinear chunk grid:zarr.errors.ZarrUserWarning"
 )
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize(
     "action",
-    [_resize, _write_chunks, _delete_member, _overwrite_hierarchy, _consolidate],
-    ids=["resize", "write", "delete-member", "overwrite-hierarchy", "consolidate"],
+    [
+        _resize,
+        _write_chunks,
+        _delete_member,
+        _overwrite_hierarchy,
+        _consolidate,
+        _set_group_attribute,
+    ],
+    ids=["resize", "write", "delete-member", "overwrite-hierarchy", "consolidate", "group-attrs"],
 )
 def test_store_untouched_without_flag(tmp_path: Path, action: Callable[[Path], None]) -> None:
     """An operation that would store the rectilinear chunk grid read from the verbatim
@@ -1230,6 +1233,63 @@ def test_consolidate_edge_lists_in_regular_grid(tmp_path: Path, member: str) -> 
             reopened = zarr.open_group(path, mode="r")[member]
     assert isinstance(reopened, zarr.Array)
     np.testing.assert_array_equal(reopened[...], data)
+
+
+@pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+def test_group_write_without_flag_stores_no_member_upgrade(tmp_path: Path) -> None:
+    """A group write refused without the flag stores no upgrade of another consolidated
+    member either (here `a`, stored with chunk size 0), although that one alone could be
+    stored: every member is refreshed and the group encoded before anything is stored."""
+    path = tmp_path / "group.zarr"
+    _store_mixed_group(path)
+    zarr.open_group(path, mode="a").create_array("a", shape=(4,), chunks=(4,), dtype="int16")
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        zarr.consolidate_metadata(path)
+    _rewrite_doc(path / "a", 3, _store_zero)
+    _rewrite_consolidated(path, 3, "a", _store_zero)
+    # Consolidating with the flag stored the rectilinear grid: restore the verbatim document.
+    (path / "mixed" / "zarr.json").write_text(MIXED_REGULAR_GRID_DOC)
+    _rewrite_consolidated(
+        path, 3, "mixed", lambda doc: doc.update(json.loads(MIXED_REGULAR_GRID_DOC))
+    )
+    stored = {p: p.read_bytes() for p in path.rglob("*") if p.is_file()}
+    with (
+        zarr.config.set({"array.rectilinear_chunks": False}),
+        pytest.raises(ValueError, match="experimental and disabled by default"),
+    ):
+        _set_group_attribute(path)
+    assert {p: p.read_bytes() for p in path.rglob("*") if p.is_file()} == stored
+
+
+@pytest.mark.filterwarnings(
+    "ignore:.*read as that rectilinear chunk grid:zarr.errors.ZarrUserWarning"
+)
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+@pytest.mark.parametrize("action", [_delete_member, _set_group_attribute], ids=["delete", "attrs"])
+def test_group_write_stores_mixed_member_with_flag(
+    tmp_path: Path, action: Callable[[Path], None]
+) -> None:
+    """With the flag, a group write stores the rectilinear chunk grid read from the
+    verbatim document, in the member's own document and in the consolidated metadata,
+    which then open cleanly."""
+    path = tmp_path / "group.zarr"
+    _store_mixed_group(path)
+    rectilinear = {
+        "name": "rectilinear",
+        "configuration": {"kind": "inline", "chunk_shapes": [2, [5, 10, 5]]},
+    }
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        action(path)
+        group_doc = json.loads((path / "zarr.json").read_text())
+        assert group_doc["consolidated_metadata"]["metadata"]["mixed"]["chunk_grid"] == rectilinear
+        assert json.loads((path / "mixed" / "zarr.json").read_text())["chunk_grid"] == rectilinear
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", ZarrUserWarning)
+            for use_consolidated in (True, False):
+                mixed = zarr.open_group(path, use_consolidated=use_consolidated)["mixed"]
+                assert isinstance(mixed, zarr.Array)
+                assert mixed.read_chunk_sizes == ((2, 2, 2), (5, 10, 5))
 
 
 @pytest.mark.filterwarnings(

@@ -47,7 +47,7 @@ from zarr.core.config import config
 from zarr.core.dtype import parse_data_type
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.io import encode_documents, save_metadata, store_documents
+from zarr.core.metadata.io import encode_documents, encode_node, save_metadata, store_node
 from zarr.core.metadata.v3 import check_storable
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
@@ -822,7 +822,7 @@ class AsyncGroup:
         # Encode the group metadata without the member before deleting it: metadata that
         # cannot be stored then fails with the store and this group untouched.
         members = {name: node for name, node in consolidated.metadata.items() if name != key}
-        documents = encode_documents(
+        encoded = await encode_node(
             self.store_path,
             replace(self.metadata, consolidated_metadata=replace(consolidated, metadata=members)),
         )
@@ -830,7 +830,7 @@ class AsyncGroup:
         # In place, so every handle sharing this consolidated metadata (a parent's or a
         # subgroup's) sees the deletion.
         consolidated.metadata.pop(key, None)
-        await store_documents(self.store_path, documents)
+        await store_node(self.store_path, encoded)
 
     async def get[DefaultT](
         self, key: str, default: DefaultT | None = None
