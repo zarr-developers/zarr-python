@@ -8,6 +8,7 @@ and end-to-end array creation + read/write.
 
 from __future__ import annotations
 
+import re
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
@@ -566,15 +567,32 @@ def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
 @pytest.mark.parametrize(
     ("rle_input", "match"),
     [
+        ([10.5], "Chunk edge length must be an int, got 10.5"),
         ([10.0], "Chunk edge length must be an int, got 10.0"),
+        ([[10.0, 3]], "Chunk edge length must be an int, got 10.0"),
+        (["10"], "Chunk edge length must be an int, got '10'"),
         ([True], "Chunk edge length must be an int, got True"),
+        ([[10, 3.5]], "RLE repeat count must be an int, got 3.5"),
         ([[10, 3.0]], "RLE repeat count must be an int, got 3.0"),
+        ([np.int64(10)], "Chunk edge length must be an int, got np.int64(10)"),
+        ([[10, np.int64(3)]], "RLE repeat count must be an int, got np.int64(3)"),
     ],
-    ids=["float-edge", "bool-edge", "float-count"],
+    ids=[
+        "fractional-edge",
+        "float-edge",
+        "float-rle-size",
+        "string-edge",
+        "bool-edge",
+        "fractional-count",
+        "float-count",
+        "numpy-int-edge",
+        "numpy-int-count",
+    ],
 )
 def test_rle_expand_rejects_non_int(rle_input: list[Any], match: str) -> None:
-    """expand_rle takes `int`s only; stored integral floats are read by the upgrades."""
-    with pytest.raises(TypeError, match=match):
+    """expand_rle takes `int`s only, not `bool`s, floats or NumPy integers; stored
+    integral floats and JSON `true` are read by the upgrades."""
+    with pytest.raises(TypeError, match=re.escape(match)):
         expand_rle(rle_input)
 
 
@@ -582,7 +600,7 @@ def test_rle_expand_rejects_non_int(rle_input: list[Any], match: str) -> None:
     ("rle_input", "match"),
     [
         ([0], "chunk edge length must be >= 1"),
-        ([10.0], "chunk edge length must be an int"),
+        ([10.5], "chunk edge length must be an int,"),
         ([[5, 0]], "RLE repeat count must be >= 1"),
         ([[5, 2, 1]], r"RLE entries must be an integer or \[size, count\]"),
     ],

@@ -154,7 +154,8 @@ class ArrayV2Metadata(Metadata):
     @classmethod
     def from_dict(cls, data: dict[str, Any], *, path: str | None = None) -> ArrayV2Metadata:
         """Read a stored `.zarray` document (with its attributes). An invalid document
-        that `zarr.core.metadata.upgrades` can read warns, naming the array at `path`."""
+        that `zarr.core.metadata.upgrades` can read is read as upgraded; a reading the user
+        must act on warns, naming the array at `path`."""
         upgraded, readings = upgrade_array_document(data, 2)
         # a new dict, because we are modifying it
         _data: dict[str, Any] = dict(upgraded)
