@@ -376,6 +376,12 @@ class ScaleOffset(ArrayArrayCodec):
         new_fill = _encode(fill, offset, scale)
         return replace(chunk_spec, fill_value=new_fill.reshape(()).item())
 
+    def resolve_chunk_grid(
+        self, *, shape: tuple[int, ...], chunk_grid: ChunkGridMetadata
+    ) -> tuple[tuple[int, ...], ChunkGridMetadata]:
+        """Scaling changes the fill value, never the chunk shape."""
+        return shape, chunk_grid
+
     def _decode_sync(
         self,
         chunk_array: NDBuffer,

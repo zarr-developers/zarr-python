@@ -749,6 +749,14 @@ print(z[50:70, 40:60])
 Note that rectilinear inner chunks with sharding are not supported — only the
 shard boundaries can be rectilinear.
 
+!!! note "When the divisibility check happens"
+    Zarr checks that the inner chunk shape divides every shard when the array is
+    created, as long as each filter before the sharding codec describes how it maps
+    the chunk grid. All built-in filters that keep the chunk shape, and `transpose`, do. A third-party filter that changes chunk
+    metadata without describing its grid limits that check to the largest shard. A
+    smaller shard that is not divisible is then reported only when it is first written
+    or read. See [Chunk geometry and validation](extending.md#chunk-geometry-and-validation).
+
 For such arrays, `.chunks` returns the (regular) inner chunk shape, while
 `.shards` raises `NotImplementedError` since there is no single uniform shard
 shape — use `.write_chunk_sizes` for the per-dimension shard sizes. `.info`

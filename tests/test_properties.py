@@ -19,7 +19,9 @@ import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
 from hypothesis import assume, event, given, settings
 
+from zarr.abc.codec import Codec
 from zarr.abc.store import Store
+from zarr.codecs import BytesCodec, ShardingCodec, TransposeCodec
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
 from zarr.core.dtype import get_data_type_from_json, get_data_type_from_native_dtype
 from zarr.core.dtype.common import HasItemSize
@@ -592,3 +594,141 @@ def test_chunks_param_from_rectilinear_bare_int_roundtrip() -> None:
             dtype="uint8",
         )
         assert dst.metadata.chunk_grid == grid  # type: ignore[union-attr]
+
+
+def _divisors(n: int) -> st.SearchStrategy[int]:
+    return st.sampled_from([d for d in range(1, n + 1) if n % d == 0])
+
+
+@st.composite
+def transposed_sharding_chains(
+    draw: st.DrawFn, *, shape: tuple[int, ...]
+) -> tuple[tuple[int, ...], list[Codec] | None, ShardingCodec, bool]:
+    """A codec chain with a `TransposeCodec` ahead of a `ShardingCodec`, and its validity.
+
+    Returns `(chunks, filters, serializer, valid)` for
+    `zarr.create_array(shape=shape, chunks=chunks, filters=filters, serializer=serializer)`.
+    One of three layouts is drawn:
+
+    - `transpose then shard`: `filters=[transpose]`, the serializer shards the
+      transposed chunk.
+    - `nested shard, transpose between levels`: an outer `ShardingCodec` whose
+      inner chain is `[transpose, ShardingCodec]`.
+    - `transpose inside shard`: a `ShardingCodec` whose inner chain is
+      `[transpose, BytesCodec]`; a control that is always valid.
+
+    A sharding codec placed after the transpose sees transposed chunks, so its
+    `chunk_shape` must divide the transposed edges, not the array's chunk
+    grid. That inner chunk shape is drawn without regard to divisibility, so
+    about half of the drawn chains are invalid; `valid` is the oracle: every
+    edge of the sharding codec's chunk shape divides the transposed edge it
+    applies to. Any shard shape drawn for the outer codec always divides the
+    array's chunk grid, so `valid` is decided by the transpose alone.
+    """
+    ndim = len(shape)
+    # Edges are drawn uniformly rather than via ``chunk_shapes`` (which favors
+    # many chunks of edge 1): unequal edges are what make a transpose change
+    # the chunk shape, which is the case this strategy exists for.
+    chunks = tuple(draw(st.integers(min_value=1, max_value=s)) for s in shape)
+    order = tuple(draw(st.permutations(range(ndim)), label="transpose order"))
+    transpose = TransposeCodec(order=order)
+    layout = draw(
+        st.sampled_from(
+            [
+                "transpose then shard",
+                "nested shard, transpose between levels",
+                "transpose inside shard",
+            ]
+        ),
+        label="layout",
+    )
+    event("transposed sharding chain layout", layout)
+
+    def transposed(edges: tuple[int, ...]) -> tuple[int, ...]:
+        return tuple(edges[order[i]] for i in range(ndim))
+
+    event("transpose changes the chunk shape", "yes" if transposed(chunks) != chunks else "no")
+
+    def draw_inner(seen: tuple[int, ...]) -> tuple[tuple[int, ...], bool]:
+        # Half the chains are valid (every edge a divisor of the transposed
+        # edge); the other half break exactly one axis with a non-divisor, of
+        # which `t + 1` guarantees at least one exists.
+        valid = draw(st.booleans(), label="valid chain")
+        broken = None if valid else draw(st.integers(min_value=0, max_value=ndim - 1))
+        inner = tuple(
+            draw(
+                _divisors(t)
+                if axis != broken
+                else st.sampled_from([i for i in range(1, t + 2) if t % i != 0])
+            )
+            for axis, t in enumerate(seen)
+        )
+        assert valid == all(t % i == 0 for t, i in zip(seen, inner, strict=True))
+        return inner, valid
+
+    filters: list[Codec] | None = None
+    if layout == "transpose then shard":
+        inner, valid = draw_inner(transposed(chunks))
+        filters = [transpose]
+        serializer = ShardingCodec(chunk_shape=inner, codecs=[BytesCodec()])
+    else:
+        mid = tuple(draw(_divisors(c)) for c in chunks)
+        if layout == "nested shard, transpose between levels":
+            inner, valid = draw_inner(transposed(mid))
+            serializer = ShardingCodec(
+                chunk_shape=mid,
+                codecs=[transpose, ShardingCodec(chunk_shape=inner, codecs=[BytesCodec()])],
+            )
+        else:
+            valid = True
+            serializer = ShardingCodec(chunk_shape=mid, codecs=[transpose, BytesCodec()])
+    event("transposed sharding chain", "valid" if valid else "invalid")
+    return chunks, filters, serializer, valid
+
+
+@given(data=st.data())
+@pytest.mark.filterwarnings(
+    "ignore:Combining a `sharding_indexed` codec:zarr.errors.ZarrUserWarning"
+)
+def test_transposed_sharding_chain_validation(data: st.DataObject) -> None:
+    """A chain with a transpose ahead of a sharding codec is accepted exactly
+    when the sharding codec's chunk shape divides the *transposed* chunk, and an
+    accepted chain round-trips its data and its persisted metadata.
+
+    Every codec must be validated against the chunk spec it sees at encode
+    time. Validating the sharding codec against the array's untransposed chunk
+    grid instead accepts chains whose inner chunks do not tile the transposed
+    chunk; such an array is created without error and then silently reads back
+    wrong data.
+    """
+    from zarr.storage import MemoryStore
+
+    # At least two axes, so that a permuted order can change the chunk shape.
+    shape = data.draw(
+        npst.array_shapes(min_dims=2, max_dims=3, min_side=1, max_side=8), label="shape"
+    )
+    chunks, filters, serializer, valid = data.draw(transposed_sharding_chains(shape=shape))
+    dtype = data.draw(st.sampled_from([np.dtype("uint8"), np.dtype("int32"), np.dtype("float64")]))
+    nparray = data.draw(numpy_arrays(shapes=st.just(shape), dtype=dtype), label="array data")
+
+    def build() -> zarr.Array:
+        return zarr.create_array(
+            MemoryStore(),
+            shape=shape,
+            chunks=chunks,
+            dtype=dtype,
+            filters=filters,
+            serializer=serializer,
+            compressors=None,
+        )
+
+    if not valid:
+        with pytest.raises(ValueError, match="not divisible"):
+            build()
+        return
+    zarray = build()
+    zarray[:] = nparray
+    assert_array_equal(zarray[:], nparray)
+    reopened = zarr.open_array(zarray.store, mode="r")
+    assert reopened.metadata == zarray.metadata
+    assert_array_equal(reopened[:], nparray)
