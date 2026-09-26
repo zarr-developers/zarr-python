@@ -76,8 +76,8 @@ def _read_chunk_size(
     size of a shard). `span` is `None` where no stored 0 is known, as in the inner
     chunk shape of a sharding codec: 0 is then left for the constructors to reject. A
     flat JSON list is kept as the chunk edge lengths of its axis, which only a
-    rectilinear chunk grid can declare (see `_invalid_chunk_sizes_v3`); the rectilinear
-    chunk grid checks each edge.
+    rectilinear chunk grid can declare (see `_invalid_chunk_sizes_v3`); its edges are
+    read as those of a stored rectilinear chunk grid (see `_float_edge_lengths_v3`).
     """
     match size:
         case True:

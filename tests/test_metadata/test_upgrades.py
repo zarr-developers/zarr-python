@@ -849,6 +849,14 @@ def _mixed_doc(shape: list[int], chunk_shape: list[Any]) -> dict[str, JSON]:
             ),
         ),
         (
+            _mixed_doc([6, 20], [2, [5.0, 10.0, 5.0]]),
+            (2, (5, 10, 5)),
+            (
+                r"^The stored chunk grid .* \[1\], .* The stored chunk edge lengths "
+                r"\[2, \[5\.0, 10\.0, 5\.0\]\] are invalid: .* read as \[2, \[5, 10, 5\]\]"
+            ),
+        ),
+        (
             _mixed_doc([4, 10_000], [True, [10] * 1000]),
             (1, (10,) * 1000),
             r"^The stored chunk shape \[true, \[10, 10, .*\.\.\. is invalid: .* read as \[1, \[10, .*\.\.\.,",
@@ -862,6 +870,7 @@ def _mixed_doc(shape: list[int], chunk_shape: list[Any]) -> dict[str, JSON]:
         "empty-int-axis",
         "empty-edge-axis",
         "true",
+        "float-edges",
         "long",
     ],
 )
@@ -885,8 +894,9 @@ def test_read_edge_lists_in_regular_grid(
     assert message.startswith("Array 'group/array': ")
     assert (
         "Re-saving the metadata stores that rectilinear chunk grid, so each step that "
-        "follows requires `zarr.config.set({'array.rectilinear_chunks': True})`. " + RESAVE_HINT
+        "follows requires `zarr.config.set({'array.rectilinear_chunks': True})`. "
     ) in message
+    assert message.endswith(RESAVE_HINT)
     assert len(message) < 1000
 
 
