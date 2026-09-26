@@ -108,6 +108,18 @@ def _infer_overwrite(mode: AccessModeLiteral) -> bool:
     return mode in _OVERWRITE_MODES
 
 
+def _deferred_overwrite_mode(mode: AccessModeLiteral) -> AccessModeLiteral:
+    """
+    The mode for building the store path of a node that `mode` may overwrite.
+
+    Building a store path with mode `"w"` deletes everything under the path before the new
+    node has been validated, so an invalid argument would destroy the existing node and create
+    nothing. Callers build the store path with mode `"a"` instead and create the node with
+    `overwrite=True`, which deletes the existing node only once the new metadata is valid.
+    """
+    return "a" if mode == "w" else mode
+
+
 def _warn_unimplemented_kwargs(kwargs: dict[str, Any]) -> None:
     """
     Emit a "not yet implemented" warning for each provided keyword argument that is not None.
@@ -388,23 +400,32 @@ async def open(
             mode = "r"
         else:
             mode = "a"
-    store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
+    store_path = await make_store_path(
+        store,
+        mode=_deferred_overwrite_mode(mode),
+        path=path,
+        storage_options=storage_options,
+    )
 
     # TODO: the mode check below seems wrong!
     if "shape" not in kwargs and mode in {"a", "r", "r+", "w"}:
-        try:
-            metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
-            # TODO: remove this cast when we fix typing for array metadata dicts
-            _metadata_dict = cast("ArrayMetadataDict", metadata_dict)
-            # for v2, the above would already have raised an exception if not an array
-            zarr_format = _metadata_dict["zarr_format"]
-            is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
-            if is_v3_array or zarr_format == 2:
-                return AsyncArray(
-                    store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
-                )
-        except (FileNotFoundError, NodeTypeValidationError):
-            pass
+        # mode "w" replaces any existing node, so there is nothing to open
+        if mode != "w":
+            try:
+                metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
+                # TODO: remove this cast when we fix typing for array metadata dicts
+                _metadata_dict = cast("ArrayMetadataDict", metadata_dict)
+                # for v2, the above would already have raised an exception if not an array
+                zarr_format = _metadata_dict["zarr_format"]
+                is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
+                if is_v3_array or zarr_format == 2:
+                    return AsyncArray(
+                        store_path=store_path,
+                        metadata=_metadata_dict,
+                        config=kwargs.get("config"),
+                    )
+            except (FileNotFoundError, NodeTypeValidationError):
+                pass
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
     try:
@@ -500,7 +521,9 @@ async def save_array(
         raise TypeError("arr argument must be numpy or other NDArrayLike array")
 
     mode = kwargs.pop("mode", "a")
-    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
+    store_path = await make_store_path(
+        store, path=path, mode=_deferred_overwrite_mode(mode), storage_options=storage_options
+    )
     if np.isscalar(arr):
         arr = np.array(arr)
     shape = arr.shape
@@ -549,8 +572,6 @@ async def save_group(
         NumPy arrays with data to save.
     """
 
-    store_path = await make_store_path(store, path=path, mode="w", storage_options=storage_options)
-
     if zarr_format is None:
         zarr_format = _default_zarr_format()
 
@@ -565,6 +586,9 @@ async def save_group(
 
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
+
+    # mode "w" deletes everything under the path, so the arguments are checked first
+    store_path = await make_store_path(store, path=path, mode="w", storage_options=storage_options)
     aws = []
     for i, arr in enumerate(args):
         aws.append(
@@ -856,7 +880,9 @@ async def open_group(
         }
     )
 
-    store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
+    store_path = await make_store_path(
+        store, mode=_deferred_overwrite_mode(mode), storage_options=storage_options, path=path
+    )
     if attributes is None:
         attributes = {}
 
@@ -1062,7 +1088,10 @@ async def create(
     mode = kwargs.pop("mode", None)
     if mode is None:
         mode = "a"
-    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
+    overwrite = overwrite or _infer_overwrite(mode)
+    store_path = await make_store_path(
+        store, path=path, mode=_deferred_overwrite_mode(mode), storage_options=storage_options
+    )
 
     config_parsed = parse_array_config(config)
 
@@ -1261,25 +1290,30 @@ async def open_array(
     """
 
     mode = kwargs.pop("mode", None)
-    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
+    store_path = await make_store_path(
+        store,
+        path=path,
+        mode=None if mode is None else _deferred_overwrite_mode(mode),
+        storage_options=storage_options,
+    )
 
     if "write_empty_chunks" in kwargs:
         _warn_write_empty_chunks_kwarg()
 
-    try:
-        return await AsyncArray.open(store_path, zarr_format=zarr_format)
-    except FileNotFoundError as err:
-        if not store_path.read_only and mode in _CREATE_MODES:
-            overwrite = _infer_overwrite(mode)
-            _zarr_format = zarr_format or _default_zarr_format()
-            return await create(
-                store=store_path,
-                zarr_format=_zarr_format,
-                overwrite=overwrite,
-                **kwargs,
-            )
-        msg = f"No array found in store {store_path.store} at path {store_path.path}"
-        raise ArrayNotFoundError(msg) from err
+    # mode "w" replaces any existing array, so there is nothing to open
+    if mode != "w":
+        try:
+            return await AsyncArray.open(store_path, zarr_format=zarr_format)
+        except FileNotFoundError as err:
+            if store_path.read_only or mode not in _CREATE_MODES:
+                msg = f"No array found in store {store_path.store} at path {store_path.path}"
+                raise ArrayNotFoundError(msg) from err
+    return await create(
+        store=store_path,
+        zarr_format=zarr_format or _default_zarr_format(),
+        overwrite=_infer_overwrite(mode),
+        **kwargs,
+    )
 
 
 async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyAsyncArray:

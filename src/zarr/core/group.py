@@ -48,7 +48,7 @@ from zarr.core.config import config
 from zarr.core.dtype import parse_data_type
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.io import save_metadata
+from zarr.core.metadata.io import save_metadata, save_new_metadata
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
     ArrayNotFoundError,
@@ -60,7 +60,7 @@ from zarr.errors import (
     ZarrUserWarning,
 )
 from zarr.storage import StoreLike, StorePath
-from zarr.storage._common import ensure_no_existing_node, make_store_path
+from zarr.storage._common import make_store_path
 from zarr.storage._utils import _join_paths, _normalize_path_keys, normalize_path
 
 if TYPE_CHECKING:
@@ -477,20 +477,14 @@ class AsyncGroup:
         zarr_format: ZarrFormat = 3,
     ) -> AsyncGroup:
         store_path = await make_store_path(store)
-
-        if overwrite:
-            if store_path.store.supports_deletes:
-                await store_path.delete_dir()
-            else:
-                await ensure_no_existing_node(store_path, zarr_format=zarr_format)
-        else:
-            await ensure_no_existing_node(store_path, zarr_format=zarr_format)
         attributes = attributes or {}
         group = cls(
             metadata=GroupMetadata(attributes=attributes, zarr_format=zarr_format),
             store_path=store_path,
         )
-        await group._save_metadata(ensure_parents=True)
+        await save_new_metadata(
+            store_path, group.metadata, overwrite=overwrite, ensure_parents=True
+        )
         return group
 
     @classmethod
