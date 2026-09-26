@@ -549,6 +549,7 @@ def test_rle_roundtrip() -> None:
         ([[-10, 2]], "Chunk edge length must be >= 1"),
         ([[5, 0]], "RLE repeat count must be >= 1"),
         ([[5, -1]], "RLE repeat count must be >= 1"),
+        ([[5, 2, 1]], r"RLE entries must be an integer or \[size, count\], got \[5, 2, 1\]"),
     ],
     ids=[
         "zero-edge",
@@ -557,6 +558,7 @@ def test_rle_roundtrip() -> None:
         "negative-rle-size",
         "zero-rle-count",
         "negative-rle-count",
+        "rle-entry-of-three",
     ],
 )
 def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
