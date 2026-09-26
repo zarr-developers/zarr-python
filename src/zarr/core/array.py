@@ -118,8 +118,10 @@ from zarr.core.metadata import (
     ArrayV3Metadata,
 )
 from zarr.core.metadata.io import (
+    ARRAY_DOCUMENTS,
     encode_documents,
-    read_stored_array,
+    parse_stored_array,
+    read_documents,
     save_metadata,
     store_documents,
     upsert_metadata,
@@ -1637,16 +1639,20 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if not self.metadata._stored_document_upgraded:
             return
-        read = await read_stored_array(self.store_path, self.metadata.zarr_format)
-        if read is not None:
-            current, upgraded = read
+        zarr_format = self.metadata.zarr_format
+        documents = await read_documents(self.store_path, ARRAY_DOCUMENTS[zarr_format])
+        try:
+            current = parse_stored_array(documents, zarr_format, str(self.store_path))
+        except ArrayNotFoundError:
+            pass
+        else:
             if _chunk_layout(current) != _chunk_layout(self.metadata):
                 raise ValueError(
-                    f"The metadata stored for the array at {str(self.store_path)!r} has "
-                    "changed since this array was opened: reopen the array to write to it."
+                    f"Array {str(self.store_path)!r}: the metadata stored has changed since "
+                    "this array was opened; reopen the array to write to it. Nothing was stored."
                 )
-            if upgraded:
-                await upsert_metadata(self.store_path, current)
+            if current._stored_document_upgraded:
+                await upsert_metadata(self.store_path, current, documents)
         object.__setattr__(self.metadata, "_stored_document_upgraded", False)
 
     async def _set_selection(
@@ -4879,7 +4885,9 @@ async def create_array(
         )
 
 
-def _chunk_layout(metadata: ArrayMetadata) -> tuple[object, tuple[int, ...] | None]:
+def _chunk_layout(
+    metadata: ArrayMetadata,
+) -> tuple[tuple[int, ...] | ChunkGridMetadata, tuple[int, ...] | None]:
     """How an array's chunks are laid out: its chunk grid and, if it is sharded, the
     inner chunk shape."""
     grid = metadata.chunks if isinstance(metadata, ArrayV2Metadata) else metadata.chunk_grid

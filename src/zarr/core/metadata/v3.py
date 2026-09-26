@@ -646,7 +646,7 @@ class ArrayV3Metadata(Metadata):
                 _check_rectilinear_chunks_enabled()
             except ValueError as e:
                 if path is not None:
-                    e.add_note(f"Array {path!r}.")
+                    e.add_note(f"Array {path!r}: nothing was read.")
                 raise
         upgraded, readings = upgrade_array_document(data, 3)
         # a new dict, because we are modifying it

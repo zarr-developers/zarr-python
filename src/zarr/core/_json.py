@@ -41,7 +41,7 @@ def buffer_to_json(buffer: Buffer) -> JSON:
     return cast("JSON", json.loads(buffer.to_bytes()))
 
 
-def json_equal(a: object, b: object) -> bool:
+def json_equal(a: JSON, b: JSON) -> bool:
     """Whether two JSON values have the same JSON encoding. Python compares `True` and
     `1`, or `1.0` and `1`, as equal; JSON does not."""
     return json.dumps(a) == json.dumps(b)

@@ -47,7 +47,7 @@ from zarr.core.config import config
 from zarr.core.dtype import parse_data_type
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.io import encode_documents, encode_node, save_metadata, store_node
+from zarr.core.metadata.io import encode_documents, encode_node, save_metadata
 from zarr.core.metadata.v3 import check_storable
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
@@ -820,17 +820,21 @@ class AsyncGroup:
             await store_path.delete_dir()
             return
         # Encode the group metadata without the member before deleting it: metadata that
-        # cannot be stored then fails with the store and this group untouched.
+        # cannot be stored then fails with the store and this group untouched. What is
+        # stored is encoded after the deletion, from the metadata as it then is, so
+        # concurrent deletions each store the deletions made before them.
         members = {name: node for name, node in consolidated.metadata.items() if name != key}
-        encoded = await encode_node(
+        await encode_node(
             self.store_path,
             replace(self.metadata, consolidated_metadata=replace(consolidated, metadata=members)),
         )
         await store_path.delete_dir()
         # In place, so every handle sharing this consolidated metadata (a parent's or a
-        # subgroup's) sees the deletion.
-        consolidated.metadata.pop(key, None)
-        await store_node(self.store_path, encoded)
+        # subgroup's) sees the deletion; from the consolidated metadata this handle holds
+        # now, which a concurrent write may have replaced with the metadata it stored.
+        if (current := self.metadata.consolidated_metadata) is not None:
+            current.metadata.pop(key, None)
+        await self._save_metadata()
 
     async def get[DefaultT](
         self, key: str, default: DefaultT | None = None
@@ -919,7 +923,9 @@ class AsyncGroup:
         return node
 
     async def _save_metadata(self, ensure_parents: bool = False) -> None:
-        await save_metadata(self.store_path, self.metadata, ensure_parents=ensure_parents)
+        # Adopt the metadata stored: its consolidated members may be newer.
+        stored = await save_metadata(self.store_path, self.metadata, ensure_parents=ensure_parents)
+        object.__setattr__(self, "metadata", stored)
 
     @property
     def path(self) -> str:
@@ -2134,7 +2140,7 @@ class Group(SyncMixin):
         """
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
-        await save_metadata(self.store_path, new_metadata)
+        new_metadata = await save_metadata(self.store_path, new_metadata)
 
         async_group = replace(self._async_group, metadata=new_metadata)
         return replace(self, _async_group=async_group)
@@ -3051,6 +3057,8 @@ async def create_hierarchy(
     ```{'': GroupMetadata, 'a': GroupMetadata, 'b': Groupmetadata}```
 
     After input parsing, this function then creates all the nodes in the hierarchy concurrently.
+    The metadata of each node is stored as given: the consolidated metadata of a group is
+    stored as it is, without reading the documents of its members.
 
     Arrays and Groups are yielded in the order they are created. This order is not stable and
     should not be relied on.
