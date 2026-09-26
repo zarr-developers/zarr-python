@@ -190,12 +190,12 @@ class ConsolidatedMetadata:
                     if node_type == "group":
                         metadata[k] = GroupMetadata.from_dict(v)
                     elif node_type == "array":
-                        metadata[k] = ArrayV3Metadata.from_dict(v)
+                        metadata[k] = ArrayV3Metadata.from_dict(v, path=k)
                     else:
                         assert_never(node_type)
                 elif zarr_format == 2:
                     if "shape" in v:
-                        metadata[k] = ArrayV2Metadata.from_dict(v)
+                        metadata[k] = ArrayV2Metadata.from_dict(v, path=k)
                     else:
                         metadata[k] = GroupMetadata.from_dict(v)
                 else:
@@ -3504,7 +3504,9 @@ async def _read_metadata_v3(store: Store, path: str) -> ArrayV3Metadata | GroupM
     )
     if zarr_json_bytes is None:
         raise FileNotFoundError(path)
-    return _build_metadata_v3(buffer_to_json_object(zarr_json_bytes))
+    return _build_metadata_v3(
+        buffer_to_json_object(zarr_json_bytes), path=_join_paths([str(store), path])
+    )
 
 
 async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupMetadata:
@@ -3539,7 +3541,7 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
         else:
             zmeta = buffer_to_json_object(zgroup_bytes)
 
-    return _build_metadata_v2(zmeta, zattrs)
+    return _build_metadata_v2(zmeta, zattrs, path=_join_paths([str(store), path]))
 
 
 async def _read_group_metadata_v2(store: Store, path: str) -> GroupMetadata:
@@ -3570,7 +3572,9 @@ async def _read_group_metadata(
     return await _read_group_metadata_v3(store=store, path=path)
 
 
-def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMetadata:
+def _build_metadata_v3(
+    zarr_json: dict[str, JSON], *, path: str | None = None
+) -> ArrayV3Metadata | GroupMetadata:
     """
     Convert a dict representation of Zarr V3 metadata into the corresponding metadata class.
     """
@@ -3579,7 +3583,7 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
         raise MetadataValidationError(msg)
     match zarr_json:
         case {"node_type": "array"}:
-            return ArrayV3Metadata.from_dict(zarr_json)
+            return ArrayV3Metadata.from_dict(zarr_json, path=path)
         case {"node_type": "group"}:
             return GroupMetadata.from_dict(zarr_json)
         case _:  # pragma: no cover
@@ -3589,14 +3593,14 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
 
 
 def _build_metadata_v2(
-    zarr_json: dict[str, JSON], attrs_json: dict[str, JSON]
+    zarr_json: dict[str, JSON], attrs_json: dict[str, JSON], *, path: str | None = None
 ) -> ArrayV2Metadata | GroupMetadata:
     """
     Convert a dict representation of Zarr V2 metadata into the corresponding metadata class.
     """
     match zarr_json:
         case {"shape": _}:
-            return ArrayV2Metadata.from_dict(zarr_json | {"attributes": attrs_json})
+            return ArrayV2Metadata.from_dict(zarr_json | {"attributes": attrs_json}, path=path)
         case _:  # pragma: no cover
             return GroupMetadata.from_dict(zarr_json | {"attributes": attrs_json})
 

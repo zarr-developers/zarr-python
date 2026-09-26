@@ -698,12 +698,12 @@ def _guess_regular_chunks(
     if isinstance(shape, int):
         shape = (shape,)
 
+    # Start from one chunk spanning each axis, then halve axes until the chunk is small enough.
+    chunks = np.array([full_span_chunk_size(s) for s in shape], dtype="=f8")
     if typesize == 0:
-        return tuple(full_span_chunk_size(s) for s in shape)
+        return tuple(int(x) for x in chunks)
 
     ndims = len(shape)
-    # require chunks to have non-zero length for all dimensions
-    chunks = np.maximum(np.array(shape, dtype="=f8"), 1)
 
     # Determine the optimal chunk size in bytes using a PyTables expression.
     # This is kept as a float.
