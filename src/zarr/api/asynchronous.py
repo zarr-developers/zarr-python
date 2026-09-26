@@ -15,6 +15,7 @@ from zarr.core.array import (
     Array,
     AsyncArray,
     CompressorLike,
+    _copy_from_array,
     create_array,
     from_array,
     get_array_metadata,
@@ -612,9 +613,13 @@ async def array(data: npt.ArrayLike | AnyArray, **kwargs: Any) -> AnyAsyncArray:
     Parameters
     ----------
     data : array_like
-        The data to fill the array with.
+        The data to fill the array with. A Zarr array is copied one region at a time rather
+        than read into memory.
     **kwargs
-        Passed through to [`create`][zarr.api.asynchronous.create].
+        Passed through to [`create`][zarr.api.asynchronous.create]. The shape of the new array
+        is that of `data`, and its dtype and chunks default to those of `data`. To also copy
+        the codecs and other settings of a Zarr array, use
+        [`from_array`][zarr.api.asynchronous.from_array].
 
     Returns
     -------
@@ -622,22 +627,28 @@ async def array(data: npt.ArrayLike | AnyArray, **kwargs: Any) -> AnyAsyncArray:
         The new array.
     """
 
+    data_shape: tuple[int, ...] | None
+    data_chunks: tuple[int, ...] | tuple[tuple[int, ...], ...] | None
     if isinstance(data, Array):
-        return await from_array(data=data, **kwargs)
-
-    # ensure data is array-like
-    if not hasattr(data, "shape") or not hasattr(data, "dtype"):
-        data = np.asanyarray(data)
-
-    # setup dtype
-    kw_dtype = kwargs.get("dtype")
-    if kw_dtype is None and hasattr(data, "dtype"):
-        kwargs["dtype"] = data.dtype
+        # A native object dtype cannot identify the source's Zarr data type.
+        data_dtype: ZDTypeLike | None = data._async_array._zdtype
+        data_shape = data.shape
+        try:
+            data_chunks = data.chunks
+        except NotImplementedError:
+            # `chunks` is undefined for an unsharded rectilinear chunk grid
+            data_chunks = data.read_chunk_sizes
     else:
-        kwargs["dtype"] = kw_dtype
+        # ensure data is array-like
+        if not hasattr(data, "shape") or not hasattr(data, "dtype"):
+            data = np.asanyarray(data)
+        data_dtype = data.dtype if hasattr(data, "dtype") else None
+        data_shape, data_chunks = _get_shape_chunks(data)
+
+    if kwargs.get("dtype") is None:
+        kwargs["dtype"] = data_dtype
 
     # setup shape and chunks
-    data_shape, data_chunks = _get_shape_chunks(data)
     kwargs["shape"] = data_shape
     kw_chunks = kwargs.get("chunks")
     if kw_chunks is None:
@@ -653,7 +664,10 @@ async def array(data: npt.ArrayLike | AnyArray, **kwargs: Any) -> AnyAsyncArray:
     z = await create(**kwargs)
 
     # fill with data
-    await z.setitem(Ellipsis, data)
+    if isinstance(data, Array):
+        await _copy_from_array(z, data)
+    else:
+        await z.setitem(Ellipsis, data)
 
     return z
 
