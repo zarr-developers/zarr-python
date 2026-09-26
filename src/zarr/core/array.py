@@ -201,13 +201,13 @@ def _chunk_sizes_from_shape(
     return tuple(result)
 
 
-def parse_array_metadata(data: Any) -> ArrayMetadata:
+def parse_array_metadata(data: Any, path: str | None = None) -> ArrayMetadata:
     if isinstance(data, ArrayMetadata):
         return data
     elif isinstance(data, dict):
         zarr_format = data.get("zarr_format")
         if zarr_format == 3:
-            meta_out = ArrayV3Metadata.from_dict(data)
+            meta_out = ArrayV3Metadata.from_dict(data, path=path)
             if len(meta_out.storage_transformers) > 0:
                 msg = (
                     f"Array metadata contains storage transformers: {meta_out.storage_transformers}."
@@ -216,7 +216,7 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
                 raise ValueError(msg)
             return meta_out
         elif zarr_format == 2:
-            return ArrayV2Metadata.from_dict(data)
+            return ArrayV2Metadata.from_dict(data, path=path)
         else:
             raise ValueError(f"Invalid zarr_format: {zarr_format}. Expected 2 or 3")
     raise TypeError  # pragma: no cover
@@ -404,7 +404,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
     ) -> None:
-        metadata_parsed = parse_array_metadata(metadata)
+        metadata_parsed = parse_array_metadata(metadata, str(store_path))
         config_parsed = parse_array_config(config)
 
         object.__setattr__(self, "metadata", metadata_parsed)

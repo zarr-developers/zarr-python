@@ -30,7 +30,6 @@ from hypothesis.stateful import (
     RuleBasedStateMachine,
     initialize,
     invariant,
-    precondition,
     rule,
 )
 
@@ -62,8 +61,8 @@ class ArrayLifecycle(RuleBasedStateMachine):
         self.fill = 0
         # What the store holds, indexed like the array and extending past its shape.
         self.stored: np.ndarray[Any, np.dtype[np.int16]] = np.zeros((0,), dtype=DTYPE)
-        # A store with an invalid stored chunk size warns until its metadata is re-saved.
-        self.expect_open_warning = False
+        # Axes stored with chunk size 0; the store warns until its metadata is re-saved.
+        self.legacy_axes: list[int] = []
 
     # -------------------------------------------------------------- creation
     @initialize(data=st.data())
@@ -111,13 +110,12 @@ class ArrayLifecycle(RuleBasedStateMachine):
             # A stored chunk size of 0, as zarr-python wrote for arrays created with a
             # zero-length axis; older releases could then grow the axis without storing
             # a chunk, so any extent is possible. Sharded arrays store it in the outer grid.
-            zero_axes = data.draw(
+            self.legacy_axes = data.draw(
                 st.lists(st.integers(0, len(shape) - 1), min_size=1, unique=True),
                 label="axes stored with chunk size 0",
             )
             stored_zero = data.draw(st.sampled_from([0, False]), label="stored zero")
-            self._rewrite_stored_chunks(zarr_format, zero_axes, stored_zero)
-            self.expect_open_warning = True
+            self._rewrite_stored_chunks(zarr_format, self.legacy_axes, stored_zero)
             event("legacy zero chunk size")
 
     def _rewrite_stored_chunks(
@@ -139,7 +137,7 @@ class ArrayLifecycle(RuleBasedStateMachine):
             warnings.simplefilter("always", ZarrUserWarning)
             arr = zarr.open_array(self.store, path=self.path, mode="r+")
         warned = any(issubclass(w.category, ZarrUserWarning) for w in record)
-        assert warned is self.expect_open_warning, [str(w.message) for w in record]
+        assert warned is bool(self.legacy_axes), [str(w.message) for w in record]
         return arr
 
     # ----------------------------------------------------------------- model
@@ -190,13 +188,19 @@ class ArrayLifecycle(RuleBasedStateMachine):
     @rule(data=st.data())
     def append(self, data: st.DataObject) -> None:
         arr = self._open()
-        axis = data.draw(st.integers(0, len(self.shape) - 1), label="axis")
+        axes = st.integers(0, len(self.shape) - 1)
+        if self.legacy_axes:
+            # What a user of an older release did next: grow an axis stored with chunk size 0.
+            axes = st.sampled_from(self.legacy_axes) | axes
+        axis = data.draw(axes, label="axis")
         block_shape = list(self.shape)
         block_shape[axis] = data.draw(st.integers(0, 4), label="rows")
         block = data.draw(npst.arrays(DTYPE, tuple(block_shape)), label="block")
         note(f"append {block.shape} along {axis} to {self.shape}")
         if self.shape[axis] == 0 and block.shape[axis]:
             event("append to a zero-length axis")
+        if axis in self.legacy_axes and block.shape[axis]:
+            event("grow an axis stored with chunk size 0")
         old_extent = self.shape[axis]
         arr.append(block, axis=axis)
         self._model_resize(ChunkGrid.from_metadata(arr.metadata), arr.shape)
@@ -205,7 +209,7 @@ class ArrayLifecycle(RuleBasedStateMachine):
         )
         self._model_write(arr, region, block)
         # Growing the array rewrites its metadata, which stores any correction.
-        self.expect_open_warning = False
+        self.legacy_axes = []
 
     @rule(data=st.data())
     def resize(self, data: st.DataObject) -> None:
@@ -214,10 +218,12 @@ class ArrayLifecycle(RuleBasedStateMachine):
             st.tuples(*(st.integers(0, MAX_SIDE) for _ in self.shape)), label="new shape"
         )
         note(f"resize {self.shape} -> {new_shape}")
+        if any(new_shape[axis] > self.shape[axis] for axis in self.legacy_axes):
+            event("grow an axis stored with chunk size 0")
         grid = ChunkGrid.from_metadata(arr.metadata)
         arr.resize(new_shape)
         self._model_resize(grid, new_shape)
-        self.expect_open_warning = False
+        self.legacy_axes = []
 
     @rule(data=st.data())
     def write(self, data: st.DataObject) -> None:
@@ -232,12 +238,15 @@ class ArrayLifecycle(RuleBasedStateMachine):
         arr[region] = values
         self._model_write(arr, region, values)
 
-    @precondition(lambda self: self.expect_open_warning)
     @rule()
     def resave_metadata(self) -> None:
-        """What the warning for an invalid stored chunk size tells users to do."""
-        self._open().update_attributes({})
-        self.expect_open_warning = False
+        """What the warning for an invalid stored chunk size tells users to do. It stores
+        the metadata as read, which is a no-op for valid metadata."""
+        arr = self._open()
+        read = arr.metadata
+        arr.update_attributes({})
+        self.legacy_axes = []
+        assert self._open().metadata == read
 
     def teardown(self) -> None:
         self._rectilinear.__exit__(None, None, None)

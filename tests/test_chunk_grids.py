@@ -210,6 +210,10 @@ def test_chunk_layout_nested() -> None:
         ExpectFail(
             input=([10, 20], 100), exception=ValueError, id="wrong-sum", msg="do not sum to span"
         ),
+        # Only a zero-length span keeps edges that do not sum to it.
+        ExpectFail(
+            input=([3, 5], 1), exception=ValueError, id="over-sum", msg="do not sum to span 1"
+        ),
         # Nested/RLE form for a single dim is rejected with offending indices.
         ExpectFail(
             input=([[3, 3], 1], 7),
@@ -318,6 +322,11 @@ def test_normalize_chunks_nd_errors(case: ExpectFail[tuple[Any, tuple[int, ...]]
             input=([10, 20, 70], 100),
             output=VaryingDimension([10, 20, 70], extent=100),
             id="explicit-irregular",
+        ),
+        # on a zero-length span any non-empty list of positive edges is kept: the
+        # chunks the axis grows into.
+        Expect(
+            input=([3, 5], 0), output=VaryingDimension([3, 5], extent=0), id="explicit-zero-span"
         ),
     ],
     ids=lambda c: c.id,
@@ -477,19 +486,3 @@ def test_rectilinear_zero_extent_matches_resize() -> None:
         np.testing.assert_array_equal(created[...], np.arange(3))
         np.testing.assert_array_equal(resized[...], np.arange(3))
         assert created.write_chunk_sizes == resized.write_chunk_sizes == ((2, 1),)
-
-
-def test_normalize_chunks_1d_zero_span_accepts_any_edges() -> None:
-    """On a zero-length span the explicit edge list is stored verbatim."""
-    dim = normalize_chunks_1d([3, 5], span=0)
-    assert isinstance(dim, VaryingDimension)
-    assert dim.edges == (3, 5)
-    assert dim.extent == 0
-    assert dim.nchunks == 0
-    assert dim.resize(4) == VaryingDimension([3, 5], extent=4)
-
-
-def test_normalize_chunks_1d_nonzero_span_still_requires_exact_sum() -> None:
-    """Relaxing the sum rule for span 0 must not leak into positive spans."""
-    with pytest.raises(ValueError, match="do not sum to span 1"):
-        normalize_chunks_1d([3, 5], span=1)

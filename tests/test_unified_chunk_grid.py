@@ -547,19 +547,19 @@ def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
         expand_rle(rle_input)
 
 
-# -- expand_rle handles JSON floats --
-
-
-def test_expand_rle_bare_integer_floats_accepted() -> None:
-    """JSON parsers may emit 10.0 for the integer 10; expand_rle should handle it."""
-    result = expand_rle([10.0, 20.0])  # type: ignore[list-item]
-    assert result == [10, 20]
-
-
-def test_expand_rle_pair_with_float_count() -> None:
-    """expand_rle accepts float repeat counts that are integer-valued"""
-    result = expand_rle([[10, 3.0]])  # type: ignore[list-item]
-    assert result == [10, 10, 10]
+@pytest.mark.parametrize(
+    ("rle_input", "match"),
+    [
+        ([10.0], "Chunk edge length must be an int, got 10.0"),
+        ([True], "Chunk edge length must be an int, got True"),
+        ([[10, 3.0]], "RLE repeat count must be an int, got 3.0"),
+    ],
+    ids=["float-edge", "bool-edge", "float-count"],
+)
+def test_rle_expand_rejects_non_int(rle_input: list[Any], match: str) -> None:
+    """expand_rle takes JSON integers only: no stored document holds integral floats."""
+    with pytest.raises(TypeError, match=match):
+        expand_rle(rle_input)
 
 
 # ---------------------------------------------------------------------------
