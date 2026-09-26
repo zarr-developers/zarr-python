@@ -460,7 +460,7 @@ def arrays(
             # array has no dimension to hold an edge list.
             if nparray.ndim > 0 and draw(st.booleans(), label="chunks as lists"):
                 event("rectilinear chunks= as lists")
-                chunks_param = draw(_rectilinear_chunks(shape=nparray.shape), label="chunks")
+                chunks_param = draw(rectilinear_chunks(shape=nparray.shape), label="chunks")
                 chunk_grid_meta = RectilinearChunkGridMetadata(
                     chunk_shapes=tuple(
                         dim if isinstance(dim, int) else tuple(dim) for dim in chunks_param
@@ -627,19 +627,7 @@ def _rectilinear_step(draw: st.DrawFn, *, extent: int, max_chunks: int) -> int:
 
 
 @st.composite
-def rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[list[int]]:
-    """A `chunks=` specification declaring a rectilinear grid over `shape`, as an
-    explicit edge list per dimension summing to the extent (any edges, for a zero
-    extent). A 0-d `shape` gives `[]`.
-
-    To also draw bare-int steps, see `_rectilinear_chunks`.
-    """
-    max_chunks = _max_chunks_per_dim(len(shape))
-    return [draw(rectilinear_dim_edges(extent=e, max_chunks=max_chunks)) for e in shape]
-
-
-@st.composite
-def _rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[int | list[int]]:
+def rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[int | list[int]]:
     """A `chunks=` specification declaring a rectilinear grid over `shape`.
 
     Each dimension is either a bare int (a step size; the last chunk may be
@@ -779,7 +767,7 @@ def rectilinear_arrays(
 ) -> Any:
     """Generate a zarr v3 array with rectilinear (variable) chunk grid."""
     shape = draw(shapes)
-    chunk_shapes = draw(_rectilinear_chunks(shape=shape))
+    chunk_shapes = draw(rectilinear_chunks(shape=shape))
 
     np_dtype = draw(dtypes())
     nparray = draw(numpy_arrays(shapes=st.just(shape), dtype=np_dtype))
@@ -1099,7 +1087,7 @@ def block_test_arrays(
         # rectilinear arm, always unsharded
         event("block rectilinear")
         shape = draw(_rectilinear_shapes)
-        chunks = draw(_rectilinear_chunks(shape=shape))
+        chunks = draw(rectilinear_chunks(shape=shape))
         nparray = draw(numpy_arrays(shapes=st.just(shape), dtype=draw(dtypes())))
         shards, rectilinear = None, True
 

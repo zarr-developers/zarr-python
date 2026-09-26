@@ -40,7 +40,7 @@ from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.sync import sync
 from zarr.errors import ZarrUserWarning
 from zarr.storage import MemoryStore
-from zarr.testing.strategies import _rectilinear_chunks
+from zarr.testing.strategies import rectilinear_chunks
 
 pytestmark = [
     pytest.mark.slow_hypothesis,
@@ -93,7 +93,7 @@ class ArrayLifecycle(RuleBasedStateMachine):
         elif spelling == "auto":
             chunks = "auto"
         elif spelling == "rectilinear":
-            chunks = data.draw(_rectilinear_chunks(shape=shape), label="rectilinear chunks")
+            chunks = data.draw(rectilinear_chunks(shape=shape), label="rectilinear chunks")
         else:
             chunks = tuple(data.draw(st.integers(1, 3)) for _ in shape)
             if spelling == "sharded":

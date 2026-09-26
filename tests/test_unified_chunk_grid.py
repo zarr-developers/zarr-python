@@ -3063,7 +3063,7 @@ import hypothesis.strategies as st
 from hypothesis import event, given, settings
 
 from tests.conftest import declared_chunk_data_sizes
-from zarr.testing.strategies import _rectilinear_chunks
+from zarr.testing.strategies import rectilinear_chunks
 
 
 @st.composite
@@ -3076,7 +3076,7 @@ def rectilinear_arrays_st(
 
     ndim = draw(st.integers(min_value=1, max_value=3))
     shape = draw(st.tuples(*[st.integers(min_value=2, max_value=20) for _ in range(ndim)]))
-    chunk_shapes = draw(_rectilinear_chunks(shape=shape))
+    chunk_shapes = draw(rectilinear_chunks(shape=shape))
     event(f"ndim={ndim}, shape={shape}")
 
     a = np.arange(int(np.prod(shape)), dtype="int32").reshape(shape)
