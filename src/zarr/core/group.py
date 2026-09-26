@@ -13,7 +13,6 @@ import numpy as np
 
 import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
-from zarr.abc.store import Store, set_or_delete
 from zarr.core._info import GroupInfo
 from zarr.core._json import buffer_to_json_object, json_to_buffer
 from zarr.core.array import (
@@ -75,6 +74,7 @@ if TYPE_CHECKING:
     )
     from typing import Any
 
+    from zarr.abc.store import Store
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
@@ -2115,9 +2115,7 @@ class Group(SyncMixin):
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
-        to_save = new_metadata.to_buffer_dict(default_buffer_prototype())
-        awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
-        await asyncio.gather(*awaitables)
+        await save_metadata(self.store_path, new_metadata)
 
         async_group = replace(self._async_group, metadata=new_metadata)
         return replace(self, _async_group=async_group)

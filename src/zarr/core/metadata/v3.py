@@ -614,7 +614,8 @@ class ArrayV3Metadata(Metadata):
     @classmethod
     def from_dict(cls, data: dict[str, JSON], *, path: str | None = None) -> Self:
         """Read a stored `zarr.json` array document. An invalid document that
-        `zarr.core.metadata.upgrades` can read warns, naming the array at `path`."""
+        `zarr.core.metadata.upgrades` can read is read as upgraded; a reading the user
+        must act on warns, naming the array at `path`."""
         upgraded, readings = upgrade_array_document(data, 3)
         # a new dict, because we are modifying it
         _data = dict(upgraded)

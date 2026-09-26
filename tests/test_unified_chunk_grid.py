@@ -8,6 +8,7 @@ and end-to-end array creation + read/write.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -494,7 +495,7 @@ def test_chunk_grid_iter() -> None:
     [
         ([[10, 3]], [10, 10, 10]),
         ([[10, 2], [20, 1]], [10, 10, 20]),
-        ([[True, 2], [np.int64(3), np.int64(1)]], [1, 1, 3]),
+        ([[True, 2], [3, 1]], [1, 1, 3]),
     ],
 )
 def test_rle_expand(compressed: list[Any], expected: list[int]) -> None:
@@ -551,12 +552,14 @@ def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
 @pytest.mark.parametrize(
     ("rle_input", "match"),
     [
-        ([10.5], "Chunk edge length must be an integer, got 10.5"),
-        ([10.0], "Chunk edge length must be an integer, got 10.0"),
-        ([[10.0, 3]], "Chunk edge length must be an integer, got 10.0"),
-        (["10"], "Chunk edge length must be an integer, got '10'"),
-        ([[10, 3.5]], "RLE repeat count must be an integer, got 3.5"),
-        ([[10, 3.0]], "RLE repeat count must be an integer, got 3.0"),
+        ([10.5], "Chunk edge length must be an int, got 10.5"),
+        ([10.0], "Chunk edge length must be an int, got 10.0"),
+        ([[10.0, 3]], "Chunk edge length must be an int, got 10.0"),
+        (["10"], "Chunk edge length must be an int, got '10'"),
+        ([[10, 3.5]], "RLE repeat count must be an int, got 3.5"),
+        ([[10, 3.0]], "RLE repeat count must be an int, got 3.0"),
+        ([np.int64(10)], "Chunk edge length must be an int, got np.int64(10)"),
+        ([[10, np.int64(3)]], "RLE repeat count must be an int, got np.int64(3)"),
     ],
     ids=[
         "fractional-edge",
@@ -565,11 +568,13 @@ def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
         "string-edge",
         "fractional-count",
         "float-count",
+        "numpy-int-edge",
+        "numpy-int-count",
     ],
 )
 def test_rle_expand_rejects_non_int(rle_input: list[Any], match: str) -> None:
-    """expand_rle reads integers only, not floats."""
-    with pytest.raises(TypeError, match=match):
+    """expand_rle reads `int`s (and `bool`s) only, not floats or NumPy integers."""
+    with pytest.raises(TypeError, match=re.escape(match)):
         expand_rle(rle_input)
 
 
@@ -577,7 +582,7 @@ def test_rle_expand_rejects_non_int(rle_input: list[Any], match: str) -> None:
     ("rle_input", "match"),
     [
         ([0], "chunk edge length must be >= 1"),
-        ([10.5], "chunk edge length must be an integer"),
+        ([10.5], "chunk edge length must be an int,"),
         ([[5, 0]], "RLE repeat count must be >= 1"),
         ([[5, 2, 1]], r"RLE entries must be an integer or \[size, count\]"),
     ],
