@@ -163,7 +163,7 @@ def test_group_guards_reject_noncanonical_nested_json() -> None:
     assert not is_group_metadata_v3(v3)
     assert not is_group_metadata_v2(v2)
     assert parse_group_metadata_v3(v3)["extension"] == (0, 1)
-    assert parse_group_metadata_v2(v2)["attributes"] == {"values": (0, 1)}
+    assert parse_group_metadata_v2(v2).get("attributes") == {"values": (0, 1)}
 
 
 def test_group_v3_extension_fields_are_validated() -> None:

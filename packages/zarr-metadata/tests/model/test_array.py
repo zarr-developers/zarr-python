@@ -672,29 +672,17 @@ def test_roundtrip_model_json_model(
     assert model_cls.from_json(model.to_json()) == model
 
 
-# --- Round-trips (model → key_value → model, parametrized) -----------------
-
-ROUNDTRIP_KEY_VALUE_PARAMS = [
-    pytest.param(
-        ZarrV3ArrayMetadata,
-        ZarrV3ArrayMetadata.create_default(attributes={"a": 1}),
-        id="v3",
-    ),
-    pytest.param(
-        ZarrV2ArrayMetadata,
-        ZarrV2ArrayMetadata.create_default(attributes={"a": 1}),
-        id="v2",
-    ),
-]
+# --- Round-trips (model → key_value → model) --------------------------------
 
 
-@pytest.mark.parametrize(("model_cls", "model"), ROUNDTRIP_KEY_VALUE_PARAMS)
-def test_roundtrip_via_key_value(
-    model_cls: type[ZarrV3ArrayMetadata | ZarrV2ArrayMetadata],
-    model: ZarrV3ArrayMetadata | ZarrV2ArrayMetadata,
-) -> None:
+def test_roundtrip_via_key_value() -> None:
     """A model round-trips through to_key_value/from_key_value back to an equal model."""
-    assert model_cls.from_key_value(model.to_key_value()) == model
+    # Not parametrized over the two classes: a mapping's key type is
+    # invariant, so a reader cannot take the union of what they write.
+    v3 = ZarrV3ArrayMetadata.create_default(attributes={"a": 1})
+    v2 = ZarrV2ArrayMetadata.create_default(attributes={"a": 1})
+    assert ZarrV3ArrayMetadata.from_key_value(v3.to_key_value()) == v3
+    assert ZarrV2ArrayMetadata.from_key_value(v2.to_key_value()) == v2
 
 
 # --- Round-trips (json → model → json, direction distinct — kept direct) ---
@@ -977,6 +965,7 @@ def test_parse_metadata_field_materializes_abstract_containers() -> None:
 
     assert isinstance(parsed, dict)
     assert parsed == {"name": "example", "configuration": {"values": (0, 1)}}
+    assert "configuration" in parsed
     assert type(parsed["configuration"]) is dict
 
 
@@ -1559,7 +1548,7 @@ def test_configuration_values_must_be_json() -> None:
 
 def test_v3_extension_keys_must_be_strings() -> None:
     """A non-string top-level key cannot be represented by a v3 document type."""
-    doc: dict[object, object] = dict(ZarrV3ArrayMetadata.create_default().to_json())
+    doc: dict[object, object] = {**ZarrV3ArrayMetadata.create_default().to_json()}
     doc[1] = {"must_understand": False}
     assert [(problem.loc, problem.kind) for problem in validate_array_metadata_v3(doc)] == [
         ((), "invalid_type")
@@ -1758,7 +1747,7 @@ def test_v2_absent_dimension_separator_means_dot() -> None:
     del doc["dimension_separator"]
     model = ZarrV2ArrayMetadata.from_json(doc)
     assert model.dimension_separator == "."
-    assert model.to_json()["dimension_separator"] == "."
+    assert model.to_json().get("dimension_separator") == "."
 
 
 def test_v2_from_key_value_without_separator_means_dot() -> None:

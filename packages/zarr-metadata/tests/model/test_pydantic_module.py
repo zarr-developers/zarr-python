@@ -8,12 +8,14 @@ parallel hierarchy), so values interoperate freely with non-pydantic code.
 import json
 import math
 import warnings
+from collections.abc import Mapping
 
 import pytest
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
 import zarr_metadata.pydantic as zmp
+from zarr_metadata._common import JSONValue
 from zarr_metadata.model import (
     ZarrV2ArrayMetadata,
     ZarrV2ConsolidatedMetadata,
@@ -157,7 +159,9 @@ def test_v2_recursive_structured_dtype_is_in_pydantic_schema() -> None:
     assert Draft202012Validator(adapter.json_schema()).is_valid(doc)
 
 
-def _assert_runtime_and_schema_reject(field_type: object, document: dict[str, object]) -> None:
+def _assert_runtime_and_schema_reject(
+    field_type: object, document: Mapping[str, JSONValue]
+) -> None:
     adapter = TypeAdapter(field_type)
     with pytest.raises(ValidationError):
         adapter.validate_python(document)
