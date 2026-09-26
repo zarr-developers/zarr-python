@@ -554,6 +554,33 @@ def test_stale_handle_write_keeps_newer_metadata(
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
+def test_stale_handle_write_keeps_valid_document_as_written(
+    tmp_path: Path, zarr_format: Literal[2, 3]
+) -> None:
+    """If the document the store holds when a handle read from an upgraded document
+    first writes chunks needs no upgrade, it is left as written, even where zarr would
+    encode the same metadata differently (as another implementation may have written it)."""
+    path = tmp_path / "legacy.zarr"
+    _legacy_array(path, zarr_format)
+    with pytest.warns(ZarrUserWarning, match="is read as"):
+        stale = zarr.open_array(store=path, mode="r+")
+    # Valid metadata for the same array, as another writer might store it: chunk size
+    # 3, without the optional members zarr writes, as compact JSON.
+    doc_path = path / (".zarray" if zarr_format == 2 else "zarr.json")
+    doc = json.loads(doc_path.read_text())
+    for optional in ("dimension_separator", "attributes", "storage_transformers"):
+        doc.pop(optional, None)
+    _stored_chunks(doc)[0] = 3
+    doc_path.write_text(json.dumps(doc, separators=(",", ":")))
+    written = doc_path.read_bytes()
+
+    stale[0] = 9
+
+    assert doc_path.read_bytes() == written
+    np.testing.assert_array_equal(_open_strictly(path)[...], [9, 0, 0])
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_empty_write_stores_no_metadata(tmp_path: Path, zarr_format: Literal[2, 3]) -> None:
     """A write of an empty selection stores no chunks, so it stores no metadata either."""
     path = tmp_path / "legacy.zarr"
