@@ -965,6 +965,7 @@ def test_parse_metadata_field_materializes_abstract_containers() -> None:
 
     assert isinstance(parsed, dict)
     assert parsed == {"name": "example", "configuration": {"values": (0, 1)}}
+    assert "configuration" in parsed
     assert type(parsed["configuration"]) is dict
 
 
@@ -1547,7 +1548,7 @@ def test_configuration_values_must_be_json() -> None:
 
 def test_v3_extension_keys_must_be_strings() -> None:
     """A non-string top-level key cannot be represented by a v3 document type."""
-    doc: dict[object, object] = dict(ZarrV3ArrayMetadata.create_default().to_json())
+    doc: dict[object, object] = {**ZarrV3ArrayMetadata.create_default().to_json()}
     doc[1] = {"must_understand": False}
     assert [(problem.loc, problem.kind) for problem in validate_array_metadata_v3(doc)] == [
         ((), "invalid_type")
@@ -1746,7 +1747,7 @@ def test_v2_absent_dimension_separator_means_dot() -> None:
     del doc["dimension_separator"]
     model = ZarrV2ArrayMetadata.from_json(doc)
     assert model.dimension_separator == "."
-    assert model.to_json()["dimension_separator"] == "."
+    assert model.to_json().get("dimension_separator") == "."
 
 
 def test_v2_from_key_value_without_separator_means_dot() -> None:
