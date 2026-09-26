@@ -6,7 +6,7 @@ import json
 import pickle
 from collections import UserDict
 from collections.abc import Callable
-from typing import TYPE_CHECKING, get_args
+from typing import TYPE_CHECKING, TypeGuard, get_args, get_origin, get_type_hints
 
 import pytest
 from typing_extensions import Unpack
@@ -27,6 +27,8 @@ from zarr_metadata.model import (
     ZarrV3NamedConfig,
     is_array_metadata_v2,
     is_array_metadata_v3,
+    is_group_metadata_v2,
+    is_group_metadata_v3,
     is_json,
     is_metadata_field_v3,
     parse_array_metadata_v2,
@@ -964,6 +966,25 @@ def test_parse_json_materializes_abstract_containers() -> None:
     assert type(parsed) is dict
     assert type(parsed["values"]) is tuple
     json.dumps(parsed, allow_nan=False)
+
+
+@pytest.mark.parametrize(
+    "guard",
+    [
+        is_json,
+        is_metadata_field_v3,
+        is_array_metadata_v3,
+        is_array_metadata_v2,
+        is_group_metadata_v3,
+        is_group_metadata_v2,
+    ],
+    ids=lambda guard: guard.__name__,
+)
+def test_a_guard_narrows_only_when_it_says_yes(guard: Callable[[object], bool]) -> None:
+    """Each guard is False for some values of its type -- `is_json(math.nan)` is,
+    and a NaN is a `float` -- so it is a `TypeGuard`: a `TypeIs` would tell a
+    type checker to narrow such a value away when the guard says no."""
+    assert get_origin(get_type_hints(guard)["return"]) is TypeGuard
 
 
 def test_json_type_guard_rejects_abstract_sequence() -> None:
