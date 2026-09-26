@@ -1231,6 +1231,7 @@ class AsyncGroup:
         shape: ShapeLike,
         dtype: ZDTypeLike | None = None,
         exact: bool = False,
+        config: ArrayConfigLike | None = None,
         **kwargs: Any,
     ) -> AnyAsyncArray:
         """Obtain an array, creating if it doesn't exist.
@@ -1249,6 +1250,9 @@ class AsyncGroup:
         exact : bool, optional
             If True, require `dtype` to match exactly. If false, require
             `dtype` can be cast from array dtype.
+        config : ArrayConfigLike or None, default=None
+            Runtime configuration for the array, whether it is created or already exists.
+            Keys not specified are taken from the global configuration.
 
         Returns
         -------
@@ -1275,8 +1279,12 @@ class AsyncGroup:
                 if not np.can_cast(ds.dtype, dtype):
                     raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
         except KeyError:
-            ds = await self.create_array(name, shape=shape, dtype=dtype, **kwargs)
+            return await self.create_array(name, shape=shape, dtype=dtype, config=config, **kwargs)
 
+        # `config` is the runtime configuration of the returned array, not stored metadata,
+        # so it applies to an existing array too.
+        if config is not None:
+            return ds.with_config(config)
         return ds
 
     async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
@@ -2814,7 +2822,14 @@ class Group(SyncMixin):
             )
         )
 
-    def require_array(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> AnyArray:
+    def require_array(
+        self,
+        name: str,
+        *,
+        shape: ShapeLike,
+        config: ArrayConfigLike | None = None,
+        **kwargs: Any,
+    ) -> AnyArray:
         """Obtain an array, creating if it doesn't exist.
 
         Other `kwargs` are as per [zarr.Group.create_array][].
@@ -2823,6 +2838,9 @@ class Group(SyncMixin):
         ----------
         name : str
             Array name.
+        config : ArrayConfigLike or None, default=None
+            Runtime configuration for the array, whether it is created or already exists.
+            Keys not specified are taken from the global configuration.
         **kwargs :
             See [zarr.Group.create_array][].
 
@@ -2830,7 +2848,9 @@ class Group(SyncMixin):
         -------
         a : Array
         """
-        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
+        return Array(
+            self._sync(self._async_group.require_array(name, shape=shape, config=config, **kwargs))
+        )
 
     def empty(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
         """Create an empty array with the specified shape in this Group. The contents will be filled with
