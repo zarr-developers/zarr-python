@@ -1617,21 +1617,22 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         await save_metadata(self.store_path, metadata, ensure_parents=ensure_parents)
 
     async def _store_upgraded_document(self) -> None:
-        """Store the upgrade of this array's current stored document, if it differs from
-        what the store holds.
+        """Store the upgrade of this array's current stored document, if it needs one.
 
         Only for metadata read from a document that had to be upgraded (see
         `zarr.core.metadata.upgrades`). The document is read again, because the store may
         hold a newer one than this handle's metadata: if that one needs no upgrade (the
-        array was re-saved or resized since), nothing is stored. Storing the same upgrade
-        twice is harmless, so concurrent callers need no coordination.
+        array was re-saved or resized since, possibly by another implementation), it is
+        left as written. Storing the same upgrade twice is harmless, so concurrent
+        callers need no coordination.
         """
         if not self.metadata._stored_document_upgraded:
             return
         zarr_format = self.metadata.zarr_format
         stored = await get_array_metadata(self.store_path, zarr_format=zarr_format)
-        upgraded, _ = upgrade_array_document(stored, zarr_format)
-        await upsert_metadata(self.store_path, parse_array_metadata(upgraded))
+        upgraded, readings = upgrade_array_document(stored, zarr_format)
+        if readings:
+            await upsert_metadata(self.store_path, parse_array_metadata(upgraded))
         object.__setattr__(self.metadata, "_stored_document_upgraded", False)
 
     async def _set_selection(
