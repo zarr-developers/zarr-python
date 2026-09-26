@@ -45,7 +45,6 @@ from zarr.core.chunk_grids import (
     ChunkGrid,
     _is_auto,
     _is_keep,
-    _is_rectilinear_chunks,
     guess_chunks,
     normalize_chunks_nd,
     resolve_outer_and_inner_chunks,
@@ -350,6 +349,18 @@ async def _prepare_overwrite(
         await ensure_no_existing_node(store_path, zarr_format=zarr_format)
 
 
+def _v2_chunks_given(chunks: object) -> bool:
+    """Whether the legacy Zarr format 2 `chunks` argument is given.
+
+    A falsy `chunks` (such as `None`, 0, `[]` or `False`) is read as not given. A numpy
+    array with more than one element has no truth value and is always given; a shorter
+    one is given when its element is nonzero (an empty array is not given).
+    """
+    if isinstance(chunks, np.ndarray):
+        return chunks.size > 1 or bool(chunks.any())
+    return bool(chunks)
+
+
 @dataclass(frozen=True)
 class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     """
@@ -516,17 +527,16 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 )
             if dimension_names is not None:
                 raise ValueError("dimension_names cannot be used for arrays with zarr_format 2.")
-            if _is_rectilinear_chunks(_raw_chunks):
-                raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
-
             item_size = 1
             if isinstance(dtype_parsed, HasItemSize):
                 item_size = dtype_parsed.item_size
-            _raw = chunks or chunk_shape
-            if _raw is None:
+            _raw_v2 = chunks if _v2_chunks_given(chunks) else chunk_shape
+            if _raw_v2 is None:
                 outer_chunks = guess_chunks(shape, item_size)
             else:
-                outer_chunks = normalize_chunks_nd(_raw, shape)
+                outer_chunks = normalize_chunks_nd(_raw_v2, shape)
+            if not outer_chunks.is_regular:
+                raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
             _chunks = outer_chunks.chunk_shape
 
             if order is None:
@@ -4532,8 +4542,17 @@ async def init_array(
 
     await _prepare_overwrite(store_path, zarr_format=zarr_format, overwrite=overwrite)
 
-    # Validate rectilinear chunks constraints
-    if _is_rectilinear_chunks(chunks):
+    # Normalize the user's chunks into a canonical ChunkGrid
+
+    if _is_auto(chunks):
+        max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
+        chunks_normalized = guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
+    else:
+        chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
+
+    # Validate rectilinear chunks constraints. The normalized grid is the one
+    # judge of what the user declared.
+    if not chunks_normalized.is_regular:
         if zarr_format == 2:
             raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
         if shards is not None:
@@ -4542,14 +4561,6 @@ async def init_array(
                 "Use rectilinear shards instead: "
                 "chunks=(inner_size, ...), shards=[[shard_sizes], ...]"
             )
-
-    # Normalize the user's chunks into a canonical ChunkGrid
-
-    if _is_auto(chunks):
-        max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
-        chunks_normalized = guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
-    else:
-        chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
 
     # Resolve chunks + shards into outer_chunks (grid metadata) and
     # inner (sub-chunk structure for ShardingCodec, None if no sharding)
@@ -4862,10 +4873,9 @@ def _stored_rectilinear_grid_or_none(
     """The *stored* rectilinear chunk grid, or None if the stored grid is regular
     (in which case `.chunks` and `.shards` are defined).
 
-    Dispatches on the stored metadata, not the runtime ``ChunkGrid``: the
-    runtime grid collapses a rectilinear dimension whose edges happen to be
-    uniform to a ``FixedDimension`` as an optimization, so it can report regular
-    for an array whose stored metadata — and therefore `.chunks` — is
+    Dispatches on the stored metadata, not the runtime `ChunkGrid`: a
+    rectilinear grid whose dimensions are all bare-int step sizes is regular at
+    runtime, while its stored metadata — and therefore `.chunks` — is
     rectilinear. Zarr format 2 grids are always regular.
     """
     if isinstance(metadata, ArrayV3Metadata) and isinstance(
