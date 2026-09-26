@@ -283,24 +283,22 @@ def _subject(name: str, axis: int | None) -> str:
 
 
 def _parse_positive_int(value: object, name: str, axis: int | None) -> int:
-    """`value` as an `int` of at least 1. Any integral number is read as the `int` it
-    equals: an `int`, a `bool`, a NumPy integer or an integral float."""
+    """`value` as an `int` of at least 1. An integer of any integer type (an `int`, a
+    `bool` or a NumPy integer) is read as the `int` it equals; a float is rejected, even
+    an integral one (stored documents with integral floats are read by
+    `zarr.core.metadata.upgrades`)."""
     subject = _subject(name, axis)
-    match value:
-        case numbers.Integral():
-            parsed = int(value)
-        case float() if value.is_integer():
-            parsed = int(value)
-        case _:
-            raise TypeError(f"{subject} must be an integer, got {value!r}")
+    if not isinstance(value, numbers.Integral):
+        raise TypeError(f"{subject} must be an integer, got {value!r}")
+    parsed = int(value)
     if parsed < 1:
         raise ValueError(f"{subject} must be >= 1, got {value!r}")
     return parsed
 
 
 def parse_chunk_edge(size: object, axis: int | None = None) -> int:
-    """Check that `size` is a chunk edge length: an integral number of at least 1, read
-    as an `int`.
+    """Check that `size` is a chunk edge length: an integer of at least 1, read as an
+    `int`.
 
     This is the one rule for chunk edge lengths in metadata: bare chunk sizes, explicit
     edges and run-length encoded sizes. `axis`, when given, is named in the error.

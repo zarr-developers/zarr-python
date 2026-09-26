@@ -512,7 +512,6 @@ def test_chunk_grid_iter() -> None:
     [
         ([[10, 3]], [10, 10, 10]),
         ([[10, 2], [20, 1]], [10, 10, 20]),
-        ([4.0, [4.0, 2], [5, 2.0]], [4, 4, 4, 5, 5]),
         ([[True, 2], [np.int64(3), np.int64(1)]], [1, 1, 3]),
     ],
 )
@@ -573,13 +572,23 @@ def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
     ("rle_input", "match"),
     [
         ([10.5], "Chunk edge length must be an integer, got 10.5"),
+        ([10.0], "Chunk edge length must be an integer, got 10.0"),
+        ([[10.0, 3]], "Chunk edge length must be an integer, got 10.0"),
         (["10"], "Chunk edge length must be an integer, got '10'"),
         ([[10, 3.5]], "RLE repeat count must be an integer, got 3.5"),
+        ([[10, 3.0]], "RLE repeat count must be an integer, got 3.0"),
     ],
-    ids=["fractional-edge", "string-edge", "fractional-count"],
+    ids=[
+        "fractional-edge",
+        "float-edge",
+        "float-rle-size",
+        "string-edge",
+        "fractional-count",
+        "float-count",
+    ],
 )
 def test_rle_expand_rejects_non_int(rle_input: list[Any], match: str) -> None:
-    """expand_rle reads integral numbers only."""
+    """expand_rle reads integers only, not floats."""
     with pytest.raises(TypeError, match=match):
         expand_rle(rle_input)
 
