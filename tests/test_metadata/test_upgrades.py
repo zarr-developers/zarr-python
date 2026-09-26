@@ -408,9 +408,9 @@ def test_write_stores_upgraded_metadata_first(
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize("zarr_format", [2, 3])
 def test_legacy_chunk_size_consolidated(tmp_path: Path, zarr_format: Literal[2, 3]) -> None:
-    """Consolidated metadata goes through the same upgrade, with one warning naming each
-    array; re-saving the arrays and consolidating again leaves a group that opens
-    without a warning."""
+    """Consolidated metadata goes through the same upgrade as the arrays' own documents,
+    with one warning naming each array by its path; re-saving the arrays and
+    consolidating again leaves a group that opens without a warning."""
     path = tmp_path / "group.zarr"
     group = zarr.open_group(path, mode="w", zarr_format=zarr_format)
     names = ("a", "b")
@@ -439,11 +439,16 @@ def test_legacy_chunk_size_consolidated(tmp_path: Path, zarr_format: Literal[2, 
                 ].update(chunk_shape=[0]),
             )
 
-    with pytest.warns(ZarrUserWarning, match="zarr.consolidate_metadata") as record:
-        group = zarr.open_group(path, mode="r+")
-    assert sorted(str(w.message).split(":")[0] for w in record) == ["Array 'a'", "Array 'b'"]
-    for name in names:
-        array = group[name]
+    for use_consolidated in (True, False):
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always", ZarrUserWarning)
+            group = zarr.open_group(path, mode="r+", use_consolidated=use_consolidated)
+            arrays = [group[name] for name in names]
+        assert all("zarr.consolidate_metadata" in str(w.message) for w in record)
+        assert sorted(str(w.message).split(": ")[0] for w in record) == [
+            f"Array '{group.store_path / name}'" for name in names
+        ]
+    for array in arrays:
         assert isinstance(array, zarr.Array)
         assert array.chunks == (1,)
         array.update_attributes({})

@@ -765,7 +765,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ValueError
             If the dictionary data is invalid or incompatible with either Zarr format 2 or 3 array creation.
         """
-        metadata = parse_array_metadata(data)
+        metadata = parse_array_metadata(data, str(store_path))
         return cls(metadata=metadata, store_path=store_path)
 
     @classmethod
