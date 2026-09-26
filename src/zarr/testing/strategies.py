@@ -565,8 +565,6 @@ def rectilinear_dim_edges(draw: st.DrawFn, *, extent: int) -> list[int]:
     if extent == 0:
         event("rectilinear edges: zero extent")
         return draw(st.lists(st.integers(min_value=1, max_value=10), min_size=1, max_size=5))
-    if extent == 1:
-        return [1]
     if draw(st.booleans(), label="uneven edges"):
         nchunks = draw(st.integers(min_value=1, max_value=min(extent, 20)))
         # Draw distinct dividers by index into the unused positions: no
