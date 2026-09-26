@@ -933,8 +933,9 @@ def load_store_json(mapping: Mapping[StoreKey, bytes], key: str) -> object:
     the floats they spell, as zarr-python writes attributes; where one may
     be is the document's validator's to say. Every ingestion failure here
     surfaces as `MetadataValidationError`: a missing store key is a
-    `missing_key` problem and undecodable bytes are an `invalid_json`
-    problem, rather than leaking `KeyError` / `json.JSONDecodeError` to
+    `missing_key` problem, a value that is not `bytes` an `invalid_type`
+    problem, and undecodable bytes an `invalid_json` problem, rather than
+    leaking `KeyError`, `TypeError` or `json.JSONDecodeError` to
     callers.
     """
     # Read by a `str` key whatever narrower key type the mapping declares:
@@ -944,8 +945,15 @@ def load_store_json(mapping: Mapping[StoreKey, bytes], key: str) -> object:
         raise MetadataValidationError(
             [ValidationProblem((key,), "missing store key", "missing_key")]
         )
+    # The runtime half of the annotation: `json.loads` decodes a `str` and
+    # raises `TypeError` on most else.
+    raw = cast("object", stored[key])
+    if not isinstance(raw, bytes):
+        raise MetadataValidationError(
+            [ValidationProblem((key,), f"expected bytes, got {type(raw).__name__}", "invalid_type")]
+        )
     try:
-        return json.loads(stored[key])
+        return json.loads(raw)
     except (UnicodeDecodeError, ValueError) as exc:
         raise MetadataValidationError(
             [ValidationProblem((key,), f"invalid JSON: {exc}", "invalid_json")]

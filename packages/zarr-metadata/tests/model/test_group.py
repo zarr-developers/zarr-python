@@ -417,6 +417,25 @@ def test_consolidated_v2_metadata_values_must_be_json() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "stored",
+    [
+        '{"zarr_format": 2}',
+        None,
+        memoryview(b'{"zarr_format": 2}'),
+        bytearray(b'{"zarr_format": 2}'),
+    ],
+    ids=["str", "none", "memoryview", "bytearray"],
+)
+def test_error_a_store_value_that_is_not_bytes_is_refused(stored: object) -> None:
+    """A store maps keys to bytes, and a reader checks that it read bytes."""
+    with pytest.raises(MetadataValidationError) as exc_info:
+        ZarrV2GroupMetadata.from_key_value({".zgroup": stored})  # pyright: ignore[reportArgumentType]
+    assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
+        ((".zgroup",), "invalid_type")
+    ]
+
+
 def test_group_v2_from_key_value_scalar_root_raises_metadata_error() -> None:
     """A scalar .zgroup document fails through the unified metadata error channel."""
     with pytest.raises(MetadataValidationError) as exc_info:
