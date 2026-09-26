@@ -737,6 +737,20 @@ def test_to_json_shares_no_mutable_state_with_model(
     assert model.to_json() == baseline
 
 
+@pytest.mark.parametrize("model", TO_JSON_NO_ALIASING_PARAMS)
+def test_from_json_shares_no_mutable_state_with_its_input(
+    model: ZarrV3ArrayMetadata | ZarrV2ArrayMetadata,
+) -> None:
+    """Mutating the document a model was read from leaves the model unchanged."""
+    # Arrays as tuples: the reader has nothing to rebuild, so only a copy
+    # keeps the model apart from its input.
+    document = arrays_to_tuples(model.to_json())
+    read = type(model).from_json(document)
+    baseline = copy.deepcopy(read.to_json())
+    mutate_nested_containers(document)
+    assert read.to_json() == baseline
+
+
 def test_v3_parser_accepts_bare_string_data_type() -> None:
     """V3 from_json accepts a bare-string data_type and re-serializes it canonically."""
     doc = ZarrV3ArrayMetadata.create_default().to_json()

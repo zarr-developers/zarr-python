@@ -22,6 +22,7 @@ from zarr_metadata.model._group import (
 from zarr_metadata.model._validation import (
     MetadataValidationError,
     ValidationProblem,
+    arrays_to_tuples,
     is_group_metadata_v2,
     is_group_metadata_v3,
     parse_group_metadata_v2,
@@ -602,3 +603,20 @@ def test_to_json_shares_no_mutable_state_with_model(
     baseline = copy.deepcopy(model.to_json())
     mutate_nested_containers(model.to_json())
     assert model.to_json() == baseline
+
+
+@pytest.mark.parametrize("model", TO_JSON_NO_ALIASING_PARAMS)
+def test_from_json_shares_no_mutable_state_with_its_input(
+    model: ZarrV3GroupMetadata
+    | ZarrV2GroupMetadata
+    | ZarrV3ConsolidatedMetadata
+    | ZarrV2ConsolidatedMetadata,
+) -> None:
+    """Mutating the document a model was read from leaves the model unchanged."""
+    # Arrays as tuples: the reader has nothing to rebuild, so only a copy
+    # keeps the model apart from its input.
+    document = arrays_to_tuples(model.to_json())
+    read = type(model).from_json(document)
+    baseline = copy.deepcopy(read.to_json())
+    mutate_nested_containers(document)
+    assert read.to_json() == baseline
