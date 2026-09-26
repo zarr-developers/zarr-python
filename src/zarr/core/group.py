@@ -3085,6 +3085,7 @@ async def create_hierarchy(
     # ensure that all nodes have the same zarr_format, and add implicit groups as needed
     nodes_parsed = _parse_hierarchy_dict(data=nodes_normed_keys)
     redundant_implicit_groups = []
+    to_delete_keys: list[str] = []
 
     # empty hierarchies should be a no-op
     if len(nodes_parsed) > 0:
@@ -3117,13 +3118,7 @@ async def create_hierarchy(
         if overwrite:
             # we will remove any nodes that collide with arrays and non-implicit groups defined in
             # nodes
-
-            # track the keys of nodes we need to delete
-            to_delete_keys = []
-            to_delete_keys.extend(
-                [k for k, v in nodes_parsed.items() if k not in implicit_group_keys]
-            )
-            await asyncio.gather(*(store.delete_dir(key) for key in to_delete_keys))
+            to_delete_keys = [k for k in nodes_parsed if k not in implicit_group_keys]
         else:
             # This type is long.
             coros: (
@@ -3183,7 +3178,11 @@ async def create_hierarchy(
             else:
                 nodes_explicit[k] = v
 
-    async for key, node in create_nodes(store=store, nodes=nodes_explicit):
+    # Build every node before deleting or storing anything: metadata that no array or
+    # group can be built from then fails with the store untouched.
+    built = _build_nodes(store, nodes_explicit)
+    await asyncio.gather(*(store.delete_dir(key) for key in to_delete_keys))
+    async for key, node in _store_nodes(store, nodes_explicit, built):
         yield key, node
 
 
@@ -3213,7 +3212,26 @@ async def create_nodes(
     AsyncGroup | AsyncArray
         The created nodes in the order they are created.
     """
+    async for key, node in _store_nodes(store, nodes, _build_nodes(store, nodes)):
+        yield key, node
 
+
+def _build_nodes(
+    store: Store, nodes: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]
+) -> dict[str, AsyncGroup | AnyAsyncArray]:
+    """The array or group each of `nodes` describes, at its path in `store`."""
+    return {
+        path: _build_node(store=store, path=path, metadata=meta) for path, meta in nodes.items()
+    }
+
+
+async def _store_nodes(
+    store: Store,
+    nodes: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+    built: Mapping[str, AsyncGroup | AnyAsyncArray],
+) -> AsyncIterator[tuple[str, AsyncGroup | AnyAsyncArray]]:
+    """Store the metadata of `nodes` and yield the nodes `_build_nodes` built from them
+    (see `create_nodes`)."""
     # Note: the only way to alter this value is via the config. If that's undesirable for some reason,
     # then we should consider adding a keyword argument to this function
     semaphore = asyncio.Semaphore(config.get("async.concurrency"))
@@ -3241,7 +3259,7 @@ async def create_nodes(
             node_name = created_key[: created_key.rfind("/")]
             meta_out = nodes[node_name]
         if meta_out.zarr_format == 3:
-            yield node_name, _build_node(store=store, path=node_name, metadata=meta_out)
+            yield node_name, built[node_name]
         else:
             # For zarr v2
             # we only want to yield when both the metadata and attributes are created
@@ -3256,7 +3274,7 @@ async def create_nodes(
                 meta_done = _join_paths([node_name, ZARRAY_JSON]) in created_object_keys
 
             if meta_done and attrs_done:
-                yield node_name, _build_node(store=store, path=node_name, metadata=meta_out)
+                yield node_name, built[node_name]
 
             continue
 
