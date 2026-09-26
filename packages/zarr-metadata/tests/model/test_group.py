@@ -30,6 +30,11 @@ from zarr_metadata.model._validation import (
     validate_group_metadata_v2,
     validate_group_metadata_v3,
 )
+from zarr_metadata.v2.group import (
+    ZarrV2GroupMetadataJSON,
+    ZarrV2GroupMetadataJSONPartial,
+    ZarrV2ZGroupJSON,
+)
 
 # --- ZarrV3GroupMetadata ---------------------------------------------------
 
@@ -133,6 +138,17 @@ def test_group_v2_rejects_unknown_document_member() -> None:
     assert [(p.loc, p.kind) for p in validate_group_metadata_v2({"zarr_format": 2, "x": 1})] == [
         (("x",), "invalid_value")
     ]
+
+
+@pytest.mark.parametrize(
+    "document_type",
+    [ZarrV2ZGroupJSON, ZarrV2GroupMetadataJSON, ZarrV2GroupMetadataJSONPartial],
+    ids=lambda document_type: document_type.__name__,
+)
+def test_v2_group_document_types_are_closed(document_type: type) -> None:
+    """`.zgroup` "Other keys MUST NOT be present": the validator refuses them, and
+    the types say so."""
+    assert getattr(document_type, "__closed__", None) is True
 
 
 @pytest.mark.parametrize(
@@ -497,6 +513,19 @@ def test_v2_consolidated_rejects_unknown_document_member() -> None:
 
     with pytest.raises(MetadataValidationError, match="unexpected"):
         ZarrV2ConsolidatedMetadata.from_json(doc)
+
+
+@pytest.mark.parametrize("key", [1, None], ids=["int", "none"])
+def test_v2_consolidated_rejects_non_string_document_key(key: object) -> None:
+    """A non-string key is a problem at the document: not a member at a
+    location that reads as an index, nor a `TypeError`."""
+    doc = {"zarr_consolidated_format": 1, "metadata": {}, key: "x"}
+
+    with pytest.raises(MetadataValidationError) as exc_info:
+        ZarrV2ConsolidatedMetadata.from_json(doc)
+    assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
+        ((), "invalid_type")
+    ]
 
 
 # --- must_understand partition ------------------------------------------------
