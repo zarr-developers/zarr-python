@@ -405,16 +405,32 @@ def _rectilinear_from_dict(chunk_shapes: list[Any]) -> RectilinearChunkGridMetad
         )
 
 
+def _second_edge(grid: RectilinearChunkGridMetadata) -> int:
+    edges = grid.chunk_shapes[0]
+    assert isinstance(edges, tuple)
+    return edges[1]
+
+
 CHUNK_EDGE_SITES: dict[str, Callable[[Any], object]] = {
-    "regular": lambda size: RegularChunkGridMetadata(chunk_shape=(size,)),
-    "v2": lambda size: _v2_metadata((size,)),
-    "rectilinear-bare": lambda size: _rectilinear((size,)),
-    "rectilinear-edge": lambda size: _rectilinear(((4, size),)),
-    "rectilinear-bare-json": lambda size: _rectilinear_from_dict([size]),
-    "rectilinear-edge-json": lambda size: _rectilinear_from_dict([[4, size]]),
-    "rectilinear-rle-json": lambda size: _rectilinear_from_dict([[[size, 2]]]),
-    "sharding-inner": lambda size: ShardingCodec(chunk_shape=(size,)),
+    "regular": lambda size: RegularChunkGridMetadata(chunk_shape=(size,)).chunk_shape[0],
+    "v2": lambda size: _v2_metadata((size,)).chunks[0],
+    "rectilinear-bare": lambda size: _rectilinear((size,)).chunk_shapes[0],
+    "rectilinear-edge": lambda size: _second_edge(_rectilinear(((4, size),))),
+    "rectilinear-bare-json": lambda size: _rectilinear_from_dict([size]).chunk_shapes[0],
+    "rectilinear-edge-json": lambda size: _second_edge(_rectilinear_from_dict([[4, size]])),
+    "rectilinear-rle-json": lambda size: _second_edge(_rectilinear_from_dict([[[size, 2]]])),
+    "sharding-inner": lambda size: ShardingCodec(chunk_shape=(size,)).chunk_shape[0],
 }
+"""Each place metadata built in code takes a chunk edge length, returning the edge it
+took."""
+
+
+@pytest.mark.parametrize("site", CHUNK_EDGE_SITES)
+def test_metadata_takes_int_chunk_edge(site: str) -> None:
+    """Metadata built in code takes an `int` chunk edge length of at least 1 as is."""
+    edge = CHUNK_EDGE_SITES[site](4)
+    assert type(edge) is int
+    assert edge == 4
 
 
 @pytest.mark.parametrize("site", CHUNK_EDGE_SITES)

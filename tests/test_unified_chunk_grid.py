@@ -23,6 +23,7 @@ from zarr.core.chunk_grids import (
     ChunkSpec,
     FixedDimension,
     VaryingDimension,
+    guess_chunks,
 )
 from zarr.core.common import compress_rle, expand_rle
 from zarr.core.dtype import UInt8
@@ -576,6 +577,7 @@ def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
         ([[10, 3.0]], "RLE repeat count must be an int, got 3.0"),
         ([np.int64(10)], "Chunk edge length must be an int, got np.int64(10)"),
         ([[10, np.int64(3)]], "RLE repeat count must be an int, got np.int64(3)"),
+        ([[10, True]], "RLE repeat count must be an int, got True"),
     ],
     ids=[
         "fractional-edge",
@@ -587,6 +589,7 @@ def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
         "float-count",
         "numpy-int-edge",
         "numpy-int-count",
+        "bool-count",
     ],
 )
 def test_rle_expand_rejects_non_int(rle_input: list[Any], match: str) -> None:
@@ -1230,15 +1233,43 @@ def test_rectilinear_chunks_gates(shape: tuple[int, ...], chunks: Any) -> None:
         zarr.create(store=MemoryStore(), shape=shape, chunks=chunks, zarr_format=2, dtype="uint8")
 
 
-def test_legacy_create_v2_accepts_numpy_array_chunks() -> None:
-    """The legacy `zarr.create` Zarr format 2 path must not test the truth value
-    of the chunk specification, which a numpy array does not have."""
-    chunks: Any = np.array([5, 3])  # outside the annotated type, accepted by the normalizer
-    arr = zarr.create(
-        store=MemoryStore(), shape=(10, 6), chunks=chunks, dtype="uint8", zarr_format=2
-    )
-    assert arr.chunks == (5, 3)
+@pytest.mark.parametrize(
+    ("chunks", "expected"),
+    [
+        (None, None),
+        (False, (4096, 4096)),
+        (-1, (4096, 4096)),
+        (5, (5, 5)),
+        ([5, 3], (5, 3)),
+        (np.int64(5), (5, 5)),
+        (np.array([5, 3]), (5, 3)),
+    ],
+    ids=repr,
+)
+def test_legacy_create_v2_chunks(chunks: Any, expected: tuple[int, ...] | None) -> None:
+    """The legacy `zarr.create` Zarr format 2 path chunks automatically only when
+    `chunks` is `None` (`expected` is `None`); any other `chunks`, falsy or not, is a
+    chunk specification, read as `create_array` reads it. It never tests the truth
+    value of a numpy array, which has none."""
+    shape = (4096, 4096)
+    arr = zarr.create(store=MemoryStore(), shape=shape, chunks=chunks, dtype="uint8", zarr_format=2)
+    assert arr.chunks == (expected or guess_chunks(shape, 1).chunk_shape)
     assert all(type(c) is int for c in arr.chunks)
+
+
+def test_legacy_create_v2_chunks_zero_rejected() -> None:
+    """A chunk size of 0 is a chunk specification, not a request for automatic
+    chunking, and a chunk size must be at least 1."""
+    with pytest.raises(ValueError, match="Chunk size must be positive or -1, got 0"):
+        zarr.create(store=MemoryStore(), shape=(10,), chunks=0, dtype="uint8", zarr_format=2)
+
+
+def test_legacy_create_v2_chunks_empty_rejected() -> None:
+    """An empty chunk specification is not a request for automatic chunking: it has no
+    dimension, where the array has one."""
+    chunks: Any = []  # outside the annotated type, which has no list
+    with pytest.raises(ValueError, match="chunks has 0 dimensions but shape has 1 dimensions"):
+        zarr.create(store=MemoryStore(), shape=(10,), chunks=chunks, dtype="uint8", zarr_format=2)
 
 
 def test_from_array_keep_preserves_all_bare_int_rectilinear_grid() -> None:
