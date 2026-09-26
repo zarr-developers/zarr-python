@@ -786,22 +786,20 @@ def test_regular_grid_of_only_edge_lists_rejected() -> None:
     """A regular chunk shape made only of edge lists was never stored (a rectilinear
     chunk grid was), so it is not read as rectilinear."""
     info = _rejected_without_warning(_mixed_doc([6, 20], [[1, 5], [5, 10, 5]]))
-    assert info.match(re.escape("Dimension 0: chunk edge length must be an integer, got [1, 5]"))
+    assert info.match(re.escape("Dimension 0: chunk edge length must be an int, got [1, 5]"))
 
 
 def test_run_length_encoded_edges_in_regular_grid_rejected() -> None:
     """Run-length encoded edges were never stored in a regular chunk shape."""
     info = _rejected_without_warning(_mixed_doc([6, 20], [2, [[5, 2], 10]]))
-    assert info.match(
-        re.escape("Dimension 1: chunk edge length must be an integer, got [[5, 2], 10]")
-    )
+    assert info.match(re.escape("Dimension 1: chunk edge length must be an int, got [[5, 2], 10]"))
 
 
-@pytest.mark.parametrize("edge", [5.5, "5"], ids=["fractional", "string"])
+@pytest.mark.parametrize("edge", [5.0, True], ids=["float", "bool"])
 def test_non_int_edge_in_regular_grid_rejected(edge: object) -> None:
-    """An edge that is not an integer is reported as such, not blamed on its list."""
+    """An edge that is not an int is reported as such, not blamed on its list."""
     info = _rejected_without_warning(_mixed_doc([6, 20], [2, [edge, 15]]))
-    assert info.match(re.escape(f"Dimension 1: chunk edge length must be an integer, got {edge!r}"))
+    assert info.match(re.escape(f"Dimension 1: chunk edge length must be an int, got {edge!r}"))
 
 
 def test_edge_below_one_in_regular_grid_rejected() -> None:

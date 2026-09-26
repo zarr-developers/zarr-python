@@ -159,8 +159,7 @@ def test_create_chunk_grid_metadata_unknown_dimension_type() -> None:
 def test_regular_chunk_grid_rejects_edge_lists() -> None:
     """A regular chunk grid only accepts integer chunk edge lengths."""
     with pytest.raises(
-        TypeError,
-        match=re.escape("Dimension 1: chunk edge length must be an integer, got (5, 10, 5)"),
+        TypeError, match=re.escape("Dimension 1: chunk edge length must be an int, got (5, 10, 5)")
     ):
         RegularChunkGridMetadata(chunk_shape=(2, (5, 10, 5)))  # type: ignore[arg-type]
 
