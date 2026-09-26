@@ -8,21 +8,27 @@ and end-to-end array creation + read/write.
 
 from __future__ import annotations
 
+import re
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
 
 import zarr
+from tests.test_metadata.conftest import minimal_metadata_dict_v3
+from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_grids import (
     ChunkGrid,
     ChunkSpec,
     FixedDimension,
     VaryingDimension,
-    _is_rectilinear_chunks,
+    guess_chunks,
 )
 from zarr.core.common import compress_rle, expand_rle
+from zarr.core.dtype import UInt8
 from zarr.core.metadata.v3 import (
+    ArrayV3Metadata,
     RectilinearChunkGridMetadata,
     RectilinearChunkGridMetadataJSON,
     RegularChunkGridMetadata,
@@ -101,30 +107,57 @@ def test_dimension_index_to_chunk_last_valid(
 # ---------------------------------------------------------------------------
 
 
+_RECTILINEAR_DOC = minimal_metadata_dict_v3(
+    shape=(30, 50),
+    chunk_grid={
+        "name": "rectilinear",
+        "configuration": {"kind": "inline", "chunk_shapes": [[10, 20], [25, 25]]},
+    },
+)
+
+
 @pytest.mark.parametrize(
     "action",
     [
-        lambda: RectilinearChunkGridMetadata(chunk_shapes=((10, 20), (25, 25))),
-        lambda: RectilinearChunkGridMetadata.from_dict(
-            {
-                "name": "rectilinear",
-                "configuration": {"kind": "inline", "chunk_shapes": [[10, 20, 30], [50, 50]]},
-            }
-        ),
+        lambda: ArrayV3Metadata.from_dict(dict(_RECTILINEAR_DOC)),  # type: ignore[arg-type]
+        lambda: ArrayV3Metadata(
+            shape=(30, 50),
+            data_type=UInt8(),
+            chunk_grid=RectilinearChunkGridMetadata(chunk_shapes=((10, 20), (25, 25))),
+            chunk_key_encoding={"name": "default"},
+            fill_value=0,
+            codecs=[{"name": "bytes"}],
+            attributes=None,
+            dimension_names=None,
+        ).to_buffer_dict(default_buffer_prototype()),
         lambda: zarr.create_array(MemoryStore(), shape=(30,), chunks=[[10, 20]], dtype="int32"),
     ],
-    ids=["constructor", "from_dict", "create_array"],
+    ids=["read", "store", "create_array"],
 )
 def test_rectilinear_feature_flag_blocked(action: Any) -> None:
-    """Rectilinear chunk operations raise ValueError when the feature flag is disabled"""
+    """Reading or storing an array metadata document that declares a rectilinear chunk
+    grid raises ValueError when the feature flag is disabled."""
     with zarr.config.set({"array.rectilinear_chunks": False}):
         with pytest.raises(ValueError, match="experimental and disabled by default"):
             action()
 
 
-def test_rectilinear_feature_flag_enabled() -> None:
-    """Rectilinear chunk grid construction succeeds when the feature flag is enabled"""
+def test_rectilinear_feature_flag_names_stored_array() -> None:
+    """Opening a stored array whose document the flag refuses names the array."""
+    store = MemoryStore()
     with zarr.config.set({"array.rectilinear_chunks": True}):
+        zarr.create_array(store, name="r", shape=(30,), chunks=[[10, 20]], dtype="int32")
+    with (
+        zarr.config.set({"array.rectilinear_chunks": False}),
+        pytest.raises(ValueError, match="experimental and disabled by default") as info,
+    ):
+        zarr.open_array(store, path="r")
+    assert info.value.__notes__ == [f"Array {str(store) + '/r'!r}: nothing was read."]
+
+
+def test_rectilinear_metadata_classes_not_gated() -> None:
+    """The flag gates stored documents, not the chunk grid metadata classes."""
+    with zarr.config.set({"array.rectilinear_chunks": False}):
         grid = RectilinearChunkGridMetadata(chunk_shapes=((10, 20), (25, 25)))
         assert grid.ndim == 2
 
@@ -149,9 +182,9 @@ def test_rectilinear_feature_flag_enabled() -> None:
         (10, 100, 1, 10, 10, 10, 10),
         (10, 100, 9, 10, 10, 10, 90),
         (10, 95, 9, 10, 10, 5, 90),  # boundary chunk
-        (0, 0, None, 0, None, None, None),  # zero-size
+        (10, 0, None, 0, None, None, None),  # zero-extent: no chunks, size still >= 1
     ],
-    ids=["start", "middle", "end", "boundary", "zero-size"],
+    ids=["start", "middle", "end", "boundary", "zero-extent"],
 )
 def test_fixed_dimension(
     size: int,
@@ -190,11 +223,16 @@ def test_fixed_dimension_indices_to_chunks() -> None:
 
 @pytest.mark.parametrize(
     ("size", "extent", "match"),
-    [(-1, 100, "must be >= 0"), (10, -1, "must be >= 0")],
-    ids=["negative-size", "negative-extent"],
+    [
+        (-1, 100, "size must be >= 1"),
+        (0, 100, "size must be >= 1"),
+        (0, 0, "size must be >= 1"),
+        (10, -1, "extent must be >= 0"),
+    ],
+    ids=["negative-size", "zero-size", "zero-size-zero-extent", "negative-extent"],
 )
-def test_fixed_dimension_rejects_negative(size: int, extent: int, match: str) -> None:
-    """FixedDimension raises ValueError for negative size or extent"""
+def test_fixed_dimension_rejects_invalid(size: int, extent: int, match: str) -> None:
+    """FixedDimension raises ValueError for a size below 1 or a negative extent."""
     with pytest.raises(ValueError, match=match):
         FixedDimension(size=size, extent=extent)
 
@@ -301,9 +339,12 @@ def test_chunk_spec(
         ((100, 200), (10, 20), True, 2, (10, 20)),
         ((), (), True, 0, ()),
         ((60, 100), [[10, 20, 30], [25, 25, 25, 25]], False, 2, None),
-        ((30, 50), [[10, 10, 10], [25, 25]], True, 2, (10, 25)),  # uniform edges → regular
+        # explicit edge lists stay rectilinear even when uniform (gh-4272), including
+        # uniform edges overhanging the extent after a shrinking resize
+        ((30, 50), [[10, 10, 10], [25, 25]], False, 2, None),
+        ((35,), [[10, 10, 10, 10]], False, 1, None),
     ],
-    ids=["regular", "zero-dim", "rectilinear", "uniform-becomes-regular"],
+    ids=["regular", "zero-dim", "rectilinear", "uniform-edges", "uniform-edges-overhang"],
 )
 def test_chunk_grid_construction(
     array_shape: tuple[int, ...],
@@ -321,13 +362,6 @@ def test_chunk_grid_construction(
     else:
         with pytest.raises(ValueError, match="only available for regular"):
             _ = g.chunk_shape
-
-
-def test_chunk_grid_rectilinear_uniform_dim_is_fixed() -> None:
-    """A rectilinear grid with all-same sizes in one dim stores it as Fixed."""
-    g = ChunkGrid.from_sizes((60, 100), [[10, 20, 30], [25, 25, 25, 25]])
-    assert isinstance(g._dimensions[0], VaryingDimension)
-    assert isinstance(g._dimensions[1], FixedDimension)
 
 
 # ---------------------------------------------------------------------------
@@ -526,6 +560,7 @@ def test_rle_roundtrip() -> None:
         ([[-10, 2]], "Chunk edge length must be >= 1"),
         ([[5, 0]], "RLE repeat count must be >= 1"),
         ([[5, -1]], "RLE repeat count must be >= 1"),
+        ([[5, 2, 1]], r"RLE entries must be an integer or \[size, count\], got \[5, 2, 1\]"),
     ],
     ids=[
         "zero-edge",
@@ -534,6 +569,7 @@ def test_rle_roundtrip() -> None:
         "negative-rle-size",
         "zero-rle-count",
         "negative-rle-count",
+        "rle-entry-of-three",
     ],
 )
 def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
@@ -542,68 +578,54 @@ def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
         expand_rle(rle_input)
 
 
-# -- expand_rle handles JSON floats --
-
-
-def test_expand_rle_bare_integer_floats_accepted() -> None:
-    """JSON parsers may emit 10.0 for the integer 10; expand_rle should handle it."""
-    result = expand_rle([10.0, 20.0])  # type: ignore[list-item]
-    assert result == [10, 20]
-
-
-def test_expand_rle_pair_with_float_count() -> None:
-    """expand_rle accepts float repeat counts that are integer-valued"""
-    result = expand_rle([[10, 3.0]])  # type: ignore[list-item]
-    assert result == [10, 10, 10]
-
-
-# ---------------------------------------------------------------------------
-# _is_rectilinear_chunks tests
-# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("rle_input", "match"),
+    [
+        ([10.5], "Chunk edge length must be an int, got 10.5"),
+        ([10.0], "Chunk edge length must be an int, got 10.0"),
+        ([[10.0, 3]], "Chunk edge length must be an int, got 10.0"),
+        (["10"], "Chunk edge length must be an int, got '10'"),
+        ([True], "Chunk edge length must be an int, got True"),
+        ([[10, 3.5]], "RLE repeat count must be an int, got 3.5"),
+        ([[10, 3.0]], "RLE repeat count must be an int, got 3.0"),
+        ([np.int64(10)], "Chunk edge length must be an int, got np.int64(10)"),
+        ([[10, np.int64(3)]], "RLE repeat count must be an int, got np.int64(3)"),
+        ([[10, True]], "RLE repeat count must be an int, got True"),
+    ],
+    ids=[
+        "fractional-edge",
+        "float-edge",
+        "float-rle-size",
+        "string-edge",
+        "bool-edge",
+        "fractional-count",
+        "float-count",
+        "numpy-int-edge",
+        "numpy-int-count",
+        "bool-count",
+    ],
+)
+def test_rle_expand_rejects_non_int(rle_input: list[Any], match: str) -> None:
+    """expand_rle takes `int`s only, not `bool`s, floats or NumPy integers; stored
+    integral floats and JSON `true` are read by the upgrades."""
+    with pytest.raises(TypeError, match=re.escape(match)):
+        expand_rle(rle_input)
 
 
 @pytest.mark.parametrize(
-    ("value", "expected"),
+    ("rle_input", "match"),
     [
-        ([[10, 20], [5, 5]], True),
-        (((10, 20), (5, 5)), True),
-        ((10, 20), False),
-        ([10, 20], False),
-        (10, False),
-        ("auto", False),
-        ([], False),
-        ([[]], True),
-        (ChunkGrid.from_sizes((10,), (5,)), False),
-        (None, False),
-        (3.14, False),
+        ([0], "chunk edge length must be >= 1"),
+        ([10.5], "chunk edge length must be an int,"),
+        ([[5, 0]], "RLE repeat count must be >= 1"),
+        ([[5, 2, 1]], r"RLE entries must be an integer or \[size, count\]"),
     ],
-    ids=[
-        "nested-lists",
-        "nested-tuples",
-        "flat-tuple",
-        "flat-list",
-        "single-int",
-        "string",
-        "empty-list",
-        "empty-nested-list",
-        "chunk-grid-instance",
-        "none",
-        "float",
-    ],
+    ids=["zero-edge", "float-edge", "zero-rle-count", "rle-entry-of-three"],
 )
-def test_is_rectilinear_chunks(value: Any, expected: bool) -> None:
-    """_is_rectilinear_chunks correctly identifies nested sequences as rectilinear"""
-    assert _is_rectilinear_chunks(value) is expected
-
-
-def test_is_rectilinear_chunks_handles_broken_iterable() -> None:
-    """_is_rectilinear_chunks returns False for objects that raise on iteration."""
-
-    class BrokenIter:
-        def __iter__(self) -> Any:
-            raise TypeError("cannot iterate")
-
-    assert _is_rectilinear_chunks(BrokenIter()) is False
+def test_rle_expand_names_dimension(rle_input: list[Any], match: str) -> None:
+    """Given the dimension `axis` the edges belong to, every error of expand_rle names it."""
+    with pytest.raises((TypeError, ValueError), match=f"^Dimension 2: {match}"):
+        expand_rle(rle_input, axis=2)
 
 
 # ---------------------------------------------------------------------------
@@ -644,7 +666,7 @@ def test_from_metadata_unknown_chunk_grid_type() -> None:
 
 def test_from_sizes_rejects_empty_edge_list() -> None:
     """ChunkGrid.from_sizes raises ValueError when a dimension has an empty edge list."""
-    with pytest.raises(ValueError, match="at least one chunk"):
+    with pytest.raises(ValueError, match="edges must not be empty"):
         ChunkGrid.from_sizes((10,), ([],))
 
 
@@ -1199,16 +1221,81 @@ def test_iter_shard_regions_bounds_check() -> None:
 
 
 @pytest.mark.parametrize(
-    "chunks", [(5, [10, 20, 70]), ([10, 20, 70], 5)], ids=["int-first", "list-first"]
+    ("shape", "chunks"),
+    [
+        ((30, 100), (5, [10, 20, 70])),
+        ((100, 30), ([10, 20, 70], 5)),
+        # uniform edges are still rectilinear, whether given as lists or as
+        # stored metadata (gh-4272)
+        ((30, 100), ([10, 10, 10], 50)),
+        # (metadata is built lazily: constructing it needs the rectilinear flag)
+        ((30, 100), partial(RectilinearChunkGridMetadata, chunk_shapes=((10, 10, 10), 50))),
+    ],
+    ids=["int-first", "list-first", "uniform-list", "uniform-metadata"],
 )
-def test_mixed_chunks_gates_are_order_independent(chunks: Any) -> None:
-    """The v2 and chunks+shards gates must recognize a mixed per-dimension spec
-    as rectilinear regardless of which dimension carries the sequence."""
-    shape = (30, 100) if isinstance(chunks[0], int) else (100, 30)
+def test_rectilinear_chunks_gates(shape: tuple[int, ...], chunks: Any) -> None:
+    """The v2 and chunks+shards gates recognize every rectilinear spec as
+    rectilinear, regardless of which dimension carries the sequence and
+    whether its edges happen to be uniform."""
+    chunks = chunks() if callable(chunks) else chunks
     with pytest.raises(ValueError, match="Rectilinear chunks with sharding is not supported"):
         zarr.create_array(MemoryStore(), shape=shape, chunks=chunks, shards=(10, 10), dtype="uint8")
     with pytest.raises(ValueError, match="Zarr format 2 does not support rectilinear chunk grids"):
         zarr.create_array(MemoryStore(), shape=shape, chunks=chunks, zarr_format=2, dtype="uint8")
+    with pytest.raises(ValueError, match="Zarr format 2 does not support rectilinear chunk grids"):
+        zarr.create(store=MemoryStore(), shape=shape, chunks=chunks, zarr_format=2, dtype="uint8")
+
+
+@pytest.mark.parametrize(
+    ("chunks", "expected"),
+    [
+        (None, None),
+        (False, (4096, 4096)),
+        (-1, (4096, 4096)),
+        (5, (5, 5)),
+        ([5, 3], (5, 3)),
+        (np.int64(5), (5, 5)),
+        (np.array(7), (7, 7)),
+        (np.array([5, 3]), (5, 3)),
+    ],
+    ids=repr,
+)
+def test_legacy_create_v2_chunks(chunks: Any, expected: tuple[int, ...] | None) -> None:
+    """The legacy `zarr.create` Zarr format 2 path chunks automatically only when
+    `chunks` is `None` (`expected` is `None`); any other `chunks`, falsy or not, is a
+    chunk specification, read as `create_array` reads it. It never tests the truth
+    value of a numpy array, which has none."""
+    shape = (4096, 4096)
+    arr = zarr.create(store=MemoryStore(), shape=shape, chunks=chunks, dtype="uint8", zarr_format=2)
+    assert arr.chunks == (expected or guess_chunks(shape, 1).chunk_shape)
+    assert all(type(c) is int for c in arr.chunks)
+
+
+def test_legacy_create_v2_chunks_zero_rejected() -> None:
+    """A chunk size of 0 is a chunk specification, not a request for automatic
+    chunking, and a chunk size must be at least 1."""
+    with pytest.raises(ValueError, match="Chunk size must be positive or -1, got 0"):
+        zarr.create(store=MemoryStore(), shape=(10,), chunks=0, dtype="uint8", zarr_format=2)
+
+
+def test_legacy_create_v2_chunks_empty_rejected() -> None:
+    """An empty chunk specification is not a request for automatic chunking: it has no
+    dimension, where the array has one."""
+    chunks: Any = []  # outside the annotated type, which has no list
+    with pytest.raises(ValueError, match="chunks has 0 dimensions but shape has 1 dimensions"):
+        zarr.create(store=MemoryStore(), shape=(10,), chunks=chunks, dtype="uint8", zarr_format=2)
+
+
+def test_legacy_create_v2_chunks_all_zero_array_raises() -> None:
+    """A numpy `chunks` array with more than one element is given even when every element
+    is 0, so the legacy Zarr format 2 path rejects its 0 sizes instead of chunking
+    automatically."""
+    # `zarr.create` does not declare numpy arrays for `chunks`; the legacy path reads them.
+    chunks: Any = np.array([0, 0])
+    with pytest.raises(ValueError, match="Chunk size must be positive or -1, got 0"):
+        zarr.create(
+            store=MemoryStore(), shape=(2**12, 2**12), chunks=chunks, dtype="int32", zarr_format=2
+        )
 
 
 def test_from_array_keep_preserves_all_bare_int_rectilinear_grid() -> None:
@@ -1274,15 +1361,22 @@ def test_from_array_keep_is_o1_in_chunk_count() -> None:
     assert grid.chunk_shapes == (3, (10, 20))
 
 
-def test_resize_uniform_rectilinear_appends_edge() -> None:
+@pytest.mark.parametrize(
+    "rect_chunks",
+    [[[10, 10, 10]], partial(RectilinearChunkGridMetadata, chunk_shapes=((10, 10, 10),))],
+    ids=["list", "metadata"],
+)
+def test_resize_uniform_rectilinear_appends_edge(rect_chunks: Any) -> None:
     """Growing an explicitly rectilinear array whose edges look regular appends
     a new edge chunk, while the same sizes declared as a scalar extend the
     uniform pattern instead (gh-4272), so an append-only workload writing the
     grown region touches exactly one new chunk."""
     from zarr.core.metadata.v3 import ArrayV3Metadata
 
+    rect_chunks = rect_chunks() if callable(rect_chunks) else rect_chunks
     rect_store: dict[str, Any] = {}
-    rect = zarr.create_array(store=rect_store, shape=(30,), chunks=[[10, 10, 10]], dtype="int32")
+    rect = zarr.create_array(store=rect_store, shape=(30,), chunks=rect_chunks, dtype="int32")
+    assert isinstance(rect.metadata.chunk_grid, RectilinearChunkGridMetadata)
     rect.resize((45,))
     assert isinstance(rect.metadata, ArrayV3Metadata)
     rect_grid = rect.metadata.chunk_grid
@@ -1421,46 +1515,22 @@ def test_edge_case_chunk_grid_boundary_shape() -> None:
 # -- Zero-size and zero-extent --
 
 
-@pytest.mark.parametrize(
-    ("size", "extent"),
-    [(0, 0), (0, 5), (10, 0)],
-    ids=["zero-size-zero-extent", "zero-size-nonzero-extent", "zero-extent-nonzero-size"],
-)
-def test_edge_case_zero_size_or_extent(size: int, extent: int) -> None:
-    """FixedDimension with zero size or extent has zero chunks and getitem returns None"""
-    d = FixedDimension(size=size, extent=extent)
+@pytest.mark.parametrize("size", [1, 10], ids=["size-1", "size-10"])
+def test_fixed_dimension_zero_extent(size: int) -> None:
+    """A zero-length axis has zero chunks and behaves like an empty grid."""
+    d = FixedDimension(size=size, extent=0)
     assert d.nchunks == 0
+    assert d.ngridcells == 0
+    assert d.data_size(0) == 0
+    assert d.with_extent(0) == d
+    assert d.with_extent(3) == FixedDimension(size=size, extent=3)
+    empty = np.array([], dtype=np.intp)
+    np.testing.assert_array_equal(d.indices_to_chunks(empty), empty)
+    with pytest.raises(IndexError):
+        d.index_to_chunk(0)
     g = ChunkGrid(dimensions=(d,))
     assert g[0] is None
-
-
-def test_edge_case_zero_size_data_and_indices() -> None:
-    """FixedDimension(size=0) handles data_size, index_to_chunk, and indices_to_chunks safely."""
-    d = FixedDimension(size=0, extent=0)
-    # Zero-sized chunks have zero data
-    assert d.data_size(0) == 0
-    # Vectorized lookup maps every index to chunk 0 (avoids division by zero)
-    indices = np.array([0, 0, 0], dtype=np.intp)
-    np.testing.assert_array_equal(d.indices_to_chunks(indices), np.zeros(3, dtype=np.intp))
-
-
-def test_edge_case_zero_size_nonzero_extent_index() -> None:
-    """FixedDimension(size=0, extent>0) maps valid indices to chunk 0 without dividing by zero."""
-    d = FixedDimension(size=0, extent=5)
-    assert d.nchunks == 0
-    # index_to_chunk avoids division by zero and returns 0
-    assert d.index_to_chunk(0) == 0
-    assert d.index_to_chunk(4) == 0
-
-
-def test_edge_case_zero_size_data_and_index() -> None:
-    """FixedDimension(size=0) returns zero for data_size and maps indices to chunk 0."""
-    d = FixedDimension(size=0, extent=0)
-    # data_size returns 0 for a zero-sized chunk
-    assert d.data_size(0) == 0
-    # vectorized indices_to_chunks returns zeros
-    indices = np.array([0, 0, 0], dtype=np.intp)
-    np.testing.assert_array_equal(d.indices_to_chunks(indices), np.zeros(3, dtype=np.intp))
+    assert list(g) == []
 
 
 # -- 0-d grid --
@@ -2203,15 +2273,6 @@ def test_overflow_multidim() -> None:
     assert spec is not None
     assert spec.shape == (15, 20)
     assert spec.codec_shape == (30, 40)
-
-
-def test_overflow_uniform_edges_collapses_to_fixed() -> None:
-    """Uniform edges where len == ceildiv(extent, edge) collapse to FixedDimension."""
-    g = ChunkGrid.from_sizes((35,), [[10, 10, 10, 10]])
-    assert isinstance(g._dimensions[0], FixedDimension)
-    assert g.is_regular
-    assert g.chunk_sizes == ((10, 10, 10, 5),)
-    assert g._dimensions[0].nchunks == 4
 
 
 def test_overflow_index_to_chunk_near_extent() -> None:
@@ -3066,65 +3127,43 @@ pytest.importorskip("hypothesis")
 import hypothesis.strategies as st
 from hypothesis import event, given, settings
 
-
-@st.composite
-def rectilinear_chunks_st(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[list[int]]:
-    """Generate valid rectilinear chunk shapes for a given array shape."""
-    chunk_shapes: list[list[int]] = []
-    for size in shape:
-        assert size > 0
-        max_chunks = min(size, 10)
-        nchunks = draw(st.integers(min_value=1, max_value=max_chunks))
-        if nchunks == 1:
-            chunk_shapes.append([size])
-        else:
-            dividers = sorted(
-                draw(
-                    st.lists(
-                        st.integers(min_value=1, max_value=size - 1),
-                        min_size=nchunks - 1,
-                        max_size=nchunks - 1,
-                        unique=True,
-                    )
-                )
-            )
-            chunk_shapes.append(
-                [a - b for a, b in zip(dividers + [size], [0] + dividers, strict=False)]
-            )
-    return chunk_shapes
+from tests.conftest import declared_chunk_data_sizes
+from zarr.testing.strategies import rectilinear_chunks
 
 
 @st.composite
-def rectilinear_arrays_st(draw: st.DrawFn) -> tuple[zarr.Array[Any], np.ndarray[Any, Any]]:
-    """Generate a rectilinear zarr array with random data, shape, and chunks."""
+def rectilinear_arrays_st(
+    draw: st.DrawFn,
+) -> tuple[zarr.Array[Any], np.ndarray[Any, Any], list[int | list[int]]]:
+    """Generate a rectilinear zarr array with random data, shape, and chunks,
+    with the `chunks=` it was created with."""
     from zarr.storage import MemoryStore
 
     ndim = draw(st.integers(min_value=1, max_value=3))
     shape = draw(st.tuples(*[st.integers(min_value=2, max_value=20) for _ in range(ndim)]))
-    chunk_shapes = draw(rectilinear_chunks_st(shape=shape))
+    chunk_shapes = draw(rectilinear_chunks(shape=shape))
     event(f"ndim={ndim}, shape={shape}")
 
     a = np.arange(int(np.prod(shape)), dtype="int32").reshape(shape)
     store = MemoryStore()
     z = zarr.create_array(store=store, shape=shape, chunks=chunk_shapes, dtype="int32")
     z[:] = a
-    return z, a
+    return z, a, chunk_shapes
 
 
 @settings(deadline=None, max_examples=50)
 @given(data=st.data())
 def test_property_block_indexing_rectilinear(data: st.DataObject) -> None:
     """Property test: block indexing on rectilinear arrays matches numpy."""
-    z, a = data.draw(rectilinear_arrays_st())
-    grid = ChunkGrid.from_metadata(z.metadata)
+    z, a, chunks = data.draw(rectilinear_arrays_st())
 
     for dim in range(a.ndim):
-        dim_grid = grid._dimensions[dim]
-        block_ix = data.draw(st.integers(min_value=0, max_value=dim_grid.nchunks - 1))
+        # The block extents come from the declaration, not from zarr's grid code.
+        sizes = declared_chunk_data_sizes(chunks[dim], a.shape[dim])
+        block_ix = data.draw(st.integers(min_value=0, max_value=len(sizes) - 1))
         sel = [slice(None)] * a.ndim
-        start = dim_grid.chunk_offset(block_ix)
-        stop = start + dim_grid.data_size(block_ix)
-        sel[dim] = slice(start, stop)
+        start = sum(sizes[:block_ix])
+        sel[dim] = slice(start, start + sizes[block_ix])
         block_sel: list[slice | int] = [slice(None)] * a.ndim
         block_sel[dim] = block_ix
         np.testing.assert_array_equal(

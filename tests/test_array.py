@@ -732,6 +732,18 @@ def test_resize_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     assert new_shape == result.shape
 
 
+@pytest.mark.parametrize("chunks", [(1,), (2,), (4,)])
+def test_resize_sharded_keeps_cells_beyond_shape(chunks: tuple[int, ...]) -> None:
+    """A shard kept by a shrinking resize keeps its cells beyond the new shape, and a
+    later write to the shard leaves them alone, so they come back when the array grows."""
+    arr = zarr.create_array({}, shape=(4,), chunks=chunks, shards=(4,), dtype="int16", fill_value=0)
+    arr[:] = [1, 2, 3, 4]
+    arr.resize((2,))
+    arr[:] = [9, 9]
+    arr.resize((4,))
+    np.testing.assert_array_equal(arr[:], [9, 9, 3, 4])
+
+
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     z = zarr.create(
@@ -1156,7 +1168,7 @@ def test_auto_partition_auto_shards_with_auto_chunks_should_be_close_to_1MiB() -
     [(10, 10), [10, 10], np.array([10, 10]), (np.int64(10), np.int64(10))],
     ids=["tuple", "list", "array", "numpy-scalars"],
 )
-def test_chunks_and_shards(chunks: ChunksLike, shards: ShardsLike) -> None:
+def test_chunks_and_shards(chunks: ChunksLike, shards: Any) -> None:
     store = StorePath(MemoryStore())
     shape = (100, 100)
     expected_chunks = normalize_chunks_nd(chunks, shape).chunk_shape

@@ -1,4 +1,5 @@
 import contextlib
+import re
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -13,6 +14,7 @@ from zarr.core.chunk_grids import (
     VaryingDimension,
     _guess_num_chunks_per_axis_shard,
     _guess_regular_chunks,
+    full_span_chunk_size,
     normalize_chunks_1d,
     normalize_chunks_nd,
     resolve_outer_and_inner_chunks,
@@ -103,6 +105,9 @@ def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
         ((1, 3, np.int64(16), np.int64(16)), (1, 3, 32, 32), (1, 3, 16, 16)),
         ((np.int32(30), np.int64(-1)), (100, 20), (30, 20)),
         (np.array([10, 10]), (100, 100), (10, 10)),
+        # 0-d integer arrays are integers, as the scalar form and per dimension
+        (np.array(10), (100, 100), (10, 10)),
+        ((np.array(5), np.int64(-1)), (10, 6), (5, 6)),
         # rectilinear chunks given as numpy arrays
         ((np.array([60, 40]), np.array([50, 50])), (100, 100), ((60, 40), (50, 50))),
     ],
@@ -197,6 +202,13 @@ def test_chunk_layout_nested() -> None:
             msg="must be an integer or an iterable of integers; got 2.5 of type float",
             escape=True,
         ),
+        # an integral float is still not an integer
+        ExpectFail(
+            input=(10.0, 100),
+            exception=TypeError,
+            id="integral-float-scalar",
+            msg="got 10.0 of type float",
+        ),
         ExpectFail(
             input=([10, -1, 10], 100),
             exception=ValueError,
@@ -208,6 +220,10 @@ def test_chunk_layout_nested() -> None:
         ),
         ExpectFail(
             input=([10, 20], 100), exception=ValueError, id="wrong-sum", msg="do not sum to span"
+        ),
+        # Only a zero-length span keeps edges that do not sum to it.
+        ExpectFail(
+            input=([3, 5], 1), exception=ValueError, id="over-sum", msg="do not sum to span 1"
         ),
         # Nested/RLE form for a single dim is rejected with offending indices.
         ExpectFail(
@@ -246,21 +262,14 @@ def test_normalize_chunks_1d_errors(case: ExpectFail[tuple[Any, int]]) -> None:
 @pytest.mark.parametrize(
     "case",
     [
-        ExpectFail(
-            input=(None, (100,)),
-            exception=ValueError,
-            id="none",
-            msg="None is not a valid chunk input",
-        ),
-        # `True` is rejected explicitly because bool is a subclass of int — without
-        # this guard, `chunks=True` would silently produce size-1 chunks.
-        ExpectFail(
-            input=(True, (100,)),
-            exception=ValueError,
-            id="true",
-            msg="True is not a valid chunk input",
-        ),
         ExpectFail(input=("foo", (100,)), exception=ValueError, id="string", msg="dimensions"),
+        # A 0-d array is an integer only if its dtype is.
+        ExpectFail(
+            input=(np.array(2.0), (100,)),
+            exception=TypeError,
+            id="0-d-float-array",
+            msg="must be an integer or an iterable of integers",
+        ),
         ExpectFail(
             input=((100, 10), (100,)), exception=ValueError, id="too-many-dims", msg="dimensions"
         ),
@@ -283,6 +292,46 @@ def test_normalize_chunks_nd_errors(case: ExpectFail[tuple[Any, tuple[int, ...]]
     chunks, shape = case.input
     with case.raises():
         normalize_chunks_nd(chunks, shape)
+
+
+@pytest.mark.parametrize(
+    "chunks",
+    [
+        True,
+        np.True_,
+        np.array(True),
+        np.array([True, True]),
+        (True, 5),
+        (np.True_, 5),
+        (np.array(True), 5),
+        [[True, 9], 10],
+        [[np.True_, 9], 10],
+        np.False_,
+        np.array(False),
+        np.array([False, False]),
+        (False, 5),
+        (np.False_, 5),
+        (np.array(False), 5),
+        [[False, 9], 10],
+        [[np.False_, 9], 10],
+    ],
+    ids=repr,
+)
+def test_normalize_chunks_nd_rejects_bool(chunks: Any) -> None:
+    """A boolean is a flag, not a chunk size: every spelling of one, as the whole
+    specification, as a dimension's size, or as an edge in a dimension's list, is
+    rejected with the same error rather than read as a size of 0 or 1. The one
+    exception is `False` as the whole specification (one chunk covering every axis)."""
+    with pytest.raises(TypeError, match="A bool is not a chunk size"):
+        normalize_chunks_nd(chunks, (10, 10))
+
+
+@pytest.mark.parametrize("chunks", [True, None])
+def test_normalize_chunks_nd_names_automatic_chunking(chunks: Any) -> None:
+    """`chunks=True` meant automatic chunking in zarr 2, and `chunks=None` means it in
+    `zarr.create`: their errors say how to ask for it here."""
+    with pytest.raises(TypeError, match=re.escape('For automatic chunking, pass "auto"')):
+        normalize_chunks_nd(chunks, (10, 10))
 
 
 @pytest.mark.parametrize(
@@ -317,6 +366,11 @@ def test_normalize_chunks_nd_errors(case: ExpectFail[tuple[Any, tuple[int, ...]]
             input=([10, 20, 70], 100),
             output=VaryingDimension([10, 20, 70], extent=100),
             id="explicit-irregular",
+        ),
+        # on a zero-length span any non-empty list of positive edges is kept: the
+        # chunks the axis grows into.
+        Expect(
+            input=([3, 5], 0), output=VaryingDimension([3, 5], extent=0), id="explicit-zero-span"
         ),
     ],
     ids=lambda c: c.id,
@@ -367,35 +421,39 @@ def test_create_0d_array_auto_shards_with_target_shard_size() -> None:
     assert arr.shards == ()
 
 
-@pytest.mark.parametrize("chunks", [-1, False], ids=["minus-one", "false"])
-@pytest.mark.parametrize("shape", [(0,), (0, 4), (4, 0)], ids=["1d", "2d-lead", "2d-trail"])
+# -- Zero-length dimensions --
+
+
+@pytest.mark.parametrize(
+    ("span", "unit", "expected"),
+    [(0, 1, 1), (5, 1, 5), (0, 4, 4), (8, 4, 8), (10, 4, 12)],
+)
+def test_full_span_chunk_size(span: int, unit: int, expected: int) -> None:
+    """One chunk spanning an axis is the smallest positive multiple of `unit` covering it."""
+    assert full_span_chunk_size(span, unit) == expected
+
+
+@pytest.mark.parametrize("chunks", [-1, False, "auto"])
+@pytest.mark.parametrize(
+    "shape",
+    [(0,), (0, 4), (4, 0), (0, 0), ()],
+    ids=["1d", "2d-lead", "2d-trail", "2d-both", "0d"],
+)
 @pytest.mark.parametrize(
     ("zarr_format", "shards", "target_shard_size_bytes"),
-    [
-        (2, None, None),
-        (3, None, None),
-        (3, "auto", None),
-        (3, "auto", 128 * 1024 * 1024),
-    ],
+    [(2, None, None), (3, None, None), (3, "auto", None), (3, "auto", 128 * 1024 * 1024)],
     ids=["v2", "v3", "v3-auto-shards", "v3-auto-shards-budget"],
 )
-def test_create_zero_length_array_full_span_chunks(
-    chunks: int | bool,
+def test_create_zero_length_array(
+    chunks: Any,
     shape: tuple[int, ...],
     zarr_format: Literal[2, 3],
     shards: Literal["auto"] | None,
     target_shard_size_bytes: int | None,
 ) -> None:
-    """`chunks=-1` and `chunks=False` on a zero-length axis must resolve to chunk size 1.
-
-    Both spellings mean "one chunk covering the whole axis". They used to resolve to chunk
-    size 0 on zero-length axes, which broke every downstream path differently: a ValueError
-    from the Zarr format 3 chunk grid metadata, a ZeroDivisionError with shards="auto", an
-    infinite loop with a shard size budget (https://github.com/zarr-developers/zarr-python/issues/4304),
-    and invalid `chunks: [0]` metadata for Zarr format 2 that silently corrupted reads after
-    a resize.
-    """
-    expected_chunks = tuple(max(s, 1) for s in shape)
+    """Every spelling of one chunk spanning the axis gives chunk size 1 on a
+    zero-length axis, and the array can grow along that axis and shrink back."""
+    expected = tuple(max(s, 1) for s in shape)
     warns = (
         pytest.warns(ZarrUserWarning, match="Automatic shard shape inference is experimental")
         if shards == "auto"
@@ -410,23 +468,65 @@ def test_create_zero_length_array_full_span_chunks(
             shards=shards,
             zarr_format=zarr_format,
         )
-    assert arr.chunks == expected_chunks
-    assert arr.shards == (expected_chunks if shards == "auto" else None)
-
-    # The stored chunk grid must be the clamped shape, whichever format wrote it.
+    assert arr.chunks == expected
+    assert arr.shards == (None if shards is None else expected)
     meta = cast(dict[str, Any], arr.metadata.to_dict())
-    if zarr_format == 2:
-        assert meta["chunks"] == expected_chunks
-    else:
-        assert meta["chunk_grid"]["configuration"]["chunk_shape"] == expected_chunks
+    stored = (
+        meta["chunks"] if zarr_format == 2 else meta["chunk_grid"]["configuration"]["chunk_shape"]
+    )
+    assert tuple(stored) == expected
 
-    # The array must remain usable: grow the empty axis and round-trip data through it.
+    if not shape:
+        arr[...] = 7
+        assert arr[...] == 7
+        return
     axis = shape.index(0)
-    grown = tuple(2 if s == 0 else s for s in shape)
-    arr.append(np.full(grown, 7, dtype="int64"), axis=axis)
-    assert arr.shape == grown
-    np.testing.assert_array_equal(arr[...], np.full(grown, 7, dtype="int64"))
-    resized = tuple(3 if s == 0 else s for s in shape)
-    arr.resize(resized)
-    assert arr.shape == resized
-    assert int(np.asarray(arr[...]).sum()) == 7 * np.prod(grown)
+    grown = tuple(2 if i == axis else s for i, s in enumerate(shape))
+    data = np.full(grown, 7, dtype="int64")
+    arr.append(data, axis=axis)
+    np.testing.assert_array_equal(arr[...], data)
+    arr.resize(shape)
+    assert np.asarray(arr[...]).shape == shape
+
+
+@pytest.mark.parametrize(
+    ("shape", "chunks", "shards", "expected"),
+    [
+        ((0, 20), (5, 5), -1, (5, 20)),
+        ((0,), (4,), False, (4,)),
+        ((10,), (4,), -1, (12,)),
+        ((8, 0), (4, 3), (-1, 6), (8, 6)),
+    ],
+)
+def test_create_full_span_shards(
+    shape: tuple[int, ...], chunks: tuple[int, ...], shards: Any, expected: tuple[int, ...]
+) -> None:
+    """A shard spanning the axis is a multiple of the inner chunk, even on a zero-length axis."""
+    arr = zarr.create_array(store={}, shape=shape, chunks=chunks, shards=shards, dtype="int8")
+    assert arr.shards == expected
+    assert arr.chunks == chunks
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_create_zero_chunk_rejected(zarr_format: Literal[2, 3]) -> None:
+    """An explicit chunk size of 0 is rejected up front, even for a zero-length axis."""
+    with pytest.raises(ValueError, match="Chunk size must be positive or -1, got 0"):
+        zarr.create_array(store={}, shape=(0,), chunks=(0,), dtype="int64", zarr_format=zarr_format)
+
+
+def test_rectilinear_zero_extent_matches_resize() -> None:
+    """Creating a rectilinear axis at length 0 equals resizing one down to 0."""
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        created = zarr.create_array(store={}, shape=(0,), chunks=[[2, 2]], dtype="int64")
+        resized = zarr.create_array(store={}, shape=(4,), chunks=[[2, 2]], dtype="int64")
+        resized.resize((0,))
+        created_meta = cast(dict[str, Any], created.metadata.to_dict())
+        resized_meta = cast(dict[str, Any], resized.metadata.to_dict())
+        assert created_meta["chunk_grid"] == resized_meta["chunk_grid"]
+        assert created_meta["shape"] == resized_meta["shape"] == (0,)
+
+        created.append(np.arange(3, dtype="int64"))
+        resized.append(np.arange(3, dtype="int64"))
+        np.testing.assert_array_equal(created[...], np.arange(3))
+        np.testing.assert_array_equal(resized[...], np.arange(3))
+        assert created.write_chunk_sizes == resized.write_chunk_sizes == ((2, 1),)

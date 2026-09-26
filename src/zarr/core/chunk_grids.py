@@ -3,17 +3,19 @@ from __future__ import annotations
 import bisect
 import itertools
 import math
-import numbers
 import operator
 import warnings
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import reduce
 from typing import (
     TYPE_CHECKING,
     Any,
+    Final,
     Literal,
     NamedTuple,
     Protocol,
+    SupportsIndex,
     cast,
     runtime_checkable,
 )
@@ -31,9 +33,10 @@ from zarr.core.common import (
 from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Sequence
+    from collections.abc import Iterator, Sequence
 
     from zarr.core.array import ShardsLike
+    from zarr.core.common import ChunksLike
     from zarr.core.metadata import ArrayMetadata
 
 SHARDED_INNER_CHUNK_MAX_BYTES: int = 1048576
@@ -49,20 +52,17 @@ class FixedDimension:
     """Uniform chunk size. Boundary chunks contain less data but are
     encoded at full size by the codec pipeline."""
 
-    size: int  # chunk edge length (>= 0)
-    extent: int  # array dimension length
+    size: int  # chunk edge length (>= 1)
+    extent: int  # array dimension length (>= 0)
     nchunks: int = field(init=False, repr=False)
     ngridcells: int = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        if self.size < 0:
-            raise ValueError(f"FixedDimension size must be >= 0, got {self.size}")
+        if self.size < 1:
+            raise ValueError(f"FixedDimension size must be >= 1, got {self.size}")
         if self.extent < 0:
             raise ValueError(f"FixedDimension extent must be >= 0, got {self.extent}")
-        if self.size == 0:
-            n = 0
-        else:
-            n = ceildiv(self.extent, self.size)
+        n = ceildiv(self.extent, self.size)
         object.__setattr__(self, "nchunks", n)
         object.__setattr__(self, "ngridcells", n)
 
@@ -71,8 +71,6 @@ class FixedDimension:
             raise IndexError(f"Negative index {idx} is not allowed")
         if idx >= self.extent:
             raise IndexError(f"Index {idx} is out of bounds for extent {self.extent}")
-        if self.size == 0:
-            return 0
         return idx // self.size
 
     def chunk_offset(self, chunk_ix: int) -> int:
@@ -97,8 +95,6 @@ class FixedDimension:
         Does not validate *chunk_ix* — callers must ensure it is in
         ``[0, nchunks)``. Use ``ChunkGrid.__getitem__`` for safe access.
         """
-        if self.size == 0:
-            return 0
         return max(0, min(self.size, self.extent - chunk_ix * self.size))
 
     @property
@@ -112,8 +108,6 @@ class FixedDimension:
         return (self.size,)
 
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
-        if self.size == 0:
-            return np.zeros_like(indices)
         return indices // self.size
 
     def with_extent(self, new_extent: int) -> FixedDimension:
@@ -334,28 +328,48 @@ def _is_keep(spec: object) -> TypeIs[Literal["keep"]]:
     return isinstance(spec, str) and spec == "keep"
 
 
-def _is_rectilinear_chunks(chunks: Any) -> bool:
-    """Check if chunks specifies a rectilinear grid along any dimension.
+_AUTOMATIC_CHUNKING: Final = (
+    ' For automatic chunking, pass "auto" to create_array (as chunks= or shards=), '
+    "or chunks=None to zarr.create."
+)
+"""How to ask for automatic chunking, for the errors of specifications that once did."""
 
-    Returns True for nested sequences like [[10, 20], [5, 5]], for mixed
-    per-dimension specs like (5, [10, 20]) regardless of which dimension
-    carries the sequence, and for stored rectilinear grid metadata.
-    Returns False for flat sequences like (10, 10) or [10, 10].
+
+def _chunk_int(value: object) -> int | None:
+    """Return `value` as an `int` if it is an integer chunk size, else `None`.
+
+    This is the chunk normalizer's one integer test. An integer is anything
+    Python's integer protocol (`__index__`) accepts: `int`, numpy integer
+    scalars and 0-d integer arrays. Floats and arrays with dimensions are not
+    integers.
+
+    A boolean (`bool`, `np.bool_`, a boolean array) is a flag, not a size: it
+    raises a `TypeError` here, the one place every spelling of a chunk size
+    passes through, rather than being read as a size of 0 or 1.
     """
-    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
-
-    if isinstance(chunks, RectilinearChunkGridMetadata):
-        return True
-    if isinstance(chunks, (str, int, ChunkGrid)):
-        return False
-    if not hasattr(chunks, "__iter__"):
-        return False
+    if isinstance(value, bool | np.bool_) or (
+        isinstance(value, np.ndarray) and value.dtype == np.bool_
+    ):
+        raise TypeError(f"A bool is not a chunk size; got {value!r}.")
     try:
-        return any(
-            hasattr(elem, "__iter__") and not isinstance(elem, (str, bytes, int)) for elem in chunks
-        )
+        return operator.index(cast("SupportsIndex", value))
     except TypeError:
-        return False
+        # Not an integer; numpy arrays define `__index__` but only 0-d integer arrays honour it.
+        return None
+
+
+def _chunk_list(chunks: object) -> list[Any]:
+    """Return the elements of a chunk specification that is not an integer, or raise
+    a `TypeError` naming it (a float, `None`, a 0-d non-integer array)."""
+    if isinstance(chunks, Iterable):
+        try:
+            return list(chunks)
+        except TypeError:
+            pass  # a 0-d numpy array is `Iterable` by type, but iterating it raises
+    raise TypeError(
+        f"Chunk specification must be an integer or an iterable of integers; got "
+        f"{chunks!r} of type {type(chunks).__name__}."
+    )
 
 
 def is_regular_1d(dim_chunks: Sequence[int]) -> bool:
@@ -443,9 +457,9 @@ class ChunkGrid:
             Per-dimension chunk sizes. Each element is either:
 
             - An ``int`` — regular (fixed) chunk size for that dimension.
-            - A ``Sequence[int]`` — explicit per-chunk edge lengths. If all
-              edges are identical and cover the extent, the dimension is
-              stored as ``FixedDimension``; otherwise as ``VaryingDimension``.
+            - A ``Sequence[int]`` — explicit per-chunk edge lengths, kept as a
+              ``VaryingDimension`` even when the edges are uniform: the spec
+              form declares the grid kind, as in `normalize_chunks_1d`.
         """
         extents = parse_shapelike(array_shape)
         if len(extents) != len(chunk_sizes):
@@ -458,18 +472,7 @@ class ChunkGrid:
             if isinstance(dim_spec, int):
                 dims.append(FixedDimension(size=dim_spec, extent=extent))
             else:
-                edges_list = list(dim_spec)
-                if not edges_list:
-                    raise ValueError("Each dimension must have at least one chunk")
-                edge_sum = sum(edges_list)
-                if (
-                    edges_list[0] > 0
-                    and all(e == edges_list[0] for e in edges_list)
-                    and (extent == edge_sum or len(edges_list) == ceildiv(extent, edges_list[0]))
-                ):
-                    dims.append(FixedDimension(size=edges_list[0], extent=extent))
-                else:
-                    dims.append(VaryingDimension(edges_list, extent=extent))
+                dims.append(VaryingDimension(dim_spec, extent=extent))
         return cls(dimensions=tuple(dims))
 
     # -- Properties --
@@ -660,6 +663,17 @@ class ChunkLayout(NamedTuple):
     inner: ChunkLayout | None = None
 
 
+def full_span_chunk_size(span: int, unit: int = 1) -> int:
+    """The edge length of one chunk spanning an axis of length `span`.
+
+    This is the smallest positive multiple of `unit` that covers `span`, so a
+    zero-length axis gets a chunk of size `unit` and zero chunks. `unit` is the
+    size the chunk must be a multiple of: the inner chunk size for a shard, 1
+    otherwise.
+    """
+    return unit * max(1, ceildiv(span, unit))
+
+
 def _guess_regular_chunks(
     shape: tuple[int, ...] | int,
     typesize: int,
@@ -696,12 +710,12 @@ def _guess_regular_chunks(
     if isinstance(shape, int):
         shape = (shape,)
 
+    # Start from one chunk spanning each axis, then halve axes until the chunk is small enough.
+    chunks = np.array([full_span_chunk_size(s) for s in shape], dtype="=f8")
     if typesize == 0:
-        return shape
+        return tuple(int(x) for x in chunks)
 
     ndims = len(shape)
-    # require chunks to have non-zero length for all dimensions
-    chunks = np.maximum(np.array(shape, dtype="=f8"), 1)
 
     # Determine the optimal chunk size in bytes using a PyTables expression.
     # This is kept as a float.
@@ -736,7 +750,7 @@ def _guess_regular_chunks(
     return tuple(int(x) for x in chunks)
 
 
-def normalize_chunks_1d(chunks: int | Iterable[object], span: int) -> DimensionGrid:
+def normalize_chunks_1d(chunks: int | Iterable[object], span: int, unit: int = 1) -> DimensionGrid:
     """
     Normalize a one-dimensional chunk specification into a dimension grid:
     `FixedDimension` for scalar chunk sizes, `VaryingDimension` for explicit
@@ -744,39 +758,32 @@ def normalize_chunks_1d(chunks: int | Iterable[object], span: int) -> DimensionG
     the span, and the uniform form is O(1) in the number of chunks — a
     dimension with `2**62` chunks must not materialize one entry per chunk.
 
-    `-1` means "one chunk covering the entire span."
+    `-1` means "one chunk covering the entire span", sized by
+    `full_span_chunk_size(span, unit)`.
     Explicit chunk size lists must sum to the span exactly and always produce
     `VaryingDimension`, even when the sizes happen to be uniform: the input
     syntax declares the grid kind, so a per-chunk list is preserved as a
     rectilinear dimension rather than silently collapsed to a regular one,
     which would change how the dimension grows on resize. For scalar sizes
-    the last chunk may overhang the span.
+    the last chunk may overhang the span. On a zero-length span any non-empty
+    list of positive sizes is kept: the chunks the axis grows into.
     """
-    # `numbers.Integral` rather than `int` so that numpy integer scalars (which are not
-    # `int` subclasses) take the uniform-chunk path instead of being treated as a sequence.
-    # The `-1` sentinel check lives inside this branch so that numpy-array chunk
-    # specifications never hit an ambiguous-truth-value error on `chunks == -1`.
-    if isinstance(chunks, numbers.Integral):
-        chunk_size = int(chunks)
+    chunk_size = _chunk_int(chunks)
+    if chunk_size is not None:
         if chunk_size < -1 or chunk_size == 0:
             raise ValueError(f"Chunk size must be positive or -1, got {chunk_size}")
         if chunk_size == -1:
-            # A zero-length span still gets chunk size 1 (chunk sizes must be positive),
-            # matching the auto-chunking clamp in _guess_regular_chunks.
-            return FixedDimension(size=max(span, 1), extent=span)
+            return FixedDimension(size=full_span_chunk_size(span, unit), extent=span)
         return FixedDimension(size=chunk_size, extent=span)
     else:
-        try:
-            chunk_list = list(chunks)  # type: ignore[arg-type]
-        except TypeError:
-            raise TypeError(
-                f"Chunk specification must be an integer or an iterable of integers; got "
-                f"{chunks!r} of type {type(chunks).__name__}."
-            ) from None
+        chunk_list = _chunk_list(chunks)
         if not chunk_list:
             raise ValueError("Chunk specification must not be empty")
+        as_ints = [_chunk_int(c) for c in chunk_list]
         non_int = [
-            (idx, c) for idx, c in enumerate(chunk_list) if not isinstance(c, numbers.Integral)
+            (idx, c)
+            for idx, (c, i) in enumerate(zip(chunk_list, as_ints, strict=True))
+            if i is None
         ]
         if non_int:
             non_int_idxs, non_int_vals = [*zip(*non_int, strict=False)]
@@ -785,17 +792,18 @@ def normalize_chunks_1d(chunks: int | Iterable[object], span: int) -> DimensionG
                 f"at indices {non_int_idxs!r}. Chunk sizes must be declared as a flat sequence of "
                 f"positive integers (e.g. [3, 3, 1])."
             )
-        ints: list[int] = [int(c) for c in chunk_list]  # type: ignore[call-overload]
+        ints = [i for i in as_ints if i is not None]
         if any(c <= 0 for c in ints):
             raise ValueError(f"All chunk sizes must be positive, got {ints}")
-        if sum(ints) != span:
+        if span > 0 and sum(ints) != span:
             raise ValueError(f"Chunk sizes {ints} do not sum to span {span}")
         return VaryingDimension(ints, extent=span)
 
 
 def normalize_chunks_nd(
-    chunks: Any,
+    chunks: ChunksLike,
     shape: tuple[int, ...],
+    unit: tuple[int, ...] | None = None,
 ) -> ChunkGrid:
     """
     Normalize a chunk specification into a `ChunkGrid`.
@@ -815,6 +823,10 @@ def normalize_chunks_nd(
     `ChunkGrid` directly. `chunks=None` and `chunks=True` are rejected
     here — the caller is responsible for choosing between explicit sizes
     and auto-chunking.
+
+    `unit` gives, per axis, the size a chunk must be a multiple of (the inner
+    chunk shape, when normalizing a shard shape); it only affects the chunks
+    that `-1` and `False` derive from the span.
     """
     from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
 
@@ -823,19 +835,19 @@ def normalize_chunks_nd(
     if isinstance(chunks, RectilinearChunkGridMetadata):
         return ChunkGrid.from_sizes(shape, chunks.chunk_shapes)
 
-    if chunks is None or chunks is True:
-        raise ValueError(
-            f'{chunks!r} is not a valid chunk input. Use chunks=None or chunks="auto" from the top-level API for auto-chunking, or pass an int / tuple of ints.'
-        )
-
-    # handle no chunking: one chunk covering every axis. Routed through the -1 sentinel so
-    # the zero-length-axis clamp lives in one place (normalize_chunks_1d).
+    # A bool as the whole specification: `False` is one chunk covering every axis.
+    # `True` meant automatic chunking in zarr 2, and `None` means it in `zarr.create`,
+    # so their errors name the spellings that chunk automatically here.
     if chunks is False:
         chunks = -1
+    elif chunks is True:
+        raise TypeError(f"A bool is not a chunk size; got True.{_AUTOMATIC_CHUNKING}")
+    elif chunks is None:
+        raise TypeError(f"None is not a chunk specification.{_AUTOMATIC_CHUNKING}")
 
-    # handle 1D convenience form. bool is excluded above so this only catches actual ints.
-    if isinstance(chunks, numbers.Integral):
-        chunks = tuple(int(chunks) for _ in shape)
+    # handle 1D convenience form: one integer applies to every dimension.
+    chunk_size = _chunk_int(chunks)
+    chunks = (chunk_size,) * len(shape) if chunk_size is not None else _chunk_list(chunks)
 
     # handle bad dimensionality
     if len(chunks) != len(shape):
@@ -843,8 +855,13 @@ def normalize_chunks_nd(
             f"chunks has {len(chunks)} dimensions but shape has {len(shape)} dimensions"
         )
 
+    if unit is None:
+        unit = (1,) * len(shape)
     return ChunkGrid(
-        dimensions=tuple(normalize_chunks_1d(c, span=s) for c, s in zip(chunks, shape, strict=True))
+        dimensions=tuple(
+            normalize_chunks_1d(c, span=s, unit=u)
+            for c, s, u in zip(chunks, shape, unit, strict=True)
+        )
     )
 
 
@@ -884,8 +901,8 @@ def _guess_num_chunks_per_axis_shard(
     In other words the shard would be a (2,2,2) grid of (2,2,2) chunks
     i.e., prod(chunk_shape) * (returned_val ** len(chunk_shape)) * item_size = 256 bytes.
 
-    Degenerate chunk shapes — a 0-dimensional shape, or one containing a zero-length
-    axis — return 1, as the search loop's stopping conditions can never be met.
+    Degenerate inputs — a 0-dimensional chunk shape, or a zero-byte chunk — return 1,
+    as the search loop's stopping conditions can never be met.
 
     Parameters
     ----------
@@ -906,8 +923,8 @@ def _guess_num_chunks_per_axis_shard(
     if max_bytes < bytes_per_chunk:
         return 1
     num_axes = len(chunk_shape)
-    # For a 0-dimensional chunk shape or one with a zero-length axis, both loop
-    # conditions below are constant, so the loop would never terminate.
+    # For a 0-dimensional chunk shape or a zero-byte chunk, both loop conditions
+    # below are constant, so the loop would never terminate.
     if num_axes == 0 or bytes_per_chunk == 0:
         return 1
     chunks_per_shard = 1
@@ -952,15 +969,10 @@ def resolve_outer_and_inner_chunks(
     if shard_shape is None:
         return ChunkLayout(outer_chunks=chunks)
 
-    # Rectilinear shards: normalize the nested sequence directly.
-    if _is_rectilinear_chunks(shard_shape):
-        outer = normalize_chunks_nd(shard_shape, array_shape)
-        return ChunkLayout(outer_chunks=outer, inner=ChunkLayout(outer_chunks=chunks))
-
-    # Extract the flat chunk shape (uniform size per dimension) for arithmetic.
-    chunk_shape_flat = chunks.chunk_shape
-
+    shard_spec: ChunksLike
     if _is_auto(shard_shape):
+        # Extract the flat chunk shape (uniform size per dimension) for arithmetic.
+        chunk_shape_flat = chunks.chunk_shape
         warnings.warn(
             "Automatic shard shape inference is experimental and may change without notice.",
             ZarrUserWarning,
@@ -984,11 +996,13 @@ def resolve_outer_and_inner_chunks(
                 _shards_out += (c_shape * num_chunks_per_shard_axis,)
             else:
                 _shards_out += (c_shape,)
-        shard_flat = _shards_out
+        shard_spec = _shards_out
     elif isinstance(shard_shape, dict):
-        shard_flat = tuple(shard_shape["shape"])
+        shard_spec = shard_shape["shape"]
     else:
-        shard_flat = cast("tuple[int, ...]", shard_shape)
+        shard_spec = shard_shape
 
-    outer = normalize_chunks_nd(shard_flat, array_shape)
+    # Regular and rectilinear shard specifications go through the one normalizer;
+    # a full-span shard is a multiple of the inner chunk.
+    outer = normalize_chunks_nd(shard_spec, array_shape, unit=chunks.chunk_shape)
     return ChunkLayout(outer_chunks=outer, inner=ChunkLayout(outer_chunks=chunks))

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -19,6 +20,7 @@ from zarr.core.metadata.v3 import (
     ARRAY_METADATA_KEYS,
     ArrayMetadataJSON_V3,
     ArrayV3Metadata,
+    RegularChunkGridMetadata,
     create_chunk_grid_metadata,
     parse_codecs,
     parse_dimension_names,
@@ -152,6 +154,15 @@ def test_create_chunk_grid_metadata_unknown_dimension_type() -> None:
     grid = ChunkGrid(dimensions=(object(),))  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="Unknown dimension grid type"):
         create_chunk_grid_metadata(grid)
+
+
+def test_regular_chunk_grid_rejects_edge_lists() -> None:
+    """A regular chunk grid only accepts integer chunk edge lengths."""
+    with pytest.raises(
+        TypeError,
+        match=re.escape("Dimension 1: chunk edge length must be an int, got (5, 10, 5)"),
+    ):
+        RegularChunkGridMetadata(chunk_shape=(2, (5, 10, 5)))  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------

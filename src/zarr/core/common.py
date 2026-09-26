@@ -45,6 +45,9 @@ ShapeLike = Iterable[int | np.integer[Any]] | int | np.integer[Any]
 type ChunksLike = ShapeLike | Iterable[int | Iterable[int]] | ChunkGridMetadata
 # For backwards compatibility
 ChunkCoords = tuple[int, ...]
+type ChunkShape = tuple[int, ...] | list[int]
+"""A regular chunk shape as the metadata constructors take it: a list or tuple of one
+chunk edge length (an `int` of at least 1) per axis (see `parse_chunk_shape`)."""
 ZarrFormat = Literal[2, 3]
 NodeType = Literal["array", "group"]
 JSON = str | int | float | bool | Mapping[str, "JSON"] | Sequence["JSON"] | None
@@ -276,8 +279,44 @@ def _default_zarr_format() -> ZarrFormat:
     return cast("ZarrFormat", int(zarr_config.get("default_zarr_format", 3)))
 
 
-def expand_rle(data: Sequence[int | list[int]]) -> list[int]:
-    """Expand a mixed array of bare integers and RLE pairs.
+def _subject(name: str, axis: int | None) -> str:
+    """`name` as the subject of an error message, prefixed by the dimension `axis`."""
+    return name[0].upper() + name[1:] if axis is None else f"Dimension {axis}: {name}"
+
+
+def _parse_positive_int(value: object, name: str, axis: int | None) -> int:
+    """`value` as an `int` of at least 1. A `bool`, a NumPy integer or a float (even an
+    integral one: stored documents with integral floats are read by
+    `zarr.core.metadata.upgrades`) is rejected."""
+    subject = _subject(name, axis)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{subject} must be an int, got {value!r}")
+    if value < 1:
+        raise ValueError(f"{subject} must be >= 1, got {value!r}")
+    return value
+
+
+def parse_chunk_edge(size: object, axis: int | None = None) -> int:
+    """Check that `size` is a chunk edge length: an `int` (not a `bool`) of at least 1.
+
+    This is the one rule for chunk edge lengths in metadata: bare chunk sizes, explicit
+    edges and run-length encoded sizes. `axis`, when given, is named in the error.
+    """
+    return _parse_positive_int(size, "chunk edge length", axis)
+
+
+def parse_chunk_shape(data: object) -> tuple[int, ...]:
+    """Check a regular chunk shape: a list or tuple of one chunk edge length per axis
+    (see `parse_chunk_edge`)."""
+    match data:
+        case list() | tuple():
+            return tuple(parse_chunk_edge(size, axis) for axis, size in enumerate(data))
+    raise TypeError(f"A chunk shape must be a list or tuple of chunk edge lengths, got {data!r}")
+
+
+def expand_rle(data: Sequence[object], axis: int | None = None) -> list[int]:
+    """Expand a mixed array of bare integers and RLE pairs, the edges of dimension
+    `axis` (named in errors, when given).
 
     Per the rectilinear chunk grid spec, each element can be:
     - a bare integer (an explicit edge length)
@@ -285,20 +324,15 @@ def expand_rle(data: Sequence[int | list[int]]) -> list[int]:
     """
     result: list[int] = []
     for item in data:
-        if isinstance(item, (int, float)) and not isinstance(item, bool):
-            val = int(item)
-            if val < 1:
-                raise ValueError(f"Chunk edge length must be >= 1, got {val}")
-            result.append(val)
-        elif isinstance(item, list) and len(item) == 2:
-            size, count = int(item[0]), int(item[1])
-            if size < 1:
-                raise ValueError(f"Chunk edge length must be >= 1, got {size}")
-            if count < 1:
-                raise ValueError(f"RLE repeat count must be >= 1, got {count}")
-            result.extend([size] * count)
+        if isinstance(item, list):
+            if len(item) != 2:
+                subject = _subject("RLE entries", axis)
+                raise ValueError(f"{subject} must be an integer or [size, count], got {item}")
+            size, count = item
+            repeat = _parse_positive_int(count, "RLE repeat count", axis)
+            result.extend([parse_chunk_edge(size, axis)] * repeat)
         else:
-            raise ValueError(f"RLE entries must be an integer or [size, count], got {item}")
+            result.append(parse_chunk_edge(item, axis))
     return result
 
 

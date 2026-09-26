@@ -760,17 +760,22 @@ def test_structured_dtype_fill_value() -> None:
     assert np.array_equal(arr[:], expected)
 
 
-def test_pickle() -> None:
+@pytest.mark.parametrize(
+    "codec",
+    [
+        ShardingCodec(chunk_shape=(8, 8)),
+        ShardingCodec(chunk_shape=(8, 8), subchunk_write_order="lexicographic"),
+    ],
+    ids=["default", "lexicographic"],
+)
+def test_pickle(codec: ShardingCodec) -> None:
     """ShardingCodec round-trips through pickle, including the non-serialized
     ``subchunk_write_order`` (which ``to_dict`` omits and which must not silently
     revert to the ``morton`` default)."""
-    codec = ShardingCodec(chunk_shape=(8, 8))
-    assert pickle.loads(pickle.dumps(codec)) == codec
-
-    ordered = ShardingCodec(chunk_shape=(8, 8), subchunk_write_order="lexicographic")
-    restored = pickle.loads(pickle.dumps(ordered))
-    assert restored == ordered
-    assert restored.subchunk_write_order == "lexicographic"
+    restored = pickle.loads(pickle.dumps(codec))
+    assert restored == codec
+    assert restored.chunk_shape == codec.chunk_shape
+    assert restored.subchunk_write_order == codec.subchunk_write_order
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])

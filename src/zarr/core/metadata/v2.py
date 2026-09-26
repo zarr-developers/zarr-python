@@ -4,7 +4,7 @@ import json
 import warnings
 from collections.abc import Iterable, Sequence
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.numcodec import Numcodec, _is_numcodec
@@ -25,6 +25,7 @@ if TYPE_CHECKING:
         TBaseScalar,
         ZDType,
     )
+    from zarr.core.metadata.upgrades import ArrayDocument
 
 from dataclasses import dataclass, field, fields, replace
 
@@ -37,12 +38,15 @@ from zarr.core.common import (
     JSON,
     ZARRAY_JSON,
     ZATTRS_JSON,
+    ChunkShape,
     MemoryOrder,
+    parse_chunk_shape,
     parse_shapelike,
 )
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
+from zarr.core.metadata.upgrades import mark_upgraded, upgrade_array_document
 
 
 class ArrayV2MetadataDict(TypedDict):
@@ -70,13 +74,16 @@ class ArrayV2Metadata(Metadata):
     compressor: Numcodec | None
     attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
+    _stored_document: ClassVar[ArrayDocument | None] = None
+    """The stored document `from_dict` read this metadata from, if it had to upgrade it
+    (set on the instance by `mark_upgraded`): the store may still hold it."""
 
     def __init__(
         self,
         *,
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunks: tuple[int, ...],
+        chunks: ChunkShape,
         fill_value: Any,
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] = ".",
@@ -88,7 +95,7 @@ class ArrayV2Metadata(Metadata):
         Metadata for a Zarr format 2 array.
         """
         shape_parsed = parse_shapelike(shape)
-        chunks_parsed = parse_shapelike(chunks)
+        chunks_parsed = parse_chunks(chunks, shape_parsed)
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
@@ -109,9 +116,6 @@ class ArrayV2Metadata(Metadata):
         object.__setattr__(self, "filters", filters_parsed)
         object.__setattr__(self, "fill_value", fill_value_parsed)
         object.__setattr__(self, "attributes", attributes_parsed)
-
-        # ensure that the metadata document is consistent
-        _ = parse_metadata(self)
 
     @property
     def ndim(self) -> int:
@@ -149,9 +153,13 @@ class ArrayV2Metadata(Metadata):
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
-        # Make a copy to protect the original from modification.
-        _data = data.copy()
+    def from_dict(cls, data: dict[str, Any], *, path: str | None = None) -> ArrayV2Metadata:
+        """Read a stored `.zarray` document (with its attributes). An invalid document
+        that `zarr.core.metadata.upgrades` can read is read as upgraded; a reading the user
+        must act on warns, naming the array at `path`."""
+        upgraded, readings = upgrade_array_document(data, 2)
+        # a new dict, because we are modifying it
+        _data: dict[str, Any] = dict(upgraded)
         # Check that the zarr_format attribute is correct.
         _ = parse_zarr_format(_data.pop("zarr_format"))
 
@@ -159,7 +167,7 @@ class ArrayV2Metadata(Metadata):
         # which could be in filters or as a compressor.
         # we will reference a hard-coded collection of object codec ids for this search.
 
-        _filters, _compressor = (data.get("filters"), data.get("compressor"))
+        _filters, _compressor = (_data.get("filters"), _data.get("compressor"))
         if _filters is not None:
             _filters = cast("tuple[dict[str, JSON], ...]", _filters)
             object_codec_id = get_object_codec_id(tuple(_filters) + (_compressor,))
@@ -168,7 +176,7 @@ class ArrayV2Metadata(Metadata):
         # we add a layer of indirection here around the dtype attribute of the array metadata
         # because we also need to know the object codec id, if any, to resolve the data type
         dtype_spec: DTypeSpec_V2 = {
-            "name": data["dtype"],
+            "name": _data["dtype"],
             "object_codec_id": object_codec_id,
         }
         dtype = get_data_type_from_json(dtype_spec, zarr_format=2)
@@ -202,7 +210,7 @@ class ArrayV2Metadata(Metadata):
 
         _data = {k: v for k, v in _data.items() if k in expected}
 
-        return cls(**_data)
+        return mark_upgraded(cls(**_data), data, readings, path)
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
@@ -323,14 +331,15 @@ def parse_compressor(data: object) -> Numcodec | None:
     raise ValueError(msg)
 
 
-def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
-    if (l_chunks := len(data.chunks)) != (l_shape := len(data.shape)):
-        msg = (
+def parse_chunks(chunks: object, shape: tuple[int, ...]) -> tuple[int, ...]:
+    """Check a chunk shape: one chunk edge length (an `int` >= 1) per array axis."""
+    chunks_parsed = parse_chunk_shape(chunks)
+    if len(chunks_parsed) != len(shape):
+        raise ValueError(
             f"The `shape` and `chunks` attributes must have the same length. "
-            f"`chunks` has length {l_chunks}, but `shape` has length {l_shape}."
+            f"`chunks` has length {len(chunks_parsed)}, but `shape` has length {len(shape)}."
         )
-        raise ValueError(msg)
-    return data
+    return chunks_parsed
 
 
 def get_object_codec_id(maybe_object_codecs: Sequence[JSON]) -> str | None:
