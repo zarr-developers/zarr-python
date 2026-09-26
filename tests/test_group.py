@@ -1620,11 +1620,13 @@ class TestConsolidated:
         rg2 = await rg1.get_group("g2")
         assert rg2.metadata.consolidated_metadata == ConsolidatedMetadata(metadata={})
 
-    async def test_group_delitem_consolidated(self, store: Store) -> None:
+    async def test_group_delitem_consolidated(self, store: Store, zarr_format: ZarrFormat) -> None:
+        """Deleting a member removes it from the consolidated metadata in memory and in
+        every document that stores it, so the group reopens without it."""
         if isinstance(store, ZipStore):
             raise pytest.skip("Not implemented")
 
-        root = await AsyncGroup.from_store(store=store)
+        root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
         # Set up the test structure with
         # /
         #  g0/         # group /g0
@@ -1646,23 +1648,47 @@ class TestConsolidated:
         x2 = await x1.create_group("x2")
         await x2.create_array("data", shape=(1,), dtype="uint8")
 
-        with pytest.warns(  # noqa: PT031
-            ZarrUserWarning,
-            match="Consolidated metadata is currently not part in the Zarr format 3 specification.",
-        ):
-            if isinstance(store, ZipStore):
-                with pytest.warns(UserWarning, match="Duplicate name"):
-                    await zarr.api.asynchronous.consolidate_metadata(store)
-            else:
-                await zarr.api.asynchronous.consolidate_metadata(store)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", "Consolidated metadata is currently not part", ZarrUserWarning
+            )
+            await zarr.api.asynchronous.consolidate_metadata(store)
 
-        group = await zarr.api.asynchronous.open_consolidated(store=store)
-        assert len(group.metadata.consolidated_metadata.metadata) == 2
-        assert "g0" in group.metadata.consolidated_metadata.metadata
+        group = await zarr.api.asynchronous.open_consolidated(store=store, zarr_format=zarr_format)
+        assert group.metadata.consolidated_metadata is not None
+        assert sorted(group.metadata.consolidated_metadata.metadata) == ["g0", "x0"]
 
         await group.delitem("g0")
-        assert len(group.metadata.consolidated_metadata.metadata) == 1
-        assert "g0" not in group.metadata.consolidated_metadata.metadata
+        assert sorted(group.metadata.consolidated_metadata.metadata) == ["x0"]
+
+        reopened = await zarr.api.asynchronous.open_consolidated(
+            store=store, zarr_format=zarr_format
+        )
+        assert reopened.metadata.consolidated_metadata is not None
+        assert sorted(reopened.metadata.consolidated_metadata.metadata) == ["x0"]
+
+    def test_group_delitem_consolidated_aliased(self, store: Store) -> None:
+        """A subgroup read from its parent's consolidated metadata shares it, so a member
+        deleted through the subgroup is gone through the parent too."""
+        if isinstance(store, ZipStore):
+            raise pytest.skip("Not implemented")
+
+        root = zarr.create_group(store)
+        root.create_group("sub").create_array("b", shape=(4,), chunks=(2,), dtype="i4")
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", "Consolidated metadata is currently not part", ZarrUserWarning
+            )
+            zarr.consolidate_metadata(store)
+
+        group = zarr.open_group(store, mode="r+", use_consolidated=True)
+        sub = group["sub"]
+        assert isinstance(sub, Group)
+        del sub["b"]
+        assert "b" not in sub
+        assert "b" not in group["sub"]
+        with pytest.raises(KeyError):
+            group["sub/b"]
 
     def test_open_consolidated_raises(self, store: Store) -> None:
         if isinstance(store, ZipStore):

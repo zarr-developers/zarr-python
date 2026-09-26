@@ -874,3 +874,19 @@ def test_consolidate_edge_lists_in_regular_grid(tmp_path: Path, member: str) -> 
             reopened = zarr.open_group(path, mode="r")[member]
     assert isinstance(reopened, zarr.Array)
     np.testing.assert_array_equal(reopened[...], data)
+
+
+@pytest.mark.filterwarnings(
+    "ignore:.*read as that rectilinear chunk grid:zarr.errors.ZarrUserWarning"
+)
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+def test_delete_member_without_flag_keeps_group(tmp_path: Path) -> None:
+    """A deletion that fails without the flag leaves the group listing the member."""
+    path = tmp_path / "group.zarr"
+    _store_mixed_group(path)
+    with zarr.config.set({"array.rectilinear_chunks": False}):
+        group = zarr.open_group(path, mode="a")
+        with pytest.raises(ValueError, match="experimental and disabled"):
+            del group["n"]
+    assert group.metadata.consolidated_metadata is not None
+    assert sorted(group.metadata.consolidated_metadata.metadata) == ["mixed", "n"]

@@ -819,16 +819,18 @@ class AsyncGroup:
         if consolidated is None:
             await store_path.delete_dir()
             return
+        # Encode the group metadata without the member before deleting it: metadata that
+        # cannot be stored then fails with the store and this group untouched.
         members = {name: node for name, node in consolidated.metadata.items() if name != key}
-        metadata = replace(
-            self.metadata, consolidated_metadata=replace(consolidated, metadata=members)
+        documents = encode_documents(
+            self.store_path,
+            replace(self.metadata, consolidated_metadata=replace(consolidated, metadata=members)),
         )
-        # Encode the group metadata before deleting the member: metadata that cannot be
-        # stored then fails with the store untouched.
-        documents = encode_documents(self.store_path, metadata)
         await store_path.delete_dir()
+        # In place, so every handle sharing this consolidated metadata (a parent's or a
+        # subgroup's) sees the deletion.
+        consolidated.metadata.pop(key, None)
         await store_documents(self.store_path, documents)
-        object.__setattr__(self, "metadata", metadata)
 
     async def get[DefaultT](
         self, key: str, default: DefaultT | None = None
