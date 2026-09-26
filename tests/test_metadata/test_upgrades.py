@@ -16,6 +16,7 @@ import zarr
 from zarr.codecs import ShardingCodec
 from zarr.codecs.numcodecs import Quantize
 from zarr.core.array import AsyncArray
+from zarr.core.group import ConsolidatedMetadata
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.upgrades import (
     RESAVE_HINT,
@@ -1005,6 +1006,48 @@ def test_consolidated_upgraded_member_write_after_chunk_grid_change_raises(
         array[0:3] = [7, 8, 9]
 
     assert {p: p.read_bytes() for p in path.rglob("*") if p.is_file()} == documents
+
+
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_consolidated_upgraded_member_attributes_kept_by_group_write(
+    tmp_path: Path, zarr_format: Literal[2, 3]
+) -> None:
+    """Setting attributes of a member read from consolidated metadata stores the member's
+    upgraded document with them. A later write of the group, whose consolidated metadata
+    shares the member's metadata, then stores that upgrade: the new attributes, not the
+    legacy document as it was stored before."""
+    path = tmp_path / "group.zarr"
+    _consolidated_legacy_member(path, zarr_format)
+    with pytest.warns(ZarrUserWarning, match="is read as"):
+        group = zarr.open_group(path, mode="r+", use_consolidated=True)
+
+    group["a"].attrs["x"] = 1
+    group.attrs["y"] = 2
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        attributes = dict(zarr.open_group(path, mode="r", use_consolidated=True)["a"].attrs)
+    assert attributes == {"x": 1}
+    assert _stored_chunks(_consolidated_member(path, zarr_format, "a")) == [3]
+    assert not [w for w in record if "is read as" in str(w.message)]
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_upgraded_metadata_keeps_the_document_it_read(zarr_format: Literal[2, 3]) -> None:
+    """Metadata read from a document that had to be upgraded keeps that document as it
+    was read, whatever becomes of the caller's dict (or the objects in it, which the
+    metadata's attributes may hold): consolidated metadata stores it as read."""
+    doc = _v2_doc([0], [0]) if zarr_format == 2 else _v3_doc([0], [0])
+    doc["attributes"] = {"k": [1]}
+    read = json.loads(json.dumps(doc))
+    metadata_cls = ArrayV2Metadata if zarr_format == 2 else ArrayV3Metadata
+    metadata = metadata_cls.from_dict(doc)
+
+    cast("list[int]", metadata.attributes["k"]).append(2)
+    doc["shape"] = [4]
+
+    assert ConsolidatedMetadata(metadata={"a": metadata}).to_dict()["metadata"] == {"a": read}
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
