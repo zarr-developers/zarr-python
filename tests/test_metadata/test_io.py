@@ -11,7 +11,14 @@ import pytest
 import zarr
 from zarr.core.buffer import cpu
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.io import ABSENT, DocumentChange, diff_documents, upsert_metadata
+from zarr.core.metadata.io import (
+    ABSENT,
+    ARRAY_DOCUMENTS,
+    DocumentChange,
+    diff_documents,
+    read_documents,
+    upsert_metadata,
+)
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StorePath
 
@@ -143,6 +150,14 @@ def _legacy(zarr_format: Literal[2, 3]) -> tuple[StorePath, ArrayV2Metadata | Ar
     return StorePath(store), array.metadata
 
 
+def _upsert(
+    store_path: StorePath, metadata: ArrayV2Metadata | ArrayV3Metadata
+) -> tuple[DocumentChange, ...]:
+    """Upsert `metadata` against the documents stored at `store_path`."""
+    stored = sync(read_documents(store_path, ARRAY_DOCUMENTS[metadata.zarr_format]))
+    return sync(upsert_metadata(store_path, metadata, stored))
+
+
 @pytest.mark.parametrize("zarr_format", [2, 3])
 def test_upsert_metadata_stores_documents_that_differ(zarr_format: Literal[2, 3]) -> None:
     """The documents that differ from the stored ones are stored, and the changes are
@@ -155,7 +170,7 @@ def test_upsert_metadata_stores_documents_that_differ(zarr_format: Literal[2, 3]
         ("chunks", 0) if zarr_format == 2 else ("chunk_grid", "configuration", "chunk_shape", 0)
     )
 
-    changes = sync(upsert_metadata(store_path, metadata))
+    changes = _upsert(store_path, metadata)
 
     assert changes == (DocumentChange((key, *chunk_path), 0, 3),)
     assert store_path.store.sets == 1
@@ -172,12 +187,12 @@ def test_upsert_metadata_identical_stores_nothing(zarr_format: Literal[2, 3]) ->
     )
     store.sets = 0
 
-    assert sync(upsert_metadata(StorePath(store), array.metadata)) == ()
+    assert _upsert(StorePath(store), array.metadata) == ()
     assert store.sets == 0
 
 
 def test_upsert_metadata_unstorable_leaves_store_untouched(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Metadata that cannot be encoded fails before the store is read or written."""
+    """Metadata that cannot be encoded fails before the store is written."""
     store_path, metadata = _legacy(3)
     before = _documents(store_path.store)
 
@@ -186,7 +201,7 @@ def test_upsert_metadata_unstorable_leaves_store_untouched(monkeypatch: pytest.M
 
     monkeypatch.setattr(ArrayV3Metadata, "to_buffer_dict", refuse)
     with pytest.raises(ValueError, match="cannot be stored"):
-        sync(upsert_metadata(store_path, metadata))
+        _upsert(store_path, metadata)
     assert _documents(store_path.store) == before
 
 
@@ -195,5 +210,5 @@ def test_upsert_metadata_stored_document_not_an_object() -> None:
     store_path, metadata = _legacy(3)
     sync(store_path.store.set("zarr.json", cpu.Buffer.from_bytes(b"[]")))
     with pytest.raises(TypeError, match="Expected a JSON object, got list"):
-        sync(upsert_metadata(store_path, metadata))
+        _upsert(store_path, metadata)
     assert _documents(store_path.store) == {"zarr.json": []}
