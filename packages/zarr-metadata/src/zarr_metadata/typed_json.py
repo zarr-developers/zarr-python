@@ -65,8 +65,8 @@ records them on every version.
 """
 
 from zarr_metadata._common import JSONValue
+from zarr_metadata._json import ProblemKind, ValidationProblem
 from zarr_metadata._typed_json import Loc, TypedDictKeys, check, typeddict_keys
-from zarr_metadata.model._validation import ProblemKind, ValidationProblem
 
 __all__ = [
     "JSONValue",

@@ -57,10 +57,10 @@ import typing_extensions
 from typing_extensions import NoExtraItems, TypeIs, is_typeddict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.model._validation import ValidationProblem, is_json, refine_json
+from zarr_metadata._json import ValidationProblem, is_json, refine_json
 
 if TYPE_CHECKING:
-    from zarr_metadata.model._validation import ProblemKind
+    from zarr_metadata._json import ProblemKind
 
 
 T = TypeVar("T")
