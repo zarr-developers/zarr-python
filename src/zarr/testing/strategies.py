@@ -34,7 +34,11 @@ from zarr.core.dtype.npy.common import DATETIME_UNIT
 from zarr.core.dtype.npy.structured import Struct
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
+from zarr.core.metadata.v3 import (
+    RectilinearChunkGridMetadata,
+    RectilinearDimSpecJSON,
+    RegularChunkGridMetadata,
+)
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
 from zarr.storage._utils import _join_paths, normalize_path
@@ -634,9 +638,6 @@ def rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[int |
     return chunks
 
 
-_RectilinearDimDeclaration = int | list[int | list[int]]
-
-
 def _rle_encode(draw: st.DrawFn, edges: list[int]) -> list[int | list[int]]:
     """Run-length encode `edges` as the spec allows: a mix of bare ints and
     `[size, count]` pairs. Either the canonical form (each run as one pair,
@@ -681,7 +682,7 @@ def _rectilinear_chunk_shape(draw: st.DrawFn, *, extent: int) -> int | tuple[int
 @st.composite
 def rectilinear_chunk_shape_declarations(
     draw: st.DrawFn, *, shape: tuple[int, ...]
-) -> tuple[list[_RectilinearDimDeclaration], tuple[int | tuple[int, ...], ...]]:
+) -> tuple[list[RectilinearDimSpecJSON], tuple[int | tuple[int, ...], ...]]:
     """The `chunk_shapes` of a stored rectilinear chunk grid, with its meaning.
 
     Samples the whole declaration space of the spec. Per dimension: a bare
@@ -693,7 +694,7 @@ def rectilinear_chunk_shape_declarations(
     `chunk_shapes` that parsing it must produce.
     """
     chunk_shapes = tuple(_rectilinear_chunk_shape(draw, extent=extent) for extent in shape)
-    declaration: list[_RectilinearDimDeclaration] = [
+    declaration: list[RectilinearDimSpecJSON] = [
         dim
         if isinstance(dim, int)
         else list(dim)

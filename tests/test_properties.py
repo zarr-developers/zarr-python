@@ -27,7 +27,7 @@ from zarr.core.dtype.common import HasItemSize
 from zarr.core.dtype.npy.structured import Struct
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
+from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RectilinearChunkGridMetadataJSON
 from zarr.core.sync import sync
 from zarr.errors import ZarrUserWarning
 from zarr.storage import MemoryStore
@@ -620,11 +620,11 @@ def test_rectilinear_chunk_grid_declarations(data: st.DataObject) -> None:
     declaration, chunk_shapes = data.draw(
         rectilinear_chunk_shape_declarations(shape=shape), label="declaration"
     )
-    stored = {
+    stored: RectilinearChunkGridMetadataJSON = {
         "name": "rectilinear",
         "configuration": {"kind": "inline", "chunk_shapes": declaration},
     }
-    meta = RectilinearChunkGridMetadata.from_dict(stored)  # type: ignore[arg-type]
+    meta = RectilinearChunkGridMetadata.from_dict(stored)
     assert meta.chunk_shapes == chunk_shapes
 
     serialized = json.loads(json.dumps(meta.to_dict()))
