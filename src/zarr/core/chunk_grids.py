@@ -15,6 +15,7 @@ from typing import (
     NamedTuple,
     Protocol,
     SupportsIndex,
+    cast,
     runtime_checkable,
 )
 
@@ -342,12 +343,10 @@ def _chunk_int(value: object) -> int | None:
         isinstance(value, np.ndarray) and value.dtype == np.bool_
     ):
         raise TypeError(f"A bool is not a chunk size; got {value!r}.")
-    if not isinstance(value, SupportsIndex):
-        return None
     try:
-        return operator.index(value)
+        return operator.index(cast("SupportsIndex", value))
     except TypeError:
-        # numpy arrays define `__index__` but only 0-d integer arrays honour it.
+        # Not an integer; numpy arrays define `__index__` but only 0-d integer arrays honour it.
         return None
 
 
