@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict
 
 import numpy as np
 import numpy.typing as npt
@@ -17,7 +17,6 @@ from zarr.core.array import (
     CompressorLike,
     create_array,
     from_array,
-    get_array_metadata,
 )
 from zarr.core.array_spec import ArrayConfigLike, parse_array_config
 from zarr.core.buffer import NDArrayLike
@@ -35,13 +34,16 @@ from zarr.core.group import (
     AsyncGroup,
     ConsolidatedMetadata,
     GroupMetadata,
+    _open_array,
+    _open_group,
+    _open_node,
     create_hierarchy,
 )
-from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata
+from zarr.core.metadata import ArrayV2Metadata
 from zarr.errors import (
     ArrayNotFoundError,
     GroupNotFoundError,
-    NodeTypeValidationError,
+    NodeNotFoundError,
     ZarrDeprecationWarning,
     ZarrRuntimeWarning,
     ZarrUserWarning,
@@ -356,7 +358,8 @@ async def open(
         (fail if exists).
         If the store is read-only, the default is 'r'; otherwise, it is 'a'.
     zarr_format : {2, 3, None}, optional
-        The zarr format to use when saving.
+        The Zarr format of the node. None opens whichever format is found,
+        trying Zarr format 3 first, and creates the default format.
     path : str or None, optional
         The path within the store to open.
     storage_options : dict
@@ -377,6 +380,15 @@ async def open(
 
     Notes
     -----
+    What `open` opens or creates follows two rules. If `shape` is given, the
+    call describes an array and behaves as
+    [`open_array`][zarr.api.asynchronous.open_array] with the same arguments.
+    Otherwise, in the modes that read ('r', 'r+' and 'a'), the node at `path` is
+    opened whichever kind it is; when there is none, 'r' and 'r+' raise
+    [`NodeNotFoundError`][zarr.errors.NodeNotFoundError] and 'a' creates a
+    group. The modes that only create ('w' and 'w-') create a group, 'w'
+    replacing whatever is at `path` and 'w-' failing if anything is.
+
     `open` returns a lazy [`Array`][zarr.Array] or [`Group`][zarr.Group] backed by
     the store, so data is read and written incrementally. Use [`load`][zarr.load]
     instead when you want the data eagerly read into an in-memory array (a
@@ -390,30 +402,28 @@ async def open(
             mode = "a"
     store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
-    # TODO: the mode check below seems wrong!
-    if "shape" not in kwargs and mode in {"a", "r", "r+", "w"}:
-        try:
-            metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
-            # TODO: remove this cast when we fix typing for array metadata dicts
-            _metadata_dict = cast("ArrayMetadataDict", metadata_dict)
-            # for v2, the above would already have raised an exception if not an array
-            zarr_format = _metadata_dict["zarr_format"]
-            is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
-            if is_v3_array or zarr_format == 2:
-                return AsyncArray(
-                    store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
-                )
-        except (FileNotFoundError, NodeTypeValidationError):
-            pass
-        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
-
-    try:
-        return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
-    except (KeyError, NodeTypeValidationError):
-        # KeyError for a missing key
-        # NodeTypeValidationError for failing to parse node metadata as an array when it's
-        # actually a group
-        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+    # `config` is an array's; it applies to an array opened or created here and is
+    # not something a group takes
+    config = kwargs.pop("config", None)
+    if "shape" in kwargs:
+        # the call describes an array
+        return await open_array(
+            store=store_path, zarr_format=zarr_format, mode=mode, config=config, **kwargs
+        )
+    if mode in _READ_MODES:
+        node = await _open_node(
+            store_path,
+            zarr_format=zarr_format,
+            use_consolidated=kwargs.get("use_consolidated"),
+            config=config,
+        )
+        if node is not None:
+            return node
+        if mode != "a":
+            msg = f"No array or group found in store {store_path.store} at path {store_path.path!r}"
+            raise NodeNotFoundError(msg)
+    # nothing to open, or a mode that only creates: make a group
+    return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
 
 async def open_consolidated(
@@ -789,7 +799,7 @@ async def open_group(
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used
     attributes: dict[str, JSON] | None = None,
-    use_consolidated: bool | str | None = None,
+    use_consolidated: bool | None = None,
 ) -> AsyncGroup:
     """Open a group using file-mode-like semantics.
 
@@ -824,7 +834,7 @@ async def open_group(
         to users. Use `numpy.empty(())` by default.
     attributes : dict
         A dictionary of JSON-serializable values with user-defined attributes.
-    use_consolidated : bool or str, default None
+    use_consolidated : bool, default None
         Whether to use consolidated metadata.
 
         By default, consolidated metadata is used if it's present in the
@@ -836,10 +846,6 @@ async def open_group(
 
         To explicitly *not* use consolidated metadata, set `use_consolidated=False`,
         which will fall back to using the regular, non consolidated metadata.
-
-        Zarr format 2 allowed configuring the key storing the consolidated metadata
-        (`.zmetadata` by default). Specify the custom key as `use_consolidated`
-        to load consolidated metadata from a non-default key.
 
     Returns
     -------
@@ -857,24 +863,18 @@ async def open_group(
     )
 
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
-    if attributes is None:
-        attributes = {}
-
-    try:
-        if mode in _READ_MODES:
-            return await AsyncGroup.open(
-                store_path, zarr_format=zarr_format, use_consolidated=use_consolidated
-            )
-    except (KeyError, FileNotFoundError):
-        pass
+    if mode in _READ_MODES:
+        group = await _open_group(
+            store_path, zarr_format=zarr_format, use_consolidated=use_consolidated
+        )
+        if group is not None:
+            return group
     if mode in _CREATE_MODES:
-        overwrite = _infer_overwrite(mode)
-        _zarr_format = zarr_format or _default_zarr_format()
         return await AsyncGroup.from_store(
             store_path,
-            zarr_format=_zarr_format,
-            overwrite=overwrite,
-            attributes=attributes,
+            zarr_format=zarr_format or _default_zarr_format(),
+            overwrite=_infer_overwrite(mode),
+            attributes=attributes or {},
         )
     msg = f"No group found in store {store!r} at path {store_path.path!r}"
     raise GroupNotFoundError(msg)
@@ -1266,20 +1266,20 @@ async def open_array(
     if "write_empty_chunks" in kwargs:
         _warn_write_empty_chunks_kwarg()
 
-    try:
-        return await AsyncArray.open(store_path, zarr_format=zarr_format)
-    except FileNotFoundError as err:
-        if not store_path.read_only and mode in _CREATE_MODES:
-            overwrite = _infer_overwrite(mode)
-            _zarr_format = zarr_format or _default_zarr_format()
-            return await create(
-                store=store_path,
-                zarr_format=_zarr_format,
-                overwrite=overwrite,
-                **kwargs,
-            )
-        msg = f"No array found in store {store_path.store} at path {store_path.path}"
-        raise ArrayNotFoundError(msg) from err
+    if mode not in _OVERWRITE_MODES:
+        # whatever array is here is what the caller gets
+        array = await _open_array(store_path, zarr_format=zarr_format, config=kwargs.get("config"))
+        if array is not None:
+            return array
+    if not store_path.read_only and mode in _CREATE_MODES:
+        return await create(
+            store=store_path,
+            zarr_format=zarr_format or _default_zarr_format(),
+            overwrite=_infer_overwrite(mode),
+            **kwargs,
+        )
+    msg = f"No array found in store {store_path.store} at path {store_path.path}"
+    raise ArrayNotFoundError(msg)
 
 
 async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyAsyncArray:

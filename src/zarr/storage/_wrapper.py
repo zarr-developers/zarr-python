@@ -196,6 +196,10 @@ class WrapperStore[T_Store: Store](Store):
     def supports_listing(self) -> bool:
         return self._store.supports_listing
 
+    @property
+    def supports_consolidated_metadata(self) -> bool:
+        return self._store.supports_consolidated_metadata
+
     def list(self) -> AsyncIterator[str]:
         return self._store.list()
 

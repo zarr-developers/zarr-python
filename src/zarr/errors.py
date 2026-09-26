@@ -11,6 +11,7 @@ __all__ = [
     "GroupNotFoundError",
     "MetadataValidationError",
     "NegativeStepError",
+    "NodeNotFoundError",
     "NodeTypeValidationError",
     "UnknownCodecError",
     "UnstableSpecificationWarning",
