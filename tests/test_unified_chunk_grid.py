@@ -3085,65 +3085,43 @@ pytest.importorskip("hypothesis")
 import hypothesis.strategies as st
 from hypothesis import event, given, settings
 
-
-@st.composite
-def rectilinear_chunks_st(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[list[int]]:
-    """Generate valid rectilinear chunk shapes for a given array shape."""
-    chunk_shapes: list[list[int]] = []
-    for size in shape:
-        assert size > 0
-        max_chunks = min(size, 10)
-        nchunks = draw(st.integers(min_value=1, max_value=max_chunks))
-        if nchunks == 1:
-            chunk_shapes.append([size])
-        else:
-            dividers = sorted(
-                draw(
-                    st.lists(
-                        st.integers(min_value=1, max_value=size - 1),
-                        min_size=nchunks - 1,
-                        max_size=nchunks - 1,
-                        unique=True,
-                    )
-                )
-            )
-            chunk_shapes.append(
-                [a - b for a, b in zip(dividers + [size], [0] + dividers, strict=False)]
-            )
-    return chunk_shapes
+from tests.conftest import declared_chunk_data_sizes
+from zarr.testing.strategies import _rectilinear_chunks
 
 
 @st.composite
-def rectilinear_arrays_st(draw: st.DrawFn) -> tuple[zarr.Array[Any], np.ndarray[Any, Any]]:
-    """Generate a rectilinear zarr array with random data, shape, and chunks."""
+def rectilinear_arrays_st(
+    draw: st.DrawFn,
+) -> tuple[zarr.Array[Any], np.ndarray[Any, Any], list[int | list[int]]]:
+    """Generate a rectilinear zarr array with random data, shape, and chunks,
+    with the `chunks=` it was created with."""
     from zarr.storage import MemoryStore
 
     ndim = draw(st.integers(min_value=1, max_value=3))
     shape = draw(st.tuples(*[st.integers(min_value=2, max_value=20) for _ in range(ndim)]))
-    chunk_shapes = draw(rectilinear_chunks_st(shape=shape))
+    chunk_shapes = draw(_rectilinear_chunks(shape=shape))
     event(f"ndim={ndim}, shape={shape}")
 
     a = np.arange(int(np.prod(shape)), dtype="int32").reshape(shape)
     store = MemoryStore()
     z = zarr.create_array(store=store, shape=shape, chunks=chunk_shapes, dtype="int32")
     z[:] = a
-    return z, a
+    return z, a, chunk_shapes
 
 
 @settings(deadline=None, max_examples=50)
 @given(data=st.data())
 def test_property_block_indexing_rectilinear(data: st.DataObject) -> None:
     """Property test: block indexing on rectilinear arrays matches numpy."""
-    z, a = data.draw(rectilinear_arrays_st())
-    grid = ChunkGrid.from_metadata(z.metadata)
+    z, a, chunks = data.draw(rectilinear_arrays_st())
 
     for dim in range(a.ndim):
-        dim_grid = grid._dimensions[dim]
-        block_ix = data.draw(st.integers(min_value=0, max_value=dim_grid.nchunks - 1))
+        # The block extents come from the declaration, not from zarr's grid code.
+        sizes = declared_chunk_data_sizes(chunks[dim], a.shape[dim])
+        block_ix = data.draw(st.integers(min_value=0, max_value=len(sizes) - 1))
         sel = [slice(None)] * a.ndim
-        start = dim_grid.chunk_offset(block_ix)
-        stop = start + dim_grid.data_size(block_ix)
-        sel[dim] = slice(start, stop)
+        start = sum(sizes[:block_ix])
+        sel[dim] = slice(start, start + sizes[block_ix])
         block_sel: list[slice | int] = [slice(None)] * a.ndim
         block_sel[dim] = block_ix
         np.testing.assert_array_equal(
