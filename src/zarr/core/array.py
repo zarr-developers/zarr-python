@@ -518,9 +518,14 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             item_size = 1
             if isinstance(dtype_parsed, HasItemSize):
                 item_size = dtype_parsed.item_size
-            # Zarr format 2 reads a falsy `chunks` (such as 0, [] or False) as not given;
-            # a numpy array is always given, as its truth value may be ambiguous.
-            _raw_v2 = chunks if isinstance(chunks, np.ndarray) or chunks else chunk_shape
+            # Zarr format 2 reads a falsy `chunks` (such as 0, [] or False) as not given. A
+            # numpy array with more than one element has no truth value and is always given;
+            # a shorter one is read by `.any()`, its truth value (False when empty).
+            _raw_v2 = (
+                chunks
+                if (chunks.size > 1 or chunks.any() if isinstance(chunks, np.ndarray) else chunks)
+                else chunk_shape
+            )
             if _raw_v2 is None:
                 outer_chunks = guess_chunks(shape, item_size)
             else:

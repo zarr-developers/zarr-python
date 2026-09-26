@@ -1172,23 +1172,32 @@ def test_rectilinear_chunks_gates(shape: tuple[int, ...], chunks: Any) -> None:
         zarr.create(store=MemoryStore(), shape=shape, chunks=chunks, zarr_format=2, dtype="uint8")
 
 
-@pytest.mark.parametrize("chunks", [None, 0, (), [], False], ids=repr)
-def test_legacy_create_v2_falsy_chunks_auto_chunk(chunks: Any) -> None:
-    """The legacy `zarr.create` Zarr format 2 path reads a falsy `chunks` as not
-    given, so it chunks automatically."""
-    shape = (2**24,)
+@pytest.mark.parametrize(
+    ("chunks", "expected"),
+    [
+        (None, None),
+        (0, None),
+        ((), None),
+        ([], None),
+        (False, None),
+        (np.int64(0), None),
+        (np.False_, None),
+        (np.array(0), None),
+        (np.array(False), None),
+        (np.array([0]), None),
+        (np.array([]), None),
+        (np.array([5, 3]), (5, 3)),
+    ],
+    ids=repr,
+)
+def test_legacy_create_v2_chunks(chunks: Any, expected: tuple[int, ...] | None) -> None:
+    """The legacy `zarr.create` Zarr format 2 path reads a falsy `chunks` as not given
+    and chunks automatically (`expected` is `None`). It never tests the truth value of a
+    numpy array with more than one element, which has none: that array is the chunk
+    shape."""
+    shape = (2**12, 2**12)
     arr = zarr.create(store=MemoryStore(), shape=shape, chunks=chunks, dtype="int32", zarr_format=2)
-    assert arr.chunks == guess_chunks(shape, 4).chunk_shape
-
-
-def test_legacy_create_v2_accepts_numpy_array_chunks() -> None:
-    """The legacy `zarr.create` Zarr format 2 path must not test the truth value
-    of the chunk specification, which a numpy array does not have."""
-    chunks: Any = np.array([5, 3])  # outside the annotated type, accepted by the normalizer
-    arr = zarr.create(
-        store=MemoryStore(), shape=(10, 6), chunks=chunks, dtype="uint8", zarr_format=2
-    )
-    assert arr.chunks == (5, 3)
+    assert arr.chunks == (expected or guess_chunks(shape, 4).chunk_shape)
     assert all(type(c) is int for c in arr.chunks)
 
 
