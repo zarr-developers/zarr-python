@@ -16,6 +16,7 @@ import zarr
 from zarr.codecs import ShardingCodec
 from zarr.codecs.numcodecs import Quantize
 from zarr.core.array import AsyncArray
+from zarr.core.group import ConsolidatedMetadata
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.upgrades import (
     RESAVE_HINT,
@@ -494,6 +495,18 @@ def test_metadata_rejects_chunk_shape_not_list_or_tuple(site: str, chunk_shape: 
         ),
     ):
         CHUNK_SHAPE_SITES[site](chunk_shape)
+
+
+def test_consolidated_member_error_names_member() -> None:
+    """A group whose consolidated metadata holds a member that cannot be read does not
+    open from it; the error names the member."""
+    member = {**_v2_doc([5], [4]), "chunks": 4}
+    with pytest.raises(TypeError, match="A chunk shape must be a list or tuple") as info:
+        ConsolidatedMetadata.from_dict(
+            {"kind": "inline", "must_understand": False, "metadata": {"sub/a": member}},
+            path="group",
+        )
+    assert info.value.__notes__ == ["Member 'group/sub/a' of the consolidated metadata."]
 
 
 def _rewrite_doc(path: Path, zarr_format: Literal[2, 3], edit: Any) -> None:

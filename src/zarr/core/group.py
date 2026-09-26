@@ -186,28 +186,35 @@ class ConsolidatedMetadata:
                         f"Invalid value for metadata items. key='{k}', type='{type(v).__name__}'"
                     )
 
-                # zarr_format is present in v2 and v3.
-                zarr_format = parse_zarr_format(v["zarr_format"])
-
-                if zarr_format == 3:
-                    node_type = parse_node_type(v.get("node_type", None))
-                    if node_type == "group":
-                        metadata[k] = GroupMetadata.from_dict(v, path=member)
-                    elif node_type == "array":
-                        metadata[k] = ArrayV3Metadata.from_dict(v, path=member)
-                    else:
-                        assert_never(node_type)
-                elif zarr_format == 2:
-                    if "shape" in v:
-                        metadata[k] = ArrayV2Metadata.from_dict(v, path=member)
-                    else:
-                        metadata[k] = GroupMetadata.from_dict(v, path=member)
-                else:
-                    assert_never(zarr_format)
+                try:
+                    metadata[k] = cls._member_from_dict(v, member)
+                except (TypeError, ValueError) as e:
+                    e.add_note(f"Member {member!r} of the consolidated metadata.")
+                    raise
 
             cls._flat_to_nested(metadata)
 
         return cls(metadata=metadata)
+
+    @staticmethod
+    def _member_from_dict(
+        data: dict[str, JSON], path: str
+    ) -> ArrayV2Metadata | ArrayV3Metadata | GroupMetadata:
+        """Read one member of consolidated metadata, at `path`."""
+        # zarr_format is present in v2 and v3.
+        zarr_format = parse_zarr_format(data["zarr_format"])
+        if zarr_format == 3:
+            node_type = parse_node_type(data.get("node_type"))
+            if node_type == "group":
+                return GroupMetadata.from_dict(data, path=path)
+            if node_type == "array":
+                return ArrayV3Metadata.from_dict(data, path=path)
+            assert_never(node_type)
+        if zarr_format == 2:
+            if "shape" in data:
+                return ArrayV2Metadata.from_dict(data, path=path)
+            return GroupMetadata.from_dict(data, path=path)
+        assert_never(zarr_format)
 
     @staticmethod
     def _flat_to_nested(
