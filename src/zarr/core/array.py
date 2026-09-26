@@ -118,8 +118,13 @@ from zarr.core.metadata import (
     ArrayV2MetadataDict,
     ArrayV3Metadata,
 )
-from zarr.core.metadata.io import read_stored_array, save_metadata, upsert_metadata
-from zarr.core.metadata.upgrades import mark_upgraded, upgrade_array_document
+from zarr.core.metadata.io import (
+    ARRAY_DOCUMENTS,
+    parse_stored_array,
+    read_documents,
+    save_metadata,
+    upsert_metadata,
+)
 from zarr.core.metadata.v2 import (
     CompressorLikev2,
     get_object_codec_id,
@@ -202,29 +207,18 @@ def _chunk_sizes_from_shape(
     return tuple(result)
 
 
-def _as_json(value: Any) -> Any:
-    """`value`, as `to_dict` returns it, with its tuples as JSON arrays."""
-    match value:
-        case tuple() | list():
-            return [_as_json(item) for item in value]
-        case dict():
-            return {key: _as_json(item) for key, item in value.items()}
-    return value
-
-
 def parse_array_metadata(data: Any, path: str | None = None) -> ArrayMetadata:
     """Array metadata from a metadata object or a metadata document, naming the array at
     `path` in warnings about how an invalid document was read.
 
-    The metadata constructors accept chunk sizes that only an invalid document holds
-    (such as 0), as they always have; such metadata is read as its document is (see
-    `zarr.core.metadata.upgrades`), so an array can be built from it. No data was read
-    or written under those chunk sizes, so none of its readings is a warning."""
+    `ArrayV2Metadata` accepts a chunk size of 0, as it always has, though only an
+    invalid document holds one: such metadata is read as the documents it would store
+    are (see `zarr.core.metadata.upgrades`), so an array can be built from it. No data
+    was read or written under that chunk size, so the reading is silent."""
+    if isinstance(data, ArrayV2Metadata) and 0 in data.chunks:
+        return parse_stored_array(data.to_buffer_dict(default_buffer_prototype()), 2)
     if isinstance(data, ArrayMetadata):
-        document, readings = upgrade_array_document(_as_json(data.to_dict()), data.zarr_format)
-        if not readings:
-            return data
-        return mark_upgraded(parse_array_metadata(dict(document)), [None for _ in readings], path)
+        return data
     if isinstance(data, dict):
         zarr_format = data.get("zarr_format")
         if zarr_format == 3:
@@ -1652,16 +1646,20 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         if not self.metadata._stored_document_upgraded:
             return
-        read = await read_stored_array(self.store_path, self.metadata.zarr_format)
-        if read is not None:
-            current, upgraded = read
+        zarr_format = self.metadata.zarr_format
+        documents = await read_documents(self.store_path, ARRAY_DOCUMENTS[zarr_format])
+        try:
+            current = parse_stored_array(documents, zarr_format)
+        except ArrayNotFoundError:
+            pass
+        else:
             if _chunk_layout(current) != _chunk_layout(self.metadata):
                 raise ValueError(
                     f"The metadata stored for the array at {str(self.store_path)!r} has "
                     "changed since this array was opened: reopen the array to write to it."
                 )
-            if upgraded:
-                await upsert_metadata(self.store_path, current)
+            if current._stored_document_upgraded:
+                await upsert_metadata(self.store_path, current, documents)
         object.__setattr__(self.metadata, "_stored_document_upgraded", False)
 
     async def _set_selection(
@@ -4893,7 +4891,9 @@ async def create_array(
         )
 
 
-def _chunk_layout(metadata: ArrayMetadata) -> tuple[object, tuple[int, ...] | None]:
+def _chunk_layout(
+    metadata: ArrayMetadata,
+) -> tuple[tuple[int, ...] | ChunkGridMetadata, tuple[int, ...] | None]:
     """How an array's chunks are laid out: its chunk grid and, if it is sharded, the
     inner chunk shape."""
     grid = metadata.chunks if isinstance(metadata, ArrayV2Metadata) else metadata.chunk_grid

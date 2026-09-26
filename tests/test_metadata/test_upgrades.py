@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import re
 import warnings
@@ -13,6 +14,7 @@ import pytest
 
 import zarr
 from zarr.codecs import ShardingCodec
+from zarr.codecs.numcodecs import Quantize
 from zarr.core.array import AsyncArray
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.upgrades import (
@@ -23,7 +25,7 @@ from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGrid
 from zarr.core.sync import sync
 from zarr.dtype import Int16
 from zarr.errors import ZarrUserWarning
-from zarr.storage import MemoryStore, StorePath
+from zarr.storage import LocalStore, MemoryStore, StorePath
 from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
@@ -732,20 +734,43 @@ def test_stale_handle_write_keeps_valid_document_as_written(
     np.testing.assert_array_equal(_open_strictly(path)[...], [9, 0, 0])
 
 
-@pytest.mark.parametrize("zarr_format", [2, 3])
+def _store_zero(doc: dict[str, Any]) -> None:
+    _stored_chunks(doc)[0] = 0
+
+
+def _resize_to_10(doc: dict[str, Any]) -> None:
+    doc["shape"] = [10]
+
+
+def _halve_inner_chunk_shape(doc: dict[str, Any]) -> None:
+    doc["codecs"][0]["configuration"]["chunk_shape"] = [2]
+
+
+@pytest.mark.parametrize(
+    ("zarr_format", "sharded", "change"),
+    [(2, False, _resize_to_10), (3, False, _resize_to_10), (3, True, _halve_inner_chunk_shape)],
+    ids=["v2-resized", "v3-resized", "v3-sharded-inner-chunk-shape"],
+)
 def test_stale_handle_write_after_chunk_grid_change_raises(
-    tmp_path: Path, zarr_format: Literal[2, 3]
+    tmp_path: Path,
+    zarr_format: Literal[2, 3],
+    sharded: bool,
+    change: Callable[[dict[str, Any]], None],
 ) -> None:
     """If the document the store holds when a handle read from an upgraded document
-    first writes chunks lays out chunks differently from the handle's metadata (here the
+    first writes chunks lays out chunks differently from the handle's metadata (the
     array was resized by software that kept the stored chunk size of 0, which now reads
-    as a larger chunk), the handle's chunks would not be found under it: the write
-    raises and stores nothing."""
+    as a larger chunk, or its inner chunk shape changed), the handle's chunks would not
+    be found under it: the write raises and stores nothing."""
     path = tmp_path / "legacy.zarr"
-    _legacy_array(path, zarr_format)
+    if sharded:
+        zarr.create_array(store=path, shape=(3,), chunks=(4,), shards=(4,), dtype="int16")
+        _rewrite_doc(path, 3, _store_zero)
+    else:
+        _legacy_array(path, zarr_format)
     with pytest.warns(ZarrUserWarning, match="is read as"):
         stale = zarr.open_array(store=path, mode="r+")
-    _rewrite_doc(path, zarr_format, lambda doc: doc.update(shape=[10]))
+    _rewrite_doc(path, zarr_format, change)
     documents = {p.name: p.read_bytes() for p in path.iterdir()}
 
     with pytest.raises(ValueError, match="has changed since this array was opened: reopen"):
@@ -796,8 +821,19 @@ def test_array_from_metadata_with_chunk_size_zero(shape: tuple[int], expected: t
     np.testing.assert_array_equal(zarr.open_array(store, path="a")[...], np.ones(shape))
 
 
-def _store_zero(doc: dict[str, Any]) -> None:
-    _stored_chunks(doc)[0] = 0
+def test_array_from_metadata_with_numpy_scalar_codec_configuration() -> None:
+    """An array is built from metadata whose codec configuration holds NumPy scalars
+    (which are not JSON values), as zarr always built one."""
+    array = zarr.create_array(
+        MemoryStore(), shape=(4,), chunks=(2,), dtype="f8", filters=[Quantize(digits=3, dtype="f8")]
+    )
+    assert isinstance(array.metadata, ArrayV3Metadata)
+    # The codec keeps its configuration as given, though it is typed as JSON.
+    digits = cast("JSON", np.int64(3))
+    codecs = (Quantize(digits=digits, dtype="f8"), *array.metadata.codecs[1:])
+    metadata = dataclasses.replace(array.metadata, codecs=codecs)
+
+    assert AsyncArray(metadata, StorePath(MemoryStore())).metadata is metadata
 
 
 def _rewrite_consolidated(
@@ -818,44 +854,96 @@ def _consolidated_member(path: Path, zarr_format: Literal[2, 3], name: str) -> A
     return json.loads((path / "zarr.json").read_text())["consolidated_metadata"]["metadata"][name]
 
 
-@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
-@pytest.mark.parametrize("zarr_format", [2, 3])
-@pytest.mark.parametrize("operation", ["attrs", "update_attributes_async", "delete-member"])
-def test_group_write_refreshes_upgraded_consolidated_member(
-    tmp_path: Path, zarr_format: Literal[2, 3], operation: str
-) -> None:
-    """Storing a group's metadata stores its consolidated metadata. Each member of it read
-    from a document that had to be upgraded is first read again from the member's own
-    document as it now is (here resized by software that kept the stored chunk size of
-    0), whose upgrade is stored, so no group write stores a stale copy as if valid."""
-    path = tmp_path / "group.zarr"
+def _flagged_consolidated_group(path: Path, zarr_format: Literal[2, 3], member: str) -> None:
+    """A group whose consolidated copy of the array `member` holds the stored chunk size
+    0, and whose array `b` is valid."""
     group = zarr.open_group(path, mode="w", zarr_format=zarr_format)
-    group.create_array("a", shape=(3,), chunks=(3,), dtype="int16")
+    parent, _, name = member.rpartition("/")
+    (group.require_group(parent) if parent else group).create_array(
+        name, shape=(3,), chunks=(3,), dtype="int16"
+    )
     group.create_array("b", shape=(1,), chunks=(1,), dtype="int16")
     zarr.consolidate_metadata(path)
-    _rewrite_consolidated(path, zarr_format, "a", _store_zero)
+    _rewrite_consolidated(path, zarr_format, member, _store_zero)
+
+
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("member", ["a", "g/a"])
+@pytest.mark.parametrize("operation", ["attrs", "update_attributes_async", "delete-member"])
+def test_group_write_refreshes_upgraded_consolidated_member(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    zarr_format: Literal[2, 3],
+    member: str,
+    operation: str,
+) -> None:
+    """Storing a group's metadata stores its consolidated metadata. Each member of it read
+    from a document that had to be upgraded, at any depth, is first read again from the
+    member's own document as it now is (here resized by software that kept the stored
+    chunk size of 0), whose upgrade is stored, so no group write stores a stale copy as
+    if valid. The group adopts the members it stored, so later writes read no member."""
+    path = tmp_path / "group.zarr"
+    _flagged_consolidated_group(path, zarr_format, member)
 
     def resize_keeping_zero(doc: dict[str, Any]) -> None:
         _store_zero(doc)
         doc["shape"] = [10]
 
-    _rewrite_doc(path / "a", zarr_format, resize_keeping_zero)
+    _rewrite_doc(path / member, zarr_format, resize_keeping_zero)
     with pytest.warns(ZarrUserWarning, match="is read as"):
         group = zarr.open_group(path, mode="r+", use_consolidated=True)
 
     if operation == "attrs":
         group.attrs["x"] = 1
     elif operation == "update_attributes_async":
-        sync(group.update_attributes_async({"x": 1}))
+        group = sync(group.update_attributes_async({"x": 1}))
     else:
         del group["b"]
 
-    assert _stored_chunks(_consolidated_member(path, zarr_format, "a")) == [10]
+    assert _stored_chunks(_consolidated_member(path, zarr_format, member)) == [10]
     reopened = zarr.open_group(path, mode="r", use_consolidated=True)
-    member = reopened["a"]
-    assert isinstance(member, zarr.Array)
-    assert (member.shape, member.chunks) == ((10,), (10,))
-    assert _open_strictly(path / "a").chunks == (10,)
+    array = reopened[member]
+    assert isinstance(array, zarr.Array)
+    assert (array.shape, array.chunks) == ((10,), (10,))
+    assert _open_strictly(path / member).chunks == (10,)
+
+    reads: list[str] = []
+    get = LocalStore.get
+
+    async def recording_get(self: LocalStore, key: str, *args: Any, **kwargs: Any) -> Any:
+        reads.append(key)
+        return await get(self, key, *args, **kwargs)
+
+    monkeypatch.setattr(LocalStore, "get", recording_get)
+    group.attrs["y"] = 2
+    assert reads == []
+
+
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("replacement", ["group", "invalid", "none"])
+def test_group_write_keeps_upgraded_member_without_readable_document(
+    tmp_path: Path, zarr_format: Literal[2, 3], replacement: str
+) -> None:
+    """A member of consolidated metadata read from a document that had to be upgraded,
+    whose own document is no longer an array document that can be read, has no document
+    to upgrade: a group write stores the consolidated copy as it is."""
+    path = tmp_path / "group.zarr"
+    _flagged_consolidated_group(path, zarr_format, "a")
+    with pytest.warns(ZarrUserWarning, match="is read as"):
+        group = zarr.open_group(path, mode="r+", use_consolidated=True)
+    del zarr.open_group(path, mode="r+", use_consolidated=False)["a"]
+    if replacement == "group":
+        zarr.create_group(path / "a", zarr_format=zarr_format)
+    elif replacement == "invalid":
+        (path / "a").mkdir()
+        document = path / "a" / (".zarray" if zarr_format == 2 else "zarr.json")
+        document.write_text(json.dumps({"zarr_format": zarr_format, "node_type": "array"}))
+
+    group.attrs["x"] = 1
+
+    assert _stored_chunks(_consolidated_member(path, zarr_format, "a")) == [3]
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
