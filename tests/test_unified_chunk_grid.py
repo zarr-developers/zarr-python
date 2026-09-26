@@ -562,6 +562,22 @@ def test_rle_expand_rejects_non_int(rle_input: list[Any], match: str) -> None:
         expand_rle(rle_input)
 
 
+@pytest.mark.parametrize(
+    ("rle_input", "match"),
+    [
+        ([0], "chunk edge length must be >= 1"),
+        ([10.0], "chunk edge length must be an int"),
+        ([[5, 0]], "RLE repeat count must be >= 1"),
+        ([[5, 2, 1]], r"RLE entries must be an integer or \[size, count\]"),
+    ],
+    ids=["zero-edge", "float-edge", "zero-rle-count", "rle-entry-of-three"],
+)
+def test_rle_expand_names_dimension(rle_input: list[Any], match: str) -> None:
+    """Given the dimension `axis` the edges belong to, every error of expand_rle names it."""
+    with pytest.raises((TypeError, ValueError), match=f"^Dimension 2: {match}"):
+        expand_rle(rle_input, axis=2)
+
+
 # ---------------------------------------------------------------------------
 # _is_rectilinear_chunks tests
 # ---------------------------------------------------------------------------

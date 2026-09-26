@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, NotRequired, TypeGuard, cast
 
 from typing_extensions import TypedDict
 
@@ -27,6 +27,7 @@ from zarr.core.common import (
     compress_rle,
     expand_rle,
     parse_chunk_edge,
+    parse_chunk_shape,
     parse_named_configuration,
     parse_shapelike,
     validate_rectilinear_edges,
@@ -38,9 +39,8 @@ from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
 from zarr.core.metadata.upgrades import (
-    V3_ARRAY_UPGRADES,
+    mark_upgraded,
     upgrade_array_document,
-    warn_readings,
 )
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
@@ -218,17 +218,6 @@ RectilinearChunkGridMetadataJSON = NamedRequiredConfig[
 ]
 
 
-def _parse_chunk_shape(chunk_shape: Iterable[int]) -> tuple[int, ...]:
-    """Validate and normalize a regular chunk shape.
-
-    Delegates to ``_validate_chunk_shapes`` — a regular chunk shape is just
-    a sequence of bare ints (one per dimension), each of which must be >= 1.
-    """
-    result = _validate_chunk_shapes(tuple(chunk_shape))
-    # Regular grids only have bare ints — cast is safe after validation
-    return cast(tuple[int, ...], result)
-
-
 def _validate_chunk_shapes(
     chunk_shapes: Sequence[int | Sequence[int]],
 ) -> tuple[int | tuple[int, ...], ...]:
@@ -261,7 +250,7 @@ class RegularChunkGridMetadata(Metadata):
     chunk_shape: tuple[int, ...]
 
     def __post_init__(self) -> None:
-        chunk_shape_parsed = _parse_chunk_shape(self.chunk_shape)
+        chunk_shape_parsed = parse_chunk_shape(self.chunk_shape)
         object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
 
     @property
@@ -278,7 +267,7 @@ class RegularChunkGridMetadata(Metadata):
     def from_dict(cls, data: RegularChunkGridMetadataJSON) -> Self:  # type: ignore[override]
         parse_named_configuration(data, "regular")  # validate name
         configuration = data["configuration"]
-        return cls(chunk_shape=_parse_chunk_shape(configuration["chunk_shape"]))
+        return cls(chunk_shape=parse_chunk_shape(configuration["chunk_shape"]))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -479,9 +468,10 @@ class ArrayV3Metadata(Metadata):
     node_type: Literal["array"] = field(default="array", init=False)
     storage_transformers: tuple[dict[str, JSON], ...]
     extra_fields: dict[str, AllowedExtraField]
-    _stored_document_upgraded: bool = field(default=False, init=False, compare=False, repr=False)
-    """Whether `from_dict` read this metadata from a stored document it had to upgrade,
-    so the store holds an invalid document until this metadata is stored."""
+    _stored_document_upgraded: ClassVar[bool] = False
+    """Whether `from_dict` read this metadata from a stored document it had to upgrade
+    (set on the instance by `mark_upgraded`), so the store may still hold that invalid
+    document."""
 
     def __init__(
         self,
@@ -625,7 +615,7 @@ class ArrayV3Metadata(Metadata):
     def from_dict(cls, data: dict[str, JSON], *, path: str | None = None) -> Self:
         """Read a stored `zarr.json` array document. An invalid document that
         `zarr.core.metadata.upgrades` can read warns, naming the array at `path`."""
-        upgraded, readings = upgrade_array_document(data, V3_ARRAY_UPGRADES)
+        upgraded, readings = upgrade_array_document(data, 3)
         # a new dict, because we are modifying it
         _data = dict(upgraded)
 
@@ -681,9 +671,7 @@ class ArrayV3Metadata(Metadata):
             extra_fields=allowed_extra_fields,
             storage_transformers=_data_typed.get("storage_transformers", ()),  # type: ignore[arg-type]
         )
-        warn_readings(readings, path)
-        object.__setattr__(metadata, "_stored_document_upgraded", bool(readings))
-        return metadata
+        return mark_upgraded(metadata, readings, path)
 
     def to_dict(self) -> dict[str, JSON]:
         out_dict = super().to_dict()

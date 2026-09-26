@@ -118,7 +118,8 @@ from zarr.core.metadata import (
     ArrayV2MetadataDict,
     ArrayV3Metadata,
 )
-from zarr.core.metadata.io import save_metadata
+from zarr.core.metadata.io import save_metadata, upsert_metadata
+from zarr.core.metadata.upgrades import upgrade_array_document
 from zarr.core.metadata.v2 import (
     CompressorLikev2,
     get_object_codec_id,
@@ -1615,6 +1616,24 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         await save_metadata(self.store_path, metadata, ensure_parents=ensure_parents)
 
+    async def _store_upgraded_document(self) -> None:
+        """Store the upgrade of this array's current stored document, if it differs from
+        what the store holds.
+
+        Only for metadata read from a document that had to be upgraded (see
+        `zarr.core.metadata.upgrades`). The document is read again, because the store may
+        hold a newer one than this handle's metadata: if that one needs no upgrade (the
+        array was re-saved or resized since), nothing is stored. Storing the same upgrade
+        twice is harmless, so concurrent callers need no coordination.
+        """
+        if not self.metadata._stored_document_upgraded:
+            return
+        zarr_format = self.metadata.zarr_format
+        stored = await get_array_metadata(self.store_path, zarr_format=zarr_format)
+        upgraded, _ = upgrade_array_document(stored, zarr_format)
+        await upsert_metadata(self.store_path, parse_array_metadata(upgraded))
+        object.__setattr__(self.metadata, "_stored_document_upgraded", False)
+
     async def _set_selection(
         self,
         indexer: Indexer,
@@ -1623,12 +1642,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         prototype: BufferPrototype,
         fields: Fields | None = None,
     ) -> None:
-        if self.metadata._stored_document_upgraded:
+        if product(indexer.shape) > 0:
             # Chunks are about to be stored under the upgraded metadata, so store it
             # first: every reader of the store then agrees with them.
-            metadata = replace(self.metadata)
-            await self._save_metadata(metadata)
-            object.__setattr__(self, "metadata", metadata)
+            await self._store_upgraded_document()
         return await _set_selection(
             self.store_path,
             self.metadata,
@@ -5827,58 +5844,6 @@ async def _set_selection(
     )
 
 
-async def _setitem(
-    store_path: StorePath,
-    metadata: ArrayMetadata,
-    codec_pipeline: CodecPipeline,
-    config: ArrayConfig,
-    chunk_grid: ChunkGrid,
-    selection: BasicSelection,
-    value: npt.ArrayLike,
-    prototype: BufferPrototype | None = None,
-) -> None:
-    """
-    Set values in the array using basic indexing.
-
-    Parameters
-    ----------
-    store_path : StorePath
-        The store path of the array.
-    metadata : ArrayMetadata
-        The array metadata.
-    codec_pipeline : CodecPipeline
-        The codec pipeline for encoding/decoding.
-    config : ArrayConfig
-        The array configuration.
-    chunk_grid : ChunkGrid
-        The chunk grid.
-    selection : BasicSelection
-        The selection defining the region of the array to set.
-    value : npt.ArrayLike
-        The values to be written into the selected region of the array.
-    prototype : BufferPrototype or None, optional
-        A prototype buffer that defines the structure and properties of the array chunks being modified.
-        If None, the default buffer prototype is used.
-    """
-    if prototype is None:
-        prototype = default_buffer_prototype()
-    indexer = BasicIndexer(
-        selection,
-        shape=metadata.shape,
-        chunk_grid=chunk_grid,
-    )
-    return await _set_selection(
-        store_path,
-        metadata,
-        codec_pipeline,
-        config,
-        chunk_grid,
-        indexer,
-        value,
-        prototype=prototype,
-    )
-
-
 async def _resize(
     array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
     new_shape: ShapeLike,
@@ -5993,15 +5958,7 @@ async def _append(
         slice(None) if i != axis else slice(old_shape[i], new_shape[i])
         for i in range(len(array.shape))
     )
-    await _setitem(
-        array.store_path,
-        array.metadata,
-        array.codec_pipeline,
-        array.config,
-        array._chunk_grid,
-        append_selection,
-        data,
-    )
+    await array.setitem(append_selection, data)
 
     return new_shape
 

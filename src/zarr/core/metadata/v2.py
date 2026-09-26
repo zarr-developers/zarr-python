@@ -4,7 +4,7 @@ import json
 import warnings
 from collections.abc import Iterable, Sequence
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.numcodec import Numcodec, _is_numcodec
@@ -44,7 +44,7 @@ from zarr.core.common import (
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
-from zarr.core.metadata.upgrades import V2_ARRAY_UPGRADES, upgrade_array_document, warn_readings
+from zarr.core.metadata.upgrades import mark_upgraded, upgrade_array_document
 
 
 class ArrayV2MetadataDict(TypedDict):
@@ -72,9 +72,10 @@ class ArrayV2Metadata(Metadata):
     compressor: Numcodec | None
     attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
-    _stored_document_upgraded: bool = field(default=False, init=False, compare=False, repr=False)
-    """Whether `from_dict` read this metadata from a stored document it had to upgrade,
-    so the store holds an invalid document until this metadata is stored."""
+    _stored_document_upgraded: ClassVar[bool] = False
+    """Whether `from_dict` read this metadata from a stored document it had to upgrade
+    (set on the instance by `mark_upgraded`), so the store may still hold that invalid
+    document."""
 
     def __init__(
         self,
@@ -154,7 +155,7 @@ class ArrayV2Metadata(Metadata):
     def from_dict(cls, data: dict[str, Any], *, path: str | None = None) -> ArrayV2Metadata:
         """Read a stored `.zarray` document (with its attributes). An invalid document
         that `zarr.core.metadata.upgrades` can read warns, naming the array at `path`."""
-        upgraded, readings = upgrade_array_document(data, V2_ARRAY_UPGRADES)
+        upgraded, readings = upgrade_array_document(data, 2)
         # a new dict, because we are modifying it
         _data: dict[str, Any] = dict(upgraded)
         # Check that the zarr_format attribute is correct.
@@ -187,7 +188,7 @@ class ArrayV2Metadata(Metadata):
         # zarr v2 allowed arbitrary keys here.
         # We don't want the ArrayV2Metadata constructor to fail just because someone put an
         # extra key in the metadata.
-        expected = {x.name for x in fields(cls) if x.init}
+        expected = {x.name for x in fields(cls)}
         expected |= {"dtype", "chunks"}
 
         # check if `filters` is an empty sequence; if so use None instead and raise a warning
@@ -207,10 +208,7 @@ class ArrayV2Metadata(Metadata):
 
         _data = {k: v for k, v in _data.items() if k in expected}
 
-        metadata = cls(**_data)
-        warn_readings(readings, path)
-        object.__setattr__(metadata, "_stored_document_upgraded", bool(readings))
-        return metadata
+        return mark_upgraded(cls(**_data), readings, path)
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
@@ -331,7 +329,7 @@ def parse_compressor(data: object) -> Numcodec | None:
     raise ValueError(msg)
 
 
-def parse_chunks(chunks: Iterable[int], shape: tuple[int, ...]) -> tuple[int, ...]:
+def parse_chunks(chunks: object, shape: tuple[int, ...]) -> tuple[int, ...]:
     """Check a chunk shape: one chunk edge length (an `int` >= 1) per array axis."""
     chunks_parsed = parse_chunk_shape(chunks)
     if len(chunks_parsed) != len(shape):

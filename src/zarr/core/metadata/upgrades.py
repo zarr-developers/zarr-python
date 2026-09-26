@@ -9,8 +9,7 @@ warn once, with every reading, after the upgraded document has passed the metada
 constructor. An invalid document therefore raises its own error, not a warning about
 how it was read.
 
-To read another kind of invalid document, add an upgrade to `V2_ARRAY_UPGRADES` or
-`V3_ARRAY_UPGRADES`.
+To read another kind of invalid document, add an upgrade to `ARRAY_UPGRADES`.
 """
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ from zarr.core.chunk_grids import full_span_chunk_size
 from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
-    from zarr.core.common import JSON
+    from zarr.core.common import JSON, ZarrFormat
 
 type ArrayDocument = Mapping[str, JSON]
 type Upgrade = Callable[[ArrayDocument], tuple[ArrayDocument, str] | None]
@@ -39,14 +38,18 @@ RESAVE_HINT: Final = (
 )
 
 
-def warn_readings(readings: Sequence[str], path: str | None) -> None:
-    """Warn once with the readings returned by `upgrade_array_document`, naming the
-    array at `path` when the caller knows it."""
+def mark_upgraded[M](metadata: M, readings: Sequence[str], path: str | None) -> M:
+    """Record that `metadata` was read from a stored document that needed the upgrades
+    whose `readings` `upgrade_array_document` returned, if any: warn once, naming the
+    array at `path` when the caller knows it, and set `_stored_document_upgraded` on
+    `metadata`, so the array stores the upgrade before it writes chunks under it."""
     if readings:
         subject = "" if path is None else f"Array {path!r}: "
         # The synchronous API parses metadata on zarr's IO thread, whose stack holds no
         # user code, so the warning points at the `from_dict` that read the document.
         warnings.warn(f"{subject}{' '.join(readings)} {RESAVE_HINT}", ZarrUserWarning, stacklevel=2)
+        object.__setattr__(metadata, "_stored_document_upgraded", True)
+    return metadata
 
 
 def _is_int_list(value: object) -> TypeGuard[list[int]]:
@@ -177,23 +180,23 @@ def _invalid_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, str] | N
     return None
 
 
-V2_ARRAY_UPGRADES: Final[tuple[Upgrade, ...]] = (_invalid_chunk_sizes_v2,)
-V3_ARRAY_UPGRADES: Final[tuple[Upgrade, ...]] = (
-    _invalid_inner_chunk_sizes_v3,
-    _invalid_chunk_sizes_v3,
-)
+ARRAY_UPGRADES: Final[Mapping[ZarrFormat, tuple[Upgrade, ...]]] = {
+    2: (_invalid_chunk_sizes_v2,),
+    3: (_invalid_inner_chunk_sizes_v3, _invalid_chunk_sizes_v3),
+}
+"""The upgrades of an array document of each Zarr format, applied in order."""
 
 
 def upgrade_array_document(
-    doc: ArrayDocument, upgrades: Sequence[Upgrade]
+    doc: ArrayDocument, zarr_format: ZarrFormat
 ) -> tuple[ArrayDocument, list[str]]:
-    """Apply `upgrades` to a stored array metadata document, in order.
+    """Apply the upgrades for `zarr_format` to a stored array metadata document.
 
     Returns the upgraded document and the readings of the upgrades that changed it,
-    for `warn_readings` once the document has been validated.
+    for `mark_upgraded` once the document has been validated.
     """
     readings: list[str] = []
-    for upgrade in upgrades:
+    for upgrade in ARRAY_UPGRADES[zarr_format]:
         upgraded = upgrade(doc)
         if upgraded is not None:
             doc, reading = upgraded

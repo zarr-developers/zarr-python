@@ -276,8 +276,13 @@ def _default_zarr_format() -> ZarrFormat:
     return cast("ZarrFormat", int(zarr_config.get("default_zarr_format", 3)))
 
 
+def _subject(name: str, axis: int | None) -> str:
+    """`name` as the subject of an error message, prefixed by the dimension `axis`."""
+    return name[0].upper() + name[1:] if axis is None else f"Dimension {axis}: {name}"
+
+
 def _parse_positive_int(value: object, name: str, axis: int | None) -> int:
-    subject = name[0].upper() + name[1:] if axis is None else f"Dimension {axis}: {name}"
+    subject = _subject(name, axis)
     if isinstance(value, bool) or not isinstance(value, int):
         raise TypeError(f"{subject} must be an int, got {value!r}")
     if value < 1:
@@ -295,10 +300,12 @@ def parse_chunk_edge(size: object, axis: int | None = None) -> int:
 
 
 def parse_chunk_shape(data: object) -> tuple[int, ...]:
-    """Check a regular chunk shape: one chunk edge length per axis (see `parse_chunk_edge`)."""
-    if not isinstance(data, Iterable):
-        raise TypeError(f"A chunk shape must be a sequence of chunk edge lengths, got {data!r}")
-    return tuple(parse_chunk_edge(size, axis) for axis, size in enumerate(data))
+    """Check a regular chunk shape: a list or tuple of one chunk edge length per axis
+    (see `parse_chunk_edge`)."""
+    match data:
+        case list() | tuple():
+            return tuple(parse_chunk_edge(size, axis) for axis, size in enumerate(data))
+    raise TypeError(f"A chunk shape must be a list or tuple of chunk edge lengths, got {data!r}")
 
 
 def expand_rle(data: Sequence[object], axis: int | None = None) -> list[int]:
@@ -313,7 +320,8 @@ def expand_rle(data: Sequence[object], axis: int | None = None) -> list[int]:
     for item in data:
         if isinstance(item, list):
             if len(item) != 2:
-                raise ValueError(f"RLE entries must be an integer or [size, count], got {item}")
+                subject = _subject("RLE entries", axis)
+                raise ValueError(f"{subject} must be an integer or [size, count], got {item}")
             size, count = item
             repeat = _parse_positive_int(count, "RLE repeat count", axis)
             result.extend([parse_chunk_edge(size, axis)] * repeat)

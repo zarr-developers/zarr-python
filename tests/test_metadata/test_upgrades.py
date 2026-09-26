@@ -6,30 +6,31 @@ import asyncio
 import json
 import re
 import warnings
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import pytest
 
 import zarr
 from zarr.codecs import ShardingCodec
+from zarr.core.array import AsyncArray
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.upgrades import (
     RESAVE_HINT,
-    V2_ARRAY_UPGRADES,
-    V3_ARRAY_UPGRADES,
     upgrade_array_document,
 )
 from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
 from zarr.core.sync import sync
 from zarr.dtype import Int16
 from zarr.errors import ZarrUserWarning
+from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from zarr.core.common import JSON
+    from zarr.core.common import JSON, ZarrFormat
+    from zarr.types import AnyArray
 
 
 def _v2_doc(shape: list[int], chunks: list[Any]) -> dict[str, JSON]:
@@ -168,8 +169,7 @@ def test_upgrade_array_document(
     `from_dict` warns once for the document, naming the array, saying how each part was
     read (and that the array holds only its fill value where a chunk size of 0 was
     stored for a non-empty axis) and how to re-save."""
-    upgrades = V2_ARRAY_UPGRADES if doc["zarr_format"] == 2 else V3_ARRAY_UPGRADES
-    upgraded, readings = upgrade_array_document(doc, upgrades)
+    upgraded, readings = upgrade_array_document(doc, cast("ZarrFormat", doc["zarr_format"]))
     assert {k: v for k, v in upgraded.items() if k not in ("chunks", "chunk_grid", "codecs")} == {
         k: v for k, v in doc.items() if k not in ("chunks", "chunk_grid", "codecs")
     }
@@ -204,7 +204,7 @@ def test_invalid_upgraded_document_raises_without_warning(doc: dict[str, JSON], 
     """A document the upgrades read that the metadata constructor then rejects raises
     that error, without first warning how it was read."""
     metadata_cls = ArrayV2Metadata if doc["zarr_format"] == 2 else ArrayV3Metadata
-    assert upgrade_array_document(doc, V2_ARRAY_UPGRADES + V3_ARRAY_UPGRADES)[1]
+    assert upgrade_array_document(doc, cast("ZarrFormat", doc["zarr_format"]))[1]
     with warnings.catch_warnings():
         warnings.simplefilter("error", ZarrUserWarning)
         with pytest.raises(ValueError, match=error):
@@ -306,10 +306,25 @@ def test_metadata_rejects_chunk_edge_below_one(site: str, size: int) -> None:
             CHUNK_EDGE_SITES[site](size)
 
 
-@pytest.mark.parametrize("chunks", [4, np.int64(4)])
-def test_v2_constructor_rejects_scalar_chunks(chunks: object) -> None:
-    with pytest.raises(TypeError, match="A chunk shape must be a sequence of chunk edge lengths"):
-        _v2_metadata(chunks)
+CHUNK_SHAPE_SITES: dict[str, Callable[[Any], object]] = {
+    "regular": lambda chunk_shape: RegularChunkGridMetadata(chunk_shape=chunk_shape),
+    "v2": _v2_metadata,
+    "sharding-inner": lambda chunk_shape: ShardingCodec(chunk_shape=chunk_shape),
+}
+
+
+@pytest.mark.parametrize("site", CHUNK_SHAPE_SITES)
+@pytest.mark.parametrize("chunk_shape", [4, np.int64(4), "10", {"a": 1}, range(1, 2)])
+def test_metadata_rejects_chunk_shape_not_list_or_tuple(site: str, chunk_shape: object) -> None:
+    """A regular chunk shape is a list or tuple; anything else is rejected as a whole,
+    not iterated as if its elements were chunk edge lengths."""
+    with pytest.raises(
+        TypeError,
+        match=re.escape(
+            f"A chunk shape must be a list or tuple of chunk edge lengths, got {chunk_shape!r}"
+        ),
+    ):
+        CHUNK_SHAPE_SITES[site](chunk_shape)
 
 
 def _rewrite_doc(path: Path, zarr_format: Literal[2, 3], edit: Any) -> None:
@@ -424,11 +439,105 @@ def test_write_stores_upgraded_metadata_first(
 
         sync(write_twice())
 
+    assert not arr.metadata._stored_document_upgraded
     with warnings.catch_warnings():
         warnings.simplefilter("error", ZarrUserWarning)
         reopened = zarr.open_array(store=path, mode="r")
     assert (reopened.shards or reopened.chunks) == expected
     np.testing.assert_array_equal(reopened[...], data)
+
+
+def _legacy_array(path: Path, zarr_format: Literal[2, 3]) -> None:
+    """Store an array of shape (3,) whose stored chunk shape is `[0]`."""
+    zarr.create_array(store=path, shape=(3,), chunks=(3,), dtype="int16", zarr_format=zarr_format)
+    _rewrite_doc(
+        path,
+        zarr_format,
+        lambda doc: (
+            doc.update(chunks=[0])
+            if zarr_format == 2
+            else doc["chunk_grid"]["configuration"].update(chunk_shape=[0])
+        ),
+    )
+
+
+def _open_strictly(path: Path) -> AnyArray:
+    """Open the array at `path`, failing on any warning that its document was upgraded."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ZarrUserWarning)
+        array = zarr.open_array(store=path, mode="r")
+    assert isinstance(array, zarr.Array)
+    return array
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_stale_handle_write_keeps_newer_metadata(
+    tmp_path: Path, zarr_format: Literal[2, 3]
+) -> None:
+    """A handle read from an upgraded document stores the upgrade of what the store
+    holds when it first writes chunks; if another handle stored valid metadata since,
+    it stores no metadata and writes only its chunks."""
+    path = tmp_path / "legacy.zarr"
+    _legacy_array(path, zarr_format)
+    with pytest.warns(ZarrUserWarning, match="is read as"):
+        stale = zarr.open_array(store=path, mode="r+")
+    with pytest.warns(ZarrUserWarning, match="is read as"):
+        other = zarr.open_array(store=path, mode="r+")
+    other.append(np.arange(1, 7, dtype="int16"))
+    other.attrs["x"] = 1
+
+    stale[0] = 9
+
+    assert not stale.metadata._stored_document_upgraded
+    reopened = _open_strictly(path)
+    assert reopened.shape == (9,)
+    assert reopened.attrs.asdict() == {"x": 1}
+    np.testing.assert_array_equal(reopened[...], [9, 0, 0, 1, 2, 3, 4, 5, 6])
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_empty_write_stores_no_metadata(tmp_path: Path, zarr_format: Literal[2, 3]) -> None:
+    """A write of an empty selection stores no chunks, so it stores no metadata either."""
+    path = tmp_path / "legacy.zarr"
+    _legacy_array(path, zarr_format)
+    documents = {p.name: p.read_bytes() for p in path.iterdir()}
+    with pytest.warns(ZarrUserWarning, match="is read as"):
+        array = zarr.open_array(store=path, mode="r+")
+
+    array[0:0] = np.empty(0, dtype="int16")
+
+    assert array.metadata._stored_document_upgraded
+    assert {p.name: p.read_bytes() for p in path.iterdir()} == documents
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_async_array_from_dict_names_array(tmp_path: Path, zarr_format: Literal[2, 3]) -> None:
+    """`AsyncArray.from_dict` names the array at its store path in the upgrade warning."""
+    store_path = sync(make_store_path(tmp_path / "legacy.zarr"))
+    doc = _v2_doc([4], [0]) if zarr_format == 2 else _v3_doc([4], [0])
+    with pytest.warns(ZarrUserWarning, match=f"^Array {re.escape(repr(str(store_path)))}: "):
+        AsyncArray.from_dict(store_path, doc)
+
+
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_consolidate_stores_upgraded_members(tmp_path: Path, zarr_format: Literal[2, 3]) -> None:
+    """Consolidating a group stores the upgrade of every member document that needed
+    one before the consolidated document, so chunks written through the consolidated
+    metadata are stored under a member document that agrees with it."""
+    path = tmp_path / "group.zarr"
+    zarr.open_group(path, mode="w", zarr_format=zarr_format)
+    _legacy_array(path / "a", zarr_format)
+    with pytest.warns(ZarrUserWarning, match="is read as"):
+        zarr.consolidate_metadata(path)
+
+    member = _open_strictly(path / "a")
+    assert member.chunks == (3,)
+    group = zarr.open_group(path, mode="r+", use_consolidated=True)
+    array = group["a"]
+    assert isinstance(array, zarr.Array)
+    array[:] = [7, 8, 9]
+    np.testing.assert_array_equal(_open_strictly(path / "a")[...], [7, 8, 9])
 
 
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
