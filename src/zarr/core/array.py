@@ -1609,10 +1609,19 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return out_array
 
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
-        """
-        Asynchronously save the array metadata.
-        """
+        """Store `metadata` as this array's own documents (creating the array, setting
+        its attributes; resizing stores the documents it encoded before deleting chunks,
+        then clears the mark the same way)."""
         await save_metadata(self.store_path, metadata, ensure_parents=ensure_parents)
+        self._stored_document_replaced()
+
+    def _stored_document_replaced(self) -> None:
+        """Record that the store no longer holds a document of this array that needs an
+        upgrade: it holds the upgrade, a valid document, or none. The metadata this handle
+        holds, which a consolidated group handle may share, then stops standing for the
+        document it was read from (see `mark_upgraded`), so no later write through either
+        handle stores that document again."""
+        object.__setattr__(self.metadata, "_stored_document", None)
 
     async def _store_upgraded_document(self) -> None:
         """Store the upgrade of this array's current stored document, if it needs one,
@@ -1644,7 +1653,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 )
             if current._stored_document is not None:
                 await upsert_metadata(self.store_path, current, documents)
-        object.__setattr__(self.metadata, "_stored_document", None)
+        self._stored_document_replaced()
 
     async def _set_selection(
         self,
@@ -5920,6 +5929,7 @@ async def _resize(
 
     # Write new metadata
     await store_documents(array.store_path, documents)
+    array._stored_document_replaced()
 
     # Update metadata and chunk_grid (in place)
     object.__setattr__(array, "metadata", new_metadata)
@@ -6011,7 +6021,7 @@ async def _update_attributes(
     array.metadata.attributes.update(new_attributes)
 
     # Write new metadata
-    await save_metadata(array.store_path, array.metadata)
+    await array._save_metadata(array.metadata)
 
     return array
 
