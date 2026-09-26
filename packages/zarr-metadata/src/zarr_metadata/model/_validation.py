@@ -17,7 +17,7 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Final, Literal, TypeVar, cast
+from typing import Final, Literal, TypeVar, cast, get_args
 
 from typing_extensions import TypeIs
 
@@ -55,6 +55,26 @@ class ValidationProblem:
     message: str
     kind: ProblemKind
 
+    def __post_init__(self) -> None:
+        # The runtime half of the annotations: a rule written without a type
+        # checker, as an extension's may be, fails where it builds a problem
+        # rather than reporting one at a location that is not one.
+        loc = cast("object", self.loc)
+        if not isinstance(loc, tuple) or not all(
+            isinstance(part, str) or (isinstance(part, int) and not isinstance(part, bool))
+            for part in cast("tuple[object, ...]", loc)
+        ):
+            msg = f"a ValidationProblem's loc is a tuple of keys and indices, got {loc!r}"
+            raise TypeError(msg)
+        message = cast("object", self.message)
+        if not isinstance(message, str):
+            msg = f"a ValidationProblem's message is a string, got {message!r}"
+            raise TypeError(msg)
+        kind = cast("object", self.kind)
+        if not isinstance(kind, str) or kind not in get_args(ProblemKind):
+            msg = f"a ValidationProblem's kind is one of {get_args(ProblemKind)!r}, got {kind!r}"
+            raise TypeError(msg)
+
     def __str__(self) -> str:
         location = ".".join(str(part) for part in self.loc) if self.loc else "<root>"
         return f"{location}: {self.message}"
@@ -72,6 +92,16 @@ class MetadataValidationError(ValueError):
 
     def __init__(self, problems: Sequence[ValidationProblem]) -> None:
         self.problems = tuple(problems)
+        for entry in cast("tuple[object, ...]", self.problems):
+            # The runtime half of the annotation: a caller that is not
+            # type-checked, and hands over anything else, fails here
+            # rather than far away, where a `loc` is read off it.
+            if not isinstance(entry, ValidationProblem):
+                msg = (
+                    "MetadataValidationError takes ValidationProblem values, "
+                    f"got {type(entry).__name__}"
+                )
+                raise TypeError(msg)
         super().__init__("\n".join(str(problem) for problem in self.problems))
 
     def __reduce__(
