@@ -255,6 +255,17 @@ def test_stored_chunk_shape_ndim_mismatch_rejected() -> None:
         _read_strictly(_v3_doc([4, 4], [0]))
 
 
+@pytest.mark.parametrize("inner", [[0], [False]])
+def test_stored_zero_chunk_size_of_shard_with_invalid_inner_chunk_shape_rejected(
+    inner: list[Any],
+) -> None:
+    """A stored chunk size of 0 of a sharded array is read in multiples of the inner
+    chunk size; if that is not an integer of at least 1, the 0 is not upgraded, so it
+    is rejected."""
+    with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got 0$"):
+        _read_strictly(_v3_doc([4], [0], inner=inner))
+
+
 def _rectilinear_doc(shape: list[int], chunk_shapes: list[Any]) -> dict[str, JSON]:
     return _v3_doc(shape, [1] * len(shape)) | {
         "chunk_grid": {
