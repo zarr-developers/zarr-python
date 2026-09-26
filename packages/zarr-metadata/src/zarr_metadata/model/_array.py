@@ -328,7 +328,10 @@ class ZarrV3ArrayMetadata:
     def to_key_value(
         self, *, indent: int | str | None = None
     ) -> Mapping[ZarrV3ArrayMetadataStoreKey, bytes]:
-        return {ZARR_V3_ARRAY_METADATA_STORE_KEY: dump_store_json(self.to_json(), indent=indent)}
+        # A model built by hand is not validated: its document is written only
+        # if it reads as `from_json` reads one, and every problem is raised.
+        document = parse_array_metadata_v3(self.to_json())
+        return {ZARR_V3_ARRAY_METADATA_STORE_KEY: dump_store_json(document, indent=indent)}
 
 
 class ZarrV2ArrayMetadataPartial(TypedDict, total=False):
@@ -493,11 +496,16 @@ class ZarrV2ArrayMetadata:
     ) -> Mapping[ZarrV2ArrayMetadataStoreKey | ZarrV2AttributesStoreKey, bytes]:
         # Attributes live only in the sibling `.zattrs` file; the `.zarray`
         # document must exclude them. The `.zattrs` key is present exactly
-        # when attributes are set (even empty) — UNSET emits no file.
-        zarray = {k: v for k, v in self.to_json().items() if k != "attributes"}
+        # when attributes are set (even empty) — UNSET emits no file. A model
+        # built by hand is not validated: its document is written only if it
+        # reads as `from_json` reads one, and every problem is raised.
+        document = parse_array_metadata_v2(self.to_json())
+        zarray = {k: v for k, v in document.items() if k != "attributes"}
         out: dict[ZarrV2ArrayMetadataStoreKey | ZarrV2AttributesStoreKey, bytes] = {
             ZARR_V2_ARRAY_METADATA_STORE_KEY: dump_store_json(zarray, indent=indent)
         }
-        if self.attributes is not UNSET:
-            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = dump_store_json(self.attributes, indent=indent)
+        if "attributes" in document:
+            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = dump_store_json(
+                document["attributes"], indent=indent
+            )
         return out

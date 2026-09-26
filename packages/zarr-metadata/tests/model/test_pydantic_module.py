@@ -6,11 +6,12 @@ parallel hierarchy), so values interoperate freely with non-pydantic code.
 """
 
 import json
+import math
 import warnings
 
 import pytest
 from jsonschema import Draft202012Validator
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
 import zarr_metadata.pydantic as zmp
 from zarr_metadata.model import (
@@ -273,3 +274,18 @@ def test_core_package_does_not_import_pydantic() -> None:
 
     code = "import sys, zarr_metadata; assert 'pydantic' not in sys.modules, 'leaked'"
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_a_non_finite_attribute_is_kept_by_constants_serialization() -> None:
+    """Pydantic writes a non-finite number as `null` unless the enclosing
+    model spells it as the store does; the module docstring says how."""
+
+    class Manifest(BaseModel):
+        model_config = ConfigDict(ser_json_inf_nan="constants")
+        metadata: zmp.ZarrV3GroupMetadata
+
+    document = b'{"metadata": {"zarr_format": 3, "node_type": "group", "attributes": {"x": NaN}}}'
+    written = Manifest.model_validate_json(document).model_dump_json()
+    held = Manifest.model_validate_json(written).metadata.attributes["x"]
+    assert isinstance(held, float)
+    assert math.isnan(held)
