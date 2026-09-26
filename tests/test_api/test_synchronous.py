@@ -70,31 +70,27 @@ def test_docstrings_match(callable_name: str) -> None:
         ),
         pytest.param(
             (
-                (
-                    "filters",
-                    "codecs",
-                    "compressors",
-                    "compressor",
-                    "chunks",
-                    "shape",
-                    "dtype",
-                    "shardsfill_value",
-                )
+                "filters",
+                "codecs",
+                "compressors",
+                "chunks",
+                "shape",
+                "dtype",
+                "shards",
+                "fill_value",
             ),
             (
-                asynchronous.create,
-                synchronous.create,
                 asynchronous.create_array,
                 synchronous.create_array,
                 zarr.AsyncGroup.create_array,
                 zarr.Group.create_array,
             ),
-            id="encoding-params-create_and_array",
+            id="encoding-params-create_array_variants",
         ),
     ],
 )
 def test_docstring_consistent_parameters(
-    parameter_name: str, array_creation_routines: tuple[Callable[[Any], Any], ...]
+    parameter_name: tuple[str, ...], array_creation_routines: tuple[Callable[[Any], Any], ...]
 ) -> None:
     """
     Tests that array and group creation routines document the same parameters consistently.
@@ -108,21 +104,22 @@ def test_docstring_consistent_parameters(
     identical across different routines. But if these dicts have multiple values, then there must be
     routines that use the same parameter but document it differently, which will trigger a test failure.
     """
-    descs: dict[tuple[str, ...], tuple[str, ...]] = {}
-    types: dict[str, tuple[str, ...]] = {}
-    for routine in array_creation_routines:
-        key = f"{routine.__module__}.{routine.__qualname__}"
-        docstring = NumpyDocString(routine.__doc__)
-        param_dict = {d.name: d for d in docstring["Parameters"]}
-        if parameter_name in param_dict:
-            val = param_dict[parameter_name]
-            if tuple(val.desc) in descs:
-                descs[tuple(val.desc)] = descs[tuple(val.desc)] + (key,)
-            else:
-                descs[tuple(val.desc)] = (key,)
-            if val.type in types:
-                types[val.type] = types[val.type] + (key,)
-            else:
-                types[val.type] = (key,)
-    assert len(descs) <= 1
-    assert len(types) <= 1
+    for pname in parameter_name:
+        descs: dict[tuple[str, ...], tuple[str, ...]] = {}
+        types: dict[str, tuple[str, ...]] = {}
+        for routine in array_creation_routines:
+            key = f"{routine.__module__}.{routine.__qualname__}"
+            docstring = NumpyDocString(routine.__doc__)
+            param_dict = {d.name: d for d in docstring["Parameters"]}
+            if pname in param_dict:
+                val = param_dict[pname]
+                if tuple(val.desc) in descs:
+                    descs[tuple(val.desc)] = descs[tuple(val.desc)] + (key,)
+                else:
+                    descs[tuple(val.desc)] = (key,)
+                if val.type in types:
+                    types[val.type] = types[val.type] + (key,)
+                else:
+                    types[val.type] = (key,)
+        assert len(descs) <= 1, f"parameter {pname!r} has inconsistent descriptions: {descs}"
+        assert len(types) <= 1, f"parameter {pname!r} has inconsistent types: {types}"
