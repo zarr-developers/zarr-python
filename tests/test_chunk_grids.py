@@ -108,6 +108,9 @@ def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
         ((np.array(5), np.int64(-1)), (10, 6), (5, 6)),
         # rectilinear chunks given as numpy arrays
         ((np.array([60, 40]), np.array([50, 50])), (100, 100), ((60, 40), (50, 50))),
+        # a Python `bool` inside a specification is an `int`: `True` is a chunk size of 1
+        ((True, 5), (10, 10), (1, 5)),
+        ([[True, 9], 10], (10, 10), ((1, 9), 10)),
     ],
 )
 def test_normalize_chunks(
@@ -306,17 +309,6 @@ def test_normalize_chunks_nd_errors(case: ExpectFail[tuple[Any, tuple[int, ...]]
     chunks, shape = case.input
     with case.raises():
         normalize_chunks_nd(chunks, shape)
-
-
-@pytest.mark.parametrize(
-    ("chunks", "as_ints"),
-    [((True, 5), (1, 5)), ([[True, 9], 10], [[1, 9], 10])],
-    ids=["bool-size", "bool-edge"],
-)
-def test_normalize_chunks_nd_reads_bool_as_int(chunks: Any, as_ints: Any) -> None:
-    """A Python `bool` inside a chunk specification is an `int`: `True` is a chunk size
-    of 1."""
-    assert normalize_chunks_nd(chunks, (10, 10)) == normalize_chunks_nd(as_ints, (10, 10))
 
 
 @pytest.mark.parametrize(
