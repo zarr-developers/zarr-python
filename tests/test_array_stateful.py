@@ -167,8 +167,12 @@ class ArrayLifecycle(RuleBasedStateMachine):
         with warnings.catch_warnings(record=True) as record:
             warnings.simplefilter("always", ZarrUserWarning)
             arr = zarr.open_array(self.store, path=self.path, mode="r+")
+        # A stored chunk size of 0 is read silently on an empty axis; on a non-empty one
+        # it warns that the axis holds only the fill value. Either way it is upgraded.
         warned = any(issubclass(w.category, ZarrUserWarning) for w in record)
-        assert warned is bool(self.legacy_axes), [str(w.message) for w in record]
+        must_warn = any(self.shape[axis] > 0 for axis in self.legacy_axes)
+        assert warned is must_warn, [str(w.message) for w in record]
+        assert arr.metadata._stored_document_upgraded is bool(self.legacy_axes)
         return arr
 
     # ----------------------------------------------------------------- model
