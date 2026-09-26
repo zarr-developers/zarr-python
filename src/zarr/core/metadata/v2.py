@@ -72,6 +72,9 @@ class ArrayV2Metadata(Metadata):
     compressor: Numcodec | None
     attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
+    _stored_document_upgraded: bool = field(default=False, init=False, compare=False, repr=False)
+    """Whether `from_dict` read this metadata from a stored document it had to upgrade,
+    so the store holds an invalid document until this metadata is stored."""
 
     def __init__(
         self,
@@ -184,7 +187,7 @@ class ArrayV2Metadata(Metadata):
         # zarr v2 allowed arbitrary keys here.
         # We don't want the ArrayV2Metadata constructor to fail just because someone put an
         # extra key in the metadata.
-        expected = {x.name for x in fields(cls)}
+        expected = {x.name for x in fields(cls) if x.init}
         expected |= {"dtype", "chunks"}
 
         # check if `filters` is an empty sequence; if so use None instead and raise a warning
@@ -206,6 +209,7 @@ class ArrayV2Metadata(Metadata):
 
         metadata = cls(**_data)
         warn_readings(readings, path)
+        object.__setattr__(metadata, "_stored_document_upgraded", bool(readings))
         return metadata
 
     def to_dict(self) -> dict[str, JSON]:

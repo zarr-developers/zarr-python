@@ -20,10 +20,13 @@ class Metadata:
         Recursively serialize this model to a dictionary.
         This method inspects the fields of self and calls `x.to_dict()` for any fields that
         are instances of `Metadata`. Sequences of `Metadata` are similarly recursed into, and
-        the output of that recursion is collected in a list.
+        the output of that recursion is collected in a list. Fields declared with
+        `compare=False` are not part of the document.
         """
         out_dict = {}
         for field in fields(self):
+            if not field.compare:
+                continue
             key = field.name
             value = getattr(self, key)
             if isinstance(value, Metadata):

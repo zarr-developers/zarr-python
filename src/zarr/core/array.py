@@ -1623,6 +1623,12 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         prototype: BufferPrototype,
         fields: Fields | None = None,
     ) -> None:
+        if self.metadata._stored_document_upgraded:
+            # Chunks are about to be stored under the upgraded metadata, so store it
+            # first: every reader of the store then agrees with them.
+            metadata = replace(self.metadata)
+            await self._save_metadata(metadata)
+            object.__setattr__(self, "metadata", metadata)
         return await _set_selection(
             self.store_path,
             self.metadata,
@@ -1674,16 +1680,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         - This method is asynchronous and should be awaited.
         - Supports basic indexing, where the selection is contiguous and does not involve advanced indexing.
         """
-        return await _setitem(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
-            self._chunk_grid,
-            selection,
-            value,
-            prototype=prototype,
-        )
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = BasicIndexer(selection, shape=self.metadata.shape, chunk_grid=self._chunk_grid)
+        return await self._set_selection(indexer, value, prototype=prototype)
 
     @property
     def oindex(self) -> AsyncOIndex[T_ArrayMetadata]:

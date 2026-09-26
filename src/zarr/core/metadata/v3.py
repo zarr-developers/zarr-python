@@ -478,6 +478,9 @@ class ArrayV3Metadata(Metadata):
     node_type: Literal["array"] = field(default="array", init=False)
     storage_transformers: tuple[dict[str, JSON], ...]
     extra_fields: dict[str, AllowedExtraField]
+    _stored_document_upgraded: bool = field(default=False, init=False, compare=False, repr=False)
+    """Whether `from_dict` read this metadata from a stored document it had to upgrade,
+    so the store holds an invalid document until this metadata is stored."""
 
     def __init__(
         self,
@@ -678,6 +681,7 @@ class ArrayV3Metadata(Metadata):
             storage_transformers=_data_typed.get("storage_transformers", ()),  # type: ignore[arg-type]
         )
         warn_readings(readings, path)
+        object.__setattr__(metadata, "_stored_document_upgraded", bool(readings))
         return metadata
 
     def to_dict(self) -> dict[str, JSON]:

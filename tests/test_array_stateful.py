@@ -30,6 +30,7 @@ from hypothesis.stateful import (
     RuleBasedStateMachine,
     initialize,
     invariant,
+    precondition,
     rule,
 )
 
@@ -46,6 +47,7 @@ pytestmark = [
 ]
 
 DTYPE = np.dtype("int16")
+METADATA_KEYS = (".zarray", ".zattrs", "zarr.json")
 MAX_SIDE = 6
 
 
@@ -65,6 +67,10 @@ def _rectilinear_dim(extent: int) -> st.SearchStrategy[int | list[int]]:
         lambda c: [b - a for a, b in zip([0, *sorted(c)], [*sorted(c), extent], strict=True)]
     )
     return steps | edges
+
+
+async def _list(store: MemoryStore, prefix: str) -> list[str]:
+    return [key async for key in store.list_prefix(prefix)]
 
 
 class ArrayLifecycle(RuleBasedStateMachine):
@@ -136,6 +142,11 @@ class ArrayLifecycle(RuleBasedStateMachine):
             stored_zero = data.draw(st.sampled_from([0, False]), label="stored zero")
             self._rewrite_stored_chunks(zarr_format, self.legacy_axes, stored_zero)
             event("legacy zero chunk size")
+        else:
+            # Re-saving valid metadata, as the warning tells users to, changes nothing.
+            arr = self._open()
+            arr.update_attributes({})
+            assert self._open().metadata == arr.metadata
 
     def _rewrite_stored_chunks(
         self, zarr_format: Literal[2, 3], axes: list[int], value: Any
@@ -233,9 +244,11 @@ class ArrayLifecycle(RuleBasedStateMachine):
     @rule(data=st.data())
     def resize(self, data: st.DataObject) -> None:
         arr = self._open()
-        new_shape = data.draw(
-            st.tuples(*(st.integers(0, MAX_SIDE) for _ in self.shape)), label="new shape"
-        )
+        extents = [st.integers(0, MAX_SIDE) for _ in self.shape]
+        for axis in self.legacy_axes:
+            # What a user of an older release did next: grow an axis stored with chunk size 0.
+            extents[axis] = st.integers(self.shape[axis] + 1, MAX_SIDE + 1) | extents[axis]
+        new_shape = data.draw(st.tuples(*extents), label="new shape")
         note(f"resize {self.shape} -> {new_shape}")
         if any(new_shape[axis] > self.shape[axis] for axis in self.legacy_axes):
             event("grow an axis stored with chunk size 0")
@@ -256,11 +269,14 @@ class ArrayLifecycle(RuleBasedStateMachine):
         note(f"write {region}")
         arr[region] = values
         self._model_write(arr, region, values)
+        # Writing chunks first stores the metadata they are written under.
+        self.legacy_axes = []
 
+    @precondition(lambda self: self.legacy_axes)
     @rule()
     def resave_metadata(self) -> None:
-        """What the warning for an invalid stored chunk size tells users to do. It stores
-        the metadata as read, which is a no-op for valid metadata."""
+        """What the warning for an invalid stored chunk size tells users to do: store
+        the metadata as read."""
         arr = self._open()
         read = arr.metadata
         arr.update_attributes({})
@@ -271,6 +287,14 @@ class ArrayLifecycle(RuleBasedStateMachine):
         self._rectilinear.__exit__(None, None, None)
 
     # ------------------------------------------------------------ invariants
+    @invariant()
+    def no_chunk_under_an_invalid_document(self) -> None:
+        """While the stored document is still one that is upgraded on read, which other
+        readers may reject or read differently, no chunk is stored under it."""
+        if self.legacy_axes:
+            keys = sync(_list(self.store, f"{self.path}/"))
+            assert set(keys) <= {f"{self.path}/{name}" for name in METADATA_KEYS}, keys
+
     @invariant()
     def matches_model(self) -> None:
         arr = self._open()

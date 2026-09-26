@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import warnings
@@ -20,6 +21,7 @@ from zarr.core.metadata.upgrades import (
     upgrade_array_document,
 )
 from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
+from zarr.core.sync import sync
 from zarr.dtype import Int16
 from zarr.errors import ZarrUserWarning
 
@@ -343,6 +345,64 @@ def test_legacy_chunk_size_round_trip(
         warnings.simplefilter("error", ZarrUserWarning)
         reopened = zarr.open_array(store=path)
     np.testing.assert_array_equal(reopened[...], np.concatenate([data, block]))
+
+
+@pytest.mark.parametrize(
+    ("zarr_format", "shape", "inner", "expected"),
+    [(2, (3,), None, (3,)), (3, (3,), None, (3,)), (3, (10,), (4,), (12,))],
+    ids=["v2", "v3", "v3-sharded"],
+)
+@pytest.mark.parametrize("api", ["sync", "async", "async-concurrent"])
+def test_write_stores_upgraded_metadata_first(
+    tmp_path: Path,
+    zarr_format: Literal[2, 3],
+    shape: tuple[int, ...],
+    inner: tuple[int, ...] | None,
+    expected: tuple[int, ...],
+    api: str,
+) -> None:
+    """Writing chunks to an array read from an upgraded document first stores the
+    upgraded metadata, so readers that do not upgrade (or read it differently) see
+    the chunks the write stored."""
+    path = tmp_path / "legacy.zarr"
+    zarr.create_array(
+        store=path,
+        shape=shape,
+        chunks=inner or expected,
+        shards=expected if inner else None,
+        dtype="int16",
+        fill_value=0,
+        zarr_format=zarr_format,
+    )
+    _rewrite_doc(
+        path,
+        zarr_format,
+        lambda doc: (
+            doc.update(chunks=[0])
+            if zarr_format == 2
+            else doc["chunk_grid"]["configuration"].update(chunk_shape=[0])
+        ),
+    )
+    data = np.arange(1, shape[0] + 1, dtype="int16")
+    with pytest.warns(ZarrUserWarning, match="is read as"):
+        arr = zarr.open_array(store=path, mode="r+")
+    if api == "sync":
+        arr[:] = data
+    elif api == "async":
+        sync(arr.async_array.setitem(slice(None), data))
+    else:
+
+        async def write_twice() -> None:
+            # Both writes find the metadata not yet stored, and both store it.
+            await asyncio.gather(*(arr.async_array.setitem(slice(None), data) for _ in "ab"))
+
+        sync(write_twice())
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ZarrUserWarning)
+        reopened = zarr.open_array(store=path, mode="r")
+    assert (reopened.shards or reopened.chunks) == expected
+    np.testing.assert_array_equal(reopened[...], data)
 
 
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
