@@ -357,30 +357,30 @@ class RectilinearChunkGridMetadata(Metadata):
 ChunkGridMetadata = RegularChunkGridMetadata | RectilinearChunkGridMetadata
 
 
-def _check_rectilinear_chunks_enabled() -> None:
-    """Raise unless rectilinear chunks are enabled.
+def _check_rectilinear_chunks_enabled(subject: str = "") -> None:
+    """Raise unless rectilinear chunks are enabled, with `subject` leading the error.
 
     The flag gates storing and reading array metadata documents that declare a
     rectilinear chunk grid; the chunk grid metadata classes themselves are not gated.
     """
     if not config.get("array.rectilinear_chunks"):
         raise ValueError(
-            "Rectilinear chunk grids are experimental and disabled by default. "
+            f"{subject}Rectilinear chunk grids are experimental and disabled by default. "
             "Enable them with: zarr.config.set({'array.rectilinear_chunks': True}) "
             "or set the environment variable ZARR_ARRAY__RECTILINEAR_CHUNKS=True"
         )
 
 
-def check_storable(metadata: ArrayV3Metadata) -> None:
+def check_storable(metadata: ArrayV3Metadata, subject: str = "") -> None:
     """Raise if `metadata` may not be stored: a rectilinear chunk grid requires the
-    rectilinear chunks flag.
+    rectilinear chunks flag. `subject`, when given, names the array in the error.
 
     Every serialization of array metadata for a store calls this, before the store is
     touched: `ArrayV3Metadata.to_buffer_dict` and, for the arrays in a group's
     consolidated metadata, `GroupMetadata.to_buffer_dict`.
     """
     if isinstance(metadata.chunk_grid, RectilinearChunkGridMetadata):
-        _check_rectilinear_chunks_enabled()
+        _check_rectilinear_chunks_enabled(subject)
 
 
 def create_chunk_grid_metadata(

@@ -24,6 +24,7 @@ from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGrid
 from zarr.core.sync import sync
 from zarr.dtype import Int16
 from zarr.errors import ZarrUserWarning
+from zarr.storage import LocalStore
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -538,9 +539,9 @@ def _mixed_doc(shape: list[int], chunk_shape: list[Any]) -> dict[str, JSON]:
             ),
         ),
         (
-            _mixed_doc([4, 10_000], [2, [10] * 1000]),
-            (2, (10,) * 1000),
-            r"^The stored chunk grid .* \[1\]",
+            _mixed_doc([4, 10_000], [True, [10] * 1000]),
+            (1, (10,) * 1000),
+            r"^The stored chunk shape \[true, \[10, 10, .*\.\.\. is invalid: .* read as \[1, \[10, .*\.\.\.,",
         ),
     ],
     ids=[
@@ -627,9 +628,25 @@ def _store_mixed_array(path: Path) -> np.ndarray[Any, np.dtype[np.float32]]:
     return data
 
 
-def test_edge_lists_in_regular_grid_round_trip(tmp_path: Path) -> None:
-    """A store holding the verbatim document opens without the rectilinear chunks flag,
-    reads its data, re-saves as rectilinear with the flag, and then opens cleanly."""
+def _update_attributes(arr: zarr.Array[Any], data: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+    arr.update_attributes({})
+    return data
+
+
+def _write(arr: zarr.Array[Any], data: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+    arr[:2] = -data[:2]
+    return np.concatenate([-data[:2], data[2:]])
+
+
+@pytest.mark.parametrize("store_metadata", [_update_attributes, _write], ids=["re-save", "write"])
+def test_edge_lists_in_regular_grid_round_trip(
+    tmp_path: Path,
+    store_metadata: Callable[[zarr.Array[Any], np.ndarray[Any, Any]], np.ndarray[Any, Any]],
+) -> None:
+    """A store holding the verbatim document opens without the rectilinear chunks flag
+    and reads its data. With the flag, re-saving the metadata, or writing chunks (which
+    stores the metadata first), stores the rectilinear chunk grid, which then opens
+    cleanly."""
     path = tmp_path / "mixed.zarr"
     data = _store_mixed_array(path)
 
@@ -641,7 +658,7 @@ def test_edge_lists_in_regular_grid_round_trip(tmp_path: Path) -> None:
     np.testing.assert_array_equal(arr[...], data)
 
     with zarr.config.set({"array.rectilinear_chunks": True}):
-        arr.update_attributes({})
+        expected = store_metadata(arr, data)
         assert json.loads((path / "zarr.json").read_text())["chunk_grid"] == {
             "name": "rectilinear",
             "configuration": {"kind": "inline", "chunk_shapes": [2, [5, 10, 5]]},
@@ -649,42 +666,83 @@ def test_edge_lists_in_regular_grid_round_trip(tmp_path: Path) -> None:
         with warnings.catch_warnings():
             warnings.simplefilter("error", ZarrUserWarning)
             reopened = zarr.open_array(path)
-    np.testing.assert_array_equal(reopened[...], data)
+    np.testing.assert_array_equal(reopened[...], expected)
 
 
-def test_resize_without_flag_leaves_store_intact(tmp_path: Path) -> None:
-    """Resizing an array read from the verbatim document without the flag cannot store
-    its metadata, and fails before deleting any chunk."""
-    path = tmp_path / "mixed.zarr"
-    data = _store_mixed_array(path)
+def _store_mixed_group(path: Path) -> None:
+    """A group at `path` holding the verbatim document at `mixed` and a regular array
+    `n`, with consolidated metadata that quotes the verbatim document."""
+    group = zarr.open_group(path, mode="w")
+    _store_mixed_array(path / "mixed")
+    group.create_array("n", data=np.arange(4), chunks=(2,))
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        zarr.consolidate_metadata(path)
+    group_doc = json.loads((path / "zarr.json").read_text())
+    group_doc["consolidated_metadata"]["metadata"]["mixed"] = json.loads(MIXED_REGULAR_GRID_DOC)
+    (path / "zarr.json").write_text(json.dumps(group_doc))
+
+
+def _resize(path: Path) -> None:
+    zarr.open_array(path / "mixed", mode="a").resize((6, 5))
+
+
+def _write_chunks(path: Path) -> None:
+    zarr.open_array(path / "mixed", mode="a")[...] = 1
+
+
+def _delete_member(path: Path) -> None:
+    del zarr.open_group(path, mode="a")["n"]
+
+
+def _overwrite_hierarchy(path: Path) -> None:
+    mixed = zarr.open_array(path / "mixed")
+    list(zarr.create_hierarchy(store=LocalStore(path), nodes={"n": mixed.metadata}, overwrite=True))
+
+
+@pytest.mark.filterwarnings(
+    "ignore:.*read as that rectilinear chunk grid:zarr.errors.ZarrUserWarning"
+)
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+@pytest.mark.parametrize(
+    "action",
+    [_resize, _write_chunks, _delete_member, _overwrite_hierarchy],
+    ids=["resize", "write", "delete-member", "overwrite-hierarchy"],
+)
+def test_store_untouched_without_flag(tmp_path: Path, action: Callable[[Path], None]) -> None:
+    """An operation that would store the rectilinear chunk grid read from the verbatim
+    document fails without the flag before it deletes or writes anything."""
+    path = tmp_path / "group.zarr"
+    _store_mixed_group(path)
     stored = {p: p.read_bytes() for p in path.rglob("*") if p.is_file()}
-    with zarr.config.set({"array.rectilinear_chunks": False}):
-        with pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"):
-            arr = zarr.open_array(path, mode="a")
-        with pytest.raises(ValueError, match="experimental and disabled by default"):
-            arr.resize((6, 5))
+    with (
+        zarr.config.set({"array.rectilinear_chunks": False}),
+        pytest.raises(ValueError, match="experimental and disabled by default"),
+    ):
+        action(path)
     assert {p: p.read_bytes() for p in path.rglob("*") if p.is_file()} == stored
-    assert arr.shape == data.shape
-    np.testing.assert_array_equal(arr[...], data)
 
 
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
-def test_consolidate_without_flag_leaves_group_readable(tmp_path: Path) -> None:
+@pytest.mark.parametrize("member", ["mixed", "sub/mixed"])
+def test_consolidate_without_flag_leaves_group_readable(tmp_path: Path, member: str) -> None:
     """Consolidating a group holding an array read from the verbatim document would
-    store its rectilinear chunk grid, so without the flag it fails with the store
-    untouched, and the group still opens without the flag."""
+    store its rectilinear chunk grid, so without the flag it fails, naming the array,
+    with the store untouched, and the group still opens without the flag."""
     path = tmp_path / "group.zarr"
-    zarr.open_group(path, mode="w")
-    data = _store_mixed_array(path / "mixed")
+    zarr.open_group(path, mode="w").create_group("sub")
+    data = _store_mixed_array(path / member)
     group_doc = (path / "zarr.json").read_bytes()
     with zarr.config.set({"array.rectilinear_chunks": False}):
         with (
             pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"),
-            pytest.raises(ValueError, match="experimental and disabled by default"),
+            pytest.raises(
+                ValueError,
+                match=f"^Array '{member}' in the consolidated metadata: .* experimental and",
+            ),
         ):
             zarr.consolidate_metadata(path)
         assert (path / "zarr.json").read_bytes() == group_doc
         with pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"):
-            mixed = zarr.open_group(path, mode="r")["mixed"]
+            mixed = zarr.open_group(path, mode="r")[member]
     assert isinstance(mixed, zarr.Array)
     np.testing.assert_array_equal(mixed[...], data)

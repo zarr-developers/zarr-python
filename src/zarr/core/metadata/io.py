@@ -9,6 +9,9 @@ from zarr.errors import ContainsArrayError
 from zarr.storage._common import StorePath, ensure_no_existing_node
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from zarr.core.buffer import Buffer
     from zarr.core.common import ZarrFormat
     from zarr.core.group import GroupMetadata
     from zarr.core.metadata import ArrayMetadata
@@ -31,6 +34,17 @@ def _build_parents(store_path: StorePath, zarr_format: ZarrFormat) -> dict[str, 
         parents[parent_path] = GroupMetadata(zarr_format=zarr_format)
 
     return parents
+
+
+async def store_documents(store_path: StorePath, documents: Mapping[str, Buffer]) -> None:
+    """Store metadata documents encoded by `to_buffer_dict` under `store_path`.
+
+    An operation that deletes or overwrites store content encodes the documents it will
+    store first, so that metadata that cannot be stored fails with the store untouched.
+    """
+    await asyncio.gather(
+        *(set_or_delete(store_path / key, value) for key, value in documents.items())
+    )
 
 
 async def save_metadata(

@@ -48,7 +48,7 @@ from zarr.core.config import config
 from zarr.core.dtype import parse_data_type
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.io import save_metadata
+from zarr.core.metadata.io import save_metadata, store_documents
 from zarr.core.metadata.v3 import check_storable
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
@@ -362,9 +362,9 @@ class GroupMetadata(Metadata):
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         if self.consolidated_metadata is not None:
-            for member in self.consolidated_metadata.flattened_metadata.values():
+            for path, member in self.consolidated_metadata.flattened_metadata.items():
                 if isinstance(member, ArrayV3Metadata):
-                    check_storable(member)
+                    check_storable(member, f"Array {path!r} in the consolidated metadata: ")
         indent = config.get("json_indent")
         if self.zarr_format == 3:
             return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype, indent=indent)}
@@ -811,11 +811,20 @@ class AsyncGroup:
             Array or group name
         """
         store_path = self.store_path / key
-
+        consolidated = self.metadata.consolidated_metadata
+        if consolidated is None:
+            await store_path.delete_dir()
+            return
+        members = {name: node for name, node in consolidated.metadata.items() if name != key}
+        metadata = replace(
+            self.metadata, consolidated_metadata=replace(consolidated, metadata=members)
+        )
+        # Encode the group metadata before deleting the member: metadata that cannot be
+        # stored then fails with the store untouched.
+        documents = metadata.to_buffer_dict(default_buffer_prototype())
         await store_path.delete_dir()
-        if self.metadata.consolidated_metadata:
-            self.metadata.consolidated_metadata.metadata.pop(key, None)
-            await self._save_metadata()
+        await store_documents(self.store_path, documents)
+        object.__setattr__(self, "metadata", metadata)
 
     async def get[DefaultT](
         self, key: str, default: DefaultT | None = None
@@ -3090,6 +3099,7 @@ async def create_hierarchy(
     # ensure that all nodes have the same zarr_format, and add implicit groups as needed
     nodes_parsed = _parse_hierarchy_dict(data=nodes_normed_keys)
     redundant_implicit_groups = []
+    to_delete_keys: list[str] = []
 
     # empty hierarchies should be a no-op
     if len(nodes_parsed) > 0:
@@ -3122,13 +3132,7 @@ async def create_hierarchy(
         if overwrite:
             # we will remove any nodes that collide with arrays and non-implicit groups defined in
             # nodes
-
-            # track the keys of nodes we need to delete
-            to_delete_keys = []
-            to_delete_keys.extend(
-                [k for k, v in nodes_parsed.items() if k not in implicit_group_keys]
-            )
-            await asyncio.gather(*(store.delete_dir(key) for key in to_delete_keys))
+            to_delete_keys = [k for k in nodes_parsed if k not in implicit_group_keys]
         else:
             # This type is long.
             coros: (
@@ -3188,7 +3192,11 @@ async def create_hierarchy(
             else:
                 nodes_explicit[k] = v
 
-    async for key, node in create_nodes(store=store, nodes=nodes_explicit):
+    # Encode every node before deleting anything: a node whose metadata cannot be stored
+    # then fails with the store untouched.
+    documents = _encode_nodes(nodes_explicit)
+    await asyncio.gather(*(store.delete_dir(key) for key in to_delete_keys))
+    async for key, node in _store_nodes(store, nodes_explicit, documents):
         yield key, node
 
 
@@ -3218,15 +3226,35 @@ async def create_nodes(
     AsyncGroup | AsyncArray
         The created nodes in the order they are created.
     """
+    async for key, node in _store_nodes(store, nodes, _encode_nodes(nodes)):
+        yield key, node
 
+
+def _encode_nodes(
+    nodes: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+) -> dict[str, Buffer]:
+    """The metadata documents of `nodes`, by their keys in the store."""
+    prototype = default_buffer_prototype()
+    return {
+        _join_paths([path, key]): value
+        for path, metadata in nodes.items()
+        for key, value in metadata.to_buffer_dict(prototype).items()
+    }
+
+
+async def _store_nodes(
+    store: Store,
+    nodes: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+    documents: Mapping[str, Buffer],
+) -> AsyncIterator[tuple[str, AsyncGroup | AnyAsyncArray]]:
+    """Store the `documents` encoded from `nodes` (see `create_nodes`)."""
     # Note: the only way to alter this value is via the config. If that's undesirable for some reason,
     # then we should consider adding a keyword argument to this function
     semaphore = asyncio.Semaphore(config.get("async.concurrency"))
-    create_tasks: list[Coroutine[None, None, str]] = []
-
-    for key, value in nodes.items():
-        # make the key absolute
-        create_tasks.extend(_persist_metadata(store, key, value, semaphore=semaphore))
+    create_tasks = [
+        _set_return_key(store=store, key=key, value=value, semaphore=semaphore)
+        for key, value in documents.items()
+    ]
 
     created_object_keys = []
 
@@ -3737,23 +3765,6 @@ async def _set_return_key(
     else:
         await store.set(key, value)
     return key
-
-
-def _persist_metadata(
-    store: Store,
-    path: str,
-    metadata: ArrayV2Metadata | ArrayV3Metadata | GroupMetadata,
-    semaphore: asyncio.Semaphore | None = None,
-) -> tuple[Coroutine[None, None, str], ...]:
-    """
-    Prepare to save a metadata document to storage, returning a tuple of coroutines that must be awaited.
-    """
-
-    to_save = metadata.to_buffer_dict(default_buffer_prototype())
-    return tuple(
-        _set_return_key(store=store, key=_join_paths([path, key]), value=value, semaphore=semaphore)
-        for key, value in to_save.items()
-    )
 
 
 async def create_rooted_hierarchy(
