@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import math
-import numbers
 import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum
@@ -283,22 +282,20 @@ def _subject(name: str, axis: int | None) -> str:
 
 
 def _parse_positive_int(value: object, name: str, axis: int | None) -> int:
-    """`value` as an `int` of at least 1. An integer of any integer type (an `int`, a
-    `bool` or a NumPy integer) is read as the `int` it equals; a float is rejected, even
-    an integral one (stored documents with integral floats are read by
-    `zarr.core.metadata.upgrades`)."""
+    """`value` as an `int` of at least 1. A `bool` is read as the `int` it equals; any
+    other type, a NumPy integer or a float (even an integral one: stored documents with
+    integral floats are read by `zarr.core.metadata.upgrades`), is rejected."""
     subject = _subject(name, axis)
-    if not isinstance(value, numbers.Integral):
-        raise TypeError(f"{subject} must be an integer, got {value!r}")
-    parsed = int(value)
-    if parsed < 1:
+    if not isinstance(value, int):
+        raise TypeError(f"{subject} must be an int, got {value!r}")
+    if value < 1:
         raise ValueError(f"{subject} must be >= 1, got {value!r}")
-    return parsed
+    return int(value)
 
 
 def parse_chunk_edge(size: object, axis: int | None = None) -> int:
-    """Check that `size` is a chunk edge length: an integer of at least 1, read as an
-    `int`.
+    """Check that `size` is a chunk edge length: an `int` of at least 1 (a `bool` is
+    read as the `int` it equals).
 
     This is the one rule for chunk edge lengths in metadata: bare chunk sizes, explicit
     edges and run-length encoded sizes. `axis`, when given, is named in the error.
@@ -307,9 +304,11 @@ def parse_chunk_edge(size: object, axis: int | None = None) -> int:
 
 
 def parse_chunk_shape(data: object) -> tuple[int, ...]:
-    """Check a regular chunk shape: an iterable of one chunk edge length per axis
-    (see `parse_chunk_edge`)."""
+    """Check a regular chunk shape: an iterable, other than a string or a mapping, of one
+    chunk edge length per axis (see `parse_chunk_edge`)."""
     match data:
+        case str() | Mapping():
+            pass
         case Iterable():
             return tuple(parse_chunk_edge(size, axis) for axis, size in enumerate(data))
     raise TypeError(f"A chunk shape must be an iterable of chunk edge lengths, got {data!r}")
