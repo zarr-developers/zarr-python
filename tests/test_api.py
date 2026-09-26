@@ -356,6 +356,101 @@ def test_array_open_array_not_found_sync() -> None:
         Array.open(store)
 
 
+def _zarr_source(kind: str) -> AnyArray:
+    """A small zarr array of the given kind, filled with data."""
+    if kind == "rectilinear":
+        with zarr.config.set({"array.rectilinear_chunks": True}):
+            src = zarr.create_array({}, shape=(6,), chunks=[[2, 4]], dtype="int32")
+    elif kind == "string":
+        src = zarr.create_array({}, shape=(6,), chunks=(2,), dtype="str")
+        src[:] = np.array(list("abcdef"), dtype=object)
+        return src
+    elif kind == "sharded":
+        src = zarr.create_array({}, shape=(6,), chunks=(1,), shards=(2,), dtype="int32")
+    else:
+        src = zarr.create_array(
+            {}, shape=(6,), chunks=(2,), dtype="int32", zarr_format=2 if kind == "v2" else 3
+        )
+    src[:] = np.arange(6, dtype="int32")
+    return src
+
+
+_ARRAY_KWARGS = {
+    "none": {},
+    "store": {"store": "memory"},
+    "store-path-mode-attributes": {
+        "store": "memory",
+        "path": "a",
+        "mode": "w",
+        "attributes": {"x": 1},
+    },
+    "chunks": {"chunks": (3,)},
+    "zarr_format": {"zarr_format": 2},
+    "fill_value": {"fill_value": 5},
+}
+
+
+@pytest.mark.parametrize(
+    ("kind", "kwargs"),
+    [
+        pytest.param(kind, kwargs, id=f"{kind}-{name}")
+        for kind in ["v2", "v3", "sharded", "rectilinear", "string"]
+        for name, kwargs in _ARRAY_KWARGS.items()
+        # zarr format 2 has no rectilinear chunk grids
+        if not (kind == "rectilinear" and name == "zarr_format")
+    ],
+)
+def test_array_from_zarr_array(kind: str, kwargs: dict[str, Any]) -> None:
+    """
+    zarr.array accepts the same keyword arguments for a zarr array as for any other data:
+    the new array has the shape and data of the source, dtype and chunks default to those
+    of the source, and the rest are the arguments to `create`.
+    """
+    src = _zarr_source(kind)
+    if kwargs.get("store") == "memory":
+        kwargs = kwargs | {"store": MemoryStore()}
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        new = zarr.array(src, **kwargs)
+    assert new.shape == src.shape
+    assert_array_equal(new[:], src[:])
+    assert new._async_array._zdtype == src._async_array._zdtype
+    if "chunks" in kwargs:
+        assert new.chunks == kwargs["chunks"]
+    else:
+        # the new array is not sharded, so its chunks are the inner chunks of the source
+        assert new.read_chunk_sizes == (
+            src.read_chunk_sizes
+            if kind == "rectilinear"
+            else ((src.chunks[0],) * (src.shape[0] // src.chunks[0]),)
+        )
+    assert new.metadata.zarr_format == kwargs.get("zarr_format", 3)
+    assert new.attrs == kwargs.get("attributes", {})
+    if "fill_value" in kwargs:
+        assert new.fill_value == new._async_array._zdtype.cast_scalar(kwargs["fill_value"])
+    if "path" in kwargs:
+        assert new.path == kwargs["path"]
+
+
+def test_array_from_zarr_array_rectilinear_v2() -> None:
+    """
+    zarr.array raises for a zarr format 2 copy of a rectilinear zarr array, whose chunks
+    format 2 cannot represent.
+    """
+    with (
+        zarr.config.set({"array.rectilinear_chunks": True}),
+        pytest.raises(ValueError, match="Zarr format 2 does not support rectilinear chunk grids"),
+    ):
+        zarr.array(_zarr_source("rectilinear"), zarr_format=2)
+
+
+def test_array_from_zarr_array_read_only() -> None:
+    """
+    zarr.array raises for read_only=True with a zarr array, as it does for other data.
+    """
+    with pytest.raises(ValueError, match="read_only=True is no longer supported"):
+        zarr.array(_zarr_source("v3"), read_only=True)
+
+
 @pytest.mark.parametrize("store", ["memory", "local", "zip"], indirect=True)
 def test_v2_and_v3_exist_at_same_path(store: Store) -> None:
     zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=3)

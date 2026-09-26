@@ -400,9 +400,13 @@ def array(data: npt.ArrayLike | AnyArray, **kwargs: Any) -> AnyArray:
     Parameters
     ----------
     data : array_like
-        The data to fill the array with.
+        The data to fill the array with. A Zarr array is copied one region at a time rather
+        than read into memory.
     **kwargs
-        Passed through to [`create`][zarr.api.asynchronous.create].
+        Passed through to [`create`][zarr.api.asynchronous.create]. The shape of the new array
+        is that of `data`, and its dtype and chunks default to those of `data`. To also copy
+        the codecs and other settings of a Zarr array, use
+        [`from_array`][zarr.api.asynchronous.from_array].
 
     Returns
     -------
