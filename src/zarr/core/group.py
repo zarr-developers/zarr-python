@@ -831,6 +831,8 @@ class AsyncGroup:
         # subgroup's) sees the deletion.
         consolidated.metadata.pop(key, None)
         await store_node(self.store_path, encoded)
+        # Adopt the metadata stored: its consolidated members may be newer.
+        object.__setattr__(self, "metadata", encoded.metadata)
 
     async def get[DefaultT](
         self, key: str, default: DefaultT | None = None
@@ -919,7 +921,9 @@ class AsyncGroup:
         return node
 
     async def _save_metadata(self, ensure_parents: bool = False) -> None:
-        await save_metadata(self.store_path, self.metadata, ensure_parents=ensure_parents)
+        # Adopt the metadata stored: its consolidated members may be newer.
+        stored = await save_metadata(self.store_path, self.metadata, ensure_parents=ensure_parents)
+        object.__setattr__(self, "metadata", stored)
 
     @property
     def path(self) -> str:
@@ -2134,7 +2138,7 @@ class Group(SyncMixin):
         """
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
-        await save_metadata(self.store_path, new_metadata)
+        new_metadata = await save_metadata(self.store_path, new_metadata)
 
         async_group = replace(self._async_group, metadata=new_metadata)
         return replace(self, _async_group=async_group)
@@ -3051,6 +3055,8 @@ async def create_hierarchy(
     ```{'': GroupMetadata, 'a': GroupMetadata, 'b': Groupmetadata}```
 
     After input parsing, this function then creates all the nodes in the hierarchy concurrently.
+    The metadata of each node is stored as given: the consolidated metadata of a group is
+    stored as it is, without reading the documents of its members.
 
     Arrays and Groups are yielded in the order they are created. This order is not stable and
     should not be relied on.

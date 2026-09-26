@@ -22,7 +22,7 @@ import json
 import warnings
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from itertools import chain, repeat
-from typing import TYPE_CHECKING, Final, TypeGuard
+from typing import TYPE_CHECKING, Final, TypeGuard, cast
 
 from zarr.core._json import json_equal
 from zarr.core.chunk_grids import full_span_chunk_size
@@ -152,20 +152,19 @@ def _read_codec(codec: JSON) -> JSON:
     """Read a stored codec: the inner chunk shape of a sharding codec is read as a chunk
     shape with no known axis lengths (see `_read_chunk_shape`), and so are those of the
     sharding codecs nested in its codecs."""
-    if not (isinstance(codec, Mapping) and codec.get("name") == "sharding_indexed"):
-        return codec
-    configuration = codec.get("configuration")
-    if not isinstance(configuration, Mapping):
-        return codec
-    upgraded = dict(configuration)
-    stored = configuration.get("chunk_shape")
-    if isinstance(stored, list):
-        match _read_chunk_shape(stored, [None] * len(stored)):
-            case chunk_shape, _:
-                upgraded["chunk_shape"] = list(chunk_shape)
-    if isinstance(codecs := configuration.get("codecs"), list):
-        upgraded["codecs"] = [_read_codec(inner) for inner in codecs]
-    return {**codec, "configuration": upgraded}
+    match codec:
+        case {"name": "sharding_indexed", "configuration": Mapping() as configuration}:
+            upgraded = dict(configuration)
+            stored = configuration.get("chunk_shape")
+            if isinstance(stored, list) and (
+                read := _read_chunk_shape(stored, [None] * len(stored))
+            ):
+                upgraded["chunk_shape"] = read[0]
+            if isinstance(codecs := configuration.get("codecs"), list):
+                upgraded["codecs"] = [_read_codec(inner) for inner in codecs]
+            # The mapping pattern does not narrow `codec` for mypy.
+            return {**cast("Mapping[str, JSON]", codec), "configuration": upgraded}
+    return codec
 
 
 def _invalid_inner_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, str | None] | None:
@@ -178,18 +177,16 @@ def _invalid_inner_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, st
     return {**doc, "codecs": codecs}, None
 
 
-def _inner_chunk_shape(doc: ArrayDocument) -> list[int]:
-    """The inner chunk shape of the sharding codec of a Zarr format 3 array document, if
-    it has one and that is a list of integers; else `[]`."""
-    codecs = doc.get("codecs")
-    if isinstance(codecs, list):
-        for codec in codecs:
-            match codec:
-                case {
-                    "name": "sharding_indexed",
-                    "configuration": {"chunk_shape": list() as inner},
-                }:
-                    return inner if _is_int_list(inner) else []
+def _inner_chunk_shape(doc: ArrayDocument) -> list[int] | None:
+    """The inner chunk shape of the sharding codec of a Zarr format 3 array document:
+    `[]` if it has none, `None` if its inner chunk sizes are not all integers of at
+    least 1 (the unit of its outer chunk shape is then unknown)."""
+    match doc.get("codecs"):
+        case list() as codecs:
+            for codec in codecs:
+                match codec:
+                    case {"name": "sharding_indexed", "configuration": {"chunk_shape": inner}}:
+                        return inner if _is_int_list(inner) and min(inner, default=1) >= 1 else None
     return []
 
 
@@ -198,11 +195,13 @@ def _invalid_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, str | No
     shape = doc.get("shape")
     if not (isinstance(grid, Mapping) and grid.get("name") == "regular" and _is_int_list(shape)):
         return None
+    if (units := _inner_chunk_shape(doc)) is None:
+        return None
     configuration = grid.get("configuration")
     if not isinstance(configuration, Mapping):
         return None
     stored = configuration.get("chunk_shape")
-    read = _read_chunk_shape(stored, shape, _inner_chunk_shape(doc))
+    read = _read_chunk_shape(stored, shape, units)
     if read is None:
         return None
     chunk_shape, reading = read
