@@ -32,6 +32,7 @@ from zarr.core.sync import sync
 from zarr.errors import ZarrUserWarning
 from zarr.storage import MemoryStore
 from zarr.testing.strategies import (
+    _rectilinear_chunks,
     array_metadata,
     arrays,
     basic_indices,
@@ -586,6 +587,22 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
         assert asdict_dict["fill_value"] == -9223372036854775808
 
 
+@given(data=st.data())
+def test_rectilinear_chunks_declares_edges_per_dimension(data: st.DataObject) -> None:
+    """`rectilinear_chunks` draws an explicit edge list for every dimension, summing
+    to the extent (any positive edges, for a zero extent); a 0-d shape has none."""
+    shape = data.draw(
+        npst.array_shapes(min_dims=0, max_dims=3, min_side=0, max_side=20), label="shape"
+    )
+    chunks = data.draw(rectilinear_chunks(shape=shape), label="chunks")
+    assert len(chunks) == len(shape)
+    for edges, extent in zip(chunks, shape, strict=True):
+        assert isinstance(edges, list)
+        assert edges
+        assert all(type(edge) is int and edge >= 1 for edge in edges)
+        assert extent == 0 or sum(edges) == extent
+
+
 def test_chunks_param_from_rectilinear_bare_int_roundtrip() -> None:
     """Bare-int dims in rectilinear metadata (the spec's step-size shorthand,
     produced by a scalar dimension of a mixed chunk spec) must pass
@@ -666,7 +683,7 @@ def test_create_array_stores_declared_rectilinear_chunks(data: st.DataObject) ->
     exactly the specification: bare ints stay bare ints, and edge lists keep
     their edges (gh-4374, gh-4272). Checked on the stored JSON."""
     shape = data.draw(npst.array_shapes(max_dims=3, min_side=0, max_side=20), label="shape")
-    chunks = data.draw(rectilinear_chunks(shape=shape), label="chunks")
+    chunks = data.draw(_rectilinear_chunks(shape=shape), label="chunks")
     arr = zarr.create_array(MemoryStore(), shape=shape, chunks=chunks, dtype="uint8")
 
     zarr_json = sync(arr.store.get(ZARR_JSON, prototype=default_buffer_prototype()))
@@ -686,7 +703,7 @@ def test_rectilinear_zero_length_axis_round_trip(data: st.DataObject) -> None:
     shape = list(data.draw(npst.array_shapes(max_dims=3, min_side=0, max_side=6), label="shape"))
     axis = data.draw(st.integers(0, len(shape) - 1), label="zero-length axis")
     shape[axis] = 0
-    chunks = data.draw(rectilinear_chunks(shape=tuple(shape)), label="chunks")
+    chunks = data.draw(_rectilinear_chunks(shape=tuple(shape)), label="chunks")
     store = MemoryStore()
     arr = zarr.create_array(store, shape=tuple(shape), chunks=chunks, dtype="int16", fill_value=-1)
     assert_array_equal(arr[...], np.full(shape, -1, dtype="int16"))
