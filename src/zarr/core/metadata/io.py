@@ -12,6 +12,7 @@ from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
 from zarr.core.metadata.upgrades import mark_upgraded, upgrade_array_document
+from zarr.core.metadata.v3 import RectilinearChunksDisabledError
 from zarr.errors import ArrayNotFoundError, ContainsArrayError
 from zarr.storage._common import StorePath, ensure_no_existing_node
 
@@ -144,6 +145,8 @@ async def _refresh_array(store_path: StorePath, member: ArrayMetadata) -> ArrayM
     documents = await read_documents(store_path, ARRAY_DOCUMENTS[member.zarr_format])
     try:
         current = parse_stored_array(documents, member.zarr_format)
+    except RectilinearChunksDisabledError:
+        raise  # A document that can be read, but only with the flag.
     except (KeyError, TypeError, ValueError):
         return member
     if current._stored_document_upgraded:

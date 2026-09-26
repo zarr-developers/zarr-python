@@ -948,6 +948,24 @@ def test_group_write_keeps_consolidated_metadata_shared_with_subgroups(
 
 
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+def test_group_write_refuses_upgraded_member_read_as_rectilinear(tmp_path: Path) -> None:
+    """A member of consolidated metadata read from a document that had to be upgraded,
+    whose own document now declares a rectilinear chunk grid, is read again only with the
+    rectilinear chunks flag: without it, a group write raises and stores nothing."""
+    path = tmp_path / "group.zarr"
+    _flagged_consolidated_group(path, 3, "a")
+    with pytest.warns(ZarrUserWarning, match="is read as"):
+        group = zarr.open_group(path, mode="r+", use_consolidated=True)
+    (path / "a" / "zarr.json").write_text(json.dumps(_rectilinear_doc([3], [[1, 2]])))
+    documents = {p: p.read_bytes() for p in path.rglob("*") if p.is_file()}
+
+    with pytest.raises(ValueError, match="Rectilinear chunk grids are experimental"):
+        group.attrs["x"] = 1
+
+    assert {p: p.read_bytes() for p in path.rglob("*") if p.is_file()} == documents
+
+
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("replacement", ["group", "invalid", "none"])
 def test_group_write_keeps_upgraded_member_without_readable_document(
