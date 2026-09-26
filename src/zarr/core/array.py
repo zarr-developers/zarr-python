@@ -524,13 +524,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             item_size = 1
             if isinstance(dtype_parsed, HasItemSize):
                 item_size = dtype_parsed.item_size
-            # Zarr format 2 reads a falsy `chunks` (such as 0, [] or False) as not given;
-            # a numpy array is always given, as its truth value may be ambiguous.
-            _raw_v2 = chunks if isinstance(chunks, np.ndarray) or chunks else chunk_shape
-            if _raw_v2 is None:
+            if _raw_chunks is None:
                 outer_chunks = guess_chunks(shape, item_size)
             else:
-                outer_chunks = normalize_chunks_nd(_raw_v2, shape)
+                outer_chunks = normalize_chunks_nd(_raw_chunks, shape)
             if not outer_chunks.is_regular:
                 raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
             _chunks = outer_chunks.chunk_shape
