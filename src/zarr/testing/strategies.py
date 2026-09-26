@@ -548,19 +548,6 @@ def simple_arrays(
     )
 
 
-def chunks_param_from_rectilinear(
-    meta: RectilinearChunkGridMetadata,
-) -> list[int | list[int]]:
-    """Convert rectilinear chunk grid metadata into a `chunks=` argument.
-
-    Explicit edge tuples become lists. Bare ints — the spec's step-size
-    shorthand meaning "repeat to cover the axis" — pass through unchanged;
-    wrapping one in a single-element list would instead declare exactly one
-    chunk, which fails normalization whenever the axis needs more than one.
-    """
-    return [list(dim) if isinstance(dim, tuple) else dim for dim in meta.chunk_shapes]
-
-
 @st.composite
 def rectilinear_dim_edges(draw: st.DrawFn, *, extent: int) -> list[int]:
     """Explicit chunk edge lengths summing exactly to `extent`.

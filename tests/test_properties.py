@@ -586,30 +586,6 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
         assert asdict_dict["fill_value"] == -9223372036854775808
 
 
-def test_chunks_param_from_rectilinear_bare_int_roundtrip() -> None:
-    """Bare-int dims in rectilinear metadata (the spec's step-size shorthand,
-    produced by a scalar dimension of a mixed chunk spec) must pass
-    through the `chunks=` conversion unchanged. Wrapping one in a
-    single-element list turns "repeat to cover the axis" into "exactly one
-    chunk" and re-creation fails the sum-to-span check."""
-    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
-    from zarr.storage import MemoryStore
-    from zarr.testing.strategies import chunks_param_from_rectilinear
-
-    with zarr.config.set({"array.rectilinear_chunks": True}):
-        src = zarr.create_array(MemoryStore(), shape=(3, 3), chunks=([1, 2], 1), dtype="uint8")
-        grid = src.metadata.chunk_grid  # type: ignore[union-attr]
-        assert isinstance(grid, RectilinearChunkGridMetadata)
-        assert grid.chunk_shapes == ((1, 2), 1)
-        dst = zarr.create_array(
-            MemoryStore(),
-            shape=src.shape,
-            chunks=chunks_param_from_rectilinear(grid),
-            dtype="uint8",
-        )
-        assert dst.metadata.chunk_grid == grid  # type: ignore[union-attr]
-
-
 @given(data=st.data())
 def test_rectilinear_chunk_grid_declarations(data: st.DataObject) -> None:
     """Every `chunk_shapes` declaration the rectilinear spec allows — bare-int
