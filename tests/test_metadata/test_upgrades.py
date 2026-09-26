@@ -748,6 +748,46 @@ def test_stale_handle_write_after_chunk_grid_change_raises(
     assert {p.name: p.read_bytes() for p in path.iterdir()} == documents
 
 
+def _set_attribute(array: AnyArray) -> None:
+    array.attrs["x"] = 1
+
+
+def _grow(array: AnyArray) -> None:
+    array.resize((9,))
+
+
+@pytest.mark.parametrize("operation", [_set_attribute, _grow], ids=["attrs", "resize"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_failed_metadata_save_keeps_stored_document(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    zarr_format: Literal[2, 3],
+    operation: Callable[[AnyArray], None],
+) -> None:
+    """If storing an array's metadata fails, the array still stands for the document
+    the store holds, which still needs its upgrade."""
+    path = tmp_path / "legacy.zarr"
+    _legacy_array(path, zarr_format)
+    doc_name = ".zarray" if zarr_format == 2 else "zarr.json"
+    with pytest.warns(ZarrUserWarning, match="is read as"):
+        arr = zarr.open_array(store=path, mode="r+")
+    stored = (path / doc_name).read_bytes()
+    original_set = LocalStore.set
+
+    async def failing_set(self: LocalStore, key: str, *args: Any, **kwargs: Any) -> None:
+        if key == doc_name:
+            raise OSError(f"cannot store {key}")
+        await original_set(self, key, *args, **kwargs)
+
+    monkeypatch.setattr(LocalStore, "set", failing_set)
+
+    with pytest.raises(OSError, match=f"cannot store {re.escape(doc_name)}"):
+        operation(arr)
+
+    assert arr.metadata._stored_document is not None
+    assert (path / doc_name).read_bytes() == stored
+
+
 @pytest.mark.parametrize("zarr_format", [2, 3])
 def test_write_without_stored_document(zarr_format: Literal[2, 3]) -> None:
     """An array read from an upgraded document that no store holds (as

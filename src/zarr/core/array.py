@@ -1609,9 +1609,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return out_array
 
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
-        """Store `metadata` as this array's own documents (creating the array, setting
-        its attributes; resizing stores the documents it encoded before deleting chunks,
-        then clears the mark the same way)."""
+        """Store `metadata` as this array's own documents, then clear the
+        `_stored_document` mark (see `_stored_document_replaced`). `_resize` stores the
+        documents it encoded before deleting chunks directly, then clears the mark the
+        same way."""
         await save_metadata(self.store_path, metadata, ensure_parents=ensure_parents)
         self._stored_document_replaced()
 
