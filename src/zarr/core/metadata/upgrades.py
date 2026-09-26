@@ -49,9 +49,9 @@ def warn_readings(readings: Sequence[str], path: str | None) -> None:
         warnings.warn(f"{subject}{' '.join(readings)} {RESAVE_HINT}", ZarrUserWarning, stacklevel=2)
 
 
-def _is_int_list(value: object) -> TypeGuard[list[int] | tuple[int, ...]]:
+def _is_int_list(value: object) -> TypeGuard[list[int]]:
     """Whether `value` is a JSON array of integers (JSON `false` and `true` count)."""
-    return isinstance(value, list | tuple) and all(isinstance(v, int) for v in value)
+    return isinstance(value, list) and all(isinstance(v, int) for v in value)
 
 
 def _read_chunk_size(size: JSON, span: int | None, unit: int) -> tuple[int, str | None] | None:
@@ -61,7 +61,8 @@ def _read_chunk_size(size: JSON, span: int | None, unit: int) -> tuple[int, str 
     entry cannot be read, which leaves it for the metadata constructors to reject. A
     JSON int >= 1 is kept, JSON `true` is read as 1, and 0 or JSON `false` is read as
     one chunk spanning the axis of length `span`, a multiple of `unit` (the inner chunk
-    size of a shard), when the span is known.
+    size of a shard). `span` is `None` where no stored 0 is known, as in the inner
+    chunk shape of a sharding codec: 0 is then left for the constructors to reject.
     """
     match size:
         case True:
@@ -70,7 +71,7 @@ def _read_chunk_size(size: JSON, span: int | None, unit: int) -> tuple[int, str 
             return size, None
         case int() if size == 0 and span is not None:
             edge = full_span_chunk_size(span, unit)
-            how = f"one chunk spanning the axis ({edge})"
+            how = f"one chunk spanning the dimension ({edge})"
             if span > 0:
                 how += (
                     ", and as no chunk can be stored under a chunk size of 0, the array "
@@ -89,7 +90,7 @@ def _read_chunk_shape(
     Returns the chunk shape and, if an entry is invalid, a sentence saying how the
     `name` was read; `None` if it cannot be read.
     """
-    if not (isinstance(stored, list | tuple) and len(stored) == len(spans)):
+    if not (isinstance(stored, list) and len(stored) == len(spans)):
         return None
     edges: list[int] = []
     readings: list[str] = []
@@ -101,7 +102,7 @@ def _read_chunk_shape(
         edge, how = read
         edges.append(edge)
         if how is not None:
-            readings.append(f"{json.dumps(size)} on axis {axis} as {how}")
+            readings.append(f"{json.dumps(size)} in dimension {axis} as {how}")
     if not readings:
         return edges, None
     return edges, (
@@ -124,7 +125,7 @@ def _sharding_codec(doc: ArrayDocument) -> tuple[Sequence[JSON], int, Mapping[st
     """The codec list of a Zarr format 3 array document, with the position and the
     configuration of its sharding codec, if it has one."""
     codecs = doc.get("codecs")
-    if isinstance(codecs, list | tuple):
+    if isinstance(codecs, list):
         for index, codec in enumerate(codecs):
             if isinstance(codec, Mapping) and codec.get("name") == "sharding_indexed":
                 configuration = codec.get("configuration")
