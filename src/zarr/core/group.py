@@ -899,9 +899,7 @@ class AsyncGroup:
         return node
 
     async def _save_metadata(self, ensure_parents: bool = False) -> None:
-        # Adopt the metadata stored: its consolidated members may be newer.
-        stored = await save_metadata(self.store_path, self.metadata, ensure_parents=ensure_parents)
-        object.__setattr__(self, "metadata", stored)
+        await save_metadata(self.store_path, self.metadata, ensure_parents=ensure_parents)
 
     @property
     def path(self) -> str:
@@ -2117,7 +2115,7 @@ class Group(SyncMixin):
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
-        new_metadata = await save_metadata(self.store_path, new_metadata)
+        await save_metadata(self.store_path, new_metadata)
 
         async_group = replace(self._async_group, metadata=new_metadata)
         return replace(self, _async_group=async_group)
