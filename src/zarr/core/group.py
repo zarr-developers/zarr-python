@@ -48,7 +48,8 @@ from zarr.core.config import config
 from zarr.core.dtype import parse_data_type
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.io import save_metadata
+from zarr.core.metadata.io import encode_documents, save_metadata, store_documents
+from zarr.core.metadata.v3 import check_storable
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
     ArrayNotFoundError,
@@ -147,11 +148,16 @@ class ConsolidatedMetadata:
     must_understand: Literal[False] = False
 
     def to_dict(self) -> dict[str, JSON]:
+        """The consolidated metadata document. An array read from a stored document that
+        had to be upgraded is written as that document was stored, so every reader of
+        the consolidated metadata reads it as upgraded again (see `mark_upgraded`)."""
         return {
             "kind": self.kind,
             "must_understand": self.must_understand,
             "metadata": {
                 k: v.to_dict()
+                if isinstance(v, GroupMetadata) or v._stored_document is None
+                else dict(v._stored_document)
                 for k, v in sorted(
                     self.flattened_metadata.items(),
                     key=lambda item: (
@@ -163,7 +169,9 @@ class ConsolidatedMetadata:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> ConsolidatedMetadata:
+    def from_dict(cls, data: dict[str, JSON], *, path: str | None = None) -> ConsolidatedMetadata:
+        """Read consolidated metadata, naming each member by its path under the group at
+        `path` (or relative to that group, when `path` is not given) in warnings."""
         data = dict(data)
 
         kind = data.get("kind")
@@ -177,6 +185,7 @@ class ConsolidatedMetadata:
         metadata: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] = {}
         if raw_metadata:
             for k, v in raw_metadata.items():
+                member = k if path is None else _join_paths([path, k])
                 if not isinstance(v, dict):
                     raise TypeError(
                         f"Invalid value for metadata items. key='{k}', type='{type(v).__name__}'"
@@ -188,16 +197,16 @@ class ConsolidatedMetadata:
                 if zarr_format == 3:
                     node_type = parse_node_type(v.get("node_type", None))
                     if node_type == "group":
-                        metadata[k] = GroupMetadata.from_dict(v)
+                        metadata[k] = GroupMetadata.from_dict(v, path=member)
                     elif node_type == "array":
-                        metadata[k] = ArrayV3Metadata.from_dict(v)
+                        metadata[k] = ArrayV3Metadata.from_dict(v, path=member)
                     else:
                         assert_never(node_type)
                 elif zarr_format == 2:
                     if "shape" in v:
-                        metadata[k] = ArrayV2Metadata.from_dict(v)
+                        metadata[k] = ArrayV2Metadata.from_dict(v, path=member)
                     else:
-                        metadata[k] = GroupMetadata.from_dict(v)
+                        metadata[k] = GroupMetadata.from_dict(v, path=member)
                 else:
                     assert_never(zarr_format)
 
@@ -357,6 +366,16 @@ class GroupMetadata(Metadata):
     node_type: Literal["group"] = field(default="group", init=False)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
+        if self.consolidated_metadata is not None:
+            for path, member in self.consolidated_metadata.flattened_metadata.items():
+                # A member read from a document that had to be upgraded is stored as it
+                # was stored (see `ConsolidatedMetadata.to_dict`).
+                if isinstance(member, ArrayV3Metadata) and member._stored_document is None:
+                    try:
+                        check_storable(member)
+                    except ValueError as e:
+                        e.add_note(f"Array {path!r} in the consolidated metadata.")
+                        raise
         indent = config.get("json_indent")
         if self.zarr_format == 3:
             return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype, indent=indent)}
@@ -415,7 +434,9 @@ class GroupMetadata(Metadata):
         object.__setattr__(self, "consolidated_metadata", consolidated_metadata)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
+    def from_dict(cls, data: dict[str, Any], *, path: str | None = None) -> GroupMetadata:
+        """Read a stored group document; `path` names the group in warnings about the
+        consolidated metadata it holds."""
         data = dict(data)
         node_type = data.pop("node_type", None)
         if node_type not in ("group", None):
@@ -424,7 +445,9 @@ class GroupMetadata(Metadata):
             )
         consolidated_metadata = data.pop("consolidated_metadata", None)
         if consolidated_metadata:
-            data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(consolidated_metadata)
+            data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(
+                consolidated_metadata, path=path
+            )
 
         zarr_format = data.get("zarr_format")
         if zarr_format == 2 or zarr_format is None:
@@ -695,7 +718,7 @@ class AsyncGroup:
             msg = f"Node type in metadata ({node_type}) is not 'group'"
             raise GroupNotFoundError(msg)
         return cls(
-            metadata=GroupMetadata.from_dict(data),
+            metadata=GroupMetadata.from_dict(data, path=str(store_path)),
             store_path=store_path,
         )
 
@@ -799,11 +822,24 @@ class AsyncGroup:
             Array or group name
         """
         store_path = self.store_path / key
-
+        consolidated = self.metadata.consolidated_metadata
+        if consolidated is None:
+            await store_path.delete_dir()
+            return
+        # Encode the group metadata without the member before deleting it: metadata that
+        # cannot be stored then fails with the store and this group untouched. What is
+        # stored is encoded after the deletion, from the metadata as it then is, so
+        # concurrent deletions each store the deletions made before them.
+        members = {name: node for name, node in consolidated.metadata.items() if name != key}
+        encode_documents(
+            self.store_path,
+            replace(self.metadata, consolidated_metadata=replace(consolidated, metadata=members)),
+        )
         await store_path.delete_dir()
-        if self.metadata.consolidated_metadata:
-            self.metadata.consolidated_metadata.metadata.pop(key, None)
-            await self._save_metadata()
+        # In place, so every handle sharing this consolidated metadata (a parent's or a
+        # subgroup's) sees the deletion.
+        consolidated.metadata.pop(key, None)
+        await store_documents(self.store_path, encode_documents(self.store_path, self.metadata))
 
     async def get[DefaultT](
         self, key: str, default: DefaultT | None = None
@@ -3078,6 +3114,7 @@ async def create_hierarchy(
     # ensure that all nodes have the same zarr_format, and add implicit groups as needed
     nodes_parsed = _parse_hierarchy_dict(data=nodes_normed_keys)
     redundant_implicit_groups = []
+    to_delete_keys: list[str] = []
 
     # empty hierarchies should be a no-op
     if len(nodes_parsed) > 0:
@@ -3110,13 +3147,7 @@ async def create_hierarchy(
         if overwrite:
             # we will remove any nodes that collide with arrays and non-implicit groups defined in
             # nodes
-
-            # track the keys of nodes we need to delete
-            to_delete_keys = []
-            to_delete_keys.extend(
-                [k for k, v in nodes_parsed.items() if k not in implicit_group_keys]
-            )
-            await asyncio.gather(*(store.delete_dir(key) for key in to_delete_keys))
+            to_delete_keys = [k for k in nodes_parsed if k not in implicit_group_keys]
         else:
             # This type is long.
             coros: (
@@ -3176,7 +3207,11 @@ async def create_hierarchy(
             else:
                 nodes_explicit[k] = v
 
-    async for key, node in create_nodes(store=store, nodes=nodes_explicit):
+    # Build and encode every node before deleting anything: a node that cannot be built
+    # or whose metadata cannot be stored then fails with the store untouched.
+    built, documents = _prepare_nodes(store, nodes_explicit)
+    await asyncio.gather(*(store.delete_dir(key) for key in to_delete_keys))
+    async for key, node in _store_nodes(store, nodes_explicit, built, documents):
         yield key, node
 
 
@@ -3206,15 +3241,42 @@ async def create_nodes(
     AsyncGroup | AsyncArray
         The created nodes in the order they are created.
     """
+    async for key, node in _store_nodes(store, nodes, *_prepare_nodes(store, nodes)):
+        yield key, node
 
+
+def _prepare_nodes(
+    store: Store, nodes: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]
+) -> tuple[dict[str, AsyncGroup | AnyAsyncArray], dict[str, Buffer]]:
+    """The array or group each of `nodes` describes, at its path in `store`, and the
+    metadata documents of `nodes`, by their keys in the store: every node is built and
+    encoded before anything is stored."""
+    built = {
+        path: _build_node(store=store, path=path, metadata=meta) for path, meta in nodes.items()
+    }
+    documents = {
+        _join_paths([path, key]): value
+        for path, metadata in nodes.items()
+        for key, value in encode_documents(StorePath(store, path), metadata).items()
+    }
+    return built, documents
+
+
+async def _store_nodes(
+    store: Store,
+    nodes: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+    built: Mapping[str, AsyncGroup | AnyAsyncArray],
+    documents: Mapping[str, Buffer],
+) -> AsyncIterator[tuple[str, AsyncGroup | AnyAsyncArray]]:
+    """Store the `documents` encoded from `nodes` and yield the nodes built from them, as
+    `_prepare_nodes` returns them (see `create_nodes`)."""
     # Note: the only way to alter this value is via the config. If that's undesirable for some reason,
     # then we should consider adding a keyword argument to this function
     semaphore = asyncio.Semaphore(config.get("async.concurrency"))
-    create_tasks: list[Coroutine[None, None, str]] = []
-
-    for key, value in nodes.items():
-        # make the key absolute
-        create_tasks.extend(_persist_metadata(store, key, value, semaphore=semaphore))
+    create_tasks = [
+        _set_return_key(store=store, key=key, value=value, semaphore=semaphore)
+        for key, value in documents.items()
+    ]
 
     created_object_keys = []
 
@@ -3234,7 +3296,7 @@ async def create_nodes(
             node_name = created_key[: created_key.rfind("/")]
             meta_out = nodes[node_name]
         if meta_out.zarr_format == 3:
-            yield node_name, _build_node(store=store, path=node_name, metadata=meta_out)
+            yield node_name, built[node_name]
         else:
             # For zarr v2
             # we only want to yield when both the metadata and attributes are created
@@ -3249,7 +3311,7 @@ async def create_nodes(
                 meta_done = _join_paths([node_name, ZARRAY_JSON]) in created_object_keys
 
             if meta_done and attrs_done:
-                yield node_name, _build_node(store=store, path=node_name, metadata=meta_out)
+                yield node_name, built[node_name]
 
             continue
 
@@ -3504,7 +3566,9 @@ async def _read_metadata_v3(store: Store, path: str) -> ArrayV3Metadata | GroupM
     )
     if zarr_json_bytes is None:
         raise FileNotFoundError(path)
-    return _build_metadata_v3(buffer_to_json_object(zarr_json_bytes))
+    return _build_metadata_v3(
+        buffer_to_json_object(zarr_json_bytes), path=str(StorePath(store, path))
+    )
 
 
 async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupMetadata:
@@ -3539,7 +3603,7 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
         else:
             zmeta = buffer_to_json_object(zgroup_bytes)
 
-    return _build_metadata_v2(zmeta, zattrs)
+    return _build_metadata_v2(zmeta, zattrs, path=str(StorePath(store, path)))
 
 
 async def _read_group_metadata_v2(store: Store, path: str) -> GroupMetadata:
@@ -3570,7 +3634,9 @@ async def _read_group_metadata(
     return await _read_group_metadata_v3(store=store, path=path)
 
 
-def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMetadata:
+def _build_metadata_v3(
+    zarr_json: dict[str, JSON], *, path: str | None = None
+) -> ArrayV3Metadata | GroupMetadata:
     """
     Convert a dict representation of Zarr V3 metadata into the corresponding metadata class.
     """
@@ -3579,9 +3645,9 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
         raise MetadataValidationError(msg)
     match zarr_json:
         case {"node_type": "array"}:
-            return ArrayV3Metadata.from_dict(zarr_json)
+            return ArrayV3Metadata.from_dict(zarr_json, path=path)
         case {"node_type": "group"}:
-            return GroupMetadata.from_dict(zarr_json)
+            return GroupMetadata.from_dict(zarr_json, path=path)
         case _:  # pragma: no cover
             raise ValueError(
                 "invalid value for `node_type` key in metadata document"
@@ -3589,16 +3655,16 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
 
 
 def _build_metadata_v2(
-    zarr_json: dict[str, JSON], attrs_json: dict[str, JSON]
+    zarr_json: dict[str, JSON], attrs_json: dict[str, JSON], *, path: str | None = None
 ) -> ArrayV2Metadata | GroupMetadata:
     """
     Convert a dict representation of Zarr V2 metadata into the corresponding metadata class.
     """
     match zarr_json:
         case {"shape": _}:
-            return ArrayV2Metadata.from_dict(zarr_json | {"attributes": attrs_json})
+            return ArrayV2Metadata.from_dict(zarr_json | {"attributes": attrs_json}, path=path)
         case _:  # pragma: no cover
-            return GroupMetadata.from_dict(zarr_json | {"attributes": attrs_json})
+            return GroupMetadata.from_dict(zarr_json | {"attributes": attrs_json}, path=path)
 
 
 @overload
@@ -3721,23 +3787,6 @@ async def _set_return_key(
     else:
         await store.set(key, value)
     return key
-
-
-def _persist_metadata(
-    store: Store,
-    path: str,
-    metadata: ArrayV2Metadata | ArrayV3Metadata | GroupMetadata,
-    semaphore: asyncio.Semaphore | None = None,
-) -> tuple[Coroutine[None, None, str], ...]:
-    """
-    Prepare to save a metadata document to storage, returning a tuple of coroutines that must be awaited.
-    """
-
-    to_save = metadata.to_buffer_dict(default_buffer_prototype())
-    return tuple(
-        _set_return_key(store=store, key=_join_paths([path, key]), value=value, semaphore=semaphore)
-        for key, value in to_save.items()
-    )
 
 
 async def create_rooted_hierarchy(

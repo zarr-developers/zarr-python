@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import inspect
 import json
@@ -1620,11 +1621,13 @@ class TestConsolidated:
         rg2 = await rg1.get_group("g2")
         assert rg2.metadata.consolidated_metadata == ConsolidatedMetadata(metadata={})
 
-    async def test_group_delitem_consolidated(self, store: Store) -> None:
+    async def test_group_delitem_consolidated(self, store: Store, zarr_format: ZarrFormat) -> None:
+        """Deleting a member removes it from the consolidated metadata in memory and in
+        every document that stores it, so the group reopens without it."""
         if isinstance(store, ZipStore):
             raise pytest.skip("Not implemented")
 
-        root = await AsyncGroup.from_store(store=store)
+        root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
         # Set up the test structure with
         # /
         #  g0/         # group /g0
@@ -1646,23 +1649,80 @@ class TestConsolidated:
         x2 = await x1.create_group("x2")
         await x2.create_array("data", shape=(1,), dtype="uint8")
 
-        with pytest.warns(  # noqa: PT031
-            ZarrUserWarning,
-            match="Consolidated metadata is currently not part in the Zarr format 3 specification.",
-        ):
-            if isinstance(store, ZipStore):
-                with pytest.warns(UserWarning, match="Duplicate name"):
-                    await zarr.api.asynchronous.consolidate_metadata(store)
-            else:
-                await zarr.api.asynchronous.consolidate_metadata(store)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", "Consolidated metadata is currently not part", ZarrUserWarning
+            )
+            await zarr.api.asynchronous.consolidate_metadata(store)
 
-        group = await zarr.api.asynchronous.open_consolidated(store=store)
-        assert len(group.metadata.consolidated_metadata.metadata) == 2
-        assert "g0" in group.metadata.consolidated_metadata.metadata
+        group = await zarr.api.asynchronous.open_consolidated(store=store, zarr_format=zarr_format)
+        assert group.metadata.consolidated_metadata is not None
+        assert sorted(group.metadata.consolidated_metadata.metadata) == ["g0", "x0"]
 
         await group.delitem("g0")
-        assert len(group.metadata.consolidated_metadata.metadata) == 1
-        assert "g0" not in group.metadata.consolidated_metadata.metadata
+        assert sorted(group.metadata.consolidated_metadata.metadata) == ["x0"]
+
+        reopened = await zarr.api.asynchronous.open_consolidated(
+            store=store, zarr_format=zarr_format
+        )
+        assert reopened.metadata.consolidated_metadata is not None
+        assert sorted(reopened.metadata.consolidated_metadata.metadata) == ["x0"]
+
+    def test_group_delitem_consolidated_aliased(self, store: Store) -> None:
+        """A subgroup read from its parent's consolidated metadata shares it, so a member
+        deleted through the subgroup is gone through the parent too."""
+        if isinstance(store, ZipStore):
+            raise pytest.skip("Not implemented")
+
+        root = zarr.create_group(store)
+        root.create_group("sub").create_array("b", shape=(4,), chunks=(2,), dtype="i4")
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", "Consolidated metadata is currently not part", ZarrUserWarning
+            )
+            zarr.consolidate_metadata(store)
+
+        group = zarr.open_group(store, mode="r+", use_consolidated=True)
+        sub = group["sub"]
+        assert isinstance(sub, Group)
+        del sub["b"]
+        assert "b" not in sub
+        assert "b" not in group["sub"]
+        with pytest.raises(KeyError):
+            group["sub/b"]
+
+    async def test_group_delitem_consolidated_concurrent(self, zarr_format: ZarrFormat) -> None:
+        """Concurrent deletions through one handle each store the deletions made before
+        them, so the stored consolidated metadata lists what the handle lists. Here the
+        deletions finish in the reverse of the order they started in."""
+
+        delays = [0.03, 0.02, 0.01]
+
+        class SlowDeletes(LatencyStore):
+            async def delete_dir(self, prefix: str) -> None:
+                await asyncio.sleep(delays.pop(0))
+                await super().delete_dir(prefix)
+
+        store = SlowDeletes(MemoryStore())
+        root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
+        for name in "abcd":
+            await root.create_array(name, shape=(2,), dtype="i4")
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", "Consolidated metadata is currently not part", ZarrUserWarning
+            )
+            await zarr.api.asynchronous.consolidate_metadata(store)
+        group = await zarr.api.asynchronous.open_consolidated(store=store, zarr_format=zarr_format)
+
+        await asyncio.gather(*(group.delitem(name) for name in "abc"))
+
+        reopened = await zarr.api.asynchronous.open_consolidated(
+            store=store, zarr_format=zarr_format
+        )
+        assert group.metadata.consolidated_metadata is not None
+        assert reopened.metadata.consolidated_metadata is not None
+        assert list(group.metadata.consolidated_metadata.metadata) == ["d"]
+        assert list(reopened.metadata.consolidated_metadata.metadata) == ["d"]
 
     def test_open_consolidated_raises(self, store: Store) -> None:
         if isinstance(store, ZipStore):
@@ -1917,6 +1977,30 @@ async def test_create_hierarchy(
         with pytest.raises(FileNotFoundError):
             await get_node(store=store, path="group/extra", zarr_format=zarr_format)
     assert expected_meta == {k: v.metadata for k, v in created.items()}
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_create_hierarchy_unbuildable_node_leaves_store_untouched(
+    monkeypatch: pytest.MonkeyPatch, zarr_format: ZarrFormat
+) -> None:
+    """`create_hierarchy` builds every node before it deletes or stores anything, so a
+    node that cannot be built fails with the store untouched, even when overwriting."""
+    store = MemoryStore()
+    group = zarr.create_group(store, zarr_format=zarr_format)
+    group.create_array("a", shape=(2,), chunks=(1,), dtype="int8")[:] = [1, 2]
+    before = dict(store._store_dict)
+
+    def unbuildable(**kwargs: object) -> None:
+        raise RuntimeError("cannot build this node")
+
+    monkeypatch.setattr(zarr.core.group, "_build_node", unbuildable)
+    with pytest.raises(RuntimeError, match="cannot build this node"):
+        dict(
+            zarr.create_hierarchy(
+                store=store, nodes={"a": GroupMetadata(zarr_format=zarr_format)}, overwrite=True
+            )
+        )
+    assert store._store_dict == before
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
