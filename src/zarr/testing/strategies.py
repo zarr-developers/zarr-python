@@ -548,8 +548,19 @@ def simple_arrays(
     )
 
 
+# The most chunks a drawn rectilinear grid declares over the array, all axes
+# together. Indexing tests visit every chunk, so the product is what costs time.
+_RECTILINEAR_CHUNK_BUDGET = 400
+
+
+def _max_chunks_per_dim(ndim: int) -> int:
+    """At most 20 chunks per dimension, and at most `_RECTILINEAR_CHUNK_BUDGET`
+    in total over `ndim` dimensions."""
+    return max(k for k in range(1, 21) if k**ndim <= _RECTILINEAR_CHUNK_BUDGET)
+
+
 @st.composite
-def rectilinear_dim_edges(draw: st.DrawFn, *, extent: int) -> list[int]:
+def rectilinear_dim_edges(draw: st.DrawFn, *, extent: int, max_chunks: int = 20) -> list[int]:
     """Explicit chunk edge lengths summing exactly to `extent`.
 
     A zero `extent` has no chunks for edges to cover, and no non-empty list
@@ -558,15 +569,15 @@ def rectilinear_dim_edges(draw: st.DrawFn, *, extent: int) -> list[int]:
 
     Two modes: "uneven" cuts the extent at random dividers; "uniform" repeats
     one size with an optional remainder, optionally shuffled so equal edges
-    are not all adjacent. At most 20 chunks per dimension keeps property
-    tests fast.
+    are not all adjacent. At most `max_chunks` chunks keeps property tests
+    fast.
     """
     assert extent >= 0
     if extent == 0:
         event("rectilinear edges: zero extent")
         return draw(st.lists(st.integers(min_value=1, max_value=10), min_size=1, max_size=5))
     if draw(st.booleans(), label="uneven edges"):
-        nchunks = draw(st.integers(min_value=1, max_value=min(extent, 20)))
+        nchunks = draw(st.integers(min_value=1, max_value=min(extent, max_chunks)))
         # Draw distinct dividers by index into the unused positions: no
         # rejection, unlike `st.lists(..., unique=True)`.
         positions = list(range(1, extent))
@@ -575,7 +586,7 @@ def rectilinear_dim_edges(draw: st.DrawFn, *, extent: int) -> list[int]:
             for _ in range(nchunks - 1)
         )
         return [b - a for a, b in zip([0, *dividers], [*dividers, extent], strict=True)]
-    size = draw(st.integers(min_value=math.ceil(extent / 20), max_value=extent))
+    size = draw(st.integers(min_value=math.ceil(extent / max_chunks), max_value=extent))
     edges = [size] * (extent // size)
     if extent % size:
         edges.append(extent % size)
@@ -584,11 +595,11 @@ def rectilinear_dim_edges(draw: st.DrawFn, *, extent: int) -> list[int]:
     return edges
 
 
-def _rectilinear_step(draw: st.DrawFn, *, extent: int) -> int:
+def _rectilinear_step(draw: st.DrawFn, *, extent: int, max_chunks: int) -> int:
     """A bare-int chunk size for one dimension: a step that repeats to cover
     the extent, with the last chunk possibly smaller. A step larger than the
     extent (one overhanging chunk) is allowed, as for a regular grid."""
-    step = draw(st.integers(min_value=max(1, math.ceil(extent / 20)), max_value=extent + 3))
+    step = draw(st.integers(min_value=max(1, math.ceil(extent / max_chunks)), max_value=extent + 3))
     if step > extent:
         event("rectilinear step: larger than extent")
     return step
@@ -609,13 +620,14 @@ def rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[int |
     to hold an edge list, so it cannot have a rectilinear grid.
     """
     assert shape, "a rectilinear grid needs at least one dimension"
+    max_chunks = _max_chunks_per_dim(len(shape))
     forced_list = draw(st.integers(min_value=0, max_value=len(shape) - 1))
     chunks: list[int | list[int]] = []
     for i, extent in enumerate(shape):
         if i != forced_list and draw(st.booleans(), label="bare int"):
-            chunks.append(_rectilinear_step(draw, extent=extent))
+            chunks.append(_rectilinear_step(draw, extent=extent, max_chunks=max_chunks))
         else:
-            chunks.append(draw(rectilinear_dim_edges(extent=extent)))
+            chunks.append(draw(rectilinear_dim_edges(extent=extent, max_chunks=max_chunks)))
     return chunks
 
 
@@ -644,13 +656,15 @@ def _rle_encode(draw: st.DrawFn, edges: list[int]) -> list[int | list[int]]:
     return encoded
 
 
-def _rectilinear_chunk_shape(draw: st.DrawFn, *, extent: int) -> int | tuple[int, ...]:
+def _rectilinear_chunk_shape(
+    draw: st.DrawFn, *, extent: int, max_chunks: int
+) -> int | tuple[int, ...]:
     """One dimension of a stored rectilinear grid's `chunk_shapes`: a bare-int
     step, or explicit edges. Edges may sum beyond the extent, which the spec
     allows and a shrinking resize produces."""
     if draw(st.booleans(), label="bare int"):
-        return _rectilinear_step(draw, extent=extent)
-    edges = draw(rectilinear_dim_edges(extent=extent))
+        return _rectilinear_step(draw, extent=extent, max_chunks=max_chunks)
+    edges = draw(rectilinear_dim_edges(extent=extent, max_chunks=max_chunks))
     if extent > 0 and draw(st.booleans(), label="overhang"):
         event("rectilinear edges: overhang")
         if draw(st.booleans(), label="trailing edge"):
@@ -674,7 +688,10 @@ def rectilinear_chunk_shape_declarations(
     Returns `(declaration, chunk_shapes)`: the JSON value to store, and the
     `chunk_shapes` that parsing it must produce.
     """
-    chunk_shapes = tuple(_rectilinear_chunk_shape(draw, extent=extent) for extent in shape)
+    max_chunks = _max_chunks_per_dim(len(shape))
+    chunk_shapes = tuple(
+        _rectilinear_chunk_shape(draw, extent=extent, max_chunks=max_chunks) for extent in shape
+    )
     declaration: list[RectilinearDimSpecJSON] = [
         dim
         if isinstance(dim, int)
@@ -692,8 +709,11 @@ def rectilinear_chunk_grids(
 ) -> RectilinearChunkGridMetadata:
     """A `RectilinearChunkGridMetadata` over `shape`, per dimension a bare-int
     step or explicit edges, which may sum beyond the extent."""
+    max_chunks = _max_chunks_per_dim(len(shape))
     return RectilinearChunkGridMetadata(
-        chunk_shapes=tuple(_rectilinear_chunk_shape(draw, extent=extent) for extent in shape)
+        chunk_shapes=tuple(
+            _rectilinear_chunk_shape(draw, extent=extent, max_chunks=max_chunks) for extent in shape
+        )
     )
 
 
