@@ -222,7 +222,7 @@ def _read_strictly(doc: dict[str, JSON]) -> ArrayV2Metadata | ArrayV3Metadata:
 
 def test_stored_negative_chunk_size_rejected() -> None:
     """No known writer stored a negative chunk size: it is rejected, not upgraded."""
-    with pytest.raises(ValueError, match="^Expected all values to be non-negative"):
+    with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got -1$"):
         _read_strictly(_v2_doc([4], [-1]))
 
 
@@ -233,12 +233,19 @@ def test_stored_chunk_shape_ndim_mismatch_rejected() -> None:
         _read_strictly(_v3_doc([4, 4], [0]))
 
 
-def test_stored_fractional_chunk_size_rejected() -> None:
-    """A stored chunk size that is not an integral number is rejected, not upgraded."""
+def test_stored_float_chunk_size_rejected() -> None:
+    """No known writer stored a float chunk size: it is rejected, not upgraded."""
     with pytest.raises(
-        TypeError, match=r"^Dimension 0: chunk edge length must be an integer, got 4\.5$"
+        TypeError, match=r"^Dimension 0: chunk edge length must be an int, got 4\.0$"
     ):
-        _read_strictly(_v3_doc([4], [4.5]))
+        _read_strictly(_v3_doc([4], [4.0]))
+
+
+def test_stored_zero_inner_chunk_size_rejected() -> None:
+    """No known writer stored an inner chunk size of 0, and no span defines one: it is
+    rejected, not upgraded."""
+    with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got 0$"):
+        _read_strictly(_v3_doc([4], [0], inner=[0]))
 
 
 def test_v2_constructor_rejects_chunks_of_wrong_length() -> None:
@@ -265,52 +272,33 @@ def _rectilinear_from_dict(chunk_shapes: list[Any]) -> RectilinearChunkGridMetad
         )
 
 
-def _second_edge(grid: RectilinearChunkGridMetadata) -> int:
-    edges = grid.chunk_shapes[0]
-    assert isinstance(edges, tuple)
-    return edges[1]
-
-
 CHUNK_EDGE_SITES: dict[str, Callable[[Any], object]] = {
-    "regular": lambda size: RegularChunkGridMetadata(chunk_shape=(size,)).chunk_shape[0],
-    "rectilinear-bare": lambda size: _rectilinear((size,)).chunk_shapes[0],
-    "rectilinear-edge": lambda size: _second_edge(_rectilinear(((4, size),))),
-    "rectilinear-bare-json": lambda size: _rectilinear_from_dict([size]).chunk_shapes[0],
-    "rectilinear-edge-json": lambda size: _second_edge(_rectilinear_from_dict([[4, size]])),
-    "rectilinear-rle-json": lambda size: _second_edge(_rectilinear_from_dict([[[size, 2]]])),
+    "regular": lambda size: RegularChunkGridMetadata(chunk_shape=(size,)),
+    "v2": lambda size: _v2_metadata((size,)),
+    "rectilinear-bare": lambda size: _rectilinear((size,)),
+    "rectilinear-edge": lambda size: _rectilinear(((4, size),)),
+    "rectilinear-bare-json": lambda size: _rectilinear_from_dict([size]),
+    "rectilinear-edge-json": lambda size: _rectilinear_from_dict([[4, size]]),
+    "rectilinear-rle-json": lambda size: _rectilinear_from_dict([[[size, 2]]]),
+    "sharding-inner": lambda size: ShardingCodec(chunk_shape=(size,)),
 }
-"""Each place chunk grid metadata reads a chunk edge length, returning the edge it read."""
 
 
 @pytest.mark.parametrize("site", CHUNK_EDGE_SITES)
-@pytest.mark.parametrize(
-    ("size", "expected"),
-    [(4, 4), (True, 1), (np.int64(4), 4), (4.0, 4), (np.float64(4.0), 4)],
-    ids=["int", "bool", "numpy-int", "float", "numpy-float"],
-)
-def test_metadata_reads_integral_chunk_edge(site: str, size: object, expected: int) -> None:
-    """Chunk grid metadata reads any integral number as the `int` chunk edge length it
-    equals."""
-    edge = CHUNK_EDGE_SITES[site](size)
-    assert type(edge) is int
-    assert edge == expected
-
-
-@pytest.mark.parametrize("site", CHUNK_EDGE_SITES)
-@pytest.mark.parametrize("size", [4.5, float("inf"), "4", None])
-def test_metadata_rejects_non_integral_chunk_edge(site: str, size: object) -> None:
+@pytest.mark.parametrize("size", [True, False, 4.0, np.int64(4), "4"])
+def test_metadata_rejects_non_int_chunk_edge(site: str, size: object) -> None:
+    """Metadata built in code takes chunk edge lengths as `int`s only, everywhere."""
     with pytest.raises(
-        TypeError,
-        match=re.escape(f"Dimension 0: chunk edge length must be an integer, got {size!r}"),
+        TypeError, match=re.escape(f"Dimension 0: chunk edge length must be an int, got {size!r}")
     ):
         CHUNK_EDGE_SITES[site](size)
 
 
 @pytest.mark.parametrize("site", CHUNK_EDGE_SITES)
-@pytest.mark.parametrize("size", [0, False, -1])
+@pytest.mark.parametrize("size", [0, -1])
 def test_metadata_rejects_chunk_edge_below_one(site: str, size: int) -> None:
-    """Chunk grid metadata built in code is strict: a chunk edge length below 1 is
-    rejected, without a warning."""
+    """Metadata built in code is strict: a chunk edge length below 1 is rejected,
+    without a warning."""
     with warnings.catch_warnings():
         warnings.simplefilter("error", ZarrUserWarning)
         with pytest.raises(
@@ -319,71 +307,25 @@ def test_metadata_rejects_chunk_edge_below_one(site: str, size: int) -> None:
             CHUNK_EDGE_SITES[site](size)
 
 
-@pytest.mark.parametrize("chunk_shape", [4, np.int64(4), None])
-def test_regular_chunk_grid_rejects_chunk_shape_not_iterable(chunk_shape: Any) -> None:
+CHUNK_SHAPE_SITES: dict[str, Callable[[Any], object]] = {
+    "regular": lambda chunk_shape: RegularChunkGridMetadata(chunk_shape=chunk_shape),
+    "v2": _v2_metadata,
+    "sharding-inner": lambda chunk_shape: ShardingCodec(chunk_shape=chunk_shape),
+}
+
+
+@pytest.mark.parametrize("site", CHUNK_SHAPE_SITES)
+@pytest.mark.parametrize("chunk_shape", [4, np.int64(4), "10", {"a": 1}, range(1, 2)])
+def test_metadata_rejects_chunk_shape_not_list_or_tuple(site: str, chunk_shape: object) -> None:
+    """A regular chunk shape is a list or tuple; anything else is rejected as a whole,
+    not iterated as if its elements were chunk edge lengths."""
     with pytest.raises(
         TypeError,
         match=re.escape(
-            f"A chunk shape must be an iterable of chunk edge lengths, got {chunk_shape!r}"
+            f"A chunk shape must be a list or tuple of chunk edge lengths, got {chunk_shape!r}"
         ),
     ):
-        RegularChunkGridMetadata(chunk_shape=chunk_shape)
-
-
-def _sharding_chunk_shape(chunks: Any) -> tuple[tuple[int, ...], object]:
-    codec = ShardingCodec(chunk_shape=chunks)
-    configuration = cast("dict[str, JSON]", codec.to_dict()["configuration"])
-    return codec.chunk_shape, configuration["chunk_shape"]
-
-
-CHUNK_SHAPE_SITES: dict[str, Callable[[Any], tuple[tuple[int, ...], object]]] = {
-    "v2": lambda chunks: ((md := _v2_metadata(chunks)).chunks, md.to_dict()["chunks"]),
-    "sharding-inner": _sharding_chunk_shape,
-}
-"""`ArrayV2Metadata` and `ShardingCodec` read a chunk shape as an array shape, returning
-the chunk shape and the value `to_dict` writes for it."""
-
-
-@pytest.mark.parametrize("site", CHUNK_SHAPE_SITES)
-@pytest.mark.parametrize(
-    ("chunks", "expected"),
-    [
-        ((4,), (4,)),
-        ([4], (4,)),
-        (4, (4,)),
-        (np.int64(4), (4,)),
-        ((np.int64(4),), (4,)),
-        (np.array([4]), (4,)),
-        ((True,), (1,)),
-        ((0,), (0,)),
-        ((False,), (0,)),
-        (range(4, 5), (4,)),
-    ],
-)
-def test_chunk_shape_read_as_array_shape(
-    site: str, chunks: object, expected: tuple[int, ...]
-) -> None:
-    """`ArrayV2Metadata` and `ShardingCodec` read their chunk shape as `parse_shapelike`
-    reads an array shape: an integer or an iterable of non-negative integers, including
-    NumPy integers and bools. A chunk size of 0 is written back as given; reading a
-    stored 0 is `zarr.core.metadata.upgrades`' business."""
-    parsed, written = CHUNK_SHAPE_SITES[site](chunks)
-    assert parsed == expected
-    assert all(type(size) is int for size in parsed)
-    assert written == expected
-
-
-@pytest.mark.parametrize("site", CHUNK_SHAPE_SITES)
-def test_chunk_shape_read_as_array_shape_rejects_negative(site: str) -> None:
-    with pytest.raises(ValueError, match="Expected all values to be non-negative"):
-        CHUNK_SHAPE_SITES[site]((-1,))
-
-
-@pytest.mark.parametrize("site", CHUNK_SHAPE_SITES)
-@pytest.mark.parametrize("chunks", [(4.0,), "4", None])
-def test_chunk_shape_read_as_array_shape_rejects_non_integer(site: str, chunks: object) -> None:
-    with pytest.raises(TypeError, match="Expected an"):
-        CHUNK_SHAPE_SITES[site](chunks)
+        CHUNK_SHAPE_SITES[site](chunk_shape)
 
 
 def _rewrite_doc(path: Path, zarr_format: Literal[2, 3], edit: Any) -> None:

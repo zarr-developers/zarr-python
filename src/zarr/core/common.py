@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import math
-import numbers
 import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum
@@ -283,24 +282,16 @@ def _subject(name: str, axis: int | None) -> str:
 
 
 def _parse_positive_int(value: object, name: str, axis: int | None) -> int:
-    """`value` as an `int` of at least 1. Any integral number is read as the `int` it
-    equals: an `int`, a `bool`, a NumPy integer or an integral float."""
     subject = _subject(name, axis)
-    match value:
-        case numbers.Integral():
-            parsed = int(value)
-        case float() if value.is_integer():
-            parsed = int(value)
-        case _:
-            raise TypeError(f"{subject} must be an integer, got {value!r}")
-    if parsed < 1:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{subject} must be an int, got {value!r}")
+    if value < 1:
         raise ValueError(f"{subject} must be >= 1, got {value!r}")
-    return parsed
+    return value
 
 
 def parse_chunk_edge(size: object, axis: int | None = None) -> int:
-    """Check that `size` is a chunk edge length: an integral number of at least 1, read
-    as an `int`.
+    """Check that `size` is a chunk edge length: an `int` (not a `bool`) of at least 1.
 
     This is the one rule for chunk edge lengths in metadata: bare chunk sizes, explicit
     edges and run-length encoded sizes. `axis`, when given, is named in the error.
@@ -309,12 +300,12 @@ def parse_chunk_edge(size: object, axis: int | None = None) -> int:
 
 
 def parse_chunk_shape(data: object) -> tuple[int, ...]:
-    """Check a regular chunk shape: an iterable of one chunk edge length per axis
+    """Check a regular chunk shape: a list or tuple of one chunk edge length per axis
     (see `parse_chunk_edge`)."""
     match data:
-        case Iterable():
+        case list() | tuple():
             return tuple(parse_chunk_edge(size, axis) for axis, size in enumerate(data))
-    raise TypeError(f"A chunk shape must be an iterable of chunk edge lengths, got {data!r}")
+    raise TypeError(f"A chunk shape must be a list or tuple of chunk edge lengths, got {data!r}")
 
 
 def expand_rle(data: Sequence[object], axis: int | None = None) -> list[int]:

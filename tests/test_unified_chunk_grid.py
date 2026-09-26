@@ -509,8 +509,6 @@ def test_chunk_grid_iter() -> None:
     [
         ([[10, 3]], [10, 10, 10]),
         ([[10, 2], [20, 1]], [10, 10, 20]),
-        ([4.0, [4.0, 2], [5, 2.0]], [4, 4, 4, 5, 5]),
-        ([[True, 2], [np.int64(3), np.int64(1)]], [1, 1, 3]),
     ],
 )
 def test_rle_expand(compressed: list[Any], expected: list[int]) -> None:
@@ -569,14 +567,14 @@ def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
 @pytest.mark.parametrize(
     ("rle_input", "match"),
     [
-        ([10.5], "Chunk edge length must be an integer, got 10.5"),
-        (["10"], "Chunk edge length must be an integer, got '10'"),
-        ([[10, 3.5]], "RLE repeat count must be an integer, got 3.5"),
+        ([10.0], "Chunk edge length must be an int, got 10.0"),
+        ([True], "Chunk edge length must be an int, got True"),
+        ([[10, 3.0]], "RLE repeat count must be an int, got 3.0"),
     ],
-    ids=["fractional-edge", "string-edge", "fractional-count"],
+    ids=["float-edge", "bool-edge", "float-count"],
 )
 def test_rle_expand_rejects_non_int(rle_input: list[Any], match: str) -> None:
-    """expand_rle reads integral numbers only."""
+    """expand_rle takes JSON integers only: no stored document holds integral floats."""
     with pytest.raises(TypeError, match=match):
         expand_rle(rle_input)
 
@@ -585,11 +583,11 @@ def test_rle_expand_rejects_non_int(rle_input: list[Any], match: str) -> None:
     ("rle_input", "match"),
     [
         ([0], "chunk edge length must be >= 1"),
-        ([10.5], "chunk edge length must be an integer"),
+        ([10.0], "chunk edge length must be an int"),
         ([[5, 0]], "RLE repeat count must be >= 1"),
         ([[5, 2, 1]], r"RLE entries must be an integer or \[size, count\]"),
     ],
-    ids=["zero-edge", "fractional-edge", "zero-rle-count", "rle-entry-of-three"],
+    ids=["zero-edge", "float-edge", "zero-rle-count", "rle-entry-of-three"],
 )
 def test_rle_expand_names_dimension(rle_input: list[Any], match: str) -> None:
     """Given the dimension `axis` the edges belong to, every error of expand_rle names it."""
