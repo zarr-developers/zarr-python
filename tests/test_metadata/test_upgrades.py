@@ -426,80 +426,121 @@ def _mixed_doc(shape: list[int], chunk_shape: list[Any]) -> dict[str, JSON]:
 
 
 @pytest.mark.parametrize(
-    ("doc", "expected", "axes"),
+    ("doc", "expected", "warning"),
     [
-        (json.loads(MIXED_REGULAR_GRID_DOC), (2, (5, 10, 5)), [1]),
-        (_mixed_doc([6, 20, 4], [2, [5, 10, 5], [1, 3]]), (2, (5, 10, 5), (1, 3)), [1, 2]),
-        (_mixed_doc([6, 20], [[1, 5], [5, 10, 5]]), ((1, 5), (5, 10, 5)), [0, 1]),
-        (_mixed_doc([6, 12], [2, [5, 10, 5]]), (2, (5, 10, 5)), [1]),
-        (_mixed_doc([0, 20], [2, [5, 10, 5]]), (2, (5, 10, 5)), [1]),
-        (_mixed_doc([6, 0], [2, [5, 10, 5]]), (2, (5, 10, 5)), [1]),
-        (_mixed_doc([4, 10_000], [2, [10] * 1000]), (2, (10,) * 1000), [1]),
+        (json.loads(MIXED_REGULAR_GRID_DOC), (2, (5, 10, 5)), r"^The stored chunk grid .* \[1\]"),
+        (
+            _mixed_doc([6, 20, 4], [2, [5, 10, 5], [1, 3]]),
+            (2, (5, 10, 5), (1, 3)),
+            r"^The stored chunk grid .* on axes \[1, 2\]",
+        ),
+        (_mixed_doc([6, 20], [2, [20]]), (2, (20,)), r"^The stored chunk grid .* \[1\]"),
+        (_mixed_doc([6, 12], [2, [5, 10, 5]]), (2, (5, 10, 5)), r"^The stored chunk grid"),
+        (_mixed_doc([0, 20], [2, [5, 10, 5]]), (2, (5, 10, 5)), r"^The stored chunk grid"),
+        (_mixed_doc([6, 0], [2, [5, 10, 5]]), (2, (5, 10, 5)), r"^The stored chunk grid"),
+        (
+            _mixed_doc([6, 20], [True, [5, 10, 5]]),
+            (1, (5, 10, 5)),
+            (
+                r"^The stored chunk shape \[true, \[5, 10, 5\]\] is invalid: .* read as "
+                r"\[1, \[5, 10, 5\]\], reading true on axis 0 as 1\. The stored chunk grid"
+            ),
+        ),
+        (
+            _mixed_doc([4, 10_000], [2, [10] * 1000]),
+            (2, (10,) * 1000),
+            r"^The stored chunk grid .* \[1\]",
+        ),
     ],
-    ids=["written", "3d", "every-axis", "shrunk", "empty-regular-axis", "empty-edge-axis", "long"],
+    ids=[
+        "written",
+        "3d",
+        "one-edge",
+        "shrunk",
+        "empty-int-axis",
+        "empty-edge-axis",
+        "true",
+        "long",
+    ],
 )
 def test_read_edge_lists_in_regular_grid(
-    doc: dict[str, JSON], expected: tuple[int | tuple[int, ...], ...], axes: list[int]
+    doc: dict[str, JSON], expected: tuple[int | tuple[int, ...], ...], warning: str
 ) -> None:
-    """A `regular` chunk grid whose `chunk_shape` lists chunk edges is read as the
-    rectilinear grid it describes, without the rectilinear chunks flag, with one
-    warning that names the axes, quotes at most a bounded part of the chunk shape and
-    says how to re-save."""
+    """A `regular` chunk grid whose chunk shape mixes chunk sizes with lists of chunk
+    edge lengths is read as the rectilinear chunk grid it describes, without the
+    rectilinear chunks flag. `from_dict` warns once, naming the array and the axes,
+    quoting a bounded part of the chunk shape, and saying that re-saving requires the
+    flag."""
     with (
         zarr.config.set({"array.rectilinear_chunks": False}),
         warnings.catch_warnings(record=True) as record,
     ):
         warnings.simplefilter("always")
-        metadata = ArrayV3Metadata.from_dict(doc)
+        metadata = ArrayV3Metadata.from_dict(doc, path="group/array")
     assert metadata.chunk_grid == RectilinearChunkGridMetadata(chunk_shapes=expected)
     [message] = [str(w.message) for w in record]
-    assert f"lists chunk edge lengths on axes {axes}" in message
-    assert "array.rectilinear_chunks" in message
-    assert "update_attributes({})" in message
+    assert re.search(warning, message.removeprefix("Array 'group/array': "))
+    assert message.startswith("Array 'group/array': ")
+    assert (
+        "Re-saving the metadata stores that rectilinear chunk grid, so each step that "
+        "follows requires `zarr.config.set({'array.rectilinear_chunks': True})`. " + RESAVE_HINT
+    ) in message
     assert len(message) < 1000
 
 
-def test_edge_lists_in_regular_grid_rle_rejected() -> None:
-    """Run-length encoded edges were never written inside a `regular` chunk_shape, so
-    such a document is not read as rectilinear."""
+def _rejected_without_warning(doc: dict[str, JSON]) -> pytest.ExceptionInfo[Exception]:
     with warnings.catch_warnings():
         warnings.simplefilter("error", ZarrUserWarning)
-        with pytest.raises(TypeError, match="Dimension 1: a regular chunk grid requires"):
-            ArrayV3Metadata.from_dict(_mixed_doc([6, 20], [2, [[5, 2], 10]]))
+        with pytest.raises((TypeError, ValueError)) as info:
+            ArrayV3Metadata.from_dict(doc)
+    return info
 
 
-@pytest.mark.parametrize("edges", [[10.0, 10.0], [True, True]], ids=["float", "bool"])
-def test_edge_lists_in_regular_grid_non_integer_edges_rejected(edges: list[Any]) -> None:
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", ZarrUserWarning)
-        with pytest.raises(TypeError, match="Dimension 1: a regular chunk grid requires"):
-            ArrayV3Metadata.from_dict(_mixed_doc([6, 20], [2, edges]))
+def test_regular_grid_of_only_edge_lists_rejected() -> None:
+    """A regular chunk shape made only of edge lists was never stored (a rectilinear
+    chunk grid was), so it is not read as rectilinear."""
+    info = _rejected_without_warning(_mixed_doc([6, 20], [[1, 5], [5, 10, 5]]))
+    assert info.match(re.escape("Dimension 0: Chunk edge length must be an int, got [1, 5]"))
 
 
-def test_edge_lists_in_regular_grid_nonpositive_edge_rejected() -> None:
-    """The upgraded grid is validated before any warning, so the real error surfaces."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", ZarrUserWarning)
-        with pytest.raises(ValueError, match="must be >= 1, got 0"):
-            ArrayV3Metadata.from_dict(_mixed_doc([6, 20], [2, [0, 20]]))
+def test_run_length_encoded_edges_in_regular_grid_rejected() -> None:
+    """Run-length encoded edges were never stored in a regular chunk shape."""
+    info = _rejected_without_warning(_mixed_doc([6, 20], [2, [[5, 2], 10]]))
+    assert info.match(re.escape("Dimension 1: Chunk edge length must be an int, got [[5, 2], 10]"))
 
 
-def test_edge_lists_in_regular_grid_short_edges_rejected() -> None:
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", ZarrUserWarning)
-        with pytest.raises(ValueError, match="sum to 15 but array shape extent is 20"):
-            ArrayV3Metadata.from_dict(_mixed_doc([6, 20], [2, [5, 10]]))
+@pytest.mark.parametrize("edge", [5.0, True], ids=["float", "bool"])
+def test_non_int_edge_in_regular_grid_rejected(edge: object) -> None:
+    """An edge that is not an int is reported as such, not blamed on its list."""
+    info = _rejected_without_warning(_mixed_doc([6, 20], [2, [edge, 15]]))
+    assert info.match(re.escape(f"Chunk edge length must be an int, got {edge!r}"))
+
+
+def test_edge_below_one_in_regular_grid_rejected() -> None:
+    info = _rejected_without_warning(_mixed_doc([6, 20], [2, [0, 20]]))
+    assert info.match("Chunk edge length must be >= 1, got 0")
+
+
+def test_short_edges_in_regular_grid_rejected() -> None:
+    info = _rejected_without_warning(_mixed_doc([6, 20], [2, [5, 10]]))
+    assert info.match("sum to 15 but array shape extent is 20")
+
+
+def _store_mixed_array(path: Path) -> np.ndarray[Any, np.dtype[np.float32]]:
+    """Write the chunks of the verbatim document and the document itself at `path`."""
+    data = np.arange(120, dtype="float32").reshape(6, 20)
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        arr = zarr.create_array(path, shape=data.shape, chunks=(2, (5, 10, 5)), dtype="float32")
+        arr[...] = data
+    (path / "zarr.json").write_text(MIXED_REGULAR_GRID_DOC)
+    return data
 
 
 def test_edge_lists_in_regular_grid_round_trip(tmp_path: Path) -> None:
     """A store holding the verbatim document opens without the rectilinear chunks flag,
     reads its data, re-saves as rectilinear with the flag, and then opens cleanly."""
     path = tmp_path / "mixed.zarr"
-    data = np.arange(120, dtype="float32").reshape(6, 20)
-    with zarr.config.set({"array.rectilinear_chunks": True}):
-        arr = zarr.create_array(path, shape=data.shape, chunks=(2, (5, 10, 5)), dtype="float32")
-    arr[...] = data
-    (path / "zarr.json").write_text(MIXED_REGULAR_GRID_DOC)
+    data = _store_mixed_array(path)
 
     with (
         zarr.config.set({"array.rectilinear_chunks": False}),

@@ -54,14 +54,25 @@ def _is_int_list(value: object) -> TypeGuard[list[int] | tuple[int, ...]]:
     return isinstance(value, list | tuple) and all(isinstance(v, int) for v in value)
 
 
-def _read_chunk_size(size: JSON, span: int | None, unit: int) -> tuple[int, str | None] | None:
-    """Read one entry of a stored regular chunk shape as a chunk edge length.
+def _abbreviate(value: JSON, limit: int = 60) -> str:
+    """`value` as JSON, cut to at most `limit` characters."""
+    text = json.dumps(value)
+    return text if len(text) <= limit else f"{text[: limit - 3]}..."
 
-    Returns the edge length and, for an invalid entry, how it was read; `None` if the
+
+def _read_chunk_size(
+    size: JSON, span: int | None, unit: int
+) -> tuple[int | list[JSON], str | None] | None:
+    """Read one entry of a stored regular chunk shape as a chunk edge length, or as the
+    chunk edge lengths of its axis.
+
+    Returns the reading and, for an invalid entry, how it was read; `None` if the
     entry cannot be read, which leaves it for the metadata constructors to reject. A
     JSON int >= 1 is kept, JSON `true` is read as 1, and 0 or JSON `false` is read as
     one chunk spanning the axis of length `span`, a multiple of `unit` (the inner chunk
-    size of a shard), when the span is known.
+    size of a shard), when the span is known. A flat list is kept as the chunk edge
+    lengths of its axis, which only a rectilinear chunk grid can declare (see
+    `_invalid_chunk_sizes_v3`); the rectilinear chunk grid checks each edge.
     """
     match size:
         case True:
@@ -77,12 +88,14 @@ def _read_chunk_size(size: JSON, span: int | None, unit: int) -> tuple[int, str 
                     "holds only its fill value"
                 )
             return edge, how
+        case list() if not any(isinstance(edge, list) for edge in size):
+            return size, None
     return None
 
 
 def _read_chunk_shape(
     stored: JSON, spans: Sequence[int | None], units: Iterable[int], name: str
-) -> tuple[list[int], str | None] | None:
+) -> tuple[list[int | list[JSON]], str | None] | None:
     """Read a stored regular chunk shape, entry by entry (see `_read_chunk_size`), for
     axes of lengths `spans` whose chunks are multiples of `units` (1 where not given).
 
@@ -91,7 +104,7 @@ def _read_chunk_shape(
     """
     if not (isinstance(stored, list | tuple) and len(stored) == len(spans)):
         return None
-    edges: list[int] = []
+    edges: list[int | list[JSON]] = []
     readings: list[str] = []
     axes = zip(stored, spans, chain(units, repeat(1)), strict=False)
     for axis, (size, span, unit) in enumerate(axes):
@@ -105,8 +118,9 @@ def _read_chunk_shape(
     if not readings:
         return edges, None
     return edges, (
-        f"The stored {name} {json.dumps(list(stored))} is invalid: chunk sizes must be "
-        f"integers of at least 1. It is read as {edges}, reading {'; '.join(readings)}."
+        f"The stored {name} {_abbreviate(stored)} is invalid: chunk sizes must be "
+        f"integers of at least 1. It is read as {_abbreviate(edges)}, reading "
+        f"{'; '.join(readings)}."
     )
 
 
@@ -133,7 +147,9 @@ def _sharding_codec(doc: ArrayDocument) -> tuple[Sequence[JSON], int, Mapping[st
     return None
 
 
-def _read_inner_chunk_shape(doc: ArrayDocument) -> tuple[list[int], str | None] | None:
+def _read_inner_chunk_shape(
+    doc: ArrayDocument,
+) -> tuple[Sequence[int], str | None] | None:
     """Read the inner chunk shape of a sharded array. No stored inner chunk size of 0
     or `false` is known, so the spans of its axes are not given."""
     shape = doc.get("shape")
@@ -141,12 +157,15 @@ def _read_inner_chunk_shape(doc: ArrayDocument) -> tuple[list[int], str | None] 
     if sharding is None or not _is_int_list(shape):
         return None
     _, _, configuration = sharding
-    return _read_chunk_shape(
+    match _read_chunk_shape(
         configuration.get("chunk_shape"),
         [None] * len(shape),
         (),
         "inner chunk shape of the sharding codec",
-    )
+    ):
+        case inner, reading if _is_int_list(inner):
+            return inner, reading
+    return None
 
 
 def _invalid_inner_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, str] | None:
@@ -169,11 +188,31 @@ def _invalid_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, str] | N
         return None
     inner = _read_inner_chunk_shape(doc)
     units = () if inner is None else inner[0]
-    match _read_chunk_shape(configuration.get("chunk_shape"), shape, units, "chunk shape"):
-        case chunk_shape, str(reading):
-            upgraded = {**configuration, "chunk_shape": chunk_shape}
-            return {**doc, "chunk_grid": {**grid, "configuration": upgraded}}, reading
-    return None
+    read = _read_chunk_shape(configuration.get("chunk_shape"), shape, units, "chunk shape")
+    if read is None:
+        return None
+    chunk_shape, reading = read
+    edge_axes = [axis for axis, size in enumerate(chunk_shape) if isinstance(size, list)]
+    if not edge_axes:
+        if reading is None:
+            return None
+        upgraded = {**configuration, "chunk_shape": chunk_shape}
+        return {**doc, "chunk_grid": {**grid, "configuration": upgraded}}, reading
+    if len(edge_axes) == len(chunk_shape):
+        # Only a mix of chunk sizes and edge lists was ever stored in a regular grid.
+        return None
+    as_rectilinear = (
+        f"The stored chunk grid is named 'regular', but its chunk shape lists chunk edge "
+        f"lengths on axes {edge_axes}, which only a rectilinear chunk grid can declare. "
+        "It is read as that rectilinear chunk grid. Re-saving the metadata stores that "
+        "rectilinear chunk grid, so each step that follows requires "
+        "`zarr.config.set({'array.rectilinear_chunks': True})`."
+    )
+    rectilinear: JSON = {
+        "name": "rectilinear",
+        "configuration": {"kind": "inline", "chunk_shapes": chunk_shape},
+    }
+    return {**doc, "chunk_grid": rectilinear}, " ".join(filter(None, (reading, as_rectilinear)))
 
 
 V2_ARRAY_UPGRADES: Final[tuple[Upgrade, ...]] = (_invalid_chunk_sizes_v2,)

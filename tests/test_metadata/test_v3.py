@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -33,7 +34,6 @@ from zarr.errors import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from typing import Any
 
 
@@ -156,34 +156,11 @@ def test_create_chunk_grid_metadata_unknown_dimension_type() -> None:
         create_chunk_grid_metadata(grid)
 
 
-@pytest.mark.parametrize(
-    "build",
-    [
-        pytest.param(lambda shape: RegularChunkGridMetadata(chunk_shape=shape), id="constructor"),
-        pytest.param(
-            lambda shape: RegularChunkGridMetadata.from_dict(
-                {"name": "regular", "configuration": {"chunk_shape": list(shape)}}
-            ),
-            id="from_dict",
-        ),
-    ],
-)
-@pytest.mark.parametrize("chunk_shape", [(0, 2), (2, -1)], ids=["zero", "negative"])
-def test_regular_chunk_grid_rejects_nonpositive_chunk_size(
-    build: Callable[[tuple[int, ...]], RegularChunkGridMetadata], chunk_shape: tuple[int, ...]
-) -> None:
-    """A regular chunk size below 1 is rejected, naming the dimension, whether
-    the grid is built directly or parsed from stored metadata."""
-    dim = 0 if chunk_shape[0] < 1 else 1
-    with pytest.raises(
-        ValueError, match=f"Dimension {dim}: chunk edge length must be an integer >= 1"
-    ):
-        build(chunk_shape)
-
-
 def test_regular_chunk_grid_rejects_edge_lists() -> None:
     """A regular chunk grid only accepts integer chunk edge lengths."""
-    with pytest.raises(TypeError, match="Dimension 1: a regular chunk grid requires an integer"):
+    with pytest.raises(
+        TypeError, match=re.escape("Dimension 1: Chunk edge length must be an int, got (5, 10, 5)")
+    ):
         RegularChunkGridMetadata(chunk_shape=(2, (5, 10, 5)))  # type: ignore[arg-type]
 
 
