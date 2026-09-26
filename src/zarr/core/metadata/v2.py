@@ -72,6 +72,9 @@ class ArrayV2Metadata(Metadata):
     compressor: Numcodec | None
     attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
+    _stored_document_upgraded: bool = field(default=False, init=False, compare=False, repr=False)
+    """Whether `from_dict` read this metadata from a stored document it had to upgrade,
+    so the store holds an invalid document until this metadata is stored."""
 
     def __init__(
         self,
@@ -152,8 +155,8 @@ class ArrayV2Metadata(Metadata):
         """Read a stored `.zarray` document (with its attributes). An invalid document
         that `zarr.core.metadata.upgrades` can read warns, naming the array at `path`."""
         upgraded, readings = upgrade_array_document(data, V2_ARRAY_UPGRADES)
-        data = dict(upgraded)
-        _data = data.copy()
+        # a new dict, because we are modifying it
+        _data: dict[str, Any] = dict(upgraded)
         # Check that the zarr_format attribute is correct.
         _ = parse_zarr_format(_data.pop("zarr_format"))
 
@@ -161,7 +164,7 @@ class ArrayV2Metadata(Metadata):
         # which could be in filters or as a compressor.
         # we will reference a hard-coded collection of object codec ids for this search.
 
-        _filters, _compressor = (data.get("filters"), data.get("compressor"))
+        _filters, _compressor = (_data.get("filters"), _data.get("compressor"))
         if _filters is not None:
             _filters = cast("tuple[dict[str, JSON], ...]", _filters)
             object_codec_id = get_object_codec_id(tuple(_filters) + (_compressor,))
@@ -170,7 +173,7 @@ class ArrayV2Metadata(Metadata):
         # we add a layer of indirection here around the dtype attribute of the array metadata
         # because we also need to know the object codec id, if any, to resolve the data type
         dtype_spec: DTypeSpec_V2 = {
-            "name": data["dtype"],
+            "name": _data["dtype"],
             "object_codec_id": object_codec_id,
         }
         dtype = get_data_type_from_json(dtype_spec, zarr_format=2)
@@ -184,7 +187,7 @@ class ArrayV2Metadata(Metadata):
         # zarr v2 allowed arbitrary keys here.
         # We don't want the ArrayV2Metadata constructor to fail just because someone put an
         # extra key in the metadata.
-        expected = {x.name for x in fields(cls)}
+        expected = {x.name for x in fields(cls) if x.init}
         expected |= {"dtype", "chunks"}
 
         # check if `filters` is an empty sequence; if so use None instead and raise a warning
@@ -206,6 +209,7 @@ class ArrayV2Metadata(Metadata):
 
         metadata = cls(**_data)
         warn_readings(readings, path)
+        object.__setattr__(metadata, "_stored_document_upgraded", bool(readings))
         return metadata
 
     def to_dict(self) -> dict[str, JSON]:

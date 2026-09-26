@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import warnings
@@ -20,6 +21,7 @@ from zarr.core.metadata.upgrades import (
     upgrade_array_document,
 )
 from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
+from zarr.core.sync import sync
 from zarr.dtype import Int16
 from zarr.errors import ZarrUserWarning
 
@@ -98,32 +100,40 @@ def _chunk_shapes(metadata: ArrayV2Metadata | ArrayV3Metadata) -> tuple[Any, Any
         (
             _v2_doc([0, 4], [0, 4]),
             ((1, 4), None),
-            r"0 on axis 0 as one chunk spanning the axis \(1\)\.",
+            r"0 in dimension 0 as one chunk spanning the dimension \(1\)\.",
         ),
         (
             _v3_doc([0], [False]),
             ((1,), None),
-            r"false on axis 0 as one chunk spanning the axis \(1\)\.",
+            r"false in dimension 0 as one chunk spanning the dimension \(1\)\.",
         ),
-        (_v2_doc([5], [True]), ((1,), None), "true on axis 0 as 1"),
+        (_v2_doc([5], [True]), ((1,), None), "true in dimension 0 as 1"),
         (
             _v3_doc([5, 4], [True, 4]),
             ((1, 4), None),
-            r"\[true, 4\] is invalid.*true on axis 0 as 1",
+            r"\[true, 4\] is invalid.*true in dimension 0 as 1",
         ),
         (
             _v2_doc([3], [0]),
             ((3,), None),
-            r"spanning the axis \(3\), and .* holds only its fill value",
+            r"spanning the dimension \(3\), and .* holds only its fill value",
         ),
-        (_v3_doc([4, 3], [4, 0]), ((4, 3), None), "0 on axis 1 as .* holds only its fill value"),
-        (_v3_doc([0], [0], inner=[4]), ((4,), (4,)), r"spanning the axis \(4\)\."),
+        (
+            _v3_doc([4, 3], [4, 0]),
+            ((4, 3), None),
+            "0 in dimension 1 as .* holds only its fill value",
+        ),
+        (_v3_doc([0], [0], inner=[4]), ((4,), (4,)), r"spanning the dimension \(4\)\."),
         (
             _v3_doc([10], [0], inner=[4]),
             ((12,), (4,)),
-            r"spanning the axis \(12\), and .* holds only its fill value",
+            r"spanning the dimension \(12\), and .* holds only its fill value",
         ),
-        (_v3_doc([0, 3], [0, 3], inner=[2, 3]), ((2, 3), (2, 3)), r"spanning the axis \(2\)\."),
+        (
+            _v3_doc([0, 3], [0, 3], inner=[2, 3]),
+            ((2, 3), (2, 3)),
+            r"spanning the dimension \(2\)\.",
+        ),
         (
             _v3_doc([5], [True], inner=[True]),
             ((1,), (1,)),
@@ -201,24 +211,40 @@ def test_invalid_upgraded_document_raises_without_warning(doc: dict[str, JSON], 
             metadata_cls.from_dict(doc)
 
 
-@pytest.mark.parametrize(
-    ("doc", "error"),
-    [
-        (_v2_doc([4], [-1]), "Dimension 0: Chunk edge length must be >= 1, got -1"),
-        (_v3_doc([4, 4], [0]), "Dimension 0: Chunk edge length must be >= 1, got 0"),
-        (_v3_doc([4], [4.0]), "Dimension 0: Chunk edge length must be an int, got 4.0"),
-        (_v3_doc([4], [0], inner=[0]), "Dimension 0: Chunk edge length must be >= 1, got 0"),
-    ],
-    ids=["negative", "ndim-mismatch", "float", "sharded-inner-zero"],
-)
-def test_stored_chunk_shape_not_upgraded(doc: dict[str, JSON], error: str) -> None:
-    """Invalid chunk sizes no known writer stored, and chunk shapes with the wrong
-    number of axes, are not upgraded, only rejected."""
+def _read_strictly(doc: dict[str, JSON]) -> ArrayV2Metadata | ArrayV3Metadata:
+    """Read `doc`, failing on any warning that it was upgraded."""
     metadata_cls = ArrayV2Metadata if doc["zarr_format"] == 2 else ArrayV3Metadata
     with warnings.catch_warnings():
         warnings.simplefilter("error", ZarrUserWarning)
-        with pytest.raises((TypeError, ValueError), match=re.escape(error)):
-            metadata_cls.from_dict(doc)
+        return metadata_cls.from_dict(doc)
+
+
+def test_stored_negative_chunk_size_rejected() -> None:
+    """No known writer stored a negative chunk size: it is rejected, not upgraded."""
+    with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got -1$"):
+        _read_strictly(_v2_doc([4], [-1]))
+
+
+def test_stored_chunk_shape_ndim_mismatch_rejected() -> None:
+    """A chunk shape with the wrong number of dimensions is not upgraded, so its 0 is
+    rejected."""
+    with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got 0$"):
+        _read_strictly(_v3_doc([4, 4], [0]))
+
+
+def test_stored_float_chunk_size_rejected() -> None:
+    """No known writer stored a float chunk size: it is rejected, not upgraded."""
+    with pytest.raises(
+        TypeError, match=r"^Dimension 0: chunk edge length must be an int, got 4\.0$"
+    ):
+        _read_strictly(_v3_doc([4], [4.0]))
+
+
+def test_stored_zero_inner_chunk_size_rejected() -> None:
+    """No known writer stored an inner chunk size of 0, and no span defines one: it is
+    rejected, not upgraded."""
+    with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got 0$"):
+        _read_strictly(_v3_doc([4], [0], inner=[0]))
 
 
 def test_v2_constructor_rejects_chunks_of_wrong_length() -> None:
@@ -262,7 +288,7 @@ CHUNK_EDGE_SITES: dict[str, Callable[[Any], object]] = {
 def test_metadata_rejects_non_int_chunk_edge(site: str, size: object) -> None:
     """Metadata built in code takes chunk edge lengths as `int`s only, everywhere."""
     with pytest.raises(
-        TypeError, match=re.escape(f"Chunk edge length must be an int, got {size!r}")
+        TypeError, match=re.escape(f"Dimension 0: chunk edge length must be an int, got {size!r}")
     ):
         CHUNK_EDGE_SITES[site](size)
 
@@ -274,7 +300,9 @@ def test_metadata_rejects_chunk_edge_below_one(site: str, size: int) -> None:
     without a warning."""
     with warnings.catch_warnings():
         warnings.simplefilter("error", ZarrUserWarning)
-        with pytest.raises(ValueError, match=f"Chunk edge length must be >= 1, got {size}"):
+        with pytest.raises(
+            ValueError, match=f"Dimension 0: chunk edge length must be >= 1, got {size}"
+        ):
             CHUNK_EDGE_SITES[site](size)
 
 
@@ -345,12 +373,70 @@ def test_legacy_chunk_size_round_trip(
     np.testing.assert_array_equal(reopened[...], np.concatenate([data, block]))
 
 
+@pytest.mark.parametrize(
+    ("zarr_format", "shape", "inner", "expected"),
+    [(2, (3,), None, (3,)), (3, (3,), None, (3,)), (3, (10,), (4,), (12,))],
+    ids=["v2", "v3", "v3-sharded"],
+)
+@pytest.mark.parametrize("api", ["sync", "async", "async-concurrent"])
+def test_write_stores_upgraded_metadata_first(
+    tmp_path: Path,
+    zarr_format: Literal[2, 3],
+    shape: tuple[int, ...],
+    inner: tuple[int, ...] | None,
+    expected: tuple[int, ...],
+    api: str,
+) -> None:
+    """Writing chunks to an array read from an upgraded document first stores the
+    upgraded metadata, so readers that do not upgrade (or read it differently) see
+    the chunks the write stored."""
+    path = tmp_path / "legacy.zarr"
+    zarr.create_array(
+        store=path,
+        shape=shape,
+        chunks=inner or expected,
+        shards=expected if inner else None,
+        dtype="int16",
+        fill_value=0,
+        zarr_format=zarr_format,
+    )
+    _rewrite_doc(
+        path,
+        zarr_format,
+        lambda doc: (
+            doc.update(chunks=[0])
+            if zarr_format == 2
+            else doc["chunk_grid"]["configuration"].update(chunk_shape=[0])
+        ),
+    )
+    data = np.arange(1, shape[0] + 1, dtype="int16")
+    with pytest.warns(ZarrUserWarning, match="is read as"):
+        arr = zarr.open_array(store=path, mode="r+")
+    if api == "sync":
+        arr[:] = data
+    elif api == "async":
+        sync(arr.async_array.setitem(slice(None), data))
+    else:
+
+        async def write_twice() -> None:
+            # Both writes find the metadata not yet stored, and both store it.
+            await asyncio.gather(*(arr.async_array.setitem(slice(None), data) for _ in "ab"))
+
+        sync(write_twice())
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ZarrUserWarning)
+        reopened = zarr.open_array(store=path, mode="r")
+    assert (reopened.shards or reopened.chunks) == expected
+    np.testing.assert_array_equal(reopened[...], data)
+
+
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize("zarr_format", [2, 3])
 def test_legacy_chunk_size_consolidated(tmp_path: Path, zarr_format: Literal[2, 3]) -> None:
-    """Consolidated metadata goes through the same upgrade, with one warning naming each
-    array; re-saving the arrays and consolidating again leaves a group that opens
-    without a warning."""
+    """Consolidated metadata goes through the same upgrade as the arrays' own documents,
+    with one warning naming each array by its path; re-saving the arrays and
+    consolidating again leaves a group that opens without a warning."""
     path = tmp_path / "group.zarr"
     group = zarr.open_group(path, mode="w", zarr_format=zarr_format)
     names = ("a", "b")
@@ -379,11 +465,16 @@ def test_legacy_chunk_size_consolidated(tmp_path: Path, zarr_format: Literal[2, 
                 ].update(chunk_shape=[0]),
             )
 
-    with pytest.warns(ZarrUserWarning, match="zarr.consolidate_metadata") as record:
-        group = zarr.open_group(path, mode="r+")
-    assert sorted(str(w.message).split(":")[0] for w in record) == ["Array 'a'", "Array 'b'"]
-    for name in names:
-        array = group[name]
+    for use_consolidated in (True, False):
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always", ZarrUserWarning)
+            group = zarr.open_group(path, mode="r+", use_consolidated=use_consolidated)
+            arrays = [group[name] for name in names]
+        assert all("zarr.consolidate_metadata" in str(w.message) for w in record)
+        assert sorted(str(w.message).split(": ")[0] for w in record) == [
+            f"Array '{group.store_path / name}'" for name in names
+        ]
+    for array in arrays:
         assert isinstance(array, zarr.Array)
         assert array.chunks == (1,)
         array.update_attributes({})
@@ -432,7 +523,7 @@ def _mixed_doc(shape: list[int], chunk_shape: list[Any]) -> dict[str, JSON]:
         (
             _mixed_doc([6, 20, 4], [2, [5, 10, 5], [1, 3]]),
             (2, (5, 10, 5), (1, 3)),
-            r"^The stored chunk grid .* on axes \[1, 2\]",
+            r"^The stored chunk grid .* in dimensions \[1, 2\]",
         ),
         (_mixed_doc([6, 20], [2, [20]]), (2, (20,)), r"^The stored chunk grid .* \[1\]"),
         (_mixed_doc([6, 12], [2, [5, 10, 5]]), (2, (5, 10, 5)), r"^The stored chunk grid"),
@@ -443,7 +534,7 @@ def _mixed_doc(shape: list[int], chunk_shape: list[Any]) -> dict[str, JSON]:
             (1, (5, 10, 5)),
             (
                 r"^The stored chunk shape \[true, \[5, 10, 5\]\] is invalid: .* read as "
-                r"\[1, \[5, 10, 5\]\], reading true on axis 0 as 1\. The stored chunk grid"
+                r"\[1, \[5, 10, 5\]\], reading true in dimension 0 as 1\. The stored chunk grid"
             ),
         ),
         (
@@ -500,25 +591,25 @@ def test_regular_grid_of_only_edge_lists_rejected() -> None:
     """A regular chunk shape made only of edge lists was never stored (a rectilinear
     chunk grid was), so it is not read as rectilinear."""
     info = _rejected_without_warning(_mixed_doc([6, 20], [[1, 5], [5, 10, 5]]))
-    assert info.match(re.escape("Dimension 0: Chunk edge length must be an int, got [1, 5]"))
+    assert info.match(re.escape("Dimension 0: chunk edge length must be an int, got [1, 5]"))
 
 
 def test_run_length_encoded_edges_in_regular_grid_rejected() -> None:
     """Run-length encoded edges were never stored in a regular chunk shape."""
     info = _rejected_without_warning(_mixed_doc([6, 20], [2, [[5, 2], 10]]))
-    assert info.match(re.escape("Dimension 1: Chunk edge length must be an int, got [[5, 2], 10]"))
+    assert info.match(re.escape("Dimension 1: chunk edge length must be an int, got [[5, 2], 10]"))
 
 
 @pytest.mark.parametrize("edge", [5.0, True], ids=["float", "bool"])
 def test_non_int_edge_in_regular_grid_rejected(edge: object) -> None:
     """An edge that is not an int is reported as such, not blamed on its list."""
     info = _rejected_without_warning(_mixed_doc([6, 20], [2, [edge, 15]]))
-    assert info.match(re.escape(f"Chunk edge length must be an int, got {edge!r}"))
+    assert info.match(re.escape(f"Dimension 1: chunk edge length must be an int, got {edge!r}"))
 
 
 def test_edge_below_one_in_regular_grid_rejected() -> None:
     info = _rejected_without_warning(_mixed_doc([6, 20], [2, [0, 20]]))
-    assert info.match("Chunk edge length must be >= 1, got 0")
+    assert info.match("Dimension 1: chunk edge length must be >= 1, got 0")
 
 
 def test_short_edges_in_regular_grid_rejected() -> None:

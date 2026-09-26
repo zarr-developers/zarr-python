@@ -164,7 +164,9 @@ class ConsolidatedMetadata:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> ConsolidatedMetadata:
+    def from_dict(cls, data: dict[str, JSON], *, path: str | None = None) -> ConsolidatedMetadata:
+        """Read consolidated metadata, naming each member by its path under the group at
+        `path` (or relative to that group, when `path` is not given) in warnings."""
         data = dict(data)
 
         kind = data.get("kind")
@@ -178,6 +180,7 @@ class ConsolidatedMetadata:
         metadata: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] = {}
         if raw_metadata:
             for k, v in raw_metadata.items():
+                member = k if path is None else _join_paths([path, k])
                 if not isinstance(v, dict):
                     raise TypeError(
                         f"Invalid value for metadata items. key='{k}', type='{type(v).__name__}'"
@@ -189,16 +192,16 @@ class ConsolidatedMetadata:
                 if zarr_format == 3:
                     node_type = parse_node_type(v.get("node_type", None))
                     if node_type == "group":
-                        metadata[k] = GroupMetadata.from_dict(v)
+                        metadata[k] = GroupMetadata.from_dict(v, path=member)
                     elif node_type == "array":
-                        metadata[k] = ArrayV3Metadata.from_dict(v, path=k)
+                        metadata[k] = ArrayV3Metadata.from_dict(v, path=member)
                     else:
                         assert_never(node_type)
                 elif zarr_format == 2:
                     if "shape" in v:
-                        metadata[k] = ArrayV2Metadata.from_dict(v, path=k)
+                        metadata[k] = ArrayV2Metadata.from_dict(v, path=member)
                     else:
-                        metadata[k] = GroupMetadata.from_dict(v)
+                        metadata[k] = GroupMetadata.from_dict(v, path=member)
                 else:
                     assert_never(zarr_format)
 
@@ -420,7 +423,9 @@ class GroupMetadata(Metadata):
         object.__setattr__(self, "consolidated_metadata", consolidated_metadata)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
+    def from_dict(cls, data: dict[str, Any], *, path: str | None = None) -> GroupMetadata:
+        """Read a stored group document; `path` names the group in warnings about the
+        consolidated metadata it holds."""
         data = dict(data)
         node_type = data.pop("node_type", None)
         if node_type not in ("group", None):
@@ -429,7 +434,9 @@ class GroupMetadata(Metadata):
             )
         consolidated_metadata = data.pop("consolidated_metadata", None)
         if consolidated_metadata:
-            data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(consolidated_metadata)
+            data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(
+                consolidated_metadata, path=path
+            )
 
         zarr_format = data.get("zarr_format")
         if zarr_format == 2 or zarr_format is None:
@@ -700,7 +707,7 @@ class AsyncGroup:
             msg = f"Node type in metadata ({node_type}) is not 'group'"
             raise GroupNotFoundError(msg)
         return cls(
-            metadata=GroupMetadata.from_dict(data),
+            metadata=GroupMetadata.from_dict(data, path=str(store_path)),
             store_path=store_path,
         )
 
@@ -3510,7 +3517,7 @@ async def _read_metadata_v3(store: Store, path: str) -> ArrayV3Metadata | GroupM
     if zarr_json_bytes is None:
         raise FileNotFoundError(path)
     return _build_metadata_v3(
-        buffer_to_json_object(zarr_json_bytes), path=_join_paths([str(store), path])
+        buffer_to_json_object(zarr_json_bytes), path=str(StorePath(store, path))
     )
 
 
@@ -3546,7 +3553,7 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
         else:
             zmeta = buffer_to_json_object(zgroup_bytes)
 
-    return _build_metadata_v2(zmeta, zattrs, path=_join_paths([str(store), path]))
+    return _build_metadata_v2(zmeta, zattrs, path=str(StorePath(store, path)))
 
 
 async def _read_group_metadata_v2(store: Store, path: str) -> GroupMetadata:
@@ -3590,7 +3597,7 @@ def _build_metadata_v3(
         case {"node_type": "array"}:
             return ArrayV3Metadata.from_dict(zarr_json, path=path)
         case {"node_type": "group"}:
-            return GroupMetadata.from_dict(zarr_json)
+            return GroupMetadata.from_dict(zarr_json, path=path)
         case _:  # pragma: no cover
             raise ValueError(
                 "invalid value for `node_type` key in metadata document"
@@ -3607,7 +3614,7 @@ def _build_metadata_v2(
         case {"shape": _}:
             return ArrayV2Metadata.from_dict(zarr_json | {"attributes": attrs_json}, path=path)
         case _:  # pragma: no cover
-            return GroupMetadata.from_dict(zarr_json | {"attributes": attrs_json})
+            return GroupMetadata.from_dict(zarr_json | {"attributes": attrs_json}, path=path)
 
 
 @overload
