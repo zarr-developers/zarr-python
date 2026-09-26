@@ -11,7 +11,7 @@ from typing_extensions import TypedDict
 from zarr_metadata._common import JSONValue
 
 
-class ZarrV2ZGroupJSON(TypedDict):
+class ZarrV2ZGroupJSON(TypedDict, closed=True):
     """
     On-disk `.zgroup` file content.
 
@@ -27,7 +27,7 @@ class ZarrV2ZGroupJSON(TypedDict):
     zarr_format: Literal[2]
 
 
-class ZarrV2GroupMetadataJSON(TypedDict):
+class ZarrV2GroupMetadataJSON(TypedDict, closed=True):
     """
     Zarr v2 group metadata document, in-memory merged form.
 
@@ -38,6 +38,10 @@ class ZarrV2GroupMetadataJSON(TypedDict):
     or write the real on-disk files should use `ZarrV2ZGroupJSON` (strict
     `.zgroup`) plus `ZarrV2ZAttrsJSON` directly.
 
+    Closed: `.zgroup` holds no other keys ("Other keys MUST NOT be present",
+    https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313),
+    and `attributes` is the one member folded in.
+
     See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
     """
 
@@ -45,7 +49,7 @@ class ZarrV2GroupMetadataJSON(TypedDict):
     attributes: NotRequired[Mapping[str, JSONValue]]
 
 
-class ZarrV2GroupMetadataJSONPartial(TypedDict, total=False):
+class ZarrV2GroupMetadataJSONPartial(TypedDict, total=False, closed=True):
     """
     Partial form of `ZarrV2GroupMetadataJSON`: every field is `NotRequired`.
 
@@ -64,9 +68,9 @@ class ZarrV2GroupMetadataJSONPartial(TypedDict, total=False):
     special-casing that field (PEP 655 explicitly permits `NotRequired` inside
     `total=False`).
 
-    Note: v2 group metadata has no `extra_items` setting (the v2 spec has no
-    extension-field concept, and `.zgroup` forbids other keys outright:
-    https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313), so this partial inherits the same closed shape.
+    Note: v2 group metadata is closed (the v2 spec has no extension-field
+    concept, and `.zgroup` forbids other keys outright:
+    https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313), and so is this partial.
 
     Drift between this type and `ZarrV2GroupMetadataJSON` is prevented by
     `tests/test_partial_equivalence.py`.
