@@ -882,7 +882,8 @@ def test_group_write_refreshes_upgraded_consolidated_member(
     from a document that had to be upgraded, at any depth, is first read again from the
     member's own document as it now is (here resized by software that kept the stored
     chunk size of 0), whose upgrade is stored, so no group write stores a stale copy as
-    if valid. The group adopts the members it stored, so later writes read no member."""
+    if valid. The first write reads each such member once; the group adopts the members
+    it stored, so later writes read no member."""
     path = tmp_path / "group.zarr"
     _flagged_consolidated_group(path, zarr_format, member)
 
@@ -893,6 +894,14 @@ def test_group_write_refreshes_upgraded_consolidated_member(
     _rewrite_doc(path / member, zarr_format, resize_keeping_zero)
     with pytest.warns(ZarrUserWarning, match="is read as"):
         group = zarr.open_group(path, mode="r+", use_consolidated=True)
+    reads: list[str] = []
+    get = LocalStore.get
+
+    async def recording_get(self: LocalStore, key: str, *args: Any, **kwargs: Any) -> Any:
+        reads.append(key)
+        return await get(self, key, *args, **kwargs)
+
+    monkeypatch.setattr(LocalStore, "get", recording_get)
 
     if operation == "attrs":
         group.attrs["x"] = 1
@@ -901,6 +910,8 @@ def test_group_write_refreshes_upgraded_consolidated_member(
     else:
         del group["b"]
 
+    assert sorted(set(reads)) == sorted(reads)
+    monkeypatch.undo()
     assert _stored_chunks(_consolidated_member(path, zarr_format, member)) == [10]
     reopened = zarr.open_group(path, mode="r", use_consolidated=True)
     array = reopened[member]
@@ -908,13 +919,7 @@ def test_group_write_refreshes_upgraded_consolidated_member(
     assert (array.shape, array.chunks) == ((10,), (10,))
     assert _open_strictly(path / member).chunks == (10,)
 
-    reads: list[str] = []
-    get = LocalStore.get
-
-    async def recording_get(self: LocalStore, key: str, *args: Any, **kwargs: Any) -> Any:
-        reads.append(key)
-        return await get(self, key, *args, **kwargs)
-
+    reads.clear()
     monkeypatch.setattr(LocalStore, "get", recording_get)
     group.attrs["y"] = 2
     assert reads == []
