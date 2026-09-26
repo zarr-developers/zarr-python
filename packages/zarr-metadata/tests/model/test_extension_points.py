@@ -78,11 +78,13 @@ def test_a_document_reads_through_the_definitions_in_its_scope(
     document: dict[str, Any], context: Context
 ) -> None:
     # What the scope holds judges; what it does not is left to the reader.
-    # The model reads in the same scope as the validators.
+    # The model reads and writes in the same scope as the validators.
     assert validate_array_metadata_v3(document, context=context) == ()
     assert is_array_metadata_v3(document, context=context)
     assert parse_array_metadata_v3(document, context=context) is not None
-    assert ZarrV3ArrayMetadata.from_json(document, context=context).to_json() is not None
+    model = ZarrV3ArrayMetadata.from_json(document, context=context)
+    written = model.to_key_value(context=context)
+    assert ZarrV3ArrayMetadata.from_key_value(written, context=context) == model
 
 
 @pytest.mark.parametrize(
@@ -176,7 +178,21 @@ def test_an_array_in_a_group_s_consolidated_metadata_reads_in_the_group_s_scope(
     }
     lenient = CORE.extended_with(LENIENT_GZIP)
     assert validate_group_metadata_v3(group, context=lenient) == ()
-    assert ZarrV3GroupMetadata.from_json(group, context=lenient).to_json() is not None
+    model = ZarrV3GroupMetadata.from_json(group, context=lenient)
+    written = model.to_key_value(context=lenient)
+    assert ZarrV3GroupMetadata.from_key_value(written, context=lenient) == model
+
+
+def test_error_a_model_is_not_written_in_a_scope_that_refuses_it() -> None:
+    # The writer judges in the scope it is given, as the reader does: the
+    # default one refuses the level the reader's own gzip took.
+    document = _document(codecs=[BYTES, {"name": "gzip", "configuration": {"level": 99}}])
+    model = ZarrV3ArrayMetadata.from_json(document, context=CORE.extended_with(LENIENT_GZIP))
+    with pytest.raises(MetadataValidationError) as raised:
+        model.to_key_value()
+    assert [(problem.loc, problem.kind) for problem in raised.value.problems] == [
+        (("codecs", 1, "configuration", "level"), "invalid_value")
+    ]
 
 
 def test_error_an_envelope_is_judged_once() -> None:

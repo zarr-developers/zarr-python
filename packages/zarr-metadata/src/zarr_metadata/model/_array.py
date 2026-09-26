@@ -325,11 +325,12 @@ class ZarrV3ArrayMetadata:
         )
 
     def to_key_value(
-        self, *, indent: int | str | None = None
+        self, *, indent: int | str | None = None, context: Context = CORE_AND_EXTENSIONS
     ) -> Mapping[ZarrV3ArrayMetadataStoreKey, bytes]:
         # A model built by hand is not validated: its document is written only
-        # if it reads as `from_json` reads one, and every problem is raised.
-        document = parse_array_metadata_v3(self.to_json())
+        # if it reads as `from_json` reads one in `context`, and every problem
+        # is raised.
+        document = parse_array_metadata_v3(self.to_json(), context=context)
         return {ZARR_V3_ARRAY_METADATA_STORE_KEY: dump_store_json(document, indent=indent)}
 
 
