@@ -573,7 +573,7 @@ def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
     ids=["float-edge", "bool-edge", "float-count"],
 )
 def test_rle_expand_rejects_non_int(rle_input: list[Any], match: str) -> None:
-    """expand_rle takes JSON integers only: no stored document holds integral floats."""
+    """expand_rle takes `int`s only; stored integral floats are read by the upgrades."""
     with pytest.raises(TypeError, match=match):
         expand_rle(rle_input)
 
