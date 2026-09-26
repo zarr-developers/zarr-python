@@ -10,7 +10,7 @@ DIRECTORY defaults to the repo-root `changes/`.
 import sys
 from pathlib import Path
 
-VALID_CHANGELOG_TYPES = ["feature", "bugfix", "doc", "removal", "misc"]
+VALID_CHANGELOG_TYPES = ["feature", "changed", "bugfix", "doc", "removal", "misc"]
 REPO_ROOT = Path(__file__).parent.parent.resolve()
 DEFAULT_DIRECTORY = REPO_ROOT / "changes"
 
