@@ -7,12 +7,17 @@ import numpy as np
 
 from zarr.core.dtype import data_type_registry
 from zarr.core.dtype.common import HasLength
+from zarr.core.dtype.npy.bytes import NCZarrChar
 from zarr.core.dtype.npy.structured import Struct
 from zarr.core.dtype.npy.time import DateTime64, TimeDelta64
 from zarr.core.dtype.wrapper import ZDType
 
 zdtype_examples: tuple[ZDType[Any, Any], ...] = ()
 for wrapper_cls in data_type_registry.contents.values():
+    if wrapper_cls is NCZarrChar:
+        # NCZarrChar is never inferred from a NumPy data type and has no Zarr V3 representation, so
+        # it is tested on its own rather than with the data types that have both.
+        continue
     if wrapper_cls is Struct:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")

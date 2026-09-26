@@ -33,8 +33,10 @@ _V2_SINGLE_BYTE_ALIASES: Final[Mapping[str, str]] = {
     "<u1": "|u1",
     ">u1": "|u1",
 }
-# Fixed-length bytes data types, whose names are the kind followed by the length in bytes.
-_V2_BYTES_KINDS: Final = ("V",)
+# Fixed-length bytes data types, whose names are the kind followed by the length in bytes. Zarr.jl
+# writes "<S{N}". NCZarr's ">S1" is claimed by the NCZarrChar data type, which keeps its spelling:
+# match_json tries a name as written before its canonical alias.
+_V2_BYTES_KINDS: Final = ("S", "V")
 
 
 def _v2_canonical_name(name: str) -> str:
