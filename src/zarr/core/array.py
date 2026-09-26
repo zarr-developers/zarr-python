@@ -1644,7 +1644,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         upgrade. Storing the same upgrade twice is harmless, so concurrent callers need
         no coordination.
         """
-        if not self.metadata._stored_document_upgraded:
+        if self.metadata._stored_document is None:
             return
         zarr_format = self.metadata.zarr_format
         documents = await read_documents(self.store_path, ARRAY_DOCUMENTS[zarr_format])
@@ -1658,9 +1658,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                     f"The metadata stored for the array at {str(self.store_path)!r} has "
                     "changed since this array was opened: reopen the array to write to it."
                 )
-            if current._stored_document_upgraded:
+            if current._stored_document is not None:
                 await upsert_metadata(self.store_path, current, documents)
-        object.__setattr__(self.metadata, "_stored_document_upgraded", False)
+        object.__setattr__(self.metadata, "_stored_document", None)
 
     async def _set_selection(
         self,

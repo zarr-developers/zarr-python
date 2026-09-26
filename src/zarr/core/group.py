@@ -13,6 +13,7 @@ import numpy as np
 
 import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
+from zarr.abc.store import Store, set_or_delete
 from zarr.core._info import GroupInfo
 from zarr.core._json import buffer_to_json_object, json_to_buffer
 from zarr.core.array import (
@@ -74,7 +75,6 @@ if TYPE_CHECKING:
     )
     from typing import Any
 
-    from zarr.abc.store import Store
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
@@ -147,11 +147,16 @@ class ConsolidatedMetadata:
     must_understand: Literal[False] = False
 
     def to_dict(self) -> dict[str, JSON]:
+        """The consolidated metadata document. An array read from a stored document that
+        had to be upgraded is written as that document was stored: only the array's
+        own first chunk write stores its upgrade."""
         return {
             "kind": self.kind,
             "must_understand": self.must_understand,
             "metadata": {
                 k: v.to_dict()
+                if isinstance(v, GroupMetadata) or v._stored_document is None
+                else dict(v._stored_document)
                 for k, v in sorted(
                     self.flattened_metadata.items(),
                     key=lambda item: (
@@ -2115,7 +2120,9 @@ class Group(SyncMixin):
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
-        await save_metadata(self.store_path, new_metadata)
+        to_save = new_metadata.to_buffer_dict(default_buffer_prototype())
+        awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
+        await asyncio.gather(*awaitables)
 
         async_group = replace(self._async_group, metadata=new_metadata)
         return replace(self, _async_group=async_group)
@@ -3032,8 +3039,6 @@ async def create_hierarchy(
     ```{'': GroupMetadata, 'a': GroupMetadata, 'b': Groupmetadata}```
 
     After input parsing, this function then creates all the nodes in the hierarchy concurrently.
-    The metadata of each node is stored as given: the consolidated metadata of a group is
-    stored as it is, without reading the documents of its members.
 
     Arrays and Groups are yielded in the order they are created. This order is not stable and
     should not be relied on.
