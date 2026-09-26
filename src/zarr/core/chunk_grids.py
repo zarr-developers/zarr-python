@@ -827,9 +827,16 @@ def normalize_chunks_nd(
     if isinstance(chunks, RectilinearChunkGridMetadata):
         return ChunkGrid.from_sizes(shape, chunks.chunk_shapes)
 
-    # handle no chunking: one chunk covering every axis.
+    # A bool as the whole specification: `False` is one chunk covering every axis;
+    # `True` meant automatic chunking in zarr 2, so its error names the spellings that
+    # chunk automatically now.
     if chunks is False:
         chunks = -1
+    elif chunks is True:
+        raise TypeError(
+            'A bool is not a chunk size; got True. For automatic chunking, use chunks="auto" '
+            "with create_array, or chunks=None with zarr.create."
+        )
 
     # handle 1D convenience form: one integer applies to every dimension.
     chunk_size = _chunk_int(chunks)

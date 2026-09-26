@@ -1,4 +1,5 @@
 import contextlib
+import re
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -311,15 +312,31 @@ def test_normalize_chunks_nd_errors(case: ExpectFail[tuple[Any, tuple[int, ...]]
         (np.array(True), 5),
         [[True, 9], 10],
         [[np.True_, 9], 10],
+        np.False_,
+        np.array(False),
+        np.array([False, False]),
+        (False, 5),
+        (np.False_, 5),
+        (np.array(False), 5),
+        [[False, 9], 10],
+        [[np.False_, 9], 10],
     ],
     ids=repr,
 )
 def test_normalize_chunks_nd_rejects_bool(chunks: Any) -> None:
     """A boolean is a flag, not a chunk size: every spelling of one, as the whole
     specification, as a dimension's size, or as an edge in a dimension's list, is
-    rejected with the same error rather than read as a size of 0 or 1."""
+    rejected with the same error rather than read as a size of 0 or 1. The one
+    exception is `False` as the whole specification (one chunk covering every axis)."""
     with pytest.raises(TypeError, match="A bool is not a chunk size"):
         normalize_chunks_nd(chunks, (10, 10))
+
+
+def test_normalize_chunks_nd_true_names_automatic_chunking() -> None:
+    """`chunks=True` meant automatic chunking in zarr 2: its error says how to ask for
+    that now."""
+    with pytest.raises(TypeError, match=re.escape('use chunks="auto" with create_array')):
+        normalize_chunks_nd(True, (10, 10))
 
 
 @pytest.mark.parametrize(
