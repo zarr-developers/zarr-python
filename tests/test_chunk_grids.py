@@ -262,12 +262,6 @@ def test_normalize_chunks_1d_errors(case: ExpectFail[tuple[Any, int]]) -> None:
 @pytest.mark.parametrize(
     "case",
     [
-        ExpectFail(
-            input=(None, (100,)),
-            exception=TypeError,
-            id="none",
-            msg="got None of type NoneType",
-        ),
         ExpectFail(input=("foo", (100,)), exception=ValueError, id="string", msg="dimensions"),
         # A 0-d array is an integer only if its dtype is.
         ExpectFail(
@@ -332,11 +326,12 @@ def test_normalize_chunks_nd_rejects_bool(chunks: Any) -> None:
         normalize_chunks_nd(chunks, (10, 10))
 
 
-def test_normalize_chunks_nd_true_names_automatic_chunking() -> None:
-    """`chunks=True` meant automatic chunking in zarr 2: its error says how to ask for
-    that now."""
-    with pytest.raises(TypeError, match=re.escape('use chunks="auto" with create_array')):
-        normalize_chunks_nd(True, (10, 10))
+@pytest.mark.parametrize("chunks", [True, None])
+def test_normalize_chunks_nd_names_automatic_chunking(chunks: Any) -> None:
+    """`chunks=True` meant automatic chunking in zarr 2, and `chunks=None` means it in
+    `zarr.create`: their errors say how to ask for it here."""
+    with pytest.raises(TypeError, match=re.escape('For automatic chunking, pass "auto"')):
+        normalize_chunks_nd(chunks, (10, 10))
 
 
 @pytest.mark.parametrize(

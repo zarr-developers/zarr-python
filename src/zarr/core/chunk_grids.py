@@ -11,6 +11,7 @@ from functools import reduce
 from typing import (
     TYPE_CHECKING,
     Any,
+    Final,
     Literal,
     NamedTuple,
     Protocol,
@@ -325,6 +326,13 @@ def _is_keep(spec: object) -> TypeIs[Literal["keep"]]:
     See `_is_auto` for why this is not a bare ``==`` comparison.
     """
     return isinstance(spec, str) and spec == "keep"
+
+
+_AUTOMATIC_CHUNKING: Final = (
+    ' For automatic chunking, pass "auto" to create_array (as chunks= or shards=), '
+    "or chunks=None to zarr.create."
+)
+"""How to ask for automatic chunking, for the errors of specifications that once did."""
 
 
 def _chunk_int(value: object) -> int | None:
@@ -827,16 +835,15 @@ def normalize_chunks_nd(
     if isinstance(chunks, RectilinearChunkGridMetadata):
         return ChunkGrid.from_sizes(shape, chunks.chunk_shapes)
 
-    # A bool as the whole specification: `False` is one chunk covering every axis;
-    # `True` meant automatic chunking in zarr 2, so its error names the spellings that
-    # chunk automatically now.
+    # A bool as the whole specification: `False` is one chunk covering every axis.
+    # `True` meant automatic chunking in zarr 2, and `None` means it in `zarr.create`,
+    # so their errors name the spellings that chunk automatically here.
     if chunks is False:
         chunks = -1
     elif chunks is True:
-        raise TypeError(
-            'A bool is not a chunk size; got True. For automatic chunking, use chunks="auto" '
-            "with create_array, or chunks=None with zarr.create."
-        )
+        raise TypeError(f"A bool is not a chunk size; got True.{_AUTOMATIC_CHUNKING}")
+    elif chunks is None:
+        raise TypeError(f"None is not a chunk specification.{_AUTOMATIC_CHUNKING}")
 
     # handle 1D convenience form: one integer applies to every dimension.
     chunk_size = _chunk_int(chunks)
