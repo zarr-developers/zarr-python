@@ -134,11 +134,12 @@ class ArrayLifecycle(RuleBasedStateMachine):
         if spelling != "rectilinear" and data.draw(st.booleans(), label="legacy zero"):
             # A stored chunk size of 0, as zarr-python wrote for arrays created with a
             # zero-length axis; older releases could then grow the axis without storing
-            # a chunk, so any extent is possible. Sharded arrays store it in the outer grid.
-            self.legacy_axes = data.draw(
-                st.lists(st.integers(0, len(shape) - 1), min_size=1, unique=True),
-                label="axes stored with chunk size 0",
-            )
+            # a chunk, so any extent is possible, but zero-length axes come first.
+            # Sharded arrays store it in the outer grid.
+            axes = st.lists(st.integers(0, len(shape) - 1), min_size=1, unique=True)
+            if zero_axes := [axis for axis, extent in enumerate(shape) if extent == 0]:
+                axes = st.lists(st.sampled_from(zero_axes), min_size=1, unique=True) | axes
+            self.legacy_axes = data.draw(axes, label="axes stored with chunk size 0")
             stored_zero = data.draw(st.sampled_from([0, False]), label="stored zero")
             self._rewrite_stored_chunks(zarr_format, self.legacy_axes, stored_zero)
             event("legacy zero chunk size")
@@ -269,8 +270,10 @@ class ArrayLifecycle(RuleBasedStateMachine):
         note(f"write {region}")
         arr[region] = values
         self._model_write(arr, region, values)
-        # Writing chunks first stores the metadata they are written under.
-        self.legacy_axes = []
+        if all(shape):
+            # Writing chunks first stores the metadata they are written under; a write
+            # of nothing stores nothing.
+            self.legacy_axes = []
 
     @precondition(lambda self: self.legacy_axes)
     @rule()

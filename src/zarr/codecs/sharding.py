@@ -458,7 +458,7 @@ class ShardingCodec(
     def __init__(
         self,
         *,
-        chunk_shape: Iterable[int],
+        chunk_shape: tuple[int, ...] | list[int],
         codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
         index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
         index_location: ShardingCodecIndexLocation | IndexLocation = "end",

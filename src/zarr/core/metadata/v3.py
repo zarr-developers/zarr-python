@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, NotRequired, TypeGuard, cast
 
 from typing_extensions import TypedDict
 
@@ -39,9 +39,8 @@ from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
 from zarr.core.metadata.upgrades import (
-    V3_ARRAY_UPGRADES,
+    mark_upgraded,
     upgrade_array_document,
-    warn_readings,
 )
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
@@ -489,9 +488,10 @@ class ArrayV3Metadata(Metadata):
     node_type: Literal["array"] = field(default="array", init=False)
     storage_transformers: tuple[dict[str, JSON], ...]
     extra_fields: dict[str, AllowedExtraField]
-    _stored_document_upgraded: bool = field(default=False, init=False, compare=False, repr=False)
-    """Whether `from_dict` read this metadata from a stored document it had to upgrade,
-    so the store holds an invalid document until this metadata is stored."""
+    _stored_document_upgraded: ClassVar[bool] = False
+    """Whether `from_dict` read this metadata from a stored document it had to upgrade
+    (set on the instance by `mark_upgraded`), so the store may still hold that invalid
+    document."""
 
     def __init__(
         self,
@@ -640,7 +640,7 @@ class ArrayV3Metadata(Metadata):
         chunk_grid = data.get("chunk_grid")
         if isinstance(chunk_grid, Mapping) and chunk_grid.get("name") == "rectilinear":
             _check_rectilinear_chunks_enabled()
-        upgraded, readings = upgrade_array_document(data, V3_ARRAY_UPGRADES)
+        upgraded, readings = upgrade_array_document(data, 3)
         # a new dict, because we are modifying it
         _data = dict(upgraded)
 
@@ -696,9 +696,7 @@ class ArrayV3Metadata(Metadata):
             extra_fields=allowed_extra_fields,
             storage_transformers=_data_typed.get("storage_transformers", ()),  # type: ignore[arg-type]
         )
-        warn_readings(readings, path)
-        object.__setattr__(metadata, "_stored_document_upgraded", bool(readings))
-        return metadata
+        return mark_upgraded(metadata, readings, path)
 
     def to_dict(self) -> dict[str, JSON]:
         out_dict = super().to_dict()
