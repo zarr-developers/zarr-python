@@ -276,7 +276,11 @@ async def encode_node(
 
     members: list[RefreshedMember] = []
     if isinstance(metadata, GroupMetadata):
-        metadata, members = await _refresh_consolidated(store_path, metadata)
+        try:
+            metadata, members = await _refresh_consolidated(store_path, metadata)
+        except RectilinearChunksDisabledError as e:
+            e.add_note(f"Group {str(store_path)!r}: nothing was stored.")
+            raise
     return EncodedNode(encode_documents(store_path, metadata), members)
 
 
