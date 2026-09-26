@@ -104,6 +104,9 @@ def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
         ((1, 3, np.int64(16), np.int64(16)), (1, 3, 32, 32), (1, 3, 16, 16)),
         ((np.int32(30), np.int64(-1)), (100, 20), (30, 20)),
         (np.array([10, 10]), (100, 100), (10, 10)),
+        # 0-d integer arrays are integers, as the scalar form and per dimension
+        (np.array(10), (100, 100), (10, 10)),
+        ((np.array(5), np.int64(-1)), (10, 6), (5, 6)),
         # rectilinear chunks given as numpy arrays
         ((np.array([60, 40]), np.array([50, 50])), (100, 100), ((60, 40), (50, 50))),
     ],
@@ -198,6 +201,13 @@ def test_chunk_layout_nested() -> None:
             msg="must be an integer or an iterable of integers; got 2.5 of type float",
             escape=True,
         ),
+        # an integral float is still not an integer
+        ExpectFail(
+            input=(10.0, 100),
+            exception=TypeError,
+            id="integral-float-scalar",
+            msg="got 10.0 of type float",
+        ),
         ExpectFail(
             input=([10, -1, 10], 100),
             exception=ValueError,
@@ -251,21 +261,34 @@ def test_normalize_chunks_1d_errors(case: ExpectFail[tuple[Any, int]]) -> None:
 @pytest.mark.parametrize(
     "case",
     [
+        # `None` and `True` mean auto-chunking only to the top-level API.
         ExpectFail(
             input=(None, (100,)),
             exception=ValueError,
             id="none",
             msg="None is not a valid chunk input",
         ),
-        # `True` is rejected explicitly because bool is a subclass of int — without
-        # this guard, `chunks=True` would silently produce size-1 chunks.
         ExpectFail(
             input=(True, (100,)),
             exception=ValueError,
             id="true",
             msg="True is not a valid chunk input",
         ),
+        # `False` means one chunk spanning the array only as the whole specification.
+        ExpectFail(
+            input=((False,), (100,)),
+            exception=ValueError,
+            id="false-size",
+            msg="Chunk size must be positive or -1, got 0",
+        ),
         ExpectFail(input=("foo", (100,)), exception=ValueError, id="string", msg="dimensions"),
+        # A 0-d array is an integer only if its dtype is.
+        ExpectFail(
+            input=(np.array(2.0), (100,)),
+            exception=TypeError,
+            id="0-d-float-array",
+            msg="must be an integer or an iterable of integers",
+        ),
         ExpectFail(
             input=((100, 10), (100,)), exception=ValueError, id="too-many-dims", msg="dimensions"
         ),
@@ -288,6 +311,36 @@ def test_normalize_chunks_nd_errors(case: ExpectFail[tuple[Any, tuple[int, ...]]
     chunks, shape = case.input
     with case.raises():
         normalize_chunks_nd(chunks, shape)
+
+
+@pytest.mark.parametrize(
+    ("chunks", "as_ints"),
+    [((True, 5), (1, 5)), ([[True, 9], 10], [[1, 9], 10])],
+    ids=["bool-size", "bool-edge"],
+)
+def test_normalize_chunks_nd_reads_bool_as_int(chunks: Any, as_ints: Any) -> None:
+    """A Python `bool` inside a chunk specification is an `int`: `True` is a chunk size
+    of 1."""
+    assert normalize_chunks_nd(chunks, (10, 10)) == normalize_chunks_nd(as_ints, (10, 10))
+
+
+@pytest.mark.parametrize(
+    "chunks",
+    [
+        np.True_,
+        np.array(True),
+        np.array([True, True]),
+        (np.True_, 5),
+        (np.array(True), 5),
+        [[np.True_, 9], 10],
+    ],
+    ids=repr,
+)
+def test_normalize_chunks_nd_rejects_numpy_bool(chunks: Any) -> None:
+    """A numpy boolean is not an integer, whether it is the whole specification, a
+    dimension's size, or an edge in a dimension's list."""
+    with pytest.raises(TypeError, match="integer"):
+        normalize_chunks_nd(chunks, (10, 10))
 
 
 @pytest.mark.parametrize(
