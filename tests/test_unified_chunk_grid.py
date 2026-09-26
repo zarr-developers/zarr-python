@@ -1186,6 +1186,7 @@ def test_rectilinear_chunks_gates(shape: tuple[int, ...], chunks: Any) -> None:
         (np.array(False), None),
         (np.array([0]), None),
         (np.array([]), None),
+        (np.array(7), (7, 7)),
         (np.array([5, 3]), (5, 3)),
     ],
     ids=repr,
@@ -1199,6 +1200,18 @@ def test_legacy_create_v2_chunks(chunks: Any, expected: tuple[int, ...] | None) 
     arr = zarr.create(store=MemoryStore(), shape=shape, chunks=chunks, dtype="int32", zarr_format=2)
     assert arr.chunks == (expected or guess_chunks(shape, 4).chunk_shape)
     assert all(type(c) is int for c in arr.chunks)
+
+
+def test_legacy_create_v2_chunks_all_zero_array_raises() -> None:
+    """A numpy `chunks` array with more than one element is given even when every element
+    is 0, so the legacy Zarr format 2 path rejects its 0 sizes instead of chunking
+    automatically."""
+    # `zarr.create` does not declare numpy arrays for `chunks`; the legacy path reads them.
+    chunks: Any = np.array([0, 0])
+    with pytest.raises(ValueError, match="Chunk size must be positive or -1, got 0"):
+        zarr.create(
+            store=MemoryStore(), shape=(2**12, 2**12), chunks=chunks, dtype="int32", zarr_format=2
+        )
 
 
 def test_from_array_keep_preserves_all_bare_int_rectilinear_grid() -> None:
