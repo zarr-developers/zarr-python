@@ -3,6 +3,7 @@
 import copy
 import dataclasses
 import json
+import pickle
 from collections import UserDict
 from collections.abc import Callable
 from typing import TYPE_CHECKING, get_args
@@ -1250,6 +1251,16 @@ def test_metadata_validation_error_holds_problems() -> None:
     assert err.problems == tuple(problems)
     assert "shape: missing required key" in str(err)
     assert "data_type: expected a metadata field" in str(err)
+
+
+def test_the_error_pickles_and_copies_as_its_problems() -> None:
+    error = MetadataValidationError([ValidationProblem(("a",), "bad a", "invalid_value")])
+    error.add_note("while reading a")
+    for again in (pickle.loads(pickle.dumps(error)), copy.copy(error), copy.deepcopy(error)):
+        assert type(again) is MetadataValidationError
+        assert again.problems == error.problems
+        assert str(again) == str(error)
+        assert again.__notes__ == ["while reading a"]
 
 
 def test_prefix_prepends_loc_head() -> None:

@@ -74,6 +74,16 @@ class MetadataValidationError(ValueError):
         self.problems = tuple(problems)
         super().__init__("\n".join(str(problem) for problem in self.problems))
 
+    def __reduce__(
+        self,
+    ) -> tuple[
+        type[MetadataValidationError], tuple[tuple[ValidationProblem, ...]], dict[str, object]
+    ]:
+        # An exception pickles and copies as its class called with its
+        # `args`, which here are the message; it is built from its problems,
+        # and the rest of its state -- its notes among it -- follows.
+        return (type(self), (self.problems,), self.__dict__)
+
 
 def _prefix(
     loc_head: str | int, problems: Sequence[ValidationProblem]
