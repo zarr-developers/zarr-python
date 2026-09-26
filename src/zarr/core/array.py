@@ -473,6 +473,11 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         # Unify the v2 (chunks) and v3 (chunk_shape) parameter names
         _raw_chunks = chunks if chunks is not None else chunk_shape
+        if _raw_chunks is None:
+            item_size = dtype_parsed.item_size if isinstance(dtype_parsed, HasItemSize) else 1
+            outer_chunks = guess_chunks(shape, item_size)
+        else:
+            outer_chunks = normalize_chunks_nd(_raw_chunks, shape)
 
         config_parsed = parse_array_config(config)
 
@@ -494,13 +499,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             if order is not None:
                 _warn_order_kwarg()
 
-            item_size = 1
-            if isinstance(dtype_parsed, HasItemSize):
-                item_size = dtype_parsed.item_size
-            if _raw_chunks is None:
-                outer_chunks = guess_chunks(shape, item_size)
-            else:
-                outer_chunks = normalize_chunks_nd(_raw_chunks, shape)
             chunk_grid = create_chunk_grid_metadata(outer_chunks)
             result = await cls._create_v3(
                 store_path,
@@ -526,13 +524,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 )
             if dimension_names is not None:
                 raise ValueError("dimension_names cannot be used for arrays with zarr_format 2.")
-            item_size = 1
-            if isinstance(dtype_parsed, HasItemSize):
-                item_size = dtype_parsed.item_size
-            if _raw_chunks is None:
-                outer_chunks = guess_chunks(shape, item_size)
-            else:
-                outer_chunks = normalize_chunks_nd(_raw_chunks, shape)
             if not outer_chunks.is_regular:
                 raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
             _chunks = outer_chunks.chunk_shape

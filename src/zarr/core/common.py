@@ -45,6 +45,9 @@ ShapeLike = Iterable[int | np.integer[Any]] | int | np.integer[Any]
 type ChunksLike = ShapeLike | Iterable[int | Iterable[int]] | ChunkGridMetadata
 # For backwards compatibility
 ChunkCoords = tuple[int, ...]
+type ChunkShape = tuple[int, ...] | list[int]
+"""A regular chunk shape as the metadata constructors take it: a list or tuple of one
+chunk edge length (an `int` of at least 1) per axis (see `parse_chunk_shape`)."""
 ZarrFormat = Literal[2, 3]
 NodeType = Literal["array", "group"]
 JSON = str | int | float | bool | Mapping[str, "JSON"] | Sequence["JSON"] | None

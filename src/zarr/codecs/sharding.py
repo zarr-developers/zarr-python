@@ -45,6 +45,7 @@ from zarr.core.chunk_utils import (
     merge_and_encode_chunk,
 )
 from zarr.core.common import (
+    ChunkShape,
     parse_chunk_shape,
     parse_named_configuration,
     product,
@@ -458,7 +459,7 @@ class ShardingCodec(
     def __init__(
         self,
         *,
-        chunk_shape: tuple[int, ...] | list[int],
+        chunk_shape: ChunkShape,
         codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
         index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
         index_location: ShardingCodecIndexLocation | IndexLocation = "end",
