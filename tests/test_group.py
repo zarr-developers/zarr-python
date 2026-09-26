@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import inspect
 import json
@@ -1689,6 +1690,39 @@ class TestConsolidated:
         assert "b" not in group["sub"]
         with pytest.raises(KeyError):
             group["sub/b"]
+
+    async def test_group_delitem_consolidated_concurrent(self, zarr_format: ZarrFormat) -> None:
+        """Concurrent deletions through one handle each store the deletions made before
+        them, so the stored consolidated metadata lists what the handle lists. Here the
+        deletions finish in the reverse of the order they started in."""
+
+        delays = [0.03, 0.02, 0.01]
+
+        class SlowDeletes(LatencyStore):
+            async def delete_dir(self, prefix: str) -> None:
+                await asyncio.sleep(delays.pop(0))
+                await super().delete_dir(prefix)
+
+        store = SlowDeletes(MemoryStore())
+        root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
+        for name in "abcd":
+            await root.create_array(name, shape=(2,), dtype="i4")
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", "Consolidated metadata is currently not part", ZarrUserWarning
+            )
+            await zarr.api.asynchronous.consolidate_metadata(store)
+        group = await zarr.api.asynchronous.open_consolidated(store=store, zarr_format=zarr_format)
+
+        await asyncio.gather(*(group.delitem(name) for name in "abc"))
+
+        reopened = await zarr.api.asynchronous.open_consolidated(
+            store=store, zarr_format=zarr_format
+        )
+        assert group.metadata.consolidated_metadata is not None
+        assert reopened.metadata.consolidated_metadata is not None
+        assert list(group.metadata.consolidated_metadata.metadata) == ["d"]
+        assert list(reopened.metadata.consolidated_metadata.metadata) == ["d"]
 
     def test_open_consolidated_raises(self, store: Store) -> None:
         if isinstance(store, ZipStore):
