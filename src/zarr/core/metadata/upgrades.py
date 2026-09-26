@@ -1,7 +1,7 @@
 """Upgrades that read invalid stored array metadata documents written by older software.
 
 This is the only place invalid metadata is read leniently; the metadata constructors
-are strict. An upgrade maps a stored array metadata document (parsed JSON) to a valid
+never reinterpret a chunk size. An upgrade maps a stored array metadata document (parsed JSON) to a valid
 one and says how it read the document. `ArrayV2Metadata.from_dict` and
 `ArrayV3Metadata.from_dict` apply the upgrades for their Zarr format, so every path
 that parses a stored document, including consolidated metadata, goes through them, and
