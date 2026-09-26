@@ -25,6 +25,7 @@ if TYPE_CHECKING:
         TBaseScalar,
         ZDType,
     )
+    from zarr.core.metadata.upgrades import ArrayDocument
 
 from dataclasses import dataclass, field, fields, replace
 
@@ -72,10 +73,9 @@ class ArrayV2Metadata(Metadata):
     compressor: Numcodec | None
     attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
-    _stored_document_upgraded: ClassVar[bool] = False
-    """Whether `from_dict` read this metadata from a stored document it had to upgrade
-    (set on the instance by `mark_upgraded`), so the store may still hold that invalid
-    document."""
+    _stored_document: ClassVar[ArrayDocument | None] = None
+    """The stored document `from_dict` read this metadata from, if it had to upgrade it
+    (set on the instance by `mark_upgraded`): the store may still hold it."""
 
     def __init__(
         self,
@@ -209,7 +209,7 @@ class ArrayV2Metadata(Metadata):
 
         _data = {k: v for k, v in _data.items() if k in expected}
 
-        return mark_upgraded(cls(**_data), readings, path)
+        return mark_upgraded(cls(**_data), data, readings, path)
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()

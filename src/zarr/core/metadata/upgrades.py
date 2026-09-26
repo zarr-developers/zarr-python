@@ -18,6 +18,7 @@ To read another kind of invalid document, add an upgrade to `ARRAY_UPGRADES`.
 
 from __future__ import annotations
 
+import copy
 import json
 import warnings
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -43,14 +44,17 @@ RESAVE_HINT: Final = (
 )
 
 
-def mark_upgraded[M](metadata: M, readings: Sequence[str | None], path: str | None) -> M:
-    """Record that `metadata` was read from a stored document that needed the upgrades
-    whose `readings` `upgrade_array_document` returned, if any: set
-    `_stored_document_upgraded` on `metadata`, so the array stores the upgrade before
-    it writes chunks under it, and warn once with the readings that are warnings,
-    naming the array at `path` when the caller knows it."""
+def mark_upgraded[M](
+    metadata: M, stored: ArrayDocument, readings: Sequence[str | None], path: str | None
+) -> M:
+    """Record that `metadata` was read from the document `stored`, which needed the
+    upgrades whose `readings` `upgrade_array_document` returned, if any: keep a copy of
+    `stored` as `_stored_document` on `metadata`, so the array stores the upgrade before
+    it writes chunks under it and consolidated metadata stores it as it was stored, and
+    warn once with the readings that are warnings, naming the array at `path` when the
+    caller knows it."""
     if readings:
-        object.__setattr__(metadata, "_stored_document_upgraded", True)
+        object.__setattr__(metadata, "_stored_document", copy.deepcopy(stored))
     if messages := [reading for reading in readings if reading is not None]:
         subject = "" if path is None else f"Array {path!r}: "
         # The synchronous API parses metadata on zarr's IO thread, whose stack holds no

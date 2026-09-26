@@ -172,7 +172,7 @@ class ArrayLifecycle(RuleBasedStateMachine):
         warned = any(issubclass(w.category, ZarrUserWarning) for w in record)
         must_warn = any(self.shape[axis] > 0 for axis in self.legacy_axes)
         assert warned is must_warn, [str(w.message) for w in record]
-        assert arr.metadata._stored_document_upgraded is bool(self.legacy_axes)
+        assert (arr.metadata._stored_document is not None) is bool(self.legacy_axes)
         return arr
 
     # ----------------------------------------------------------------- model

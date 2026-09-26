@@ -195,7 +195,7 @@ def test_upgrade_array_document(
         warnings.simplefilter("always")
         metadata = metadata_cls.from_dict(dict(doc), path="group/array")
     assert _chunk_shapes(metadata) == expected
-    assert metadata._stored_document_upgraded is upgraded
+    assert metadata._stored_document == (doc if upgraded else None)
     messages = [str(w.message) for w in record]
     if warning is None:
         assert messages == []
@@ -312,7 +312,7 @@ def test_read_invalid_edges_in_rectilinear_grid(
     with zarr.config.set({"array.rectilinear_chunks": True}):
         metadata = _read_strictly(doc)
         assert metadata.chunk_grid == RectilinearChunkGridMetadata(chunk_shapes=expected)
-    assert metadata._stored_document_upgraded is upgraded
+    assert metadata._stored_document == (doc if upgraded else None)
 
 
 @pytest.mark.parametrize(
@@ -660,7 +660,7 @@ def test_write_stores_upgraded_metadata_first(
 
         sync(write_twice())
 
-    assert not arr.metadata._stored_document_upgraded
+    assert arr.metadata._stored_document is None
     with warnings.catch_warnings():
         warnings.simplefilter("error", ZarrUserWarning)
         reopened = zarr.open_array(store=path, mode="r")
@@ -700,7 +700,7 @@ def test_stale_handle_write_keeps_newer_metadata(
 
     stale[0] = 9
 
-    assert not stale.metadata._stored_document_upgraded
+    assert stale.metadata._stored_document is None
     reopened = _open_strictly(path)
     assert reopened.shape == (9,)
     assert reopened.attrs.asdict() == {"x": 1}
@@ -776,7 +776,7 @@ def test_stale_handle_write_after_chunk_grid_change_raises(
     with pytest.raises(ValueError, match="has changed since this array was opened; reopen"):
         stale[0:3] = [7, 8, 9]
 
-    assert stale.metadata._stored_document_upgraded
+    assert stale.metadata._stored_document is not None
     assert {p.name: p.read_bytes() for p in path.iterdir()} == documents
 
 
@@ -788,11 +788,11 @@ def test_write_without_stored_document(zarr_format: Literal[2, 3]) -> None:
     store = MemoryStore()
     doc = _v2_doc([3], [True]) if zarr_format == 2 else _v3_doc([3], [True])
     array = zarr.Array(AsyncArray.from_dict(StorePath(store), doc))
-    upgraded = array.metadata._stored_document_upgraded
+    upgraded = array.metadata._stored_document is not None
 
     array[:] = [1, 2, 3]
 
-    assert (upgraded, array.metadata._stored_document_upgraded) == (True, False)
+    assert (upgraded, array.metadata._stored_document) == (True, None)
     np.testing.assert_array_equal(array[:], [1, 2, 3])
     assert not [key for key in store._store_dict if key.endswith((".zarray", "zarr.json"))]
 
@@ -867,146 +867,144 @@ def _flagged_consolidated_group(path: Path, zarr_format: Literal[2, 3], member: 
     _rewrite_consolidated(path, zarr_format, member, _store_zero)
 
 
+def _record_store_access(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
+    """Record every `get` and `set` of a `LocalStore`, as `(method, key)`."""
+    accesses: list[tuple[str, str]] = []
+    for method in ("get", "set"):
+        original = getattr(LocalStore, method)
+
+        async def recording(
+            self: LocalStore,
+            key: str,
+            *args: Any,
+            _method: str = method,
+            _original: Any = original,
+            **kwargs: Any,
+        ) -> Any:
+            accesses.append((_method, key))
+            return await _original(self, key, *args, **kwargs)
+
+        monkeypatch.setattr(LocalStore, method, recording)
+    return accesses
+
+
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("member", ["a", "g/a"])
 @pytest.mark.parametrize("operation", ["attrs", "update_attributes_async", "delete-member"])
-def test_group_write_refreshes_upgraded_consolidated_member(
+def test_group_write_stores_upgraded_consolidated_member_as_stored(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     zarr_format: Literal[2, 3],
     member: str,
     operation: str,
 ) -> None:
-    """Storing a group's metadata stores its consolidated metadata. Each member of it read
-    from a document that had to be upgraded, at any depth, is first read again from the
-    member's own document as it now is (here resized by software that kept the stored
-    chunk size of 0), whose upgrade is stored, so no group write stores a stale copy as
-    if valid. The first write reads each such member once; the group adopts the members
-    it stored, so later writes read no member."""
+    """A group write stores only the group's own documents, reading none: it reads and
+    writes no member document, and stores the consolidated copy of a member read from a
+    document that had to be upgraded exactly as it was stored, so every reader of the
+    consolidated metadata reads that member as upgraded again."""
     path = tmp_path / "group.zarr"
     _flagged_consolidated_group(path, zarr_format, member)
-
-    def resize_keeping_zero(doc: dict[str, Any]) -> None:
-        _store_zero(doc)
-        doc["shape"] = [10]
-
-    _rewrite_doc(path / member, zarr_format, resize_keeping_zero)
+    stored = json.dumps(_consolidated_member(path, zarr_format, member))
     with pytest.warns(ZarrUserWarning, match="is read as"):
         group = zarr.open_group(path, mode="r+", use_consolidated=True)
-    reads: list[str] = []
-    get = LocalStore.get
-
-    async def recording_get(self: LocalStore, key: str, *args: Any, **kwargs: Any) -> Any:
-        reads.append(key)
-        return await get(self, key, *args, **kwargs)
-
-    monkeypatch.setattr(LocalStore, "get", recording_get)
+    accesses = _record_store_access(monkeypatch)
 
     if operation == "attrs":
         group.attrs["x"] = 1
     elif operation == "update_attributes_async":
-        group = sync(group.update_attributes_async({"x": 1}))
+        sync(group.update_attributes_async({"x": 1}))
     else:
         del group["b"]
 
-    assert sorted(set(reads)) == sorted(reads)
-    monkeypatch.undo()
-    assert _stored_chunks(_consolidated_member(path, zarr_format, member)) == [10]
-    reopened = zarr.open_group(path, mode="r", use_consolidated=True)
-    array = reopened[member]
-    assert isinstance(array, zarr.Array)
-    assert (array.shape, array.chunks) == ((10,), (10,))
-    assert _open_strictly(path / member).chunks == (10,)
-
-    reads.clear()
-    monkeypatch.setattr(LocalStore, "get", recording_get)
-    group.attrs["y"] = 2
-    assert reads == []
+    own = {"zarr.json"} if zarr_format == 3 else {".zgroup", ".zattrs", ".zmetadata"}
+    assert {method for method, _ in accesses} == {"set"}
+    assert {key for _, key in accesses} == own
+    assert json.dumps(_consolidated_member(path, zarr_format, member)) == stored
+    with pytest.warns(ZarrUserWarning, match="is read as"):
+        zarr.open_group(path, mode="r", use_consolidated=True)
 
 
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_group_write_keeps_consolidated_metadata_shared_with_subgroups(
+def test_concurrent_deletions_leave_no_upgraded_member(
     tmp_path: Path, zarr_format: Literal[2, 3]
 ) -> None:
-    """A subgroup handle taken from a group shares the group's consolidated metadata, also
-    once the group has adopted the upgraded members its first write stored: an array
-    deleted through the subgroup is gone from what the group stores next."""
+    """Members deleted concurrently through one consolidated group handle stay deleted,
+    also those read from documents that had to be upgraded: no group write stores a
+    member document."""
     path = tmp_path / "group.zarr"
-    created = zarr.open_group(path, mode="w", zarr_format=zarr_format).create_group("g")
-    for name in ("a", "c"):
-        created.create_array(name, shape=(3,), chunks=(3,), dtype="int16")
-    zarr.consolidate_metadata(path)
-    _rewrite_consolidated(path, zarr_format, "g/a", _store_zero)
+    zarr.open_group(path, mode="w", zarr_format=zarr_format)
+    for name in ("a", "b"):
+        _legacy_array(path / name, zarr_format)
+    with pytest.warns(ZarrUserWarning, match="is read as"):
+        zarr.consolidate_metadata(path)
     with pytest.warns(ZarrUserWarning, match="is read as"):
         group = zarr.open_group(path, mode="r+", use_consolidated=True)
-    subgroup = group["g"]
-    assert isinstance(subgroup, zarr.Group)
 
-    group.attrs["x"] = 1
-    del subgroup["c"]
-    group.attrs["y"] = 2
+    async def delete_both() -> None:
+        await asyncio.gather(*(group._async_group.delitem(name) for name in ("a", "b")))
 
-    reopened = zarr.open_group(path, mode="r", use_consolidated=True)
-    assert sorted(dict(reopened.members(max_depth=None))) == ["g", "g/a"]
+    sync(delete_both())
+
+    assert not (path / "a").exists()
+    assert not (path / "b").exists()
 
 
-@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
-@pytest.mark.parametrize("document", ["rectilinear", "mixed"])
-def test_group_write_refuses_upgraded_member_read_as_rectilinear(
-    tmp_path: Path, document: str
-) -> None:
-    """A member of consolidated metadata read from a document that had to be upgraded,
-    whose own document now declares a rectilinear chunk grid (or a regular grid listing
-    chunk edges, read as one), is read again only with the rectilinear chunks flag:
-    without it, a group write raises and stores nothing."""
-    path = tmp_path / "group.zarr"
-    _flagged_consolidated_group(path, 3, "a")
+def _consolidated_legacy_member(path: Path, zarr_format: Literal[2, 3]) -> Path:
+    """A group whose array `a` is stored with chunk shape `[0]`, consolidated; the path
+    of the array's own document."""
+    zarr.open_group(path, mode="w", zarr_format=zarr_format)
+    _legacy_array(path / "a", zarr_format)
     with pytest.warns(ZarrUserWarning, match="is read as"):
-        group = zarr.open_group(path, mode="r+", use_consolidated=True)
-    (path / "a" / "zarr.json").write_text(
-        json.dumps(_rectilinear_doc([3], [[1, 2]]))
-        if document == "rectilinear"
-        else MIXED_REGULAR_GRID_DOC
-    )
-    documents = {p: p.read_bytes() for p in path.rglob("*") if p.is_file()}
-    group_path = str(sync(make_store_path(path)))
-
-    with pytest.raises(ValueError, match="Rectilinear chunk grids are experimental") as info:
-        group.attrs["x"] = 1
-
-    assert info.value.__notes__ == [
-        f"Array {group_path + '/a'!r}: nothing was read.",
-        f"Group {group_path!r}: nothing was stored.",
-    ]
-    assert {p: p.read_bytes() for p in path.rglob("*") if p.is_file()} == documents
+        zarr.consolidate_metadata(path)
+    return path / "a" / (".zarray" if zarr_format == 2 else "zarr.json")
 
 
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize("zarr_format", [2, 3])
-@pytest.mark.parametrize("replacement", ["group", "invalid", "none"])
-def test_group_write_keeps_upgraded_member_without_readable_document(
-    tmp_path: Path, zarr_format: Literal[2, 3], replacement: str
+def test_consolidated_upgraded_member_stored_by_its_first_write(
+    tmp_path: Path, zarr_format: Literal[2, 3]
 ) -> None:
-    """A member of consolidated metadata read from a document that had to be upgraded,
-    whose own document is no longer an array document that can be read, has no document
-    to upgrade: a group write stores the consolidated copy as it is."""
+    """Consolidating a group copies the document of a member that had to be upgraded as
+    it is stored, and leaves that document as it is. The first chunk write through the
+    consolidated metadata stores the member's upgrade before its chunks, the one write
+    that stores it; consolidating again then copies the upgrade."""
     path = tmp_path / "group.zarr"
-    _flagged_consolidated_group(path, zarr_format, "a")
+    document = _consolidated_legacy_member(path, zarr_format)
+    legacy = document.read_bytes()
+    assert json.dumps(_consolidated_member(path, zarr_format, "a")).encode() == legacy
+
     with pytest.warns(ZarrUserWarning, match="is read as"):
-        group = zarr.open_group(path, mode="r+", use_consolidated=True)
-    del zarr.open_group(path, mode="r+", use_consolidated=False)["a"]
-    if replacement == "group":
-        zarr.create_group(path / "a", zarr_format=zarr_format)
-    elif replacement == "invalid":
-        (path / "a").mkdir()
-        document = path / "a" / (".zarray" if zarr_format == 2 else "zarr.json")
-        document.write_text(json.dumps({"zarr_format": zarr_format, "node_type": "array"}))
+        array = zarr.open_group(path, mode="r+", use_consolidated=True)["a"]
+    assert isinstance(array, zarr.Array)
+    array[:] = [7, 8, 9]
 
-    group.attrs["x"] = 1
-
+    np.testing.assert_array_equal(_open_strictly(path / "a")[...], [7, 8, 9])
+    zarr.consolidate_metadata(path)
     assert _stored_chunks(_consolidated_member(path, zarr_format, "a")) == [3]
+
+
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_consolidated_upgraded_member_write_after_chunk_grid_change_raises(
+    tmp_path: Path, zarr_format: Literal[2, 3]
+) -> None:
+    """A member read from its consolidated copy, whose own document has since been
+    resized by software that kept the stored chunk size of 0, would write chunks no
+    reader finds: its first write raises and stores nothing."""
+    path = tmp_path / "group.zarr"
+    _consolidated_legacy_member(path, zarr_format)
+    with pytest.warns(ZarrUserWarning, match="is read as"):
+        array = zarr.open_group(path, mode="r+", use_consolidated=True)["a"]
+    assert isinstance(array, zarr.Array)
+    _rewrite_doc(path / "a", zarr_format, _resize_to_10)
+    documents = {p: p.read_bytes() for p in path.rglob("*") if p.is_file()}
+
+    with pytest.raises(ValueError, match="has changed since this array was opened; reopen"):
+        array[0:3] = [7, 8, 9]
+
+    assert {p: p.read_bytes() for p in path.rglob("*") if p.is_file()} == documents
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
@@ -1020,7 +1018,7 @@ def test_empty_write_stores_no_metadata(tmp_path: Path, zarr_format: Literal[2, 
 
     array[0:0] = np.empty(0, dtype="int16")
 
-    assert array.metadata._stored_document_upgraded
+    assert array.metadata._stored_document is not None
     assert {p.name: p.read_bytes() for p in path.iterdir()} == documents
 
 
@@ -1031,27 +1029,6 @@ def test_async_array_from_dict_names_array(tmp_path: Path, zarr_format: Literal[
     doc = _v2_doc([4], [0]) if zarr_format == 2 else _v3_doc([4], [0])
     with pytest.warns(ZarrUserWarning, match=f"^Array {re.escape(repr(str(store_path)))}: "):
         AsyncArray.from_dict(store_path, doc)
-
-
-@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
-@pytest.mark.parametrize("zarr_format", [2, 3])
-def test_consolidate_stores_upgraded_members(tmp_path: Path, zarr_format: Literal[2, 3]) -> None:
-    """Consolidating a group stores the upgrade of every member document that needed
-    one before the consolidated document, so chunks written through the consolidated
-    metadata are stored under a member document that agrees with it."""
-    path = tmp_path / "group.zarr"
-    zarr.open_group(path, mode="w", zarr_format=zarr_format)
-    _legacy_array(path / "a", zarr_format)
-    with pytest.warns(ZarrUserWarning, match="is read as"):
-        zarr.consolidate_metadata(path)
-
-    member = _open_strictly(path / "a")
-    assert member.chunks == (3,)
-    group = zarr.open_group(path, mode="r+", use_consolidated=True)
-    array = group["a"]
-    assert isinstance(array, zarr.Array)
-    array[:] = [7, 8, 9]
-    np.testing.assert_array_equal(_open_strictly(path / "a")[...], [7, 8, 9])
 
 
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
@@ -1318,10 +1295,6 @@ def _overwrite_hierarchy(path: Path) -> None:
     list(zarr.create_hierarchy(store=LocalStore(path), nodes={"n": mixed.metadata}, overwrite=True))
 
 
-def _consolidate(path: Path) -> None:
-    zarr.consolidate_metadata(path)
-
-
 def _set_group_attribute(path: Path) -> None:
     zarr.open_group(path, mode="a").attrs["x"] = 1
 
@@ -1332,15 +1305,8 @@ def _set_group_attribute(path: Path) -> None:
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize(
     "action",
-    [
-        _resize,
-        _write_chunks,
-        _delete_member,
-        _overwrite_hierarchy,
-        _consolidate,
-        _set_group_attribute,
-    ],
-    ids=["resize", "write", "delete-member", "overwrite-hierarchy", "consolidate", "group-attrs"],
+    [_resize, _write_chunks, _overwrite_hierarchy],
+    ids=["resize", "write", "overwrite-hierarchy"],
 )
 def test_store_untouched_without_flag(tmp_path: Path, action: Callable[[Path], None]) -> None:
     """An operation that would store the rectilinear chunk grid read from the verbatim
@@ -1356,44 +1322,43 @@ def test_store_untouched_without_flag(tmp_path: Path, action: Callable[[Path], N
     assert {p: p.read_bytes() for p in path.rglob("*") if p.is_file()} == stored
 
 
+RECTILINEAR_GRID: dict[str, Any] = {
+    "name": "rectilinear",
+    "configuration": {"kind": "inline", "chunk_shapes": [2, [5, 10, 5]]},
+}
+
+
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize("member", ["mixed", "sub/mixed"])
 def test_consolidate_edge_lists_in_regular_grid(tmp_path: Path, member: str) -> None:
-    """Consolidating a group holding the verbatim document stores the member's
-    rectilinear chunk grid, so without the flag it fails, naming the array, and stores
-    nothing, so the group still opens without the flag; with the flag, the member and
-    the consolidated metadata store the rectilinear chunk grid."""
+    """Consolidating a group holding the verbatim document copies it as stored, with or
+    without the flag, and leaves the member's document as it is, so the group opens and
+    reads the member without the flag. Once the member's metadata is re-saved (which
+    needs the flag), consolidating copies its rectilinear chunk grid."""
     path = tmp_path / "group.zarr"
     zarr.open_group(path, mode="w").create_group("sub")
     data = _store_mixed_array(path / member)
-    group_path = str(sync(make_store_path(path)))
-    with zarr.config.set({"array.rectilinear_chunks": False}):
+    for flag in (False, True):
         with (
+            zarr.config.set({"array.rectilinear_chunks": flag}),
             pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"),
-            pytest.raises(ValueError, match="experimental and disabled") as info,
         ):
             zarr.consolidate_metadata(path)
-        # Storing the consolidated metadata reads the member's document again.
-        assert info.value.__notes__ == [
-            f"Array {group_path + '/' + member!r}: nothing was read.",
-            f"Group {group_path!r}: nothing was stored.",
-        ]
-        with pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"):
-            mixed = zarr.open_group(path, mode="r")[member]
+        assert (path / member / "zarr.json").read_text() == MIXED_REGULAR_GRID_DOC
+        assert _consolidated_member(path, 3, member) == json.loads(MIXED_REGULAR_GRID_DOC)
+    with (
+        zarr.config.set({"array.rectilinear_chunks": False}),
+        pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"),
+    ):
+        mixed = zarr.open_group(path, mode="r")[member]
     assert isinstance(mixed, zarr.Array)
     np.testing.assert_array_equal(mixed[...], data)
 
-    rectilinear = {
-        "name": "rectilinear",
-        "configuration": {"kind": "inline", "chunk_shapes": [2, [5, 10, 5]]},
-    }
     with zarr.config.set({"array.rectilinear_chunks": True}):
         with pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"):
-            zarr.consolidate_metadata(path)
-        group_doc = json.loads((path / "zarr.json").read_text())
-        consolidated = group_doc["consolidated_metadata"]["metadata"][member]
-        assert consolidated["chunk_grid"] == rectilinear
-        assert json.loads((path / member / "zarr.json").read_text())["chunk_grid"] == rectilinear
+            zarr.open_array(path / member, mode="a").update_attributes({})
+        zarr.consolidate_metadata(path)
+        assert _consolidated_member(path, 3, member)["chunk_grid"] == RECTILINEAR_GRID
         with warnings.catch_warnings():
             warnings.simplefilter("error", ZarrUserWarning)
             reopened = zarr.open_group(path, mode="r")[member]
@@ -1401,74 +1366,46 @@ def test_consolidate_edge_lists_in_regular_grid(tmp_path: Path, member: str) -> 
     np.testing.assert_array_equal(reopened[...], data)
 
 
-@pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
-@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
-def test_group_write_without_flag_stores_no_member_upgrade(tmp_path: Path) -> None:
-    """A group write refused without the flag stores no upgrade of another consolidated
-    member either (here `a`, stored with chunk size 0), although that one alone could be
-    stored: every member is refreshed and the group encoded before anything is stored."""
-    path = tmp_path / "group.zarr"
-    _store_mixed_group(path)
-    zarr.open_group(path, mode="a").create_array("a", shape=(4,), chunks=(4,), dtype="int16")
-    with zarr.config.set({"array.rectilinear_chunks": True}):
-        zarr.consolidate_metadata(path)
-    _rewrite_doc(path / "a", 3, _store_zero)
-    _rewrite_consolidated(path, 3, "a", _store_zero)
-    # Consolidating with the flag stored the rectilinear grid: restore the verbatim document.
-    (path / "mixed" / "zarr.json").write_text(MIXED_REGULAR_GRID_DOC)
-    _rewrite_consolidated(
-        path, 3, "mixed", lambda doc: doc.update(json.loads(MIXED_REGULAR_GRID_DOC))
-    )
-    stored = {p: p.read_bytes() for p in path.rglob("*") if p.is_file()}
-    with (
-        zarr.config.set({"array.rectilinear_chunks": False}),
-        pytest.raises(ValueError, match="experimental and disabled by default"),
-    ):
-        _set_group_attribute(path)
-    assert {p: p.read_bytes() for p in path.rglob("*") if p.is_file()} == stored
-
-
 @pytest.mark.filterwarnings(
     "ignore:.*read as that rectilinear chunk grid:zarr.errors.ZarrUserWarning"
 )
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize("action", [_delete_member, _set_group_attribute], ids=["delete", "attrs"])
-def test_group_write_stores_mixed_member_with_flag(
-    tmp_path: Path, action: Callable[[Path], None]
+@pytest.mark.parametrize("flag", [False, True])
+def test_group_write_stores_mixed_member_as_stored(
+    tmp_path: Path, action: Callable[[Path], None], flag: bool
 ) -> None:
-    """With the flag, a group write stores the rectilinear chunk grid read from the
-    verbatim document, in the member's own document and in the consolidated metadata,
-    which then open cleanly."""
+    """A group write, with or without the flag, stores the consolidated copy of the
+    verbatim document as stored and leaves the member's own document as it is: the
+    group opens and reads the member without the flag."""
     path = tmp_path / "group.zarr"
     _store_mixed_group(path)
-    rectilinear = {
-        "name": "rectilinear",
-        "configuration": {"kind": "inline", "chunk_shapes": [2, [5, 10, 5]]},
-    }
-    with zarr.config.set({"array.rectilinear_chunks": True}):
+    with zarr.config.set({"array.rectilinear_chunks": flag}):
         action(path)
-        group_doc = json.loads((path / "zarr.json").read_text())
-        assert group_doc["consolidated_metadata"]["metadata"]["mixed"]["chunk_grid"] == rectilinear
-        assert json.loads((path / "mixed" / "zarr.json").read_text())["chunk_grid"] == rectilinear
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", ZarrUserWarning)
-            for use_consolidated in (True, False):
-                mixed = zarr.open_group(path, use_consolidated=use_consolidated)["mixed"]
-                assert isinstance(mixed, zarr.Array)
-                assert mixed.read_chunk_sizes == ((2, 2, 2), (5, 10, 5))
+    assert _consolidated_member(path, 3, "mixed") == json.loads(MIXED_REGULAR_GRID_DOC)
+    assert (path / "mixed" / "zarr.json").read_text() == MIXED_REGULAR_GRID_DOC
+    with zarr.config.set({"array.rectilinear_chunks": False}):
+        mixed = zarr.open_group(path, mode="r", use_consolidated=True)["mixed"]
+    assert isinstance(mixed, zarr.Array)
+    assert mixed.read_chunk_sizes == ((2, 2, 2), (5, 10, 5))
 
 
-@pytest.mark.filterwarnings(
-    "ignore:.*read as that rectilinear chunk grid:zarr.errors.ZarrUserWarning"
-)
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 def test_delete_member_without_flag_keeps_group(tmp_path: Path) -> None:
-    """A deletion that fails without the flag leaves the group listing the member."""
+    """A deletion that would store a rectilinear chunk grid in the consolidated metadata
+    fails without the flag before it deletes anything, and leaves the group listing the
+    member."""
     path = tmp_path / "group.zarr"
-    _store_mixed_group(path)
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        group = zarr.open_group(path, mode="w")
+        group.create_array("r", shape=(6, 20), chunks=(2, (5, 10, 5)), dtype="float32")
+        group.create_array("n", shape=(2,), chunks=(1,), dtype="int8")
+        zarr.consolidate_metadata(path)
+        group = zarr.open_group(path, mode="a", use_consolidated=True)
+    stored = {p: p.read_bytes() for p in path.rglob("*") if p.is_file()}
     with zarr.config.set({"array.rectilinear_chunks": False}):
-        group = zarr.open_group(path, mode="a")
         with pytest.raises(ValueError, match="experimental and disabled"):
             del group["n"]
     assert group.metadata.consolidated_metadata is not None
-    assert sorted(group.metadata.consolidated_metadata.metadata) == ["mixed", "n"]
+    assert sorted(group.metadata.consolidated_metadata.metadata) == ["n", "r"]
+    assert {p: p.read_bytes() for p in path.rglob("*") if p.is_file()} == stored
