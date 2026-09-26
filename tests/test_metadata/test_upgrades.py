@@ -48,7 +48,7 @@ def _v2_doc(shape: list[int], chunks: list[Any]) -> dict[str, JSON]:
 
 
 def _v3_doc(
-    shape: list[int], chunk_shape: list[Any], inner: list[int] | None = None
+    shape: list[int], chunk_shape: list[Any], inner: list[Any] | None = None
 ) -> dict[str, JSON]:
     bytes_codec: dict[str, JSON] = {"name": "bytes", "configuration": {"endian": "little"}}
     codecs: list[JSON] = [bytes_codec]
@@ -233,19 +233,121 @@ def test_stored_chunk_shape_ndim_mismatch_rejected() -> None:
         _read_strictly(_v3_doc([4, 4], [0]))
 
 
-def test_stored_float_chunk_size_rejected() -> None:
-    """No known writer stored a float chunk size: it is rejected, not upgraded."""
-    with pytest.raises(
-        TypeError, match=r"^Dimension 0: chunk edge length must be an int, got 4\.0$"
-    ):
-        _read_strictly(_v3_doc([4], [4.0]))
-
-
 def test_stored_zero_inner_chunk_size_rejected() -> None:
     """No known writer stored an inner chunk size of 0, and no span defines one: it is
     rejected, not upgraded."""
     with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got 0$"):
         _read_strictly(_v3_doc([4], [0], inner=[0]))
+
+
+def _rectilinear_doc(shape: list[int], chunk_shapes: list[Any]) -> dict[str, JSON]:
+    return _v3_doc(shape, [1] * len(shape)) | {
+        "chunk_grid": {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": chunk_shapes},
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    ("chunk_shapes", "expected", "warning"),
+    [
+        ([[[4, 2]], [[5, 2]]], ((4, 4), (5, 5)), None),
+        (
+            [[[4.0, 2]], [[5, 2]]],
+            ((4, 4), (5, 5)),
+            (
+                r"^The stored chunk edge lengths \[\[\[4\.0, 2\]\], \[\[5, 2\]\]\] are "
+                r"invalid: .* read as \[\[\[4, 2\]\], \[\[5, 2\]\]\], .* in dimensions \[0\],"
+            ),
+        ),
+        ([[3.0, 5.0], [[5, 2]]], ((3, 5), (5, 5)), r"read as \[\[3, 5\], "),
+        ([[[4.0, 2], 2.0], [[5, 2]]], ((4, 4, 2), (5, 5)), r"read as \[\[\[4, 2\], 2\], "),
+        ([[[4.0, 2]], [10]], ((4, 4), (10,)), r"read as \[\[\[4, 2\]\], \[10\]\]"),
+        ([[[4.0, 2]], [5.0, 5]], ((4, 4), (5, 5)), r"in dimensions \[0, 1\],"),
+    ],
+    ids=["valid", "rle-size", "edges", "rle-size-and-edge", "sharded-outer", "2d"],
+)
+def test_read_float_edges_in_rectilinear_grid(
+    chunk_shapes: list[Any],
+    expected: tuple[tuple[int, ...], ...],
+    warning: str | None,
+) -> None:
+    """A stored rectilinear chunk grid whose explicit edges or run-length encoded sizes
+    are integral floats, as zarr-python wrote them when given float edges, is read with
+    those edges as `int`s; `from_dict` warns once, naming the array and the dimensions,
+    and how to re-save."""
+    shape = [sum(edges) for edges in expected]
+    doc = _rectilinear_doc(shape, chunk_shapes)
+    with (
+        zarr.config.set({"array.rectilinear_chunks": True}),
+        warnings.catch_warnings(record=True) as record,
+    ):
+        warnings.simplefilter("always")
+        metadata = ArrayV3Metadata.from_dict(doc, path="group/array")
+        assert metadata.chunk_grid == RectilinearChunkGridMetadata(chunk_shapes=expected)
+    messages = [str(w.message) for w in record]
+    if warning is None:
+        assert messages == []
+    else:
+        [message] = messages
+        assert message.startswith("Array 'group/array': ")
+        assert re.search(warning, message.removeprefix("Array 'group/array': "))
+        assert message.endswith(RESAVE_HINT)
+
+
+@pytest.mark.parametrize(
+    ("doc", "error"),
+    [
+        (_v3_doc([20], [10.0]), "Dimension 0: chunk edge length must be an int, got 10.0"),
+        (
+            _v3_doc([8], [4], inner=[2.0]),
+            "Dimension 0: chunk edge length must be an int, got 2.0",
+        ),
+        (_v2_doc([20], [10.0]), "Dimension 0: chunk edge length must be an int, got 10.0"),
+        (
+            _rectilinear_doc([8], [[[4, 2.0]]]),
+            "Dimension 0: RLE repeat count must be an int, got 2.0",
+        ),
+        (
+            _rectilinear_doc([8], [4.0]),
+            "Dimension 0: chunk edge length must be an int, got 4.0",
+        ),
+    ],
+    ids=["regular", "sharding-inner", "v2", "rle-count", "rectilinear-bare"],
+)
+def test_stored_float_chunk_size_rejected(doc: dict[str, JSON], error: str) -> None:
+    """A float chunk size is read only where zarr-python stored one, as the edges of a
+    rectilinear chunk grid. Anywhere else it is rejected, as zarr 3.4.0 rejected a
+    stored regular chunk size of `10.0`."""
+    with zarr.config.set({"array.rectilinear_chunks": True}), pytest.raises(TypeError) as info:
+        _read_strictly(doc)
+    assert info.match(re.escape(error))
+
+
+def test_float_edges_round_trip(tmp_path: Path) -> None:
+    """A store whose rectilinear chunk grid holds the float edges zarr-python wrote opens
+    with a warning, reads its data and re-saves the edges as `int`s."""
+    path = tmp_path / "float.zarr"
+    data = np.arange(80, dtype="int16").reshape(8, 10)
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        zarr.create_array(path, shape=data.shape, chunks=[[4, 4], [5, 5]], dtype="int16")[...] = (
+            data
+        )
+
+        def store_floats(doc: dict[str, Any]) -> None:
+            doc["chunk_grid"]["configuration"]["chunk_shapes"] = [[[4.0, 2]], [[5, 2]]]
+
+        _rewrite_doc(path, 3, store_floats)
+        with pytest.warns(ZarrUserWarning, match=r"read as \[\[\[4, 2\]\], \[\[5, 2\]\]\]"):
+            arr = zarr.open_array(path, mode="a")
+        np.testing.assert_array_equal(arr[...], data)
+        arr.update_attributes({})
+        stored = json.loads((path / "zarr.json").read_text())["chunk_grid"]["configuration"]
+        assert json.dumps(stored["chunk_shapes"]) == "[[[4, 2]], [[5, 2]]]"
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", ZarrUserWarning)
+            np.testing.assert_array_equal(zarr.open_array(path)[...], data)
 
 
 def test_v2_constructor_rejects_chunks_of_wrong_length() -> None:
@@ -675,6 +777,14 @@ def _mixed_doc(shape: list[int], chunk_shape: list[Any]) -> dict[str, JSON]:
             ),
         ),
         (
+            _mixed_doc([6, 20], [2, [5.0, 10.0, 5.0]]),
+            (2, (5, 10, 5)),
+            (
+                r"^The stored chunk grid .* \[1\], .* The stored chunk edge lengths "
+                r"\[2, \[5\.0, 10\.0, 5\.0\]\] are invalid: .* read as \[2, \[5, 10, 5\]\]"
+            ),
+        ),
+        (
             _mixed_doc([4, 10_000], [True, [10] * 1000]),
             (1, (10,) * 1000),
             r"^The stored chunk shape \[true, \[10, 10, .*\.\.\. is invalid: .* read as \[1, \[10, .*\.\.\.,",
@@ -688,6 +798,7 @@ def _mixed_doc(shape: list[int], chunk_shape: list[Any]) -> dict[str, JSON]:
         "empty-int-axis",
         "empty-edge-axis",
         "true",
+        "float-edges",
         "long",
     ],
 )
@@ -711,8 +822,9 @@ def test_read_edge_lists_in_regular_grid(
     assert message.startswith("Array 'group/array': ")
     assert (
         "Re-saving the metadata stores that rectilinear chunk grid, so each step that "
-        "follows requires `zarr.config.set({'array.rectilinear_chunks': True})`. " + RESAVE_HINT
+        "follows requires `zarr.config.set({'array.rectilinear_chunks': True})`. "
     ) in message
+    assert message.endswith(RESAVE_HINT)
     assert len(message) < 1000
 
 
@@ -737,7 +849,7 @@ def test_run_length_encoded_edges_in_regular_grid_rejected() -> None:
     assert info.match(re.escape("Dimension 1: chunk edge length must be an int, got [[5, 2], 10]"))
 
 
-@pytest.mark.parametrize("edge", [5.0, True], ids=["float", "bool"])
+@pytest.mark.parametrize("edge", [5.5, True], ids=["fractional", "bool"])
 def test_non_int_edge_in_regular_grid_rejected(edge: object) -> None:
     """An edge that is not an int is reported as such, not blamed on its list."""
     info = _rejected_without_warning(_mixed_doc([6, 20], [2, [edge, 15]]))
