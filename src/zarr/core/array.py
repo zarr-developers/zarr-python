@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import math
 import warnings
-from asyncio import gather
+from asyncio import TaskGroup, gather
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import starmap
@@ -5879,6 +5879,28 @@ async def _setitem(
     )
 
 
+def _iter_chunk_coords_to_delete(
+    old_grid_shape: tuple[int, ...], new_grid_shape: tuple[int, ...]
+) -> Iterator[tuple[int, ...]]:
+    """Yield the old grid minus the new grid using only O(ndim) auxiliary space."""
+    remaining_shape = list(old_grid_shape)
+    for axis, (old, new) in enumerate(zip(old_grid_shape, new_grid_shape, strict=True)):
+        if new >= old:
+            continue
+        # Assign each coordinate to its first axis outside the new grid. Earlier
+        # axes have already been clipped, so these slabs never overlap.
+        slab_shape = remaining_shape.copy()
+        slab_shape[axis] = old - new
+        for index in range(math.prod(slab_shape)):
+            coords = [0] * len(slab_shape)
+            # itertools.product caches its inputs, even when they are ranges.
+            for dim in range(len(slab_shape) - 1, -1, -1):
+                index, coords[dim] = divmod(index, slab_shape[dim])
+            coords[axis] += new
+            yield tuple(coords)
+        remaining_shape[axis] = new
+
+
 async def _resize(
     array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
     new_shape: ShapeLike,
@@ -5907,25 +5929,32 @@ async def _resize(
     new_metadata = array.metadata.update_shape(new_shape)
     new_chunk_grid = ChunkGrid.from_metadata(new_metadata)
 
-    # ensure deletion is only run if array is shrinking as the delete_outside_chunks path is unbounded in memory
+    # Growing alone cannot leave any chunks outside the new shape.
     only_growing = all(new >= old for new, old in zip(new_shape, array.metadata.shape, strict=True))
 
     if delete_outside_chunks and not only_growing:
-        # Remove all chunks outside of the new shape
-        old_chunk_coords = set(array._chunk_grid.all_chunk_coords())
-        new_chunk_coords = set(new_chunk_grid.all_chunk_coords())
-
-        async def _delete_key(key: str) -> None:
-            await (array.store_path / key).delete()
-
-        await concurrent_map(
-            [
-                (array.metadata.encode_chunk_key(chunk_coords),)
-                for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
-            ],
-            _delete_key,
-            zarr_config.get("async.concurrency"),
+        chunk_coords = _iter_chunk_coords_to_delete(
+            array._chunk_grid.grid_shape, new_chunk_grid.grid_shape
         )
+
+        async def _delete_worker() -> None:
+            # Workers share one lazy iterator, so a new deletion starts as soon
+            # as any finishes and nothing beyond the workers is scheduled.
+            for coords in chunk_coords:
+                await (array.store_path / array.metadata.encode_chunk_key(coords)).delete()
+
+        # Bound the worker count even when the user has disabled the I/O
+        # concurrency limit with None.
+        concurrency = zarr_config.get("async.concurrency") or 1000
+        # A TaskGroup cancels the remaining workers on the first failure, so no
+        # deletions continue after resize has raised.
+        try:
+            async with TaskGroup() as tg:
+                for _ in range(concurrency):
+                    tg.create_task(_delete_worker())
+        except ExceptionGroup as eg:
+            # Keep resize's contract of raising the store's own exception.
+            raise eg.exceptions[0] from None
 
     # Write new metadata
     await save_metadata(array.store_path, new_metadata)
