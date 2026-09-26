@@ -356,6 +356,10 @@ class RectilinearChunkGridMetadata(Metadata):
 ChunkGridMetadata = RegularChunkGridMetadata | RectilinearChunkGridMetadata
 
 
+class RectilinearChunksDisabledError(ValueError):
+    """Rectilinear chunk grids are used while the `array.rectilinear_chunks` flag is off."""
+
+
 def _check_rectilinear_chunks_enabled() -> None:
     """Raise unless rectilinear chunks are enabled.
 
@@ -363,7 +367,7 @@ def _check_rectilinear_chunks_enabled() -> None:
     rectilinear chunk grid; the chunk grid metadata classes themselves are not gated.
     """
     if not config.get("array.rectilinear_chunks"):
-        raise ValueError(
+        raise RectilinearChunksDisabledError(
             "Rectilinear chunk grids are experimental and disabled by default. "
             "Enable them with: zarr.config.set({'array.rectilinear_chunks': True}) "
             "or set the environment variable ZARR_ARRAY__RECTILINEAR_CHUNKS=True"
