@@ -1367,6 +1367,52 @@ def test_v2_dtype_must_be_string_or_records() -> None:
     assert [(p.loc, p.kind) for p in problems] == [(("dtype",), "invalid_type")]
 
 
+@pytest.mark.parametrize(
+    ("validate", "document", "loc"),
+    [
+        (
+            validate_array_metadata_v3,
+            {**ZarrV3ArrayMetadata.create_default().to_json(), "codecs": b""},
+            ("codecs",),
+        ),
+        (
+            validate_array_metadata_v3,
+            {**ZarrV3ArrayMetadata.create_default().to_json(), "storage_transformers": bytearray()},
+            ("storage_transformers",),
+        ),
+        (
+            validate_array_metadata_v3,
+            {**ZarrV3ArrayMetadata.create_default(shape=()).to_json(), "dimension_names": b""},
+            ("dimension_names",),
+        ),
+        (
+            validate_array_metadata_v2,
+            {**ZarrV2ArrayMetadata.create_default().to_json(), "dtype": b""},
+            ("dtype",),
+        ),
+        (
+            validate_array_metadata_v2,
+            {**ZarrV2ArrayMetadata.create_default().to_json(), "dtype": (("f0", b""),)},
+            ("dtype",),
+        ),
+        (
+            validate_array_metadata_v2,
+            {**ZarrV2ArrayMetadata.create_default().to_json(), "filters": b""},
+            ("filters",),
+        ),
+    ],
+    ids=["codecs", "storage-transformers", "dimension-names", "dtype", "dtype-record", "filters"],
+)
+def test_error_bytes_are_not_an_array(
+    validate: Callable[[object], tuple[ValidationProblem, ...]],
+    document: dict[str, object],
+    loc: tuple[str | int, ...],
+) -> None:
+    """`bytes` is a sequence to Python and not an array to JSON: where a document
+    expects an array, an empty one no longer passes as one with no items."""
+    assert [(p.loc, p.kind) for p in validate(document)] == [(loc, "invalid_type")]
+
+
 def test_v2_structured_dtype_records_accepted() -> None:
     """A structured v2 dtype (field records, optionally nested/shaped) validates."""
     dtype = (("a", "<i4"), ("b", (("c", "|u1"),)), ("d", "<f8", (2, 2)))

@@ -426,19 +426,25 @@ def parse_metadata_field_v3(value: object) -> ZarrV3MetadataFieldJSON:
     return cast(ZarrV3MetadataFieldJSON, normalized)
 
 
-def _is_int_sequence(value: object) -> bool:
-    """Whether `value` is a non-string sequence of integers.
+def _is_array(value: object) -> TypeGuard[Sequence[object]]:
+    """Whether `value` reads as a JSON array: a sequence that is not a string or bytes.
+
+    `str`, `bytes` and `bytearray` are sequences to Python, and none of them
+    is an array to JSON. A `TypeGuard`, not a `TypeIs`: a `str` is a
+    `Sequence[object]` this says no to.
+    """
+    return isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
+
+
+def _is_int_sequence(value: object) -> TypeGuard[Sequence[int]]:
+    """Whether `value` is a JSON array of integers.
 
     JSON booleans decode to `bool`, which is an `int` subclass in Python but
-    is not an integer in a metadata document, so booleans are excluded.
+    is not an integer in a metadata document, so booleans are excluded. A
+    `TypeGuard`, not a `TypeIs`: `bytes` is a `Sequence[int]` this says no to.
     """
-    return (
-        not isinstance(value, (str, bytes, bytearray))
-        and isinstance(value, Sequence)
-        and all(
-            isinstance(item, int) and not isinstance(item, bool)
-            for item in cast("Sequence[object]", value)
-        )
+    return _is_array(value) and all(
+        isinstance(item, int) and not isinstance(item, bool) for item in value
     )
 
 
@@ -452,7 +458,7 @@ def _validate_dim_sequence(doc: Mapping[object, object], key: str) -> tuple[Vali
     value = doc[key]
     if not _is_int_sequence(value):
         return (ValidationProblem((key,), "expected a sequence of int", "invalid_type"),)
-    if any(item < 0 for item in cast("Sequence[int]", value)):
+    if any(item < 0 for item in value):
         return (ValidationProblem((key,), "expected non-negative integers", "invalid_value"),)
     return ()
 
@@ -467,19 +473,16 @@ def _is_dtype_v2(value: object) -> bool:
     """
     if isinstance(value, str):
         return True
-    if not isinstance(value, Sequence):
+    if not _is_array(value):
         return False
-    for record in cast("Sequence[object]", value):
-        if isinstance(record, str) or not isinstance(record, Sequence):
+    for record in value:
+        if not _is_array(record) or len(record) not in (2, 3):
             return False
-        fields = cast("Sequence[object]", record)
-        if len(fields) not in (2, 3):
+        if not isinstance(record[0], str):
             return False
-        if not isinstance(fields[0], str):
+        if not _is_dtype_v2(record[1]):
             return False
-        if not _is_dtype_v2(fields[1]):
-            return False
-        if len(fields) == 3 and not _is_int_sequence(fields[2]):
+        if len(record) == 3 and not _is_int_sequence(record[2]):
             return False
     return True
 
@@ -619,16 +622,16 @@ def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
     for key in ("codecs", "storage_transformers"):
         if key in doc:
             entries = doc[key]
-            if isinstance(entries, str) or not isinstance(entries, Sequence):
+            if not _is_array(entries):
                 problems.append(ValidationProblem((key,), "expected a sequence", "invalid_type"))
             else:
-                if key == "codecs" and len(cast("Sequence[object]", entries)) == 0:
+                if key == "codecs" and len(entries) == 0:
                     problems.append(
                         ValidationProblem(
                             ("codecs",), "expected at least one codec", "invalid_value"
                         )
                     )
-                for index, entry in enumerate(cast("Sequence[object]", entries)):
+                for index, entry in enumerate(entries):
                     problems.extend(_prefix(key, _prefix(index, validate_metadata_field_v3(entry))))
     if "attributes" in doc:
         problems.extend(_validate_attributes(doc["attributes"]))
@@ -637,21 +640,18 @@ def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
         # field-level loc, not per-bad-item locs; per-index locs are reserved for
         # the metadata-field lists (codecs, storage_transformers).
         names = doc["dimension_names"]
-        if isinstance(names, str) or not isinstance(names, Sequence):
+        shape = doc.get("shape")
+        if not _is_array(names):
             problems.append(
                 ValidationProblem(("dimension_names",), "expected a sequence", "invalid_type")
             )
-        elif not all(
-            item is None or isinstance(item, str) for item in cast("Sequence[object]", names)
-        ):
+        elif not all(item is None or isinstance(item, str) for item in names):
             problems.append(
                 ValidationProblem(
                     ("dimension_names",), "expected items of str or None", "invalid_type"
                 )
             )
-        elif _is_int_sequence(doc.get("shape")) and len(cast("Sequence[object]", names)) != len(
-            cast("Sequence[int]", doc["shape"])
-        ):
+        elif _is_int_sequence(shape) and len(names) != len(shape):
             problems.append(
                 ValidationProblem(
                     ("dimension_names",),
@@ -704,22 +704,22 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     chunks_problems = _validate_dim_sequence(doc, "chunks")
     problems.extend(shape_problems)
     problems.extend(chunks_problems)
+    shape = doc.get("shape")
+    chunks = doc.get("chunks")
     if (
         len(shape_problems) == 0
         and len(chunks_problems) == 0
-        and _is_int_sequence(doc.get("shape"))
-        and _is_int_sequence(doc.get("chunks"))
+        and _is_int_sequence(shape)
+        and _is_int_sequence(chunks)
+        and len(shape) != len(chunks)
     ):
-        shape = cast("Sequence[int]", doc["shape"])
-        chunks = cast("Sequence[int]", doc["chunks"])
-        if len(shape) != len(chunks):
-            problems.append(
-                ValidationProblem(
-                    ("chunks",),
-                    "expected the same number of dimensions as shape",
-                    "invalid_value",
-                )
+        problems.append(
+            ValidationProblem(
+                ("chunks",),
+                "expected the same number of dimensions as shape",
+                "invalid_value",
             )
+        )
     if "dtype" in doc and not _is_dtype_v2(doc["dtype"]):
         problems.append(
             ValidationProblem(
@@ -741,9 +741,7 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     if "filters" in doc:
         filters = doc["filters"]
         if filters is not None and (
-            isinstance(filters, str)
-            or not isinstance(filters, Sequence)
-            or not all(_is_codec_v2(item) for item in cast("Sequence[object]", filters))
+            not _is_array(filters) or not all(_is_codec_v2(item) for item in filters)
         ):
             problems.append(
                 ValidationProblem(
@@ -752,10 +750,10 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
                     "invalid_type",
                 )
             )
-        elif filters is not None:
+        elif _is_array(filters):
             # "A list of JSON objects providing codec configurations, or
             # null" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79): an empty list is a list.
-            for index, item in enumerate(cast("Sequence[object]", filters)):
+            for index, item in enumerate(filters):
                 problems.extend(_prefix("filters", _prefix(index, validate_json(item))))
     if "dimension_separator" in doc and doc["dimension_separator"] not in (".", "/"):
         problems.append(
