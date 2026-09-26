@@ -270,6 +270,10 @@ class RegularChunkGridMetadata(Metadata):
         return cls(chunk_shape=parse_chunk_shape(configuration["chunk_shape"]))
 
 
+class RectilinearChunksDisabledError(ValueError):
+    """Rectilinear chunk grids are used while the `array.rectilinear_chunks` flag is off."""
+
+
 @dataclass(frozen=True, kw_only=True)
 class RectilinearChunkGridMetadata(Metadata):
     """Metadata-only description of a rectilinear chunk grid.
@@ -290,7 +294,7 @@ class RectilinearChunkGridMetadata(Metadata):
 
     def __post_init__(self) -> None:
         if not config.get("array.rectilinear_chunks"):
-            raise ValueError(
+            raise RectilinearChunksDisabledError(
                 "Rectilinear chunk grids are experimental and disabled by default. "
                 "Enable them with: zarr.config.set({'array.rectilinear_chunks': True}) "
                 "or set the environment variable ZARR_ARRAY__RECTILINEAR_CHUNKS=True"
