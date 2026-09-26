@@ -608,7 +608,8 @@ def test_chunks_param_from_rectilinear_bare_int_roundtrip() -> None:
     produced by a scalar dimension of a mixed chunk spec) must pass
     through the `chunks=` conversion unchanged. Wrapping one in a
     single-element list turns "repeat to cover the axis" into "exactly one
-    chunk" and re-creation fails the sum-to-span check."""
+    chunk" and re-creation fails the sum-to-span check. Edge tuples become lists,
+    as zarr 3.4.0 returned them."""
     from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
     from zarr.storage import MemoryStore
     from zarr.testing.strategies import chunks_param_from_rectilinear
@@ -618,10 +619,13 @@ def test_chunks_param_from_rectilinear_bare_int_roundtrip() -> None:
         grid = src.metadata.chunk_grid  # type: ignore[union-attr]
         assert isinstance(grid, RectilinearChunkGridMetadata)
         assert grid.chunk_shapes == ((1, 2), 1)
+        chunks = chunks_param_from_rectilinear(grid)
+        # a list of lists, not tuples (`[1, 2] != (1, 2)`)
+        assert chunks == [[1, 2], 1]
         dst = zarr.create_array(
             MemoryStore(),
             shape=src.shape,
-            chunks=chunks_param_from_rectilinear(grid),
+            chunks=chunks,
             dtype="uint8",
         )
         assert dst.metadata.chunk_grid == grid  # type: ignore[union-attr]
