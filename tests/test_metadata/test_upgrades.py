@@ -100,32 +100,40 @@ def _chunk_shapes(metadata: ArrayV2Metadata | ArrayV3Metadata) -> tuple[Any, Any
         (
             _v2_doc([0, 4], [0, 4]),
             ((1, 4), None),
-            r"0 on axis 0 as one chunk spanning the axis \(1\)\.",
+            r"0 in dimension 0 as one chunk spanning the dimension \(1\)\.",
         ),
         (
             _v3_doc([0], [False]),
             ((1,), None),
-            r"false on axis 0 as one chunk spanning the axis \(1\)\.",
+            r"false in dimension 0 as one chunk spanning the dimension \(1\)\.",
         ),
-        (_v2_doc([5], [True]), ((1,), None), "true on axis 0 as 1"),
+        (_v2_doc([5], [True]), ((1,), None), "true in dimension 0 as 1"),
         (
             _v3_doc([5, 4], [True, 4]),
             ((1, 4), None),
-            r"\[true, 4\] is invalid.*true on axis 0 as 1",
+            r"\[true, 4\] is invalid.*true in dimension 0 as 1",
         ),
         (
             _v2_doc([3], [0]),
             ((3,), None),
-            r"spanning the axis \(3\), and .* holds only its fill value",
+            r"spanning the dimension \(3\), and .* holds only its fill value",
         ),
-        (_v3_doc([4, 3], [4, 0]), ((4, 3), None), "0 on axis 1 as .* holds only its fill value"),
-        (_v3_doc([0], [0], inner=[4]), ((4,), (4,)), r"spanning the axis \(4\)\."),
+        (
+            _v3_doc([4, 3], [4, 0]),
+            ((4, 3), None),
+            "0 in dimension 1 as .* holds only its fill value",
+        ),
+        (_v3_doc([0], [0], inner=[4]), ((4,), (4,)), r"spanning the dimension \(4\)\."),
         (
             _v3_doc([10], [0], inner=[4]),
             ((12,), (4,)),
-            r"spanning the axis \(12\), and .* holds only its fill value",
+            r"spanning the dimension \(12\), and .* holds only its fill value",
         ),
-        (_v3_doc([0, 3], [0, 3], inner=[2, 3]), ((2, 3), (2, 3)), r"spanning the axis \(2\)\."),
+        (
+            _v3_doc([0, 3], [0, 3], inner=[2, 3]),
+            ((2, 3), (2, 3)),
+            r"spanning the dimension \(2\)\.",
+        ),
         (
             _v3_doc([5], [True], inner=[True]),
             ((1,), (1,)),
@@ -203,24 +211,40 @@ def test_invalid_upgraded_document_raises_without_warning(doc: dict[str, JSON], 
             metadata_cls.from_dict(doc)
 
 
-@pytest.mark.parametrize(
-    ("doc", "error"),
-    [
-        (_v2_doc([4], [-1]), "Dimension 0: Chunk edge length must be >= 1, got -1"),
-        (_v3_doc([4, 4], [0]), "Dimension 0: Chunk edge length must be >= 1, got 0"),
-        (_v3_doc([4], [4.0]), "Dimension 0: Chunk edge length must be an int, got 4.0"),
-        (_v3_doc([4], [0], inner=[0]), "Dimension 0: Chunk edge length must be >= 1, got 0"),
-    ],
-    ids=["negative", "ndim-mismatch", "float", "sharded-inner-zero"],
-)
-def test_stored_chunk_shape_not_upgraded(doc: dict[str, JSON], error: str) -> None:
-    """Invalid chunk sizes no known writer stored, and chunk shapes with the wrong
-    number of axes, are not upgraded, only rejected."""
+def _read_strictly(doc: dict[str, JSON]) -> ArrayV2Metadata | ArrayV3Metadata:
+    """Read `doc`, failing on any warning that it was upgraded."""
     metadata_cls = ArrayV2Metadata if doc["zarr_format"] == 2 else ArrayV3Metadata
     with warnings.catch_warnings():
         warnings.simplefilter("error", ZarrUserWarning)
-        with pytest.raises((TypeError, ValueError), match=re.escape(error)):
-            metadata_cls.from_dict(doc)
+        return metadata_cls.from_dict(doc)
+
+
+def test_stored_negative_chunk_size_rejected() -> None:
+    """No known writer stored a negative chunk size: it is rejected, not upgraded."""
+    with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got -1$"):
+        _read_strictly(_v2_doc([4], [-1]))
+
+
+def test_stored_chunk_shape_ndim_mismatch_rejected() -> None:
+    """A chunk shape with the wrong number of dimensions is not upgraded, so its 0 is
+    rejected."""
+    with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got 0$"):
+        _read_strictly(_v3_doc([4, 4], [0]))
+
+
+def test_stored_float_chunk_size_rejected() -> None:
+    """No known writer stored a float chunk size: it is rejected, not upgraded."""
+    with pytest.raises(
+        TypeError, match=r"^Dimension 0: chunk edge length must be an int, got 4\.0$"
+    ):
+        _read_strictly(_v3_doc([4], [4.0]))
+
+
+def test_stored_zero_inner_chunk_size_rejected() -> None:
+    """No known writer stored an inner chunk size of 0, and no span defines one: it is
+    rejected, not upgraded."""
+    with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got 0$"):
+        _read_strictly(_v3_doc([4], [0], inner=[0]))
 
 
 def test_v2_constructor_rejects_chunks_of_wrong_length() -> None:
@@ -264,7 +288,7 @@ CHUNK_EDGE_SITES: dict[str, Callable[[Any], object]] = {
 def test_metadata_rejects_non_int_chunk_edge(site: str, size: object) -> None:
     """Metadata built in code takes chunk edge lengths as `int`s only, everywhere."""
     with pytest.raises(
-        TypeError, match=re.escape(f"Chunk edge length must be an int, got {size!r}")
+        TypeError, match=re.escape(f"Dimension 0: chunk edge length must be an int, got {size!r}")
     ):
         CHUNK_EDGE_SITES[site](size)
 
@@ -276,7 +300,9 @@ def test_metadata_rejects_chunk_edge_below_one(site: str, size: int) -> None:
     without a warning."""
     with warnings.catch_warnings():
         warnings.simplefilter("error", ZarrUserWarning)
-        with pytest.raises(ValueError, match=f"Chunk edge length must be >= 1, got {size}"):
+        with pytest.raises(
+            ValueError, match=f"Dimension 0: chunk edge length must be >= 1, got {size}"
+        ):
             CHUNK_EDGE_SITES[site](size)
 
 

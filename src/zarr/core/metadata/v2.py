@@ -155,8 +155,8 @@ class ArrayV2Metadata(Metadata):
         """Read a stored `.zarray` document (with its attributes). An invalid document
         that `zarr.core.metadata.upgrades` can read warns, naming the array at `path`."""
         upgraded, readings = upgrade_array_document(data, V2_ARRAY_UPGRADES)
-        data = dict(upgraded)
-        _data = data.copy()
+        # a new dict, because we are modifying it
+        _data: dict[str, Any] = dict(upgraded)
         # Check that the zarr_format attribute is correct.
         _ = parse_zarr_format(_data.pop("zarr_format"))
 
@@ -164,7 +164,7 @@ class ArrayV2Metadata(Metadata):
         # which could be in filters or as a compressor.
         # we will reference a hard-coded collection of object codec ids for this search.
 
-        _filters, _compressor = (data.get("filters"), data.get("compressor"))
+        _filters, _compressor = (_data.get("filters"), _data.get("compressor"))
         if _filters is not None:
             _filters = cast("tuple[dict[str, JSON], ...]", _filters)
             object_codec_id = get_object_codec_id(tuple(_filters) + (_compressor,))
@@ -173,7 +173,7 @@ class ArrayV2Metadata(Metadata):
         # we add a layer of indirection here around the dtype attribute of the array metadata
         # because we also need to know the object codec id, if any, to resolve the data type
         dtype_spec: DTypeSpec_V2 = {
-            "name": data["dtype"],
+            "name": _data["dtype"],
             "object_codec_id": object_codec_id,
         }
         dtype = get_data_type_from_json(dtype_spec, zarr_format=2)

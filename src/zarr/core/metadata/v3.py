@@ -239,13 +239,14 @@ def _validate_chunk_shapes(
     """
     result: list[int | tuple[int, ...]] = []
     for dim_idx, dim_spec in enumerate(chunk_shapes):
-        if isinstance(dim_spec, Iterable):
-            edges = tuple(parse_chunk_edge(edge, dim_idx) for edge in dim_spec)
-            if not edges:
-                raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
-            result.append(edges)
-        else:
-            result.append(parse_chunk_edge(dim_spec, dim_idx))
+        match dim_spec:
+            case list() | tuple():
+                edges = tuple(parse_chunk_edge(edge, dim_idx) for edge in dim_spec)
+                if not edges:
+                    raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
+                result.append(edges)
+            case _:
+                result.append(parse_chunk_edge(dim_spec, dim_idx))
     return tuple(result)
 
 
@@ -363,8 +364,8 @@ class RectilinearChunkGridMetadata(Metadata):
         validate_rectilinear_kind(configuration.get("kind"))
         raw_shapes = configuration["chunk_shapes"]
         parsed = [
-            tuple(expand_rle(dim_spec)) if isinstance(dim_spec, list) else dim_spec
-            for dim_spec in raw_shapes
+            tuple(expand_rle(dim_spec, axis)) if isinstance(dim_spec, list) else dim_spec
+            for axis, dim_spec in enumerate(raw_shapes)
         ]
         return cls(chunk_shapes=tuple(parsed))
 
