@@ -185,10 +185,15 @@ what it hands the next, whatever its chunk rules found: `transition` --
 fields the scope read as a pipeline: their order -- array -> array
 codecs, one array -> bytes codec, bytes -> bytes codecs -- and then each
 against the chunk it is handed, giving each codec's `Stage` with that
-chunk. Nothing is guessed: the codec after one the scope did not read,
-or after one that says nothing of what it hands on, is handed a chunk
-nothing is known of, `Chunk()`, which is refused nothing; a codec after
-that hands on only what it says of its own accord.
+chunk. A codec that holds pipelines of its own says what each is
+handed: `pipelines`, by the member of its configuration that holds each
+-- a shard's inner codecs its inner chunks, its index codecs the shard
+index -- and each is read the same way, its stages kept as the codec's
+`Stage.inner`.
+Nothing is guessed: the codec after one the scope did not read, or after
+one that says nothing of what it hands on, is handed a chunk nothing is
+known of, `Chunk()`, which is refused nothing; a codec after that hands
+on only what it says of its own accord.
 
 Raw bits are the one data type whose name carries its configuration: a
 document writes `r` and the size in bits, and `r16` reads as `r*`, as the
@@ -214,13 +219,14 @@ TypedDict, says nothing of the keys it does not declare, or has a member
 no checker reads, named down to the TypedDict that holds it; a `name`
 that is not a string; a member declared as a function -- `rules`,
 `canonical`, `fill_value_rules`, `storage`, `shape_rules`,
-`chunk_lengths`, `chunk_rules`, `transition` -- that is not one; a data type's
-`fill_value` no checker reads; a codec `kind` that is not one of the
-three, or a `size` that is not `"static"` or `"dynamic"`; chunk rules of
+`chunk_lengths`, `chunk_rules`, `transition`, `pipelines` -- that is not
+one; a data type's `fill_value` no checker reads; a codec `kind` that is
+not one of the three, or a `size` that is not `"static"` or `"dynamic"`;
+a function no codec of its kind is asked -- chunk rules or pipelines of
 a bytes -> bytes codec, which is handed bytes, or a `transition` of a
 codec that hands on bytes; a data type named as raw bits of one size are
-written. A scope refuses a definition
-of no kind. Nothing happens at class creation.
+written. A scope refuses a definition of no kind. Nothing happens at
+class creation.
 """
 
 from zarr_metadata._common import JSONValue

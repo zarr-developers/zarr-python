@@ -8,7 +8,10 @@ the lengths its grid's chunks take along each axis -- and each array ->
 array codec hands the next the chunk its `transition` says.
 Each codec handed an array is judged by its chunk rules against the chunk
 it is handed: a `bytes` codec handed a multi-byte data type without an
-`endian`, a `transpose` whose `order` has another number of axes.
+`endian`, a `transpose` whose `order` has another number of axes. A codec
+that holds pipelines of its own has each read the same way, handed the
+chunk its `pipelines` says: a shard's inner codecs its inner chunks, its
+index codecs the shard index.
 
 Nothing is guessed. A codec the scope did not read -- nothing in scope
 claims it, or it has a problem of its own -- might do anything, so the
@@ -22,17 +25,24 @@ known of its chunk and leaves the rest.
 
 from __future__ import annotations
 
+import dataclasses
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.v3._definition import Chunk, CodecDefinition, CodecKind, Resolved, asked, ruled
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping, Sequence
+    from collections.abc import Iterator, Sequence
 
     from zarr_metadata._typed_json import Loc
     from zarr_metadata.v3._definition import Nested, Problems
+
+
+def _no_stages() -> Mapping[str, tuple[Stage, ...]]:
+    """The pipelines of a codec that holds none, or was not read: none."""
+    return {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +58,8 @@ class Stage:
     after the array -> bytes codec -- and for a codec nothing in scope
     claims when what it is handed is not known to be an array.
     """
+    inner: Mapping[str, tuple[Stage, ...]] = dataclasses.field(default_factory=_no_stages)
+    """The pipelines it holds, by the member of its configuration that holds each: each codec with the chunk it is handed."""
 
 
 _POSITIONS: Final[Mapping[CodecKind, int]] = {
@@ -72,9 +84,10 @@ def read_pipeline(
     The order first: array -> array codecs, then one array -> bytes codec,
     then bytes -> bytes codecs. Then each codec in turn, handed the chunk
     the one before it handed on: judged by its chunk rules, which locate
-    their problems in its configuration, and, an array -> array codec,
-    asked what it hands on. Problems are located under `loc`, where the
-    codecs sit, each codec at its index.
+    their problems in its configuration; each pipeline it holds read the
+    same way, where it sits in the configuration; and, an array -> array
+    codec, asked what it hands on. Problems are located under `loc`, where
+    the codecs sit, each codec at its index.
     """
     problems = list(_order_problems(codecs, loc))
     stages: list[Stage] = []
@@ -92,10 +105,13 @@ def read_pipeline(
             handed = None
             continue
         incoming = Chunk() if handed is None else handed
-        stages.append(Stage(codec, incoming))
         at = (*loc, index, "configuration")
+        inner = _no_stages()
         if configuration is not None:
             problems.extend(_chunk_problems(definition, configuration, codec.nested, incoming, at))
+            inner, found = _inner_pipelines(definition, configuration, codec.nested, incoming, at)
+            problems.extend(found)
+        stages.append(Stage(codec, incoming, inner))
         if definition.kind == "array_bytes":
             handed = None
         elif configuration is None:
@@ -159,6 +175,77 @@ def _chunk_problems(
 ) -> Problems:
     """What `definition`'s chunk rules find in a codec handed `chunk`, located under `at`."""
     return ruled(definition, lambda: definition.chunk_rules(configuration, nested, chunk), at)
+
+
+def _inner_pipelines(
+    definition: CodecDefinition[Any],
+    configuration: Mapping[str, Any],
+    nested: Nested,
+    chunk: Chunk,
+    at: Loc,
+) -> tuple[Mapping[str, tuple[Stage, ...]], Problems]:
+    """Each pipeline a codec handed `chunk` holds, read handed the chunk its `pipelines` says.
+
+    Its codecs are the fields the member holding it holds, as the scope
+    read them, and its problems are located there, under `at`. What
+    `pipelines` gives is the extension author's code: it is checked to map
+    members of the configuration to chunks, each member a list of codecs.
+    """
+    given = asked(
+        definition,
+        "pipelines",
+        lambda: cast("object", definition.pipelines(configuration, nested, chunk)),
+        at,
+    )
+    if not _is_pipelines(given):
+        msg = (
+            f"{definition.name!r}: its pipelines give a mapping of members to chunks, got {given!r}"
+        )
+        raise TypeError(msg)
+    read: dict[str, tuple[Stage, ...]] = {}
+    problems: list[ValidationProblem] = []
+    for member, handed in given.items():
+        codecs = _held(definition, configuration, nested, member)
+        read[member], found = read_pipeline(codecs, handed, (*at, member))
+        problems.extend(found)
+    return read, tuple(problems)
+
+
+def _is_pipelines(value: object) -> TypeGuard[Mapping[str, Chunk]]:
+    """Whether `value` maps members of a configuration to chunks."""
+    return isinstance(value, Mapping) and all(
+        isinstance(member, str) and isinstance(chunk, Chunk)
+        for member, chunk in cast("Mapping[object, object]", value).items()
+    )
+
+
+def _held(
+    definition: CodecDefinition[Any], configuration: Mapping[str, Any], nested: Nested, member: str
+) -> tuple[Resolved[CodecDefinition[Any]], ...]:
+    """The codecs `member` of the configuration holds, as the scope read them.
+
+    A member holding anything but a list of fields, or fields a definition
+    of another kind read, is a `TypeError`: a fault in the definition that
+    names it. Fields nothing in scope claims tell nothing of their kind,
+    and are read as codecs nothing claims.
+    """
+    entries: object = configuration.get(member)
+    places = (
+        [(member, index) for index in range(len(cast("tuple[object, ...]", entries)))]
+        if isinstance(entries, tuple)
+        else None
+    )
+    if places is None or not all(
+        place in nested
+        and (
+            nested[place].definition is None
+            or isinstance(nested[place].definition, CodecDefinition)
+        )
+        for place in places
+    ):
+        msg = f"{definition.name!r}: its pipelines name {member!r}, which holds no list of codecs"
+        raise TypeError(msg)
+    return tuple(nested[place] for place in places)
 
 
 def _handed_on(

@@ -7,9 +7,10 @@ as the pipeline its grid's chunks, of its data type, go through.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
+from typing_extensions import TypedDict
 
 from zarr_metadata.model import ZarrV3ArrayMetadata, validate_array_metadata_v3
 from zarr_metadata.v3.codec.crc32c import Empty
@@ -17,9 +18,12 @@ from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
     Chunk,
     CodecDefinition,
+    CodecField,
     DataTypeDefinition,
+    DataTypeField,
     JSONValue,
     Nested,
+    Resolved,
     read_pipeline,
     resolve,
 )
@@ -389,13 +393,18 @@ def test_error_a_transition_that_builds_a_chunk_of_something_else(
 
 @pytest.mark.parametrize(
     ("kind", "member"),
-    [("bytes_bytes", "chunk_rules"), ("bytes_bytes", "transition"), ("array_bytes", "transition")],
+    [
+        ("bytes_bytes", "chunk_rules"),
+        ("bytes_bytes", "transition"),
+        ("bytes_bytes", "pipelines"),
+        ("array_bytes", "transition"),
+    ],
 )
 def test_error_a_codec_hook_nothing_would_ask(kind: str, member: str) -> None:
     # A bytes -> bytes codec is handed bytes, and only an array -> array
     # codec hands on a chunk.
     hook = {member: lambda configuration, nested, chunk: ()}
-    with pytest.raises(TypeError, match=f"'acme.x': .*{member.split('_')[0]}"):
+    with pytest.raises(TypeError, match=f"'acme.x': {member}, "):
         CodecDefinition(name="acme.x", configuration=Empty, kind=kind, size="static", **hook)  # pyright: ignore[reportArgumentType]
 
 
@@ -429,4 +438,44 @@ def test_error_an_array_document_s_codecs_out_of_order_or_not_fitting_its_chunks
         (("codecs", 3), "invalid_value"),
         (("codecs", 0, "configuration", "order"), "invalid_value"),
         (("codecs", 1, "configuration", "endian"), "missing_key"),
+    ]
+
+
+class AcmeHolderConfiguration(TypedDict, closed=True):
+    codecs: tuple[CodecField, ...]
+    types: tuple[DataTypeField, ...]
+
+
+def _holder(pipelines: object) -> Resolved[CodecDefinition[Any]]:
+    """A codec holding a pipeline of codecs and a list of data types, whose pipelines are `pipelines`."""
+    holder = CodecDefinition(
+        name="acme.holder",
+        configuration=AcmeHolderConfiguration,
+        kind="array_bytes",
+        size="dynamic",
+        pipelines=pipelines,  # pyright: ignore[reportArgumentType]
+    )
+    field = {"name": "acme.holder", "configuration": {"codecs": [LITTLE], "types": ["uint8"]}}
+    return resolve(field, CodecDefinition, SCOPE.extended_with(holder))[0]
+
+
+@pytest.mark.parametrize("given", ["a chunk", {"codecs": "a chunk"}, {("codecs",): Chunk()}])
+def test_error_pipelines_that_give_something_else(given: object) -> None:
+    with pytest.raises(TypeError, match="'acme.holder': its pipelines give a mapping of members"):
+        read_pipeline([_holder(lambda configuration, nested, chunk: given)], CHUNK)
+
+
+@pytest.mark.parametrize("member", ["nowhere", "types"])
+def test_error_pipelines_that_name_a_member_holding_no_codecs(member: str) -> None:
+    holder = _holder(lambda configuration, nested, chunk: {member: Chunk()})
+    with pytest.raises(TypeError, match=f"its pipelines name {member!r}, which holds no list"):
+        read_pipeline([holder], CHUNK)
+
+
+def test_error_pipelines_that_raise_say_whose_they_are() -> None:
+    holder = _holder(lambda configuration, nested, chunk: {}["codecs"])
+    with pytest.raises(KeyError) as raised:
+        read_pipeline([holder], CHUNK, ("codecs",))
+    assert raised.value.__notes__ == [
+        "raised by the pipelines of 'acme.holder', reading ('codecs', 0, 'configuration')"
     ]

@@ -778,6 +778,7 @@ def test_error_a_data_type_fill_value_no_checker_reads() -> None:
         (ChunkGridDefinition, "chunk_lengths"),
         (CodecDefinition, "chunk_rules"),
         (CodecDefinition, "transition"),
+        (CodecDefinition, "pipelines"),
     ],
 )
 def test_error_a_function_member_that_is_not_a_function(

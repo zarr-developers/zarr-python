@@ -104,6 +104,11 @@ def unknown_chunk(*_: object) -> Chunk:
     return Chunk()
 
 
+def no_pipelines(*_: object) -> Mapping[str, Chunk]:
+    """The pipelines of a codec that holds none: none."""
+    return {}
+
+
 StorageClass = Literal["single_byte", "multi_byte", "variable_length"]
 """How a data type's values are stored: in single bytes, in several bytes at a time, or each in as many as it needs.
 
@@ -384,6 +389,13 @@ CodecSize = Literal["static", "dynamic"]
 four bytes. `dynamic`: it depends on the values -- every compressor.
 """
 
+_UNASKED: Final[Mapping[CodecKind, tuple[str, ...]]] = {
+    "array_array": (),
+    "array_bytes": ("transition",),
+    "bytes_bytes": ("chunk_rules", "transition", "pipelines"),
+}
+"""The functions no codec of a kind is asked: a bytes -> bytes codec is handed bytes, and only an array -> array codec hands on a chunk."""
+
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class CodecDefinition(Definition[C]):
@@ -406,6 +418,15 @@ class CodecDefinition(Definition[C]):
     `transpose` whose `order` has another number of axes hands on lengths
     nothing is known of. A codec that says nothing of what it hands on
     hands the next a chunk nothing is known of.
+
+    A codec that holds pipelines of its own says what each is handed:
+    `pipelines`, by the member of its configuration that holds each, the
+    chunk its first codec is handed, given the chunk the codec is handed
+    -- a shard's inner codecs are handed its inner chunks, and its index
+    codecs the shard index. Like the transition, it is asked whatever the
+    chunk rules found, and gives only what holds either way. A function
+    no codec of its kind is asked -- the chunk rules of a bytes -> bytes
+    codec, which is handed bytes -- is refused.
     """
 
     kind: CodecKind
@@ -414,6 +435,8 @@ class CodecDefinition(Definition[C]):
     """What the spec disallows in this codec handed a chunk, located in the configuration."""
     transition: Callable[[C, Nested, Chunk], Chunk] = unknown_chunk
     """The chunk the next codec is handed, given the one this array -> array codec is handed."""
+    pipelines: Callable[[C, Nested, Chunk], Mapping[str, Chunk]] = no_pipelines
+    """The pipelines it holds, by the member of its configuration that holds each, and the chunk each is handed."""
 
     def _refusal(self) -> str | None:
         kind: object = self.kind
@@ -422,10 +445,10 @@ class CodecDefinition(Definition[C]):
         size: object = self.size
         if size not in get_args(CodecSize):
             return f"{self.name!r}: size is one of {get_args(CodecSize)!r}, got {size!r}"
-        if kind == "bytes_bytes" and self.chunk_rules is not no_rules:
-            return f"{self.name!r}: chunk_rules, of a bytes -> bytes codec, which is handed bytes"
-        if kind != "array_array" and self.transition is not unknown_chunk:
-            return f"{self.name!r}: a transition, of a codec that hands on bytes"
+        defaults = {member.name: member.default for member in dataclasses.fields(CodecDefinition)}
+        for member in _UNASKED[self.kind]:
+            if getattr(self, member) is not defaults[member]:
+                return f"{self.name!r}: {member}, which no codec of kind {kind!r} is asked"
         return None
 
 
@@ -1180,6 +1203,7 @@ __all__ = [
     "kind_of",
     "multi_byte",
     "named_configuration",
+    "no_pipelines",
     "no_rules",
     "resolve",
     "ruled",

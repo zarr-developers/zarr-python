@@ -361,7 +361,9 @@ def validate_array_metadata_v3(
     300 -- and the chunk grid against the shape: a regular grid with a
     chunk length for each of two dimensions, over an array of three. The
     codecs are read as a pipeline: in order, each judged against the chunk
-    it is handed -- a `transpose` whose `order` has another number of axes.
+    it is handed -- a `transpose` whose `order` has another number of
+    axes, a shard its inner chunks do not divide -- and a shard's inner
+    and index codecs too.
     A name nothing in `context` claims is left unjudged, with any fill
     value of it, and a codec of that name leaves the codec after it
     handed a chunk nothing is known of. Unknown top-level keys are

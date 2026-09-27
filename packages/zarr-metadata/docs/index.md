@@ -82,9 +82,9 @@ left unjudged, and whether to support it is the consumer's decision. A v3
 fill value is judged against the data type it names, by that data type's
 definition, the chunk grid against the shape, by the grid's definition,
 and the codecs as a pipeline: in order, each judged by its definition
-against the chunk it is handed. The validators do not read a shard's
-inner codecs as a pipeline, and do none of a codec's arithmetic: whether
-a fill value survives a `cast_value` round trip is not judged.
+against the chunk it is handed, a shard's inner and index codecs too.
+The validators do no arithmetic on values: whether a fill value survives
+a `cast_value` round trip is not judged.
 
 ## Scope
 
