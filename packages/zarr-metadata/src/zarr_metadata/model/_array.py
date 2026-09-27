@@ -22,10 +22,10 @@ from zarr_metadata.model._validation import (
     load_store_json,
     parse_array_metadata_v2,
     parse_array_metadata_v3,
-    parse_metadata_field_v3,
 )
 from zarr_metadata.v2.array import ZARR_V2_ARRAY_METADATA_STORE_KEY
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
+from zarr_metadata.v3._common import parse_metadata_field_v3
 from zarr_metadata.v3.array import ZARR_V3_ARRAY_METADATA_STORE_KEY
 
 if TYPE_CHECKING:
