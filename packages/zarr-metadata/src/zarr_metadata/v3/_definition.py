@@ -29,6 +29,7 @@ at class creation.
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import re
 from collections.abc import Callable, Iterable, Iterator, Mapping
@@ -43,6 +44,7 @@ from typing import (
     cast,
     get_args,
     get_origin,
+    get_type_hints,
 )
 
 from typing_extensions import TypeAliasType, TypedDict, TypeVar, is_typeddict
@@ -53,6 +55,7 @@ from zarr_metadata._typed_json import (
     Loc,
     Parsed,
     Parser,
+    no_leaf,
     parser,
     problem,
     typeddict_keys,
@@ -88,6 +91,13 @@ def no_rules(configuration: object) -> Iterator[ValidationProblem]:
 def unchanged(configuration: T) -> T:
     """The canonical form of a configuration with no simpler spelling: itself."""
     return configuration
+
+
+def no_fill_value_rules(
+    configuration: object, nested: Nested, value: object
+) -> Iterator[ValidationProblem]:
+    """The fill value rules of a data type with none: every fill value of its JSON shape is allowed."""
+    yield from ()
 
 
 class EmptyConfiguration(TypedDict, closed=True):
@@ -181,14 +191,20 @@ def _malformed(definition: Definition[Any]) -> str | None:
     name = cast("object", definition.name)
     if not isinstance(name, str):
         return f"a definition's name is a string, got {name!r}"
-    functions: dict[str, object] = {"rules": definition.rules, "canonical": definition.canonical}
-    return next(
-        (
-            f"{name!r}: {member} is a function, got {value!r}"
-            for member, value in functions.items()
-            if not callable(value)
-        ),
-        None,
+    for member in _function_members(type(definition)):
+        value = getattr(definition, member)
+        if not callable(value):
+            return f"{name!r}: {member} is a function, got {value!r}"
+    return None
+
+
+@functools.cache
+def _function_members(kind: type[Definition[Any]]) -> tuple[str, ...]:
+    """The members `kind` declares as functions: each one its annotation says is a `Callable`."""
+    return tuple(
+        member
+        for member, annotation in get_type_hints(kind).items()
+        if get_origin(annotation) is Callable
     )
 
 
@@ -243,20 +259,43 @@ def _carrying_name(
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class DataTypeDefinition(Definition[C]):
-    """A data type.
+    """A data type, and the fill value an array of it takes.
+
+    `fill_value` is the JSON shape of a fill value -- `Int8FillValue`, an
+    annotation the checker reads as it reads a configuration's members --
+    and `fill_value_rules` is what the spec disallows in a fill value of
+    that shape: an integer out of range, a hex string of another width.
+    The rules are handed the configuration, the fields it holds as the
+    scope read them (a struct's field types), and the typed fill value. A
+    data type that says nothing of its fill value takes any JSON.
 
     One named as a document writes raw bits of one size -- `r16` -- is
     refused: that name reads as `r*`, so nothing would ever read it with
     this definition.
     """
 
+    fill_value: object = JSONValue
+    """The JSON shape of a fill value, as an annotation: `Int8FillValue`."""
+    fill_value_rules: Callable[[C, Nested, Any], Iterable[ValidationProblem]] = no_fill_value_rules
+    """What the spec disallows in a fill value of that shape, located in it."""
+
     def _refusal(self) -> str | None:
-        if RAW_BYTES_NAME_PATTERN.fullmatch(self.name) is None:
-            return None
-        return (
-            f"{self.name!r} is how a document writes raw bits of one size, which read as "
-            f"{RAW_BYTES_NAME!r}; to read raw bits your own way, define {RAW_BYTES_NAME!r}"
-        )
+        if RAW_BYTES_NAME_PATTERN.fullmatch(self.name) is not None:
+            return (
+                f"{self.name!r} is how a document writes raw bits of one size, which read as "
+                f"{RAW_BYTES_NAME!r}; to read raw bits your own way, define {RAW_BYTES_NAME!r}"
+            )
+        try:
+            _fill_value_parser(self.fill_value)
+        except TypeError as error:
+            return f"{self.name!r}: fill_value: {error}"
+        return None
+
+
+@functools.cache
+def _fill_value_parser(annotation: object) -> Parser:
+    """The checker for a fill value's JSON shape, compiled once; `TypeError` naming what no checker reads."""
+    return parser(annotation, no_leaf)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -585,6 +624,11 @@ Resolution = Literal["read"] | Unread
 """What a scope made of a field: read by the definition that claims it, or unread, and why."""
 
 
+def _nothing_nested() -> Nested:
+    """What a field that holds no field, or was not read, holds inside: nothing."""
+    return {}
+
+
 @dataclass(frozen=True, slots=True)
 class Resolved(Generic[D]):
     """One metadata field, as read in a scope: its JSON, and what the scope made of it.
@@ -603,6 +647,17 @@ class Resolved(Generic[D]):
     """The definition that claims the field's name; None when nothing in scope does, or it names none."""
     configuration: Mapping[str, JSONValue] | None
     """The configuration, type-checked and allowed by the rules, when the field was read; None otherwise."""
+    nested: Nested = dataclasses.field(default_factory=_nothing_nested)
+    """The fields the configuration holds, each as the scope read it, by where it sits in the configuration.
+
+    A struct's field types at `("fields", 0, "data_type")`, a shard's
+    codecs at `("codecs", 0)`: what a definition's functions consult about
+    the fields inside its own. Empty unless the field was read.
+    """
+
+
+Nested: TypeAlias = Mapping[Loc, Resolved[Any]]
+"""The fields a configuration holds, each as the scope read it, by where it sits in the configuration."""
 
 
 def configuration_of(resolved: Resolved[Any], definition: Definition[C]) -> C | None:
@@ -615,6 +670,34 @@ def configuration_of(resolved: Resolved[Any], definition: Definition[C]) -> C | 
     if resolved.definition is not definition or resolved.configuration is None:
         return None
     return cast("C", resolved.configuration)
+
+
+def fill_value_problems(
+    data_type: Resolved[DataTypeDefinition], value: object, loc: Loc = ()
+) -> Problems:
+    """What is wrong with `value` as a fill value of `data_type`, a data type field a scope read.
+
+    `value` is refined to JSON first: not JSON is the first verdict,
+    whatever the data type. It is then checked against the JSON shape the
+    data type's definition declares, and judged by its fill value rules,
+    which see the fields its configuration holds as the scope read them: a
+    struct judges each field's fill value by that field's own type. A data
+    type the scope did not read, out of scope or invalid, leaves a JSON fill
+    value unjudged. `loc` prefixes every problem.
+    """
+    refined, problems = refine_json(value, loc)
+    definition = data_type.definition
+    configuration = data_type.configuration
+    if len(problems) != 0 or definition is None or configuration is None:
+        return problems
+    typed, problems = _fill_value_parser(definition.fill_value)(refined, loc)
+    if len(problems) != 0:
+        return problems
+    return _ruled(
+        definition,
+        lambda: definition.fill_value_rules(configuration, data_type.nested, typed),
+        loc,
+    )
 
 
 def resolve(
@@ -678,14 +761,16 @@ def _read(
     configuration = cast("Mapping[str, JSONValue]", typed) if sound else None
     if configuration is not None:
         problems.extend(_ruled(definition, lambda: definition.rules(configuration), at))
+    within: dict[Loc, Resolved[Any]] = {}
     for field, envelope in zip(nested, envelopes, strict=True):
         problems.extend(envelope)
         inner, found = _read(field.json, field.kind, context, field.loc)
+        within[field.loc[len(at) :]] = inner
         problems.extend(found)
         problems.extend(_sized(field, inner.definition))
     if not _usable(problems):
         return Resolved(data, "invalid", definition, None), tuple(problems)
-    return Resolved(data, "read", definition, configuration), tuple(problems)
+    return Resolved(data, "read", definition, configuration, within), tuple(problems)
 
 
 def _read_carried(
@@ -813,6 +898,7 @@ __all__ = [
     "DataTypeField",
     "Definition",
     "EmptyConfiguration",
+    "Nested",
     "Resolution",
     "Resolved",
     "StaticCodecField",
@@ -822,8 +908,10 @@ __all__ = [
     "as_kind",
     "canonicalize",
     "configuration_of",
+    "fill_value_problems",
     "kind_of",
     "named_configuration",
+    "no_fill_value_rules",
     "no_rules",
     "resolve",
     "spelled",

@@ -5,9 +5,12 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 import re
+from collections.abc import Iterator
 from typing import Final, Literal, NewType
 
-from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration
+from zarr_metadata._json import ValidationProblem
+from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration, Nested
+from zarr_metadata.v3.data_type._integer import byte_value_problems
 
 BYTES_DATA_TYPE_NAME: Final = "bytes"
 """The `data_type` value for the variable-length `bytes` type."""
@@ -41,8 +44,26 @@ Either a JSON array of integers in `[0, 255]` (one per byte), or a
 """
 
 
+def _fill_value_rules(
+    configuration: EmptyConfiguration, nested: Nested, value: BytesFillValue
+) -> Iterator[ValidationProblem]:
+    """Integers in `[0, 255]`, or a string of standard-alphabet base64."""
+    if not isinstance(value, str):
+        yield from byte_value_problems(value)
+        return
+    try:
+        base64_bytes(value)
+    except ValueError:
+        yield ValidationProblem(
+            (), f"expected standard-alphabet base64, got {value!r}", "invalid_value"
+        )
+
+
 BYTES_DATA_TYPE: Final = DataTypeDefinition(
-    name=BYTES_DATA_TYPE_NAME, configuration=EmptyConfiguration
+    name=BYTES_DATA_TYPE_NAME,
+    configuration=EmptyConfiguration,
+    fill_value=BytesFillValue,
+    fill_value_rules=_fill_value_rules,
 )
 """The `bytes` data type: a bare name, with nothing to configure."""
 

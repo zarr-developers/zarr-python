@@ -19,7 +19,7 @@ BoolFillValue = bool
 
 
 BOOL_DATA_TYPE: Final = DataTypeDefinition(
-    name=BOOL_DATA_TYPE_NAME, configuration=EmptyConfiguration
+    name=BOOL_DATA_TYPE_NAME, configuration=EmptyConfiguration, fill_value=BoolFillValue
 )
 """The `bool` data type: a bare name, with nothing to configure."""
 

@@ -4,12 +4,12 @@ Validators check a document's JSON structure -- key presence, value
 shapes, fixed literals like `zarr_format` -- and, in a v3 document, read
 each extension point through the definition that claims its name in a
 scope, so a configuration its definition refuses is refused here too. A
-name nothing in the scope claims is left unjudged. Rules that read one
-field against another -- a fill value against its data type, a codec
-against the array it is handed, a grid against the shape -- are not
-judged here. Each concept gets a `validate_*` function returning every
-problem found, an `is_*` type guard, and a `parse_*` function that
-narrows or raises `MetadataValidationError`. The guards are `TypeGuard`s,
+name nothing in the scope claims is left unjudged. A v3 fill value is
+judged against the data type it names; a codec against the array it is
+handed, and a grid against the shape, are not judged here. Each concept
+gets a `validate_*` function returning every problem found, an `is_*`
+type guard, and a `parse_*` function that narrows or raises
+`MetadataValidationError`. The guards are `TypeGuard`s,
 not `TypeIs`: True narrows a value to its document type, and False says
 nothing about its type, since a value can be well typed and still not a
 valid document.
@@ -43,7 +43,9 @@ from zarr_metadata.v3._definition import (
     CodecDefinition,
     DataTypeDefinition,
     Definition,
+    Resolved,
     StorageTransformerDefinition,
+    fill_value_problems,
     resolve,
 )
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
@@ -346,8 +348,10 @@ def validate_array_metadata_v3(
 
     Its structure, and each extension point read through the definition
     that claims its name in `context`: a gzip `level` out of range, a key a
-    codec's configuration does not declare. A name nothing in `context`
-    claims is left unjudged. Unknown top-level keys are allowed (they map
+    codec's configuration does not declare. The fill value is judged
+    against the data type as `context` read it: an `int8` fill value of 300.
+    A name nothing in `context` claims is left unjudged, with any fill value
+    of it. Unknown top-level keys are allowed (they map
     to `extra_fields`); a reader must understand each one that does not
     say `must_understand: false`, which the model reports as
     `must_understand_fields`.
@@ -360,8 +364,6 @@ def validate_array_metadata_v3(
     problems.extend(_check_literal(doc, "zarr_format", 3))
     problems.extend(_check_literal(doc, "node_type", "array"))
     problems.extend(_validate_dim_sequence(doc, "shape"))
-    if "fill_value" in doc:
-        problems.extend(_prefix("fill_value", validate_json(doc["fill_value"])))
     # Each extension point is read by `resolve`, which judges its envelope
     # -- every extension *point* must be understood, so a `must_understand`
     # of `false` is refused at each: ignoring a codec gives wrong bytes as
@@ -372,9 +374,21 @@ def validate_array_metadata_v3(
     # configuration, against the definition in `context` that claims its
     # name. `must_understand: false` keeps its meaning where it has one: an
     # unknown top-level extension *field*, which a reader really can skip.
+    read: dict[str, Resolved[Any]] = {}
     for key, kind in _EXTENSION_POINTS_V3:
         if key in doc:
-            problems.extend(resolve(doc[key], kind, context, (key,))[1])
+            read[key], found = resolve(doc[key], kind, context, (key,))
+            problems.extend(found)
+    # The fill value is JSON, and judged by the data type the scope read,
+    # when there is one: a data type nothing in scope claims leaves it
+    # unjudged.
+    if "fill_value" in doc:
+        if "data_type" in read:
+            problems.extend(
+                fill_value_problems(read["data_type"], doc["fill_value"], ("fill_value",))
+            )
+        else:
+            problems.extend(_prefix("fill_value", validate_json(doc["fill_value"])))
     for key, kind in _EXTENSION_LISTS_V3:
         if key in doc:
             entries = doc[key]

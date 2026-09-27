@@ -11,6 +11,7 @@ from typing import Final
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._json import ValidationProblem
+from zarr_metadata.v3._definition import Nested
 
 NUMPY_TIME_MAX_SCALE_FACTOR: Final = 2**31 - 1
 """The largest `scale_factor` numpy stores: the field is a signed int32."""
@@ -34,4 +35,22 @@ def numpy_time_rules(configuration: NumpyTimeConfiguration) -> Iterator[Validati
         )
 
 
-__all__ = ["NUMPY_TIME_MAX_SCALE_FACTOR", "NumpyTimeConfiguration", "numpy_time_rules"]
+def numpy_time_fill_value_rules(
+    configuration: NumpyTimeConfiguration, nested: Nested, value: int | str
+) -> Iterator[ValidationProblem]:
+    """An integer fill value is a signed 64-bit one; `"NaT"` is the other form, which the shape admits.
+
+    https://github.com/zarr-developers/zarr-extensions/blob/6a3adaeef244b3c76270dca52d6a849e88cf002c/data-types/numpy.datetime64/README.md?plain=1#L109-L112
+    """
+    if isinstance(value, int) and not -(2**63) <= value <= 2**63 - 1:
+        yield ValidationProblem(
+            (), f"expected a signed 64-bit integer or 'NaT', got {value}", "invalid_value"
+        )
+
+
+__all__ = [
+    "NUMPY_TIME_MAX_SCALE_FACTOR",
+    "NumpyTimeConfiguration",
+    "numpy_time_fill_value_rules",
+    "numpy_time_rules",
+]

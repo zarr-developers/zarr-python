@@ -78,10 +78,10 @@ codec and each storage transformer -- through the definition that claims its
 name in a scope, `CORE_AND_EXTENSIONS` unless a `context` is passed: a
 configuration its definition refuses is refused, and a key it does not
 declare is reported as `unknown_key`. A name nothing in the scope claims is
-left unjudged, and whether to support it is the consumer's decision. The
-validators do not judge fields against each other: a fill value against its
-data type, a codec against the array it is handed, a chunk grid against the
-shape.
+left unjudged, and whether to support it is the consumer's decision. A v3
+fill value is judged against the data type it names, by that data type's
+definition. The validators do not judge a codec against the array it is
+handed, or a chunk grid against the shape.
 
 ## Scope
 

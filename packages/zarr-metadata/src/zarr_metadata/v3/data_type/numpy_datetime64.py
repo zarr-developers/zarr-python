@@ -9,7 +9,10 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata.v3._definition import DataTypeDefinition
-from zarr_metadata.v3.data_type._numpy_time import numpy_time_rules
+from zarr_metadata.v3.data_type._numpy_time import (
+    numpy_time_fill_value_rules,
+    numpy_time_rules,
+)
 
 NUMPY_DATETIME64_DATA_TYPE_NAME: Final = "numpy.datetime64"
 """The `name` field value of the `numpy.datetime64` data type."""
@@ -58,6 +61,8 @@ NUMPY_DATETIME64_DATA_TYPE: Final = DataTypeDefinition(
     name=NUMPY_DATETIME64_DATA_TYPE_NAME,
     configuration=NumpyDatetime64Configuration,
     rules=numpy_time_rules,
+    fill_value=NumpyDatetime64FillValue,
+    fill_value_rules=numpy_time_fill_value_rules,
 )
 """The `numpy.datetime64` data type."""
 

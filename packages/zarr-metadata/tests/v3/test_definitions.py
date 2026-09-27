@@ -18,6 +18,7 @@ from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
 from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC, GzipCodecConfiguration
+from zarr_metadata.v3.data_type.int8 import INT8_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
@@ -181,6 +182,31 @@ def _locs(problems: tuple[ValidationProblem, ...]) -> list[tuple[tuple[str | int
 
 def test_core_is_a_subset_of_core_and_extensions() -> None:
     assert set(CORE.definitions()) <= set(CORE_AND_EXTENSIONS.definitions())
+
+
+def test_a_read_field_keeps_the_fields_it_read_inside() -> None:
+    # By where each sits in the configuration, as the scope read it.
+    shard = {
+        "name": "sharding_indexed",
+        "configuration": {
+            "chunk_shape": [2],
+            "codecs": ["bytes"],
+            "index_codecs": ["bytes", "crc32c"],
+        },
+    }
+    resolved, _ = resolve(shard, CodecDefinition, CORE_AND_EXTENSIONS)
+    assert {loc: inner.json for loc, inner in resolved.nested.items()} == {
+        ("codecs", 0): "bytes",
+        ("index_codecs", 0): "bytes",
+        ("index_codecs", 1): "crc32c",
+    }
+    cast = {"name": "cast_value", "configuration": {"data_type": "int8"}}
+    resolved, _ = resolve(cast, CodecDefinition, CORE_AND_EXTENSIONS)
+    assert resolved.nested[("data_type",)].definition is INT8_DATA_TYPE
+    # A field holding none, or one that was not read, has nothing inside.
+    assert resolve("int8", DataTypeDefinition, CORE)[0].nested == {}
+    unread = {"name": "cast_value", "configuration": {"data_type": "int8", "rounding": 1}}
+    assert resolve(unread, CodecDefinition, CORE_AND_EXTENSIONS)[0].nested == {}
 
 
 @pytest.mark.parametrize(
@@ -677,6 +703,18 @@ def test_error_a_data_type_is_named_as_raw_bits_of_one_size_are_written() -> Non
     # `r16` reads as `r*`, so a definition filed under it would read nothing.
     with pytest.raises(TypeError, match="to read raw bits your own way, define 'r\\*'"):
         DataTypeDefinition(name="r16", configuration=Empty)
+
+
+def test_error_a_data_type_fill_value_no_checker_reads() -> None:
+    with pytest.raises(TypeError, match="'acme.set': fill_value: "):
+        DataTypeDefinition(name="acme.set", configuration=Empty, fill_value=set[int])
+
+
+@pytest.mark.parametrize("member", ["rules", "canonical", "fill_value_rules"])
+def test_error_a_function_member_that_is_not_a_function(member: str) -> None:
+    # Each member a definition's annotations declare a `Callable`.
+    with pytest.raises(TypeError, match=f"'acme.t': {member} is a function, got 'none'"):
+        DataTypeDefinition(name="acme.t", configuration=Empty, **{member: "none"})  # pyright: ignore[reportArgumentType]
 
 
 @pytest.mark.parametrize("kind", [Definition, AcmeCodecDefinition])

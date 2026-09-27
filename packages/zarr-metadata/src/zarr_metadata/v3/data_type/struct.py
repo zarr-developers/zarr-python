@@ -11,7 +11,12 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import DataTypeDefinition, DataTypeField
+from zarr_metadata.v3._definition import (
+    DataTypeDefinition,
+    DataTypeField,
+    Nested,
+    fill_value_problems,
+)
 
 STRUCT_DATA_TYPE_NAME: Final = "struct"
 """The `name` field value of the `struct` data type."""
@@ -85,8 +90,34 @@ def _rules(configuration: StructConfiguration) -> Iterator[ValidationProblem]:
             )
 
 
+def _fill_value_rules(
+    configuration: StructConfiguration, nested: Nested, value: StructFillValue
+) -> Iterator[ValidationProblem]:
+    """A fill value for every field, each one judged by that field's own type, and for nothing else.
+
+    Every field needs one, valid for its type
+    (https://github.com/zarr-developers/zarr-extensions/blob/6a3adaeef244b3c76270dca52d6a849e88cf002c/data-types/struct/README.md?plain=1#L221-L224).
+    A field type the scope did not read leaves its fill value unjudged.
+    """
+    names = [member["name"] for member in configuration["fields"]]
+    for index, name in enumerate(names):
+        if name not in value:
+            yield ValidationProblem(
+                (name,), f"expected a fill value for struct field {name!r}", "missing_key"
+            )
+            continue
+        yield from fill_value_problems(nested[("fields", index, "data_type")], value[name], (name,))
+    for key in value:
+        if key not in names:
+            yield ValidationProblem((key,), f"no struct field is named {key!r}", "unknown_key")
+
+
 STRUCT_DATA_TYPE: Final = DataTypeDefinition(
-    name=STRUCT_DATA_TYPE_NAME, configuration=StructConfiguration, rules=_rules
+    name=STRUCT_DATA_TYPE_NAME,
+    configuration=StructConfiguration,
+    rules=_rules,
+    fill_value=StructFillValue,
+    fill_value_rules=_fill_value_rules,
 )
 """The `struct` data type: a record of named fields, each field's type a nested field."""
 

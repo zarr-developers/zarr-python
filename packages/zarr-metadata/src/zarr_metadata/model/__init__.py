@@ -4,14 +4,15 @@ Models are frozen dataclasses that hold a canonical, semantically lossless
 representation of the JSON documents. Validators check a document's JSON
 structure and, in a v3 document, read each extension point (codecs, chunk
 grids, data types, ...) through the definition that claims its name in a
-scope, `CORE_AND_EXTENSIONS` unless a `context` is passed; they do not judge
-fields against each other. Each document concept gets a `validate_*`
-function returning every problem found (a tuple of `ValidationProblem`, each
-with a machine-readable `kind`), an `is_*` type guard, and a `parse_*`
-function that narrows or raises `MetadataValidationError`. Model
-`from_json` / `from_key_value` constructors raise `MetadataValidationError`
-for every ingestion failure, including missing store keys and undecodable
-bytes, and the v3 ones take the same `context`.
+scope, `CORE_AND_EXTENSIONS` unless a `context` is passed, and judge the
+fill value against the data type it names. Each document concept gets a
+`validate_*` function returning every problem found (a tuple of
+`ValidationProblem`, each with a machine-readable `kind`), an `is_*` type
+guard, and a `parse_*` function that narrows or raises
+`MetadataValidationError`. Model `from_json` / `from_key_value` constructors
+raise `MetadataValidationError` for every ingestion failure, including
+missing store keys and undecodable bytes, and the v3 ones take the same
+`context`.
 """
 
 from zarr_metadata._json import (

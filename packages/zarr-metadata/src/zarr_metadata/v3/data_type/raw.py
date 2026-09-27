@@ -14,7 +14,13 @@ from typing import Final, NewType
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import RAW_BYTES_NAME, RAW_BYTES_NAME_PATTERN, DataTypeDefinition
+from zarr_metadata.v3._definition import (
+    RAW_BYTES_NAME,
+    RAW_BYTES_NAME_PATTERN,
+    DataTypeDefinition,
+    Nested,
+)
+from zarr_metadata.v3.data_type._integer import byte_value_problems
 
 RawBytesDataTypeName = NewType("RawBytesDataTypeName", str)
 """A spec-conformant `r<N>` raw-bytes name (e.g. `"r8"`, `"r16"`).
@@ -68,10 +74,29 @@ def _rules(configuration: RawBytesConfiguration) -> Iterator[ValidationProblem]:
         )
 
 
+def _fill_value_rules(
+    configuration: RawBytesConfiguration, nested: Nested, value: RawBytesFillValue
+) -> Iterator[ValidationProblem]:
+    """One byte value, an integer in `[0, 255]`, for each 8 of the size.
+
+    The spec's text says `N` values for `r<N>`, but `N` counts bits
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L897-L900),
+    and one value is one byte.
+    """
+    expected = configuration["bits"] // 8
+    if len(value) != expected:
+        yield ValidationProblem(
+            (), f"expected {expected} byte values, got {len(value)}", "invalid_value"
+        )
+    yield from byte_value_problems(value)
+
+
 RAW_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     name=RAW_BYTES_NAME,
     configuration=RawBytesConfiguration,
     rules=_rules,
+    fill_value=RawBytesFillValue,
+    fill_value_rules=_fill_value_rules,
 )
 """Raw bits, `r*`: one data type, whose name carries its size.
 

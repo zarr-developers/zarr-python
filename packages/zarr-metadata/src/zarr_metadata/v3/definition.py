@@ -110,8 +110,9 @@ A scope reads whole documents as well as fields:
 `validate_array_metadata_v3(document, context=SCOPE)`, from
 `zarr_metadata.model`, reads each extension point of a v3 array document
 through the definitions in `SCOPE`, and so do the model's `from_json` and
-`from_key_value`. A fill value is not judged against its data type there:
-no rule here reads one field against another.
+`from_key_value`, and a fill value is judged against the data type it
+names, by that data type's definition. No rule here reads a codec against
+the array it is handed, or a chunk grid against the shape.
 
 The TypedDict says what a key it does not declare is: with
 `closed=True`, a problem, as above; with `extra_items=`, a key holding
@@ -133,6 +134,18 @@ the rest of it. `ZarrV3MetadataFieldJSON` is the same
 JSON, but checks as JSON and nothing more, so a definition refuses a
 member typed with it. An extension with nothing to configure takes
 `EmptyConfiguration`, and is written as its bare name.
+
+A data type also says what its fill value is: `fill_value`, the JSON
+shape of one as an annotation the checker reads -- `Int8FillValue` -- and
+`fill_value_rules`, a function yielding what the spec disallows in a fill
+value of that shape: an integer out of range, a hex string of another
+width. The rules are handed the configuration, the fields it holds as the
+scope read them, and the typed fill value; a field that is read keeps what
+it read inside it as `Resolved.nested`, a `Nested` mapping by location, so
+a struct judges each field's fill value by that field's own type.
+`fill_value_problems(data_type, value)` judges a fill value against a data
+type field the scope read; one nothing in scope claims leaves it unjudged.
+A data type that says nothing of its fill value takes any JSON.
 
 Raw bits are the one data type whose name carries its configuration: a
 document writes `r` and the size in bits, and `r16` reads as `r*`, as the
@@ -180,6 +193,7 @@ from zarr_metadata.v3._definition import (
     DataTypeField,
     Definition,
     EmptyConfiguration,
+    Nested,
     Resolution,
     Resolved,
     StaticCodecField,
@@ -188,6 +202,7 @@ from zarr_metadata.v3._definition import (
     Unread,
     canonicalize,
     configuration_of,
+    fill_value_problems,
     resolve,
 )
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS, Context
@@ -211,6 +226,7 @@ __all__ = [
     "JSONValue",
     "Loc",
     "MetadataValidationError",
+    "Nested",
     "ProblemKind",
     "Resolution",
     "Resolved",
@@ -223,5 +239,6 @@ __all__ = [
     "canonicalize",
     "check",
     "configuration_of",
+    "fill_value_problems",
     "resolve",
 ]

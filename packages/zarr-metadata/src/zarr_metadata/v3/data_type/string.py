@@ -19,7 +19,7 @@ StringFillValue = str
 
 
 STRING_DATA_TYPE: Final = DataTypeDefinition(
-    name=STRING_DATA_TYPE_NAME, configuration=EmptyConfiguration
+    name=STRING_DATA_TYPE_NAME, configuration=EmptyConfiguration, fill_value=StringFillValue
 )
 """The `string` data type: a bare name, with nothing to configure."""
 

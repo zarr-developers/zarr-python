@@ -182,14 +182,15 @@ def test_json_value_type_accepts_json_shapes() -> None:
 
 
 def test_string_nan_fill_value_roundtrips() -> None:
-    # Non-finite floats are represented as the spec strings ("NaN", "Infinity",
-    # "-Infinity") by the caller — the metadata layer does not interpret dtypes.
+    # A float's non-finite fill values are the spec strings ("NaN",
+    # "Infinity", "-Infinity"):
     #   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L63-L79
     # The string form round-trips cleanly under default dataclass equality,
-    # unlike a raw float('nan') (which is an invalid fill_value the caller must
-    # not pass).
-    """A string 'NaN' fill_value round-trips cleanly (non-finite floats are the caller's responsibility)."""
-    m = ZarrV3ArrayMetadata.create_default(fill_value="NaN")
+    # unlike a raw float('nan'), which is not JSON.
+    """A float array's string 'NaN' fill_value round-trips cleanly."""
+    m = ZarrV3ArrayMetadata.create_default(
+        fill_value="NaN", data_type=ZarrV3NamedConfig(name="float32", configuration={})
+    )
     assert ZarrV3ArrayMetadata.from_json(m.to_json()) == m
     assert ZarrV3ArrayMetadata.from_json(m.to_json()).fill_value == "NaN"
 
@@ -1797,7 +1798,8 @@ def test_array_parsers_normalize_json_lists_before_narrowing() -> None:
 
 def test_array_guards_reject_noncanonical_nested_json() -> None:
     """Document guards cannot narrow values that only parsers can materialize."""
-    v3 = dict(ZarrV3ArrayMetadata.create_default().to_json())
+    # Raw bits of 16, whose fill value is two byte values.
+    v3 = dict(ZarrV3ArrayMetadata.create_default().to_json()) | {"data_type": "r16"}
     v3["fill_value"] = range(2)
     v2 = dict(ZarrV2ArrayMetadata.create_default().to_json())
     v2["fill_value"] = range(2)

@@ -290,6 +290,7 @@ _STANDALONE_VOCAB = frozenset(
         "Context",
         "Definition",
         "Loc",
+        "Nested",
         "Resolution",
         "Resolved",
         "Unread",
