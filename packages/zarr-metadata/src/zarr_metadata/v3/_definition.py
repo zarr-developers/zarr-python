@@ -839,21 +839,23 @@ def canonicalize(
         return None, problems
     if resolved.definition is None:
         return resolved.json, ()
-    return _canonical_field(resolved.definition, resolved, context), ()
+    return _canonical_field(resolved.definition, resolved), ()
 
 
-def _canonical_field(
-    definition: Definition[Any], resolved: Resolved[Any], context: Context
-) -> JSONValue:
-    """A field that read, in its simplest equivalent spelling: nested fields first, then its own members."""
+def _canonical_field(definition: Definition[Any], resolved: Resolved[Any]) -> JSONValue:
+    """A field that read, in its simplest equivalent spelling: the fields it holds first, then its own members.
+
+    Each field it holds is spelled from what `resolve` read of it, kept in
+    `nested`; one nothing in scope claims keeps the spelling it was written
+    in.
+    """
     name, _, _ = named_configuration(resolved.json)
     configuration: JSONValue = dict(resolved.configuration or {})
-    _, _, nested = _checked(definition.configuration, configuration, ())
-    for field in nested:
-        simplest, _ = canonicalize(field.json, field.kind, context)
-        configuration = _replaced(
-            configuration, field.loc, field.json if simplest is None else simplest
+    for loc, inner in resolved.nested.items():
+        simplest = (
+            inner.json if inner.definition is None else _canonical_field(inner.definition, inner)
         )
+        configuration = _replaced(configuration, loc, simplest)
     simplified = cast("Mapping[str, JSONValue]", definition.canonical(configuration))
     _, refused = definition.judge(simplified)
     if len(refused) != 0:
