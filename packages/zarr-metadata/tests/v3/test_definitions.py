@@ -745,6 +745,7 @@ def test_error_a_data_type_fill_value_no_checker_reads() -> None:
         (DataTypeDefinition, "rules"),
         (DataTypeDefinition, "canonical"),
         (DataTypeDefinition, "fill_value_rules"),
+        (DataTypeDefinition, "storage"),
         (ChunkGridDefinition, "shape_rules"),
         (ChunkGridDefinition, "chunk_lengths"),
         (CodecDefinition, "chunk_rules"),

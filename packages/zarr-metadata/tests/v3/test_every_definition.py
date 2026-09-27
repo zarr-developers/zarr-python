@@ -542,6 +542,28 @@ def test_error_struct_field_name_is_repeated() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("field_type", "at"),
+    [
+        ("string", ()),
+        ("bytes", ()),
+        # A struct holding a struct that holds a string is refused where
+        # the string sits.
+        (
+            {"name": "struct", "configuration": {"fields": [{"name": "s", "data_type": "string"}]}},
+            ("configuration", "fields", 0, "data_type"),
+        ),
+    ],
+)
+def test_error_a_struct_field_whose_values_vary_in_size(
+    field_type: object, at: tuple[str | int, ...]
+) -> None:
+    fields = [{"name": "a", "data_type": "int8"}, {"name": "b", "data_type": field_type}]
+    assert _one("data_type:struct", {"fields": fields}) == [
+        (("configuration", "fields", 1, "data_type", *at), "invalid_value")
+    ]
+
+
 def test_error_struct_field_type_is_judged_where_it_sits() -> None:
     fields = [
         {

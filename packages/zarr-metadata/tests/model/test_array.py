@@ -189,7 +189,9 @@ def test_string_nan_fill_value_roundtrips() -> None:
     # unlike a raw float('nan'), which is not JSON.
     """A float array's string 'NaN' fill_value round-trips cleanly."""
     m = ZarrV3ArrayMetadata.create_default(
-        fill_value="NaN", data_type=ZarrV3NamedConfig(name="float32", configuration={})
+        fill_value="NaN",
+        data_type=ZarrV3NamedConfig(name="float32", configuration={}),
+        codecs=(ZarrV3NamedConfig(name="bytes", configuration={"endian": "little"}),),
     )
     assert ZarrV3ArrayMetadata.from_json(m.to_json()) == m
     assert ZarrV3ArrayMetadata.from_json(m.to_json()).fill_value == "NaN"
@@ -556,6 +558,7 @@ def test_v3_from_json_reconstructs_required_fields() -> None:
         shape=(7,),
         attributes={"a": 1},
         data_type=ZarrV3NamedConfig(name="int32", configuration={}),
+        codecs=(ZarrV3NamedConfig(name="bytes", configuration={"endian": "little"}),),
     ).to_json()
     model = ZarrV3ArrayMetadata.from_json(doc)
     assert model.shape == (7,)
@@ -761,6 +764,7 @@ def test_v3_parser_accepts_bare_string_data_type() -> None:
     """V3 from_json accepts a bare-string data_type and re-serializes it canonically."""
     doc = ZarrV3ArrayMetadata.create_default().to_json()
     doc["data_type"] = "int32"
+    doc["codecs"] = ({"name": "bytes", "configuration": {"endian": "little"}},)
     model = ZarrV3ArrayMetadata.from_json(doc)
     assert model.data_type == ZarrV3NamedConfig(name="int32", configuration={})
     assert model.to_json()["data_type"] == "int32"

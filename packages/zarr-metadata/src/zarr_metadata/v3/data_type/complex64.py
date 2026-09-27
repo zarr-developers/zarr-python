@@ -6,7 +6,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 
 from typing import Final, Literal
 
-from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration
+from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration, multi_byte
 from zarr_metadata.v3.data_type._float import complex_fill_value_rules
 from zarr_metadata.v3.data_type.float32 import FLOAT32_DATA_TYPE, Float32FillValue
 
@@ -36,6 +36,7 @@ COMPLEX64_DATA_TYPE: Final = DataTypeDefinition(
     configuration=EmptyConfiguration,
     fill_value=Complex64FillValue,
     fill_value_rules=complex_fill_value_rules(FLOAT32_DATA_TYPE.fill_value_rules),
+    storage=multi_byte,
 )
 """The `complex64` data type: a bare name, with nothing to configure; its fill value a pair of `float32` components."""
 

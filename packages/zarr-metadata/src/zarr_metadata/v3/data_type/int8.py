@@ -6,7 +6,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 
 from typing import Final, Literal
 
-from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration
+from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration, single_byte
 from zarr_metadata.v3.data_type._integer import integer_fill_value_rules
 
 INT8_DATA_TYPE_NAME: Final = "int8"
@@ -24,6 +24,7 @@ INT8_DATA_TYPE: Final = DataTypeDefinition(
     configuration=EmptyConfiguration,
     fill_value=Int8FillValue,
     fill_value_rules=integer_fill_value_rules(-(2**7), 2**7 - 1),
+    storage=single_byte,
 )
 """The `int8` data type: a bare name, with nothing to configure; its fill value an integer in its range."""
 

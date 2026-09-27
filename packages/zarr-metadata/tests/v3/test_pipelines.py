@@ -57,9 +57,23 @@ CHUNK = Chunk((frozenset({4}), frozenset({2})), UINT8)
 
 GZIP: JSONValue = {"name": "gzip", "configuration": {"level": 1}}
 
+LITTLE: JSONValue = {"name": "bytes", "configuration": {"endian": "little"}}
+
 
 def _transpose(*order: int) -> JSONValue:
     return {"name": "transpose", "configuration": {"order": list(order)}}
+
+
+def _of(data_type: JSONValue) -> Chunk:
+    """Chunks of 4 by 2 values of `data_type`."""
+    return Chunk(CHUNK.lengths, resolve(data_type, DataTypeDefinition, SCOPE)[0])
+
+
+def _struct(*field_types: JSONValue) -> JSONValue:
+    fields: list[JSONValue] = [
+        {"name": f"f{index}", "data_type": dt} for index, dt in enumerate(field_types)
+    ]
+    return {"name": "struct", "configuration": {"fields": fields}}
 
 
 def _read(
@@ -110,6 +124,12 @@ def _lengths(*axes: set[int]) -> tuple[frozenset[int], ...]:
         (["bytes", "zfpy"], CHUNK, [CHUNK, None]),
         # A chunk nothing is known of stays that way, and is refused nothing.
         ([_transpose(1, 0, 2), "bytes"], Chunk(), [Chunk(), Chunk()]),
+        # `bytes` takes an `endian` for values of several bytes, and any
+        # for values of one; of wider raw bits the spec says nothing.
+        ([LITTLE], _of("float32"), [_of("float32")]),
+        ([LITTLE], _of("uint8"), [_of("uint8")]),
+        (["bytes"], _of(_struct("int8", "uint8")), [_of(_struct("int8", "uint8"))]),
+        (["bytes"], _of("r16"), [_of("r16")]),
     ],
 )
 def test_every_pipeline_hands_each_codec_the_chunk_the_one_before_hands_on(
@@ -163,6 +183,26 @@ def test_error_a_codec_with_a_problem_of_its_own_hands_on_a_chunk_nothing_is_kno
         ((0, "configuration", "order"), "invalid_value")
     ]
     assert [stage.incoming for stage in stages] == [CHUNK, Chunk()]
+
+
+@pytest.mark.parametrize(
+    "data_type",
+    [
+        "float32",
+        "int16",
+        _struct("int8", "float32"),
+        {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 1}},
+    ],
+)
+def test_error_a_bytes_codec_without_endian_handed_values_of_several_bytes(
+    data_type: JSONValue,
+) -> None:
+    assert _problems(["bytes"], _of(data_type)) == [((0, "configuration", "endian"), "missing_key")]
+
+
+@pytest.mark.parametrize("data_type", ["string", "bytes"])
+def test_error_a_bytes_codec_handed_values_that_vary_in_size(data_type: JSONValue) -> None:
+    assert _problems([LITTLE], _of(data_type)) == [((0, "configuration"), "invalid_value")]
 
 
 def test_error_a_transition_that_gives_something_else() -> None:
@@ -248,10 +288,12 @@ def test_error_a_transpose_of_another_rank_than_the_array_under_a_grid_nothing_c
 
 def test_error_an_array_document_s_codecs_out_of_order_or_not_fitting_its_chunks() -> None:
     # Located in the document's codecs; the chunks are the grid's, of the
-    # document's shape.
+    # document's shape and data type.
     document = dict(ZarrV3ArrayMetadata.create_default(shape=(4, 4)).to_json())
+    document["data_type"] = "int16"
     document["codecs"] = [_transpose(0), "bytes", "crc32c", _transpose(0, 1)]
     assert [(p.loc, p.kind) for p in validate_array_metadata_v3(document)] == [
         (("codecs", 3), "invalid_value"),
         (("codecs", 0, "configuration", "order"), "invalid_value"),
+        (("codecs", 1, "configuration", "endian"), "missing_key"),
     ]

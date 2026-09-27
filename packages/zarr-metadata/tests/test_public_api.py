@@ -296,6 +296,7 @@ _STANDALONE_VOCAB = frozenset(
         "Resolution",
         "Resolved",
         "Stage",
+        "StorageClass",
         "Unread",
         "CastOutOfRangeMode",
         "CastRoundingMode",

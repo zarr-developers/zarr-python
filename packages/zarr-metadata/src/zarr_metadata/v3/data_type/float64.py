@@ -7,7 +7,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 import re
 from typing import Final, Literal, NewType
 
-from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration
+from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration, multi_byte
 from zarr_metadata.v3.data_type._float import FloatSpecialFillValue, float_fill_value_rules
 
 FLOAT64_DATA_TYPE_NAME: Final = "float64"
@@ -70,6 +70,7 @@ FLOAT64_DATA_TYPE: Final = DataTypeDefinition(
     configuration=EmptyConfiguration,
     fill_value=Float64FillValue,
     fill_value_rules=float_fill_value_rules("float64", hex_float64),
+    storage=multi_byte,
 )
 """The `float64` data type: a bare name, with nothing to configure; its fill value a number, a named value or a hex string."""
 

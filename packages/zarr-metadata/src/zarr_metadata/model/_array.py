@@ -205,7 +205,9 @@ class ZarrV3ArrayMetadata:
         together. So is a fill value for an overridden `data_type`:
         the default `fill_value` is `0`, which a data type whose fill value
         is not an integer -- `bool`, `string`, a complex or struct type --
-        refuses, so pass the two together.
+        refuses, so pass the two together; and so are its codecs: the
+        default `bytes` codec has no `endian`, which a data type whose
+        values take several bytes needs.
         """
         if "shape" in overrides and "chunk_grid" not in overrides:
             chunk_shape = tuple(max(length, 1) for length in overrides["shape"])

@@ -104,6 +104,35 @@ def unknown_chunk(*_: object) -> Chunk:
     return Chunk()
 
 
+StorageClass = Literal["single_byte", "multi_byte", "variable_length"]
+"""How a data type's values are stored: in single bytes, in several bytes at a time, or each in as many as it needs.
+
+A number of several bytes is stored in a byte order, which the `bytes`
+codec's `endian` says. A value made of single bytes -- a `uint8`, or a
+struct of `int8` fields -- has no byte order, and a value whose size
+varies takes a codec of its own.
+"""
+
+
+def single_byte(*_: object) -> StorageClass:
+    """The storage of a data type made of single bytes, which no byte order applies to: `uint8`."""
+    return "single_byte"
+
+
+def multi_byte(*_: object) -> StorageClass:
+    """The storage of a data type holding numbers of several bytes, which a byte order applies to: `int16`."""
+    return "multi_byte"
+
+
+def variable_length(*_: object) -> StorageClass:
+    """The storage of a data type whose values vary in size: `string`."""
+    return "variable_length"
+
+
+def unknown_storage(*_: object) -> None:
+    """The storage of a data type that says nothing of it: unknown."""
+
+
 class EmptyConfiguration(TypedDict, closed=True):
     """The configuration of a definition with nothing to configure, written as its bare name."""
 
@@ -277,6 +306,13 @@ class DataTypeDefinition(Definition[C]):
     scope read them (a struct's field types), and the typed fill value. A
     data type that says nothing of its fill value takes any JSON.
 
+    `storage` says how its values are stored -- in single bytes, in
+    several bytes at a time, or each in as many as it needs -- which is
+    what the `bytes` codec asks of the data type it is handed: an
+    `endian`, for numbers of several bytes. A struct's is its fields', so
+    it is handed the fields the configuration holds as the scope read
+    them. A data type that says nothing of it leaves it unknown.
+
     One named as a document writes raw bits of one size -- `r16` -- is
     refused: that name reads as `r*`, so nothing would ever read it with
     this definition.
@@ -286,6 +322,8 @@ class DataTypeDefinition(Definition[C]):
     """The JSON shape of a fill value, as an annotation: `Int8FillValue`."""
     fill_value_rules: Callable[[C, Nested, Any], Iterable[ValidationProblem]] = no_rules
     """What the spec disallows in a fill value of that shape, located in it."""
+    storage: Callable[[C, Nested], StorageClass | None] = unknown_storage
+    """How its values are stored, given the configuration and the fields it holds; None when unknown."""
 
     def _refusal(self) -> str | None:
         if RAW_BYTES_NAME_PATTERN.fullmatch(self.name) is not None:
@@ -595,17 +633,18 @@ def _usable(problems: Sequence[ValidationProblem]) -> bool:
     return all(found.kind == "unknown_key" for found in problems)
 
 
-def asked(definition: Definition[Any], what: str, ask: Callable[[], T], at: Loc) -> T:
+def asked(definition: Definition[Any], what: str, ask: Callable[[], T], at: Loc | None = None) -> T:
     """What `ask`, a call of `definition`'s `what`, gives.
 
     A definition's functions are the extension author's code: an error one
     raises says which definition's function raised it, and where it was
-    reading.
+    reading, when that is known.
     """
     try:
         return ask()
     except Exception as error:
-        error.add_note(f"raised by the {what} of {definition.name!r}, reading {at!r}")
+        where = "" if at is None else f", reading {at!r}"
+        error.add_note(f"raised by the {what} of {definition.name!r}{where}")
         raise
 
 
@@ -826,6 +865,32 @@ def fill_value_problems(
         loc,
     )
     return (*problems, *refused)
+
+
+def storage_of(data_type: Resolved[DataTypeDefinition[Any]]) -> StorageClass | None:
+    """How the values of `data_type`, a data type field a scope read, are stored; None when unknown.
+
+    Unknown when the scope did not read it, or its definition does not
+    say. Its `storage` is the extension author's code: what it gives is
+    checked to be a storage class, and an error it raises says which data
+    type's storage raised it.
+    """
+    definition = data_type.definition
+    configuration = data_type.configuration
+    if definition is None or configuration is None:
+        return None
+    found = asked(
+        definition,
+        "storage",
+        lambda: cast("object", definition.storage(configuration, data_type.nested)),
+    )
+    if found is not None and found not in get_args(StorageClass):
+        msg = (
+            f"{definition.name!r}: its storage gives one of {get_args(StorageClass)!r} or None, "
+            f"got {found!r}"
+        )
+        raise TypeError(msg)
+    return cast("StorageClass | None", found)
 
 
 def chunk_grid_lengths(
@@ -1088,6 +1153,7 @@ __all__ = [
     "Resolution",
     "Resolved",
     "StaticCodecField",
+    "StorageClass",
     "StorageTransformerDefinition",
     "StorageTransformerField",
     "Unread",
@@ -1098,12 +1164,17 @@ __all__ = [
     "configuration_of",
     "fill_value_problems",
     "kind_of",
+    "multi_byte",
     "named_configuration",
     "no_rules",
     "resolve",
     "ruled",
+    "single_byte",
     "spelled",
+    "storage_of",
     "unchanged",
     "unknown_chunk",
     "unknown_lengths",
+    "unknown_storage",
+    "variable_length",
 ]

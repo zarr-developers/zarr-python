@@ -12,6 +12,7 @@ from zarr_metadata.v3._definition import DataTypeDefinition
 from zarr_metadata.v3.data_type._numpy_time import (
     numpy_time_fill_value_rules,
     numpy_time_rules,
+    numpy_time_storage,
 )
 
 NUMPY_TIMEDELTA64_DATA_TYPE_NAME: Final = "numpy.timedelta64"
@@ -82,6 +83,7 @@ NUMPY_TIMEDELTA64_DATA_TYPE: Final = DataTypeDefinition(
     rules=numpy_time_rules,
     fill_value=NumpyTimedelta64FillValue,
     fill_value_rules=numpy_time_fill_value_rules,
+    storage=numpy_time_storage,
 )
 """The `numpy.timedelta64` data type."""
 

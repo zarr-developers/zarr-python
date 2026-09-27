@@ -6,7 +6,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 
 from typing import Final, Literal
 
-from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration
+from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration, single_byte
 
 BOOL_DATA_TYPE_NAME: Final = "bool"
 """The `data_type` value for the `bool` type."""
@@ -19,7 +19,10 @@ BoolFillValue = bool
 
 
 BOOL_DATA_TYPE: Final = DataTypeDefinition(
-    name=BOOL_DATA_TYPE_NAME, configuration=EmptyConfiguration, fill_value=BoolFillValue
+    name=BOOL_DATA_TYPE_NAME,
+    configuration=EmptyConfiguration,
+    fill_value=BoolFillValue,
+    storage=single_byte,
 )
 """The `bool` data type: a bare name, with nothing to configure."""
 

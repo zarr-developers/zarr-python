@@ -274,6 +274,7 @@ def test_a_fill_value_nested_hundreds_deep_is_read() -> None:
 
     document = dict(ZarrV3ArrayMetadata.create_default().to_json()) | {
         "data_type": STRUCT,
+        "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
         "fill_value": {"a": 1, "b": 0.5, "c": deep(600)},
     }
     assert [(p.loc, p.kind) for p in validate_array_metadata_v3(document)] == [

@@ -154,6 +154,14 @@ field's fill value by that field's own type.
 type field the scope read; one nothing in scope claims leaves it unjudged.
 A data type that says nothing of its fill value takes any JSON.
 
+A data type says how its values are stored, too: `storage`, a function
+of its configuration and the fields it holds, giving a `StorageClass` --
+in single bytes, in several bytes at a time, or each in as many as it
+needs. A struct's is its fields'. `storage_of(data_type)` asks it of a
+data type field the scope read: the `bytes` codec takes an `endian` for
+numbers of several bytes, and a struct refuses a field whose values vary
+in size. A data type that says nothing of it leaves it unknown.
+
 A chunk grid says which arrays it fits: `shape_rules`, a function
 yielding what the spec disallows in a grid of its configuration over an
 array of a given shape -- a dimension with no chunk length, chunks that
@@ -203,8 +211,8 @@ A definition checks itself when it is built, and each of these is a
 TypedDict, says nothing of the keys it does not declare, or has a member
 no checker reads, named down to the TypedDict that holds it; a `name`
 that is not a string; a member declared as a function -- `rules`,
-`canonical`, `fill_value_rules`, `shape_rules`, `chunk_lengths`,
-`chunk_rules`, `transition` -- that is not one; a data type's
+`canonical`, `fill_value_rules`, `storage`, `shape_rules`,
+`chunk_lengths`, `chunk_rules`, `transition` -- that is not one; a data type's
 `fill_value` no checker reads; a codec `kind` that is not one of the
 three, or a `size` that is not `"static"` or `"dynamic"`; chunk rules of
 a bytes -> bytes codec, which is handed bytes, or a `transition` of a
@@ -236,6 +244,7 @@ from zarr_metadata.v3._definition import (
     Resolution,
     Resolved,
     StaticCodecField,
+    StorageClass,
     StorageTransformerDefinition,
     StorageTransformerField,
     Unread,
@@ -244,6 +253,7 @@ from zarr_metadata.v3._definition import (
     configuration_of,
     fill_value_problems,
     resolve,
+    storage_of,
 )
 from zarr_metadata.v3._pipeline import Stage, read_pipeline
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS, Context
@@ -275,6 +285,7 @@ __all__ = [
     "Resolved",
     "Stage",
     "StaticCodecField",
+    "StorageClass",
     "StorageTransformerDefinition",
     "StorageTransformerField",
     "Unread",
@@ -287,4 +298,5 @@ __all__ = [
     "fill_value_problems",
     "read_pipeline",
     "resolve",
+    "storage_of",
 ]
