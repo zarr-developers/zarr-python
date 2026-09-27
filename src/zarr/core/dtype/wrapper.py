@@ -84,7 +84,10 @@ class ZDType[DType: TBaseDType, Scalar: TBaseScalar](ABC):
         Bool
             True if the dtype matches, False otherwise.
         """
-        if type(dtype) is cls.dtype_cls:
+        # Keep the exact class check in a variable: narrowing on ``type(dtype) is ...``
+        # makes mypy treat the layout fallback below as unreachable.
+        exact_match = type(dtype) is cls.dtype_cls
+        if exact_match:
             return True
         # NumPy's C type spellings do not always map to the canonical dtype class:
         # ``np.dtype("q")`` is a ``LongLongDType`` instance rather than an
@@ -94,12 +97,14 @@ class ZDType[DType: TBaseDType, Scalar: TBaseScalar](ABC):
         # comparing the layout (kind and item size), which is what a Zarr data type
         # actually encodes.
         try:
-            expected = cls.dtype_cls()
+            # numpy's stubs only type ``dtype(...)`` with an argument; the concrete
+            # dtype classes (``np.dtypes.Int64DType`` etc.) construct without one.
+            expected: TBaseDType = cls.dtype_cls()  # type: ignore[call-overload]
         except TypeError:
             # Flexible/parametric dtypes (e.g. ``VoidDType``) have no fixed layout
             # to compare against, so the exact dtype class check above stands.
             return False
-        return dtype.kind == expected.kind and dtype.itemsize == expected.itemsize
+        return bool(dtype.kind == expected.kind and dtype.itemsize == expected.itemsize)
 
     @classmethod
     @abstractmethod
