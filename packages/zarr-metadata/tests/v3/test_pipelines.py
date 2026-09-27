@@ -206,6 +206,14 @@ def test_error_a_codec_out_of_order(codecs: list[JSONValue], index: int) -> None
     assert _problems(codecs) == [((index,), "invalid_value")]
 
 
+def test_error_a_codec_out_of_order_whose_configuration_is_not_an_object() -> None:
+    # Its name still says what it is.
+    assert _problems([{"name": "gzip", "configuration": 5}, "bytes"]) == [
+        ((0, "configuration"), "invalid_type"),
+        ((1,), "invalid_value"),
+    ]
+
+
 def test_error_a_second_array_to_bytes_codec() -> None:
     assert _problems(["bytes", "bytes"]) == [((1,), "invalid_value")]
 

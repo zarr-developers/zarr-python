@@ -985,9 +985,13 @@ def _read(
     data: JSONValue, kind: type[Definition[Any]], context: Context, loc: Loc
 ) -> tuple[Resolved[Definition[Any]], Problems]:
     name, given, malformed = named_configuration(data)
-    if name is None or len(malformed) != 0:
+    if name is None:
         return Resolved(data, "invalid", None, None), ()
     definition = context.claimant(kind, name)
+    if len(malformed) != 0:
+        # A configuration that is not an object, which the envelope's
+        # problems say; the name still says what claims the field.
+        return Resolved(data, "invalid", definition, None), ()
     if definition is None:
         return Resolved(data, "out_of_scope", None, None), ()
     _, carried = spelled(kind, name)

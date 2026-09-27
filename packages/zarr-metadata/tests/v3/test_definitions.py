@@ -394,8 +394,9 @@ def test_error_a_required_configuration_is_missing() -> None:
 
 
 def test_error_the_configuration_is_not_an_object() -> None:
+    # Unread, and still claimed by the definition its name names.
     resolved, found = resolve({"name": "gzip", "configuration": 5}, CodecDefinition, SCOPE)
-    assert resolved.resolution == "invalid"
+    assert (resolved.resolution, resolved.definition) == ("invalid", GZIP_CODEC)
     assert [found.loc for found in found] == [("configuration",)]
 
 
