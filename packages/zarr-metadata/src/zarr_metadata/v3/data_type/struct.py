@@ -97,7 +97,8 @@ def _fill_value_rules(
 
     Every field needs one, valid for its type
     (https://github.com/zarr-developers/zarr-extensions/blob/6a3adaeef244b3c76270dca52d6a849e88cf002c/data-types/struct/README.md?plain=1#L221-L224).
-    A field type the scope did not read leaves its fill value unjudged.
+    A field type the scope did not read, or whose reading the struct's does
+    not hold, leaves its fill value unjudged.
     """
     names = [member["name"] for member in configuration["fields"]]
     for index, name in enumerate(names):
@@ -106,7 +107,9 @@ def _fill_value_rules(
                 (name,), f"expected a fill value for struct field {name!r}", "missing_key"
             )
             continue
-        yield from fill_value_problems(nested[("fields", index, "data_type")], value[name], (name,))
+        field_type = nested.get(("fields", index, "data_type"))
+        if field_type is not None:
+            yield from fill_value_problems(field_type, value[name], (name,))
     for key in value:
         if key not in names:
             yield ValidationProblem((key,), f"no struct field is named {key!r}", "unknown_key")

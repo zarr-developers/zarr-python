@@ -9,18 +9,28 @@ a document's `fill_value` against its `data_type`.
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
 import pytest
+from typing_extensions import TypedDict
 
 from zarr_metadata.model import validate_array_metadata_v3, validate_group_metadata_v3
 from zarr_metadata.model._array import ZarrV3ArrayMetadata
+from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
     DataTypeDefinition,
+    EmptyConfiguration,
     JSONValue,
+    Nested,
+    Resolved,
+    ValidationProblem,
     fill_value_problems,
     resolve,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 DATETIME: JSONValue = {
     "name": "numpy.datetime64",
@@ -39,6 +49,25 @@ STRUCT: JSONValue = {
         ]
     },
 }
+
+
+class AcmePointFillValue(TypedDict, closed=True):
+    x: int
+
+
+def acme_point_fill_value_rules(
+    configuration: EmptyConfiguration, nested: Nested, value: AcmePointFillValue
+) -> Iterator[ValidationProblem]:
+    if value["x"] > 10:
+        yield ValidationProblem(("x",), "expected x <= 10", "invalid_value")
+
+
+ACME_POINT = DataTypeDefinition(
+    name="acme.point",
+    configuration=EmptyConfiguration,
+    fill_value=AcmePointFillValue,
+    fill_value_rules=acme_point_fill_value_rules,
+)
 
 
 def _problems(data_type: JSONValue, value: object) -> list[tuple[tuple[str | int, ...], str]]:
@@ -223,3 +252,37 @@ def test_error_an_array_document_s_fill_value_its_data_type_refuses() -> None:
     assert [(p.loc, p.kind) for p in validate_group_metadata_v3(group)] == [
         (("consolidated_metadata", "metadata", "a", "fill_value"), "invalid_value")
     ]
+
+
+def test_error_a_key_the_fill_value_shape_does_not_declare_hides_no_rule() -> None:
+    # Reported, and left out of what the rules see, which still judge the rest.
+    scope = CORE_AND_EXTENSIONS.extended_with(ACME_POINT)
+    resolved, _ = resolve("acme.point", DataTypeDefinition, scope)
+    found = fill_value_problems(resolved, {"x": 99, "extra": 1})
+    assert [(problem.loc, problem.kind) for problem in found] == [
+        (("extra",), "unknown_key"),
+        (("x",), "invalid_value"),
+    ]
+
+
+def test_a_fill_value_nested_hundreds_deep_is_read() -> None:
+    def deep(levels: int) -> dict[str, object]:
+        value: dict[str, object] = {}
+        for _ in range(levels):
+            value = {"x": value}
+        return value
+
+    document = dict(ZarrV3ArrayMetadata.create_default().to_json()) | {
+        "data_type": STRUCT,
+        "fill_value": {"a": 1, "b": 0.5, "c": deep(600)},
+    }
+    assert [(p.loc, p.kind) for p in validate_array_metadata_v3(document)] == [
+        (("fill_value", "c"), "unknown_key")
+    ]
+
+
+def test_a_struct_read_without_its_field_types_leaves_its_fields_unjudged() -> None:
+    # A reading built by hand, holding no field type's reading.
+    configuration = {"fields": ({"name": "a", "data_type": "int8"},)}
+    struct = Resolved(STRUCT, "read", STRUCT_DATA_TYPE, configuration)
+    assert fill_value_problems(struct, {"a": 300}) == ()

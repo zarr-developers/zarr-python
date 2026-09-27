@@ -200,20 +200,23 @@ def is_canonical_json(value: object, *, finite: bool = True) -> TypeGuard[JSONVa
 
     A non-finite number counts only when `finite` is false, as a document's
     guard passes it: where one may be is the document's validator's to say.
+    One frame per level of nesting, as `refine_json` takes, so a value
+    `refine_json` reads is one this can walk.
     """
     if isinstance(value, float):
         return not finite or math.isfinite(value)
     if isinstance(value, (str, int, bool)) or value is None:
         return True
     if isinstance(value, (list, tuple)):
-        sequence = cast("list[object] | tuple[object, ...]", value)
-        return all(is_canonical_json(item, finite=finite) for item in sequence)
+        for item in cast("list[object] | tuple[object, ...]", value):
+            if not is_canonical_json(item, finite=finite):
+                return False
+        return True
     if isinstance(value, dict):
-        mapping = cast("dict[object, object]", value)
-        return all(
-            isinstance(key, str) and is_canonical_json(item, finite=finite)
-            for key, item in mapping.items()
-        )
+        for key, item in cast("dict[object, object]", value).items():
+            if not isinstance(key, str) or not is_canonical_json(item, finite=finite):
+                return False
+        return True
     return False
 
 

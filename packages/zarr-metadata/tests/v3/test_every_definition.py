@@ -7,6 +7,7 @@ its configuration a TypedDict and its rules a function over it.
 from __future__ import annotations
 
 import dataclasses
+import pickle
 from typing import Any
 
 import pytest
@@ -19,11 +20,13 @@ from zarr_metadata.v3.definition import (
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
+    Context,
     DataTypeDefinition,
     Definition,
     ValidationProblem,
     canonicalize,
     configuration_of,
+    fill_value_problems,
     resolve,
 )
 
@@ -143,6 +146,16 @@ def _read(key: str, field: object) -> tuple[str, list[tuple[tuple[str | int, ...
 
 def _problems(key: str, field: object) -> list[tuple[tuple[str | int, ...], str]]:
     return _read(key, field)[1]
+
+
+def test_a_scope_s_definitions_pickle() -> None:
+    # So a scope can be sent to another process and filed again there.
+    definitions = pickle.loads(pickle.dumps(CORE_AND_EXTENSIONS.definitions()))
+    scope = Context.of(*definitions)
+    resolved, _ = resolve("complex64", DataTypeDefinition, scope)
+    assert [(p.loc, p.kind) for p in fill_value_problems(resolved, [1, "x"])] == [
+        ((1,), "invalid_value")
+    ]
 
 
 def test_every_definition_in_scope_has_an_example() -> None:

@@ -199,7 +199,10 @@ class ZarrV3ArrayMetadata:
         layer never does (and cannot do for unrecognized grid names). So
         overriding `chunk_grid` without `shape` keeps the scalar default
         `shape=()`, and consistency between the two is the caller's
-        responsibility.
+        responsibility. So is a fill value for an overridden `data_type`:
+        the default `fill_value` is `0`, which a data type whose fill value
+        is not an integer -- `bool`, `string`, a complex or struct type --
+        refuses, so pass the two together.
         """
         if "shape" in overrides and "chunk_grid" not in overrides:
             overrides["chunk_grid"] = ZarrV3NamedConfig(

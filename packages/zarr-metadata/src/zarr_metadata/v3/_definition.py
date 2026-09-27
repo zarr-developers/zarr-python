@@ -673,14 +673,16 @@ def configuration_of(resolved: Resolved[Any], definition: Definition[C]) -> C | 
 
 
 def fill_value_problems(
-    data_type: Resolved[DataTypeDefinition], value: object, loc: Loc = ()
+    data_type: Resolved[DataTypeDefinition[Any]], value: object, loc: Loc = ()
 ) -> Problems:
     """What is wrong with `value` as a fill value of `data_type`, a data type field a scope read.
 
     `value` is refined to JSON first: not JSON is the first verdict,
     whatever the data type. It is then checked against the JSON shape the
-    data type's definition declares, and judged by its fill value rules,
-    which see the fields its configuration holds as the scope read them: a
+    data type's definition declares, and judged by its fill value rules, as
+    `judge` judges a configuration: a key the shape does not declare is
+    reported and left out, and the rules still judge the rest. The rules
+    see the fields the configuration holds as the scope read them: a
     struct judges each field's fill value by that field's own type. A data
     type the scope did not read, out of scope or invalid, leaves a JSON fill
     value unjudged. `loc` prefixes every problem.
@@ -691,13 +693,14 @@ def fill_value_problems(
     if len(problems) != 0 or definition is None or configuration is None:
         return problems
     typed, problems = _fill_value_parser(definition.fill_value)(refined, loc)
-    if len(problems) != 0:
+    if not _usable(problems):
         return problems
-    return _ruled(
+    refused = _ruled(
         definition,
         lambda: definition.fill_value_rules(configuration, data_type.nested, typed),
         loc,
     )
+    return (*problems, *refused)
 
 
 def resolve(
