@@ -1,12 +1,18 @@
-"""Structural validation for Zarr metadata documents.
+"""Validation for Zarr metadata documents.
 
-Validators check JSON structure (key presence, value shapes, and fixed
-literals like `zarr_format`), not domain validity. Each concept gets a
-`validate_*` function returning every problem found, an `is_*` type guard,
-and a `parse_*` function that narrows or raises `MetadataValidationError`.
-The guards are `TypeGuard`s, not `TypeIs`: True narrows a value to its
-document type, and False says nothing about its type, since a value can be
-well typed and still not a valid document.
+Validators check a document's JSON structure -- key presence, value
+shapes, fixed literals like `zarr_format` -- and, in a v3 document, read
+each extension point through the definition that claims its name in a
+scope, so a configuration its definition refuses is refused here too. A
+name nothing in the scope claims is left unjudged. Rules that read one
+field against another -- a fill value against its data type, a codec
+against the array it is handed, a grid against the shape -- are not
+judged here. Each concept gets a `validate_*` function returning every
+problem found, an `is_*` type guard, and a `parse_*` function that
+narrows or raises `MetadataValidationError`. The guards are `TypeGuard`s,
+not `TypeIs`: True narrows a value to its document type, and False says
+nothing about its type, since a value can be well typed and still not a
+valid document.
 
 Every `ValidationProblem` carries a machine-readable `kind` alongside its
 human-readable `message`, so consumers can dispatch on the failure mode
@@ -18,7 +24,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from typing import Final, TypeGuard, TypeVar, cast
+from typing import Any, Final, TypeGuard, TypeVar, cast
 
 from zarr_metadata._json import (
     MetadataValidationError,
@@ -31,9 +37,16 @@ from zarr_metadata._json import is_canonical_json as _is_canonical_json
 from zarr_metadata._json import prefixed as _prefix
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
 from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
-from zarr_metadata.v3._common import (
-    validate_metadata_field_v3,
+from zarr_metadata.v3._definition import (
+    ChunkGridDefinition,
+    ChunkKeyEncodingDefinition,
+    CodecDefinition,
+    DataTypeDefinition,
+    Definition,
+    StorageTransformerDefinition,
+    resolve,
 )
+from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
@@ -240,10 +253,7 @@ def _is_canonical_array_metadata_v3(value: object) -> bool:
         return False
     if "dimension_names" in doc and not isinstance(doc["dimension_names"], tuple):
         return False
-    if not all(
-        _is_canonical_metadata_field_v3(doc[key])
-        for key in ("data_type", "chunk_grid", "chunk_key_encoding")
-    ):
+    if not all(_is_canonical_metadata_field_v3(doc[key]) for key, _ in _EXTENSION_POINTS_V3):
         return False
     if not all(
         _is_canonical_metadata_field_v3(item) for item in cast("tuple[object, ...]", doc["codecs"])
@@ -315,11 +325,32 @@ def _validate_attributes(value: object) -> tuple[ValidationProblem, ...]:
     return tuple(problems)
 
 
-def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
-    """Return every reason `value` is not a structurally-valid v3 array doc.
+_EXTENSION_POINTS_V3: Final[tuple[tuple[str, type[Definition[Any]]], ...]] = (
+    ("data_type", DataTypeDefinition),
+    ("chunk_grid", ChunkGridDefinition),
+    ("chunk_key_encoding", ChunkKeyEncodingDefinition),
+)
+"""A v3 array document's single extension points, and the kind each is read as."""
 
-    Checks structure, not domain validity. Unknown top-level keys are allowed
-    (they map to `extra_fields`).
+_EXTENSION_LISTS_V3: Final[tuple[tuple[str, type[Definition[Any]]], ...]] = (
+    ("codecs", CodecDefinition),
+    ("storage_transformers", StorageTransformerDefinition),
+)
+"""Its lists of extension points, and the kind each entry is read as."""
+
+
+def validate_array_metadata_v3(
+    value: object, *, context: Context = CORE_AND_EXTENSIONS
+) -> tuple[ValidationProblem, ...]:
+    """Return every reason `value` is not a valid v3 array document.
+
+    Its structure, and each extension point read through the definition
+    that claims its name in `context`: a gzip `level` out of range, a key a
+    codec's configuration does not declare. A name nothing in `context`
+    claims is left unjudged. Unknown top-level keys are allowed (they map
+    to `extra_fields`); a reader must understand each one that does not
+    say `must_understand: false`, which the model reports as
+    `must_understand_fields`.
     """
     if not isinstance(value, Mapping):
         return (ValidationProblem((), "expected a mapping", "invalid_type"),)
@@ -331,22 +362,20 @@ def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
     problems.extend(_validate_dim_sequence(doc, "shape"))
     if "fill_value" in doc:
         problems.extend(_prefix("fill_value", validate_json(doc["fill_value"])))
-    # Every extension *point* must be understood: ignoring a codec gives
-    # wrong bytes just as surely as ignoring a data type gives wrong
-    # values. The spec names only the first three
-    # (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1580-L1581),
-    # which this package reads as an oversight rather than a licence.
-    # `must_understand: false` keeps its meaning where it has one: an
+    # Each extension point is read by `resolve`, which judges its envelope
+    # -- every extension *point* must be understood, so a `must_understand`
+    # of `false` is refused at each: ignoring a codec gives wrong bytes as
+    # surely as ignoring a data type gives wrong values, and the spec
+    # naming only the first three
+    # (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1580-L1581)
+    # is read as an oversight rather than a licence -- and then its
+    # configuration, against the definition in `context` that claims its
+    # name. `must_understand: false` keeps its meaning where it has one: an
     # unknown top-level extension *field*, which a reader really can skip.
-    for key in ("data_type", "chunk_grid", "chunk_key_encoding"):
+    for key, kind in _EXTENSION_POINTS_V3:
         if key in doc:
-            problems.extend(
-                _prefix(
-                    key,
-                    validate_metadata_field_v3(doc[key], allow_must_understand_false=False),
-                )
-            )
-    for key in ("codecs", "storage_transformers"):
+            problems.extend(resolve(doc[key], kind, context, (key,))[1])
+    for key, kind in _EXTENSION_LISTS_V3:
         if key in doc:
             entries = doc[key]
             if not _is_array(entries):
@@ -359,17 +388,7 @@ def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
                         )
                     )
                 for index, entry in enumerate(entries):
-                    problems.extend(
-                        _prefix(
-                            key,
-                            _prefix(
-                                index,
-                                validate_metadata_field_v3(
-                                    entry, allow_must_understand_false=False
-                                ),
-                            ),
-                        )
-                    )
+                    problems.extend(resolve(entry, kind, context, (key, index))[1])
     if "attributes" in doc:
         problems.extend(_validate_attributes(doc["attributes"]))
     if "dimension_names" in doc:
@@ -399,19 +418,23 @@ def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
     return tuple(problems)
 
 
-def is_array_metadata_v3(value: object) -> TypeGuard[ZarrV3ArrayMetadataJSON]:
-    """Whether `value` is a structurally-valid v3 array metadata document."""
+def is_array_metadata_v3(
+    value: object, *, context: Context = CORE_AND_EXTENSIONS
+) -> TypeGuard[ZarrV3ArrayMetadataJSON]:
+    """Whether `value` is a v3 array document `validate_array_metadata_v3` finds nothing wrong with, written with tuples."""
     return (
         _is_canonical_json(value, finite=False)
-        and not validate_array_metadata_v3(value)
+        and not validate_array_metadata_v3(value, context=context)
         and _is_canonical_array_metadata_v3(value)
     )
 
 
-def parse_array_metadata_v3(value: object) -> ZarrV3ArrayMetadataJSON:
+def parse_array_metadata_v3(
+    value: object, *, context: Context = CORE_AND_EXTENSIONS
+) -> ZarrV3ArrayMetadataJSON:
     """Return `value` as `ZarrV3ArrayMetadataJSON`, or raise `MetadataValidationError`."""
     normalized = arrays_to_tuples(value)
-    problems = validate_array_metadata_v3(normalized)
+    problems = validate_array_metadata_v3(normalized, context=context)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
     return cast("ZarrV3ArrayMetadataJSON", normalized)
@@ -525,13 +548,15 @@ def parse_array_metadata_v2(value: object) -> ZarrV2ArrayMetadataJSON:
     return cast("ZarrV2ArrayMetadataJSON", normalized)
 
 
-def validate_consolidated_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
+def validate_consolidated_metadata_v3(
+    value: object, *, context: Context = CORE_AND_EXTENSIONS
+) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not a valid inline consolidated envelope.
 
     Locs are value-relative (the caller prefixes with `consolidated_metadata`
     where appropriate). Entries recurse into the array and group document
-    validators, so a validator verdict always agrees with what
-    `ZarrV3ConsolidatedMetadata.from_json` accepts.
+    validators, in `context`, so a validator verdict agrees with what
+    `ZarrV3ConsolidatedMetadata.from_json` accepts in the same scope.
     """
     if not isinstance(value, Mapping):
         return (ValidationProblem((), "expected a mapping", "invalid_type"),)
@@ -562,11 +587,17 @@ def validate_consolidated_metadata_v3(value: object) -> tuple[ValidationProblem,
                     node_type = cast("Mapping[object, object]", entry).get("node_type")
                 if node_type == "array":
                     problems.extend(
-                        _prefix("metadata", _prefix(key, validate_array_metadata_v3(entry_obj)))
+                        _prefix(
+                            "metadata",
+                            _prefix(key, validate_array_metadata_v3(entry_obj, context=context)),
+                        )
                     )
                 elif node_type == "group":
                     problems.extend(
-                        _prefix("metadata", _prefix(key, validate_group_metadata_v3(entry_obj)))
+                        _prefix(
+                            "metadata",
+                            _prefix(key, validate_group_metadata_v3(entry_obj, context=context)),
+                        )
                     )
                 else:
                     problems.append(
@@ -579,13 +610,17 @@ def validate_consolidated_metadata_v3(value: object) -> tuple[ValidationProblem,
     return tuple(problems)
 
 
-def validate_group_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
-    """Return every reason `value` is not a structurally-valid v3 group doc.
+def validate_group_metadata_v3(
+    value: object, *, context: Context = CORE_AND_EXTENSIONS
+) -> tuple[ValidationProblem, ...]:
+    """Return every reason `value` is not a valid v3 group document.
 
-    Checks structure, not domain validity. Unknown top-level keys are allowed
-    (they map to `extra_fields`); a `consolidated_metadata` key, if present,
-    is deep-validated (envelope and entries) via
-    `validate_consolidated_metadata_v3`.
+    Unknown top-level keys are allowed (they map to `extra_fields`); a
+    reader must understand each one that does not say `must_understand:
+    false`, which the model reports as `must_understand_fields`. A
+    `consolidated_metadata` key, if present, is deep-validated (envelope
+    and entries) via `validate_consolidated_metadata_v3`, each array in it
+    read as `validate_array_metadata_v3` reads one, in `context`.
     """
     if not isinstance(value, Mapping):
         return (ValidationProblem((), "expected a mapping", "invalid_type"),)
@@ -609,21 +644,27 @@ def validate_group_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
         problems.extend(
             _prefix(
                 "consolidated_metadata",
-                validate_consolidated_metadata_v3(doc["consolidated_metadata"]),
+                validate_consolidated_metadata_v3(doc["consolidated_metadata"], context=context),
             )
         )
     return tuple(problems)
 
 
-def is_group_metadata_v3(value: object) -> TypeGuard[ZarrV3GroupMetadataJSON]:
-    """Whether `value` is a structurally-valid v3 group metadata document."""
-    return _is_canonical_json(value, finite=False) and not validate_group_metadata_v3(value)
+def is_group_metadata_v3(
+    value: object, *, context: Context = CORE_AND_EXTENSIONS
+) -> TypeGuard[ZarrV3GroupMetadataJSON]:
+    """Whether `value` is a v3 group document `validate_group_metadata_v3` finds nothing wrong with, written with tuples."""
+    return _is_canonical_json(value, finite=False) and not validate_group_metadata_v3(
+        value, context=context
+    )
 
 
-def parse_group_metadata_v3(value: object) -> ZarrV3GroupMetadataJSON:
+def parse_group_metadata_v3(
+    value: object, *, context: Context = CORE_AND_EXTENSIONS
+) -> ZarrV3GroupMetadataJSON:
     """Return `value` narrowed to `ZarrV3GroupMetadataJSON`, or raise `MetadataValidationError`."""
     normalized = arrays_to_tuples(value)
-    problems = validate_group_metadata_v3(normalized)
+    problems = validate_group_metadata_v3(normalized, context=context)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
     return cast(ZarrV3GroupMetadataJSON, normalized)

@@ -28,7 +28,7 @@ closely model the content of the Zarr specifications, such as:
   [zarr-extensions](https://github.com/zarr-developers/zarr-extensions/) and a
   few widely-used-but-unspecified entities (e.g. consolidated metadata).
 - **Document models** ([`zarr_metadata.model`](api/model.md)): canonical
-  frozen-dataclass models of whole metadata documents, with structural
+  frozen-dataclass models of whole metadata documents, with
   validators, loc-aware parsers, and store-key (de)serialization. A document
   produced by `to_json` shares no mutable state with the model that produced
   it.
@@ -72,17 +72,23 @@ members that the strict model parser rejects.
 The model validators enforce the declared document structure and a small set
 of context-free consistency rules, including fixed format literals, finite
 JSON numbers, non-negative dimensions, non-empty v3 codec pipelines, and one
-`dimension_names` entry per array dimension. They do not interpret extension
-names or configurations, resolve codec pipelines, or decide whether a data
-type, chunk grid, codec, or storage transformer is supported. Those decisions
-belong to consumer implementations.
+`dimension_names` entry per array dimension. In a v3 document they also read
+each extension point -- the data type, chunk grid, chunk key encoding, each
+codec and each storage transformer -- through the definition that claims its
+name in a scope, `CORE_AND_EXTENSIONS` unless a `context` is passed: a
+configuration its definition refuses is refused, and a key it does not
+declare is reported as `unknown_key`. A name nothing in the scope claims is
+left unjudged, and whether to support it is the consumer's decision. The
+validators do not judge fields against each other: a fill value against its
+data type, a codec against the array it is handed, a chunk grid against the
+shape.
 
 ## Scope
 
 At minimum, this library supports what Zarr-Python needs: the complete
 Zarr v2 and v3 specs, consolidated metadata, and a subset of the metadata
 defined in `zarr-extensions`. We are generally open to contributions that
-add types, models, or structural validation for Zarr metadata with a
+add types, models, or validation for Zarr metadata with a
 published spec.
 
 Runtime array behavior is out of scope: nothing here encodes or decodes

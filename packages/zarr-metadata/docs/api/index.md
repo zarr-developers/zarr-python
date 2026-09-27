@@ -7,7 +7,7 @@ title: API reference
 The package is organized to mirror the structure of the Zarr specifications:
 
 - [`zarr_metadata.model`](model.md) — frozen-dataclass document models,
-  structural validators, loc-aware parsers, and the `UNSET` sentinel
+  validators, loc-aware parsers, and the `UNSET` sentinel
 - [`zarr_metadata.pydantic`](pydantic.md) — optional Pydantic field types
   over the models
 - [`zarr_metadata.typed_json`](typed_json.md) — `check`, which type-checks

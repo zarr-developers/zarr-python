@@ -34,6 +34,7 @@ from zarr_metadata.model._validation import (
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
 from zarr_metadata.v2.consolidated import ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY
+from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS
 from zarr_metadata.v3.consolidated import ZARR_V3_CONSOLIDATED_METADATA_KEY
 from zarr_metadata.v3.group import ZARR_V3_GROUP_METADATA_STORE_KEY
 
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
     from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataStoreKey
     from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON, ZarrV2GroupMetadataStoreKey
+    from zarr_metadata.v3._registry import Context
     from zarr_metadata.v3.array import ZarrV3ExtensionField
     from zarr_metadata.v3.consolidated import ZarrV3ConsolidatedMetadataJSON
     from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON, ZarrV3GroupMetadataStoreKey
@@ -72,8 +74,9 @@ class ZarrV3GroupMetadata:
 
     A canonical, semantically lossless representation of the `zarr.json`
     content for a group. The `consolidated_metadata` reference-implementation
-    convention is modeled as a typed field holding thin child models; every
-    other unknown top-level key lands in `extra_fields` verbatim.
+    convention is modeled as a typed field holding thin child models, each
+    array read in the scope the group is read in; every other unknown
+    top-level key lands in `extra_fields` verbatim.
     """
 
     zarr_format: Literal[3] = field(default=3, init=False)
@@ -135,9 +138,11 @@ class ZarrV3GroupMetadata:
         return out
 
     @classmethod
-    def from_json(cls, data: object) -> ZarrV3GroupMetadata:
+    def from_json(
+        cls, data: object, *, context: Context = CORE_AND_EXTENSIONS
+    ) -> ZarrV3GroupMetadata:
         # A read model shares no mutable state with what it read.
-        parsed = copy.deepcopy(parse_group_metadata_v3(data))
+        parsed = copy.deepcopy(parse_group_metadata_v3(data, context=context))
         consolidated_raw: object = parsed.get(ZARR_V3_CONSOLIDATED_METADATA_KEY, UNSET)
         consolidated: ZarrV3ConsolidatedMetadata | UNSET
         if consolidated_raw is UNSET or consolidated_raw is None:
@@ -146,7 +151,7 @@ class ZarrV3GroupMetadata:
             # absence and never written back — repaired, not preserved.
             consolidated = UNSET
         else:
-            consolidated = ZarrV3ConsolidatedMetadata.from_json(consolidated_raw)
+            consolidated = ZarrV3ConsolidatedMetadata.from_json(consolidated_raw, context=context)
         extra_fields: dict[str, ZarrV3ExtensionField] = {
             k: v
             for k, v in parsed.items()
@@ -171,15 +176,20 @@ class ZarrV3GroupMetadata:
         return must_understand_subset(self.extra_fields)
 
     @classmethod
-    def from_key_value(cls, mapping: Mapping[StoreKey, bytes]) -> ZarrV3GroupMetadata:
-        return cls.from_json(load_store_json(mapping, ZARR_V3_GROUP_METADATA_STORE_KEY))
+    def from_key_value(
+        cls, mapping: Mapping[StoreKey, bytes], *, context: Context = CORE_AND_EXTENSIONS
+    ) -> ZarrV3GroupMetadata:
+        return cls.from_json(
+            load_store_json(mapping, ZARR_V3_GROUP_METADATA_STORE_KEY), context=context
+        )
 
     def to_key_value(
-        self, *, indent: int | str | None = None
+        self, *, indent: int | str | None = None, context: Context = CORE_AND_EXTENSIONS
     ) -> Mapping[ZarrV3GroupMetadataStoreKey, bytes]:
         # A model built by hand is not validated: its document is written only
-        # if it reads as `from_json` reads one, and every problem is raised.
-        document = parse_group_metadata_v3(self.to_json())
+        # if it reads as `from_json` reads one in `context`, and every problem
+        # is raised.
+        document = parse_group_metadata_v3(self.to_json(), context=context)
         return {ZARR_V3_GROUP_METADATA_STORE_KEY: dump_store_json(document, indent=indent)}
 
 
@@ -221,9 +231,11 @@ class ZarrV3ConsolidatedMetadata:
         }
 
     @classmethod
-    def from_json(cls, data: object) -> ZarrV3ConsolidatedMetadata:
+    def from_json(
+        cls, data: object, *, context: Context = CORE_AND_EXTENSIONS
+    ) -> ZarrV3ConsolidatedMetadata:
         normalized = arrays_to_tuples(data)
-        problems = validate_consolidated_metadata_v3(normalized)
+        problems = validate_consolidated_metadata_v3(normalized, context=context)
         if len(problems) != 0:
             raise MetadataValidationError(problems)
         env = cast("Mapping[str, object]", normalized)
@@ -231,9 +243,9 @@ class ZarrV3ConsolidatedMetadata:
         for key, entry in cast("Mapping[str, object]", env["metadata"]).items():
             node_type = cast("Mapping[str, object]", entry).get("node_type")
             if node_type == "array":
-                entries[key] = ZarrV3ArrayMetadata.from_json(entry)
+                entries[key] = ZarrV3ArrayMetadata.from_json(entry, context=context)
             else:
-                entries[key] = ZarrV3GroupMetadata.from_json(entry)
+                entries[key] = ZarrV3GroupMetadata.from_json(entry, context=context)
         return cls(metadata=entries)
 
 

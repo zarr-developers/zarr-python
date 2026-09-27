@@ -713,7 +713,9 @@ TO_JSON_NO_ALIASING_PARAMS = [
         ZarrV3ArrayMetadata.create_default(
             shape=(2,),
             attributes={"a": {"b": [1]}},
-            codecs=(ZarrV3NamedConfig(name="blosc", configuration={"opts": {"level": 1}}),),
+            # A name nothing in the scope claims, so reading it back judges only
+            # the document, and its configuration can nest.
+            codecs=(ZarrV3NamedConfig(name="acme.nested", configuration={"opts": {"level": 1}}),),
             extra_fields={"ext": {"must_understand": False, "cfg": {"x": [1]}}},
         ),
         id="v3",
