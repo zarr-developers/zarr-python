@@ -520,12 +520,15 @@ def test_error_a_regular_grid_extent_is_negative() -> None:
 
 
 def test_error_a_nested_field_is_judged_where_it_sits() -> None:
+    # Its problem is its own: the field holding it is read, as a document
+    # holding it would be.
     field = {
         "name": "acme.stack",
         "configuration": {"codecs": ["crc32c", {"name": "gzip", "configuration": {"level": 12}}]},
     }
     resolved, found = resolve(field, CodecDefinition, SCOPE)
-    assert resolved.resolution == "invalid"
+    assert resolved.resolution == "read"
+    assert resolved.nested[("codecs", 1)].resolution == "invalid"
     assert _locs(found) == [
         (("configuration", "codecs", 1, "configuration", "level"), "invalid_value")
     ]
@@ -537,8 +540,32 @@ def test_error_a_nested_field_in_extra_items_is_judged_where_it_sits() -> None:
         "configuration": {"slow": {"name": "gzip", "configuration": {"level": 12}}},
     }
     resolved, found = resolve(field, CodecDefinition, SCOPE)
-    assert resolved.resolution == "invalid"
+    assert resolved.resolution == "read"
+    assert resolved.nested[("slow",)].resolution == "invalid"
     assert _locs(found) == [(("configuration", "slow", "configuration", "level"), "invalid_value")]
+
+
+def test_error_a_nested_envelope_s_problem_is_its_own_and_the_rules_are_asked() -> None:
+    # A `must_understand` of false inside, as in a document, is reported
+    # where it sits, and the stack is read.
+    unread = {"name": "crc32c", "must_understand": False}
+    resolved, found = resolve(
+        {"name": "acme.stack", "configuration": {"codecs": [unread]}}, CodecDefinition, SCOPE
+    )
+    assert resolved.resolution == "read"
+    assert _locs(found) == [(("configuration", "codecs", 0, "must_understand"), "invalid_value")]
+    # Its rules are asked all the same: one refuses the array -> bytes
+    # codec it holds, which is the stack's own problem.
+    resolved, found = resolve(
+        {"name": "acme.stack", "configuration": {"codecs": [unread, "bytes"]}},
+        CodecDefinition,
+        SCOPE,
+    )
+    assert resolved.resolution == "invalid"
+    assert _locs(found) == [
+        (("configuration", "codecs", 1), "invalid_value"),
+        (("configuration", "codecs", 0, "must_understand"), "invalid_value"),
+    ]
 
 
 def test_error_a_container_rule_is_not_asked_of_a_malformed_nested_field() -> None:

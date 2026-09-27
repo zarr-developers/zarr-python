@@ -741,7 +741,8 @@ class Resolved(Generic[D]):
     definition that claims the name, claimed by nothing, or not readable.
     A problem with the envelope around it -- a stray member, a
     `must_understand` of `false` -- is reported with the field, and leaves
-    the resolution as it is.
+    the resolution as it is; so is a problem of a field the configuration
+    holds, which is that field's own, with its own resolution in `nested`.
     """
 
     json: JSONValue
@@ -954,7 +955,9 @@ def resolve(
     a problem. The name is related to a definition in `context`; the
     configuration is checked against its TypedDict and judged by its
     rules; each nested field the check met is read the same way, in the
-    same scope. A name nothing claims is `out_of_scope`: an unmodelled
+    same scope, and what is wrong with one is its own, reported where it
+    sits, as with a document's fields. A name nothing claims is
+    `out_of_scope`: an unmodelled
     extension, left unjudged, which is what keeps the format open. `loc`
     prefixes every problem. `kind` is one of `KINDS`, with or without
     type arguments; anything else is a `TypeError`.
@@ -1002,26 +1005,33 @@ def _read(
         missing = problem(at, f"{name!r} requires a configuration", "missing_key")
         return Resolved(data, "invalid", definition, None), missing
     typed, found, nested = _checked(definition.configuration, {} if given is None else given, at)
-    envelopes = [_envelope(field) for field in nested]
-    sound = _usable(found) and all(_usable(envelope) for envelope in envelopes)
+    # The rules may read a field the configuration holds by its name, so
+    # they are asked only when each one is named; any other problem with
+    # one is its own, reported where it sits, as a document's fields are.
+    sound = _usable(found) and all(_named(field) for field in nested)
     configuration = cast("Mapping[str, JSONValue]", typed) if sound else None
     # The fields it holds are read first, so the rules see them as the
     # scope read them; their problems are reported after the rules'.
     within: dict[Loc, Resolved[Any]] = {}
     inside: list[ValidationProblem] = []
-    for field, envelope in zip(nested, envelopes, strict=True):
-        inside.extend(envelope)
+    for field in nested:
+        inside.extend(_envelope(field))
         inner, found_inside = _read(field.json, field.kind, context, field.loc)
         within[field.loc[len(at) :]] = inner
         inside.extend(found_inside)
         inside.extend(_sized(field, inner.definition))
-    problems = list(found)
+    own = list(found)
     if configuration is not None:
-        problems.extend(ruled(definition, lambda: definition.rules(configuration, within), at))
-    problems.extend(inside)
-    if not _usable(problems):
-        return Resolved(data, "invalid", definition, None), tuple(problems)
-    return Resolved(data, "read", definition, configuration, within), tuple(problems)
+        own.extend(ruled(definition, lambda: definition.rules(configuration, within), at))
+    if configuration is None or not _usable(own):
+        return Resolved(data, "invalid", definition, None), (*own, *inside)
+    return Resolved(data, "read", definition, configuration, within), (*own, *inside)
+
+
+def _named(field: _NestedField) -> bool:
+    """Whether a field a configuration holds is named, with an object for its configuration if it has one."""
+    name, _, malformed = named_configuration(field.json)
+    return name is not None and len(malformed) == 0
 
 
 def _read_carried(

@@ -133,15 +133,17 @@ word, so a definition refuses it. Its members are the shapes JSON takes:
 
 A member holding another metadata field is annotated with the field alias
 of its kind -- a shard's `codecs: tuple[CodecField, ...]` -- and read in
-the scope its field is read in. A member that takes codecs of static size
-only is annotated `StaticCodecField` -- a shard's `index_codecs`, since a
-reader finds the index by a size it knows before reading it -- and a codec
-of dynamic size there is a problem at its place, where the field is read
-in a scope; a name nothing claims is left unjudged, its size unknown with
-the rest of it. `ZarrV3MetadataFieldJSON` is the same
-JSON, but checks as JSON and nothing more, so a definition refuses a
-member typed with it. An extension with nothing to configure takes
-`EmptyConfiguration`, and is written as its bare name.
+the scope its field is read in. What is wrong with the field it holds is
+that field's own, reported where it sits: the field holding it is still
+read, as a document holding it would be. A member that takes codecs of
+static size only is annotated `StaticCodecField` -- a shard's
+`index_codecs`, since a reader finds the index by a size it knows before
+reading it -- and a codec of dynamic size there is a problem at its
+place, where the field is read in a scope; a name nothing claims is left
+unjudged, its size unknown with the rest of it. `ZarrV3MetadataFieldJSON`
+is the same JSON, but checks as JSON and nothing more, so a definition
+refuses a member typed with it. An extension with nothing to configure
+takes `EmptyConfiguration`, and is written as its bare name.
 
 A data type also says what its fill value is: `fill_value`, the JSON
 shape of one as an annotation the checker reads -- `Int8FillValue` -- and
