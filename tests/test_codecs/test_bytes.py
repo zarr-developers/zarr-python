@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import enum
-import sys
 import warnings
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -292,14 +291,13 @@ def test_endian_attribute_error_for_unknown_member() -> None:
         getattr(Endian, "not_a_member")  # noqa: B009
 
 
-def test_bytes_codec_default_endian_matches_system() -> None:
+def test_bytes_codec_default_endian_is_little() -> None:
     """
-    Constructing `BytesCodec()` with no arguments yields a codec whose
-    `endian` matches `sys.byteorder`. This replaces the previous
-    `default_system_endian = Endian(sys.byteorder)` module-level binding.
+    Constructing `BytesCodec()` with no arguments yields a little-endian codec on
+    every host, so stored bytes do not depend on the machine that wrote them.
     """
     codec = BytesCodec()
-    assert codec.endian == sys.byteorder
+    assert codec.endian == "little"
 
 
 def _make_array_spec(dtype: Any) -> ArraySpec:
