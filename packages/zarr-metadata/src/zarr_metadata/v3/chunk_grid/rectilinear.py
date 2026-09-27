@@ -11,7 +11,7 @@ from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata._typed_json import Loc
-from zarr_metadata.v3._definition import ChunkGridDefinition, Nested
+from zarr_metadata.v3._definition import ChunkGridDefinition, Lengths, Nested
 
 RECTILINEAR_CHUNK_GRID_NAME: Final = "rectilinear"
 """The `name` field value of the rectilinear chunk grid."""
@@ -156,12 +156,32 @@ def _shape_rules(
             )
 
 
+def _chunk_lengths(
+    configuration: RectilinearChunkGridConfiguration, nested: Nested, shape: tuple[int, ...]
+) -> Lengths:
+    """Along each axis, every chunk length its entry lists.
+
+    A bare integer is the length of every chunk along its axis; a list
+    gives each chunk's length, a `[length, count]` pair `count` of them
+    (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md?plain=1#L62-L91).
+    Every length listed counts, a chunk past the array's edge too, which
+    the array grows into when it is resized.
+    """
+    return tuple(
+        frozenset({spec})
+        if isinstance(spec, int)
+        else frozenset(entry if isinstance(entry, int) else entry[0] for entry in spec)
+        for spec in configuration["chunk_shapes"]
+    )
+
+
 RECTILINEAR_CHUNK_GRID: Final = ChunkGridDefinition(
     name=RECTILINEAR_CHUNK_GRID_NAME,
     configuration=RectilinearChunkGridConfiguration,
     rules=_rules,
     canonical=_canonical,
     shape_rules=_shape_rules,
+    chunk_lengths=_chunk_lengths,
 )
 """The `rectilinear` chunk grid."""
 

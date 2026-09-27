@@ -746,14 +746,18 @@ def test_error_a_data_type_fill_value_no_checker_reads() -> None:
         (DataTypeDefinition, "canonical"),
         (DataTypeDefinition, "fill_value_rules"),
         (ChunkGridDefinition, "shape_rules"),
+        (ChunkGridDefinition, "chunk_lengths"),
+        (CodecDefinition, "chunk_rules"),
+        (CodecDefinition, "transition"),
     ],
 )
 def test_error_a_function_member_that_is_not_a_function(
     kind: type[Definition[Any]], member: str
 ) -> None:
     # Each member a definition's annotations declare a `Callable`.
+    codec = {"kind": "array_array", "size": "static"} if kind is CodecDefinition else {}
     with pytest.raises(TypeError, match=f"'acme.t': {member} is a function, got 'none'"):
-        kind(name="acme.t", configuration=Empty, **{member: "none"})  # pyright: ignore[reportArgumentType]
+        kind(name="acme.t", configuration=Empty, **codec, **{member: "none"})  # pyright: ignore[reportArgumentType]
 
 
 @pytest.mark.parametrize("kind", [Definition, AcmeCodecDefinition])

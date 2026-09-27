@@ -41,6 +41,7 @@ from typing import (
     Generic,
     Literal,
     TypeAlias,
+    TypeGuard,
     cast,
     get_args,
     get_origin,
@@ -91,6 +92,16 @@ def no_rules(*_: object) -> Iterator[ValidationProblem]:
 def unchanged(configuration: T) -> T:
     """The canonical form of a configuration with no simpler spelling: itself."""
     return configuration
+
+
+def unknown_lengths(configuration: object, nested: object, shape: tuple[int, ...]) -> Lengths:
+    """The chunk lengths of a grid that says nothing of them: unknown, along each axis of the array."""
+    return (None,) * len(shape)
+
+
+def unknown_chunk(*_: object) -> Chunk:
+    """What an array -> array codec that says nothing of it hands on: a chunk nothing is known of."""
+    return Chunk()
 
 
 class EmptyConfiguration(TypedDict, closed=True):
@@ -179,7 +190,7 @@ class Definition(Generic[C]):
         configuration, problems = self.check(value, loc)
         if configuration is None:
             return None, problems
-        refused = _ruled(self, lambda: self.rules(configuration, _nothing_nested()), loc)
+        refused = ruled(self, lambda: self.rules(configuration, _nothing_nested()), loc)
         return (configuration if len(refused) == 0 else None), (*problems, *refused)
 
 
@@ -305,10 +316,19 @@ class ChunkGridDefinition(Definition[C]):
     configuration, the fields it holds as the scope read them, and the
     shape, and locates its problems in the configuration. A grid that
     says nothing of the shape fits every one.
+
+    `chunk_lengths` is what the first codec of the array's pipeline is
+    handed: the lengths the grid's chunks take along each axis of an
+    array of a shape it fits -- one for each axis of a regular grid, every
+    length a rectilinear grid lists. It is asked only of a grid its shape
+    rules accept. A grid that says nothing of it leaves the lengths along
+    every axis unknown.
     """
 
     shape_rules: Callable[[C, Nested, tuple[int, ...]], Iterable[ValidationProblem]] = no_rules
     """What the spec disallows in this grid over an array of a shape, located in the configuration."""
+    chunk_lengths: Callable[[C, Nested, tuple[int, ...]], Lengths] = unknown_lengths
+    """The lengths its chunks take along each axis of an array of a shape it fits, None where unknown."""
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -329,10 +349,33 @@ four bytes. `dynamic`: it depends on the values -- every compressor.
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class CodecDefinition(Definition[C]):
-    """A codec: what it does to what it is handed, and whether the size of what it gives out is static."""
+    """A codec: what it does to what it is handed, and whether the size of what it gives out is static.
+
+    A codec handed an array -- array -> array, array -> bytes -- says what
+    the spec disallows in it handed a `Chunk`: `chunk_rules`, handed the
+    configuration, the fields it holds as the scope read them, and the
+    chunk, and locating its problems in the configuration -- a `bytes`
+    codec without `endian`, handed a multi-byte data type. An array ->
+    array codec also says what it hands on: `transition`, the chunk the
+    next codec is handed, given the one it is handed -- `transpose`
+    permutes the axes, `cast_value` changes the data type. The two are the
+    spec's pair: a codec computes what it gives from the shape and data
+    type it is handed, and "If the decoded_representation_type is not
+    supported, this algorithm must fail with an error"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L987-L994).
+    The transition is asked of every chunk the codec is handed, whatever
+    its chunk rules found, so it gives only what holds either way: a
+    `transpose` whose `order` has another number of axes hands on lengths
+    nothing is known of. A codec that says nothing of what it hands on
+    hands the next a chunk nothing is known of.
+    """
 
     kind: CodecKind
     size: CodecSize
+    chunk_rules: Callable[[C, Nested, Chunk], Iterable[ValidationProblem]] = no_rules
+    """What the spec disallows in this codec handed a chunk, located in the configuration."""
+    transition: Callable[[C, Nested, Chunk], Chunk] = unknown_chunk
+    """The chunk the next codec is handed, given the one this array -> array codec is handed."""
 
     def _refusal(self) -> str | None:
         kind: object = self.kind
@@ -341,6 +384,10 @@ class CodecDefinition(Definition[C]):
         size: object = self.size
         if size not in get_args(CodecSize):
             return f"{self.name!r}: size is one of {get_args(CodecSize)!r}, got {size!r}"
+        if kind == "bytes_bytes" and self.chunk_rules is not no_rules:
+            return f"{self.name!r}: chunk_rules, of a bytes -> bytes codec, which is handed bytes"
+        if kind != "array_array" and self.transition is not unknown_chunk:
+            return f"{self.name!r}: a transition, of a codec that hands on bytes"
         return None
 
 
@@ -548,7 +595,21 @@ def _usable(problems: Sequence[ValidationProblem]) -> bool:
     return all(found.kind == "unknown_key" for found in problems)
 
 
-def _ruled(
+def asked(definition: Definition[Any], what: str, ask: Callable[[], T], at: Loc) -> T:
+    """What `ask`, a call of `definition`'s `what`, gives.
+
+    A definition's functions are the extension author's code: an error one
+    raises says which definition's function raised it, and where it was
+    reading.
+    """
+    try:
+        return ask()
+    except Exception as error:
+        error.add_note(f"raised by the {what} of {definition.name!r}, reading {at!r}")
+        raise
+
+
+def ruled(
     definition: Definition[Any], ask: Callable[[], Iterable[ValidationProblem]], at: Loc
 ) -> Problems:
     """What `ask`, a call of `definition`'s rules, finds, located under `at`.
@@ -557,11 +618,7 @@ def _ruled(
     what they declare, and an error one raises says which definition's rules
     raised it, and where they were reading.
     """
-    try:
-        found = tuple(cast("Iterable[object]", ask()))
-    except Exception as error:
-        error.add_note(f"raised by the rules of {definition.name!r}, reading {at!r}")
-        raise
+    found = asked(definition, "rules", lambda: tuple(cast("Iterable[object]", ask())), at)
     for item in found:
         if not isinstance(item, ValidationProblem):
             msg = f"{definition.name!r}: its rules yield ValidationProblem values, got {item!r}"
@@ -668,6 +725,66 @@ Nested: TypeAlias = Mapping[Loc, Resolved[Any]]
 """The fields a configuration holds, each as the scope read it, by where it sits in the configuration."""
 
 
+Lengths: TypeAlias = tuple[frozenset[int] | None, ...]
+"""Per axis, every length chunks take along it -- a set, since a rectilinear grid's differ -- or None where unknown."""
+
+
+@dataclass(frozen=True, slots=True)
+class Chunk:
+    """What a codec is handed: chunks of some lengths along each axis, of a data type.
+
+    What nothing says is None: the lengths along an axis the grid does not
+    say, and every part of the chunk handed on by a codec that says nothing
+    of what it hands on. A data type field the scope did not read is held
+    as written, and says nothing of the values either. A codec's chunk
+    rules judge what is known and leave the rest, so a chunk nothing is
+    known of, `Chunk()`, is refused nothing.
+    """
+
+    lengths: Lengths | None = None
+    """Per axis, the lengths the chunks take along it; None when not even the number of axes is known."""
+    data_type: Resolved[DataTypeDefinition[Any]] | None = None
+    """The data type field of the values, as a scope read it; None when no field says what they are."""
+
+    def __post_init__(self) -> None:
+        lengths = cast("object", self.lengths)
+        if lengths is not None and not _is_lengths(lengths):
+            msg = f"a chunk's lengths are a frozenset of integers or None per axis, got {lengths!r}"
+            raise TypeError(msg)
+        data_type = cast("object", self.data_type)
+        if data_type is not None and not _is_data_type_field(data_type):
+            msg = f"a chunk's data type is a data type field a scope read, got {data_type!r}"
+            raise TypeError(msg)
+
+    @property
+    def rank(self) -> int | None:
+        """The number of axes; None when unknown."""
+        return None if self.lengths is None else len(self.lengths)
+
+
+def _is_data_type_field(value: object) -> bool:
+    """Whether `value` is a data type field a scope read: one read as a data type, or by nothing."""
+    if not isinstance(value, Resolved):
+        return False
+    definition = cast("Resolved[Any]", value).definition
+    return definition is None or isinstance(definition, DataTypeDefinition)
+
+
+def _is_lengths(value: object) -> TypeGuard[Lengths]:
+    """Whether `value` is chunk lengths: per axis, a frozenset of integers, or None."""
+    if not isinstance(value, tuple):
+        return False
+    for axis in cast("tuple[object, ...]", value):
+        if axis is None:
+            continue
+        if not isinstance(axis, frozenset) or not all(
+            isinstance(length, int) and not isinstance(length, bool)
+            for length in cast("frozenset[object]", axis)
+        ):
+            return False
+    return True
+
+
 def configuration_of(resolved: Resolved[Any], definition: Definition[C]) -> C | None:
     """The configuration `resolved` holds, typed as `definition` declares it, if `definition` read it.
 
@@ -703,7 +820,7 @@ def fill_value_problems(
     typed, problems = _fill_value_parser(definition.fill_value)(refined, loc)
     if not _usable(problems):
         return problems
-    refused = _ruled(
+    refused = ruled(
         definition,
         lambda: definition.fill_value_rules(configuration, data_type.nested, typed),
         loc,
@@ -711,26 +828,54 @@ def fill_value_problems(
     return (*problems, *refused)
 
 
-def chunk_grid_problems(
+def chunk_grid_lengths(
     chunk_grid: Resolved[ChunkGridDefinition[Any]], shape: tuple[int, ...], loc: Loc = ()
-) -> Problems:
-    """What is wrong with `chunk_grid`, a chunk grid field a scope read, over an array of `shape`.
+) -> tuple[Lengths, Problems]:
+    """The lengths the chunks of `chunk_grid`, a chunk grid field a scope read, take along each axis of an array of `shape`, and what is wrong with the grid over it.
 
-    Judged by the grid's shape rules, which locate their problems in the
-    configuration, under `loc`, where the field sits: a regular grid with
-    a chunk length for each of two dimensions, over an array of three. A
-    grid the scope did not read, out of scope or invalid, is left
-    unjudged.
+    A chunk has an extent "for each dimension of the array"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L277-L281),
+    so the lengths have an entry for each dimension of `shape`, None where
+    nothing says them. The grid's shape rules judge it first, and locate
+    their problems in the configuration, under `loc`, where the field
+    sits: a regular grid with a chunk length for each of two dimensions,
+    over an array of three. Only a grid that fits the shape says its
+    lengths; a grid the scope did not read, out of scope or invalid, is
+    left unjudged and says none. What a grid's `chunk_lengths` gives is
+    checked: lengths of another type are a `TypeError`, and of another
+    number of axes than `shape` has a `ValueError`, each a fault in the
+    definition, not the field.
     """
+    unknown: Lengths = (None,) * len(shape)
     definition = chunk_grid.definition
     configuration = chunk_grid.configuration
     if definition is None or configuration is None:
-        return ()
-    return _ruled(
-        definition,
-        lambda: definition.shape_rules(configuration, chunk_grid.nested, shape),
-        (*loc, "configuration"),
+        return unknown, ()
+    at = (*loc, "configuration")
+    problems = ruled(
+        definition, lambda: definition.shape_rules(configuration, chunk_grid.nested, shape), at
     )
+    if len(problems) != 0:
+        return unknown, problems
+    lengths = asked(
+        definition,
+        "chunk lengths",
+        lambda: cast("object", definition.chunk_lengths(configuration, chunk_grid.nested, shape)),
+        at,
+    )
+    if not _is_lengths(lengths):
+        msg = (
+            f"{definition.name!r}: its chunk_lengths give a frozenset of integers or None "
+            f"per axis, got {lengths!r}"
+        )
+        raise TypeError(msg)
+    if len(lengths) != len(shape):
+        msg = (
+            f"{definition.name!r}: its chunk_lengths gave {len(lengths)} axes, "
+            f"for a shape of {len(shape)}"
+        )
+        raise ValueError(msg)
+    return lengths, ()
 
 
 def resolve(
@@ -803,7 +948,7 @@ def _read(
         inside.extend(_sized(field, inner.definition))
     problems = list(found)
     if configuration is not None:
-        problems.extend(_ruled(definition, lambda: definition.rules(configuration, within), at))
+        problems.extend(ruled(definition, lambda: definition.rules(configuration, within), at))
     problems.extend(inside)
     if not _usable(problems):
         return Resolved(data, "invalid", definition, None), tuple(problems)
@@ -925,6 +1070,7 @@ __all__ = [
     "KINDS",
     "RAW_BYTES_NAME",
     "RAW_BYTES_NAME_PATTERN",
+    "Chunk",
     "ChunkGridDefinition",
     "ChunkGridField",
     "ChunkKeyEncodingDefinition",
@@ -937,6 +1083,7 @@ __all__ = [
     "DataTypeField",
     "Definition",
     "EmptyConfiguration",
+    "Lengths",
     "Nested",
     "Resolution",
     "Resolved",
@@ -945,14 +1092,18 @@ __all__ = [
     "StorageTransformerField",
     "Unread",
     "as_kind",
+    "asked",
     "canonicalize",
-    "chunk_grid_problems",
+    "chunk_grid_lengths",
     "configuration_of",
     "fill_value_problems",
     "kind_of",
     "named_configuration",
     "no_rules",
     "resolve",
+    "ruled",
     "spelled",
     "unchanged",
+    "unknown_chunk",
+    "unknown_lengths",
 ]

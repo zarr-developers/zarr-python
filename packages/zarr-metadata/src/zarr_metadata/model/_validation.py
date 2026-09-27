@@ -5,8 +5,9 @@ shapes, fixed literals like `zarr_format` -- and, in a v3 document, read
 each extension point through the definition that claims its name in a
 scope, so a configuration its definition refuses is refused here too. A
 name nothing in the scope claims is left unjudged. A v3 fill value is
-judged against the data type it names, and the chunk grid against the
-shape; a codec against the array it is handed is not judged here. Each concept
+judged against the data type it names, the chunk grid against the
+shape, and the codecs as a pipeline, each against the chunk it is
+handed. Each concept
 gets a `validate_*` function returning every problem found, an `is_*`
 type guard, and a `parse_*` function that narrows or raises
 `MetadataValidationError`. The guards are `TypeGuard`s,
@@ -38,17 +39,20 @@ from zarr_metadata._json import prefixed as _prefix
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
 from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
 from zarr_metadata.v3._definition import (
+    Chunk,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
     DataTypeDefinition,
     Definition,
+    Lengths,
     Resolved,
     StorageTransformerDefinition,
-    chunk_grid_problems,
+    chunk_grid_lengths,
     fill_value_problems,
     resolve,
 )
+from zarr_metadata.v3._pipeline import read_pipeline
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
@@ -355,12 +359,15 @@ def validate_array_metadata_v3(
     codec's configuration does not declare. The fill value is judged
     against the data type as `context` read it -- an `int8` fill value of
     300 -- and the chunk grid against the shape: a regular grid with a
-    chunk length for each of two dimensions, over an array of three. A name
-    nothing in `context` claims is left unjudged, with any fill value of
-    it. Unknown top-level keys are allowed (they map
-    to `extra_fields`); a reader must understand each one that does not
-    say `must_understand: false`, which the model reports as
-    `must_understand_fields`.
+    chunk length for each of two dimensions, over an array of three. The
+    codecs are read as a pipeline: in order, each judged against the chunk
+    it is handed -- a `transpose` whose `order` has another number of axes.
+    A name nothing in `context` claims is left unjudged, with any fill
+    value of it, and a codec of that name leaves the codec after it
+    handed a chunk nothing is known of. Unknown top-level keys are
+    allowed (they map to `extra_fields`); a reader must understand each
+    one that does not say `must_understand: false`, which the model
+    reports as `must_understand_fields`.
     """
     if not isinstance(value, Mapping):
         return (ValidationProblem((), "expected a mapping", "invalid_type"),)
@@ -396,23 +403,31 @@ def validate_array_metadata_v3(
             )
         else:
             problems.extend(_prefix("fill_value", validate_json(doc["fill_value"])))
-    # The chunk grid is judged against the shape, once both are read.
+    # The chunk grid is judged against the shape, once both are read, and
+    # says the lengths of the chunks the first codec is handed: an entry
+    # for each dimension of the shape, None where nothing says it.
+    lengths: Lengths | None = None if shape is None else (None,) * len(shape)
     if "chunk_grid" in read and shape is not None:
-        problems.extend(chunk_grid_problems(read["chunk_grid"], shape, ("chunk_grid",)))
+        lengths, found = chunk_grid_lengths(read["chunk_grid"], shape, ("chunk_grid",))
+        problems.extend(found)
+    listed: dict[str, list[Resolved[Any]]] = {}
     for key, kind in _EXTENSION_LISTS_V3:
         if key in doc:
             entries = doc[key]
             if not _is_array(entries):
                 problems.append(ValidationProblem((key,), "expected a sequence", "invalid_type"))
             else:
-                if key == "codecs" and len(entries) == 0:
-                    problems.append(
-                        ValidationProblem(
-                            ("codecs",), "expected at least one codec", "invalid_value"
-                        )
-                    )
+                listed[key] = []
                 for index, entry in enumerate(entries):
-                    problems.extend(resolve(entry, kind, context, (key, index))[1])
+                    resolved, found = resolve(entry, kind, context, (key, index))
+                    listed[key].append(resolved)
+                    problems.extend(found)
+    # The codecs are read as a pipeline, the first handed the grid's chunks
+    # of the array's data type: in order, each judged against the chunk it
+    # is handed. That holds one array -> bytes codec, so it is not empty.
+    if "codecs" in listed:
+        chunk = Chunk(lengths, read.get("data_type"))
+        problems.extend(read_pipeline(listed["codecs"], chunk, ("codecs",))[1])
     if "attributes" in doc:
         problems.extend(_validate_attributes(doc["attributes"]))
     if "dimension_names" in doc:

@@ -71,8 +71,8 @@ members that the strict model parser rejects.
 
 The model validators enforce the declared document structure and a small set
 of context-free consistency rules, including fixed format literals, finite
-JSON numbers, non-negative dimensions, non-empty v3 codec pipelines, and one
-`dimension_names` entry per array dimension. In a v3 document they also read
+JSON numbers, non-negative dimensions, and one `dimension_names` entry per
+array dimension. In a v3 document they also read
 each extension point -- the data type, chunk grid, chunk key encoding, each
 codec and each storage transformer -- through the definition that claims its
 name in a scope, `CORE_AND_EXTENSIONS` unless a `context` is passed: a
@@ -80,9 +80,10 @@ configuration its definition refuses is refused, and a key it does not
 declare is reported as `unknown_key`. A name nothing in the scope claims is
 left unjudged, and whether to support it is the consumer's decision. A v3
 fill value is judged against the data type it names, by that data type's
-definition, and the chunk grid against the shape, by the grid's
-definition. The validators do not judge a codec against the array it is
-handed.
+definition, the chunk grid against the shape, by the grid's definition,
+and the codecs as a pipeline: in order, each judged by its definition
+against the chunk it is handed. The validators do not read a shard's
+inner codecs as a pipeline.
 
 ## Scope
 

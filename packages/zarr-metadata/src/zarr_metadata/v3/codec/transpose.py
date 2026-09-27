@@ -10,7 +10,7 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import CodecDefinition, Nested
+from zarr_metadata.v3._definition import Chunk, CodecDefinition, Nested
 
 TRANSPOSE_CODEC_NAME: Final = "transpose"
 """The `name` field value of the `transpose` codec."""
@@ -53,8 +53,8 @@ def _rules(
 ) -> Iterator[ValidationProblem]:
     """`order` permutes its own axes.
 
-    Whether it permutes the *array's* axes needs the array's rank, and is
-    asked where the codec meets the array.
+    Whether it permutes the axes of the chunk the codec is handed is a
+    chunk rule.
     """
     order = configuration["order"]
     if sorted(order) != list(range(len(order))):
@@ -65,12 +65,48 @@ def _rules(
         )
 
 
+def _chunk_rules(
+    configuration: TransposeCodecConfiguration, nested: Nested, chunk: Chunk
+) -> Iterator[ValidationProblem]:
+    """`order` has an entry for each axis of the chunk the codec is handed.
+
+    "a permutation of 0, 1, ..., n-1, where n is the number of dimensions
+    in the decoded chunk representation provided as input to this codec"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/transpose/index.rst#L63-L66).
+    """
+    order = configuration["order"]
+    if chunk.rank is not None and len(order) != chunk.rank:
+        yield ValidationProblem(
+            ("order",),
+            f"expected {chunk.rank} entries, one per axis of the chunk the codec is "
+            f"handed, got {len(order)}",
+            "invalid_value",
+        )
+
+
+def _transition(configuration: TransposeCodecConfiguration, nested: Nested, chunk: Chunk) -> Chunk:
+    """The chunk's axes in `order`, its data type the same.
+
+    "B_shape[i] = A_shape[order[i]]", where A is the chunk the codec is
+    handed and B the one it hands on, of "the same data type as A"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/transpose/index.rst#L73-L79).
+    An order of another number of axes leaves the lengths unknown.
+    """
+    lengths = chunk.lengths
+    order = configuration["order"]
+    if lengths is None or len(order) != len(lengths):
+        return Chunk(None, chunk.data_type)
+    return Chunk(tuple(lengths[axis] for axis in order), chunk.data_type)
+
+
 TRANSPOSE_CODEC: Final = CodecDefinition(
     name=TRANSPOSE_CODEC_NAME,
     configuration=TransposeCodecConfiguration,
     kind="array_array",
     size="static",
     rules=_rules,
+    chunk_rules=_chunk_rules,
+    transition=_transition,
 )
 """The `transpose` codec."""
 

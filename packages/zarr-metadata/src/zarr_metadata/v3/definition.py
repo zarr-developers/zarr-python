@@ -118,9 +118,9 @@ A scope reads whole documents as well as fields:
 `zarr_metadata.model`, reads each extension point of a v3 array document
 through the definitions in `SCOPE`, and so do the model's `from_json` and
 `from_key_value`: a fill value is judged against the data type it names,
-by that data type's definition, and the chunk grid against the shape, by
-the grid's definition. No rule here reads a codec against the array it
-is handed.
+by that data type's definition, the chunk grid against the shape, by
+the grid's definition, and the codecs as a pipeline, each by its
+definition against the chunk it is handed.
 
 The TypedDict says what a key it does not declare is: with
 `closed=True`, a problem, as above; with `extra_items=`, a key holding
@@ -158,7 +158,27 @@ A chunk grid says which arrays it fits: `shape_rules`, a function
 yielding what the spec disallows in a grid of its configuration over an
 array of a given shape -- a dimension with no chunk length, chunks that
 fall short of one -- located in the configuration. A grid that says
-nothing of the shape fits every one.
+nothing of the shape fits every one. It also says the lengths its chunks
+take along each axis of an array it fits, `chunk_lengths`: a set per
+axis, since a rectilinear grid's chunks differ. `chunk_grid_lengths(grid,
+shape)` gives both of a chunk grid field the scope read: an entry for
+each dimension of the shape, None where nothing says the lengths.
+
+A codec is judged against what it is handed. The array hands its first
+codec a `Chunk`: the lengths of its grid's chunks along each of the
+array's dimensions, and its data type field, with None for what nothing
+says. A codec handed an array says what the spec disallows in it handed
+a chunk: `chunk_rules`, located in its configuration -- a `transpose`
+whose `order` has another number of axes. An array -> array codec says
+what it hands the next, whatever its chunk rules found: `transition` --
+`transpose` permutes the axes. `read_pipeline(codecs, chunk)` reads codec
+fields the scope read as a pipeline: their order -- array -> array
+codecs, one array -> bytes codec, bytes -> bytes codecs -- and then each
+against the chunk it is handed, giving each codec's `Stage` with that
+chunk. Nothing is guessed: the codec after one the scope did not read,
+or after one that says nothing of what it hands on, is handed a chunk
+nothing is known of, `Chunk()`, which is refused nothing; a codec after
+that hands on only what it says of its own accord.
 
 Raw bits are the one data type whose name carries its configuration: a
 document writes `r` and the size in bits, and `r16` reads as `r*`, as the
@@ -183,10 +203,13 @@ A definition checks itself when it is built, and each of these is a
 TypedDict, says nothing of the keys it does not declare, or has a member
 no checker reads, named down to the TypedDict that holds it; a `name`
 that is not a string; a member declared as a function -- `rules`,
-`canonical`, `fill_value_rules`, `shape_rules` -- that is not one; a data
-type's `fill_value` no checker reads; a codec `kind` that is not one of
-the three, or a `size` that is not `"static"` or `"dynamic"`; a data type
-named as raw bits of one size are written. A scope refuses a definition
+`canonical`, `fill_value_rules`, `shape_rules`, `chunk_lengths`,
+`chunk_rules`, `transition` -- that is not one; a data type's
+`fill_value` no checker reads; a codec `kind` that is not one of the
+three, or a `size` that is not `"static"` or `"dynamic"`; chunk rules of
+a bytes -> bytes codec, which is handed bytes, or a `transition` of a
+codec that hands on bytes; a data type named as raw bits of one size are
+written. A scope refuses a definition
 of no kind. Nothing happens at class creation.
 """
 
@@ -195,6 +218,7 @@ from zarr_metadata._json import MetadataValidationError, ProblemKind, Validation
 from zarr_metadata._typed_json import Loc, check
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._definition import (
+    Chunk,
     ChunkGridDefinition,
     ChunkGridField,
     ChunkKeyEncodingDefinition,
@@ -207,6 +231,7 @@ from zarr_metadata.v3._definition import (
     DataTypeField,
     Definition,
     EmptyConfiguration,
+    Lengths,
     Nested,
     Resolution,
     Resolved,
@@ -215,15 +240,18 @@ from zarr_metadata.v3._definition import (
     StorageTransformerField,
     Unread,
     canonicalize,
+    chunk_grid_lengths,
     configuration_of,
     fill_value_problems,
     resolve,
 )
+from zarr_metadata.v3._pipeline import Stage, read_pipeline
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS, Context
 
 __all__ = [
     "CORE",
     "CORE_AND_EXTENSIONS",
+    "Chunk",
     "ChunkGridDefinition",
     "ChunkGridField",
     "ChunkKeyEncodingDefinition",
@@ -238,12 +266,14 @@ __all__ = [
     "Definition",
     "EmptyConfiguration",
     "JSONValue",
+    "Lengths",
     "Loc",
     "MetadataValidationError",
     "Nested",
     "ProblemKind",
     "Resolution",
     "Resolved",
+    "Stage",
     "StaticCodecField",
     "StorageTransformerDefinition",
     "StorageTransformerField",
@@ -252,7 +282,9 @@ __all__ = [
     "ZarrV3MetadataFieldJSON",
     "canonicalize",
     "check",
+    "chunk_grid_lengths",
     "configuration_of",
     "fill_value_problems",
+    "read_pipeline",
     "resolve",
 ]

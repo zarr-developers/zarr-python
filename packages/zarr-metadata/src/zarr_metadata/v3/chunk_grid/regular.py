@@ -10,7 +10,7 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import ChunkGridDefinition, Nested
+from zarr_metadata.v3._definition import ChunkGridDefinition, Lengths, Nested
 
 REGULAR_CHUNK_GRID_NAME: Final = "regular"
 """The `name` field value of the regular chunk grid."""
@@ -90,11 +90,26 @@ def _shape_rules(
             )
 
 
+def _chunk_lengths(
+    configuration: RegularChunkGridConfiguration, nested: Nested, shape: tuple[int, ...]
+) -> Lengths:
+    """One length along each axis: every chunk has the grid's `chunk_shape`.
+
+    "each chunk is a hyperrectangle of the same shape"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L28-L29),
+    a chunk at the array's edge too, where "the grid will overhang the
+    edge of the array space"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L43-L46).
+    """
+    return tuple(frozenset({length}) for length in configuration["chunk_shape"])
+
+
 REGULAR_CHUNK_GRID: Final = ChunkGridDefinition(
     name=REGULAR_CHUNK_GRID_NAME,
     configuration=RegularChunkGridConfiguration,
     rules=_rules,
     shape_rules=_shape_rules,
+    chunk_lengths=_chunk_lengths,
 )
 """The `regular` chunk grid."""
 
