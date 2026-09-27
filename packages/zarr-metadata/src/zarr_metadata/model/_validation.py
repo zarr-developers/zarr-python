@@ -413,7 +413,7 @@ def validate_array_metadata_v3(value: object) -> tuple[ValidationProblem, ...]:
     # Every extension *point* must be understood: ignoring a codec gives
     # wrong bytes just as surely as ignoring a data type gives wrong
     # values. The spec names only the first three
-    # (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1578),
+    # (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1580-L1581),
     # which this package reads as an oversight rather than a licence.
     # `must_understand: false` keeps its meaning where it has one: an
     # unknown top-level extension *field*, which a reader really can skip.
