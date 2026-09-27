@@ -5,8 +5,8 @@ shapes, fixed literals like `zarr_format` -- and, in a v3 document, read
 each extension point through the definition that claims its name in a
 scope, so a configuration its definition refuses is refused here too. A
 name nothing in the scope claims is left unjudged. A v3 fill value is
-judged against the data type it names; a codec against the array it is
-handed, and a grid against the shape, are not judged here. Each concept
+judged against the data type it names, and the chunk grid against the
+shape; a codec against the array it is handed is not judged here. Each concept
 gets a `validate_*` function returning every problem found, an `is_*`
 type guard, and a `parse_*` function that narrows or raises
 `MetadataValidationError`. The guards are `TypeGuard`s,
@@ -45,6 +45,7 @@ from zarr_metadata.v3._definition import (
     Definition,
     Resolved,
     StorageTransformerDefinition,
+    chunk_grid_problems,
     fill_value_problems,
     resolve,
 )
@@ -183,19 +184,22 @@ def _is_int_sequence(value: object) -> TypeGuard[Sequence[int]]:
     )
 
 
-def _validate_dim_sequence(doc: Mapping[object, object], key: str) -> tuple[ValidationProblem, ...]:
-    """Validate a dimension sequence (`shape` / `chunks`) if present in `doc`.
+def _dimension_lengths(
+    doc: Mapping[object, object], key: str
+) -> tuple[tuple[int, ...] | None, tuple[ValidationProblem, ...]]:
+    """The dimension lengths `doc` holds at `key` (`shape`, `chunks`), and every problem with them.
 
-    Dimension lengths are non-negative integers.
+    Dimension lengths are non-negative integers; the lengths are None when
+    `doc` holds none at `key`, or ones with a problem.
     """
     if key not in doc:
-        return ()
+        return None, ()
     value = doc[key]
     if not _is_int_sequence(value):
-        return (ValidationProblem((key,), "expected a sequence of int", "invalid_type"),)
+        return None, (ValidationProblem((key,), "expected a sequence of int", "invalid_type"),)
     if any(item < 0 for item in value):
-        return (ValidationProblem((key,), "expected non-negative integers", "invalid_value"),)
-    return ()
+        return None, (ValidationProblem((key,), "expected non-negative integers", "invalid_value"),)
+    return tuple(value), ()
 
 
 def _is_dtype_v2(value: object) -> bool:
@@ -349,9 +353,11 @@ def validate_array_metadata_v3(
     Its structure, and each extension point read through the definition
     that claims its name in `context`: a gzip `level` out of range, a key a
     codec's configuration does not declare. The fill value is judged
-    against the data type as `context` read it: an `int8` fill value of 300.
-    A name nothing in `context` claims is left unjudged, with any fill value
-    of it. Unknown top-level keys are allowed (they map
+    against the data type as `context` read it -- an `int8` fill value of
+    300 -- and the chunk grid against the shape: a regular grid with a
+    chunk length for each of two dimensions, over an array of three. A name
+    nothing in `context` claims is left unjudged, with any fill value of
+    it. Unknown top-level keys are allowed (they map
     to `extra_fields`); a reader must understand each one that does not
     say `must_understand: false`, which the model reports as
     `must_understand_fields`.
@@ -363,7 +369,8 @@ def validate_array_metadata_v3(
     problems.extend(_validate_other_members(doc, ARRAY_METADATA_STANDARD_KEYS_V3))
     problems.extend(_check_literal(doc, "zarr_format", 3))
     problems.extend(_check_literal(doc, "node_type", "array"))
-    problems.extend(_validate_dim_sequence(doc, "shape"))
+    shape, shape_problems = _dimension_lengths(doc, "shape")
+    problems.extend(shape_problems)
     # Each extension point is read by `resolve`, which judges its envelope
     # -- every extension *point* must be understood, so a `must_understand`
     # of `false` is refused at each: ignoring a codec gives wrong bytes as
@@ -389,6 +396,9 @@ def validate_array_metadata_v3(
             )
         else:
             problems.extend(_prefix("fill_value", validate_json(doc["fill_value"])))
+    # The chunk grid is judged against the shape, once both are read.
+    if "chunk_grid" in read and shape is not None:
+        problems.extend(chunk_grid_problems(read["chunk_grid"], shape, ("chunk_grid",)))
     for key, kind in _EXTENSION_LISTS_V3:
         if key in doc:
             entries = doc[key]
@@ -410,7 +420,6 @@ def validate_array_metadata_v3(
         # field-level loc, not per-bad-item locs; per-index locs are reserved for
         # the metadata-field lists (codecs, storage_transformers).
         names = doc["dimension_names"]
-        shape = doc.get("shape")
         if not _is_array(names):
             problems.append(
                 ValidationProblem(("dimension_names",), "expected a sequence", "invalid_type")
@@ -421,7 +430,7 @@ def validate_array_metadata_v3(
                     ("dimension_names",), "expected items of str or None", "invalid_type"
                 )
             )
-        elif _is_int_sequence(shape) and len(names) != len(shape):
+        elif shape is not None and len(names) != len(shape):
             problems.append(
                 ValidationProblem(
                     ("dimension_names",),
@@ -474,19 +483,11 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     problems: list[ValidationProblem] = list(_missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc))
     problems.extend(_validate_other_members(doc, ARRAY_METADATA_STANDARD_KEYS_V2))
     problems.extend(_check_literal(doc, "zarr_format", 2))
-    shape_problems = _validate_dim_sequence(doc, "shape")
-    chunks_problems = _validate_dim_sequence(doc, "chunks")
+    shape, shape_problems = _dimension_lengths(doc, "shape")
+    chunks, chunks_problems = _dimension_lengths(doc, "chunks")
     problems.extend(shape_problems)
     problems.extend(chunks_problems)
-    shape = doc.get("shape")
-    chunks = doc.get("chunks")
-    if (
-        len(shape_problems) == 0
-        and len(chunks_problems) == 0
-        and _is_int_sequence(shape)
-        and _is_int_sequence(chunks)
-        and len(shape) != len(chunks)
-    ):
+    if shape is not None and chunks is not None and len(shape) != len(chunks):
         problems.append(
             ValidationProblem(
                 ("chunks",),

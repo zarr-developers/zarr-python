@@ -83,21 +83,14 @@ D = TypeVar("D", bound="Definition[Any]")
 Problems: TypeAlias = tuple[ValidationProblem, ...]
 
 
-def no_rules(configuration: object) -> Iterator[ValidationProblem]:
-    """The rules of a definition with none: every well-typed configuration is allowed."""
+def no_rules(*_: object) -> Iterator[ValidationProblem]:
+    """The rules of a definition with none, of any kind: everything well typed is allowed."""
     yield from ()
 
 
 def unchanged(configuration: T) -> T:
     """The canonical form of a configuration with no simpler spelling: itself."""
     return configuration
-
-
-def no_fill_value_rules(
-    configuration: object, nested: Nested, value: object
-) -> Iterator[ValidationProblem]:
-    """The fill value rules of a data type with none: every fill value of its JSON shape is allowed."""
-    yield from ()
 
 
 class EmptyConfiguration(TypedDict, closed=True):
@@ -276,7 +269,7 @@ class DataTypeDefinition(Definition[C]):
 
     fill_value: object = JSONValue
     """The JSON shape of a fill value, as an annotation: `Int8FillValue`."""
-    fill_value_rules: Callable[[C, Nested, Any], Iterable[ValidationProblem]] = no_fill_value_rules
+    fill_value_rules: Callable[[C, Nested, Any], Iterable[ValidationProblem]] = no_rules
     """What the spec disallows in a fill value of that shape, located in it."""
 
     def _refusal(self) -> str | None:
@@ -300,7 +293,18 @@ def _fill_value_parser(annotation: object) -> Parser:
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class ChunkGridDefinition(Definition[C]):
-    """A chunk grid."""
+    """A chunk grid, and the arrays it fits.
+
+    `shape_rules` is what the spec disallows in a grid of this
+    configuration over an array of a given shape: a dimension with no
+    chunk length, chunks that fall short of one. It is handed the
+    configuration, the fields it holds as the scope read them, and the
+    shape, and locates its problems in the configuration. A grid that
+    says nothing of the shape fits every one.
+    """
+
+    shape_rules: Callable[[C, Nested, tuple[int, ...]], Iterable[ValidationProblem]] = no_rules
+    """What the spec disallows in this grid over an array of a shape, located in the configuration."""
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -703,6 +707,28 @@ def fill_value_problems(
     return (*problems, *refused)
 
 
+def chunk_grid_problems(
+    chunk_grid: Resolved[ChunkGridDefinition[Any]], shape: tuple[int, ...], loc: Loc = ()
+) -> Problems:
+    """What is wrong with `chunk_grid`, a chunk grid field a scope read, over an array of `shape`.
+
+    Judged by the grid's shape rules, which locate their problems in the
+    configuration, under `loc`, where the field sits: a regular grid with
+    a chunk length for each of two dimensions, over an array of three. A
+    grid the scope did not read, out of scope or invalid, is left
+    unjudged.
+    """
+    definition = chunk_grid.definition
+    configuration = chunk_grid.configuration
+    if definition is None or configuration is None:
+        return ()
+    return _ruled(
+        definition,
+        lambda: definition.shape_rules(configuration, chunk_grid.nested, shape),
+        (*loc, "configuration"),
+    )
+
+
 def resolve(
     data: object, kind: type[D], context: Context, loc: Loc = ()
 ) -> tuple[Resolved[D], Problems]:
@@ -912,11 +938,11 @@ __all__ = [
     "Unread",
     "as_kind",
     "canonicalize",
+    "chunk_grid_problems",
     "configuration_of",
     "fill_value_problems",
     "kind_of",
     "named_configuration",
-    "no_fill_value_rules",
     "no_rules",
     "resolve",
     "spelled",

@@ -110,9 +110,10 @@ A scope reads whole documents as well as fields:
 `validate_array_metadata_v3(document, context=SCOPE)`, from
 `zarr_metadata.model`, reads each extension point of a v3 array document
 through the definitions in `SCOPE`, and so do the model's `from_json` and
-`from_key_value`, and a fill value is judged against the data type it
-names, by that data type's definition. No rule here reads a codec against
-the array it is handed, or a chunk grid against the shape.
+`from_key_value`: a fill value is judged against the data type it names,
+by that data type's definition, and the chunk grid against the shape, by
+the grid's definition. No rule here reads a codec against the array it
+is handed.
 
 The TypedDict says what a key it does not declare is: with
 `closed=True`, a problem, as above; with `extra_items=`, a key holding
@@ -147,6 +148,12 @@ a struct judges each field's fill value by that field's own type.
 type field the scope read; one nothing in scope claims leaves it unjudged.
 A data type that says nothing of its fill value takes any JSON.
 
+A chunk grid says which arrays it fits: `shape_rules`, a function
+yielding what the spec disallows in a grid of its configuration over an
+array of a given shape -- a dimension with no chunk length, chunks that
+fall short of one -- located in the configuration. A grid that says
+nothing of the shape fits every one.
+
 Raw bits are the one data type whose name carries its configuration: a
 document writes `r` and the size in bits, and `r16` reads as `r*`, as the
 specification's table writes raw bits, with `{"bits": 16}`. A reader that
@@ -169,11 +176,12 @@ A definition checks itself when it is built, and each of these is a
 `TypeError` saying what is wrong: a `configuration` that is not a
 TypedDict, says nothing of the keys it does not declare, or has a member
 no checker reads, named down to the TypedDict that holds it; a `name`
-that is not a string; `rules` or `canonical` that are not functions; a
-codec `kind` that is not one of the three, or a `size` that is not
-`"static"` or `"dynamic"`; a data type named as raw bits of one size are
-written. A scope refuses a definition of no kind. Nothing happens at
-class creation.
+that is not a string; a member declared as a function -- `rules`,
+`canonical`, `fill_value_rules`, `shape_rules` -- that is not one; a data
+type's `fill_value` no checker reads; a codec `kind` that is not one of
+the three, or a `size` that is not `"static"` or `"dynamic"`; a data type
+named as raw bits of one size are written. A scope refuses a definition
+of no kind. Nothing happens at class creation.
 """
 
 from zarr_metadata._common import JSONValue

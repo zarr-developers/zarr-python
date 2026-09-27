@@ -11,7 +11,7 @@ from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata._typed_json import Loc
-from zarr_metadata.v3._definition import ChunkGridDefinition
+from zarr_metadata.v3._definition import ChunkGridDefinition, Nested
 
 RECTILINEAR_CHUNK_GRID_NAME: Final = "rectilinear"
 """The `name` field value of the rectilinear chunk grid."""
@@ -123,11 +123,43 @@ def _canonical(
     )
 
 
+def _shape_rules(
+    configuration: RectilinearChunkGridConfiguration, nested: Nested, shape: tuple[int, ...]
+) -> Iterator[ValidationProblem]:
+    """Chunk lengths for each of the array's dimensions, which cover it.
+
+    "The length of `chunk_shapes` MUST match the number of dimensions of
+    the array", and "The sum of the edge lengths MUST equal or exceed `L`"
+    (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md?plain=1#L62-L91).
+    A bare integer repeats until it covers the dimension, so it always does.
+    """
+    chunk_shapes = configuration["chunk_shapes"]
+    if len(chunk_shapes) != len(shape):
+        yield ValidationProblem(
+            ("chunk_shapes",),
+            f"expected one chunk_shapes entry per dimension of shape, got {len(chunk_shapes)}",
+            "invalid_value",
+        )
+        return
+    for axis, (spec, extent) in enumerate(zip(chunk_shapes, shape, strict=True)):
+        if isinstance(spec, int):
+            continue
+        covered = sum(entry if isinstance(entry, int) else entry[0] * entry[1] for entry in spec)
+        if covered < extent:
+            yield ValidationProblem(
+                ("chunk_shapes", axis),
+                f"expected chunk lengths that cover the dimension's length {extent}, "
+                f"got lengths summing to {covered}",
+                "invalid_value",
+            )
+
+
 RECTILINEAR_CHUNK_GRID: Final = ChunkGridDefinition(
     name=RECTILINEAR_CHUNK_GRID_NAME,
     configuration=RectilinearChunkGridConfiguration,
     rules=_rules,
     canonical=_canonical,
+    shape_rules=_shape_rules,
 )
 """The `rectilinear` chunk grid."""
 

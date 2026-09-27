@@ -710,11 +710,21 @@ def test_error_a_data_type_fill_value_no_checker_reads() -> None:
         DataTypeDefinition(name="acme.set", configuration=Empty, fill_value=set[int])
 
 
-@pytest.mark.parametrize("member", ["rules", "canonical", "fill_value_rules"])
-def test_error_a_function_member_that_is_not_a_function(member: str) -> None:
+@pytest.mark.parametrize(
+    ("kind", "member"),
+    [
+        (DataTypeDefinition, "rules"),
+        (DataTypeDefinition, "canonical"),
+        (DataTypeDefinition, "fill_value_rules"),
+        (ChunkGridDefinition, "shape_rules"),
+    ],
+)
+def test_error_a_function_member_that_is_not_a_function(
+    kind: type[Definition[Any]], member: str
+) -> None:
     # Each member a definition's annotations declare a `Callable`.
     with pytest.raises(TypeError, match=f"'acme.t': {member} is a function, got 'none'"):
-        DataTypeDefinition(name="acme.t", configuration=Empty, **{member: "none"})  # pyright: ignore[reportArgumentType]
+        kind(name="acme.t", configuration=Empty, **{member: "none"})  # pyright: ignore[reportArgumentType]
 
 
 @pytest.mark.parametrize("kind", [Definition, AcmeCodecDefinition])

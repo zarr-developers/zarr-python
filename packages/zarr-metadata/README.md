@@ -65,8 +65,9 @@ configuration its definition refuses is refused, and a key it does not
 declare is reported as `unknown_key`. A name nothing in the scope claims is
 left unjudged, and whether to support it is the consumer's decision. A v3
 fill value is judged against the data type it names, by that data type's
+definition, and the chunk grid against the shape, by the grid's
 definition. The validators do not judge a codec against the array it is
-handed, or a chunk grid against the shape.
+handed.
 
 The Pydantic integration's generated JSON Schemas express independently
 checkable document structure and field constraints, but they are not a

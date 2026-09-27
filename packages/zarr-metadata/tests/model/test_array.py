@@ -1572,7 +1572,8 @@ def test_error_array_v2_key_that_is_not_a_string(key: object) -> None:
 
 def test_array_v3_from_json_materializes_abstract_containers() -> None:
     """A flexible input mapping becomes the canonical dict/tuple model shape."""
-    doc = UserDict(dict(ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json()))
+    # `range(2)` is the shape (0, 1), which the default grid for it fits.
+    doc = UserDict(dict(ZarrV3ArrayMetadata.create_default(shape=(0, 1)).to_json()))
     doc["shape"] = range(2)
 
     model = ZarrV3ArrayMetadata.from_json(doc)

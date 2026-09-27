@@ -198,8 +198,9 @@ class ZarrV3ArrayMetadata:
         it would require interpreting the grid's configuration, which this
         layer never does (and cannot do for unrecognized grid names). So
         overriding `chunk_grid` without `shape` keeps the scalar default
-        `shape=()`, and consistency between the two is the caller's
-        responsibility. So is a fill value for an overridden `data_type`:
+        `shape=()`, which a grid of another rank does not fit: consistency
+        between the two is the caller's responsibility, so pass them
+        together. So is a fill value for an overridden `data_type`:
         the default `fill_value` is `0`, which a data type whose fill value
         is not an integer -- `bool`, `string`, a complex or struct type --
         refuses, so pass the two together.

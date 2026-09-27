@@ -40,7 +40,7 @@ def numpy_time_fill_value_rules(
 ) -> Iterator[ValidationProblem]:
     """An integer fill value is a signed 64-bit one; `"NaT"` is the other form, which the shape admits.
 
-    https://github.com/zarr-developers/zarr-extensions/blob/6a3adaeef244b3c76270dca52d6a849e88cf002c/data-types/numpy.datetime64/README.md?plain=1#L109-L112
+    https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.datetime64/README.md?plain=1#L109-L112
     """
     if isinstance(value, int) and not -(2**63) <= value <= 2**63 - 1:
         yield ValidationProblem(
