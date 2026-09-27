@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import re
 from collections.abc import (
     Mapping,  # noqa: TC003 - a TypedDict's annotations are evaluated at run time
 )
@@ -65,22 +64,6 @@ ACME_STACK = CodecDefinition(
     kind="bytes_bytes",
     size="dynamic",
     rules=acme_stack_rules,
-)
-
-ACME_FIXED = re.compile(r"acme\.fixed(\d+)")
-
-
-def acme_fixed_name_rules(name: str) -> Iterator[ValidationProblem]:
-    match = ACME_FIXED.fullmatch(name)
-    if match is not None and int(match.group(1)) % 8 != 0:
-        yield ValidationProblem((), "expected a width that is a multiple of 8", "invalid_value")
-
-
-ACME_FIXED_TYPE = DataTypeDefinition(
-    name="acme.fixed<N>",
-    configuration=Empty,
-    names=lambda name: ACME_FIXED.fullmatch(name) is not None,
-    name_rules=acme_fixed_name_rules,
 )
 
 
@@ -182,7 +165,6 @@ ACME_PAIRED = CodecDefinition(
 
 SCOPE = CORE_AND_EXTENSIONS.extended_with(
     ACME_STACK,
-    ACME_FIXED_TYPE,
     ACME_LEVEL,
     ACME_TOTAL,
     ACME_TREE,
@@ -308,8 +290,6 @@ def test_core_is_a_subset_of_core_and_extensions() -> None:
             {"codecs": ("crc32c", "zfpy")},
             [],
         ),
-        # A family claims many names.
-        ("acme.fixed16", DataTypeDefinition, "read", {}, []),
     ],
     ids=[
         "gzip",
@@ -331,7 +311,6 @@ def test_core_is_a_subset_of_core_and_extensions() -> None:
         "extra-items-of-fields",
         "out-of-scope",
         "nested",
-        "family",
     ],
 )
 def test_a_field_is_read_in_scope(
@@ -463,21 +442,6 @@ def test_error_a_rule_that_returns_none_says_whose_it_is() -> None:
     ]
 
 
-def test_error_a_name_rule_that_yields_something_else() -> None:
-    family = replace(
-        GZIP_CODEC,
-        name="acme*",
-        names=lambda name: name.startswith("acme"),
-        name_rules=lambda name: iter(["not a problem"]),
-    )
-    with pytest.raises(TypeError, match="'acme\\*': its rules yield ValidationProblem values"):
-        resolve(
-            {"name": "acme7", "configuration": {"level": 1}},
-            CodecDefinition,
-            CORE.extended_with(family),
-        )
-
-
 def test_error_null_is_not_a_field() -> None:
     # JSON's null is JSON: refined, it is None with no problem, which is
     # not a verdict. Read as a field or checked as a configuration, it is
@@ -559,12 +523,6 @@ def test_error_a_nested_member_is_not_a_field() -> None:
     )
     assert resolved.resolution == "invalid"
     assert _locs(found) == [(("configuration", "codecs", 0), "invalid_type")]
-
-
-def test_error_a_family_judges_the_name_it_claims() -> None:
-    resolved, found = resolve("acme.fixed12", DataTypeDefinition, SCOPE)
-    assert resolved.resolution == "invalid"
-    assert _locs(found) == [((), "invalid_value")]
 
 
 def test_check_needs_nothing_but_the_value_and_a_typeddict() -> None:
@@ -715,15 +673,10 @@ def test_error_a_codec_kind_is_one_of_three() -> None:
         CodecDefinition(name="acme.k", configuration=Empty, kind="bytes_to_array", size="dynamic")  # pyright: ignore[reportArgumentType]
 
 
-def test_error_a_family_names_its_names_with_a_function() -> None:
-    with pytest.raises(TypeError, match="names is a function"):
-        CodecDefinition(
-            name="acme.n",
-            configuration=Empty,
-            kind="bytes_bytes",
-            size="dynamic",
-            names="acme.n",  # pyright: ignore[reportArgumentType]
-        )
+def test_error_a_data_type_is_named_as_raw_bits_of_one_size_are_written() -> None:
+    # `r16` reads as `r*`, so a definition filed under it would read nothing.
+    with pytest.raises(TypeError, match="to read raw bits your own way, define 'r\\*'"):
+        DataTypeDefinition(name="r16", configuration=Empty)
 
 
 @pytest.mark.parametrize("kind", [Definition, AcmeCodecDefinition])

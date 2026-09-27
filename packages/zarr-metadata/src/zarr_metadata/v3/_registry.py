@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, cast
 
-from zarr_metadata.v3._definition import KINDS, Definition, as_kind, kind_of
+from zarr_metadata.v3._definition import KINDS, Definition, as_kind, kind_of, spelled
 from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
 from zarr_metadata.v3.chunk_key_encoding.default import DEFAULT_CHUNK_KEY_ENCODING
@@ -94,9 +94,6 @@ class Context:
                     "ChunkKeyEncodingDefinition or StorageTransformerDefinition"
                 )
                 raise TypeError(msg)
-            # Filed again, a name moves to the end, so the one filed last is
-            # the one asked first.
-            tables[kind].pop(definition.name, None)
             tables[kind][definition.name] = definition
         return cls(
             MappingProxyType({kind: MappingProxyType(table) for kind, table in tables.items()})
@@ -105,10 +102,10 @@ class Context:
     def extended_with(self, *definitions: Definition[Any]) -> Context:
         """This scope, plus definitions of your own.
 
-        A name already filed under the same kind, or claimed by a family,
-        is taken over by what is passed here, which is how a reader
-        substitutes its own reading of a codec the package already
-        defines.
+        A name already filed under the same kind is taken over by what is
+        passed here, which is how a reader substitutes its own reading of a
+        codec the package already defines -- or of raw bits, by defining
+        `r*`.
         """
         return Context.of(*self.definitions(), *definitions)
 
@@ -117,19 +114,16 @@ class Context:
         return tuple(entry for table in self.tables.values() for entry in table.values())
 
     def claimant(self, kind: type[D], name: str) -> D | None:
-        """The definition of `kind` in scope that claims `name`; None if none does.
+        """The definition of `kind` in scope that reads `name`, a name a document writes; None if none does.
 
-        Asks each definition filed under the kind whether the name is its
-        own -- a family claims every `r<N>` -- the one filed last first, so
-        a definition a scope was extended with takes a name over from one
-        before it, whether that one was filed under the name or claims it
-        as a family.
+        The one filed under the name `spelled` reads it as: itself, but
+        for raw bits, `r16` read by the definition of `r*`.
         """
-        table = self.tables.get(as_kind(kind), {})
-        return cast(
-            "D | None",
-            next((entry for entry in reversed(tuple(table.values())) if entry.claims(name)), None),
-        )
+        asked = as_kind(kind)
+        filed, _ = spelled(asked, name)
+        if filed is None:
+            return None
+        return cast("D | None", self.tables.get(asked, {}).get(filed))
 
 
 _CORE: Final[tuple[Definition[Any], ...]] = (

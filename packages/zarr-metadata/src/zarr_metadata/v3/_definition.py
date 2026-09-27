@@ -30,6 +30,7 @@ at class creation.
 from __future__ import annotations
 
 import functools
+import re
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import (
@@ -84,11 +85,6 @@ def no_rules(configuration: object) -> Iterator[ValidationProblem]:
     yield from ()
 
 
-def no_name_rules(name: str) -> Iterator[ValidationProblem]:
-    """The name rules of a definition that claims one name: that name is allowed."""
-    yield from ()
-
-
 def unchanged(configuration: T) -> T:
     """The canonical form of a configuration with no simpler spelling: itself."""
     return configuration
@@ -115,28 +111,21 @@ class Definition(Generic[C]):
     the TypedDict admits and nothing else -- `judge` is the two, for a
     caller holding JSON.
 
-    A family claims many names -- every `r<N>`, one data type -- through
-    `names`, and says which of them are allowed through `name_rules`,
-    whose problems land on the field, since a name is not configuration.
-    Every other definition claims `name` alone. `canonical` is where two
-    spellings of the configuration that mean the same thing are made one.
+    `canonical` is where two spellings of the configuration that mean the
+    same thing are made one.
 
     Built by hand, a definition refuses what it could not read with: a
     `configuration` that is not a TypedDict, says nothing of the keys it
     does not declare, or has a member no checker reads, which is named;
-    and a `name`, `names` or rules that are not what they say.
+    and a `name` or rules that are not what they say.
     """
 
     name: str
-    """The name the metadata carries; for a family, the one it is filed under in a scope."""
+    """The name the metadata carries, which a scope files the definition under."""
     configuration: type[C]
     """The TypedDict the configuration is."""
     rules: Callable[[C], Iterable[ValidationProblem]] = no_rules
     """What the spec disallows in a well-typed configuration, located in it."""
-    names: Callable[[str], bool] | None = None
-    """Which names a family claims; None for a definition that claims `name` alone."""
-    name_rules: Callable[[str], Iterable[ValidationProblem]] = no_name_rules
-    """What the spec disallows in a claimed name."""
     canonical: Callable[[C], C] = unchanged
     """A well-typed, allowed configuration in its simplest equivalent spelling.
 
@@ -162,10 +151,6 @@ class Definition(Generic[C]):
     def requires_configuration(self) -> bool:
         """Whether a document must write a configuration: whether the TypedDict has a required key."""
         return len(typeddict_keys(self.configuration).required) != 0
-
-    def claims(self, name: str) -> bool:
-        """Whether `name` denotes this definition."""
-        return name == self.name if self.names is None else self.names(name)
 
     def check(self, value: object, loc: Loc = ()) -> tuple[C | None, Problems]:
         """`value` type-checked as this definition's configuration, each nested field's envelope judged.
@@ -196,13 +181,7 @@ def _malformed(definition: Definition[Any]) -> str | None:
     name = cast("object", definition.name)
     if not isinstance(name, str):
         return f"a definition's name is a string, got {name!r}"
-    functions: dict[str, object] = {
-        "rules": definition.rules,
-        "name_rules": definition.name_rules,
-        "canonical": definition.canonical,
-    }
-    if definition.names is not None:
-        functions["names"] = definition.names
+    functions: dict[str, object] = {"rules": definition.rules, "canonical": definition.canonical}
     return next(
         (
             f"{name!r}: {member} is a function, got {value!r}"
@@ -213,9 +192,71 @@ def _malformed(definition: Definition[Any]) -> str | None:
     )
 
 
+RAW_BYTES_NAME: Final = "r*"
+"""The name raw bits are filed under: `r*`, as the specification's table of data types writes them.
+
+A document writes `r` and the size in bits -- `r8`, `r16` -- so raw bits
+are the one data type whose name carries its configuration. `spelled`
+reads such a name as `r*` with the size as its configuration; `r*` itself
+is the table's notation, never a name a document writes
+(https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L46-L47).
+"""
+
+RAW_BYTES_NAME_PATTERN: Final = re.compile(r"r([0-9]+)")
+"""A name that writes raw bits: `r` and a size in bits, matched whole, whether or not the size is allowed.
+
+ASCII digits only: `\\d` would also match every other Unicode decimal, so
+`r\uff11\uff16` would be read as sixteen bits, and a third-party name
+spelled that way would be taken for raw bits. A size the spec does not
+allow -- `r0`, `r12` -- is still raw bits, so it is reported as a bad
+size rather than passed as an unknown extension.
+"""
+
+
+def spelled(
+    kind: type[Definition[Any]], name: str
+) -> tuple[str | None, dict[str, JSONValue] | None]:
+    """How a name a document writes reads: the name its definition is filed under, and the configuration the name carries.
+
+    A name is filed as itself and carries nothing, but for raw bits: the
+    data type `r16` is filed under `r*` and carries `{"bits": 16}`. `r*`
+    itself is filed under nothing, `(None, None)`, since no document
+    writes it.
+    """
+    if kind is DataTypeDefinition:
+        if name == RAW_BYTES_NAME:
+            return None, None
+        written = RAW_BYTES_NAME_PATTERN.fullmatch(name)
+        if written is not None:
+            return RAW_BYTES_NAME, {"bits": int(written.group(1))}
+    return name, None
+
+
+def _carrying_name(
+    definition: Definition[Any], configuration: Mapping[str, JSONValue]
+) -> str | None:
+    """The name that carries `configuration` for `definition`: `r16` for `r*` with `{"bits": 16}`; None when its name carries nothing."""
+    if not isinstance(definition, DataTypeDefinition) or definition.name != RAW_BYTES_NAME:
+        return None
+    return f"r{configuration['bits']}"
+
+
 @dataclass(frozen=True, kw_only=True, slots=True)
 class DataTypeDefinition(Definition[C]):
-    """A data type."""
+    """A data type.
+
+    One named as a document writes raw bits of one size -- `r16` -- is
+    refused: that name reads as `r*`, so nothing would ever read it with
+    this definition.
+    """
+
+    def _refusal(self) -> str | None:
+        if RAW_BYTES_NAME_PATTERN.fullmatch(self.name) is None:
+            return None
+        return (
+            f"{self.name!r} is how a document writes raw bits of one size, which read as "
+            f"{RAW_BYTES_NAME!r}; to read raw bits your own way, define {RAW_BYTES_NAME!r}"
+        )
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -463,7 +504,7 @@ def _usable(problems: Sequence[ValidationProblem]) -> bool:
 def _ruled(
     definition: Definition[Any], ask: Callable[[], Iterable[ValidationProblem]], at: Loc
 ) -> Problems:
-    """What `ask`, a call of `definition`'s rules or name rules, finds, located under `at`.
+    """What `ask`, a call of `definition`'s rules, finds, located under `at`.
 
     Rules are the extension author's code. What they yield is checked to be
     what they declare, and an error one raises says which definition's rules
@@ -625,13 +666,15 @@ def _read(
     definition = context.claimant(kind, name)
     if definition is None:
         return Resolved(data, "out_of_scope", None, None), ()
+    _, carried = spelled(kind, name)
+    if carried is not None:
+        return _read_carried(data, definition, given, carried, loc)
     at = (*loc, "configuration")
-    problems = list(_ruled(definition, lambda: definition.name_rules(name), loc))
     if given is None and definition.requires_configuration:
-        problems.extend(problem(at, f"{name!r} requires a configuration", "missing_key"))
-        return Resolved(data, "invalid", definition, None), tuple(problems)
+        missing = problem(at, f"{name!r} requires a configuration", "missing_key")
+        return Resolved(data, "invalid", definition, None), missing
     typed, found, nested = _checked(definition.configuration, {} if given is None else given, at)
-    problems.extend(found)
+    problems = list(found)
     envelopes = [_envelope(field) for field in nested]
     sound = _usable(found) and all(_usable(envelope) for envelope in envelopes)
     configuration = cast("Mapping[str, JSONValue]", typed) if sound else None
@@ -645,6 +688,30 @@ def _read(
     if not _usable(problems):
         return Resolved(data, "invalid", definition, None), tuple(problems)
     return Resolved(data, "read", definition, configuration), tuple(problems)
+
+
+def _read_carried(
+    data: JSONValue,
+    definition: Definition[Any],
+    given: Mapping[str, object] | None,
+    carried: Mapping[str, JSONValue],
+    loc: Loc,
+) -> tuple[Resolved[Definition[Any]], Problems]:
+    """A field whose name carries its configuration -- raw bits, `r16` -- read by the definition its name is filed under.
+
+    The document wrote a name, so what is wrong with what the name carries
+    -- a size that is not a positive multiple of 8 -- is a problem of the
+    field. A configuration written beside the name holds nothing, so each
+    member of one is a key nothing declares.
+    """
+    _, beside, _ = _checked(
+        EmptyConfiguration, {} if given is None else given, (*loc, "configuration")
+    )
+    configuration, judged = definition.judge(carried)
+    problems = (*beside, *(ValidationProblem(loc, found.message, found.kind) for found in judged))
+    if configuration is None or not _usable(problems):
+        return Resolved(data, "invalid", definition, None), problems
+    return Resolved(data, "read", definition, configuration), problems
 
 
 def _sized(field: _NestedField, definition: Definition[Any] | None) -> Problems:
@@ -712,6 +779,9 @@ def _canonical_field(
             f"{list(refused)!r}"
         )
         raise ValueError(msg)
+    carrying = _carrying_name(definition, simplified)
+    if carrying is not None:
+        return carrying
     if len(simplified) == 0:
         return name
     return {"name": name, "configuration": simplified}
@@ -731,6 +801,8 @@ def _replaced(value: JSONValue, path: Loc, new: JSONValue) -> JSONValue:
 
 __all__ = [
     "KINDS",
+    "RAW_BYTES_NAME",
+    "RAW_BYTES_NAME_PATTERN",
     "ChunkGridDefinition",
     "ChunkGridField",
     "ChunkKeyEncodingDefinition",
@@ -754,8 +826,8 @@ __all__ = [
     "configuration_of",
     "kind_of",
     "named_configuration",
-    "no_name_rules",
     "no_rules",
     "resolve",
+    "spelled",
     "unchanged",
 ]

@@ -124,18 +124,24 @@ of dynamic size there is a problem at its place, where the field is read
 in a scope; a name nothing claims is left unjudged, its size unknown with
 the rest of it. `ZarrV3MetadataFieldJSON` is the same
 JSON, but checks as JSON and nothing more, so a definition refuses a
-member typed with it. A family, one definition for many names, claims
-them through `names` and says which are allowed through `name_rules`:
-the raw-bytes family claims every `r<N>`. An extension with nothing to
-configure takes `EmptyConfiguration`, and is written as its bare name.
+member typed with it. An extension with nothing to configure takes
+`EmptyConfiguration`, and is written as its bare name.
+
+Raw bits are the one data type whose name carries its configuration: a
+document writes `r` and the size in bits, and `r16` reads as `r*`, as the
+specification's table writes raw bits, with `{"bits": 16}`. A reader that
+reads raw bits its own way defines `r*`; a data type named `r16` is
+refused, since that name reads as `r*`. `r*` itself is notation, and a
+document that writes it names nothing in any scope.
 
 **The simplest spelling.** `canonicalize(field, kind, scope)` gives a
 field without problems in its simplest equivalent spelling: each nested
 field in its own simplest spelling, then the definition's `canonical` --
 blosc drops a `typesize` that `noshuffle` ignores, a rectilinear grid
 run-length encodes its chunk shapes -- and the envelope in the fewest
-words. A field with any problem, an unknown key included, has none: a
-simpler spelling of it would erase what its author wrote. What
+words; raw bits write their size back into the name, in decimal, so
+`r008` is `r8`. A field with any problem, an unknown key included, has
+none: a simpler spelling of it would erase what its author wrote. What
 `canonical` gives is judged again: one that does not hold is a
 `ValueError`, a fault in the definition.
 
@@ -143,10 +149,11 @@ A definition checks itself when it is built, and each of these is a
 `TypeError` saying what is wrong: a `configuration` that is not a
 TypedDict, says nothing of the keys it does not declare, or has a member
 no checker reads, named down to the TypedDict that holds it; a `name`
-that is not a string; `rules`, `name_rules`, `canonical` or `names`
-that are not functions; a codec `kind` that is not one of the three, or a
-`size` that is not `"static"` or `"dynamic"`. A scope refuses
-a definition of no kind. Nothing happens at class creation.
+that is not a string; `rules` or `canonical` that are not functions; a
+codec `kind` that is not one of the three, or a `size` that is not
+`"static"` or `"dynamic"`; a data type named as raw bits of one size are
+written. A scope refuses a definition of no kind. Nothing happens at
+class creation.
 """
 
 from zarr_metadata._common import JSONValue

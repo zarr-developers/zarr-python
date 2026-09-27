@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
-from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
+from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE, RawBytesConfiguration
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
@@ -21,9 +21,9 @@ from zarr_metadata.v3.definition import (
     CodecDefinition,
     DataTypeDefinition,
     Definition,
-    EmptyConfiguration,
     ValidationProblem,
     canonicalize,
+    configuration_of,
     resolve,
 )
 
@@ -130,7 +130,7 @@ EXAMPLES: dict[str, tuple[object, ...]] = {
         },
     ),
     "data_type:string": ("string",),
-    "data_type:r<N>": ("r16", "r008"),
+    "data_type:r*": ("r16", "r008"),
 }
 
 CASES = [(key, field) for key, fields in EXAMPLES.items() for field in fields]
@@ -243,21 +243,46 @@ def test_the_simplest_spelling(field: dict[str, Any], simplest: object) -> None:
     assert canonicalize(field, kind, CORE_AND_EXTENSIONS) == (simplest, ())
 
 
-def test_a_reader_takes_a_name_over_from_a_family() -> None:
-    # The raw-bytes family claims every `r<N>`; a reader's own `r16`,
-    # passed later, reads `r16`, and the family keeps the rest.
-    mine = DataTypeDefinition(name="r16", configuration=EmptyConfiguration)
+@pytest.mark.parametrize(
+    ("field", "bits", "simplest"),
+    [
+        ("r16", 16, "r16"),
+        ({"name": "r8"}, 8, "r8"),
+        ({"name": "r24", "configuration": {}}, 24, "r24"),
+        # The size is a number, and its simplest spelling is in decimal.
+        ("r008", 8, "r8"),
+    ],
+    ids=["bare", "object", "empty-configuration", "leading-zeros"],
+)
+def test_raw_bits_read_as_r_star_with_the_size_their_name_carries(
+    field: object, bits: int, simplest: str
+) -> None:
+    resolved, problems = resolve(field, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    assert (resolved.resolution, problems) == ("read", ())
+    assert resolved.definition is RAW_BYTES_DATA_TYPE
+    assert resolved.json == field
+    assert configuration_of(resolved, RAW_BYTES_DATA_TYPE) == {"bits": bits}
+    assert canonicalize(field, DataTypeDefinition, CORE_AND_EXTENSIONS) == (simplest, ())
+
+
+def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
+    # Here, any size at all. Filed last, it reads every raw-bits name, and
+    # the package's own, filed again after it, reads them once more.
+    mine = DataTypeDefinition(name="r*", configuration=RawBytesConfiguration)
     scope = CORE_AND_EXTENSIONS.extended_with(mine)
-    assert resolve("r16", DataTypeDefinition, scope)[0].definition is mine
-    assert resolve("r8", DataTypeDefinition, scope)[0].definition is RAW_BYTES_DATA_TYPE
+    resolved, problems = resolve("r12", DataTypeDefinition, scope)
+    assert resolved.definition is mine
+    assert (resolved.resolution, problems) == ("read", ())
+    again = scope.extended_with(RAW_BYTES_DATA_TYPE)
+    assert resolve("r12", DataTypeDefinition, again)[0].definition is RAW_BYTES_DATA_TYPE
 
 
-def test_a_definition_filed_again_is_asked_first() -> None:
-    # Filed again after a reader's `r16`, the raw-bytes family is the one
-    # passed last, and reads `r16` once more.
-    mine = DataTypeDefinition(name="r16", configuration=EmptyConfiguration)
-    scope = CORE_AND_EXTENSIONS.extended_with(mine).extended_with(RAW_BYTES_DATA_TYPE)
-    assert resolve("r16", DataTypeDefinition, scope)[0].definition is RAW_BYTES_DATA_TYPE
+@pytest.mark.parametrize("field", ["r*", {"name": "r*", "configuration": {"bits": 16}}])
+def test_r_star_is_notation_that_names_nothing(field: object) -> None:
+    # How the specification's table writes raw bits, and no document's name
+    # for them: read as any name nothing in scope claims.
+    resolved, problems = resolve(field, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    assert (resolved.resolution, resolved.definition, problems) == ("out_of_scope", None, ())
 
 
 def test_an_unclaimed_field_keeps_its_own_spelling() -> None:
@@ -524,8 +549,18 @@ def test_error_struct_field_type_is_judged_where_it_sits() -> None:
 
 @pytest.mark.parametrize("name", ["r12", "r0"])
 def test_error_a_raw_bytes_width_is_not_a_positive_multiple_of_8(name: str) -> None:
-    # Claimed by the family, so reported as its own; the name lands on the field.
-    assert _problems("data_type:r<N>", name) == [((), "invalid_value")]
+    # Raw bits of a size the spec does not allow, reported as such rather
+    # than left unjudged; the document wrote a name, so it lands on the field.
+    assert _problems("data_type:r*", name) == [((), "invalid_value")]
+
+
+def test_error_a_configuration_written_beside_a_raw_bits_name() -> None:
+    # The name carries the configuration, so one written beside it holds
+    # nothing: each member is a key nothing declares.
+    assert _read("data_type:r*", {"name": "r16", "configuration": {"bits": 16}}) == (
+        "read",
+        [(("configuration", "bits"), "unknown_key")],
+    )
 
 
 def test_error_a_chunk_key_separator_is_not_one_the_encoding_takes() -> None:
