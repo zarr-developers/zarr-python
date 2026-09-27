@@ -1,8 +1,7 @@
 """Every extension the package defines, read against its definition.
 
-What 2a showed for one field, interpolated: each codec, data type, chunk
-grid and chunk key encoding is a definition, its configuration a
-TypedDict and its rules a function over it.
+Each codec, data type, chunk grid and chunk key encoding is a definition,
+its configuration a TypedDict and its rules a function over it.
 """
 
 from __future__ import annotations
