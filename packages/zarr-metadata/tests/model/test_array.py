@@ -1893,12 +1893,12 @@ def test_v2_create_default_explicit_chunks_respected() -> None:
 
 
 def test_v3_create_default_zero_length_dimensions() -> None:
-    """chunk_shape == shape is spec-sound even with zero-length dimensions:
-    'The chunk shape elements are non-zero when the corresponding dimensions
-    of the arrays have non-zero length' — the constraint is conditional, so a
-    zero chunk length is permitted exactly where the dimension is empty."""
+    """The derived grid gives a dimension of length 0 a chunk length of 1:
+    the regular grid asks for chunk sizes greater than zero, so the written
+    grid is one every reader takes, and it fits the shape it chunks."""
     model = ZarrV3ArrayMetadata.create_default(shape=(0, 3))
-    assert model.chunk_grid.configuration["chunk_shape"] == (0, 3)
+    assert model.chunk_grid.configuration["chunk_shape"] == (1, 3)
+    assert validate_array_metadata_v3(model.to_json()) == ()
 
 
 def test_create_default_derivation_is_one_way() -> None:

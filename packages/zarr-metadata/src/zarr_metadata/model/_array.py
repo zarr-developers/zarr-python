@@ -191,7 +191,9 @@ class ZarrV3ArrayMetadata:
         analog of `list()` returning `[]`. Any field can be overridden by keyword
         (the same fields accepted by `update`). Overriding `shape` without
         `chunk_grid` derives a consistent default grid: one regular chunk
-        covering the array (`chunk_shape` equal to `shape`).
+        covering the array (`chunk_shape` equal to `shape`, with a length of
+        1 for a dimension of length 0, since a chunk length is at least 1:
+        https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L40).
 
         The derivation is deliberately one-way. A user-supplied `chunk_grid`
         is an extension point and is taken verbatim — deriving `shape` from
@@ -206,8 +208,9 @@ class ZarrV3ArrayMetadata:
         refuses, so pass the two together.
         """
         if "shape" in overrides and "chunk_grid" not in overrides:
+            chunk_shape = tuple(max(length, 1) for length in overrides["shape"])
             overrides["chunk_grid"] = ZarrV3NamedConfig(
-                name="regular", configuration={"chunk_shape": tuple(overrides["shape"])}
+                name="regular", configuration={"chunk_shape": chunk_shape}
             )
         default = cls(
             shape=(),
