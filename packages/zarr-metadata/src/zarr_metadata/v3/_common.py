@@ -36,7 +36,23 @@ def validate_metadata_field_v3(
     """Return every reason `value` is not a v3 metadata field.
 
     A metadata field is a bare name string or a mapping containing `name` and
-    optional `configuration` and `must_understand` members.
+    optional `configuration` and `must_understand` members: an envelope, as
+    `envelope_problems` judges it, around a configuration whose members are
+    JSON.
+    """
+    envelope = envelope_problems(value, allow_must_understand_false=allow_must_understand_false)
+    return (*envelope, *_configuration_json_problems(value))
+
+
+def envelope_problems(
+    value: object, *, allow_must_understand_false: bool
+) -> tuple[ValidationProblem, ...]:
+    """Every reason `value` is not a v3 metadata field's envelope, what its configuration holds left unjudged.
+
+    The envelope is what sits around the configuration: a string `name`, a
+    `configuration` that is an object of string keys, a boolean
+    `must_understand`, and nothing else. `resolve` asks this of a field it
+    has refined to JSON already, so a configuration is walked once.
     """
     if isinstance(value, str):
         return ()
@@ -72,9 +88,6 @@ def validate_metadata_field_v3(
             problems.append(
                 ValidationProblem(("configuration",), "expected string keys", "invalid_type")
             )
-        else:
-            for key, item in cast("Mapping[str, object]", configuration).items():
-                problems.extend(prefixed("configuration", prefixed(key, validate_json(item))))
     if "must_understand" in field:
         must_understand = field["must_understand"]
         if not isinstance(must_understand, bool):
@@ -90,6 +103,23 @@ def validate_metadata_field_v3(
                 )
             )
     return tuple(problems)
+
+
+def _configuration_json_problems(value: object) -> tuple[ValidationProblem, ...]:
+    """Each member of `value`'s configuration that is not JSON, located; nothing where no object of string keys is there to walk."""
+    if not isinstance(value, Mapping):
+        return ()
+    configuration = cast("Mapping[object, object]", value).get("configuration")
+    if not isinstance(configuration, Mapping):
+        return ()
+    members = cast("Mapping[object, object]", configuration)
+    if not all(isinstance(key, str) for key in members):
+        return ()
+    return tuple(
+        found
+        for key, item in cast("Mapping[str, object]", members).items()
+        for found in prefixed("configuration", prefixed(key, validate_json(item)))
+    )
 
 
 def is_metadata_field_v3(value: object) -> TypeGuard[ZarrV3MetadataFieldJSON]:
@@ -113,6 +143,7 @@ def parse_metadata_field_v3(value: object) -> ZarrV3MetadataFieldJSON:
 
 __all__ = [
     "ZarrV3MetadataFieldJSON",
+    "envelope_problems",
     "is_metadata_field_v3",
     "parse_metadata_field_v3",
     "validate_metadata_field_v3",

@@ -58,7 +58,7 @@ from zarr_metadata._typed_json import (
     typeddict_keys,
     unread_in,
 )
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON, validate_metadata_field_v3
+from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON, envelope_problems
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -530,9 +530,7 @@ def _located(prefix: Loc, problems: Iterable[ValidationProblem]) -> Problems:
 
 def _envelope(field: _NestedField) -> Problems:
     """What is wrong with a nested field's envelope, at the field."""
-    return _located(
-        field.loc, validate_metadata_field_v3(field.json, allow_must_understand_false=False)
-    )
+    return _located(field.loc, envelope_problems(field.json, allow_must_understand_false=False))
 
 
 def _configuration_checked(
@@ -652,7 +650,7 @@ def _resolve_field(
     a `must_understand` of `false` says nothing about it, so it is reported
     beside the field that was read, which later layers can still judge.
     """
-    envelope = _located(loc, validate_metadata_field_v3(data, allow_must_understand_false=False))
+    envelope = _located(loc, envelope_problems(data, allow_must_understand_false=False))
     resolved, found = _read(data, kind, context, loc)
     return resolved, (*envelope, *found)
 
