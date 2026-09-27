@@ -7,6 +7,8 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 import re
 from typing import Final, Literal, NewType
 
+from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration
+
 FLOAT32_DATA_TYPE_NAME: Final = "float32"
 """The `data_type` value for the `float32` type."""
 
@@ -61,10 +63,17 @@ CANONICAL_NEGATIVE_INFINITY_HEX_FLOAT32: Final = "0xff800000"
 """Canonical hex form of the float32 `"-Infinity"` sentinel."""
 
 
+FLOAT32_DATA_TYPE: Final = DataTypeDefinition(
+    name=FLOAT32_DATA_TYPE_NAME, configuration=EmptyConfiguration
+)
+"""The `float32` data type: a bare name, with nothing to configure."""
+
+
 __all__ = [
     "CANONICAL_NAN_HEX_FLOAT32",
     "CANONICAL_NEGATIVE_INFINITY_HEX_FLOAT32",
     "CANONICAL_POSITIVE_INFINITY_HEX_FLOAT32",
+    "FLOAT32_DATA_TYPE",
     "FLOAT32_DATA_TYPE_NAME",
     "Float32DataTypeName",
     "Float32FillValue",

@@ -9,7 +9,7 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+from zarr_metadata.v3._definition import CodecDefinition, DataTypeField
 
 CAST_VALUE_CODEC_NAME: Final = "cast_value"
 """The `name` field value of the `cast_value` codec."""
@@ -71,7 +71,7 @@ class CastValueCodecConfiguration(TypedDict, closed=True):
     bare-string primitive name or a `{name, configuration}` envelope.
     """
 
-    data_type: ZarrV3MetadataFieldJSON
+    data_type: DataTypeField
     rounding: NotRequired[CastRoundingMode]
     out_of_range: NotRequired[CastOutOfRangeMode]
     scalar_map: NotRequired[ScalarMap]
@@ -95,9 +95,24 @@ the short-hand-name form is not permitted by the spec for this codec.
 """
 
 
+CAST_VALUE_CODEC: Final = CodecDefinition(
+    name=CAST_VALUE_CODEC_NAME,
+    configuration=CastValueCodecConfiguration,
+    kind="array_array",
+    size="static",
+)
+"""The `cast_value` codec.
+
+The data type it casts to is a nested field, read in the scope the codec
+is read in. Whether `out_of_range: "wrap"` suits that type is a question
+about the type, asked where types are read together.
+"""
+
+
 __all__ = [
     "CAST_OUT_OF_RANGE_MODE",
     "CAST_ROUNDING_MODE",
+    "CAST_VALUE_CODEC",
     "CAST_VALUE_CODEC_NAME",
     "CastOutOfRangeMode",
     "CastRoundingMode",

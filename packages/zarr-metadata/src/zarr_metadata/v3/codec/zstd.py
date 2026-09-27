@@ -6,9 +6,13 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 proposed the codec, was never merged).
 """
 
+from collections.abc import Iterator
 from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
+
+from zarr_metadata._json import ValidationProblem
+from zarr_metadata.v3._definition import CodecDefinition
 
 ZSTD_CODEC_NAME: Final = "zstd"
 """The `name` field value of the `zstd` codec."""
@@ -47,8 +51,39 @@ form is not permitted by the spec for this codec.
   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564 (short-hand names only "if no configuration metadata is required")
 """
 
+ZSTD_MIN_LEVEL: Final = -131072
+"""The lowest `level` zstd accepts: ZSTD_minCLevel(), -(1 << 17)."""
+
+ZSTD_MAX_LEVEL: Final = 22
+"""The highest `level` zstd accepts: ZSTD_maxCLevel()."""
+
+
+def _rules(configuration: ZstdCodecConfiguration) -> Iterator[ValidationProblem]:
+    """`level` is one zstd accepts."""
+    level = configuration["level"]
+    if not ZSTD_MIN_LEVEL <= level <= ZSTD_MAX_LEVEL:
+        yield ValidationProblem(
+            ("level",),
+            f"expected an integer in [{ZSTD_MIN_LEVEL}, {ZSTD_MAX_LEVEL}], got {level}",
+            "invalid_value",
+        )
+
+
+ZSTD_CODEC: Final = CodecDefinition(
+    name=ZSTD_CODEC_NAME,
+    configuration=ZstdCodecConfiguration,
+    kind="bytes_bytes",
+    size="dynamic",
+    rules=_rules,
+)
+"""The `zstd` codec."""
+
+
 __all__ = [
+    "ZSTD_CODEC",
     "ZSTD_CODEC_NAME",
+    "ZSTD_MAX_LEVEL",
+    "ZSTD_MIN_LEVEL",
     "ZstdCodecConfiguration",
     "ZstdCodecMetadata",
     "ZstdCodecName",

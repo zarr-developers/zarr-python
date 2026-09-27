@@ -197,11 +197,14 @@ def test_v2_array_schema_allows_empty_filters() -> None:
     assert Draft202012Validator(adapter.json_schema()).is_valid(doc)
 
 
-@pytest.mark.parametrize("field", ["data_type", "chunk_grid", "chunk_key_encoding"])
-def test_v3_array_schema_rejects_false_at_mandatory_extension_points(field: str) -> None:
-    """Mandatory v3 extension points cannot opt out of understanding."""
+@pytest.mark.parametrize(
+    "field", ["data_type", "chunk_grid", "chunk_key_encoding", "codecs", "storage_transformers"]
+)
+def test_v3_array_schema_rejects_false_at_every_extension_point(field: str) -> None:
+    """No extension point of an array document opts out of understanding, in the schema as at runtime."""
     doc = json.loads(json.dumps(V3_ARRAY_DOC))
-    doc[field] = {"name": "example", "must_understand": False}
+    entry = {"name": "example", "must_understand": False}
+    doc[field] = [entry] if field in ("codecs", "storage_transformers") else entry
 
     _assert_runtime_and_schema_reject(zmp.ZarrV3ArrayMetadata, doc)
 

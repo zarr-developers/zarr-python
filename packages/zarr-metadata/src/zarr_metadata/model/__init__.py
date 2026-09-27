@@ -49,17 +49,14 @@ from zarr_metadata.model._validation import (
     is_array_metadata_v3,
     is_group_metadata_v2,
     is_group_metadata_v3,
-    is_metadata_field_v3,
     parse_array_metadata_v2,
     parse_array_metadata_v3,
     parse_group_metadata_v2,
     parse_group_metadata_v3,
-    parse_metadata_field_v3,
     validate_array_metadata_v2,
     validate_array_metadata_v3,
     validate_group_metadata_v2,
     validate_group_metadata_v3,
-    validate_metadata_field_v3,
 )
 
 # Store keys are facts about the on-disk specs, so they are defined in the
@@ -80,6 +77,11 @@ from zarr_metadata.v2.consolidated import (
 from zarr_metadata.v2.group import (
     ZARR_V2_GROUP_METADATA_STORE_KEY,
     ZarrV2GroupMetadataStoreKey,
+)
+from zarr_metadata.v3._common import (
+    is_metadata_field_v3,
+    parse_metadata_field_v3,
+    validate_metadata_field_v3,
 )
 from zarr_metadata.v3.array import (
     ZARR_V3_ARRAY_METADATA_STORE_KEY,

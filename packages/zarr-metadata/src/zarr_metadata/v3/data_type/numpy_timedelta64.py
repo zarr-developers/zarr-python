@@ -8,6 +8,9 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import ReadOnly, TypedDict
 
+from zarr_metadata.v3._definition import DataTypeDefinition
+from zarr_metadata.v3.data_type._numpy_time import numpy_time_rules
+
 NUMPY_TIMEDELTA64_DATA_TYPE_NAME: Final = "numpy.timedelta64"
 """The `name` field value of the `numpy.timedelta64` data type."""
 
@@ -70,7 +73,16 @@ Either a JSON integer (a count of `unit * scale_factor`), or the string
 `"NaT"` (equivalent to the integer `-2**63`).
 """
 
+NUMPY_TIMEDELTA64_DATA_TYPE: Final = DataTypeDefinition(
+    name=NUMPY_TIMEDELTA64_DATA_TYPE_NAME,
+    configuration=NumpyTimedelta64Configuration,
+    rules=numpy_time_rules,
+)
+"""The `numpy.timedelta64` data type."""
+
+
 __all__ = [
+    "NUMPY_TIMEDELTA64_DATA_TYPE",
     "NUMPY_TIMEDELTA64_DATA_TYPE_NAME",
     "NUMPY_TIME_UNIT",
     "NumpyTimeUnit",
