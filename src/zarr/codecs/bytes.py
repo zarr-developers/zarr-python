@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import warnings
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, ClassVar, Final, Literal
@@ -40,17 +41,13 @@ def _parse_endian(data: object) -> EndianLiteral:
 
 @dataclass(frozen=True)
 class BytesCodec(ArrayBytesCodec):
-    """bytes codec
-
-    `endian` defaults to `"little"` on every host, so stored bytes do not depend on the
-    byte order of the machine that wrote them.
-    """
+    """bytes codec"""
 
     is_fixed_size = True
 
     endian: EndianLiteral | None
 
-    def __init__(self, *, endian: Endian | EndianLiteral | None = "little") -> None:
+    def __init__(self, *, endian: Endian | EndianLiteral | None = sys.byteorder) -> None:
         if endian is None:
             endian_parsed: EndianLiteral | None = None
         else:
