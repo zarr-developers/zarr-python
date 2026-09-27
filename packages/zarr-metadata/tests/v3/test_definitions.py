@@ -30,6 +30,7 @@ from zarr_metadata.v3.definition import (
     DataTypeDefinition,
     Definition,
     JSONValue,
+    Nested,
     StorageTransformerDefinition,
     ValidationProblem,
     ZarrV3MetadataFieldJSON,
@@ -49,13 +50,26 @@ class AcmeStackConfiguration(TypedDict, closed=True):
     codecs: tuple[CodecField, ...]
 
 
-def acme_stack_rules(configuration: AcmeStackConfiguration) -> Iterator[ValidationProblem]:
+def acme_stack_rules(
+    configuration: AcmeStackConfiguration, nested: Nested
+) -> Iterator[ValidationProblem]:
     # A rule may read a nested field's name: it is asked only of a
     # configuration whose nested envelopes are sound.
     for index, codec in enumerate(configuration["codecs"]):
         if (codec if isinstance(codec, str) else codec["name"]) == "acme.stack":
             yield ValidationProblem(
                 ("codecs", index), "a stack does not hold itself", "invalid_value"
+            )
+        # And what the scope read of it: a codec of another kind is refused,
+        # one nothing in scope claims left be.
+        inner = nested.get(("codecs", index))
+        if (
+            inner is not None
+            and isinstance(inner.definition, CodecDefinition)
+            and inner.definition.kind != "bytes_bytes"
+        ):
+            yield ValidationProblem(
+                ("codecs", index), "a stack holds bytes -> bytes codecs", "invalid_value"
             )
 
 
@@ -113,7 +127,9 @@ class AcmeBoundedConfiguration(TypedDict, closed=True):
     window: NotRequired[int]
 
 
-def acme_bounded_rules(configuration: AcmeBoundedConfiguration) -> Iterator[ValidationProblem]:
+def acme_bounded_rules(
+    configuration: AcmeBoundedConfiguration, nested: Nested
+) -> Iterator[ValidationProblem]:
     # Every key it meets is one its TypedDict declares.
     for key, value in cast("Mapping[str, int]", configuration).items():
         low, high = ACME_BOUNDS[key]
@@ -126,7 +142,9 @@ class AcmePairedConfiguration(TypedDict, closed=True):
     second: NotRequired[int]
 
 
-def acme_paired_rules(configuration: AcmePairedConfiguration) -> Iterator[ValidationProblem]:
+def acme_paired_rules(
+    configuration: AcmePairedConfiguration, nested: Nested
+) -> Iterator[ValidationProblem]:
     if ("first" in configuration) != ("second" in configuration):
         yield ValidationProblem((), "expected first and second, or neither", "invalid_value")
 
@@ -419,14 +437,14 @@ def test_error_must_understand_false_is_refused_wherever_the_model_refuses_it(
 
 
 def _ruled_by(
-    rules: Callable[[GzipCodecConfiguration], Iterable[ValidationProblem]],
+    rules: Callable[[GzipCodecConfiguration, Nested], Iterable[ValidationProblem]],
 ) -> Context:
     lying = replace(GZIP_CODEC, name="acme.gzip", rules=rules)
     return CORE.extended_with(lying)
 
 
 def test_error_a_rule_that_yields_something_else() -> None:
-    def rules(configuration: GzipCodecConfiguration) -> Iterator[ValidationProblem]:
+    def rules(configuration: GzipCodecConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
         yield "level is too high"  # pyright: ignore[reportReturnType]
 
     with pytest.raises(TypeError, match="'acme.gzip': its rules yield ValidationProblem values"):
@@ -438,7 +456,7 @@ def test_error_a_rule_that_yields_something_else() -> None:
 
 
 def test_error_a_rule_that_raises_says_whose_it_is() -> None:
-    def rules(configuration: GzipCodecConfiguration) -> Iterator[ValidationProblem]:
+    def rules(configuration: GzipCodecConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
         yield from ({}[configuration["level"]],)
 
     with pytest.raises(KeyError) as raised:
@@ -454,7 +472,7 @@ def test_error_a_rule_that_raises_says_whose_it_is() -> None:
 
 def test_error_a_rule_that_returns_none_says_whose_it_is() -> None:
     # A plain function that forgot to yield: nothing to iterate.
-    def rules(configuration: GzipCodecConfiguration) -> None:
+    def rules(configuration: GzipCodecConfiguration, nested: Nested) -> None:
         return None
 
     with pytest.raises(TypeError, match="not iterable") as raised:
@@ -543,6 +561,17 @@ def test_error_a_rule_about_the_whole_configuration_lands_on_it() -> None:
     assert _locs(read) == [(("configuration",), "invalid_value")]
 
 
+def test_error_a_rule_reads_the_fields_the_configuration_holds_as_the_scope_read_them() -> None:
+    # `bytes` is an array -> bytes codec, which the stack's rule refuses
+    # from what the scope read; `judge` reads in no scope, so its rule sees
+    # nothing read.
+    field = {"name": "acme.stack", "configuration": {"codecs": ["crc32c", "bytes"]}}
+    resolved, found = resolve(field, CodecDefinition, SCOPE)
+    assert resolved.resolution == "invalid"
+    assert _locs(found) == [(("configuration", "codecs", 1), "invalid_value")]
+    assert ACME_STACK.judge(field["configuration"])[1] == ()
+
+
 def test_error_a_nested_member_is_not_a_field() -> None:
     resolved, found = resolve(
         {"name": "acme.stack", "configuration": {"codecs": [5]}}, CodecDefinition, SCOPE
@@ -612,7 +641,7 @@ def test_a_scope_takes_a_name_over() -> None:
         configuration=GzipCodecConfiguration,
         kind="bytes_bytes",
         size="dynamic",
-        rules=lambda configuration: (
+        rules=lambda configuration, nested: (
             [ValidationProblem(("level",), "level 0 stores uncompressed", "invalid_value")]
             if configuration["level"] == 0
             else []

@@ -10,7 +10,7 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import CodecDefinition
+from zarr_metadata.v3._definition import CodecDefinition, Nested
 
 TRANSPOSE_CODEC_NAME: Final = "transpose"
 """The `name` field value of the `transpose` codec."""
@@ -48,7 +48,9 @@ form is not permitted by the spec for this codec.
 """
 
 
-def _rules(configuration: TransposeCodecConfiguration) -> Iterator[ValidationProblem]:
+def _rules(
+    configuration: TransposeCodecConfiguration, nested: Nested
+) -> Iterator[ValidationProblem]:
     """`order` permutes its own axes.
 
     Whether it permutes the *array's* axes needs the array's rank, and is

@@ -63,7 +63,7 @@ class RawBytesConfiguration(TypedDict, closed=True):
     bits: int
 
 
-def _rules(configuration: RawBytesConfiguration) -> Iterator[ValidationProblem]:
+def _rules(configuration: RawBytesConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
     """ "raw bits, variable size given by *, limited to be a multiple of 8" -- and zero bits is not a type."""
     bits = configuration["bits"]
     if bits == 0 or bits % 8 != 0:

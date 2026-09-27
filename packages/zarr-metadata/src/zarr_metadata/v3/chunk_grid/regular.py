@@ -43,7 +43,9 @@ valid; the short-hand-name form is not permitted by the spec for this grid.
 """
 
 
-def _rules(configuration: RegularChunkGridConfiguration) -> Iterator[ValidationProblem]:
+def _rules(
+    configuration: RegularChunkGridConfiguration, nested: Nested
+) -> Iterator[ValidationProblem]:
     """No chunk extent is negative.
 
     "The chunk shape elements are non-zero when the corresponding

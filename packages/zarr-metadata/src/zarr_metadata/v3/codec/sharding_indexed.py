@@ -10,7 +10,7 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import CodecDefinition, CodecField, StaticCodecField
+from zarr_metadata.v3._definition import CodecDefinition, CodecField, Nested, StaticCodecField
 
 SHARDING_INDEXED_CODEC_NAME: Final = "sharding_indexed"
 """The `name` field value of the `sharding_indexed` codec."""
@@ -69,7 +69,9 @@ form is not permitted by the spec for this codec.
 """
 
 
-def _rules(configuration: ShardingIndexedCodecConfiguration) -> Iterator[ValidationProblem]:
+def _rules(
+    configuration: ShardingIndexedCodecConfiguration, nested: Nested
+) -> Iterator[ValidationProblem]:
     """Every inner chunk extent is at least 1."""
     for index, extent in enumerate(configuration["chunk_shape"]):
         if extent < 1:

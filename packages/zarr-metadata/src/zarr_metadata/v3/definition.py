@@ -75,7 +75,11 @@ what was read; the field is valid only when there is no problem at all.
 definition; then a scope that holds it. The TypedDict is a
 `typing_extensions.TypedDict`: `closed` and `extra_items` are PEP 728's,
 which `typing.TypedDict` does not take on the versions this package
-supports.
+supports. The rules are handed the configuration and the fields it holds
+as the scope read them: a field that is read keeps what it read inside it
+as `Resolved.nested`, a `Nested` mapping by where each sits, so a
+struct's rules reach its field types. `judge`, which reads in no scope,
+hands them none.
 
     from collections.abc import Iterator
 
@@ -84,6 +88,7 @@ supports.
     from zarr_metadata.v3.definition import (
         CORE_AND_EXTENSIONS,
         CodecDefinition,
+        Nested,
         ValidationProblem,
     )
 
@@ -92,7 +97,9 @@ supports.
         acceleration: int
 
 
-    def acme_lz4_rules(configuration: AcmeLz4Configuration) -> Iterator[ValidationProblem]:
+    def acme_lz4_rules(
+        configuration: AcmeLz4Configuration, nested: Nested
+    ) -> Iterator[ValidationProblem]:
         if configuration["acceleration"] < 1:
             yield ValidationProblem(("acceleration",), "expected an integer >= 1", "invalid_value")
 
@@ -141,9 +148,8 @@ shape of one as an annotation the checker reads -- `Int8FillValue` -- and
 `fill_value_rules`, a function yielding what the spec disallows in a fill
 value of that shape: an integer out of range, a hex string of another
 width. The rules are handed the configuration, the fields it holds as the
-scope read them, and the typed fill value; a field that is read keeps what
-it read inside it as `Resolved.nested`, a `Nested` mapping by location, so
-a struct judges each field's fill value by that field's own type.
+scope read them, and the typed fill value, so a struct judges each
+field's fill value by that field's own type.
 `fill_value_problems(data_type, value)` judges a fill value against a data
 type field the scope read; one nothing in scope claims leaves it unjudged.
 A data type that says nothing of its fill value takes any JSON.

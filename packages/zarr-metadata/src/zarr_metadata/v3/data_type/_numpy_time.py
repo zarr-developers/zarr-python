@@ -24,7 +24,9 @@ class NumpyTimeConfiguration(TypedDict):
     scale_factor: ReadOnly[int]
 
 
-def numpy_time_rules(configuration: NumpyTimeConfiguration) -> Iterator[ValidationProblem]:
+def numpy_time_rules(
+    configuration: NumpyTimeConfiguration, nested: Nested
+) -> Iterator[ValidationProblem]:
     """`scale_factor` is a positive int32."""
     scale_factor = configuration["scale_factor"]
     if not 1 <= scale_factor <= NUMPY_TIME_MAX_SCALE_FACTOR:

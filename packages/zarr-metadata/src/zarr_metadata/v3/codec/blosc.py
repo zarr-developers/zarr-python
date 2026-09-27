@@ -10,7 +10,7 @@ from typing import Final, Literal, NotRequired, cast
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import CodecDefinition
+from zarr_metadata.v3._definition import CodecDefinition, Nested
 
 BLOSC_CODEC_NAME: Final = "blosc"
 """The `name` field value of the `blosc` codec."""
@@ -68,7 +68,7 @@ another member is required.
 """
 
 
-def _rules(configuration: BloscCodecConfiguration) -> Iterator[ValidationProblem]:
+def _rules(configuration: BloscCodecConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
     """Bounds on `clevel` and `blocksize`; `typesize` against `shuffle`.
 
     Under `noshuffle` the spec says of `typesize` that "the value is

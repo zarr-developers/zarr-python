@@ -64,7 +64,7 @@ fill values are themselves shaped per the field's `data_type`, recursively.
 """
 
 
-def _rules(configuration: StructConfiguration) -> Iterator[ValidationProblem]:
+def _rules(configuration: StructConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
     """Fields exist, and their names are non-empty and distinct.
 
     A fill value addresses fields by name. Whether each field's type is

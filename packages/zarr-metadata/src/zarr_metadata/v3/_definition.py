@@ -111,8 +111,9 @@ class Definition(Generic[C]):
     type; with `closed=False`, anything. `rules` yields what the spec
     disallows in a configuration of that type, as it finds each; it is
     handed only a configuration that has passed the check, holding what
-    the TypedDict admits and nothing else -- `judge` is the two, for a
-    caller holding JSON.
+    the TypedDict admits and nothing else, and the fields it holds as the
+    scope read them -- a struct's field types -- which is nothing when no
+    scope read it. `judge` is the two, for a caller holding JSON.
 
     `canonical` is where two spellings of the configuration that mean the
     same thing are made one.
@@ -127,8 +128,8 @@ class Definition(Generic[C]):
     """The name the metadata carries, which a scope files the definition under."""
     configuration: type[C]
     """The TypedDict the configuration is."""
-    rules: Callable[[C], Iterable[ValidationProblem]] = no_rules
-    """What the spec disallows in a well-typed configuration, located in it."""
+    rules: Callable[[C, Nested], Iterable[ValidationProblem]] = no_rules
+    """What the spec disallows in a well-typed configuration and the fields it holds, located in it."""
     canonical: Callable[[C], C] = unchanged
     """A well-typed, allowed configuration in its simplest equivalent spelling.
 
@@ -170,12 +171,15 @@ class Definition(Generic[C]):
         whose nested fields are well formed, holding what its TypedDict
         admits and nothing else, so a caller holding JSON never reaches a
         rule with a member of the wrong type, or one the type says cannot
-        be there.
+        be there. No scope reads the fields it holds, so the rules see
+        none of them read, and a rule about one -- a struct's field of a
+        type whose values vary in size -- finds nothing to judge: `resolve`
+        reads the field in a scope, and asks every rule.
         """
         configuration, problems = self.check(value, loc)
         if configuration is None:
             return None, problems
-        refused = _ruled(self, lambda: self.rules(configuration), loc)
+        refused = _ruled(self, lambda: self.rules(configuration, _nothing_nested()), loc)
         return (configuration if len(refused) == 0 else None), (*problems, *refused)
 
 
@@ -784,19 +788,23 @@ def _read(
         missing = problem(at, f"{name!r} requires a configuration", "missing_key")
         return Resolved(data, "invalid", definition, None), missing
     typed, found, nested = _checked(definition.configuration, {} if given is None else given, at)
-    problems = list(found)
     envelopes = [_envelope(field) for field in nested]
     sound = _usable(found) and all(_usable(envelope) for envelope in envelopes)
     configuration = cast("Mapping[str, JSONValue]", typed) if sound else None
-    if configuration is not None:
-        problems.extend(_ruled(definition, lambda: definition.rules(configuration), at))
+    # The fields it holds are read first, so the rules see them as the
+    # scope read them; their problems are reported after the rules'.
     within: dict[Loc, Resolved[Any]] = {}
+    inside: list[ValidationProblem] = []
     for field, envelope in zip(nested, envelopes, strict=True):
-        problems.extend(envelope)
-        inner, found = _read(field.json, field.kind, context, field.loc)
+        inside.extend(envelope)
+        inner, found_inside = _read(field.json, field.kind, context, field.loc)
         within[field.loc[len(at) :]] = inner
-        problems.extend(found)
-        problems.extend(_sized(field, inner.definition))
+        inside.extend(found_inside)
+        inside.extend(_sized(field, inner.definition))
+    problems = list(found)
+    if configuration is not None:
+        problems.extend(_ruled(definition, lambda: definition.rules(configuration, within), at))
+    problems.extend(inside)
     if not _usable(problems):
         return Resolved(data, "invalid", definition, None), tuple(problems)
     return Resolved(data, "read", definition, configuration, within), tuple(problems)

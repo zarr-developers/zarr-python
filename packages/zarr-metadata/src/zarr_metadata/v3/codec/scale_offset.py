@@ -11,7 +11,7 @@ from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import CodecDefinition
+from zarr_metadata.v3._definition import CodecDefinition, Nested
 
 SCALE_OFFSET_CODEC_NAME: Final = "scale_offset"
 """The `name` field value of the `scale_offset` codec."""
@@ -58,7 +58,9 @@ form is permitted in addition to the object form.
 """
 
 
-def _rules(configuration: ScaleOffsetCodecConfiguration) -> Iterator[ValidationProblem]:
+def _rules(
+    configuration: ScaleOffsetCodecConfiguration, nested: Nested
+) -> Iterator[ValidationProblem]:
     """Neither scalar is null.
 
     The registry says each is "JSON-encoded per the input array's

@@ -57,7 +57,9 @@ def _not_positive(loc: Loc, value: int) -> ValidationProblem:
     return ValidationProblem(loc, f"expected an integer >= 1, got {value}", "invalid_value")
 
 
-def _rules(configuration: RectilinearChunkGridConfiguration) -> Iterator[ValidationProblem]:
+def _rules(
+    configuration: RectilinearChunkGridConfiguration, nested: Nested
+) -> Iterator[ValidationProblem]:
     """Every extent, and every run's length and count, is at least 1."""
     for axis, spec in enumerate(configuration["chunk_shapes"]):
         if isinstance(spec, int):
