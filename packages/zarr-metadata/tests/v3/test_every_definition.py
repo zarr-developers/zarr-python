@@ -500,6 +500,48 @@ def test_error_a_codec_inside_a_shard_is_judged_where_it_sits() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "configuration",
+    [
+        {"data_type": "bool"},
+        {"data_type": "complex64"},
+        {"data_type": "string"},
+        {"data_type": "r16"},
+        # One problem: that it wraps follows from the target.
+        {"data_type": "bool", "out_of_range": "wrap"},
+    ],
+)
+def test_error_a_cast_to_a_data_type_that_models_no_real_numbers(configuration: object) -> None:
+    assert _one("codecs:cast_value", configuration) == [
+        (("configuration", "data_type"), "invalid_value")
+    ]
+
+
+def test_error_a_cast_that_wraps_to_a_data_type_that_is_not_integral() -> None:
+    assert _one("codecs:cast_value", {"data_type": "float32", "out_of_range": "wrap"}) == [
+        (("configuration", "out_of_range"), "invalid_value")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("data_type", "scalar_map", "loc"),
+    [
+        # The output of encoding and the input of decoding are values of
+        # the data type cast to.
+        ("uint8", {"encode": [[0, 300]]}, ("scalar_map", "encode", 0, 1)),
+        ("uint8", {"decode": [[-1, 0]]}, ("scalar_map", "decode", 0, 0)),
+        # A float's infinity is "Infinity", as the core encoding writes it.
+        ("float32", {"decode": [["+Infinity", 0]]}, ("scalar_map", "decode", 0, 0)),
+    ],
+)
+def test_error_a_scalar_the_cast_maps_to_that_is_not_of_its_data_type(
+    data_type: str, scalar_map: object, loc: tuple[str | int, ...]
+) -> None:
+    assert _one("codecs:cast_value", {"data_type": data_type, "scalar_map": scalar_map}) == [
+        (("configuration", *loc), "invalid_value")
+    ]
+
+
 def test_error_a_cast_target_is_judged_where_it_sits() -> None:
     target = {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 0}}
     assert _one("codecs:cast_value", {"data_type": target}) == [

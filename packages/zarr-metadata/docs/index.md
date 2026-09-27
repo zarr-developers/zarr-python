@@ -83,7 +83,8 @@ fill value is judged against the data type it names, by that data type's
 definition, the chunk grid against the shape, by the grid's definition,
 and the codecs as a pipeline: in order, each judged by its definition
 against the chunk it is handed. The validators do not read a shard's
-inner codecs as a pipeline.
+inner codecs as a pipeline, and do none of a codec's arithmetic: whether
+a fill value survives a `cast_value` round trip is not judged.
 
 ## Scope
 
