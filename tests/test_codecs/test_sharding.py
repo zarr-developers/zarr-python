@@ -967,8 +967,8 @@ async def test_encoded_subchunk_write_order(subchunk_write_order: SubchunkWriteO
     chunk_shape = (4, 4)
     codec = ShardingCodec(
         chunk_shape=chunk_shape,
-        codecs=[BytesCodec()],
-        index_codecs=[BytesCodec(), Crc32cCodec()],
+        codecs=[BytesCodec(endian="little")],
+        index_codecs=[BytesCodec(endian="little"), Crc32cCodec()],
         index_location="end",
         subchunk_write_order=subchunk_write_order,
     )
@@ -998,7 +998,7 @@ def test_subchunk_write_order_roundtrip(
         chunks=shard_shape,
         serializer=ShardingCodec(
             chunk_shape=chunk_shape,
-            codecs=[BytesCodec()],
+            codecs=[BytesCodec(endian="little")],
             subchunk_write_order=subchunk_write_order,
         ),
         filters=None,
@@ -1135,10 +1135,10 @@ def test_sharding_codec_rejects_unknown_index_location() -> None:
 @pytest.mark.parametrize(
     "index_codecs",
     [
-        (BytesCodec(),),
-        (BytesCodec(), Crc32cCodec()),
-        (TransposeCodec(order=(1, 0)), BytesCodec(), Crc32cCodec()),
-        (BytesCodec(), CRC32()),
+        (BytesCodec(endian="little"),),
+        (BytesCodec(endian="little"), Crc32cCodec()),
+        (TransposeCodec(order=(1, 0)), BytesCodec(endian="little"), Crc32cCodec()),
+        (BytesCodec(endian="little"), CRC32()),
     ],
 )
 def test_sharding_fixed_size_index_codecs_roundtrip(index_codecs: tuple[Any, ...]) -> None:
@@ -1167,7 +1167,7 @@ def test_sharding_codec_rejects_variable_size_index_codecs(compressor: Any) -> N
     encoded size is not fixed, as the spec requires.
     """
     with pytest.raises(ValueError, match="must produce a fixed-size encoding"):
-        ShardingCodec(chunk_shape=(2,), index_codecs=(BytesCodec(), compressor))
+        ShardingCodec(chunk_shape=(2,), index_codecs=(BytesCodec(endian="little"), compressor))
 
 
 def test_sharding_index_location_attribute_error_for_unknown_member() -> None:
@@ -1361,9 +1361,9 @@ def test_sharding_orthogonal_set_multiple_array_dims(
     """
     ndim = len(selection)
     shape = (4,) * ndim
-    inner = ShardingCodec(chunk_shape=(1,) * ndim, codecs=(BytesCodec(),))
+    inner = ShardingCodec(chunk_shape=(1,) * ndim, codecs=(BytesCodec(endian="little"),))
     serializer = ShardingCodec(
-        chunk_shape=(2,) * ndim, codecs=((inner,) if nested else (BytesCodec(),))
+        chunk_shape=(2,) * ndim, codecs=((inner,) if nested else (BytesCodec(endian="little"),))
     )
     base = np.arange(4**ndim, dtype="int32").reshape(shape)
     ix = np.ix_(*(np.atleast_1d(s) for s in selection))

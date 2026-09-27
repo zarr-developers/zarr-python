@@ -101,7 +101,11 @@ CODEC_CONFIGS: list[tuple[str, CodecConfig]] = [
     # pipelines. (crc32c is a BytesBytesCodec, so it goes in `compressors`.)
     (
         "bytes-crc32c",
-        {"compressors": [Crc32cCodec()], "serializer": BytesCodec(), "dtype": "int32"},
+        {
+            "compressors": [Crc32cCodec()],
+            "serializer": BytesCodec(endian="little"),
+            "dtype": "int32",
+        },
     ),
 ]
 
@@ -399,7 +403,7 @@ def test_pipeline_parity_subchunk_write_order(
     shape, shard_shape, inner_chunk = (12, 8), (6, 4), (2, 2)
     serializer = ShardingCodec(
         chunk_shape=inner_chunk,
-        codecs=[BytesCodec()],
+        codecs=[BytesCodec(endian="little")],
         index_location=index_location,
         subchunk_write_order=subchunk_write_order,
     )

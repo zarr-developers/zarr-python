@@ -24,6 +24,7 @@ from zarr.core.buffer import NDBuffer, default_buffer_prototype
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.dtype.npy.int import Int8, Int32
 from zarr.core.dtype.npy.structured import Struct
+from zarr.errors import ZarrFutureWarning
 from zarr.storage import StorePath
 
 from .test_codecs import _AsyncArrayProxy
@@ -95,7 +96,7 @@ async def test_endian(
 
 
 def test_bytes_codec_supports_sync() -> None:
-    assert isinstance(BytesCodec(), SupportsSyncCodec)
+    assert isinstance(BytesCodec(endian="little"), SupportsSyncCodec)
 
 
 @pytest.mark.parametrize("endian", ENDIAN)
@@ -292,14 +293,43 @@ def test_endian_attribute_error_for_unknown_member() -> None:
         getattr(Endian, "not_a_member")  # noqa: B009
 
 
-def test_bytes_codec_default_endian_matches_system() -> None:
+@pytest.mark.parametrize(
+    ("host", "kwargs", "expected"),
+    [
+        ("little", {}, "little"),
+        ("little", {"endian": "big"}, "big"),
+        ("little", {"endian": None}, None),
+        ("big", {"endian": "little"}, "little"),
+        ("big", {"endian": "big"}, "big"),
+        ("big", {"endian": None}, None),
+    ],
+)
+def test_bytes_codec_endian(
+    monkeypatch: pytest.MonkeyPatch,
+    host: Literal["little", "big"],
+    kwargs: dict[str, Any],
+    expected: EndianLiteral | None,
+) -> None:
     """
-    Constructing `BytesCodec()` with no arguments yields a codec whose
-    `endian` matches `sys.byteorder`. This replaces the previous
-    `default_system_endian = Endian(sys.byteorder)` module-level binding.
+    An explicit `endian` is used as given on any host. An omitted one is the host byte
+    order, which on a little-endian host already matches the future default, so no
+    warning is raised.
     """
-    codec = BytesCodec()
-    assert codec.endian == sys.byteorder
+    monkeypatch.setattr(sys, "byteorder", host)
+    assert BytesCodec(**kwargs).endian == expected
+
+
+def test_bytes_codec_default_endian_warns_on_big_endian_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    On a big-endian host an omitted `endian` still means "big", but that default will
+    become "little", so constructing the codec warns.
+    """
+    monkeypatch.setattr(sys, "byteorder", "big")
+    with pytest.warns(ZarrFutureWarning, match="endian='little'"):
+        codec = BytesCodec()
+    assert codec.endian == "big"
 
 
 def _make_array_spec(dtype: Any) -> ArraySpec:

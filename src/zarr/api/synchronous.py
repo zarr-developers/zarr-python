@@ -762,7 +762,7 @@ def create(
         Zarr format 3 only. Zarr format 2 arrays should use `filters` and `compressor` instead.
 
         If no codecs are provided, default codecs will be used based on the data type of the array.
-        For most data types, the default codecs are the tuple `(BytesCodec(), ZstdCodec())`;
+        For most data types, the default codecs are the tuple `(BytesCodec(endian="little"), ZstdCodec())`;
         data types that require a special [`zarr.abc.codec.ArrayBytesCodec`][], like variable-length strings or bytes,
         will use the [`zarr.abc.codec.ArrayBytesCodec`][] required for the data type instead of [`zarr.codecs.BytesCodec`][].
     dimension_names : Iterable[str | None] | None = None
