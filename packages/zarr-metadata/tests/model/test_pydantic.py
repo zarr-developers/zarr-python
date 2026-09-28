@@ -42,7 +42,7 @@ from pydantic import (
 )
 
 from zarr_metadata import JSONValue
-from zarr_metadata.model import ZarrV3ArrayMetadata, ZarrV3NamedConfig
+from zarr_metadata.model import ZarrV3ArrayMetadata
 
 # --- the integration (this is the example) -----------------------------------
 
@@ -169,8 +169,6 @@ def test_native_dataclass_introspection_is_not_supported() -> None:
                 "ZarrV3ExtensionField": ZarrV3ExtensionField,
                 "ZarrV3MetadataFieldJSON": ZarrV3MetadataFieldJSON,
                 "ZarrV3ArrayMetadataJSON": ZarrV3ArrayMetadataJSON,
-                "ZarrV3NamedConfig": ZarrV3NamedConfig,
-                "ZarrV3MetadataField": ZarrV3NamedConfig,
                 "UNSET": UNSET,
             },
         )

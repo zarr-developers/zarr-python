@@ -17,7 +17,6 @@ from zarr_metadata.v3._definition import (
     Nested,
     StorageClass,
     fill_value_problems,
-    named_configuration,
     storage_of,
 )
 
@@ -96,10 +95,10 @@ def _rules(configuration: StructConfiguration, nested: Nested) -> Iterator[Valid
             )
         field_type = nested.get(("fields", index, "data_type"))
         if field_type is not None and storage_of(field_type) == "variable_length":
-            written, _, _ = named_configuration(field_type.json)
             yield ValidationProblem(
                 ("fields", index, "data_type"),
-                f"expected a data type of fixed size, got {shown(written)}, whose values vary in size",
+                f"expected a data type of fixed size, got {shown(field_type.name)}, whose values "
+                "vary in size",
                 "invalid_value",
             )
 

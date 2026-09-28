@@ -91,24 +91,31 @@ Three choices the specs' words leave open, or settle two ways:
   says chunk sizes are greater than zero. The package follows the core
   spec, which zarr-python 3.0 and 3.1 wrote for an empty dimension.
 
-`read_array_metadata_v3` returns what the validator read, beside the
-problems: each field as the scope read it, with where it sits and the
-kind it was read as, and each codec with the chunk it is handed. A
-consumer's own policy is a walk over the fields, with nothing read
-twice. Which fields go beyond the core spec, say -- a field that names
-nothing is a problem already:
+`read_array_metadata_v3` reads a document once and returns everything
+the read found: each field as the scope read it -- `Read` by the
+definition that claims its name, `Unclaimed` when none does, or
+`Refused` -- with where it sits and the kind it was read as, each codec
+with the chunk it is handed, every problem, and the model when there is
+none; `from_json` is that model, or the problems raised. A consumer's
+own policy is a walk over the fields, with nothing read twice. Which
+fields go beyond the core spec, say -- a field that names nothing is a
+problem already:
 
 ```python
 from zarr_metadata.model import read_array_metadata_v3
 from zarr_metadata.v3.definition import CORE
 
-reading, problems = read_array_metadata_v3(raw)
+reading = read_array_metadata_v3(raw)
 beyond_core = [
     loc
     for loc, field in reading.fields()
     if field.name is not None and CORE.claimant(field.read_as, field.name) is None
 ]
+metadata = reading.metadata  # None when reading.problems is not empty
 ```
+
+`read_group_metadata_v3` reads a group the same way, and each document
+its consolidated metadata holds once.
 
 A member the spec does not define is not a field; the model's
 `must_understand_fields` names those a reader must understand.

@@ -14,7 +14,6 @@ from zarr_metadata.v3._definition import (
     Chunk,
     CodecDefinition,
     Nested,
-    named_configuration,
     storage_of,
 )
 
@@ -91,7 +90,7 @@ def _chunk_rules(
     if chunk.data_type is None:
         return
     storage = storage_of(chunk.data_type)
-    written, _, _ = named_configuration(chunk.data_type.json)
+    written = chunk.data_type.name
     if storage == "multi_byte" and "endian" not in configuration:
         yield ValidationProblem(
             ("endian",),

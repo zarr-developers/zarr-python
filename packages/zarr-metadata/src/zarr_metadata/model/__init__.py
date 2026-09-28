@@ -10,9 +10,10 @@ shape, and the codecs as a pipeline, each against the chunk it is
 handed. Each document concept gets a `validate_*` function returning
 every problem found (a tuple of `ValidationProblem`, each with a
 machine-readable `kind`), an `is_*` type guard, and a `parse_*` function
-that narrows or raises `MetadataValidationError`; a v3 array document
-also gets `read_array_metadata_v3`, which returns what it read beside
-them. Model `from_json` / `from_key_value` constructors raise
+that narrows or raises `MetadataValidationError`; a v3 array or group
+document also gets `read_array_metadata_v3` or `read_group_metadata_v3`,
+one read that returns what it read, the problems, and the model when
+there are none. Model `from_json` / `from_key_value` constructors raise
 `MetadataValidationError` for every ingestion failure, including missing
 store keys and undecodable bytes, and the v3 ones take the same
 `context`.
@@ -30,9 +31,8 @@ from zarr_metadata.model._array import (
     ZarrV2ArrayMetadata,
     ZarrV2ArrayMetadataPartial,
     ZarrV3ArrayMetadata,
-    ZarrV3ArrayMetadataPartial,
-    ZarrV3MetadataField,
-    ZarrV3NamedConfig,
+    ZarrV3ArrayMetadataUpdate,
+    read_array_metadata_v3,
 )
 from zarr_metadata.model._group import (
     ZarrV2ConsolidatedMetadata,
@@ -40,7 +40,12 @@ from zarr_metadata.model._group import (
     ZarrV2GroupMetadataPartial,
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
-    ZarrV3GroupMetadataPartial,
+    ZarrV3GroupMetadataReading,
+    ZarrV3GroupMetadataUpdate,
+    is_group_metadata_v3,
+    parse_group_metadata_v3,
+    read_group_metadata_v3,
+    validate_group_metadata_v3,
 )
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import (
@@ -56,16 +61,12 @@ from zarr_metadata.model._validation import (
     is_array_metadata_v2,
     is_array_metadata_v3,
     is_group_metadata_v2,
-    is_group_metadata_v3,
     parse_array_metadata_v2,
     parse_array_metadata_v3,
     parse_group_metadata_v2,
-    parse_group_metadata_v3,
-    read_array_metadata_v3,
     validate_array_metadata_v2,
     validate_array_metadata_v3,
     validate_group_metadata_v2,
-    validate_group_metadata_v3,
 )
 
 # Store keys are facts about the on-disk specs, so they are defined in the
@@ -132,15 +133,14 @@ __all__ = [
     "ZarrV2GroupMetadataPartial",
     "ZarrV2GroupMetadataStoreKey",
     "ZarrV3ArrayMetadata",
-    "ZarrV3ArrayMetadataPartial",
     "ZarrV3ArrayMetadataReading",
     "ZarrV3ArrayMetadataStoreKey",
+    "ZarrV3ArrayMetadataUpdate",
     "ZarrV3ConsolidatedMetadata",
     "ZarrV3GroupMetadata",
-    "ZarrV3GroupMetadataPartial",
+    "ZarrV3GroupMetadataReading",
     "ZarrV3GroupMetadataStoreKey",
-    "ZarrV3MetadataField",
-    "ZarrV3NamedConfig",
+    "ZarrV3GroupMetadataUpdate",
     "is_array_metadata_v2",
     "is_array_metadata_v3",
     "is_group_metadata_v2",
@@ -154,6 +154,7 @@ __all__ = [
     "parse_json",
     "parse_metadata_field_v3",
     "read_array_metadata_v3",
+    "read_group_metadata_v3",
     "validate_array_metadata_v2",
     "validate_array_metadata_v3",
     "validate_group_metadata_v2",

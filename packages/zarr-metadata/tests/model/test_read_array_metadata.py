@@ -1,9 +1,9 @@
 """A v3 array document, read: each field as a scope read it, and its codecs as a pipeline.
 
-`read_array_metadata_v3` returns what the validator read to find what is
-wrong with a document, beside the problems it found: each field with
-where it sits and the kind it was read as, the chunks the codecs are
-handed, and each codec with the chunk it is handed.
+`read_array_metadata_v3` returns everything one read of a document finds:
+each field with where it sits, the kind it was read as and what the scope
+made of it, the chunks the codecs are handed, each codec with the chunk it
+is handed, every problem, and the document's model when there is none.
 """
 
 from __future__ import annotations
@@ -29,7 +29,10 @@ from zarr_metadata.v3.definition import (
     Context,
     DataTypeDefinition,
     Definition,
+    Read,
+    Refused,
     StorageTransformerDefinition,
+    Unclaimed,
 )
 
 if TYPE_CHECKING:
@@ -38,10 +41,10 @@ if TYPE_CHECKING:
 LITTLE = {"name": "bytes", "configuration": {"endian": "little"}}
 ZSTD = {"name": "zstd", "configuration": {"level": 1}}
 
-POINTS: list[tuple[Loc, type[Definition[Any]], str]] = [
-    (("data_type",), DataTypeDefinition, "read"),
-    (("chunk_grid",), ChunkGridDefinition, "read"),
-    (("chunk_key_encoding",), ChunkKeyEncodingDefinition, "read"),
+POINTS: list[tuple[Loc, type[Definition[Any]], type]] = [
+    (("data_type",), DataTypeDefinition, Read),
+    (("chunk_grid",), ChunkGridDefinition, Read),
+    (("chunk_key_encoding",), ChunkKeyEncodingDefinition, Read),
 ]
 """A default document's single extension points, each read where it sits."""
 
@@ -52,8 +55,8 @@ def _document(shape: tuple[int, ...] = (4,), **fields: object) -> dict[str, Any]
     return cast("dict[str, Any]", arrays_to_tuples(document))
 
 
-def _codec(loc: Loc, resolution: str = "read") -> tuple[Loc, type[Definition[Any]], str]:
-    return (loc, CodecDefinition, resolution)
+def _codec(loc: Loc, variant: type = Read) -> tuple[Loc, type[Definition[Any]], type]:
+    return (loc, CodecDefinition, variant)
 
 
 def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: object) -> object:
@@ -93,7 +96,7 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
                 *POINTS,
                 _codec(("codecs", 0)),
                 _codec(("codecs", 0, "configuration", "codecs", 0)),
-                _codec(("codecs", 0, "configuration", "codecs", 1), "out_of_scope"),
+                _codec(("codecs", 0, "configuration", "codecs", 1), Unclaimed),
                 _codec(("codecs", 0, "configuration", "index_codecs", 0)),
                 _codec(("codecs", 0, "configuration", "index_codecs", 1)),
             ],
@@ -129,9 +132,9 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
             CORE,
             [
                 *POINTS,
-                _codec(("codecs", 0), "invalid"),
+                _codec(("codecs", 0), Refused),
                 _codec(("codecs", 0, "configuration", "codecs", 0)),
-                _codec(("codecs", 0, "configuration", "codecs", 1), "out_of_scope"),
+                _codec(("codecs", 0, "configuration", "codecs", 1), Unclaimed),
                 _codec(("codecs", 0, "configuration", "index_codecs", 0)),
             ],
             [(frozenset({8}), frozenset({8}))],
@@ -158,12 +161,12 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
                 (
                     ("data_type", "configuration", "fields", 0, "data_type"),
                     DataTypeDefinition,
-                    "read",
+                    Read,
                 ),
                 (
                     ("data_type", "configuration", "fields", 1, "data_type"),
                     DataTypeDefinition,
-                    "out_of_scope",
+                    Unclaimed,
                 ),
                 *POINTS[1:],
                 _codec(("codecs", 0)),
@@ -182,19 +185,19 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
             CORE_AND_EXTENSIONS,
             [
                 POINTS[0],
-                (("chunk_grid",), ChunkGridDefinition, "out_of_scope"),
+                (("chunk_grid",), ChunkGridDefinition, Unclaimed),
                 POINTS[2],
                 _codec(("codecs", 0)),
-                _codec(("codecs", 1), "invalid"),
-                (("storage_transformers", 0), StorageTransformerDefinition, "out_of_scope"),
+                _codec(("codecs", 1), Refused),
+                (("storage_transformers", 0), StorageTransformerDefinition, Unclaimed),
             ],
             [(None,), None],
         ),
-        # A data type that is not JSON is read as nothing.
+        # A data type that is not JSON is refused.
         (
             _document(data_type=float("nan")),
             CORE_AND_EXTENSIONS,
-            [(("data_type",), DataTypeDefinition, "invalid"), *POINTS[1:], _codec(("codecs", 0))],
+            [(("data_type",), DataTypeDefinition, Refused), *POINTS[1:], _codec(("codecs", 0))],
             [(frozenset({4}),)],
         ),
     ],
@@ -212,22 +215,40 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
 def test_a_document_reads_as_each_field_where_it_sits_and_its_codecs_as_a_pipeline(
     document: dict[str, Any],
     context: Context,
-    fields: list[tuple[Loc, type[Definition[Any]], str]],
+    fields: list[tuple[Loc, type[Definition[Any]], type]],
     handed: list[Lengths | None],
 ) -> None:
-    reading, problems = read_array_metadata_v3(document, context=context)
-    assert problems == validate_array_metadata_v3(document, context=context)
-    assert [(loc, field.read_as, field.resolution) for loc, field in reading.fields()] == fields
+    reading = read_array_metadata_v3(document, context=context)
+    assert reading.problems == validate_array_metadata_v3(document, context=context)
+    # A model only of a document with no problem.
+    assert (reading.metadata is None) is (reading.problems != ())
+    assert [(loc, field.read_as, type(field)) for loc, field in reading.fields()] == fields
     assert reading.chunk.data_type is reading.data_type
     assert reading.pipeline[0].incoming == reading.chunk
     assert [None if s.incoming is None else s.incoming.lengths for s in reading.pipeline] == handed
 
 
+def test_a_document_with_no_problem_reads_as_its_model_holding_the_fields_read() -> None:
+    # The fields the read made, not a second reading of them.
+    document = _document(codecs=[{"name": "transpose", "configuration": {"order": [0]}}, LITTLE])
+    reading = read_array_metadata_v3(document)
+    model = reading.metadata
+    assert reading.problems == ()
+    assert model is not None
+    assert model == ZarrV3ArrayMetadata.from_json(document)
+    assert model.data_type is reading.data_type
+    assert model.chunk_grid is reading.chunk_grid
+    assert model.chunk_key_encoding is reading.chunk_key_encoding
+    assert all(
+        codec is stage.codec for codec, stage in zip(model.codecs, reading.pipeline, strict=True)
+    )
+
+
 def test_error_a_value_that_is_not_a_mapping_reads_as_nothing() -> None:
-    reading, problems = read_array_metadata_v3(["not", "a", "document"])
-    assert reading == ZarrV3ArrayMetadataReading()
+    reading = read_array_metadata_v3(["not", "a", "document"])
+    not_an_object = ValidationProblem((), "expected an object", "invalid_type")
+    assert reading == ZarrV3ArrayMetadataReading(problems=(not_an_object,))
     assert list(reading.fields()) == []
-    assert problems == (ValidationProblem((), "expected an object", "invalid_type"),)
 
 
 @pytest.mark.parametrize(
@@ -239,23 +260,23 @@ def test_error_a_list_of_fields_that_is_not_a_list_reads_as_empty(
 ) -> None:
     document = _document()
     document[member] = "bytes"
-    reading, problems = read_array_metadata_v3(document)
+    reading = read_array_metadata_v3(document)
     assert getattr(reading, attribute) == ()
-    assert [(p.loc, p.kind) for p in problems] == [((member,), "invalid_type")]
+    assert [(p.loc, p.kind) for p in reading.problems] == [((member,), "invalid_type")]
 
 
 @pytest.mark.parametrize("member", ["data_type", "chunk_grid", "chunk_key_encoding"])
 def test_error_a_document_without_a_field_reads_it_as_none(member: str) -> None:
     document = _document()
     del document[member]
-    reading, problems = read_array_metadata_v3(document)
+    reading = read_array_metadata_v3(document)
     assert getattr(reading, member) is None
     assert (member,) not in [loc for loc, _ in reading.fields()]
-    assert ValidationProblem((member,), "missing required key", "missing_key") in problems
+    assert ValidationProblem((member,), "missing required key", "missing_key") in reading.problems
 
 
 def test_error_a_document_without_a_shape_hands_its_codecs_chunks_of_no_known_rank() -> None:
     document = _document()
     del document["shape"]
-    reading, _ = read_array_metadata_v3(document)
+    reading = read_array_metadata_v3(document)
     assert reading.chunk.lengths is None

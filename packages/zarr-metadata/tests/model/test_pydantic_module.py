@@ -23,8 +23,8 @@ from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
-    ZarrV3NamedConfig,
 )
+from zarr_metadata.v3.definition import CORE, Read
 
 V3_ARRAY_DOC = dict(ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json())
 V2_ARRAY_DOC = dict(ZarrV2ArrayMetadata.create_default(shape=(4,), chunks=(2,)).to_json())
@@ -57,7 +57,6 @@ FIELD_CASES = [
         V2_CONSOLIDATED_DOC,
         id="consolidated-v2",
     ),
-    pytest.param(zmp.ZarrV3MetadataField, ZarrV3NamedConfig, {"name": "bytes"}, id="field-v3"),
 ]
 
 
@@ -105,7 +104,6 @@ def test_json_schema_generation() -> None:
 
     class Manifest(BaseModel):
         metadata: zmp.ZarrV3ArrayMetadata
-        codec: zmp.ZarrV3MetadataField
 
     schema = Manifest.model_json_schema()
     metadata_schema = schema["$defs"]["ZarrV3ArrayMetadataJSON"]
@@ -125,10 +123,6 @@ def test_json_schema_generation() -> None:
         "title": "Zarr Format",
         "type": "integer",
     }
-    assert schema["properties"]["codec"]["anyOf"] == [
-        {"type": "string"},
-        {"$ref": "#/$defs/ZarrV3NamedConfigJSON"},
-    ]
 
 
 def test_json_schema_generation_emits_no_warnings() -> None:
@@ -140,7 +134,6 @@ def test_json_schema_generation_emits_no_warnings() -> None:
         zmp.ZarrV2GroupMetadata,
         zmp.ZarrV3ConsolidatedMetadata,
         zmp.ZarrV2ConsolidatedMetadata,
-        zmp.ZarrV3MetadataField,
     )
 
     with warnings.catch_warnings():
@@ -211,10 +204,10 @@ def test_v3_array_schema_rejects_false_at_every_extension_point(field: str) -> N
 
 def test_metadata_field_schema_rejects_unknown_members() -> None:
     """Named-configuration envelopes are closed in both runtime and schema validation."""
-    _assert_runtime_and_schema_reject(
-        zmp.ZarrV3MetadataField,
-        {"name": "example", "unexpected": 1},
-    )
+    doc = json.loads(json.dumps(V3_ARRAY_DOC))
+    doc["codecs"] = [{"name": "bytes", "unexpected": 1}]
+
+    _assert_runtime_and_schema_reject(zmp.ZarrV3ArrayMetadata, doc)
 
 
 @pytest.mark.parametrize(
@@ -264,15 +257,6 @@ def test_json_roundtrip() -> None:
     assert Manifest.model_validate_json(manifest.model_dump_json()) == manifest
 
 
-def test_metadata_field_serializes_shorthand_and_false_object() -> None:
-    """The optional integration exposes the core model's canonical extension form."""
-    adapter = TypeAdapter(zmp.ZarrV3MetadataField)
-    assert adapter.dump_python(adapter.validate_python({"name": "bytes"})) == "bytes"
-    assert adapter.dump_python(
-        adapter.validate_python({"name": "optional", "must_understand": False})
-    ) == {"name": "optional", "must_understand": False}
-
-
 def test_core_package_does_not_import_pydantic() -> None:
     """Importing zarr_metadata (in a fresh interpreter) must not import
     pydantic: the integration is opt-in via zarr_metadata.pydantic."""
@@ -296,3 +280,36 @@ def test_a_non_finite_attribute_is_kept_by_constants_serialization() -> None:
     held = Manifest.model_validate_json(written).metadata.attributes["x"]
     assert isinstance(held, float)
     assert math.isnan(held)
+
+
+# --- the scope a v3 field type reads in --------------------------------------
+
+_WITH_ZSTD = ZarrV3ArrayMetadata.create_default(
+    shape=(4,),
+    codecs=({"name": "bytes"}, {"name": "zstd", "configuration": {"level": 3, "checksum": False}}),
+).to_json()
+
+
+@pytest.mark.parametrize(
+    ("context", "read"),
+    [
+        (None, True),
+        (CORE, False),
+        ({zmp.CONTEXT_KEY: CORE}, False),
+        ({"another validator's": 1}, True),
+    ],
+    ids=["none", "a-scope", "a-mapping-holding-one", "a-mapping-holding-none"],
+)
+def test_a_v3_field_type_reads_in_the_scope_the_validation_context_holds(
+    context: object, read: bool
+) -> None:
+    """As pydantic hands any validator its context; `zstd` is an extension, which `CORE` leaves unclaimed."""
+    model = TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(_WITH_ZSTD, context=context)
+    assert isinstance(model.codecs[1], Read) is read
+
+
+def test_error_a_validation_context_holds_a_scope_that_is_not_one() -> None:
+    with pytest.raises(TypeError, match=zmp.CONTEXT_KEY):
+        TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(
+            _WITH_ZSTD, context={zmp.CONTEXT_KEY: "CORE"}
+        )

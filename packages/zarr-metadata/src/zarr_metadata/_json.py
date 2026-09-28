@@ -271,6 +271,27 @@ def parse_json(value: object) -> JSONValue:
     return refined
 
 
+def copied(value: JSONValue) -> JSONValue:
+    """`value` in containers of its own, sharing nothing with it: each object a new `dict`, each array a new one of its type.
+
+    One frame for each level of nesting, as `refine_json` reads, so a
+    value refined is copied however deep it is.
+    """
+    if isinstance(value, Mapping):
+        members: dict[str, JSONValue] = {}
+        for key, item in value.items():
+            members[key] = copied(item)
+        return members
+    if isinstance(value, (tuple, list)):
+        # A loop, not a comprehension, which is a frame of its own before
+        # Python 3.12: one frame for each level.
+        entries: list[JSONValue] = []
+        for item in value:
+            entries.append(copied(item))  # noqa: PERF401
+        return entries if isinstance(value, list) else tuple(entries)
+    return value
+
+
 def arrays_to_tuples(obj: object) -> object:
     """Recursively materialize mappings and convert array-like values to tuples."""
     if isinstance(obj, Sequence) and not isinstance(obj, (str, bytes, bytearray)):
@@ -299,6 +320,7 @@ __all__ = [
     "ValidationProblem",
     "arrays_to_tuples",
     "choices",
+    "copied",
     "is_canonical_json",
     "is_json",
     "json_type",

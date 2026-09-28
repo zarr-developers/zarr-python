@@ -51,7 +51,7 @@ from typing import (
 from typing_extensions import TypeAliasType, TypedDict, TypeVar, is_typeddict
 
 from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
-from zarr_metadata._json import ValidationProblem, refine_json, shown
+from zarr_metadata._json import ValidationProblem, copied, refine_json, shown
 from zarr_metadata._typed_json import (
     Loc,
     Parsed,
@@ -634,25 +634,50 @@ def _checker(shape: type) -> _Checker:
 def _checked(
     shape: type, value: object, loc: Loc
 ) -> tuple[object, Problems, tuple[_NestedField, ...]]:
-    """`value` checked as `shape`: the typed value, every problem, and the fields nested in it, in order."""
+    """`value` checked as `shape`: the typed value, every problem, and the fields nested in it, in order, each put back as it was written."""
+    typed, found, nested = _typed(shape, value, loc)
+    return _put_back(typed, _as_written), found, nested
+
+
+def _typed(
+    shape: type, value: object, loc: Loc
+) -> tuple[object, Problems, tuple[_NestedField, ...]]:
+    """`value` checked as `shape`, each nested field still where the checker met it: the typed value, every problem, and those fields, in order."""
     checker = _checker(shape)
     typed, found = checker.parse(value, loc)
     if not checker.nests:
         return typed, found, ()
     nested: list[_NestedField] = []
-    return _put_back(typed, nested), found, tuple(nested)
+    _collect(typed, nested)
+    return typed, found, tuple(nested)
 
 
-def _put_back(value: object, nested: list[_NestedField]) -> object:
-    """`value` with each nested field the checker handed back put back as its JSON, collected in order."""
+def _collect(value: object, nested: list[_NestedField]) -> None:
+    """Each nested field the checker handed back in `value`, in order."""
     if isinstance(value, _NestedField):
         nested.append(value)
-        return value.json
+    elif isinstance(value, tuple):
+        for entry in cast("tuple[object, ...]", value):
+            _collect(entry, nested)
+    elif isinstance(value, dict):
+        for entry in cast("dict[str, object]", value).values():
+            _collect(entry, nested)
+
+
+def _as_written(field: _NestedField) -> JSONValue:
+    """A nested field put back as it was written."""
+    return field.json
+
+
+def _put_back(value: object, put: Callable[[_NestedField], JSONValue]) -> object:
+    """`value` with each nested field the checker handed back put back as `put` gives it."""
+    if isinstance(value, _NestedField):
+        return put(value)
     if isinstance(value, tuple):
-        return tuple(_put_back(entry, nested) for entry in cast("tuple[object, ...]", value))
+        return tuple(_put_back(entry, put) for entry in cast("tuple[object, ...]", value))
     if isinstance(value, dict):
         entries = cast("dict[str, object]", value)
-        return {key: _put_back(entry, nested) for key, entry in entries.items()}
+        return {key: _put_back(entry, put) for key, entry in entries.items()}
     return value
 
 
@@ -753,107 +778,184 @@ def named_configuration(
     return name, cast("Mapping[str, object]", configuration), ()
 
 
-Unread = Literal["out_of_scope", "invalid"]
-"""A field no definition read: nothing in scope claims its name, or it could not be read."""
-
-Resolution = Literal["read"] | Unread
-"""What a scope made of a field: read by the definition that claims it, or unread, and why."""
-
-
 def _nothing_nested() -> Nested:
-    """What a field that holds no field, or was not read, holds inside: nothing."""
+    """What a field that holds no field it read holds inside: nothing."""
     return {}
 
 
-@dataclass(frozen=True, slots=True)
-class Resolved(Generic[D]):
-    """One metadata field, as read in a scope: its JSON, and what the scope made of it.
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Read(Generic[D]):
+    """A field a definition in scope read: the name it is written with, the definition, and the configuration it allowed.
 
-    `resolution` is what became of the configuration: read by the
-    definition that claims the name, claimed by nothing, or not readable.
     A problem with the envelope around it -- a stray member, a
-    `must_understand` of `false` -- is reported with the field, and leaves
-    the resolution as it is; so is a problem of a field the configuration
-    holds, which is that field's own, with its own resolution in `nested`.
-    Built by hand, a reading is checked as `resolve` builds one: `read_as`
-    is one of the five kinds, type arguments dropped; a definition is of that
-    kind and filed under the name the field is written with; a field read
-    has a definition and a configuration, one unread no configuration, and
-    one nothing claims no definition. Anything else is a `TypeError`.
+    `must_understand` of `false` -- is reported with the field and leaves
+    it read; so is a problem of a field its configuration holds, which is
+    that field's own, as `nested` says. Two fields are equal when they
+    read the same, however each was spelled: `"bytes"` and
+    `{"name": "bytes"}` are one field.
     """
 
-    json: JSONValue
-    """The field as written, refined: arrays as tuples. `None` for a value that was not JSON, as for `null`."""
-    resolution: Resolution
-    definition: D | None
-    """The definition that claims the field's name; None when nothing in scope does, or it names none."""
-    configuration: Mapping[str, JSONValue] | None
-    """The configuration, type-checked and allowed by the rules, when the field was read; None otherwise."""
+    json: JSONValue = dataclasses.field(compare=False)
+    """The field as written, refined: arrays as tuples."""
+    name: str
+    """The name it is written with: `"r16"`, though its definition is filed under `r*`."""
+    definition: D
+    """The definition that read it."""
+    configuration: Mapping[str, JSONValue]
+    """The configuration, type-checked and allowed by the rules; for raw bits, what the name carries.
+
+    Each field it holds is written as a document writes it, as that
+    field's `to_json` writes it, so the configuration says what was read
+    however it was spelled: a shard's `"crc32c"` and `{"name": "crc32c"}`
+    are one index codec.
+    """
     nested: Nested = dataclasses.field(default_factory=_nothing_nested)
     """The fields the configuration holds, each as the scope read it, by where it sits in the configuration.
 
     A struct's field types at `("fields", 0, "data_type")`, a shard's
     codecs at `("codecs", 0)`: what a definition's functions consult about
-    the fields inside its own. Each is read whatever became of the field
-    holding it, so a field its rules refuse keeps them too; empty when
-    its configuration was not checked against its TypedDict -- nothing
-    claims its name, it is not an object, a configuration it requires is
-    missing, or its name carries it, as raw bits' does.
+    the fields inside its own.
     """
-    read_as: type[Definition[Any]] = dataclasses.field(kw_only=True)
-    """The kind of metadata the field was read as -- `CodecDefinition`, `DataTypeDefinition` -- whether or not anything in scope claims it: the `kind` `resolve` was asked for.
-
-    Named apart from a codec's `kind` -- array -> array and so on, which
-    its definition says -- and a problem's.
-    """
+    read_as: type[Definition[Any]] = dataclasses.field(init=False, repr=False, compare=False)
+    """The kind of metadata it was read as: its definition's."""
 
     def __post_init__(self) -> None:
-        # The runtime half of the annotations, as `Chunk` checks its own: a
-        # reading built by hand, as an extension's may be, fails here rather
-        # than where a function trusts its kind.
+        # The runtime half of the annotations: a field read by hand, as an
+        # extension's may be, fails here rather than where a function trusts it.
+        definition = cast("object", self.definition)
+        kind = kind_of(cast("Definition[Any]", definition))
+        refusal = (
+            f"a field read is read by a definition of a kind, got {definition!r}"
+            if kind is None
+            else _misread(definition, kind, self.name)
+        )
+        if refusal is not None:
+            raise TypeError(refusal)
+        object.__setattr__(self, "read_as", kind)
+
+    def to_json(self) -> JSONValue:
+        """The field as a document writes it, for every reader: its configuration as read, sharing nothing with the field.
+
+        The envelope takes the fewest words every reader takes: a data type
+        with nothing to configure is its bare name, as core data types have
+        been written since Zarr v3.0; any other field is an object,
+        `{"name": ...}`, since a Zarr v3.0 reader takes no bare name in
+        `codecs`
+        (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L585-L592).
+        A name that carries its configuration, as raw bits' does, is
+        written alone.
+        """
+        return copied(document_json(self))
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Unclaimed:
+    """A field nothing in scope claims: an extension the scope leaves unjudged, which is what keeps the format open.
+
+    Equal to another when it is written with the same name and
+    configuration, however each was spelled.
+    """
+
+    json: JSONValue = dataclasses.field(compare=False)
+    """The field as written, refined: arrays as tuples."""
+    name: str
+    """The name nothing in scope claims."""
+    read_as: type[Definition[Any]]
+    """The kind of metadata it was read as: what a definition that claimed it would be."""
+    configuration: Mapping[str, JSONValue] = dataclasses.field(init=False)
+    """The configuration as written, which nothing judged; empty when none is written."""
+
+    def __post_init__(self) -> None:
+        # The runtime half of the annotations; `read_as` with its type
+        # arguments dropped, as `resolve` drops them.
+        object.__setattr__(self, "read_as", as_kind(self.read_as))
+        name = cast("object", self.name)
+        if not isinstance(name, str):
+            msg = f"a field nothing in scope claims is named, got {name!r}"
+            raise TypeError(msg)
+        _, written, _ = named_configuration(self.json)
+        configuration: Mapping[str, object] = {} if written is None else written
+        object.__setattr__(self, "configuration", cast("Mapping[str, JSONValue]", configuration))
+
+    @property
+    def definition(self) -> None:
+        """The definition that read it: none did."""
+        return None
+
+    @property
+    def nested(self) -> Nested:
+        """The fields its configuration holds as the scope read them: none, since nothing read its configuration."""
+        return _nothing_nested()
+
+    def to_json(self) -> JSONValue:
+        """The field as a document writes it, sharing nothing with the field: its configuration as written, in the envelope every reader takes, as `Read.to_json` writes one."""
+        return copied(document_json(self))
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Refused(Generic[D]):
+    """A field that could not be read -- not a field at all, not JSON, or refused by the definition that claims its name -- as its problems say."""
+
+    json: JSONValue | None
+    """The field as written, refined: arrays as tuples; None when it is not JSON."""
+    name: str | None
+    """The name it is written with; None when it names none."""
+    read_as: type[Definition[Any]]
+    """The kind of metadata it was read as."""
+    definition: D | None = None
+    """The definition that claims its name and refused it; None when nothing in scope claims it, or it names none."""
+    nested: Nested = dataclasses.field(default_factory=_nothing_nested)
+    """The fields its configuration holds, each as the scope read it; empty when its configuration was not checked against its TypedDict."""
+
+    def __post_init__(self) -> None:
+        # The runtime half of the annotations; `read_as` with its type
+        # arguments dropped, as `resolve` drops them.
         kind = as_kind(self.read_as)
         object.__setattr__(self, "read_as", kind)
         definition = cast("object", self.definition)
-        if definition is not None and not isinstance(definition, kind):
-            msg = (
-                f"a field read as a {kind.__name__} is read by one, "
-                f"got a {type(definition).__name__}"
-            )
-            raise TypeError(msg)
-        refusal = _contradiction(self)
+        refusal = None if definition is None else _misread(definition, kind, self.name)
         if refusal is not None:
             raise TypeError(refusal)
 
-    @property
-    def name(self) -> str | None:
-        """The name the field was written with -- `"r16"`, though its definition is filed under `r*` -- or None when it names none.
 
-        What a message names it by. Which data type or codec it is, its
-        definition says, and its configuration: `r16` is `r*` of 16 bits.
-        None too for a field that is not JSON -- a `NaN` anywhere in it --
-        which is held as None, and which its problems say.
-        """
-        return named_configuration(self.json)[0]
+Resolved = TypeAliasType("Resolved", "Read[D] | Unclaimed | Refused[D]", type_params=(D,))
+"""One metadata field as a scope read it: read by the definition that claims its name, claimed by nothing, or refused."""
+
+_FIELDS: Final = (Read, Unclaimed, Refused)
+"""The three things a scope makes of a field."""
 
 
-def _contradiction(resolved: Resolved[Any]) -> str | None:
-    """What a reading says of itself that cannot hold together; None when it holds."""
-    definition, configuration = resolved.definition, resolved.configuration
-    if (resolved.resolution == "read") != (configuration is not None):
-        return f"a field's configuration is held when it was read, got one {resolved.resolution!r}"
-    if resolved.resolution == "read" and definition is None:
-        return "a field read is read by a definition, got none"
-    if resolved.resolution == "out_of_scope":
-        if definition is not None:
-            return f"a field nothing in scope claims has no definition, got {definition.name!r}"
-        if resolved.name is None or len(resolved.nested) != 0:
-            return "a field nothing in scope claims is named, and holds no field read inside it"
-    name = resolved.name
-    if definition is not None and (
-        name is None or spelled(resolved.read_as, name)[0] != definition.name
-    ):
-        return f"a field named {name!r} is read by the definition filed under it, got {definition.name!r}"
+def _misread(definition: object, kind: type[Definition[Any]], name: object) -> str | None:
+    """What is wrong with `definition` as the one that read a field named `name` as a `kind`; None when nothing is."""
+    if not isinstance(definition, kind):
+        return f"a field read as a {kind.__name__} is read by one, got {definition!r}"
+    filed = cast("Definition[Any]", definition).name
+    if not isinstance(name, str) or spelled(kind, name)[0] != filed:
+        return f"a field named {name!r} is read by the definition filed under it, got {filed!r}"
     return None
+
+
+def document_json(field: Resolved[Any]) -> JSONValue:
+    """A field as a document writes it, holding the field's own values: as `to_json` writes it, or as it was written when it was refused.
+
+    What a writer serializes, which changes nothing, so it copies nothing;
+    `to_json` is this, copied.
+    """
+    if isinstance(field, Refused):
+        return field.json
+    kind = field.read_as
+    if isinstance(field, Read) and spelled(kind, field.name)[1] is not None:
+        return _envelope_json(kind, field.name, {})
+    return _envelope_json(kind, field.name, field.configuration)
+
+
+def _envelope_json(
+    kind: type[Definition[Any]], name: str, configuration: Mapping[str, JSONValue]
+) -> JSONValue:
+    """A field's envelope in the fewest words every reader takes: a data type with nothing to configure by its bare name, any other field an object."""
+    if len(configuration) != 0:
+        return {"name": name, "configuration": configuration}
+    return name if kind is DataTypeDefinition else {"name": name}
 
 
 Nested: TypeAlias = Mapping[Loc, Resolved[Any]]
@@ -899,9 +1001,7 @@ class Chunk:
 
 def _is_data_type_field(value: object) -> bool:
     """Whether `value` is a field a scope read as a data type."""
-    return (
-        isinstance(value, Resolved) and cast("Resolved[Any]", value).read_as is DataTypeDefinition
-    )
+    return isinstance(value, _FIELDS) and cast("Resolved[Any]", value).read_as is DataTypeDefinition
 
 
 def _is_lengths(value: object) -> TypeGuard[Lengths]:
@@ -935,11 +1035,12 @@ def fields_of(resolved: Resolved[Any], loc: Loc = ()) -> Iterator[tuple[Loc, Res
 def configuration_of(resolved: Resolved[Any], definition: Definition[C]) -> C | None:
     """The configuration `resolved` holds, typed as `definition` declares it, if `definition` read it.
 
-    `Resolved` holds a configuration as the mapping every one is; asked
-    with the definition that read the field, this is the same mapping, as
-    its TypedDict. None when another definition read it, or none did.
+    `Read` holds a configuration as the mapping every one is; asked with
+    the definition that read the field -- or one equal to it, as a
+    pickled field's is -- this is the same mapping, as its TypedDict. None
+    when another definition read it, or none did.
     """
-    if resolved.definition is not definition or resolved.configuration is None:
+    if not isinstance(resolved, Read) or resolved.definition != definition:
         return None
     return cast("C", resolved.configuration)
 
@@ -960,10 +1061,9 @@ def fill_value_problems(
     value unjudged. `loc` prefixes every problem.
     """
     refined, problems = refine_json(value, loc)
-    definition = data_type.definition
-    configuration = data_type.configuration
-    if len(problems) != 0 or definition is None or configuration is None:
+    if len(problems) != 0 or not isinstance(data_type, Read):
         return problems
+    definition, configuration = data_type.definition, data_type.configuration
     typed, problems = _fill_value_parser(definition.fill_value)(refined, loc)
     if not _usable(problems):
         return problems
@@ -983,10 +1083,9 @@ def storage_of(data_type: Resolved[DataTypeDefinition[Any]]) -> StorageClass | N
     checked to be a storage class, and an error it raises says which data
     type's storage raised it.
     """
-    definition = data_type.definition
-    configuration = data_type.configuration
-    if definition is None or configuration is None:
+    if not isinstance(data_type, Read):
         return None
+    definition, configuration = data_type.definition, data_type.configuration
     found = asked(
         definition,
         "storage",
@@ -1020,10 +1119,9 @@ def chunk_grid_lengths(
     definition, not the field.
     """
     unknown: Lengths = (None,) * len(shape)
-    definition = chunk_grid.definition
-    configuration = chunk_grid.configuration
-    if definition is None or configuration is None:
+    if not isinstance(chunk_grid, Read):
         return unknown, ()
+    definition, configuration = chunk_grid.definition, chunk_grid.configuration
     at = (*loc, "configuration")
     problems = ruled(
         definition, lambda: definition.shape_rules(configuration, chunk_grid.nested, shape), at
@@ -1063,9 +1161,10 @@ def resolve(
     configuration is checked against its TypedDict and judged by its
     rules; each nested field the check met is read the same way, in the
     same scope, and what is wrong with one is its own, reported where it
-    sits, as with a document's fields. A name nothing claims is
-    `out_of_scope`: an unmodelled
-    extension, left unjudged, which is what keeps the format open. `loc`
+    sits, as with a document's fields. What comes back is `Read` by the
+    definition that claims the name; `Unclaimed` when nothing in scope
+    claims it, an unmodelled extension left unjudged, which is what keeps
+    the format open; or `Refused`, with the problems that say why. `loc`
     prefixes every problem. `kind` is one of the five kinds --
     `CodecDefinition`, `DataTypeDefinition`, `ChunkGridDefinition`,
     `ChunkKeyEncodingDefinition`, `StorageTransformerDefinition` -- with
@@ -1074,7 +1173,12 @@ def resolve(
     asked = as_kind(kind)
     refined, problems = refine_json(data, loc)
     if len(problems) != 0:
-        return Resolved(None, "invalid", None, None, read_as=asked), problems
+        # Not JSON, so not read; its name, if it has one, still says what
+        # claims it.
+        name = named_configuration(data)[0]
+        claimant = None if name is None else context.claimant(asked, name)
+        refused = Refused(json=None, name=name, read_as=asked, definition=claimant)
+        return cast("Resolved[D]", refused), problems
     resolved, found = _resolve_field(refined, asked, context, loc)
     return cast("Resolved[D]", resolved), found
 
@@ -1084,9 +1188,10 @@ def _resolve_field(
 ) -> tuple[Resolved[Definition[Any]], Problems]:
     """A refined field with its envelope judged, then read.
 
-    The resolution is what became of the configuration. A stray member or
-    a `must_understand` of `false` says nothing about it, so it is reported
-    beside the field that was read, which later layers can still judge.
+    What the scope made of it is what became of the configuration. A
+    stray member or a `must_understand` of `false` says nothing about it,
+    so it is reported beside the field that was read, which later layers
+    can still judge.
     """
     envelope = _located(loc, envelope_problems(data, allow_must_understand_false=False))
     resolved, found = _read(data, kind, context, loc)
@@ -1098,43 +1203,56 @@ def _read(
 ) -> tuple[Resolved[Definition[Any]], Problems]:
     name, given, malformed = named_configuration(data)
     if name is None:
-        return Resolved(data, "invalid", None, None, read_as=kind), ()
+        return Refused(json=data, name=None, read_as=kind), ()
     definition = context.claimant(kind, name)
     if len(malformed) != 0:
         # A configuration that is not an object, which the envelope's
         # problems say; the name still says what claims the field.
-        return Resolved(data, "invalid", definition, None, read_as=kind), ()
+        return Refused(json=data, name=name, read_as=kind, definition=definition), ()
     if definition is None:
-        return Resolved(data, "out_of_scope", None, None, read_as=kind), ()
+        return Unclaimed(json=data, name=name, read_as=kind), ()
     _, carried = spelled(kind, name)
     if carried is not None:
-        return _read_carried(data, kind, definition, given, carried, loc)
+        return _read_carried(data, name, definition, given, carried, loc)
     at = (*loc, "configuration")
     if given is None and definition.requires_configuration:
         missing = problem(at, f"{name!r} requires a configuration", "missing_key")
-        return Resolved(data, "invalid", definition, None, read_as=kind), missing
-    typed, found, nested = _checked(definition.configuration, {} if given is None else given, at)
-    # The rules may read a field the configuration holds by its name, so
-    # they are asked only when each one is named; any other problem with
-    # one is its own, reported where it sits, as a document's fields are.
-    sound = _usable(found) and all(_named(field) for field in nested)
-    configuration = cast("Mapping[str, JSONValue]", typed) if sound else None
-    # The fields it holds are read first, so the rules see them as the
-    # scope read them; their problems are reported after the rules'.
+        return Refused(json=data, name=name, read_as=kind, definition=definition), missing
+    typed, found, nested = _typed(definition.configuration, {} if given is None else given, at)
+    # The fields it holds are read first, each a frame deeper than this
+    # one, so the rules see them as the scope read them; each is put back
+    # as a document writes it, so the configuration says what was read
+    # however each was spelled. Their problems are reported after the
+    # rules'.
     within: dict[Loc, Resolved[Any]] = {}
+    written: dict[Loc, JSONValue] = {}
     inside: list[ValidationProblem] = []
     for field in nested:
         inside.extend(_envelope(field))
         inner, found_inside = _read(field.json, field.kind, context, field.loc)
         within[field.loc[len(at) :]] = inner
+        written[field.loc] = document_json(inner)
         inside.extend(found_inside)
-        inside.extend(_sized(field, inner.definition))
+        inside.extend(_sized(field, inner))
+    # The rules may read a field the configuration holds by its name, so
+    # they are asked only when each one is named; any other problem with
+    # one is its own, reported where it sits, as a document's fields are.
+    sound = _usable(found) and all(_named(field) for field in nested)
+    configuration = (
+        cast("Mapping[str, JSONValue]", _put_back(typed, lambda field: written[field.loc]))
+        if sound
+        else None
+    )
     own = list(found)
     if configuration is not None:
         own.extend(ruled(definition, lambda: definition.rules(configuration, within), at))
     if configuration is None or not _usable(own):
-        return Resolved(data, "invalid", definition, None, within, read_as=kind), (*own, *inside)
-    return Resolved(data, "read", definition, configuration, within, read_as=kind), (*own, *inside)
+        refused = Refused(json=data, name=name, read_as=kind, definition=definition, nested=within)
+        return refused, (*own, *inside)
+    read = Read(
+        json=data, name=name, definition=definition, configuration=configuration, nested=within
+    )
+    return read, (*own, *inside)
 
 
 def _named(field: _NestedField) -> bool:
@@ -1145,7 +1263,7 @@ def _named(field: _NestedField) -> bool:
 
 def _read_carried(
     data: JSONValue,
-    kind: type[Definition[Any]],
+    name: str,
     definition: Definition[Any],
     given: Mapping[str, object] | None,
     carried: Mapping[str, JSONValue],
@@ -1164,24 +1282,26 @@ def _read_carried(
     configuration, judged = definition.judge(carried)
     problems = (*beside, *(ValidationProblem(loc, found.message, found.kind) for found in judged))
     if configuration is None or not _usable(problems):
-        return Resolved(data, "invalid", definition, None, read_as=kind), problems
-    return Resolved(data, "read", definition, configuration, read_as=kind), problems
+        refused = Refused(json=data, name=name, read_as=DataTypeDefinition, definition=definition)
+        return refused, problems
+    return Read(json=data, name=name, definition=definition, configuration=configuration), problems
 
 
-def _sized(field: _NestedField, definition: Definition[Any] | None) -> Problems:
+def _sized(field: _NestedField, inner: Resolved[Any]) -> Problems:
     """A codec of dynamic size in a member that takes codecs of static size, as a problem at the field.
 
     A name nothing in scope claims is left unjudged, its size unknown, as
     everything else about it is.
     """
+    definition = inner.definition
     if not field.static or not isinstance(definition, CodecDefinition):
         return ()
     if definition.size == "static":
         return ()
-    name, _, _ = named_configuration(field.json)
     return problem(
         field.loc,
-        f"{name!r} is a codec of dynamic size, and only codecs of static size may be used here",
+        f"{inner.name!r} is a codec of dynamic size, and only codecs of static size may be used "
+        "here",
         "invalid_value",
     )
 
@@ -1206,31 +1326,30 @@ def canonicalize(
     takes no short-hand name in `codecs`
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L585-L592);
     and there is no `must_understand`, since `true` is what absence means.
-    A name nothing in scope claims comes back as written, since what it
-    simplifies to is its own definition's call.
+    A name nothing in scope claims keeps the configuration it was written
+    with, since what it simplifies to is its own definition's call.
     """
     resolved, problems = resolve(data, kind, context, loc)
     if len(problems) != 0:
         return None, problems
-    if resolved.definition is None:
-        return resolved.json, ()
-    return _canonical_field(resolved.definition, resolved), ()
+    return _simplest(resolved), ()
 
 
-def _canonical_field(definition: Definition[Any], resolved: Resolved[Any]) -> JSONValue:
-    """A field that read, in its simplest equivalent spelling: the fields it holds first, then its own members.
+def _simplest(field: Resolved[Any]) -> JSONValue:
+    """A field without problems in its simplest spelling: one nothing in scope claims as a document writes it."""
+    if isinstance(field, Read):
+        return _canonical_field(field)
+    if isinstance(field, Unclaimed):
+        return field.to_json()
+    return field.json
 
-    Each field it holds is spelled from what `resolve` read of it, kept in
-    `nested`; one nothing in scope claims keeps the spelling it was written
-    in.
-    """
-    name, _, _ = named_configuration(resolved.json)
-    configuration: JSONValue = dict(resolved.configuration or {})
+
+def _canonical_field(resolved: Read[Any]) -> JSONValue:
+    """A field that read, in its simplest equivalent spelling: the fields it holds first, then its own members."""
+    definition, name = resolved.definition, resolved.name
+    configuration: JSONValue = dict(resolved.configuration)
     for loc, inner in resolved.nested.items():
-        simplest = (
-            inner.json if inner.definition is None else _canonical_field(inner.definition, inner)
-        )
-        configuration = _replaced(configuration, loc, simplest)
+        configuration = _replaced(configuration, loc, _simplest(inner))
     simplified = cast("Mapping[str, JSONValue]", definition.canonical(configuration))
     _, refused = definition.judge(simplified)
     if len(refused) != 0:
@@ -1242,9 +1361,7 @@ def _canonical_field(definition: Definition[Any], resolved: Resolved[Any]) -> JS
     carrying = _carrying_name(definition, simplified)
     if carrying is not None:
         return carrying
-    if len(simplified) != 0:
-        return {"name": name, "configuration": simplified}
-    return name if isinstance(definition, DataTypeDefinition) else {"name": name}
+    return _envelope_json(resolved.read_as, name, simplified)
 
 
 def _replaced(value: JSONValue, path: Loc, new: JSONValue) -> JSONValue:
@@ -1278,13 +1395,14 @@ __all__ = [
     "EmptyConfiguration",
     "Lengths",
     "Nested",
-    "Resolution",
+    "Read",
+    "Refused",
     "Resolved",
     "StaticCodecField",
     "StorageClass",
     "StorageTransformerDefinition",
     "StorageTransformerField",
-    "Unread",
+    "Unclaimed",
     "as_kind",
     "asked",
     "canonicalize",

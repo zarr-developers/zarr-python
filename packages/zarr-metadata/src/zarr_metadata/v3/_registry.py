@@ -11,7 +11,7 @@ what the Zarr v3 specification itself defines, so a document read in it
 uses nothing an implementation could refuse for being optional.
 `CORE_AND_EXTENSIONS` adds what `zarr-extensions` registers and this
 package defines. A name in neither is not refused -- that is what keeps
-the format open -- it is read as `out_of_scope` and left unjudged.
+the format open -- it is read as `Unclaimed` and left unjudged.
 """
 
 from __future__ import annotations
@@ -57,6 +57,8 @@ from zarr_metadata.v3.data_type.uint32 import UINT32_DATA_TYPE
 from zarr_metadata.v3.data_type.uint64 import UINT64_DATA_TYPE
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from zarr_metadata.v3._definition import D
 
 Tables = Mapping[type[Definition[Any]], Mapping[str, Definition[Any]]]
@@ -117,6 +119,18 @@ class Context:
         # Short, as a default argument shows it: in full, a scope's repr is
         # every definition's, and `help` of a validator runs to pages.
         return f"Context(<{len(self.definitions())} definitions>)"
+
+    def __reduce__(self) -> tuple[Callable[..., Context], tuple[Definition[Any], ...]]:
+        # A scope is its definitions, so it pickles as them, and goes to
+        # another process with the documents it is to read there.
+        return (Context.of, self.definitions())
+
+    def __copy__(self) -> Context:
+        return self
+
+    def __deepcopy__(self, memo: dict[int, object]) -> Context:
+        # A scope never changes, so a copy of it is itself.
+        return self
 
     def claimant(self, kind: type[D], name: str) -> D | None:
         """The definition of `kind` in scope that reads `name`, a name a document writes; None if none does.

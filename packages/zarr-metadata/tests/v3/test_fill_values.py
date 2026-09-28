@@ -23,7 +23,7 @@ from zarr_metadata.v3.definition import (
     EmptyConfiguration,
     JSONValue,
     Nested,
-    Resolved,
+    Read,
     ValidationProblem,
     fill_value_problems,
     resolve,
@@ -285,5 +285,7 @@ def test_a_fill_value_nested_hundreds_deep_is_read() -> None:
 def test_a_struct_read_without_its_field_types_leaves_its_fields_unjudged() -> None:
     # A reading built by hand, holding no field type's reading.
     configuration = {"fields": ({"name": "a", "data_type": "int8"},)}
-    struct = Resolved(STRUCT, "read", STRUCT_DATA_TYPE, configuration, read_as=DataTypeDefinition)
+    struct = Read(
+        json=STRUCT, name="struct", definition=STRUCT_DATA_TYPE, configuration=configuration
+    )
     assert fill_value_problems(struct, {"a": 300}) == ()

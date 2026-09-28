@@ -31,7 +31,15 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import Chunk, CodecDefinition, CodecKind, Resolved, asked, ruled
+from zarr_metadata.v3._definition import (
+    Chunk,
+    CodecDefinition,
+    CodecKind,
+    Read,
+    Resolved,
+    asked,
+    ruled,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -95,7 +103,7 @@ def read_pipeline(
     # array -- past the array -> bytes codec, or a codec of unknown kind.
     handed: Chunk | None = chunk
     for index, codec in enumerate(codecs):
-        definition, configuration = codec.definition, codec.configuration
+        definition = codec.definition
         if definition is None:
             stages.append(Stage(codec, handed))
             handed = None
@@ -107,17 +115,18 @@ def read_pipeline(
         incoming = Chunk() if handed is None else handed
         at = (*loc, index, "configuration")
         inner = _no_stages()
-        if configuration is not None:
-            problems.extend(_chunk_problems(definition, configuration, codec.nested, incoming, at))
-            inner, found = _inner_pipelines(definition, configuration, codec.nested, incoming, at)
+        if isinstance(codec, Read):
+            configuration, nested = codec.configuration, codec.nested
+            problems.extend(_chunk_problems(definition, configuration, nested, incoming, at))
+            inner, found = _inner_pipelines(definition, configuration, nested, incoming, at)
             problems.extend(found)
         stages.append(Stage(codec, incoming, inner))
         if definition.kind == "array_bytes":
             handed = None
-        elif configuration is None:
+        elif not isinstance(codec, Read):
             handed = Chunk()
         else:
-            handed = _handed_on(definition, configuration, codec.nested, incoming, at)
+            handed = _handed_on(definition, codec.configuration, codec.nested, incoming, at)
     return tuple(stages), tuple(problems)
 
 

@@ -38,13 +38,20 @@ its own by a caller that holds nothing but JSON:
 3. `resolve(field, CodecDefinition, CORE_AND_EXTENSIONS)` reads a whole
    field in a scope: its envelope judged, its name related to a
    definition, its configuration judged, and each nested field read the
-   same way. It returns `Resolved` -- the field's JSON and the `name`
-   it was written with, its `resolution`, the definition, the checked
-   configuration and the kind it was read as, `read_as` -- and every
-   problem. A name nothing in scope
-   claims is `out_of_scope`: left unjudged, which is what keeps the
-   format open, and still read as the kind it was asked for. A field is read
-   as one of the five kinds, with or without type arguments;
+   same way. It returns what the scope made of the field, and every
+   problem: `Read` by the definition that claims its name, with the
+   configuration it checked and allowed and the fields it holds, each
+   read the same way; `Unclaimed`, a name nothing in scope claims, left
+   unjudged, which is what keeps the format open; or `Refused`, whose
+   problems say why. Each has the field's JSON, the `name` it is
+   written with, the kind it was read as, `read_as`, the `definition`
+   that claims its name -- None for `Unclaimed` -- and the fields it
+   holds as the scope read them, `nested`. The two a model holds, `Read`
+   and `Unclaimed`, have a `configuration` and `to_json()`, the field as
+   a document writes it; two of them are equal when they read the same,
+   however each was spelled. `Resolved` is the three, for `match`. A
+   field is read as one of the five kinds, with or without type
+   arguments;
    `resolve(field, Definition, scope)` is a `TypeError`, since nothing
    is filed under it. `configuration_of(resolved, GZIP_CODEC)` is the
    configuration typed as that definition's TypedDict, when it read it.
@@ -62,7 +69,7 @@ its own by a caller that holds nothing but JSON:
 
     resolved, problems = resolve({"name": "gzip", "configuration": {"level": 12}},
                                  CodecDefinition, CORE_AND_EXTENSIONS)
-    resolved.resolution     # 'invalid'
+    resolved                # Refused(..., definition=CodecDefinition(name='gzip'), ...)
     problems[0].loc         # ('configuration', 'level')
 
     resolved, problems = resolve({"name": "gzip", "configuration": {"level": 5}},
@@ -82,10 +89,14 @@ definition; then a scope that holds it. The TypedDict is a
 which `typing.TypedDict` does not take on the versions this package
 supports. The rules are handed the configuration and the fields it holds
 as the scope read them: a field that is read keeps what it read inside it
-as `Resolved.nested`, a `Nested` mapping by where each sits, so a
-struct's rules reach its field types. `judge`, which reads in no scope,
+as `Read.nested`, a `Nested` mapping by where each sits, so a struct's
+rules reach its field types. `judge`, which reads in no scope,
 hands them none. A rule's message shows a value as the package's own
-messages do, as JSON, with `shown`: `null`, `[1, 2]`, `"C"`.
+messages do, as JSON, with `shown`: `null`, `[1, 2]`, `"C"`. Define each
+function at a module's top level: a model holds the definitions that
+read its fields, so it pickles, and compares equal once loaded, only
+when they do -- a lambda or a closure does not pickle, and a
+`functools.partial` pickles but compares unequal to itself loaded.
 
     from collections.abc import Iterator
 
@@ -257,13 +268,14 @@ from zarr_metadata.v3._definition import (
     EmptyConfiguration,
     Lengths,
     Nested,
-    Resolution,
+    Read,
+    Refused,
     Resolved,
     StaticCodecField,
     StorageClass,
     StorageTransformerDefinition,
     StorageTransformerField,
-    Unread,
+    Unclaimed,
     canonicalize,
     chunk_grid_lengths,
     configuration_of,
@@ -298,14 +310,15 @@ __all__ = [
     "MetadataValidationError",
     "Nested",
     "ProblemKind",
-    "Resolution",
+    "Read",
+    "Refused",
     "Resolved",
     "Stage",
     "StaticCodecField",
     "StorageClass",
     "StorageTransformerDefinition",
     "StorageTransformerField",
-    "Unread",
+    "Unclaimed",
     "ValidationProblem",
     "ZarrV3MetadataFieldJSON",
     "canonicalize",

@@ -16,15 +16,10 @@ from zarr_metadata.v3._definition import (
     CodecDefinition,
     DataTypeField,
     Nested,
+    Read,
     fill_value_problems,
-    named_configuration,
 )
-from zarr_metadata.v3.codec._arithmetic import (
-    COMPLEX,
-    FLOATING_POINT,
-    NOT_NUMBERS,
-    read_name,
-)
+from zarr_metadata.v3.codec._arithmetic import COMPLEX, FLOATING_POINT, NOT_NUMBERS
 
 CAST_VALUE_CODEC_NAME: Final = "cast_value"
 """The `name` field value of the `cast_value` codec."""
@@ -153,10 +148,9 @@ def _rules(
     models no real numbers is the one problem reported of it.
     """
     target = nested.get(("data_type",))
-    name = read_name(target)
-    if target is None or name is None:
+    if not isinstance(target, Read):
         return
-    written, _, _ = named_configuration(target.json)
+    name, written = target.definition.name, target.name
     if name in _NO_REAL_NUMBERS:
         yield ValidationProblem(
             ("data_type",),
@@ -185,14 +179,12 @@ def _chunk_rules(
     so the data type it is handed is held to what the one it casts to is.
     """
     source = chunk.data_type
-    name = read_name(source)
-    if source is None or name is None:
+    if not isinstance(source, Read):
         return
-    if name in _NO_REAL_NUMBERS:
-        written, _, _ = named_configuration(source.json)
+    if source.definition.name in _NO_REAL_NUMBERS:
         yield ValidationProblem(
             (),
-            f"expected a chunk of a data type that models real numbers, got {shown(written)}",
+            f"expected a chunk of a data type that models real numbers, got {shown(source.name)}",
             "invalid_value",
         )
         return

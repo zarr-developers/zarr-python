@@ -24,9 +24,6 @@ from zarr_metadata.model import (
     ZarrV2ArrayMetadata,
     ZarrV2ArrayMetadataPartial,
     ZarrV3ArrayMetadata,
-    ZarrV3ArrayMetadataPartial,
-    ZarrV3MetadataField,
-    ZarrV3NamedConfig,
     is_array_metadata_v2,
     is_array_metadata_v3,
     is_group_metadata_v2,
@@ -42,9 +39,12 @@ from zarr_metadata.model import (
     validate_json,
     validate_metadata_field_v3,
 )
+from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSONPartial
+from zarr_metadata.v3.codec.gzip import GZIP_CODEC
+from zarr_metadata.v3.definition import CORE, CORE_AND_EXTENSIONS, Read, Unclaimed, configuration_of
 
 if TYPE_CHECKING:
-    from zarr_metadata._common import JSONValue
+    from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
     from zarr_metadata.v2 import ZarrV2CodecMetadata
 
 # --- public exports --------------------------------------------------------
@@ -188,70 +188,9 @@ def test_string_nan_fill_value_roundtrips() -> None:
     # The string form round-trips cleanly under default dataclass equality,
     # unlike a raw float('nan'), which is not JSON.
     """A float array's string 'NaN' fill_value round-trips cleanly."""
-    m = ZarrV3ArrayMetadata.create_default(
-        fill_value="NaN",
-        data_type=ZarrV3NamedConfig(name="float32", configuration={}),
-        codecs=(ZarrV3NamedConfig(name="bytes", configuration={"endian": "little"}),),
-    )
+    m = ZarrV3ArrayMetadata.create_default(fill_value="NaN", data_type="float32")
     assert ZarrV3ArrayMetadata.from_json(m.to_json()) == m
     assert ZarrV3ArrayMetadata.from_json(m.to_json()).fill_value == "NaN"
-
-
-# --- ZarrV3NamedConfig.to_json ------------------------------------------------
-
-ZARR_TO_JSON_CASES = [
-    Expect(
-        ZarrV3NamedConfig(name="regular", configuration={"chunk_shape": [1]}),
-        {"name": "regular", "configuration": {"chunk_shape": [1]}},
-        id="with-configuration",
-    ),
-    Expect(
-        ZarrV3NamedConfig(name="bytes", configuration={}),
-        "bytes",
-        id="empty-configuration-shorthand",
-    ),
-]
-
-
-@pytest.mark.parametrize("case", ZARR_TO_JSON_CASES, ids=lambda c: c.id)
-def test_zarr_metadata_v3_to_json(case: Expect[ZarrV3NamedConfig, object]) -> None:
-    """ZarrV3NamedConfig.to_json emits the canonical extension form."""
-    assert case.input.to_json() == case.output
-
-
-def test_zarr_metadata_v3_to_json_preserves_false_obligation() -> None:
-    """An empty optional extension stays an object so false is not lost."""
-    model = ZarrV3NamedConfig(name="optional", configuration={}, must_understand=False)
-    assert model.to_json() == {"name": "optional", "must_understand": False}
-
-
-# --- ZarrV3NamedConfig.from_json -----------------------------------------------
-
-ZARR_FROM_JSON_CASES = [
-    Expect("bytes", ZarrV3NamedConfig(name="bytes", configuration={}), id="bare-string"),
-    Expect(
-        {"name": "regular", "configuration": {"chunk_shape": [1]}},
-        ZarrV3NamedConfig(name="regular", configuration={"chunk_shape": (1,)}),
-        id="object-with-config",
-    ),
-    Expect(
-        {"name": "bytes"},
-        ZarrV3NamedConfig(name="bytes", configuration={}),
-        id="object-without-config",
-    ),
-]
-
-
-@pytest.mark.parametrize("case", ZARR_FROM_JSON_CASES, ids=lambda c: c.id)
-def test_zarr_metadata_v3_from_json(case: Expect[object, ZarrV3NamedConfig]) -> None:
-    """ZarrV3NamedConfig.from_json parses both the bare-string and object forms."""
-    assert ZarrV3NamedConfig.from_json(case.input) == case.output
-
-
-def test_zarr_metadata_v3_from_json_preserves_false_obligation() -> None:
-    """Explicit false is represented on the normalized model."""
-    model = ZarrV3NamedConfig.from_json({"name": "optional", "must_understand": False})
-    assert model.must_understand is False
 
 
 # --- V3 baseline -----------------------------------------------------------
@@ -260,9 +199,7 @@ def test_zarr_metadata_v3_from_json_preserves_false_obligation() -> None:
 def test_v3_to_json_emits_canonical_document() -> None:
     """V3 to_json emits exactly the expected document (which covers every
     spec-required key by construction)."""
-    out = ZarrV3ArrayMetadata.create_default(
-        shape=(10,), data_type=ZarrV3NamedConfig(name="int32", configuration={})
-    ).to_json()
+    out = ZarrV3ArrayMetadata.create_default(shape=(10,), data_type="int32").to_json()
     assert out == {
         "zarr_format": 3,
         "node_type": "array",
@@ -270,7 +207,7 @@ def test_v3_to_json_emits_canonical_document() -> None:
         "fill_value": 0,
         "data_type": "int32",
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (10,)}},
-        "codecs": ({"name": "bytes"},),
+        "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
         "chunk_key_encoding": {"name": "default"},
     }
 
@@ -299,15 +236,16 @@ def test_v3_a_data_type_with_nothing_to_configure_is_written_by_its_bare_name(
 def test_v3_dimension_names_included_when_present() -> None:
     """V3 to_json includes dimension_names when they are set."""
     out: dict[str, object] = dict(
-        ZarrV3ArrayMetadata.create_default(dimension_names=("x",)).to_json()
+        ZarrV3ArrayMetadata.create_default(shape=(4,), dimension_names=("x",)).to_json()
     )
     assert out["dimension_names"] == ("x",)
 
 
 def test_v3_dimension_names_omitted_when_none() -> None:
     """V3 to_json omits dimension_names when they are UNSET."""
-    out = ZarrV3ArrayMetadata.create_default(dimension_names=UNSET).to_json()
-    assert "dimension_names" not in out
+    model = ZarrV3ArrayMetadata.create_default()
+    assert model.dimension_names is UNSET
+    assert "dimension_names" not in model.to_json()
 
 
 # --- BUG 1: attributes gated on dimension_names ----------------------------
@@ -320,11 +258,9 @@ def test_v3_attributes_included_when_dimension_names_is_none() -> None:
     so non-empty attributes were silently dropped when there were no
     dimension names.
     """
-    out: dict[str, object] = dict(
-        ZarrV3ArrayMetadata.create_default(
-            dimension_names=UNSET, attributes={"foo": "bar"}
-        ).to_json()
-    )
+    model = ZarrV3ArrayMetadata.create_default(attributes={"foo": "bar"})
+    assert model.dimension_names is UNSET
+    out: dict[str, object] = dict(model.to_json())
     assert out["attributes"] == {"foo": "bar"}
 
 
@@ -337,7 +273,7 @@ def test_v3_single_storage_transformer_included() -> None:
     Regression: the guard used ``> 1`` instead of ``> 0``, dropping a
     lone storage transformer.
     """
-    st = ZarrV3NamedConfig(name="some_transformer", configuration={})
+    st: ZarrV3NamedConfigJSON = {"name": "some_transformer"}
     out: dict[str, object] = dict(
         ZarrV3ArrayMetadata.create_default(storage_transformers=(st,)).to_json()
     )
@@ -355,16 +291,18 @@ def test_v3_no_storage_transformers_omitted() -> None:
 
 def test_v3_extra_fields_merged() -> None:
     """V3 to_json merges extra_fields into the top-level document."""
-    out = ZarrV3ArrayMetadata.create_default(
-        extra_fields={"my_ext": {"must_understand": False}}
-    ).to_json()
-    assert out["my_ext"] == {"must_understand": False}
+    model = ZarrV3ArrayMetadata.create_default(my_ext={"must_understand": False})
+    assert model.extra_fields == {"my_ext": {"must_understand": False}}
+    assert model.to_json()["my_ext"] == {"must_understand": False}
 
 
 def test_v3_extra_fields_overlapping_standard_field_rejected() -> None:
     """Constructing a V3 model with an extra field that collides with a standard key is rejected."""
     with pytest.raises(ValueError):
-        ZarrV3ArrayMetadata.create_default(extra_fields={"shape": {"must_understand": False}})
+        dataclasses.replace(
+            ZarrV3ArrayMetadata.create_default(),
+            extra_fields={"shape": {"must_understand": False}},
+        )
 
 
 # --- V3 key/value ----------------------------------------------------------
@@ -408,7 +346,7 @@ def test_v3_create_default_is_valid_empty_array() -> None:
     """V3 create_default builds a structurally valid empty array that round-trips."""
     m = ZarrV3ArrayMetadata.create_default()
     assert m.shape == ()
-    assert m.data_type == ZarrV3NamedConfig(name="uint8", configuration={})
+    assert m.data_type.to_json() == "uint8"
     assert m.fill_value == 0
     assert m.attributes == {}
     assert m.extra_fields == {}
@@ -423,7 +361,7 @@ def test_v3_create_default_applies_overrides() -> None:
     assert m.shape == (4, 4)
     assert m.attributes == {"a": 1}
     # un-overridden fields keep their defaults
-    assert m.data_type == ZarrV3NamedConfig(name="uint8", configuration={})
+    assert m.data_type.to_json() == "uint8"
 
 
 def test_v2_create_default_is_valid_empty_array() -> None:
@@ -463,7 +401,11 @@ def test_update_returns_new_instance(
 ) -> None:
     """update returns a new instance with the field replaced, leaving the original unchanged."""
     base = model_cls.create_default(shape=(10,))
-    updated = base.update(shape=(20,))
+    updated = (
+        base.update(context=CORE_AND_EXTENSIONS, shape=(20,))
+        if isinstance(base, ZarrV3ArrayMetadata)
+        else base.update(shape=(20,))
+    )
     assert updated.shape == (20,)
     assert base.shape == (10,)  # original unchanged
     assert isinstance(updated, model_cls)
@@ -481,34 +423,121 @@ def test_update_no_args_returns_equal_model(
 ) -> None:
     """update with no arguments returns a model equal to the original."""
     base = model_cls.create_default()
-    assert base.update() == base
+    updated = (
+        base.update(context=CORE_AND_EXTENSIONS)
+        if isinstance(base, ZarrV3ArrayMetadata)
+        else base.update()
+    )
+    assert updated == base
 
 
 # V3-only update tests — kept direct (extra_fields is v3-specific)
 
 
-def test_update_can_replace_extra_fields() -> None:
-    """update can replace the extra_fields mapping."""
-    base = ZarrV3ArrayMetadata.create_default(extra_fields={})
-    updated = base.update(extra_fields={"my_ext": {"must_understand": False}})
+def test_update_can_add_an_extension_member() -> None:
+    """update can add a member the spec does not define, which the model holds in extra_fields."""
+    base = ZarrV3ArrayMetadata.create_default()
+    updated = base.update(context=CORE_AND_EXTENSIONS, my_ext={"must_understand": False})
     assert updated.extra_fields == {"my_ext": {"must_understand": False}}
 
 
-def test_update_replaces_extra_fields_rather_than_merging() -> None:
-    """update replaces extra_fields wholesale rather than merging."""
-    base = ZarrV3ArrayMetadata.create_default(extra_fields={"a": {"must_understand": False}})
-    updated = base.update(extra_fields={"b": {"must_understand": True}})
-    assert updated.extra_fields == {"b": {"must_understand": True}}
+def test_update_reads_only_the_members_it_is_given_in_its_scope() -> None:
+    """Each field the model holds is kept as it was read; the members given are read in `context`.
 
-
-def test_partial_keys_match_settable_model_fields() -> None:
-    """The partial TypedDict must list exactly the constructor-settable fields.
-
-    Guards against drift: adding/removing a settable field on the model
-    without updating ``ZarrV3ArrayMetadataPartial`` fails here.
+    `zstd` is an extension, which `CORE` leaves unclaimed and unjudged.
     """
-    settable = {f.name for f in dataclasses.fields(ZarrV3ArrayMetadata) if f.init}
-    assert set(ZarrV3ArrayMetadataPartial.__annotations__) == settable
+    little: ZarrV3NamedConfigJSON = {"name": "bytes", "configuration": {"endian": "little"}}
+    zstd: ZarrV3NamedConfigJSON = {"name": "zstd", "configuration": {"level": 3, "checksum": False}}
+    base = ZarrV3ArrayMetadata.create_default(context=CORE, codecs=(little, zstd))
+    assert isinstance(base.codecs[1], Unclaimed)
+    kept = base.update(context=CORE_AND_EXTENSIONS, attributes={"k": 1})
+    assert kept.codecs[1] is base.codecs[1]
+    given = base.update(context=CORE_AND_EXTENSIONS, codecs=(little, zstd))
+    assert isinstance(given.codecs[1], Read)
+
+
+def test_update_leaves_out_a_member_given_as_unset() -> None:
+    """Each member a document may leave out: `dimension_names`, `attributes`, one the spec does not define."""
+    base = ZarrV3ArrayMetadata.create_default(
+        shape=(2,), dimension_names=("x",), attributes={"a": 1}, my_ext={"must_understand": False}
+    )
+    for updated, member in (
+        (base.update(context=CORE_AND_EXTENSIONS, dimension_names=UNSET), "dimension_names"),
+        (base.update(context=CORE_AND_EXTENSIONS, attributes=UNSET), "attributes"),
+        (base.update(context=CORE_AND_EXTENSIONS, my_ext=UNSET), "my_ext"),
+    ):
+        written = updated.to_json()
+        assert member not in written
+        assert {key: value for key, value in base.to_json().items() if key != member} == written
+
+
+@pytest.mark.parametrize(
+    "members",
+    [
+        {"data_type": {"name": "uint8"}},
+        {"codecs": ("bytes",)},
+        {"codecs": ({"name": "bytes", "configuration": {}, "must_understand": True},)},
+        {"chunk_key_encoding": {"name": "default", "configuration": {}}},
+        {"codecs": ({"name": "bytes"}, {"name": "acme.codec", "configuration": {}})},
+        {
+            "shape": (4,),
+            "codecs": (
+                {
+                    "name": "sharding_indexed",
+                    "configuration": {
+                        "chunk_shape": (2,),
+                        "codecs": ({"name": "bytes"},),
+                        "index_codecs": (
+                            {"name": "bytes", "configuration": {"endian": "little"}},
+                            "crc32c",
+                        ),
+                    },
+                },
+            ),
+        },
+    ],
+    ids=[
+        "data-type-object",
+        "codec-bare",
+        "codec-verbose",
+        "empty-configuration",
+        "unclaimed",
+        "a-field-a-codec-holds-bare",
+    ],
+)
+def test_a_model_is_what_its_document_says_not_how_it_is_spelled(
+    members: ZarrV3ArrayMetadataJSONPartial,
+) -> None:
+    """A model reads back from its own document as itself, and equals the model of any spelling of it."""
+    model = ZarrV3ArrayMetadata.create_default(**members)
+    assert ZarrV3ArrayMetadata.from_json(model.to_json()) == model
+    written = {**model.to_json(), **members}
+    assert ZarrV3ArrayMetadata.from_json(written) == model
+
+
+def test_a_model_pickles_and_copies_with_its_definitions() -> None:
+    model = ZarrV3ArrayMetadata.create_default(
+        codecs=(
+            {"name": "bytes", "configuration": {"endian": "little"}},
+            {"name": "gzip", "configuration": {"level": 1}},
+        ),
+        context=CORE,
+    )
+    for again in (pickle.loads(pickle.dumps(model)), copy.copy(model), copy.deepcopy(model)):
+        assert again == model
+        assert configuration_of(again.codecs[1], GZIP_CODEC) == {"level": 1}
+
+
+def test_update_replaces_a_member_rather_than_merging_into_it() -> None:
+    """update replaces each member it is given whole, and keeps the others."""
+    base = ZarrV3ArrayMetadata.create_default(
+        a={"must_understand": False, "x": 1}, b={"must_understand": False}
+    )
+    updated = base.update(context=CORE_AND_EXTENSIONS, a={"must_understand": False})
+    assert updated.extra_fields == {
+        "a": {"must_understand": False},
+        "b": {"must_understand": False},
+    }
 
 
 # --- V2 model --------------------------------------------------------------
@@ -576,22 +605,17 @@ def test_arrays_to_tuples(case: Expect[object, object]) -> None:
 def test_v3_from_json_reconstructs_required_fields() -> None:
     """V3 from_json reconstructs the required fields from a document."""
     doc = ZarrV3ArrayMetadata.create_default(
-        shape=(7,),
-        attributes={"a": 1},
-        data_type=ZarrV3NamedConfig(name="int32", configuration={}),
-        codecs=(ZarrV3NamedConfig(name="bytes", configuration={"endian": "little"}),),
+        shape=(7,), attributes={"a": 1}, data_type="int32"
     ).to_json()
     model = ZarrV3ArrayMetadata.from_json(doc)
     assert model.shape == (7,)
-    assert model.data_type == ZarrV3NamedConfig(name="int32", configuration={})
+    assert model.data_type.to_json() == "int32"
     assert model.attributes == {"a": 1}
 
 
 def test_v3_from_json_defaults_for_omitted_optionals() -> None:
     """V3 from_json supplies defaults for omitted optional fields."""
-    doc = ZarrV3ArrayMetadata.create_default(
-        attributes={}, storage_transformers=(), dimension_names=UNSET
-    ).to_json()
+    doc = ZarrV3ArrayMetadata.create_default(attributes={}, storage_transformers=()).to_json()
     # to_json omits these entirely; from_json must restore defaults
     model = ZarrV3ArrayMetadata.from_json(doc)
     assert model.attributes == {}
@@ -601,9 +625,7 @@ def test_v3_from_json_defaults_for_omitted_optionals() -> None:
 
 def test_v3_from_json_routes_unknown_keys_to_extra_fields() -> None:
     """V3 from_json routes unknown top-level keys into extra_fields."""
-    doc = ZarrV3ArrayMetadata.create_default(
-        extra_fields={"my_ext": {"must_understand": False}}
-    ).to_json()
+    doc = ZarrV3ArrayMetadata.create_default(my_ext={"must_understand": False}).to_json()
     model = ZarrV3ArrayMetadata.from_json(doc)
     assert model.extra_fields == {"my_ext": {"must_understand": False}}
 
@@ -669,19 +691,14 @@ ROUNDTRIP_MODEL_JSON_PARAMS = [
             shape=(10,),
             attributes={"a": 1},
             dimension_names=("x",),
-            storage_transformers=(ZarrV3NamedConfig(name="t", configuration={}),),
-            extra_fields={"ext": {"must_understand": False}},
+            storage_transformers=({"name": "t"},),
+            ext={"must_understand": False},
         ),
         id="v3-full",
     ),
     pytest.param(
         ZarrV3ArrayMetadata,
-        ZarrV3ArrayMetadata.create_default(
-            attributes={},
-            dimension_names=UNSET,
-            storage_transformers=(),
-            extra_fields={},
-        ),
+        ZarrV3ArrayMetadata.create_default(attributes={}, storage_transformers=()),
         id="v3-empty-optionals",
     ),
     pytest.param(
@@ -738,10 +755,10 @@ TO_JSON_NO_ALIASING_PARAMS = [
         ZarrV3ArrayMetadata.create_default(
             shape=(2,),
             attributes={"a": {"b": [1]}},
-            # A name nothing in the scope claims, so reading it back judges only
+            # A name nothing in the scope claims, so reading it judges only
             # the document, and its configuration can nest.
-            codecs=(ZarrV3NamedConfig(name="acme.nested", configuration={"opts": {"level": 1}}),),
-            extra_fields={"ext": {"must_understand": False, "cfg": {"x": [1]}}},
+            codecs=({"name": "acme.nested", "configuration": {"opts": {"level": 1}}},),
+            ext={"must_understand": False, "cfg": {"x": [1]}},
         ),
         id="v3",
     ),
@@ -787,7 +804,7 @@ def test_v3_parser_accepts_bare_string_data_type() -> None:
     doc["data_type"] = "int32"
     doc["codecs"] = ({"name": "bytes", "configuration": {"endian": "little"}},)
     model = ZarrV3ArrayMetadata.from_json(doc)
-    assert model.data_type == ZarrV3NamedConfig(name="int32", configuration={})
+    assert (model.data_type.json, model.data_type.name) == ("int32", "int32")
     assert model.to_json()["data_type"] == "int32"
 
 
@@ -1112,7 +1129,7 @@ def test_parse_metadata_field_v3(
 # invalid cases (a subset check, so accumulation of OTHER problems is allowed).
 
 
-def _build_v3(**overrides: Unpack[ZarrV3ArrayMetadataPartial]) -> dict[str, object]:
+def _build_v3(**overrides: Unpack[ZarrV3ArrayMetadataJSONPartial]) -> dict[str, object]:
     return dict(ZarrV3ArrayMetadata.create_default(**overrides).to_json())
 
 
@@ -1145,7 +1162,7 @@ V3_DOC_CASES: list[Expect[Callable[[], object], frozenset[tuple[str | int, ...]]
         id="valid-with-attributes-and-dim-names",
     ),
     Expect(
-        lambda: _build_v3(extra_fields={"my_ext": {"must_understand": False}}),
+        lambda: _build_v3(my_ext={"must_understand": False}),
         frozenset(),
         id="valid-with-extra-fields",
     ),
@@ -1268,17 +1285,12 @@ FROM_JSON_REJECT_PARAMS = [
         ExpectFail(lambda: {"zarr_format": 2}, MetadataValidationError, id="x"),
         id="v2-missing-required",
     ),
-    pytest.param(
-        ZarrV3NamedConfig,
-        ExpectFail(lambda: 5, MetadataValidationError, id="x"),
-        id="zarr-metadata-bad-input",
-    ),
 ]
 
 
 @pytest.mark.parametrize(("model", "case"), FROM_JSON_REJECT_PARAMS)
 def test_from_json_rejects_malformed(
-    model: type[ZarrV3ArrayMetadata | ZarrV2ArrayMetadata | ZarrV3NamedConfig],
+    model: type[ZarrV3ArrayMetadata | ZarrV2ArrayMetadata],
     case: ExpectFail[Callable[[], object]],
 ) -> None:
     """from_json raises MetadataValidationError on a malformed document."""
@@ -1617,12 +1629,153 @@ def test_from_key_value_rejects_non_standard_json_constant() -> None:
         ZarrV3ArrayMetadata.from_key_value({"zarr.json": raw.encode()})
 
 
-def test_to_key_value_rejects_non_finite_model_value() -> None:
-    """Strict encoding prevents directly-constructed models from writing invalid JSON."""
-    model = ZarrV3ArrayMetadata.create_default(fill_value=float("nan"))
+@pytest.mark.parametrize(
+    ("members", "problems"),
+    [
+        ({"fill_value": math.nan}, [(("fill_value",), "invalid_value")]),
+        # The default fill value, 0, is not a boolean: a data type goes with
+        # a fill value of it.
+        ({"data_type": "bool"}, [(("fill_value",), "invalid_type")]),
+        # Values of several bytes take an `endian`.
+        (
+            {"data_type": "int16", "codecs": ({"name": "bytes"},)},
+            [(("codecs", 0, "configuration", "endian"), "missing_key")],
+        ),
+        ({"shape": (2,), "dimension_names": ("x", "y")}, [(("dimension_names",), "invalid_value")]),
+        # The shape is not derived from a grid, which the scalar default
+        # shape does not fit: a grid goes with the shape it fits.
+        (
+            {"chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (10, 10)}}},
+            [(("chunk_grid", "configuration", "chunk_shape"), "invalid_value")],
+        ),
+    ],
+    ids=[
+        "non-finite-fill-value",
+        "fill-value-of-another-type",
+        "no-endian",
+        "names-past-shape",
+        "grid-of-another-rank",
+    ],
+)
+def test_error_create_default_refuses_a_document_with_a_problem(
+    members: ZarrV3ArrayMetadataJSONPartial, problems: list[tuple[tuple[str | int, ...], str]]
+) -> None:
+    """A model comes from a read, so a document its read refuses makes none, and nothing is written."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3ArrayMetadata.create_default(**members)
+    assert [(p.loc, p.kind) for p in raised.value.problems] == problems
 
-    with pytest.raises(MetadataValidationError, match="fill_value: non-finite float nan"):
+
+@pytest.mark.parametrize(
+    ("members", "problems"),
+    [
+        ({"fill_value": 300}, [(("fill_value",), "invalid_value")]),
+        # A shape goes with a grid that fits it.
+        ({"shape": (4, 4)}, [(("chunk_grid", "configuration", "chunk_shape"), "invalid_value")]),
+    ],
+    ids=["fill-value-out-of-range", "shape-without-its-grid"],
+)
+def test_error_update_refuses_a_document_with_a_problem(
+    members: ZarrV3ArrayMetadataJSONPartial, problems: list[tuple[tuple[str | int, ...], str]]
+) -> None:
+    base = ZarrV3ArrayMetadata.create_default(shape=(4,))
+    with pytest.raises(MetadataValidationError) as raised:
+        base.update(context=CORE_AND_EXTENSIONS, **members)
+    assert [(p.loc, p.kind) for p in raised.value.problems] == problems
+
+
+def test_error_update_refuses_to_leave_out_a_member_a_document_holds() -> None:
+    base = ZarrV3ArrayMetadata.create_default(shape=(4,))
+    with pytest.raises(MetadataValidationError) as raised:
+        base.update(context=CORE_AND_EXTENSIONS, shape=UNSET)  # pyright: ignore[reportArgumentType]
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("shape",), "missing_key")]
+
+
+@pytest.mark.parametrize(
+    ("changes", "problems"),
+    [
+        ({"fill_value": math.nan}, [(("fill_value",), "invalid_value")]),
+        ({"dimension_names": ("x", "y")}, [(("dimension_names",), "invalid_value")]),
+        (
+            {"shape": (4, 4)},
+            [(("chunk_grid", "configuration", "chunk_shape"), "invalid_value")],
+        ),
+        ({"attributes": {1: "a"}}, [(("attributes",), "invalid_type")]),
+    ],
+    ids=[
+        "fill-value-not-json",
+        "names-for-another-rank",
+        "shape-without-its-grid",
+        "attribute-key",
+    ],
+)
+def test_error_to_key_value_refuses_a_model_changed_by_hand_into_an_invalid_one(
+    changes: dict[str, object], problems: list[tuple[tuple[str | int, ...], str]]
+) -> None:
+    """As its own fields read it: no invalid document is written, however the model came to be."""
+    model = dataclasses.replace(ZarrV3ArrayMetadata.create_default(shape=(4,)), **changes)
+    with pytest.raises(MetadataValidationError) as raised:
         model.to_key_value()
+    assert [(p.loc, p.kind) for p in raised.value.problems] == problems
+
+
+@pytest.mark.parametrize(
+    ("shape", "kind"),
+    [
+        (5, "invalid_type"),
+        (None, "invalid_type"),
+        (("a",), "invalid_type"),
+        ((-1,), "invalid_value"),
+    ],
+    ids=["a-number", "null", "not-integers", "negative"],
+)
+def test_error_create_default_reports_a_shape_it_cannot_read(shape: object, kind: str) -> None:
+    """As the read reports it, rather than failing to derive a grid from it."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3ArrayMetadata.create_default(shape=shape)  # pyright: ignore[reportArgumentType]
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("shape",), kind)]
+
+
+def test_a_codec_that_is_not_json_is_placed_by_the_definition_that_claims_its_name() -> None:
+    """Its kind is that definition's, as a codec refused for a configuration that is JSON takes it: `gzip` is a bytes -> bytes codec, so the pipeline still lacks an array -> bytes one."""
+    document = {
+        **ZarrV3ArrayMetadata.create_default().to_json(),
+        "codecs": [{"name": "gzip", "configuration": {"level": math.nan}}],
+    }
+    assert [(p.loc, p.kind) for p in validate_array_metadata_v3(document)] == [
+        (("codecs", 0, "configuration", "level"), "invalid_value"),
+        (("codecs",), "invalid_value"),
+    ]
+
+
+def test_a_shard_nested_hundreds_deep_is_read() -> None:
+    """A field it holds is read one frame deeper than it, as deep as the interpreter goes."""
+    little = {"name": "bytes", "configuration": {"endian": "little"}}
+    codecs: list[object] = [little]
+    for _ in range(200):
+        codecs = [
+            {
+                "name": "sharding_indexed",
+                "configuration": {"chunk_shape": [1], "codecs": codecs, "index_codecs": [little]},
+            }
+        ]
+    document = {**ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json(), "codecs": codecs}
+    assert validate_array_metadata_v3(document) == ()
+
+
+def test_a_model_is_written_as_deep_as_it_is_read() -> None:
+    """A fill value hundreds deep, of a data type nothing in scope claims, which takes any JSON."""
+    fill_value: dict[str, object] = {}
+    for _ in range(600):
+        fill_value = {"x": fill_value}
+    document = {
+        **ZarrV3ArrayMetadata.create_default().to_json(),
+        "data_type": "acme.deep",
+        "fill_value": fill_value,
+    }
+    model = ZarrV3ArrayMetadata.from_json(document)
+    assert model.to_json()["fill_value"] == fill_value
+    assert ZarrV3ArrayMetadata.from_key_value(model.to_key_value()) == model
 
 
 def test_v3_node_type_literal_enforced() -> None:
@@ -1680,20 +1833,11 @@ def test_from_key_value_missing_key_kind() -> None:
 def test_extra_fields_overlap_raises_metadata_error() -> None:
     """The extra-fields overlap invariant raises MetadataValidationError (a ValueError)."""
     with pytest.raises(MetadataValidationError, match="Extra fields") as exc_info:
-        ZarrV3ArrayMetadata.create_default(extra_fields={"shape": {"must_understand": False}})
+        dataclasses.replace(
+            ZarrV3ArrayMetadata.create_default(),
+            extra_fields={"shape": {"must_understand": False}},
+        )
     assert [p.kind for p in exc_info.value.problems] == ["invalid_value"]
-
-
-def test_extension_point_fields_annotated_with_role_alias() -> None:
-    """Extension-point fields are annotated with ZarrV3MetadataField (the
-    logical role), not ZarrV3NamedConfig (the current serialized form), so a
-    future widening of the field union does not move annotation sites."""
-    assert ZarrV3MetadataField is ZarrV3NamedConfig
-    annotations = ZarrV3ArrayMetadata.__annotations__
-    for field_name in ("data_type", "chunk_grid", "chunk_key_encoding"):
-        assert annotations[field_name] == "ZarrV3MetadataField"
-    for field_name in ("codecs", "storage_transformers"):
-        assert annotations[field_name] == "tuple[ZarrV3MetadataField, ...]"
 
 
 # --- Adversarial-probe fixes: documents that used to pass validation ---------
@@ -1848,12 +1992,10 @@ def test_must_understand_fields_partition() -> None:
     https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1575-L1578
     """
     model = ZarrV3ArrayMetadata.create_default(
-        extra_fields={
-            "ext_a": {"name": "a", "must_understand": False},
-            "ext_b": {"name": "b"},
-            "ext_c": {"name": "c", "must_understand": True},
-            "ext_d": 123,
-        }
+        ext_a={"name": "a", "must_understand": False},
+        ext_b={"name": "b"},
+        ext_c={"name": "c", "must_understand": True},
+        ext_d=123,
     )
     assert set(model.must_understand_fields) == {"ext_b", "ext_c", "ext_d"}
     recognized = {"ext_b"}
@@ -1862,9 +2004,7 @@ def test_must_understand_fields_partition() -> None:
 
 def test_must_understand_fields_empty_when_all_waived() -> None:
     """must_understand_fields is empty when every extra field is explicitly waived."""
-    model = ZarrV3ArrayMetadata.create_default(
-        extra_fields={"ext_a": {"name": "a", "must_understand": False}}
-    )
+    model = ZarrV3ArrayMetadata.create_default(ext_a={"name": "a", "must_understand": False})
     assert model.must_understand_fields == {}
 
 
@@ -1879,10 +2019,10 @@ def test_dimension_names_null_field_rejected() -> None:
     doc = dict(ZarrV3ArrayMetadata.create_default().to_json()) | {"dimension_names": None}
     problems = validate_array_metadata_v3(doc)
     assert [(p.loc, p.kind) for p in problems] == [(("dimension_names",), "invalid_type")]
-    # and the model's own None spelling correctly maps to key absence
-    assert (
-        "dimension_names" not in ZarrV3ArrayMetadata.create_default(dimension_names=UNSET).to_json()
-    )
+    # and the model's own UNSET spelling correctly maps to key absence
+    model = ZarrV3ArrayMetadata.create_default()
+    assert model.dimension_names is UNSET
+    assert "dimension_names" not in model.to_json()
 
 
 # --- create_default derives the chunk grid from shape ------------------------
@@ -1893,16 +2033,17 @@ def test_v3_create_default_chunk_grid_follows_shape() -> None:
     one chunk covering the array (chunk_shape == shape), instead of silently
     keeping the scalar default's 0-d grid."""
     model = ZarrV3ArrayMetadata.create_default(shape=(100, 100))
-    assert model.chunk_grid == ZarrV3NamedConfig(
-        name="regular", configuration={"chunk_shape": (100, 100)}
-    )
+    assert model.chunk_grid.to_json() == {
+        "name": "regular",
+        "configuration": {"chunk_shape": (100, 100)},
+    }
 
 
 def test_v3_create_default_explicit_chunk_grid_respected() -> None:
     """An explicit chunk_grid override wins over the shape-derived default."""
-    grid = ZarrV3NamedConfig(name="regular", configuration={"chunk_shape": (10, 10)})
+    grid: ZarrV3NamedConfigJSON = {"name": "regular", "configuration": {"chunk_shape": (10, 10)}}
     model = ZarrV3ArrayMetadata.create_default(shape=(100, 100), chunk_grid=grid)
-    assert model.chunk_grid == grid
+    assert model.chunk_grid.to_json() == grid
 
 
 def test_v2_create_default_chunks_follow_shape() -> None:
@@ -1922,19 +2063,18 @@ def test_v3_create_default_zero_length_dimensions() -> None:
     the regular grid asks for chunk sizes greater than zero, so the written
     grid is one every reader takes, and it fits the shape it chunks."""
     model = ZarrV3ArrayMetadata.create_default(shape=(0, 3))
-    assert model.chunk_grid.configuration["chunk_shape"] == (1, 3)
+    assert model.chunk_grid.to_json() == {
+        "name": "regular",
+        "configuration": {"chunk_shape": (1, 3)},
+    }
     assert validate_array_metadata_v3(model.to_json()) == ()
 
 
-def test_create_default_derivation_is_one_way() -> None:
-    """Overriding the chunk grid (v3) or chunks (v2) without shape leaves the
-    scalar default shape=() untouched: a user-supplied chunk_grid is an
-    extension point taken verbatim, and deriving shape from it would require
-    interpreting grid configurations, which the model layer never does."""
-    grid = ZarrV3NamedConfig(name="regular", configuration={"chunk_shape": (10, 10)})
-    v3 = ZarrV3ArrayMetadata.create_default(chunk_grid=grid)
-    assert v3.shape == ()
-    assert v3.chunk_grid == grid
+def test_v2_create_default_derivation_is_one_way() -> None:
+    """Overriding chunks without shape leaves the scalar default shape=()
+    untouched. The v3 model does not derive a shape from its grid either, and
+    refuses a grid the default shape does not fit: see
+    `test_error_create_default_refuses_a_document_with_a_problem`."""
     v2 = ZarrV2ArrayMetadata.create_default(chunks=(10, 10))
     assert v2.shape == ()
     assert v2.chunks == (10, 10)

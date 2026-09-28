@@ -5,8 +5,8 @@ values of `r*` and `bytes` fill values are integers in `[0, 255]`
 (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L59-L61).
 """
 
-import functools
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.v3._definition import EmptyConfiguration, Nested
@@ -15,21 +15,26 @@ from zarr_metadata.v3._definition import EmptyConfiguration, Nested
 def integer_fill_value_rules(
     low: int, high: int
 ) -> Callable[[EmptyConfiguration, Nested, int], Iterator[ValidationProblem]]:
-    """The fill value rules of an integer data type whose range is `[low, high]`.
-
-    A partial application of a module-level function, so a definition
-    holding it pickles.
-    """
-    return functools.partial(_in_range, low, high)
+    """The fill value rules of an integer data type whose range is `[low, high]`."""
+    return _InRange(low, high)
 
 
-def _in_range(
-    low: int, high: int, configuration: EmptyConfiguration, nested: Nested, value: int
-) -> Iterator[ValidationProblem]:
-    if not low <= value <= high:
-        yield ValidationProblem(
-            (), f"expected an integer in [{low}, {high}], got {value}", "invalid_value"
-        )
+@dataclass(frozen=True, slots=True)
+class _InRange:
+    """An integer in `[low, high]`: a value rather than a closure, so a definition holding it is equal to itself after a pickle or a deep copy."""
+
+    low: int
+    high: int
+
+    def __call__(
+        self, configuration: EmptyConfiguration, nested: Nested, value: int
+    ) -> Iterator[ValidationProblem]:
+        if not self.low <= value <= self.high:
+            yield ValidationProblem(
+                (),
+                f"expected an integer in [{self.low}, {self.high}], got {value}",
+                "invalid_value",
+            )
 
 
 def byte_value_problems(values: tuple[int, ...]) -> Iterator[ValidationProblem]:

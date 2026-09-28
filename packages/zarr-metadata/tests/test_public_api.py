@@ -45,15 +45,13 @@ EXPECTED = [
     "ZarrV2ArrayMetadata",
     "ZarrV2ArrayMetadataPartial",
     "ZarrV3ArrayMetadata",
-    "ZarrV3ArrayMetadataPartial",
+    "ZarrV3ArrayMetadataUpdate",
     "ZarrV2GroupMetadata",
     "ZarrV2GroupMetadataPartial",
     "ZarrV3GroupMetadata",
-    "ZarrV3GroupMetadataPartial",
+    "ZarrV3GroupMetadataUpdate",
     "ZarrV2ConsolidatedMetadata",
     "ZarrV3ConsolidatedMetadata",
-    "ZarrV3NamedConfig",
-    "ZarrV3MetadataField",
     "ValidationProblem",
     "MetadataValidationError",
     "ProblemKind",
@@ -240,7 +238,7 @@ def test_all_is_grouped_and_unique() -> None:
 
 # Core document/model names: the format version comes first (`ZarrV2` /
 # `ZarrV3`), then the CamelCase entity, then an optional role suffix
-# (`JSON`, `JSONPartial`, `Partial`, `StoreKey`) — validated loosely here
+# (`JSON`, `JSONPartial`, `Partial`, `Reading`, `StoreKey`) — validated loosely here
 # because `JSON` decomposes into single-letter words under any strict
 # word-splitting regex.
 _CORE_NAME = re.compile(r"^ZarrV[23](?:[A-Z][a-z0-9]*)+$")
@@ -293,11 +291,14 @@ _STANDALONE_VOCAB = frozenset(
         "Lengths",
         "Loc",
         "Nested",
-        "Resolution",
+        # What a scope made of a field: `Read` by the definition that claims
+        # its name, `Unclaimed`, or `Refused`; `Resolved` is the three.
+        "Read",
+        "Refused",
         "Resolved",
         "Stage",
         "StorageClass",
-        "Unread",
+        "Unclaimed",
         "CastOutOfRangeMode",
         "CastRoundingMode",
         "Endianness",

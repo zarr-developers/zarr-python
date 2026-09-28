@@ -23,6 +23,9 @@ from zarr_metadata.v3.definition import (
     Context,
     DataTypeDefinition,
     Definition,
+    Read,
+    Refused,
+    Unclaimed,
     ValidationProblem,
     canonicalize,
     configuration_of,
@@ -139,9 +142,10 @@ EXAMPLES: dict[str, tuple[object, ...]] = {
 CASES = [(key, field) for key, fields in EXAMPLES.items() for field in fields]
 
 
-def _read(key: str, field: object) -> tuple[str, list[tuple[tuple[str | int, ...], str]]]:
+def _read(key: str, field: object) -> tuple[type, list[tuple[tuple[str | int, ...], str]]]:
+    """What the scope made of `field` -- `Read`, `Unclaimed` or `Refused` -- and where each problem is."""
     resolved, problems = resolve(field, KINDS[key.split(":")[0]], CORE_AND_EXTENSIONS)
-    return resolved.resolution, [(found.loc, found.kind) for found in problems]
+    return type(resolved), [(found.loc, found.kind) for found in problems]
 
 
 def _problems(key: str, field: object) -> list[tuple[tuple[str | int, ...], str]]:
@@ -170,7 +174,7 @@ def test_every_definition_in_scope_has_an_example() -> None:
 def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field: object) -> None:
     # Read, with nothing wrong; and its simplest spelling reads the same,
     # and is its own simplest spelling.
-    assert _read(key, field) == ("read", [])
+    assert _read(key, field) == (Read, [])
     kind = KINDS[key.split(":")[0]]
     simplest, problems = canonicalize(field, kind, CORE_AND_EXTENSIONS)
     assert problems == ()
@@ -283,7 +287,8 @@ def test_raw_bits_read_as_r_star_with_the_size_their_name_carries(
     field: object, bits: int, simplest: str
 ) -> None:
     resolved, problems = resolve(field, DataTypeDefinition, CORE_AND_EXTENSIONS)
-    assert (resolved.resolution, problems) == ("read", ())
+    assert problems == ()
+    assert isinstance(resolved, Read)
     assert resolved.definition is RAW_BYTES_DATA_TYPE
     assert resolved.json == field
     assert configuration_of(resolved, RAW_BYTES_DATA_TYPE) == {"bits": bits}
@@ -296,10 +301,13 @@ def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
     mine = DataTypeDefinition(name="r*", configuration=RawBytesConfiguration)
     scope = CORE_AND_EXTENSIONS.extended_with(mine)
     resolved, problems = resolve("r12", DataTypeDefinition, scope)
+    assert problems == ()
+    assert isinstance(resolved, Read)
     assert resolved.definition is mine
-    assert (resolved.resolution, problems) == ("read", ())
-    again = scope.extended_with(RAW_BYTES_DATA_TYPE)
-    assert resolve("r12", DataTypeDefinition, again)[0].definition is RAW_BYTES_DATA_TYPE
+    # The package's own takes no 12 bits, and refuses them.
+    again, _ = resolve("r12", DataTypeDefinition, scope.extended_with(RAW_BYTES_DATA_TYPE))
+    assert isinstance(again, Refused)
+    assert again.definition is RAW_BYTES_DATA_TYPE
 
 
 @pytest.mark.parametrize("field", ["r*", {"name": "r*", "configuration": {"bits": 16}}])
@@ -307,11 +315,34 @@ def test_r_star_is_notation_that_names_nothing(field: object) -> None:
     # How the specification's table writes raw bits, and no document's name
     # for them: read as any name nothing in scope claims.
     resolved, problems = resolve(field, DataTypeDefinition, CORE_AND_EXTENSIONS)
-    assert (resolved.resolution, resolved.definition, problems) == ("out_of_scope", None, ())
+    assert (type(resolved), problems) == (Unclaimed, ())
 
 
-def test_an_unclaimed_field_keeps_its_own_spelling() -> None:
-    assert canonicalize({"name": "zfpy"}, CodecDefinition, CORE) == ({"name": "zfpy"}, ())
+@pytest.mark.parametrize(
+    ("field", "kind", "simplest"),
+    [
+        ({"name": "zfpy"}, CodecDefinition, {"name": "zfpy"}),
+        # What it simplifies to is its own definition's call, so its
+        # configuration is kept as written; its envelope is its kind's.
+        (
+            {"name": "zfpy", "configuration": {"level": [1]}},
+            CodecDefinition,
+            {"name": "zfpy", "configuration": {"level": (1,)}},
+        ),
+        ("zfpy", CodecDefinition, {"name": "zfpy"}),
+        (
+            {"name": "zfpy", "configuration": {}, "must_understand": True},
+            CodecDefinition,
+            {"name": "zfpy"},
+        ),
+        ({"name": "acme.decimal"}, DataTypeDefinition, "acme.decimal"),
+    ],
+    ids=["object", "configured", "bare-codec", "spelled-out", "data-type"],
+)
+def test_an_unclaimed_field_keeps_its_configuration_in_its_kind_s_envelope(
+    field: object, kind: type[Definition[Any]], simplest: object
+) -> None:
+    assert canonicalize(field, kind, CORE) == (simplest, ())
 
 
 @pytest.mark.parametrize(
@@ -647,7 +678,7 @@ def test_error_a_configuration_written_beside_a_raw_bits_name() -> None:
     # The name carries the configuration, so one written beside it holds
     # nothing: each member is a key nothing declares.
     assert _read("data_type:r*", {"name": "r16", "configuration": {"bits": 16}}) == (
-        "read",
+        Read,
         [(("configuration", "bits"), "unknown_key")],
     )
 
