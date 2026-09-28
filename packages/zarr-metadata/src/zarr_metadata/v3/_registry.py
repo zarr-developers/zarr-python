@@ -113,6 +113,11 @@ class Context:
         """Every definition in scope, kind by kind."""
         return tuple(entry for table in self.tables.values() for entry in table.values())
 
+    def __repr__(self) -> str:
+        # Short, as a default argument shows it: in full, a scope's repr is
+        # every definition's, and `help` of a validator runs to pages.
+        return f"Context(<{len(self.definitions())} definitions>)"
+
     def claimant(self, kind: type[D], name: str) -> D | None:
         """The definition of `kind` in scope that reads `name`, a name a document writes; None if none does.
 

@@ -1974,7 +1974,7 @@ def test_v2_null_dimension_separator_rejected() -> None:
     document grammar has no null spelling for this field."""
     doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"dimension_separator": None}
     problems = validate_array_metadata_v2(doc)
-    assert [(p.loc, p.kind) for p in problems] == [(("dimension_separator",), "invalid_value")]
+    assert [(p.loc, p.kind) for p in problems] == [(("dimension_separator",), "invalid_type")]
 
 
 def test_dimension_names_absent_and_all_null_are_distinct() -> None:
@@ -1995,3 +1995,34 @@ def test_dimension_names_absent_and_all_null_are_distinct() -> None:
     assert "dimension_names" not in absent.to_json()
     assert absent.to_json() == absent_doc
     assert explicit.to_json() == explicit_doc
+
+
+@pytest.mark.parametrize(
+    ("validate", "document", "member", "value", "kind"),
+    [
+        (validate_array_metadata_v3, ZarrV3ArrayMetadata, "zarr_format", "3", "invalid_type"),
+        (validate_array_metadata_v3, ZarrV3ArrayMetadata, "zarr_format", 2, "invalid_value"),
+        (validate_array_metadata_v3, ZarrV3ArrayMetadata, "node_type", 5, "invalid_type"),
+        (validate_array_metadata_v3, ZarrV3ArrayMetadata, "node_type", "group", "invalid_value"),
+        (validate_array_metadata_v2, ZarrV2ArrayMetadata, "order", 1, "invalid_type"),
+        (validate_array_metadata_v2, ZarrV2ArrayMetadata, "order", "Q", "invalid_value"),
+        (
+            validate_array_metadata_v2,
+            ZarrV2ArrayMetadata,
+            "dimension_separator",
+            ":",
+            "invalid_value",
+        ),
+    ],
+)
+def test_error_a_member_outside_the_values_it_takes(
+    validate: Callable[[object], tuple[ValidationProblem, ...]],
+    document: type[ZarrV3ArrayMetadata | ZarrV2ArrayMetadata],
+    member: str,
+    value: object,
+    kind: str,
+) -> None:
+    # Of the wrong type when none of the values it takes is of its JSON
+    # type -- a string where a number belongs -- else of the wrong value.
+    written = {**document.create_default().to_json(), member: value}
+    assert [(p.loc, p.kind) for p in validate(written)] == [((member,), kind)]

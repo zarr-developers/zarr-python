@@ -35,10 +35,10 @@ def validate_metadata_field_v3(
 ) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not a v3 metadata field.
 
-    A metadata field is a bare name string or a mapping containing `name` and
-    optional `configuration` and `must_understand` members: an envelope, as
-    `envelope_problems` judges it, around a configuration whose members are
-    JSON.
+    A metadata field is a bare name, or an envelope around a configuration
+    whose members are JSON: an object of a string `name`, a `configuration`
+    that is an object of string keys, a boolean `must_understand`, and
+    nothing else.
     """
     envelope = envelope_problems(value, allow_must_understand_false=allow_must_understand_false)
     return (*envelope, *_configuration_json_problems(value))
@@ -82,7 +82,7 @@ def envelope_problems(
         configuration = field["configuration"]
         if not isinstance(configuration, Mapping):
             problems.append(
-                ValidationProblem(("configuration",), "expected a mapping", "invalid_type")
+                ValidationProblem(("configuration",), "expected an object", "invalid_type")
             )
         elif not all(isinstance(k, str) for k in cast("Mapping[object, object]", configuration)):
             problems.append(

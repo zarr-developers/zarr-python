@@ -13,7 +13,7 @@ import functools
 from collections.abc import Callable, Iterable, Iterator
 from typing import Any, Literal, get_args
 
-from zarr_metadata._json import ValidationProblem
+from zarr_metadata._json import ValidationProblem, choices, shown
 from zarr_metadata.v3._definition import EmptyConfiguration, Nested
 
 FloatSpecialFillValue = Literal["NaN", "Infinity", "-Infinity"]
@@ -48,8 +48,8 @@ def _float_fill_value(
     except ValueError:
         yield ValidationProblem(
             (),
-            f"expected a number, one of {get_args(FloatSpecialFillValue)!r}, or a {name} "
-            f"hex string, got {value!r}",
+            f"expected a number, {choices(get_args(FloatSpecialFillValue))}, or a {name} "
+            f"hex string, got {shown(value)}",
             "invalid_value",
         )
 

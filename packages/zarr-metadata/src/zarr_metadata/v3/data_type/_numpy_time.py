@@ -58,7 +58,7 @@ def numpy_time_fill_value_rules(
     """
     if isinstance(value, int) and not -(2**63) <= value <= 2**63 - 1:
         yield ValidationProblem(
-            (), f"expected a signed 64-bit integer or 'NaT', got {value}", "invalid_value"
+            (), f'expected a signed 64-bit integer or "NaT", got {value}', "invalid_value"
         )
 
 

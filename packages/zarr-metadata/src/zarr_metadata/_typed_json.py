@@ -57,7 +57,14 @@ import typing_extensions
 from typing_extensions import NoExtraItems, TypeIs, is_typeddict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata._json import ValidationProblem, is_json, refine_json
+from zarr_metadata._json import (
+    ValidationProblem,
+    choices,
+    is_json,
+    refine_json,
+    refused_kind,
+    shown,
+)
 
 if TYPE_CHECKING:
     from zarr_metadata._json import ProblemKind
@@ -375,43 +382,66 @@ def _typeddict_bases(typeddict: type) -> tuple[type, ...]:
 
 def describe(annotation: object, seen: frozenset[object] = frozenset()) -> str:
     """The annotation as a message would name it: "an integer", "an object"."""
+    return _named(annotation, seen)[0]
+
+
+def _named(annotation: object, seen: frozenset[object]) -> tuple[str, str]:
+    """The annotation as a message names one of it and many of it: "an integer", "integers"."""
     inner = strip_annotation(annotation)[0]
     if inner is int:
-        return "an integer"
+        return "an integer", "integers"
     if inner is float:
-        return "a number"
+        return "a number", "numbers"
     if inner is bool:
-        return "a boolean"
+        return "a boolean", "booleans"
     if inner is str:
-        return "a string"
+        return "a string", "strings"
     if inner is None or inner is types.NoneType:
-        return "null"
+        return "null", "nulls"
     if inner is JSONValue:
-        return "a JSON value"
+        return "a JSON value", "JSON values"
     origin = get_origin(inner)
     if origin is Literal:
-        return f"one of {tuple(sorted(get_args(inner), key=repr))!r}"
+        values = get_args(inner)
+        listed = ", ".join(sorted(dict.fromkeys(shown(value) for value in values)))
+        return choices(values), f"values in [{listed}]"
     if is_union(inner):
-        return " or ".join(describe(branch, seen) for branch in get_args(inner))
+        # Each shape once -- two TypedDicts are both "an object" -- and a
+        # broader one takes in a narrower: a number an integer, a string
+        # the strings a `Literal` names.
+        branches = get_args(inner)
+        named = dict.fromkeys(_named(branch, seen) for branch in branches)
+        if ("a number", "numbers") in named:
+            named.pop(("an integer", "integers"), None)
+        if ("a string", "strings") in named:
+            for branch in filter(_strings_only, branches):
+                named.pop(_named(branch, seen), None)
+        return " or ".join(one for one, _ in named), " or ".join(many for _, many in named)
     if origin is tuple:
         arguments = get_args(inner)
         if len(arguments) == 2 and arguments[1] is Ellipsis:
-            return f"an array of {describe(arguments[0], seen)} elements"
+            each = _named(arguments[0], seen)[1]
+            return f"an array of {each}", f"arrays of {each}"
         if len(arguments) == 2:
-            return f"a [{describe(arguments[0], seen)}, {describe(arguments[1], seen)}] pair"
-        return f"an array of {len(arguments)} elements"
-    if origin in (Mapping, dict):
-        return "an object"
+            pair = f"[{describe(arguments[0], seen)}, {describe(arguments[1], seen)}] pair"
+            return f"a {pair}", f"{pair}s"
+        return f"an array of {len(arguments)} elements", f"arrays of {len(arguments)} elements"
+    if origin in (Mapping, dict) or (isinstance(inner, type) and is_typeddict(inner)):
+        return "an object", "objects"
     if isinstance(inner, NewType):
-        return describe(inner.__supertype__, seen)
-    if isinstance(inner, type) and is_typeddict(inner):
-        return "an object"
+        return _named(inner.__supertype__, seen)
     if is_alias(inner):
         alias = cast("typing_extensions.TypeAliasType", inner)
         if alias in seen or _holds(alias_value(alias), alias, frozenset()):
-            return f"a {alias.__name__}"
-        return describe(alias_value(alias), seen | {alias})
-    return "a value"
+            return f"a {alias.__name__}", f"{alias.__name__} values"
+        return _named(alias_value(alias), seen | {alias})
+    return "a value", "values"
+
+
+def _strings_only(annotation: object) -> bool:
+    """Whether `annotation` is a `Literal` of strings, which "a string" takes in."""
+    inner = strip_annotation(annotation)[0]
+    return get_origin(inner) is Literal and all(isinstance(value, str) for value in get_args(inner))
 
 
 def _holds(annotation: object, alias: object, seen: frozenset[object]) -> bool:
@@ -491,7 +521,7 @@ def _scalar(description: str, admits: Callable[[object], bool]) -> Parser:
     def parse(value: object, loc: Loc) -> Parsed:
         if admits(value):
             return value, ()
-        return value, problem(loc, f"expected {description}, got {value!r}")
+        return value, problem(loc, f"expected {description}, got {shown(value)}")
 
     return parse
 
@@ -510,14 +540,15 @@ def one_of(allowed: tuple[object, ...]) -> Parser:
     """A member whose type is a closed set of values.
 
     Equal and of the same type: JSON `true` is not the integer 1, though
-    Python says `True == 1`.
+    Python says `True == 1`. A value of a JSON type none of them has --
+    a number, where each is a string -- is of the wrong type; one of the
+    right type, the wrong value.
     """
 
     def parse(value: object, loc: Loc) -> Parsed:
         if not any(value == entry and type(value) is type(entry) for entry in allowed):
-            return value, problem(
-                loc, f"expected one of {allowed!r}, got {value!r}", "invalid_value"
-            )
+            message = f"expected {choices(allowed)}, got {shown(value)}"
+            return value, problem(loc, message, refused_kind(value, allowed))
         return value, ()
 
     return parse
@@ -528,7 +559,7 @@ def sequence_of(element: Parser) -> Parser:
 
     def parse(value: object, loc: Loc) -> Parsed:
         if not isinstance(value, (list, tuple)):
-            return value, problem(loc, f"expected a sequence, got {value!r}")
+            return value, problem(loc, f"expected an array, got {shown(value)}")
         entries = cast("list[object] | tuple[object, ...]", value)
         parsed: list[object] = []
         found: list[ValidationProblem] = []
@@ -546,10 +577,10 @@ def fixed_tuple(elements: Sequence[Parser], description: str) -> Parser:
 
     def parse(value: object, loc: Loc) -> Parsed:
         if not isinstance(value, (list, tuple)):
-            return value, problem(loc, f"expected {description}, got {value!r}")
+            return value, problem(loc, f"expected {description}, got {shown(value)}")
         entries = tuple(cast("list[object] | tuple[object, ...]", value))
         if len(entries) != len(elements):
-            return entries, problem(loc, f"expected {description}, got {entries!r}")
+            return entries, problem(loc, f"expected {description}, got {shown(entries)}")
         parsed: list[object] = []
         found: list[ValidationProblem] = []
         for position, (element, entry) in enumerate(zip(elements, entries, strict=True)):
@@ -603,7 +634,7 @@ def any_of(branches: Sequence[Branch], description: str, tag: Tag | None = None)
             return min(clean, key=lambda found: found[:2])[2]
         if len(failed) != 0:
             return min(failed, key=lambda found: found[:2])[2]
-        return value, problem(loc, f"expected {description}, got {value!r}")
+        return value, problem(loc, f"expected {description}, got {shown(value)}")
 
     return parse
 
@@ -616,10 +647,9 @@ def _by_tag(branches: Sequence[Branch], tag: Tag, value: Mapping[str, object], l
     said = value[key]
     index = picks.get((type(said), said)) if _hashable(said) else None
     if index is None:
-        allowed = tuple(sorted((entry for _, entry in picks), key=repr))
-        return value, problem(
-            (*loc, key), f"expected one of {allowed!r}, got {said!r}", "invalid_value"
-        )
+        allowed = tuple(entry for _, entry in picks)
+        message = f"expected {choices(allowed)}, got {shown(said)}"
+        return value, problem((*loc, key), message, refused_kind(said, allowed))
     return branches[index][1](value, loc)
 
 
@@ -646,7 +676,7 @@ def object_of(members: Mapping[str, tuple[Parser, bool]], extra: Parser | None) 
 
     def parse(value: object, loc: Loc) -> Parsed:
         if not isinstance(value, Mapping):
-            return value, problem(loc, f"expected an object, got {value!r}")
+            return value, problem(loc, f"expected an object, got {shown(value)}")
         entries = cast("Mapping[str, object]", value)
         parsed: dict[str, object] = {}
         found: list[ValidationProblem] = []
@@ -678,7 +708,7 @@ def mapping_of(value: Parser) -> Parser:
 
     def parse(candidate: object, loc: Loc) -> Parsed:
         if not isinstance(candidate, Mapping):
-            return candidate, problem(loc, f"expected an object, got {candidate!r}")
+            return candidate, problem(loc, f"expected an object, got {shown(candidate)}")
         entries = cast("Mapping[str, object]", candidate)
         parsed: dict[str, object] = {}
         found: list[ValidationProblem] = []

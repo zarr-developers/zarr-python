@@ -16,6 +16,8 @@ from zarr_metadata._json import (
     arrays_to_tuples,
     refine_json,
     refine_user_data,
+    refused_kind,
+    shown,
 )
 from zarr_metadata.model._array import (
     ZarrV3ArrayMetadata,
@@ -122,6 +124,12 @@ class ZarrV3GroupMetadata:
         return dataclasses.replace(self, **kwargs)
 
     def to_json(self) -> ZarrV3GroupMetadataJSON:
+        """The document as JSON, sharing no mutable state with the model.
+
+        `attributes` when not empty, `consolidated_metadata` when set, and
+        each extra field as held. Not validated: `to_key_value` is the writer
+        that refuses a model that is not valid.
+        """
         # to_json output shares no mutable state with the model: every value
         # that can hold a mutable container is deep-copied.
         out: ZarrV3GroupMetadataJSON = {
@@ -141,6 +149,13 @@ class ZarrV3GroupMetadata:
     def from_json(
         cls, data: object, *, context: Context = CORE_AND_EXTENSIONS
     ) -> ZarrV3GroupMetadata:
+        """The model of `data`, a v3 group document read in `context`, with each document its consolidated metadata holds.
+
+        `MetadataValidationError` with every problem `validate_group_metadata_v3`
+        finds. A `consolidated_metadata` of `null` is read as none, and not
+        written back. A member the spec does not define is held in
+        `extra_fields`.
+        """
         # A read model shares no mutable state with what it read.
         parsed = copy.deepcopy(parse_group_metadata_v3(data, context=context))
         consolidated_raw: object = parsed.get(ZARR_V3_CONSOLIDATED_METADATA_KEY, UNSET)
@@ -179,6 +194,11 @@ class ZarrV3GroupMetadata:
     def from_key_value(
         cls, mapping: Mapping[StoreKey, bytes], *, context: Context = CORE_AND_EXTENSIONS
     ) -> ZarrV3GroupMetadata:
+        """The model of the group document at `zarr.json` in `mapping`, read in `context`.
+
+        `MetadataValidationError` when the key is missing, its bytes are not
+        JSON, or the document is not valid.
+        """
         return cls.from_json(
             load_store_json(mapping, ZARR_V3_GROUP_METADATA_STORE_KEY), context=context
         )
@@ -186,6 +206,14 @@ class ZarrV3GroupMetadata:
     def to_key_value(
         self, *, indent: int | str | None = None, context: Context = CORE_AND_EXTENSIONS
     ) -> Mapping[ZarrV3GroupMetadataStoreKey, bytes]:
+        """The document as a store holds it: JSON bytes at `zarr.json`, indented by `indent`.
+
+        Validated first, in `context`: a model that is not valid raises
+        `MetadataValidationError` with every problem, and nothing is written.
+        `NaN`, `Infinity` and `-Infinity` in `attributes` are written as those
+        bare tokens, as zarr-python writes them, which a strict JSON parser
+        refuses.
+        """
         # A model built by hand is not validated: its document is written only
         # if it reads as `from_json` reads one in `context`, and every problem
         # is raised.
@@ -222,6 +250,7 @@ class ZarrV3ConsolidatedMetadata:
             )
 
     def to_json(self) -> ZarrV3ConsolidatedMetadataJSON:
+        """The `consolidated_metadata` member as JSON: its `kind`, `must_understand: false`, and each document by its path."""
         # `must_understand` is emitted as the literal False: the field is typed
         # permissively as `bool`, but `__post_init__` guarantees the value.
         return {
@@ -234,6 +263,10 @@ class ZarrV3ConsolidatedMetadata:
     def from_json(
         cls, data: object, *, context: Context = CORE_AND_EXTENSIONS
     ) -> ZarrV3ConsolidatedMetadata:
+        """The model of `data`, a group's `consolidated_metadata` member, each document read in `context` as the array or group its `node_type` says.
+
+        `MetadataValidationError` with every problem found.
+        """
         normalized = arrays_to_tuples(data)
         problems = validate_consolidated_metadata_v3(normalized, context=context)
         if len(problems) != 0:
@@ -320,12 +353,22 @@ class ZarrV2GroupMetadata:
 
     @classmethod
     def from_json(cls, data: object) -> ZarrV2GroupMetadata:
+        """The model of `data`, a v2 group document with its attributes under `attributes`.
+
+        `MetadataValidationError` with every problem `validate_group_metadata_v2`
+        finds. The model shares no mutable state with `data`.
+        """
         # A read model shares no mutable state with what it read.
         parsed = copy.deepcopy(parse_group_metadata_v2(data))
         return cls(attributes=(dict(parsed["attributes"]) if "attributes" in parsed else UNSET))
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[StoreKey, bytes]) -> ZarrV2GroupMetadata:
+        """The model of the group at `.zgroup` in `mapping`, with the attributes at `.zattrs` when there is one.
+
+        `MetadataValidationError` when `.zgroup` is missing, bytes are not
+        JSON, `.zgroup` holds `attributes`, or the document is not valid.
+        """
         zgroup_raw = load_store_json(mapping, ZARR_V2_GROUP_METADATA_STORE_KEY)
         if not isinstance(zgroup_raw, Mapping):
             return cls.from_json(zgroup_raw)
@@ -348,6 +391,11 @@ class ZarrV2GroupMetadata:
     def to_key_value(
         self, *, indent: int | str | None = None
     ) -> Mapping[ZarrV2GroupMetadataStoreKey | ZarrV2AttributesStoreKey, bytes]:
+        """The document as a store holds it: `.zgroup` without the attributes, and `.zattrs` with them when they are set, even empty.
+
+        Validated first: a model that is not valid raises
+        `MetadataValidationError` with every problem, and nothing is written.
+        """
         # Attributes live only in the sibling `.zattrs` file; the `.zgroup`
         # document must exclude them. The `.zattrs` key is present exactly
         # when attributes are set (even empty) — UNSET emits no file. A model
@@ -380,6 +428,7 @@ class ZarrV2ConsolidatedMetadata:
     metadata: dict[str, JSONValue]
 
     def to_json(self) -> dict[str, JSONValue]:
+        """The `.zmetadata` document as JSON, sharing no mutable state with the model."""
         # to_json output shares no mutable state with the model.
         return {
             "zarr_consolidated_format": self.zarr_consolidated_format,
@@ -388,10 +437,17 @@ class ZarrV2ConsolidatedMetadata:
 
     @classmethod
     def from_json(cls, data: object) -> ZarrV2ConsolidatedMetadata:
+        """The model of `data`, a `.zmetadata` document, its entries held as written.
+
+        `MetadataValidationError` with every problem: a member missing or
+        unexpected, a format other than 1, an entry that is not JSON. A
+        `.zattrs` entry is user data, and may hold `NaN`, `Infinity` and
+        `-Infinity`.
+        """
         normalized = arrays_to_tuples(data)
         if not isinstance(normalized, Mapping):
             raise MetadataValidationError(
-                [ValidationProblem((), "expected a mapping", "invalid_type")]
+                [ValidationProblem((), "expected an object", "invalid_type")]
             )
         doc = cast("Mapping[object, object]", normalized)
         problems: list[ValidationProblem] = [
@@ -414,8 +470,8 @@ class ZarrV2ConsolidatedMetadata:
             problems.append(
                 ValidationProblem(
                     ("zarr_consolidated_format",),
-                    f"expected 1, got {doc['zarr_consolidated_format']!r}",
-                    "invalid_value",
+                    f"expected 1, got {shown(doc['zarr_consolidated_format'])}",
+                    refused_kind(doc["zarr_consolidated_format"], (1,)),
                 )
             )
         refined: dict[str, JSONValue] = {}
@@ -426,7 +482,7 @@ class ZarrV2ConsolidatedMetadata:
             ):
                 problems.append(
                     ValidationProblem(
-                        ("metadata",), "expected a mapping with string keys", "invalid_type"
+                        ("metadata",), "expected an object with string keys", "invalid_type"
                     )
                 )
             else:
@@ -447,11 +503,21 @@ class ZarrV2ConsolidatedMetadata:
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[StoreKey, bytes]) -> ZarrV2ConsolidatedMetadata:
+        """The model of the document at `.zmetadata` in `mapping`.
+
+        `MetadataValidationError` when the key is missing, its bytes are not
+        JSON, or the document is not valid.
+        """
         return cls.from_json(load_store_json(mapping, ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY))
 
     def to_key_value(
         self, *, indent: int | str | None = None
     ) -> Mapping[ZarrV2ConsolidatedMetadataStoreKey, bytes]:
+        """The document as a store holds it: JSON bytes at `.zmetadata`, indented by `indent`.
+
+        Validated first: a model that is not valid raises
+        `MetadataValidationError` with every problem, and nothing is written.
+        """
         # A model built by hand is not validated: it is written only as
         # `from_json` reads it, and every problem is raised.
         document = ZarrV2ConsolidatedMetadata.from_json(self.to_json()).to_json()

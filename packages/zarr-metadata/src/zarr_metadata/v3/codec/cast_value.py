@@ -10,7 +10,7 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata._json import ValidationProblem
+from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.v3._definition import (
     Chunk,
     CodecDefinition,
@@ -160,14 +160,14 @@ def _rules(
     if name in _NO_REAL_NUMBERS:
         yield ValidationProblem(
             ("data_type",),
-            f"expected a data type that models real numbers, got {written!r}",
+            f"expected a data type that models real numbers, got {shown(written)}",
             "invalid_value",
         )
         return
     if configuration.get("out_of_range") == "wrap" and name in FLOATING_POINT:
         yield ValidationProblem(
             ("out_of_range",),
-            f"expected an integral data_type to wrap to, got {written!r}",
+            f"expected an integral data_type to wrap to, got {shown(written)}",
             "invalid_value",
         )
     for at, scalar in _scalars(configuration, "target"):
@@ -192,7 +192,7 @@ def _chunk_rules(
         written, _, _ = named_configuration(source.json)
         yield ValidationProblem(
             (),
-            f"expected a chunk of a data type that models real numbers, got {written!r}",
+            f"expected a chunk of a data type that models real numbers, got {shown(written)}",
             "invalid_value",
         )
         return

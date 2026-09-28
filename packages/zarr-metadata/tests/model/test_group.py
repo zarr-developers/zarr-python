@@ -265,7 +265,7 @@ def test_group_v2_omits_empty_attributes() -> None:
 
 def test_group_v2_not_a_mapping() -> None:
     """parse_group_metadata_v2 rejects a non-mapping document."""
-    with pytest.raises(MetadataValidationError, match="expected a mapping"):
+    with pytest.raises(MetadataValidationError, match="expected an object"):
         parse_group_metadata_v2([1, 2, 3])
 
 
@@ -339,7 +339,7 @@ def test_consolidated_v3_entry_without_node_type_rejected() -> None:
 
 def test_consolidated_v3_not_a_mapping() -> None:
     """from_json rejects a non-mapping consolidated document."""
-    with pytest.raises(MetadataValidationError, match="expected a mapping"):
+    with pytest.raises(MetadataValidationError, match="expected an object"):
         ZarrV3ConsolidatedMetadata.from_json(5)
 
 
@@ -369,6 +369,16 @@ def test_consolidated_v2_verbatim_roundtrip() -> None:
     assert model.to_json() == doc
 
 
+@pytest.mark.parametrize(("value", "kind"), [("1", "invalid_type"), (2, "invalid_value")])
+def test_error_consolidated_v2_format_other_than_1(value: object, kind: str) -> None:
+    document = {"zarr_consolidated_format": value, "metadata": {}}
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV2ConsolidatedMetadata.from_json(document)
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [
+        (("zarr_consolidated_format",), kind)
+    ]
+
+
 def test_consolidated_v2_key_value_roundtrip() -> None:
     """from_key_value(to_key_value()) is the identity for .zmetadata documents."""
     model = ZarrV2ConsolidatedMetadata.from_json(
@@ -395,7 +405,7 @@ def test_consolidated_v2_envelope_validation() -> None:
 
 def test_consolidated_v2_not_a_mapping() -> None:
     """from_json rejects a non-mapping .zmetadata document."""
-    with pytest.raises(MetadataValidationError, match="expected a mapping"):
+    with pytest.raises(MetadataValidationError, match="expected an object"):
         ZarrV2ConsolidatedMetadata.from_json([1])
 
 

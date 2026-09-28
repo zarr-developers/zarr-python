@@ -9,6 +9,7 @@ layer reports with: the checker, the definitions and the model alike.
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -118,7 +119,7 @@ def prefixed(
 
 
 def validate_json(value: object) -> tuple[ValidationProblem, ...]:
-    """Return every reason `value` is not JSON-serializable (recursively): `refine_json`'s problems."""
+    """Return every reason `value` is not JSON, each where it sits: a float that is not finite, a key that is not a string, a value of no JSON type."""
     return refine_json(value)[1]
 
 
@@ -195,6 +196,43 @@ def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refi
     )
 
 
+def shown(value: object) -> str:
+    """`value` as a problem's message shows it: as the JSON a document writes, `null` and `[1, 2]`, or by its repr when it is not JSON."""
+    refined, problems = _refine(value, (), finite=False)
+    if len(problems) != 0:
+        return repr(value)
+    return json.dumps(refined, ensure_ascii=False)
+
+
+def choices(allowed: Sequence[object]) -> str:
+    """A closed set of values as a message names it: `"C"` alone, or `one of ["C", "F"]`."""
+    values = sorted(dict.fromkeys(shown(value) for value in allowed))
+    return values[0] if len(values) == 1 else f"one of [{', '.join(values)}]"
+
+
+def json_type(value: object) -> str:
+    """The JSON type of `value`, as a message names it: "a string", "a number", "null"."""
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "a boolean"
+    if isinstance(value, (int, float)):
+        return "a number"
+    if isinstance(value, str):
+        return "a string"
+    if isinstance(value, Mapping):
+        return "an object"
+    if isinstance(value, (list, tuple)):
+        return "an array"
+    return "a value"
+
+
+def refused_kind(value: object, allowed: Sequence[object]) -> ProblemKind:
+    """What is wrong with `value`, outside a closed set: its type, when none of the set is of its JSON type, else its value."""
+    same_type = json_type(value) in {json_type(entry) for entry in allowed}
+    return "invalid_value" if same_type else "invalid_type"
+
+
 def is_canonical_json(value: object, *, finite: bool = True) -> TypeGuard[JSONValue]:
     """Whether `value` already uses the concrete containers in `JSONValue`.
 
@@ -260,11 +298,15 @@ __all__ = [
     "ProblemKind",
     "ValidationProblem",
     "arrays_to_tuples",
+    "choices",
     "is_canonical_json",
     "is_json",
+    "json_type",
     "parse_json",
     "prefixed",
     "refine_json",
     "refine_user_data",
+    "refused_kind",
+    "shown",
     "validate_json",
 ]

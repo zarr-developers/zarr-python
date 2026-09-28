@@ -38,6 +38,7 @@ from zarr_metadata.model import ZarrV2ArrayMetadata, ZarrV3ArrayMetadata
 from zarr_metadata.typed_json import check
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON, ZarrV2DataTypeMetadata
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
+from zarr_metadata.v3.data_type.float32 import Float32FillValue
 
 if TYPE_CHECKING:
     from _pytest.mark import ParameterSet
@@ -171,7 +172,8 @@ def test_a_value_of_the_shape_reads_as_itself(
         (str, 1, (), "invalid_type"),
         (None, 0, (), "invalid_type"),
         (Literal["a"], "b", (), "invalid_value"),
-        (Literal[1], True, (), "invalid_value"),
+        (Literal[1], True, (), "invalid_type"),
+        (Literal["0.5"], 0.5, (), "invalid_type"),
         (tuple[int, ...], (1, "x"), (1,), "invalid_type"),
         (tuple[int, ...], 5, (), "invalid_type"),
         (int | str, 2.5, (), "invalid_type"),
@@ -184,6 +186,7 @@ def test_a_value_of_the_shape_reads_as_itself(
             "invalid_type",
         ),
         (Blosc | Gzip, {"name": "zstd", "configuration": {}}, ("name",), "invalid_value"),
+        (Blosc | Gzip, {"name": 5, "configuration": {}}, ("name",), "invalid_type"),
         (Blosc | Gzip, {"configuration": {}}, ("name",), "missing_key"),
         (Triple | Pair, {"a": 1, "b": "x"}, ("b",), "invalid_type"),
     ],
@@ -195,6 +198,7 @@ def test_a_value_of_the_shape_reads_as_itself(
         "zero-is-not-null",
         "literal-other",
         "literal-bool-is-not-int",
+        "literal-of-another-type",
         "element",
         "not-a-sequence",
         "no-branch",
@@ -202,6 +206,7 @@ def test_a_value_of_the_shape_reads_as_itself(
         "not-json",
         "a-tag-picks-the-branch-that-reports",
         "a-tag-no-branch-has",
+        "a-tag-of-another-type",
         "a-tag-missing",
         "untagged-the-closest-branch-reports",
     ],
@@ -871,9 +876,39 @@ def test_a_shape_is_what_a_union_dispatches_on(annotation: object, shape: str | 
     assert shape_of(annotation) == shape
 
 
+@pytest.mark.parametrize(
+    ("annotation", "value", "message"),
+    [
+        (Blosc | Gzip, 3, "expected an object, got 3"),
+        (Literal["0.5"], 0.5, 'expected "0.5", got 0.5'),
+        (Literal["C", "F"], "Q", 'expected one of ["C", "F"], got "Q"'),
+        (tuple[str, ...], "nuclei", 'expected an array, got "nuclei"'),
+        (str, None, "expected a string, got null"),
+    ],
+    ids=["a-union-of-objects", "one-value", "values", "array", "null"],
+)
+def test_a_message_names_what_was_expected_and_shows_the_json_it_got(
+    annotation: object, value: object, message: str
+) -> None:
+    assert [problem.message for problem in _read(annotation, value)[1]] == [message]
+
+
 def test_a_shape_is_described_as_a_message_would_name_it() -> None:
-    assert describe(Literal[0, "auto"]) == "one of ('auto', 0)"
+    assert describe(Literal[0, "auto"]) == 'one of ["auto", 0]'
+    assert describe(Literal["0.5"]) == '"0.5"'
     assert describe(int | None) == "an integer or null"
+    assert describe(Blosc | Gzip) == "an object"
+    assert describe(float | int | None) == "a number or null"
+    # An array's elements are named as many.
+    assert describe(tuple[int, ...]) == "an array of integers"
+    assert describe(tuple[int | None, ...]) == "an array of integers or nulls"
+    assert describe(tuple[tuple[str, ...], ...]) == "an array of arrays of strings"
+    assert describe(tuple[Literal["C", "F"], ...]) == 'an array of values in ["C", "F"]'
+    assert describe(int | tuple[int, ...]) == "an integer or an array of integers"
+    # A broader shape takes in a narrower one: the hex string a float32
+    # is spelled as, the strings of its non-finite values.
+    assert describe(Float32FillValue) == "a number or a string"
+    assert describe(Literal["C", "F"] | None) == 'one of ["C", "F"] or null'
     assert describe(Width) == "an integer"
     assert describe(ZarrV2DataTypeMetadata) == "a ZarrV2DataTypeMetadata"
 

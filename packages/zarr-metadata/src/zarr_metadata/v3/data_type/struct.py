@@ -10,7 +10,7 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata._json import ValidationProblem
+from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     DataTypeField,
@@ -99,7 +99,7 @@ def _rules(configuration: StructConfiguration, nested: Nested) -> Iterator[Valid
             written, _, _ = named_configuration(field_type.json)
             yield ValidationProblem(
                 ("fields", index, "data_type"),
-                f"expected a data type of fixed size, got {written!r}, whose values vary in size",
+                f"expected a data type of fixed size, got {shown(written)}, whose values vary in size",
                 "invalid_value",
             )
 

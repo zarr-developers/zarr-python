@@ -9,7 +9,7 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
-from zarr_metadata._json import ValidationProblem
+from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.v3._definition import Chunk, CodecDefinition, Nested
 
 TRANSPOSE_CODEC_NAME: Final = "transpose"
@@ -60,7 +60,7 @@ def _rules(
     if sorted(order) != list(range(len(order))):
         yield ValidationProblem(
             ("order",),
-            f"expected a permutation of 0..{len(order) - 1}, got {order!r}",
+            f"expected a permutation of 0..{len(order) - 1}, got {shown(order)}",
             "invalid_value",
         )
 

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from zarr_metadata._json import refine_json, refine_user_data
+from zarr_metadata._json import refine_json, refine_user_data, shown
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -101,3 +101,22 @@ def test_a_value_nested_hundreds_deep_is_read() -> None:
     refined, problems = refine_json(deep)
     assert problems == ()
     assert refined is not None
+
+
+@pytest.mark.parametrize(
+    ("value", "text"),
+    [
+        (None, "null"),
+        (True, "true"),
+        ("C", '"C"'),
+        ((1, (2,)), "[1, [2]]"),
+        ({"a": None}, '{"a": null}'),
+        (float("nan"), "NaN"),
+        ({1: 2}, "{1: 2}"),
+    ],
+    ids=["null", "true", "string", "array", "object", "non-finite", "not-json"],
+)
+def test_a_value_is_shown_as_the_json_a_document_writes(value: object, text: str) -> None:
+    # What a problem's message says a document holds: its JSON, and the
+    # value's repr only when it is not JSON.
+    assert shown(value) == text

@@ -79,7 +79,8 @@ supports. The rules are handed the configuration and the fields it holds
 as the scope read them: a field that is read keeps what it read inside it
 as `Resolved.nested`, a `Nested` mapping by where each sits, so a
 struct's rules reach its field types. `judge`, which reads in no scope,
-hands them none.
+hands them none. A rule's message shows a value as the package's own
+messages do, as JSON, with `shown`: `null`, `[1, 2]`, `"C"`.
 
     from collections.abc import Iterator
 
@@ -232,7 +233,7 @@ class creation.
 """
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata._json import MetadataValidationError, ProblemKind, ValidationProblem
+from zarr_metadata._json import MetadataValidationError, ProblemKind, ValidationProblem, shown
 from zarr_metadata._typed_json import Loc, check
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._definition import (
@@ -308,5 +309,6 @@ __all__ = [
     "fill_value_problems",
     "read_pipeline",
     "resolve",
+    "shown",
     "storage_of",
 ]

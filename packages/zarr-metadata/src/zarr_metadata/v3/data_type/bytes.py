@@ -8,7 +8,7 @@ import re
 from collections.abc import Iterator
 from typing import Final, Literal, NewType
 
-from zarr_metadata._json import ValidationProblem
+from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     EmptyConfiguration,
@@ -60,7 +60,7 @@ def _fill_value_rules(
         base64_bytes(value)
     except ValueError:
         yield ValidationProblem(
-            (), f"expected standard-alphabet base64, got {value!r}", "invalid_value"
+            (), f"expected standard-alphabet base64, got {shown(value)}", "invalid_value"
         )
 
 

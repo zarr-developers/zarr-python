@@ -80,6 +80,13 @@ class ZarrV3NamedConfig:
 
     @classmethod
     def from_json(cls, data: object) -> ZarrV3NamedConfig:
+        """A field read from `data`, its JSON: a bare name, or an object of a `name` and, if it says them, a `configuration` and a `must_understand`.
+
+        `MetadataValidationError` for anything else. It is read in no scope,
+        so nothing judges its configuration, which is held as written, and a
+        `must_understand` of `false` is held too, though a document's
+        validators refuse one at every extension point.
+        """
         field = parse_metadata_field_v3(data)
         if isinstance(field, str):
             return cls(name=field, configuration={}, must_understand=True)
@@ -210,7 +217,8 @@ class ZarrV3ArrayMetadata:
         (the same fields accepted by `update`). Overriding `shape` without
         `chunk_grid` derives a consistent default grid: one regular chunk
         covering the array (`chunk_shape` equal to `shape`, with a length of
-        1 for a dimension of length 0, since a chunk length is at least 1:
+        1 for a dimension of length 0, which every reader takes: the core
+        spec allows 0 there and the regular grid spec does not,
         https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L40).
 
         The derivation is deliberately one-way. A user-supplied `chunk_grid`
@@ -279,6 +287,14 @@ class ZarrV3ArrayMetadata:
             )
 
     def to_json(self) -> ZarrV3ArrayMetadataJSON:
+        """The document as JSON, arrays as tuples, sharing no mutable state with the model.
+
+        Each extension point as its readers take it: the data type as
+        `ZarrV3NamedConfig.to_json` writes it, and every other as an object;
+        `dimension_names` when set, and `attributes` and `storage_transformers`
+        when not empty. Not validated: `to_key_value` is the writer that
+        refuses a model that is not valid.
+        """
         # to_json output shares no mutable state with the model: every value
         # that can hold a mutable container is deep-copied.
         out: ZarrV3ArrayMetadataJSON = {
@@ -311,6 +327,12 @@ class ZarrV3ArrayMetadata:
     def from_json(
         cls, data: object, *, context: Context = CORE_AND_EXTENSIONS
     ) -> ZarrV3ArrayMetadata:
+        """The model of `data`, a v3 array document read in `context`.
+
+        `MetadataValidationError` with every problem `validate_array_metadata_v3`
+        finds. A member the spec does not define is held in `extra_fields`. The
+        model shares no mutable state with `data`.
+        """
         # A read model shares no mutable state with what it read.
         parsed = copy.deepcopy(parse_array_metadata_v3(data, context=context))
         extra_fields: dict[str, ZarrV3ExtensionField] = {
@@ -347,6 +369,11 @@ class ZarrV3ArrayMetadata:
     def from_key_value(
         cls, mapping: Mapping[StoreKey, bytes], *, context: Context = CORE_AND_EXTENSIONS
     ) -> ZarrV3ArrayMetadata:
+        """The model of the array document at `zarr.json` in `mapping`, read in `context`.
+
+        `MetadataValidationError` when the key is missing, its bytes are not
+        JSON, or the document is not valid.
+        """
         return cls.from_json(
             load_store_json(mapping, ZARR_V3_ARRAY_METADATA_STORE_KEY), context=context
         )
@@ -354,6 +381,14 @@ class ZarrV3ArrayMetadata:
     def to_key_value(
         self, *, indent: int | str | None = None, context: Context = CORE_AND_EXTENSIONS
     ) -> Mapping[ZarrV3ArrayMetadataStoreKey, bytes]:
+        """The document as a store holds it: JSON bytes at `zarr.json`, indented by `indent`.
+
+        Validated first, in `context`: a model that is not valid raises
+        `MetadataValidationError` with every problem, and nothing is written.
+        `NaN`, `Infinity` and `-Infinity` in `attributes` are written as those
+        bare tokens, as zarr-python writes them, which a strict JSON parser
+        refuses.
+        """
         # A model built by hand is not validated: its document is written only
         # if it reads as `from_json` reads one in `context`, and every problem
         # is raised.
@@ -484,6 +519,12 @@ class ZarrV2ArrayMetadata:
 
     @classmethod
     def from_json(cls, data: object) -> ZarrV2ArrayMetadata:
+        """The model of `data`, a v2 array document with its attributes under `attributes`.
+
+        `MetadataValidationError` with every problem `validate_array_metadata_v2`
+        finds. A missing `dimension_separator` is read as `"."`, which is
+        written back. The model shares no mutable state with `data`.
+        """
         # A read model shares no mutable state with what it read.
         parsed = copy.deepcopy(parse_array_metadata_v2(data))
         return cls(
@@ -500,6 +541,11 @@ class ZarrV2ArrayMetadata:
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[StoreKey, bytes]) -> ZarrV2ArrayMetadata:
+        """The model of the array at `.zarray` in `mapping`, with the attributes at `.zattrs` when there is one.
+
+        `MetadataValidationError` when `.zarray` is missing, bytes are not
+        JSON, `.zarray` holds `attributes`, or the document is not valid.
+        """
         zarray_raw = load_store_json(mapping, ZARR_V2_ARRAY_METADATA_STORE_KEY)
         if not isinstance(zarray_raw, Mapping):
             return cls.from_json(zarray_raw)
@@ -522,6 +568,11 @@ class ZarrV2ArrayMetadata:
     def to_key_value(
         self, *, indent: int | str | None = None
     ) -> Mapping[ZarrV2ArrayMetadataStoreKey | ZarrV2AttributesStoreKey, bytes]:
+        """The document as a store holds it: `.zarray` without the attributes, and `.zattrs` with them when they are set, even empty.
+
+        Validated first: a model that is not valid raises
+        `MetadataValidationError` with every problem, and nothing is written.
+        """
         # Attributes live only in the sibling `.zattrs` file; the `.zarray`
         # document must exclude them. The `.zattrs` key is present exactly
         # when attributes are set (even empty) — UNSET emits no file. A model

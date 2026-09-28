@@ -10,7 +10,7 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata._json import ValidationProblem
+from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.v3._definition import (
     Chunk,
     CodecDefinition,
@@ -102,7 +102,7 @@ def _chunk_rules(
         written, _, _ = named_configuration(source.json)
         yield ValidationProblem(
             (),
-            f"expected a chunk of a data type with arithmetic, got {written!r}",
+            f"expected a chunk of a data type with arithmetic, got {shown(written)}",
             "invalid_value",
         )
         return

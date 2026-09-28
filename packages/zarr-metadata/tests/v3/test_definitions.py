@@ -681,6 +681,17 @@ def test_a_scope_takes_a_name_over() -> None:
     assert scope.claimant(ChunkGridDefinition, "regular") is REGULAR_CHUNK_GRID
 
 
+def test_a_scope_is_shown_by_how_many_definitions_it_holds() -> None:
+    # Short, as a validator's default argument is shown by `help`.
+    assert repr(CORE) == f"Context(<{len(CORE.definitions())} definitions>)"
+
+
+def test_a_definition_is_shown_by_its_kind_and_name() -> None:
+    # Short, as a reading that holds it shows it.
+    assert repr(GZIP_CODEC) == "CodecDefinition(name='gzip')"
+    assert repr(INT8_DATA_TYPE) == "DataTypeDefinition(name='int8')"
+
+
 class Unreadable(TypedDict, closed=True):
     members: set[int]
 

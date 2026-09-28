@@ -71,8 +71,8 @@ members that the strict model parser rejects.
 
 The model validators enforce the declared document structure and a small set
 of context-free consistency rules, including fixed format literals, finite
-JSON numbers, non-negative dimensions, and one `dimension_names` entry per
-array dimension. In a v3 document they also read
+JSON numbers outside `attributes`, non-negative dimensions, and one
+`dimension_names` entry per array dimension. In a v3 document they also read
 each extension point -- the data type, chunk grid, chunk key encoding, each
 codec and each storage transformer -- through the definition that claims its
 name in a scope, `CORE_AND_EXTENSIONS` unless a `context` is passed: a
@@ -85,6 +85,26 @@ and the codecs as a pipeline: in order, each judged by its definition
 against the chunk it is handed, a shard's inner and index codecs too.
 The validators do no arithmetic on values: whether a fill value survives
 a `cast_value` round trip is not judged.
+
+Three choices the specs' words leave open, or settle two ways:
+
+- **`attributes` may hold `NaN`, `Infinity` and `-Infinity`.** The spec
+  interprets no attribute, and zarr-python and xarray write those numbers
+  there (a CF `_FillValue`, say). The models read them, and `to_key_value`
+  writes them back as those bare tokens, which a strict JSON parser
+  refuses. `check`, from `zarr_metadata.typed_json`, refuses a non-finite
+  number wherever it is, attributes included.
+- **`must_understand: false` is refused at every extension point**, codecs
+  and storage transformers too, though the core spec names only the data
+  type, chunk grid and chunk key encoding: a reader that skips a codec
+  reads wrong bytes as surely as one that skips a data type reads wrong
+  values. It keeps its meaning on an unknown top-level member, which a
+  reader can skip.
+- **A chunk length of 0 is allowed along a dimension of length 0.** The
+  core spec asks for non-zero chunk lengths only "when the corresponding
+  dimensions of the arrays have non-zero length"; the regular grid spec
+  says chunk sizes are greater than zero. The package follows the core
+  spec, which zarr-python 3.0 and 3.1 wrote for an empty dimension.
 
 ## Scope
 

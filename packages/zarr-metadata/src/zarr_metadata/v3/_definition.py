@@ -51,7 +51,7 @@ from typing import (
 from typing_extensions import TypeAliasType, TypedDict, TypeVar, is_typeddict
 
 from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
-from zarr_metadata._json import ValidationProblem, refine_json
+from zarr_metadata._json import ValidationProblem, refine_json, shown
 from zarr_metadata._typed_json import (
     Loc,
     Parsed,
@@ -192,6 +192,11 @@ class Definition(Generic[C]):
             msg = f"{self.name!r}: {error}"
             raise TypeError(msg) from error
 
+    def __repr__(self) -> str:
+        # Short, as a reading that holds definitions shows them: in full, a
+        # definition's repr is each function it holds, at its address.
+        return f"{type(self).__name__}(name={self.name!r})"
+
     def _refusal(self) -> str | None:
         """What is wrong with the members a kind adds; None when nothing is, or it adds none."""
         return None
@@ -299,7 +304,7 @@ def _carrying_name(
     return f"r{configuration['bits']}"
 
 
-@dataclass(frozen=True, kw_only=True, slots=True)
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class DataTypeDefinition(Definition[C]):
     """A data type, and the fill value an array of it takes.
 
@@ -349,7 +354,7 @@ def _fill_value_parser(annotation: object) -> Parser:
     return parser(annotation, no_leaf)
 
 
-@dataclass(frozen=True, kw_only=True, slots=True)
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class ChunkGridDefinition(Definition[C]):
     """A chunk grid, and the arrays it fits.
 
@@ -374,7 +379,7 @@ class ChunkGridDefinition(Definition[C]):
     """The lengths its chunks take along each axis of an array of a shape it fits, None where unknown."""
 
 
-@dataclass(frozen=True, kw_only=True, slots=True)
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class ChunkKeyEncodingDefinition(Definition[C]):
     """A chunk key encoding."""
 
@@ -397,7 +402,7 @@ _UNASKED: Final[Mapping[CodecKind, tuple[str, ...]]] = {
 """The functions no codec of a kind is asked: a bytes -> bytes codec is handed bytes, and only an array -> array codec hands on a chunk."""
 
 
-@dataclass(frozen=True, kw_only=True, slots=True)
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class CodecDefinition(Definition[C]):
     """A codec: what it does to what it is handed, and whether the size of what it gives out is static.
 
@@ -452,7 +457,7 @@ class CodecDefinition(Definition[C]):
         return None
 
 
-@dataclass(frozen=True, kw_only=True, slots=True)
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class StorageTransformerDefinition(Definition[C]):
     """A storage transformer."""
 
@@ -551,7 +556,7 @@ def _field(annotation: object) -> Parser | None:
 
     def parse(value: object, loc: Loc) -> Parsed:
         if not isinstance(value, (str, Mapping)):
-            return value, problem(loc, f"expected a metadata field, got {value!r}")
+            return value, problem(loc, f"expected a metadata field, got {shown(value)}")
         # Refined JSON, which the checker only knows as `object`.
         return _NestedField(loc, kind, cast("JSONValue", value), static), ()
 
@@ -740,7 +745,11 @@ def named_configuration(
         return name, None, ()
     configuration = entry["configuration"]
     if not isinstance(configuration, Mapping):
-        return name, None, problem(("configuration",), f"expected an object, got {configuration!r}")
+        return (
+            name,
+            None,
+            problem(("configuration",), f"expected an object, got {shown(configuration)}"),
+        )
     return name, cast("Mapping[str, object]", configuration), ()
 
 
@@ -982,8 +991,10 @@ def resolve(
     sits, as with a document's fields. A name nothing claims is
     `out_of_scope`: an unmodelled
     extension, left unjudged, which is what keeps the format open. `loc`
-    prefixes every problem. `kind` is one of `KINDS`, with or without
-    type arguments; anything else is a `TypeError`.
+    prefixes every problem. `kind` is one of the five kinds --
+    `CodecDefinition`, `DataTypeDefinition`, `ChunkGridDefinition`,
+    `ChunkKeyEncodingDefinition`, `StorageTransformerDefinition` -- with
+    or without type arguments; anything else is a `TypeError`.
     """
     asked = as_kind(kind)
     refined, problems = refine_json(data, loc)
