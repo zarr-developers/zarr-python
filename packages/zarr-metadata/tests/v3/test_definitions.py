@@ -18,6 +18,7 @@ from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
 from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC, GzipCodecConfiguration
+from zarr_metadata.v3.data_type.int8 import INT8_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
@@ -29,6 +30,7 @@ from zarr_metadata.v3.definition import (
     DataTypeDefinition,
     Definition,
     JSONValue,
+    Nested,
     StorageTransformerDefinition,
     ValidationProblem,
     ZarrV3MetadataFieldJSON,
@@ -48,13 +50,26 @@ class AcmeStackConfiguration(TypedDict, closed=True):
     codecs: tuple[CodecField, ...]
 
 
-def acme_stack_rules(configuration: AcmeStackConfiguration) -> Iterator[ValidationProblem]:
+def acme_stack_rules(
+    configuration: AcmeStackConfiguration, nested: Nested
+) -> Iterator[ValidationProblem]:
     # A rule may read a nested field's name: it is asked only of a
     # configuration whose nested envelopes are sound.
     for index, codec in enumerate(configuration["codecs"]):
         if (codec if isinstance(codec, str) else codec["name"]) == "acme.stack":
             yield ValidationProblem(
                 ("codecs", index), "a stack does not hold itself", "invalid_value"
+            )
+        # And what the scope read of it: a codec of another kind is refused,
+        # one nothing in scope claims left be.
+        inner = nested.get(("codecs", index))
+        if (
+            inner is not None
+            and isinstance(inner.definition, CodecDefinition)
+            and inner.definition.kind != "bytes_bytes"
+        ):
+            yield ValidationProblem(
+                ("codecs", index), "a stack holds bytes -> bytes codecs", "invalid_value"
             )
 
 
@@ -112,7 +127,9 @@ class AcmeBoundedConfiguration(TypedDict, closed=True):
     window: NotRequired[int]
 
 
-def acme_bounded_rules(configuration: AcmeBoundedConfiguration) -> Iterator[ValidationProblem]:
+def acme_bounded_rules(
+    configuration: AcmeBoundedConfiguration, nested: Nested
+) -> Iterator[ValidationProblem]:
     # Every key it meets is one its TypedDict declares.
     for key, value in cast("Mapping[str, int]", configuration).items():
         low, high = ACME_BOUNDS[key]
@@ -125,7 +142,9 @@ class AcmePairedConfiguration(TypedDict, closed=True):
     second: NotRequired[int]
 
 
-def acme_paired_rules(configuration: AcmePairedConfiguration) -> Iterator[ValidationProblem]:
+def acme_paired_rules(
+    configuration: AcmePairedConfiguration, nested: Nested
+) -> Iterator[ValidationProblem]:
     if ("first" in configuration) != ("second" in configuration):
         yield ValidationProblem((), "expected first and second, or neither", "invalid_value")
 
@@ -181,6 +200,31 @@ def _locs(problems: tuple[ValidationProblem, ...]) -> list[tuple[tuple[str | int
 
 def test_core_is_a_subset_of_core_and_extensions() -> None:
     assert set(CORE.definitions()) <= set(CORE_AND_EXTENSIONS.definitions())
+
+
+def test_a_read_field_keeps_the_fields_it_read_inside() -> None:
+    # By where each sits in the configuration, as the scope read it.
+    shard = {
+        "name": "sharding_indexed",
+        "configuration": {
+            "chunk_shape": [2],
+            "codecs": ["bytes"],
+            "index_codecs": ["bytes", "crc32c"],
+        },
+    }
+    resolved, _ = resolve(shard, CodecDefinition, CORE_AND_EXTENSIONS)
+    assert {loc: inner.json for loc, inner in resolved.nested.items()} == {
+        ("codecs", 0): "bytes",
+        ("index_codecs", 0): "bytes",
+        ("index_codecs", 1): "crc32c",
+    }
+    cast = {"name": "cast_value", "configuration": {"data_type": "int8"}}
+    resolved, _ = resolve(cast, CodecDefinition, CORE_AND_EXTENSIONS)
+    assert resolved.nested[("data_type",)].definition is INT8_DATA_TYPE
+    # A field holding none, or one that was not read, has nothing inside.
+    assert resolve("int8", DataTypeDefinition, CORE)[0].nested == {}
+    unread = {"name": "cast_value", "configuration": {"data_type": "int8", "rounding": 1}}
+    assert resolve(unread, CodecDefinition, CORE_AND_EXTENSIONS)[0].nested == {}
 
 
 @pytest.mark.parametrize(
@@ -350,8 +394,9 @@ def test_error_a_required_configuration_is_missing() -> None:
 
 
 def test_error_the_configuration_is_not_an_object() -> None:
+    # Unread, and still claimed by the definition its name names.
     resolved, found = resolve({"name": "gzip", "configuration": 5}, CodecDefinition, SCOPE)
-    assert resolved.resolution == "invalid"
+    assert (resolved.resolution, resolved.definition) == ("invalid", GZIP_CODEC)
     assert [found.loc for found in found] == [("configuration",)]
 
 
@@ -393,14 +438,14 @@ def test_error_must_understand_false_is_refused_wherever_the_model_refuses_it(
 
 
 def _ruled_by(
-    rules: Callable[[GzipCodecConfiguration], Iterable[ValidationProblem]],
+    rules: Callable[[GzipCodecConfiguration, Nested], Iterable[ValidationProblem]],
 ) -> Context:
     lying = replace(GZIP_CODEC, name="acme.gzip", rules=rules)
     return CORE.extended_with(lying)
 
 
 def test_error_a_rule_that_yields_something_else() -> None:
-    def rules(configuration: GzipCodecConfiguration) -> Iterator[ValidationProblem]:
+    def rules(configuration: GzipCodecConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
         yield "level is too high"  # pyright: ignore[reportReturnType]
 
     with pytest.raises(TypeError, match="'acme.gzip': its rules yield ValidationProblem values"):
@@ -412,7 +457,7 @@ def test_error_a_rule_that_yields_something_else() -> None:
 
 
 def test_error_a_rule_that_raises_says_whose_it_is() -> None:
-    def rules(configuration: GzipCodecConfiguration) -> Iterator[ValidationProblem]:
+    def rules(configuration: GzipCodecConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
         yield from ({}[configuration["level"]],)
 
     with pytest.raises(KeyError) as raised:
@@ -428,7 +473,7 @@ def test_error_a_rule_that_raises_says_whose_it_is() -> None:
 
 def test_error_a_rule_that_returns_none_says_whose_it_is() -> None:
     # A plain function that forgot to yield: nothing to iterate.
-    def rules(configuration: GzipCodecConfiguration) -> None:
+    def rules(configuration: GzipCodecConfiguration, nested: Nested) -> None:
         return None
 
     with pytest.raises(TypeError, match="not iterable") as raised:
@@ -475,12 +520,15 @@ def test_error_a_regular_grid_extent_is_negative() -> None:
 
 
 def test_error_a_nested_field_is_judged_where_it_sits() -> None:
+    # Its problem is its own: the field holding it is read, as a document
+    # holding it would be.
     field = {
         "name": "acme.stack",
         "configuration": {"codecs": ["crc32c", {"name": "gzip", "configuration": {"level": 12}}]},
     }
     resolved, found = resolve(field, CodecDefinition, SCOPE)
-    assert resolved.resolution == "invalid"
+    assert resolved.resolution == "read"
+    assert resolved.nested[("codecs", 1)].resolution == "invalid"
     assert _locs(found) == [
         (("configuration", "codecs", 1, "configuration", "level"), "invalid_value")
     ]
@@ -492,8 +540,32 @@ def test_error_a_nested_field_in_extra_items_is_judged_where_it_sits() -> None:
         "configuration": {"slow": {"name": "gzip", "configuration": {"level": 12}}},
     }
     resolved, found = resolve(field, CodecDefinition, SCOPE)
-    assert resolved.resolution == "invalid"
+    assert resolved.resolution == "read"
+    assert resolved.nested[("slow",)].resolution == "invalid"
     assert _locs(found) == [(("configuration", "slow", "configuration", "level"), "invalid_value")]
+
+
+def test_error_a_nested_envelope_s_problem_is_its_own_and_the_rules_are_asked() -> None:
+    # A `must_understand` of false inside, as in a document, is reported
+    # where it sits, and the stack is read.
+    unread = {"name": "crc32c", "must_understand": False}
+    resolved, found = resolve(
+        {"name": "acme.stack", "configuration": {"codecs": [unread]}}, CodecDefinition, SCOPE
+    )
+    assert resolved.resolution == "read"
+    assert _locs(found) == [(("configuration", "codecs", 0, "must_understand"), "invalid_value")]
+    # Its rules are asked all the same: one refuses the array -> bytes
+    # codec it holds, which is the stack's own problem.
+    resolved, found = resolve(
+        {"name": "acme.stack", "configuration": {"codecs": [unread, "bytes"]}},
+        CodecDefinition,
+        SCOPE,
+    )
+    assert resolved.resolution == "invalid"
+    assert _locs(found) == [
+        (("configuration", "codecs", 1), "invalid_value"),
+        (("configuration", "codecs", 0, "must_understand"), "invalid_value"),
+    ]
 
 
 def test_error_a_container_rule_is_not_asked_of_a_malformed_nested_field() -> None:
@@ -515,6 +587,17 @@ def test_error_a_rule_about_the_whole_configuration_lands_on_it() -> None:
     )
     assert _locs(judged) == [((), "invalid_value")]
     assert _locs(read) == [(("configuration",), "invalid_value")]
+
+
+def test_error_a_rule_reads_the_fields_the_configuration_holds_as_the_scope_read_them() -> None:
+    # `bytes` is an array -> bytes codec, which the stack's rule refuses
+    # from what the scope read; `judge` reads in no scope, so its rule sees
+    # nothing read.
+    field = {"name": "acme.stack", "configuration": {"codecs": ["crc32c", "bytes"]}}
+    resolved, found = resolve(field, CodecDefinition, SCOPE)
+    assert resolved.resolution == "invalid"
+    assert _locs(found) == [(("configuration", "codecs", 1), "invalid_value")]
+    assert ACME_STACK.judge(field["configuration"])[1] == ()
 
 
 def test_error_a_nested_member_is_not_a_field() -> None:
@@ -586,7 +669,7 @@ def test_a_scope_takes_a_name_over() -> None:
         configuration=GzipCodecConfiguration,
         kind="bytes_bytes",
         size="dynamic",
-        rules=lambda configuration: (
+        rules=lambda configuration, nested: (
             [ValidationProblem(("level",), "level 0 stores uncompressed", "invalid_value")]
             if configuration["level"] == 0
             else []
@@ -677,6 +760,34 @@ def test_error_a_data_type_is_named_as_raw_bits_of_one_size_are_written() -> Non
     # `r16` reads as `r*`, so a definition filed under it would read nothing.
     with pytest.raises(TypeError, match="to read raw bits your own way, define 'r\\*'"):
         DataTypeDefinition(name="r16", configuration=Empty)
+
+
+def test_error_a_data_type_fill_value_no_checker_reads() -> None:
+    with pytest.raises(TypeError, match="'acme.set': fill_value: "):
+        DataTypeDefinition(name="acme.set", configuration=Empty, fill_value=set[int])
+
+
+@pytest.mark.parametrize(
+    ("kind", "member"),
+    [
+        (DataTypeDefinition, "rules"),
+        (DataTypeDefinition, "canonical"),
+        (DataTypeDefinition, "fill_value_rules"),
+        (DataTypeDefinition, "storage"),
+        (ChunkGridDefinition, "shape_rules"),
+        (ChunkGridDefinition, "chunk_lengths"),
+        (CodecDefinition, "chunk_rules"),
+        (CodecDefinition, "transition"),
+        (CodecDefinition, "pipelines"),
+    ],
+)
+def test_error_a_function_member_that_is_not_a_function(
+    kind: type[Definition[Any]], member: str
+) -> None:
+    # Each member a definition's annotations declare a `Callable`.
+    codec = {"kind": "array_array", "size": "static"} if kind is CodecDefinition else {}
+    with pytest.raises(TypeError, match=f"'acme.t': {member} is a function, got 'none'"):
+        kind(name="acme.t", configuration=Empty, **codec, **{member: "none"})  # pyright: ignore[reportArgumentType]
 
 
 @pytest.mark.parametrize("kind", [Definition, AcmeCodecDefinition])

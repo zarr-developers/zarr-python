@@ -14,7 +14,14 @@ from typing import Final, NewType
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import RAW_BYTES_NAME, RAW_BYTES_NAME_PATTERN, DataTypeDefinition
+from zarr_metadata.v3._definition import (
+    RAW_BYTES_NAME,
+    RAW_BYTES_NAME_PATTERN,
+    DataTypeDefinition,
+    Nested,
+    StorageClass,
+)
+from zarr_metadata.v3.data_type._integer import byte_value_problems
 
 RawBytesDataTypeName = NewType("RawBytesDataTypeName", str)
 """A spec-conformant `r<N>` raw-bytes name (e.g. `"r8"`, `"r16"`).
@@ -57,7 +64,7 @@ class RawBytesConfiguration(TypedDict, closed=True):
     bits: int
 
 
-def _rules(configuration: RawBytesConfiguration) -> Iterator[ValidationProblem]:
+def _rules(configuration: RawBytesConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
     """ "raw bits, variable size given by *, limited to be a multiple of 8" -- and zero bits is not a type."""
     bits = configuration["bits"]
     if bits == 0 or bits % 8 != 0:
@@ -68,10 +75,42 @@ def _rules(configuration: RawBytesConfiguration) -> Iterator[ValidationProblem]:
         )
 
 
+def _fill_value_rules(
+    configuration: RawBytesConfiguration, nested: Nested, value: RawBytesFillValue
+) -> Iterator[ValidationProblem]:
+    """One byte value, an integer in `[0, 255]`, for each 8 of the size.
+
+    The spec's text says `N` values for `r<N>`, but `N` counts bits
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L897-L900),
+    and one value is one byte.
+    """
+    expected = configuration["bits"] // 8
+    if len(value) != expected:
+        yield ValidationProblem(
+            (), f"expected {expected} byte values, got {len(value)}", "invalid_value"
+        )
+    yield from byte_value_problems(value)
+
+
+def _storage(configuration: RawBytesConfiguration, nested: Nested) -> StorageClass | None:
+    """One byte, for `r8`; unknown for wider raw bits, of whose byte order the spec says nothing yet.
+
+    "r8, r16, and r24 should be understood as fall-back types of
+    respectively 1, 2, and 3 byte length", and of byte order the spec
+    says only that it looks for "more feedback and prototypes of code
+    using the r*, raw bits, for various endianness"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L897-L908).
+    """
+    return "single_byte" if configuration["bits"] == 8 else None
+
+
 RAW_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     name=RAW_BYTES_NAME,
     configuration=RawBytesConfiguration,
     rules=_rules,
+    fill_value=RawBytesFillValue,
+    fill_value_rules=_fill_value_rules,
+    storage=_storage,
 )
 """Raw bits, `r*`: one data type, whose name carries its size.
 

@@ -41,7 +41,7 @@ LENIENT_GZIP = CodecDefinition(
     configuration=GZIP_CODEC.configuration,
     kind="bytes_bytes",
     size="dynamic",
-    rules=lambda configuration: [],
+    rules=lambda configuration, nested: [],
 )
 """A reader's own gzip, which takes any level: a scope can grow, and substitute."""
 
