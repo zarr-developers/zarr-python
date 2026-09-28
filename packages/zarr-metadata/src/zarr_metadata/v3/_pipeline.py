@@ -30,7 +30,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
 
-from zarr_metadata._json import ValidationProblem
+from zarr_metadata._json import ValidationProblem, with_input
 from zarr_metadata.v3._definition import (
     Chunk,
     CodecDefinition,
@@ -127,7 +127,9 @@ def read_pipeline(
             handed = Chunk()
         else:
             handed = _handed_on(definition, codec.configuration, codec.nested, incoming, at)
-    return tuple(stages), tuple(problems)
+    if len(problems) == 0:
+        return tuple(stages), ()
+    return tuple(stages), with_input(problems, tuple(codec.json for codec in codecs), loc)
 
 
 def _order_problems(

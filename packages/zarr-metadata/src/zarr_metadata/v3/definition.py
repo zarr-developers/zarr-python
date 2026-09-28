@@ -12,10 +12,12 @@ to subclass:
   checked configuration has it as its static type. It reads as the
   typing spec defines a TypedDict -- `total`, `Required`, `NotRequired`,
   `closed` and `extra_items` mean what they mean to a type checker,
-  whether or not its module postpones annotations;
+  whether or not its module postpones annotations -- and a member's type
+  carries its bounds, as pydantic reads them: a gzip `level` is
+  `Annotated[int, Interval(ge=0, le=9)]`;
 - `rules`, a function over that TypedDict yielding what the spec
-  disallows -- a bound, members read together -- located in the
-  configuration.
+  disallows that a type cannot say -- members read together -- located
+  in the configuration.
 
 What kind of metadata a definition defines is its type: `CodecDefinition`
 (with the codec's `kind`, and its `size`: whether the size of what it gives
@@ -71,6 +73,8 @@ its own by a caller that holds nothing but JSON:
                                  CodecDefinition, CORE_AND_EXTENSIONS)
     resolved                # Refused(..., definition=CodecDefinition(name='gzip'), ...)
     problems[0].loc         # ('configuration', 'level')
+    problems[0].input       # 12
+    dict(problems[0].ctx)   # {'ge': 0, 'le': 9}
 
     resolved, problems = resolve({"name": "gzip", "configuration": {"level": 5}},
                                  CodecDefinition, CORE_AND_EXTENSIONS)
@@ -82,24 +86,33 @@ kind)`, with `kind` one of `invalid_type`, `invalid_value`,
 unknown key is still read -- the key reported, the configuration judged
 without it -- so a consumer that tolerates one filters by kind and uses
 what was read; the field is valid only when there is no problem at all.
+Each problem carries what its message says as data, as pydantic's errors
+and zod's issues do: `input`, what was found at `loc` -- the `12` above --
+and `ctx`, what was expected, where that is more than a type: the bounds
+`{"ge": 0, "le": 9}`, or the values of a closed set.
 
-**Writing an extension.** A TypedDict, a function for its rules, and a
-definition; then a scope that holds it. The TypedDict is a
-`typing_extensions.TypedDict`: `closed` and `extra_items` are PEP 728's,
-which `typing.TypedDict` does not take on the versions this package
-supports. The rules are handed the configuration and the fields it holds
-as the scope read them: a field that is read keeps what it read inside it
-as `Read.nested`, a `Nested` mapping by where each sits, so a struct's
-rules reach its field types. `judge`, which reads in no scope,
+**Writing an extension.** A TypedDict, which says what the
+configuration's JSON is, bounds and all; a function for the rules a type
+cannot say; and a definition; then a scope that holds it. The TypedDict
+is a `typing_extensions.TypedDict`: `closed` and `extra_items` are PEP
+728's, which `typing.TypedDict` does not take on the versions this
+package supports. The rules are handed the configuration and the fields
+it holds as the scope read them: a field that is read keeps what it read
+inside it as `Read.nested`, a `Nested` mapping by where each sits, so a
+struct's rules reach its field types. `judge`, which reads in no scope,
 hands them none. A rule's message shows a value as the package's own
-messages do, as JSON, with `shown`: `null`, `[1, 2]`, `"C"`. Define each
-function at a module's top level: a model holds the definitions that
-read its fields, so it pickles, and compares equal once loaded, only
-when they do -- a lambda or a closure does not pickle, and a
-`functools.partial` pickles but compares unequal to itself loaded.
+messages do, as JSON, with `shown`: `null`, `[1, 2]`, `"C"`. A rule
+reports where a problem is; what is found there is the problem's
+`input` without the rule saying so. Define each function at a module's
+top level: a model holds the definitions that read its fields, so it
+pickles, and compares equal once loaded, only when they do -- a lambda
+or a closure does not pickle, and a `functools.partial` pickles but
+compares unequal to itself loaded.
 
     from collections.abc import Iterator
+    from typing import Annotated, NotRequired
 
+    from annotated_types import Ge
     from typing_extensions import TypedDict
 
     from zarr_metadata.v3.definition import (
@@ -111,14 +124,18 @@ when they do -- a lambda or a closure does not pickle, and a
 
 
     class AcmeLz4Configuration(TypedDict, closed=True):
-        acceleration: int
+        acceleration: Annotated[int, Ge(1)]
+        dictionary: NotRequired[str]
+        dictionary_size: NotRequired[Annotated[int, Ge(1)]]
 
 
     def acme_lz4_rules(
         configuration: AcmeLz4Configuration, nested: Nested
     ) -> Iterator[ValidationProblem]:
-        if configuration["acceleration"] < 1:
-            yield ValidationProblem(("acceleration",), "expected an integer >= 1", "invalid_value")
+        if "dictionary" in configuration and "dictionary_size" not in configuration:
+            yield ValidationProblem(
+                ("dictionary_size",), "a dictionary needs its size", "missing_key"
+            )
 
 
     ACME_LZ4 = CodecDefinition(
@@ -146,7 +163,20 @@ these is open by default, and would take a misspelled key without a
 word, so a definition refuses it. Its members are the shapes JSON takes:
 `int`, `float`, `bool`, `str`, `None`, `JSONValue`, a `Literal`,
 `tuple[T, ...]` and `tuple[T1, T2]`, a union, a TypedDict,
-`Mapping[str, V]`, a `NewType` and a type alias.
+`Mapping[str, V]`, a `NewType` and a type alias. A number's type may
+carry bounds, as annotated-types spells them and pydantic reads them --
+`Gt`, `Ge`, `Lt`, `Le` and `Interval`, one from each side -- at any
+depth: `tuple[Annotated[int, Ge(1)], ...]` bounds each element. A value
+out of them is a problem, `invalid_value`, whose message says what the
+type admits, "expected an integer >= 1, got 0", and whose `ctx` holds
+the bounds. The rules are asked only of a configuration within its
+bounds, so a rule relies on them, as pydantic's after-validators and
+zod's refinements do: until a value out of bounds is fixed, it is the
+one problem reported of the configuration. `Annotated` may also carry a
+note, a string or a `Doc`. Any other metadata -- a `MinLen`, a
+`Predicate`, pydantic's `Field` -- is refused when the definition is
+built, since a type the checker does not hold its values to would say
+what is not so.
 
 A member holding another metadata field is annotated with the field alias
 of its kind -- a shard's `codecs: tuple[CodecField, ...]` -- and read in
@@ -163,10 +193,11 @@ refuses a member typed with it. An extension with nothing to configure
 takes `EmptyConfiguration`, and is written with its name alone.
 
 A data type also says what its fill value is: `fill_value`, the JSON
-shape of one as an annotation the checker reads -- `Int8FillValue` -- and
-`fill_value_rules`, a function yielding what the spec disallows in a fill
-value of that shape: an integer out of range, a hex string of another
-width. The rules are handed the configuration, the fields it holds as the
+shape of one as an annotation the checker reads -- `Int8FillValue`,
+whose type carries the range -- and `fill_value_rules`, a function
+yielding what the spec disallows in a fill value of that shape that the
+type cannot say: a hex string of another width, a number of byte values
+the size does not take. The rules are handed the configuration, the fields it holds as the
 scope read them, and the typed fill value, so a struct judges each
 field's fill value by that field's own type.
 `fill_value_problems(data_type, value)` judges a fill value against a data

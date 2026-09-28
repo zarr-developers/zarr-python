@@ -4,7 +4,9 @@ The models observe one invariant: `None` in a model always corresponds to a
 JSON `null` in the document (a v2 `compressor`/`filters` value, an unnamed
 dimension inside `dimension_names`), and `UNSET` always means the document
 key is absent. The two are never interchangeable, so a model value can never
-leak into a document as a spelling the writer did not intend.
+leak into a document as a spelling the writer did not intend. A problem's
+`input` keeps the same invariant: it is `UNSET` where nothing was found at
+the problem's `loc`, and `None` where a `null` was.
 
 Check with identity: `if model.dimension_names is UNSET: ...`.
 

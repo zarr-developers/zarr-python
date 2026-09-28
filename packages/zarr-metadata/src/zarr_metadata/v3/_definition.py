@@ -51,7 +51,8 @@ from typing import (
 from typing_extensions import TypeAliasType, TypedDict, TypeVar, is_typeddict
 
 from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
-from zarr_metadata._json import ValidationProblem, copied, refine_json, shown
+from zarr_metadata._json import ValidationProblem, copied, refine_json, shown, with_input
+from zarr_metadata._sentinel import UNSET
 from zarr_metadata._typed_json import (
     Loc,
     Parsed,
@@ -156,9 +157,10 @@ class Definition(Generic[C]):
     type; with `closed=False`, anything. `rules` yields what the spec
     disallows in a configuration of that type, as it finds each; it is
     handed only a configuration that has passed the check, holding what
-    the TypedDict admits and nothing else, and the fields it holds as the
-    scope read them -- a struct's field types -- which is nothing when no
-    scope read it. `judge` is the two, for a caller holding JSON.
+    the TypedDict admits and nothing else, each member within the bounds
+    its type carries, and the fields it holds as the scope read them -- a
+    struct's field types -- which is nothing when no scope read it.
+    `judge` is the two, for a caller holding JSON.
 
     `canonical` is where two spellings of the configuration that mean the
     same thing are made one.
@@ -212,16 +214,17 @@ class Definition(Generic[C]):
         `zarr_metadata.typed_json.check` is the type check alone; this also
         judges the envelope of each metadata field a member holds.
         """
-        return _configuration_checked(value, self.configuration, loc)
+        configuration, problems = _configuration_checked(value, self.configuration, loc)
+        return configuration, with_input(problems, value, loc)
 
     def judge(self, value: object, loc: Loc = ()) -> tuple[C | None, Problems]:
         """`value` type-checked, then judged by the rules: the configuration if it holds, and every problem.
 
-        The rules are asked only of a configuration that type-checked and
-        whose nested fields are well formed, holding what its TypedDict
-        admits and nothing else, so a caller holding JSON never reaches a
-        rule with a member of the wrong type, or one the type says cannot
-        be there. No scope reads the fields it holds, so the rules see
+        The rules are asked only of a configuration that type-checked,
+        its bounds kept, and whose nested fields are well formed, holding
+        what its TypedDict admits and nothing else, so a caller holding
+        JSON never reaches a rule with a member of the wrong type, out of
+        its bounds, or one the type says cannot be there. No scope reads the fields it holds, so the rules see
         none of them read, and a rule about one -- a struct's field of a
         type whose values vary in size -- finds nothing to judge: `resolve`
         reads the field in a scope, and asks every rule.
@@ -230,7 +233,10 @@ class Definition(Generic[C]):
         if configuration is None:
             return None, problems
         refused = ruled(self, lambda: self.rules(configuration, _nothing_nested()), loc)
-        return (configuration if len(refused) == 0 else None), (*problems, *refused)
+        return (configuration if len(refused) == 0 else None), (
+            *problems,
+            *with_input(refused, value, loc),
+        )
 
 
 def _malformed(definition: Definition[Any]) -> str | None:
@@ -309,9 +315,10 @@ class DataTypeDefinition(Definition[C]):
     """A data type, and the fill value an array of it takes.
 
     `fill_value` is the JSON shape of a fill value -- `Int8FillValue`, an
-    annotation the checker reads as it reads a configuration's members --
-    and `fill_value_rules` is what the spec disallows in a fill value of
-    that shape: an integer out of range, a hex string of another width.
+    annotation the checker reads as it reads a configuration's members,
+    its range among it -- and `fill_value_rules` is what the spec
+    disallows in a fill value of that shape that the type cannot say: a
+    hex string of another width.
     The rules are handed the configuration, the fields it holds as the
     scope read them (a struct's field types), and the typed fill value. A
     data type that says nothing of its fill value takes any JSON.
@@ -719,9 +726,7 @@ def ruled(
 
 
 def _located(prefix: Loc, problems: Iterable[ValidationProblem]) -> Problems:
-    return tuple(
-        ValidationProblem((*prefix, *found.loc), found.message, found.kind) for found in problems
-    )
+    return tuple(dataclasses.replace(found, loc=(*prefix, *found.loc)) for found in problems)
 
 
 def _envelope(field: _NestedField) -> Problems:
@@ -1062,17 +1067,17 @@ def fill_value_problems(
     """
     refined, problems = refine_json(value, loc)
     if len(problems) != 0 or not isinstance(data_type, Read):
-        return problems
+        return with_input(problems, value, loc)
     definition, configuration = data_type.definition, data_type.configuration
     typed, problems = _fill_value_parser(definition.fill_value)(refined, loc)
     if not _usable(problems):
-        return problems
+        return with_input(problems, value, loc)
     refused = ruled(
         definition,
         lambda: definition.fill_value_rules(configuration, data_type.nested, typed),
         loc,
     )
-    return (*problems, *refused)
+    return with_input((*problems, *refused), value, loc)
 
 
 def storage_of(data_type: Resolved[DataTypeDefinition[Any]]) -> StorageClass | None:
@@ -1127,7 +1132,7 @@ def chunk_grid_lengths(
         definition, lambda: definition.shape_rules(configuration, chunk_grid.nested, shape), at
     )
     if len(problems) != 0:
-        return unknown, problems
+        return unknown, with_input(problems, chunk_grid.json, loc)
     lengths = asked(
         definition,
         "chunk lengths",
@@ -1178,9 +1183,9 @@ def resolve(
         name = named_configuration(data)[0]
         claimant = None if name is None else context.claimant(asked, name)
         refused = Refused(json=None, name=name, read_as=asked, definition=claimant)
-        return cast("Resolved[D]", refused), problems
+        return cast("Resolved[D]", refused), with_input(problems, data, loc)
     resolved, found = _resolve_field(refined, asked, context, loc)
-    return cast("Resolved[D]", resolved), found
+    return cast("Resolved[D]", resolved), with_input(found, data, loc)
 
 
 def _resolve_field(
@@ -1280,7 +1285,13 @@ def _read_carried(
         EmptyConfiguration, {} if given is None else given, (*loc, "configuration")
     )
     configuration, judged = definition.judge(carried)
-    problems = (*beside, *(ValidationProblem(loc, found.message, found.kind) for found in judged))
+    # What is wrong with what the name carries is the field's: found at
+    # the field, where the name is what is there, and what was expected
+    # of a member of the configuration is not expected of it.
+    problems = (
+        *beside,
+        *(dataclasses.replace(found, loc=loc, input=UNSET, ctx={}) for found in judged),
+    )
     if configuration is None or not _usable(problems):
         refused = Refused(json=data, name=name, read_as=DataTypeDefinition, definition=definition)
         return refused, problems

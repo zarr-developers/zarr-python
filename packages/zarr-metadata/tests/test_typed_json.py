@@ -7,6 +7,7 @@ holding another metadata field -- and `no_leaf` adds nothing.
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
 import itertools
 import math
@@ -15,10 +16,33 @@ import sys
 import textwrap
 import types
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Generic, Literal, NewType, NotRequired, TypeVar, cast
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Generic,
+    Literal,
+    NewType,
+    NotRequired,
+    TypeVar,
+    cast,
+)
 
+import pydantic
 import pytest
-from typing_extensions import ReadOnly, TypeAliasType, TypedDict, is_typeddict
+from annotated_types import (
+    BaseMetadata,
+    Ge,
+    Gt,
+    Interval,
+    Le,
+    Len,
+    Lt,
+    MinLen,
+    MultipleOf,
+    Predicate,
+    Timezone,
+)
+from typing_extensions import Doc, ReadOnly, TypeAliasType, TypedDict, is_typeddict
 
 import zarr_metadata.v2
 import zarr_metadata.v3
@@ -911,6 +935,176 @@ def test_a_shape_is_described_as_a_message_would_name_it() -> None:
     assert describe(Literal["C", "F"] | None) == 'one of ["C", "F"] or null'
     assert describe(Width) == "an integer"
     assert describe(ZarrV2DataTypeMetadata) == "a ZarrV2DataTypeMetadata"
+
+
+# --- constraints ------------------------------------------------------------
+
+Digit = Annotated[int, Interval(ge=0, le=9)]
+
+
+class Bounded(TypedDict, extra_items=Annotated[int, Ge(0)]):
+    level: Digit
+    shape: ReadOnly[NotRequired[tuple[Annotated[int, Ge(1)], ...]]]
+    name: Annotated[NotRequired[Annotated[str, "the inner note"]], Doc("the outer note")]
+
+
+class Noted(TypedDict, extra_items=Annotated[object, "any JSON"]):
+    level: int
+
+
+@pytest.mark.parametrize(
+    ("annotation", "value", "found"),
+    [
+        (Digit, 9, []),
+        (Digit, 10, [((), "expected an integer in [0, 9], got 10", {"ge": 0, "le": 9})]),
+        (Digit, -1, [((), "expected an integer in [0, 9], got -1", {"ge": 0, "le": 9})]),
+        (Annotated[int, Gt(0)], 0, [((), "expected an integer > 0, got 0", {"gt": 0})]),
+        (Annotated[float, Lt(1)], 1, [((), "expected a number < 1, got 1", {"lt": 1})]),
+        (Annotated[float, Le(0.5)], 0.5, []),
+        (
+            Annotated[float, Interval(gt=0, le=0.5)],
+            0.0,
+            [((), "expected a number in (0, 0.5], got 0.0", {"gt": 0, "le": 0.5})],
+        ),
+        (
+            Annotated[float, Interval(ge=0.0, le=9.0)],
+            10,
+            [((), "expected a number in [0, 9], got 10", {"ge": 0, "le": 9})],
+        ),
+        (Annotated[int, Ge(True)], 0, [((), "expected an integer >= 1, got 0", {"ge": 1})]),
+        (
+            tuple[Digit, ...],
+            [0, 10, 9],
+            [((1,), "expected an integer in [0, 9], got 10", {"ge": 0, "le": 9})],
+        ),
+        (Annotated[Width, Le(9)], 10, [((), "expected an integer <= 9, got 10", {"le": 9})]),
+        (Digit | str, "ten", []),
+        (Digit | str, 10, [((), "expected an integer in [0, 9], got 10", {"ge": 0, "le": 9})]),
+        (Digit, "nine", [((), 'expected an integer, got "nine"', {})]),
+        (Annotated[int, "a note", Doc("another")], -1, []),
+    ],
+    ids=[
+        "within",
+        "above",
+        "below",
+        "exclusive-lower",
+        "exclusive-upper",
+        "inclusive-upper",
+        "half-open",
+        "an-integral-bound-is-an-integer",
+        "a-bool-bound-is-the-integer-it-equals",
+        "each-element-at-its-index",
+        "on-an-alias",
+        "a-branch-it-does-not-bound",
+        "the-branch-it-bounds",
+        "a-value-of-another-type-is-that-problem-alone",
+        "notes",
+    ],
+)
+def test_a_value_is_held_to_the_bounds_its_type_carries(
+    annotation: object, value: object, found: list[tuple[Loc, str, dict[str, JSONValue]]]
+) -> None:
+    # annotated-types' bounds, as pydantic reads them: one problem for a
+    # value out of any, saying what the type admits, its bounds in the
+    # problem's `ctx`; and asked only of a value of the type. A bound is
+    # the number it equals, whichever of the equal ones Python's
+    # `Annotated` cache hands back.
+    _, problems = _read(annotation, value)
+    assert [(problem.loc, problem.message, dict(problem.ctx)) for problem in problems] == found
+    assert all(problem.kind == "invalid_value" for problem in problems if problem.ctx)
+
+
+def test_a_key_s_type_keeps_the_metadata_its_annotation_carries() -> None:
+    # Qualifiers peeled, wherever they sit among the `Annotated` layers,
+    # and the metadata kept, an inner layer's first, as `Annotated`
+    # flattens nested layers; a note on `object` leaves the type open.
+    keys = typeddict_keys(Bounded)
+    assert keys.members["level"] == (Digit, True)
+    assert keys.members["shape"] == (tuple[Annotated[int, Ge(1)], ...], False)
+    assert keys.members["name"] == (
+        Annotated[str, "the inner note", Doc("the outer note")],
+        False,
+    )
+    assert keys.extra_items == Annotated[int, Ge(0)]
+    typed, problems = check({"level": 3, "shape": [0], "other": -1}, Bounded)
+    assert typed is None
+    assert [(problem.loc, problem.input, dict(problem.ctx)) for problem in problems] == [
+        (("other",), -1, {"ge": 0}),
+        (("shape", 0), 0, {"ge": 1}),
+    ]
+    assert typeddict_keys(Noted).open
+    assert check({"level": 1, "more": [None]}, Noted) == ({"level": 1, "more": (None,)}, ())
+
+
+def test_error_a_bound_on_what_is_not_a_number() -> None:
+    with pytest.raises(TypeError, match="ge: a bound is on a number, and a string is not one"):
+        parser(Annotated[str, Ge(0)], no_leaf)
+
+
+def test_error_a_bound_on_the_values_an_open_typeddict_takes() -> None:
+    class Loose(TypedDict, extra_items=Annotated[object, Ge(0)]):
+        level: int
+
+    with pytest.raises(TypeError, match="ge: a bound is on a number, and a value is not one"):
+        parser(Loose, no_leaf)
+
+
+@dataclasses.dataclass(frozen=True)
+class Later(BaseMetadata):
+    """A constraint a later annotated-types might add."""
+
+
+@pytest.mark.parametrize(
+    "constraint",
+    [
+        MinLen(1),
+        Len(1, 3),
+        MultipleOf(2),
+        Predicate(str.isdigit),
+        Timezone(None),
+        Later(),
+        pydantic.Field(ge=0),
+        pydantic.StringConstraints(pattern="^[a-z]+$"),
+    ],
+    ids=[
+        "min-len",
+        "len",
+        "multiple-of",
+        "predicate",
+        "timezone",
+        "one-a-later-release-adds",
+        "pydantic-field",
+        "pydantic-string-constraints",
+    ],
+)
+def test_error_a_constraint_the_checker_does_not_read(constraint: object) -> None:
+    # A type the checker did not hold its values to would say what is not
+    # so, as a type pydantic reads and the checker does not would disagree.
+    with pytest.raises(TypeError, match="is not a constraint the checker reads"):
+        parser(Annotated[str, constraint], no_leaf)
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        Annotated[Digit, Ge(1)],
+        Annotated[int, Ge(0), Gt(0)],
+        Annotated[int, Interval(le=9), Lt(5)],
+    ],
+    ids=["narrowing-an-alias", "gt-and-ge", "interval-and-lt"],
+)
+def test_error_a_second_bound_from_one_side(annotation: object) -> None:
+    # Pydantic reads the last one said; say one.
+    with pytest.raises(TypeError, match="is a second bound from (below|above)"):
+        parser(annotation, no_leaf)
+
+
+@pytest.mark.parametrize(
+    "bound", ["0", math.nan, math.inf, None], ids=["string", "nan", "infinity", "null"]
+)
+def test_error_a_bound_that_is_not_a_finite_number(bound: object) -> None:
+    with pytest.raises(TypeError, match="a bound is a finite number"):
+        parser(Annotated[int, Ge(bound)], no_leaf)  # pyright: ignore[reportArgumentType]
 
 
 # --- check: the public door ------------------------------------------------

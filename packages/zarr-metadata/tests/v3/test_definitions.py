@@ -9,9 +9,10 @@ from collections.abc import (
     Mapping,  # noqa: TC003 - a TypedDict's annotations are evaluated at run time
 )
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, Final, NotRequired, cast
+from typing import TYPE_CHECKING, Annotated, Any, Final, NotRequired, cast
 
 import pytest
+from annotated_types import Ge, Predicate
 from typing_extensions import TypedDict
 
 from zarr_metadata.model import validate_array_metadata_v3
@@ -32,6 +33,7 @@ from zarr_metadata.v3.definition import (
     Context,
     DataTypeDefinition,
     Definition,
+    EmptyConfiguration,
     JSONValue,
     Nested,
     Read,
@@ -1078,6 +1080,31 @@ def test_error_a_configuration_whose_annotations_do_not_resolve() -> None:
             configuration=AcmeUnresolvedConfiguration,
             kind="bytes_bytes",
             size="dynamic",
+        )
+
+
+class AcmeUncheckedConfiguration(TypedDict, closed=True):
+    digits: Annotated[str, Predicate(str.isdigit)]
+
+
+def test_error_a_configuration_with_a_constraint_the_checker_does_not_read() -> None:
+    # A bound the checker did not hold a value to would say what is not so.
+    with pytest.raises(
+        TypeError,
+        match=r"AcmeUncheckedConfiguration.digits: Predicate\(str.isdigit\) is not a constraint",
+    ):
+        CodecDefinition(
+            name="acme.unchecked",
+            configuration=AcmeUncheckedConfiguration,
+            kind="bytes_bytes",
+            size="dynamic",
+        )
+
+
+def test_error_a_fill_value_with_a_constraint_its_type_cannot_take() -> None:
+    with pytest.raises(TypeError, match="fill_value: ge: a bound is on a number, and a string"):
+        DataTypeDefinition(
+            name="acme.bounded", configuration=EmptyConfiguration, fill_value=Annotated[str, Ge(0)]
         )
 
 

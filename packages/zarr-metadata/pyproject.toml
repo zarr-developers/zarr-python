@@ -32,6 +32,10 @@ classifiers = [
 ]
 keywords = ["zarr"]
 dependencies = [
+    # The constraints a TypedDict's members carry -- `Ge`, `Interval`,
+    # `MinLen` -- which the checker enforces, in the vocabulary pydantic
+    # and Hypothesis read as well.
+    "annotated-types>=0.6",
     # >=4.16: first release where `Sentinel` pickles by reference
     # (`__reduce__` returns the sentinel's name), so `UNSET` — and any model
     # holding it — can cross process boundaries and be deep-copied with its

@@ -8,7 +8,10 @@ others -- `int`, `float` for any number, `bool`, `str`, `None` for null,
 `tuple[T1, T2]`, a union of those, an object described by a TypedDict,
 `Mapping[str, V]`, a `NewType` as the type it names, and a type alias as
 the type it stands for -- which is what keeps it small. An annotation
-outside these implies no parser.
+outside these implies no parser. A number's type may carry bounds, as
+annotated-types spells them and pydantic reads them --
+`Annotated[int, Interval(ge=0, le=9)]` -- and a value out of them is a
+problem; `constraints_of` says which the checker reads.
 
 A TypedDict is read as the typing spec defines it, which is not always
 what its runtime attributes say: `typeddict_keys` reads which keys it
@@ -30,10 +33,12 @@ union that did not match leaves nothing behind.
 from __future__ import annotations
 
 import functools
+import math
+import operator
 import sys
 import types
 import typing
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import (
@@ -53,6 +58,7 @@ from typing import (
     get_type_hints,
 )
 
+import annotated_types
 import typing_extensions
 from typing_extensions import NoExtraItems, TypeIs, is_typeddict
 
@@ -61,9 +67,10 @@ from zarr_metadata._json import (
     ValidationProblem,
     choices,
     is_json,
+    outside_of,
     refine_json,
-    refused_kind,
     shown,
+    with_input,
 )
 
 if TYPE_CHECKING:
@@ -138,12 +145,22 @@ def strip_annotation(annotation: object) -> tuple[object, tuple[object, ...]]:
         origin = get_origin(annotation)
         if origin is Annotated:
             inner, *extras = get_args(annotation)
-            metadata.extend(extras)
+            # An inner layer's metadata first, as `Annotated` flattens
+            # nested layers.
+            metadata[:0] = extras
             annotation = inner
         elif origin in _QUALIFIERS:
             (annotation,) = get_args(annotation)
         else:
             return annotation, tuple(metadata)
+
+
+def unqualified(annotation: object) -> object:
+    """A TypedDict key's annotation with its qualifiers peeled and its `Annotated` metadata kept, which says more of the value's type."""
+    inner, metadata = strip_annotation(annotation)
+    if len(metadata) == 0:
+        return inner
+    return Annotated[(inner, *metadata)]
 
 
 Qualifier: TypeAlias = Literal["Required", "NotRequired", "ReadOnly"]
@@ -209,10 +226,11 @@ class TypedDictKeys:
     """What a TypedDict says of an object's keys, read as the typing spec defines it.
 
     `members` holds every key it declares, its bases' included, with the
-    type of the key's value -- qualifiers and `Annotated` metadata peeled
-    -- and whether the key is required. `extra_items` is what any other
-    key may hold: `Never` when the TypedDict is closed, `object` when it
-    is open, and the `extra_items` type otherwise. `declared` is whether
+    type of the key's value -- its qualifiers peeled, and any `Annotated`
+    metadata kept, since a constraint there is part of the type -- and
+    whether the key is required. `extra_items` is what any other key may
+    hold: `Never` when the TypedDict is closed, `object` when it is open,
+    and the `extra_items` type otherwise. `declared` is whether
     that was said, by the TypedDict or a base, rather than defaulted: a
     TypedDict that says nothing is open.
     """
@@ -229,12 +247,13 @@ class TypedDictKeys:
     @property
     def closed(self) -> bool:
         """Whether a key it does not declare is not a key of the type: `closed=True`, or `extra_items=Never`."""
-        return self.extra_items is Never or self.extra_items is NoReturn
+        extra_items = strip_annotation(self.extra_items)[0]
+        return extra_items is Never or extra_items is NoReturn
 
     @property
     def open(self) -> bool:
         """Whether a key it does not declare may hold anything: the default, or `closed=False`."""
-        return self.extra_items is object
+        return strip_annotation(self.extra_items)[0] is object
 
 
 @functools.cache
@@ -276,7 +295,7 @@ def typeddict_keys(typeddict: type) -> TypedDictKeys:
             required = False
         else:
             required = key in required_at_runtime
-        members[key] = (strip_annotation(hint)[0], required)
+        members[key] = (unqualified(hint), required)
     extra_items, declared = _openness(typeddict)
     return TypedDictKeys(types.MappingProxyType(members), extra_items, declared)
 
@@ -339,7 +358,7 @@ def _openness(typeddict: type) -> tuple[object, bool]:
     if closed is not None:
         return (Never if closed else object), True
     inherited = [_openness(base) for base in _typeddict_bases(typeddict)]
-    restricted = {extra for extra, _ in inherited if extra is not object}
+    restricted = {extra for extra, _ in inherited if strip_annotation(extra)[0] is not object}
     if len(restricted) > 1:
         msg = (
             f"{typeddict.__name__}: its bases disagree on what a key they do not declare may "
@@ -352,7 +371,7 @@ def _openness(typeddict: type) -> tuple[object, bool]:
 
 
 def _extra_items_type(typeddict: type, extra_items: object) -> object:
-    """The `extra_items` type, evaluated where `typeddict` was defined, `ReadOnly` peeled."""
+    """The `extra_items` type, evaluated where `typeddict` was defined, `ReadOnly` peeled and any `Annotated` metadata kept."""
     if isinstance(extra_items, (str, ForwardRef)):
         holder = type(
             "_ExtraItems",
@@ -364,7 +383,7 @@ def _extra_items_type(typeddict: type, extra_items: object) -> object:
         except NameError as error:
             msg = f"{typeddict.__name__}: {error}; its extra_items must resolve in its module"
             raise TypeError(msg) from error
-    return strip_annotation(extra_items)[0]
+    return unqualified(extra_items)
 
 
 def _typeddict_bases(typeddict: type) -> tuple[type, ...]:
@@ -547,8 +566,7 @@ def one_of(allowed: tuple[object, ...]) -> Parser:
 
     def parse(value: object, loc: Loc) -> Parsed:
         if not any(value == entry and type(value) is type(entry) for entry in allowed):
-            message = f"expected {choices(allowed)}, got {shown(value)}"
-            return value, problem(loc, message, refused_kind(value, allowed))
+            return value, (outside_of(loc, value, allowed),)
         return value, ()
 
     return parse
@@ -647,9 +665,7 @@ def _by_tag(branches: Sequence[Branch], tag: Tag, value: Mapping[str, object], l
     said = value[key]
     index = picks.get((type(said), said)) if _hashable(said) else None
     if index is None:
-        allowed = tuple(entry for _, entry in picks)
-        message = f"expected {choices(allowed)}, got {shown(said)}"
-        return value, problem((*loc, key), message, refused_kind(said, allowed))
+        return value, (outside_of((*loc, key), said, tuple(entry for _, entry in picks)),)
     return branches[index][1](value, loc)
 
 
@@ -719,6 +735,137 @@ def mapping_of(value: Parser) -> Parser:
         return parsed, tuple(found)
 
     return parse
+
+
+# --- constraints ---------------------------------------------------------
+
+Constraints: TypeAlias = Mapping[str, int | float]
+"""The bounds a type carries, by the names pydantic gives them: `{"ge": 0, "le": 9}`."""
+
+_BOUNDS: Final[tuple[tuple[type, str], ...]] = (
+    (annotated_types.Gt, "gt"),
+    (annotated_types.Ge, "ge"),
+    (annotated_types.Lt, "lt"),
+    (annotated_types.Le, "le"),
+)
+"""The annotated-types constraints the checker reads, each with its name."""
+
+_FROM_BELOW: Final = frozenset({"gt", "ge"})
+"""The bounds a value must be above."""
+
+_FROM_ABOVE: Final = frozenset({"lt", "le"})
+"""The bounds a value must be below."""
+
+_EXCLUSIVE: Final = frozenset({"gt", "lt"})
+"""The bounds a value may not equal."""
+
+_HOLDS: Final[Mapping[str, Callable[[float, float], bool]]] = {
+    "gt": operator.gt,
+    "ge": operator.ge,
+    "lt": operator.lt,
+    "le": operator.le,
+}
+"""Whether a number keeps within a bound of each name."""
+
+
+def constraints_of(metadata: Sequence[object]) -> dict[str, int | float]:
+    """The bounds among an `Annotated` type's metadata, by name: at most one from below, and one from above.
+
+    annotated-types' `Gt`, `Ge`, `Lt` and `Le`, and an `Interval`, which
+    unpacks to them, as pydantic reads them. A note -- a string, a `Doc`
+    -- says nothing of what a value is, and is passed over. Anything else
+    is a `TypeError`: a constraint the checker does not read -- a
+    `MinLen`, a `Predicate`, pydantic's `Field` -- since a type that says
+    what its values are, and a checker that does not hold them to it,
+    would disagree; a second bound from one side, which pydantic reads as
+    the last one said; and a bound that is not a finite number. A bound
+    is held as the number it equals, an integer when it is one:
+    `Ge(True)`, `Ge(1.0)` and `Ge(1)` are one bound, as Python's
+    `Annotated` cache, which takes equal metadata for the same, may hand
+    back any of them for another.
+    """
+    said: dict[str, int | float] = {}
+    for item in _unpacked(metadata):
+        if isinstance(item, (str, typing_extensions.Doc)):
+            continue
+        name = next((name for kind, name in _BOUNDS if isinstance(item, kind)), None)
+        if name is None:
+            msg = f"{item!r} is not a constraint the checker reads, which are Gt, Ge, Lt and Le"
+            raise TypeError(msg)
+        side = _FROM_BELOW if name in _FROM_BELOW else _FROM_ABOVE
+        if not side.isdisjoint(said):
+            where = "below" if side is _FROM_BELOW else "above"
+            msg = f"{item!r} is a second bound from {where}; a type takes one from each side"
+            raise TypeError(msg)
+        said[name] = _bound(item, name)
+    return said
+
+
+def _unpacked(metadata: Sequence[object]) -> Iterator[object]:
+    """`metadata`, each group of constraints in it -- an `Interval` -- unpacked."""
+    for item in metadata:
+        if isinstance(item, annotated_types.GroupedMetadata):
+            yield from _unpacked(tuple(cast("Sequence[object]", item)))
+        else:
+            yield item
+
+
+def _bound(item: object, name: str) -> int | float:
+    """The number `item`, a bound of `name`, holds a value to, an integer when it is one; `TypeError` for what is not a finite number."""
+    bound = cast("object", getattr(item, name))
+    if isinstance(bound, int):
+        return int(bound)  # a `bool` as the integer it equals, as the `Annotated` cache has it
+    if isinstance(bound, float) and math.isfinite(bound):
+        return int(bound) if bound.is_integer() else bound
+    msg = f"{item!r}: a bound is a finite number"
+    raise TypeError(msg)
+
+
+def _constrainable(inner: object, said: Constraints) -> None:
+    """Refuse bounds on what is not a number: a string, an array, a value of any type."""
+    if len(said) != 0 and shape_of(inner) not in ("int", "number"):
+        msg = f"{', '.join(said)}: a bound is on a number, and {describe(inner)} is not one"
+        raise TypeError(msg)
+
+
+def constrained(parse: Parser, description: str, said: Constraints) -> Parser:
+    """What `parse` reads, held to the bounds its type carries: one problem, `invalid_value`, when it breaks any.
+
+    The message says what the type admits -- "expected an integer in [0,
+    9], got 12" -- and the problem's `ctx` holds the bounds. Only a
+    value its type reads is held to them, as rules are asked only of a
+    value of their type.
+    """
+    expected = f"expected {description} {_admitted(said)}"
+    ctx: dict[str, JSONValue] = dict(said)
+    holds = tuple((_HOLDS[name], bound) for name, bound in said.items())
+
+    def parse_constrained(value: object, loc: Loc) -> Parsed:
+        typed, found = parse(value, loc)
+        if len(found) != 0:
+            return typed, found
+        number = cast("float", typed)
+        for keeps, bound in holds:
+            if not keeps(number, bound):
+                message = f"{expected}, got {shown(value)}"
+                return typed, (ValidationProblem(loc, message, "invalid_value", ctx=ctx),)
+        return typed, ()
+
+    return parse_constrained
+
+
+def _admitted(said: Constraints) -> str:
+    """What the bounds admit, as a message says it after the type: "in [0, 9]", "in (0, 1)", ">= 1"."""
+    low = next(((name, bound) for name, bound in said.items() if name in _FROM_BELOW), None)
+    high = next(((name, bound) for name, bound in said.items() if name in _FROM_ABOVE), None)
+    if low is not None and high is not None:
+        opening = "(" if low[0] in _EXCLUSIVE else "["
+        closing = ")" if high[0] in _EXCLUSIVE else "]"
+        return f"in {opening}{shown(low[1])}, {shown(high[1])}{closing}"
+    if low is not None:
+        return f"{'>' if low[0] in _EXCLUSIVE else '>='} {shown(low[1])}"
+    name, bound = cast("tuple[str, int | float]", high)
+    return f"{'<' if name in _EXCLUSIVE else '<='} {shown(bound)}"
 
 
 # --- the compiler --------------------------------------------------------
@@ -827,6 +974,9 @@ def _object(typeddict: type, leaf: Leaf, building: _Building) -> Parser | None:
         if keys.closed:
             return object_of(members, None)
         if keys.open:
+            # Any JSON value, which a note does not change and a bound
+            # cannot: vetted all the same.
+            _constrainable(object, constraints_of(strip_annotation(keys.extra_items)[1]))
             return object_of(members, _JSON)
         extra = _compile(keys.extra_items, leaf, building)
         return None if extra is None else object_of(members, extra)
@@ -854,7 +1004,19 @@ def _literal(inner: object) -> Parser | None:
 
 
 def _compile(annotation: object, leaf: Leaf, building: _Building) -> Parser | None:
-    inner = strip_annotation(annotation)[0]
+    inner, metadata = strip_annotation(annotation)
+    parse = _compile_type(inner, leaf, building)
+    if parse is None or len(metadata) == 0:
+        return parse
+    said = constraints_of(metadata)
+    if len(said) == 0:
+        return parse
+    _constrainable(inner, said)
+    return constrained(parse, describe(inner), said)
+
+
+def _compile_type(inner: object, leaf: Leaf, building: _Building) -> Parser | None:
+    """The parser of a type, `Annotated` peeled from it."""
     found = leaf(inner)
     if found is not None:
         return found
@@ -967,14 +1129,15 @@ def check(
         raise TypeError(msg)
     refined, problems = refine_json(value, loc)
     if len(problems) != 0:
-        return None, problems
+        return None, with_input(problems, value, loc)
     typed, found = _checker(shape)(refined, loc)
     readable = all(problem.kind == "unknown_key" for problem in found)
-    return (cast("T", typed) if readable else None), found
+    return (cast("T", typed) if readable else None), with_input(found, value, loc)
 
 
 __all__ = [
     "Branch",
+    "Constraints",
     "Leaf",
     "Loc",
     "Parsed",
@@ -985,6 +1148,8 @@ __all__ = [
     "alias_value",
     "any_of",
     "check",
+    "constrained",
+    "constraints_of",
     "describe",
     "fixed_tuple",
     "has_shape",
@@ -1003,5 +1168,6 @@ __all__ = [
     "shape_of",
     "strip_annotation",
     "typeddict_keys",
+    "unqualified",
     "unread_in",
 ]

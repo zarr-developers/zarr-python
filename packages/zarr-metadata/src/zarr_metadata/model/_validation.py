@@ -34,15 +34,16 @@ from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
     arrays_to_tuples,
+    not_an_object,
+    outside_of,
     refine_json,
     refine_user_data,
-    refused_kind,
-    shown,
     validate_json,
+    with_input,
 )
 from zarr_metadata._json import is_canonical_json as _is_canonical_json
 from zarr_metadata._json import prefixed as _prefix
-from zarr_metadata.model._sentinel import UNSET
+from zarr_metadata._sentinel import UNSET
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
 from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
 from zarr_metadata.v3._definition import (
@@ -152,8 +153,7 @@ def check_literal(
 ) -> tuple[ValidationProblem, ...]:
     """One problem if `doc[key]` is present but not `expected`: of its type, when it is not of `expected`'s JSON type, else of its value."""
     if key in doc and (type(doc[key]) is not type(expected) or doc[key] != expected):
-        message = f"expected {shown(expected)}, got {shown(doc[key])}"
-        return (ValidationProblem((key,), message, refused_kind(doc[key], (expected,))),)
+        return (outside_of((key,), doc[key], (expected,)),)
     return ()
 
 
@@ -478,8 +478,7 @@ def read_array_v3(
     scope already read -- a model's own, handed back -- is taken as it is.
     """
     if not isinstance(value, Mapping):
-        not_an_object = (ValidationProblem((), "expected an object", "invalid_type"),)
-        return ZarrV3ArrayMetadataReading(problems=not_an_object), None
+        return ZarrV3ArrayMetadataReading(problems=not_an_object(value)), None
     doc = cast("Mapping[object, object]", value)
     problems: list[ValidationProblem] = list(missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V3, doc))
     extra_fields, found = other_members(doc, ARRAY_METADATA_STANDARD_KEYS_V3)
@@ -573,7 +572,7 @@ def read_array_v3(
         chunk=chunk,
         pipeline=pipeline,
         storage_transformers=tuple(listed.get("storage_transformers", ())),
-        problems=tuple(problems),
+        problems=with_input(problems, doc),
     )
     if len(problems) != 0 or shape is None or attributes is None:
         return reading, None
@@ -629,11 +628,10 @@ def parse_array_metadata_v3(
     value: object, *, context: Context = CORE_AND_EXTENSIONS
 ) -> ZarrV3ArrayMetadataJSON:
     """Return `value` as `ZarrV3ArrayMetadataJSON`, or raise `MetadataValidationError`."""
-    normalized = arrays_to_tuples(value)
-    problems = validate_array_metadata_v3(normalized, context=context)
+    problems = validate_array_metadata_v3(value, context=context)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
-    return cast("ZarrV3ArrayMetadataJSON", normalized)
+    return cast("ZarrV3ArrayMetadataJSON", arrays_to_tuples(value))
 
 
 def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
@@ -645,7 +643,7 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     codec configurations (mappings with a string `id`).
     """
     if not isinstance(value, Mapping):
-        return (ValidationProblem((), "expected an object", "invalid_type"),)
+        return not_an_object(value)
     doc = cast("Mapping[object, object]", value)
     # Unlike the group document ("Other keys MUST NOT be present",
     # https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313), the v2 array document is open: other keys "SHOULD NOT be
@@ -677,10 +675,7 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
             )
         )
     if "order" in doc and doc["order"] not in ("C", "F"):
-        message = f'expected "C" or "F", got {shown(doc["order"])}'
-        problems.append(
-            ValidationProblem(("order",), message, refused_kind(doc["order"], ("C", "F")))
-        )
+        problems.append(outside_of(("order",), doc["order"], ("C", "F")))
     if "compressor" in doc:
         compressor = doc["compressor"]
         if compressor is not None:
@@ -703,19 +698,14 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
             for index, item in enumerate(filters):
                 problems.extend(_prefix("filters", _prefix(index, validate_json(item))))
     if "dimension_separator" in doc and doc["dimension_separator"] not in (".", "/"):
-        separator = doc["dimension_separator"]
         problems.append(
-            ValidationProblem(
-                ("dimension_separator",),
-                f'expected "." or "/", got {shown(separator)}',
-                refused_kind(separator, (".", "/")),
-            )
+            outside_of(("dimension_separator",), doc["dimension_separator"], (".", "/"))
         )
     if "fill_value" in doc:
         problems.extend(_prefix("fill_value", validate_json(doc["fill_value"])))
     if "attributes" in doc:
         problems.extend(validate_attributes(doc["attributes"]))
-    return tuple(problems)
+    return with_input(problems, doc)
 
 
 def is_array_metadata_v2(value: object) -> TypeGuard[ZarrV2ArrayMetadataJSON]:
@@ -729,11 +719,10 @@ def is_array_metadata_v2(value: object) -> TypeGuard[ZarrV2ArrayMetadataJSON]:
 
 def parse_array_metadata_v2(value: object) -> ZarrV2ArrayMetadataJSON:
     """Return `value` as `ZarrV2ArrayMetadataJSON`, or raise `MetadataValidationError`."""
-    normalized = arrays_to_tuples(value)
-    problems = validate_array_metadata_v2(normalized)
+    problems = validate_array_metadata_v2(value)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
-    return cast("ZarrV2ArrayMetadataJSON", normalized)
+    return cast("ZarrV2ArrayMetadataJSON", arrays_to_tuples(value))
 
 
 def validate_group_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
@@ -743,14 +732,14 @@ def validate_group_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     optional `attributes` mapping folded in from `.zattrs`.
     """
     if not isinstance(value, Mapping):
-        return (ValidationProblem((), "expected an object", "invalid_type"),)
+        return not_an_object(value)
     doc = cast("Mapping[object, object]", value)
     problems: list[ValidationProblem] = list(missing_keys(GROUP_METADATA_REQUIRED_KEYS_V2, doc))
     problems.extend(unexpected_keys(GROUP_METADATA_STANDARD_KEYS_V2, doc))
     problems.extend(check_literal(doc, "zarr_format", 2))
     if "attributes" in doc:
         problems.extend(validate_attributes(doc["attributes"]))
-    return tuple(problems)
+    return with_input(problems, doc)
 
 
 def is_group_metadata_v2(value: object) -> TypeGuard[ZarrV2GroupMetadataJSON]:
@@ -760,11 +749,10 @@ def is_group_metadata_v2(value: object) -> TypeGuard[ZarrV2GroupMetadataJSON]:
 
 def parse_group_metadata_v2(value: object) -> ZarrV2GroupMetadataJSON:
     """Return `value` narrowed to `ZarrV2GroupMetadataJSON`, or raise `MetadataValidationError`."""
-    normalized = arrays_to_tuples(value)
-    problems = validate_group_metadata_v2(normalized)
+    problems = validate_group_metadata_v2(value)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
-    return cast(ZarrV2GroupMetadataJSON, normalized)
+    return cast(ZarrV2GroupMetadataJSON, arrays_to_tuples(value))
 
 
 StoreKey = TypeVar("StoreKey", bound=str)
@@ -798,9 +786,10 @@ def load_store_json(mapping: Mapping[StoreKey, bytes], key: str) -> object:
     # raises `TypeError` on most else.
     raw = cast("object", stored[key])
     if not isinstance(raw, bytes):
-        raise MetadataValidationError(
-            [ValidationProblem((key,), f"expected bytes, got {type(raw).__name__}", "invalid_type")]
+        refused = ValidationProblem(
+            (key,), f"expected bytes, got {type(raw).__name__}", "invalid_type"
         )
+        raise MetadataValidationError(with_input((refused,), stored))
     try:
         return json.loads(raw)
     except (UnicodeDecodeError, ValueError) as exc:

@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from zarr_metadata._json import value_at
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE, RawBytesConfiguration
 from zarr_metadata.v3.definition import (
@@ -435,6 +436,17 @@ def test_error_blosc_typesize_is_missing_while_shuffling() -> None:
     assert _one("codecs:blosc", configuration) == [(("configuration", "typesize"), "missing_key")]
 
 
+def test_a_rule_is_asked_only_of_a_configuration_within_its_bounds() -> None:
+    # As pydantic's after-validators and zod's refinements are: a rule
+    # relies on the bounds its type declares, so a value out of them is
+    # the one problem reported until it is fixed.
+    shuffled = {key: value for key, value in BLOSC.items() if key != "typesize"}
+    assert _one("codecs:blosc", {**shuffled, "clevel": 12}) == [
+        (("configuration", "clevel"), "invalid_value")
+    ]
+    assert _one("codecs:blosc", shuffled) == [(("configuration", "typesize"), "missing_key")]
+
+
 def test_error_blosc_typesize_is_not_positive() -> None:
     assert _one("codecs:blosc", {**BLOSC, "typesize": 0}) == [
         (("configuration", "typesize"), "invalid_value")
@@ -461,6 +473,100 @@ def test_error_sharding_inner_chunk_extent_is_zero() -> None:
     configuration = {"chunk_shape": [0], "codecs": ["bytes"], "index_codecs": ["bytes"]}
     assert _one("codecs:sharding_indexed", configuration) == [
         (("configuration", "chunk_shape", 0), "invalid_value")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("kind", "field", "loc", "ctx"),
+    [
+        (
+            CodecDefinition,
+            {"name": "gzip", "configuration": {"level": 10}},
+            ("configuration", "level"),
+            {"ge": 0, "le": 9},
+        ),
+        (
+            CodecDefinition,
+            {"name": "zstd", "configuration": {"level": -131073}},
+            ("configuration", "level"),
+            {"ge": -131072, "le": 22},
+        ),
+        (
+            CodecDefinition,
+            {"name": "blosc", "configuration": {**BLOSC, "clevel": -1}},
+            ("configuration", "clevel"),
+            {"ge": 0, "le": 9},
+        ),
+        (
+            CodecDefinition,
+            {"name": "blosc", "configuration": {**BLOSC, "blocksize": -1}},
+            ("configuration", "blocksize"),
+            {"ge": 0},
+        ),
+        (
+            CodecDefinition,
+            {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": [2, 0],
+                    "codecs": ["bytes"],
+                    "index_codecs": ["bytes"],
+                },
+            },
+            ("configuration", "chunk_shape", 1),
+            {"ge": 1},
+        ),
+        (
+            ChunkGridDefinition,
+            {"name": "regular", "configuration": {"chunk_shape": [2, -1]}},
+            ("configuration", "chunk_shape", 1),
+            {"ge": 0},
+        ),
+        (
+            ChunkGridDefinition,
+            {"name": "rectilinear", "configuration": {"kind": "inline", "chunk_shapes": [0]}},
+            ("configuration", "chunk_shapes", 0),
+            {"ge": 1},
+        ),
+        (
+            ChunkGridDefinition,
+            {
+                "name": "rectilinear",
+                "configuration": {"kind": "inline", "chunk_shapes": [[4, [2, 0]]]},
+            },
+            ("configuration", "chunk_shapes", 0, 1, 1),
+            {"ge": 1},
+        ),
+        (
+            DataTypeDefinition,
+            {"name": "numpy.timedelta64", "configuration": {"unit": "s", "scale_factor": 2**31}},
+            ("configuration", "scale_factor"),
+            {"ge": 1, "le": 2**31 - 1},
+        ),
+    ],
+    ids=[
+        "gzip-level",
+        "zstd-level",
+        "blosc-clevel",
+        "blosc-blocksize",
+        "sharding-inner-chunk-extent",
+        "regular-chunk-extent",
+        "rectilinear-extent",
+        "rectilinear-run-count",
+        "numpy-time-scale-factor",
+    ],
+)
+def test_a_bound_is_its_member_s_type_and_its_problem_holds_it(
+    kind: type[Definition[Any]],
+    field: dict[str, Any],
+    loc: tuple[str | int, ...],
+    ctx: dict[str, int],
+) -> None:
+    # Declared on the TypedDict, as pydantic reads a bound, and not in a
+    # rule: the problem holds the bound, and what was found.
+    _, problems = resolve(field, kind, CORE_AND_EXTENSIONS)
+    assert [(p.loc, p.kind, p.input, dict(p.ctx)) for p in problems] == [
+        (loc, "invalid_value", value_at(field, loc), ctx)
     ]
 
 

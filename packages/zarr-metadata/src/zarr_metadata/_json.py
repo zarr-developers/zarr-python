@@ -9,13 +9,16 @@ layer reports with: the checker, the definitions and the model alike.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Literal, TypeGuard, cast, get_args
+from types import MappingProxyType
+from typing import Final, Literal, TypeGuard, cast, get_args
 
 from zarr_metadata._common import JSONValue
+from zarr_metadata._sentinel import UNSET
 
 ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_json", "unknown_key"]
 """Machine-readable classification of a `ValidationProblem`.
@@ -36,20 +39,57 @@ ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_j
 """
 
 
+_NO_CTX: Final[Mapping[str, JSONValue]] = MappingProxyType({})
+
+
+def _no_ctx() -> Mapping[str, JSONValue]:
+    """What a problem that says nothing more than its type was expected holds as its `ctx`: nothing."""
+    return _NO_CTX
+
+
 @dataclass(frozen=True, slots=True)
 class ValidationProblem:
-    """A single problem found in a value: where it is, what is wrong, and what kind of wrong.
+    """A single problem found in a value: where it is, what is wrong, what kind of wrong, and the data the message is made of.
 
     `loc` is the path from the root of what was judged to the offending
     value, e.g. `("codecs", 0, "name")` in a document, and an empty `loc`
     refers to that root.
     `kind` classifies the failure mode for programmatic dispatch; `message`
     is the human-readable description.
+
+    `input` and `ctx` are what the message says, as data, as pydantic's
+    `ErrorDetails` and zod's issues carry theirs. `input` is the JSON found
+    at `loc` -- `12`, for a gzip `level` of 12 -- and `UNSET` where nothing
+    is there, as zod has it for a key that is missing (pydantic gives the
+    object missing it), or where what is there is not JSON, which the
+    message shows. It is the object the caller handed in, as pydantic's
+    is, not a copy: a caller that changes its document afterwards changes
+    what `input` shows. `ctx` is what was expected, where that is more
+    than a type:
+
+    - `gt`, `ge`, `lt` and `le`: the bounds the value's type carries, as
+      pydantic names them -- `{"ge": 0, "le": 9}` for a gzip `level`,
+      whose type is `Annotated[int, Interval(ge=0, le=9)]` -- or a rule
+      says.
+    - `expected`: the values of a closed set, as zod's `values` holds
+      them, in the order the message lists them -- a `Literal`'s,
+      `node_type`'s, `zarr_format`'s.
+
+    Neither takes part in equality or the repr: a problem is the same
+    problem when it is found at the same place and says the same thing.
+    Every function that returns or raises problems fills `input` from the
+    value its caller handed it, so a rule says only where a problem is.
     """
 
     loc: tuple[str | int, ...]
     message: str
     kind: ProblemKind
+    input: JSONValue | UNSET = dataclasses.field(
+        default=UNSET, kw_only=True, compare=False, repr=False
+    )
+    ctx: Mapping[str, JSONValue] = dataclasses.field(
+        default_factory=_no_ctx, kw_only=True, compare=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         # The runtime half of the annotations: a rule written without a type
@@ -70,10 +110,44 @@ class ValidationProblem:
         if not isinstance(kind, str) or kind not in get_args(ProblemKind):
             msg = f"a ValidationProblem's kind is one of {get_args(ProblemKind)!r}, got {kind!r}"
             raise TypeError(msg)
+        ctx = cast("object", self.ctx)
+        if ctx is _NO_CTX:
+            return
+        if (
+            not isinstance(ctx, Mapping)
+            or not all(isinstance(key, str) for key in cast("Mapping[object, object]", ctx))
+            or not is_json(dict(cast("Mapping[str, object]", ctx)))
+        ):
+            msg = f"a ValidationProblem's ctx is an object of JSON values, got {ctx!r}"
+            raise TypeError(msg)
+        # Held as a view of a copy of its own, arrays as tuples, so a raised
+        # error, a finished report, cannot be edited through it.
+        held = cast(
+            "dict[str, JSONValue]", arrays_to_tuples(dict(cast("Mapping[str, object]", ctx)))
+        )
+        object.__setattr__(self, "ctx", MappingProxyType(held))
 
     def __str__(self) -> str:
         location = ".".join(str(part) for part in self.loc) if self.loc else "<root>"
         return f"{location}: {self.message}"
+
+    def __reduce__(
+        self,
+    ) -> tuple[Callable[..., ValidationProblem], tuple[object, ...]]:
+        # Pickled and copied as its constructor called again: the view
+        # `ctx` is held as does not pickle, and the dict it views does.
+        return (_problem, (self.loc, self.message, self.kind, self.input, dict(self.ctx)))
+
+
+def _problem(
+    loc: tuple[str | int, ...],
+    message: str,
+    kind: ProblemKind,
+    found: JSONValue | UNSET,
+    ctx: Mapping[str, JSONValue],
+) -> ValidationProblem:
+    """A problem built again from what `ValidationProblem.__reduce__` gives."""
+    return ValidationProblem(loc, message, kind, input=found, ctx=ctx)
 
 
 class MetadataValidationError(ValueError):
@@ -115,12 +189,76 @@ def prefixed(
     loc_head: str | int, problems: Sequence[ValidationProblem]
 ) -> tuple[ValidationProblem, ...]:
     """Prepend `loc_head` to the `loc` of every problem (for nested validators)."""
-    return tuple(ValidationProblem((loc_head, *p.loc), p.message, p.kind) for p in problems)
+    return tuple(dataclasses.replace(p, loc=(loc_head, *p.loc)) for p in problems)
+
+
+def value_at(value: object, loc: tuple[str | int, ...]) -> object:
+    """What `value` holds at `loc`, each key naming a member of an object and each index an element of an array; `UNSET` where it holds nothing."""
+    for part in loc:
+        if isinstance(part, str) and isinstance(value, Mapping):
+            members = cast("Mapping[object, object]", value)
+            if part not in members:
+                return UNSET
+            value = members[part]
+        elif (
+            isinstance(part, int)
+            and isinstance(value, Sequence)
+            and not isinstance(value, (str, bytes, bytearray))
+            and 0 <= part < len(cast("Sequence[object]", value))
+        ):
+            value = cast("Sequence[object]", value)[part]
+        else:
+            return UNSET
+    return value
+
+
+def with_input(
+    problems: Sequence[ValidationProblem], value: object, loc: tuple[str | int, ...] = ()
+) -> tuple[ValidationProblem, ...]:
+    """`problems`, found in `value`, which sits at `loc`: each given, as its `input`, the JSON `value` holds at its own `loc`.
+
+    What every function that judges a value does with what it found, so a
+    rule says only where a problem is, and the problem carries what is
+    there. The function a caller called is the last to do it, so a
+    problem's `input` is what the value the caller handed in holds, not a
+    copy some reader inside it made. A problem whose `loc` names nothing
+    in `value` -- a key that is missing -- or names what is not JSON
+    keeps what it holds, `UNSET` unless a reader inside found JSON there:
+    no problem holds what might not pickle, or copy.
+    """
+    if len(problems) == 0:
+        return ()
+    filled: list[ValidationProblem] = []
+    for found in problems:
+        if found.loc[: len(loc)] == loc:
+            there = value_at(value, found.loc[len(loc) :])
+            if there is not found.input and _holdable(there):
+                found = dataclasses.replace(found, input=cast("JSONValue", there))
+        filled.append(found)
+    return tuple(filled)
+
+
+def _holdable(value: object) -> bool:
+    """Whether a problem can hold `value` as its input: JSON, and shallow enough to walk.
+
+    What a validator did not walk -- a member it only reports -- may be
+    deeper than the interpreter walks; such a value would not pickle
+    either, and is held as nothing.
+    """
+    try:
+        return is_canonical_json(value, finite=False)
+    except RecursionError:
+        return False
+
+
+def not_an_object(value: object) -> tuple[ValidationProblem, ...]:
+    """What is wrong with a document that is not an object: the one problem, at its root."""
+    return with_input((ValidationProblem((), "expected an object", "invalid_type"),), value)
 
 
 def validate_json(value: object) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not JSON, each where it sits: a float that is not finite, a key that is not a string, a value of no JSON type."""
-    return refine_json(value)[1]
+    return with_input(refine_json(value)[1], value)
 
 
 def refine_json(
@@ -206,8 +344,28 @@ def shown(value: object) -> str:
 
 def choices(allowed: Sequence[object]) -> str:
     """A closed set of values as a message names it: `"C"` alone, or `one of ["C", "F"]`."""
-    values = sorted(dict.fromkeys(shown(value) for value in allowed))
+    values = [shown(value) for value in listed(allowed)]
     return values[0] if len(values) == 1 else f"one of [{', '.join(values)}]"
+
+
+def listed(allowed: Sequence[object]) -> tuple[object, ...]:
+    """A closed set of values, each once, in the order a message lists them: by the JSON each is written as."""
+    written = {shown(value): value for value in allowed}
+    return tuple(written[json_text] for json_text in sorted(written))
+
+
+def outside_of(
+    loc: tuple[str | int, ...], value: object, allowed: Sequence[object]
+) -> ValidationProblem:
+    """The problem with `value`, found at `loc`, outside the closed set `allowed`.
+
+    Its message lists the set, its kind says whether the value is of the
+    wrong JSON type or of the right one with the wrong value, and its
+    `ctx` holds the set, as `expected`.
+    """
+    message = f"expected {choices(allowed)}, got {shown(value)}"
+    expected = cast("tuple[JSONValue, ...]", listed(allowed))
+    return ValidationProblem(loc, message, refused_kind(value, allowed), ctx={"expected": expected})
 
 
 def json_type(value: object) -> str:
@@ -267,7 +425,7 @@ def parse_json(value: object) -> JSONValue:
     """Return a canonical `JSONValue`, or raise `MetadataValidationError`."""
     refined, problems = refine_json(value)
     if len(problems) != 0:
-        raise MetadataValidationError(problems)
+        raise MetadataValidationError(with_input(problems, value))
     return refined
 
 
@@ -324,6 +482,9 @@ __all__ = [
     "is_canonical_json",
     "is_json",
     "json_type",
+    "listed",
+    "not_an_object",
+    "outside_of",
     "parse_json",
     "prefixed",
     "refine_json",
@@ -331,4 +492,6 @@ __all__ = [
     "refused_kind",
     "shown",
     "validate_json",
+    "value_at",
+    "with_input",
 ]

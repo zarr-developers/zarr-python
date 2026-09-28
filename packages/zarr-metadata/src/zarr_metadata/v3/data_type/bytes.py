@@ -15,7 +15,7 @@ from zarr_metadata.v3._definition import (
     Nested,
     variable_length,
 )
-from zarr_metadata.v3.data_type._integer import byte_value_problems
+from zarr_metadata.v3.data_type._byte import ByteValue
 
 BYTES_DATA_TYPE_NAME: Final = "bytes"
 """The `data_type` value for the variable-length `bytes` type."""
@@ -41,7 +41,7 @@ def base64_bytes(value: str) -> Base64Bytes:
     return Base64Bytes(value)
 
 
-BytesFillValue = tuple[int, ...] | Base64Bytes
+BytesFillValue = tuple[ByteValue, ...] | Base64Bytes
 """Permitted JSON shape of the `fill_value` field for `bytes`.
 
 Either a JSON array of integers in `[0, 255]` (one per byte), or a
@@ -52,9 +52,8 @@ Either a JSON array of integers in `[0, 255]` (one per byte), or a
 def _fill_value_rules(
     configuration: EmptyConfiguration, nested: Nested, value: BytesFillValue
 ) -> Iterator[ValidationProblem]:
-    """Integers in `[0, 255]`, or a string of standard-alphabet base64."""
+    """A string of standard-alphabet base64, when it is not byte values."""
     if not isinstance(value, str):
-        yield from byte_value_problems(value)
         return
     try:
         base64_bytes(value)

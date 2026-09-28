@@ -14,15 +14,16 @@ from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
     arrays_to_tuples,
-    choices,
     copied,
     is_canonical_json,
+    not_an_object,
+    outside_of,
     refine_json,
     refine_user_data,
-    refused_kind,
-    shown,
+    with_input,
 )
 from zarr_metadata._json import prefixed as _prefix
+from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model._array import (
     ZarrV3ArrayMetadata,
     array_json,
@@ -31,7 +32,6 @@ from zarr_metadata.model._array import (
     must_understand_subset,
     read_array_metadata_v3,
 )
-from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import (
     GROUP_METADATA_REQUIRED_KEYS_V3,
     GROUP_METADATA_STANDARD_KEYS_V3,
@@ -457,15 +457,14 @@ _NODE_TYPES: Final = ("array", "group")
 def _node_type(value: object) -> tuple[str | None, tuple[ValidationProblem, ...]]:
     """The node type `value` says it is, one of `_NODE_TYPES`; None, with the problem, when it says none of them, or is not an object."""
     if not isinstance(value, Mapping):
-        return None, (ValidationProblem((), "expected an object", "invalid_type"),)
+        return None, not_an_object(value)
     document = cast("Mapping[object, object]", value)
     if "node_type" not in document:
         return None, (ValidationProblem(("node_type",), "missing required key", "missing_key"),)
     node_type = document["node_type"]
     if isinstance(node_type, str) and node_type in _NODE_TYPES:
         return node_type, ()
-    message = f"expected {choices(_NODE_TYPES)}, got {shown(node_type)}"
-    return None, (ValidationProblem(("node_type",), message, refused_kind(node_type, _NODE_TYPES)),)
+    return None, with_input((outside_of(("node_type",), node_type, _NODE_TYPES),), document)
 
 
 @dataclass(frozen=True, slots=True)
@@ -507,8 +506,7 @@ def read_group_v3(
     as it is, as `read_array_v3` takes one.
     """
     if not isinstance(value, Mapping):
-        problems = (ValidationProblem((), "expected an object", "invalid_type"),)
-        return ZarrV3GroupMetadataReading(problems=problems), None
+        return ZarrV3GroupMetadataReading(problems=not_an_object(value)), None
     doc = cast("Mapping[object, object]", value)
     found: list[ValidationProblem] = list(missing_keys(GROUP_METADATA_REQUIRED_KEYS_V3, doc))
     extra_fields, others = other_members(
@@ -532,7 +530,7 @@ def read_group_v3(
     if raw is not None:
         consolidated, held, inside = _read_consolidated_v3(raw, context)
         found.extend(_prefix(ZARR_V3_CONSOLIDATED_METADATA_KEY, inside))
-    reading = ZarrV3GroupMetadataReading(consolidated, tuple(found))
+    reading = ZarrV3GroupMetadataReading(consolidated, with_input(found, doc))
     return reading, GroupMembersV3(attributes, extra_fields, held)
 
 
@@ -559,8 +557,7 @@ def _read_consolidated_v3(
     ]
     problems.extend(unexpected_keys(frozenset(_CONSOLIDATED_MEMBERS), env))
     problems.extend(check_literal(env, "kind", "inline"))
-    if "must_understand" in env and env["must_understand"] is not False:
-        problems.append(ValidationProblem(("must_understand",), "expected False", "invalid_value"))
+    problems.extend(check_literal(env, "must_understand", False))
     readings: dict[str, ZarrV3NodeMetadataReading] = {}
     members: dict[str, ArrayMembersV3 | GroupMembersV3] = {}
     entries = env.get("metadata")
@@ -654,11 +651,10 @@ def parse_group_metadata_v3(
     value: object, *, context: Context = CORE_AND_EXTENSIONS
 ) -> ZarrV3GroupMetadataJSON:
     """Return `value` narrowed to `ZarrV3GroupMetadataJSON`, or raise `MetadataValidationError`."""
-    normalized = arrays_to_tuples(value)
-    problems = validate_group_metadata_v3(normalized, context=context)
+    problems = validate_group_metadata_v3(value, context=context)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
-    return cast("ZarrV3GroupMetadataJSON", normalized)
+    return cast("ZarrV3GroupMetadataJSON", arrays_to_tuples(value))
 
 
 class ZarrV2GroupMetadataPartial(TypedDict, total=False):
@@ -753,15 +749,10 @@ class ZarrV2GroupMetadata:
             return cls.from_json(zgroup_raw)
         zgroup = cast("Mapping[str, object]", zgroup_raw)
         if "attributes" in zgroup:
-            raise MetadataValidationError(
-                [
-                    ValidationProblem(
-                        ("attributes",),
-                        "unexpected document member",
-                        "invalid_value",
-                    )
-                ]
+            refused = ValidationProblem(
+                ("attributes",), "unexpected document member", "invalid_value"
             )
+            raise MetadataValidationError(with_input((refused,), zgroup))
         if ZARR_V2_ATTRIBUTES_STORE_KEY in mapping:
             zattrs = load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY)
             return cls.from_json({**zgroup, "attributes": zattrs})
@@ -825,9 +816,7 @@ class ZarrV2ConsolidatedMetadata:
         """
         normalized = arrays_to_tuples(data)
         if not isinstance(normalized, Mapping):
-            raise MetadataValidationError(
-                [ValidationProblem((), "expected an object", "invalid_type")]
-            )
+            raise MetadataValidationError(not_an_object(data))
         doc = cast("Mapping[object, object]", normalized)
         problems: list[ValidationProblem] = [
             ValidationProblem((key,), "missing required key", "missing_key")
@@ -841,18 +830,7 @@ class ZarrV2ConsolidatedMetadata:
             for key in doc
             if key not in {"zarr_consolidated_format", "metadata"}
         )
-        if "zarr_consolidated_format" in doc and (
-            not isinstance(doc["zarr_consolidated_format"], int)
-            or isinstance(doc["zarr_consolidated_format"], bool)
-            or doc["zarr_consolidated_format"] != 1
-        ):
-            problems.append(
-                ValidationProblem(
-                    ("zarr_consolidated_format",),
-                    f"expected 1, got {shown(doc['zarr_consolidated_format'])}",
-                    refused_kind(doc["zarr_consolidated_format"], (1,)),
-                )
-            )
+        problems.extend(check_literal(doc, "zarr_consolidated_format", 1))
         refined: dict[str, JSONValue] = {}
         if "metadata" in doc:
             entries = doc["metadata"]
@@ -877,7 +855,7 @@ class ZarrV2ConsolidatedMetadata:
                     problems.extend(found)
                     refined[key] = entry
         if len(problems) != 0:
-            raise MetadataValidationError(problems)
+            raise MetadataValidationError(with_input(problems, data))
         return cls(metadata=refined)
 
     @classmethod

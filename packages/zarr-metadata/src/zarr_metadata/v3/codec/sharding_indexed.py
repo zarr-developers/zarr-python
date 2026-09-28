@@ -5,8 +5,9 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index
 """
 
 from collections.abc import Iterator, Mapping
-from typing import Final, Literal, NotRequired
+from typing import Annotated, Final, Literal, NotRequired
 
+from annotated_types import Ge
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
@@ -53,7 +54,7 @@ class ShardingIndexedCodecConfiguration(TypedDict, closed=True):
       https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L157-L161
     """
 
-    chunk_shape: tuple[int, ...]
+    chunk_shape: tuple[Annotated[int, Ge(1)], ...]
     codecs: tuple[CodecField, ...]
     index_codecs: tuple[StaticCodecField, ...]
     index_location: NotRequired[ShardingIndexLocation]
@@ -76,17 +77,6 @@ form is not permitted by the spec for this codec.
   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L141-L155 (required members)
   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564 (short-hand names only "if no configuration metadata is required")
 """
-
-
-def _rules(
-    configuration: ShardingIndexedCodecConfiguration, nested: Nested
-) -> Iterator[ValidationProblem]:
-    """Every inner chunk extent is at least 1."""
-    for index, extent in enumerate(configuration["chunk_shape"]):
-        if extent < 1:
-            yield ValidationProblem(
-                ("chunk_shape", index), f"expected an integer >= 1, got {extent}", "invalid_value"
-            )
 
 
 def _chunk_rules(
@@ -180,7 +170,6 @@ SHARDING_INDEXED_CODEC: Final = CodecDefinition(
     configuration=ShardingIndexedCodecConfiguration,
     kind="array_bytes",
     size="dynamic",
-    rules=_rules,
     chunk_rules=_chunk_rules,
     pipelines=_pipelines,
 )

@@ -5,12 +5,12 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 from collections.abc import Iterator
-from typing import Final, Literal, NotRequired
+from typing import Annotated, Final, Literal, NotRequired
 
+from annotated_types import Ge
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata._typed_json import Loc
 from zarr_metadata.v3._definition import ChunkGridDefinition, Lengths, Nested
 
 RECTILINEAR_CHUNK_GRID_NAME: Final = "rectilinear"
@@ -19,12 +19,14 @@ RECTILINEAR_CHUNK_GRID_NAME: Final = "rectilinear"
 RectilinearChunkGridName = Literal["rectilinear"]
 """Literal type of the `name` field of the rectilinear chunk grid."""
 
-RectilinearDimSpec = int | tuple[int | tuple[int, int], ...]
+_Positive = Annotated[int, Ge(1)]
+
+RectilinearDimSpec = _Positive | tuple[_Positive | tuple[_Positive, _Positive], ...]
 """JSON shape for one dimension's rectilinear spec.
 
 Either a bare integer (uniform shorthand for a regular dimension within
 a rectilinear grid), or a tuple of integers and/or `[value, count]` RLE
-pairs.
+pairs. Every extent, and every run's length and count, is at least 1.
 """
 
 
@@ -51,29 +53,6 @@ the short-hand-name form is not permitted by the spec for this grid.
   https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/chunk-grids/rectilinear/README.md#L59-L62
   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564
 """
-
-
-def _not_positive(loc: Loc, value: int) -> ValidationProblem:
-    return ValidationProblem(loc, f"expected an integer >= 1, got {value}", "invalid_value")
-
-
-def _rules(
-    configuration: RectilinearChunkGridConfiguration, nested: Nested
-) -> Iterator[ValidationProblem]:
-    """Every extent, and every run's length and count, is at least 1."""
-    for axis, spec in enumerate(configuration["chunk_shapes"]):
-        if isinstance(spec, int):
-            if spec < 1:
-                yield _not_positive(("chunk_shapes", axis), spec)
-            continue
-        for index, entry in enumerate(spec):
-            if isinstance(entry, int):
-                if entry < 1:
-                    yield _not_positive(("chunk_shapes", axis, index), entry)
-                continue
-            for position, value in enumerate(entry):
-                if value < 1:
-                    yield _not_positive(("chunk_shapes", axis, index, position), value)
 
 
 def canonical_dim_spec(spec: RectilinearDimSpec) -> RectilinearDimSpec:
@@ -178,7 +157,6 @@ def _chunk_lengths(
 RECTILINEAR_CHUNK_GRID: Final = ChunkGridDefinition(
     name=RECTILINEAR_CHUNK_GRID_NAME,
     configuration=RectilinearChunkGridConfiguration,
-    rules=_rules,
     canonical=_canonical,
     shape_rules=_shape_rules,
     chunk_lengths=_chunk_lengths,

@@ -27,6 +27,7 @@ from zarr_metadata._json import (
     parse_json,
     validate_json,
 )
+from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model._array import (
     ZarrV2ArrayMetadata,
     ZarrV2ArrayMetadataPartial,
@@ -54,7 +55,6 @@ from zarr_metadata.model._group import (
     validate_group_metadata_v3,
     validate_node_metadata_v3,
 )
-from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import (
     ARRAY_METADATA_OPTIONAL_KEYS_V3,
     ARRAY_METADATA_REQUIRED_KEYS_V2,

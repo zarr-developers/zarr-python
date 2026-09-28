@@ -13,6 +13,7 @@ import math
 from typing import Any, cast
 
 import pytest
+from typing_extensions import TypedDict
 
 from zarr_metadata._json import arrays_to_tuples
 from zarr_metadata.model import (
@@ -24,7 +25,6 @@ from zarr_metadata.model import (
     validate_array_metadata_v3,
     validate_group_metadata_v3,
 )
-from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import CORE, CORE_AND_EXTENSIONS, CodecDefinition, Context
 
 BYTES = {"name": "bytes", "configuration": {"endian": "little"}}
@@ -36,12 +36,17 @@ def _document(**fields: object) -> dict[str, Any]:
     return cast("dict[str, Any]", arrays_to_tuples(document))
 
 
+class LenientGzipConfiguration(TypedDict, closed=True):
+    """A gzip configuration whose `level` is any integer: the bound is the type's, so taking any is a type of its own."""
+
+    level: int
+
+
 LENIENT_GZIP = CodecDefinition(
     name="gzip",
-    configuration=GZIP_CODEC.configuration,
+    configuration=LenientGzipConfiguration,
     kind="bytes_bytes",
     size="dynamic",
-    rules=lambda configuration, nested: [],
 )
 """A reader's own gzip, which takes any level: a scope can grow, and substitute."""
 

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 import pytest
 from typing_extensions import TypedDict
 
+from zarr_metadata._json import value_at
 from zarr_metadata.model import validate_array_metadata_v3, validate_group_metadata_v3
 from zarr_metadata.model._array import ZarrV3ArrayMetadata
 from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
@@ -200,6 +201,31 @@ def test_error_a_byte_value_out_of_range(
     data_type: str, fill_value: object, loc: tuple[int, ...]
 ) -> None:
     assert _problems(data_type, fill_value) == [(loc, "invalid_value")]
+
+
+@pytest.mark.parametrize(
+    ("data_type", "fill_value", "loc", "ctx"),
+    [
+        ("int8", 128, (), {"ge": -128, "le": 127}),
+        ("uint16", -1, (), {"ge": 0, "le": 2**16 - 1}),
+        ("int64", 2**63, (), {"ge": -(2**63), "le": 2**63 - 1}),
+        ("uint64", 2**64, (), {"ge": 0, "le": 2**64 - 1}),
+        ("r16", [1, 256], (1,), {"ge": 0, "le": 255}),
+        ("bytes", [-1], (0,), {"ge": 0, "le": 255}),
+        (DATETIME, 2**63, (), {"ge": -(2**63), "le": 2**63 - 1}),
+    ],
+    ids=["int8", "uint16", "int64", "uint64", "raw-bits-byte", "bytes-byte", "numpy-time"],
+)
+def test_a_fill_value_s_range_is_its_type_s(
+    data_type: JSONValue, fill_value: object, loc: tuple[int, ...], ctx: dict[str, int]
+) -> None:
+    # `Int8FillValue` is `Annotated[int, Interval(ge=-128, le=127)]`: the
+    # problem holds the range, and what was found.
+    resolved, _ = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    problems = fill_value_problems(resolved, fill_value)
+    assert [(p.loc, p.input, dict(p.ctx)) for p in problems] == [
+        (loc, value_at(fill_value, loc), ctx)
+    ]
 
 
 @pytest.mark.parametrize("fill_value", ["!!", "AQI"])

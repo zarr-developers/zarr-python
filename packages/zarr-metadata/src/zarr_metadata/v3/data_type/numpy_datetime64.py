@@ -10,8 +10,8 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata.v3._definition import DataTypeDefinition
 from zarr_metadata.v3.data_type._numpy_time import (
-    numpy_time_fill_value_rules,
-    numpy_time_rules,
+    NumpyTimeScaleFactor,
+    NumpyTimeTicks,
     numpy_time_storage,
 )
 
@@ -40,7 +40,7 @@ class NumpyDatetime64Configuration(TypedDict, closed=True):
     """
 
     unit: ReadOnly[NumpyTimeUnit]
-    scale_factor: ReadOnly[int]
+    scale_factor: ReadOnly[NumpyTimeScaleFactor]
 
 
 class NumpyDatetime64(TypedDict, closed=True):
@@ -51,7 +51,7 @@ class NumpyDatetime64(TypedDict, closed=True):
     must_understand: NotRequired[bool]
 
 
-NumpyDatetime64FillValue = int | Literal["NaT"]
+NumpyDatetime64FillValue = NumpyTimeTicks | Literal["NaT"]
 """Permitted JSON shape of the `fill_value` field for `numpy.datetime64`.
 
 Either a JSON integer (count of `unit * scale_factor` since the epoch),
@@ -61,9 +61,7 @@ or the string `"NaT"` (equivalent to the integer `-2**63`).
 NUMPY_DATETIME64_DATA_TYPE: Final = DataTypeDefinition(
     name=NUMPY_DATETIME64_DATA_TYPE_NAME,
     configuration=NumpyDatetime64Configuration,
-    rules=numpy_time_rules,
     fill_value=NumpyDatetime64FillValue,
-    fill_value_rules=numpy_time_fill_value_rules,
     storage=numpy_time_storage,
 )
 """The `numpy.datetime64` data type."""

@@ -14,8 +14,9 @@ from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
     copied,
+    with_input,
 )
-from zarr_metadata.model._sentinel import UNSET
+from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model._validation import (
     ARRAY_METADATA_STANDARD_KEYS_V3,
     NO_SCOPE,
@@ -528,15 +529,10 @@ class ZarrV2ArrayMetadata:
             return cls.from_json(zarray_raw)
         zarray = cast("Mapping[str, object]", zarray_raw)
         if "attributes" in zarray:
-            raise MetadataValidationError(
-                [
-                    ValidationProblem(
-                        ("attributes",),
-                        "unexpected document member",
-                        "invalid_value",
-                    )
-                ]
+            refused = ValidationProblem(
+                ("attributes",), "unexpected document member", "invalid_value"
             )
+            raise MetadataValidationError(with_input((refused,), zarray))
         if ZARR_V2_ATTRIBUTES_STORE_KEY in mapping:
             zattrs = load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY)
             return cls.from_json({**zarray, "attributes": zattrs})

@@ -5,8 +5,9 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#regular-grids
 """
 
 from collections.abc import Iterator
-from typing import Final, Literal, NotRequired
+from typing import Annotated, Final, Literal, NotRequired
 
+from annotated_types import Ge
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
@@ -20,9 +21,16 @@ RegularChunkGridName = Literal["regular"]
 
 
 class RegularChunkGridConfiguration(TypedDict, closed=True):
-    """Configuration for the regular chunk grid."""
+    """Configuration for the regular chunk grid.
 
-    chunk_shape: tuple[int, ...]
+    No chunk extent is negative. "The chunk shape elements are non-zero
+    when the corresponding dimensions of the arrays have non-zero length":
+    an extent of 0 is right for a dimension of length 0, which zarr-python
+    3.0 and 3.1 wrote, and which a grid alone cannot tell from one that is
+    not; the shape rules can, beside the array's shape.
+    """
+
+    chunk_shape: tuple[Annotated[int, Ge(0)], ...]
 
 
 class RegularChunkGridObject(TypedDict, closed=True):
@@ -41,24 +49,6 @@ valid; the short-hand-name form is not permitted by the spec for this grid.
   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L528-L537 ("must be an object with the names name and configuration")
   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564
 """
-
-
-def _rules(
-    configuration: RegularChunkGridConfiguration, nested: Nested
-) -> Iterator[ValidationProblem]:
-    """No chunk extent is negative.
-
-    "The chunk shape elements are non-zero when the corresponding
-    dimensions of the arrays have non-zero length": an extent of 0 is
-    right for a dimension of length 0, which zarr-python 3.0 and 3.1
-    wrote, and which a grid alone cannot tell from one that is not; the
-    shape rules can, beside the array's shape.
-    """
-    for index, extent in enumerate(configuration["chunk_shape"]):
-        if extent < 0:
-            yield ValidationProblem(
-                ("chunk_shape", index), f"expected an integer >= 0, got {extent}", "invalid_value"
-            )
 
 
 def _shape_rules(
@@ -87,6 +77,7 @@ def _shape_rules(
                 ("chunk_shape", axis),
                 f"expected a chunk length >= 1 for a dimension of length {extent}, got 0",
                 "invalid_value",
+                ctx={"ge": 1},
             )
 
 
@@ -107,7 +98,6 @@ def _chunk_lengths(
 REGULAR_CHUNK_GRID: Final = ChunkGridDefinition(
     name=REGULAR_CHUNK_GRID_NAME,
     configuration=RegularChunkGridConfiguration,
-    rules=_rules,
     shape_rules=_shape_rules,
     chunk_lengths=_chunk_lengths,
 )

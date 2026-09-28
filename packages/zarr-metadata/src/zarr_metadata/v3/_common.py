@@ -17,6 +17,7 @@ from zarr_metadata._json import (
     is_canonical_json,
     prefixed,
     validate_json,
+    with_input,
 )
 
 ZarrV3MetadataFieldJSON = str | ZarrV3NamedConfigJSON
@@ -41,7 +42,7 @@ def validate_metadata_field_v3(
     nothing else.
     """
     envelope = envelope_problems(value, allow_must_understand_false=allow_must_understand_false)
-    return (*envelope, *_configuration_json_problems(value))
+    return with_input((*envelope, *_configuration_json_problems(value)), value)
 
 
 def envelope_problems(
@@ -134,11 +135,10 @@ def is_metadata_field_v3(value: object) -> TypeGuard[ZarrV3MetadataFieldJSON]:
 
 def parse_metadata_field_v3(value: object) -> ZarrV3MetadataFieldJSON:
     """Return `value` narrowed to `ZarrV3MetadataFieldJSON`, or raise `MetadataValidationError`."""
-    normalized = arrays_to_tuples(value)
-    problems = validate_metadata_field_v3(normalized)
+    problems = validate_metadata_field_v3(value)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
-    return cast(ZarrV3MetadataFieldJSON, normalized)
+    return cast(ZarrV3MetadataFieldJSON, arrays_to_tuples(value))
 
 
 __all__ = [
