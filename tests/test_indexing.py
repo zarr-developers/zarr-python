@@ -11,6 +11,8 @@ from uuid import uuid4
 import numpy as np
 import numpy.typing as npt
 import pytest
+from hypothesis import example, given
+from hypothesis import strategies as st
 from numpy.testing import assert_array_equal
 
 import zarr
@@ -2586,3 +2588,42 @@ class TestAsync:
 
         with pytest.raises(IndexError):
             await async_zarr.oindex.getitem("invalid_indexer")
+
+
+@given(
+    coordinates=st.lists(st.integers(0, 2**62 - 1), max_size=40),
+    chunk_size=st.integers(1, 100),
+)
+@example(coordinates=[2**62 - 1], chunk_size=3)
+def test_sparse_indexer_projection_reconstructs_coordinates(
+    coordinates: list[int], chunk_size: int
+) -> None:
+    """Projection placement reconstructs arbitrary sparse requests without dense grids."""
+    extent = 2**62
+    coords = np.array(coordinates, dtype=np.intp)
+    grid = ChunkGrid.from_sizes((extent,), (chunk_size,))
+    (dimension,) = grid._dimensions
+    expected_chunks = sorted({c // chunk_size for c in coordinates})
+    for indexer in (
+        CoordinateIndexer((coords,), (extent,), grid),
+        IntArrayDimIndexer(coords, extent, dimension),
+    ):
+        reconstructed = np.empty_like(coords)
+        covered = np.zeros(coords.shape, dtype=np.intp)
+        visited = []
+        for projection in indexer:
+            if isinstance(indexer, CoordinateIndexer):
+                chunk = projection.chunk_coords[0]
+                selection = projection.chunk_selection[0]
+                output = projection.out_selection
+            else:
+                chunk = projection.dim_chunk_ix
+                selection = projection.dim_chunk_sel
+                output = projection.dim_out_sel
+            visited.append(chunk)
+            reconstructed[output] = selection + chunk * chunk_size
+            covered[output] += 1
+        assert visited == expected_chunks
+        assert_array_equal(reconstructed, coords)
+        assert_array_equal(covered, np.ones_like(coords))
+        assert len(indexer.chunk_run_ends) == len(expected_chunks)
