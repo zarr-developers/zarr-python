@@ -224,10 +224,8 @@ def _held(
 ) -> tuple[Resolved[CodecDefinition[Any]], ...]:
     """The codecs `member` of the configuration holds, as the scope read them.
 
-    A member holding anything but a list of fields, or fields a definition
-    of another kind read, is a `TypeError`: a fault in the definition that
-    names it. Fields nothing in scope claims tell nothing of their kind,
-    and are read as codecs nothing claims.
+    A member holding anything but a list of fields read as codecs is a
+    `TypeError`: a fault in the definition that names it.
     """
     entries: object = configuration.get(member)
     places = (
@@ -236,12 +234,7 @@ def _held(
         else None
     )
     if places is None or not all(
-        place in nested
-        and (
-            nested[place].definition is None
-            or isinstance(nested[place].definition, CodecDefinition)
-        )
-        for place in places
+        place in nested and nested[place].read_as is CodecDefinition for place in places
     ):
         msg = f"{definition.name!r}: its pipelines name {member!r}, which holds no list of codecs"
         raise TypeError(msg)

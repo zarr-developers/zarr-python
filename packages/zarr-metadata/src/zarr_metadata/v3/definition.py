@@ -38,14 +38,19 @@ its own by a caller that holds nothing but JSON:
 3. `resolve(field, CodecDefinition, CORE_AND_EXTENSIONS)` reads a whole
    field in a scope: its envelope judged, its name related to a
    definition, its configuration judged, and each nested field read the
-   same way. It returns `Resolved` -- the field's JSON, its
-   `resolution`, the definition and the checked configuration -- and
-   every problem. A name nothing in scope claims is `out_of_scope`:
-   left unjudged, which is what keeps the format open. A field is read
+   same way. It returns `Resolved` -- the field's JSON and the `name`
+   it was written with, its `resolution`, the definition, the checked
+   configuration and the kind it was read as, `read_as` -- and every
+   problem. A name nothing in scope
+   claims is `out_of_scope`: left unjudged, which is what keeps the
+   format open, and still read as the kind it was asked for. A field is read
    as one of the five kinds, with or without type arguments;
    `resolve(field, Definition, scope)` is a `TypeError`, since nothing
    is filed under it. `configuration_of(resolved, GZIP_CODEC)` is the
    configuration typed as that definition's TypedDict, when it read it.
+   `fields_of(resolved)` gives the field and each field it holds, with
+   where each sits. A whole v3 array document is read by
+   `read_array_metadata_v3`, in `zarr_metadata.model`.
 
     from zarr_metadata.v3.codec.gzip import GZIP_CODEC
     from zarr_metadata.v3.definition import (
@@ -262,6 +267,7 @@ from zarr_metadata.v3._definition import (
     canonicalize,
     chunk_grid_lengths,
     configuration_of,
+    fields_of,
     fill_value_problems,
     resolve,
     storage_of,
@@ -306,6 +312,7 @@ __all__ = [
     "check",
     "chunk_grid_lengths",
     "configuration_of",
+    "fields_of",
     "fill_value_problems",
     "read_pipeline",
     "resolve",

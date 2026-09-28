@@ -367,7 +367,12 @@ def test_error_a_transition_that_raises_says_whose_it_is() -> None:
 
 @pytest.mark.parametrize(
     ("lengths", "data_type", "match"),
-    [((4, 2), None, "a chunk's lengths are"), (None, "float32", "a chunk's data type is")],
+    [
+        ((4, 2), None, "a chunk's lengths are"),
+        (None, "float32", "a chunk's data type is"),
+        # A field read as a codec, though nothing claims it.
+        (None, resolve("acme.t", CodecDefinition, SCOPE)[0], "a chunk's data type is"),
+    ],
 )
 def test_error_a_transition_that_builds_a_chunk_of_something_else(
     lengths: object, data_type: object, match: str
@@ -446,8 +451,8 @@ class AcmeHolderConfiguration(TypedDict, closed=True):
     types: tuple[DataTypeField, ...]
 
 
-def _holder(pipelines: object) -> Resolved[CodecDefinition[Any]]:
-    """A codec holding a pipeline of codecs and a list of data types, whose pipelines are `pipelines`."""
+def _holder(pipelines: object, types: JSONValue = ("uint8",)) -> Resolved[CodecDefinition[Any]]:
+    """A codec holding a pipeline of codecs and a list of data types, `types`, whose pipelines are `pipelines`."""
     holder = CodecDefinition(
         name="acme.holder",
         configuration=AcmeHolderConfiguration,
@@ -455,7 +460,7 @@ def _holder(pipelines: object) -> Resolved[CodecDefinition[Any]]:
         size="dynamic",
         pipelines=pipelines,  # pyright: ignore[reportArgumentType]
     )
-    field = {"name": "acme.holder", "configuration": {"codecs": [LITTLE], "types": ["uint8"]}}
+    field = {"name": "acme.holder", "configuration": {"codecs": [LITTLE], "types": types}}
     return resolve(field, CodecDefinition, SCOPE.extended_with(holder))[0]
 
 
@@ -465,9 +470,19 @@ def test_error_pipelines_that_give_something_else(given: object) -> None:
         read_pipeline([_holder(lambda configuration, nested, chunk: given)], CHUNK)
 
 
-@pytest.mark.parametrize("member", ["nowhere", "types"])
-def test_error_pipelines_that_name_a_member_holding_no_codecs(member: str) -> None:
-    holder = _holder(lambda configuration, nested, chunk: {member: Chunk()})
+@pytest.mark.parametrize(
+    ("member", "types"),
+    [
+        ("nowhere", ("uint8",)),
+        ("types", ("uint8",)),
+        # Data types nothing in scope claims are still read as data types.
+        ("types", ("acme.t",)),
+    ],
+)
+def test_error_pipelines_that_name_a_member_holding_no_codecs(
+    member: str, types: JSONValue
+) -> None:
+    holder = _holder(lambda configuration, nested, chunk: {member: Chunk()}, types)
     with pytest.raises(TypeError, match=f"its pipelines name {member!r}, which holds no list"):
         read_pipeline([holder], CHUNK)
 

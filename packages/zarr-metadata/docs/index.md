@@ -106,6 +106,28 @@ Three choices the specs' words leave open, or settle two ways:
   says chunk sizes are greater than zero. The package follows the core
   spec, which zarr-python 3.0 and 3.1 wrote for an empty dimension.
 
+`read_array_metadata_v3` returns what the validator read, beside the
+problems: each field as the scope read it, with where it sits and the
+kind it was read as, and each codec with the chunk it is handed. A
+consumer's own policy is a walk over the fields, with nothing read
+twice. Which fields go beyond the core spec, say -- a field that names
+nothing is a problem already:
+
+```python
+from zarr_metadata.model import read_array_metadata_v3
+from zarr_metadata.v3.definition import CORE
+
+reading, problems = read_array_metadata_v3(raw)
+beyond_core = [
+    loc
+    for loc, field in reading.fields()
+    if field.name is not None and CORE.claimant(field.read_as, field.name) is None
+]
+```
+
+A member the spec does not define is not a field; the model's
+`must_understand_fields` names those a reader must understand.
+
 ## Scope
 
 At minimum, this library supports what Zarr-Python needs: the complete

@@ -5,15 +5,16 @@ representation of the JSON documents. Validators check a document's JSON
 structure and, in a v3 document, read each extension point (codecs, chunk
 grids, data types, ...) through the definition that claims its name in a
 scope, `CORE_AND_EXTENSIONS` unless a `context` is passed, and judge the
-fill value against the data type it names, the chunk grid against
-the shape, and the codecs as a pipeline, each against the chunk it is
-handed. Each document concept gets a
-`validate_*` function returning every problem found (a tuple of
-`ValidationProblem`, each with a machine-readable `kind`), an `is_*` type
-guard, and a `parse_*` function that narrows or raises
-`MetadataValidationError`. Model `from_json` / `from_key_value` constructors
-raise `MetadataValidationError` for every ingestion failure, including
-missing store keys and undecodable bytes, and the v3 ones take the same
+fill value against the data type it names, the chunk grid against the
+shape, and the codecs as a pipeline, each against the chunk it is
+handed. Each document concept gets a `validate_*` function returning
+every problem found (a tuple of `ValidationProblem`, each with a
+machine-readable `kind`), an `is_*` type guard, and a `parse_*` function
+that narrows or raises `MetadataValidationError`; a v3 array document
+also gets `read_array_metadata_v3`, which returns what it read beside
+them. Model `from_json` / `from_key_value` constructors raise
+`MetadataValidationError` for every ingestion failure, including missing
+store keys and undecodable bytes, and the v3 ones take the same
 `context`.
 """
 
@@ -51,6 +52,7 @@ from zarr_metadata.model._validation import (
     GROUP_METADATA_REQUIRED_KEYS_V2,
     GROUP_METADATA_REQUIRED_KEYS_V3,
     GROUP_METADATA_STANDARD_KEYS_V3,
+    ZarrV3ArrayMetadataReading,
     is_array_metadata_v2,
     is_array_metadata_v3,
     is_group_metadata_v2,
@@ -59,6 +61,7 @@ from zarr_metadata.model._validation import (
     parse_array_metadata_v3,
     parse_group_metadata_v2,
     parse_group_metadata_v3,
+    read_array_metadata_v3,
     validate_array_metadata_v2,
     validate_array_metadata_v3,
     validate_group_metadata_v2,
@@ -130,6 +133,7 @@ __all__ = [
     "ZarrV2GroupMetadataStoreKey",
     "ZarrV3ArrayMetadata",
     "ZarrV3ArrayMetadataPartial",
+    "ZarrV3ArrayMetadataReading",
     "ZarrV3ArrayMetadataStoreKey",
     "ZarrV3ConsolidatedMetadata",
     "ZarrV3GroupMetadata",
@@ -149,6 +153,7 @@ __all__ = [
     "parse_group_metadata_v3",
     "parse_json",
     "parse_metadata_field_v3",
+    "read_array_metadata_v3",
     "validate_array_metadata_v2",
     "validate_array_metadata_v3",
     "validate_group_metadata_v2",

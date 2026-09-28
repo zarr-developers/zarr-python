@@ -19,6 +19,7 @@ from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
 from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC, GzipCodecConfiguration
 from zarr_metadata.v3.data_type.int8 import INT8_DATA_TYPE
+from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
@@ -31,6 +32,8 @@ from zarr_metadata.v3.definition import (
     Definition,
     JSONValue,
     Nested,
+    Resolution,
+    Resolved,
     StorageTransformerDefinition,
     ValidationProblem,
     ZarrV3MetadataFieldJSON,
@@ -221,10 +224,94 @@ def test_a_read_field_keeps_the_fields_it_read_inside() -> None:
     cast = {"name": "cast_value", "configuration": {"data_type": "int8"}}
     resolved, _ = resolve(cast, CodecDefinition, CORE_AND_EXTENSIONS)
     assert resolved.nested[("data_type",)].definition is INT8_DATA_TYPE
-    # A field holding none, or one that was not read, has nothing inside.
+    # A field holding none, or whose configuration was not checked, has
+    # nothing inside; one its check or rules refuse keeps what it read.
     assert resolve("int8", DataTypeDefinition, CORE)[0].nested == {}
-    unread = {"name": "cast_value", "configuration": {"data_type": "int8", "rounding": 1}}
-    assert resolve(unread, CodecDefinition, CORE_AND_EXTENSIONS)[0].nested == {}
+    unclaimed = {"name": "acme.cast", "configuration": {"data_type": "int8"}}
+    assert resolve(unclaimed, CodecDefinition, CORE_AND_EXTENSIONS)[0].nested == {}
+    refused = {"name": "cast_value", "configuration": {"data_type": "int8", "rounding": 1}}
+    resolved, _ = resolve(refused, CodecDefinition, CORE_AND_EXTENSIONS)
+    assert resolved.resolution == "invalid"
+    assert resolved.nested[("data_type",)].definition is INT8_DATA_TYPE
+
+
+@pytest.mark.parametrize(
+    ("field", "kind", "name"),
+    [
+        ("int8", DataTypeDefinition, "int8"),
+        ({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, "gzip"),
+        # Raw bits: the name written, not the one its definition is filed under.
+        ("r16", DataTypeDefinition, "r16"),
+        ({"name": "acme.codec"}, CodecDefinition, "acme.codec"),
+        ({"configuration": {}}, CodecDefinition, None),
+        (5, CodecDefinition, None),
+    ],
+    ids=["bare-name", "object", "raw-bits", "out-of-scope", "no-name", "not-a-field"],
+)
+def test_a_reading_says_the_name_the_field_was_written_with(
+    field: JSONValue, kind: type[Definition[Any]], name: str | None
+) -> None:
+    assert resolve(field, kind, CORE_AND_EXTENSIONS)[0].name == name
+
+
+INT8 = resolve("int8", DataTypeDefinition, CORE)[0]
+"""An `int8` field as `CORE` reads it."""
+
+
+def test_a_reading_built_by_hand_is_of_the_kind_it_says() -> None:
+    # Type arguments dropped, as `resolve` drops them.
+    built = Resolved("int8", "read", INT8_DATA_TYPE, {}, read_as=DataTypeDefinition[Any])
+    assert built.read_as is DataTypeDefinition
+    # A name read by the definition filed under another, as raw bits are.
+    raw = Resolved("r16", "read", RAW_BYTES_DATA_TYPE, {"bits": 16}, read_as=DataTypeDefinition)
+    assert (raw.name, raw.definition) == ("r16", RAW_BYTES_DATA_TYPE)
+
+
+@pytest.mark.parametrize(
+    ("json", "resolution", "definition", "configuration", "nested"),
+    [
+        ("int8", "read", None, {}, {}),
+        ("int8", "read", INT8_DATA_TYPE, None, {}),
+        ("int8", "invalid", INT8_DATA_TYPE, {}, {}),
+        ("int8", "out_of_scope", INT8_DATA_TYPE, None, {}),
+        (5, "out_of_scope", None, None, {}),
+        ("acme.t", "out_of_scope", None, None, {("a",): INT8}),
+    ],
+    ids=[
+        "read-by-nothing",
+        "read-without-configuration",
+        "unread-with-one",
+        "claimed-out-of-scope",
+        "out-of-scope-without-a-name",
+        "out-of-scope-holding-a-field-read",
+    ],
+)
+def test_error_a_reading_built_by_hand_that_its_resolution_contradicts(
+    json: JSONValue,
+    resolution: Resolution,
+    definition: DataTypeDefinition[Any] | None,
+    configuration: dict[str, JSONValue] | None,
+    nested: Nested,
+) -> None:
+    with pytest.raises(TypeError, match="a field"):
+        Resolved(json, resolution, definition, configuration, nested, read_as=DataTypeDefinition)
+
+
+def test_error_a_reading_built_by_hand_by_a_definition_filed_under_another_name() -> None:
+    with pytest.raises(
+        TypeError, match="a field named 'int16' is read by the definition filed under it"
+    ):
+        Resolved("int16", "read", INT8_DATA_TYPE, {}, read_as=DataTypeDefinition)
+
+
+def test_error_a_reading_built_by_hand_of_no_kind() -> None:
+    with pytest.raises(TypeError, match="is not a kind of metadata"):
+        Resolved("int8", "read", None, None, read_as=Definition)
+
+
+def test_error_a_reading_built_by_hand_by_a_definition_of_another_kind() -> None:
+    with pytest.raises(TypeError, match="read as a DataTypeDefinition is read by one, got a Codec"):
+        Resolved("gzip", "read", GZIP_CODEC, {"level": 1}, read_as=DataTypeDefinition)
 
 
 @pytest.mark.parametrize(

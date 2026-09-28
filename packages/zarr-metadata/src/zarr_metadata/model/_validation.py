@@ -7,13 +7,13 @@ scope, so a configuration its definition refuses is refused here too. A
 name nothing in the scope claims is left unjudged. A v3 fill value is
 judged against the data type it names, the chunk grid against the
 shape, and the codecs as a pipeline, each against the chunk it is
-handed. Each concept
-gets a `validate_*` function returning every problem found, an `is_*`
-type guard, and a `parse_*` function that narrows or raises
-`MetadataValidationError`. The guards are `TypeGuard`s,
-not `TypeIs`: True narrows a value to its document type, and False says
-nothing about its type, since a value can be well typed and still not a
-valid document.
+handed. Each concept gets a `validate_*` function returning every
+problem found, an `is_*` type guard, and a `parse_*` function that
+narrows or raises `MetadataValidationError`; a v3 array document also
+gets `read_array_metadata_v3`, which returns what it read beside them.
+The guards are `TypeGuard`s, not `TypeIs`: True narrows a value to its
+document type, and False says nothing about its type, since a value can
+be well typed and still not a valid document.
 
 Every `ValidationProblem` carries a machine-readable `kind` alongside its
 human-readable `message`, so consumers can dispatch on the failure mode
@@ -23,9 +23,11 @@ human-readable `message`, so consumers can dispatch on the failure mode
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from collections.abc import Mapping, Sequence
-from typing import Any, Final, TypeGuard, TypeVar, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Final, TypeGuard, TypeVar, cast
 
 from zarr_metadata._json import (
     MetadataValidationError,
@@ -51,13 +53,19 @@ from zarr_metadata.v3._definition import (
     Resolved,
     StorageTransformerDefinition,
     chunk_grid_lengths,
+    fields_of,
     fill_value_problems,
     resolve,
 )
-from zarr_metadata.v3._pipeline import read_pipeline
+from zarr_metadata.v3._pipeline import Stage, read_pipeline
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from zarr_metadata._typed_json import Loc
 
 # The standard top-level keys of a v3 array metadata document. Anything outside
 # this set is an extension field. Built from the TypedDict's required/optional
@@ -350,30 +358,63 @@ _EXTENSION_LISTS_V3: Final[tuple[tuple[str, type[Definition[Any]]], ...]] = (
 """Its lists of extension points, and the kind each entry is read as."""
 
 
-def validate_array_metadata_v3(
-    value: object, *, context: Context = CORE_AND_EXTENSIONS
-) -> tuple[ValidationProblem, ...]:
-    """Return every reason `value` is not a valid v3 array document.
+@dataclass(frozen=True, slots=True)
+class ZarrV3ArrayMetadataReading:
+    """A v3 array document as a scope read it: each extension point, and its codecs as a pipeline.
 
-    Its structure, and each extension point read through the definition
-    that claims its name in `context`: a gzip `level` out of range, a key a
-    codec's configuration does not declare. The fill value is judged
-    against the data type as `context` read it -- an `int8` fill value of
-    300 -- and the chunk grid against the shape: a regular grid with a
-    chunk length for each of two dimensions, over an array of three. The
-    codecs are read as a pipeline: in order, each judged against the chunk
-    it is handed -- a `transpose` whose `order` has another number of
-    axes, a shard its inner chunks do not divide -- and a shard's inner
-    and index codecs too.
-    A name nothing in `context` claims is left unjudged, with any fill
-    value of it, and a codec of that name leaves the codec after it
-    handed a chunk nothing is known of. Unknown top-level keys are
-    allowed (they map to `extra_fields`); a reader must understand each
-    one that does not say `must_understand: false`, which the model
-    reports as `must_understand_fields`.
+    A field the document does not hold is None, and a list of them it does
+    not hold as a list is empty.
+    """
+
+    data_type: Resolved[DataTypeDefinition[Any]] | None = None
+    """The data type, as the scope read it."""
+    chunk_grid: Resolved[ChunkGridDefinition[Any]] | None = None
+    """The chunk grid, as the scope read it."""
+    chunk_key_encoding: Resolved[ChunkKeyEncodingDefinition[Any]] | None = None
+    """The chunk key encoding, as the scope read it."""
+    chunk: Chunk = dataclasses.field(default_factory=Chunk)
+    """The chunks the codecs are handed: the lengths the grid's chunks take along each axis of the shape, of the data type."""
+    pipeline: tuple[Stage, ...] = ()
+    """The codecs, read as a pipeline: each as the scope read it, with the chunk it is handed."""
+    storage_transformers: tuple[Resolved[StorageTransformerDefinition[Any]], ...] = ()
+    """The storage transformers, each as the scope read it."""
+
+    def fields(self) -> Iterator[tuple[Loc, Resolved[Any]]]:
+        """Each field the document holds, as the scope read it, with where it sits in the document.
+
+        The extension points, then each codec and storage transformer at its
+        index, each followed by the fields it holds, as `fields_of` gives
+        them: a shard's codecs, a struct's field types.
+        """
+        for key, field in (
+            ("data_type", self.data_type),
+            ("chunk_grid", self.chunk_grid),
+            ("chunk_key_encoding", self.chunk_key_encoding),
+        ):
+            if field is not None:
+                yield from fields_of(field, (key,))
+        for index, stage in enumerate(self.pipeline):
+            yield from fields_of(stage.codec, ("codecs", index))
+        for index, transformer in enumerate(self.storage_transformers):
+            yield from fields_of(transformer, ("storage_transformers", index))
+
+
+def read_array_metadata_v3(
+    value: object, *, context: Context = CORE_AND_EXTENSIONS
+) -> tuple[ZarrV3ArrayMetadataReading, tuple[ValidationProblem, ...]]:
+    """`value`, a v3 array document, as `context` read it, and every reason it is not a valid one.
+
+    The problems are `validate_array_metadata_v3`'s; the reading is what
+    was read to find them, so nothing need read the document again: each
+    extension point as `context` read it -- what claims it, or that
+    nothing in scope does -- the chunks the codecs are handed, and each
+    codec with the chunk it is handed. A policy over the fields, the core
+    spec's alone, say, is a walk over its `fields()`. A value that is not
+    a mapping holds no field, and reads as nothing.
     """
     if not isinstance(value, Mapping):
-        return (ValidationProblem((), "expected an object", "invalid_type"),)
+        nothing = ZarrV3ArrayMetadataReading()
+        return nothing, (ValidationProblem((), "expected an object", "invalid_type"),)
     doc = cast("Mapping[object, object]", value)
     problems: list[ValidationProblem] = list(_missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V3, doc))
     problems.extend(_validate_other_members(doc, ARRAY_METADATA_STANDARD_KEYS_V3))
@@ -428,9 +469,11 @@ def validate_array_metadata_v3(
     # The codecs are read as a pipeline, the first handed the grid's chunks
     # of the array's data type: in order, each judged against the chunk it
     # is handed. That holds one array -> bytes codec, so it is not empty.
+    chunk = Chunk(lengths, read.get("data_type"))
+    pipeline: tuple[Stage, ...] = ()
     if "codecs" in listed:
-        chunk = Chunk(lengths, read.get("data_type"))
-        problems.extend(read_pipeline(listed["codecs"], chunk, ("codecs",))[1])
+        pipeline, found = read_pipeline(listed["codecs"], chunk, ("codecs",))
+        problems.extend(found)
     if "attributes" in doc:
         problems.extend(_validate_attributes(doc["attributes"]))
     if "dimension_names" in doc:
@@ -456,7 +499,41 @@ def validate_array_metadata_v3(
                     "invalid_value",
                 )
             )
-    return tuple(problems)
+    reading = ZarrV3ArrayMetadataReading(
+        data_type=read.get("data_type"),
+        chunk_grid=read.get("chunk_grid"),
+        chunk_key_encoding=read.get("chunk_key_encoding"),
+        chunk=chunk,
+        pipeline=pipeline,
+        storage_transformers=tuple(listed.get("storage_transformers", ())),
+    )
+    return reading, tuple(problems)
+
+
+def validate_array_metadata_v3(
+    value: object, *, context: Context = CORE_AND_EXTENSIONS
+) -> tuple[ValidationProblem, ...]:
+    """Return every reason `value` is not a valid v3 array document.
+
+    Its structure, and each extension point read through the definition
+    that claims its name in `context`: a gzip `level` out of range, a key a
+    codec's configuration does not declare. The fill value is judged
+    against the data type as `context` read it -- an `int8` fill value of
+    300 -- and the chunk grid against the shape: a regular grid with a
+    chunk length for each of two dimensions, over an array of three. The
+    codecs are read as a pipeline: in order, each judged against the chunk
+    it is handed -- a `transpose` whose `order` has another number of
+    axes, a shard its inner chunks do not divide -- and a shard's inner
+    and index codecs too.
+    A name nothing in `context` claims is left unjudged, with any fill
+    value of it, and a codec of that name leaves the codec after it
+    handed a chunk nothing is known of. Unknown top-level keys are
+    allowed (they map to `extra_fields`); a reader must understand each
+    one that does not say `must_understand: false`, which the model
+    reports as `must_understand_fields`. `read_array_metadata_v3` returns
+    what was read to find them, beside them.
+    """
+    return read_array_metadata_v3(value, context=context)[1]
 
 
 def is_array_metadata_v3(

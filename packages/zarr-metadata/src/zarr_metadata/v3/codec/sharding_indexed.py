@@ -14,6 +14,7 @@ from zarr_metadata.v3._definition import (
     Chunk,
     CodecDefinition,
     CodecField,
+    DataTypeDefinition,
     Lengths,
     Nested,
     Resolved,
@@ -125,7 +126,9 @@ def _chunk_rules(
             )
 
 
-_UINT64: Final = Resolved(UINT64_DATA_TYPE_NAME, "read", UINT64_DATA_TYPE, {})
+_UINT64: Final = Resolved(
+    UINT64_DATA_TYPE_NAME, "read", UINT64_DATA_TYPE, {}, read_as=DataTypeDefinition
+)
 """The data type of a shard index, which the spec fixes whatever the scope holds."""
 
 
