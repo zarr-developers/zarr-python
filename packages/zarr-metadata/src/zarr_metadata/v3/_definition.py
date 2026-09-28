@@ -139,7 +139,7 @@ def unknown_storage(*_: object) -> None:
 
 
 class EmptyConfiguration(TypedDict, closed=True):
-    """The configuration of a definition with nothing to configure, written as its bare name."""
+    """The configuration of a definition with nothing to configure: its field is written with its name alone."""
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -1113,10 +1113,14 @@ def canonicalize(
     `canonical` has the rest -- judged again, so a `canonical` that gives
     a configuration that does not hold is a `ValueError`, a fault in the
     definition rather than the field. The envelope takes the fewest
-    words: the bare name when nothing is configured, and no
-    `must_understand`, since `true` is what absence means. A name nothing
-    in scope claims comes back as written, since what it simplifies to is
-    its own definition's call.
+    words every reader takes: a data type with nothing to configure is its
+    bare name, as core data types have been written since Zarr v3.0; any
+    other field is an object, `{"name": ...}`, since a Zarr v3.0 reader
+    takes no short-hand name in `codecs`
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L585-L592);
+    and there is no `must_understand`, since `true` is what absence means.
+    A name nothing in scope claims comes back as written, since what it
+    simplifies to is its own definition's call.
     """
     resolved, problems = resolve(data, kind, context, loc)
     if len(problems) != 0:
@@ -1151,9 +1155,9 @@ def _canonical_field(definition: Definition[Any], resolved: Resolved[Any]) -> JS
     carrying = _carrying_name(definition, simplified)
     if carrying is not None:
         return carrying
-    if len(simplified) == 0:
-        return name
-    return {"name": name, "configuration": simplified}
+    if len(simplified) != 0:
+        return {"name": name, "configuration": simplified}
+    return name if isinstance(definition, DataTypeDefinition) else {"name": name}
 
 
 def _replaced(value: JSONValue, path: Loc, new: JSONValue) -> JSONValue:

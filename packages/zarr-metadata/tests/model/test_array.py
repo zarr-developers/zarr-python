@@ -270,9 +270,30 @@ def test_v3_to_json_emits_canonical_document() -> None:
         "fill_value": 0,
         "data_type": "int32",
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (10,)}},
-        "codecs": ("bytes",),
-        "chunk_key_encoding": "default",
+        "codecs": ({"name": "bytes"},),
+        "chunk_key_encoding": {"name": "default"},
     }
+
+
+@pytest.mark.parametrize(
+    "data_type",
+    ["int32", {"name": "int32"}, {"name": "int32", "configuration": {}}],
+    ids=["bare-name", "object", "empty-configuration"],
+)
+def test_v3_a_data_type_with_nothing_to_configure_is_written_by_its_bare_name(
+    data_type: object,
+) -> None:
+    # As core data types have been written since Zarr v3.0, which is how
+    # zarr-python reads them; every other extension point is an object.
+    document = {
+        **ZarrV3ArrayMetadata.create_default(shape=(10,)).to_json(),
+        "data_type": data_type,
+        "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
+    }
+    model = ZarrV3ArrayMetadata.from_json(document)
+    # The field alone is spelled as the document spells it, so a reader
+    # handed either takes it.
+    assert model.to_json()["data_type"] == model.data_type.to_json() == "int32"
 
 
 def test_v3_dimension_names_included_when_present() -> None:
@@ -320,7 +341,7 @@ def test_v3_single_storage_transformer_included() -> None:
     out: dict[str, object] = dict(
         ZarrV3ArrayMetadata.create_default(storage_transformers=(st,)).to_json()
     )
-    assert out["storage_transformers"] == ("some_transformer",)
+    assert out["storage_transformers"] == ({"name": "some_transformer"},)
 
 
 def test_v3_no_storage_transformers_omitted() -> None:

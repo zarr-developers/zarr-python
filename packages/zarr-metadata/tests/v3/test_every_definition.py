@@ -203,8 +203,12 @@ def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field
                 },
             },
         ),
-        # Nothing configured: the bare name, and no `must_understand: true`.
-        ({"name": "crc32c", "configuration": {}, "must_understand": True}, "crc32c"),
+        # Nothing configured: the name alone, as an object, which every reader
+        # takes, and no `must_understand: true`.
+        ({"name": "crc32c", "configuration": {}, "must_understand": True}, {"name": "crc32c"}),
+        # But a data type with nothing configured is its bare name, as core
+        # data types are written.
+        ({"name": "int8", "configuration": {}, "must_understand": True}, "int8"),
         # Nested fields each in their own simplest spelling.
         (
             {
@@ -222,10 +226,10 @@ def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field
                 "name": "sharding_indexed",
                 "configuration": {
                     "chunk_shape": (2,),
-                    "codecs": ("bytes",),
+                    "codecs": ({"name": "bytes"},),
                     "index_codecs": (
                         {"name": "bytes", "configuration": {"endian": "little"}},
-                        "crc32c",
+                        {"name": "crc32c"},
                     ),
                 },
             },
@@ -249,10 +253,18 @@ def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field
             },
         ),
     ],
-    ids=["blosc-noshuffle", "bare-name", "sharding-nested", "cast-value-target", "rectilinear-rle"],
+    ids=[
+        "blosc-noshuffle",
+        "name-alone",
+        "data-type-bare-name",
+        "sharding-nested",
+        "cast-value-target",
+        "rectilinear-rle",
+    ],
 )
 def test_the_simplest_spelling(field: dict[str, Any], simplest: object) -> None:
-    kind = ChunkGridDefinition if field["name"] == "rectilinear" else CodecDefinition
+    kinds = {"rectilinear": ChunkGridDefinition, "int8": DataTypeDefinition}
+    kind = kinds.get(field["name"], CodecDefinition)
     assert canonicalize(field, kind, CORE_AND_EXTENSIONS) == (simplest, ())
 
 

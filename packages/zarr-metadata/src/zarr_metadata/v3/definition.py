@@ -143,7 +143,7 @@ place, where the field is read in a scope; a name nothing claims is left
 unjudged, its size unknown with the rest of it. `ZarrV3MetadataFieldJSON`
 is the same JSON, but checks as JSON and nothing more, so a definition
 refuses a member typed with it. An extension with nothing to configure
-takes `EmptyConfiguration`, and is written as its bare name.
+takes `EmptyConfiguration`, and is written with its name alone.
 
 A data type also says what its fill value is: `fill_value`, the JSON
 shape of one as an annotation the checker reads -- `Int8FillValue` -- and
@@ -207,8 +207,10 @@ field without problems in its simplest equivalent spelling: each nested
 field in its own simplest spelling, then the definition's `canonical` --
 blosc drops a `typesize` that `noshuffle` ignores, a rectilinear grid
 run-length encodes its chunk shapes -- and the envelope in the fewest
-words; raw bits write their size back into the name, in decimal, so
-`r008` is `r8`. A field with any problem, an unknown key included, has
+words every reader takes: a data type with nothing to configure is its
+bare name, any other field an object, `{"name": ...}`, as a Zarr v3.0
+reader takes no short-hand name in `codecs`; raw bits write their size
+back into the name, in decimal, so `r008` is `r8`. A field with any problem, an unknown key included, has
 none: a simpler spelling of it would erase what its author wrote. What
 `canonical` gives is judged again: one that does not hold is a
 `ValueError`, a fault in the definition.

@@ -63,19 +63,20 @@ class ZarrV3NamedConfig:
     must_understand: bool = True
 
     def to_json(self) -> ZarrV3MetadataFieldJSON:
+        """The field in its shortest spelling: its bare name when it has nothing to configure and must be understood, else an object.
+
+        Which spelling a reader takes depends on the extension point the
+        field fills, which a field alone does not know: zarr-python reads a
+        core data type only by its bare name, and a Zarr v3.0 reader takes
+        no bare name in `codecs`
+        (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L585-L592).
+        `ZarrV3ArrayMetadata.to_json` knows, and writes each extension point
+        as its readers take it. The configuration is written as it was
+        read, a field it holds too.
+        """
         if not self.configuration and self.must_understand:
             return self.name
-        # `configuration` is ReadOnly, so it is set in the literal rather than
-        # assigned afterwards. to_json output shares no mutable state with the
-        # model.
-        out: ZarrV3NamedConfigJSON = (
-            {"name": self.name, "configuration": copy.deepcopy(self.configuration)}
-            if self.configuration
-            else {"name": self.name}
-        )
-        if not self.must_understand:
-            out["must_understand"] = False
-        return out
+        return _object_json(self)
 
     @classmethod
     def from_json(cls, data: object) -> ZarrV3NamedConfig:
@@ -89,6 +90,20 @@ class ZarrV3NamedConfig:
             configuration=configuration,
             must_understand=field.get("must_understand", True),
         )
+
+
+def _object_json(field: ZarrV3NamedConfig) -> ZarrV3NamedConfigJSON:
+    """A field as an object: its name, its configuration if it has one, and `must_understand` only when `false`."""
+    # `configuration` is ReadOnly, so it is set in the literal rather than
+    # assigned afterwards. The output shares no mutable state with the model.
+    out: ZarrV3NamedConfigJSON = (
+        {"name": field.name, "configuration": copy.deepcopy(field.configuration)}
+        if field.configuration
+        else {"name": field.name}
+    )
+    if not field.must_understand:
+        out["must_understand"] = False
+    return out
 
 
 ZarrV3MetadataField: TypeAlias = ZarrV3NamedConfig
@@ -164,9 +179,12 @@ class ZarrV3ArrayMetadata:
     `from_key_value` read each through the definition that claims its name
     in a scope -- `CORE_AND_EXTENSIONS` unless a `context` is passed -- and
     the model holds what they read as written; `fill_value` is held
-    verbatim in its JSON form. Equivalent extension
-    spellings normalize to shorthand strings when configuration is empty and
-    understanding is required.
+    verbatim in its JSON form. `to_json` writes each extension point as
+    its readers take it: the data type in its shortest spelling -- a core
+    data type by its bare name, as they have been written since Zarr v3.0
+    -- and every other as an object, `{"name": ...}`, since a Zarr v3.0
+    reader takes no bare name in `codecs`. A configuration is written as
+    it was read, a field it holds too.
     """
 
     zarr_format: Literal[3] = field(default=3, init=False)
@@ -269,9 +287,9 @@ class ZarrV3ArrayMetadata:
             "shape": self.shape,
             "fill_value": copy.deepcopy(self.fill_value),
             "data_type": self.data_type.to_json(),
-            "chunk_grid": self.chunk_grid.to_json(),
-            "codecs": tuple(codec.to_json() for codec in self.codecs),
-            "chunk_key_encoding": self.chunk_key_encoding.to_json(),
+            "chunk_grid": _object_json(self.chunk_grid),
+            "codecs": tuple(_object_json(codec) for codec in self.codecs),
+            "chunk_key_encoding": _object_json(self.chunk_key_encoding),
         }
         if self.dimension_names is not UNSET:
             out["dimension_names"] = self.dimension_names
@@ -279,7 +297,7 @@ class ZarrV3ArrayMetadata:
             out["attributes"] = copy.deepcopy(self.attributes)
         if len(self.storage_transformers) > 0:
             out["storage_transformers"] = tuple(
-                transformer.to_json() for transformer in self.storage_transformers
+                _object_json(transformer) for transformer in self.storage_transformers
             )
         # Extra fields are the TypedDict's `extra_items` (PEP 728). Assign them
         # by key rather than `out.update(**...)`: type checkers understand the
