@@ -4,12 +4,13 @@ Validators check a document's JSON structure -- key presence, value
 shapes, fixed literals like `zarr_format` -- and, in a v3 document, read
 each extension point through the definition that claims its name in a
 scope, so a configuration its definition refuses is refused here too. A
-name nothing in the scope claims is left unjudged. Rules that read one
-field against another -- a fill value against its data type, a codec
-against the array it is handed, a grid against the shape -- are not
-judged here. Each concept gets a `validate_*` function returning every
-problem found, an `is_*` type guard, and a `parse_*` function that
-narrows or raises `MetadataValidationError`. The guards are `TypeGuard`s,
+name nothing in the scope claims is left unjudged. A v3 fill value is
+judged against the data type it names, the chunk grid against the
+shape, and the codecs as a pipeline, each against the chunk it is
+handed. Each concept
+gets a `validate_*` function returning every problem found, an `is_*`
+type guard, and a `parse_*` function that narrows or raises
+`MetadataValidationError`. The guards are `TypeGuard`s,
 not `TypeIs`: True narrows a value to its document type, and False says
 nothing about its type, since a value can be well typed and still not a
 valid document.
@@ -38,14 +39,20 @@ from zarr_metadata._json import prefixed as _prefix
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
 from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
 from zarr_metadata.v3._definition import (
+    Chunk,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
     DataTypeDefinition,
     Definition,
+    Lengths,
+    Resolved,
     StorageTransformerDefinition,
+    chunk_grid_lengths,
+    fill_value_problems,
     resolve,
 )
+from zarr_metadata.v3._pipeline import read_pipeline
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
@@ -181,19 +188,22 @@ def _is_int_sequence(value: object) -> TypeGuard[Sequence[int]]:
     )
 
 
-def _validate_dim_sequence(doc: Mapping[object, object], key: str) -> tuple[ValidationProblem, ...]:
-    """Validate a dimension sequence (`shape` / `chunks`) if present in `doc`.
+def _dimension_lengths(
+    doc: Mapping[object, object], key: str
+) -> tuple[tuple[int, ...] | None, tuple[ValidationProblem, ...]]:
+    """The dimension lengths `doc` holds at `key` (`shape`, `chunks`), and every problem with them.
 
-    Dimension lengths are non-negative integers.
+    Dimension lengths are non-negative integers; the lengths are None when
+    `doc` holds none at `key`, or ones with a problem.
     """
     if key not in doc:
-        return ()
+        return None, ()
     value = doc[key]
     if not _is_int_sequence(value):
-        return (ValidationProblem((key,), "expected a sequence of int", "invalid_type"),)
+        return None, (ValidationProblem((key,), "expected a sequence of int", "invalid_type"),)
     if any(item < 0 for item in value):
-        return (ValidationProblem((key,), "expected non-negative integers", "invalid_value"),)
-    return ()
+        return None, (ValidationProblem((key,), "expected non-negative integers", "invalid_value"),)
+    return tuple(value), ()
 
 
 def _is_dtype_v2(value: object) -> bool:
@@ -346,11 +356,20 @@ def validate_array_metadata_v3(
 
     Its structure, and each extension point read through the definition
     that claims its name in `context`: a gzip `level` out of range, a key a
-    codec's configuration does not declare. A name nothing in `context`
-    claims is left unjudged. Unknown top-level keys are allowed (they map
-    to `extra_fields`); a reader must understand each one that does not
-    say `must_understand: false`, which the model reports as
-    `must_understand_fields`.
+    codec's configuration does not declare. The fill value is judged
+    against the data type as `context` read it -- an `int8` fill value of
+    300 -- and the chunk grid against the shape: a regular grid with a
+    chunk length for each of two dimensions, over an array of three. The
+    codecs are read as a pipeline: in order, each judged against the chunk
+    it is handed -- a `transpose` whose `order` has another number of
+    axes, a shard its inner chunks do not divide -- and a shard's inner
+    and index codecs too.
+    A name nothing in `context` claims is left unjudged, with any fill
+    value of it, and a codec of that name leaves the codec after it
+    handed a chunk nothing is known of. Unknown top-level keys are
+    allowed (they map to `extra_fields`); a reader must understand each
+    one that does not say `must_understand: false`, which the model
+    reports as `must_understand_fields`.
     """
     if not isinstance(value, Mapping):
         return (ValidationProblem((), "expected a mapping", "invalid_type"),)
@@ -359,9 +378,8 @@ def validate_array_metadata_v3(
     problems.extend(_validate_other_members(doc, ARRAY_METADATA_STANDARD_KEYS_V3))
     problems.extend(_check_literal(doc, "zarr_format", 3))
     problems.extend(_check_literal(doc, "node_type", "array"))
-    problems.extend(_validate_dim_sequence(doc, "shape"))
-    if "fill_value" in doc:
-        problems.extend(_prefix("fill_value", validate_json(doc["fill_value"])))
+    shape, shape_problems = _dimension_lengths(doc, "shape")
+    problems.extend(shape_problems)
     # Each extension point is read by `resolve`, which judges its envelope
     # -- every extension *point* must be understood, so a `must_understand`
     # of `false` is refused at each: ignoring a codec gives wrong bytes as
@@ -372,23 +390,46 @@ def validate_array_metadata_v3(
     # configuration, against the definition in `context` that claims its
     # name. `must_understand: false` keeps its meaning where it has one: an
     # unknown top-level extension *field*, which a reader really can skip.
+    read: dict[str, Resolved[Any]] = {}
     for key, kind in _EXTENSION_POINTS_V3:
         if key in doc:
-            problems.extend(resolve(doc[key], kind, context, (key,))[1])
+            read[key], found = resolve(doc[key], kind, context, (key,))
+            problems.extend(found)
+    # The fill value is JSON, and judged by the data type the scope read,
+    # when there is one: a data type nothing in scope claims leaves it
+    # unjudged.
+    if "fill_value" in doc:
+        if "data_type" in read:
+            problems.extend(
+                fill_value_problems(read["data_type"], doc["fill_value"], ("fill_value",))
+            )
+        else:
+            problems.extend(_prefix("fill_value", validate_json(doc["fill_value"])))
+    # The chunk grid is judged against the shape, once both are read, and
+    # says the lengths of the chunks the first codec is handed: an entry
+    # for each dimension of the shape, None where nothing says it.
+    lengths: Lengths | None = None if shape is None else (None,) * len(shape)
+    if "chunk_grid" in read and shape is not None:
+        lengths, found = chunk_grid_lengths(read["chunk_grid"], shape, ("chunk_grid",))
+        problems.extend(found)
+    listed: dict[str, list[Resolved[Any]]] = {}
     for key, kind in _EXTENSION_LISTS_V3:
         if key in doc:
             entries = doc[key]
             if not _is_array(entries):
                 problems.append(ValidationProblem((key,), "expected a sequence", "invalid_type"))
             else:
-                if key == "codecs" and len(entries) == 0:
-                    problems.append(
-                        ValidationProblem(
-                            ("codecs",), "expected at least one codec", "invalid_value"
-                        )
-                    )
+                listed[key] = []
                 for index, entry in enumerate(entries):
-                    problems.extend(resolve(entry, kind, context, (key, index))[1])
+                    resolved, found = resolve(entry, kind, context, (key, index))
+                    listed[key].append(resolved)
+                    problems.extend(found)
+    # The codecs are read as a pipeline, the first handed the grid's chunks
+    # of the array's data type: in order, each judged against the chunk it
+    # is handed. That holds one array -> bytes codec, so it is not empty.
+    if "codecs" in listed:
+        chunk = Chunk(lengths, read.get("data_type"))
+        problems.extend(read_pipeline(listed["codecs"], chunk, ("codecs",))[1])
     if "attributes" in doc:
         problems.extend(_validate_attributes(doc["attributes"]))
     if "dimension_names" in doc:
@@ -396,7 +437,6 @@ def validate_array_metadata_v3(
         # field-level loc, not per-bad-item locs; per-index locs are reserved for
         # the metadata-field lists (codecs, storage_transformers).
         names = doc["dimension_names"]
-        shape = doc.get("shape")
         if not _is_array(names):
             problems.append(
                 ValidationProblem(("dimension_names",), "expected a sequence", "invalid_type")
@@ -407,7 +447,7 @@ def validate_array_metadata_v3(
                     ("dimension_names",), "expected items of str or None", "invalid_type"
                 )
             )
-        elif _is_int_sequence(shape) and len(names) != len(shape):
+        elif shape is not None and len(names) != len(shape):
             problems.append(
                 ValidationProblem(
                     ("dimension_names",),
@@ -460,19 +500,11 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     problems: list[ValidationProblem] = list(_missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc))
     problems.extend(_validate_other_members(doc, ARRAY_METADATA_STANDARD_KEYS_V2))
     problems.extend(_check_literal(doc, "zarr_format", 2))
-    shape_problems = _validate_dim_sequence(doc, "shape")
-    chunks_problems = _validate_dim_sequence(doc, "chunks")
+    shape, shape_problems = _dimension_lengths(doc, "shape")
+    chunks, chunks_problems = _dimension_lengths(doc, "chunks")
     problems.extend(shape_problems)
     problems.extend(chunks_problems)
-    shape = doc.get("shape")
-    chunks = doc.get("chunks")
-    if (
-        len(shape_problems) == 0
-        and len(chunks_problems) == 0
-        and _is_int_sequence(shape)
-        and _is_int_sequence(chunks)
-        and len(shape) != len(chunks)
-    ):
+    if shape is not None and chunks is not None and len(shape) != len(chunks):
         problems.append(
             ValidationProblem(
                 ("chunks",),

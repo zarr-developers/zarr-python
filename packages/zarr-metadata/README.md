@@ -56,17 +56,20 @@ members that the strict model parser rejects.
 
 The model validators enforce the declared document structure and a small set
 of context-free consistency rules, including fixed format literals, finite
-JSON numbers, non-negative dimensions, non-empty v3 codec pipelines, and one
-`dimension_names` entry per array dimension. In a v3 document they also read
+JSON numbers, non-negative dimensions, and one `dimension_names` entry per
+array dimension. In a v3 document they also read
 each extension point -- the data type, chunk grid, chunk key encoding, each
 codec and each storage transformer -- through the definition that claims its
 name in a scope, `CORE_AND_EXTENSIONS` unless a `context` is passed: a
 configuration its definition refuses is refused, and a key it does not
 declare is reported as `unknown_key`. A name nothing in the scope claims is
-left unjudged, and whether to support it is the consumer's decision. The
-validators do not judge fields against each other: a fill value against its
-data type, a codec against the array it is handed, a chunk grid against the
-shape.
+left unjudged, and whether to support it is the consumer's decision. A v3
+fill value is judged against the data type it names, by that data type's
+definition, the chunk grid against the shape, by the grid's definition,
+and the codecs as a pipeline: in order, each judged by its definition
+against the chunk it is handed, a shard's inner and index codecs too.
+The validators do no arithmetic on values: whether a fill value survives
+a `cast_value` round trip is not judged.
 
 The Pydantic integration's generated JSON Schemas express independently
 checkable document structure and field constraints, but they are not a

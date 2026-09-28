@@ -191,19 +191,28 @@ class ZarrV3ArrayMetadata:
         analog of `list()` returning `[]`. Any field can be overridden by keyword
         (the same fields accepted by `update`). Overriding `shape` without
         `chunk_grid` derives a consistent default grid: one regular chunk
-        covering the array (`chunk_shape` equal to `shape`).
+        covering the array (`chunk_shape` equal to `shape`, with a length of
+        1 for a dimension of length 0, since a chunk length is at least 1:
+        https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L40).
 
         The derivation is deliberately one-way. A user-supplied `chunk_grid`
         is an extension point and is taken verbatim — deriving `shape` from
         it would require interpreting the grid's configuration, which this
         layer never does (and cannot do for unrecognized grid names). So
         overriding `chunk_grid` without `shape` keeps the scalar default
-        `shape=()`, and consistency between the two is the caller's
-        responsibility.
+        `shape=()`, which a grid of another rank does not fit: consistency
+        between the two is the caller's responsibility, so pass them
+        together. So is a fill value for an overridden `data_type`:
+        the default `fill_value` is `0`, which a data type whose fill value
+        is not an integer -- `bool`, `string`, a complex or struct type --
+        refuses, so pass the two together; and so are its codecs: the
+        default `bytes` codec has no `endian`, which a data type whose
+        values take several bytes needs.
         """
         if "shape" in overrides and "chunk_grid" not in overrides:
+            chunk_shape = tuple(max(length, 1) for length in overrides["shape"])
             overrides["chunk_grid"] = ZarrV3NamedConfig(
-                name="regular", configuration={"chunk_shape": tuple(overrides["shape"])}
+                name="regular", configuration={"chunk_shape": chunk_shape}
             )
         default = cls(
             shape=(),

@@ -12,7 +12,7 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import CodecDefinition
+from zarr_metadata.v3._definition import CodecDefinition, Nested
 
 ZSTD_CODEC_NAME: Final = "zstd"
 """The `name` field value of the `zstd` codec."""
@@ -58,7 +58,7 @@ ZSTD_MAX_LEVEL: Final = 22
 """The highest `level` zstd accepts: ZSTD_maxCLevel()."""
 
 
-def _rules(configuration: ZstdCodecConfiguration) -> Iterator[ValidationProblem]:
+def _rules(configuration: ZstdCodecConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
     """`level` is one zstd accepts."""
     level = configuration["level"]
     if not ZSTD_MIN_LEVEL <= level <= ZSTD_MAX_LEVEL:

@@ -75,7 +75,11 @@ what was read; the field is valid only when there is no problem at all.
 definition; then a scope that holds it. The TypedDict is a
 `typing_extensions.TypedDict`: `closed` and `extra_items` are PEP 728's,
 which `typing.TypedDict` does not take on the versions this package
-supports.
+supports. The rules are handed the configuration and the fields it holds
+as the scope read them: a field that is read keeps what it read inside it
+as `Resolved.nested`, a `Nested` mapping by where each sits, so a
+struct's rules reach its field types. `judge`, which reads in no scope,
+hands them none.
 
     from collections.abc import Iterator
 
@@ -84,6 +88,7 @@ supports.
     from zarr_metadata.v3.definition import (
         CORE_AND_EXTENSIONS,
         CodecDefinition,
+        Nested,
         ValidationProblem,
     )
 
@@ -92,7 +97,9 @@ supports.
         acceleration: int
 
 
-    def acme_lz4_rules(configuration: AcmeLz4Configuration) -> Iterator[ValidationProblem]:
+    def acme_lz4_rules(
+        configuration: AcmeLz4Configuration, nested: Nested
+    ) -> Iterator[ValidationProblem]:
         if configuration["acceleration"] < 1:
             yield ValidationProblem(("acceleration",), "expected an integer >= 1", "invalid_value")
 
@@ -110,8 +117,10 @@ A scope reads whole documents as well as fields:
 `validate_array_metadata_v3(document, context=SCOPE)`, from
 `zarr_metadata.model`, reads each extension point of a v3 array document
 through the definitions in `SCOPE`, and so do the model's `from_json` and
-`from_key_value`. A fill value is not judged against its data type there:
-no rule here reads one field against another.
+`from_key_value`: a fill value is judged against the data type it names,
+by that data type's definition, the chunk grid against the shape, by
+the grid's definition, and the codecs as a pipeline, each by its
+definition against the chunk it is handed.
 
 The TypedDict says what a key it does not declare is: with
 `closed=True`, a problem, as above; with `extra_items=`, a key holding
@@ -124,15 +133,67 @@ word, so a definition refuses it. Its members are the shapes JSON takes:
 
 A member holding another metadata field is annotated with the field alias
 of its kind -- a shard's `codecs: tuple[CodecField, ...]` -- and read in
-the scope its field is read in. A member that takes codecs of static size
-only is annotated `StaticCodecField` -- a shard's `index_codecs`, since a
-reader finds the index by a size it knows before reading it -- and a codec
-of dynamic size there is a problem at its place, where the field is read
-in a scope; a name nothing claims is left unjudged, its size unknown with
-the rest of it. `ZarrV3MetadataFieldJSON` is the same
-JSON, but checks as JSON and nothing more, so a definition refuses a
-member typed with it. An extension with nothing to configure takes
-`EmptyConfiguration`, and is written as its bare name.
+the scope its field is read in. What is wrong with the field it holds is
+that field's own, reported where it sits: the field holding it is still
+read, as a document holding it would be. A member that takes codecs of
+static size only is annotated `StaticCodecField` -- a shard's
+`index_codecs`, since a reader finds the index by a size it knows before
+reading it -- and a codec of dynamic size there is a problem at its
+place, where the field is read in a scope; a name nothing claims is left
+unjudged, its size unknown with the rest of it. `ZarrV3MetadataFieldJSON`
+is the same JSON, but checks as JSON and nothing more, so a definition
+refuses a member typed with it. An extension with nothing to configure
+takes `EmptyConfiguration`, and is written as its bare name.
+
+A data type also says what its fill value is: `fill_value`, the JSON
+shape of one as an annotation the checker reads -- `Int8FillValue` -- and
+`fill_value_rules`, a function yielding what the spec disallows in a fill
+value of that shape: an integer out of range, a hex string of another
+width. The rules are handed the configuration, the fields it holds as the
+scope read them, and the typed fill value, so a struct judges each
+field's fill value by that field's own type.
+`fill_value_problems(data_type, value)` judges a fill value against a data
+type field the scope read; one nothing in scope claims leaves it unjudged.
+A data type that says nothing of its fill value takes any JSON.
+
+A data type says how its values are stored, too: `storage`, a function
+of its configuration and the fields it holds, giving a `StorageClass` --
+in single bytes, in several bytes at a time, or each in as many as it
+needs. A struct's is its fields'. `storage_of(data_type)` asks it of a
+data type field the scope read: the `bytes` codec takes an `endian` for
+numbers of several bytes, and a struct refuses a field whose values vary
+in size. A data type that says nothing of it leaves it unknown.
+
+A chunk grid says which arrays it fits: `shape_rules`, a function
+yielding what the spec disallows in a grid of its configuration over an
+array of a given shape -- a dimension with no chunk length, chunks that
+fall short of one -- located in the configuration. A grid that says
+nothing of the shape fits every one. It also says the lengths its chunks
+take along each axis of an array it fits, `chunk_lengths`: a set per
+axis, since a rectilinear grid's chunks differ. `chunk_grid_lengths(grid,
+shape)` gives both of a chunk grid field the scope read: an entry for
+each dimension of the shape, None where nothing says the lengths.
+
+A codec is judged against what it is handed. The array hands its first
+codec a `Chunk`: the lengths of its grid's chunks along each of the
+array's dimensions, and its data type field, with None for what nothing
+says. A codec handed an array says what the spec disallows in it handed
+a chunk: `chunk_rules`, located in its configuration -- a `transpose`
+whose `order` has another number of axes. An array -> array codec says
+what it hands the next, whatever its chunk rules found: `transition` --
+`transpose` permutes the axes. `read_pipeline(codecs, chunk)` reads codec
+fields the scope read as a pipeline: their order -- array -> array
+codecs, one array -> bytes codec, bytes -> bytes codecs -- and then each
+against the chunk it is handed, giving each codec's `Stage` with that
+chunk. A codec that holds pipelines of its own says what each is
+handed: `pipelines`, by the member of its configuration that holds each
+-- a shard's inner codecs its inner chunks, its index codecs the shard
+index -- and each is read the same way, its stages kept as the codec's
+`Stage.inner`.
+Nothing is guessed: the codec after one the scope did not read, or after
+one that says nothing of what it hands on, is handed a chunk nothing is
+known of, `Chunk()`, which is refused nothing; a codec after that hands
+on only what it says of its own accord.
 
 Raw bits are the one data type whose name carries its configuration: a
 document writes `r` and the size in bits, and `r16` reads as `r*`, as the
@@ -156,9 +217,14 @@ A definition checks itself when it is built, and each of these is a
 `TypeError` saying what is wrong: a `configuration` that is not a
 TypedDict, says nothing of the keys it does not declare, or has a member
 no checker reads, named down to the TypedDict that holds it; a `name`
-that is not a string; `rules` or `canonical` that are not functions; a
-codec `kind` that is not one of the three, or a `size` that is not
-`"static"` or `"dynamic"`; a data type named as raw bits of one size are
+that is not a string; a member declared as a function -- `rules`,
+`canonical`, `fill_value_rules`, `storage`, `shape_rules`,
+`chunk_lengths`, `chunk_rules`, `transition`, `pipelines` -- that is not
+one; a data type's `fill_value` no checker reads; a codec `kind` that is
+not one of the three, or a `size` that is not `"static"` or `"dynamic"`;
+a function no codec of its kind is asked -- chunk rules or pipelines of
+a bytes -> bytes codec, which is handed bytes, or a `transition` of a
+codec that hands on bytes; a data type named as raw bits of one size are
 written. A scope refuses a definition of no kind. Nothing happens at
 class creation.
 """
@@ -168,6 +234,7 @@ from zarr_metadata._json import MetadataValidationError, ProblemKind, Validation
 from zarr_metadata._typed_json import Loc, check
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._definition import (
+    Chunk,
     ChunkGridDefinition,
     ChunkGridField,
     ChunkKeyEncodingDefinition,
@@ -180,21 +247,29 @@ from zarr_metadata.v3._definition import (
     DataTypeField,
     Definition,
     EmptyConfiguration,
+    Lengths,
+    Nested,
     Resolution,
     Resolved,
     StaticCodecField,
+    StorageClass,
     StorageTransformerDefinition,
     StorageTransformerField,
     Unread,
     canonicalize,
+    chunk_grid_lengths,
     configuration_of,
+    fill_value_problems,
     resolve,
+    storage_of,
 )
+from zarr_metadata.v3._pipeline import Stage, read_pipeline
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS, Context
 
 __all__ = [
     "CORE",
     "CORE_AND_EXTENSIONS",
+    "Chunk",
     "ChunkGridDefinition",
     "ChunkGridField",
     "ChunkKeyEncodingDefinition",
@@ -209,12 +284,16 @@ __all__ = [
     "Definition",
     "EmptyConfiguration",
     "JSONValue",
+    "Lengths",
     "Loc",
     "MetadataValidationError",
+    "Nested",
     "ProblemKind",
     "Resolution",
     "Resolved",
+    "Stage",
     "StaticCodecField",
+    "StorageClass",
     "StorageTransformerDefinition",
     "StorageTransformerField",
     "Unread",
@@ -222,6 +301,10 @@ __all__ = [
     "ZarrV3MetadataFieldJSON",
     "canonicalize",
     "check",
+    "chunk_grid_lengths",
     "configuration_of",
+    "fill_value_problems",
+    "read_pipeline",
     "resolve",
+    "storage_of",
 ]

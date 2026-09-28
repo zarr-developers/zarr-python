@@ -182,14 +182,17 @@ def test_json_value_type_accepts_json_shapes() -> None:
 
 
 def test_string_nan_fill_value_roundtrips() -> None:
-    # Non-finite floats are represented as the spec strings ("NaN", "Infinity",
-    # "-Infinity") by the caller — the metadata layer does not interpret dtypes.
+    # A float's non-finite fill values are the spec strings ("NaN",
+    # "Infinity", "-Infinity"):
     #   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L63-L79
     # The string form round-trips cleanly under default dataclass equality,
-    # unlike a raw float('nan') (which is an invalid fill_value the caller must
-    # not pass).
-    """A string 'NaN' fill_value round-trips cleanly (non-finite floats are the caller's responsibility)."""
-    m = ZarrV3ArrayMetadata.create_default(fill_value="NaN")
+    # unlike a raw float('nan'), which is not JSON.
+    """A float array's string 'NaN' fill_value round-trips cleanly."""
+    m = ZarrV3ArrayMetadata.create_default(
+        fill_value="NaN",
+        data_type=ZarrV3NamedConfig(name="float32", configuration={}),
+        codecs=(ZarrV3NamedConfig(name="bytes", configuration={"endian": "little"}),),
+    )
     assert ZarrV3ArrayMetadata.from_json(m.to_json()) == m
     assert ZarrV3ArrayMetadata.from_json(m.to_json()).fill_value == "NaN"
 
@@ -555,6 +558,7 @@ def test_v3_from_json_reconstructs_required_fields() -> None:
         shape=(7,),
         attributes={"a": 1},
         data_type=ZarrV3NamedConfig(name="int32", configuration={}),
+        codecs=(ZarrV3NamedConfig(name="bytes", configuration={"endian": "little"}),),
     ).to_json()
     model = ZarrV3ArrayMetadata.from_json(doc)
     assert model.shape == (7,)
@@ -760,6 +764,7 @@ def test_v3_parser_accepts_bare_string_data_type() -> None:
     """V3 from_json accepts a bare-string data_type and re-serializes it canonically."""
     doc = ZarrV3ArrayMetadata.create_default().to_json()
     doc["data_type"] = "int32"
+    doc["codecs"] = ({"name": "bytes", "configuration": {"endian": "little"}},)
     model = ZarrV3ArrayMetadata.from_json(doc)
     assert model.data_type == ZarrV3NamedConfig(name="int32", configuration={})
     assert model.to_json()["data_type"] == "int32"
@@ -1571,7 +1576,8 @@ def test_error_array_v2_key_that_is_not_a_string(key: object) -> None:
 
 def test_array_v3_from_json_materializes_abstract_containers() -> None:
     """A flexible input mapping becomes the canonical dict/tuple model shape."""
-    doc = UserDict(dict(ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json()))
+    # `range(2)` is the shape (0, 1), which the default grid for it fits.
+    doc = UserDict(dict(ZarrV3ArrayMetadata.create_default(shape=(0, 1)).to_json()))
     doc["shape"] = range(2)
 
     model = ZarrV3ArrayMetadata.from_json(doc)
@@ -1797,7 +1803,8 @@ def test_array_parsers_normalize_json_lists_before_narrowing() -> None:
 
 def test_array_guards_reject_noncanonical_nested_json() -> None:
     """Document guards cannot narrow values that only parsers can materialize."""
-    v3 = dict(ZarrV3ArrayMetadata.create_default().to_json())
+    # Raw bits of 16, whose fill value is two byte values.
+    v3 = dict(ZarrV3ArrayMetadata.create_default().to_json()) | {"data_type": "r16"}
     v3["fill_value"] = range(2)
     v2 = dict(ZarrV2ArrayMetadata.create_default().to_json())
     v2["fill_value"] = range(2)
@@ -1890,12 +1897,12 @@ def test_v2_create_default_explicit_chunks_respected() -> None:
 
 
 def test_v3_create_default_zero_length_dimensions() -> None:
-    """chunk_shape == shape is spec-sound even with zero-length dimensions:
-    'The chunk shape elements are non-zero when the corresponding dimensions
-    of the arrays have non-zero length' — the constraint is conditional, so a
-    zero chunk length is permitted exactly where the dimension is empty."""
+    """The derived grid gives a dimension of length 0 a chunk length of 1:
+    the regular grid asks for chunk sizes greater than zero, so the written
+    grid is one every reader takes, and it fits the shape it chunks."""
     model = ZarrV3ArrayMetadata.create_default(shape=(0, 3))
-    assert model.chunk_grid.configuration["chunk_shape"] == (0, 3)
+    assert model.chunk_grid.configuration["chunk_shape"] == (1, 3)
+    assert validate_array_metadata_v3(model.to_json()) == ()
 
 
 def test_create_default_derivation_is_one_way() -> None:

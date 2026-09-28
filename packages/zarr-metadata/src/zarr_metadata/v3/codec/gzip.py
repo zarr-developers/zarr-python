@@ -10,7 +10,7 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import CodecDefinition
+from zarr_metadata.v3._definition import CodecDefinition, Nested
 
 GZIP_CODEC_NAME: Final = "gzip"
 """The `name` field value of the `gzip` codec."""
@@ -53,7 +53,7 @@ only the object form is valid; the short-hand-name form is not permitted.
 """
 
 
-def _rules(configuration: GzipCodecConfiguration) -> Iterator[ValidationProblem]:
+def _rules(configuration: GzipCodecConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
     """`level` is an integer from 0 to 9."""
     level = configuration["level"]
     if not 0 <= level <= 9:

@@ -7,6 +7,7 @@ its configuration a TypedDict and its rules a function over it.
 from __future__ import annotations
 
 import dataclasses
+import pickle
 from typing import Any
 
 import pytest
@@ -19,11 +20,13 @@ from zarr_metadata.v3.definition import (
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
+    Context,
     DataTypeDefinition,
     Definition,
     ValidationProblem,
     canonicalize,
     configuration_of,
+    fill_value_problems,
     resolve,
 )
 
@@ -143,6 +146,16 @@ def _read(key: str, field: object) -> tuple[str, list[tuple[tuple[str | int, ...
 
 def _problems(key: str, field: object) -> list[tuple[tuple[str | int, ...], str]]:
     return _read(key, field)[1]
+
+
+def test_a_scope_s_definitions_pickle() -> None:
+    # So a scope can be sent to another process and filed again there.
+    definitions = pickle.loads(pickle.dumps(CORE_AND_EXTENSIONS.definitions()))
+    scope = Context.of(*definitions)
+    resolved, _ = resolve("complex64", DataTypeDefinition, scope)
+    assert [(p.loc, p.kind) for p in fill_value_problems(resolved, [1, "x"])] == [
+        ((1,), "invalid_value")
+    ]
 
 
 def test_every_definition_in_scope_has_an_example() -> None:
@@ -487,6 +500,48 @@ def test_error_a_codec_inside_a_shard_is_judged_where_it_sits() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "configuration",
+    [
+        {"data_type": "bool"},
+        {"data_type": "complex64"},
+        {"data_type": "string"},
+        {"data_type": "r16"},
+        # One problem: that it wraps follows from the target.
+        {"data_type": "bool", "out_of_range": "wrap"},
+    ],
+)
+def test_error_a_cast_to_a_data_type_that_models_no_real_numbers(configuration: object) -> None:
+    assert _one("codecs:cast_value", configuration) == [
+        (("configuration", "data_type"), "invalid_value")
+    ]
+
+
+def test_error_a_cast_that_wraps_to_a_data_type_that_is_not_integral() -> None:
+    assert _one("codecs:cast_value", {"data_type": "float32", "out_of_range": "wrap"}) == [
+        (("configuration", "out_of_range"), "invalid_value")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("data_type", "scalar_map", "loc"),
+    [
+        # The output of encoding and the input of decoding are values of
+        # the data type cast to.
+        ("uint8", {"encode": [[0, 300]]}, ("scalar_map", "encode", 0, 1)),
+        ("uint8", {"decode": [[-1, 0]]}, ("scalar_map", "decode", 0, 0)),
+        # A float's infinity is "Infinity", as the core encoding writes it.
+        ("float32", {"decode": [["+Infinity", 0]]}, ("scalar_map", "decode", 0, 0)),
+    ],
+)
+def test_error_a_scalar_the_cast_maps_to_that_is_not_of_its_data_type(
+    data_type: str, scalar_map: object, loc: tuple[str | int, ...]
+) -> None:
+    assert _one("codecs:cast_value", {"data_type": data_type, "scalar_map": scalar_map}) == [
+        (("configuration", *loc), "invalid_value")
+    ]
+
+
 def test_error_a_cast_target_is_judged_where_it_sits() -> None:
     target = {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 0}}
     assert _one("codecs:cast_value", {"data_type": target}) == [
@@ -526,6 +581,28 @@ def test_error_struct_field_name_is_repeated() -> None:
     fields = [{"name": "a", "data_type": "uint8"}, {"name": "a", "data_type": "int8"}]
     assert _one("data_type:struct", {"fields": fields}) == [
         (("configuration", "fields", 1, "name"), "invalid_value")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("field_type", "at"),
+    [
+        ("string", ()),
+        ("bytes", ()),
+        # A struct holding a struct that holds a string is refused where
+        # the string sits.
+        (
+            {"name": "struct", "configuration": {"fields": [{"name": "s", "data_type": "string"}]}},
+            ("configuration", "fields", 0, "data_type"),
+        ),
+    ],
+)
+def test_error_a_struct_field_whose_values_vary_in_size(
+    field_type: object, at: tuple[str | int, ...]
+) -> None:
+    fields = [{"name": "a", "data_type": "int8"}, {"name": "b", "data_type": field_type}]
+    assert _one("data_type:struct", {"fields": fields}) == [
+        (("configuration", "fields", 1, "data_type", *at), "invalid_value")
     ]
 
 

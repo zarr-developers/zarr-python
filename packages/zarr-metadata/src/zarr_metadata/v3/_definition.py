@@ -29,6 +29,7 @@ at class creation.
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import re
 from collections.abc import Callable, Iterable, Iterator, Mapping
@@ -40,9 +41,11 @@ from typing import (
     Generic,
     Literal,
     TypeAlias,
+    TypeGuard,
     cast,
     get_args,
     get_origin,
+    get_type_hints,
 )
 
 from typing_extensions import TypeAliasType, TypedDict, TypeVar, is_typeddict
@@ -53,6 +56,7 @@ from zarr_metadata._typed_json import (
     Loc,
     Parsed,
     Parser,
+    no_leaf,
     parser,
     problem,
     typeddict_keys,
@@ -80,14 +84,58 @@ D = TypeVar("D", bound="Definition[Any]")
 Problems: TypeAlias = tuple[ValidationProblem, ...]
 
 
-def no_rules(configuration: object) -> Iterator[ValidationProblem]:
-    """The rules of a definition with none: every well-typed configuration is allowed."""
+def no_rules(*_: object) -> Iterator[ValidationProblem]:
+    """The rules of a definition with none, of any kind: everything well typed is allowed."""
     yield from ()
 
 
 def unchanged(configuration: T) -> T:
     """The canonical form of a configuration with no simpler spelling: itself."""
     return configuration
+
+
+def unknown_lengths(configuration: object, nested: object, shape: tuple[int, ...]) -> Lengths:
+    """The chunk lengths of a grid that says nothing of them: unknown, along each axis of the array."""
+    return (None,) * len(shape)
+
+
+def unknown_chunk(*_: object) -> Chunk:
+    """What an array -> array codec that says nothing of it hands on: a chunk nothing is known of."""
+    return Chunk()
+
+
+def no_pipelines(*_: object) -> Mapping[str, Chunk]:
+    """The pipelines of a codec that holds none: none."""
+    return {}
+
+
+StorageClass = Literal["single_byte", "multi_byte", "variable_length"]
+"""How a data type's values are stored: in single bytes, in several bytes at a time, or each in as many as it needs.
+
+A number of several bytes is stored in a byte order, which the `bytes`
+codec's `endian` says. A value made of single bytes -- a `uint8`, or a
+struct of `int8` fields -- has no byte order, and a value whose size
+varies takes a codec of its own.
+"""
+
+
+def single_byte(*_: object) -> StorageClass:
+    """The storage of a data type made of single bytes, which no byte order applies to: `uint8`."""
+    return "single_byte"
+
+
+def multi_byte(*_: object) -> StorageClass:
+    """The storage of a data type holding numbers of several bytes, which a byte order applies to: `int16`."""
+    return "multi_byte"
+
+
+def variable_length(*_: object) -> StorageClass:
+    """The storage of a data type whose values vary in size: `string`."""
+    return "variable_length"
+
+
+def unknown_storage(*_: object) -> None:
+    """The storage of a data type that says nothing of it: unknown."""
 
 
 class EmptyConfiguration(TypedDict, closed=True):
@@ -108,8 +156,9 @@ class Definition(Generic[C]):
     type; with `closed=False`, anything. `rules` yields what the spec
     disallows in a configuration of that type, as it finds each; it is
     handed only a configuration that has passed the check, holding what
-    the TypedDict admits and nothing else -- `judge` is the two, for a
-    caller holding JSON.
+    the TypedDict admits and nothing else, and the fields it holds as the
+    scope read them -- a struct's field types -- which is nothing when no
+    scope read it. `judge` is the two, for a caller holding JSON.
 
     `canonical` is where two spellings of the configuration that mean the
     same thing are made one.
@@ -124,8 +173,8 @@ class Definition(Generic[C]):
     """The name the metadata carries, which a scope files the definition under."""
     configuration: type[C]
     """The TypedDict the configuration is."""
-    rules: Callable[[C], Iterable[ValidationProblem]] = no_rules
-    """What the spec disallows in a well-typed configuration, located in it."""
+    rules: Callable[[C, Nested], Iterable[ValidationProblem]] = no_rules
+    """What the spec disallows in a well-typed configuration and the fields it holds, located in it."""
     canonical: Callable[[C], C] = unchanged
     """A well-typed, allowed configuration in its simplest equivalent spelling.
 
@@ -167,12 +216,15 @@ class Definition(Generic[C]):
         whose nested fields are well formed, holding what its TypedDict
         admits and nothing else, so a caller holding JSON never reaches a
         rule with a member of the wrong type, or one the type says cannot
-        be there.
+        be there. No scope reads the fields it holds, so the rules see
+        none of them read, and a rule about one -- a struct's field of a
+        type whose values vary in size -- finds nothing to judge: `resolve`
+        reads the field in a scope, and asks every rule.
         """
         configuration, problems = self.check(value, loc)
         if configuration is None:
             return None, problems
-        refused = _ruled(self, lambda: self.rules(configuration), loc)
+        refused = ruled(self, lambda: self.rules(configuration, _nothing_nested()), loc)
         return (configuration if len(refused) == 0 else None), (*problems, *refused)
 
 
@@ -181,14 +233,20 @@ def _malformed(definition: Definition[Any]) -> str | None:
     name = cast("object", definition.name)
     if not isinstance(name, str):
         return f"a definition's name is a string, got {name!r}"
-    functions: dict[str, object] = {"rules": definition.rules, "canonical": definition.canonical}
-    return next(
-        (
-            f"{name!r}: {member} is a function, got {value!r}"
-            for member, value in functions.items()
-            if not callable(value)
-        ),
-        None,
+    for member in _function_members(type(definition)):
+        value = getattr(definition, member)
+        if not callable(value):
+            return f"{name!r}: {member} is a function, got {value!r}"
+    return None
+
+
+@functools.cache
+def _function_members(kind: type[Definition[Any]]) -> tuple[str, ...]:
+    """The members `kind` declares as functions: each one its annotation says is a `Callable`."""
+    return tuple(
+        member
+        for member, annotation in get_type_hints(kind).items()
+        if get_origin(annotation) is Callable
     )
 
 
@@ -243,25 +301,77 @@ def _carrying_name(
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class DataTypeDefinition(Definition[C]):
-    """A data type.
+    """A data type, and the fill value an array of it takes.
+
+    `fill_value` is the JSON shape of a fill value -- `Int8FillValue`, an
+    annotation the checker reads as it reads a configuration's members --
+    and `fill_value_rules` is what the spec disallows in a fill value of
+    that shape: an integer out of range, a hex string of another width.
+    The rules are handed the configuration, the fields it holds as the
+    scope read them (a struct's field types), and the typed fill value. A
+    data type that says nothing of its fill value takes any JSON.
+
+    `storage` says how its values are stored -- in single bytes, in
+    several bytes at a time, or each in as many as it needs -- which is
+    what the `bytes` codec asks of the data type it is handed: an
+    `endian`, for numbers of several bytes. A struct's is its fields', so
+    it is handed the fields the configuration holds as the scope read
+    them. A data type that says nothing of it leaves it unknown.
 
     One named as a document writes raw bits of one size -- `r16` -- is
     refused: that name reads as `r*`, so nothing would ever read it with
     this definition.
     """
 
+    fill_value: object = JSONValue
+    """The JSON shape of a fill value, as an annotation: `Int8FillValue`."""
+    fill_value_rules: Callable[[C, Nested, Any], Iterable[ValidationProblem]] = no_rules
+    """What the spec disallows in a fill value of that shape, located in it."""
+    storage: Callable[[C, Nested], StorageClass | None] = unknown_storage
+    """How its values are stored, given the configuration and the fields it holds; None when unknown."""
+
     def _refusal(self) -> str | None:
-        if RAW_BYTES_NAME_PATTERN.fullmatch(self.name) is None:
-            return None
-        return (
-            f"{self.name!r} is how a document writes raw bits of one size, which read as "
-            f"{RAW_BYTES_NAME!r}; to read raw bits your own way, define {RAW_BYTES_NAME!r}"
-        )
+        if RAW_BYTES_NAME_PATTERN.fullmatch(self.name) is not None:
+            return (
+                f"{self.name!r} is how a document writes raw bits of one size, which read as "
+                f"{RAW_BYTES_NAME!r}; to read raw bits your own way, define {RAW_BYTES_NAME!r}"
+            )
+        try:
+            _fill_value_parser(self.fill_value)
+        except TypeError as error:
+            return f"{self.name!r}: fill_value: {error}"
+        return None
+
+
+@functools.cache
+def _fill_value_parser(annotation: object) -> Parser:
+    """The checker for a fill value's JSON shape, compiled once; `TypeError` naming what no checker reads."""
+    return parser(annotation, no_leaf)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class ChunkGridDefinition(Definition[C]):
-    """A chunk grid."""
+    """A chunk grid, and the arrays it fits.
+
+    `shape_rules` is what the spec disallows in a grid of this
+    configuration over an array of a given shape: a dimension with no
+    chunk length, chunks that fall short of one. It is handed the
+    configuration, the fields it holds as the scope read them, and the
+    shape, and locates its problems in the configuration. A grid that
+    says nothing of the shape fits every one.
+
+    `chunk_lengths` is what the first codec of the array's pipeline is
+    handed: the lengths the grid's chunks take along each axis of an
+    array of a shape it fits -- one for each axis of a regular grid, every
+    length a rectilinear grid lists. It is asked only of a grid its shape
+    rules accept. A grid that says nothing of it leaves the lengths along
+    every axis unknown.
+    """
+
+    shape_rules: Callable[[C, Nested, tuple[int, ...]], Iterable[ValidationProblem]] = no_rules
+    """What the spec disallows in this grid over an array of a shape, located in the configuration."""
+    chunk_lengths: Callable[[C, Nested, tuple[int, ...]], Lengths] = unknown_lengths
+    """The lengths its chunks take along each axis of an array of a shape it fits, None where unknown."""
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -279,13 +389,54 @@ CodecSize = Literal["static", "dynamic"]
 four bytes. `dynamic`: it depends on the values -- every compressor.
 """
 
+_UNASKED: Final[Mapping[CodecKind, tuple[str, ...]]] = {
+    "array_array": (),
+    "array_bytes": ("transition",),
+    "bytes_bytes": ("chunk_rules", "transition", "pipelines"),
+}
+"""The functions no codec of a kind is asked: a bytes -> bytes codec is handed bytes, and only an array -> array codec hands on a chunk."""
+
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class CodecDefinition(Definition[C]):
-    """A codec: what it does to what it is handed, and whether the size of what it gives out is static."""
+    """A codec: what it does to what it is handed, and whether the size of what it gives out is static.
+
+    A codec handed an array -- array -> array, array -> bytes -- says what
+    the spec disallows in it handed a `Chunk`: `chunk_rules`, handed the
+    configuration, the fields it holds as the scope read them, and the
+    chunk, and locating its problems in the configuration -- a `bytes`
+    codec without `endian`, handed a multi-byte data type. An array ->
+    array codec also says what it hands on: `transition`, the chunk the
+    next codec is handed, given the one it is handed -- `transpose`
+    permutes the axes, `cast_value` changes the data type. The two are the
+    spec's pair: a codec computes what it gives from the shape and data
+    type it is handed, and "If the decoded_representation_type is not
+    supported, this algorithm must fail with an error"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L987-L994).
+    The transition is asked of every chunk the codec is handed, whatever
+    its chunk rules found, so it gives only what holds either way: a
+    `transpose` whose `order` has another number of axes hands on lengths
+    nothing is known of. A codec that says nothing of what it hands on
+    hands the next a chunk nothing is known of.
+
+    A codec that holds pipelines of its own says what each is handed:
+    `pipelines`, by the member of its configuration that holds each, the
+    chunk its first codec is handed, given the chunk the codec is handed
+    -- a shard's inner codecs are handed its inner chunks, and its index
+    codecs the shard index. Like the transition, it is asked whatever the
+    chunk rules found, and gives only what holds either way. A function
+    no codec of its kind is asked -- the chunk rules of a bytes -> bytes
+    codec, which is handed bytes -- is refused.
+    """
 
     kind: CodecKind
     size: CodecSize
+    chunk_rules: Callable[[C, Nested, Chunk], Iterable[ValidationProblem]] = no_rules
+    """What the spec disallows in this codec handed a chunk, located in the configuration."""
+    transition: Callable[[C, Nested, Chunk], Chunk] = unknown_chunk
+    """The chunk the next codec is handed, given the one this array -> array codec is handed."""
+    pipelines: Callable[[C, Nested, Chunk], Mapping[str, Chunk]] = no_pipelines
+    """The pipelines it holds, by the member of its configuration that holds each, and the chunk each is handed."""
 
     def _refusal(self) -> str | None:
         kind: object = self.kind
@@ -294,6 +445,10 @@ class CodecDefinition(Definition[C]):
         size: object = self.size
         if size not in get_args(CodecSize):
             return f"{self.name!r}: size is one of {get_args(CodecSize)!r}, got {size!r}"
+        defaults = {member.name: member.default for member in dataclasses.fields(CodecDefinition)}
+        for member in _UNASKED[self.kind]:
+            if getattr(self, member) is not defaults[member]:
+                return f"{self.name!r}: {member}, which no codec of kind {kind!r} is asked"
         return None
 
 
@@ -501,7 +656,22 @@ def _usable(problems: Sequence[ValidationProblem]) -> bool:
     return all(found.kind == "unknown_key" for found in problems)
 
 
-def _ruled(
+def asked(definition: Definition[Any], what: str, ask: Callable[[], T], at: Loc | None = None) -> T:
+    """What `ask`, a call of `definition`'s `what`, gives.
+
+    A definition's functions are the extension author's code: an error one
+    raises says which definition's function raised it, and where it was
+    reading, when that is known.
+    """
+    try:
+        return ask()
+    except Exception as error:
+        where = "" if at is None else f", reading {at!r}"
+        error.add_note(f"raised by the {what} of {definition.name!r}{where}")
+        raise
+
+
+def ruled(
     definition: Definition[Any], ask: Callable[[], Iterable[ValidationProblem]], at: Loc
 ) -> Problems:
     """What `ask`, a call of `definition`'s rules, finds, located under `at`.
@@ -510,11 +680,7 @@ def _ruled(
     what they declare, and an error one raises says which definition's rules
     raised it, and where they were reading.
     """
-    try:
-        found = tuple(cast("Iterable[object]", ask()))
-    except Exception as error:
-        error.add_note(f"raised by the rules of {definition.name!r}, reading {at!r}")
-        raise
+    found = asked(definition, "rules", lambda: tuple(cast("Iterable[object]", ask())), at)
     for item in found:
         if not isinstance(item, ValidationProblem):
             msg = f"{definition.name!r}: its rules yield ValidationProblem values, got {item!r}"
@@ -585,6 +751,11 @@ Resolution = Literal["read"] | Unread
 """What a scope made of a field: read by the definition that claims it, or unread, and why."""
 
 
+def _nothing_nested() -> Nested:
+    """What a field that holds no field, or was not read, holds inside: nothing."""
+    return {}
+
+
 @dataclass(frozen=True, slots=True)
 class Resolved(Generic[D]):
     """One metadata field, as read in a scope: its JSON, and what the scope made of it.
@@ -593,7 +764,8 @@ class Resolved(Generic[D]):
     definition that claims the name, claimed by nothing, or not readable.
     A problem with the envelope around it -- a stray member, a
     `must_understand` of `false` -- is reported with the field, and leaves
-    the resolution as it is.
+    the resolution as it is; so is a problem of a field the configuration
+    holds, which is that field's own, with its own resolution in `nested`.
     """
 
     json: JSONValue
@@ -603,6 +775,77 @@ class Resolved(Generic[D]):
     """The definition that claims the field's name; None when nothing in scope does, or it names none."""
     configuration: Mapping[str, JSONValue] | None
     """The configuration, type-checked and allowed by the rules, when the field was read; None otherwise."""
+    nested: Nested = dataclasses.field(default_factory=_nothing_nested)
+    """The fields the configuration holds, each as the scope read it, by where it sits in the configuration.
+
+    A struct's field types at `("fields", 0, "data_type")`, a shard's
+    codecs at `("codecs", 0)`: what a definition's functions consult about
+    the fields inside its own. Empty unless the field was read.
+    """
+
+
+Nested: TypeAlias = Mapping[Loc, Resolved[Any]]
+"""The fields a configuration holds, each as the scope read it, by where it sits in the configuration."""
+
+
+Lengths: TypeAlias = tuple[frozenset[int] | None, ...]
+"""Per axis, every length chunks take along it -- a set, since a rectilinear grid's differ -- or None where unknown."""
+
+
+@dataclass(frozen=True, slots=True)
+class Chunk:
+    """What a codec is handed: chunks of some lengths along each axis, of a data type.
+
+    What nothing says is None: the lengths along an axis the grid does not
+    say, and every part of the chunk handed on by a codec that says nothing
+    of what it hands on. A data type field the scope did not read is held
+    as written, and says nothing of the values either. A codec's chunk
+    rules judge what is known and leave the rest, so a chunk nothing is
+    known of, `Chunk()`, is refused nothing.
+    """
+
+    lengths: Lengths | None = None
+    """Per axis, the lengths the chunks take along it; None when not even the number of axes is known."""
+    data_type: Resolved[DataTypeDefinition[Any]] | None = None
+    """The data type field of the values, as a scope read it; None when no field says what they are."""
+
+    def __post_init__(self) -> None:
+        lengths = cast("object", self.lengths)
+        if lengths is not None and not _is_lengths(lengths):
+            msg = f"a chunk's lengths are a frozenset of integers or None per axis, got {lengths!r}"
+            raise TypeError(msg)
+        data_type = cast("object", self.data_type)
+        if data_type is not None and not _is_data_type_field(data_type):
+            msg = f"a chunk's data type is a data type field a scope read, got {data_type!r}"
+            raise TypeError(msg)
+
+    @property
+    def rank(self) -> int | None:
+        """The number of axes; None when unknown."""
+        return None if self.lengths is None else len(self.lengths)
+
+
+def _is_data_type_field(value: object) -> bool:
+    """Whether `value` is a data type field a scope read: one read as a data type, or by nothing."""
+    if not isinstance(value, Resolved):
+        return False
+    definition = cast("Resolved[Any]", value).definition
+    return definition is None or isinstance(definition, DataTypeDefinition)
+
+
+def _is_lengths(value: object) -> TypeGuard[Lengths]:
+    """Whether `value` is chunk lengths: per axis, a frozenset of integers, or None."""
+    if not isinstance(value, tuple):
+        return False
+    for axis in cast("tuple[object, ...]", value):
+        if axis is None:
+            continue
+        if not isinstance(axis, frozenset) or not all(
+            isinstance(length, int) and not isinstance(length, bool)
+            for length in cast("frozenset[object]", axis)
+        ):
+            return False
+    return True
 
 
 def configuration_of(resolved: Resolved[Any], definition: Definition[C]) -> C | None:
@@ -617,6 +860,113 @@ def configuration_of(resolved: Resolved[Any], definition: Definition[C]) -> C | 
     return cast("C", resolved.configuration)
 
 
+def fill_value_problems(
+    data_type: Resolved[DataTypeDefinition[Any]], value: object, loc: Loc = ()
+) -> Problems:
+    """What is wrong with `value` as a fill value of `data_type`, a data type field a scope read.
+
+    `value` is refined to JSON first: not JSON is the first verdict,
+    whatever the data type. It is then checked against the JSON shape the
+    data type's definition declares, and judged by its fill value rules, as
+    `judge` judges a configuration: a key the shape does not declare is
+    reported and left out, and the rules still judge the rest. The rules
+    see the fields the configuration holds as the scope read them: a
+    struct judges each field's fill value by that field's own type. A data
+    type the scope did not read, out of scope or invalid, leaves a JSON fill
+    value unjudged. `loc` prefixes every problem.
+    """
+    refined, problems = refine_json(value, loc)
+    definition = data_type.definition
+    configuration = data_type.configuration
+    if len(problems) != 0 or definition is None or configuration is None:
+        return problems
+    typed, problems = _fill_value_parser(definition.fill_value)(refined, loc)
+    if not _usable(problems):
+        return problems
+    refused = ruled(
+        definition,
+        lambda: definition.fill_value_rules(configuration, data_type.nested, typed),
+        loc,
+    )
+    return (*problems, *refused)
+
+
+def storage_of(data_type: Resolved[DataTypeDefinition[Any]]) -> StorageClass | None:
+    """How the values of `data_type`, a data type field a scope read, are stored; None when unknown.
+
+    Unknown when the scope did not read it, or its definition does not
+    say. Its `storage` is the extension author's code: what it gives is
+    checked to be a storage class, and an error it raises says which data
+    type's storage raised it.
+    """
+    definition = data_type.definition
+    configuration = data_type.configuration
+    if definition is None or configuration is None:
+        return None
+    found = asked(
+        definition,
+        "storage",
+        lambda: cast("object", definition.storage(configuration, data_type.nested)),
+    )
+    if found is not None and found not in get_args(StorageClass):
+        msg = (
+            f"{definition.name!r}: its storage gives one of {get_args(StorageClass)!r} or None, "
+            f"got {found!r}"
+        )
+        raise TypeError(msg)
+    return cast("StorageClass | None", found)
+
+
+def chunk_grid_lengths(
+    chunk_grid: Resolved[ChunkGridDefinition[Any]], shape: tuple[int, ...], loc: Loc = ()
+) -> tuple[Lengths, Problems]:
+    """The lengths the chunks of `chunk_grid`, a chunk grid field a scope read, take along each axis of an array of `shape`, and what is wrong with the grid over it.
+
+    A chunk has an extent "for each dimension of the array"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L277-L281),
+    so the lengths have an entry for each dimension of `shape`, None where
+    nothing says them. The grid's shape rules judge it first, and locate
+    their problems in the configuration, under `loc`, where the field
+    sits: a regular grid with a chunk length for each of two dimensions,
+    over an array of three. Only a grid that fits the shape says its
+    lengths; a grid the scope did not read, out of scope or invalid, is
+    left unjudged and says none. What a grid's `chunk_lengths` gives is
+    checked: lengths of another type are a `TypeError`, and of another
+    number of axes than `shape` has a `ValueError`, each a fault in the
+    definition, not the field.
+    """
+    unknown: Lengths = (None,) * len(shape)
+    definition = chunk_grid.definition
+    configuration = chunk_grid.configuration
+    if definition is None or configuration is None:
+        return unknown, ()
+    at = (*loc, "configuration")
+    problems = ruled(
+        definition, lambda: definition.shape_rules(configuration, chunk_grid.nested, shape), at
+    )
+    if len(problems) != 0:
+        return unknown, problems
+    lengths = asked(
+        definition,
+        "chunk lengths",
+        lambda: cast("object", definition.chunk_lengths(configuration, chunk_grid.nested, shape)),
+        at,
+    )
+    if not _is_lengths(lengths):
+        msg = (
+            f"{definition.name!r}: its chunk_lengths give a frozenset of integers or None "
+            f"per axis, got {lengths!r}"
+        )
+        raise TypeError(msg)
+    if len(lengths) != len(shape):
+        msg = (
+            f"{definition.name!r}: its chunk_lengths gave {len(lengths)} axes, "
+            f"for a shape of {len(shape)}"
+        )
+        raise ValueError(msg)
+    return lengths, ()
+
+
 def resolve(
     data: object, kind: type[D], context: Context, loc: Loc = ()
 ) -> tuple[Resolved[D], Problems]:
@@ -628,7 +978,9 @@ def resolve(
     a problem. The name is related to a definition in `context`; the
     configuration is checked against its TypedDict and judged by its
     rules; each nested field the check met is read the same way, in the
-    same scope. A name nothing claims is `out_of_scope`: an unmodelled
+    same scope, and what is wrong with one is its own, reported where it
+    sits, as with a document's fields. A name nothing claims is
+    `out_of_scope`: an unmodelled
     extension, left unjudged, which is what keeps the format open. `loc`
     prefixes every problem. `kind` is one of `KINDS`, with or without
     type arguments; anything else is a `TypeError`.
@@ -659,9 +1011,13 @@ def _read(
     data: JSONValue, kind: type[Definition[Any]], context: Context, loc: Loc
 ) -> tuple[Resolved[Definition[Any]], Problems]:
     name, given, malformed = named_configuration(data)
-    if name is None or len(malformed) != 0:
+    if name is None:
         return Resolved(data, "invalid", None, None), ()
     definition = context.claimant(kind, name)
+    if len(malformed) != 0:
+        # A configuration that is not an object, which the envelope's
+        # problems say; the name still says what claims the field.
+        return Resolved(data, "invalid", definition, None), ()
     if definition is None:
         return Resolved(data, "out_of_scope", None, None), ()
     _, carried = spelled(kind, name)
@@ -672,20 +1028,33 @@ def _read(
         missing = problem(at, f"{name!r} requires a configuration", "missing_key")
         return Resolved(data, "invalid", definition, None), missing
     typed, found, nested = _checked(definition.configuration, {} if given is None else given, at)
-    problems = list(found)
-    envelopes = [_envelope(field) for field in nested]
-    sound = _usable(found) and all(_usable(envelope) for envelope in envelopes)
+    # The rules may read a field the configuration holds by its name, so
+    # they are asked only when each one is named; any other problem with
+    # one is its own, reported where it sits, as a document's fields are.
+    sound = _usable(found) and all(_named(field) for field in nested)
     configuration = cast("Mapping[str, JSONValue]", typed) if sound else None
+    # The fields it holds are read first, so the rules see them as the
+    # scope read them; their problems are reported after the rules'.
+    within: dict[Loc, Resolved[Any]] = {}
+    inside: list[ValidationProblem] = []
+    for field in nested:
+        inside.extend(_envelope(field))
+        inner, found_inside = _read(field.json, field.kind, context, field.loc)
+        within[field.loc[len(at) :]] = inner
+        inside.extend(found_inside)
+        inside.extend(_sized(field, inner.definition))
+    own = list(found)
     if configuration is not None:
-        problems.extend(_ruled(definition, lambda: definition.rules(configuration), at))
-    for field, envelope in zip(nested, envelopes, strict=True):
-        problems.extend(envelope)
-        inner, found = _read(field.json, field.kind, context, field.loc)
-        problems.extend(found)
-        problems.extend(_sized(field, inner.definition))
-    if not _usable(problems):
-        return Resolved(data, "invalid", definition, None), tuple(problems)
-    return Resolved(data, "read", definition, configuration), tuple(problems)
+        own.extend(ruled(definition, lambda: definition.rules(configuration, within), at))
+    if configuration is None or not _usable(own):
+        return Resolved(data, "invalid", definition, None), (*own, *inside)
+    return Resolved(data, "read", definition, configuration, within), (*own, *inside)
+
+
+def _named(field: _NestedField) -> bool:
+    """Whether a field a configuration holds is named, with an object for its configuration if it has one."""
+    name, _, malformed = named_configuration(field.json)
+    return name is not None and len(malformed) == 0
 
 
 def _read_carried(
@@ -754,21 +1123,23 @@ def canonicalize(
         return None, problems
     if resolved.definition is None:
         return resolved.json, ()
-    return _canonical_field(resolved.definition, resolved, context), ()
+    return _canonical_field(resolved.definition, resolved), ()
 
 
-def _canonical_field(
-    definition: Definition[Any], resolved: Resolved[Any], context: Context
-) -> JSONValue:
-    """A field that read, in its simplest equivalent spelling: nested fields first, then its own members."""
+def _canonical_field(definition: Definition[Any], resolved: Resolved[Any]) -> JSONValue:
+    """A field that read, in its simplest equivalent spelling: the fields it holds first, then its own members.
+
+    Each field it holds is spelled from what `resolve` read of it, kept in
+    `nested`; one nothing in scope claims keeps the spelling it was written
+    in.
+    """
     name, _, _ = named_configuration(resolved.json)
     configuration: JSONValue = dict(resolved.configuration or {})
-    _, _, nested = _checked(definition.configuration, configuration, ())
-    for field in nested:
-        simplest, _ = canonicalize(field.json, field.kind, context)
-        configuration = _replaced(
-            configuration, field.loc, field.json if simplest is None else simplest
+    for loc, inner in resolved.nested.items():
+        simplest = (
+            inner.json if inner.definition is None else _canonical_field(inner.definition, inner)
         )
+        configuration = _replaced(configuration, loc, simplest)
     simplified = cast("Mapping[str, JSONValue]", definition.canonical(configuration))
     _, refused = definition.judge(simplified)
     if len(refused) != 0:
@@ -801,6 +1172,7 @@ __all__ = [
     "KINDS",
     "RAW_BYTES_NAME",
     "RAW_BYTES_NAME_PATTERN",
+    "Chunk",
     "ChunkGridDefinition",
     "ChunkGridField",
     "ChunkKeyEncodingDefinition",
@@ -813,19 +1185,34 @@ __all__ = [
     "DataTypeField",
     "Definition",
     "EmptyConfiguration",
+    "Lengths",
+    "Nested",
     "Resolution",
     "Resolved",
     "StaticCodecField",
+    "StorageClass",
     "StorageTransformerDefinition",
     "StorageTransformerField",
     "Unread",
     "as_kind",
+    "asked",
     "canonicalize",
+    "chunk_grid_lengths",
     "configuration_of",
+    "fill_value_problems",
     "kind_of",
+    "multi_byte",
     "named_configuration",
+    "no_pipelines",
     "no_rules",
     "resolve",
+    "ruled",
+    "single_byte",
     "spelled",
+    "storage_of",
     "unchanged",
+    "unknown_chunk",
+    "unknown_lengths",
+    "unknown_storage",
+    "variable_length",
 ]
