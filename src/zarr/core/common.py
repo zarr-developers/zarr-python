@@ -92,9 +92,15 @@ def product(tup: tuple[int, ...]) -> int:
 
 
 def ceildiv(a: float, b: float) -> int:
+    """Ceiling of ``a / b`` using floating-point division; zero when ``a`` is zero."""
     if a == 0:
         return 0
     return math.ceil(a / b)
+
+
+def ceildiv_int(a: int, b: int) -> int:
+    """Ceiling of integer division using exact Python integer arithmetic."""
+    return -(-int(a) // int(b))
 
 
 def concurrent_iter[T: tuple[Any, ...], V](
