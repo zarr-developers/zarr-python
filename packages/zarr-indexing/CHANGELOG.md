@@ -2,6 +2,85 @@
 
 <!-- towncrier release notes start -->
 
+## 0.3.0 (2026-09-28)
+
+### Features
+
+- Chunk plans now have a factored, columnar form. `ChunkPlan.partition()`
+  returns a `GridPartition`: one `StridedSet` or `IndexedSet` table per output
+  dimension the transform reads independently, plus `joint_sets`, one `JointSet`
+  per connected component of index arrays. Arrays that share request axes are
+  sorted into chunks together; independent ones stay in separate tables, so
+  `(u, v) -> (a[u], b[u], c[v])` stores 3,000 index values rather than
+  3,000,000. A `ChunkProjection` is one row of each table and is derived on
+  demand, so planning costs the sum of the touched chunks per axis rather than
+  their product, and a vectorized consumer can read the tables (`chunk_coords()`,
+  the CSR columns, the memoized read-only `local` coordinates) without
+  materializing a projection per chunk.
+
+  The projections a plan yields map the same cells to the same storage as
+  before. Correlated projections now keep residual slices symbolic and index
+  arrays compact along axes they do not vary over, and `vindex` compilation
+  preserves singleton axes for the same reason.
+
+  A hand-built transform in which two output maps read one input axis (a
+  diagonal, which no selection produces) is rejected with `ValueError`; the
+  whole-transform walk that previously served it produced wrong projections. ([#4310](https://github.com/zarr-developers/zarr-python/pull/4310))
+- Make every `LazyArray` read supply a chunk projection, including unpartitioned reads and independently executed partition views. Partition views retain the source grid and full source base shape, so indexing and repartitioning use the same coordinate frame as other views. ([#4349](https://github.com/zarr-developers/zarr-python/pull/4349))
+- Make `LazyArray` indexing lazy by default: use `view[...]`, `view.oindex[...]`,
+  and `view.vindex[...]` directly, without a `.lazy` accessor. Iteration yields
+  lazy views, so arithmetic over iterated elements no longer works on values;
+  `result()` and NumPy conversion materialize. Add synchronous `write(values)`
+  and assignment through composed views, and an explicit `EagerArrayAdapter` for
+  consumers such as Dask that require eager indexing.
+
+  Writes are planned against the source's write grid, discovered from
+  `write_chunk_sizes` or `chunks`: an affine selection is one basic assignment,
+  and any other selection reads, updates, and rewrites each touched cell once,
+  so storage round trips scale with touched chunks rather than selected
+  elements. A source with no advertised grid is written one element at a time.
+  Writes bypass the reader, so a caching reader is not invalidated.
+
+  Views keep their literal domain instead of re-zeroing after every selection:
+  `a[10:20]` has domain `[10, 20)` and `a[10:20][2:5]` has domain `[12, 15)`,
+  as in TensorStore, while NumPy keys stay positional. An `IndexDomain` key
+  restricts a view to literal coordinates and an `IndexTransform` key composes
+  onto it. Box partitions keep the request's coordinates, so a part view's
+  domain is a sub-domain of its parent's. ([#4350](https://github.com/zarr-developers/zarr-python/pull/4350))
+
+### Bugfixes
+
+- Direct `IndexTransform.oindex` and `IndexTransform.vindex` selections now reject
+  integer array coordinates outside the `np.intp` range before conversion.
+  Previously, oversized `uint64` values could wrap to negative coordinates and
+  silently select a different location in a domain containing negative coordinates. ([#4333](https://github.com/zarr-developers/zarr-python/pull/4333))
+- Reject invalid wire index-array values and unrepresentable normalized bounds/ranks, and raise an explicit error for unsupported intersections sharing an affine and lookup input axis instead of returning incorrect coordinates. Group negative chunk-coordinate tuples without merging distinct chunks. ([#4345](https://github.com/zarr-developers/zarr-python/pull/4345))
+- Validate inclusive `index_array_bounds` against all raw index values when loading transforms and output maps from JSON. Accept valid finite and one-sided constraints, and reject out-of-bounds values eagerly before offset, stride, or map simplification. Validated immutable maps need not retain the constraints; message normalization preserves the original bounds. ([#4347](https://github.com/zarr-developers/zarr-python/pull/4347))
+- Delegate LazyArray source tokenization to Dask, honoring its registered normalizers, source hooks, and deterministic-token requirements. Remove local content-hashing and UUID fallbacks. Dask remains optional for indexing and reading. ([#4348](https://github.com/zarr-developers/zarr-python/pull/4348))
+
+### Improved Documentation
+
+- Rewrote the guide's prev/next navigation links as markdown so mkdocs
+  validates them at build time; the rendered pages are unchanged. ([#4291](https://github.com/zarr-developers/zarr-python/pull/4291))
+- The docs now render the release notes as a page instead of linking to
+  `CHANGELOG.md` on GitHub, so each docs version shows its own changelog. ([#4311](https://github.com/zarr-developers/zarr-python/pull/4311))
+- Correct indexing, reader, serialization, cache, and integration descriptions to match supported behavior; qualify NumPy/TensorStore compatibility and performance claims.
+
+  Describe current contracts in source and test docstrings instead of narrating prior implementations. Clarify that immutable index coordinates do not snapshot source values. ([#4345](https://github.com/zarr-developers/zarr-python/pull/4345))
+
+### Misc
+
+- Expand planner property tests across signed origins and chunk IDs, custom grids, mixed affine and lookup dependencies, duplicate coordinates, and empty domains. Verify exact request coverage and storage mapping with an independent pointwise oracle. ([#4346](https://github.com/zarr-developers/zarr-python/pull/4346))
+- Removed every `assert` statement from the package's runtime code and dropped
+  the `zarr-indexing` exemption from the repo-wide ruff `S101` rule, so none can
+  return. Asserts are stripped under `python -O`; the ones here narrowed types
+  or guarded internal invariants rather than validating input, so most were
+  restructured away (branching on the map type, carrying the narrowed value in a
+  local) and the remainder became explicit `RuntimeError`s for states the
+  public API cannot reach. No user-visible behavior changes. ([#4364](https://github.com/zarr-developers/zarr-python/pull/4364))
+- The test suite now runs in the package's own environment instead of the zarr-python root environment, so `just test` works from an unpacked sdist, where the suites that need `zarr` skip. Inside the repository, the justfile recipes add the in-repo `zarr`. ([#4406](https://github.com/zarr-developers/zarr-python/pull/4406))
+
+
 ## 0.2.1 (2026-08-12)
 
 ### Improved Documentation
