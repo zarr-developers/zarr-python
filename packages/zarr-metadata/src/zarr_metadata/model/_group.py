@@ -8,12 +8,13 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, Literal, TypeGuard, cast
 
-from typing_extensions import TypedDict, Unpack
+from typing_extensions import TypeAliasType, TypedDict, Unpack
 
 from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
     arrays_to_tuples,
+    choices,
     copied,
     is_canonical_json,
     refine_json,
@@ -28,6 +29,7 @@ from zarr_metadata.model._array import (
     array_model,
     held_document,
     must_understand_subset,
+    read_array_metadata_v3,
 )
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import (
@@ -325,7 +327,7 @@ def _consolidated_document(
     }
 
 
-def _no_documents() -> Mapping[str, ZarrV3ArrayMetadataReading | ZarrV3GroupMetadataReading]:
+def _no_documents() -> Mapping[str, ZarrV3NodeMetadataReading]:
     """What a group whose consolidated metadata holds none, or that has none, holds: nothing."""
     return {}
 
@@ -334,10 +336,10 @@ def _no_documents() -> Mapping[str, ZarrV3ArrayMetadataReading | ZarrV3GroupMeta
 class ZarrV3GroupMetadataReading:
     """A v3 group document as a scope read it, whatever it holds: each document its consolidated metadata holds, as read, every problem, and the model when there is none."""
 
-    consolidated: Mapping[str, ZarrV3ArrayMetadataReading | ZarrV3GroupMetadataReading] = (
-        dataclasses.field(default_factory=_no_documents)
+    consolidated: Mapping[str, ZarrV3NodeMetadataReading] = dataclasses.field(
+        default_factory=_no_documents
     )
-    """Each document its consolidated metadata holds, as read, by its path."""
+    """Each document its consolidated metadata holds, as `read_node_metadata_v3` reads one, by its path."""
     problems: tuple[ValidationProblem, ...] = ()
     """Every reason the document is not a valid one."""
     metadata: ZarrV3GroupMetadata | None = None
@@ -348,6 +350,122 @@ class ZarrV3GroupMetadataReading:
         for path, reading in self.consolidated.items():
             for loc, node in reading.fields():
                 yield (ZARR_V3_CONSOLIDATED_METADATA_KEY, "metadata", path, *loc), node
+
+
+@dataclass(frozen=True, slots=True)
+class ZarrV3UnknownNodeReading:
+    """A v3 document of no node type the spec defines -- its `node_type` missing, or neither `"array"` nor `"group"` -- or not an object at all: nothing else of it is read, as its problem says."""
+
+    problems: tuple[ValidationProblem, ...]
+    """Why it is no node."""
+
+    @property
+    def metadata(self) -> None:
+        """Its model: none, since no node type says which model it is."""
+        return None
+
+    def fields(self) -> Iterator[tuple[Loc, Resolved[Any]]]:
+        """Its fields as read: none, since none of them is read."""
+        return iter(())
+
+
+ZarrV3NodeMetadataReading = TypeAliasType(
+    "ZarrV3NodeMetadataReading",
+    "ZarrV3ArrayMetadataReading | ZarrV3GroupMetadataReading | ZarrV3UnknownNodeReading",
+)
+"""A v3 `zarr.json` as `read_node_metadata_v3` reads it: as the array or group its `node_type` says, or as neither."""
+
+
+def read_node_metadata_v3(
+    value: object, *, context: Context = CORE_AND_EXTENSIONS
+) -> ZarrV3NodeMetadataReading:
+    """`value`, a v3 `zarr.json`, read in `context` as the node its `node_type` says it is.
+
+    The node type is the tag of a union, as pydantic's discriminator and
+    zod's discriminated union read one: an array is read as
+    `read_array_metadata_v3` reads it, a group as `read_group_metadata_v3`
+    does, and a document that says neither, or is not an object, is
+    `ZarrV3UnknownNodeReading`, with the problem. So no caller reads
+    `node_type` from JSON it has not read.
+    """
+    node_type, problems = _node_type(value)
+    if node_type == "array":
+        return read_array_metadata_v3(value, context=context)
+    if node_type == "group":
+        return read_group_metadata_v3(value, context=context)
+    return ZarrV3UnknownNodeReading(problems)
+
+
+ZarrV3NodeMetadata = TypeAliasType(
+    "ZarrV3NodeMetadata", "ZarrV3ArrayMetadata | ZarrV3GroupMetadata"
+)
+"""The model of a v3 `zarr.json`: an array's or a group's, as its `node_type` says."""
+
+
+def node_metadata_from_json_v3(
+    data: object, *, context: Context = CORE_AND_EXTENSIONS
+) -> ZarrV3NodeMetadata:
+    """The model of `data`, a v3 `zarr.json` read in `context`, as the node its `node_type` says.
+
+    What `ZarrV3ArrayMetadata.from_json` or `ZarrV3GroupMetadata.from_json`
+    gives, as pydantic's `TypeAdapter` validates a discriminated union.
+    `MetadataValidationError` with every problem `read_node_metadata_v3`
+    finds, a `node_type` that says neither among them.
+    """
+    reading = read_node_metadata_v3(data, context=context)
+    if reading.metadata is None:
+        raise MetadataValidationError(reading.problems)
+    return reading.metadata
+
+
+def node_metadata_from_key_value_v3(
+    mapping: Mapping[StoreKey, bytes], *, context: Context = CORE_AND_EXTENSIONS
+) -> ZarrV3NodeMetadata:
+    """The model of the document at `zarr.json` in `mapping`, read in `context` as the node its `node_type` says, as `node_metadata_from_json_v3` reads one.
+
+    `MetadataValidationError` when the key is missing, its bytes are not
+    JSON, or the document is not a valid array or group.
+    """
+    # An array's document and a group's are both at `zarr.json`.
+    document = load_store_json(mapping, ZARR_V3_GROUP_METADATA_STORE_KEY)
+    return node_metadata_from_json_v3(document, context=context)
+
+
+def validate_node_metadata_v3(
+    value: object, *, context: Context = CORE_AND_EXTENSIONS
+) -> tuple[ValidationProblem, ...]:
+    """Every reason `value` is not a valid v3 `zarr.json`: those `validate_array_metadata_v3` or `validate_group_metadata_v3` finds in the node its `node_type` says it is, or why it says neither."""
+    return _read_node_v3(value, context)[0].problems
+
+
+def _read_node_v3(
+    value: object, context: Context
+) -> tuple[ZarrV3NodeMetadataReading, ArrayMembersV3 | GroupMembersV3 | None]:
+    """`value` read as `read_node_metadata_v3` reads it, without models, and its members refined."""
+    node_type, problems = _node_type(value)
+    if node_type == "array":
+        return read_array_v3(value, context)
+    if node_type == "group":
+        return read_group_v3(value, context)
+    return ZarrV3UnknownNodeReading(problems), None
+
+
+_NODE_TYPES: Final = ("array", "group")
+"""The node types the spec defines."""
+
+
+def _node_type(value: object) -> tuple[str | None, tuple[ValidationProblem, ...]]:
+    """The node type `value` says it is, one of `_NODE_TYPES`; None, with the problem, when it says none of them, or is not an object."""
+    if not isinstance(value, Mapping):
+        return None, (ValidationProblem((), "expected an object", "invalid_type"),)
+    document = cast("Mapping[object, object]", value)
+    if "node_type" not in document:
+        return None, (ValidationProblem(("node_type",), "missing required key", "missing_key"),)
+    node_type = document["node_type"]
+    if isinstance(node_type, str) and node_type in _NODE_TYPES:
+        return node_type, ()
+    message = f"expected {choices(_NODE_TYPES)}, got {shown(node_type)}"
+    return None, (ValidationProblem(("node_type",), message, refused_kind(node_type, _NODE_TYPES)),)
 
 
 @dataclass(frozen=True, slots=True)
@@ -409,7 +527,7 @@ def read_group_v3(
     # is read as none, so those stores stay readable; the model never
     # writes it back.
     raw = doc.get(ZARR_V3_CONSOLIDATED_METADATA_KEY)
-    consolidated: dict[str, ZarrV3ArrayMetadataReading | ZarrV3GroupMetadataReading] = {}
+    consolidated: dict[str, ZarrV3NodeMetadataReading] = {}
     held: Mapping[str, ArrayMembersV3 | GroupMembersV3] | UNSET = UNSET
     if raw is not None:
         consolidated, held, inside = _read_consolidated_v3(raw, context)
@@ -425,11 +543,11 @@ _CONSOLIDATED_MEMBERS: Final = ("kind", "must_understand", "metadata")
 def _read_consolidated_v3(
     value: object, context: Context
 ) -> tuple[
-    dict[str, ZarrV3ArrayMetadataReading | ZarrV3GroupMetadataReading],
+    dict[str, ZarrV3NodeMetadataReading],
     dict[str, ArrayMembersV3 | GroupMembersV3],
     tuple[ValidationProblem, ...],
 ]:
-    """An inline `consolidated_metadata` member, as `context` read it: each document it holds, read once, by its path; the members of each a model can be built of; and every problem, located in the member."""
+    """An inline `consolidated_metadata` member, as `context` read it: each document it holds, read once, as `read_node_metadata_v3` reads one, by its path; the members of each a model can be built of; and every problem, located in the member."""
     if not isinstance(value, Mapping):
         return {}, {}, (ValidationProblem((), "expected an object", "invalid_type"),)
     env = cast("Mapping[object, object]", value)
@@ -443,7 +561,7 @@ def _read_consolidated_v3(
     problems.extend(check_literal(env, "kind", "inline"))
     if "must_understand" in env and env["must_understand"] is not False:
         problems.append(ValidationProblem(("must_understand",), "expected False", "invalid_value"))
-    readings: dict[str, ZarrV3ArrayMetadataReading | ZarrV3GroupMetadataReading] = {}
+    readings: dict[str, ZarrV3NodeMetadataReading] = {}
     members: dict[str, ArrayMembersV3 | GroupMembersV3] = {}
     entries = env.get("metadata")
     if "metadata" in env and not isinstance(entries, Mapping):
@@ -455,32 +573,11 @@ def _read_consolidated_v3(
                     ValidationProblem(("metadata",), f"non-string key {key!r}", "invalid_type")
                 )
                 continue
-            node_type = _node_type(entry)
-            child: ArrayMembersV3 | GroupMembersV3 | None
-            if node_type == "array":
-                readings[key], child = read_array_v3(entry, context)
-            elif node_type == "group":
-                readings[key], child = read_group_v3(entry, context)
-            else:
-                problems.append(
-                    ValidationProblem(
-                        ("metadata", key, "node_type"),
-                        "expected 'array' or 'group'",
-                        "invalid_value",
-                    )
-                )
-                continue
+            readings[key], child = _read_node_v3(entry, context)
             if child is not None:
                 members[key] = child
             problems.extend(_prefix("metadata", _prefix(key, readings[key].problems)))
     return readings, members, tuple(problems)
-
-
-def _node_type(document: object) -> object:
-    """The `node_type` a document says it is; None when it is not an object."""
-    if not isinstance(document, Mapping):
-        return None
-    return cast("Mapping[object, object]", document).get("node_type")
 
 
 def _with_models(
@@ -505,21 +602,21 @@ def _with_models(
 
 
 def _models(
-    readings: Mapping[str, ZarrV3ArrayMetadataReading | ZarrV3GroupMetadataReading],
+    readings: Mapping[str, ZarrV3NodeMetadataReading],
     members: Mapping[str, ArrayMembersV3 | GroupMembersV3],
 ) -> tuple[
-    dict[str, ZarrV3ArrayMetadataReading | ZarrV3GroupMetadataReading],
+    dict[str, ZarrV3NodeMetadataReading],
     dict[str, ZarrV3ArrayMetadata | ZarrV3GroupMetadata],
 ]:
     """Each reading, holding its model when a model can be built of its document, and those models, by path."""
-    held: dict[str, ZarrV3ArrayMetadataReading | ZarrV3GroupMetadataReading] = dict(readings)
+    held: dict[str, ZarrV3NodeMetadataReading] = dict(readings)
     models: dict[str, ZarrV3ArrayMetadata | ZarrV3GroupMetadata] = {}
     for path, child in members.items():
         reading = readings[path]
         if isinstance(reading, ZarrV3ArrayMetadataReading):
             array = array_model(reading, cast("ArrayMembersV3", child))
             held[path], models[path] = dataclasses.replace(reading, metadata=array), array
-        else:
+        elif isinstance(reading, ZarrV3GroupMetadataReading):
             group = _with_models(reading, cast("GroupMembersV3", child))
             held[path] = group
             if group.metadata is not None:

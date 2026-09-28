@@ -27,12 +27,18 @@ from zarr_metadata.model._group import (
     ZarrV3GroupMetadata,
     ZarrV3GroupMetadataReading,
     ZarrV3GroupMetadataUpdate,
+    ZarrV3UnknownNodeReading,
     is_group_metadata_v3,
+    node_metadata_from_json_v3,
+    node_metadata_from_key_value_v3,
     parse_group_metadata_v3,
     read_group_metadata_v3,
+    read_node_metadata_v3,
     validate_group_metadata_v3,
+    validate_node_metadata_v3,
 )
 from zarr_metadata.model._validation import (
+    ZarrV3ArrayMetadataReading,
     is_group_metadata_v2,
     parse_group_metadata_v2,
     validate_group_metadata_v2,
@@ -534,11 +540,11 @@ def test_error_a_group_document_that_is_not_an_object_reads_as_nothing() -> None
             {"a": False, "b": True},
             [(*A, "codecs", 1)],
         ),
-        # One of no node type is not read at all.
+        # One of no node type is read as none, and nothing else of it is.
         (
             _group(consolidated_metadata=_inline(a={"zarr_format": 3})),
-            [((*A, "node_type"), "invalid_value")],
-            {},
+            [((*A, "node_type"), "missing_key")],
+            {"a": False},
             [],
         ),
     ],
@@ -557,6 +563,103 @@ def test_error_a_group_document_with_a_problem_reads_as_no_model(
         path: read.metadata is not None for path, read in reading.consolidated.items()
     } == models
     assert [loc for loc, field in reading.fields() if isinstance(field, Refused)] == refused
+
+
+# --- read_node_metadata_v3 -------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("document", "reading", "problems"),
+    [
+        (_array(), ZarrV3ArrayMetadataReading, []),
+        (_group(attributes={"a": 1}), ZarrV3GroupMetadataReading, []),
+        (_array(fill_value=300), ZarrV3ArrayMetadataReading, [(("fill_value",), "invalid_value")]),
+        (_group(attributes=5), ZarrV3GroupMetadataReading, [(("attributes",), "invalid_type")]),
+    ],
+    ids=["array", "group", "array-with-a-problem", "group-with-a-problem"],
+)
+def test_a_node_is_read_as_the_node_its_node_type_says(
+    document: dict[str, object],
+    reading: type[ZarrV3ArrayMetadataReading | ZarrV3GroupMetadataReading],
+    problems: list[tuple[tuple[str | int, ...], str]],
+) -> None:
+    """As that node's own read reads it, and its model only when it has no problem."""
+    read = read_node_metadata_v3(document)
+    assert type(read) is reading
+    assert [(p.loc, p.kind) for p in read.problems] == problems
+    assert [(p.loc, p.kind) for p in validate_node_metadata_v3(document)] == problems
+    assert (read.metadata is not None) is (len(problems) == 0)
+
+
+@pytest.mark.parametrize(
+    ("node_type", "kind"),
+    [("dataset", "invalid_value"), (5, "invalid_type"), (None, "invalid_type")],
+    ids=["another-kind", "a-number", "null"],
+)
+def test_error_a_node_type_the_spec_does_not_define(node_type: object, kind: str) -> None:
+    """Nothing else of the document is read, so nothing else is judged."""
+    read = read_node_metadata_v3({**_array(), "node_type": node_type, "shape": "not a shape"})
+    assert isinstance(read, ZarrV3UnknownNodeReading)
+    assert [(p.loc, p.kind) for p in read.problems] == [(("node_type",), kind)]
+    assert read.metadata is None
+    assert list(read.fields()) == []
+
+
+def test_error_a_document_without_a_node_type() -> None:
+    document = {key: value for key, value in _array().items() if key != "node_type"}
+    read = read_node_metadata_v3(document)
+    assert isinstance(read, ZarrV3UnknownNodeReading)
+    assert [(p.loc, p.kind) for p in read.problems] == [(("node_type",), "missing_key")]
+
+
+def test_error_a_node_that_is_not_an_object() -> None:
+    read = read_node_metadata_v3([_array()])
+    assert isinstance(read, ZarrV3UnknownNodeReading)
+    assert [(p.loc, p.kind) for p in read.problems] == [((), "invalid_type")]
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        ZarrV3ArrayMetadata.create_default(shape=(4,)),
+        ZarrV3GroupMetadata.create_default(attributes={"a": 1}),
+    ],
+    ids=["array", "group"],
+)
+def test_a_node_is_built_as_the_model_its_node_type_says(
+    model: ZarrV3ArrayMetadata | ZarrV3GroupMetadata,
+) -> None:
+    """From its JSON and from a store's bytes alike, as the model's own class builds it."""
+    built = node_metadata_from_key_value_v3(model.to_key_value())
+    assert type(built) is type(model)
+    assert built == model
+    assert node_metadata_from_json_v3(model.to_json()) == model
+
+
+def test_error_a_node_built_from_a_store_without_its_document() -> None:
+    with pytest.raises(MetadataValidationError) as raised:
+        node_metadata_from_key_value_v3({})
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("zarr.json",), "missing_key")]
+
+
+def test_error_a_node_built_from_bytes_that_are_not_json() -> None:
+    with pytest.raises(MetadataValidationError) as raised:
+        node_metadata_from_key_value_v3({"zarr.json": b"{"})
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("zarr.json",), "invalid_json")]
+
+
+def test_error_a_node_built_from_a_document_of_no_node_type() -> None:
+    document = json.dumps({**_array(), "node_type": "dataset"}).encode()
+    with pytest.raises(MetadataValidationError) as raised:
+        node_metadata_from_key_value_v3({"zarr.json": document})
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("node_type",), "invalid_value")]
+
+
+def test_error_a_node_built_from_a_document_with_a_problem() -> None:
+    """The problems of the node its `node_type` says it is."""
+    with pytest.raises(MetadataValidationError) as raised:
+        node_metadata_from_json_v3(_array(fill_value=300))
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("fill_value",), "invalid_value")]
 
 
 # --- ZarrV2ConsolidatedMetadata --------------------------------------------
