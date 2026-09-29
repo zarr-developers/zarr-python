@@ -1471,6 +1471,14 @@ def _overwrite_hierarchy(path: Path) -> None:
     list(zarr.create_hierarchy(store=LocalStore(path), nodes={"n": mixed.metadata}, overwrite=True))
 
 
+def _overwrite_with_create(path: Path) -> None:
+    zarr.create(shape=(4,), chunks=[[2, 2]], dtype="int64", store=path / "n", overwrite=True)
+
+
+def _overwrite_with_create_array(path: Path) -> None:
+    zarr.create_array(path / "n", shape=(4,), chunks=[[2, 2]], dtype="int64", overwrite=True)
+
+
 def _set_group_attribute(path: Path) -> None:
     zarr.open_group(path, mode="a").attrs["x"] = 1
 
@@ -1481,8 +1489,14 @@ def _set_group_attribute(path: Path) -> None:
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize(
     "action",
-    [_resize, _write_chunks, _overwrite_hierarchy],
-    ids=["resize", "write", "overwrite-hierarchy"],
+    [
+        _resize,
+        _write_chunks,
+        _overwrite_hierarchy,
+        _overwrite_with_create,
+        _overwrite_with_create_array,
+    ],
+    ids=["resize", "write", "overwrite-hierarchy", "overwrite-create", "overwrite-create-array"],
 )
 def test_store_untouched_without_flag(tmp_path: Path, action: Callable[[Path], None]) -> None:
     """An operation that would store the rectilinear chunk grid read from the verbatim

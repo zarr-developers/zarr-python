@@ -646,8 +646,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
     ) -> AsyncArrayV3:
-        await _prepare_overwrite(store_path, zarr_format=3, overwrite=overwrite)
-
         if isinstance(chunk_key_encoding, tuple):
             chunk_key_encoding = (
                 V2ChunkKeyEncoding(separator=chunk_key_encoding[1])
@@ -665,6 +663,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             dimension_names=dimension_names,
             attributes=attributes,
         )
+        # Encode first, so metadata that cannot be stored fails before any existing
+        # node is deleted.
+        encode_documents(store_path, metadata)
+        await _prepare_overwrite(store_path, zarr_format=3, overwrite=overwrite)
 
         array = cls(metadata=metadata, store_path=store_path, config=config)
         await array._save_metadata(metadata, ensure_parents=True)
@@ -721,8 +723,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
     ) -> AsyncArrayV2:
-        await _prepare_overwrite(store_path, zarr_format=2, overwrite=overwrite)
-
         compressor_parsed: CompressorLikev2
         if compressor == "auto":
             compressor_parsed = default_compressor_v2(dtype)
@@ -748,6 +748,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             compressor=compressor_parsed,
             attributes=attributes,
         )
+        # Encode first, so metadata that cannot be stored fails before any existing
+        # node is deleted.
+        encode_documents(store_path, metadata)
+        await _prepare_overwrite(store_path, zarr_format=2, overwrite=overwrite)
 
         array = cls(metadata=metadata, store_path=store_path, config=config)
         await array._save_metadata(metadata, ensure_parents=True)
@@ -4591,8 +4595,6 @@ async def init_array(
         chunk_key_encoding, zarr_format=zarr_format
     )
 
-    await _prepare_overwrite(store_path, zarr_format=zarr_format, overwrite=overwrite)
-
     # Validate rectilinear chunks constraints
     if _is_rectilinear_chunks(chunks):
         if zarr_format == 2:
@@ -4705,6 +4707,10 @@ async def init_array(
             attributes=attributes,
         )
 
+    # Encode first, so metadata that cannot be stored fails before any existing node is
+    # deleted.
+    encode_documents(store_path, meta)
+    await _prepare_overwrite(store_path, zarr_format=zarr_format, overwrite=overwrite)
     arr = AsyncArray(metadata=meta, store_path=store_path, config=config)
     await arr._save_metadata(meta, ensure_parents=True)
     return arr
