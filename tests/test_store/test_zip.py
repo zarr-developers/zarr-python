@@ -9,7 +9,7 @@ import shutil
 import tempfile
 import threading
 import zipfile
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
@@ -25,7 +25,6 @@ from hypothesis.stateful import (
 
 import zarr
 from zarr import create_array
-from zarr.abc.store import Store
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.sync import sync
 from zarr.storage import ZipStore
@@ -225,6 +224,12 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
                 ["foo", "bar"],
                 id="set_if_not_exists",
             ),
+            pytest.param(
+                lambda s: s.set_if_not_exists("foo", cpu.Buffer.from_bytes(b"x")),
+                None,
+                ["foo"],
+                id="set_if_not_exists_existing",
+            ),
             pytest.param(lambda s: s.clear(), None, [], id="clear"),
             pytest.param(lambda s: s.delete("bar"), None, ["foo"], id="delete"),
             pytest.param(lambda s: s.delete_dir("bar"), None, ["foo"], id="delete_dir"),
@@ -296,27 +301,23 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     async def test_close_blocks_concurrent_reopen(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # a thread that uses the store while close() runs must wait until the
-        # archive is closed, or it reopens a file with no central directory
+        # a thread that uses the store while close() is writing the central
+        # directory must wait until the archive is closed
         store = ZipStore(tmp_path / "data.zip", mode="w")
         await store.set("foo", cpu.Buffer.from_bytes(b"1"))
+        write_end_record = store._zf._write_end_record  # type: ignore[attr-defined]
+        writes: list[Future[None]] = []
 
-        writer = threading.Thread(
-            target=lambda: sync(store.set("bar", cpu.Buffer.from_bytes(b"2")))
-        )
-        mark_closed = Store.close
+        with ThreadPoolExecutor(max_workers=1) as pool:
 
-        def mark_closed_then_write(self: Store) -> None:
-            # the store now reports closed; start a write before close() returns
-            mark_closed(self)
-            writer.start()
-            writer.join(timeout=0.2)
+            def write_during_close() -> None:
+                writes.append(pool.submit(sync, store.set("bar", cpu.Buffer.from_bytes(b"2"))))
+                wait(writes, timeout=0.2)
+                write_end_record()
 
-        monkeypatch.setattr(Store, "close", mark_closed_then_write)
-        store.close()
-        monkeypatch.undo()
-        writer.join(timeout=5)
-        assert not writer.is_alive()
+            monkeypatch.setattr(store._zf, "_write_end_record", write_during_close)
+            store.close()
+            writes[0].result(timeout=5)
         store.close()
 
         with zipfile.ZipFile(store.path) as zf:  # type: ignore[arg-type]
@@ -409,8 +410,9 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
             first_use.result(timeout=5)
         store.close()
 
+    @pytest.mark.parametrize("error", [OSError, KeyboardInterrupt])
     async def test_failed_close_blocks_reopen(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: type[BaseException]
     ) -> None:
         # if the central directory could not be written, reopening in append
         # mode would start a new archive and drop the entries, so later use
@@ -419,10 +421,10 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         await store.set("foo", cpu.Buffer.from_bytes(b"1"))
 
         def disk_full() -> None:
-            raise OSError("disk full")
+            raise error("disk full")
 
         monkeypatch.setattr(store._zf, "_write_end_record", disk_full)
-        with pytest.raises(OSError, match="disk full"):
+        with pytest.raises(error, match="disk full"):
             store.close()
         assert not store._is_open
         with pytest.raises(RuntimeError, match="closing the archive"):
@@ -544,12 +546,15 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         with zipfile.ZipFile(path) as zf:
             assert zf.namelist() == ["foo"]
 
-    async def test_clear_read_mode_writable_store(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("file", ["archive", "missing"])
+    async def test_clear_read_mode_writable_store(self, tmp_path: Path, file: str) -> None:
         # a store opened with mode "r" but read_only=False creates the new
-        # archive with "w", since "r" cannot open the file clear() removed
+        # archive with "w", since "r" cannot open the file clear() removed,
+        # and it does not need to open the old file first
         path = tmp_path / "data.zip"
-        with zipfile.ZipFile(path, mode="w") as zf:
-            zf.writestr("foo", b"1")
+        if file == "archive":
+            with zipfile.ZipFile(path, mode="w") as zf:
+                zf.writestr("foo", b"1")
 
         store = ZipStore(path, mode="r", read_only=False)
         await store.clear()
@@ -558,17 +563,37 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         with zipfile.ZipFile(path) as zf:
             assert zf.namelist() == ["bar"]
 
-    async def test_unpickle_state_from_older_release(self, tmp_path: Path) -> None:
-        # a pickle made before _was_opened and _close_failed existed still
-        # reopens the archive it names
+    async def test_reopen_reports_directory_at_path(self, tmp_path: Path) -> None:
+        # a directory where the archive was is reported as an OS error, not as
+        # an unfinished archive
         path = tmp_path / "data.zip"
-        with zipfile.ZipFile(path, mode="w") as zf:
-            zf.writestr("foo", b"1")
-        state = ZipStore(path, mode="r").__getstate__()
+        store = ZipStore(path, mode="w")
+        await store.set("foo", cpu.Buffer.from_bytes(b"1"))
+        store.close()
+        path.unlink()
+        path.mkdir()
+
+        with pytest.raises(OSError):
+            await store.get("foo", default_buffer_prototype())
+
+    @pytest.mark.parametrize("mode", ["r", "a"])
+    async def test_unpickle_state_from_older_release(self, tmp_path: Path, mode: str) -> None:
+        # a pickle made before _was_opened and _close_failed existed opens the
+        # file as a first open would; for "a" on an empty file that starts an
+        # archive rather than tripping the reopen guard
+        path = tmp_path / "data.zip"
+        if mode == "r":
+            with zipfile.ZipFile(path, mode="w") as zf:
+                zf.writestr("foo", b"1")
+        else:
+            path.touch()
+        state = ZipStore(path, mode=mode).__getstate__()  # type: ignore[arg-type]
         del state["_was_opened"], state["_close_failed"]
 
         store = ZipStore.__new__(ZipStore)
         store.__setstate__(state)
+        if mode == "a":
+            await store.set("foo", cpu.Buffer.from_bytes(b"1"))
         assert [k async for k in store.list()] == ["foo"]
         store.close()
 

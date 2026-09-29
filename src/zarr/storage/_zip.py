@@ -72,6 +72,17 @@ class _RawReaderAdapter(io.RawIOBase):
         return n
 
 
+def _is_unfinished_archive(path: Path) -> bool:
+    """Whether the file at `path` exists but is not a zip archive."""
+    try:
+        with path.open("rb") as f:
+            # is_zipfile swallows OSError, so open the file here to let a
+            # directory or a permission error surface as itself
+            return not zipfile.is_zipfile(f)
+    except FileNotFoundError:
+        return False
+
+
 class ZipStore(Store):
     """
     Store using a ZIP file.
@@ -95,8 +106,8 @@ class ZipStore(Store):
         store reopens its archive with 'a' after `close()`, `move()`, or
         unpickling, so the entries it already wrote are kept. An unpickled
         store opens its archive on first use. If `close()` raises, the
-        archive may be incomplete, and every later read or write raises
-        `RuntimeError` instead of reopening it; for a writable store backed
+        archive may be incomplete, and every later use that would reopen it
+        raises `RuntimeError` instead; for a writable store backed
         by a path, `clear()` replaces the archive and makes the store usable
         again.
     compression : int, optional
@@ -190,8 +201,7 @@ class ZipStore(Store):
             self.path is not None
             and self._was_opened
             and self._zmode == "a"
-            and self.path.exists()
-            and not zipfile.is_zipfile(self.path)
+            and _is_unfinished_archive(self.path)
         ):
             # the file lacks a central directory, e.g. because another copy of
             # this store still has it open for writing; appending would start
@@ -296,7 +306,7 @@ class ZipStore(Store):
                 raise NotImplementedError(
                     "clear() is not supported for a ZipStore backed by a file-like object"
                 )
-            if not self._was_opened:
+            if not self._was_opened and self._zmode == "x":
                 # opening first keeps mode "x" from deleting a file it may not claim
                 self._zipfile()
             self.close()
