@@ -189,42 +189,56 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert np.array_equal(array[...], np.arange(10))
 
     @pytest.mark.parametrize(
-        "call",
+        ("call", "result", "keys"),
         [
-            lambda s: s.get("foo", default_buffer_prototype()),
-            lambda s: s.get_partial_values(default_buffer_prototype(), [("foo", None)]),
-            lambda s: s.exists("foo"),
-            lambda s: s.set("bar", cpu.Buffer.from_bytes(b"x")),
-            lambda s: s.set_if_not_exists("bar", cpu.Buffer.from_bytes(b"x")),
-            lambda s: s.clear(),
-            lambda s: s.delete("bar"),
-            lambda s: s.delete_dir("bar"),
-            lambda s: s.is_empty(""),
-        ],
-        ids=[
-            "get",
-            "get_partial_values",
-            "exists",
-            "set",
-            "set_if_not_exists",
-            "clear",
-            "delete",
-            "delete_dir",
-            "is_empty",
+            pytest.param(
+                lambda s: s.get("foo", default_buffer_prototype()), b"bar", ["foo"], id="get"
+            ),
+            pytest.param(
+                lambda s: s.get_partial_values(default_buffer_prototype(), [("foo", None)]),
+                [b"bar"],
+                ["foo"],
+                id="get_partial_values",
+            ),
+            pytest.param(lambda s: s.exists("foo"), True, ["foo"], id="exists"),
+            pytest.param(
+                lambda s: s.set("bar", cpu.Buffer.from_bytes(b"x")),
+                None,
+                ["foo", "bar"],
+                id="set",
+            ),
+            pytest.param(
+                lambda s: s.set_if_not_exists("bar", cpu.Buffer.from_bytes(b"x")),
+                None,
+                ["foo", "bar"],
+                id="set_if_not_exists",
+            ),
+            pytest.param(lambda s: s.clear(), None, [], id="clear"),
+            pytest.param(lambda s: s.delete("bar"), None, ["foo"], id="delete"),
+            pytest.param(lambda s: s.delete_dir("bar"), None, ["foo"], id="delete_dir"),
+            pytest.param(lambda s: s.is_empty(""), False, ["foo"], id="is_empty"),
         ],
     )
     async def test_methods_open_store_on_first_use(
-        self, store_kwargs: dict[str, Any], call: Any
+        self, store_kwargs: dict[str, Any], call: Any, result: Any, keys: list[str]
     ) -> None:
-        # every method works on a store that was constructed but never opened
+        # every method works on a store that was constructed but never opened,
+        # and sees the entries already in the archive
         seed = await self.store_cls.open(**store_kwargs)
         await seed.set("foo", cpu.Buffer.from_bytes(b"bar"))
         seed.close()
 
         store = self.store_cls(**{**store_kwargs, "mode": "a"})
         assert not store._is_open
-        await call(store)
+        out = await call(store)
+        if isinstance(out, list):
+            out = [b.to_bytes() for b in out]
+        elif isinstance(out, Buffer):
+            out = out.to_bytes()
+        assert out == result
         store.close()
+        with zipfile.ZipFile(store_kwargs["path"]) as zf:
+            assert zf.namelist() == keys
 
     @pytest.mark.parametrize("method", ["list", "list_dir"])
     async def test_listing_opens_store_on_first_use(
@@ -240,14 +254,17 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         store.close()
 
     @pytest.mark.parametrize("mode", ["w", "x"])
-    @pytest.mark.parametrize("reopen", ["close_twice", "move", "pickle"])
+    @pytest.mark.parametrize("reopen", ["use_after_close", "move", "pickle"])
     async def test_reopen_keeps_entries(self, tmp_path: Path, mode: str, reopen: str) -> None:
         # "w" truncates and "x" refuses an existing file; neither may apply
         # when a store that already wrote entries is opened again
         store = ZipStore(tmp_path / "data.zip", mode=mode)  # type: ignore[arg-type]
         await store.set("foo", cpu.Buffer.from_bytes(b"bar"))
-        if reopen == "close_twice":
+        if reopen == "use_after_close":
             store.close()
+            value = await store.get("foo", default_buffer_prototype())
+            assert value is not None
+            assert value.to_bytes() == b"bar"
             store.close()
         elif reopen == "move":
             await store.move(tmp_path / "moved" / "data.zip")
@@ -288,6 +305,19 @@ class TestZipStoreFileObj:
         roundtrip = ZipStore(io.BytesIO(buffer.getvalue()), mode="r")
         array = zarr.open_array(roundtrip, mode="r")
         assert np.array_equal(array[...], np.arange(4))
+
+    async def test_write_after_close_keeps_entries(self) -> None:
+        # reopening a file object after close() appends to the archive it
+        # already holds instead of starting a new one after it
+        buffer = io.BytesIO()
+        store = ZipStore(buffer, mode="w", read_only=False)
+        await store.set("foo", cpu.Buffer.from_bytes(b"1"))
+        store.close()
+        await store.set("bar", cpu.Buffer.from_bytes(b"2"))
+        store.close()
+
+        with zipfile.ZipFile(io.BytesIO(buffer.getvalue())) as zf:
+            assert zf.namelist() == ["foo", "bar"]
 
     async def test_clear_unsupported(self, zip_bytes: bytes) -> None:
         # clear() requires a filesystem location, so it raises a clear error
