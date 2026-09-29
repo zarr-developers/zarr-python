@@ -163,10 +163,23 @@ class ZipStore(Store):
         self.compression = compression
         self.allowZip64 = allowZip64
         self._lock = threading.RLock()
+        self._was_opened = False
 
     def _sync_open(self) -> None:
         if self._is_open:
             raise ValueError("store is already open")
+        if (
+            self.path is None
+            and self._fileobj is not None
+            and self._was_opened
+            and not self._fileobj.readable()
+        ):
+            # reopening appends, which needs to read the archive back; zipfile
+            # would instead start a new archive and drop the earlier entries
+            raise io.UnsupportedOperation(
+                "a ZipStore backed by a write-only file object cannot be used "
+                "again after close(), because the archive it wrote cannot be read back"
+            )
 
         self._zf = zipfile.ZipFile(
             self.path if self.path is not None else self._fileobj,  # type: ignore[arg-type]
@@ -180,6 +193,7 @@ class ZipStore(Store):
         if self._zmode in ("w", "x"):
             self._zmode = "a"
 
+        self._was_opened = True
         self._is_open = True
 
     def _zipfile(self) -> zipfile.ZipFile:

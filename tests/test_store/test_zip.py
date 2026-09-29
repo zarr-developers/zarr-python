@@ -303,7 +303,8 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         monkeypatch.setattr(Store, "close", mark_closed_then_write)
         store.close()
         monkeypatch.undo()
-        writer.join()
+        writer.join(timeout=5)
+        assert not writer.is_alive()
         store.close()
 
         with zipfile.ZipFile(store.path) as zf:  # type: ignore[arg-type]
@@ -333,7 +334,8 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         monkeypatch.setattr(shutil, "move", write_then_move)
         await store.move(destination)
         monkeypatch.undo()
-        writer.join()
+        writer.join(timeout=5)
+        assert not writer.is_alive()
         store.close()
 
         assert not origin.exists()
@@ -396,6 +398,20 @@ class TestZipStoreFileObj:
 
         with zipfile.ZipFile(io.BytesIO(buffer.getvalue())) as zf:
             assert zf.namelist() == ["foo", "bar"]
+
+    async def test_write_only_reuse_after_close_raises(self, tmp_path: Path) -> None:
+        # a write-only file object cannot be read back, so reopening it would
+        # start a new archive and drop the entries already written
+        path = tmp_path / "data.zip"
+        with path.open("wb") as f:
+            store = ZipStore(f, mode="w", read_only=False)
+            await store.set("foo", cpu.Buffer.from_bytes(b"1"))
+            store.close()
+            with pytest.raises(io.UnsupportedOperation, match="write-only"):
+                await store.set("bar", cpu.Buffer.from_bytes(b"2"))
+
+        with zipfile.ZipFile(path) as zf:
+            assert zf.namelist() == ["foo"]
 
     async def test_clear_unsupported(self, zip_bytes: bytes) -> None:
         # clear() requires a filesystem location, so it raises a clear error
