@@ -106,6 +106,14 @@ from zarr_metadata.v3._common import (
     parse_metadata_field_v3,
     validate_metadata_field_v3,
 )
+from zarr_metadata.v3._hierarchy import (
+    is_node_name_v3,
+    is_node_path_v3,
+    parse_node_name_v3,
+    parse_node_path_v3,
+    validate_node_name_v3,
+    validate_node_path_v3,
+)
 from zarr_metadata.v3.array import (
     ZARR_V3_ARRAY_METADATA_STORE_KEY,
     ZarrV3ArrayMetadataStoreKey,
@@ -163,6 +171,8 @@ __all__ = [
     "is_group_metadata_v3",
     "is_json",
     "is_metadata_field_v3",
+    "is_node_name_v3",
+    "is_node_path_v3",
     "node_metadata_from_json_v3",
     "node_metadata_from_key_value_v3",
     "node_metadata_json_schema_v3",
@@ -172,6 +182,8 @@ __all__ = [
     "parse_group_metadata_v3",
     "parse_json",
     "parse_metadata_field_v3",
+    "parse_node_name_v3",
+    "parse_node_path_v3",
     "read_array_metadata_v3",
     "read_group_metadata_v3",
     "read_node_metadata_v3",
@@ -182,4 +194,6 @@ __all__ = [
     "validate_json",
     "validate_metadata_field_v3",
     "validate_node_metadata_v3",
+    "validate_node_name_v3",
+    "validate_node_path_v3",
 ]

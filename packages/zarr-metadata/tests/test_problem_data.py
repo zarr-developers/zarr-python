@@ -34,6 +34,8 @@ from zarr_metadata.model import (
     validate_json,
     validate_metadata_field_v3,
     validate_node_metadata_v3,
+    validate_node_name_v3,
+    validate_node_path_v3,
 )
 from zarr_metadata.typed_json import check
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
@@ -223,6 +225,8 @@ READERS: list[tuple[Callable[[object], Sequence[ValidationProblem]], object]] = 
         validate_metadata_field_v3,
         {"name": 1, "configuration": {"a": [math.nan]}, "extra": [1]},
     ),
+    (validate_node_name_v3, "__/"),
+    (validate_node_path_v3, "a//"),
     (validate_array_metadata_v3, BAD_ARRAY),
     (lambda value: read_array_metadata_v3(value).problems, BAD_ARRAY),
     (lambda value: _raised(lambda: parse_array_metadata_v3(value)), BAD_ARRAY),
@@ -236,7 +240,7 @@ READERS: list[tuple[Callable[[object], Sequence[ValidationProblem]], object]] = 
             "consolidated_metadata": {
                 "kind": "inline",
                 "must_understand": [False],
-                "metadata": {"a": BAD_ARRAY},
+                "metadata": {"a": BAD_ARRAY, "__b": BAD_ARRAY, "a/c": BAD_ARRAY, "d/e": BAD_ARRAY},
             },
         },
     ),
@@ -266,6 +270,8 @@ READERS: list[tuple[Callable[[object], Sequence[ValidationProblem]], object]] = 
         "fill-value-problems",
         "validate-json",
         "validate-metadata-field",
+        "validate-node-name",
+        "validate-node-path",
         "validate-array",
         "read-array",
         "parse-array",

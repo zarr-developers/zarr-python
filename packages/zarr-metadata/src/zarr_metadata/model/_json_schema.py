@@ -36,8 +36,9 @@ def node_metadata_json_schema_v3(*, context: Context = CORE_AND_EXTENSIONS) -> J
     A JSON Schema says what each member is, and what the rules say of
     members read together is not in it: one dimension name per dimension
     of the shape, a chunk grid that fits the shape, codecs in the order a
-    pipeline takes them, each against the chunk it is handed, and what a
-    definition's `rules` say. So a document it accepts may still have a
+    pipeline takes them, each against the chunk it is handed, the
+    hierarchy the documents of consolidated metadata make below their
+    group, and what a definition's `rules` say. So a document it accepts may still have a
     problem, and a JSON document `validate_node_metadata_v3` finds none
     with, it accepts. A validator reads JSON as a parser gives it, arrays
     as lists: a model's `to_json` writes tuples, which a Python validator

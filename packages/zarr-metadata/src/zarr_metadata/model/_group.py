@@ -6,7 +6,7 @@ import copy
 import dataclasses
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Final, Literal, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, TypeGuard, TypeVar, cast
 
 from typing_extensions import TypeAliasType, TypedDict, Unpack
 
@@ -20,6 +20,7 @@ from zarr_metadata._json import (
     outside_of,
     refine_json,
     refine_user_data,
+    shown,
     with_input,
 )
 from zarr_metadata._json import prefixed as _prefix
@@ -53,6 +54,7 @@ from zarr_metadata.model._validation import (
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
 from zarr_metadata.v2.consolidated import ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY
+from zarr_metadata.v3._hierarchy import NodeType, hierarchy_problems, path_faults, said
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
 from zarr_metadata.v3.array import ZarrV3ExtensionField
 from zarr_metadata.v3.consolidated import ZARR_V3_CONSOLIDATED_METADATA_KEY
@@ -226,6 +228,9 @@ class ZarrV3ConsolidatedMetadata:
     `must_understand` is typed permissively as `bool` to mirror the document
     shape, but only `False` is valid; this is enforced at runtime. Each
     document it holds is a model, which checked itself when it was built.
+    The documents and the group make the hierarchy below the group, the
+    group its root, each at its node's path in it without the leading `/`:
+    the node at `/a/b` at `a/b`.
     """
 
     kind: Literal["inline"] = field(default="inline", init=False)
@@ -252,6 +257,23 @@ class ZarrV3ConsolidatedMetadata:
             if not isinstance(node, (ZarrV3ArrayMetadata, ZarrV3GroupMetadata)):
                 msg = f"metadata[{path!r}]: expected a v3 array or group model, got {node!r}"
                 raise TypeError(msg)
+        problems: list[ValidationProblem] = []
+        node_types: dict[str, NodeType | None] = {}
+        for path, node in self.metadata.items():
+            faults = _key_problems(path)
+            problems.extend(faults)
+            if len(faults) == 0:
+                node_types[path] = _model_node_type(node)
+        problems.extend(_hierarchy_problems(node_types))
+        for path, node in self.metadata.items():
+            if path in node_types:
+                problems.extend(
+                    _nested_listing_problems(
+                        path, _model_listing(node), node_types, _model_node_type
+                    )
+                )
+        if len(problems) != 0:
+            raise MetadataValidationError(problems)
         object.__setattr__(self, "metadata", dict(self.metadata))
 
     def to_json(self) -> ZarrV3ConsolidatedMetadataJSON:
@@ -560,6 +582,8 @@ def read_group_v3(
     return reading, GroupMembersV3(attributes, extra_fields, held)
 
 
+T = TypeVar("T")
+
 _CONSOLIDATED_MEMBERS: Final = ("kind", "must_understand", "metadata")
 """The members of an inline `consolidated_metadata`, in the order the convention declares them."""
 
@@ -586,6 +610,7 @@ def _read_consolidated_v3(
     problems.extend(check_literal(env, "must_understand", False))
     readings: dict[str, ZarrV3NodeMetadataReading] = {}
     members: dict[str, ArrayMembersV3 | GroupMembersV3] = {}
+    node_types: dict[str, NodeType | None] = {}
     entries = env.get("metadata")
     if "metadata" in env and not isinstance(entries, Mapping):
         problems.append(ValidationProblem(("metadata",), "expected an object", "invalid_type"))
@@ -596,11 +621,137 @@ def _read_consolidated_v3(
                     ValidationProblem(("metadata",), f"non-string key {key!r}", "invalid_type")
                 )
                 continue
+            faults = _key_problems(key)
+            problems.extend(faults)
             readings[key], child = _read_node_v3(entry, context)
             if child is not None:
                 members[key] = child
             problems.extend(_prefix("metadata", _prefix(key, readings[key].problems)))
+            if len(faults) == 0:
+                node_types[key] = _node_type_of(readings[key])
+    problems.extend(_hierarchy_problems(node_types))
+    for key in node_types:
+        problems.extend(
+            _nested_listing_problems(
+                key, _reading_listing(readings[key]), node_types, _node_type_of
+            )
+        )
     return readings, members, tuple(problems)
+
+
+def _key_problems(key: str) -> list[ValidationProblem]:
+    """What keeps `key` from being where consolidated metadata keeps a document, said in one problem at the key.
+
+    Consolidated metadata holds the hierarchy below its group, the group its
+    root, and the reference implementation keeps the document of each node
+    at the node's path in that hierarchy without its leading `/`: the node
+    at `/a/b` at the key `a/b`.
+    """
+    faults = _below_faults(key)
+    if len(faults) == 0:
+        return []
+    message = f"expected the path of a node below the group, got {shown(key)}, which {said(faults)}"
+    return [ValidationProblem(("metadata", key), message, "invalid_value")]
+
+
+def _nested_listing_problems(
+    key: str,
+    listing: Mapping[str, T],
+    node_types: Mapping[str, NodeType | None],
+    node_type: Callable[[T], NodeType | None],
+) -> list[ValidationProblem]:
+    """What is wrong with `listing`, the own consolidated listing of the group at `key`, against `node_types`, the group's flat listing: each problem at the nested entry.
+
+    The reference implementation lists every node below the group in the
+    group's own listing, flat, and gives each group it lists an empty
+    listing of its own. So a node a listed group lists is one the group
+    lists too, at the joined key, of the same node type: one it lists
+    alone would be dropped by the reference reader, and one it lists as
+    another type contradicts the tree. Only the listing's own entries are
+    judged: what a group listed there lists in turn is that group's own to
+    judge, when its document is read. `node_type` says what each entry is,
+    so readings and models are judged alike.
+    """
+    problems: list[ValidationProblem] = []
+    for path, entry in listing.items():
+        if len(_below_faults(path)) != 0:
+            # Its own reader reports a key that is no node's path.
+            continue
+        joined = f"{key}/{path}"
+        here = ("metadata", key, ZARR_V3_CONSOLIDATED_METADATA_KEY, "metadata", path)
+        if joined not in node_types:
+            message = (
+                f"expected a node the group lists, got {shown(f'/{joined}')}, which "
+                f"{shown(f'/{key}')} lists alone"
+            )
+            problems.append(ValidationProblem(here, message, "invalid_value"))
+            continue
+        listed, nested = node_types[joined], node_type(entry)
+        if listed is not None and nested is not None and listed != nested:
+            message = (
+                f"expected {_an(listed)}, as the group lists {shown(f'/{joined}')}, "
+                f"got {_an(nested)}"
+            )
+            problems.append(ValidationProblem(here, message, "invalid_value"))
+    return problems
+
+
+def _an(node_type: NodeType) -> str:
+    return "an array" if node_type == "array" else "a group"
+
+
+def _model_node_type(node: ZarrV3ArrayMetadata | ZarrV3GroupMetadata) -> NodeType:
+    """The node type a model is."""
+    return "array" if isinstance(node, ZarrV3ArrayMetadata) else "group"
+
+
+def _model_listing(
+    node: ZarrV3ArrayMetadata | ZarrV3GroupMetadata,
+) -> Mapping[str, ZarrV3ArrayMetadata | ZarrV3GroupMetadata]:
+    """What a model lists in its own consolidated metadata: nothing, for an array or a group with none."""
+    if isinstance(node, ZarrV3GroupMetadata) and node.consolidated_metadata is not UNSET:
+        return node.consolidated_metadata.metadata
+    return {}
+
+
+def _reading_listing(reading: ZarrV3NodeMetadataReading) -> Mapping[str, ZarrV3NodeMetadataReading]:
+    """What a reading lists in its own consolidated metadata: nothing, for an array's or one of no node type."""
+    if isinstance(reading, ZarrV3GroupMetadataReading):
+        return reading.consolidated
+    return {}
+
+
+def _hierarchy_problems(node_types: Mapping[str, NodeType | None]) -> list[ValidationProblem]:
+    """What keeps the documents consolidated metadata keeps and its group from making a hierarchy, the group its root, as `hierarchy_problems` judges one: each at the key it is about.
+
+    `node_types` gives the node type of each document by its key, None for
+    a document of no node type the spec defines, and holds only keys
+    `_key_problems` finds nothing wrong with.
+    """
+    nodes: dict[str, NodeType | None] = {"/": "group"}
+    nodes.update((f"/{key}", node_type) for key, node_type in node_types.items())
+    return [
+        ValidationProblem(("metadata", cast("str", found.loc[0])[1:]), found.message, found.kind)
+        for found in hierarchy_problems(nodes)
+    ]
+
+
+def _node_type_of(reading: ZarrV3NodeMetadataReading) -> NodeType | None:
+    """The node type a document says it is, as its reading tells; None when it says none."""
+    if isinstance(reading, ZarrV3ArrayMetadataReading):
+        return "array"
+    if isinstance(reading, ZarrV3GroupMetadataReading):
+        return "group"
+    return None
+
+
+def _below_faults(path: str) -> list[str]:
+    """What keeps `path` from being the path of a node below a group, relative to the group, each said."""
+    if path == "":
+        return ["is the group's own"]
+    if path.startswith("/"):
+        return ['starts with "/"']
+    return path_faults(f"/{path}")
 
 
 def _with_models(

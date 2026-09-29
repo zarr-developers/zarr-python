@@ -52,6 +52,7 @@ GROUP = ZarrV3GroupMetadata.from_json(
             "metadata": {
                 "x": ARRAY.to_json(),
                 "y": {"zarr_format": 3, "node_type": "group"},
+                "y/z": ARRAY.to_json(),
             },
         },
     }
@@ -186,6 +187,15 @@ def test_a_model_is_read_once_and_written_as_it_is() -> None:
         (GROUP, {"attributes": {1: "a"}}, [(("attributes",), "invalid_type")]),
         (GROUP, {"attributes": ()}, [(("attributes",), "invalid_type")]),
         (GROUP, {"extra_fields": {"acme": math.nan}}, [(("acme",), "invalid_value")]),
+        (
+            GROUP.consolidated_metadata,
+            {"metadata": {"x": ARRAY, "x/a": ARRAY, "__b": ARRAY, "c/d": ARRAY}},
+            [
+                (("metadata", "__b"), "invalid_value"),
+                (("metadata", "x/a"), "invalid_value"),
+                (("metadata", "c"), "missing_key"),
+            ],
+        ),
         (V2_ARRAY, {"order": "Q"}, [(("order",), "invalid_value")]),
         (V2_ARRAY, {"chunks": (4, 4)}, [(("chunks",), "invalid_value")]),
         (V2_GROUP, {"attributes": {1: "a"}}, [(("attributes",), "invalid_type")]),
@@ -206,6 +216,7 @@ def test_a_model_is_read_once_and_written_as_it_is() -> None:
         "group-attribute-key",
         "group-attributes-empty-and-no-object",
         "group-extension-not-json",
+        "consolidated-paths",
         "v2-order",
         "v2-chunks-for-another-rank",
         "v2-group-attribute-key",

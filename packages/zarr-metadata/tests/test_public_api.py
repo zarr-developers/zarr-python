@@ -291,6 +291,8 @@ _STANDALONE_VOCAB = frozenset(
         "Lengths",
         "Loc",
         "Nested",
+        "NodeName",
+        "NodePath",
         # What a scope made of a field: `Read` by the definition that claims
         # its name, `Unclaimed`, or `Refused`; `Resolved` is the three.
         "Read",

@@ -149,6 +149,15 @@ is not v3. `node_metadata_from_json_v3` and `node_metadata_from_key_value_v3`
 build the model of either kind, as the models' own `from_json` and
 `from_key_value` build one.
 
+Consolidated metadata holds the hierarchy below its group, the group its
+root: the document of the node at `/a/b` sits at the key `a/b`, and the
+documents and the group make a tree in which only groups hold nodes and
+each node's parent is held. `NodeName` and `NodePath`, in
+`zarr_metadata.v3`, are the strings the spec's rules for node names and
+paths hold of, modelled on zarrs' types of those names, and
+`validate_node_name_v3`, `is_node_name_v3` and `parse_node_name_v3`, and
+their `node_path` twins, judge a string by them.
+
 A member the spec does not define is not a field; the model's
 `must_understand_fields` names those a reader must understand.
 
