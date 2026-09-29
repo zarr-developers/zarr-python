@@ -66,6 +66,7 @@ from zarr_metadata._typed_json import (
     unread_in,
 )
 from zarr_metadata.v3._common import (
+    ENVELOPE_KEYS,
     ChunkGridField,
     ChunkKeyEncodingField,
     CodecField,
@@ -799,6 +800,14 @@ def _as_written(field: _NestedField) -> JSONValue:
     return field.json
 
 
+def _declared(field: _NestedField) -> JSONValue:
+    """A nested field put back as it was written, but for the members its envelope does not declare, which are reported and left out, as the checker leaves out a key a closed TypedDict does not declare."""
+    if not isinstance(field.json, Mapping):
+        return field.json
+    envelope = cast("Mapping[str, JSONValue]", field.json)
+    return {key: value for key, value in envelope.items() if key in ENVELOPE_KEYS}
+
+
 def _put_back(value: object, put: Callable[[_NestedField], JSONValue]) -> object:
     """`value` with each nested field the checker handed back put back as `put` gives it."""
     if isinstance(value, _NestedField):
@@ -864,15 +873,20 @@ def _configuration_checked(
 
     The step a definition's `judge` starts from. A member typed with a
     field alias holds a metadata field, whose envelope is judged as a
-    document's is: a stray member, or a `must_understand` of `false`, is a
-    problem of the configuration, and the value does not come back.
+    document's is: a `must_understand` of `false` is a problem of the
+    configuration, and the value does not come back; a stray member is an
+    unknown key, reported and left out, and the value still comes back,
+    as the checker reports and leaves out a key a closed TypedDict does
+    not declare.
     """
     refined, problems = refine_json(value, loc)
     if len(problems) != 0:
         return None, problems
-    typed, found, nested = _checked(shape, refined, loc)
+    typed, found, nested = _typed(shape, refined, loc)
     problems = (*found, *(problem for field in nested for problem in _envelope(field)))
-    return (cast("T", typed) if _usable(problems) else None), problems
+    if not _usable(problems):
+        return None, problems
+    return cast("T", _put_back(typed, _declared)), problems
 
 
 def named_configuration(

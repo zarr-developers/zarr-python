@@ -57,6 +57,7 @@ from zarr_metadata.v3.definition import (
     Nested,
     Refused,
     Unclaimed,
+    resolve,
 )
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSONPartial
 
@@ -157,11 +158,58 @@ def test_group_zarr_format_rejects_float(
     assert [(p.loc, p.kind) for p in validate(document)] == [(("zarr_format",), "invalid_value")]
 
 
-def test_group_v2_rejects_unknown_document_member() -> None:
-    """The closed v2 merged-document shape rejects undeclared members."""
-    assert [(p.loc, p.kind) for p in validate_group_metadata_v2({"zarr_format": 2, "x": 1})] == [
-        (("x",), "invalid_value")
-    ]
+def _v2_consolidated_problems(document: object) -> list[tuple[tuple[str | int, ...], str]]:
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV2ConsolidatedMetadata.from_json(document)
+    return [(p.loc, p.kind) for p in raised.value.problems]
+
+
+def _v3_field_problems(field: object) -> list[tuple[tuple[str | int, ...], str]]:
+    return [(p.loc, p.kind) for p in resolve(field, CodecDefinition, CORE_AND_EXTENSIONS)[1]]
+
+
+@pytest.mark.parametrize(
+    ("problems", "expected"),
+    [
+        (
+            lambda: [
+                (p.loc, p.kind) for p in validate_group_metadata_v2({"zarr_format": 2, "x": 1})
+            ],
+            [(("x",), "unknown_key")],
+        ),
+        (
+            lambda: _v2_consolidated_problems(
+                {"zarr_consolidated_format": 1, "metadata": {}, "x": 1}
+            ),
+            [(("x",), "unknown_key")],
+        ),
+        (
+            lambda: [
+                (p.loc, p.kind)
+                for p in validate_group_metadata_v3(
+                    _group(consolidated_metadata={**_inline(), "x": 1})
+                )
+            ],
+            [(("consolidated_metadata", "x"), "unknown_key")],
+        ),
+        (
+            lambda: _v3_field_problems({"name": "gzip", "configuration": {"level": 1}, "x": 1}),
+            [(("x",), "unknown_key")],
+        ),
+        (
+            lambda: _v3_field_problems({"name": "gzip", "configuration": {"level": 1, "x": 1}}),
+            [(("configuration", "x"), "unknown_key")],
+        ),
+    ],
+    ids=["v2-group", "v2-consolidated", "v3-consolidated", "v3-field", "v3-configuration"],
+)
+def test_a_member_a_closed_object_does_not_declare_is_an_unknown_key(
+    problems: Callable[[], list[tuple[tuple[str | int, ...], str]]],
+    expected: list[tuple[tuple[str | int, ...], str]],
+) -> None:
+    # Wherever it sits, so a reader that tolerates what another writer
+    # added -- NCZarr's `_nczarr_*` keys -- filters by kind.
+    assert problems() == expected
 
 
 @pytest.mark.parametrize(
@@ -254,7 +302,7 @@ def test_v2_group_from_key_value_rejects_zgroup_extra_members(extra_key: str) ->
         ZarrV2GroupMetadata.from_key_value({".zgroup": json.dumps(doc).encode()})
 
     assert [(problem.loc, problem.kind) for problem in exc_info.value.problems] == [
-        ((extra_key,), "invalid_value")
+        ((extra_key,), "unknown_key")
     ]
 
 

@@ -68,6 +68,10 @@ def validate_metadata_field_v3(
     return with_input((*envelope, *_configuration_json_problems(value)), value)
 
 
+ENVELOPE_KEYS: frozenset[str] = frozenset({"name", "configuration", "must_understand"})
+"""The members a metadata field's envelope declares: a key beside them is an unknown key."""
+
+
 def envelope_problems(
     value: object, *, allow_must_understand_false: bool
 ) -> tuple[ValidationProblem, ...]:
@@ -90,16 +94,13 @@ def envelope_problems(
         )
     field = cast("Mapping[object, object]", value)
     problems: list[ValidationProblem] = []
-    allowed_keys = frozenset({"name", "configuration", "must_understand"})
     for key in field:
         if not isinstance(key, str):
             problems.append(
                 ValidationProblem((), f"non-string metadata field key {key!r}", "invalid_type")
             )
-        elif key not in allowed_keys:
-            problems.append(
-                ValidationProblem((key,), "unexpected metadata field member", "invalid_value")
-            )
+        elif key not in ENVELOPE_KEYS:
+            problems.append(ValidationProblem((key,), f"unexpected key {key!r}", "unknown_key"))
     if not isinstance(field.get("name"), str):
         problems.append(ValidationProblem(("name",), "expected a string name", "invalid_type"))
     if "configuration" in field:
@@ -165,6 +166,7 @@ def parse_metadata_field_v3(value: object) -> ZarrV3MetadataFieldJSON:
 
 
 __all__ = [
+    "ENVELOPE_KEYS",
     "ChunkGridField",
     "ChunkKeyEncodingField",
     "CodecField",

@@ -898,6 +898,23 @@ def test_error_check_judges_a_nested_envelope() -> None:
     assert [found.loc for found in problems] == [("codecs", 0, "configuration")]
 
 
+def test_judge_leaves_out_a_member_a_nested_field_s_envelope_does_not_declare() -> None:
+    # Reported as an unknown key and left out, as the checker leaves out a
+    # key a closed TypedDict does not declare: the configuration comes back.
+    for given in (ACME_STACK.check, ACME_STACK.judge):
+        typed, problems = given({"codecs": [{"name": "crc32c", "x": 1}]})
+        assert typed == {"codecs": ({"name": "crc32c"},)}
+        assert _locs(problems) == [(("codecs", 0, "x"), "unknown_key")]
+
+
+def test_error_judge_refuses_a_nested_field_that_need_not_be_understood() -> None:
+    # A `must_understand` of false is no unknown key: the configuration
+    # does not come back.
+    typed, problems = ACME_STACK.judge({"codecs": [{"name": "crc32c", "must_understand": False}]})
+    assert typed is None
+    assert _locs(problems) == [(("codecs", 0, "must_understand"), "invalid_value")]
+
+
 def test_judge_is_the_check_and_then_the_rules() -> None:
     # A caller holding one configuration: the rules are asked only of a
     # configuration that type-checked, so they never meet a wrong type.

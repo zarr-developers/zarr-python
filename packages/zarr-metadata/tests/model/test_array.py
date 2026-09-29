@@ -826,7 +826,7 @@ def test_metadata_field_must_understand_must_be_boolean(value: object) -> None:
 def test_metadata_field_rejects_unknown_envelope_member() -> None:
     """Unknown envelope keys cannot be silently discarded during normalization."""
     problems = validate_metadata_field_v3({"name": "x", "typo": 1})
-    assert [(problem.loc, problem.kind) for problem in problems] == [(("typo",), "invalid_value")]
+    assert [(problem.loc, problem.kind) for problem in problems] == [(("typo",), "unknown_key")]
 
 
 @pytest.mark.parametrize("field", ["codecs", "storage_transformers"])

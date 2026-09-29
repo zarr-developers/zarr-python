@@ -384,7 +384,7 @@ def _shard(codecs: list[object], index_codecs: list[object]) -> dict[str, object
         (
             {"name": "zfpy", "configuration": {}, "extra": 1},
             CodecDefinition,
-            [(("extra",), "invalid_value")],
+            [(("extra",), "unknown_key")],
         ),
         (None, CodecDefinition, [((), "invalid_type")]),
         (

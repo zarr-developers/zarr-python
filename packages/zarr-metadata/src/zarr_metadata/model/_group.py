@@ -772,8 +772,9 @@ class ZarrV2GroupMetadata:
             return cls.from_json(zgroup_raw)
         zgroup = cast("Mapping[str, object]", zgroup_raw)
         if "attributes" in zgroup:
+            # A key `.zgroup` does not declare: its attributes are `.zattrs`.
             refused = ValidationProblem(
-                ("attributes",), "unexpected document member", "invalid_value"
+                ("attributes",), "unexpected key 'attributes'", "unknown_key"
             )
             raise MetadataValidationError(with_input((refused,), zgroup))
         if ZARR_V2_ATTRIBUTES_STORE_KEY in mapping:
@@ -889,13 +890,7 @@ def _read_consolidated_v2(
         for key in ("zarr_consolidated_format", "metadata")
         if key not in doc
     ]
-    problems.extend(
-        ValidationProblem((key,), "unexpected document member", "invalid_value")
-        if isinstance(key, str)
-        else ValidationProblem((), f"non-string document key {key!r}", "invalid_type")
-        for key in doc
-        if key not in {"zarr_consolidated_format", "metadata"}
-    )
+    problems.extend(unexpected_keys(frozenset({"zarr_consolidated_format", "metadata"}), doc))
     problems.extend(check_literal(doc, "zarr_consolidated_format", 1))
     refined: dict[str, JSONValue] = {}
     if "metadata" in doc:

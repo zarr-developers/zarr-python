@@ -135,7 +135,7 @@ def missing_keys(
 def unexpected_keys(
     allowed: frozenset[str], doc: Mapping[object, object]
 ) -> tuple[ValidationProblem, ...]:
-    """One problem per member outside a closed document's declared shape."""
+    """One problem per member outside a closed document's declared shape: `unknown_key`, as a closed TypedDict's checker reports one, so a caller who tolerates a member another writer added can tell it from a wrong value."""
     problems: list[ValidationProblem] = []
     for key in doc:
         if not isinstance(key, str):
@@ -143,9 +143,7 @@ def unexpected_keys(
                 ValidationProblem((), f"non-string document key {key!r}", "invalid_type")
             )
         elif key not in allowed:
-            problems.append(
-                ValidationProblem((key,), "unexpected document member", "invalid_value")
-            )
+            problems.append(ValidationProblem((key,), f"unexpected key {key!r}", "unknown_key"))
     return tuple(problems)
 
 
