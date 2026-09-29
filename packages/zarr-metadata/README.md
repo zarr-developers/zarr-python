@@ -97,13 +97,17 @@ definition that claims its name, `Unclaimed` when none does, or
 `Refused` -- with where it sits and the kind it was read as, each codec
 with the chunk it is handed, every problem, and the model when there is
 none; `from_json` is that model, or the problems raised. A consumer's
-own policy is a walk over the fields, with nothing read twice. Which
-fields go beyond the core spec, say -- a field that names nothing is a
-problem already:
+own policy is a walk over the fields, with nothing read twice:
+`with_problems` gives each with its problems, those located in it and in
+the fields it holds, as zod's `flattenError` groups issues, and
+`canonical_of` spells a field with none in the fewest words, without
+reading it again. Which fields go beyond the core spec, say -- a field
+that names nothing is a problem already -- and how each is spelled most
+simply:
 
 ```python
 from zarr_metadata.model import read_array_metadata_v3
-from zarr_metadata.v3.definition import CORE
+from zarr_metadata.v3.definition import CORE, canonical_of, with_problems
 
 reading = read_array_metadata_v3(raw)
 beyond_core = [
@@ -111,6 +115,10 @@ beyond_core = [
     for loc, field in reading.fields()
     if field.name is not None and CORE.claimant(field.read_as, field.name) is None
 ]
+simplest = {
+    loc: canonical_of(field, problems)
+    for loc, field, problems in with_problems(reading.fields(), reading.problems)
+}
 metadata = reading.metadata  # None when reading.problems is not empty
 ```
 

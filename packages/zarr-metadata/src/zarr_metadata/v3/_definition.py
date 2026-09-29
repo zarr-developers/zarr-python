@@ -1037,6 +1037,35 @@ def fields_of(resolved: Resolved[Any], loc: Loc = ()) -> Iterator[tuple[Loc, Res
         yield from fields_of(inner, (*loc, "configuration", *place))
 
 
+def with_problems(
+    fields: Iterable[tuple[Loc, Resolved[Any]]], problems: Sequence[ValidationProblem]
+) -> Iterator[tuple[Loc, Resolved[Any], Problems]]:
+    """Each of `fields`, with where it sits, and the problems among `problems` located in it, in the fields it holds too.
+
+    `fields` and `problems` are one read's: a reading's `fields()` and
+    `problems`, or `fields_of` a field and the problems `resolve` gave
+    with it. A field's problems are those it was read with, and those the
+    document found with it where it stands -- its place in the pipeline,
+    the chunk it is handed, the array's shape -- so a field with none is
+    valid there, and `canonical_of` spells it. A function of the problems,
+    as zod's `flattenError` is of the issues, grouping them at every
+    depth: a problem with a shard's inner codec is the inner codec's, and
+    the shard's. Each field comes before the fields it holds, as
+    `fields_of` gives them, so the last field whose problems hold a
+    problem is the innermost field holding it. A problem in no field --
+    with the fill value, with the shape -- is in none's.
+    """
+    located = list(fields)
+    held: dict[Loc, list[ValidationProblem]] = {loc: [] for loc, _ in located}
+    for found in problems:
+        for depth in range(len(found.loc) + 1):
+            holder = held.get(found.loc[:depth])
+            if holder is not None:
+                holder.append(found)
+    for loc, field in located:
+        yield loc, field, tuple(held[loc])
+
+
 def configuration_of(resolved: Resolved[Any], definition: Definition[C]) -> C | None:
     """The configuration `resolved` holds, typed as `definition` declares it, if `definition` read it.
 
@@ -1338,29 +1367,49 @@ def canonicalize(
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L585-L592);
     and there is no `must_understand`, since `true` is what absence means.
     A name nothing in scope claims keeps the configuration it was written
-    with, since what it simplifies to is its own definition's call.
+    with, since what it simplifies to is its own definition's call. A
+    field a scope has read already is spelled so by `canonical_of`,
+    given its problems.
     """
     resolved, problems = resolve(data, kind, context, loc)
+    return canonical_of(resolved, problems), problems
+
+
+def canonical_of(
+    resolved: Resolved[Any], problems: Sequence[ValidationProblem]
+) -> JSONValue | None:
+    """`resolved`, a field a scope read, in its simplest equivalent spelling, as `canonicalize` spells one; None when it has a problem.
+
+    `problems` are the field's, as `resolve` gives them, or
+    `with_problems` gives each field of a reading. Only a field with none
+    has a simplest spelling: a simpler spelling of one with a problem
+    would erase what its author wrote -- a key its TypedDict does not
+    declare -- or spell what does not hold. What is spelled is what the
+    scope read, without reading the field again.
+    """
     if len(problems) != 0:
-        return None, problems
-    return _simplest(resolved), ()
+        return None
+    return _simplest(resolved)
 
 
-def _simplest(field: Resolved[Any]) -> JSONValue:
-    """A field without problems in its simplest spelling: one nothing in scope claims as a document writes it."""
+def _simplest(field: Resolved[Any]) -> JSONValue | None:
+    """A field in its simplest spelling; None when it, or a field it holds, was refused, which has none."""
     if isinstance(field, Read):
         return _canonical_field(field)
     if isinstance(field, Unclaimed):
         return field.to_json()
-    return field.json
+    return None
 
 
-def _canonical_field(resolved: Read[Any]) -> JSONValue:
-    """A field that read, in its simplest equivalent spelling: the fields it holds first, then its own members."""
+def _canonical_field(resolved: Read[Any]) -> JSONValue | None:
+    """A field that read, in its simplest equivalent spelling: the fields it holds first, then its own members; None when one it holds was refused."""
     definition, name = resolved.definition, resolved.name
     configuration: JSONValue = dict(resolved.configuration)
     for loc, inner in resolved.nested.items():
-        configuration = _replaced(configuration, loc, _simplest(inner))
+        simplest = _simplest(inner)
+        if simplest is None:
+            return None
+        configuration = _replaced(configuration, loc, simplest)
     simplified = cast("Mapping[str, JSONValue]", definition.canonical(configuration))
     _, refused = definition.judge(simplified)
     if len(refused) != 0:
@@ -1416,6 +1465,7 @@ __all__ = [
     "Unclaimed",
     "as_kind",
     "asked",
+    "canonical_of",
     "canonicalize",
     "chunk_grid_lengths",
     "configuration_of",
@@ -1435,4 +1485,5 @@ __all__ = [
     "unknown_lengths",
     "unknown_storage",
     "variable_length",
+    "with_problems",
 ]

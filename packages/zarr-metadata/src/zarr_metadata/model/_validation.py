@@ -419,7 +419,8 @@ class ZarrV3ArrayMetadataReading:
 
         The extension points, then each codec and storage transformer at its
         index, each followed by the fields it holds, as `fields_of` gives
-        them: a shard's codecs, a struct's field types.
+        them: a shard's codecs, a struct's field types. `with_problems`
+        gives each with its problems.
         """
         for key, field in (
             ("data_type", self.data_type),

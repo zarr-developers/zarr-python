@@ -28,6 +28,7 @@ from zarr_metadata.v3.definition import (
     Refused,
     Unclaimed,
     ValidationProblem,
+    canonical_of,
     canonicalize,
     configuration_of,
     fill_value_problems,
@@ -181,6 +182,8 @@ def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field
     assert problems == ()
     assert simplest is not None
     assert canonicalize(simplest, kind, CORE_AND_EXTENSIONS) == (simplest, ())
+    # A field read already is spelled as its JSON is, with nothing read again.
+    assert canonical_of(*resolve(field, kind, CORE_AND_EXTENSIONS)) == simplest
 
 
 @pytest.mark.parametrize(
@@ -271,6 +274,7 @@ def test_the_simplest_spelling(field: dict[str, Any], simplest: object) -> None:
     kinds = {"rectilinear": ChunkGridDefinition, "int8": DataTypeDefinition}
     kind = kinds.get(field["name"], CodecDefinition)
     assert canonicalize(field, kind, CORE_AND_EXTENSIONS) == (simplest, ())
+    assert canonical_of(*resolve(field, kind, CORE_AND_EXTENSIONS)) == simplest
 
 
 @pytest.mark.parametrize(
@@ -346,6 +350,11 @@ def test_an_unclaimed_field_keeps_its_configuration_in_its_kind_s_envelope(
     assert canonicalize(field, kind, CORE) == (simplest, ())
 
 
+def _shard(codecs: list[object], index_codecs: list[object]) -> dict[str, object]:
+    configuration = {"chunk_shape": [2], "codecs": codecs, "index_codecs": index_codecs}
+    return {"name": "sharding_indexed", "configuration": configuration}
+
+
 @pytest.mark.parametrize(
     ("field", "kind", "found"),
     [
@@ -378,6 +387,16 @@ def test_an_unclaimed_field_keeps_its_configuration_in_its_kind_s_envelope(
             [(("extra",), "invalid_value")],
         ),
         (None, CodecDefinition, [((), "invalid_type")]),
+        (
+            _shard(["bytes", {"name": "gzip", "configuration": {"level": 12}}], ["bytes"]),
+            CodecDefinition,
+            [(("configuration", "codecs", 1, "configuration", "level"), "invalid_value")],
+        ),
+        (
+            _shard(["bytes"], ["bytes", {"name": "gzip", "configuration": {"level": 1}}]),
+            CodecDefinition,
+            [(("configuration", "index_codecs", 1), "invalid_value")],
+        ),
     ],
     ids=[
         "refused-value",
@@ -386,16 +405,21 @@ def test_an_unclaimed_field_keeps_its_configuration_in_its_kind_s_envelope(
         "must-understand-false",
         "stray",
         "null",
+        "holding-a-refused-field",
+        "a-codec-of-dynamic-size-where-one-of-static-size-goes",
     ],
 )
 def test_error_a_field_with_a_problem_has_no_simplest_spelling(
     field: dict[str, Any] | None, kind: type[Definition[Any]], found: list[object]
 ) -> None:
     # Whatever the author wrote stays theirs: a simpler spelling would
-    # drop the unknown key, the stray member or the `must_understand`.
+    # drop the unknown key, the stray member or the `must_understand`, or
+    # spell what does not hold. A field read already, given its problems,
+    # has none either.
     simplest, problems = canonicalize(field, kind, CORE_AND_EXTENSIONS)
     assert simplest is None
     assert [(problem.loc, problem.kind) for problem in problems] == found
+    assert canonical_of(*resolve(field, kind, CORE_AND_EXTENSIONS)) is None
 
 
 def test_error_a_canonical_that_does_not_hold_is_the_definitions_fault() -> None:

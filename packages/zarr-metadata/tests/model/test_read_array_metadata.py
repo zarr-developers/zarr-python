@@ -18,6 +18,7 @@ from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
     ZarrV3ArrayMetadataReading,
     read_array_metadata_v3,
+    read_group_metadata_v3,
     validate_array_metadata_v3,
 )
 from zarr_metadata.v3.definition import (
@@ -33,10 +34,15 @@ from zarr_metadata.v3.definition import (
     Refused,
     StorageTransformerDefinition,
     Unclaimed,
+    fields_of,
+    resolve,
+    with_problems,
 )
 
 if TYPE_CHECKING:
-    from zarr_metadata.v3.definition import Lengths, Loc
+    from collections.abc import Callable, Iterator
+
+    from zarr_metadata.v3.definition import Lengths, Loc, Resolved
 
 LITTLE = {"name": "bytes", "configuration": {"endian": "little"}}
 ZSTD = {"name": "zstd", "configuration": {"level": 1}}
@@ -226,6 +232,103 @@ def test_a_document_reads_as_each_field_where_it_sits_and_its_codecs_as_a_pipeli
     assert reading.chunk.data_type is reading.data_type
     assert reading.pipeline[0].incoming == reading.chunk
     assert [None if s.incoming is None else s.incoming.lengths for s in reading.pipeline] == handed
+
+
+_INNER_GZIP = {"name": "gzip", "configuration": {"level": 12}}
+_WITH_PROBLEMS = _document(
+    (4, 4),
+    chunk_grid={"name": "regular", "configuration": {"chunk_shape": [4]}},
+    fill_value="high",
+    codecs=[
+        _shard([2, 2], [LITTLE, _INNER_GZIP]),
+        ZSTD,
+        {"name": "transpose", "configuration": {"order": [1, 0]}},
+    ],
+)
+"""An array document with a problem in each place a field can have one, and one in no field."""
+
+
+def _array_fields(
+    document: object,
+) -> Iterator[tuple[Loc, Resolved[Any], tuple[ValidationProblem, ...]]]:
+    reading = read_array_metadata_v3(document)
+    return with_problems(reading.fields(), reading.problems)
+
+
+def _group_fields(
+    document: object,
+) -> Iterator[tuple[Loc, Resolved[Any], tuple[ValidationProblem, ...]]]:
+    group = {
+        "zarr_format": 3,
+        "node_type": "group",
+        "consolidated_metadata": {
+            "kind": "inline",
+            "must_understand": False,
+            "metadata": {"a": document},
+        },
+    }
+    reading = read_group_metadata_v3(group)
+    return with_problems(reading.fields(), reading.problems)
+
+
+def _field_fields(
+    document: object,
+) -> Iterator[tuple[Loc, Resolved[Any], tuple[ValidationProblem, ...]]]:
+    resolved, problems = resolve(
+        cast("dict[str, Any]", document)["codecs"][0],
+        CodecDefinition,
+        CORE_AND_EXTENSIONS,
+        ("codecs", 0),
+    )
+    return with_problems(fields_of(resolved, ("codecs", 0)), problems)
+
+
+_INNER_LEVEL = ("codecs", 0, "configuration", "codecs", 1, "configuration", "level")
+_EACH_FIELD_S = {
+    ("data_type",): [],
+    ("chunk_grid",): [("chunk_grid", "configuration", "chunk_shape")],
+    ("chunk_key_encoding",): [],
+    ("codecs", 0): [_INNER_LEVEL],
+    ("codecs", 0, "configuration", "codecs", 0): [],
+    ("codecs", 0, "configuration", "codecs", 1): [_INNER_LEVEL],
+    ("codecs", 0, "configuration", "index_codecs", 0): [],
+    ("codecs", 1): [],
+    ("codecs", 2): [("codecs", 2)],
+}
+"""Each field of `_WITH_PROBLEMS`, and where each of its problems is."""
+_IN_A_GROUP = ("consolidated_metadata", "metadata", "a")
+
+
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [
+        (_array_fields, _EACH_FIELD_S),
+        (
+            _group_fields,
+            {
+                (*_IN_A_GROUP, *loc): [(*_IN_A_GROUP, *problem) for problem in problems]
+                for loc, problems in _EACH_FIELD_S.items()
+            },
+        ),
+        (
+            _field_fields,
+            {loc: problems for loc, problems in _EACH_FIELD_S.items() if loc[:2] == ("codecs", 0)},
+        ),
+    ],
+    ids=["an-array", "a-document-a-group-holds", "one-field"],
+)
+def test_each_field_comes_with_the_problems_located_in_it(
+    fields: Callable[[object], Iterator[tuple[Loc, Resolved[Any], tuple[ValidationProblem, ...]]]],
+    expected: dict[Loc, list[Loc]],
+) -> None:
+    # Those it was read with and those the document found with it where
+    # it stands -- a transpose out of the pipeline's order, at its own
+    # place, and the chunk grid over the shape -- the fields it holds
+    # too: a shard with a bad inner codec has that problem as well. A
+    # problem in no field -- the fill value -- is in none's.
+    assert {
+        loc: [p.loc for p in problems] for loc, _, problems in fields(_WITH_PROBLEMS)
+    } == expected
 
 
 def test_a_document_with_no_problem_reads_as_its_model_holding_the_fields_read() -> None:

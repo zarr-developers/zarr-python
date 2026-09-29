@@ -258,10 +258,15 @@ run-length encodes its chunk shapes -- and the envelope in the fewest
 words every reader takes: a data type with nothing to configure is its
 bare name, any other field an object, `{"name": ...}`, as a Zarr v3.0
 reader takes no short-hand name in `codecs`; raw bits write their size
-back into the name, in decimal, so `r008` is `r8`. A field with any problem, an unknown key included, has
-none: a simpler spelling of it would erase what its author wrote. What
-`canonical` gives is judged again: one that does not hold is a
-`ValueError`, a fault in the definition.
+back into the name, in decimal, so `r008` is `r8`. A field with any
+problem, an unknown key included, has none: a simpler spelling of it
+would erase what its author wrote. What `canonical` gives is judged
+again: one that does not hold is a `ValueError`, a fault in the
+definition. `canonical_of(resolved, problems)` spells a field a scope
+has read already, given its problems -- as `resolve` gives them, or
+`with_problems` gives each field of a reading -- without reading it
+again, and gives what `canonicalize` gives: None for a field with a
+problem.
 
 A definition checks itself when it is built, and each of these is a
 `TypeError` saying what is wrong: a `configuration` that is not a
@@ -307,6 +312,7 @@ from zarr_metadata.v3._definition import (
     StorageTransformerDefinition,
     StorageTransformerField,
     Unclaimed,
+    canonical_of,
     canonicalize,
     chunk_grid_lengths,
     configuration_of,
@@ -314,6 +320,7 @@ from zarr_metadata.v3._definition import (
     fill_value_problems,
     resolve,
     storage_of,
+    with_problems,
 )
 from zarr_metadata.v3._pipeline import Stage, read_pipeline
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS, Context
@@ -352,6 +359,7 @@ __all__ = [
     "Unclaimed",
     "ValidationProblem",
     "ZarrV3MetadataFieldJSON",
+    "canonical_of",
     "canonicalize",
     "check",
     "chunk_grid_lengths",
@@ -362,4 +370,5 @@ __all__ = [
     "resolve",
     "shown",
     "storage_of",
+    "with_problems",
 ]
