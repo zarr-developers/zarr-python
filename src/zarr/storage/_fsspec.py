@@ -427,7 +427,11 @@ class FsspecStore(Store):
 
     async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
-        prefix = f"{self.path}/{prefix.rstrip('/')}"
+        # A store path of "" or "/" is the root of the filesystem. Joining it with a
+        # leading "/" gives "/a" or "//a", which ReferenceFileSystem does not find,
+        # since it keys entries by bare names like "a/zarr.json".
+        root = self.path.rstrip("/")
+        prefix = f"{root}/{prefix.rstrip('/')}" if root else prefix.rstrip("/")
         try:
             allfiles = await self.fs._ls(prefix, detail=False)
         except FileNotFoundError:
@@ -452,10 +456,12 @@ class FsspecStore(Store):
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
+        # Same root handling as list_dir.
+        root = self.path.rstrip("/")
         for onefile in await self.fs._find(
-            f"{self.path}/{prefix}", detail=False, maxdepth=None, withdirs=False
+            f"{root}/{prefix}" if root else prefix, detail=False, maxdepth=None, withdirs=False
         ):
-            yield onefile.removeprefix(f"{self.path}/")
+            yield onefile.removeprefix(f"{root}/") if root else onefile.removeprefix("/")
 
     async def getsize(self, key: str) -> int:
         path = _dereference_path(self.path, key)
