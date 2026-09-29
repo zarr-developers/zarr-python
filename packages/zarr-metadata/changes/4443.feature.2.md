@@ -1,0 +1,10 @@
+**Breaking:** a v3 array's `fill_value` is judged against its `data_type`.
+Each data type's definition declares the JSON shape of its fill value,
+`fill_value`, and the rules for one of that shape, `fill_value_rules`: an
+`int8` fill value of 300, a `float32` hex string of another width, and a
+struct fill value missing a field are each a problem at `fill_value`,
+where the package accepted them before. `fill_value_problems(data_type,
+value)` judges a fill value against a data type field a scope read, and
+a field that is read keeps the fields it read inside as
+`Resolved.nested`, a `Nested` mapping by location. A data type nothing
+in scope claims leaves its fill value unjudged.

@@ -1045,6 +1045,17 @@ def test_sharding_codec_json_roundtrip_index_location(
     assert restored == codec
 
 
+def test_sharding_codec_default_byte_order_is_little() -> None:
+    """
+    The default inner and index codecs store little-endian bytes, like the default
+    serializer, so a sharded array written with defaults is byte-identical on every host.
+    """
+    serialized = ShardingCodec(chunk_shape=(1,)).to_dict()
+    little = {"name": "bytes", "configuration": {"endian": "little"}}
+    assert serialized["configuration"]["codecs"] == (little,)  # type: ignore[index, call-overload]
+    assert serialized["configuration"]["index_codecs"][0] == little  # type: ignore[index, call-overload]
+
+
 @pytest.mark.parametrize(
     ("member", "expected"),
     [("start", "start"), ("end", "end")],
