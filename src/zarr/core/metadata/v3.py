@@ -215,23 +215,6 @@ def parse_extra_fields(
     return allowed_extra_fields
 
 
-def extract_extra_fields(
-    data: Mapping[str, object],
-    *,
-    reserved_keys: AbstractSet[str],
-    node_type: NodeType,
-) -> dict[str, AllowedExtraField]:
-    """
-    Return the checked extra fields of a Zarr V3 metadata document: the members whose keys
-    are not in `reserved_keys`. See `parse_extra_fields`.
-    """
-    return parse_extra_fields(
-        {k: v for k, v in data.items() if k not in reserved_keys},
-        reserved_keys=reserved_keys,
-        node_type=node_type,
-    )
-
-
 # JSON type for a single dimension's rectilinear spec:
 # bare int (uniform shorthand), or list of ints / [value, count] RLE pairs.
 RectilinearDimSpecJSON = int | list[int | list[int]]
@@ -696,8 +679,10 @@ class ArrayV3Metadata(Metadata):
             raise TypeError(f"Invalid fill_value: {fill!r}") from e
 
         # check if there are extra keys
-        allowed_extra_fields = extract_extra_fields(
-            _data, reserved_keys=ARRAY_METADATA_KEYS, node_type="array"
+        allowed_extra_fields = parse_extra_fields(
+            {k: v for k, v in _data.items() if k not in ARRAY_METADATA_KEYS},
+            reserved_keys=ARRAY_METADATA_KEYS,
+            node_type="array",
         )
         # TODO: replace this with a real type check!
         _data_typed = cast(ArrayMetadataJSON_V3, _data)

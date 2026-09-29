@@ -49,7 +49,7 @@ from zarr.core.dtype import parse_data_type
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.io import save_metadata
-from zarr.core.metadata.v3 import AllowedExtraField, extract_extra_fields, parse_extra_fields
+from zarr.core.metadata.v3 import AllowedExtraField, parse_extra_fields
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
     ArrayNotFoundError,
@@ -312,9 +312,9 @@ class ConsolidatedMetadata:
                 "group-1": GroupMetadata(),
             }
         )
-        # {'group-0': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group'),
-        #  'group-0/group-0-0': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group'),
-        #  'group-1': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group')}
+        # {'group-0': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group', extra_fields={}),
+        #  'group-0/group-0-0': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group', extra_fields={}),
+        #  'group-1': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group', extra_fields={})}
         ```
         """
         metadata = {}
@@ -353,7 +353,8 @@ GROUP_METADATA_KEYS: Final[set[str]] = {
     "consolidated_metadata",
 }
 """
-The names of the fields of the group metadata document written by Zarr-Python.
+The names of the fields of the group metadata document. `consolidated_metadata` is not in the
+Zarr V3 spec; Zarr-Python writes it.
 """
 
 
@@ -451,14 +452,13 @@ class GroupMetadata(Metadata):
         zarr_format = data.get("zarr_format")
         if zarr_format == 3:
             # Zarr v3 allows an extra key only if it is an object with "must_understand": false.
-            extra_fields = extract_extra_fields(
-                data, reserved_keys=GROUP_METADATA_KEYS, node_type="group"
+            extra_fields = parse_extra_fields(
+                {k: v for k, v in data.items() if k not in GROUP_METADATA_KEYS},
+                reserved_keys=GROUP_METADATA_KEYS,
+                node_type="group",
             )
         else:
-            # zarr v2 allowed arbitrary keys here.
-            # We don't want the GroupMetadata constructor to fail just because someone put an
-            # extra key in the metadata, but we don't keep those keys either. An invalid
-            # zarr_format is rejected by the constructor.
+            # Zarr v2 allowed arbitrary keys; they are dropped rather than kept.
             extra_fields = {}
         data = {k: v for k, v in data.items() if k in GROUP_METADATA_KEYS}
         return cls(**data, extra_fields=extra_fields)
