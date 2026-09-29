@@ -174,28 +174,45 @@ def check_allowed_extra_field(data: object) -> TypeGuard[AllowedExtraField]:
 
 
 def parse_extra_fields(
-    data: Mapping[str, AllowedExtraField] | None,
+    data: Mapping[str, object] | None,
     *,
     reserved_keys: AbstractSet[str],
     node_type: NodeType,
 ) -> dict[str, AllowedExtraField]:
     """
-    Check that no extra field key collides with a key reserved by the metadata document.
+    Check the extra fields of a Zarr V3 metadata document.
+
+    Raises `ValueError` if a key collides with a key in `reserved_keys`, and
+    `MetadataValidationError` if a value is not an object with `"must_understand": false`.
     """
     if data is None:
         return {}
-    else:
-        conflict_keys = reserved_keys & set(data.keys())
-        if len(conflict_keys) > 0:
-            msg = (
-                "Invalid extra fields. "
-                "The following keys: "
-                f"{sorted(conflict_keys)} "
-                "are invalid because they collide with keys reserved for use by the "
-                f"{node_type} metadata document."
-            )
-            raise ValueError(msg)
-        return dict(data)
+    conflict_keys = reserved_keys & set(data.keys())
+    if len(conflict_keys) > 0:
+        msg = (
+            "Invalid extra fields. "
+            "The following keys: "
+            f"{sorted(conflict_keys)} "
+            "are invalid because they collide with keys reserved for use by the "
+            f"{node_type} metadata document."
+        )
+        raise ValueError(msg)
+    allowed_extra_fields: dict[str, AllowedExtraField] = {}
+    invalid_extra_fields: list[str] = []
+    for key, val in data.items():
+        if check_allowed_extra_field(val):
+            allowed_extra_fields[key] = val
+        else:
+            invalid_extra_fields.append(key)
+    if len(invalid_extra_fields) > 0:
+        msg = (
+            f"Got Zarr V3 {node_type} metadata with the following disallowed extra "
+            f"fields: {sorted(invalid_extra_fields)}. "
+            'Extra fields are not allowed unless they are an object with a "must_understand" '
+            "key which is assigned the value `false`."
+        )
+        raise MetadataValidationError(msg)
+    return allowed_extra_fields
 
 
 def extract_extra_fields(
@@ -205,29 +222,14 @@ def extract_extra_fields(
     node_type: NodeType,
 ) -> dict[str, AllowedExtraField]:
     """
-    Return the members of a Zarr V3 metadata document whose keys are not in `reserved_keys`.
-
-    Raises `MetadataValidationError` if any of them is not an object with
-    `"must_understand": false`.
+    Return the checked extra fields of a Zarr V3 metadata document: the members whose keys
+    are not in `reserved_keys`. See `parse_extra_fields`.
     """
-    allowed_extra_fields: dict[str, AllowedExtraField] = {}
-    invalid_extra_fields: list[str] = []
-    for key, val in data.items():
-        if key in reserved_keys:
-            continue
-        if check_allowed_extra_field(val):
-            allowed_extra_fields[key] = val
-        else:
-            invalid_extra_fields.append(key)
-    if len(invalid_extra_fields) > 0:
-        msg = (
-            f"Got a Zarr V3 {node_type} metadata document with the following disallowed extra "
-            f"fields: {sorted(invalid_extra_fields)}. "
-            'Extra fields are not allowed unless they are an object with a "must_understand" '
-            "key which is assigned the value `false`."
-        )
-        raise MetadataValidationError(msg)
-    return allowed_extra_fields
+    return parse_extra_fields(
+        {k: v for k, v in data.items() if k not in reserved_keys},
+        reserved_keys=reserved_keys,
+        node_type=node_type,
+    )
 
 
 # JSON type for a single dimension's rectilinear spec:

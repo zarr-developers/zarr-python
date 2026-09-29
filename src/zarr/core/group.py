@@ -423,13 +423,13 @@ class GroupMetadata(Metadata):
     ) -> None:
         attributes_parsed = parse_attributes(attributes)
         zarr_format_parsed = parse_zarr_format(zarr_format)
-        extra_fields_parsed = parse_extra_fields(
-            extra_fields, reserved_keys=GROUP_METADATA_KEYS, node_type="group"
-        )
-        if zarr_format_parsed == 2 and extra_fields_parsed:
+        if zarr_format_parsed == 2 and extra_fields:
             raise ValueError(
                 "Invalid extra fields. Zarr format 2 group metadata does not support extra fields."
             )
+        extra_fields_parsed = parse_extra_fields(
+            extra_fields, reserved_keys=GROUP_METADATA_KEYS, node_type="group"
+        )
 
         object.__setattr__(self, "attributes", attributes_parsed)
         object.__setattr__(self, "zarr_format", zarr_format_parsed)

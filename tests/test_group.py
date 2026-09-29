@@ -1751,6 +1751,11 @@ class TestGroupMetadata:
         with pytest.raises(MetadataValidationError, match="my_extension"):
             GroupMetadata.from_dict(data)
 
+    @pytest.mark.parametrize("value", [{"must_understand": True}, {}, "not an object", 1])
+    def test_init_disallowed_extra_fields(self, value: object) -> None:
+        with pytest.raises(MetadataValidationError, match="my_extension"):
+            GroupMetadata(extra_fields={"my_extension": value})  # type: ignore[dict-item]
+
     @pytest.mark.parametrize("key", sorted(GROUP_METADATA_KEYS))
     def test_init_extra_fields_collision(self, key: str) -> None:
         extra_fields: dict[str, Any] = {key: {"must_understand": False}}
