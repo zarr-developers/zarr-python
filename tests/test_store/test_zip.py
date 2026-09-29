@@ -3,6 +3,7 @@ from __future__ import annotations
 import gc
 import io
 import os
+import pathlib
 import pickle
 import shutil
 import tempfile
@@ -458,7 +459,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         store = ZipStore(tmp_path / "data.zip", mode="w")
         await store.set("foo", cpu.Buffer.from_bytes(b"1"))
         copy = pickle.loads(pickle.dumps(store))
-        with pytest.raises(zipfile.BadZipFile, match="no zip central directory"):
+        with pytest.raises(zipfile.BadZipFile, match="not a zip archive"):
             await copy.get("foo", default_buffer_prototype())
         store.close()
 
@@ -475,18 +476,73 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         def disk_full() -> None:
             raise OSError("disk full")
 
-        def locked(path: Any) -> None:
+        def locked(path: Any, missing_ok: bool = False) -> None:
             raise PermissionError("locked")
 
         monkeypatch.setattr(store._zf, "_write_end_record", disk_full)
         with pytest.raises(OSError, match="disk full"):
             store.close()
         with monkeypatch.context() as m:
-            m.setattr(os, "remove", locked)
+            m.setattr(pathlib.Path, "unlink", locked)
             with pytest.raises(PermissionError, match="locked"):
                 await store.clear()
         with pytest.raises(RuntimeError, match="closing the archive"):
             await store.set("bar", cpu.Buffer.from_bytes(b"2"))
+
+    @pytest.mark.parametrize("damage", ["garbage", "missing"])
+    @pytest.mark.parametrize("close", ["closed", "close_failed"])
+    async def test_clear_replaces_damaged_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, damage: str, close: str
+    ) -> None:
+        # clear() replaces the archive even when the file it wrote is no longer
+        # a zip or is gone, including after a failed close()
+        path = tmp_path / "data.zip"
+        store = ZipStore(path, mode="w")
+        await store.set("foo", cpu.Buffer.from_bytes(b"1"))
+        if close == "closed":
+            store.close()
+        else:
+
+            def disk_full() -> None:
+                raise OSError("disk full")
+
+            monkeypatch.setattr(store._zf, "_write_end_record", disk_full)
+            with pytest.raises(OSError, match="disk full"):
+                store.close()
+        if damage == "garbage":
+            path.write_bytes(b"not a zip")
+        else:
+            path.unlink()
+
+        await store.clear()
+        await store.set("bar", cpu.Buffer.from_bytes(b"2"))
+        store.close()
+        with zipfile.ZipFile(path) as zf:
+            assert zf.namelist() == ["bar"]
+
+    async def test_reopen_recreates_deleted_file(self, tmp_path: Path) -> None:
+        # a file removed between uses is created again, not refused
+        path = tmp_path / "data.zip"
+        store = ZipStore(path, mode="w")
+        await store.set("foo", cpu.Buffer.from_bytes(b"1"))
+        store.close()
+        path.unlink()
+
+        await store.set("bar", cpu.Buffer.from_bytes(b"2"))
+        store.close()
+        with zipfile.ZipFile(path) as zf:
+            assert zf.namelist() == ["bar"]
+
+    async def test_first_open_append_on_empty_file(self, tmp_path: Path) -> None:
+        # mode "a" on an empty file, e.g. from tempfile.mkstemp, starts an
+        # archive in it; the reopen guard applies only to archives this store wrote
+        path = tmp_path / "data.zip"
+        path.touch()
+        store = ZipStore(path, mode="a")
+        await store.set("foo", cpu.Buffer.from_bytes(b"1"))
+        store.close()
+        with zipfile.ZipFile(path) as zf:
+            assert zf.namelist() == ["foo"]
 
     async def test_clear_read_mode_writable_store(self, tmp_path: Path) -> None:
         # a store opened with mode "r" but read_only=False creates the new

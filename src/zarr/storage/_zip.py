@@ -197,8 +197,9 @@ class ZipStore(Store):
             # this store still has it open for writing; appending would start
             # a new archive and drop the entries already written
             raise zipfile.BadZipFile(
-                f"{self!r} cannot reopen {self.path}: the file has no zip central "
-                "directory, so another store may still have it open for writing"
+                f"{self!r} cannot reopen {self.path}: it is not a zip archive. It "
+                "may be incomplete, for example because another store still has it "
+                "open for writing."
             )
         if (
             self.path is None
@@ -295,11 +296,12 @@ class ZipStore(Store):
                 raise NotImplementedError(
                     "clear() is not supported for a ZipStore backed by a file-like object"
                 )
-            if not self._close_failed:
+            if not self._was_opened:
                 # opening first keeps mode "x" from deleting a file it may not claim
                 self._zipfile()
-                self.close()
-            os.remove(self.path)
+            self.close()
+            # the file may be damaged or gone; clear() replaces it either way
+            self.path.unlink(missing_ok=True)
             # replacing the file cannot drop entries, so clear() is the one way
             # to recover a store whose close() failed
             self._close_failed = False
