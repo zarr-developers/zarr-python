@@ -128,8 +128,9 @@ metadata = reading.metadata  # None when reading.problems is not empty
 its consolidated metadata holds once. `read_node_metadata_v3` reads a
 `zarr.json` of either kind as the node its `node_type` says it is, as
 a discriminated union reads its tag: a document that says neither reads
-as `ZarrV3UnknownNodeReading`, with the problem, and nothing else of it
-is read. `node_metadata_from_json_v3` and `node_metadata_from_key_value_v3`
+as `ZarrV3UnknownNodeReading`, with the problems, and nothing else of it
+is read but its `zarr_format`, so a document of another format says it
+is not v3. `node_metadata_from_json_v3` and `node_metadata_from_key_value_v3`
 build the model of either kind, as the models' own `from_json` and
 `from_key_value` build one.
 

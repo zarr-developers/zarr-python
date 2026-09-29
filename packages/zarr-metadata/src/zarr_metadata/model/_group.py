@@ -364,7 +364,12 @@ class ZarrV3GroupMetadataReading:
 
 @dataclass(frozen=True, slots=True)
 class ZarrV3UnknownNodeReading:
-    """A v3 document of no node type the spec defines -- its `node_type` missing, or neither `"array"` nor `"group"` -- or not an object at all: nothing else of it is read, as its problem says."""
+    """A v3 document of no node type the spec defines -- its `node_type` missing, or neither `"array"` nor `"group"` -- or not an object at all: nothing else of it is read but its `zarr_format`, as its problems say.
+
+    So a document of another format says so: zarr-python 2's draft of v3
+    wrote a root `zarr.json` whose `zarr_format` is a URL, and a v2
+    document names format 2.
+    """
 
     problems: tuple[ValidationProblem, ...]
     """Why it is no node."""
@@ -395,8 +400,9 @@ def read_node_metadata_v3(
     zod's discriminated union read one: an array is read as
     `read_array_metadata_v3` reads it, a group as `read_group_metadata_v3`
     does, and a document that says neither, or is not an object, is
-    `ZarrV3UnknownNodeReading`, with the problem. So no caller reads
-    `node_type` from JSON it has not read.
+    `ZarrV3UnknownNodeReading`, with the problems, its `zarr_format`'s
+    among them. So no caller reads `node_type` from JSON it has not read,
+    and a document of another format says it is not v3.
     """
     node_type, problems = _node_type(value)
     if node_type == "array":
@@ -465,16 +471,26 @@ _NODE_TYPES: Final = ("array", "group")
 
 
 def _node_type(value: object) -> tuple[str | None, tuple[ValidationProblem, ...]]:
-    """The node type `value` says it is, one of `_NODE_TYPES`; None, with the problem, when it says none of them, or is not an object."""
+    """The node type `value` says it is, one of `_NODE_TYPES`; None, with the problems, when it says none of them, or is not an object.
+
+    A document that says none is judged by its `zarr_format` too, so one
+    of another format says it is not v3.
+    """
     if not isinstance(value, Mapping):
         return None, not_an_object(value)
     document = cast("Mapping[object, object]", value)
-    if "node_type" not in document:
-        return None, (ValidationProblem(("node_type",), "missing required key", "missing_key"),)
-    node_type = document["node_type"]
+    node_type = document.get("node_type")
     if isinstance(node_type, str) and node_type in _NODE_TYPES:
         return node_type, ()
-    return None, with_input((outside_of(("node_type",), node_type, _NODE_TYPES),), document)
+    problems = [
+        *missing_keys(frozenset({"zarr_format"}), document),
+        *check_literal(document, "zarr_format", 3),
+    ]
+    if "node_type" not in document:
+        problems.append(ValidationProblem(("node_type",), "missing required key", "missing_key"))
+    else:
+        problems.append(outside_of(("node_type",), node_type, _NODE_TYPES))
+    return None, with_input(problems, document)
 
 
 @dataclass(frozen=True, slots=True)

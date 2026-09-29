@@ -629,7 +629,7 @@ def test_a_node_is_read_as_the_node_its_node_type_says(
     ids=["another-kind", "a-number", "null"],
 )
 def test_error_a_node_type_the_spec_does_not_define(node_type: object, kind: str) -> None:
-    """Nothing else of the document is read, so nothing else is judged."""
+    """Nothing else of the document is read but its `zarr_format`, which is 3 here, so nothing else is judged."""
     read = read_node_metadata_v3({**_array(), "node_type": node_type, "shape": "not a shape"})
     assert isinstance(read, ZarrV3UnknownNodeReading)
     assert [(p.loc, p.kind) for p in read.problems] == [(("node_type",), kind)]
@@ -642,6 +642,41 @@ def test_error_a_document_without_a_node_type() -> None:
     read = read_node_metadata_v3(document)
     assert isinstance(read, ZarrV3UnknownNodeReading)
     assert [(p.loc, p.kind) for p in read.problems] == [(("node_type",), "missing_key")]
+
+
+@pytest.mark.parametrize(
+    ("document", "problems"),
+    [
+        # zarr-python 2's draft of v3 (zarr-python#2982): a root `zarr.json`
+        # naming its format by URL, and no node type.
+        (
+            {
+                "zarr_format": "https://purl.org/zarr/spec/protocol/core/3.0",
+                "metadata_encoding": "https://purl.org/zarr/spec/protocol/core/3.0",
+                "metadata_key_suffix": ".json",
+                "extensions": [],
+            },
+            [(("zarr_format",), "invalid_type"), (("node_type",), "missing_key")],
+        ),
+        (
+            {"zarr_format": 2, "shape": [4], "chunks": [4], "dtype": "|u1"},
+            [(("zarr_format",), "invalid_value"), (("node_type",), "missing_key")],
+        ),
+        (
+            {"node_type": "dataset"},
+            [(("zarr_format",), "missing_key"), (("node_type",), "invalid_value")],
+        ),
+    ],
+    ids=["v3-draft", "v2", "no-format"],
+)
+def test_error_a_document_of_another_format_says_so(
+    document: dict[str, object], problems: list[tuple[tuple[str | int, ...], str]]
+) -> None:
+    read = read_node_metadata_v3(document)
+    assert isinstance(read, ZarrV3UnknownNodeReading)
+    assert [(p.loc, p.kind) for p in read.problems] == problems
+    # The validator reads a node's type as the reader does.
+    assert [(p.loc, p.kind) for p in validate_node_metadata_v3(document)] == problems
 
 
 def test_error_a_node_that_is_not_an_object() -> None:
