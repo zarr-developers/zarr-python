@@ -1642,15 +1642,19 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """Store the upgrade of this array's current stored document, if it needs one,
         before chunks are written under this handle's metadata.
 
-        Only for metadata read from a document that had to be upgraded (see
+        Only for metadata read from a document whose upgrade moves chunks (see
         `zarr.core.metadata.upgrades`). The document is read again, because the store may
         hold a newer one than this handle's metadata. If that one lays out chunks
-        differently (the array was resized since by software that kept the invalid chunk
-        size), this handle would write chunks no reader finds, so it raises and stores
-        nothing. If it needs no upgrade (the array was re-saved since, possibly by another
-        implementation), it is left as written; if there is none, there is nothing to
-        upgrade. Storing the same upgrade twice is harmless, so concurrent callers need
-        no coordination.
+        differently (another writer stored a different chunk size since), this handle
+        would write chunks no reader finds, so it raises and stores nothing. If it needs
+        no upgrade (the array was re-saved since, possibly by another implementation), it
+        is left as written; if there is none, there is nothing to upgrade.
+
+        Storing the same upgrade twice is harmless, so handles that write chunks
+        concurrently need no coordination. The read and the store are not one atomic
+        step, though: a metadata write by another handle between them (a resize, an
+        attribute update) is replaced by the upgrade of the document read before it, as
+        with any two metadata writes that race.
         """
         if self.metadata._stored_document is None:
             return

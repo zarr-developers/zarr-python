@@ -132,7 +132,7 @@ def parse_stored_array(documents: Mapping[str, Buffer], zarr_format: ZarrFormat)
     else:
         raise ArrayNotFoundError(f"No Zarr format {zarr_format} array metadata document.")
     upgraded, readings = upgrade_array_document(stored, zarr_format)
-    return mark_upgraded(parse_array_metadata(dict(upgraded)), stored, [None] * len(readings), None)
+    return mark_upgraded(parse_array_metadata(dict(upgraded)), stored, readings, None, warn=False)
 
 
 def _build_parents(store_path: StorePath, zarr_format: ZarrFormat) -> dict[str, GroupMetadata]:
