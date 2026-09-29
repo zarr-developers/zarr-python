@@ -8,15 +8,21 @@ a document's `fill_value` against its `data_type`.
 
 from __future__ import annotations
 
+import dataclasses
+import json
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast, get_args
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import value_at
+from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model import validate_array_metadata_v3, validate_group_metadata_v3
 from zarr_metadata.model._array import ZarrV3ArrayMetadata
+from zarr_metadata.v3.data_type._float import FloatWidth, float_bits
 from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
@@ -26,6 +32,7 @@ from zarr_metadata.v3.definition import (
     Nested,
     Read,
     ValidationProblem,
+    canonical_fill_value,
     fill_value_problems,
     resolve,
 )
@@ -315,3 +322,148 @@ def test_a_struct_read_without_its_field_types_leaves_its_fields_unjudged() -> N
         json=STRUCT, name="struct", definition=STRUCT_DATA_TYPE, configuration=configuration
     )
     assert fill_value_problems(struct, {"a": 300}) == ()
+
+
+# --- canonical spellings ---------------------------------------------------
+
+
+def _alike(left: object, right: object) -> bool:
+    """Whether two JSON values are written alike: `==` takes `-0.0` for `0.0`."""
+    return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)
+
+
+def _read(data_type: JSONValue) -> Read[DataTypeDefinition[Any]]:
+    resolved, found = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    assert found == ()
+    assert isinstance(resolved, Read)
+    return resolved
+
+
+@pytest.mark.parametrize(
+    ("data_type", "spellings", "canonical"),
+    [
+        ("float32", ["NaN", "0x7fc00000", "0x7FC00000"], "NaN"),
+        # Any other NaN is its bits: the spec names the one.
+        ("float32", ["0xffc00000"], "0xffc00000"),
+        ("float32", ["0x7fc00001", "0x7FC00001"], "0x7fc00001"),
+        ("float32", ["Infinity", "0x7f800000", 3.5e38, 10**39], "Infinity"),
+        ("float32", ["-Infinity", "0xff800000", -(10**39)], "-Infinity"),
+        ("float32", [0, 0.0, "0x00000000", 1e-46], 0.0),
+        # Zero's sign is a value of its own.
+        ("float32", [-0.0, "0x80000000"], -0.0),
+        ("float32", [1, 1.0, "0x3f800000"], 1.0),
+        # The number of the fewest digits that rounds to the value.
+        ("float32", [0.1, 0.10000000149011612, "0x3dcccccd"], 0.1),
+        # A number is read as a float64, as a JSON parser reads one, and
+        # then rounded to the type, as numpy rounds it: an integer and a
+        # number with a fraction that read as one float64 are one value.
+        ("float32", [2**53 + 2**29 + 1, 9007199791611905.0, 2**53], 9007199000000000.0),
+        # Of the numbers of the fewest digits, the one past the nearest: at
+        # a power of two, those that round to it reach further above it.
+        ("float16", [0.015625, "0x2400"], 0.01563),
+        ("float32", ["0x6b000000"], 1.5474251e26),
+        ("float16", [65504, 65519, "0x7bff"], 65500.0),
+        ("float16", [65520, "Infinity", "0x7c00"], "Infinity"),
+        # Halfway rounds to the even value.
+        ("float16", [2049, 2048], 2048.0),
+        ("float16", [2051, 2052], 2052.0),
+        ("float16", ["NaN", "0x7e00", "0x7E00"], "NaN"),
+        ("float16", [-0.0, "0x8000"], -0.0),
+        ("float64", [2**53 + 1, 2**53], float(2**53)),
+        ("float64", [10**400, "Infinity", "0x7ff0000000000000"], "Infinity"),
+        ("float64", [-(10**400), "-Infinity", "0xfff0000000000000"], "-Infinity"),
+        ("float64", ["NaN", "0x7ff8000000000000"], "NaN"),
+        ("complex64", [["NaN", -0.0], ["0x7fc00000", "0x80000000"]], ("NaN", -0.0)),
+        ("complex128", [[0.1, 1], ["0x3fb999999999999a", 1.0]], (0.1, 1.0)),
+        ("bytes", [[65], "QQ==", "QR=="], "QQ=="),
+        ("bytes", [[], ""], ""),
+        (DATETIME, ["NaT", -(2**63)], "NaT"),
+        (TIMEDELTA, ["NaT", -(2**63)], "NaT"),
+        (TIMEDELTA, [5], 5),
+        (STRUCT, [{"a": 1, "b": "0x7fc00000"}, {"b": "NaN", "a": 1}], {"a": 1, "b": "NaN"}),
+        # A field type nothing in scope claims spells its fill value as written.
+        (
+            {
+                "name": "struct",
+                "configuration": {"fields": [{"name": "a", "data_type": "acme.decimal"}]},
+            },
+            [{"a": -0.0}],
+            {"a": -0.0},
+        ),
+        # A type that spells each value one way spells it as written.
+        ("int8", [-128], -128),
+        ("bool", [True], True),
+        ("string", ["NaN"], "NaN"),
+        ("r16", [[0, 1]], (0, 1)),
+    ],
+)
+def test_a_fill_value_s_canonical_spelling_is_its_value_s(
+    data_type: JSONValue, spellings: list[object], canonical: JSONValue
+) -> None:
+    read = _read(data_type)
+    for spelling in spellings:
+        spelled = canonical_fill_value(read, spelling)
+        assert _alike(spelled, canonical), (spelling, spelled)
+    # A fill value of the type, spelled as itself.
+    assert fill_value_problems(read, canonical) == ()
+    assert _alike(canonical_fill_value(read, canonical), canonical)
+
+
+def test_a_data_type_nothing_in_scope_claims_spells_a_fill_value_as_written() -> None:
+    unclaimed, _ = resolve("acme.decimal", DataTypeDefinition, CORE_AND_EXTENSIONS)
+    values: list[JSONValue] = [-0.0, True, 1, [1.0], None]
+    for value in values:
+        assert _alike(canonical_fill_value(unclaimed, value), value)
+
+
+WIDTHS: tuple[FloatWidth, ...] = get_args(FloatWidth)
+
+
+@given(st.data())
+def test_a_float_s_canonical_spelling_spells_its_bits(data: st.DataObject) -> None:
+    # Every value of each float type, NaNs among them: its canonical
+    # spelling is a fill value of the type, spelling the same bits, and
+    # its own canonical spelling.
+    width = data.draw(st.sampled_from(WIDTHS))
+    bits = data.draw(st.integers(0, 2**width - 1))
+    read = _read(f"float{width}")
+    spelled = canonical_fill_value(read, f"0x{bits:0{width // 4}x}")
+    assert spelled is not None
+    assert fill_value_problems(read, spelled) == ()
+    assert float_bits(cast("float | str", spelled), width) == bits
+    assert _alike(canonical_fill_value(read, spelled), spelled)
+
+
+def test_error_a_fill_value_with_a_problem_has_no_canonical_spelling() -> None:
+    # `UNSET`, since `None` is the JSON null, a fill value of a data type
+    # the scope did not read.
+    assert canonical_fill_value(_read("float32"), "0x7fc0") is UNSET
+    assert canonical_fill_value(_read("int8"), 1.0) is UNSET
+    assert canonical_fill_value(_read("int8"), math.nan) is UNSET
+    unclaimed, _ = resolve("acme.decimal", DataTypeDefinition, CORE_AND_EXTENSIONS)
+    assert canonical_fill_value(unclaimed, None) is None
+
+
+def test_error_a_canonical_spelling_that_raises_says_which_data_type_raised_it() -> None:
+    def refuses(configuration: EmptyConfiguration, nested: Nested, value: object) -> JSONValue:
+        raise ValueError("no")
+
+    scope = CORE_AND_EXTENSIONS.extended_with(
+        dataclasses.replace(ACME_POINT, fill_value_canonical=refuses)
+    )
+    resolved, _ = resolve("acme.point", DataTypeDefinition, scope)
+    with pytest.raises(ValueError, match="no") as raised:
+        canonical_fill_value(resolved, {"x": 1})
+    assert raised.value.__notes__ == ["raised by the fill_value_canonical of 'acme.point'"]
+
+
+def test_error_a_canonical_spelling_that_is_not_json_is_refused() -> None:
+    def not_json(configuration: EmptyConfiguration, nested: Nested, value: object) -> JSONValue:
+        return cast("JSONValue", {1, 2})
+
+    scope = CORE_AND_EXTENSIONS.extended_with(
+        dataclasses.replace(ACME_POINT, fill_value_canonical=not_json)
+    )
+    resolved, _ = resolve("acme.point", DataTypeDefinition, scope)
+    with pytest.raises(TypeError, match="'acme.point': its fill_value_canonical gives JSON"):
+        canonical_fill_value(resolved, {"x": 1})

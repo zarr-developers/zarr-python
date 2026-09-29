@@ -51,7 +51,14 @@ from typing import (
 from typing_extensions import TypeAliasType, TypedDict, TypeVar, is_typeddict
 
 from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
-from zarr_metadata._json import ValidationProblem, copied, refine_json, shown, with_input
+from zarr_metadata._json import (
+    ValidationProblem,
+    copied,
+    json_text,
+    refine_json,
+    shown,
+    with_input,
+)
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata._typed_json import (
     JSONSchema,
@@ -104,6 +111,11 @@ def no_rules(*_: object) -> Iterator[ValidationProblem]:
 def unchanged(configuration: T) -> T:
     """The canonical form of a configuration with no simpler spelling: itself."""
     return configuration
+
+
+def fill_value_as_written(configuration: object, nested: object, value: T) -> T:
+    """The canonical spelling of a fill value of a data type that spells each of its values one way: the fill value as written."""
+    return value
 
 
 def unknown_lengths(configuration: object, nested: object, shape: tuple[int, ...]) -> Lengths:
@@ -334,6 +346,14 @@ class DataTypeDefinition(Definition[C]):
     scope read them (a struct's field types), and the typed fill value. A
     data type that says nothing of its fill value takes any JSON.
 
+    `fill_value_canonical` spells a fill value that has no problem --
+    well typed, and allowed by the rules -- in the one spelling its value
+    has, so two fill values are one value of the type exactly when their
+    canonical spellings are written alike: `"NaN"` and `"0x7fc00000"` are
+    one `float32`, and `0.0` and `-0.0` two. It is handed what the rules
+    are handed. A data type that says nothing of it spells each of its
+    values one way: as written.
+
     `storage` says how its values are stored -- in single bytes, in
     several bytes at a time, or each in as many as it needs -- which is
     what the `bytes` codec asks of the data type it is handed: an
@@ -350,6 +370,8 @@ class DataTypeDefinition(Definition[C]):
     """The JSON shape of a fill value, as an annotation: `Int8FillValue`."""
     fill_value_rules: Callable[[C, Nested, Any], Iterable[ValidationProblem]] = no_rules
     """What the spec disallows in a fill value of that shape, located in it."""
+    fill_value_canonical: Callable[[C, Nested, Any], JSONValue] = fill_value_as_written
+    """A fill value that has no problem, in the one spelling its value has."""
     storage: Callable[[C, Nested], StorageClass | None] = unknown_storage
     """How its values are stored, given the configuration and the fields it holds; None when unknown."""
 
@@ -933,12 +955,14 @@ class Read(Generic[D]):
     `must_understand` of `false` -- is reported with the field and leaves
     it read; so is a problem of a field its configuration holds, which is
     that field's own, as `nested` says. Two fields are equal when they
-    read the same, however each was spelled: `"bytes"` and
-    `{"name": "bytes"}` are one field.
+    read the same, however each was spelled, as `field_key` compares
+    them: `"bytes"` and `{"name": "bytes"}` are one field, and so are a
+    blosc with and without the `typesize` that `noshuffle` ignores, which
+    the definition's `canonical` folds. Equal fields hash alike.
     """
 
-    json: JSONValue = dataclasses.field(compare=False)
-    """The field as written, refined: arrays as tuples."""
+    json: JSONValue
+    """The field as written, refined: arrays as tuples; it takes no part in equality."""
     name: str
     """The name it is written with: `"r16"`, though its definition is filed under `r*`."""
     definition: D
@@ -958,8 +982,16 @@ class Read(Generic[D]):
     codecs at `("codecs", 0)`: what a definition's functions consult about
     the fields inside its own.
     """
-    read_as: type[Definition[Any]] = dataclasses.field(init=False, repr=False, compare=False)
+    read_as: type[Definition[Any]] = dataclasses.field(init=False, repr=False)
     """The kind of metadata it was read as: its definition's."""
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, _FIELDS):
+            return NotImplemented
+        return field_key(self) == field_key(cast("Resolved[Any]", other))
+
+    def __hash__(self) -> int:
+        return hash(field_key(self))
 
     def __post_init__(self) -> None:
         # The runtime half of the annotations: a field read by hand, as an
@@ -995,17 +1027,26 @@ class Unclaimed:
     """A field nothing in scope claims: an extension the scope leaves unjudged, which is what keeps the format open.
 
     Equal to another when it is written with the same name and
-    configuration, however each was spelled.
+    configuration, however each was spelled: nothing in scope interprets
+    its configuration, so it compares as JSON text, as `field_key` says.
     """
 
-    json: JSONValue = dataclasses.field(compare=False)
-    """The field as written, refined: arrays as tuples."""
+    json: JSONValue
+    """The field as written, refined: arrays as tuples; it takes no part in equality."""
     name: str
     """The name nothing in scope claims."""
     read_as: type[Definition[Any]]
     """The kind of metadata it was read as: what a definition that claimed it would be."""
     configuration: Mapping[str, JSONValue] = dataclasses.field(init=False)
     """The configuration as written, which nothing judged; empty when none is written."""
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, _FIELDS):
+            return NotImplemented
+        return field_key(self) == field_key(cast("Resolved[Any]", other))
+
+    def __hash__(self) -> int:
+        return hash(field_key(self))
 
     def __post_init__(self) -> None:
         # The runtime half of the annotations; `read_as` with its type
@@ -1049,6 +1090,14 @@ class Refused(Generic[D]):
     nested: Nested = dataclasses.field(default_factory=_nothing_nested)
     """The fields its configuration holds, each as the scope read it; empty when its configuration was not checked against its TypedDict."""
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, _FIELDS):
+            return NotImplemented
+        return field_key(self) == field_key(cast("Resolved[Any]", other))
+
+    def __hash__(self) -> int:
+        return hash(field_key(self))
+
     def __post_init__(self) -> None:
         # The runtime half of the annotations; `read_as` with its type
         # arguments dropped, as `resolve` drops them.
@@ -1075,6 +1124,50 @@ def _misread(definition: object, kind: type[Definition[Any]], name: object) -> s
     if not isinstance(name, str) or spelled(kind, name)[0] != filed:
         return f"a field named {name!r} is read by the definition filed under it, got {filed!r}"
     return None
+
+
+def field_key(field: Resolved[Any]) -> tuple[object, ...]:
+    """What `==` and `hash` compare of a field: what it means, not how it was spelled.
+
+    A field read compares by the definition that read it, its
+    configuration in the canonical spelling the definition gives it -- what
+    `canonical_of` spells -- as JSON text, and the fields it holds, each by
+    its own key. A field nothing claims compares by its name and its
+    configuration as written, as JSON text: nothing interprets it. A field
+    refused compares by what was written, and by what refused it. So two
+    fields are one when what a reader understands of them reads the same,
+    and what none interprets is written alike.
+    """
+    if isinstance(field, Read):
+        definition = cast("Definition[Any]", field.definition)
+        configuration: JSONValue = dict(field.configuration)
+        # A field it holds is compared by its own key, so its place holds
+        # nothing before the definition's `canonical` sees the rest, as
+        # `_canonical_field` orders it: `canonical` folds only the
+        # definition's own members.
+        for loc in field.nested:
+            configuration = _replaced(configuration, loc, None)
+        spelled = asked(
+            definition,
+            "canonical",
+            lambda: json_text(cast("JSONValue", definition.canonical(configuration))),
+        )
+        return ("read", definition, spelled, _nested_key(field.nested))
+    if isinstance(field, Unclaimed):
+        return ("unclaimed", field.read_as, field.name, json_text(field.configuration))
+    return (
+        "refused",
+        field.read_as,
+        field.name,
+        field.definition,
+        json_text(field.json),
+        _nested_key(field.nested),
+    )
+
+
+def _nested_key(nested: Nested) -> tuple[tuple[Loc, tuple[object, ...]], ...]:
+    """The fields a configuration holds, each by its key, where it sits."""
+    return tuple((loc, field_key(inner)) for loc, inner in nested.items())
 
 
 def document_json(field: Resolved[Any]) -> JSONValue:
@@ -1244,6 +1337,55 @@ def fill_value_problems(
         loc,
     )
     return with_input((*problems, *refused), value, loc)
+
+
+def canonical_fill_value(
+    data_type: Resolved[DataTypeDefinition[Any]], value: object
+) -> JSONValue | UNSET:
+    """`value`, a fill value of `data_type`, a data type field a scope read, in the one spelling its value has; `UNSET` when it has a problem.
+
+    As the data type's `fill_value_canonical` spells it, so two fill
+    values of a data type are one value exactly when their canonical
+    spellings are written alike -- the same JSON, as `json.dumps` writes
+    it, which `==` is not: it takes `-0.0` for `0.0`. A fill value
+    `fill_value_problems` finds a problem with has no canonical spelling,
+    as `canonical_of` gives a field with a problem none: `UNSET`, since
+    `None` is the JSON `null`, a fill value of a data type the scope did
+    not read, which spells a fill value as written.
+    """
+    if len(fill_value_problems(data_type, value)) != 0:
+        return UNSET
+    refined, _ = refine_json(value, ())
+    return spelled_canonically(data_type, refined)
+
+
+def spelled_canonically(
+    data_type: Resolved[DataTypeDefinition[Any]], value: JSONValue
+) -> JSONValue:
+    """`value`, a fill value of `data_type` with no problem, in its canonical spelling, as `canonical_fill_value` gives it, without judging it again.
+
+    Its `fill_value_canonical` is the extension author's code: what it
+    gives is checked to be JSON, and an error it raises says which data
+    type's canonical spelling raised it.
+    """
+    if not isinstance(data_type, Read):
+        return value
+    definition, configuration = data_type.definition, data_type.configuration
+    spelled = asked(
+        definition,
+        "fill_value_canonical",
+        lambda: cast(
+            "object", definition.fill_value_canonical(configuration, data_type.nested, value)
+        ),
+    )
+    refined, problems = refine_json(spelled, ())
+    if len(problems) != 0:
+        msg = (
+            f"{definition.name!r}: its fill_value_canonical gives JSON, got {spelled!r}: "
+            f"{problems[0].message}"
+        )
+        raise TypeError(msg)
+    return refined
 
 
 def storage_of(data_type: Resolved[DataTypeDefinition[Any]]) -> StorageClass | None:
@@ -1602,13 +1744,16 @@ __all__ = [
     "Unclaimed",
     "as_kind",
     "asked",
+    "canonical_fill_value",
     "canonical_of",
     "canonicalize",
     "chunk_grid_lengths",
     "configuration_of",
     "field_json_schema",
+    "field_key",
     "field_kind",
     "field_schemas",
+    "fill_value_as_written",
     "fill_value_problems",
     "kind_of",
     "multi_byte",
@@ -1619,6 +1764,7 @@ __all__ = [
     "ruled",
     "single_byte",
     "spelled",
+    "spelled_canonically",
     "storage_of",
     "unchanged",
     "unknown_chunk",

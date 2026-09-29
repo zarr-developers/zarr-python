@@ -16,6 +16,7 @@ from zarr_metadata._json import (
     arrays_to_tuples,
     copied,
     is_canonical_json,
+    json_text,
     not_an_object,
     outside_of,
     refine_json,
@@ -28,6 +29,7 @@ from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model._array import (
     ZarrV3ArrayMetadata,
     array_json,
+    array_key,
     array_model,
     must_understand_subset,
     read_array_metadata_v3,
@@ -157,6 +159,15 @@ class ZarrV3GroupMetadata:
             return updated
         return dataclasses.replace(updated, consolidated_metadata=self.consolidated_metadata)
 
+    def __eq__(self, other: object) -> bool:
+        """Whether `other` models the same group: the same document, however each is spelled, as `group_key` says; equal models hash alike."""
+        if type(other) is not type(self):
+            return NotImplemented
+        return group_key(self) == group_key(cast("ZarrV3GroupMetadata", other))
+
+    def __hash__(self) -> int:
+        return hash(group_key(self))
+
     def to_json(self) -> ZarrV3GroupMetadataJSON:
         """The document as JSON, sharing no mutable state with the model.
 
@@ -275,6 +286,15 @@ class ZarrV3ConsolidatedMetadata:
         if len(problems) != 0:
             raise MetadataValidationError(problems)
         object.__setattr__(self, "metadata", dict(self.metadata))
+
+    def __eq__(self, other: object) -> bool:
+        """Whether `other` holds the same documents at the same paths, each as its model compares; equal ones hash alike."""
+        if type(other) is not type(self):
+            return NotImplemented
+        return consolidated_key(self) == consolidated_key(cast("ZarrV3ConsolidatedMetadata", other))
+
+    def __hash__(self) -> int:
+        return hash(consolidated_key(self))
 
     def to_json(self) -> ZarrV3ConsolidatedMetadataJSON:
         """The `consolidated_metadata` member as JSON, sharing no mutable state with the model: its `kind`, `must_understand: false`, and each document by its path."""
@@ -639,6 +659,24 @@ def _read_consolidated_v3(
     return readings, members, tuple(problems)
 
 
+def group_key(model: ZarrV3GroupMetadata) -> tuple[object, ...]:
+    """What `==` and `hash` compare of a v3 group model: its attributes and extra fields as JSON text, and what its consolidated metadata holds, by `consolidated_key`."""
+    consolidated = model.consolidated_metadata
+    return (
+        json_text(model.attributes),
+        UNSET if consolidated is UNSET else consolidated_key(consolidated),
+        json_text(model.extra_fields),
+    )
+
+
+def consolidated_key(model: ZarrV3ConsolidatedMetadata) -> tuple[object, ...]:
+    """What `==` and `hash` compare of consolidated metadata: each document's key, by its path, in path order."""
+    return tuple(
+        (path, array_key(node) if isinstance(node, ZarrV3ArrayMetadata) else group_key(node))
+        for path, node in sorted(model.metadata.items(), key=lambda item: item[0])
+    )
+
+
 def _key_problems(key: str) -> list[ValidationProblem]:
     """What keeps `key` from being where consolidated metadata keeps a document, said in one problem at the key.
 
@@ -901,6 +939,15 @@ class ZarrV2GroupMetadata:
         """
         return dataclasses.replace(self, **kwargs)
 
+    def __eq__(self, other: object) -> bool:
+        """Whether `other` models the same group: the same document, as JSON text, which takes `NaN` for itself; equal models hash alike."""
+        if type(other) is not type(self):
+            return NotImplemented
+        return json_text(self.to_json()) == json_text(cast("ZarrV2GroupMetadata", other).to_json())
+
+    def __hash__(self) -> int:
+        return hash(json_text(self.to_json()))
+
     def to_json(self) -> ZarrV2GroupMetadataJSON:
         """Return the merged in-memory document form.
 
@@ -995,6 +1042,17 @@ class ZarrV2ConsolidatedMetadata:
         if len(problems) != 0:
             raise MetadataValidationError(problems)
         object.__setattr__(self, "metadata", refined)
+
+    def __eq__(self, other: object) -> bool:
+        """Whether `other` holds the same document: the same JSON text; equal ones hash alike."""
+        if type(other) is not type(self):
+            return NotImplemented
+        return json_text(self.to_json()) == json_text(
+            cast("ZarrV2ConsolidatedMetadata", other).to_json()
+        )
+
+    def __hash__(self) -> int:
+        return hash(json_text(self.to_json()))
 
     def to_json(self) -> dict[str, JSONValue]:
         """The `.zmetadata` document as JSON, sharing no mutable state with the model."""

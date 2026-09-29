@@ -203,6 +203,15 @@ field's fill value by that field's own type.
 `fill_value_problems(data_type, value)` judges a fill value against a data
 type field the scope read; one nothing in scope claims leaves it unjudged.
 A data type that says nothing of its fill value takes any JSON.
+A fill value may be spelled more ways than one -- `"NaN"` and
+`"0x7fc00000"` are one `float32` -- so a data type says which spelling
+is its value's own: `fill_value_canonical`, handed what the rules are
+handed and a fill value they allow. Two fill values are one value of the
+type exactly when their canonical spellings are written alike: the same
+JSON, as `json.dumps` writes it, which `==` is not -- it takes `-0.0`,
+a `float32` of its own, for `0.0`. `canonical_fill_value(data_type,
+value)` spells one, and gives `UNSET` for a fill value with a problem; a
+data type that says nothing of it spells each value as written.
 
 A data type says how its values are stored, too: `storage`, a function
 of its configuration and the fields it holds, giving a `StorageClass` --
@@ -330,6 +339,7 @@ from zarr_metadata.v3._definition import (
     StorageClass,
     StorageTransformerDefinition,
     Unclaimed,
+    canonical_fill_value,
     canonical_of,
     canonicalize,
     chunk_grid_lengths,
@@ -378,6 +388,7 @@ __all__ = [
     "Unclaimed",
     "ValidationProblem",
     "ZarrV3MetadataFieldJSON",
+    "canonical_fill_value",
     "canonical_of",
     "canonicalize",
     "check",

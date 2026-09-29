@@ -260,6 +260,39 @@ def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field
                 "configuration": {"kind": "inline", "chunk_shapes": (((32, 3), 16), 8)},
             },
         ),
+        # A member at its spec default is left out: a key encoding's
+        # separator, a shard's index location, zstd's checksum.
+        ({"name": "default", "configuration": {"separator": "/"}}, {"name": "default"}),
+        ({"name": "v2", "configuration": {"separator": "."}}, {"name": "v2"}),
+        (
+            {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": [2],
+                    "codecs": ["bytes"],
+                    "index_codecs": [
+                        {"name": "bytes", "configuration": {"endian": "little"}},
+                        "crc32c",
+                    ],
+                    "index_location": "end",
+                },
+            },
+            {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": (2,),
+                    "codecs": ({"name": "bytes"},),
+                    "index_codecs": (
+                        {"name": "bytes", "configuration": {"endian": "little"}},
+                        {"name": "crc32c"},
+                    ),
+                },
+            },
+        ),
+        (
+            {"name": "zstd", "configuration": {"level": 3, "checksum": False}},
+            {"name": "zstd", "configuration": {"level": 3}},
+        ),
     ],
     ids=[
         "blosc-noshuffle",
@@ -268,10 +301,19 @@ def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field
         "sharding-nested",
         "cast-value-target",
         "rectilinear-rle",
+        "default-separator",
+        "v2-separator",
+        "sharding-index-location",
+        "zstd-checksum",
     ],
 )
 def test_the_simplest_spelling(field: dict[str, Any], simplest: object) -> None:
-    kinds = {"rectilinear": ChunkGridDefinition, "int8": DataTypeDefinition}
+    kinds = {
+        "rectilinear": ChunkGridDefinition,
+        "int8": DataTypeDefinition,
+        "default": ChunkKeyEncodingDefinition,
+        "v2": ChunkKeyEncodingDefinition,
+    }
     kind = kinds.get(field["name"], CodecDefinition)
     assert canonicalize(field, kind, CORE_AND_EXTENSIONS) == (simplest, ())
     assert canonical_of(*resolve(field, kind, CORE_AND_EXTENSIONS)) == simplest

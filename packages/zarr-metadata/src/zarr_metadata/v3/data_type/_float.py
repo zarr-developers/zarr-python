@@ -9,10 +9,13 @@ A complex fill value is a pair of such components, real then imaginary
 (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L88-L91).
 """
 
+import struct
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
-from typing import Any, Literal, get_args
+from decimal import ROUND_HALF_EVEN, Decimal, localcontext
+from typing import Any, Final, Literal, get_args
 
+from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem, choices, shown
 from zarr_metadata.v3._definition import EmptyConfiguration, Nested
 
@@ -56,6 +59,116 @@ class _FloatFillValue:
             )
 
 
+FloatWidth = Literal[16, 32, 64]
+"""The widths, in bits, of the IEEE 754 binary formats the float types store."""
+
+_FORMATS: Final[dict[FloatWidth, tuple[str, int]]] = {16: ("e", 10), 32: ("f", 23), 64: ("d", 52)}
+"""Each width's `struct` format, and how many bits of it hold the fraction."""
+
+
+def float_fill_value_canonical(
+    width: FloatWidth,
+) -> Callable[[EmptyConfiguration, Nested, float | str], float | str]:
+    """The canonical spelling of a fill value of the floating-point type `width` bits wide.
+
+    A fill value spells a value of the type, as `float_bits` reads one: a
+    number, a named value, or the value's bits. Its canonical spelling is
+    the named value for an infinity, or for the NaN the spec names
+    `"NaN"`; the hex string of its bits, in lower case, for any other NaN;
+    and, for any other value, the shortest number that rounds to it, the
+    nearest of those, as numpy and `repr` spell one -- `0.1` for the
+    `float32` nearest `0.1` -- `-0.0`, a value of its own, among them.
+    """
+    return _FloatCanonical(width)
+
+
+@dataclass(frozen=True, slots=True)
+class _FloatCanonical:
+    """A float fill value's canonical spelling: a value rather than a closure, as `_FloatFillValue` is."""
+
+    width: FloatWidth
+
+    def __call__(
+        self, configuration: EmptyConfiguration, nested: Nested, value: float | str
+    ) -> float | str:
+        return _spelled(float_bits(value, self.width), self.width)
+
+
+def float_bits(value: float | str, width: FloatWidth) -> int:
+    """The bits of the value `value`, a float fill value the rules allow, spells in the type `width` bits wide.
+
+    A number is read as a float64, as a JSON parser reads one -- an integer
+    of more digits than a float64 holds is rounded to one -- and rounded to
+    the nearest value the type represents, ties to even, and to an infinity
+    past the largest, as numpy casts a float64. So an integer and a number
+    with a fraction that read as one float64 spell one value.
+    """
+    code, fraction = _FORMATS[width]
+    exponent = width - 1 - fraction
+    infinity = ((1 << exponent) - 1) << fraction
+    sign = 1 << (width - 1)
+    if isinstance(value, str):
+        named = {
+            "NaN": infinity | (1 << (fraction - 1)),
+            "Infinity": infinity,
+            "-Infinity": sign | infinity,
+        }
+        return named[value] if value in named else int(value, 16)
+    try:
+        held = float(value)
+    except OverflowError:
+        # An integer past the largest float64 reads as an infinity.
+        return (sign if value < 0 else 0) | infinity
+    try:
+        return int.from_bytes(struct.pack(f">{code}", held), "big")
+    except OverflowError:
+        # `struct` refuses a float64 that rounds past the type's largest value.
+        return (sign if held < 0 else 0) | infinity
+
+
+def _spelled(bits: int, width: FloatWidth) -> float | str:
+    """The canonical spelling of the value whose bits, in the type `width` bits wide, are `bits`."""
+    code, fraction = _FORMATS[width]
+    exponent = width - 1 - fraction
+    infinity = ((1 << exponent) - 1) << fraction
+    sign = 1 << (width - 1)
+    if bits & infinity == infinity:
+        if bits & ((1 << fraction) - 1) == 0:
+            return "-Infinity" if bits & sign else "Infinity"
+        if bits == infinity | (1 << (fraction - 1)):
+            return "NaN"
+        return f"0x{bits:0{width // 4}x}"
+    value: float = struct.unpack(f">{code}", bits.to_bytes(width // 8, "big"))[0]
+    if width == 64 or value == 0:
+        # A float64 is its own shortest spelling, as `repr` writes it, and
+        # so is a zero of either sign.
+        return value
+    return _shortest(value, bits, width)
+
+
+def _shortest(value: float, bits: int, width: FloatWidth) -> float:
+    """The shortest number that rounds to `value`, whose bits in the type `width` bits wide are `bits`: of the fewest significant digits, the nearest to it.
+
+    Of each number of digits the nearest is tried, and then the one past
+    `value` from it: at a power of two the numbers that round to it reach
+    twice as far above it as below, so the nearest may miss where the next
+    one does not.
+    """
+    exact = Decimal(value)
+    for digits in range(1, 18):
+        with localcontext() as context:
+            context.prec = digits
+            context.rounding = ROUND_HALF_EVEN
+            nearest = +exact
+        step = Decimal((0, (1,), nearest.adjusted() - digits + 1))
+        beyond = nearest + step if nearest < exact else nearest - step
+        for candidate in (nearest, beyond):
+            if float_bits(float(candidate), width) == bits:
+                return float(candidate)
+    # Seventeen significant digits tell every float64 from every other.
+    return value
+
+
 def complex_fill_value_rules(
     component: Callable[[EmptyConfiguration, Nested, Any], Iterable[ValidationProblem]],
 ) -> Callable[
@@ -85,4 +198,34 @@ class _ComplexFillValue:
                 yield ValidationProblem((index, *found.loc), found.message, found.kind)
 
 
-__all__ = ["FloatSpecialFillValue", "complex_fill_value_rules", "float_fill_value_rules"]
+def complex_fill_value_canonical(
+    component: Callable[[EmptyConfiguration, Nested, Any], JSONValue],
+) -> Callable[[EmptyConfiguration, Nested, tuple[float | str, float | str]], JSONValue]:
+    """The canonical spelling of a complex fill value: each component in the canonical spelling `component`, its float type's, gives it."""
+    return _ComplexCanonical(component)
+
+
+@dataclass(frozen=True, slots=True)
+class _ComplexCanonical:
+    """A complex fill value's canonical spelling: a value rather than a closure, as `_FloatFillValue` is."""
+
+    component: Callable[[EmptyConfiguration, Nested, Any], JSONValue]
+
+    def __call__(
+        self,
+        configuration: EmptyConfiguration,
+        nested: Nested,
+        value: tuple[float | str, float | str],
+    ) -> JSONValue:
+        return tuple(self.component(configuration, nested, part) for part in value)
+
+
+__all__ = [
+    "FloatSpecialFillValue",
+    "FloatWidth",
+    "complex_fill_value_canonical",
+    "complex_fill_value_rules",
+    "float_bits",
+    "float_fill_value_canonical",
+    "float_fill_value_rules",
+]

@@ -24,6 +24,24 @@ NumpyTimeTicks = Annotated[int, Interval(ge=-(2**63), le=2**63 - 1)]
 https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.datetime64/README.md?plain=1#L109-L112
 """
 
+NOT_A_TIME_TICKS: Final = -(2**63)
+"""The tick count `NaT` is stored as, which a fill value may write for it.
+
+"`"fill_value": "NaT"` and `"fill_value": -9223372036854775808` should
+be treated as equivalent representations of the same scalar value"
+(https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.datetime64/README.md?plain=1#L114-L116);
+`numpy.timedelta64` says the same
+(https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.timedelta64/README.md?plain=1#L117-L119).
+"""
+
+
+def numpy_time_fill_value_canonical(
+    configuration: object, nested: object, value: int | str
+) -> int | str:
+    """The canonical spelling of a numpy time fill value: `"NaT"` for `NaT`, however it is written, and any other count of ticks as written."""
+    return "NaT" if value in ("NaT", NOT_A_TIME_TICKS) else value
+
+
 numpy_time_storage: Final = multi_byte
 """Signed 64-bit integers, in the byte order the codecs say.
 
@@ -38,8 +56,10 @@ configuration of the codecs defined in metadata"
 
 
 __all__ = [
+    "NOT_A_TIME_TICKS",
     "NUMPY_TIME_MAX_SCALE_FACTOR",
     "NumpyTimeScaleFactor",
     "NumpyTimeTicks",
+    "numpy_time_fill_value_canonical",
     "numpy_time_storage",
 ]

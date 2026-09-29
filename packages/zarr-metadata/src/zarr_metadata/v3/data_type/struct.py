@@ -17,6 +17,7 @@ from zarr_metadata.v3._definition import (
     Nested,
     StorageClass,
     fill_value_problems,
+    spelled_canonically,
     storage_of,
 )
 
@@ -128,6 +129,23 @@ def _fill_value_rules(
             yield ValidationProblem((key,), f"no struct field is named {key!r}", "unknown_key")
 
 
+def _fill_value_canonical(
+    configuration: StructConfiguration, nested: Nested, value: StructFillValue
+) -> dict[str, JSONValue]:
+    """Each field's fill value in the canonical spelling of that field's own type, in the order the fields are declared.
+
+    A field type the scope did not read, or whose reading the struct's does
+    not hold, spells its fill value as written.
+    """
+    spelled: dict[str, JSONValue] = {}
+    for index, member in enumerate(configuration["fields"]):
+        name = member["name"]
+        field_type = nested.get(("fields", index, "data_type"))
+        held = value[name]
+        spelled[name] = held if field_type is None else spelled_canonically(field_type, held)
+    return spelled
+
+
 def _storage(configuration: StructConfiguration, nested: Nested) -> StorageClass | None:
     """Its fields' values, packed together: numbers of several bytes if any field holds them, single bytes if every field is made of them.
 
@@ -160,6 +178,7 @@ STRUCT_DATA_TYPE: Final = DataTypeDefinition(
     rules=_rules,
     fill_value=StructFillValue,
     fill_value_rules=_fill_value_rules,
+    fill_value_canonical=_fill_value_canonical,
     storage=_storage,
 )
 """The `struct` data type: a record of named fields, each field's type a nested field."""

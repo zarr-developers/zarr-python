@@ -4,6 +4,7 @@ Zarr `bytes` data type (variable-length raw bytes, zarr-extensions).
 See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/bytes/README.md
 """
 
+import base64
 import re
 from collections.abc import Iterator
 from typing import Final, Literal, NewType
@@ -63,11 +64,26 @@ def _fill_value_rules(
         )
 
 
+def _fill_value_canonical(
+    configuration: EmptyConfiguration, nested: Nested, value: BytesFillValue
+) -> str:
+    """The bytes, however written, as the base64 that encodes them.
+
+    The string "is more compact"
+    (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/bytes/README.md?plain=1#L11),
+    and encoding the bytes again spells them one way: `"QR=="` decodes to
+    the one byte `"QQ=="` does.
+    """
+    data = base64.b64decode(value) if isinstance(value, str) else bytes(value)
+    return base64.b64encode(data).decode("ascii")
+
+
 BYTES_DATA_TYPE: Final = DataTypeDefinition(
     name=BYTES_DATA_TYPE_NAME,
     configuration=EmptyConfiguration,
     fill_value=BytesFillValue,
     fill_value_rules=_fill_value_rules,
+    fill_value_canonical=_fill_value_canonical,
     storage=variable_length,
 )
 """The `bytes` data type: a bare name, with nothing to configure.

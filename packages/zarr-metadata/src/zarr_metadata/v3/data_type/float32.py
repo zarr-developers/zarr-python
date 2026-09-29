@@ -8,7 +8,11 @@ import re
 from typing import Final, Literal, NewType
 
 from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration, multi_byte
-from zarr_metadata.v3.data_type._float import FloatSpecialFillValue, float_fill_value_rules
+from zarr_metadata.v3.data_type._float import (
+    FloatSpecialFillValue,
+    float_fill_value_canonical,
+    float_fill_value_rules,
+)
 
 FLOAT32_DATA_TYPE_NAME: Final = "float32"
 """The `data_type` value for the `float32` type."""
@@ -69,6 +73,7 @@ FLOAT32_DATA_TYPE: Final = DataTypeDefinition(
     configuration=EmptyConfiguration,
     fill_value=Float32FillValue,
     fill_value_rules=float_fill_value_rules("float32", hex_float32),
+    fill_value_canonical=float_fill_value_canonical(32),
     storage=multi_byte,
 )
 """The `float32` data type: a bare name, with nothing to configure; its fill value a number, a named value or a hex string."""

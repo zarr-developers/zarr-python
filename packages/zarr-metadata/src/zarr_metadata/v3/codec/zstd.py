@@ -6,7 +6,7 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 proposed the codec, was never merged).
 """
 
-from typing import Annotated, Final, Literal, NotRequired
+from typing import Annotated, Final, Literal, NotRequired, cast
 
 from annotated_types import Interval
 from typing_extensions import TypedDict
@@ -56,9 +56,26 @@ form is not permitted by the spec for this codec.
   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564 (short-hand names only "if no configuration metadata is required")
 """
 
+
+def _canonical(configuration: ZstdCodecConfiguration) -> ZstdCodecConfiguration:
+    """Without a `checksum` of `false`, which is what an absent one means.
+
+    The spec says of `checksum` that it "should be omitted if false"
+    (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/zstd/README.md?plain=1#L17-L19),
+    so the two spellings are one codec.
+    """
+    if configuration.get("checksum") is not False:
+        return configuration
+    return cast(
+        "ZstdCodecConfiguration",
+        {key: value for key, value in configuration.items() if key != "checksum"},
+    )
+
+
 ZSTD_CODEC: Final = CodecDefinition(
     name=ZSTD_CODEC_NAME,
     configuration=ZstdCodecConfiguration,
+    canonical=_canonical,
     kind="bytes_bytes",
     size="dynamic",
 )

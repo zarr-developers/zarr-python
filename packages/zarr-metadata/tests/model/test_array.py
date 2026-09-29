@@ -24,6 +24,8 @@ from zarr_metadata.model import (
     ZarrV2ArrayMetadata,
     ZarrV2ArrayMetadataPartial,
     ZarrV3ArrayMetadata,
+    ZarrV3ConsolidatedMetadata,
+    ZarrV3GroupMetadata,
     is_array_metadata_v2,
     is_array_metadata_v3,
     is_group_metadata_v2,
@@ -513,6 +515,147 @@ def test_a_model_is_what_its_document_says_not_how_it_is_spelled(
     assert ZarrV3ArrayMetadata.from_json(model.to_json()) == model
     written = {**model.to_json(), **members}
     assert ZarrV3ArrayMetadata.from_json(written) == model
+
+
+_DATETIME = {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 1}}
+_LITTLE = {"name": "bytes", "configuration": {"endian": "little"}}
+
+
+@pytest.mark.parametrize(
+    ("data_type", "left", "right", "same"),
+    [
+        ("float32", "NaN", "0x7fc00000", True),
+        ("float32", 1, 1.0, True),
+        ("float32", 0.1, 0.10000000149011612, True),
+        ("float32", 0.0, -0.0, False),
+        ("float32", "NaN", "0xffc00000", False),
+        (_DATETIME, "NaT", -(2**63), True),
+        ("bytes", [65], "QR==", True),
+        # The fill value of a data type nothing in scope claims is not
+        # interpreted, and is compared as JSON text.
+        ("acme.decimal", {"a": 1, "b": 2}, {"b": 2, "a": 1}, True),
+        ("acme.decimal", [1, 2], [2, 1], False),
+        ("acme.decimal", True, 1, False),
+        ("acme.decimal", 0.0, -0.0, False),
+    ],
+)
+def test_two_models_are_one_array_when_their_fill_values_are_one_value(
+    data_type: object, left: object, right: object, same: bool
+) -> None:
+    """As two fields are one when they read the same, however each is spelled."""
+    codecs = [{"name": "vlen-bytes"} if data_type == "bytes" else _LITTLE]
+    document = {**ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json(), "codecs": codecs}
+    models = [
+        ZarrV3ArrayMetadata.from_json({**document, "data_type": data_type, "fill_value": value})
+        for value in (left, right)
+    ]
+    assert (models[0] == models[1]) is same
+    assert (models[1] == models[0]) is same
+    assert models[0] == ZarrV3ArrayMetadata.from_json(models[0].to_json())
+    # Equal models hash alike.
+    if same:
+        assert hash(models[0]) == hash(models[1])
+    # A group holding the arrays says so too.
+    groups = [
+        ZarrV3GroupMetadata(
+            attributes={},
+            consolidated_metadata=ZarrV3ConsolidatedMetadata(metadata={"a": model}),
+            extra_fields={},
+        )
+        for model in models
+    ]
+    assert (groups[0] == groups[1]) is same
+
+
+_NOSHUFFLE = {"cname": "lz4", "clevel": 5, "shuffle": "noshuffle", "blocksize": 0}
+
+
+@pytest.mark.parametrize(
+    ("member", "left", "right"),
+    [
+        (
+            "codecs",
+            [_LITTLE, {"name": "blosc", "configuration": _NOSHUFFLE}],
+            [_LITTLE, {"name": "blosc", "configuration": {**_NOSHUFFLE, "typesize": 4}}],
+        ),
+        (
+            "codecs",
+            [_LITTLE, {"name": "zstd", "configuration": {"level": 1}}],
+            [_LITTLE, {"name": "zstd", "configuration": {"level": 1, "checksum": False}}],
+        ),
+        (
+            "chunk_key_encoding",
+            "default",
+            {"name": "default", "configuration": {"separator": "/"}},
+        ),
+    ],
+    ids=["blosc-typesize-noshuffle", "zstd-checksum-false", "default-separator"],
+)
+def test_two_models_are_one_array_when_their_fields_read_the_same(
+    member: str, left: object, right: object
+) -> None:
+    """The spec's equivalences, which each definition's `canonical` folds, hold in a model's `==`, though `to_json` writes each as given."""
+    document = ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json()
+    models = [ZarrV3ArrayMetadata.from_json({**document, member: value}) for value in (left, right)]
+    assert models[0] == models[1]
+    assert hash(models[0]) == hash(models[1])
+    assert models[0].to_json() != models[1].to_json()
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "same"),
+    [
+        ({"a": math.nan}, {"a": math.nan}, True),
+        ({"a": 1, "b": 2}, {"b": 2, "a": 1}, True),
+        ({"a": True}, {"a": 1}, False),
+        ({"a": 0.0}, {"a": -0.0}, False),
+        ({"a": 1}, {"a": 1.0}, False),
+    ],
+    ids=["nan", "key-order", "bool-vs-int", "signed-zero", "int-vs-float"],
+)
+def test_user_json_compares_as_text(
+    left: "dict[str, JSONValue]", right: "dict[str, JSONValue]", same: bool
+) -> None:
+    """Attributes, which nothing interprets, compare as a document writes them: `NaN` is itself, `true` is not `1`, `-0.0` is not `0.0`."""
+    arrays = [ZarrV3ArrayMetadata.create_default(attributes=held) for held in (left, right)]
+    groups = [
+        ZarrV3GroupMetadata(attributes=held, consolidated_metadata=UNSET, extra_fields={})
+        for held in (left, right)
+    ]
+    v2 = [ZarrV2ArrayMetadata.create_default(attributes=held) for held in (left, right)]
+    for models in (arrays, groups, v2):
+        assert (models[0] == models[1]) is same
+        if same:
+            assert hash(models[0]) == hash(models[1])
+
+
+def test_a_model_holding_nan_user_data_equals_its_copies() -> None:
+    # What Python's `==` on the value denies: `nan != nan`.
+    model = ZarrV3ArrayMetadata.create_default(attributes={"_FillValue": math.nan})
+    assert ZarrV3ArrayMetadata.from_key_value(model.to_key_value()) == model
+    assert pickle.loads(pickle.dumps(model)) == model
+    assert ZarrV3ArrayMetadata.from_json(json.loads(json.dumps(model.to_json()))) == model
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "same"),
+    [
+        (0.0, 0.0, True),
+        ("NaN", "NaN", True),
+        (0.0, -0.0, False),
+        (1, 1.0, False),
+        (0, False, False),
+    ],
+)
+def test_two_v2_models_are_one_array_when_their_documents_are_written_alike(
+    left: object, right: object, same: bool
+) -> None:
+    """A v2 data type is not interpreted, so nor is its fill value: the document as text decides."""
+    model = ZarrV2ArrayMetadata.create_default(shape=(2,), chunks=(2,), dtype="<f4")
+    models = [dataclasses.replace(model, fill_value=value) for value in (left, right)]
+    assert (models[0] == models[1]) is same
+    if same:
+        assert hash(models[0]) == hash(models[1])
 
 
 def test_a_model_pickles_and_copies_with_its_definitions() -> None:

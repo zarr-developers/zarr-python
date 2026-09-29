@@ -158,6 +158,20 @@ read. A model a read builds is not read a second time. Change a model by
 building another: a container it holds, changed in place, is not
 checked again.
 
+Two models are equal when they mean the same document, however each is
+spelled. What the package interprets -- each field, and the fill value
+against its data type -- compares by its canonical spelling, as
+`canonical_of` and `canonical_fill_value` give it: `"NaN"` and
+`"0x7fc00000"` are one `float32` fill value, `0.0` and `-0.0` two, and a
+blosc with and without the `typesize` that `noshuffle` ignores one
+codec. What it does not interpret -- attributes, extra fields, the
+configuration of a field nothing in scope claims, and every member of a
+v2 document -- compares as JSON text, which tells `true` from `1` and
+`-0.0` from `0.0`, and takes `NaN` for itself. Equal models hash alike,
+and may write two documents: `to_json` writes each as it was given. A
+model's hash is of what its containers held when it was hashed, so a
+model in a set, or a key of a dict, is not changed in place.
+
 `node_metadata_json_schema_v3` writes what the validators read as a
 JSON Schema, draft 2020-12, for an editor that checks a `zarr.json` as it
 is written, or a validator in another language. Each extension point is

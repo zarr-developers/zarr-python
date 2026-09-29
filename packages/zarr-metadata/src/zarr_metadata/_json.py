@@ -334,6 +334,16 @@ def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refi
     )
 
 
+def json_text(value: JSONValue) -> str:
+    """`value` as the JSON text `json.dumps` writes for it, an object's keys sorted: what `==` compares of a JSON value the package does not interpret.
+
+    Not Python's `==` on the value, which takes `true` for `1`, `-0.0` for
+    `0.0` and `NaN` for no value at all, but what a document writes: two
+    values written alike are one value to every reader.
+    """
+    return json.dumps(value, sort_keys=True, ensure_ascii=False)
+
+
 def shown(value: object) -> str:
     """`value` as a problem's message shows it: as the JSON a document writes, `null` and `[1, 2]`, or by its repr when it is not JSON."""
     refined, problems = _refine(value, (), finite=False)

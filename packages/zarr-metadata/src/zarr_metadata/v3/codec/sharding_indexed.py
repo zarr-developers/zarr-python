@@ -5,7 +5,7 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index
 """
 
 from collections.abc import Iterator, Mapping
-from typing import Annotated, Final, Literal, NotRequired
+from typing import Annotated, Final, Literal, NotRequired, cast
 
 from annotated_types import Ge
 from typing_extensions import TypedDict
@@ -165,9 +165,27 @@ def _per_shard(chunk_shape: tuple[int, ...], lengths: Lengths | None) -> Lengths
     )
 
 
+def _canonical(
+    configuration: ShardingIndexedCodecConfiguration,
+) -> ShardingIndexedCodecConfiguration:
+    """Without an `index_location` of `end`, which is what an absent one means.
+
+    "If the parameter is not present, the value defaults to `end`"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L157-L161),
+    so the two spellings are one codec.
+    """
+    if configuration.get("index_location") != "end":
+        return configuration
+    return cast(
+        "ShardingIndexedCodecConfiguration",
+        {key: value for key, value in configuration.items() if key != "index_location"},
+    )
+
+
 SHARDING_INDEXED_CODEC: Final = CodecDefinition(
     name=SHARDING_INDEXED_CODEC_NAME,
     configuration=ShardingIndexedCodecConfiguration,
+    canonical=_canonical,
     kind="array_bytes",
     size="dynamic",
     chunk_rules=_chunk_rules,

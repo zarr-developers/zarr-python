@@ -14,6 +14,7 @@ from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
     copied,
+    json_text,
     with_input,
 )
 from zarr_metadata._sentinel import UNSET
@@ -42,6 +43,8 @@ from zarr_metadata.v3._definition import (
     StorageTransformerDefinition,
     Unclaimed,
     document_json,
+    field_key,
+    spelled_canonically,
 )
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
 from zarr_metadata.v3.array import ZARR_V3_ARRAY_METADATA_STORE_KEY, ZarrV3ExtensionField
@@ -231,6 +234,27 @@ class ZarrV3ArrayMetadata:
         object.__setattr__(self, "codecs", tuple(self.codecs))
         object.__setattr__(self, "storage_transformers", tuple(self.storage_transformers))
 
+    def __eq__(self, other: object) -> bool:
+        """Whether `other` models the same array: the same document, however each is spelled.
+
+        Compared as `array_key` says: what the package interprets -- each
+        field, and the fill value against the data type -- in its canonical
+        spelling, so `"NaN"` and `"0x7fc00000"` are one `float32` fill value
+        and a blosc with and without the `typesize` that `noshuffle` ignores
+        one codec; and what it does not interpret -- the attributes, the
+        extra fields, the fill value of a data type nothing in scope claims
+        -- as JSON text, which tells `true` from `1` and `-0.0` from `0.0`,
+        and takes `NaN` for itself. So two equal models may write two
+        documents: `to_json` writes each as it was given. Equal models hash
+        alike.
+        """
+        if type(other) is not type(self):
+            return NotImplemented
+        return array_key(self) == array_key(cast("ZarrV3ArrayMetadata", other))
+
+    def __hash__(self) -> int:
+        return hash(array_key(self))
+
     def to_json(self) -> ZarrV3ArrayMetadataJSON:
         """The document as JSON, arrays as tuples, sharing no mutable state with the model.
 
@@ -291,6 +315,34 @@ class ZarrV3ArrayMetadata:
         strict JSON parser refuses.
         """
         return {ZARR_V3_ARRAY_METADATA_STORE_KEY: dump_store_json(array_json(self), indent=indent)}
+
+
+def array_key(model: ZarrV3ArrayMetadata) -> tuple[object, ...]:
+    """What `==` and `hash` compare of a v3 array model: what its document means.
+
+    Each field by its `field_key`, the fill value in its canonical spelling
+    as JSON text when a definition in scope read the data type, and every
+    other member as it is, the JSON ones as text.
+    """
+    return (
+        model.shape,
+        _fill_value_key(model),
+        field_key(model.data_type),
+        field_key(model.chunk_grid),
+        tuple(field_key(codec) for codec in model.codecs),
+        field_key(model.chunk_key_encoding),
+        model.dimension_names,
+        json_text(model.attributes),
+        tuple(field_key(transformer) for transformer in model.storage_transformers),
+        json_text(model.extra_fields),
+    )
+
+
+def _fill_value_key(model: ZarrV3ArrayMetadata) -> str:
+    """What `==` compares of `model`'s fill value: its canonical spelling as JSON text when a definition in scope read the data type, and the fill value as written when none did."""
+    if isinstance(model.data_type, Read):
+        return json_text(spelled_canonically(model.data_type, model.fill_value))
+    return json_text(model.fill_value)
 
 
 def _members(model: ZarrV3ArrayMetadata) -> ArrayMembersV3:
@@ -505,6 +557,20 @@ class ZarrV2ArrayMetadata:
             attributes=UNSET,
         )
         return default.update(**overrides)
+
+    def __eq__(self, other: object) -> bool:
+        """Whether `other` models the same array: the same document, as JSON text.
+
+        Nothing in a v2 document is interpreted, so two models are one when
+        their documents are written alike, which tells `0` from `0.0` and
+        `-0.0`, and takes `NaN` for itself. Equal models hash alike.
+        """
+        if type(other) is not type(self):
+            return NotImplemented
+        return json_text(self.to_json()) == json_text(cast("ZarrV2ArrayMetadata", other).to_json())
+
+    def __hash__(self) -> int:
+        return hash(json_text(self.to_json()))
 
     def to_json(self) -> ZarrV2ArrayMetadataJSON:
         """Return the merged in-memory document form.

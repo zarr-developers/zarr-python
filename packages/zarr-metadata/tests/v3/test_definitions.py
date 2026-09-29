@@ -42,6 +42,7 @@ from zarr_metadata.v3.definition import (
     Unclaimed,
     ValidationProblem,
     ZarrV3MetadataFieldJSON,
+    canonical_of,
     check,
     configuration_of,
     resolve,
@@ -958,6 +959,7 @@ def test_a_scope_pickles_as_its_definitions_and_copies_as_itself() -> None:
 
 LE: Final = {"name": "bytes", "configuration": {"endian": "little"}}
 SHARD: Final = {"chunk_shape": [2], "codecs": [LE], "index_location": "end"}
+NOSHUFFLE: Final = {"cname": "lz4", "clevel": 5, "shuffle": "noshuffle", "blocksize": 0}
 
 
 @pytest.mark.parametrize(
@@ -997,6 +999,71 @@ SHARD: Final = {"chunk_shape": [2], "codecs": [LE], "index_location": "end"}
             False,
         ),
         ("int8", "uint8", DataTypeDefinition, False),
+        # The spec's equivalences, which each definition's `canonical`
+        # folds: a member at its default, a run-length encoding, leading
+        # zeros in a size.
+        (
+            {"name": "blosc", "configuration": {**NOSHUFFLE}},
+            {"name": "blosc", "configuration": {**NOSHUFFLE, "typesize": 4}},
+            CodecDefinition,
+            True,
+        ),
+        (
+            "default",
+            {"name": "default", "configuration": {"separator": "/"}},
+            ChunkKeyEncodingDefinition,
+            True,
+        ),
+        (
+            "default",
+            {"name": "default", "configuration": {"separator": "."}},
+            ChunkKeyEncodingDefinition,
+            False,
+        ),
+        (
+            {"name": "v2"},
+            {"name": "v2", "configuration": {"separator": "."}},
+            ChunkKeyEncodingDefinition,
+            True,
+        ),
+        (
+            {
+                "name": "sharding_indexed",
+                "configuration": {**SHARD, "index_codecs": [LE, "crc32c"]},
+            },
+            {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": [2],
+                    "codecs": [LE],
+                    "index_codecs": [LE, "crc32c"],
+                },
+            },
+            CodecDefinition,
+            True,
+        ),
+        (
+            {"name": "zstd", "configuration": {"level": 3}},
+            {"name": "zstd", "configuration": {"level": 3, "checksum": False}},
+            CodecDefinition,
+            True,
+        ),
+        (
+            {"name": "zstd", "configuration": {"level": 3}},
+            {"name": "zstd", "configuration": {"level": 3, "checksum": True}},
+            CodecDefinition,
+            False,
+        ),
+        (
+            {"name": "rectilinear", "configuration": {"kind": "inline", "chunk_shapes": [[2, 2]]}},
+            {
+                "name": "rectilinear",
+                "configuration": {"kind": "inline", "chunk_shapes": [[[2, 2]]]},
+            },
+            ChunkGridDefinition,
+            True,
+        ),
+        ("r008", "r8", DataTypeDefinition, True),
     ],
     ids=[
         "bare-or-object",
@@ -1007,18 +1074,29 @@ SHARD: Final = {"chunk_shape": [2], "codecs": [LE], "index_location": "end"}
         "another-configuration",
         "unclaimed-another-configuration",
         "another-name",
+        "blosc-typesize-noshuffle",
+        "default-separator",
+        "default-other-separator",
+        "v2-separator",
+        "sharding-index-location",
+        "zstd-checksum-false",
+        "zstd-checksum-true",
+        "rectilinear-rle",
+        "raw-bits-leading-zeros",
     ],
 )
 def test_two_fields_are_equal_when_they_read_the_same(
     one: JSONValue, other: JSONValue, kind: type[Definition[Any]], equal: bool
 ) -> None:
-    """However each was spelled; each is written as it reads, and equal fields are written the same."""
+    """However each was spelled: equal fields have one simplest spelling and one hash, though each is written as read."""
     first, _ = resolve(one, kind, CORE_AND_EXTENSIONS)
     second, _ = resolve(other, kind, CORE_AND_EXTENSIONS)
     assert isinstance(first, (Read, Unclaimed))
     assert isinstance(second, (Read, Unclaimed))
     assert (first == second) is equal
-    assert (first.to_json() == second.to_json()) is equal
+    assert (canonical_of(first, ()) == canonical_of(second, ())) is equal
+    if equal:
+        assert hash(first) == hash(second)
 
 
 def test_a_field_copied_or_pickled_is_read_by_a_definition_equal_to_its_own() -> None:
