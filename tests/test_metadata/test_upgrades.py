@@ -7,6 +7,7 @@ import dataclasses
 import json
 import re
 import warnings
+import zipfile
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
@@ -114,17 +115,17 @@ def _nested_sharded_doc(inner: list[Any], nested: list[Any]) -> dict[str, JSON]:
 @pytest.mark.parametrize(
     ("doc", "expected", "upgraded", "warning"),
     [
-        (_v2_doc([10, 10], [4, 5]), ((4, 5),), False, None),
-        (_v3_doc([0, 0], [1, 1]), ((1, 1),), False, None),
-        (_v3_doc([10], [4], inner=[2]), ((4,), (2,)), False, None),
-        (_v2_doc([0, 4], [0, 4]), ((1, 4),), True, None),
-        (_v3_doc([0], [False]), ((1,),), True, None),
-        (_v2_doc([5], [True]), ((1,),), True, None),
-        (_v3_doc([5, 4], [True, 4]), ((1, 4),), True, None),
+        (_v2_doc([10, 10], [4, 5]), ((4, 5),), "no", None),
+        (_v3_doc([0, 0], [1, 1]), ((1, 1),), "no", None),
+        (_v3_doc([10], [4], inner=[2]), ((4,), (2,)), "no", None),
+        (_v2_doc([0, 4], [0, 4]), ((1, 4),), "moved", None),
+        (_v3_doc([0], [False]), ((1,),), "moved", None),
+        (_v2_doc([5], [True]), ((1,),), "respelled", None),
+        (_v3_doc([5, 4], [True, 4]), ((1, 4),), "respelled", None),
         (
             _v2_doc([3], [0]),
             ((1,),),
-            True,
+            "moved",
             (
                 r"^The stored chunk shape \[0\] is invalid: .* read as \[1\], reading 0 in "
                 r"dimension 0 as 1, as no chunk can be stored under a chunk size of 0, so the "
@@ -134,26 +135,26 @@ def _nested_sharded_doc(inner: list[Any], nested: list[Any]) -> dict[str, JSON]:
         (
             _v3_doc([4, 3], [4, 0]),
             ((4, 1),),
-            True,
+            "moved",
             r"reading 0 in dimension 1 as .* holds only its fill value\.$",
         ),
         (
             _v2_doc([0, 3], [0, 0]),
             ((1, 1),),
-            True,
+            "moved",
             r"read as \[1, 1\], reading 0 in dimension 1 as .* holds only its fill value\.$",
         ),
-        (_v3_doc([0], [0], inner=[4]), ((4,), (4,)), True, None),
+        (_v3_doc([0], [0], inner=[4]), ((4,), (4,)), "moved", None),
         (
             _v3_doc([10], [0], inner=[4]),
             ((4,), (4,)),
-            True,
+            "moved",
             r"as 4, the inner chunk size, as no chunk .* holds only its fill value",
         ),
-        (_v3_doc([0, 3], [0, 3], inner=[2, 3]), ((2, 3), (2, 3)), True, None),
-        (_v3_doc([5], [True], inner=[True]), ((1,), (1,)), True, None),
-        (_nested_sharded_doc([4], [2]), ((8,), (4,), (2,)), False, None),
-        (_nested_sharded_doc([4], [True]), ((8,), (4,), (1,)), True, None),
+        (_v3_doc([0, 3], [0, 3], inner=[2, 3]), ((2, 3), (2, 3)), "moved", None),
+        (_v3_doc([5], [True], inner=[True]), ((1,), (1,)), "respelled", None),
+        (_nested_sharded_doc([4], [2]), ((8,), (4,), (2,)), "no", None),
+        (_nested_sharded_doc([4], [True]), ((8,), (4,), (1,)), "respelled", None),
     ],
     ids=[
         "v2-valid",
@@ -175,12 +176,17 @@ def _nested_sharded_doc(inner: list[Any], nested: list[Any]) -> dict[str, JSON]:
     ],
 )
 def test_upgrade_array_document(
-    doc: dict[str, JSON], expected: tuple[Any, ...], upgraded: bool, warning: str | None
+    doc: dict[str, JSON],
+    expected: tuple[Any, ...],
+    upgraded: Literal["no", "respelled", "moved"],
+    warning: str | None,
 ) -> None:
     """Valid documents pass unchanged. A stored chunk size of 0 or `false` is read as 1
     (the inner chunk size when sharded), however long the axis, and `true` as 1,
     in the chunk shape and in the inner chunk shape of every sharding codec, nested or
-    not. `from_dict` marks the metadata of an upgraded document; it warns once, naming
+    not. `from_dict` marks the metadata of a document whose upgrade moves chunks (a
+    chunk size read as another size), so the array stores the upgrade before it writes
+    chunks, but not one that only respells a value (`true` as 1). It warns once, naming
     the array, only where a chunk size of 0 was stored for a non-empty axis (which then
     holds only its fill value), saying how that part was read and how to re-save. The
     other readings give what zarr read before, so they are silent."""
@@ -188,15 +194,15 @@ def test_upgrade_array_document(
     assert {
         k: v for k, v in upgraded_doc.items() if k not in ("chunks", "chunk_grid", "codecs")
     } == {k: v for k, v in doc.items() if k not in ("chunks", "chunk_grid", "codecs")}
-    assert bool(readings) is upgraded
-    if not upgraded:
+    assert bool(readings) is (upgraded != "no")
+    if upgraded == "no":
         assert upgraded_doc is doc
     metadata_cls = ArrayV2Metadata if doc["zarr_format"] == 2 else ArrayV3Metadata
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
         metadata = metadata_cls.from_dict(dict(doc), path="group/array")
     assert _chunk_shapes(metadata) == expected
-    assert metadata._stored_document == (doc if upgraded else None)
+    assert metadata._stored_document == (doc if upgraded == "moved" else None)
     messages = [str(w.message) for w in record]
     if warning is None:
         assert messages == []
@@ -279,16 +285,16 @@ def _rectilinear_doc(shape: list[int], chunk_shapes: list[Any]) -> dict[str, JSO
 
 
 @pytest.mark.parametrize(
-    ("chunk_shapes", "expected", "upgraded"),
+    ("chunk_shapes", "expected"),
     [
-        ([[[4, 2]], [[5, 2]]], ((4, 4), (5, 5)), False),
-        ([[[4.0, 2]], [[5, 2]]], ((4, 4), (5, 5)), True),
-        ([[3.0, 5.0], [[5, 2]]], ((3, 5), (5, 5)), True),
-        ([[[4.0, 2], 2.0], [[5, 2]]], ((4, 4, 2), (5, 5)), True),
-        ([[[4.0, 2]], [10]], ((4, 4), (10,)), True),
-        ([[[4.0, 2]], [5.0, 5]], ((4, 4), (5, 5)), True),
-        ([[True, 4], [[5, 2]]], ((1, 4), (5, 5)), True),
-        ([[[True, 2], 3], [[5, 2]]], ((1, 1, 3), (5, 5)), True),
+        ([[[4, 2]], [[5, 2]]], ((4, 4), (5, 5))),
+        ([[[4.0, 2]], [[5, 2]]], ((4, 4), (5, 5))),
+        ([[3.0, 5.0], [[5, 2]]], ((3, 5), (5, 5))),
+        ([[[4.0, 2], 2.0], [[5, 2]]], ((4, 4, 2), (5, 5))),
+        ([[[4.0, 2]], [10]], ((4, 4), (10,))),
+        ([[[4.0, 2]], [5.0, 5]], ((4, 4), (5, 5))),
+        ([[True, 4], [[5, 2]]], ((1, 4), (5, 5))),
+        ([[[True, 2], 3], [[5, 2]]], ((1, 1, 3), (5, 5))),
     ],
     ids=[
         "valid",
@@ -302,18 +308,19 @@ def _rectilinear_doc(shape: list[int], chunk_shapes: list[Any]) -> dict[str, JSO
     ],
 )
 def test_read_invalid_edges_in_rectilinear_grid(
-    chunk_shapes: list[Any], expected: tuple[tuple[int, ...], ...], upgraded: bool
+    chunk_shapes: list[Any], expected: tuple[tuple[int, ...], ...]
 ) -> None:
     """A stored rectilinear chunk grid whose explicit edges or run-length encoded sizes
     are integral floats or JSON `true`, as zarr-python wrote them when given float or
-    `True` edges, is read with those edges as the `int`s they equal. `from_dict` marks
-    the metadata as upgraded, silently: zarr read these edges so before."""
+    `True` edges, is read with those edges as the `int`s they equal, silently: zarr read
+    these edges so before. The reading moves no chunks, so the metadata is not marked
+    for re-saving."""
     shape = [sum(edges) for edges in expected]
     doc = _rectilinear_doc(shape, chunk_shapes)
     with zarr.config.set({"array.rectilinear_chunks": True}):
         metadata = _read_strictly(doc)
         assert metadata.chunk_grid == RectilinearChunkGridMetadata(chunk_shapes=expected)
-    assert metadata._stored_document == (doc if upgraded else None)
+    assert metadata._stored_document is None
 
 
 @pytest.mark.parametrize(
@@ -359,19 +366,19 @@ def test_stored_float_chunk_size_rejected(doc: dict[str, JSON], error: str) -> N
 
 
 @pytest.mark.parametrize(
-    ("chunks", "stored", "resaved"),
+    ("chunks", "stored"),
     [
-        ([[4, 4], [5, 5]], [[[4.0, 2]], [[5, 2]]], "[[[4, 2]], [[5, 2]]]"),
-        ([[1, 3, 4], [5, 5]], [[True, 3, 4], [[5, 2]]], "[[1, 3, 4], [[5, 2]]]"),
+        ([[4, 4], [5, 5]], [[[4.0, 2]], [[5, 2]]]),
+        ([[1, 3, 4], [5, 5]], [[True, 3, 4], [[5, 2]]]),
     ],
     ids=["float", "true"],
 )
 def test_invalid_edges_round_trip(
-    tmp_path: Path, chunks: list[list[int]], stored: list[Any], resaved: str
+    tmp_path: Path, chunks: list[list[int]], stored: list[Any]
 ) -> None:
     """A store whose rectilinear chunk grid holds the float or `true` edges zarr-python
-    wrote opens silently, reads its data, and stores its edges as `int`s before the
-    first write."""
+    wrote opens silently and reads its data. Those edges are read as the values they
+    equal, so a write stores its chunks and leaves the document as it was stored."""
     path = tmp_path / "rectilinear.zarr"
     data = np.arange(80, dtype="int16").reshape(8, 10)
     with zarr.config.set({"array.rectilinear_chunks": True}):
@@ -383,7 +390,7 @@ def test_invalid_edges_round_trip(
         np.testing.assert_array_equal(arr[...], data)
         arr[0, 0] = -1
         written = json.loads((path / "zarr.json").read_text())["chunk_grid"]["configuration"]
-        assert json.dumps(written["chunk_shapes"]) == resaved
+        assert json.dumps(written["chunk_shapes"]) == json.dumps(stored)
         data[0, 0] = -1
         np.testing.assert_array_equal(_open_strictly(path)[...], data)
 
@@ -854,8 +861,9 @@ def test_write_without_stored_document(zarr_format: Literal[2, 3]) -> None:
     `AsyncArray.from_dict` builds one) writes its chunks as any array does: there is no
     stored document to upgrade."""
     store = MemoryStore()
-    doc = _v2_doc([3], [True]) if zarr_format == 2 else _v3_doc([3], [True])
-    array = zarr.Array(AsyncArray.from_dict(StorePath(store), doc))
+    doc = _v2_doc([3], [0]) if zarr_format == 2 else _v3_doc([3], [0])
+    with pytest.warns(ZarrUserWarning, match="is read as"):
+        array = zarr.Array(AsyncArray.from_dict(StorePath(store), doc))
     upgraded = array.metadata._stored_document is not None
 
     array[:] = [1, 2, 3]
@@ -863,6 +871,64 @@ def test_write_without_stored_document(zarr_format: Literal[2, 3]) -> None:
     assert (upgraded, array.metadata._stored_document) == (True, None)
     np.testing.assert_array_equal(array[:], [1, 2, 3])
     assert not [key for key in store._store_dict if key.endswith((".zarray", "zarr.json"))]
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_respelled_document_write_stores_only_chunks(
+    tmp_path: Path, zarr_format: Literal[2, 3]
+) -> None:
+    """A document whose upgrade only respells a value (a stored chunk size `true`, read
+    as 1 as zarr read it before) moves no chunks, so a write stores its chunks and no
+    metadata: in a `ZipStore`, which cannot replace an entry, the write adds no second
+    metadata entry and gives no warning."""
+    path = tmp_path / "legacy.zip"
+    doc = _v2_doc([4, 4], [True, 4]) if zarr_format == 2 else _v3_doc([4, 4], [True, 4])
+    name = ".zarray" if zarr_format == 2 else "zarr.json"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(name, json.dumps(doc))
+    store = zarr.storage.ZipStore(path, mode="a")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        array = zarr.open_array(store, mode="a")
+        array[0] = 5
+    store.close()
+
+    entries = [info.filename for info in zipfile.ZipFile(path).infolist()]
+    assert entries.count(name) == 1
+    assert len(entries) == 2
+    np.testing.assert_array_equal(
+        zarr.open_array(zarr.storage.ZipStore(path, mode="r"))[0], [5, 5, 5, 5]
+    )
+
+
+@pytest.mark.parametrize(
+    "codec",
+    [
+        ShardingCodec(chunk_shape=(1,)),
+        {
+            "name": "sharding_indexed",
+            "configuration": {
+                "chunk_shape": [np.int64(2)],
+                "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
+                "index_codecs": [
+                    {"name": "bytes", "configuration": {"endian": "little"}},
+                    {"name": "crc32c"},
+                ],
+                "index_location": "end",
+            },
+        },
+    ],
+    ids=["codec-instance", "numpy-integer"],
+)
+def test_from_dict_keeps_values_that_are_not_json(codec: Any) -> None:
+    """`from_dict` takes metadata built in code as well as stored documents, so the
+    upgrades read values that are not JSON (codec instances, NumPy integers) as they are,
+    without encoding them, and the constructors read them as before."""
+    doc: dict[str, Any] = _v3_doc([4], [4])
+    doc["codecs"] = [codec]
+    metadata = ArrayV3Metadata.from_dict(doc)
+    assert metadata._stored_document is None
+    assert isinstance(metadata.codecs[0], ShardingCodec)
 
 
 @pytest.mark.parametrize(("shape", "expected"), [((0,), (1,)), ((3,), (1,))])
