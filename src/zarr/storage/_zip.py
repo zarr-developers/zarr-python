@@ -190,7 +190,8 @@ class ZipStore(Store):
             return self._zf
 
     async def _open(self) -> None:
-        self._sync_open()
+        with self._lock:
+            self._sync_open()
 
     def __getstate__(self) -> dict[str, Any]:
         if self.path is None:
@@ -210,7 +211,7 @@ class ZipStore(Store):
         self.__dict__ = state
         self._lock = threading.RLock()
         self._is_open = False
-        self._sync_open()
+        self._zipfile()
 
     def close(self) -> None:
         # docstring inherited
@@ -230,6 +231,7 @@ class ZipStore(Store):
                 raise NotImplementedError(
                     "clear() is not supported for a ZipStore backed by a file-like object"
                 )
+            # opening first keeps mode "x" from deleting a file it may not claim
             self._zipfile().close()
             os.remove(self.path)
             self._zf = zipfile.ZipFile(
@@ -395,8 +397,10 @@ class ZipStore(Store):
             )
         if isinstance(path, str):
             path = Path(path)
-        self.close()
-        os.makedirs(path.parent, exist_ok=True)
-        shutil.move(self.path, path)
-        self.path = path
-        await self._open()
+        # hold the lock so that no thread reopens the old path mid-move
+        with self._lock:
+            self.close()
+            os.makedirs(path.parent, exist_ok=True)
+            shutil.move(self.path, path)
+            self.path = path
+            self._sync_open()

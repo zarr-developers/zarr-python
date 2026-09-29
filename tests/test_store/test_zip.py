@@ -305,6 +305,50 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         with zipfile.ZipFile(store.path) as zf:  # type: ignore[arg-type]
             assert zf.namelist() == ["foo", "bar"]
 
+    async def test_move_blocks_concurrent_reopen(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # a thread that uses the store while move() runs must wait for the
+        # move, or it reopens the old path between close and reopen
+        origin = tmp_path / "data.zip"
+        destination = tmp_path / "moved" / "data.zip"
+        store = ZipStore(origin, mode="w")
+        await store.set("foo", cpu.Buffer.from_bytes(b"1"))
+
+        writer = threading.Thread(
+            target=lambda: sync(store.set("bar", cpu.Buffer.from_bytes(b"2")))
+        )
+        move_file = shutil.move
+
+        def write_then_move(src: Any, dst: Any) -> Any:
+            # the store is closed here; start a write before move() reopens it
+            writer.start()
+            writer.join(timeout=0.2)
+            return move_file(src, dst)
+
+        monkeypatch.setattr(shutil, "move", write_then_move)
+        await store.move(destination)
+        monkeypatch.undo()
+        writer.join()
+        store.close()
+
+        assert not origin.exists()
+        with zipfile.ZipFile(destination) as zf:
+            assert zf.namelist() == ["foo", "bar"]
+
+    async def test_clear_exclusive_mode_keeps_existing_file(self, tmp_path: Path) -> None:
+        # a never-opened "x" store has not claimed the file, so clear() must
+        # refuse it the way the first open would instead of deleting it
+        path = tmp_path / "data.zip"
+        with zipfile.ZipFile(path, mode="w") as zf:
+            zf.writestr("foo", b"1")
+
+        store = ZipStore(path, mode="x")  # type: ignore[arg-type]
+        with pytest.raises(FileExistsError):
+            await store.clear()
+        with zipfile.ZipFile(path) as zf:
+            assert zf.namelist() == ["foo"]
+
 
 class TestZipStoreFileObj:
     """ZipStore backed by an open binary file-like object instead of a path."""
