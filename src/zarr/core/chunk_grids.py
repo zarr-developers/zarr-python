@@ -5,7 +5,6 @@ import itertools
 import math
 import operator
 import warnings
-from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import reduce
 from typing import (
@@ -32,7 +31,7 @@ from zarr.core.common import (
 from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Iterable, Iterator, Sequence
 
     from zarr.core.array import ShardsLike
     from zarr.core.common import ChunksLike
@@ -354,15 +353,16 @@ def _chunk_int(value: object) -> int | None:
 def _chunk_list(chunks: object) -> list[Any]:
     """Return the elements of a chunk specification that is not an integer, or raise
     a `TypeError` naming it (a float, `None`, a 0-d non-integer array)."""
-    if isinstance(chunks, Iterable):
-        try:
-            return list(chunks)
-        except TypeError:
-            pass  # a 0-d numpy array is `Iterable` by type, but iterating it raises
-    raise TypeError(
-        f"Chunk specification must be an integer or an iterable of integers; got "
-        f"{chunks!r} of type {type(chunks).__name__}."
-    )
+    try:
+        # `list` also takes a sequence with only `__getitem__` and `__len__`, which
+        # `Iterable` does not recognize.
+        return list(cast("Iterable[Any]", chunks))
+    except TypeError:
+        # Not iterable, or a 0-d numpy array, whose iteration raises.
+        raise TypeError(
+            f"Chunk specification must be an integer or an iterable of integers; got "
+            f"{chunks!r} of type {type(chunks).__name__}."
+        ) from None
 
 
 def is_regular_1d(dim_chunks: Sequence[int]) -> bool:

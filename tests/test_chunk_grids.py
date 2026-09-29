@@ -61,6 +61,20 @@ def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
     assert all(0 < c <= max(s, 1) for c, s in zip(chunks, shape, strict=False))
 
 
+class _IndexedSequence:
+    """A sequence with only `__getitem__` and `__len__`: `list` takes it, but
+    `collections.abc.Iterable` does not recognize it."""
+
+    def __init__(self, *items: int) -> None:
+        self._items = items
+
+    def __getitem__(self, index: int) -> int:
+        return self._items[index]
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+
 @pytest.mark.parametrize(
     ("chunks", "shape", "expected"),
     [
@@ -110,6 +124,9 @@ def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
         ((np.array([60, 40]), np.array([50, 50])), (100, 100), ((60, 40), (50, 50))),
         # a Python `bool` inside a specification is an `int`: `True` is a chunk size of 1
         ((True, 5), (10, 10), (1, 5)),
+        # a sequence with only `__getitem__` and `__len__` is a list of chunk sizes
+        (_IndexedSequence(5, 5), (10, 10), (5, 5)),
+        ((_IndexedSequence(6, 4), 5), (10, 10), ((6, 4), 5)),
         ([[True, 9], 10], (10, 10), ((1, 9), 10)),
     ],
 )
