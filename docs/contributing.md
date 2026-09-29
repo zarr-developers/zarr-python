@@ -12,29 +12,55 @@ If you find a bug, please raise a [GitHub issue](https://github.com/zarr-develop
 
 1. A minimal, self-contained snippet of Python code reproducing the problem. You can format the code nicely using markdown, e.g.:
 
-```python
-import zarr
-g = zarr.group()
-# etc.
-```
+    ```python exec="false" reason="illustrative pseudocode with a '# etc.' placeholder, not runnable"
+    import zarr
+    g = zarr.group()
+    # etc.
+    ```
 
-2. An explanation of why the current behaviour is wrong/not desired, and what you expect instead.
+2. An explanation of why the current behavior is wrong/not desired, and what you expect instead.
 
-3. Information about the version of Zarr, along with versions of dependencies and the Python interpreter, and installation information. The version of Zarr can be obtained from the `zarr.__version__` property. Please also state how Zarr was installed, e.g., "installed via pip into a virtual environment", or "installed using conda". Information about other packages installed can be obtained by executing `pip freeze` (if using pip to install packages) or `conda env export` (if using conda to install packages) from the operating system command prompt. The version of the Python interpreter can be obtained by running a Python interactive session, e.g.:
+3. Information about the version of Zarr, along with versions of dependencies and the Python interpreter, and installation information. The version of Zarr can be obtained from the `zarr.__version__` attribute. Please also state how Zarr was installed, e.g., "installed via pip into a virtual environment", or "installed using conda". Information about other packages installed can be obtained by executing `pip freeze` (if using pip to install packages) or `conda env export` (if using conda to install packages) from the operating system command prompt. The version of the Python interpreter can be obtained by running a Python interactive session, e.g.:
 
-```console
-python
-```
+    ```console
+    python
+    ```
 
-```ansi
-Python 3.12.7 | packaged by conda-forge | (main, Oct  4 2024, 15:57:01) [Clang 17.0.6 ] on darwin
-```
+    ```ansi
+    Python 3.12.7 | packaged by conda-forge | (main, Oct  4 2024, 15:57:01) [Clang 17.0.6 ] on darwin
+    ```
 
 ## Enhancement proposals
 
 If you have an idea about a new feature or some other improvement to Zarr, please raise a [GitHub issue](https://github.com/zarr-developers/zarr-python/issues/new) first to discuss.
 
 We very much welcome ideas and suggestions for how to improve Zarr, but please bear in mind that we are likely to be conservative in accepting proposals for new features. The reasons for this are that we would like to keep the Zarr code base lean and focused on a core set of functionalities, and available time for development, review and maintenance of new features is limited. But if you have a great idea, please don't let that stop you from posting it on GitHub, just please don't be offended if we respond cautiously.
+
+## AI-assisted contributions
+
+AI coding tools are increasingly common in open source development. These tools are welcome in Zarr-Python, but the same standards apply to all contributions regardless of how they were produced — whether written by hand, with AI assistance, or generated entirely by an AI tool.
+
+### You are responsible for your changes
+
+If you submit a pull request, you are responsible for understanding and having fully reviewed the changes. You must be able to explain why each change is correct and how it fits into the project.
+
+### Communication must be your own
+
+PR descriptions, issue comments, and review responses must be in your own words. The substance and reasoning must come from you. Using AI to polish grammar or phrasing is fine, but do not paste AI-generated text as comments or review responses.
+
+### Review every line
+
+You must have personally reviewed and understood all changes before submitting. If you used AI to generate code, you are expected to have read it critically and tested it. The PR description should explain the approach and reasoning — do not leave it to reviewers to figure out what the code does and why.
+
+### Keep PRs reviewable
+
+Generating code with AI is fast; reviewing it is not. A large diff shifts the burden from the contributor to the reviewer. PRs that cannot be reviewed in reasonable time with reasonable effort may be closed, regardless of their potential usefulness or correctness. Use AI tools not only to write code but to prepare better, more reviewable PRs — well-structured commits, clear descriptions, and minimal scope.
+
+If you are planning a large AI-assisted contribution (e.g., a significant refactor or a new subsystem), **open an issue first** to discuss the scope and approach with maintainers. Maintainers may also request that large changes be broken into smaller, reviewable pieces.
+
+### Documentation
+
+The same principles apply to documentation. Zarr has domain-specific semantics (chunked storage, codec pipelines, Zarr v2/v3 format details) that AI tools frequently get wrong. Do not submit documentation that you haven't carefully read and verified.
 
 ## Contributing code and/or documentation
 
@@ -54,18 +80,51 @@ git remote add upstream git@github.com:zarr-developers/zarr-python.git
 
 ### Creating a development environment
 
-To work with the Zarr source code, it is recommended to use [hatch](https://hatch.pypa.io/latest/index.html) to create and manage development environments. Hatch will automatically install all Zarr dependencies using the same versions as are used by the core developers and continuous integration services. Assuming you have a Python 3 interpreter already installed, and you have cloned the Zarr source code and your current working directory is the root of the repository, you can do something like the following:
+The root `Justfile` defines development and CI commands. [just](https://just.systems/)
+runs these commands, while [Hatch](https://hatch.pypa.io/latest/index.html) manages
+the Python environments declared in `pyproject.toml`. Install
+[uv](https://docs.astral.sh/uv/getting-started/installation/) first, then the two task
+tools. `uv tool install` puts them in their own environments, which a plain `pip install`
+cannot do on a Python that marks itself externally managed (Debian, Ubuntu, Homebrew):
 
 ```bash
-pip install hatch
-hatch env show  # list all available environments
+uv tool install hatch==1.16.5
+uv tool install rust-just==1.58.0   # or any option from https://just.systems/man/en/packages.html
+just                 # list available commands
+just envs            # list Python environments
+just setup           # create the default test environment
+just test
 ```
 
-To verify that your development environment is working, you can run the unit tests for one of the test environments, e.g.:
+Test recipes default to `test.py3.12-optional`. Set `HATCH_ENV` to select a different
+interpreter or dependency set, just as CI does. `just gpu` reads `GPU_HATCH_ENV`
+instead, so an exported `HATCH_ENV` cannot silently send GPU tests to an
+environment built without the `gpu` feature, and `just doctest` always runs in the
+`doctest` environment. On Windows, run these commands in
+Git Bash.
 
 ```bash
-hatch env run --env test.py3.12-optional run
+HATCH_ENV=test.py3.13-minimal just test
+HATCH_ENV=min_deps just coverage
+HATCH_ENV=upstream just coverage
+GPU_HATCH_ENV=gputest.py3.12 just gpu
+just test tests/test_array.py -k 'resize and not async'
 ```
+
+Arguments after the recipe name are forwarded to the underlying tool. Use
+`just --show test` to inspect a command. Package-specific commands live in the
+`justfile` inside each package directory. The root recipes delegate to these files,
+so you can also run package commands from the repository root:
+
+```bash
+just zarr-metadata              # list this package's recipes
+just zarr-metadata test
+just zarr-indexing test-tensorstore
+just zarr-http-server docs-check
+```
+
+The package justfile sets the working directory and defines the command and its
+environment. Root recipes forward arguments without duplicating those definitions.
 
 ### Creating a branch
 
@@ -99,60 +158,48 @@ Again, any conflicts need to be resolved before submitting a pull request.
 
 ### Running the test suite
 
-Zarr includes a suite of unit tests. The simplest way to run the unit tests is to activate your development environment (see [creating a development environment](#creating-a-development-environment) above) and invoke:
+Zarr includes a suite of unit tests. The simplest way to run the unit tests is to invoke:
 
 ```bash
-hatch env run --env test.py3.12-optional run
+just test
 ```
 
 All tests are automatically run via GitHub Actions for every pull request and must pass before code can be accepted. Test coverage is also collected automatically via the Codecov service.
-
-> **Note:** Previous versions of Zarr-Python made extensive use of doctests. These tests were not maintained during the 3.0 refactor but may be brought back in the future. See issue #2614 for more details.
 
 ### Code standards - using prek
 
 All code must conform to the PEP8 standard. Regarding line length, lines up to 100 characters are allowed, although please try to keep under 90 wherever possible.
 
-`Zarr` uses a set of git hooks managed by [`prek`](https://github.com/j178/prek), a fast, Rust-based pre-commit hook manager that is fully compatible with `.pre-commit-config.yaml` files. `prek` can be installed locally by running:
-
-```bash
-uv tool install prek
-```
-
-or:
-
-```bash
-pip install prek
-```
+`Zarr` uses a set of git hooks managed by [`prek`](https://github.com/j178/prek), a fast, Rust-based pre-commit hook manager compatible with `.pre-commit-config.yaml`. The recipes pin the prek version: `just lint` and `just hooks` run it through `uvx`, and `just hooks-install` installs it as a persistent `uv tool` so the git hook can find it on later commits.
 
 The hooks can be installed locally by running:
 
 ```bash
-prek install
+just hooks-install
 ```
 
 This will run the checks every time a commit is created locally. The checks will by default only run on the files modified by a commit, but the checks can be triggered for all the files by running:
 
 ```bash
-prek run --all-files
+just lint
 ```
 
 You can also run hooks only for files in a specific directory:
 
 ```bash
-prek run --directory src/zarr
+just hooks run --directory src/zarr
 ```
 
 Or run hooks for files changed in the last commit:
 
 ```bash
-prek run --last-commit
+just hooks run --last-commit
 ```
 
 To list all available hooks:
 
 ```bash
-prek list
+just hooks list
 ```
 
 If you would like to skip the failing checks and push the code for further discussion, use the `--no-verify` option with `git commit`.
@@ -164,7 +211,7 @@ If you would like to skip the failing checks and push the code for further discu
 Zarr strives to maintain 100% test coverage under the latest Python stable release. Both unit tests and docstring doctests are included when computing coverage. Running:
 
 ```bash
-hatch env run --env test.py3.12-optional run-coverage
+just coverage
 ```
 
 will automatically run the test suite with coverage and produce an XML coverage report. This should be 100% before code can be accepted into the main code base.
@@ -172,37 +219,59 @@ will automatically run the test suite with coverage and produce an XML coverage 
 You can also generate an HTML coverage report by running:
 
 ```bash
-hatch env run --env test.py3.12-optional run-coverage-html
+just coverage-html
 ```
 
 When submitting a pull request, coverage will also be collected across all supported Python versions via the Codecov service, and will be reported back within the pull request. Codecov coverage must also be 100% before code can be accepted.
 
 ### Documentation
 
-Docstrings for user-facing classes and functions should follow the [numpydoc](https://numpydoc.readthedocs.io/en/stable/format.html#docstring-standard) standard, including sections for Parameters and Examples. All examples should run and pass as doctests under Python 3.11.
+Docstrings for user-facing classes and functions should follow the [numpydoc](https://numpydoc.readthedocs.io/en/stable/format.html#docstring-standard) standard, including sections for Parameters and Examples. All examples should run and pass as doctests under Python 3.12.
 
 Zarr uses mkdocs for documentation, hosted on readthedocs.org. Documentation is written in the Markdown markup language (.md files) in the `docs` folder. The documentation consists both of prose and API documentation. All user-facing classes and functions are included in the API documentation, under the `docs/api` folder using the [mkdocstrings](https://mkdocstrings.github.io/) extension. Add any new public functions or classes to the relevant markdown file in `docs/api/*.md`. Any new features or important usage information should be included in the user-guide (`docs/user-guide`). Any changes should also be included as a new file in the `changes` directory.
 
 The documentation can be built locally by running:
 
 ```bash
-hatch --env docs run build
+just docs-build
 ```
 
-The resulting built documentation will be available in the `docs/_build/html` folder.
+`just docs-check` also runs the documentation source checks used in CI.
 
-Hatch can also be used to serve continuously updating version of the documentation during development at [http://0.0.0.0:8000/](http://0.0.0.0:8000/). This can be done by running:
+The resulting built documentation will be available in the `site` folder.
+
+`just docs-serve` serves a continuously updating version of the documentation during development at [http://127.0.0.1:8000/](http://127.0.0.1:8000/). This can be done by running:
 
 ```bash
-hatch --env docs run serve
+just docs-serve
 ```
+
+#### Sub-package documentation sites
+
+Each sub-package under `packages/` ships its own Material for MkDocs site, built from within the package directory:
+
+```bash
+cd packages/zarr-metadata
+uv run --group docs mkdocs build --strict
+```
+
+Configuration shared by all package sites (theme, plugins, markdown extensions) lives in `packages/mkdocs-base.yml`, symlinked into each package directory; each package's `mkdocs.yml` pulls it in via `INHERIT` and defines only the site identity (name, description, repo and site URLs) and nav. `INHERIT` merges mappings but replaces lists, so a package that sets `theme.features` or `markdown_extensions` silently drops every shared entry; add extensions and features to the base instead. The header source widget's version fact is overridden by `packages/source-version.js`, symlinked into each package's `docs/_static/`, which replaces the monorepo's latest release with the latest tag matching the package's `zarr_<name>-v` prefix (both derived from `repo_url` at runtime, so the file needs no per-package edits). On Windows, enable symlinks in git (`git config core.symlinks true`, with Developer Mode on) before cloning, or local builds will ship a file containing the link target instead of the script.
+
+To add a site for a new sub-package, copy `mkdocs.yml`, the `docs/` folder, `.readthedocs.yaml`, and the `docs` dependency group in `pyproject.toml` from an existing package, then adjust the site name, description, URLs, and nav. Recreate the `mkdocs-base.yml` and `docs/_static/source-version.js` symlinks rather than copying the files, and copy the sdist `exclude` and `force-include` entries from an existing package's `pyproject.toml`, which ship the linked files in place of the links. Add `packages/mkdocs-base.yml` and `packages/source-version.js` to the package workflow's `paths` filters and to the `git diff` in its `.readthedocs.yaml`, so changes to the shared files build the site.
+
+Each site is hosted as its own Read the Docs project. To set one up for a new sub-package:
+
+1. Create a new project on [readthedocs.org](https://app.readthedocs.org) importing the `zarr-python` repository, named after the package (e.g. `zarr-metadata`).
+2. In the project's admin settings, set the configuration file path to `packages/<name>/.readthedocs.yaml`. That file also cancels pull request builds that don't touch the package.
+3. Add an automation rule matching the package's release tags (custom match `^zarr_<name>-v`, note the underscore) with the action "Activate version". Automation rules only apply to versions detected after the rule is created, so activate any earlier release tags manually from the versions list.
+4. When activating a version, edit its slug to the bare version number (`0.4.0`, not `v0.4.0`). RTD keeps a version record for every tag in the monorepo, including inactive ones not shown in the dashboard's versions list, and all of zarr-python's own release tags are `v`-prefixed — so a `v`-prefixed slug collides with zarr-python's release history ("A version with that slug already exists"), while bare version numbers cannot collide.
 
 #### Adding executable code blocks in the documentation
 
-Zarr uses [Markdown Exec](https://pawamoy.github.io/markdown-exec/usage/) to execute code blocks in Markdown files. Add `exec="on"` to a code block header for it to be executed when the docs are built. For example:
+Zarr uses [Markdown Exec](https://pawamoy.github.io/markdown-exec/usage/) to execute code blocks in Markdown files. Add `exec="true"` to a code block header for it to be executed when the docs are built. For example:
 
 ````md
-```python exec="on"
+```python exec="true"
 print("Hello world")
 ```
 ````
@@ -227,29 +296,130 @@ renders as:
 print("Hello world")
 ```
 
+#### Validating code blocks: `exec` vs `test`
+
+Every Python code block in the documentation is checked by a test
+(`tests/test_docs.py`) so that examples cannot quietly rot — the bug that motivated
+this was an example calling `zarr.create_array(..., mode="w")`, an argument that does
+not exist, which went unnoticed because nothing ran it. A block declares *how* it is
+validated using one of two independent attributes:
+
+  - **`exec="true"`** — Markdown Exec runs the block **at docs-build time to render its
+    output** into the page. This is the attribute described above; it is also what the
+    test suite executes. Use it for ordinary examples whose output should appear in the
+    docs.
+  - **`test="true"`** — the block is **run by the test suite only**, *not* at build time.
+    Use this for an example that should be validated but cannot run in the docs-build
+    environment — for example one that needs a GPU or a cloud backend. Markdown Exec
+    leaves a `test="true"` block as a static, syntax-highlighted snippet (it never
+    executes it), while the test suite still runs it (see the marker note below).
+
+A block may carry both (`exec="true" test="true"`), though in practice `exec="true"`
+already implies it is tested, so you rarely need `test="true"` alongside it.
+
+The two attributes are kept separate on purpose: `exec=` controls *build-time rendering*
+and `test=` controls *test-time validation*. Tagging a GPU/cloud example `exec="true"`
+would make `mkdocs build` try to run it on a machine without that infrastructure and fail
+the build; `test="true"` lets it be validated without being built.
+
+##### Opting a block out of validation
+
+A handful of blocks genuinely cannot run and are not executable Python — a REPL
+transcript, a deliberately-incorrect "before" snippet, a `--8<--` file include. Mark
+these explicitly by opening the fence with
+`exec="false" reason="REPL output transcript, not executable source"` (supply a reason
+that fits the block).
+
+`exec="false"` with a non-empty `reason` is an explicit, greppable opt-out. A test
+(`test_no_unvalidated_blocks`) requires **every** Python block to be either `exec="true"`,
+`test="true"`, or `exec="false"` with a reason — so a block can never silently skip
+validation. A bare ` ```python ` fence, or a typo like `exec="on"`, fails that test.
+
+Markdown Exec only renders `exec="true"` fences; the `mkdocs_hooks.py` hook at the
+repository root makes `test="true"` and `exec="false"` fences render as ordinary
+highlighted code blocks. Without it, these fences would fail superfences parsing and
+their contents would spill into the page as raw markdown.
+
+##### Marker-bound blocks (GPU, S3)
+
+A `test="true"` block that needs special infrastructure declares a pytest marker with
+`markers="..."`, which binds it to that infrastructure in the test suite:
+
+  - `markers="gpu"` — run only under `pytest -m gpu` (the GPU CI environment); skipped
+    elsewhere via `importorskip("cupy")`.
+  - `markers="s3"` — run against a mock S3 (moto) backend supplied by a test fixture, so
+    the example can use a bare `s3://…` URL with no test-only connection details on show.
+
+##### Placement of `test="true"` blocks
+
+Because Markdown Exec does not execute a `test="true"` (or `exec="false"`) block, placing
+one *before* an `exec="true"` block on the same page can disrupt the build-time execution
+of that later block. Put `test="true"` blocks **after** all `exec="true"` blocks on the
+page (or on a page where they are the only Python block). The `test_test_only_blocks_come_last`
+test enforces this, and the CI docs build runs with `--strict` so any such breakage fails
+the build rather than passing as a warning.
+
 #### Building documentation without executing code blocks
 
-Sometimes, you may want the documentation to build quicker. You can disable code block execution by commenting out the [markdown-exec](https://github.com/zarr-developers/zarr-python/blob/884a8c91afcc3efe28b3da952be3b85125c453cb/mkdocs.yml#L132 plugin in the mkdocs configuration file). This will make code blocks and cross references render incorrectly (i.e., expect build warnings), but also reduces build time by ~3x. Be sure to undo the commenting out before opening your pull request.
+Sometimes, you may want the documentation to build quicker. You can disable code block execution by commenting out the [markdown-exec plugin](https://github.com/zarr-developers/zarr-python/blob/884a8c91afcc3efe28b3da952be3b85125c453cb/mkdocs.yml#L132) in the mkdocs configuration file. This will make code blocks and cross references render incorrectly (i.e., expect build warnings), but also reduces build time by ~3x. Be sure to undo the commenting out before opening your pull request.
 
 ### Changelog
 
-zarr-python uses [towncrier](https://towncrier.readthedocs.io/en/stable/tutorial.html) to manage release notes. Most pull requests should include at least one news fragment describing the changes. To add a release note, you'll need the GitHub issue or pull request number and the type of your change (`feature`, `bugfix`, `doc`, `removal`, `misc`). With that, run `towncrier create` with your development environment, which will prompt you for the issue number, change type, and the news text:
+zarr-python uses [towncrier](https://towncrier.readthedocs.io/en/stable/tutorial.html) to manage release notes. Most pull requests should include at least one news fragment describing the changes. To add a release note, you'll need the GitHub issue or pull request number and the type of your change (`feature`, `bugfix`, `doc`, `removal`, `misc`). With that, run `just changelog`, which will prompt you for the issue number, change type, and the news text:
 
 ```bash
-towncrier create
+just changelog
 ```
 
 Alternatively, you can manually create the files in the `changes` directory using the naming convention `{issue-number}.{change-type}.md`.
 
 See the [towncrier](https://towncrier.readthedocs.io/en/stable/tutorial.html) docs for more.
 
-## Merging pull requests
+## Project governance
+
+This section documents the processes that core developers follow to maintain the project. The current core developers are listed in [`TEAM.md`](https://github.com/zarr-developers/zarr-python/blob/main/TEAM.md).
+
+### Merging pull requests
 
 Pull requests submitted by an external contributor should be reviewed and approved by at least one core developer before being merged. Ideally, pull requests submitted by a core developer should be reviewed and approved by at least one other core developer before being merged.
 
 Pull requests should not be merged until all CI checks have passed (GitHub Actions, Codecov) against code that has had the latest main merged in.
 
 Before merging, the milestone must be set to decide whether a PR will be in the next patch, minor, or major release. The next section explains which types of changes go in each release.
+
+### Self-merging pull requests
+
+The default is that a pull request opened by a core developer is reviewed and approved by at least one other core developer before it is merged. We trust core developers to use their judgment, though, and we would rather bias toward action than make routine changes wait on review they do not really need.
+
+So a core developer may merge their own pull request whenever they judge the change to be low-risk, provided the standard merge requirements are met — CI is green against code that has had the latest `main` merged in, a changelog fragment has been added, and the milestone is set — and other core developers have had a fair chance to weigh in. As a rule of thumb, leave the pull request open for a few days before self-merging, unless it is genuinely trivial or time-sensitive. If you are confident a change is fine, merge it; if you have real doubts, ask for a review. It is generally advisable to ping another developer in the PR description for awareness about the direction, even if you choose not to request a formal review.
+
+Some changes warrant more caution, and a second reviewer is usually worth seeking even when you could self-merge: changes to the public API, anything touching data-format or on-disk compatibility, and performance-sensitive code. These are the most expensive to get wrong and the hardest to reverse. Reverts, by contrast, are cheap — if a self-merged change turns out to be a mistake, reverting it is itself a low-risk change that any core developer can make, and the reworked version can go through normal review. When something recently merged is actively causing harm — a broken `main`, a release blocker, or data corruption — fix it fast and request review after the fact rather than waiting.
+
+This policy exists to lower the cost of routine work and to help newer core developers grow comfortable merging changes. It is not a license to merge past an unresolved objection: if another core developer asks to review a change, give them that chance.
+
+### Release procedure
+
+To give the release visibility and a single place to track progress, open an issue on GitHub announcing the release using the [release checklist template](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md). The release checklist includes all steps necessary for the release.
+
+#### Read the Docs versions for subpackage releases
+
+Read the Docs creates a version for every tag in the repository, including tags for
+`zarr-python` and the subpackages. This can leave the desired public slug attached to the
+wrong tag. For example, the slug `v0.4.0` may already belong to the `zarr-python` tag
+`v0.4.0` when releasing `zarr-metadata` from `zarr_metadata-v0.4.0`.
+
+Before activating a subpackage release in Read the Docs:
+
+1. Open **Admin > Versions** for the subpackage documentation project.
+2. Find the version currently using the desired slug, such as `v0.4.0`, and change its
+   slug to an unused value, such as `xv0.4.0`.
+3. Find the version created from the subpackage tag, such as `zarr_metadata-v0.4.0`, and
+   assign it the released slug, `v0.4.0`.
+4. Verify that the release URL resolves to the subpackage tag, for example
+   `https://zarr-metadata.readthedocs.io/en/v0.4.0/`.
+
+Use the same process for `zarr-indexing` tags such as `zarr_indexing-v0.2.0` and any
+other subpackage hosted as a separate Read the Docs project.
 
 ## Compatibility and versioning policies
 
@@ -261,17 +431,17 @@ Releases are classified by the library changes contained in that release. This c
 
 * **major** releases (for example, `2.18.0` -> `3.0.0`) are for changes that will require extensive adaptation efforts from many users and downstream projects. For example, breaking changes to widely-used user-facing APIs should only be applied in a major release.
 
-  Users and downstream projects should carefully consider the impact of a major release before adopting it. In advance of a major release, developers should communicate the scope of the upcoming changes, and help users prepare for them.
+    Users and downstream projects should carefully consider the impact of a major release before adopting it. In advance of a major release, developers should communicate the scope of the upcoming changes, and help users prepare for them.
 
 * **minor** releases (for example, `3.0.0` -> `3.1.0`) are for changes that do not require significant effort from most users or downstream projects to respond to. API changes are possible in minor releases if the burden on users imposed by those changes is sufficiently small.
 
-  For example, a recently released API may need fixes or refinements that are breaking, but low impact due to the recency of the feature. Such API changes are permitted in a minor release.
+    For example, a recently released API may need fixes or refinements that are breaking, but low impact due to the recency of the feature. Such API changes are permitted in a minor release.
 
-  Minor releases are safe for most users and downstream projects to adopt.
+    Minor releases are safe for most users and downstream projects to adopt.
 
-* **patch** releases (for example, `3.1.0` -> `3.1.1`) are for changes that contain no breaking or behaviour changes for downstream projects or users. Examples of changes suitable for a patch release are bugfixes and documentation improvements.
+* **patch** releases (for example, `3.1.0` -> `3.1.1`) are for changes that contain no breaking or behavior changes for downstream projects or users. Examples of changes suitable for a patch release are bugfixes and documentation improvements.
 
-  Users should always feel safe upgrading to the latest patch release.
+    Users should always feel safe upgrading to the latest patch release.
 
 Note that this versioning scheme is not consistent with [Semantic Versioning](https://semver.org/). Contrary to SemVer, the Zarr library may release breaking changes in `minor` releases, or even `patch` releases under exceptional circumstances. But we should strive to avoid doing so.
 
@@ -283,18 +453,47 @@ Zarr developers should make changes as smooth as possible for users. This means 
 
 The Zarr library is an implementation of a file format standard defined externally -- see the [Zarr specifications website](https://zarr-specs.readthedocs.io) for the list of Zarr file format specifications.
 
-If an existing Zarr format version changes, or a new version of the Zarr format is released, then the Zarr library will generally require changes. It is very likely that a new Zarr format will require extensive breaking changes to the Zarr library, and so support for a new Zarr format in the Zarr library will almost certainly come in new `major` release. When the Zarr library adds support for a new Zarr format, there may be a period of accelerated changes as developers refine newly added APIs and deprecate old APIs. In such a transitional phase breaking changes may be more frequent than usual.
+If an existing Zarr format version changes, or a new version of the Zarr format is released, then the Zarr library will generally require changes. It is very likely that a new Zarr format will require extensive breaking changes to the Zarr library, and so support for a new Zarr format in the Zarr library will almost certainly come in a new `major` release. When the Zarr library adds support for a new Zarr format, there may be a period of accelerated changes as developers refine newly added APIs and deprecate old APIs. In such a transitional phase breaking changes may be more frequent than usual.
 
-## Release procedure
+## Experimental API policy
 
-Open an issue on GitHub announcing the release using the release checklist template:
-[https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md). The release checklist includes all steps necessary for the release.
+The `zarr.experimental` namespace contains features that are under active development and may change without notice. When contributing to or depending on experimental features, please keep the following in mind:
+
+### For contributors
+
+When adding a new feature to `zarr.experimental`:
+
+1. Place the feature under `src/zarr/experimental/` and export it from `src/zarr/experimental/__init__.py`.
+2. Document the feature in `docs/user-guide/experimental.md` and note clearly that it is experimental.
+3. Add a changelog entry categorized as `feature`.
+
+We aim to either **promote** or **remove** experimental features within **6 months** of their addition. To promote a feature to stable:
+
+1. Move it from `zarr.experimental` to the appropriate stable module.
+2. Keep a deprecated re-export in `zarr.experimental` for one minor release.
+3. Update the documentation to reflect the stable location.
+
+### For users
+
+Features in `zarr.experimental` carry no stability guarantees. They may be changed or removed in any release, including patch releases. If you depend on an experimental feature, pin your `zarr-python` version accordingly.
 
 ## Benchmarks
 
 Zarr uses [pytest-benchmark](https://pytest-benchmark.readthedocs.io/en/latest/) for running
 performance benchmarks as part of our test suite. The benchmarks are found in `tests/benchmarks`.
 By default pytest is configured to run these benchmarks as plain tests (i.e., no benchmarking). To run
-a benchmark with timing measurements, use the `--benchmark-enable` when invoking `pytest`.
+a benchmark with timing measurements, run `just benchmark`. Pass pytest arguments
+to select benchmarks, for example `just benchmark -k test_morton_order`.
 
-The benchmarks are run as part of the continuous integration suite through [codspeed](https://codspeed.io/zarr-developers/zarr-python).
+The benchmarks are run as part of the continuous integration suite through [codspeed](https://app.codspeed.io/zarr-developers/zarr-python).
+
+## Building distributions and maintaining dependencies
+
+`just just-check` verifies that the root `Justfile` and each package `justfile` are
+formatted the way CI expects; `just --fmt` rewrites them in place if it complains.
+
+Run `just build` to produce a source distribution and wheel in `dist/`.
+Use `just lock-check` to check the dependency lockfile, or `just lock` to update it.
+`just typecheck` runs the type checker independently of the other lint hooks.
+Preview release notes with `just changelog-draft`; use `just check-changelogs`
+to validate fragment names, optionally passing a package's `changes/` directory.

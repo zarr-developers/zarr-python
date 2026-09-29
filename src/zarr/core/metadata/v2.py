@@ -1,37 +1,36 @@
 from __future__ import annotations
 
+import json
 import warnings
 from collections.abc import Iterable, Sequence
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.numcodec import Numcodec, _is_numcodec
-from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.dtype import get_data_type_from_json
 from zarr.core.dtype.common import OBJECT_CODEC_IDS, DTypeSpec_V2
 from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
 
 if TYPE_CHECKING:
-    from typing import Literal, Self
+    from typing import Self
 
     import numpy.typing as npt
 
     from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import (
         TBaseDType,
         TBaseScalar,
-        TDType_co,
-        TScalar_co,
         ZDType,
     )
 
-import json
 from dataclasses import dataclass, field, fields, replace
 
 import numpy as np
 
+from zarr.core._json import json_to_buffer
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_key_encodings import parse_separator
 from zarr.core.common import (
@@ -42,6 +41,7 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config, parse_indexing_order
+from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
 
 
@@ -55,7 +55,7 @@ class ArrayV2MetadataDict(TypedDict):
 
 
 # Union of acceptable types for v2 compressors
-CompressorLikev2: TypeAlias = dict[str, JSON] | Numcodec | None
+type CompressorLikev2 = dict[str, JSON] | Numcodec | None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -75,7 +75,7 @@ class ArrayV2Metadata(Metadata):
         self,
         *,
         shape: tuple[int, ...],
-        dtype: ZDType[TDType_co, TScalar_co],
+        dtype: ZDType[TBaseDType, TBaseScalar],
         chunks: tuple[int, ...],
         fill_value: Any,
         order: MemoryOrder,
@@ -118,8 +118,22 @@ class ArrayV2Metadata(Metadata):
         return len(self.shape)
 
     @cached_property
-    def chunk_grid(self) -> RegularChunkGrid:
-        return RegularChunkGrid(chunk_shape=self.chunks)
+    def chunk_grid(self) -> ChunkGrid:
+        """Backwards-compatible chunk grid property.
+
+        !!! warning "Deprecated"
+            Access the chunk grid via the array layer instead.
+            This property will be removed in a future release.
+        """
+        from zarr.core.chunk_grids import ChunkGrid
+
+        warnings.warn(
+            "ArrayV2Metadata.chunk_grid is deprecated. "
+            "Use ChunkGrid.from_metadata(metadata) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return ChunkGrid.from_sizes(self.shape, tuple(self.chunks))
 
     @property
     def shards(self) -> tuple[int, ...] | None:
@@ -128,14 +142,10 @@ class ArrayV2Metadata(Metadata):
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         zarray_dict = self.to_dict()
         zattrs_dict = zarray_dict.pop("attributes", {})
-        json_indent = config.get("json_indent")
+        indent = config.get("json_indent")
         return {
-            ZARRAY_JSON: prototype.buffer.from_bytes(
-                json.dumps(zarray_dict, indent=json_indent, allow_nan=True).encode()
-            ),
-            ZATTRS_JSON: prototype.buffer.from_bytes(
-                json.dumps(zattrs_dict, indent=json_indent, allow_nan=True).encode()
-            ),
+            ZARRAY_JSON: json_to_buffer(zarray_dict, prototype=prototype, indent=indent),
+            ZATTRS_JSON: json_to_buffer(zattrs_dict, prototype=prototype, indent=indent),
         }
 
     @classmethod
@@ -227,6 +237,19 @@ class ArrayV2Metadata(Metadata):
 
         return zarray_dict
 
+    def __eq__(self, other: object) -> bool:
+        # The default dataclass __eq__ compares fields directly, which is wrong for a NaN
+        # fill_value: NaN != NaN under IEEE 754. Comparing the JSON-serialized form instead
+        # treats matching NaN (and inf) fill values as equal. See issue #2929.
+        if not isinstance(other, ArrayV2Metadata):
+            return NotImplemented
+        return self.to_dict() == other.to_dict()
+
+    def __hash__(self) -> int:
+        # Hash the JSON-serialized form to stay consistent with __eq__: equal metadata
+        # must hash equally, which a field-based hash violates for a NaN fill_value.
+        return hash(json.dumps(self.to_dict(), sort_keys=True))
+
     def get_chunk_spec(
         self, _chunk_coords: tuple[int, ...], array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
@@ -256,9 +279,7 @@ def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
 
 
 def parse_zarr_format(data: object) -> Literal[2]:
-    if data == 2:
-        return 2
-    raise ValueError(f"Invalid value. Expected 2. Got {data}.")
+    return cast("Literal[2]", parse_field(data, Literal[2], "zarr_format"))
 
 
 def parse_filters(data: object) -> tuple[Numcodec, ...] | None:

@@ -53,14 +53,14 @@ def test_group_info_complete(zarr_format: ZarrFormat) -> None:
 def test_array_info(zarr_format: ZarrFormat) -> None:
     info = ArrayInfo(
         _zarr_format=zarr_format,
-        _data_type=Int32(),
+        _data_type=Int32(endianness="little"),
         _fill_value=0,
         _shape=(100, 100),
         _chunk_shape=(10, 100),
         _order="C",
         _read_only=True,
         _store_type="MemoryStore",
-        _serializer=BytesCodec(),
+        _serializer=BytesCodec(endian="little"),
     )
     result = repr(info)
     assert result == textwrap.dedent(f"""\
@@ -74,7 +74,7 @@ def test_array_info(zarr_format: ZarrFormat) -> None:
         Read-only          : True
         Store type         : MemoryStore
         Filters            : ()
-        Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+        Serializer         : BytesCodec(endian='little')
         Compressors        : ()""")
 
 
@@ -93,14 +93,14 @@ def test_array_info_complete(
     ) = bytes_things
     info = ArrayInfo(
         _zarr_format=zarr_format,
-        _data_type=Int32(),
+        _data_type=Int32(endianness="little"),
         _fill_value=0,
         _shape=(100, 100),
         _chunk_shape=(10, 100),
         _order="C",
         _read_only=True,
         _store_type="MemoryStore",
-        _serializer=BytesCodec(),
+        _serializer=BytesCodec(endian="little"),
         _count_bytes=count_bytes,
         _count_bytes_stored=count_bytes_stored,
         _count_chunks_initialized=count_chunks_initialized,
@@ -117,7 +117,7 @@ def test_array_info_complete(
         Read-only          : True
         Store type         : MemoryStore
         Filters            : ()
-        Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+        Serializer         : BytesCodec(endian='little')
         Compressors        : ()
         No. bytes          : {count_bytes} ({count_bytes_formatted})
         No. bytes stored   : {count_bytes_stored} ({count_bytes_stored_formatted})

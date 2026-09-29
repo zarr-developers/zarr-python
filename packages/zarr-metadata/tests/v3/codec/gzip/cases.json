@@ -1,0 +1,6 @@
+{
+  "with_level": {
+    "name": "gzip",
+    "configuration": {"level": 5}
+  }
+}

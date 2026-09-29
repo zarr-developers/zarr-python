@@ -15,7 +15,6 @@ from typing import (
     SupportsIndex,
     SupportsInt,
     TypeGuard,
-    TypeVar,
 )
 
 import numpy as np
@@ -66,20 +65,6 @@ FloatishStr = NewType("FloatishStr", str)
 
 NumpyEndiannessStr = Literal[">", "<", "="]
 NUMPY_ENDIANNESS_STR: Final = ">", "<", "="
-
-TFloatDType_co = TypeVar(
-    "TFloatDType_co",
-    bound=np.dtypes.Float16DType | np.dtypes.Float32DType | np.dtypes.Float64DType,
-    covariant=True,
-)
-TFloatScalar_co = TypeVar(
-    "TFloatScalar_co", bound=np.float16 | np.float32 | np.float64, covariant=True
-)
-
-TComplexDType_co = TypeVar(
-    "TComplexDType_co", bound=np.dtypes.Complex64DType | np.dtypes.Complex128DType, covariant=True
-)
-TComplexScalar_co = TypeVar("TComplexScalar_co", bound=np.complex64 | np.complex128, covariant=True)
 
 
 def endianness_from_numpy_str(endianness: NumpyEndiannessStr) -> EndiannessStr:

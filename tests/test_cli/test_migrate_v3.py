@@ -16,7 +16,6 @@ from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.numcodecs import LZMA, Delta
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
-from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.common import JSON, ZarrFormat
 from zarr.core.dtype.npy.int import UInt8, UInt16
@@ -32,13 +31,11 @@ cli = pytest.importorskip("zarr._cli.cli", reason="optional cli dependencies are
 
 runner = typer_testing.CliRunner()
 
-NUMCODECS_USER_WARNING = "Numcodecs codecs are not in the Zarr version 3 specification and may not be supported by other zarr implementations."
-
 
 def test_migrate_array(local_store: LocalStore) -> None:
     shape = (10, 10)
     chunks = (10, 10)
-    dtype = "uint16"
+    dtype = "<u2"
     compressors = numcodecs.Blosc(cname="zstd", clevel=3, shuffle=1)
     fill_value = 2
     attributes = cast(dict[str, JSON], {"baz": 42, "qux": [1, 4, 7, 12]})
@@ -62,8 +59,8 @@ def test_migrate_array(local_store: LocalStore) -> None:
 
     expected_metadata = ArrayV3Metadata(
         shape=shape,
-        data_type=UInt16(endianness="little"),
-        chunk_grid=RegularChunkGrid(chunk_shape=chunks),
+        data_type=UInt16(),
+        chunk_grid={"name": "regular", "configuration": {"chunk_shape": chunks}},
         chunk_key_encoding=V2ChunkKeyEncoding(separator="."),
         fill_value=fill_value,
         codecs=(
@@ -295,7 +292,7 @@ def test_migrate_compressor(
         store=local_store,
         shape=(10, 10),
         chunks=(10, 10),
-        dtype="uint16",
+        dtype="<u2",
         compressors=compressor_v2,
         zarr_format=2,
         fill_value=0,
@@ -316,7 +313,6 @@ def test_migrate_compressor(
     assert np.all(zarr_array[:] == 1)
 
 
-@pytest.mark.filterwarnings(f"ignore:{NUMCODECS_USER_WARNING}:UserWarning")
 def test_migrate_numcodecs_compressor(local_store: LocalStore) -> None:
     """Test migration of a numcodecs compressor without a zarr.codecs equivalent."""
 
@@ -334,7 +330,7 @@ def test_migrate_numcodecs_compressor(local_store: LocalStore) -> None:
         store=local_store,
         shape=(10, 10),
         chunks=(10, 10),
-        dtype="uint16",
+        dtype="<u2",
         compressors=numcodecs.LZMA.from_config(lzma_settings),
         zarr_format=2,
         fill_value=0,
@@ -360,7 +356,6 @@ def test_migrate_numcodecs_compressor(local_store: LocalStore) -> None:
     assert np.all(zarr_array[:] == 1)
 
 
-@pytest.mark.filterwarnings(f"ignore:{NUMCODECS_USER_WARNING}:UserWarning")
 def test_migrate_filter(local_store: LocalStore) -> None:
     filter_v2 = numcodecs.Delta(dtype="<u2", astype="<u2")
     filter_v3 = Delta(dtype="<u2", astype="<u2")
@@ -369,7 +364,7 @@ def test_migrate_filter(local_store: LocalStore) -> None:
         store=local_store,
         shape=(10, 10),
         chunks=(10, 10),
-        dtype="uint16",
+        dtype="<u2",
         compressors=None,
         filters=filter_v2,
         zarr_format=2,
@@ -403,7 +398,7 @@ def test_migrate_C_vs_F_order(
         store=local_store,
         shape=(10, 10),
         chunks=(10, 10),
-        dtype="uint16",
+        dtype="<u2",
         compressors=None,
         zarr_format=2,
         fill_value=0,
@@ -426,9 +421,10 @@ def test_migrate_C_vs_F_order(
     ("dtype", "expected_data_type", "expected_codecs"),
     [
         ("uint8", UInt8(), (BytesCodec(endian=None),)),
-        ("uint16", UInt16(), (BytesCodec(endian="little"),)),
+        ("<u2", UInt16(), (BytesCodec(endian="little"),)),
+        (">u2", UInt16(), (BytesCodec(endian="big"),)),
     ],
-    ids=["single_byte", "multi_byte"],
+    ids=["single_byte", "little_endian", "big_endian"],
 )
 def test_migrate_endian(
     local_store: LocalStore,
@@ -524,8 +520,7 @@ def test_migrate_incorrect_filter(local_store: LocalStore) -> None:
         fill_value=0,
     )
 
-    with pytest.warns(UserWarning, match=NUMCODECS_USER_WARNING):
-        result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
 
     assert result.exit_code == 1
     assert isinstance(result.exception, TypeError)
@@ -548,8 +543,7 @@ def test_migrate_incorrect_compressor(local_store: LocalStore) -> None:
         fill_value=0,
     )
 
-    with pytest.warns(UserWarning, match=NUMCODECS_USER_WARNING):
-        result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
 
     assert result.exit_code == 1
     assert isinstance(result.exception, TypeError)

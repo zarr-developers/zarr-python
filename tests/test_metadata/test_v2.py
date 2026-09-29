@@ -23,15 +23,17 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import Codec
     from zarr.core.common import JSON
+    from zarr.core.dtype.common import DTypeName_V2
 
 
 def test_parse_zarr_format_valid() -> None:
     assert parse_zarr_format(2) == 2
 
 
-@pytest.mark.parametrize("data", [None, 1, 3, 4, 5, "3"])
+# The explicit id for "3" avoids colliding with the auto-generated id for the int 3.
+@pytest.mark.parametrize("data", [None, 1, 3, 4, 5, pytest.param("3", id="3-str")])
 def test_parse_zarr_format_invalid(data: Any) -> None:
-    with pytest.raises(ValueError, match=f"Invalid value. Expected 2. Got {data}"):
+    with pytest.raises(ValueError, match="Failed to parse input for 'zarr_format'"):
         parse_zarr_format(data)
 
 
@@ -221,7 +223,7 @@ class TestConsolidated:
                     fill_value=0,
                     chunks=(730,),
                     attributes={"_ARRAY_DIMENSIONS": ["time"], "dataset": "NMC Reanalysis"},
-                    dtype=Int16(),
+                    dtype=Int16(endianness="little"),
                     order="C",
                     filters=None,
                     dimension_separator=".",
@@ -238,7 +240,7 @@ class TestConsolidated:
                         "standard_name": "time",
                         "units": "hours since 1800-01-01",
                     },
-                    dtype=Float32(),
+                    dtype=Float32(endianness="little"),
                     order="C",
                     filters=None,
                     dimension_separator=".",
@@ -256,7 +258,7 @@ class TestConsolidated:
                                 attributes={
                                     "calendar": "standard",
                                 },
-                                dtype=Float32(),
+                                dtype=Float32(endianness="little"),
                                 order="C",
                                 filters=None,
                                 dimension_separator=".",
@@ -300,12 +302,66 @@ def test_from_dict_extra_fields() -> None:
     expected = ArrayV2Metadata(
         attributes={"key": "value"},
         shape=(8,),
-        dtype=Float64(),
+        dtype=Float64(endianness="little"),
         chunks=(8,),
         fill_value=0.0,
         order="C",
     )
     assert result == expected
+
+
+def test_eq_nan_fill_value() -> None:
+    """Two metadata objects with an identical NaN fill_value compare equal.
+
+    NaN is not equal to itself under IEEE 754, so the default dataclass __eq__
+    reports two otherwise-identical metadata objects as unequal. Metadata
+    equality must treat matching NaN fill values as equal (see issue #2929).
+    """
+    a = ArrayV2Metadata(
+        shape=(8,), dtype=Float64(), chunks=(8,), fill_value=np.float64("nan"), order="C"
+    )
+    b = ArrayV2Metadata(
+        shape=(8,), dtype=Float64(), chunks=(8,), fill_value=np.float64("nan"), order="C"
+    )
+    assert a == b
+
+
+def test_eq_distinct_fill_value() -> None:
+    """Metadata objects that differ only in fill_value do not compare equal."""
+    a = ArrayV2Metadata(shape=(8,), dtype=Float64(), chunks=(8,), fill_value=0.0, order="C")
+    b = ArrayV2Metadata(shape=(8,), dtype=Float64(), chunks=(8,), fill_value=1.0, order="C")
+    assert a != b
+
+
+@pytest.mark.parametrize("fill_value", [np.float64("inf"), np.float64("-inf")])
+def test_eq_inf_fill_value(fill_value: np.float64) -> None:
+    """Two metadata objects with an identical infinite fill_value compare equal."""
+    a = ArrayV2Metadata(shape=(8,), dtype=Float64(), chunks=(8,), fill_value=fill_value, order="C")
+    b = ArrayV2Metadata(shape=(8,), dtype=Float64(), chunks=(8,), fill_value=fill_value, order="C")
+    assert a == b
+
+
+def test_hash_consistent_with_eq_nan_fill_value() -> None:
+    """Equal metadata objects with a NaN fill_value hash equal.
+
+    NaN hashes by identity, so a field-based hash would break the
+    ``a == b implies hash(a) == hash(b)`` invariant for objects that compare
+    equal under the to_dict-based __eq__.
+    """
+    a = ArrayV2Metadata(
+        shape=(8,), dtype=Float64(), chunks=(8,), fill_value=np.float64("nan"), order="C"
+    )
+    b = ArrayV2Metadata(
+        shape=(8,), dtype=Float64(), chunks=(8,), fill_value=np.float64("nan"), order="C"
+    )
+    assert a == b
+    assert hash(a) == hash(b)
+
+
+def test_eq_non_metadata() -> None:
+    """Comparison against a non-metadata object returns False rather than erroring."""
+    a = ArrayV2Metadata(shape=(8,), dtype=Float64(), chunks=(8,), fill_value=0.0, order="C")
+    assert a != object()
 
 
 def test_zstd_checksum() -> None:
@@ -344,3 +400,45 @@ def test_structured_dtype_fill_value_serialization(
     root_group = zarr.open_group(group_path, mode="r")
     observed = root_group.metadata.consolidated_metadata.metadata["structured_dtype"].fill_value  # type: ignore[union-attr]
     assert observed == fill_value
+
+
+@pytest.mark.parametrize(
+    ("stored", "canonical", "values"),
+    [
+        *((f"{b}b1", "|b1", np.array([True, False, True])) for b in "<>|"),
+        *((f"{b}i1", "|i1", np.array([-128, 0, 127], dtype=np.int8)) for b in "<>|"),
+        *((f"{b}u1", "|u1", np.array([0, 128, 255], dtype=np.uint8)) for b in "<>|"),
+        (
+            [["a", "<i1"], ["b", ">u1"]],
+            [["a", "|i1"], ["b", "|u1"]],
+            np.array([(-1, 1), (0, 128), (1, 255)], dtype=[("a", "i1"), ("b", "u1")]),
+        ),
+    ],
+    ids=str,
+)
+def test_open_v2_byte_order_irrelevant_dtype(
+    tmp_path: Path, stored: DTypeName_V2, canonical: DTypeName_V2, values: np.ndarray[Any, Any]
+) -> None:
+    """
+    An array whose data type is written with any byte order character, where the byte order is not
+    relevant, reads the stored data and writes the data type back with the canonical "|".
+    """
+    metadata = {
+        "zarr_format": 2,
+        "shape": [3],
+        "chunks": [3],
+        "dtype": stored,
+        "compressor": None,
+        "fill_value": None,
+        "order": "C",
+        "filters": None,
+    }
+    metadata_path = tmp_path / ".zarray"
+    metadata_path.write_text(json.dumps(metadata))
+    (tmp_path / "0").write_bytes(values.tobytes())
+
+    array = zarr.open_array(tmp_path, mode="r+")
+    np.testing.assert_array_equal(array[:], values)
+
+    array.update_attributes({"foo": "bar"})
+    assert json.loads(metadata_path.read_text())["dtype"] == canonical

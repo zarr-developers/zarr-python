@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, get_args
 
 import numpy as np
 import pytest
 
+from tests.conftest import Expect
 from zarr.core.common import (
     ANY_ACCESS_MODE,
     AccessModeLiteral,
+    ceildiv,
+    concurrent_iter,
+    parse_bool,
+    parse_int,
     parse_name,
+    parse_order,
     parse_shapelike,
     product,
 )
@@ -17,6 +24,61 @@ from zarr.core.config import parse_indexing_order
 
 if TYPE_CHECKING:
     from typing import Any, Literal
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "expected"),
+    [(0, 0, 0), (7, 3, 3), (7.5, 2, 4), (2**62 - 1, 1, 2**62)],
+)
+def test_ceildiv(a: float, b: float, expected: int) -> None:
+    """The original helper retains its floating-point division behavior."""
+    assert ceildiv(a, b) == expected
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        Expect(input=(0, 3), output=0, id="zero"),
+        Expect(input=(7, 3), output=3, id="round-up"),
+        Expect(input=(9, 3), output=3, id="exact"),
+        Expect(input=(-7, 3), output=-2, id="negative-numerator"),
+        Expect(input=(7, -3), output=-2, id="negative-divisor"),
+        Expect(input=(-7, -3), output=3, id="both-negative"),
+        Expect(input=(2**62 - 1, 1), output=2**62 - 1, id="large-exact"),
+        Expect(input=(2**62 + 1, 2), output=2**61 + 1, id="large-round-up"),
+        Expect(input=(2**60 + 3, 1), output=2**60 + 3, id="large-low-bits"),
+        Expect(
+            input=(np.int64(2**62 - 1), np.int64(1)),
+            output=2**62 - 1,
+            id="numpy-signed",
+        ),
+        Expect(
+            input=(np.int64(-(2**63)), np.int64(-1)),
+            output=2**63,
+            id="numpy-signed-minimum",
+        ),
+        Expect(
+            input=(np.uint64(2**64 - 1), np.uint64(2)),
+            output=2**63,
+            id="numpy-unsigned-maximum",
+        ),
+    ],
+    ids=lambda case: case.id,
+)
+def test_ceildiv_int(case: Expect[tuple[int, int], int]) -> None:
+    from zarr.core.common import ceildiv_int
+
+    result = ceildiv_int(*case.input)
+    assert result == case.output
+    assert isinstance(result, int)
+
+
+@pytest.mark.parametrize("numerator", [0, 1])
+def test_ceildiv_int_zero_divisor(numerator: int) -> None:
+    from zarr.core.common import ceildiv_int
+
+    with pytest.raises(ZeroDivisionError):
+        ceildiv_int(numerator, 0)
 
 
 @pytest.mark.parametrize("data", [(0, 0, 0, 0), (1, 3, 4, 5, 6), (2, 4)])
@@ -29,6 +91,32 @@ def test_access_modes() -> None:
     Test that the access modes type and variable for run-time checking are equivalent.
     """
     assert set(ANY_ACCESS_MODE) == set(get_args(AccessModeLiteral))
+
+
+async def test_concurrent_iter_schedules_eagerly() -> None:
+    """`concurrent_iter` must return already-scheduled tasks, not a lazy generator.
+
+    Its docstring promises `func(*item)` is launched concurrently for every
+    item up front; a caller that awaits the returned tasks one at a time
+    (rather than via `gather`/`as_completed`, which force iteration) relies
+    on that eager scheduling to get any overlap at all.
+    """
+    started = [False, False, False]
+
+    async def mark(i: int) -> int:
+        started[i] = True
+        return i
+
+    tasks = concurrent_iter([(0,), (1,), (2,)], mark)
+
+    # Give the event loop one chance to run before awaiting anything
+    # individually. If `concurrent_iter` were lazy, nothing would have been
+    # scheduled yet and `started` would still be all-False here.
+    await asyncio.sleep(0)
+    assert started == [True, True, True]
+
+    results = [await t for t in tasks]
+    assert results == [0, 1, 2]
 
 
 # todo: test
@@ -68,8 +156,38 @@ def test_parse_name_valid(data: tuple[Any, Any]) -> None:
 
 @pytest.mark.parametrize("data", [0, 1, "hello", "f"])
 def test_parse_indexing_order_invalid(data: Any) -> None:
-    with pytest.raises(ValueError, match="Expected one of"):
+    with pytest.raises(ValueError, match="Failed to parse input for 'order'"):
         parse_indexing_order(data)
+
+
+@pytest.mark.parametrize("data", [0, 1, "hello", "f"])
+def test_parse_order_invalid(data: Any) -> None:
+    with pytest.raises(ValueError, match="Failed to parse input for 'order'"):
+        parse_order(data)
+
+
+@pytest.mark.parametrize("data", [0, 1, "true", None, [True]])
+def test_parse_bool_invalid(data: Any) -> None:
+    """Non-bool values are rejected with a ValueError."""
+    with pytest.raises(ValueError, match="Expected instance of bool"):
+        parse_bool(data)
+
+
+@pytest.mark.parametrize("data", [True, False])
+def test_parse_bool_valid(data: bool) -> None:
+    assert parse_bool(data) is data
+
+
+@pytest.mark.parametrize("data", ["1", 1.0, True, False, None, [1], (1,)])
+def test_parse_int_invalid(data: Any) -> None:
+    """Non-int values (including bools, which are int subclasses) are rejected."""
+    with pytest.raises(ValueError, match="Expected int"):
+        parse_int(data)
+
+
+@pytest.mark.parametrize("data", [0, 1, -1, 2**63])
+def test_parse_int_valid(data: int) -> None:
+    assert parse_int(data) == data
 
 
 @pytest.mark.parametrize("data", ["C", "F"])

@@ -1,16 +1,15 @@
 from __future__ import annotations
 
+import sys
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import (
     ClassVar,
     Final,
-    Generic,
     Literal,
     TypedDict,
     TypeGuard,
-    TypeVar,
 )
 
 from typing_extensions import ReadOnly
@@ -53,13 +52,10 @@ StructuredName_V2 = Sequence["str | StructuredName_V2"]
 # This models the type of the name a dtype might have in zarr v2 array metadata
 DTypeName_V2 = StructuredName_V2 | str
 
-TDTypeNameV2_co = TypeVar("TDTypeNameV2_co", bound=DTypeName_V2, covariant=True)
-TObjectCodecID_co = TypeVar("TObjectCodecID_co", bound=None | str, covariant=True)
 
-
-class DTypeConfig_V2(TypedDict, Generic[TDTypeNameV2_co, TObjectCodecID_co]):
-    name: ReadOnly[TDTypeNameV2_co]
-    object_codec_id: ReadOnly[TObjectCodecID_co]
+class DTypeConfig_V2[TDTypeNameV2: DTypeName_V2, TObjectCodecID: str | None](TypedDict):
+    name: ReadOnly[TDTypeNameV2]
+    object_codec_id: ReadOnly[TObjectCodecID]
 
 
 DTypeSpec_V2 = DTypeConfig_V2[DTypeName_V2, None | str]
@@ -85,7 +81,10 @@ def check_structured_dtype_v2_inner(data: object) -> TypeGuard[StructuredName_V2
     if isinstance(data[-1], str):
         return True
     elif isinstance(data[-1], Sequence):
-        return check_structured_dtype_v2_inner(data[-1])
+        # A nested structured dtype's field has the form [name, [[sub_name, sub_dtype], ...]],
+        # i.e. the last element is itself a sequence of field pairs rather than a single
+        # [name, dtype] pair, so it must be validated as a list of fields, not a single field.
+        return check_structured_dtype_name_v2(data[-1])
     return False
 
 
@@ -120,6 +119,19 @@ def check_dtype_spec_v2(data: object) -> TypeGuard[DTypeSpec_V2]:
     return isinstance(data["object_codec_id"], str | None)
 
 
+def check_dtype_spec_no_object_codec_v2(
+    data: object,
+) -> TypeGuard[DTypeConfig_V2[DTypeName_V2, None]]:
+    """
+    Type guard for narrowing a python object to a Zarr V2 data type without an object codec.
+
+    Only the data types stored with the NumPy "O" data type have an object codec, so every other
+    data type should check its Zarr V2 JSON with this function rather than
+    [`check_dtype_spec_v2`][zarr.dtype.check_dtype_spec_v2].
+    """
+    return check_dtype_spec_v2(data) and data["object_codec_id"] is None
+
+
 # By comparison, The JSON representation of a dtype in zarr v3 is much simpler.
 # It's either a string, or a structured dict
 DTypeSpec_V3 = str | NamedConfig[str, Mapping[str, object]]
@@ -151,7 +163,20 @@ def unpack_dtype_json(data: DTypeSpec_V2 | DTypeSpec_V3) -> DTypeJSON:
     return data
 
 
-class DataTypeValidationError(ValueError): ...
+def __getattr__(name: str) -> object:
+    if name == "DataTypeValidationError":
+        import warnings
+
+        from zarr.errors import DataTypeValidationError, ZarrDeprecationWarning
+
+        warnings.warn(
+            "Importing DataTypeValidationError from zarr.core.dtype.common is deprecated. "
+            "Use zarr.errors.DataTypeValidationError or zarr.dtype.DataTypeValidationError instead.",
+            ZarrDeprecationWarning,
+            stacklevel=2,
+        )
+        return DataTypeValidationError
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class ScalarTypeValidationError(ValueError): ...
@@ -176,10 +201,14 @@ class HasLength:
 @dataclass(frozen=True, kw_only=True)
 class HasEndianness:
     """
-    A mix-in class for data types with an endianness attribute
+    A mix-in class for data types with an endianness attribute.
+
+    The endianness is the byte order of the in-memory array, not the byte order of
+    stored chunks, which the `bytes` codec sets. Zarr V3 data type metadata carries
+    no byte order, so it defaults to the byte order of the host.
     """
 
-    endianness: EndiannessStr = "little"
+    endianness: EndiannessStr = sys.byteorder
 
 
 @dataclass(frozen=True, kw_only=True)

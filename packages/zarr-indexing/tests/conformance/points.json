@@ -1,0 +1,34 @@
+[
+  {
+    "name": "points/three-2d",
+    "input": { "kind": "points", "coords": [[1, 10], [2, 20], [3, 30]] },
+    "normalized": {
+      "input_rank": 1, "input_inclusive_min": [0], "input_exclusive_max": [3],
+      "input_labels": [""],
+      "output": [
+        { "offset": 0, "stride": 1, "index_array": [1, 2, 3], "index_array_bounds": ["-inf", "+inf"] },
+        { "offset": 0, "stride": 1, "index_array": [10, 20, 30], "index_array_bounds": ["-inf", "+inf"] }
+      ]
+    }
+  },
+  {
+    "name": "points/1d",
+    "input": { "kind": "points", "coords": [[5], [9], [2]] },
+    "normalized": {
+      "input_rank": 1, "input_inclusive_min": [0], "input_exclusive_max": [3],
+      "input_labels": [""],
+      "output": [
+        { "offset": 0, "stride": 1, "index_array": [5, 9, 2], "index_array_bounds": ["-inf", "+inf"] }
+      ]
+    }
+  },
+  {
+    "name": "points/empty",
+    "input": { "kind": "points", "coords": [] },
+    "normalized": {
+      "input_rank": 1, "input_inclusive_min": [0], "input_exclusive_max": [0],
+      "input_labels": [""],
+      "output": []
+    }
+  }
+]

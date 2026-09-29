@@ -38,9 +38,10 @@ class TestFloat16(_BaseTestFloat):
     )
     valid_json_v3 = ("float16",)
     invalid_json_v2 = (
-        "|f2",
-        "float16",
-        "|i1",
+        {"name": "|f2", "object_codec_id": None},
+        {"name": "float16", "object_codec_id": None},
+        {"name": "|i1", "object_codec_id": None},
+        {"name": "<f2", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|f2",
@@ -65,7 +66,10 @@ class TestFloat16(_BaseTestFloat):
         (Float16(), -1.0, np.float16(-1.0)),
         (Float16(), "NaN", np.float16("NaN")),
     )
-    invalid_scalar_params = ((Float16(), {"set!"}),)
+    invalid_scalar_params = (
+        (Float16(), {"set!"}),
+        (Float16(), "not_a_float"),
+    )
     hex_string_params = (("0x7fc0", np.nan), ("0x7fc1", np.nan), ("0x3c00", 1.0))
     item_size_params = (Float16(),)
 
@@ -85,9 +89,10 @@ class TestFloat32(_BaseTestFloat):
     )
     valid_json_v3 = ("float32",)
     invalid_json_v2 = (
-        "|f4",
-        "float32",
-        "|i1",
+        {"name": "|f4", "object_codec_id": None},
+        {"name": "float32", "object_codec_id": None},
+        {"name": "|i1", "object_codec_id": None},
+        {"name": "<f4", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|f4",
@@ -113,7 +118,10 @@ class TestFloat32(_BaseTestFloat):
         (Float32(), -1.0, np.float32(-1.0)),
         (Float32(), "NaN", np.float32("NaN")),
     )
-    invalid_scalar_params = ((Float32(), {"set!"}),)
+    invalid_scalar_params = (
+        (Float32(), {"set!"}),
+        (Float32(), "not_a_float"),
+    )
     hex_string_params = (("0x7fc00000", np.nan), ("0x7fc00001", np.nan), ("0x3f800000", 1.0))
     item_size_params = (Float32(),)
 
@@ -132,9 +140,10 @@ class TestFloat64(_BaseTestFloat):
     )
     valid_json_v3 = ("float64",)
     invalid_json_v2 = (
-        "|f8",
-        "float64",
-        "|i1",
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "float64", "object_codec_id": None},
+        {"name": "|i1", "object_codec_id": None},
+        {"name": "<f8", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|f8",
@@ -160,7 +169,10 @@ class TestFloat64(_BaseTestFloat):
         (Float64(), -1.0, np.float64(-1.0)),
         (Float64(), "NaN", np.float64("NaN")),
     )
-    invalid_scalar_params = ((Float64(), {"set!"}),)
+    invalid_scalar_params = (
+        (Float64(), {"set!"}),
+        (Float64(), "not_a_float"),
+    )
     hex_string_params = (
         ("0x7ff8000000000000", np.nan),
         ("0x7ff8000000000001", np.nan),

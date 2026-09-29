@@ -28,11 +28,9 @@ from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     ClassVar,
-    Generic,
     Literal,
     Self,
     TypeGuard,
-    TypeVar,
     overload,
 )
 
@@ -40,24 +38,19 @@ import numpy as np
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
+    from zarr.core.context import Resolver
     from zarr.core.dtype.common import DTypeJSON, DTypeSpec_V2, DTypeSpec_V3
 
 # This the upper bound for the scalar types we support. It's numpy scalars + str,
 # because the new variable-length string dtype in numpy does not have a corresponding scalar type
-TBaseScalar = np.generic | str | bytes
+type TBaseScalar = np.generic | str | bytes
 # This is the bound for the dtypes that we support. If we support non-numpy dtypes,
 # then this bound will need to be widened.
-TBaseDType = np.dtype[np.generic]
-
-# These two type parameters are covariant because we want
-# x : ZDType[BaseDType, BaseScalar] = ZDType[SubDType, SubScalar]
-# to type check
-TScalar_co = TypeVar("TScalar_co", bound=TBaseScalar, covariant=True)
-TDType_co = TypeVar("TDType_co", bound=TBaseDType, covariant=True)
+type TBaseDType = np.dtype[np.generic]
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class ZDType(ABC, Generic[TDType_co, TScalar_co]):
+class ZDType[DType: TBaseDType, Scalar: TBaseScalar](ABC):
     """
     Abstract base class for wrapping native array data types, e.g. numpy dtypes
 
@@ -71,11 +64,11 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
     """
 
     # this class will create a native data type
-    dtype_cls: ClassVar[type[TDType_co]]
+    dtype_cls: ClassVar[type[TBaseDType]]
     _zarr_v3_name: ClassVar[str]
 
     @classmethod
-    def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[TDType_co]:
+    def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[DType]:
         """
         Check that a native data type matches the dtype_cls class attribute.
 
@@ -120,7 +113,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
-    def to_native_dtype(self: Self) -> TDType_co:
+    def to_native_dtype(self: Self) -> DType:
         """
         Return an instance of the wrapped data type. This operation inverts ``from_native_dtype``.
 
@@ -165,6 +158,18 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
             return cls._from_json_v3(data)
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
+    @classmethod
+    def _from_json_resolved(cls: type[Self], data: DTypeJSON, *, resolver: Resolver) -> Self:
+        """
+        Create an instance of this ZDType from JSON data at `resolver`'s location.
+
+        A data type registry creates every data type with this method. A data type that contains
+        other data types, such as a structured data type, overrides it to resolve each of them
+        with `resolver.at(...).resolve_data_type(...)`, so that they come from the same context.
+        Other data types ignore the resolver: the default is `from_json` in its Zarr format.
+        """
+        return cls.from_json(data, zarr_format=resolver.zarr_format)
+
     @overload
     def to_json(self, zarr_format: Literal[2]) -> DTypeSpec_V2: ...
 
@@ -206,7 +211,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
-    def cast_scalar(self, data: object) -> TScalar_co:
+    def cast_scalar(self, data: object) -> Scalar:
         """
         Cast a python object to the wrapped scalar type.
 
@@ -226,7 +231,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
-    def default_scalar(self) -> TScalar_co:
+    def default_scalar(self) -> Scalar:
         """
         Get the default scalar value for the wrapped data type.
 
@@ -242,7 +247,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
-    def from_json_scalar(self: Self, data: JSON, *, zarr_format: ZarrFormat) -> TScalar_co:
+    def from_json_scalar(self: Self, data: JSON, *, zarr_format: ZarrFormat) -> Scalar:
         """
         Read a JSON-serializable value as a scalar.
 

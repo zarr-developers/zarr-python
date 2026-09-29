@@ -12,6 +12,8 @@ on:
 
 env:
   LD_LIBRARY_PATH: /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64
+  # Use the uv from astral-sh/setup-uv instead of hatch's bundled (pyapp) uv.
+  HATCH_ENV_TYPE_VIRTUAL_UV_PATH: uv
 
 permissions:
   contents: read
@@ -23,16 +25,19 @@ concurrency:
 jobs:
   test:
     name: py=${{ matrix.python-version }}
-
+    environment:
+      name: codecov-upload
+      deployment: false
     runs-on: gpu-runner
     strategy:
       matrix:
-        python-version: ['3.11']
+        python-version: ['3.12']
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         fetch-depth: 0  # grab all branches and tags
+        persist-credentials: false
     # - name: cuda-toolkit
     #   uses: Jimver/cuda-toolkit@v0.2.16
     #   id: cuda-toolkit
@@ -52,24 +57,38 @@ jobs:
         echo $LD_LIBRARY_PATH
         nvcc -V
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
+    - name: Install uv
+      uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
     - name: Install Hatch
-      uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+      uses: pypa/hatch@f647ed70d49adb885f53a27d1c7f5bdaeacf2c60
       with:
         version: '1.16.5'
+    - name: Install just
+      uses: extractions/setup-crate@7577c1bdf2d95e6d65d532788f35ed79d4b1dda2 # v2.0.1
+      with:
+        repo: casey/just
+        version: 1.58.0
+    # Two names for the same environment on purpose: `just setup` builds whatever
+    # HATCH_ENV points at, while `just gpu` reads GPU_HATCH_ENV so that an
+    # ambient HATCH_ENV can never redirect `pytest -m gpu` into a CPU environment.
     - name: Set Up Hatch Env
+      env:
+        HATCH_ENV: gputest.py${{ matrix.python-version }}
       run: |
-        hatch env create gputest.py${{ matrix.python-version }}
-        hatch env run -e gputest.py${{ matrix.python-version }} list-env
+        just setup
     - name: Run Tests
+      env:
+        GPU_HATCH_ENV: gputest.py${{ matrix.python-version }}
       run: |
-        hatch env run --env gputest.py${{ matrix.python-version }} run-coverage
+        just gpu
 
     - name: Upload coverage
-      uses: codecov/codecov-action@13ce06bfc6bbe3ecf90edbbf1bc32fe5978ca1d3  # v5.3.1
+      uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5  # v7.1.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
+        flags: gpu
         verbose: true # optional (default = false)

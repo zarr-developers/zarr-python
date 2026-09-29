@@ -1,0 +1,6 @@
+{
+  "empty": "",
+  "ascii": "hello",
+  "unicode": "héllo 世界",
+  "with_escapes": "line1\nline2\t\"quoted\""
+}

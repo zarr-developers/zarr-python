@@ -6,7 +6,7 @@ import pickle
 from collections import defaultdict
 from itertools import chain
 from operator import itemgetter
-from typing import TYPE_CHECKING, Generic, Self, TypedDict, TypeVar
+from typing import TYPE_CHECKING, Self, TypedDict
 
 from zarr.abc.store import (
     ByteRequest,
@@ -37,10 +37,7 @@ _ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 )
 
 
-T_Store = TypeVar("T_Store", bound="_UpstreamObjectStore")
-
-
-class ObjectStore(Store, Generic[T_Store]):
+class ObjectStore[T_Store: "_UpstreamObjectStore"](Store):
     """
     Store that uses obstore for fast read/write from AWS, GCP, Azure.
 
@@ -270,7 +267,11 @@ async def _transform_list_dir(
     for path in chain(
         list_result["common_prefixes"], map(itemgetter("path"), list_result["objects"])
     ):
-        yield _relativize_path(path=path, prefix=prefix)
+        if prefix != "" and path == prefix:
+            continue
+        relpath = _relativize_path(path=path, prefix=prefix)
+        if relpath:
+            yield relpath
 
 
 class _BoundedRequest(TypedDict):

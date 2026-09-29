@@ -8,9 +8,21 @@ coverage:
       default:
         target: auto
         threshold: 0.1
+        flags:
+          - tests
+flags:
+  tests:
+    paths:
+      - src/
+    carryforward: true
+  gpu:
+    paths:
+      - src/
+    carryforward: true
 codecov:
   notify:
-    after_n_builds: 10 # Wait for all 10 reports before updating the status
+    # 6 = test.yml: 3 (optional+ubuntu) + 2 (upstream + min_deps), hypothesis: 1
+    after_n_builds: 6
     wait_for_ci: yes
 comment:
   layout: "diff, files"

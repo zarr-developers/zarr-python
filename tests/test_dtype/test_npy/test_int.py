@@ -18,9 +18,10 @@ class TestInt8(BaseTestZDType):
     valid_json_v2 = ({"name": "|i1", "object_codec_id": None},)
     valid_json_v3 = ("int8",)
     invalid_json_v2 = (
-        ">i1",
-        "int8",
-        "|f8",
+        {"name": "|u1", "object_codec_id": None},
+        {"name": "int8", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "|i1", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|i1",
@@ -53,9 +54,10 @@ class TestInt16(BaseTestZDType):
     )
     valid_json_v3 = ("int16",)
     invalid_json_v2 = (
-        "|i2",
-        "int16",
-        "|f8",
+        {"name": "|i2", "object_codec_id": None},
+        {"name": "int16", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "<i2", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|i2",
@@ -91,9 +93,10 @@ class TestInt32(BaseTestZDType):
     )
     valid_json_v3 = ("int32",)
     invalid_json_v2 = (
-        "|i4",
-        "int32",
-        "|f8",
+        {"name": "|i4", "object_codec_id": None},
+        {"name": "int32", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "<i4", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|i4",
@@ -126,9 +129,10 @@ class TestInt64(BaseTestZDType):
     )
     valid_json_v3 = ("int64",)
     invalid_json_v2 = (
-        "|i8",
-        "int64",
-        "|f8",
+        {"name": "|i8", "object_codec_id": None},
+        {"name": "int64", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "<i8", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|i8",
@@ -158,9 +162,10 @@ class TestUInt8(BaseTestZDType):
     valid_json_v2 = ({"name": "|u1", "object_codec_id": None},)
     valid_json_v3 = ("uint8",)
     invalid_json_v2 = (
-        "|u1",
-        "uint8",
-        "|f8",
+        {"name": "|i1", "object_codec_id": None},
+        {"name": "uint8", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "|u1", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|u1",
@@ -193,9 +198,10 @@ class TestUInt16(BaseTestZDType):
     )
     valid_json_v3 = ("uint16",)
     invalid_json_v2 = (
-        "|u2",
-        "uint16",
-        "|f8",
+        {"name": "|u2", "object_codec_id": None},
+        {"name": "uint16", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "<u2", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|u2",
@@ -216,7 +222,16 @@ class TestUInt16(BaseTestZDType):
 class TestUInt32(BaseTestZDType):
     test_cls = UInt32
     scalar_type = np.uint32
-    valid_dtype = (np.dtype(">u4"), np.dtype("<u4"))
+
+    # On Windows, this creates an UIntDType (instead of UInt32DType),
+    # similar to how np.dtype('i') creates an IntDType instead of Int32DType.
+    # However, np.dtype('u') raises a TypeError.
+    uint_dtype = (np.array([1], dtype=np.uint32) & 1).dtype
+
+    # The behavior of some tests associated with this class variable are
+    # order-dependent -- uint_dtype correctly fails certain tests only if it's not
+    # in the last position of the tuple. I have no idea how this is possible!
+    valid_dtype = (uint_dtype, np.dtype(">u4"), np.dtype("<u4"))
     invalid_dtype = (
         np.dtype(np.int8),
         np.dtype(np.int16),
@@ -228,9 +243,10 @@ class TestUInt32(BaseTestZDType):
     )
     valid_json_v3 = ("uint32",)
     invalid_json_v2 = (
-        "|u4",
-        "uint32",
-        "|f8",
+        {"name": "|u4", "object_codec_id": None},
+        {"name": "uint32", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "<u4", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|u4",
@@ -263,9 +279,10 @@ class TestUInt64(BaseTestZDType):
     )
     valid_json_v3 = ("uint64",)
     invalid_json_v2 = (
-        "|u8",
-        "uint64",
-        "|f8",
+        {"name": "|u8", "object_codec_id": None},
+        {"name": "uint64", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "<u8", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|u8",

@@ -1,0 +1,31 @@
+{
+  "zarr_format": 3,
+  "node_type": "array",
+  "shape": [1024, 1024],
+  "data_type": "uint16",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {"chunk_shape": [256, 256]}
+  },
+  "chunk_key_encoding": {
+    "name": "default"
+  },
+  "fill_value": 0,
+  "codecs": [
+    {
+      "name": "sharding_indexed",
+      "configuration": {
+        "chunk_shape": [64, 64],
+        "codecs": [
+          {"name": "bytes", "configuration": {"endian": "little"}},
+          {"name": "gzip", "configuration": {"level": 1}}
+        ],
+        "index_codecs": [
+          {"name": "bytes", "configuration": {"endian": "little"}},
+          {"name": "crc32c"}
+        ],
+        "index_location": "end"
+      }
+    }
+  ]
+}
