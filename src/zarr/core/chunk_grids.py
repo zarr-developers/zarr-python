@@ -26,7 +26,7 @@ from typing_extensions import TypeIs
 import zarr
 from zarr.core.common import (
     ShapeLike,
-    ceildiv,
+    ceildiv_int,
     parse_shapelike,
 )
 from zarr.errors import ZarrUserWarning
@@ -64,7 +64,7 @@ class FixedDimension:
         if self.size == 0:
             n = 0
         else:
-            n = ceildiv(self.extent, self.size)
+            n = ceildiv_int(self.extent, self.size)
         object.__setattr__(self, "nchunks", n)
         object.__setattr__(self, "ngridcells", n)
 

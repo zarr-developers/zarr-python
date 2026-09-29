@@ -9,10 +9,16 @@ on:
     paths:
       - 'packages/zarr-metadata/**'
       - '.github/workflows/zarr-metadata.yml'
+      # The docs config and header script shared by all package sites.
+      - 'packages/mkdocs-base.yml'
+      - 'packages/source-version.js'
   pull_request:
     paths:
       - 'packages/zarr-metadata/**'
       - '.github/workflows/zarr-metadata.yml'
+      # The docs config and header script shared by all package sites.
+      - 'packages/mkdocs-base.yml'
+      - 'packages/source-version.js'
   workflow_dispatch:
 
 permissions:
