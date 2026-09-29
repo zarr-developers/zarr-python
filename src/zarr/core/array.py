@@ -1805,7 +1805,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> arr.info
         Type               : Array
         Zarr format        : 3
-        Data type          : Float64(endianness='little')
+        Data type          : Float64(endianness=...)
         Fill value         : 0.0
         Shape              : (3, 4, 5)
         Chunk shape        : (2, 2, 2)
@@ -4023,7 +4023,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         >>> arr.info
         Type               : Array
         Zarr format        : 3
-        Data type          : Float32(endianness='little')
+        Data type          : Float32(endianness=...)
         Fill value         : 0.0
         Shape              : (10,)
         Chunk shape        : (2,)
