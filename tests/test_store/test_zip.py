@@ -5,6 +5,7 @@ import os
 import pickle
 import shutil
 import tempfile
+import threading
 import zipfile
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,7 @@ from hypothesis.stateful import (
 
 import zarr
 from zarr import create_array
+from zarr.abc.store import Store
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.sync import sync
 from zarr.storage import ZipStore
@@ -274,6 +276,34 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
             pickle.loads(pickle.dumps(store)).close()
         with zipfile.ZipFile(store.path) as zf:  # type: ignore[arg-type]
             assert zf.namelist() == ["foo"]
+
+    async def test_close_blocks_concurrent_reopen(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # a thread that uses the store while close() runs must wait until the
+        # archive is closed, or it reopens a file with no central directory
+        store = ZipStore(tmp_path / "data.zip", mode="w")
+        await store.set("foo", cpu.Buffer.from_bytes(b"1"))
+
+        writer = threading.Thread(
+            target=lambda: sync(store.set("bar", cpu.Buffer.from_bytes(b"2")))
+        )
+        mark_closed = Store.close
+
+        def mark_closed_then_write(self: Store) -> None:
+            # the store now reports closed; start a write before close() returns
+            mark_closed(self)
+            writer.start()
+            writer.join(timeout=0.2)
+
+        monkeypatch.setattr(Store, "close", mark_closed_then_write)
+        store.close()
+        monkeypatch.undo()
+        writer.join()
+        store.close()
+
+        with zipfile.ZipFile(store.path) as zf:  # type: ignore[arg-type]
+            assert zf.namelist() == ["foo", "bar"]
 
 
 class TestZipStoreFileObj:

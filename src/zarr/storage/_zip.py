@@ -214,11 +214,13 @@ class ZipStore(Store):
 
     def close(self) -> None:
         # docstring inherited
-        if not self._is_open:
-            return
-        super().close()
+        # hold the lock until the archive is closed: a thread that reopened it
+        # before its central directory was written would lose the entries
         with self._lock:
+            if not self._is_open:
+                return
             self._zf.close()
+            super().close()
 
     async def clear(self) -> None:
         # docstring inherited
