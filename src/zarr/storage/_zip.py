@@ -306,8 +306,9 @@ class ZipStore(Store):
                 raise NotImplementedError(
                     "clear() is not supported for a ZipStore backed by a file-like object"
                 )
-            if not self._was_opened and self._zmode == "x":
-                # opening first keeps mode "x" from deleting a file it may not claim
+            if self._zmode == "x":
+                # "x" lasts only until the first open; opening now keeps it from
+                # deleting a file this store never claimed
                 self._zipfile()
             self.close()
             # the file may be damaged or gone; clear() replaces it either way
