@@ -32,6 +32,8 @@ if TYPE_CHECKING:
     from pathlib import Path
     from typing import Any
 
+    from zarr.storage._zip import ZipStoreAccessModeLiteral
+
 
 # TODO: work out where this is coming from and fix
 pytestmark = [
@@ -257,10 +259,12 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
 
     @pytest.mark.parametrize("mode", ["w", "x"])
     @pytest.mark.parametrize("reopen", ["use_after_close", "move", "pickle"])
-    async def test_reopen_keeps_entries(self, tmp_path: Path, mode: str, reopen: str) -> None:
+    async def test_reopen_keeps_entries(
+        self, tmp_path: Path, mode: ZipStoreAccessModeLiteral, reopen: str
+    ) -> None:
         # "w" truncates and "x" refuses an existing file; neither may apply
         # when a store that already wrote entries is opened again
-        store = ZipStore(tmp_path / "data.zip", mode=mode)  # type: ignore[arg-type]
+        store = ZipStore(tmp_path / "data.zip", mode=mode)
         await store.set("foo", cpu.Buffer.from_bytes(b"bar"))
         if reopen == "use_after_close":
             store.close()
@@ -343,7 +347,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         with zipfile.ZipFile(path, mode="w") as zf:
             zf.writestr("foo", b"1")
 
-        store = ZipStore(path, mode="x")  # type: ignore[arg-type]
+        store = ZipStore(path, mode="x")
         with pytest.raises(FileExistsError):
             await store.clear()
         with zipfile.ZipFile(path) as zf:

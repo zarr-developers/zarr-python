@@ -21,7 +21,7 @@ from zarr.core.buffer import Buffer, BufferPrototype
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
 
-ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
+ZipStoreAccessModeLiteral = Literal["r", "w", "a", "x"]
 
 
 class _RawReaderAdapter(io.RawIOBase):
