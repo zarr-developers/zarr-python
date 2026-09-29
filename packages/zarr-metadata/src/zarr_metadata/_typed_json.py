@@ -28,6 +28,10 @@ own passes a `leaf`, which is asked first for every annotation at every
 depth; the parser it returns is used as it is. Parsers are compiled once
 per annotation and are pure functions of the value, so the branch of a
 union that did not match leaves nothing behind.
+
+`json_schema` writes the same reading as a JSON Schema: `Schemas` writes
+each shape as the checker reads it, asking a caller's `SchemaLeaf` first,
+as a parser asks a `Leaf`.
 """
 
 from __future__ import annotations
@@ -38,6 +42,7 @@ import operator
 import sys
 import types
 import typing
+import urllib.parse
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
@@ -66,6 +71,7 @@ from zarr_metadata._common import JSONValue
 from zarr_metadata._json import (
     ValidationProblem,
     choices,
+    copied,
     is_json,
     outside_of,
     refine_json,
@@ -1135,14 +1141,253 @@ def check(
     return (cast("T", typed) if readable else None), with_input(found, value, loc)
 
 
+# --- JSON Schema ---------------------------------------------------------
+
+JSONSchema: TypeAlias = dict[str, JSONValue]
+"""A JSON Schema, as the JSON object it is: arrays as lists, as validators take them."""
+
+SchemaLeaf: TypeAlias = Callable[[object, "Schemas"], "JSONSchema | None"]
+"""A caller's own shapes, written into a schema: asked first for every annotation, as a `Leaf` is, None to decline.
+
+Handed the schema being written, so a shape of the caller's own can hold
+others, written with `of`, or be written once, in `$defs`, with `defined`.
+"""
+
+DIALECT: Final = "https://json-schema.org/draft/2020-12/schema"
+"""The dialect every schema is written in: JSON Schema draft 2020-12, as pydantic and zod write theirs."""
+
+_KEYWORDS: Final[Mapping[str, str]] = {
+    "gt": "exclusiveMinimum",
+    "ge": "minimum",
+    "lt": "exclusiveMaximum",
+    "le": "maximum",
+}
+"""JSON Schema's keyword for each bound."""
+
+_STRICTER: Final[Mapping[str, Callable[[float, float], float]]] = {
+    "exclusiveMinimum": max,
+    "minimum": max,
+    "exclusiveMaximum": min,
+    "maximum": min,
+}
+"""Of two bounds a keyword says, the one a value in both keeps within."""
+
+
+def no_schema_leaf(annotation: object, schemas: Schemas) -> JSONSchema | None:
+    """The schema leaf of a caller with no shapes of its own."""
+    return None
+
+
+class Schemas:
+    """One JSON Schema being written, and the `$defs` it holds so far.
+
+    `of` writes an annotation as the checker reads it, asking the leaf
+    first at every depth, as `parser_for` asks a `Leaf`. A TypedDict and a
+    type alias are each written once, in `$defs`, under its name -- or its
+    name and a number, when another holds that one -- and referred to
+    wherever they occur, so one that holds itself is a schema that refers
+    to itself. `document` is the whole schema.
+    """
+
+    __slots__ = ("_defs", "_leaf", "_names", "_uses")
+
+    def __init__(self, leaf: SchemaLeaf = no_schema_leaf) -> None:
+        self._leaf = leaf
+        self._defs: dict[str, JSONSchema] = {}
+        self._names: dict[object, str] = {}
+        self._uses: dict[str, int] = {}
+
+    def of(self, annotation: object) -> JSONSchema:
+        """`annotation` as the checker reads it: its type, with the bounds and notes `Annotated` carries.
+
+        A bound is the keyword JSON Schema has for it -- `Ge(0)` is
+        `minimum` -- and a `Doc` is the `description`. A type's bounds and
+        the bounds its `NewType` holds are both kept, as the checker holds
+        a value to both: where the two say one keyword, the stricter. An
+        annotation the checker reads is written; any other is a
+        `TypeError`, which a caller that vetted it through `parser` never
+        meets.
+        """
+        inner, metadata = strip_annotation(annotation)
+        schema = self._type(inner)
+        if len(metadata) == 0:
+            return schema
+        notes = [
+            item.documentation
+            for item in _unpacked(metadata)
+            if isinstance(item, typing_extensions.Doc)
+        ]
+        if len(notes) != 0:
+            schema = {**schema, "description": "\n\n".join(notes)}
+        for name, bound in constraints_of(metadata).items():
+            keyword = _KEYWORDS[name]
+            held = cast("int | float | None", schema.get(keyword))
+            schema = {**schema, keyword: bound if held is None else _STRICTER[keyword](held, bound)}
+        return schema
+
+    def object_of(self, typeddict: type) -> JSONSchema:
+        """`typeddict` written in place: its keys, those it requires, and what any other key may hold."""
+        keys = typeddict_keys(typeddict)
+        schema: JSONSchema = {"type": "object"}
+        if len(keys.members) != 0:
+            schema["properties"] = {
+                key: self.of(annotation) for key, (annotation, _) in keys.members.items()
+            }
+        required: list[JSONValue] = [key for key in keys.members if key in keys.required]
+        if len(required) != 0:
+            schema["required"] = required
+        if keys.closed:
+            schema["additionalProperties"] = False
+        elif not keys.open:
+            extra = self.of(keys.extra_items)
+            if len(extra) != 0:
+                schema["additionalProperties"] = extra
+        return schema
+
+    def defined(self, key: object, name: str, write: Callable[[], JSONSchema]) -> JSONSchema:
+        """A reference to the entry in `$defs` for `key`, which `write` writes the first time `key` is asked for.
+
+        The entry is named `name`, or `name` and a number when another key
+        holds that name, and it is reserved before it is written, so a
+        schema that holds itself refers to itself. One `write` fails to
+        write is not left reserved: a later reference to it would be to an
+        empty schema, which takes anything.
+        """
+        name_held = self._names.get(key)
+        if name_held is None:
+            name_held, number = name, 1
+            while name_held in self._defs:
+                number += 1
+                name_held = f"{name}{number}"
+            self._names[key] = name_held
+            self._defs[name_held] = {}
+            try:
+                self._defs[name_held] = write()
+            except BaseException:
+                del self._names[key], self._defs[name_held]
+                raise
+        self._uses[name_held] = self._uses.get(name_held, 0) + 1
+        return {"$ref": _pointer(name_held)}
+
+    def document(self, root: JSONSchema) -> JSONSchema:
+        """The whole schema: its dialect, `root`, and the `$defs`, by name.
+
+        `root` is written in place when it refers to an entry nothing else
+        refers to, as pydantic writes a model that does not hold itself.
+        What comes back shares nothing with what was written, nor one part
+        of it with another, so a caller may change it where it likes.
+        """
+        defs = dict(self._defs)
+        target = next((name for name in defs if root == {"$ref": _pointer(name)}), None)
+        if target is not None and self._uses[target] == 1:
+            root = defs.pop(target)
+        whole: JSONSchema = {"$schema": DIALECT, **root}
+        if len(defs) != 0:
+            whole["$defs"] = {name: defs[name] for name in sorted(defs)}
+        return cast("JSONSchema", copied(whole))
+
+    def _type(self, inner: object) -> JSONSchema:
+        """The schema of a type, `Annotated` peeled from it."""
+        found = self._leaf(inner, self)
+        if found is not None:
+            return found
+        if inner is int:
+            return {"type": "integer"}
+        if inner is float:
+            return {"type": "number"}
+        if inner is bool:
+            return {"type": "boolean"}
+        if inner is str:
+            return {"type": "string"}
+        if inner is None or inner is types.NoneType:
+            return {"type": "null"}
+        if inner is JSONValue:
+            return {}
+        origin = get_origin(inner)
+        if origin is Literal:
+            # Sorted, as `_literal` sorts them: `get_args` reports a
+            # `Literal`'s values in the order the first one built wrote them.
+            values: list[JSONValue] = sorted(get_args(inner), key=repr)
+            return {"const": values[0]} if len(values) == 1 else {"enum": values}
+        if is_union(inner):
+            return {"anyOf": [self.of(branch) for branch in get_args(inner)]}
+        if origin is tuple:
+            return self._tuple(get_args(inner))
+        if origin in (Mapping, dict):
+            value = self.of(get_args(inner)[1])
+            if len(value) == 0:
+                return {"type": "object"}
+            return {"type": "object", "additionalProperties": value}
+        if isinstance(inner, type) and is_typeddict(inner):
+            typeddict = inner
+            return self.defined(typeddict, typeddict.__name__, lambda: self.object_of(typeddict))
+        if isinstance(inner, NewType):
+            return self.of(inner.__supertype__)
+        if is_alias(inner):
+            alias = cast("typing_extensions.TypeAliasType", inner)
+            return self.defined(alias, alias.__name__, lambda: self.of(alias_value(alias)))
+        msg = f"{inner!r} is not a shape JSON takes"
+        raise TypeError(msg)
+
+    def _tuple(self, arguments: tuple[object, ...]) -> JSONSchema:
+        if len(arguments) == 2 and arguments[1] is Ellipsis:
+            items = self.of(arguments[0])
+            return {"type": "array"} if len(items) == 0 else {"type": "array", "items": items}
+        if len(arguments) == 0:
+            return {"type": "array", "maxItems": 0}
+        return {
+            "type": "array",
+            "prefixItems": [self.of(argument) for argument in arguments],
+            "items": False,
+            "minItems": len(arguments),
+        }
+
+
+def _pointer(name: str) -> str:
+    """The reference to the entry in `$defs` named `name`: a JSON pointer, escaped as a URI fragment."""
+    escaped = name.replace("~", "~0").replace("/", "~1")
+    return f"#/$defs/{urllib.parse.quote(escaped, safe='')}"
+
+
+def json_schema(shape: type) -> JSONSchema:
+    """The JSON Schema of the JSON `check` finds no problem with as `shape`, a TypedDict.
+
+    Draft 2020-12, as a JSON object: arrays as lists, and `$schema`
+    first. A TypedDict is an object of its keys, those it requires, and
+    what any other key may hold -- nothing, in a closed one; a bound is
+    the keyword JSON Schema has for it, `Ge(0)` a `minimum`; a `Doc` is
+    the `description`, which is all that says one, as zod writes only
+    what `.describe()` said: a docstring is written for Python's readers;
+    a `Literal` is its values; a union is `anyOf` its branches. A
+    TypedDict or type alias is written once in `$defs`, under its name,
+    and referred to wherever it occurs, but for `shape` itself, which is
+    written in place unless it holds itself.
+
+    One difference is JSON Schema's own: it takes a number with no
+    fraction, `1.0`, for an integer, where `check` wants `1`. `TypeError`
+    for a `shape` that is not a TypedDict, or holds something no parser
+    reads, as `check` raises it.
+    """
+    if not is_typeddict(shape):
+        msg = f"{shape!r} is not a TypedDict"
+        raise TypeError(msg)
+    _checker(shape)
+    schemas = Schemas()
+    return schemas.document(schemas.of(shape))
+
+
 __all__ = [
+    "DIALECT",
     "Branch",
     "Constraints",
+    "JSONSchema",
     "Leaf",
     "Loc",
     "Parsed",
     "Parser",
     "Qualifier",
+    "SchemaLeaf",
+    "Schemas",
     "Tag",
     "TypedDictKeys",
     "alias_value",
@@ -1156,8 +1401,10 @@ __all__ = [
     "is_alias",
     "is_integer",
     "is_union",
+    "json_schema",
     "mapping_of",
     "no_leaf",
+    "no_schema_leaf",
     "object_of",
     "one_of",
     "parser",

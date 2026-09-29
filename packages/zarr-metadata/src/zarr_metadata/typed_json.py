@@ -60,6 +60,22 @@ as pydantic's errors and zod's issues do: `input`, the JSON the value
 holds at `loc`, and `ctx`, what was expected there -- a type's bounds, or
 the values of a `Literal`.
 
+`json_schema` writes what `check` reads as a JSON Schema, draft 2020-12,
+for a validator in another language, or an editor: the JSON Schema of
+the values `check` finds no problem with. A TypedDict is an object of its
+keys, closed or not as it says; a bound is JSON Schema's keyword for it,
+`Interval(ge=0, le=9)` a `minimum` and a `maximum`; a TypedDict or a type
+alias is written once, in `$defs`, under its name. JSON Schema takes a
+number with no fraction, `1.0`, for an integer, where `check` wants `1`:
+
+    from zarr_metadata.typed_json import json_schema
+
+    json_schema(GzipCodecConfiguration)
+    # {'$schema': 'https://json-schema.org/draft/2020-12/schema',
+    #  'type': 'object',
+    #  'properties': {'level': {'type': 'integer', 'minimum': 0, 'maximum': 9}},
+    #  'required': ['level'], 'additionalProperties': False}
+
 `check` reads the shapes JSON takes and no others -- `int`, `float` for
 any number, `bool`, `str`, `None`, `JSONValue`, a `Literal`,
 `tuple[T, ...]` and `tuple[T1, T2]`, a union, a TypedDict,
@@ -77,14 +93,23 @@ records them on every version.
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ProblemKind, ValidationProblem
-from zarr_metadata._typed_json import Loc, TypedDictKeys, check, typeddict_keys
+from zarr_metadata._typed_json import (
+    JSONSchema,
+    Loc,
+    TypedDictKeys,
+    check,
+    json_schema,
+    typeddict_keys,
+)
 
 __all__ = [
+    "JSONSchema",
     "JSONValue",
     "Loc",
     "ProblemKind",
     "TypedDictKeys",
     "ValidationProblem",
     "check",
+    "json_schema",
     "typeddict_keys",
 ]

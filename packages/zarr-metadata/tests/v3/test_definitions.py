@@ -856,17 +856,26 @@ def test_check_needs_nothing_but_the_value_and_a_typeddict() -> None:
 
 
 def test_check_reads_a_whole_array_document() -> None:
-    # A null in `dimension_names`, and a top-level key the document does
-    # not declare, typed by its `extra_items`.
+    # A null in `dimension_names`, a top-level key the document does not
+    # declare, typed by its `extra_items`, and a dimension of length 0.
     document = {
-        **ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json(),
-        "dimension_names": [None],
+        **ZarrV3ArrayMetadata.create_default(shape=(0, 4)).to_json(),
+        "dimension_names": [None, "x"],
         "acme": {"must_understand": False},
     }
     typed, problems = check(document, ZarrV3ArrayMetadataJSON)
     assert problems == ()
     assert typed is not None
-    assert typed.get("dimension_names") == (None,)
+    assert typed.get("dimension_names") == (None, "x")
+
+
+def test_error_check_holds_an_array_document_s_shape_to_its_bound() -> None:
+    document = {**ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json(), "shape": [-1]}
+    typed, problems = check(document, ZarrV3ArrayMetadataJSON)
+    assert typed is None
+    assert [(found.loc, found.kind, dict(found.ctx)) for found in problems] == [
+        (("shape", 0), "invalid_value", {"ge": 0})
+    ]
 
 
 def test_configuration_of_types_what_its_definition_read() -> None:
@@ -1117,6 +1126,12 @@ def test_error_a_data_type_is_named_as_raw_bits_of_one_size_are_written() -> Non
 def test_error_a_data_type_fill_value_no_checker_reads() -> None:
     with pytest.raises(TypeError, match="'acme.set': fill_value: "):
         DataTypeDefinition(name="acme.set", configuration=Empty, fill_value=set[int])
+
+
+def test_error_a_data_type_fill_value_holding_a_metadata_field() -> None:
+    # A value of the data type, which no scope reads as a field.
+    with pytest.raises(TypeError, match="'acme.f': fill_value: CodecField holds a metadata field"):
+        DataTypeDefinition(name="acme.f", configuration=Empty, fill_value=tuple[CodecField, ...])
 
 
 @pytest.mark.parametrize(

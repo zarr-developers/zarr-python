@@ -268,6 +268,21 @@ has read already, given its problems -- as `resolve` gives them, or
 again, and gives what `canonicalize` gives: None for a field with a
 problem.
 
+**JSON Schema.** `field_json_schema(CodecDefinition, SCOPE)` writes the
+fields of one kind a scope reads as a JSON Schema, draft 2020-12, for a
+validator in another language or an editor: each definition's field --
+its name, its configuration as its TypedDict says, bounds and all, a
+`must_understand` of `true`, and its bare name when it needs no
+configuration -- and a name nothing in scope claims, with any
+configuration. A field a configuration holds is written in the same
+scope, and a member taking codecs of static size only takes those. The
+rules are not in it, so a field it accepts may still have a problem;
+one `resolve` reads without a problem, it accepts, as JSON: arrays as
+lists, as a parser gives them. Each configuration
+TypedDict, and each field alias, is written once, in `$defs`, under its
+name. `node_metadata_json_schema_v3`, in `zarr_metadata.model`, writes a
+whole `zarr.json`, its fill value held to its data type's.
+
 A definition checks itself when it is built, and each of these is a
 `TypeError` saying what is wrong: a `configuration` that is not a
 TypedDict, says nothing of the keys it does not declare, or has a member
@@ -275,31 +290,36 @@ no checker reads, named down to the TypedDict that holds it; a `name`
 that is not a string; a member declared as a function -- `rules`,
 `canonical`, `fill_value_rules`, `storage`, `shape_rules`,
 `chunk_lengths`, `chunk_rules`, `transition`, `pipelines` -- that is not
-one; a data type's `fill_value` no checker reads; a codec `kind` that is
-not one of the three, or a `size` that is not `"static"` or `"dynamic"`;
-a function no codec of its kind is asked -- chunk rules or pipelines of
-a bytes -> bytes codec, which is handed bytes, or a `transition` of a
-codec that hands on bytes; a data type named as raw bits of one size are
-written. A scope refuses a definition of no kind. Nothing happens at
-class creation.
+one; a data type's `fill_value` no checker reads, or one holding a
+metadata field, which a value of the data type never is; a codec `kind`
+that is not one of the three, or a `size` that is not `"static"` or
+`"dynamic"`; a function no codec of its kind is asked -- chunk rules or
+pipelines of a bytes -> bytes codec, which is handed bytes, or a
+`transition` of a codec that hands on bytes; a data type named as raw
+bits of one size are written. A scope refuses a definition of no kind.
+Nothing happens at class creation.
 """
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import MetadataValidationError, ProblemKind, ValidationProblem, shown
 from zarr_metadata._typed_json import Loc, check
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+from zarr_metadata.v3._common import (
+    ChunkGridField,
+    ChunkKeyEncodingField,
+    CodecField,
+    DataTypeField,
+    StaticCodecField,
+    StorageTransformerField,
+    ZarrV3MetadataFieldJSON,
+)
 from zarr_metadata.v3._definition import (
     Chunk,
     ChunkGridDefinition,
-    ChunkGridField,
     ChunkKeyEncodingDefinition,
-    ChunkKeyEncodingField,
     CodecDefinition,
-    CodecField,
     CodecKind,
     CodecSize,
     DataTypeDefinition,
-    DataTypeField,
     Definition,
     EmptyConfiguration,
     Lengths,
@@ -307,15 +327,14 @@ from zarr_metadata.v3._definition import (
     Read,
     Refused,
     Resolved,
-    StaticCodecField,
     StorageClass,
     StorageTransformerDefinition,
-    StorageTransformerField,
     Unclaimed,
     canonical_of,
     canonicalize,
     chunk_grid_lengths,
     configuration_of,
+    field_json_schema,
     fields_of,
     fill_value_problems,
     resolve,
@@ -364,6 +383,7 @@ __all__ = [
     "check",
     "chunk_grid_lengths",
     "configuration_of",
+    "field_json_schema",
     "fields_of",
     "fill_value_problems",
     "read_pipeline",

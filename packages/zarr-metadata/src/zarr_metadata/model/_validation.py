@@ -28,7 +28,7 @@ import dataclasses
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Final, TypeGuard, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Final, TypeGuard, TypeVar, cast, get_args, get_origin
 
 from zarr_metadata._json import (
     MetadataValidationError,
@@ -44,13 +44,13 @@ from zarr_metadata._json import (
 from zarr_metadata._json import is_canonical_json as _is_canonical_json
 from zarr_metadata._json import prefixed as _prefix
 from zarr_metadata._sentinel import UNSET
+from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
 from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
 from zarr_metadata.v3._definition import (
     Chunk,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
-    CodecDefinition,
     DataTypeDefinition,
     Definition,
     Lengths,
@@ -59,6 +59,7 @@ from zarr_metadata.v3._definition import (
     StorageTransformerDefinition,
     Unclaimed,
     chunk_grid_lengths,
+    field_kind,
     fields_of,
     fill_value_problems,
     resolve,
@@ -375,18 +376,21 @@ def attributes_of(
     return (attributes if len(problems) == 0 else None), tuple(problems)
 
 
-_EXTENSION_POINTS_V3: Final[tuple[tuple[str, type[Definition[Any]]], ...]] = (
-    ("data_type", DataTypeDefinition),
-    ("chunk_grid", ChunkGridDefinition),
-    ("chunk_key_encoding", ChunkKeyEncodingDefinition),
-)
-"""A v3 array document's single extension points, and the kind each is read as."""
+_MEMBERS_V3: Final = typeddict_keys(ZarrV3ArrayMetadataJSON).members
 
-_EXTENSION_LISTS_V3: Final[tuple[tuple[str, type[Definition[Any]]], ...]] = (
-    ("codecs", CodecDefinition),
-    ("storage_transformers", StorageTransformerDefinition),
+_EXTENSION_POINTS_V3: Final[tuple[tuple[str, type[Definition[Any]]], ...]] = tuple(
+    (key, kind)
+    for key, (annotation, _) in _MEMBERS_V3.items()
+    if (kind := field_kind(annotation)) is not None
 )
-"""Its lists of extension points, and the kind each entry is read as."""
+"""A v3 array document's single extension points, and the kind each is read as: each member its TypedDict annotates with a field alias."""
+
+_EXTENSION_LISTS_V3: Final[tuple[tuple[str, type[Definition[Any]]], ...]] = tuple(
+    (key, kind)
+    for key, (annotation, _) in _MEMBERS_V3.items()
+    if get_origin(annotation) is tuple and (kind := field_kind(get_args(annotation)[0])) is not None
+)
+"""Its lists of extension points, and the kind each entry is read as: each member it annotates as a tuple of a field alias."""
 
 
 @dataclass(frozen=True, slots=True)

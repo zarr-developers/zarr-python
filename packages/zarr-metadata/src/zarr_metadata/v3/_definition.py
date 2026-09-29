@@ -54,16 +54,26 @@ from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
 from zarr_metadata._json import ValidationProblem, copied, refine_json, shown, with_input
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata._typed_json import (
+    JSONSchema,
     Loc,
     Parsed,
     Parser,
-    no_leaf,
+    SchemaLeaf,
+    Schemas,
     parser,
     problem,
     typeddict_keys,
     unread_in,
 )
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON, envelope_problems
+from zarr_metadata.v3._common import (
+    ChunkGridField,
+    ChunkKeyEncodingField,
+    CodecField,
+    DataTypeField,
+    StaticCodecField,
+    StorageTransformerField,
+    envelope_problems,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -357,8 +367,8 @@ class DataTypeDefinition(Definition[C]):
 
 @functools.cache
 def _fill_value_parser(annotation: object) -> Parser:
-    """The checker for a fill value's JSON shape, compiled once; `TypeError` naming what no checker reads."""
-    return parser(annotation, no_leaf)
+    """The checker for a fill value's JSON shape, compiled once; `TypeError` naming what no checker reads, or a metadata field in it."""
+    return parser(annotation, _no_field)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
@@ -501,21 +511,6 @@ def as_kind(kind: object) -> type[Definition[Any]]:
     return found
 
 
-DataTypeField = TypeAliasType("DataTypeField", ZarrV3MetadataFieldJSON)
-"""A configuration member holding a data type, read in the scope the member's field is read in."""
-ChunkGridField = TypeAliasType("ChunkGridField", ZarrV3MetadataFieldJSON)
-"""A configuration member holding a chunk grid."""
-ChunkKeyEncodingField = TypeAliasType("ChunkKeyEncodingField", ZarrV3MetadataFieldJSON)
-"""A configuration member holding a chunk key encoding."""
-CodecField = TypeAliasType("CodecField", ZarrV3MetadataFieldJSON)
-"""A configuration member holding a codec: a shard's `codecs` is `tuple[CodecField, ...]`."""
-StaticCodecField = TypeAliasType("StaticCodecField", ZarrV3MetadataFieldJSON)
-"""A configuration member holding a codec of static size: a shard's `index_codecs` is one,
-since a reader finds the index by a size it knows before reading it.
-"""
-StorageTransformerField = TypeAliasType("StorageTransformerField", ZarrV3MetadataFieldJSON)
-"""A configuration member holding a storage transformer."""
-
 _FIELD_KINDS: Final[Mapping[object, type[Definition[Any]]]] = {
     DataTypeField: DataTypeDefinition,
     ChunkGridField: ChunkGridDefinition,
@@ -527,6 +522,14 @@ _FIELD_KINDS: Final[Mapping[object, type[Definition[Any]]]] = {
 
 _STATIC_SIZE: Final[frozenset[object]] = frozenset({StaticCodecField})
 """The field aliases whose codec must be of static size."""
+
+
+def field_kind(annotation: object) -> type[Definition[Any]] | None:
+    """The kind of metadata field a member annotated `annotation` holds -- `CodecDefinition` for `CodecField` -- or None when it holds none."""
+    try:
+        return _FIELD_KINDS.get(annotation)
+    except TypeError:  # an unhashable annotation is no field alias
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -553,10 +556,7 @@ def _field(annotation: object) -> Parser | None:
     judged, and the name related to a definition, by whoever reads the
     field -- `check` without a scope, `resolve` in one.
     """
-    try:
-        kind = _FIELD_KINDS.get(annotation)
-    except TypeError:  # an unhashable annotation is no field alias
-        return None
+    kind = field_kind(annotation)
     if kind is None:
         return None
     static = annotation in _STATIC_SIZE
@@ -601,6 +601,15 @@ def _vetting(annotation: object) -> Parser | None:
     return _field(annotation)
 
 
+def _no_field(annotation: object) -> Parser | None:
+    """A leaf refusing a field alias: a fill value is a value of its data type, and holds no metadata field."""
+    if field_kind(annotation) is not None:
+        name = cast("TypeAliasType", annotation).__name__
+        msg = f"{name} holds a metadata field, and a fill value is a value of its data type"
+        raise TypeError(msg)
+    return None
+
+
 @functools.cache
 def _vet(configuration: type) -> None:
     """Refuse a configuration no definition could read with, saying what is wrong with it."""
@@ -614,6 +623,120 @@ def _vet(configuration: type) -> None:
     if unread is not None:
         msg = f"{unread}; a finer rule goes in the definition's `rules`"
         raise TypeError(msg)
+
+
+_KIND_FIELDS: Final[Mapping[type[Definition[Any]], object]] = {
+    kind: alias for alias, kind in _FIELD_KINDS.items() if alias not in _STATIC_SIZE
+}
+"""The field alias of each kind: the one a member holding any field of the kind is annotated with."""
+
+_RAW_BYTES_SCHEMA_PATTERN: Final = f"^{RAW_BYTES_NAME_PATTERN.pattern}(?![\\s\\S])"
+"""`RAW_BYTES_NAME_PATTERN`, matched whole, as a JSON Schema writes a pattern.
+
+Held to the end of the name by a lookahead for no character at all: a
+`$` there would also match before a final newline in a validator that
+matches patterns as Python does, so `"r16\\n"`, which names nothing,
+would read as raw bits.
+"""
+
+
+def field_json_schema(kind: type[Definition[Any]], context: Context) -> JSONSchema:
+    """The JSON Schema of one metadata field read as `kind` in `context`: what `resolve` reads, but for the rules.
+
+    A field one of the definitions in scope reads -- its name, its
+    configuration as the TypedDict says, a `must_understand` of `true`
+    if any, and its bare name when it needs no configuration -- or a
+    name none of them claims, with any configuration: what keeps the
+    format open. A field a configuration holds is written the same way,
+    in the same scope, and a member taking codecs of static size only
+    takes those. JSON Schema draft 2020-12, as `json_schema` writes one;
+    the fields it holds, and the configuration of each definition, are in
+    `$defs`, under the name of the field alias or TypedDict. What only a
+    rule says -- a blosc `typesize` against its `shuffle` -- is not in it,
+    so a field it accepts may still have a problem.
+    """
+    schemas = Schemas(field_schemas(context))
+    return schemas.document(schemas.of(_KIND_FIELDS[as_kind(kind)]))
+
+
+def field_schemas(context: Context) -> SchemaLeaf:
+    """The schema leaf that writes each field alias as a field of its kind, as `context` reads one: `field_json_schema`'s."""
+
+    def leaf(annotation: object, schemas: Schemas) -> JSONSchema | None:
+        kind = field_kind(annotation)
+        if kind is None:
+            return None
+        alias = cast("TypeAliasType", annotation)
+        static = annotation in _STATIC_SIZE
+        return schemas.defined(
+            alias, alias.__name__, lambda: _field_schema(kind, static, context, schemas)
+        )
+
+    return leaf
+
+
+def _field_schema(
+    kind: type[Definition[Any]], static: bool, context: Context, schemas: Schemas
+) -> JSONSchema:
+    """A field of `kind` as `context` reads it: one a definition in scope reads, or one none of them claims."""
+    table = context.tables.get(kind, {})
+    branches: list[JSONValue] = []
+    for definition in table.values():
+        if static and cast("CodecDefinition[Any]", definition).size != "static":
+            continue
+        branches.extend(_read_by(definition, schemas))
+    branches.extend(_unclaimed(table))
+    return {"anyOf": branches}
+
+
+def written_name(definition: Definition[Any]) -> JSONSchema:
+    """The JSON Schema of each name a document writes for `definition`: its name, or `r` and a size for raw bits."""
+    if isinstance(definition, DataTypeDefinition) and definition.name == RAW_BYTES_NAME:
+        return {"type": "string", "pattern": _RAW_BYTES_SCHEMA_PATTERN}
+    return {"const": definition.name}
+
+
+def _read_by(definition: Definition[Any], schemas: Schemas) -> list[JSONValue]:
+    """The fields `definition` reads: an object of its name and configuration, and its bare name when it needs no configuration.
+
+    Raw bits' name carries their configuration, so what is written beside
+    it holds nothing.
+    """
+    carried = isinstance(definition, DataTypeDefinition) and definition.name == RAW_BYTES_NAME
+    name = written_name(definition)
+    bare = carried or not definition.requires_configuration
+    envelope: JSONSchema = {
+        "type": "object",
+        "properties": {
+            "name": name,
+            "configuration": schemas.of(
+                EmptyConfiguration if carried else definition.configuration
+            ),
+            "must_understand": {"const": True},
+        },
+        "required": ["name"] if bare else ["name", "configuration"],
+        "additionalProperties": False,
+    }
+    return [name, envelope] if bare else [envelope]
+
+
+def _unclaimed(table: Mapping[str, Definition[Any]]) -> list[JSONValue]:
+    """The fields no definition in `table` claims: a name none of them is written with, bare or with any configuration."""
+    claimed: list[JSONValue] = [written_name(definition) for definition in table.values()]
+    name: JSONSchema = {"type": "string"}
+    if len(claimed) != 0:
+        name["not"] = {"anyOf": claimed}
+    envelope: JSONSchema = {
+        "type": "object",
+        "properties": {
+            "name": name,
+            "configuration": {"type": "object"},
+            "must_understand": {"const": True},
+        },
+        "required": ["name"],
+        "additionalProperties": False,
+    }
+    return [name, envelope]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1469,6 +1592,9 @@ __all__ = [
     "canonicalize",
     "chunk_grid_lengths",
     "configuration_of",
+    "field_json_schema",
+    "field_kind",
+    "field_schemas",
     "fill_value_problems",
     "kind_of",
     "multi_byte",
@@ -1486,4 +1612,5 @@ __all__ = [
     "unknown_storage",
     "variable_length",
     "with_problems",
+    "written_name",
 ]

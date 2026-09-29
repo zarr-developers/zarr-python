@@ -13,7 +13,9 @@ machine-readable `kind`), an `is_*` type guard, and a `parse_*` function
 that narrows or raises `MetadataValidationError`; a v3 array or group
 document also gets `read_array_metadata_v3` or `read_group_metadata_v3`,
 one read that returns what it read, the problems, and the model when
-there are none. Model `from_json` / `from_key_value` constructors raise
+there are none. `node_metadata_json_schema_v3` writes what the v3
+validators read as a JSON Schema, but for the rules. Model `from_json` /
+`from_key_value` constructors raise
 `MetadataValidationError` for every ingestion failure, including missing
 store keys and undecodable bytes, and the v3 ones take the same
 `context`.
@@ -55,6 +57,7 @@ from zarr_metadata.model._group import (
     validate_group_metadata_v3,
     validate_node_metadata_v3,
 )
+from zarr_metadata.model._json_schema import node_metadata_json_schema_v3
 from zarr_metadata.model._validation import (
     ARRAY_METADATA_OPTIONAL_KEYS_V3,
     ARRAY_METADATA_REQUIRED_KEYS_V2,
@@ -159,6 +162,7 @@ __all__ = [
     "is_metadata_field_v3",
     "node_metadata_from_json_v3",
     "node_metadata_from_key_value_v3",
+    "node_metadata_json_schema_v3",
     "parse_array_metadata_v2",
     "parse_array_metadata_v3",
     "parse_group_metadata_v2",

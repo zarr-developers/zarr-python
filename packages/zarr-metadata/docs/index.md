@@ -151,6 +151,29 @@ build the model of either kind, as the models' own `from_json` and
 A member the spec does not define is not a field; the model's
 `must_understand_fields` names those a reader must understand.
 
+`node_metadata_json_schema_v3` writes what the validators read as a
+JSON Schema, draft 2020-12, for an editor that checks a `zarr.json` as it
+is written, or a validator in another language. Each extension point is
+a field as its scope reads it: a configuration as its definition's
+TypedDict says, bounds and all, and a name nothing in the scope claims
+with any configuration. The fill value is what the data type it names
+takes. `field_json_schema(kind, context)`, in
+`zarr_metadata.v3.definition`, writes one field's schema, and
+`json_schema`, in `zarr_metadata.typed_json`, any TypedDict's, as `check`
+reads it. A schema says what each member is, and not what the rules say
+of members together, so a document it accepts may still have a problem;
+a JSON document the validators accept, it accepts. A validator reads
+JSON as a parser gives it, arrays as lists: a model's `to_json` writes
+tuples, which a Python validator does not take for arrays.
+
+```python
+import json
+from zarr_metadata.model import node_metadata_json_schema_v3
+
+with open("zarr.schema.json", "w") as f:
+    json.dump(node_metadata_json_schema_v3(), f, indent=2)
+```
+
 ## Scope
 
 At minimum, this library supports what Zarr-Python needs: the complete

@@ -1,13 +1,16 @@
-"""The v3 metadata field: its JSON, and the validators that judge one on its own.
+"""The v3 metadata field: its JSON, the aliases a member holding one is annotated with, and the validators that judge one on its own.
 
 Private, and below both readers of a field: the model, which judges the
 fields of a document, and the definitions, which read a field's
 configuration. Public consumers import `ZarrV3MetadataFieldJSON` from
-`zarr_metadata.v3`, and the validators from `zarr_metadata.model`.
+`zarr_metadata.v3`, the aliases from `zarr_metadata.v3.definition`, and
+the validators from `zarr_metadata.model`.
 """
 
 from collections.abc import Mapping
 from typing import TypeGuard, cast
+
+from typing_extensions import TypeAliasType
 
 from zarr_metadata._common import ZarrV3NamedConfigJSON
 from zarr_metadata._json import (
@@ -29,6 +32,26 @@ codec entries, and `storage_transformers` in v3 array metadata, and for
 the inner `codecs` / `index_codecs` lists of the `sharding_indexed`
 codec.
 """
+
+
+# A member holding a metadata field is annotated with the alias of its
+# kind, which a scope reads it as. Each alias is the JSON a field is, so to
+# a type checker, and to `check`, it is `ZarrV3MetadataFieldJSON`.
+
+DataTypeField = TypeAliasType("DataTypeField", ZarrV3MetadataFieldJSON)
+"""A member holding a data type: a document's `data_type`, or a struct field's; read in the scope what holds it is read in."""
+ChunkGridField = TypeAliasType("ChunkGridField", ZarrV3MetadataFieldJSON)
+"""A member holding a chunk grid: a document's `chunk_grid`."""
+ChunkKeyEncodingField = TypeAliasType("ChunkKeyEncodingField", ZarrV3MetadataFieldJSON)
+"""A member holding a chunk key encoding: a document's `chunk_key_encoding`."""
+CodecField = TypeAliasType("CodecField", ZarrV3MetadataFieldJSON)
+"""A member holding a codec: a document's `codecs` is `tuple[CodecField, ...]`, and so is a shard's."""
+StaticCodecField = TypeAliasType("StaticCodecField", ZarrV3MetadataFieldJSON)
+"""A member holding a codec of static size: a shard's `index_codecs` is one,
+since a reader finds the index by a size it knows before reading it.
+"""
+StorageTransformerField = TypeAliasType("StorageTransformerField", ZarrV3MetadataFieldJSON)
+"""A member holding a storage transformer: a document's `storage_transformers` is `tuple[StorageTransformerField, ...]`."""
 
 
 def validate_metadata_field_v3(
@@ -142,6 +165,12 @@ def parse_metadata_field_v3(value: object) -> ZarrV3MetadataFieldJSON:
 
 
 __all__ = [
+    "ChunkGridField",
+    "ChunkKeyEncodingField",
+    "CodecField",
+    "DataTypeField",
+    "StaticCodecField",
+    "StorageTransformerField",
     "ZarrV3MetadataFieldJSON",
     "envelope_problems",
     "is_metadata_field_v3",
