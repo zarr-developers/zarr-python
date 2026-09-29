@@ -162,12 +162,11 @@ class ZipStore(Store):
         self._zmode = mode
         self.compression = compression
         self.allowZip64 = allowZip64
+        self._lock = threading.RLock()
 
     def _sync_open(self) -> None:
         if self._is_open:
             raise ValueError("store is already open")
-
-        self._lock = threading.RLock()
 
         self._zf = zipfile.ZipFile(
             self.path if self.path is not None else self._fileobj,  # type: ignore[arg-type]
@@ -175,8 +174,20 @@ class ZipStore(Store):
             compression=self.compression,
             allowZip64=self.allowZip64,
         )
+        # "w" truncates and "x" refuses an existing file. Both apply only to the
+        # first open: reopening after close(), move(), or unpickling must keep
+        # the entries already written.
+        if self._zmode in ("w", "x"):
+            self._zmode = "a"
 
         self._is_open = True
+
+    def _zipfile(self) -> zipfile.ZipFile:
+        """Return the archive, opening it on first use."""
+        with self._lock:
+            if not self._is_open:
+                self._sync_open()
+            return self._zf
 
     async def _open(self) -> None:
         self._sync_open()
@@ -197,6 +208,7 @@ class ZipStore(Store):
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__ = state
+        self._lock = threading.RLock()
         self._is_open = False
         self._sync_open()
 
@@ -216,7 +228,7 @@ class ZipStore(Store):
                 raise NotImplementedError(
                     "clear() is not supported for a ZipStore backed by a file-like object"
                 )
-            self._zf.close()
+            self._zipfile().close()
             os.remove(self.path)
             self._zf = zipfile.ZipFile(
                 self.path, mode="w", compression=self.compression, allowZip64=self.allowZip64
@@ -243,11 +255,9 @@ class ZipStore(Store):
         prototype: BufferPrototype,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
-        if not self._is_open:
-            self._sync_open()
         # docstring inherited
         try:
-            with self._zf.open(key) as f:  # will raise KeyError
+            with self._zipfile().open(key) as f:  # will raise KeyError
                 if byte_range is None:
                     return prototype.buffer.from_bytes(f.read())
                 elif isinstance(byte_range, RangeByteRequest):
@@ -288,8 +298,6 @@ class ZipStore(Store):
         return out
 
     def _set(self, key: str, value: Buffer) -> None:
-        if not self._is_open:
-            self._sync_open()
         # generally, this should be called inside a lock
         keyinfo = zipfile.ZipInfo(filename=key, date_time=time.localtime(time.time())[:6])
         keyinfo.compress_type = self.compression
@@ -298,13 +306,11 @@ class ZipStore(Store):
             keyinfo.external_attr |= 0x10  # MS-DOS directory flag
         else:
             keyinfo.external_attr = 0o644 << 16  # ?rw-r--r--
-        self._zf.writestr(keyinfo, value.to_bytes())
+        self._zipfile().writestr(keyinfo, value.to_bytes())
 
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited
         self._check_writable()
-        if not self._is_open:
-            self._sync_open()
         if not isinstance(value, Buffer):
             raise TypeError(
                 f"ZipStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
@@ -315,7 +321,7 @@ class ZipStore(Store):
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         self._check_writable()
         with self._lock:
-            members = self._zf.namelist()
+            members = self._zipfile().namelist()
             if key not in members:
                 self._set(key, value)
 
@@ -337,11 +343,9 @@ class ZipStore(Store):
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
-        if not self._is_open:
-            self._sync_open()
         with self._lock:
             try:
-                self._zf.getinfo(key)
+                self._zipfile().getinfo(key)
             except KeyError:
                 return False
             else:
@@ -349,10 +353,8 @@ class ZipStore(Store):
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
-        if not self._is_open:
-            self._sync_open()
         with self._lock:
-            for key in self._zf.namelist():
+            for key in self._zipfile().namelist():
                 yield key
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
@@ -363,11 +365,9 @@ class ZipStore(Store):
 
     async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
-        if not self._is_open:
-            self._sync_open()
         prefix = prefix.rstrip("/")
 
-        keys = self._zf.namelist()
+        keys = self._zipfile().namelist()
         seen = set()
         if prefix == "":
             keys_unique = {k.split("/")[0] for k in keys}

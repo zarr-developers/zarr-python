@@ -188,19 +188,75 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert not origin.exists()
         assert np.array_equal(array[...], np.arange(10))
 
-    async def test_lock_present(self, store: ZipStore) -> None:
-        buf = cpu.Buffer.from_bytes(b"bar")
-        await store.set("foo", buf)
-        await store.set_if_not_exists("foo", buf)
-        await store.exists("foo")
-        await store.get("foo", default_buffer_prototype())
+    @pytest.mark.parametrize(
+        "call",
+        [
+            lambda s: s.get("foo", default_buffer_prototype()),
+            lambda s: s.get_partial_values(default_buffer_prototype(), [("foo", None)]),
+            lambda s: s.exists("foo"),
+            lambda s: s.set("bar", cpu.Buffer.from_bytes(b"x")),
+            lambda s: s.set_if_not_exists("bar", cpu.Buffer.from_bytes(b"x")),
+            lambda s: s.clear(),
+            lambda s: s.delete("bar"),
+            lambda s: s.delete_dir("bar"),
+            lambda s: s.is_empty(""),
+        ],
+        ids=[
+            "get",
+            "get_partial_values",
+            "exists",
+            "set",
+            "set_if_not_exists",
+            "clear",
+            "delete",
+            "delete_dir",
+            "is_empty",
+        ],
+    )
+    async def test_methods_open_store_on_first_use(
+        self, store_kwargs: dict[str, Any], call: Any
+    ) -> None:
+        # every method works on a store that was constructed but never opened
+        seed = await self.store_cls.open(**store_kwargs)
+        await seed.set("foo", cpu.Buffer.from_bytes(b"bar"))
+        seed.close()
 
-        async for _ in store.list():
-            pass
-
-        await store.clear()
-
+        store = self.store_cls(**{**store_kwargs, "mode": "a"})
+        assert not store._is_open
+        await call(store)
         store.close()
+
+    @pytest.mark.parametrize("method", ["list", "list_dir"])
+    async def test_listing_opens_store_on_first_use(
+        self, store_kwargs: dict[str, Any], method: str
+    ) -> None:
+        seed = await self.store_cls.open(**store_kwargs)
+        await seed.set("foo", cpu.Buffer.from_bytes(b"bar"))
+        seed.close()
+
+        store = self.store_cls(**{**store_kwargs, "mode": "r"})
+        args = () if method == "list" else ("",)
+        assert [k async for k in getattr(store, method)(*args)] == ["foo"]
+        store.close()
+
+    @pytest.mark.parametrize("mode", ["w", "x"])
+    @pytest.mark.parametrize("reopen", ["close_twice", "move", "pickle"])
+    async def test_reopen_keeps_entries(self, tmp_path: Path, mode: str, reopen: str) -> None:
+        # "w" truncates and "x" refuses an existing file; neither may apply
+        # when a store that already wrote entries is opened again
+        store = ZipStore(tmp_path / "data.zip", mode=mode)  # type: ignore[arg-type]
+        await store.set("foo", cpu.Buffer.from_bytes(b"bar"))
+        if reopen == "close_twice":
+            store.close()
+            store.close()
+        elif reopen == "move":
+            await store.move(tmp_path / "moved" / "data.zip")
+            store.close()
+        else:
+            store.close()
+            pickle.loads(pickle.dumps(store)).close()
+        with zipfile.ZipFile(store.path) as zf:  # type: ignore[arg-type]
+            assert zf.namelist() == ["foo"]
 
 
 class TestZipStoreFileObj:
@@ -366,8 +422,7 @@ class ZipStoreLifecycleMachine(RuleBasedStateMachine):
     Invariant under test: a constructed ZipStore can always be closed without
     raising, regardless of whether it was ever opened or did any I/O. This is a
     property-based generalization of the former example-based regression tests
-    for ZipStore.close() being called on a never-opened store (which raised
-    AttributeError because ``_lock`` is created lazily in ``_sync_open``).
+    for ZipStore.close() being called on a never-opened store.
     """
 
     def __init__(self, tmp_path: Path) -> None:
