@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping  # noqa: TC003  # resolved by Pydantic at runtime
 from typing import Annotated, Literal, NotRequired
 
@@ -15,14 +16,22 @@ from zarr_metadata.v2.array import (  # noqa: TC001  # resolved by Pydantic at r
 from zarr_metadata.v2.codec import (  # resolved by Pydantic at runtime
     ZarrV2CodecMetadata,
 )
+from zarr_metadata.v3._common import EXTENSION_NAME_SCHEMA_PATTERN
 
 NonNegativeInt = Annotated[int, Field(ge=0)]
+ExtensionName = Annotated[str, Field(pattern=re.compile(EXTENSION_NAME_SCHEMA_PATTERN))]
+"""A name as the spec names an extension, the pattern `well_named` accepts, so the schema pydantic generates refuses what the reader refuses.
+
+Compiled, so pydantic reads it with Python's `re`, which has the look-ahead
+the pattern ends in where its own engine has none, and writes it into the
+schema as it is.
+"""
 
 
 class ZarrV3NamedConfigJSON(TypedDict, closed=True):
     """Closed v3 named configuration read on its own, outside a document, where `must_understand` may be `false`."""
 
-    name: str
+    name: ExtensionName
     configuration: NotRequired[Mapping[str, JSONValue]]
     must_understand: NotRequired[bool]
 
@@ -30,13 +39,13 @@ class ZarrV3NamedConfigJSON(TypedDict, closed=True):
 class ZarrV3MandatoryNamedConfigJSON(TypedDict, closed=True):
     """Closed named configuration at an extension point of a document, where understanding is mandatory."""
 
-    name: str
+    name: ExtensionName
     configuration: NotRequired[Mapping[str, JSONValue]]
     must_understand: NotRequired[Literal[True]]
 
 
-ZarrV3MetadataFieldJSON = str | ZarrV3NamedConfigJSON
-ZarrV3MandatoryMetadataFieldJSON = str | ZarrV3MandatoryNamedConfigJSON
+ZarrV3MetadataFieldJSON = ExtensionName | ZarrV3NamedConfigJSON
+ZarrV3MandatoryMetadataFieldJSON = ExtensionName | ZarrV3MandatoryNamedConfigJSON
 ZarrV3CodecPipelineJSON = Annotated[
     tuple[ZarrV3MandatoryMetadataFieldJSON, ...], Field(min_length=1)
 ]
@@ -73,7 +82,7 @@ class ZarrV3GroupMetadataJSON(TypedDict, extra_items=JSONValue):
     zarr_format: Literal[3]
     node_type: Literal["group"]
     attributes: NotRequired[Mapping[str, JSONValue]]
-    consolidated_metadata: NotRequired[ZarrV3ConsolidatedMetadataJSON | None]
+    consolidated_metadata: NotRequired[ZarrV3ConsolidatedMetadataJSON]
 
 
 class ZarrV2ArrayMetadataJSON(TypedDict, extra_items=JSONValue):

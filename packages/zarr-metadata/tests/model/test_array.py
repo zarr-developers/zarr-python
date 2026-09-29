@@ -7,13 +7,13 @@ import math
 import pickle
 from collections import UserDict
 from collections.abc import Callable
-from typing import TYPE_CHECKING, TypeGuard, get_args, get_origin, get_type_hints
+from typing import TYPE_CHECKING, Any, TypeGuard, cast, get_args, get_origin, get_type_hints
 
 import pytest
 from typing_extensions import Unpack
 
 from tests.model._cases import Expect, ExpectFail, mutate_nested_containers
-from zarr_metadata._json import arrays_to_tuples, prefixed
+from zarr_metadata._json import JSON_DEPTH, arrays_to_tuples, json_text, prefixed
 from zarr_metadata.model import (
     ARRAY_METADATA_OPTIONAL_KEYS_V3,
     ARRAY_METADATA_REQUIRED_KEYS_V3,
@@ -43,7 +43,16 @@ from zarr_metadata.model import (
 )
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSONPartial
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
-from zarr_metadata.v3.definition import CORE, CORE_AND_EXTENSIONS, Read, Unclaimed, configuration_of
+from zarr_metadata.v3.definition import (
+    CORE,
+    CORE_AND_EXTENSIONS,
+    Read,
+    Unclaimed,
+    canonical_of,
+    configuration_of,
+    fields_of,
+    with_problems,
+)
 
 if TYPE_CHECKING:
     from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
@@ -834,7 +843,7 @@ ROUNDTRIP_MODEL_JSON_PARAMS = [
             shape=(10,),
             attributes={"a": 1},
             dimension_names=("x",),
-            storage_transformers=({"name": "t"},),
+            storage_transformers=({"name": "acme.t"},),
             ext={"must_understand": False},
         ),
         id="v3-full",
@@ -951,16 +960,16 @@ def test_v3_parser_accepts_bare_string_data_type() -> None:
     assert model.to_json()["data_type"] == "int32"
 
 
-@pytest.mark.parametrize("name", ["bytes", "ANY string", "urn:example:codec"])
-def test_metadata_field_accepts_any_string_name(name: str) -> None:
-    """The structural layer checks the name type, not syntax or registration."""
+@pytest.mark.parametrize("name", ["bytes", "acme.codec", "urn:example:codec"])
+def test_metadata_field_accepts_a_name_as_the_spec_names_one(name: str) -> None:
+    """The structural layer checks the name is one the spec gives an extension, not that anything registered it."""
     assert validate_metadata_field_v3({"name": name}) == ()
 
 
 @pytest.mark.parametrize("value", [0, 1, "false", None])
 def test_metadata_field_must_understand_must_be_boolean(value: object) -> None:
     """must_understand is a JSON boolean, not a truthy scalar."""
-    problems = validate_metadata_field_v3({"name": "x", "must_understand": value})
+    problems = validate_metadata_field_v3({"name": "acme.x", "must_understand": value})
     assert [(problem.loc, problem.kind) for problem in problems] == [
         (("must_understand",), "invalid_type")
     ]
@@ -968,7 +977,7 @@ def test_metadata_field_must_understand_must_be_boolean(value: object) -> None:
 
 def test_metadata_field_rejects_unknown_envelope_member() -> None:
     """Unknown envelope keys cannot be silently discarded during normalization."""
-    problems = validate_metadata_field_v3({"name": "x", "typo": 1})
+    problems = validate_metadata_field_v3({"name": "acme.x", "typo": 1})
     assert [(problem.loc, problem.kind) for problem in problems] == [(("typo",), "unknown_key")]
 
 
@@ -1219,7 +1228,7 @@ def test_validate_json_reports_json_in_message() -> None:
 
 METADATA_FIELD_VALIDATE_CASES: list[Expect[object, frozenset[tuple[str | int, ...]]]] = [
     Expect("bytes", frozenset(), id="bare-string"),
-    Expect({"name": "x", "configuration": {"a": 1}}, frozenset(), id="named-config"),
+    Expect({"name": "acme.x", "configuration": {"a": 1}}, frozenset(), id="named-config"),
     Expect({"name": "bytes"}, frozenset(), id="name-only"),
     Expect(5, frozenset({()}), id="not-str-or-mapping"),
     Expect({"configuration": {}}, frozenset({("name",)}), id="missing-name"),
@@ -1584,7 +1593,7 @@ def test_v2_dtype_must_be_string_or_records() -> None:
         (
             validate_array_metadata_v2,
             {**ZarrV2ArrayMetadata.create_default().to_json(), "dtype": (("f0", b""),)},
-            ("dtype",),
+            ("dtype", 0, 1),
         ),
         (
             validate_array_metadata_v2,
@@ -1863,25 +1872,52 @@ def test_a_codec_that_is_not_json_is_placed_by_the_definition_that_claims_its_na
     ]
 
 
-def test_a_shard_nested_hundreds_deep_is_read() -> None:
-    """A field it holds is read one frame deeper than it, as deep as the interpreter goes."""
+def test_a_shard_nested_as_deep_as_a_reader_walks_is_read_and_written() -> None:
+    """Every walker of fields takes more than one frame per shard, so the deepest nesting the cap admits is where the interpreter's limit would show; one shard deeper is the depth problem."""
     little = {"name": "bytes", "configuration": {"endian": "little"}}
-    codecs: list[object] = [little]
-    for _ in range(200):
-        codecs = [
-            {
-                "name": "sharding_indexed",
-                "configuration": {"chunk_shape": [1], "codecs": codecs, "index_codecs": [little]},
-            }
-        ]
+
+    def nested(shards: int) -> list[object]:
+        codecs: list[object] = [little]
+        for _ in range(shards):
+            codecs = [
+                {
+                    "name": "sharding_indexed",
+                    "configuration": {
+                        "chunk_shape": [1],
+                        "codecs": codecs,
+                        "index_codecs": [little],
+                    },
+                }
+            ]
+        return codecs
+
+    # Each shard is three levels -- its object, its configuration and the
+    # `codecs` in it -- and the innermost codec's configuration is the
+    # last container a reader walks.
+    deepest = (JSON_DEPTH - 4) // 3
+    codecs = nested(deepest)
     document = {**ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json(), "codecs": codecs}
     assert validate_array_metadata_v3(document) == ()
+    model = ZarrV3ArrayMetadata.from_json(document)
+    assert json_text(model.to_json()) == json_text(cast("JSONValue", document))
+    assert ZarrV3ArrayMetadata.from_key_value(model.to_key_value()) == model
+    assert hash(model) == hash(ZarrV3ArrayMetadata.from_json(document))
+    assert pickle.loads(pickle.dumps(model)) == model
+    assert copy.deepcopy(model) == model
+    (shard,) = model.codecs
+    assert json_text(canonical_of(shard, ())) == json_text(cast("JSONValue", codecs[0]))
+    # A shard and its index codec at each level, and the innermost codec.
+    assert len(list(with_problems(fields_of(shard), ()))) == 2 * deepest + 1
+    problems = validate_array_metadata_v3({**document, "codecs": nested(deepest + 1)})
+    assert {(problem.kind, len(problem.loc), problem.message) for problem in problems} == {
+        ("invalid_value", JSON_DEPTH, f"nested deeper than the {JSON_DEPTH} levels a reader walks")
+    }
 
 
 def test_a_model_is_written_as_deep_as_it_is_read() -> None:
-    """A fill value hundreds deep, of a data type nothing in scope claims, which takes any JSON."""
+    """A fill value as deep as a reader walks, of a data type nothing in scope claims, which takes any JSON; pickled and deep-copied too, which take two frames a level."""
     fill_value: dict[str, object] = {}
-    for _ in range(600):
+    for _ in range(JSON_DEPTH - 2):
         fill_value = {"x": fill_value}
     document = {
         **ZarrV3ArrayMetadata.create_default().to_json(),
@@ -1891,6 +1927,70 @@ def test_a_model_is_written_as_deep_as_it_is_read() -> None:
     model = ZarrV3ArrayMetadata.from_json(document)
     assert model.to_json()["fill_value"] == fill_value
     assert ZarrV3ArrayMetadata.from_key_value(model.to_key_value()) == model
+    assert pickle.loads(pickle.dumps(model)) == model
+    assert copy.deepcopy(model) == model
+
+
+def test_a_field_s_configuration_member_is_counted_from_the_field_s_root() -> None:
+    # `validate_metadata_field_v3` judges a field alone, at its own root: a
+    # member of its configuration sits two levels down, and the cap counts
+    # from the root, not from the member.
+    nested: dict[str, object] = {}
+    for _ in range(JSON_DEPTH - 2):
+        nested = {"x": nested}
+    problems = validate_metadata_field_v3({"name": "acme.x", "configuration": {"y": nested}})
+    assert [(len(p.loc), p.kind) for p in problems] == [(JSON_DEPTH, "invalid_value")]
+    assert problems[0].loc[:2] == ("configuration", "y")
+    shallower = {"name": "acme.x", "configuration": {"y": nested["x"]}}
+    assert validate_metadata_field_v3(shallower) == ()
+
+
+def test_a_v2_dtype_of_nested_records_is_read_to_the_levels_a_reader_walks() -> None:
+    """Field records nest a dtype two levels a record: the shape check recursed a record at a time with no cap, and a thousand records overflowed."""
+
+    def records(levels: int) -> object:
+        dtype: object = "<i4"
+        for _ in range(levels):
+            dtype = [["f", dtype]]
+        return dtype
+
+    # `dtype` sits one level down, each record's list one below the last
+    # record, and the record itself one below that.
+    deepest = (JSON_DEPTH - 2) // 2
+    document = {
+        **ZarrV2ArrayMetadata.create_default(shape=(2,)).to_json(),
+        "dtype": records(deepest),
+    }
+    assert validate_array_metadata_v2(document) == ()
+    model = ZarrV2ArrayMetadata.from_json(document)
+    assert json_text(model.to_json()) == json_text(cast("JSONValue", document))
+    for levels in (deepest + 1, 1000):
+        problems = validate_array_metadata_v2({**document, "dtype": records(levels)})
+        assert [(problem.kind, len(problem.loc)) for problem in problems] == [
+            ("invalid_value", JSON_DEPTH)
+        ]
+
+
+def test_a_v2_document_nested_as_deep_as_a_reader_walks_is_read_and_written() -> None:
+    """The v2 models copied with `copy.deepcopy`, two frames a level, and overflowed on documents their validators accept."""
+    fill_value: dict[str, object] = {}
+    for _ in range(JSON_DEPTH - 2):
+        fill_value = {"x": fill_value}
+    document = {
+        **ZarrV2ArrayMetadata.create_default(shape=(2,)).to_json(),
+        "fill_value": fill_value,
+    }
+    assert validate_array_metadata_v2(document) == ()
+    model = ZarrV2ArrayMetadata.from_json(document)
+    assert json_text(model.to_json()) == json_text(cast("JSONValue", document))
+    assert ZarrV2ArrayMetadata.from_key_value(model.to_key_value()) == model
+    assert hash(model) == hash(ZarrV2ArrayMetadata.from_json(document))
+    assert pickle.loads(pickle.dumps(model)) == model
+    assert copy.deepcopy(model) == model
+    problems = validate_array_metadata_v2({**document, "fill_value": {"x": fill_value}})
+    assert [(problem.kind, len(problem.loc)) for problem in problems] == [
+        ("invalid_value", JSON_DEPTH)
+    ]
 
 
 def test_v3_node_type_literal_enforced() -> None:
@@ -2271,3 +2371,123 @@ def test_error_a_member_outside_the_values_it_takes(
     # type -- a string where a number belongs -- else of the wrong value.
     written = {**document.create_default().to_json(), member: value}
     assert [(p.loc, p.kind) for p in validate(written)] == [((member,), kind)]
+
+
+def test_error_a_document_nested_deeper_than_a_reader_walks_is_a_problem() -> None:
+    # Not a `RecursionError`: a 10 KB document a stranger wrote, nested past
+    # the interpreter's limit, is refused at the level past the last a
+    # reader walks, by every validator, guard and reader.
+    deep: dict[str, object] = {}
+    for _ in range(2_000):
+        deep = {"a": deep}
+    document = {**ZarrV3ArrayMetadata.create_default().to_json(), "attributes": deep}
+    problems = validate_array_metadata_v3(document)
+    assert [(len(p.loc), p.kind) for p in problems] == [(JSON_DEPTH, "invalid_value")]
+    assert problems[0].loc[:2] == ("attributes", "a")
+    assert not is_json(document)
+    assert not is_array_metadata_v3(document)
+    assert not is_group_metadata_v3(document)
+    assert not is_array_metadata_v2(document)
+    assert not is_group_metadata_v2(document)
+    with pytest.raises(MetadataValidationError):
+        ZarrV3ArrayMetadata.from_json(document)
+
+
+def test_a_field_built_by_hand_and_given_to_the_constructor_is_taken_as_read() -> None:
+    """As the class says: a field built by hand is taken as read, what it holds unjudged, so a model can write a document its validator refuses. `Read` judging its own configuration is the follow-up #379 named."""
+    trusted = Read(
+        json="gzip", name="gzip", definition=GZIP_CODEC, configuration={"level": 99, "window": 1}
+    )
+    default = ZarrV3ArrayMetadata.create_default(shape=(2,))
+    model = dataclasses.replace(default, codecs=(*default.codecs, trusted))
+    assert model.codecs[-1] is trusted
+    assert [
+        (problem.loc, problem.kind) for problem in validate_array_metadata_v3(model.to_json())
+    ] == [
+        (("codecs", 1, "configuration", "window"), "unknown_key"),
+        (("codecs", 1, "configuration", "level"), "invalid_value"),
+    ]
+
+
+def test_error_a_field_object_in_a_document_is_not_json() -> None:
+    # A `Read` built by hand, with a configuration its definition refuses,
+    # smuggled into a document: refused as what it is, so nothing built by
+    # hand passes as read. A model holds its own fields as read.
+    smuggled = Read(
+        json="gzip", name="gzip", definition=GZIP_CODEC, configuration={"level": 99, "window": 1}
+    )
+    document = {
+        **ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json(),
+        "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}, smuggled],
+    }
+    assert [(p.loc, p.kind) for p in validate_array_metadata_v3(document)] == [
+        (("codecs", 1), "invalid_type")
+    ]
+    assert not is_array_metadata_v3(document)
+    with pytest.raises(MetadataValidationError):
+        ZarrV3ArrayMetadata.from_json(document)
+    # Nor does `update` take one among the members it is given: only the
+    # fields the model holds are taken as read.
+    model = ZarrV3ArrayMetadata.create_default(shape=(2,))
+    with pytest.raises(MetadataValidationError) as raised:
+        model.update(context=CORE, codecs=cast("Any", (model.codecs[0].to_json(), smuggled)))
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("codecs", 1), "invalid_type")]
+    assert model.update(context=CORE, codecs=(cast("Any", model.codecs[0]),)) == model
+
+
+def test_a_problem_shows_an_integer_too_long_to_write_by_its_size(
+    interpreter_writes_4300_digits: None,
+) -> None:
+    # `int` refuses to write more than 4,300 digits; a message says the
+    # size instead of raising.
+    document = {**ZarrV3ArrayMetadata.create_default().to_json(), "zarr_format": 10**5000}
+    (problem,) = validate_array_metadata_v3(document)
+    assert problem.message == f"expected 3, got an integer of {(10**5000).bit_length()} bits"
+    (problem,) = validate_metadata_field_v3({"name": "gzip", 10**5000: 1})
+    assert problem.message == (
+        f"non-string metadata field key an integer of {(10**5000).bit_length()} bits"
+    )
+    # Held by a container, JSON or not, or by a key, it is what the
+    # interpreter will not write.
+    for held in ([10**5000], [10**5000, object()]):
+        document = {**ZarrV3ArrayMetadata.create_default().to_json(), "zarr_format": held}
+        (problem,) = validate_array_metadata_v3(document)
+        assert (
+            problem.message == "expected 3, got a value of type list the interpreter will not write"
+        )
+    (problem,) = validate_metadata_field_v3({"name": "gzip", (10**5000,): 1})
+    assert problem.message == (
+        "non-string metadata field key a value of type tuple the interpreter will not write"
+    )
+    # So is what `refine_json` reports as no JSON at all: a set holding
+    # one, or frozensets nested past what the interpreter's repr walks.
+    document = {**ZarrV3ArrayMetadata.create_default().to_json(), "attributes": {"a": {10**5000}}}
+    (problem,) = validate_array_metadata_v3(document)
+    assert (problem.loc, problem.message) == (
+        ("attributes", "a"),
+        "not a JSON-serializable value: a value of type set the interpreter will not write",
+    )
+    frozen: frozenset[object] = frozenset()
+    for _ in range(100_000):
+        frozen = frozenset([frozen])
+    document = {**ZarrV3ArrayMetadata.create_default().to_json(), "attributes": {"a": frozen}}
+    (problem,) = validate_array_metadata_v3(document)
+    assert problem.message == "not a JSON-serializable value: a value nested too deep to show"
+
+
+def test_a_problem_shows_a_value_nested_too_deep_to_write_by_saying_so() -> None:
+    # `_refine` stops at `JSON_DEPTH`; the repr that would show a value it
+    # refused walks as deep as the value nests, and overflows.
+    deep: list[object] = []
+    innermost = deep
+    for _ in range(100_000):
+        nested: list[object] = []
+        innermost.append(nested)
+        innermost = nested
+    document = {**ZarrV3ArrayMetadata.create_default().to_json(), "zarr_format": deep}
+    # One problem: a value the literal check refuses is not walked, so the
+    # depth rule does not judge it too.
+    assert [
+        (problem.loc, problem.kind, problem.message)
+        for problem in validate_array_metadata_v3(document)
+    ] == [(("zarr_format",), "invalid_type", "expected 3, got a value nested too deep to show")]

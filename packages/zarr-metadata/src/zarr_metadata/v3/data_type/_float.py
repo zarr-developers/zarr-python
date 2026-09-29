@@ -100,8 +100,15 @@ def float_bits(value: float | str, width: FloatWidth) -> int:
     A number is read as a float64, as a JSON parser reads one -- an integer
     of more digits than a float64 holds is rounded to one -- and rounded to
     the nearest value the type represents, ties to even, and to an infinity
-    past the largest, as numpy casts a float64. So an integer and a number
-    with a fraction that read as one float64 spell one value.
+    past the largest: as zarrs reads one, `as_f64` then `as f32`
+    (https://github.com/zarrs/zarrs/blob/8d68f8522b382d050b768f84bce64c2935de4523/zarrs_metadata/src/v3/array/fill_value.rs#L160),
+    as tensorstore does, `static_cast<T>` of `get<double>()`
+    (https://github.com/google/tensorstore/blob/692d2798c51a76d2eed0b4aee85cad5fd4be950a/tensorstore/driver/zarr3/metadata.cc#L165),
+    and as numpy casts a float64. So an integer and a number with a
+    fraction that read as one float64 spell one value; and an integer past
+    2**53 whose float64 sits halfway between two values of the type --
+    2**60 + 2**36 + 1, for float32 -- is the even one, 2**60, as those
+    readers store it, not the value nearest the integer itself.
     """
     code, fraction = _FORMATS[width]
     exponent = width - 1 - fraction

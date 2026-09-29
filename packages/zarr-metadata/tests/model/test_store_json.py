@@ -328,3 +328,11 @@ def test_error_a_document_the_reader_refuses_is_not_written(
     with pytest.raises(MetadataValidationError) as raised:
         build()
     assert [(problem.loc, problem.kind) for problem in raised.value.problems] == problems
+
+
+def test_error_store_bytes_nested_deeper_than_python_reads_are_invalid_json() -> None:
+    # `json.loads` gives up on a hundred thousand `[` with a `RecursionError`,
+    # which is an ingestion failure like any other.
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3ArrayMetadata.from_key_value({"zarr.json": b"[" * 100_000})
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("zarr.json",), "invalid_json")]

@@ -36,8 +36,9 @@ imported from [`zarr_metadata.model`](model.md) directly.
 
 ## Common types
 
-A few cross-cutting aliases are exported only from the top-level
-`zarr_metadata` namespace:
+A few cross-cutting aliases are exported from the top-level
+`zarr_metadata` namespace (`JSONValue` from `zarr_metadata.typed_json`
+and `zarr_metadata.v3.definition` too):
 
 ::: zarr_metadata.JSONValue
 

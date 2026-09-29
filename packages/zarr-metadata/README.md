@@ -44,7 +44,8 @@ parser and returns the same normalized model class:
 from pydantic import TypeAdapter
 import zarr_metadata.pydantic as zmp
 
-metadata = TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(raw)
+adapter: TypeAdapter[zmp.ZarrV3ArrayMetadata] = TypeAdapter(zmp.ZarrV3ArrayMetadata)
+metadata = adapter.validate_python(raw)
 encoded = metadata.to_key_value()["zarr.json"]
 ```
 
@@ -79,6 +80,19 @@ Two choices the specs' words leave open, or settle two ways:
   writes them back as those bare tokens, which a strict JSON parser
   refuses. `check`, from `zarr_metadata.typed_json`, refuses a non-finite
   number wherever it is, attributes included.
+- **A reader walks 256 levels of nesting.** A value nested deeper is an
+  `invalid_value` at the level past the last, wherever it sits. Every
+  reader, writer and comparison takes one frame for each level, and
+  `copy.deepcopy`, and `pickle` before Python 3.12, two: a document at
+  the cap takes about half of the interpreter's default limit, and the
+  rest is the caller's.
+- **`consolidated_metadata: null` is a problem.** A zarr-python 3.0.x bug
+  wrote it; the spec says an object, and the package models nothing else
+  as right. A reader of those stores strips the key before reading.
+- **An extension is named as the spec names one**, `^[a-z][a-z0-9-_.]+$`,
+  or by a URI, which earlier versions of the spec required; any other
+  name is refused before a definition is asked, so `""` and `"foo/bar"`
+  are not unknown extensions but problems.
 - **`must_understand: false` is refused at every extension point**, codecs
   and storage transformers too, though the core spec names only the data
   type, chunk grid and chunk key encoding: a reader that skips a codec

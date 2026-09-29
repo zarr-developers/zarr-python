@@ -87,12 +87,10 @@ def _array(context: Context, schemas: Schemas) -> JSONSchema:
 
 
 def _group(schemas: Schemas) -> JSONSchema:
-    """A group document: its TypedDict, and the consolidated metadata the model reads, which a historical zarr-python bug wrote as `null`."""
+    """A group document: its TypedDict, and the consolidated metadata the model reads."""
     schema = schemas.object_of(ZarrV3GroupMetadataJSON)
     properties = cast("dict[str, JSONValue]", schema.get("properties", {}))
-    consolidated: JSONSchema = {
-        "anyOf": [schemas.of(ZarrV3ConsolidatedMetadataJSON), {"type": "null"}]
-    }
+    consolidated: JSONSchema = schemas.of(ZarrV3ConsolidatedMetadataJSON)
     return {**schema, "properties": {**properties, ZARR_V3_CONSOLIDATED_METADATA_KEY: consolidated}}
 
 

@@ -7,8 +7,9 @@ configuration. Public consumers import `ZarrV3MetadataFieldJSON` from
 the validators from `zarr_metadata.model`.
 """
 
+import re
 from collections.abc import Mapping
-from typing import TypeGuard, cast
+from typing import Final, TypeGuard, cast
 
 from typing_extensions import TypeAliasType
 
@@ -18,7 +19,8 @@ from zarr_metadata._json import (
     ValidationProblem,
     arrays_to_tuples,
     is_canonical_json,
-    prefixed,
+    shown,
+    shown_key,
     validate_json,
     with_input,
 )
@@ -60,9 +62,9 @@ def validate_metadata_field_v3(
     """Return every reason `value` is not a v3 metadata field.
 
     A metadata field is a bare name, or an envelope around a configuration
-    whose members are JSON: an object of a string `name`, a `configuration`
-    that is an object of string keys, a boolean `must_understand`, and
-    nothing else.
+    whose members are JSON: an object of a `name` as the spec names an
+    extension, a `configuration` that is an object of string keys, a
+    boolean `must_understand`, and nothing else.
     """
     envelope = envelope_problems(value, allow_must_understand_false=allow_must_understand_false)
     return with_input((*envelope, *_configuration_json_problems(value)), value)
@@ -72,18 +74,62 @@ ENVELOPE_KEYS: frozenset[str] = frozenset({"name", "configuration", "must_unders
 """The members a metadata field's envelope declares: a key beside them is an unknown key."""
 
 
+_EXTENSION_NAME: Final = re.compile(r"[a-z][a-z0-9_.-]+")
+"""A registered extension name: the spec's `^[a-z][a-z0-9-_.]+$`, its hyphen last so no engine reads it as a range."""
+
+_URI: Final = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+")
+"""A URI, as far as a name is judged: RFC 3986's scheme, its colon, and one or more of the characters a URI is written in -- its unreserved and reserved sets, and the `%` of percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2) -- the names earlier versions of the spec required.
+
+The characters are listed rather than written `\\S`, which Python's `re`
+and ECMA-262, the dialect a JSON Schema `pattern` is read in, disagree
+on: `\\x1c`-`\\x1f` and `\\x85` are whitespace to one and `\\ufeff` to the
+other, so a name this reader refused, a validator of the schema would
+accept, or the other way round.
+"""
+
+EXTENSION_NAME_SCHEMA_PATTERN: Final = rf"^({_EXTENSION_NAME.pattern}|{_URI.pattern})(?![\s\S])"
+r"""What `well_named` accepts, as a JSON Schema `pattern`: the two patterns it matches whole, `(?![\s\S])` where `$` would take a final newline, as `_RAW_BYTES_SCHEMA_PATTERN` has it."""
+
+
+def well_named(name: str) -> bool:
+    """Whether `name` is an extension name as the spec names one.
+
+    A registered name "MUST start with one lower case letter a-z and then
+    be followed by only lower case letters a-z, numerals 0-9, underscores,
+    dots and dashes", regex `^[a-z][a-z0-9-_.]+$`
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1603-L1606);
+    a URI, which earlier versions of the spec required, is "still
+    permitted"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1614-L1618).
+    """
+    return _EXTENSION_NAME.fullmatch(name) is not None or _URI.fullmatch(name) is not None
+
+
+def name_problem(name: str, at: tuple[str | int, ...]) -> ValidationProblem | None:
+    """The problem `name`, at `at`, is when the spec gives no extension such a name; None when it does, as `well_named` says."""
+    if well_named(name):
+        return None
+    message = (
+        "expected an extension name -- lower-case letters, digits, '-', '_' and '.', "
+        f"starting with a letter -- or a URI, got {shown(name)}"
+    )
+    return ValidationProblem(at, message, "invalid_value")
+
+
 def envelope_problems(
     value: object, *, allow_must_understand_false: bool
 ) -> tuple[ValidationProblem, ...]:
     """Every reason `value` is not a v3 metadata field's envelope, what its configuration holds left unjudged.
 
-    The envelope is what sits around the configuration: a string `name`, a
-    `configuration` that is an object of string keys, a boolean
-    `must_understand`, and nothing else. `resolve` asks this of a field it
-    has refined to JSON already, so a configuration is walked once.
+    The envelope is what sits around the configuration: a `name` as the
+    spec names an extension, a `configuration` that is an object of string
+    keys, a boolean `must_understand`, and nothing else. `resolve` asks
+    this of a field it has refined to JSON already, so a configuration is
+    walked once.
     """
     if isinstance(value, str):
-        return ()
+        bad = name_problem(value, ())
+        return () if bad is None else (bad,)
     if not isinstance(value, Mapping):
         return (
             ValidationProblem(
@@ -97,12 +143,18 @@ def envelope_problems(
     for key in field:
         if not isinstance(key, str):
             problems.append(
-                ValidationProblem((), f"non-string metadata field key {key!r}", "invalid_type")
+                ValidationProblem(
+                    (), f"non-string metadata field key {shown_key(key)}", "invalid_type"
+                )
             )
         elif key not in ENVELOPE_KEYS:
             problems.append(ValidationProblem((key,), f"unexpected key {key!r}", "unknown_key"))
-    if not isinstance(field.get("name"), str):
+    if "name" not in field:
+        problems.append(ValidationProblem(("name",), "missing required key", "missing_key"))
+    elif not isinstance(field["name"], str):
         problems.append(ValidationProblem(("name",), "expected a string name", "invalid_type"))
+    elif (bad := name_problem(field["name"], ("name",))) is not None:
+        problems.append(bad)
     if "configuration" in field:
         configuration = field["configuration"]
         if not isinstance(configuration, Mapping):
@@ -143,14 +195,14 @@ def _configuration_json_problems(value: object) -> tuple[ValidationProblem, ...]
     return tuple(
         found
         for key, item in cast("Mapping[str, object]", members).items()
-        for found in prefixed("configuration", prefixed(key, validate_json(item)))
+        for found in validate_json(item, ("configuration", key))
     )
 
 
 def is_metadata_field_v3(value: object) -> TypeGuard[ZarrV3MetadataFieldJSON]:
-    """Whether `value` is a v3 metadata field: a bare name or a named config."""
+    """Whether `value` is a v3 metadata field: a bare name as the spec names an extension, or a named config."""
     if isinstance(value, str):
-        return True
+        return well_named(value)
     if not isinstance(value, dict):
         return False
     field = cast("dict[object, object]", value)
@@ -167,6 +219,7 @@ def parse_metadata_field_v3(value: object) -> ZarrV3MetadataFieldJSON:
 
 __all__ = [
     "ENVELOPE_KEYS",
+    "EXTENSION_NAME_SCHEMA_PATTERN",
     "ChunkGridField",
     "ChunkKeyEncodingField",
     "CodecField",
@@ -176,6 +229,8 @@ __all__ = [
     "ZarrV3MetadataFieldJSON",
     "envelope_problems",
     "is_metadata_field_v3",
+    "name_problem",
     "parse_metadata_field_v3",
     "validate_metadata_field_v3",
+    "well_named",
 ]

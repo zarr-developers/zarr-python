@@ -9,6 +9,7 @@ import json
 import math
 import warnings
 from collections.abc import Mapping
+from typing import Any
 
 import pytest
 from jsonschema import Draft202012Validator
@@ -17,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 import zarr_metadata.pydantic as zmp
 from zarr_metadata._common import JSONValue
 from zarr_metadata.model import (
+    ValidationProblem,
     ZarrV2ArrayMetadata,
     ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
@@ -24,6 +26,7 @@ from zarr_metadata.model import (
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
 )
+from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import CORE, Read
 
 V3_ARRAY_DOC = dict(ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json())
@@ -95,8 +98,16 @@ def test_validation_error_carries_problems() -> None:
 
     doc = dict(V3_ARRAY_DOC)
     del doc["chunk_key_encoding"]
-    with pytest.raises(ValidationError, match="chunk_key_encoding: missing required key"):
+    with pytest.raises(ValidationError) as raised:
         Manifest.model_validate({"metadata": doc})
+    (error,) = raised.value.errors()
+    assert (error["type"], error["loc"], error["msg"]) == (
+        "missing_key",
+        ("metadata", "chunk_key_encoding"),
+        "missing required key",
+    )
+    # A missing key's input is the object missing it, as pydantic's own is.
+    assert error["input"] == doc
 
 
 def test_json_schema_generation() -> None:
@@ -313,3 +324,114 @@ def test_error_a_validation_context_holds_a_scope_that_is_not_one() -> None:
         TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(
             _WITH_ZSTD, context={zmp.CONTEXT_KEY: "CORE"}
         )
+
+
+def test_each_problem_is_a_line_error_of_pydantic_s() -> None:
+    # As pydantic reports its own: one per problem, its type the problem's
+    # kind, at the problem's loc under the field's, with the input found
+    # there and what was expected; a message holding JSON is kept as it is.
+    class Manifest(BaseModel):
+        metadata: zmp.ZarrV3ArrayMetadata
+
+    doc = {
+        **V3_ARRAY_DOC,
+        "fill_value": {"a": 1},
+        "codecs": [
+            {"name": "bytes", "configuration": {"endian": "little"}},
+            {"name": "gzip", "configuration": {"level": 12}},
+        ],
+    }
+    with pytest.raises(ValidationError) as raised:
+        Manifest.model_validate({"metadata": doc})
+    errors = raised.value.errors()
+    assert [(e["type"], e["loc"], e["input"]) for e in errors] == [
+        ("invalid_type", ("metadata", "fill_value"), {"a": 1}),
+        ("invalid_value", ("metadata", "codecs", 1, "configuration", "level"), 12),
+    ]
+    assert errors[0]["msg"] == 'expected an integer, got {"a": 1}'
+    assert errors[1].get("ctx") == {"ge": 0, "le": 9}
+
+
+def test_a_message_holding_a_ctx_placeholder_is_reported_as_it_is() -> None:
+    # pydantic renders a message as a template of its ctx, with no escape:
+    # a document value written `{expected}` would be shown as the ctx's
+    # `expected`. Such a message rides whole in the ctx instead.
+    doc = {**V3_ARRAY_DOC, "zarr_format": "{expected}"}
+    with pytest.raises(ValidationError) as raised:
+        TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(doc)
+    (error,) = raised.value.errors()
+    assert (error["type"], error["loc"], error["msg"]) == (
+        "invalid_type",
+        ("zarr_format",),
+        'expected 3, got "{expected}"',
+    )
+    assert error.get("ctx") == {"expected": (3,), "message": 'expected 3, got "{expected}"'}
+
+
+def test_a_ctx_member_named_message_yields_to_a_message_holding_a_placeholder() -> None:
+    # The carrier goes last, so what it carries is scanned for no key
+    # after it; a member of its name is kept when nothing rides.
+    ctx = {"message": "theirs", "expected": 3}
+    problem = ValidationProblem(("a",), 'got "{expected}"', "invalid_value", ctx=ctx)
+    error = ValidationError.from_exception_data("T", [zmp._line_error(problem, {"a": 1})]).errors()[
+        0
+    ]
+    assert error["msg"] == 'got "{expected}"'
+    assert error.get("ctx") == {"expected": 3, "message": 'got "{expected}"'}
+    assert list(error.get("ctx", {})) == ["expected", "message"]
+    plain = ValidationProblem(("a",), "got 1", "invalid_value", ctx=ctx)
+    error = ValidationError.from_exception_data("T", [zmp._line_error(plain, {"a": 1})]).errors()[0]
+    assert (error["msg"], error.get("ctx")) == ("got 1", ctx)
+
+
+def test_a_line_error_for_what_a_problem_could_not_hold_reports_what_sits_there() -> None:
+    # A problem holds no input for what is not JSON a reader walks -- a
+    # `Read` built by hand among the codecs -- and the line error reports
+    # that object, where a missing key's reports the object missing it.
+    smuggled = Read(json="gzip", name="gzip", definition=GZIP_CODEC, configuration={"level": 1})
+    doc = {
+        **V3_ARRAY_DOC,
+        "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}, smuggled],
+    }
+    with pytest.raises(ValidationError) as raised:
+        TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(doc)
+    (error,) = raised.value.errors()
+    assert (error["type"], error["loc"]) == ("invalid_type", ("codecs", 1))
+    assert error["input"] is smuggled
+
+
+def test_the_pydantic_schema_refuses_a_null_consolidated_metadata_as_the_reader_does() -> None:
+    # The package publishes one verdict on `null` there: the reader's.
+    schema = TypeAdapter(zmp.ZarrV3GroupMetadata).json_schema()
+    document = {"zarr_format": 3, "node_type": "group", "consolidated_metadata": None}
+    assert not Draft202012Validator(schema).is_valid(document)
+    with pytest.raises(ValidationError):
+        TypeAdapter(zmp.ZarrV3GroupMetadata).validate_python(document)
+
+
+def test_a_line_error_for_a_document_past_the_cap_renders() -> None:
+    # The depth problem holds no input; the line error reports the subtree
+    # at its loc, which pydantic renders itself, truncated in `str` and
+    # whole in `json`, as it renders any input.
+    deep: dict[str, object] = {}
+    for _ in range(2_000):
+        deep = {"a": deep}
+    with pytest.raises(ValidationError) as raised:
+        TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python({**V3_ARRAY_DOC, "attributes": deep})
+    (error,) = raised.value.errors()
+    assert (error["type"], len(error["loc"])) == ("invalid_value", 256)
+    assert "nested deeper" in str(raised.value)
+    assert json.loads(raised.value.json())[0]["type"] == "invalid_value"
+
+
+@pytest.mark.parametrize("field", ["Foo/bar", "", "r*", {"name": "Int8"}])
+def test_the_pydantic_schema_names_an_extension_as_the_reader_does(field: object) -> None:
+    # One verdict on a name, the reader's, in the schema pydantic generates too.
+    schema = TypeAdapter(zmp.ZarrV3ArrayMetadata).json_schema()
+    # As JSON has it, arrays as lists: `jsonschema` takes no tuple for one.
+    document: dict[str, Any] = json.loads(json.dumps(V3_ARRAY_DOC))
+    assert Draft202012Validator(schema).is_valid(document)
+    named: dict[str, Any] = {**document, "data_type": field}
+    assert not Draft202012Validator(schema).is_valid(named)
+    with pytest.raises(ValidationError):
+        TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(named)

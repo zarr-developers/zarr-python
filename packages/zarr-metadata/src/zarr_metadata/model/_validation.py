@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, TypeGuard, TypeVar, cast, get_args, get_origin
 
@@ -34,15 +34,17 @@ from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
     arrays_to_tuples,
+    nested_past_the_levels,
     not_an_object,
     outside_of,
     refine_json,
     refine_user_data,
+    shown_key,
     validate_json,
     with_input,
+    within,
 )
 from zarr_metadata._json import is_canonical_json as _is_canonical_json
-from zarr_metadata._json import prefixed as _prefix
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
@@ -140,7 +142,7 @@ def unexpected_keys(
     for key in doc:
         if not isinstance(key, str):
             problems.append(
-                ValidationProblem((), f"non-string document key {key!r}", "invalid_type")
+                ValidationProblem((), f"non-string document key {shown_key(key)}", "invalid_type")
             )
         elif key not in allowed:
             problems.append(ValidationProblem((key,), f"unexpected key {key!r}", "unknown_key"))
@@ -175,6 +177,7 @@ def other_members(
     standard_keys: frozenset[str],
     *,
     additional_reserved_keys: frozenset[str] = frozenset(),
+    at: Loc = (),
 ) -> tuple[dict[str, JSONValue], tuple[ValidationProblem, ...]]:
     """Each member outside `standard_keys` refined to JSON, and every problem, as `other_members_problems` finds them; a member that is not JSON is left out."""
     members: dict[str, JSONValue] = {}
@@ -183,13 +186,13 @@ def other_members(
     for key, value in doc.items():
         if not isinstance(key, str):
             problems.append(
-                ValidationProblem((), f"non-string top-level key {key!r}", "invalid_type")
+                ValidationProblem((), f"non-string top-level key {shown_key(key)}", "invalid_type")
             )
             continue
         if key in reserved_keys:
             continue
-        refined, found = refine_json(value, (key,))
-        problems.extend(found)
+        refined, found = refine_json(value, (*at, key))
+        problems.extend(within(found, at))
         if len(found) == 0:
             members[key] = refined
     return members, tuple(problems)
@@ -330,15 +333,15 @@ def _is_codec_v2(value: object) -> bool:
     )
 
 
-def _validate_codec_v2(value: object) -> tuple[ValidationProblem, ...]:
-    """Validate a v2 codec's required shape and JSON-valued configuration."""
+def _validate_codec_v2(value: object, loc: tuple[str | int, ...]) -> tuple[ValidationProblem, ...]:
+    """Validate a v2 codec's required shape and JSON-valued configuration, `value` sitting at `loc`."""
     if not _is_codec_v2(value):
         return (
             ValidationProblem(
-                (), "expected a codec configuration with a string 'id'", "invalid_type"
+                loc, "expected a codec configuration with a string 'id'", "invalid_type"
             ),
         )
-    return validate_json(value)
+    return validate_json(value, loc)
 
 
 def validate_attributes(value: object) -> tuple[ValidationProblem, ...]:
@@ -353,10 +356,33 @@ def validate_attributes(value: object) -> tuple[ValidationProblem, ...]:
     return attributes_of(value)[1]
 
 
+def members_past_the_levels(
+    doc: Mapping[object, object], at: Loc
+) -> dict[object, ValidationProblem]:
+    """Each member of `doc`, a document that sits at `at`, that is a container past the levels a reader walks, with the problem it is, located in the document.
+
+    A reader reports them and walks no further into them, as `refine_json`
+    of the whole document would judge them: a document a level before the
+    cap holds its scalars, and nothing else.
+    """
+    past: dict[object, ValidationProblem] = {}
+    for key, item in doc.items():
+        if isinstance(key, str):
+            problem = nested_past_the_levels(item, (*at, key))
+            if problem is not None:
+                (past[key],) = within((problem,), at)
+    return past
+
+
 def attributes_of(
-    value: object,
+    value: object, at: Loc = ()
 ) -> tuple[dict[str, JSONValue] | None, tuple[ValidationProblem, ...]]:
-    """An `attributes` value refined as user data, and every problem `validate_attributes` finds; None when it is not an object with string keys, or holds a value that is not JSON."""
+    """An `attributes` value refined as user data, and every problem `validate_attributes` finds; None when it is not an object with string keys, or holds a value that is not JSON.
+
+    `at` is where the document holding it sits in the one handed in, so
+    the levels a reader walks are counted from that one's root; the
+    problems are located in the document holding it.
+    """
     if not isinstance(value, Mapping) or not all(
         isinstance(k, str) for k in cast("Mapping[object, object]", value)
     ):
@@ -368,10 +394,10 @@ def attributes_of(
     attributes: dict[str, JSONValue] = {}
     problems: list[ValidationProblem] = []
     for key, item in cast("Mapping[str, object]", value).items():
-        refined, found = refine_user_data(item, ("attributes", key))
+        refined, found = refine_user_data(item, (*at, "attributes", key))
         problems.extend(found)
         attributes[key] = refined
-    return (attributes if len(problems) == 0 else None), tuple(problems)
+    return (attributes if len(problems) == 0 else None), within(problems, at)
 
 
 _MEMBERS_V3: Final = typeddict_keys(ZarrV3ArrayMetadataJSON).members
@@ -395,15 +421,15 @@ _EXTENSION_LISTS_V3: Final[tuple[tuple[str, type[Definition[Any]]], ...]] = tupl
 class ZarrV3ArrayMetadataReading:
     """A v3 array document as a scope read it, whatever it holds: each extension point, its codecs as a pipeline, every problem, and the model when there is none.
 
-    A field the document does not hold is None, and a list of them it does
+    A field the document does not hold is `UNSET`, and a list of them it does
     not hold as a list is empty.
     """
 
-    data_type: Resolved[DataTypeDefinition[Any]] | None = None
+    data_type: Resolved[DataTypeDefinition[Any]] | UNSET = UNSET
     """The data type, as the scope read it."""
-    chunk_grid: Resolved[ChunkGridDefinition[Any]] | None = None
+    chunk_grid: Resolved[ChunkGridDefinition[Any]] | UNSET = UNSET
     """The chunk grid, as the scope read it."""
-    chunk_key_encoding: Resolved[ChunkKeyEncodingDefinition[Any]] | None = None
+    chunk_key_encoding: Resolved[ChunkKeyEncodingDefinition[Any]] | UNSET = UNSET
     """The chunk key encoding, as the scope read it."""
     chunk: Chunk = dataclasses.field(default_factory=Chunk)
     """The chunks the codecs are handed: the lengths the grid's chunks take along each axis of the shape, of the data type."""
@@ -429,8 +455,8 @@ class ZarrV3ArrayMetadataReading:
             ("chunk_grid", self.chunk_grid),
             ("chunk_key_encoding", self.chunk_key_encoding),
         ):
-            if field is not None:
-                yield from fields_of(field, (key,))
+            if field is not UNSET:
+                yield from fields_of(cast("Resolved[Any]", field), (key,))
         for index, stage in enumerate(self.pipeline):
             yield from fields_of(stage.codec, ("codecs", index))
         for index, transformer in enumerate(self.storage_transformers):
@@ -493,16 +519,23 @@ class ArrayMembersV3:
 
 
 def read_field(
-    value: object, kind: type[Definition[Any]], context: Context, loc: Loc
+    value: object,
+    kind: type[Definition[Any]],
+    context: Context,
+    loc: Loc,
+    *,
+    held: Collection[object],
 ) -> tuple[Resolved[Any], tuple[ValidationProblem, ...]]:
-    """`value`, one of a document's fields, as `context` reads it -- or as it is, when a scope has read it already.
+    """`value`, one of a document's fields, as `context` reads it -- or as it is, when it is one of `held`: the fields a model holds, read already.
 
-    A model's own fields come back this way, so `update` reads only the
-    members it is given, and a field read in one scope keeps the
-    definition that read it, however the scope it is handed on in differs:
-    a pydantic model instance is taken as it is, too.
+    A model's own fields come back this way, so a model checks itself
+    without reading them again, and a field read in one scope keeps the
+    definition that read it, however the scope it is handed on in differs.
+    Any other field object -- in a document a caller hands in, or among
+    the members `update` is given -- is not JSON, and is refused as such,
+    so nothing built by hand passes as read but what a model holds.
     """
-    if _read_as(value, kind):
+    if _read_as(value, kind) and any(value is field for field in held):
         return cast("Resolved[Any]", value), ()
     return resolve(value, kind, context, loc)
 
@@ -513,18 +546,26 @@ def _read_as(value: object, kind: type[Definition[Any]]) -> bool:
 
 
 def read_array_v3(
-    value: object, context: Context
+    value: object, context: Context, *, held: Collection[object] = (), at: Loc = ()
 ) -> tuple[ZarrV3ArrayMetadataReading, ArrayMembersV3 | None]:
     """`value`, a v3 array document, as `context` read it, without its model, and its other members refined; None when it has a problem.
 
-    `read_array_metadata_v3` builds the model from the two. A field a
-    scope already read -- a model's own, handed back -- is taken as it is.
+    `read_array_metadata_v3` builds the model from the two. `held` are the
+    fields a model holds, read already, which are taken as they are where
+    the document holds them; any other field object in the document is
+    refused as not JSON. `at` is where the document sits in the one handed
+    in -- a document consolidated metadata holds sits three levels below
+    its group's -- so the levels a reader walks are counted from that
+    one's root; the problems are located in this document.
     """
     if not isinstance(value, Mapping):
         return ZarrV3ArrayMetadataReading(problems=not_an_object(value)), None
     doc = cast("Mapping[object, object]", value)
     problems: list[ValidationProblem] = list(missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V3, doc))
-    extra_fields, found = other_members(doc, ARRAY_METADATA_STANDARD_KEYS_V3)
+    past = members_past_the_levels(doc, at)
+    problems.extend(past.values())
+    whole, doc = doc, {key: item for key, item in doc.items() if key not in past}
+    extra_fields, found = other_members(doc, ARRAY_METADATA_STANDARD_KEYS_V3, at=at)
     problems.extend(found)
     problems.extend(check_literal(doc, "zarr_format", 3))
     problems.extend(check_literal(doc, "node_type", "array"))
@@ -543,15 +584,15 @@ def read_array_v3(
     read: dict[str, Resolved[Any]] = {}
     for key, kind in _EXTENSION_POINTS_V3:
         if key in doc:
-            read[key], found = read_field(doc[key], kind, context, (key,))
-            problems.extend(found)
+            read[key], found = read_field(doc[key], kind, context, (*at, key), held=held)
+            problems.extend(within(found, at))
     # The fill value is JSON, and judged by the data type the scope read,
     # when there is one: a data type nothing in scope claims leaves it
     # unjudged.
     fill_value: JSONValue = None
     if "fill_value" in doc:
-        fill_value, found = refine_json(doc["fill_value"], ("fill_value",))
-        problems.extend(found)
+        fill_value, found = refine_json(doc["fill_value"], (*at, "fill_value"))
+        problems.extend(within(found, at))
         if len(found) == 0 and "data_type" in read:
             problems.extend(fill_value_problems(read["data_type"], fill_value, ("fill_value",)))
     # The chunk grid is judged against the shape, once both are read, and
@@ -570,9 +611,9 @@ def read_array_v3(
             else:
                 listed[key] = []
                 for index, entry in enumerate(entries):
-                    resolved, found = read_field(entry, kind, context, (key, index))
+                    resolved, found = read_field(entry, kind, context, (*at, key, index), held=held)
                     listed[key].append(resolved)
-                    problems.extend(found)
+                    problems.extend(within(found, at))
     # The codecs are read as a pipeline, the first handed the grid's chunks
     # of the array's data type: in order, each judged against the chunk it
     # is handed. That holds one array -> bytes codec, so it is not empty.
@@ -583,7 +624,7 @@ def read_array_v3(
         problems.extend(found)
     attributes: dict[str, JSONValue] | None = {}
     if "attributes" in doc:
-        attributes, found = attributes_of(doc["attributes"])
+        attributes, found = attributes_of(doc["attributes"], at)
         problems.extend(found)
     if "dimension_names" in doc:
         # Simple typed sequences (dimension_names, shape, chunks) report a single
@@ -609,13 +650,13 @@ def read_array_v3(
                 )
             )
     reading = ZarrV3ArrayMetadataReading(
-        data_type=read.get("data_type"),
-        chunk_grid=read.get("chunk_grid"),
-        chunk_key_encoding=read.get("chunk_key_encoding"),
+        data_type=read.get("data_type", UNSET),
+        chunk_grid=read.get("chunk_grid", UNSET),
+        chunk_key_encoding=read.get("chunk_key_encoding", UNSET),
         chunk=chunk,
         pipeline=pipeline,
         storage_transformers=tuple(listed.get("storage_transformers", ())),
-        problems=with_input(problems, doc),
+        problems=with_input(problems, whole),
     )
     if len(problems) != 0 or shape is None or attributes is None:
         return reading, None
@@ -709,20 +750,25 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
                 "invalid_value",
             )
         )
-    if "dtype" in doc and not _is_dtype_v2(doc["dtype"]):
-        problems.append(
-            ValidationProblem(
-                ("dtype",),
-                "expected a v2 dtype string or an array of field records",
-                "invalid_type",
+    if "dtype" in doc:
+        # JSON first, nested no deeper than a reader walks, then its shape:
+        # field records nest a dtype two levels a record, without bound.
+        found = validate_json(doc["dtype"], ("dtype",))
+        problems.extend(found)
+        if len(found) == 0 and not _is_dtype_v2(doc["dtype"]):
+            problems.append(
+                ValidationProblem(
+                    ("dtype",),
+                    "expected a v2 dtype string or an array of field records",
+                    "invalid_type",
+                )
             )
-        )
     if "order" in doc and doc["order"] not in ("C", "F"):
         problems.append(outside_of(("order",), doc["order"], ("C", "F")))
     if "compressor" in doc:
         compressor = doc["compressor"]
         if compressor is not None:
-            problems.extend(_prefix("compressor", _validate_codec_v2(compressor)))
+            problems.extend(_validate_codec_v2(compressor, ("compressor",)))
     if "filters" in doc:
         filters = doc["filters"]
         if filters is not None and (
@@ -739,13 +785,13 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
             # "A list of JSON objects providing codec configurations, or
             # null" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79): an empty list is a list.
             for index, item in enumerate(filters):
-                problems.extend(_prefix("filters", _prefix(index, validate_json(item))))
+                problems.extend(validate_json(item, ("filters", index)))
     if "dimension_separator" in doc and doc["dimension_separator"] not in (".", "/"):
         problems.append(
             outside_of(("dimension_separator",), doc["dimension_separator"], (".", "/"))
         )
     if "fill_value" in doc:
-        problems.extend(_prefix("fill_value", validate_json(doc["fill_value"])))
+        problems.extend(validate_json(doc["fill_value"], ("fill_value",)))
     if "attributes" in doc:
         problems.extend(validate_attributes(doc["attributes"]))
     return with_input(problems, doc)
@@ -835,7 +881,7 @@ def load_store_json(mapping: Mapping[StoreKey, bytes], key: str) -> object:
         raise MetadataValidationError(with_input((refused,), stored))
     try:
         return json.loads(raw)
-    except (UnicodeDecodeError, ValueError) as exc:
+    except (UnicodeDecodeError, ValueError, RecursionError) as exc:
         raise MetadataValidationError(
             [ValidationProblem((key,), f"invalid JSON: {exc}", "invalid_json")]
         ) from exc

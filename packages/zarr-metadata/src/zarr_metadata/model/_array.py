@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import dataclasses
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -202,7 +201,12 @@ class ZarrV3ArrayMetadata:
         for key, value in members.items():
             if value is UNSET:
                 del document[key]
-        return type(self).from_json(document, context=context)
+        # The model's own fields are held, read already; the members given
+        # are JSON, read in `context`, a field object among them refused.
+        reading, refined = read_array_v3(document, context, held=own_fields(self))
+        if refined is None:
+            raise MetadataValidationError(reading.problems)
+        return array_model(reading, refined)
 
     def __post_init__(self) -> None:
         # The runtime half of the annotations: extra fields by name, and each
@@ -347,7 +351,7 @@ def _fill_value_key(model: ZarrV3ArrayMetadata) -> str:
 
 def _members(model: ZarrV3ArrayMetadata) -> ArrayMembersV3:
     """`model`'s members other than its fields, as the read of its document by its own fields refines them; `MetadataValidationError` with every problem that document has."""
-    reading, members = read_array_v3(held_document(model), NO_SCOPE)
+    reading, members = read_array_v3(held_document(model), NO_SCOPE, held=own_fields(model))
     extra = overlapping(model.extra_fields, ARRAY_METADATA_STANDARD_KEYS_V3, "array")
     problems = (*extra, *reading.problems)
     if len(problems) != 0:
@@ -358,6 +362,17 @@ def _members(model: ZarrV3ArrayMetadata) -> ArrayMembersV3:
 def array_json(model: ZarrV3ArrayMetadata) -> ZarrV3ArrayMetadataJSON:
     """`model`'s document as JSON, holding the model's own values: what `to_key_value` serializes, which changes nothing, and `to_json` copies."""
     return cast("ZarrV3ArrayMetadataJSON", _document(model, document_json, whole=False))
+
+
+def own_fields(model: ZarrV3ArrayMetadata) -> tuple[Read[Any] | Unclaimed, ...]:
+    """The fields `model` holds, each as a scope read it: what a read of the model's own document takes as read."""
+    return (
+        model.data_type,
+        model.chunk_grid,
+        model.chunk_key_encoding,
+        *model.codecs,
+        *model.storage_transformers,
+    )
 
 
 def held_document(model: ZarrV3ArrayMetadata) -> dict[str, object]:
@@ -581,22 +596,22 @@ class ZarrV2ArrayMetadata:
         `to_key_value` to produce the spec-conforming split for storage
         (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L323-L330).
         """
-        # to_json output shares no mutable state with the model: every value
-        # that can hold a mutable container is deep-copied.
+        # to_json output shares no mutable state with the model: the document
+        # is copied whole, one frame for each level of nesting.
         out: ZarrV2ArrayMetadataJSON = {
             "zarr_format": self.zarr_format,
             "shape": self.shape,
             "dtype": self.dtype,
             "order": self.order,
             "chunks": self.chunks,
-            "fill_value": copy.deepcopy(self.fill_value),
+            "fill_value": self.fill_value,
             "dimension_separator": self.dimension_separator,
-            "compressor": copy.deepcopy(self.compressor),
-            "filters": copy.deepcopy(self.filters),
+            "compressor": self.compressor,
+            "filters": self.filters,
         }
         if self.attributes is not UNSET:
-            out["attributes"] = copy.deepcopy(self.attributes)
-        return out
+            out["attributes"] = self.attributes
+        return cast("ZarrV2ArrayMetadataJSON", copied(cast("JSONValue", out)))
 
     @classmethod
     def from_json(cls, data: object) -> ZarrV2ArrayMetadata:
@@ -607,7 +622,9 @@ class ZarrV2ArrayMetadata:
         written back. The model shares no mutable state with `data`.
         """
         # A read model shares no mutable state with what it read.
-        parsed = copy.deepcopy(parse_array_metadata_v2(data))
+        parsed = cast(
+            "ZarrV2ArrayMetadataJSON", copied(cast("JSONValue", parse_array_metadata_v2(data)))
+        )
         return construct(cls, **_v2_array_members(parsed))
 
     @classmethod

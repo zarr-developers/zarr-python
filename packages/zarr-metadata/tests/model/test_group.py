@@ -3,18 +3,21 @@
 import copy
 import dataclasses
 import json
+import pickle
 from collections import UserDict
 from collections.abc import Callable, Iterator
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
 from tests.model._cases import mutate_nested_containers
 from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
 from zarr_metadata._json import (
+    JSON_DEPTH,
     MetadataValidationError,
     ValidationProblem,
     arrays_to_tuples,
+    json_text,
 )
 from zarr_metadata.model import UNSET
 from zarr_metadata.model._array import ZarrV3ArrayMetadata, ZarrV3ArrayMetadataUpdate
@@ -284,6 +287,211 @@ def test_group_v3_update() -> None:
 # --- ZarrV2GroupMetadata ---------------------------------------------------
 
 
+def test_a_v2_group_nested_as_deep_as_a_reader_walks_is_read_and_written() -> None:
+    """The v2 group copied with `copy.deepcopy`, two frames a level, and overflowed on documents its validator accepts."""
+    attributes: dict[str, object] = {}
+    for _ in range(JSON_DEPTH - 2):
+        attributes = {"x": attributes}
+    document = {"zarr_format": 2, "attributes": attributes}
+    assert validate_group_metadata_v2(document) == ()
+    model = ZarrV2GroupMetadata.from_json(document)
+    assert json_text(model.to_json()) == json_text(cast("JSONValue", document))
+    assert ZarrV2GroupMetadata.from_key_value(model.to_key_value()) == model
+    assert pickle.loads(pickle.dumps(model)) == model
+    assert copy.deepcopy(model) == model
+    problems = validate_group_metadata_v2({**document, "attributes": {"x": attributes}})
+    assert [(problem.kind, len(problem.loc)) for problem in problems] == [
+        ("invalid_value", JSON_DEPTH)
+    ]
+
+
+def _chain_of_groups(documents: int) -> dict[str, object]:
+    """A group holding, in its consolidated metadata, a group holding a group..., `documents` of them below the root, each listing only the next: a document sits three levels below the one holding it."""
+    document: dict[str, object] = {"zarr_format": 3, "node_type": "group"}
+    for _ in range(documents):
+        document = {
+            "zarr_format": 3,
+            "node_type": "group",
+            "consolidated_metadata": {
+                "kind": "inline",
+                "must_understand": False,
+                "metadata": {"a": document},
+            },
+        }
+    return document
+
+
+def test_a_chain_of_consolidated_groups_is_bounded_by_the_levels_a_reader_walks() -> None:
+    """Each document is read from where it sits in the one handed in, so a chain is bounded as any nesting is: the reader took three frames a document, unbounded, and a 20 KB chain overflowed."""
+    depth = f"nested deeper than the {JSON_DEPTH} levels a reader walks"
+    deepest = (JSON_DEPTH - 1) // 3
+    problems = validate_group_metadata_v3(_chain_of_groups(deepest))
+    assert all(len(problem.loc) < JSON_DEPTH for problem in problems)
+    assert {problem.message for problem in problems} == {
+        'expected a node the group lists, got "/a/a", which "/a" lists alone'
+    }
+    for documents in (deepest + 1, 350):
+        problems = validate_group_metadata_v3(_chain_of_groups(documents))
+        assert [
+            (len(problem.loc), problem.message)
+            for problem in problems
+            if len(problem.loc) >= JSON_DEPTH
+        ] == [(JSON_DEPTH, depth)]
+        with pytest.raises(MetadataValidationError):
+            ZarrV3GroupMetadata.from_json(_chain_of_groups(documents))
+
+
+def test_a_consolidated_document_is_read_from_where_it_sits() -> None:
+    """Its levels are counted from the root of the document handed in, so what `read_node_metadata_v3` admits alone can sit too deep inside; its own reading locates the problem in it."""
+    depth = f"nested deeper than the {JSON_DEPTH} levels a reader walks"
+
+    def nested(levels: int) -> dict[str, object]:
+        value: dict[str, object] = {}
+        for _ in range(levels):
+            value = {"x": value}
+        return value
+
+    # A document sits three levels down, its attribute, or a member of an
+    # extra field, two more.
+    group = {
+        "zarr_format": 3,
+        "node_type": "group",
+        "attributes": {"a": nested(JSON_DEPTH - 4)},
+        "acme_extra": {"must_understand": False, "a": nested(JSON_DEPTH - 4)},
+    }
+    array = {
+        **ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json(),
+        "data_type": "acme.deep",
+        "fill_value": {"a": nested(JSON_DEPTH - 4)},
+        "codecs": [
+            {"name": "bytes", "configuration": {"endian": "little"}},
+            {"name": "acme.x", "configuration": {"y": nested(JSON_DEPTH - 6)}},
+        ],
+    }
+    assert validate_node_metadata_v3(group) == ()
+    assert validate_node_metadata_v3(array) == ()
+    document = {
+        "zarr_format": 3,
+        "node_type": "group",
+        "consolidated_metadata": {
+            "kind": "inline",
+            "must_understand": False,
+            "metadata": {"g": group, "h": array},
+        },
+    }
+    reading = read_group_metadata_v3(document)
+    assert [(len(problem.loc), problem.message) for problem in reading.problems] == [
+        (JSON_DEPTH, depth)
+    ] * 4
+    assert [
+        (problem.loc[:2], len(problem.loc)) for problem in reading.consolidated["g"].problems
+    ] == [(("acme_extra", "a"), JSON_DEPTH - 3), (("attributes", "a"), JSON_DEPTH - 3)]
+    assert [
+        (problem.loc[:2], len(problem.loc)) for problem in reading.consolidated["h"].problems
+    ] == [
+        (("fill_value", "a"), JSON_DEPTH - 3),
+        (("codecs", 1), JSON_DEPTH - 3),
+    ]
+
+
+def test_a_document_a_level_before_the_cap_holds_its_scalars_and_nothing_else() -> None:
+    """Each container member sits past the cap, and is judged where it sits before it is walked, as `refine_json` of the whole would judge it; the scalars are read."""
+    depth = f"nested deeper than the {JSON_DEPTH} levels a reader walks"
+
+    def a_level_before_the_cap(document: dict[str, object]) -> dict[str, object]:
+        for _ in range((JSON_DEPTH - 1) // 3):
+            document = {
+                "zarr_format": 3,
+                "node_type": "group",
+                "consolidated_metadata": {
+                    "kind": "inline",
+                    "must_understand": False,
+                    "metadata": {"a": document},
+                },
+            }
+        return document
+
+    scalars: dict[str, object] = {"zarr_format": 3, "node_type": "group"}
+    problems = validate_group_metadata_v3(a_level_before_the_cap(scalars))
+    assert all(len(problem.loc) < JSON_DEPTH for problem in problems)
+    array = ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json()
+    for document in ({**scalars, "attributes": {"a": 1}}, dict(array)):
+        containers = sorted(
+            key for key, item in document.items() if isinstance(item, (dict, list, tuple))
+        )
+        assert len(containers) != 0
+        problems = validate_group_metadata_v3(a_level_before_the_cap(document))
+        assert sorted(
+            (problem.loc[-1], len(problem.loc), problem.message)
+            for problem in problems
+            if len(problem.loc) >= JSON_DEPTH
+        ) == [(key, JSON_DEPTH, depth) for key in containers]
+
+
+def test_a_listing_key_too_long_to_write_is_shown_by_its_size(
+    interpreter_writes_4300_digits: None,
+) -> None:
+    document = {
+        "zarr_format": 3,
+        "node_type": "group",
+        "consolidated_metadata": {
+            "kind": "inline",
+            "must_understand": False,
+            "metadata": {10**5000: 1},
+        },
+    }
+    (problem,) = validate_group_metadata_v3(document)
+    assert problem.message == f"non-string key an integer of {(10**5000).bit_length()} bits"
+
+
+def test_a_model_built_of_models_trusts_them_as_it_trusts_its_fields() -> None:
+    """Each held model checked itself at its own root, so a child valid alone can sit too deep in a group built by hand, whose document its validator refuses at the cap, as one holding a hand-built `Read` can; a reader builds only within the cap, the consolidated member's from where it sits."""
+    # The innermost object sits at the last level a reader walks, alone;
+    # three deeper as a document a group holds.
+    nested: dict[str, object] = {}
+    for _ in range(JSON_DEPTH - 3):
+        nested = {"x": nested}
+    child = ZarrV3GroupMetadata.from_json(
+        {"zarr_format": 3, "node_type": "group", "attributes": {"a": nested}}
+    )
+    group = dataclasses.replace(
+        ZarrV3GroupMetadata.create_default(),
+        consolidated_metadata=ZarrV3ConsolidatedMetadata(metadata={"a": child}),
+    )
+    depth = f"nested deeper than the {JSON_DEPTH} levels a reader walks"
+    written = group.to_json()
+    assert [(len(p.loc), p.message) for p in validate_group_metadata_v3(written)] == [
+        (JSON_DEPTH, depth)
+    ]
+    with pytest.raises(MetadataValidationError):
+        ZarrV3GroupMetadata.from_json(written)
+    with pytest.raises(MetadataValidationError):
+        ZarrV3ConsolidatedMetadata.from_json(written["consolidated_metadata"])
+
+
+def test_a_v2_consolidated_document_is_read_to_the_levels_a_reader_walks() -> None:
+    """An entry past the cap is the depth problem, not `RecursionError`: the document was normalized whole, a frame a level without bound, before any entry was refined."""
+
+    def nested(levels: int) -> dict[str, object]:
+        value: dict[str, object] = {}
+        for _ in range(levels):
+            value = {"x": value}
+        return value
+
+    # An entry sits two levels down; its innermost object at the last
+    # level a reader walks.
+    document = {"zarr_consolidated_format": 1, "metadata": {"a/.zattrs": nested(JSON_DEPTH - 3)}}
+    model = ZarrV2ConsolidatedMetadata.from_json(document)
+    assert json_text(model.to_json()) == json_text(cast("JSONValue", document))
+    for levels in (JSON_DEPTH - 2, 2000):
+        deeper = {**document, "metadata": {"a/.zattrs": nested(levels)}}
+        with pytest.raises(MetadataValidationError) as raised:
+            ZarrV2ConsolidatedMetadata.from_json(deeper)
+        assert [(len(p.loc), p.kind) for p in raised.value.problems] == [
+            (JSON_DEPTH, "invalid_value")
+        ]
+
+
 def test_group_v2_key_value_split() -> None:
     """v2 to_key_value writes .zgroup and .zattrs; from_key_value merges them."""
     model = ZarrV2GroupMetadata.create_default(attributes={"a": 1})
@@ -391,10 +599,10 @@ def test_consolidated_v3_roundtrip() -> None:
     assert model.to_json() == doc
 
 
-def test_consolidated_v3_must_understand_true_rejected() -> None:
-    """ZarrV3ConsolidatedMetadata enforces must_understand=False at runtime."""
-    with pytest.raises(ValueError, match="must_understand"):
-        ZarrV3ConsolidatedMetadata(must_understand=True, metadata={})
+def test_error_consolidated_v3_must_understand_is_not_a_member_to_set() -> None:
+    """`must_understand` is `False` by declaration, as `kind` is `"inline"`: not a member the constructor takes."""
+    with pytest.raises(TypeError, match="must_understand"):
+        cast("Any", ZarrV3ConsolidatedMetadata)(must_understand=True, metadata={})
 
 
 def test_consolidated_v3_from_json_must_understand_true_rejected() -> None:
@@ -494,8 +702,6 @@ def _fields_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:
     ("document", "paths", "locs"),
     [
         (_group(), [], []),
-        # A null, which a historical zarr-python bug wrote, holds nothing.
-        (_group(consolidated_metadata=None), [], []),
         (
             _group(consolidated_metadata=_inline(a=_array(), g=_group())),
             ["a", "g"],
@@ -529,7 +735,7 @@ def _fields_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:
             ],
         ),
     ],
-    ids=["no-consolidated-metadata", "null", "an-array-and-a-group", "paths", "nested"],
+    ids=["no-consolidated-metadata", "an-array-and-a-group", "paths", "nested"],
 )
 def test_a_group_reads_each_document_its_consolidated_metadata_holds(
     document: dict[str, object], paths: list[str], locs: list[tuple[str | int, ...]]
@@ -1136,17 +1342,16 @@ def test_group_must_understand_fields_partition() -> None:
     assert set(model.must_understand_fields) == {"implicit"}
 
 
-def test_group_v3_null_consolidated_metadata_repaired_to_absence() -> None:
-    """consolidated_metadata: null was written by a historical zarr-python bug.
-    Those stores must remain readable, but the bug spelling is not honored:
-    it is read as absence (UNSET) and never written back — the round-trip
-    deliberately repairs the document rather than preserving the bug."""
+def test_error_a_null_consolidated_metadata_is_a_value_the_document_wrote() -> None:
+    """A zarr-python 3.0.x bug wrote `consolidated_metadata: null`; the spec says an object, and the package models nothing else as right: a reader of those stores strips the key first."""
     null_doc = {"zarr_format": 3, "node_type": "group", "consolidated_metadata": None}
-    assert validate_group_metadata_v3(null_doc) == ()
-    model = ZarrV3GroupMetadata.from_json(null_doc)
-    assert model.consolidated_metadata is UNSET
-    assert "consolidated_metadata" not in model.to_json()
-    assert model == ZarrV3GroupMetadata.from_json({"zarr_format": 3, "node_type": "group"})
+    assert [(p.loc, p.kind) for p in validate_group_metadata_v3(null_doc)] == [
+        (("consolidated_metadata",), "invalid_type")
+    ]
+    with pytest.raises(MetadataValidationError):
+        ZarrV3GroupMetadata.from_json(null_doc)
+    del null_doc["consolidated_metadata"]
+    assert ZarrV3GroupMetadata.from_json(null_doc).consolidated_metadata is UNSET
 
 
 # --- to_json shares no mutable state with the model ------------------------
@@ -1210,3 +1415,10 @@ def test_from_json_shares_no_mutable_state_with_its_input(
     baseline = copy.deepcopy(read.to_json())
     mutate_nested_containers(document)
     assert read.to_json() == baseline
+
+
+def test_a_group_writes_no_empty_attributes() -> None:
+    model = ZarrV3GroupMetadata.create_default()
+    assert model.attributes == {}
+    assert "attributes" not in model.to_json()
+    assert json.loads(model.to_key_value()["zarr.json"]) == {"zarr_format": 3, "node_type": "group"}

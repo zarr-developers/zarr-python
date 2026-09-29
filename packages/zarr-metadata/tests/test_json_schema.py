@@ -622,17 +622,19 @@ FIELDS: list[tuple[str, object, type[Definition[Any]], Context, bool, bool]] = [
         False,
     ),
     ("raw-bits-of-a-size-the-spec-refuses", "r12", DataTypeDefinition, CORE, True, False),
-    ("raw-bits-notation", "r*", DataTypeDefinition, CORE, True, True),
+    # `r*` is the table's notation, and no name at all: `*` is no character
+    # of one.
+    ("raw-bits-notation", "r*", DataTypeDefinition, CORE, False, False),
     # Matched to the end of the name, as the package matches it, so a
-    # validator that matches as Python does takes no final newline for it:
-    # a name nothing claims, which any configuration goes with.
+    # validator that matches as Python does takes no final newline for it;
+    # nor is it a name at all, a newline being no character of one.
     (
         "raw-bits-and-a-newline",
         {"name": "r16\n", "configuration": {"x": 1}},
         DataTypeDefinition,
         CORE,
-        True,
-        True,
+        False,
+        False,
     ),
     (
         "struct-field-out-of-bounds",
@@ -641,7 +643,7 @@ FIELDS: list[tuple[str, object, type[Definition[Any]], Context, bool, bool]] = [
             "configuration": {
                 "fields": [
                     {
-                        "name": "t",
+                        "name": "acme.t",
                         "data_type": {
                             "name": "numpy.datetime64",
                             "configuration": {"unit": "s", "scale_factor": 0},
@@ -759,8 +761,8 @@ DOCUMENTS: list[tuple[str, dict[str, Any], bool, bool]] = [
     (
         "a-name-raw-bits-and-a-newline",
         {**ARRAY, "data_type": "r16\n", "fill_value": "any"},
-        True,
-        True,
+        False,
+        False,
     ),
     ("raw-bits", {**ARRAY, "data_type": "r16", "fill_value": [0, 255]}, True, True),
     (
@@ -799,7 +801,7 @@ DOCUMENTS: list[tuple[str, dict[str, Any], bool, bool]] = [
         False,
     ),
     ("consolidated", _consolidated(a=ARRAY, b=GROUP), True, True),
-    ("consolidated-null", {**GROUP, "consolidated_metadata": None}, True, True),
+    ("consolidated-null", {**GROUP, "consolidated_metadata": None}, False, False),
     ("consolidated-bad-array", _consolidated(a={**ARRAY, "fill_value": 300}), False, False),
     (
         "consolidated-within-consolidated",
@@ -897,3 +899,99 @@ def test_every_schema_is_a_json_schema_written_the_same_each_time(scope: Context
         StorageTransformerDefinition,
     ):
         Draft202012Validator.check_schema(field_json_schema(kind, scope))
+
+
+@pytest.mark.parametrize(
+    ("inner", "outer", "expected"),
+    [
+        (Gt(1), Gt(3), {"type": "integer", "exclusiveMinimum": 3}),
+        (Gt(3), Gt(1), {"type": "integer", "exclusiveMinimum": 3}),
+        (Lt(9), Lt(5), {"type": "integer", "exclusiveMaximum": 5}),
+        (Lt(5), Lt(9), {"type": "integer", "exclusiveMaximum": 5}),
+        (Le(5), Le(9), {"type": "integer", "maximum": 5}),
+        (Le(9), Le(5), {"type": "integer", "maximum": 5}),
+        (Ge(5), Ge(9), {"type": "integer", "minimum": 9}),
+        (Ge(9), Ge(5), {"type": "integer", "minimum": 9}),
+    ],
+    ids=[
+        "gt-looser-inside",
+        "gt-stricter-inside",
+        "lt",
+        "lt-stricter-inside",
+        "le",
+        "le-stricter-inside",
+        "ge",
+        "ge-stricter-inside",
+    ],
+)
+def test_the_stricter_of_two_bounds_of_one_keyword_is_kept(
+    inner: object, outer: object, expected: dict[str, object]
+) -> None:
+    # A bounded NewType bounded again: each keyword keeps the bound that
+    # admits less, whichever layer carries it.
+    # `NewType` takes no `Annotated` for pyright; it does at runtime.
+    Bounded = cast("Callable[[str, object], type]", NewType)("Bounded", _annotated[int, inner])
+    assert json_schema(_holding(_annotated[Bounded, outer])) == _held(expected)
+
+
+def test_a_stray_member_beside_an_unclaimed_name_is_refused_by_the_schema() -> None:
+    # As the reader refuses it: the envelope of a name nothing claims holds
+    # nothing but the name and its configuration.
+    field = {"name": "zfpy", "version": 2}
+    assert [(p.loc, p.kind) for p in resolve(field, CodecDefinition, CORE)[1]] == [
+        (("version",), "unknown_key")
+    ]
+    assert not Draft202012Validator(field_json_schema(CodecDefinition, CORE)).is_valid(field)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "zstd",
+        "numcodecs.adler32",
+        "vlen-utf8",
+        "acme_x",
+        "r16",
+        "https://example.com/c",
+        "urn:acme:c",
+        "urn:acme:%C3%BC",
+        "",
+        " ",
+        "Int8",
+        "9x",
+        "int8 ",
+        "int8\n",
+        "foo/bar",
+        "-int8",
+        "a",
+        "r*",
+        "x:",
+        "a: b",
+        "urn:acme:c\n",
+        "urn:acme:ü",
+        "urn:a\x1c",
+        "urn:a﻿",
+    ],
+)
+def test_the_schema_names_an_extension_as_the_reader_does(name: str) -> None:
+    # The spec's regex, or a URI: what `well_named` accepts, the schema's
+    # `pattern` accepts, and what it refuses, the schema refuses.
+    field = {"name": name}
+    _, problems = resolve(field, CodecDefinition, CORE)
+    accepted = len(problems) == 0
+    assert (
+        Draft202012Validator(field_json_schema(CodecDefinition, CORE)).is_valid(field) is accepted
+    )
+    assert accepted is (
+        name
+        in (
+            "zstd",
+            "numcodecs.adler32",
+            "vlen-utf8",
+            "acme_x",
+            "https://example.com/c",
+            "urn:acme:c",
+            "urn:acme:%C3%BC",
+        )
+        or name == "r16"
+    )

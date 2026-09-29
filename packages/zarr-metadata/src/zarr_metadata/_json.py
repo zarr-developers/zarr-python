@@ -12,9 +12,8 @@ from __future__ import annotations
 import dataclasses
 import json
 import math
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from types import MappingProxyType
 from typing import Final, Literal, TypeGuard, cast, get_args
 
 from zarr_metadata._common import JSONValue
@@ -39,7 +38,49 @@ ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_j
 """
 
 
-_NO_CTX: Final[Mapping[str, JSONValue]] = MappingProxyType({})
+JSON_DEPTH: Final = 256
+"""How many levels of nesting a reader walks.
+
+A value nested deeper is a problem at the level past the last, so no
+document, however deep, takes a reader past what the interpreter allows:
+every value the package reads is refined first, and refining stops here.
+Every reader, writer and comparison takes one frame for each level, and
+`copy.deepcopy`, and `pickle` before Python 3.12, two: so a document at
+the cap takes about half of the interpreter's default limit, a thousand
+frames, and the rest is the caller's.
+"""
+
+
+class _Ctx(Mapping[str, JSONValue]):
+    """What a problem holds as its `ctx`: a copy of its own, arrays as tuples, checked to be JSON when it was made, which nothing edits after.
+
+    Its own type, so a problem built of another's `ctx` -- as `replace`
+    builds one -- knows it was checked, and skips the check; a mapping of
+    any other type is checked and copied.
+    """
+
+    __slots__ = ("_held",)
+
+    def __init__(self, held: dict[str, JSONValue]) -> None:
+        self._held = held
+
+    def __getitem__(self, key: str) -> JSONValue:
+        return self._held[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._held)
+
+    def __len__(self) -> int:
+        return len(self._held)
+
+    def __repr__(self) -> str:
+        return repr(self._held)
+
+    def __reduce__(self) -> tuple[type[_Ctx], tuple[dict[str, JSONValue]]]:
+        return _Ctx, (self._held,)
+
+
+_NO_CTX: Final[Mapping[str, JSONValue]] = _Ctx({})
 
 
 def _no_ctx() -> Mapping[str, JSONValue]:
@@ -111,7 +152,9 @@ class ValidationProblem:
             msg = f"a ValidationProblem's kind is one of {get_args(ProblemKind)!r}, got {kind!r}"
             raise TypeError(msg)
         ctx = cast("object", self.ctx)
-        if ctx is _NO_CTX:
+        if isinstance(ctx, _Ctx):
+            # A problem's own, checked when it was made: what `replace`
+            # hands a copy.
             return
         if (
             not isinstance(ctx, Mapping)
@@ -120,12 +163,14 @@ class ValidationProblem:
         ):
             msg = f"a ValidationProblem's ctx is an object of JSON values, got {ctx!r}"
             raise TypeError(msg)
-        # Held as a view of a copy of its own, arrays as tuples, so a raised
-        # error, a finished report, cannot be edited through it.
+        # Held as a view of a copy of its own at every level, arrays as
+        # tuples, so a raised error, a finished report, cannot be edited
+        # through it, nor through what was handed in.
         held = cast(
-            "dict[str, JSONValue]", arrays_to_tuples(dict(cast("Mapping[str, object]", ctx)))
+            "dict[str, JSONValue]",
+            copied(cast("JSONValue", arrays_to_tuples(dict(cast("Mapping[str, object]", ctx))))),
         )
-        object.__setattr__(self, "ctx", MappingProxyType(held))
+        object.__setattr__(self, "ctx", _Ctx(held))
 
     def __str__(self) -> str:
         location = ".".join(str(part) for part in self.loc) if self.loc else "<root>"
@@ -239,16 +284,13 @@ def with_input(
 
 
 def _holdable(value: object) -> bool:
-    """Whether a problem can hold `value` as its input: JSON, and shallow enough to walk.
+    """Whether a problem can hold `value` as its input: JSON, nested no deeper than a reader walks.
 
     What a validator did not walk -- a member it only reports -- may be
-    deeper than the interpreter walks; such a value would not pickle
-    either, and is held as nothing.
+    deeper than that; such a value is held as nothing, as
+    `is_canonical_json` says.
     """
-    try:
-        return is_canonical_json(value, finite=False)
-    except RecursionError:
-        return False
+    return is_canonical_json(value, finite=False)
 
 
 def not_an_object(value: object) -> tuple[ValidationProblem, ...]:
@@ -256,9 +298,9 @@ def not_an_object(value: object) -> tuple[ValidationProblem, ...]:
     return with_input((ValidationProblem((), "expected an object", "invalid_type"),), value)
 
 
-def validate_json(value: object) -> tuple[ValidationProblem, ...]:
-    """Return every reason `value` is not JSON, each where it sits: a float that is not finite, a key that is not a string, a value of no JSON type."""
-    return with_input(refine_json(value)[1], value)
+def validate_json(value: object, loc: tuple[str | int, ...] = ()) -> tuple[ValidationProblem, ...]:
+    """Return every reason `value`, which sits at `loc`, is not JSON, each where it sits: a float that is not finite, a key that is not a string, a value of no JSON type, a level of nesting past `JSON_DEPTH`, counted from the document's root, which `loc` is below."""
+    return with_input(refine_json(value, loc)[1], value, loc)
 
 
 def refine_json(
@@ -294,6 +336,38 @@ def refine_user_data(
 _Refined = tuple[JSONValue | None, tuple[ValidationProblem, ...]]
 
 
+def nested_past_the_levels(value: object, loc: tuple[str | int, ...]) -> ValidationProblem | None:
+    """The problem `value` is when it is a container -- an object or an array -- at `loc`, past the levels a reader walks, `JSON_DEPTH` of them; None for a scalar, or within them.
+
+    `_refine` asks it of every value it reaches, and a reader of each
+    container it walks without refining -- a document's members, the
+    consolidated metadata it descends into -- so a chain of documents is
+    bounded as any other nesting is, and every container is judged where
+    it sits, as `refine_json` of the whole document would judge it.
+    """
+    if len(loc) < JSON_DEPTH or isinstance(value, (str, int, float, bool)) or value is None:
+        return None
+    if not isinstance(value, (Mapping, Sequence)) or isinstance(value, (bytes, bytearray)):
+        return None
+    message = f"nested deeper than the {JSON_DEPTH} levels a reader walks"
+    return ValidationProblem(loc, message, "invalid_value")
+
+
+def within(
+    problems: Sequence[ValidationProblem], at: tuple[str | int, ...]
+) -> tuple[ValidationProblem, ...]:
+    """`problems`, found in a value that sits at `at`, located from that value: the reverse of `prefixed`, for a reader that counts the levels it walks from the document handed in, but reports where a problem sits in the one it reads.
+
+    A problem not below `at` is a `TypeError`: a reader that located one
+    from the wrong root would otherwise report it in the wrong place.
+    """
+    for problem in problems:
+        if problem.loc[: len(at)] != at:
+            msg = f"a problem at {problem.loc!r} does not sit below {at!r}"
+            raise TypeError(msg)
+    return tuple(dataclasses.replace(p, loc=p.loc[len(at) :]) for p in problems)
+
+
 def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refined:
     """`refine_json`, a non-finite number being JSON unless `finite`."""
     if isinstance(value, float):
@@ -304,15 +378,19 @@ def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refi
         )
     if isinstance(value, (str, int, bool)) or value is None:
         return value, ()
+    if (past := nested_past_the_levels(value, loc)) is not None:
+        return None, (past,)
     if isinstance(value, Mapping):
         # Walked here rather than through `_refine_members`, so that each
-        # level of nesting costs one frame, as deep as the interpreter goes.
+        # level of nesting costs one frame, `JSON_DEPTH` of them at most.
         members: dict[str, JSONValue] = {}
         found_in_members: list[ValidationProblem] = []
         for key, item in cast("Mapping[object, object]", value).items():
             if not isinstance(key, str):
                 found_in_members.append(
-                    ValidationProblem(loc, f"non-string key {key!r} in JSON object", "invalid_type")
+                    ValidationProblem(
+                        loc, f"non-string key {shown_key(key)} in JSON object", "invalid_type"
+                    )
                 )
                 continue
             member, found = _refine(item, (*loc, key), finite=finite)
@@ -330,7 +408,9 @@ def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refi
                 entries.append(entry)
         return (tuple(entries) if len(found_in_entries) == 0 else None), tuple(found_in_entries)
     return None, (
-        ValidationProblem(loc, f"not a JSON-serializable value: {value!r}", "invalid_type"),
+        ValidationProblem(
+            loc, f"not a JSON-serializable value: {shown_by_python(value)}", "invalid_type"
+        ),
     )
 
 
@@ -345,11 +425,40 @@ def json_text(value: JSONValue) -> str:
 
 
 def shown(value: object) -> str:
-    """`value` as a problem's message shows it: as the JSON a document writes, `null` and `[1, 2]`, or by its repr when it is not JSON."""
+    """`value` as a problem's message shows it: as the JSON a document writes, `null` and `[1, 2]`, or by its repr when it is not JSON; what the interpreter will not write, an integer of too many digits or a value nested too deep, by saying so."""
     refined, problems = _refine(value, (), finite=False)
     if len(problems) != 0:
+        # Not JSON, or nested past the levels a reader walks.
+        return shown_by_python(value)
+    try:
+        return json.dumps(refined, ensure_ascii=False)
+    except ValueError:
+        # An integer of more digits than the interpreter converts to text:
+        # the value itself, by its size, or one a container holds, which
+        # is then what Python will not write either.
+        if isinstance(value, int):
+            return f"an integer of {value.bit_length()} bits"
+        return shown_by_python(value)
+
+
+def shown_key(key: object) -> str:
+    """A key that is not a string, as a message shows it: as Python shows it, since no JSON object holds such a key to write; an integer of more digits than the interpreter writes, by its size."""
+    if isinstance(key, int) and not isinstance(key, bool):
+        try:
+            return repr(key)
+        except ValueError:
+            return f"an integer of {key.bit_length()} bits"
+    return shown_by_python(key)
+
+
+def shown_by_python(value: object) -> str:
+    """`value` as Python shows it, for what is not JSON a reader walks; what the interpreter will not write -- nested too deep for its repr, or holding an integer of more digits than it writes -- said so."""
+    try:
         return repr(value)
-    return json.dumps(refined, ensure_ascii=False)
+    except RecursionError:
+        return "a value nested too deep to show"
+    except ValueError:
+        return f"a value of type {type(value).__name__} the interpreter will not write"
 
 
 def choices(allowed: Sequence[object]) -> str:
@@ -402,25 +511,33 @@ def refused_kind(value: object, allowed: Sequence[object]) -> ProblemKind:
 
 
 def is_canonical_json(value: object, *, finite: bool = True) -> TypeGuard[JSONValue]:
-    """Whether `value` already uses the concrete containers in `JSONValue`.
+    """Whether `value` already uses the concrete containers in `JSONValue`, nested no deeper than a reader walks.
 
     A non-finite number counts only when `finite` is false, as a document's
     guard passes it: where one may be is the document's validator's to say.
-    One frame per level of nesting, as `refine_json` takes, so a value
-    `refine_json` reads is one this can walk.
+    One frame per level of nesting, `JSON_DEPTH` of them at most, as
+    `refine_json` takes: a container past them is no JSON a reader walks,
+    so it is none to this either, and the walk stops there.
     """
+    return _is_canonical(value, 0, finite=finite)
+
+
+def _is_canonical(value: object, depth: int, *, finite: bool) -> bool:
+    """`is_canonical_json` of `value`, which sits `depth` levels down."""
     if isinstance(value, float):
         return not finite or math.isfinite(value)
     if isinstance(value, (str, int, bool)) or value is None:
         return True
+    if depth >= JSON_DEPTH:
+        return False
     if isinstance(value, (list, tuple)):
         for item in cast("list[object] | tuple[object, ...]", value):
-            if not is_canonical_json(item, finite=finite):
+            if not _is_canonical(item, depth + 1, finite=finite):
                 return False
         return True
     if isinstance(value, dict):
         for key, item in cast("dict[object, object]", value).items():
-            if not isinstance(key, str) or not is_canonical_json(item, finite=finite):
+            if not isinstance(key, str) or not _is_canonical(item, depth + 1, finite=finite):
                 return False
         return True
     return False
@@ -464,7 +581,12 @@ def arrays_to_tuples(obj: object) -> object:
     """Recursively materialize mappings and convert array-like values to tuples."""
     if isinstance(obj, Sequence) and not isinstance(obj, (str, bytes, bytearray)):
         sequence = cast("Sequence[object]", obj)
-        converted_sequence = tuple(arrays_to_tuples(item) for item in sequence)
+        # Loops, not comprehensions, which are a frame of their own before
+        # Python 3.12: one frame for each level, as `copied` takes.
+        converted_items: list[object] = []
+        for item in sequence:
+            converted_items.append(arrays_to_tuples(item))  # noqa: PERF401
+        converted_sequence = tuple(converted_items)
         if isinstance(obj, tuple) and all(
             converted is original
             for converted, original in zip(converted_sequence, sequence, strict=True)
@@ -473,9 +595,9 @@ def arrays_to_tuples(obj: object) -> object:
         return converted_sequence
     if isinstance(obj, Mapping):
         mapping = cast("Mapping[object, object]", obj)
-        converted: dict[object, object] = {
-            key: arrays_to_tuples(value) for key, value in mapping.items()
-        }
+        converted: dict[object, object] = {}
+        for key, value in mapping.items():
+            converted[key] = arrays_to_tuples(value)
         if isinstance(obj, dict) and all(converted[key] is value for key, value in mapping.items()):
             return mapping
         return converted
@@ -493,6 +615,7 @@ __all__ = [
     "is_json",
     "json_type",
     "listed",
+    "nested_past_the_levels",
     "not_an_object",
     "outside_of",
     "parse_json",
@@ -501,7 +624,9 @@ __all__ = [
     "refine_user_data",
     "refused_kind",
     "shown",
+    "shown_key",
     "validate_json",
     "value_at",
     "with_input",
+    "within",
 ]

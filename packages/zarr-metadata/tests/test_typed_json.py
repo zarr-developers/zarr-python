@@ -23,6 +23,7 @@ from typing import (
     Literal,
     NewType,
     NotRequired,
+    Required,
     TypeVar,
     cast,
 )
@@ -1224,3 +1225,19 @@ def test_every_typeddict_the_package_declares_compiles(typeddict: type) -> None:
     # A declaration no parser reads would be a document type `check` could
     # not be asked about.
     assert parser_for(typeddict, no_leaf) is not None
+
+
+def test_a_union_of_a_string_and_another_shape_names_both() -> None:
+    # "a string" takes in only the Literals of strings, not every other branch.
+    assert describe(str | int) == "a string or an integer"
+    assert describe(str | None) == "a string or null"
+    (problem,) = parser(str | int, no_leaf)(None, ())[1]
+    assert problem.message == "expected a string or an integer, got null"
+
+
+class _Three(TypedDict, closed=True):
+    x: Annotated[Required[Annotated[ReadOnly[Annotated[int, "inner"]], "middle"]], "outer"]
+
+
+def test_metadata_of_three_annotated_layers_is_kept_in_order() -> None:
+    assert typeddict_keys(_Three).members["x"] == (Annotated[int, "inner", "middle", "outer"], True)

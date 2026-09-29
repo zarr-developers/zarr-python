@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 import math
 import pickle
 from collections.abc import (
@@ -15,7 +16,12 @@ import pytest
 from annotated_types import Ge, Predicate
 from typing_extensions import TypedDict
 
-from zarr_metadata.model import validate_array_metadata_v3
+from zarr_metadata._sentinel import UNSET
+from zarr_metadata.model import (
+    is_metadata_field_v3,
+    validate_array_metadata_v3,
+    validate_metadata_field_v3,
+)
 from zarr_metadata.model._array import ZarrV3ArrayMetadata
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
@@ -732,12 +738,13 @@ def test_error_null_is_not_a_field() -> None:
 
 
 def test_error_a_value_that_is_not_json() -> None:
-    # Held as None, not JSON; its name still says what claims it.
+    # Held as `UNSET`, not JSON, which no document holds; its name still
+    # says what claims it.
     resolved, found = resolve(
         {"name": "gzip", "configuration": {"level": math.nan}}, CodecDefinition, SCOPE
     )
     assert resolved == Refused(
-        json=None, name="gzip", read_as=CodecDefinition, definition=GZIP_CODEC
+        json=UNSET, name="gzip", read_as=CodecDefinition, definition=GZIP_CODEC
     )
     assert _locs(found) == [(("configuration", "level"), "invalid_value")]
 
@@ -811,7 +818,7 @@ def test_error_a_container_rule_is_not_asked_of_a_malformed_nested_field() -> No
     field = {"name": "acme.stack", "configuration": {"codecs": [{"configuration": {}}]}}
     resolved, found = resolve(field, CodecDefinition, SCOPE)
     assert isinstance(resolved, Refused)
-    assert _locs(found) == [(("configuration", "codecs", 0, "name"), "invalid_type")]
+    assert _locs(found) == [(("configuration", "codecs", 0, "name"), "missing_key")]
     assert ACME_STACK.judge(field["configuration"])[0] is None
 
 
@@ -1262,3 +1269,145 @@ def test_error_a_field_is_read_as_a_kind_of_metadata(kind: type[Definition[Any]]
 def test_error_a_scope_refuses_a_definition_of_no_kind() -> None:
     with pytest.raises(TypeError, match="a definition of no kind"):
         Context.of(Definition(name="acme.kindless", configuration=Empty))
+
+
+@pytest.mark.parametrize(
+    ("name", "valid"),
+    [
+        ("zstd", True),
+        ("numcodecs.adler32", True),
+        ("vlen-utf8", True),
+        ("acme_x", True),
+        ("r16", True),
+        ("https://example.com/codec", True),
+        ("urn:acme:codec", True),
+        ("urn:acme:%C3%BC", True),
+        ("x:", False),
+        ("Int8:", False),
+        ("a: b", False),
+        ("urn:acme:codec\n", False),
+        ("urn:acme:ü", False),
+        # Whitespace to Python's `re` but not ECMA-262, and the other way
+        # round: neither a URI character, so both dialects refuse them.
+        ("urn:a\x1c", False),
+        ("urn:a﻿", False),
+        ("", False),
+        (" ", False),
+        ("Int8", False),
+        ("9x", False),
+        ("int8 ", False),
+        ("int8\n", False),
+        ("foo/bar", False),
+        ("-int8", False),
+        ("a", False),
+        ("r*", False),
+    ],
+)
+def test_an_extension_is_named_as_the_spec_names_one(name: str, valid: bool) -> None:
+    """The spec's regex `^[a-z][a-z0-9-_.]+$`, or a URI, which earlier versions of the spec required; anything else is refused before any definition is asked, by the field validator as by the reader."""
+    for field, at in ((name, ()), ({"name": name}, ("name",))):
+        resolved, problems = resolve(field, CodecDefinition, CORE)
+        if valid:
+            assert not isinstance(resolved, Refused)
+            assert problems == ()
+        else:
+            assert isinstance(resolved, Refused)
+            assert [(p.loc, p.kind) for p in problems] == [(at, "invalid_value")]
+            assert "expected an extension name" in problems[0].message
+        assert [(p.loc, p.kind) for p in validate_metadata_field_v3(field)] == (
+            [] if valid else [(at, "invalid_value")]
+        )
+        assert is_metadata_field_v3(field) is valid
+
+
+def test_error_a_bad_name_is_a_problem_when_the_field_is_not_json_too() -> None:
+    # Refused before a definition is asked on either path: a field whose
+    # configuration is not JSON reports its name as the JSON path does,
+    # and no definition is asked to claim it.
+    field = {"name": "Acme", "configuration": {"x": float("nan")}}
+    resolved, problems = resolve(field, CodecDefinition, CORE)
+    assert isinstance(resolved, Refused)
+    assert resolved.definition is None
+    assert [(p.loc, p.kind) for p in problems] == [
+        (("name",), "invalid_value"),
+        (("configuration", "x"), "invalid_value"),
+    ]
+
+
+@pytest.mark.parametrize("name", ["Acme", "acme/x", "", "x"])
+def test_error_a_definition_is_named_as_the_spec_names_an_extension(name: str) -> None:
+    # No document could name it, so nothing would ever read with it.
+    with pytest.raises(TypeError, match="is not a name the spec gives an extension"):
+        CodecDefinition(
+            name=name, configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
+        )
+
+
+def test_error_a_field_built_by_hand_is_named_as_the_spec_names_one() -> None:
+    with pytest.raises(TypeError, match="named as the spec names an extension"):
+        Unclaimed(json="Int8", name="Int8", read_as=CodecDefinition)
+
+
+def test_error_a_field_without_a_name_is_missing_one() -> None:
+    resolved, problems = resolve({"configuration": {}}, CodecDefinition, CORE)
+    assert isinstance(resolved, Refused)
+    assert [(p.loc, p.kind, p.message) for p in problems] == [
+        (("name",), "missing_key", "missing required key")
+    ]
+
+
+@pytest.mark.parametrize("digits", [101, 4301])
+def test_raw_bits_of_more_than_a_hundred_digits_are_no_size_but_a_name(digits: int) -> None:
+    # `int` refuses to convert more than 4,300 digits, and no size has a
+    # hundred: such a name is an extension's, which nothing in scope claims.
+    resolved, problems = resolve("r" + "1" * digits, DataTypeDefinition, CORE_AND_EXTENSIONS)
+    assert type(resolved) is Unclaimed
+    assert problems == ()
+
+
+def test_error_a_rule_that_writes_to_the_configuration_fails_there() -> None:
+    # A definition's functions are handed a read-only view of the field's
+    # own configuration, so no field holds what a function wrote.
+    def writes(
+        configuration: GzipCodecConfiguration, nested: Nested
+    ) -> Iterator[ValidationProblem]:
+        cast("dict[str, object]", configuration)["level"] = -1
+        yield from ()
+
+    scope = CORE.extended_with(dataclasses.replace(GZIP_CODEC, rules=writes))
+    with pytest.raises(TypeError, match="does not support item assignment") as raised:
+        resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, scope)
+    assert raised.value.__notes__ == ["raised by the rules of 'gzip', reading ('configuration',)"]
+
+
+def test_error_a_function_that_writes_to_the_configuration_fails_on_every_path() -> None:
+    # `judge` hands the rules the same view `resolve` does, and `==` and
+    # `hash` hand `canonical` one, as `canonical_of` does.
+    def writes(
+        configuration: GzipCodecConfiguration, nested: Nested
+    ) -> Iterator[ValidationProblem]:
+        cast("dict[str, object]", configuration)["level"] = -1
+        yield from ()
+
+    with pytest.raises(TypeError, match="does not support item assignment"):
+        dataclasses.replace(GZIP_CODEC, rules=writes).judge({"level": 1})
+
+    def folds_in_place(configuration: GzipCodecConfiguration) -> GzipCodecConfiguration:
+        cast("dict[str, object]", configuration)["level"] = 0
+        return configuration
+
+    scope = CORE.extended_with(dataclasses.replace(GZIP_CODEC, canonical=folds_in_place))
+    read, _ = resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, scope)
+    with pytest.raises(TypeError, match="does not support item assignment"):
+        hash(read)
+
+
+def test_error_a_canonical_that_raises_says_which_definition_raised_it() -> None:
+    def refuses(configuration: GzipCodecConfiguration) -> GzipCodecConfiguration:
+        raise ValueError("no")
+
+    scope = CORE.extended_with(dataclasses.replace(GZIP_CODEC, canonical=refuses))
+    read, _ = resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, scope)
+    with pytest.raises(ValueError, match="no") as raised:
+        canonical_of(read, ())
+    assert raised.value.__notes__ == ["raised by the canonical of 'gzip'"]

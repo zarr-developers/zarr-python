@@ -26,9 +26,9 @@ from zarr_metadata.model import (
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
 )
-from zarr_metadata.model._validation import construct
+from zarr_metadata.model._validation import ZarrV3ArrayMetadataReading, construct
 from zarr_metadata.v3.data_type.int8 import INT8_DATA_TYPE
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, Chunk
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -261,3 +261,9 @@ def test_error_extra_fields_are_a_mapping(model: object) -> None:
 def test_error_consolidated_metadata_paths_are_strings() -> None:
     with pytest.raises(TypeError, match="a document's path is a string, got 1"):
         ZarrV3ConsolidatedMetadata(metadata=cast("Any", {1: ARRAY}))
+
+
+def test_construct_fills_a_member_from_its_default_factory() -> None:
+    reading = construct(ZarrV3ArrayMetadataReading, problems=())
+    assert reading.chunk == Chunk()
+    assert reading.pipeline == ()

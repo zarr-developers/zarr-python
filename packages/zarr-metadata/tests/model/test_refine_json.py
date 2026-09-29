@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from zarr_metadata._json import refine_json, refine_user_data, shown
+from zarr_metadata._json import JSON_DEPTH, refine_json, refine_user_data, shown
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -93,14 +93,27 @@ def test_error_every_leaf_that_is_not_json_is_reported() -> None:
 
 
 def test_a_value_nested_hundreds_deep_is_read() -> None:
-    # One frame per level of nesting: as deep as the interpreter goes, less
-    # what the test runner's own frames take.
+    # One frame per level of nesting, up to `JSON_DEPTH` of them.
     deep: dict[str, object] = {}
-    for _ in range(600):
+    for _ in range(JSON_DEPTH - 1):
         deep = {"k": deep}
     refined, problems = refine_json(deep)
     assert problems == ()
     assert refined is not None
+
+
+def test_error_a_value_nested_deeper_than_a_reader_walks() -> None:
+    # The level past the last is the problem, wherever it sits, so no
+    # document takes a reader past what the interpreter allows.
+    deep: dict[str, object] = {}
+    for _ in range(JSON_DEPTH + 40):
+        deep = {"k": deep}
+    refined, problems = refine_json({"a": [deep]})
+    assert refined is None
+    assert [(len(p.loc), p.kind, p.message) for p in problems] == [
+        (JSON_DEPTH, "invalid_value", f"nested deeper than the {JSON_DEPTH} levels a reader walks")
+    ]
+    assert problems[0].loc[:2] == ("a", 0)
 
 
 @pytest.mark.parametrize(
@@ -120,3 +133,15 @@ def test_a_value_is_shown_as_the_json_a_document_writes(value: object, text: str
     # What a problem's message says a document holds: its JSON, and the
     # value's repr only when it is not JSON.
     assert shown(value) == text
+
+
+def test_bytes_past_the_levels_a_reader_walks_are_not_json_rather_than_nested() -> None:
+    # `bytes` is a sequence to Python and no container to JSON, wherever
+    # it sits: past the cap it is still what it is, not nesting.
+    deep: list[object] = [b""]
+    for _ in range(JSON_DEPTH - 1):
+        deep = [deep]
+    _, problems = refine_json(deep)
+    assert [(len(p.loc), p.kind, p.message[:31]) for p in problems] == [
+        (JSON_DEPTH, "invalid_type", "not a JSON-serializable value: ")
+    ]

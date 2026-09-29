@@ -10,15 +10,17 @@ rule says only where a problem is.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import math
 import pickle
-from typing import TYPE_CHECKING, Annotated, Literal
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
 import pytest
 from annotated_types import Le
 from typing_extensions import TypedDict
 
-from zarr_metadata._json import arrays_to_tuples, is_canonical_json, value_at, with_input
+from zarr_metadata._json import arrays_to_tuples, is_canonical_json, value_at, with_input, within
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model import (
     MetadataValidationError,
@@ -355,3 +357,44 @@ def test_a_value_outside_a_closed_set_is_told_the_set(
     # In the order the message lists them, as JSON writes them.
     (problem,) = [problem for problem in problems if problem.loc == loc]
     assert dict(problem.ctx) == {"expected": expected}
+
+
+def test_error_a_ctx_of_another_mapping_type_is_checked() -> None:
+    # Only a problem's own `ctx`, checked when it was made, is taken as
+    # checked: any other mapping is, whatever its type.
+    with pytest.raises(TypeError, match="ctx is an object of JSON values"):
+        ValidationProblem(
+            (), "m", "invalid_value", ctx=cast("Any", MappingProxyType({"x": object()}))
+        )
+    first = ValidationProblem((), "m", "invalid_value", ctx={"ge": 0})
+    again = dataclasses.replace(first, loc=("a",))
+    assert again.ctx == {"ge": 0}
+    assert again.ctx is first.ctx
+
+
+def test_a_problem_at_the_first_element_holds_it() -> None:
+    # Checked against the literal, not `value_at`, which the reader uses.
+    (problem,) = with_input([ValidationProblem(("a", 0), "bad", "invalid_value")], {"a": [7]})
+    assert problem.input == 7
+    assert value_at([5, 6], (0,)) == 5
+    read = resolve("bytes", DataTypeDefinition, CORE_AND_EXTENSIONS)[0]
+    (found,) = fill_value_problems(read, [-1])
+    assert (found.loc, found.input) == ((0,), -1)
+
+
+def test_a_problem_s_ctx_is_its_own_at_every_level() -> None:
+    # Copied when the problem is made, at every level, so nothing the
+    # caller does to what it handed in reaches the problem.
+    inner: dict[str, int] = {"a": 1}
+    problem = ValidationProblem((), "m", "invalid_value", ctx={"nested": inner})
+    inner["a"] = 2
+    assert problem.ctx["nested"] == {"a": 1}
+
+
+def test_error_a_problem_not_below_where_a_reader_counts_from_is_refused() -> None:
+    # `within` relocates a problem from the document handed in to the one
+    # read; one located from another root would land in the wrong place.
+    problem = ValidationProblem(("a", "b"), "m", "invalid_value")
+    assert within((problem,), ("a",))[0].loc == ("b",)
+    with pytest.raises(TypeError, match="does not sit below"):
+        within((problem,), ("c",))

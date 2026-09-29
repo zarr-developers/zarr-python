@@ -14,12 +14,12 @@ import pytest
 
 from zarr_metadata._json import arrays_to_tuples
 from zarr_metadata.model import (
+    UNSET,
     ValidationProblem,
     ZarrV3ArrayMetadata,
     ZarrV3ArrayMetadataReading,
     read_array_metadata_v3,
     read_group_metadata_v3,
-    validate_array_metadata_v3,
 )
 from zarr_metadata.v3.definition import (
     CORE,
@@ -225,11 +225,15 @@ def test_a_document_reads_as_each_field_where_it_sits_and_its_codecs_as_a_pipeli
     handed: list[Lengths | None],
 ) -> None:
     reading = read_array_metadata_v3(document, context=context)
-    assert reading.problems == validate_array_metadata_v3(document, context=context)
     # A model only of a document with no problem.
     assert (reading.metadata is None) is (reading.problems != ())
     assert [(loc, field.read_as, type(field)) for loc, field in reading.fields()] == fields
-    assert reading.chunk.data_type is reading.data_type
+    # The chunk's vocabulary for what nothing says is None, the reading's
+    # for a key the document lacks is `UNSET`.
+    if reading.data_type is UNSET:
+        assert reading.chunk.data_type is None
+    else:
+        assert reading.chunk.data_type is reading.data_type
     assert reading.pipeline[0].incoming == reading.chunk
     assert [None if s.incoming is None else s.incoming.lengths for s in reading.pipeline] == handed
 
@@ -369,11 +373,11 @@ def test_error_a_list_of_fields_that_is_not_a_list_reads_as_empty(
 
 
 @pytest.mark.parametrize("member", ["data_type", "chunk_grid", "chunk_key_encoding"])
-def test_error_a_document_without_a_field_reads_it_as_none(member: str) -> None:
+def test_error_a_document_without_a_field_reads_it_as_unset(member: str) -> None:
     document = _document()
     del document[member]
     reading = read_array_metadata_v3(document)
-    assert getattr(reading, member) is None
+    assert getattr(reading, member) is UNSET
     assert (member,) not in [loc for loc, _ in reading.fields()]
     assert ValidationProblem((member,), "missing required key", "missing_key") in reading.problems
 

@@ -115,6 +115,7 @@ def _fill_value_rules(
     not hold, leaves its fill value unjudged.
     """
     names = [member["name"] for member in configuration["fields"]]
+    declared = set(names)
     for index, name in enumerate(names):
         if name not in value:
             yield ValidationProblem(
@@ -125,7 +126,7 @@ def _fill_value_rules(
         if field_type is not None:
             yield from fill_value_problems(field_type, value[name], (name,))
     for key in value:
-        if key not in names:
+        if key not in declared:
             yield ValidationProblem((key,), f"no struct field is named {key!r}", "unknown_key")
 
 

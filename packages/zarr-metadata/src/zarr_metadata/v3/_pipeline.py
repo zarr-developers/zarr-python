@@ -38,6 +38,7 @@ from zarr_metadata.v3._definition import (
     Read,
     Resolved,
     asked,
+    read_only,
     ruled,
 )
 
@@ -185,7 +186,9 @@ def _chunk_problems(
     at: Loc,
 ) -> Problems:
     """What `definition`'s chunk rules find in a codec handed `chunk`, located under `at`."""
-    return ruled(definition, lambda: definition.chunk_rules(configuration, nested, chunk), at)
+    return ruled(
+        definition, lambda: definition.chunk_rules(read_only(configuration), nested, chunk), at
+    )
 
 
 def _inner_pipelines(
@@ -205,7 +208,7 @@ def _inner_pipelines(
     given = asked(
         definition,
         "pipelines",
-        lambda: cast("object", definition.pipelines(configuration, nested, chunk)),
+        lambda: cast("object", definition.pipelines(read_only(configuration), nested, chunk)),
         at,
     )
     if not _is_pipelines(given):
@@ -268,7 +271,7 @@ def _handed_on(
     given = asked(
         definition,
         "transition",
-        lambda: cast("object", definition.transition(configuration, nested, chunk)),
+        lambda: cast("object", definition.transition(read_only(configuration), nested, chunk)),
         at,
     )
     if not isinstance(given, Chunk):

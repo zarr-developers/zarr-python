@@ -26,7 +26,6 @@ from zarr_metadata.v3.definition import (
     Definition,
     Read,
     Refused,
-    Unclaimed,
     ValidationProblem,
     canonical_of,
     canonicalize,
@@ -357,12 +356,17 @@ def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
     assert again.definition is RAW_BYTES_DATA_TYPE
 
 
-@pytest.mark.parametrize("field", ["r*", {"name": "r*", "configuration": {"bits": 16}}])
-def test_r_star_is_notation_that_names_nothing(field: object) -> None:
+@pytest.mark.parametrize(
+    ("field", "at"),
+    [("r*", ()), ({"name": "r*", "configuration": {"bits": 16}}, ("name",))],
+    ids=["bare", "object"],
+)
+def test_error_r_star_is_notation_and_no_name(field: object, at: tuple[str, ...]) -> None:
     # How the specification's table writes raw bits, and no document's name
-    # for them: read as any name nothing in scope claims.
+    # for them: `*` is no character of an extension name.
     resolved, problems = resolve(field, DataTypeDefinition, CORE_AND_EXTENSIONS)
-    assert (type(resolved), problems) == (Unclaimed, ())
+    assert type(resolved) is Refused
+    assert [(p.loc, p.kind) for p in problems] == [(at, "invalid_value")]
 
 
 @pytest.mark.parametrize(

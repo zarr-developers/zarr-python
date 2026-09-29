@@ -18,7 +18,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from typing_extensions import TypedDict
 
-from zarr_metadata._json import value_at
+from zarr_metadata._json import JSON_DEPTH, value_at
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model import validate_array_metadata_v3, validate_group_metadata_v3
 from zarr_metadata.model._array import ZarrV3ArrayMetadata
@@ -298,7 +298,7 @@ def test_error_a_key_the_fill_value_shape_does_not_declare_hides_no_rule() -> No
     ]
 
 
-def test_a_fill_value_nested_hundreds_deep_is_read() -> None:
+def test_a_fill_value_nested_as_deep_as_a_reader_walks_is_read() -> None:
     def deep(levels: int) -> dict[str, object]:
         value: dict[str, object] = {}
         for _ in range(levels):
@@ -308,7 +308,8 @@ def test_a_fill_value_nested_hundreds_deep_is_read() -> None:
     document = dict(ZarrV3ArrayMetadata.create_default().to_json()) | {
         "data_type": STRUCT,
         "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
-        "fill_value": {"a": 1, "b": 0.5, "c": deep(600)},
+        # `c` sits two levels down, and holds the deepest value the cap admits.
+        "fill_value": {"a": 1, "b": 0.5, "c": deep(JSON_DEPTH - 3)},
     }
     assert [(p.loc, p.kind) for p in validate_array_metadata_v3(document)] == [
         (("fill_value", "c"), "unknown_key")
@@ -355,9 +356,12 @@ def _read(data_type: JSONValue) -> Read[DataTypeDefinition[Any]]:
         # The number of the fewest digits that rounds to the value.
         ("float32", [0.1, 0.10000000149011612, "0x3dcccccd"], 0.1),
         # A number is read as a float64, as a JSON parser reads one, and
-        # then rounded to the type, as numpy rounds it: an integer and a
-        # number with a fraction that read as one float64 are one value.
+        # then rounded to the type, as zarrs, tensorstore and numpy round
+        # it: an integer and a number with a fraction that read as one
+        # float64 are one value, and an integer whose float64 is halfway
+        # between two float32 values is the even one, as they store it.
         ("float32", [2**53 + 2**29 + 1, 9007199791611905.0, 2**53], 9007199000000000.0),
+        ("float32", [2**60 + 2**36 + 1, 2**60, 1.1529215e18], 1.1529215e18),
         # Of the numbers of the fewest digits, the one past the nearest: at
         # a power of two, those that round to it reach further above it.
         ("float16", [0.015625, "0x2400"], 0.01563),
@@ -425,10 +429,16 @@ def test_a_float_s_canonical_spelling_spells_its_bits(data: st.DataObject) -> No
     # spelling is a fill value of the type, spelling the same bits, and
     # its own canonical spelling.
     width = data.draw(st.sampled_from(WIDTHS))
-    bits = data.draw(st.integers(0, 2**width - 1))
+    # Drawn by part, so normal values, infinities and NaNs each turn up:
+    # bits drawn whole are almost all subnormals.
+    fraction = {16: 10, 32: 23, 64: 52}[width]
+    sign = data.draw(st.integers(0, 1))
+    exponent = data.draw(st.integers(0, 2 ** (width - 1 - fraction) - 1))
+    mantissa = data.draw(st.integers(0, 2**fraction - 1))
+    bits = (sign << (width - 1)) | (exponent << fraction) | mantissa
     read = _read(f"float{width}")
     spelled = canonical_fill_value(read, f"0x{bits:0{width // 4}x}")
-    assert spelled is not None
+    assert spelled is not UNSET
     assert fill_value_problems(read, spelled) == ()
     assert float_bits(cast("float | str", spelled), width) == bits
     assert _alike(canonical_fill_value(read, spelled), spelled)
@@ -467,3 +477,29 @@ def test_error_a_canonical_spelling_that_is_not_json_is_refused() -> None:
     resolved, _ = resolve("acme.point", DataTypeDefinition, scope)
     with pytest.raises(TypeError, match="'acme.point': its fill_value_canonical gives JSON"):
         canonical_fill_value(resolved, {"x": 1})
+
+
+@pytest.mark.parametrize(
+    ("name", "low", "high"),
+    [
+        ("int8", -(2**7), 2**7 - 1),
+        ("int16", -(2**15), 2**15 - 1),
+        ("int32", -(2**31), 2**31 - 1),
+        ("int64", -(2**63), 2**63 - 1),
+        ("uint8", 0, 2**8 - 1),
+        ("uint16", 0, 2**16 - 1),
+        ("uint32", 0, 2**32 - 1),
+        ("uint64", 0, 2**64 - 1),
+    ],
+)
+def test_an_integer_type_takes_exactly_its_range(name: str, low: int, high: int) -> None:
+    read = _read(name)
+    assert fill_value_problems(read, low) == ()
+    assert fill_value_problems(read, high) == ()
+    for outside in (low - 1, high + 1):
+        (problem,) = fill_value_problems(read, outside)
+        assert (problem.loc, problem.kind, dict(problem.ctx)) == (
+            (),
+            "invalid_value",
+            {"ge": low, "le": high},
+        )
