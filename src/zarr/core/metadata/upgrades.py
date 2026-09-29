@@ -26,7 +26,6 @@ from itertools import chain, repeat
 from typing import TYPE_CHECKING, Final, TypeGuard, cast
 
 from zarr.core._json import json_equal
-from zarr.core.chunk_grids import full_span_chunk_size
 from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
@@ -74,11 +73,13 @@ def _read_chunk_size(size: JSON, span: int | None, unit: int) -> tuple[int, str 
     Returns the edge length and, where the user must act on how it was read, how it was
     read; `None` if the entry cannot be read, which leaves it for the metadata
     constructors to check. A JSON int >= 1 is kept, JSON `true` is read as 1, and 0 or
-    JSON `false` is read as one chunk spanning the axis of length `span`, a multiple of
-    `unit` (the inner chunk size of a shard): on an axis of positive length no chunk
-    can have been stored under it, so the array holds only its fill value. `span` is
-    `None` where no stored 0 is known, as in the inner chunk shape of a sharding codec:
-    0 is then left as stored.
+    JSON `false` is read as `unit`, the smallest chunk edge length the axis can have (1,
+    or the inner chunk size of a shard), whatever the length `span` of the axis. That is
+    what `chunks=-1` gives on an axis of length 0, where these sizes were written, and it
+    does not depend on how far the axis has grown since. On an axis of positive length no
+    chunk can have been stored under a chunk size of 0, so the array holds only its fill
+    value. `span` is `None` where no stored 0 is known, as in the inner chunk shape of a
+    sharding codec: 0 is then left as stored.
     """
     match size:
         case True:
@@ -86,12 +87,14 @@ def _read_chunk_size(size: JSON, span: int | None, unit: int) -> tuple[int, str 
         case int() if size >= 1:
             return size, None
         case int() if size == 0 and span is not None:
-            edge = full_span_chunk_size(span, unit)
             if span == 0:
-                return edge, None
-            return edge, (
-                f"one chunk spanning the dimension ({edge}), and as no chunk can be stored "
-                "under a chunk size of 0, the array holds only its fill value"
+                return unit, None
+            return unit, (
+                "1, as no chunk can be stored under a chunk size of 0, so the array "
+                "holds only its fill value"
+                if unit == 1
+                else f"{unit}, the inner chunk size, as no chunk can be stored under a "
+                "chunk size of 0, so the array holds only its fill value"
             )
     return None
 
