@@ -123,32 +123,32 @@ def _nested_sharded_doc(inner: list[Any], nested: list[Any]) -> dict[str, JSON]:
         (_v3_doc([5, 4], [True, 4]), ((1, 4),), True, None),
         (
             _v2_doc([3], [0]),
-            ((3,),),
+            ((1,),),
             True,
             (
-                r"^The stored chunk shape \[0\] is invalid: .* read as \[3\], reading 0 in "
-                r"dimension 0 as one chunk spanning the dimension \(3\), and .* holds only "
-                r"its fill value\.$"
+                r"^The stored chunk shape \[0\] is invalid: .* read as \[1\], reading 0 in "
+                r"dimension 0 as 1, as no chunk can be stored under a chunk size of 0, so the "
+                r"array holds only its fill value\.$"
             ),
         ),
         (
             _v3_doc([4, 3], [4, 0]),
-            ((4, 3),),
+            ((4, 1),),
             True,
             r"reading 0 in dimension 1 as .* holds only its fill value\.$",
         ),
         (
             _v2_doc([0, 3], [0, 0]),
-            ((1, 3),),
+            ((1, 1),),
             True,
-            r"read as \[1, 3\], reading 0 in dimension 1 as .* holds only its fill value\.$",
+            r"read as \[1, 1\], reading 0 in dimension 1 as .* holds only its fill value\.$",
         ),
         (_v3_doc([0], [0], inner=[4]), ((4,), (4,)), True, None),
         (
             _v3_doc([10], [0], inner=[4]),
-            ((12,), (4,)),
+            ((4,), (4,)),
             True,
-            r"spanning the dimension \(12\), and .* holds only its fill value",
+            r"as 4, the inner chunk size, as no chunk .* holds only its fill value",
         ),
         (_v3_doc([0, 3], [0, 3], inner=[2, 3]), ((2, 3), (2, 3)), True, None),
         (_v3_doc([5], [True], inner=[True]), ((1,), (1,)), True, None),
@@ -177,8 +177,8 @@ def _nested_sharded_doc(inner: list[Any], nested: list[Any]) -> dict[str, JSON]:
 def test_upgrade_array_document(
     doc: dict[str, JSON], expected: tuple[Any, ...], upgraded: bool, warning: str | None
 ) -> None:
-    """Valid documents pass unchanged. A stored chunk size of 0 or `false` is read as one
-    chunk spanning the axis (a multiple of the inner chunk when sharded) and `true` as 1,
+    """Valid documents pass unchanged. A stored chunk size of 0 or `false` is read as 1
+    (the inner chunk size when sharded), however long the axis, and `true` as 1,
     in the chunk shape and in the inner chunk shape of every sharding codec, nested or
     not. `from_dict` marks the metadata of an upgraded document; it warns once, naming
     the array, only where a chunk size of 0 was stored for a non-empty axis (which then
@@ -554,7 +554,7 @@ def _rewrite_doc(path: Path, zarr_format: Literal[2, 3], edit: Any) -> None:
     [
         (2, (0, 4), [0, 4], None, (1, 4), False),
         (3, (5,), [True], None, (1,), False),
-        (3, (10,), [0], (4,), (12,), True),
+        (3, (10,), [0], (4,), (4,), True),
     ],
     ids=["v2-empty-2d", "v3-true", "v3-sharded-grown"],
 )
@@ -612,7 +612,7 @@ def test_legacy_chunk_size_round_trip(
 
 @pytest.mark.parametrize(
     ("zarr_format", "shape", "inner", "expected"),
-    [(2, (3,), None, (3,)), (3, (3,), None, (3,)), (3, (10,), (4,), (12,))],
+    [(2, (3,), None, (1,)), (3, (3,), None, (1,)), (3, (10,), (4,), (4,))],
     ids=["v2", "v3", "v3-sharded"],
 )
 @pytest.mark.parametrize("api", ["sync", "async", "async-concurrent"])
@@ -720,12 +720,12 @@ def test_stale_handle_write_keeps_valid_document_as_written(
     with pytest.warns(ZarrUserWarning, match="is read as"):
         stale = zarr.open_array(store=path, mode="r+")
     # Valid metadata for the same array, as another writer might store it: chunk size
-    # 3, without the optional members zarr writes, as compact JSON.
+    # 1, without the optional members zarr writes, as compact JSON.
     doc_path = path / (".zarray" if zarr_format == 2 else "zarr.json")
     doc = json.loads(doc_path.read_text())
     for optional in ("dimension_separator", "attributes", "storage_transformers"):
         doc.pop(optional, None)
-    _stored_chunks(doc)[0] = 3
+    _stored_chunks(doc)[0] = 1
     doc_path.write_text(json.dumps(doc, separators=(",", ":")))
     written = doc_path.read_bytes()
 
@@ -743,14 +743,22 @@ def _resize_to_10(doc: dict[str, Any]) -> None:
     doc["shape"] = [10]
 
 
+def _store_chunk_size_3(doc: dict[str, Any]) -> None:
+    _stored_chunks(doc)[0] = 3
+
+
 def _halve_inner_chunk_shape(doc: dict[str, Any]) -> None:
     doc["codecs"][0]["configuration"]["chunk_shape"] = [2]
 
 
 @pytest.mark.parametrize(
     ("zarr_format", "sharded", "change"),
-    [(2, False, _resize_to_10), (3, False, _resize_to_10), (3, True, _halve_inner_chunk_shape)],
-    ids=["v2-resized", "v3-resized", "v3-sharded-inner-chunk-shape"],
+    [
+        (2, False, _store_chunk_size_3),
+        (3, False, _store_chunk_size_3),
+        (3, True, _halve_inner_chunk_shape),
+    ],
+    ids=["v2-chunk-size", "v3-chunk-size", "v3-sharded-inner-chunk-shape"],
 )
 def test_stale_handle_write_after_chunk_grid_change_raises(
     tmp_path: Path,
@@ -759,10 +767,9 @@ def test_stale_handle_write_after_chunk_grid_change_raises(
     change: Callable[[dict[str, Any]], None],
 ) -> None:
     """If the document the store holds when a handle read from an upgraded document
-    first writes chunks lays out chunks differently from the handle's metadata (the
-    array was resized by software that kept the stored chunk size of 0, which now reads
-    as a larger chunk, or its inner chunk shape changed), the handle's chunks would not
-    be found under it: the write raises and stores nothing."""
+    first writes chunks lays out chunks differently from the handle's metadata (another
+    writer stored a different chunk size, or changed the inner chunk shape), the handle's
+    chunks would not be found under it: the write raises and stores nothing."""
     path = tmp_path / "legacy.zarr"
     if sharded:
         zarr.create_array(store=path, shape=(3,), chunks=(4,), shards=(4,), dtype="int16")
@@ -779,6 +786,26 @@ def test_stale_handle_write_after_chunk_grid_change_raises(
 
     assert stale.metadata._stored_document is not None
     assert {p.name: p.read_bytes() for p in path.iterdir()} == documents
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_stale_handle_write_after_resize_keeping_zero(
+    tmp_path: Path, zarr_format: Literal[2, 3]
+) -> None:
+    """A stored chunk size of 0 is read as 1 however long the axis is, so a resize by
+    software that kept it lays out chunks as the handle does: the handle's first write
+    stores the upgrade of the resized document, then its chunks."""
+    path = tmp_path / "legacy.zarr"
+    _legacy_array(path, zarr_format)
+    with pytest.warns(ZarrUserWarning, match="is read as"):
+        stale = zarr.open_array(store=path, mode="r+")
+    _rewrite_doc(path, zarr_format, _resize_to_10)
+
+    stale[0:3] = [7, 8, 9]
+
+    reopened = _open_strictly(path)
+    assert (reopened.shape, reopened.chunks) == ((10,), (1,))
+    np.testing.assert_array_equal(reopened[...], [7, 8, 9, 0, 0, 0, 0, 0, 0, 0])
 
 
 def _set_attribute(array: AnyArray) -> None:
@@ -838,7 +865,7 @@ def test_write_without_stored_document(zarr_format: Literal[2, 3]) -> None:
     assert not [key for key in store._store_dict if key.endswith((".zarray", "zarr.json"))]
 
 
-@pytest.mark.parametrize(("shape", "expected"), [((0,), (1,)), ((3,), (3,))])
+@pytest.mark.parametrize(("shape", "expected"), [((0,), (1,)), ((3,), (1,))])
 def test_array_from_metadata_with_chunk_size_zero(shape: tuple[int], expected: tuple[int]) -> None:
     """`ArrayV2Metadata` accepts a chunk size of 0, as a stored document may hold it. An
     array built from such metadata reads it as the upgrades read that document, silently
@@ -1023,7 +1050,7 @@ def test_consolidated_upgraded_member_stored_by_its_first_write(
 
     np.testing.assert_array_equal(_open_strictly(path / "a")[...], [7, 8, 9])
     zarr.consolidate_metadata(path)
-    assert _stored_chunks(_consolidated_member(path, zarr_format, "a")) == [3]
+    assert _stored_chunks(_consolidated_member(path, zarr_format, "a")) == [1]
 
 
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
@@ -1032,14 +1059,14 @@ def test_consolidated_upgraded_member_write_after_chunk_grid_change_raises(
     tmp_path: Path, zarr_format: Literal[2, 3]
 ) -> None:
     """A member read from its consolidated copy, whose own document has since been
-    resized by software that kept the stored chunk size of 0, would write chunks no
-    reader finds: its first write raises and stores nothing."""
+    stored with a different chunk size, would write chunks no reader finds: its first
+    write raises and stores nothing."""
     path = tmp_path / "group.zarr"
     _consolidated_legacy_member(path, zarr_format)
     with pytest.warns(ZarrUserWarning, match="is read as"):
         array = zarr.open_group(path, mode="r+", use_consolidated=True)["a"]
     assert isinstance(array, zarr.Array)
-    _rewrite_doc(path / "a", zarr_format, _resize_to_10)
+    _rewrite_doc(path / "a", zarr_format, _store_chunk_size_3)
     documents = {p: p.read_bytes() for p in path.rglob("*") if p.is_file()}
 
     with pytest.raises(ValueError, match="has changed since this array was opened: reopen"):
@@ -1069,7 +1096,7 @@ def test_consolidated_upgraded_member_attributes_kept_by_group_write(
         warnings.simplefilter("always")
         attributes = dict(zarr.open_group(path, mode="r", use_consolidated=True)["a"].attrs)
     assert attributes == {"x": 1}
-    assert _stored_chunks(_consolidated_member(path, zarr_format, "a")) == [3]
+    assert _stored_chunks(_consolidated_member(path, zarr_format, "a")) == [1]
     assert not [w for w in record if "is read as" in str(w.message)]
 
 
@@ -1159,7 +1186,7 @@ def test_legacy_chunk_size_consolidated(tmp_path: Path, zarr_format: Literal[2, 
         ]
     for array in arrays:
         assert isinstance(array, zarr.Array)
-        assert array.chunks == (2,)
+        assert array.chunks == (1,)
         array.update_attributes({})
     zarr.consolidate_metadata(path)
     with warnings.catch_warnings():
@@ -1170,4 +1197,4 @@ def test_legacy_chunk_size_consolidated(tmp_path: Path, zarr_format: Literal[2, 
             for name in names:
                 array = reopened[name]
                 assert isinstance(array, zarr.Array)
-                assert array.chunks == (2,)
+                assert array.chunks == (1,)
