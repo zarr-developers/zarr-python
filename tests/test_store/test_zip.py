@@ -529,8 +529,12 @@ class TestZipStoreFileObj:
             store = ZipStore(f, mode="w", read_only=False)
             await store.set("foo", cpu.Buffer.from_bytes(b"1"))
             store.close()
-            with pytest.raises(io.UnsupportedOperation, match="readable and seekable"):
-                await store.set("bar", cpu.Buffer.from_bytes(b"2"))
+            try:
+                with pytest.raises(io.UnsupportedOperation, match="readable and seekable"):
+                    await store.set("bar", cpu.Buffer.from_bytes(b"2"))
+            finally:
+                # close before the file does, even if the write went through
+                store.close()
 
         with zipfile.ZipFile(path) as zf:
             assert zf.namelist() == ["foo"]
@@ -543,8 +547,11 @@ class TestZipStoreFileObj:
         store = ZipStore(pipe, mode="w", read_only=False)  # type: ignore[arg-type]
         await store.set("foo", cpu.Buffer.from_bytes(b"1"))
         store.close()
-        with pytest.raises(io.UnsupportedOperation, match="readable and seekable"):
-            await store.set("bar", cpu.Buffer.from_bytes(b"2"))
+        try:
+            with pytest.raises(io.UnsupportedOperation, match="readable and seekable"):
+                await store.set("bar", cpu.Buffer.from_bytes(b"2"))
+        finally:
+            store.close()
 
     async def test_clear_unsupported(self, zip_bytes: bytes) -> None:
         # clear() requires a filesystem location, so it raises a clear error
