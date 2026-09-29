@@ -23,9 +23,11 @@ from zarr_metadata.model._validation import (
     ArrayMembersV3,
     StoreKey,
     ZarrV3ArrayMetadataReading,
+    construct,
     dimension_lengths,
     dump_store_json,
     load_store_json,
+    overlapping,
     parse_array_metadata_v2,
     read_array_v3,
 )
@@ -114,13 +116,21 @@ class ZarrV3ArrayMetadata:
 
     A model holds no scope: each field keeps the definition that read it,
     and a scope is asked only to read new JSON -- by `from_json`,
-    `create_default`, and `update`, which each take one. `to_key_value`
-    reads the document it writes by the model's own fields, and refuses
-    one with a problem, so a model changed by hand, as
-    `dataclasses.replace` changes one, is never written invalid. `to_json`
-    writes each extension point as its readers take it, as `Read.to_json`
-    says. A model pickles when the definitions its fields hold do: ones
-    whose functions are defined at a module's top level.
+    `create_default`, and `update`, which each take one. A model checks
+    itself when it is built, as pydantic's `__init__` does: its document,
+    as its own fields read it, has no problem, or the constructor raises
+    `MetadataValidationError` with every one. So a model built by hand, or
+    changed as `dataclasses.replace` changes one, is refused at the
+    change, and none is built invalid. It holds its members as that read
+    refines them, in containers of its own -- a list given for an array
+    as a tuple -- as pydantic holds what its `__init__` coerced, and each
+    field as the scope read it: a field built by hand is taken as read. A
+    model a read builds is not read a second time. Change a model by
+    building another: a container it holds, changed in place, is not
+    checked again. `to_json` writes each extension point as its
+    readers take it, as `Read.to_json` says. A model pickles when the
+    definitions its fields hold do: ones whose functions are defined at a
+    module's top level.
     """
 
     zarr_format: Literal[3] = field(default=3, init=False)
@@ -192,19 +202,13 @@ class ZarrV3ArrayMetadata:
         return type(self).from_json(document, context=context)
 
     def __post_init__(self) -> None:
-        overlap = set(self.extra_fields.keys()).intersection(ARRAY_METADATA_STANDARD_KEYS_V3)
-        if overlap:
-            raise MetadataValidationError(
-                [
-                    ValidationProblem(
-                        ("extra_fields",),
-                        "Extra fields cannot overlap with standard Zarr V3 array metadata fields",
-                        "invalid_value",
-                    )
-                ]
-            )
-        # The runtime half of the annotations: each extension point a field
-        # read as its kind, read or unclaimed, as a read gives it.
+        # The runtime half of the annotations: extra fields by name, and each
+        # extension point a field read as its kind, read or unclaimed, as a
+        # read gives it.
+        extra = cast("object", self.extra_fields)
+        if not isinstance(extra, Mapping):
+            msg = f"extra_fields: expected a mapping of names to JSON, got {extra!r}"
+            raise TypeError(msg)
         for key, kind, nodes in (
             ("data_type", DataTypeDefinition, (self.data_type,)),
             ("chunk_grid", ChunkGridDefinition, (self.chunk_grid,)),
@@ -216,6 +220,16 @@ class ZarrV3ArrayMetadata:
                 if not isinstance(node, (Read, Unclaimed)) or node.read_as is not kind:
                     msg = f"{key}: expected a field read as a {kind.__name__}, got {node!r}"
                     raise TypeError(msg)
+        # The rest held as the read of its document refines it, in containers
+        # of its own, as pydantic holds what its `__init__` coerced.
+        members = _members(self)
+        object.__setattr__(self, "shape", members.shape)
+        object.__setattr__(self, "fill_value", members.fill_value)
+        object.__setattr__(self, "dimension_names", members.dimension_names)
+        object.__setattr__(self, "attributes", members.attributes)
+        object.__setattr__(self, "extra_fields", members.extra_fields)
+        object.__setattr__(self, "codecs", tuple(self.codecs))
+        object.__setattr__(self, "storage_transformers", tuple(self.storage_transformers))
 
     def to_json(self) -> ZarrV3ArrayMetadataJSON:
         """The document as JSON, arrays as tuples, sharing no mutable state with the model.
@@ -271,31 +285,36 @@ class ZarrV3ArrayMetadata:
     ) -> Mapping[ZarrV3ArrayMetadataStoreKey, bytes]:
         """The document as a store holds it: JSON bytes at `zarr.json`, indented by `indent`.
 
-        `MetadataValidationError` when the document has a problem, as the
-        model's own fields read it, so no invalid document is written, even
-        of a model changed by hand. `NaN`, `Infinity` and `-Infinity` in
-        `attributes` are written as those bare tokens, as zarr-python
-        writes them, which a strict JSON parser refuses.
+        A model was checked when it was built, so its document is written
+        as it is. `NaN`, `Infinity` and `-Infinity` in `attributes` are
+        written as those bare tokens, as zarr-python writes them, which a
+        strict JSON parser refuses.
         """
-        problems = array_problems(self)
-        if len(problems) != 0:
-            raise MetadataValidationError(problems)
         return {ZARR_V3_ARRAY_METADATA_STORE_KEY: dump_store_json(array_json(self), indent=indent)}
 
 
-def array_problems(model: ZarrV3ArrayMetadata) -> tuple[ValidationProblem, ...]:
-    """What is wrong with `model`'s document, as the model's own fields read it: nothing, for a model a read built."""
-    return read_array_v3(held_document(model), NO_SCOPE)[0].problems
+def _members(model: ZarrV3ArrayMetadata) -> ArrayMembersV3:
+    """`model`'s members other than its fields, as the read of its document by its own fields refines them; `MetadataValidationError` with every problem that document has."""
+    reading, members = read_array_v3(held_document(model), NO_SCOPE)
+    extra = overlapping(model.extra_fields, ARRAY_METADATA_STANDARD_KEYS_V3, "array")
+    problems = (*extra, *reading.problems)
+    if len(problems) != 0:
+        raise MetadataValidationError(problems)
+    return cast("ArrayMembersV3", members)
 
 
 def array_json(model: ZarrV3ArrayMetadata) -> ZarrV3ArrayMetadataJSON:
     """`model`'s document as JSON, holding the model's own values: what `to_key_value` serializes, which changes nothing, and `to_json` copies."""
-    return cast("ZarrV3ArrayMetadataJSON", _document(model, document_json))
+    return cast("ZarrV3ArrayMetadataJSON", _document(model, document_json, whole=False))
 
 
 def held_document(model: ZarrV3ArrayMetadata) -> dict[str, object]:
-    """`model`'s document with each field as it was read, which a read takes as it is: what `update` and `to_key_value` read, reading no field again."""
-    return _document(model, _as_read)
+    """`model`'s document with each field as it was read, which a read takes as it is: what `update` and the constructor read, reading no field again.
+
+    Every member the model holds, an empty one too, so the read judges
+    each whatever it holds.
+    """
+    return _document(model, _as_read, whole=True)
 
 
 def _as_read(field: Read[Any] | Unclaimed) -> object:
@@ -303,9 +322,9 @@ def _as_read(field: Read[Any] | Unclaimed) -> object:
 
 
 def _document(
-    model: ZarrV3ArrayMetadata, write: Callable[[Read[Any] | Unclaimed], object]
+    model: ZarrV3ArrayMetadata, write: Callable[[Read[Any] | Unclaimed], object], *, whole: bool
 ) -> dict[str, object]:
-    """`model`'s document, each field as `write` gives it, the rest as the model holds it."""
+    """`model`'s document, each field as `write` gives it, the rest as the model holds it; empty `attributes` and `storage_transformers` too when `whole`, where a writer leaves them out."""
     out: dict[str, object] = {
         "zarr_format": model.zarr_format,
         "node_type": model.node_type,
@@ -318,13 +337,19 @@ def _document(
     }
     if model.dimension_names is not UNSET:
         out["dimension_names"] = model.dimension_names
-    if len(model.attributes) > 0:
+    if whole or len(model.attributes) > 0:
         out["attributes"] = model.attributes
-    if len(model.storage_transformers) > 0:
+    if whole or len(model.storage_transformers) > 0:
         out["storage_transformers"] = tuple(
             write(transformer) for transformer in model.storage_transformers
         )
-    out.update(model.extra_fields)
+    # An extra field named as a member the document declares is no member
+    # of it, which the constructor reports.
+    out.update(
+        (key, value)
+        for key, value in model.extra_fields.items()
+        if key not in ARRAY_METADATA_STANDARD_KEYS_V3
+    )
     return out
 
 
@@ -351,8 +376,9 @@ def read_array_metadata_v3(
 def array_model(
     reading: ZarrV3ArrayMetadataReading, members: ArrayMembersV3
 ) -> ZarrV3ArrayMetadata:
-    """The model of a document its reading found nothing wrong with: its fields as read, and its other members as the read refined them."""
-    return ZarrV3ArrayMetadata(
+    """The model of a document its reading found nothing wrong with: its fields as read, and its other members as the read refined them, not read again."""
+    return construct(
+        ZarrV3ArrayMetadata,
         shape=members.shape,
         fill_value=members.fill_value,
         data_type=cast("Read[DataTypeDefinition[Any]] | Unclaimed", reading.data_type),
@@ -410,7 +436,10 @@ class ZarrV2ArrayMetadata:
     explicit empty `.zattrs`, which is `{}` and round-trips as a file. One
     spelling normalization: a `.zarray` that omits `dimension_separator`
     means `"."` by the v2 convention, and the model holds and re-emits that
-    value explicitly.
+    value explicitly. A model checks itself when it is built, as the v3
+    models do: its document has no problem `validate_array_metadata_v2`
+    finds, or the constructor raises `MetadataValidationError`, so
+    `update` refuses a change that would make one.
     """
 
     zarr_format: Literal[2] = field(default=2, init=False)
@@ -428,6 +457,12 @@ class ZarrV2ArrayMetadata:
     dimension_separator: ZarrV2ArrayDimensionSeparator = field(default=".")
     attributes: dict[str, JSONValue] | UNSET
 
+    def __post_init__(self) -> None:
+        # Held as a read refines them, in containers of its own.
+        members = _v2_array_members(parse_array_metadata_v2(self.to_json()))
+        for name, value in members.items():
+            object.__setattr__(self, name, value)
+
     def update(self, **kwargs: Unpack[ZarrV2ArrayMetadataPartial]) -> ZarrV2ArrayMetadata:
         """
         Return a new `ZarrV2ArrayMetadata` with the given fields updated.
@@ -435,7 +470,8 @@ class ZarrV2ArrayMetadata:
         Only the constructor-settable fields listed in
         `ZarrV2ArrayMetadataPartial` can be updated; the fixed `zarr_format` is
         rejected at the type level. Each given field fully replaces its previous
-        value.
+        value. `MetadataValidationError` when the document the change makes
+        has a problem, as the model checks itself when it is built.
         """
         return dataclasses.replace(self, **kwargs)
 
@@ -452,8 +488,9 @@ class ZarrV2ArrayMetadata:
 
         The derivation is deliberately one-way, matching the v3 model:
         overriding `chunks` without `shape` keeps the scalar default
-        `shape=()`, and consistency between the two is the caller's
-        responsibility.
+        `shape=()`, which `chunks` of any other rank do not fit, so
+        `MetadataValidationError`, as the v3 model refuses a grid its
+        default shape does not take.
         """
         if "shape" in overrides and "chunks" not in overrides:
             overrides["chunks"] = tuple(overrides["shape"])
@@ -505,17 +542,7 @@ class ZarrV2ArrayMetadata:
         """
         # A read model shares no mutable state with what it read.
         parsed = copy.deepcopy(parse_array_metadata_v2(data))
-        return cls(
-            shape=parsed["shape"],
-            dtype=parsed["dtype"],
-            chunks=parsed["chunks"],
-            fill_value=parsed["fill_value"],
-            order=parsed["order"],
-            compressor=parsed["compressor"],
-            filters=parsed["filters"],
-            dimension_separator=parsed.get("dimension_separator", "."),
-            attributes=(dict(parsed["attributes"]) if "attributes" in parsed else UNSET),
-        )
+        return construct(cls, **_v2_array_members(parsed))
 
     @classmethod
     def from_key_value(cls, mapping: Mapping[StoreKey, bytes]) -> ZarrV2ArrayMetadata:
@@ -543,15 +570,13 @@ class ZarrV2ArrayMetadata:
     ) -> Mapping[ZarrV2ArrayMetadataStoreKey | ZarrV2AttributesStoreKey, bytes]:
         """The document as a store holds it: `.zarray` without the attributes, and `.zattrs` with them when they are set, even empty.
 
-        Validated first: a model that is not valid raises
-        `MetadataValidationError` with every problem, and nothing is written.
+        A model was checked when it was built, so its document is written
+        as it is.
         """
         # Attributes live only in the sibling `.zattrs` file; the `.zarray`
         # document must exclude them. The `.zattrs` key is present exactly
-        # when attributes are set (even empty) — UNSET emits no file. A model
-        # built by hand is not validated: its document is written only if it
-        # reads as `from_json` reads one, and every problem is raised.
-        document = parse_array_metadata_v2(self.to_json())
+        # when attributes are set (even empty) — UNSET emits no file.
+        document = self.to_json()
         zarray = {k: v for k, v in document.items() if k != "attributes"}
         out: dict[ZarrV2ArrayMetadataStoreKey | ZarrV2AttributesStoreKey, bytes] = {
             ZARR_V2_ARRAY_METADATA_STORE_KEY: dump_store_json(zarray, indent=indent)
@@ -561,3 +586,18 @@ class ZarrV2ArrayMetadata:
                 document["attributes"], indent=indent
             )
         return out
+
+
+def _v2_array_members(document: ZarrV2ArrayMetadataJSON) -> dict[str, object]:
+    """The members of the v2 array model of `document`, which `parse_array_metadata_v2` gave: a missing `dimension_separator` is `"."`."""
+    return {
+        "shape": document["shape"],
+        "dtype": document["dtype"],
+        "chunks": document["chunks"],
+        "fill_value": document["fill_value"],
+        "order": document["order"],
+        "compressor": document["compressor"],
+        "filters": document["filters"],
+        "dimension_separator": document.get("dimension_separator", "."),
+        "attributes": dict(document["attributes"]) if "attributes" in document else UNSET,
+    }

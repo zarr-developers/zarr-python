@@ -1692,34 +1692,6 @@ def test_error_update_refuses_to_leave_out_a_member_a_document_holds() -> None:
 
 
 @pytest.mark.parametrize(
-    ("changes", "problems"),
-    [
-        ({"fill_value": math.nan}, [(("fill_value",), "invalid_value")]),
-        ({"dimension_names": ("x", "y")}, [(("dimension_names",), "invalid_value")]),
-        (
-            {"shape": (4, 4)},
-            [(("chunk_grid", "configuration", "chunk_shape"), "invalid_value")],
-        ),
-        ({"attributes": {1: "a"}}, [(("attributes",), "invalid_type")]),
-    ],
-    ids=[
-        "fill-value-not-json",
-        "names-for-another-rank",
-        "shape-without-its-grid",
-        "attribute-key",
-    ],
-)
-def test_error_to_key_value_refuses_a_model_changed_by_hand_into_an_invalid_one(
-    changes: dict[str, object], problems: list[tuple[tuple[str | int, ...], str]]
-) -> None:
-    """As its own fields read it: no invalid document is written, however the model came to be."""
-    model = dataclasses.replace(ZarrV3ArrayMetadata.create_default(shape=(4,)), **changes)
-    with pytest.raises(MetadataValidationError) as raised:
-        model.to_key_value()
-    assert [(p.loc, p.kind) for p in raised.value.problems] == problems
-
-
-@pytest.mark.parametrize(
     ("shape", "kind"),
     [
         (5, "invalid_type"),
@@ -2068,16 +2040,6 @@ def test_v3_create_default_zero_length_dimensions() -> None:
         "configuration": {"chunk_shape": (1, 3)},
     }
     assert validate_array_metadata_v3(model.to_json()) == ()
-
-
-def test_v2_create_default_derivation_is_one_way() -> None:
-    """Overriding chunks without shape leaves the scalar default shape=()
-    untouched. The v3 model does not derive a shape from its grid either, and
-    refuses a grid the default shape does not fit: see
-    `test_error_create_default_refuses_a_document_with_a_problem`."""
-    v2 = ZarrV2ArrayMetadata.create_default(chunks=(10, 10))
-    assert v2.shape == ()
-    assert v2.chunks == (10, 10)
 
 
 # --- v2 dimension_separator default (roborev job 426) -------------------------

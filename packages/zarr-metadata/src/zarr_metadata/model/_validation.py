@@ -442,6 +442,46 @@ class ZarrV3ArrayMetadataReading:
 NO_SCOPE: Final = Context.of()
 """A scope of no definitions, which a model's own document is read in: its fields are read already, and nothing else in it is a field."""
 
+M = TypeVar("M")
+
+
+def overlapping(
+    extra_fields: Mapping[str, object], reserved: frozenset[str], node: str
+) -> tuple[ValidationProblem, ...]:
+    """The problem of a model's extra fields named as a member its document declares, which the model holds apart; none when they are not."""
+    if set(extra_fields).isdisjoint(reserved):
+        return ()
+    message = f"Extra fields cannot overlap with standard Zarr V3 {node} metadata fields"
+    return (ValidationProblem(("extra_fields",), message, "invalid_value"),)
+
+
+def construct(model: type[M], /, **members: object) -> M:
+    """A `model` of `members` a read found nothing wrong with: as its constructor builds one, without checking them again.
+
+    What pydantic's `model_construct` is to its `__init__`. A model checks
+    itself when it is built; a read has checked what it read already, so
+    the model it builds is not checked twice. A member not given, or one
+    the constructor does not take, is its default.
+    """
+    built = object.__new__(model)
+    declared = dataclasses.fields(cast("Any", model))
+    unknown = members.keys() - {member.name for member in declared if member.init}
+    if len(unknown) != 0:
+        msg = f"{model.__name__} has no member {sorted(unknown)!r} to build"
+        raise TypeError(msg)
+    for member in declared:
+        if member.init and member.name in members:
+            value = members[member.name]
+        elif member.default is not dataclasses.MISSING:
+            value = member.default
+        elif member.default_factory is not dataclasses.MISSING:
+            value = member.default_factory()
+        else:
+            msg = f"{model.__name__} is built with {member.name!r}"
+            raise TypeError(msg)
+        object.__setattr__(built, member.name, value)
+    return built
+
 
 @dataclass(frozen=True, slots=True)
 class ArrayMembersV3:

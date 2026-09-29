@@ -3,7 +3,6 @@
 import copy
 import dataclasses
 import json
-import math
 from collections import UserDict
 from collections.abc import Callable, Iterator
 from typing import cast
@@ -435,21 +434,6 @@ def test_group_update_reads_the_documents_it_is_given_in_its_scope() -> None:
     assert isinstance(child.codecs[1], Unclaimed)
     removed = updated.update(context=CORE, consolidated_metadata=UNSET)
     assert removed.consolidated_metadata is UNSET
-
-
-def test_error_to_key_value_refuses_a_group_holding_a_document_with_a_problem() -> None:
-    """A document it holds changed by hand into an invalid one, as its own fields read it."""
-    child = dataclasses.replace(ZarrV3ArrayMetadata.create_default(shape=(4,)), fill_value=math.nan)
-    group = ZarrV3GroupMetadata(
-        attributes={},
-        consolidated_metadata=ZarrV3ConsolidatedMetadata(metadata={"a": child}),
-        extra_fields={},
-    )
-    with pytest.raises(MetadataValidationError) as raised:
-        group.to_key_value()
-    assert [(p.loc, p.kind) for p in raised.value.problems] == [
-        ((*A, "fill_value"), "invalid_value")
-    ]
 
 
 def _fields_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:

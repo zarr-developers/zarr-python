@@ -136,6 +136,18 @@ build the model of either kind, as the models' own `from_json` and
 A member the spec does not define is not a field; the model's
 `must_understand_fields` names those a reader must understand.
 
+A model checks itself when it is built, as a pydantic model does in
+`__init__`: one built by hand, or changed by `dataclasses.replace`, whose
+document has a problem raises `MetadataValidationError` with every
+problem at the change, so no model is built invalid, and `to_key_value`
+writes each as it is. It holds its members as that read refines them, in
+containers of its own -- a list given for an array as a tuple -- as
+pydantic holds what its `__init__` coerced, and each field, a `Read` or
+an `Unclaimed`, as the scope read it: one built by hand is taken as
+read. A model a read builds is not read a second time. Change a model by
+building another: a container it holds, changed in place, is not
+checked again.
+
 `node_metadata_json_schema_v3` writes what the validators read as a
 JSON Schema, draft 2020-12, for an editor that checks a `zarr.json` as it
 is written, or a validator in another language. Each extension point is
