@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import io
 import os
 import pickle
@@ -283,7 +284,11 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
             store.close()
         else:
             store.close()
-            pickle.loads(pickle.dumps(store)).close()
+            copy = pickle.loads(pickle.dumps(store))
+            value = await copy.get("foo", default_buffer_prototype())
+            assert value is not None
+            assert value.to_bytes() == b"bar"
+            copy.close()
         with zipfile.ZipFile(store.path) as zf:  # type: ignore[arg-type]
             assert zf.namelist() == ["foo"]
 
@@ -429,6 +434,73 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         store.close()
         with zipfile.ZipFile(store.path) as zf:  # type: ignore[arg-type]
             assert zf.namelist() == ["baz"]
+
+    async def test_unused_copy_of_open_writer_does_not_write(self, tmp_path: Path) -> None:
+        # a copy of a store that is still writing, like those dask makes while
+        # building a graph, leaves the file alone if it is never used, even
+        # when it is collected after the original closes
+        store = ZipStore(tmp_path / "data.zip", mode="w")
+        await store.set("foo", cpu.Buffer.from_bytes(b"1"))
+        copy = pickle.loads(pickle.dumps(store))
+        await store.set("bar", cpu.Buffer.from_bytes(b"2"))
+        store.close()
+        del copy
+        gc.collect()
+
+        with zipfile.ZipFile(store.path) as zf:  # type: ignore[arg-type]
+            assert zf.namelist() == ["foo", "bar"]
+            assert zf.testzip() is None
+
+    async def test_used_copy_of_open_writer_raises(self, tmp_path: Path) -> None:
+        # the file has no central directory until the original closes, so a
+        # copy that uses it refuses to reopen it instead of starting a new
+        # archive after the entries already written
+        store = ZipStore(tmp_path / "data.zip", mode="w")
+        await store.set("foo", cpu.Buffer.from_bytes(b"1"))
+        copy = pickle.loads(pickle.dumps(store))
+        with pytest.raises(zipfile.BadZipFile, match="no zip central directory"):
+            await copy.get("foo", default_buffer_prototype())
+        store.close()
+
+        with zipfile.ZipFile(store.path) as zf:  # type: ignore[arg-type]
+            assert zf.namelist() == ["foo"]
+
+    async def test_failed_clear_keeps_failed_close_guard(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # clear() lifts the failed-close guard only once the old file is gone
+        store = ZipStore(tmp_path / "data.zip", mode="w")
+        await store.set("foo", cpu.Buffer.from_bytes(b"1"))
+
+        def disk_full() -> None:
+            raise OSError("disk full")
+
+        def locked(path: Any) -> None:
+            raise PermissionError("locked")
+
+        monkeypatch.setattr(store._zf, "_write_end_record", disk_full)
+        with pytest.raises(OSError, match="disk full"):
+            store.close()
+        with monkeypatch.context() as m:
+            m.setattr(os, "remove", locked)
+            with pytest.raises(PermissionError, match="locked"):
+                await store.clear()
+        with pytest.raises(RuntimeError, match="closing the archive"):
+            await store.set("bar", cpu.Buffer.from_bytes(b"2"))
+
+    async def test_clear_read_mode_writable_store(self, tmp_path: Path) -> None:
+        # a store opened with mode "r" but read_only=False creates the new
+        # archive with "w", since "r" cannot open the file clear() removed
+        path = tmp_path / "data.zip"
+        with zipfile.ZipFile(path, mode="w") as zf:
+            zf.writestr("foo", b"1")
+
+        store = ZipStore(path, mode="r", read_only=False)
+        await store.clear()
+        await store.set("bar", cpu.Buffer.from_bytes(b"2"))
+        store.close()
+        with zipfile.ZipFile(path) as zf:
+            assert zf.namelist() == ["bar"]
 
     async def test_unpickle_state_from_older_release(self, tmp_path: Path) -> None:
         # a pickle made before _was_opened and _close_failed existed still

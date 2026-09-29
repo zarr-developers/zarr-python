@@ -93,10 +93,12 @@ class ZipStore(Store):
         file, 'a' to append to an existing file, or 'x' to exclusively create
         and write a new file. 'w' and 'x' apply to the first open only; the
         store reopens its archive with 'a' after `close()`, `move()`, or
-        unpickling, so the entries it already wrote are kept. If `close()`
-        raises, the archive may be incomplete, and every later read or write
-        raises `RuntimeError` instead of reopening it; `clear()` replaces the
-        archive and makes the store usable again.
+        unpickling, so the entries it already wrote are kept. An unpickled
+        store opens its archive on first use. If `close()` raises, the
+        archive may be incomplete, and every later read or write raises
+        `RuntimeError` instead of reopening it; for a writable store backed
+        by a path, `clear()` replaces the archive and makes the store usable
+        again.
     compression : int, optional
         Compression method to use when writing to the archive.
     allowZip64 : bool, optional
@@ -182,7 +184,21 @@ class ZipStore(Store):
             # makes zipfile start a new archive and drop the earlier entries
             raise RuntimeError(
                 f"closing the archive of {self!r} failed, so it may be incomplete; "
-                "the store will not reopen it, but clear() replaces it"
+                "the store will not reopen it"
+            )
+        if (
+            self.path is not None
+            and self._was_opened
+            and self._zmode == "a"
+            and self.path.exists()
+            and not zipfile.is_zipfile(self.path)
+        ):
+            # the file lacks a central directory, e.g. because another copy of
+            # this store still has it open for writing; appending would start
+            # a new archive and drop the entries already written
+            raise zipfile.BadZipFile(
+                f"{self!r} cannot reopen {self.path}: the file has no zip central "
+                "directory, so another store may still have it open for writing"
             )
         if (
             self.path is None
@@ -249,9 +265,12 @@ class ZipStore(Store):
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__ = state
         self.__dict__.setdefault("_close_failed", False)
+        self.__dict__.setdefault("_was_opened", False)
         self._lock = threading.RLock()
+        # open on first use: a copy that is never used, like those dask makes
+        # while building a graph, must not open the file, because zipfile
+        # writes a central directory when it closes an archive it could not read
         self._is_open = False
-        self._zipfile()
 
     def close(self) -> None:
         # docstring inherited
@@ -276,15 +295,14 @@ class ZipStore(Store):
                 raise NotImplementedError(
                     "clear() is not supported for a ZipStore backed by a file-like object"
                 )
-            if self._close_failed:
-                # replacing the file cannot drop entries, so clear() is the one
-                # way to recover a store whose close() failed
-                self._close_failed = False
-            else:
+            if not self._close_failed:
                 # opening first keeps mode "x" from deleting a file it may not claim
                 self._zipfile()
                 self.close()
             os.remove(self.path)
+            # replacing the file cannot drop entries, so clear() is the one way
+            # to recover a store whose close() failed
+            self._close_failed = False
             # if this open fails the store stays closed, and the next use
             # creates the archive again
             self._zmode = "w"
