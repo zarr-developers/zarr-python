@@ -9,9 +9,11 @@ A reading warns only where the user must act on it; a reading that gives what za
 read from the same document before these upgrades existed is silent, so a document
 that opened without a warning still does. The warnings are given once per document,
 after the upgraded document has passed the metadata constructor, so an invalid
-document raises its own error, not a warning about how it was read. Silent or not,
-metadata read from an upgraded document is marked (see `mark_upgraded`), so the array
-stores the upgrade before it writes chunks under it.
+document raises its own error, not a warning about how it was read. Metadata read
+from a document whose upgrade moves chunks (a chunk size read as another size) is
+marked (see `mark_upgraded`), silent or not, so the array stores the upgrade before it
+writes chunks under it. An upgrade that only respells a value zarr already read the
+same way (`true` as 1, `4.0` as 4) moves no chunks, so it is not marked.
 
 To read another kind of invalid document, add an upgrade to `ARRAY_UPGRADES`.
 """
@@ -23,18 +25,30 @@ import json
 import warnings
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from itertools import chain, repeat
-from typing import TYPE_CHECKING, Final, TypeGuard, cast
+from typing import TYPE_CHECKING, Final, NamedTuple, TypeGuard, cast
 
-from zarr.core._json import json_equal
 from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
 
 type ArrayDocument = Mapping[str, JSON]
-type Upgrade = Callable[[ArrayDocument], tuple[ArrayDocument, str | None] | None]
-"""Returns `None` if the document needs no upgrade, else the upgraded document and,
-if the user must act on how it was read, a warning saying so (else `None`)."""
+
+
+class Reading(NamedTuple):
+    """How an upgrade read a stored document."""
+
+    moves_chunks: bool
+    """Whether chunks written under the upgraded document are not where a reader of the
+    stored document looks for them, so the array must store the upgrade before it
+    writes chunks."""
+    warning: str | None
+    """What the user must act on, if anything."""
+
+
+type Upgrade = Callable[[ArrayDocument], tuple[ArrayDocument, Reading] | None]
+"""Returns `None` if the document needs no upgrade, else the upgraded document and how
+it was read."""
 
 RESAVE_HINT: Final = (
     "To store valid metadata, open the array writable and call `array.update_attributes({})`; "
@@ -44,17 +58,23 @@ RESAVE_HINT: Final = (
 
 
 def mark_upgraded[M](
-    metadata: M, stored: ArrayDocument, readings: Sequence[str | None], path: str | None
+    metadata: M,
+    stored: ArrayDocument,
+    readings: Sequence[Reading],
+    path: str | None,
+    *,
+    warn: bool = True,
 ) -> M:
     """Record that `metadata` was read from the document `stored`, which needed the
-    upgrades whose `readings` `upgrade_array_document` returned, if any: keep a copy of
-    `stored` as `_stored_document` on `metadata`, so the array stores the upgrade before
-    it writes chunks under it and consolidated metadata stores it as it was stored, and
-    warn once with the readings that are warnings, naming the array at `path` when the
-    caller knows it."""
-    if readings:
+    upgrades whose `readings` `upgrade_array_document` returned, if any. If a reading
+    moves chunks, keep a copy of `stored` as `_stored_document` on `metadata`, so the
+    array stores the upgrade before it writes chunks under it and consolidated metadata
+    stores it as it was stored. If `warn`, warn once with the readings' warnings,
+    naming the array at `path` when the caller knows it."""
+    if any(reading.moves_chunks for reading in readings):
         object.__setattr__(metadata, "_stored_document", copy.deepcopy(stored))
-    if messages := [reading for reading in readings if reading is not None]:
+    messages = [reading.warning for reading in readings if reading.warning is not None]
+    if warn and messages:
         subject = "" if path is None else f"Array {path!r}: "
         # The synchronous API parses metadata on zarr's IO thread, whose stack holds no
         # user code, so the warning points at the `from_dict` that read the document.
@@ -67,10 +87,13 @@ def _is_int_list(value: object) -> TypeGuard[list[int]]:
     return isinstance(value, list) and all(isinstance(v, int) for v in value)
 
 
-def _read_chunk_size(size: JSON, span: int | None, unit: int) -> tuple[int, str | None] | None:
+def _read_chunk_size(
+    size: JSON, span: int | None, unit: int
+) -> tuple[int, bool, str | None] | None:
     """Read one entry of a stored regular chunk shape as a chunk edge length.
 
-    Returns the edge length and, where the user must act on how it was read, how it was
+    Returns the edge length, whether it moves chunks (it is not the size a reader of
+    the stored entry uses), and, where the user must act on how it was read, how it was
     read; `None` if the entry cannot be read, which leaves it for the metadata
     constructors to check. A JSON int >= 1 is kept, JSON `true` is read as 1, and 0 or
     JSON `false` is read as `unit`, the smallest chunk edge length the axis can have (1,
@@ -83,90 +106,115 @@ def _read_chunk_size(size: JSON, span: int | None, unit: int) -> tuple[int, str 
     """
     match size:
         case True:
-            return 1, None
+            return 1, False, None
         case int() if size >= 1:
-            return size, None
+            return size, False, None
         case int() if size == 0 and span is not None:
             if span == 0:
-                return unit, None
-            return unit, (
-                "1, as no chunk can be stored under a chunk size of 0, so the array "
-                "holds only its fill value"
-                if unit == 1
-                else f"{unit}, the inner chunk size, as no chunk can be stored under a "
-                "chunk size of 0, so the array holds only its fill value"
+                return unit, True, None
+            return (
+                unit,
+                True,
+                (
+                    "1, as no chunk can be stored under a chunk size of 0, so the array "
+                    "holds only its fill value"
+                    if unit == 1
+                    else f"{unit}, the inner chunk size, as no chunk can be stored under a "
+                    "chunk size of 0, so the array holds only its fill value"
+                ),
             )
     return None
 
 
 def _read_chunk_shape(
     stored: JSON, spans: Sequence[int | None], units: Iterable[int] = ()
-) -> tuple[list[int], str | None] | None:
+) -> tuple[list[int], Reading] | None:
     """Read a stored regular chunk shape, entry by entry (see `_read_chunk_size`), for
     axes of lengths `spans` whose chunks are multiples of `units` (1 where not given).
 
-    Returns the chunk shape and, where the user must act on how an entry was read, a
-    sentence saying how the chunk shape was read; `None` if it cannot be read.
+    Returns the chunk shape and how it was read, if any entry was read as another value
+    (the warning is a sentence saying how the chunk shape was read); `None` if it cannot
+    be read or needs no upgrade.
     """
     if not (isinstance(stored, list) and len(stored) == len(spans)):
         return None
     edges: list[int] = []
+    changed = moves_chunks = False
     readings: list[str] = []
     axes = zip(stored, spans, chain(units, repeat(1)), strict=False)
     for axis, (size, span, unit) in enumerate(axes):
         read = _read_chunk_size(size, span, unit)
         if read is None:
             return None
-        edge, how = read
+        edge, moved, how = read
         edges.append(edge)
+        changed |= size is True or edge != size
+        moves_chunks |= moved
         if how is not None:
             readings.append(f"{json.dumps(size)} in dimension {axis} as {how}")
-    if not readings:
-        return edges, None
-    return edges, (
+    if not changed:
+        return None
+    warning = (
         f"The stored chunk shape {json.dumps(stored)} is invalid: chunk sizes must be "
         f"integers of at least 1. It is read as {edges}, reading {'; '.join(readings)}."
+        if readings
+        else None
     )
+    return edges, Reading(moves_chunks, warning)
 
 
-def _invalid_chunk_sizes_v2(doc: ArrayDocument) -> tuple[ArrayDocument, str | None] | None:
+def _invalid_chunk_sizes_v2(doc: ArrayDocument) -> tuple[ArrayDocument, Reading] | None:
     shape = doc.get("shape")
     if not _is_int_list(shape):
         return None
-    stored = doc.get("chunks")
-    match _read_chunk_shape(stored, shape):
-        case chunks, reading if not json_equal(chunks, stored):
+    match _read_chunk_shape(doc.get("chunks"), shape):
+        case chunks, reading:
             return {**doc, "chunks": chunks}, reading
     return None
 
 
-def _read_codec(codec: JSON) -> JSON:
+def _read_codec(codec: JSON) -> JSON | None:
     """Read a stored codec: the inner chunk shape of a sharding codec is read as a chunk
     shape with no known axis lengths (see `_read_chunk_shape`), and so are those of the
-    sharding codecs nested in its codecs."""
+    sharding codecs nested in its codecs. Returns `None` if nothing was read as another
+    value. No stored inner chunk size is read as a different size, so the reading moves
+    no chunks."""
     match codec:
         case {"name": "sharding_indexed", "configuration": Mapping() as configuration}:
-            upgraded = dict(configuration)
+            upgraded: dict[str, JSON] = {}
             stored = configuration.get("chunk_shape")
             if isinstance(stored, list) and (
                 read := _read_chunk_shape(stored, [None] * len(stored))
             ):
                 upgraded["chunk_shape"] = read[0]
-            if isinstance(codecs := configuration.get("codecs"), list):
-                upgraded["codecs"] = [_read_codec(inner) for inner in codecs]
+            if isinstance(codecs := configuration.get("codecs"), list) and (
+                inner := _read_codecs(codecs)
+            ):
+                upgraded["codecs"] = inner
+            if not upgraded:
+                return None
             # The mapping pattern does not narrow `codec` for mypy.
-            return {**cast("Mapping[str, JSON]", codec), "configuration": upgraded}
-    return codec
+            return {
+                **cast("Mapping[str, JSON]", codec),
+                "configuration": {**configuration, **upgraded},
+            }
+    return None
 
 
-def _invalid_inner_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, str | None] | None:
+def _read_codecs(codecs: list[JSON]) -> list[JSON] | None:
+    """Read stored codecs (see `_read_codec`); `None` if nothing was read as another
+    value."""
+    read = [_read_codec(codec) for codec in codecs]
+    if all(codec is None for codec in read):
+        return None
+    return [stored if new is None else new for stored, new in zip(codecs, read, strict=True)]
+
+
+def _invalid_inner_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, Reading] | None:
     stored = doc.get("codecs")
-    if not isinstance(stored, list):
+    if not isinstance(stored, list) or (codecs := _read_codecs(stored)) is None:
         return None
-    codecs = [_read_codec(codec) for codec in stored]
-    if json_equal(codecs, stored):
-        return None
-    return {**doc, "codecs": codecs}, None
+    return {**doc, "codecs": codecs}, Reading(moves_chunks=False, warning=None)
 
 
 def _inner_chunk_shape(doc: ArrayDocument) -> list[int] | None:
@@ -182,7 +230,7 @@ def _inner_chunk_shape(doc: ArrayDocument) -> list[int] | None:
     return []
 
 
-def _invalid_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, str | None] | None:
+def _invalid_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, Reading] | None:
     grid = doc.get("chunk_grid")
     shape = doc.get("shape")
     if not (isinstance(grid, Mapping) and grid.get("name") == "regular" and _is_int_list(shape)):
@@ -192,9 +240,8 @@ def _invalid_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, str | No
     configuration = grid.get("configuration")
     if not isinstance(configuration, Mapping):
         return None
-    stored = configuration.get("chunk_shape")
-    match _read_chunk_shape(stored, shape, units):
-        case chunk_shape, reading if not json_equal(chunk_shape, stored):
+    match _read_chunk_shape(configuration.get("chunk_shape"), shape, units):
+        case chunk_shape, reading:
             upgraded = {**configuration, "chunk_shape": chunk_shape}
             return {**doc, "chunk_grid": {**grid, "configuration": upgraded}}, reading
     return None
@@ -230,7 +277,16 @@ def _read_rectilinear_entry(entry: JSON) -> JSON:
     return _read_edge_length(entry)
 
 
-def _invalid_edge_lengths_v3(doc: ArrayDocument) -> tuple[ArrayDocument, str | None] | None:
+def _respelled(read: JSON, stored: JSON) -> bool:
+    """Whether reading `stored` as `read` gave a value of another type anywhere in it
+    (`true` read as 1, `4.0` as 4). Compares types, not encodings, so a value that is
+    not JSON (a NumPy integer in metadata built in code) is simply kept."""
+    if isinstance(stored, list) and isinstance(read, list):
+        return any(_respelled(r, s) for r, s in zip(read, stored, strict=True))
+    return type(read) is not type(stored)
+
+
+def _invalid_edge_lengths_v3(doc: ArrayDocument) -> tuple[ArrayDocument, Reading] | None:
     grid = doc.get("chunk_grid")
     if not (isinstance(grid, Mapping) and grid.get("name") == "rectilinear"):
         return None
@@ -241,10 +297,11 @@ def _invalid_edge_lengths_v3(doc: ArrayDocument) -> tuple[ArrayDocument, str | N
     if not isinstance(stored, list):
         return None
     read = [_read_rectilinear_axis(axis) for axis in stored]
-    if json_equal(read, stored):
+    if not _respelled(read, stored):
         return None
     upgraded = {**configuration, "chunk_shapes": read}
-    return {**doc, "chunk_grid": {**grid, "configuration": upgraded}}, None
+    # A stored edge is read as the value it equals, so the reading moves no chunks.
+    return {**doc, "chunk_grid": {**grid, "configuration": upgraded}}, Reading(False, None)
 
 
 ARRAY_UPGRADES: Final[Mapping[ZarrFormat, tuple[Upgrade, ...]]] = {
@@ -259,14 +316,13 @@ ARRAY_UPGRADES: Final[Mapping[ZarrFormat, tuple[Upgrade, ...]]] = {
 
 def upgrade_array_document(
     doc: ArrayDocument, zarr_format: ZarrFormat
-) -> tuple[ArrayDocument, list[str | None]]:
+) -> tuple[ArrayDocument, list[Reading]]:
     """Apply the upgrades for `zarr_format` to a stored array metadata document.
 
-    Returns the upgraded document and the reading of each upgrade that changed it (a
-    warning, or `None` for a silent one), for `mark_upgraded` once the document has
-    been validated.
+    Returns the upgraded document and the reading of each upgrade that changed it, for
+    `mark_upgraded` once the document has been validated.
     """
-    readings: list[str | None] = []
+    readings: list[Reading] = []
     for upgrade in ARRAY_UPGRADES[zarr_format]:
         upgraded = upgrade(doc)
         if upgraded is not None:
