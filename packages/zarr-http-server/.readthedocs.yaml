@@ -13,9 +13,10 @@ build:
       # Cancel pull request builds that do not touch this package. Exit code
       # 183 cancels the build and reports success to the Git provider. Scoped
       # to PR builds ("external" versions) because origin/main is only a
-      # meaningful diff base there.
+      # meaningful diff base there. The shared docs config and header script
+      # live outside the package directory but change this site too.
       - |
-        if [ "$READTHEDOCS_VERSION_TYPE" = "external" ] && git diff --quiet origin/main -- packages/zarr-http-server;
+        if [ "$READTHEDOCS_VERSION_TYPE" = "external" ] && git diff --quiet origin/main -- packages/zarr-http-server packages/mkdocs-base.yml packages/source-version.js;
         then
           exit 183;
         fi

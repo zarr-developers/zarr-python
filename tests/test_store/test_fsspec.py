@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import functools
+import http.server
 import json
 import re
+import threading
 import warnings
 from typing import TYPE_CHECKING, Any
 
@@ -559,6 +562,55 @@ def test_open_s3map_raises(endpoint_url: str) -> None:
         match="'storage_options' is only used when the store is passed as an FSSpec URI string.",
     ):
         zarr.open(store=mapper, storage_options={"anon": True}, mode="w", shape=(3, 3))
+
+
+async def test_list_dir_http_yields_only_children(tmp_path: pathlib.Path) -> None:
+    """list_dir over HTTP yields each direct child once, by bare name.
+
+    An HTTP listing is scraped from an HTML index page, whose links include the site
+    root, the parent, in-page anchors, queries, "./" relative links, and directories
+    with a trailing "/".
+    Regression test for https://github.com/zarr-developers/zarr-python/issues/3575,
+    where the site-root link surfaced as a group member named "".
+    """
+    pytest.importorskip("aiohttp")
+    links = [
+        "/",
+        "../",
+        "./",
+        "#",
+        "#usage",
+        "?sort=name",
+        "a/",
+        "a",
+        "b",
+        "./d",
+        ".zgroup",
+        "/group/c/",
+    ]
+    group = tmp_path / "group"
+    group.mkdir()
+    (group / "index.html").write_text(
+        "<html><body>"
+        + "".join(f'<a href="{link}">{link}</a>' for link in links)
+        + "</body></html>"
+    )
+
+    class QuietHandler(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+    handler = functools.partial(QuietHandler, directory=str(tmp_path))
+    with http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        store = FsspecStore.from_url(f"http://127.0.0.1:{server.server_port}/group")
+        try:
+            observed = await _collect_aiterator(store.list_dir(""))
+        finally:
+            store.close()
+            server.shutdown()
+
+    assert sorted(observed) == [".zgroup", "a", "b", "c", "d"]
 
 
 async def test_close_does_not_close_filesystem_session() -> None:

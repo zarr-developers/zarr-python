@@ -246,6 +246,26 @@ The resulting built documentation will be available in the `site` folder.
 just docs-serve
 ```
 
+#### Sub-package documentation sites
+
+Each sub-package under `packages/` ships its own Material for MkDocs site, built from within the package directory:
+
+```bash
+cd packages/zarr-metadata
+uv run --group docs mkdocs build --strict
+```
+
+Configuration shared by all package sites (theme, plugins, markdown extensions) lives in `packages/mkdocs-base.yml`, symlinked into each package directory; each package's `mkdocs.yml` pulls it in via `INHERIT` and defines only the site identity (name, description, repo and site URLs) and nav. `INHERIT` merges mappings but replaces lists, so a package that sets `theme.features` or `markdown_extensions` silently drops every shared entry; add extensions and features to the base instead. The header source widget's version fact is overridden by `packages/source-version.js`, symlinked into each package's `docs/_static/`, which replaces the monorepo's latest release with the latest tag matching the package's `zarr_<name>-v` prefix (both derived from `repo_url` at runtime, so the file needs no per-package edits). On Windows, enable symlinks in git (`git config core.symlinks true`, with Developer Mode on) before cloning, or local builds will ship a file containing the link target instead of the script.
+
+To add a site for a new sub-package, copy `mkdocs.yml`, the `docs/` folder, `.readthedocs.yaml`, and the `docs` dependency group in `pyproject.toml` from an existing package, then adjust the site name, description, URLs, and nav. Recreate the `mkdocs-base.yml` and `docs/_static/source-version.js` symlinks rather than copying the files, and copy the sdist `exclude` and `force-include` entries from an existing package's `pyproject.toml`, which ship the linked files in place of the links. Add `packages/mkdocs-base.yml` and `packages/source-version.js` to the package workflow's `paths` filters and to the `git diff` in its `.readthedocs.yaml`, so changes to the shared files build the site.
+
+Each site is hosted as its own Read the Docs project. To set one up for a new sub-package:
+
+1. Create a new project on [readthedocs.org](https://app.readthedocs.org) importing the `zarr-python` repository, named after the package (e.g. `zarr-metadata`).
+2. In the project's admin settings, set the configuration file path to `packages/<name>/.readthedocs.yaml`. That file also cancels pull request builds that don't touch the package.
+3. Add an automation rule matching the package's release tags (custom match `^zarr_<name>-v`, note the underscore) with the action "Activate version". Automation rules only apply to versions detected after the rule is created, so activate any earlier release tags manually from the versions list.
+4. When activating a version, edit its slug to the bare version number (`0.4.0`, not `v0.4.0`). RTD keeps a version record for every tag in the monorepo, including inactive ones not shown in the dashboard's versions list, and all of zarr-python's own release tags are `v`-prefixed — so a `v`-prefixed slug collides with zarr-python's release history ("A version with that slug already exists"), while bare version numbers cannot collide.
+
 #### Adding executable code blocks in the documentation
 
 Zarr uses [Markdown Exec](https://pawamoy.github.io/markdown-exec/usage/) to execute code blocks in Markdown files. Add `exec="true"` to a code block header for it to be executed when the docs are built. For example:

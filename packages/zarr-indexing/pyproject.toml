@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.29.0", "hatch-vcs"]
+requires = ["hatchling>=1.29.0", "hatch-vcs", "setuptools-scm>=9"]
 build-backend = "hatchling.build"
 
 [project]
@@ -54,15 +54,17 @@ Documentation = "https://zarr-indexing.readthedocs.io/"
 # keep their supported minimum versions aligned.
 test = ["pytest", "hypothesis>=6.160.0"]
 docs = [
-    # Documentation tooling for this package. These pins are maintained here
-    # and can differ from the parent project's tooling versions.
+    # Pins match the zarr-python docs environment in the repo-root
+    # pyproject.toml so every site renders with the same toolchain, and the
+    # shared packages/mkdocs-base.yml sees one set of plugin versions.
+    # Bump them together with the root.
     "mkdocs-material==9.7.7",
     "mkdocs==1.6.1",
     "mkdocstrings==1.0.6",
-    "mkdocstrings-python==2.0.5",
+    "mkdocstrings-python==2.0.8",
     "griffe-inherited-docstrings==1.1.3",
     # mkdocstrings uses ruff to format rendered signatures
-    "ruff==0.15.22",
+    "ruff==0.16.8",
 ]
 
 [tool.hatch.version]
@@ -71,7 +73,7 @@ tag-pattern = '^zarr_indexing-v(?P<version>.+)$'
 # `git_describe_command` ensures we get the zarr_indexing tags instead of latest.
 # `local_scheme` strips the git commit info so the appending info is just a counter from latest tag.
 # test-pypi doesn't accept git commit info in tags, and the count should be enough to distinguish unique runs.
-raw-options = { root = "../..", git_describe_command = "git describe --dirty --tags --long --match zarr_indexing-v*", local_scheme = "no-local-version" }
+raw-options = { root = "../..", scm = { git = { describe_command = "git describe --dirty --tags --long --match zarr_indexing-v*" } }, local_scheme = "no-local-version" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/zarr_indexing"]
@@ -93,6 +95,14 @@ include = [
     "/CHANGELOG.md",
     "/CONTRIBUTING.md",
 ]
+# The shared docs config and header script are symlinks into packages/ in the
+# repository; ship the files they point at, since a link out of the sdist
+# dangles and pip refuses to unpack it.
+exclude = ["/mkdocs-base.yml", "/docs/_static/source-version.js"]
+
+[tool.hatch.build.targets.sdist.force-include]
+"../mkdocs-base.yml" = "mkdocs-base.yml"
+"../source-version.js" = "docs/_static/source-version.js"
 
 [tool.ruff]
 extend = "../../pyproject.toml"
@@ -158,5 +168,35 @@ filename = "CHANGELOG.md"
 package = "zarr_indexing"
 underlines = ["", "", ""]
 title_format = "## {version} ({project_date})"
-issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/issues/{issue})"
+issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/pull/{issue})"
 start_string = "<!-- towncrier release notes start -->\n"
+
+# Declaring any type replaces towncrier's built-in set, so all five the
+# `changes/README.md` menu offers are restated here. They are the defaults
+# verbatim except for `misc`, whose `showcontent` towncrier defaults to false:
+# a `misc` entry would render as a bare PR link, which tells a reader nothing.
+# A change worth a release note is worth a sentence, whatever its category.
+[[tool.towncrier.type]]
+directory = "feature"
+name = "Features"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "bugfix"
+name = "Bugfixes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "doc"
+name = "Improved Documentation"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "removal"
+name = "Deprecations and Removals"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "misc"
+name = "Misc"
+showcontent = true
