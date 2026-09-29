@@ -343,6 +343,9 @@ def _chunk_int(value: object) -> int | None:
     scalars and 0-d integer arrays. Floats and arrays with dimensions are not
     integers, nor are numpy booleans; a Python `bool` is an `int`, read as 0 or 1.
     """
+    if getattr(value, "dtype", None) == np.bool_:
+        # NumPy before 2.3 still takes a NumPy boolean as an index, with a DeprecationWarning.
+        return None
     try:
         return operator.index(cast("SupportsIndex", value))
     except TypeError:
