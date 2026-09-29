@@ -5,9 +5,9 @@ import logging
 import unicodedata
 import warnings
 from collections import defaultdict
-from dataclasses import asdict, dataclass, field, fields, replace
+from dataclasses import asdict, dataclass, field, replace
 from itertools import accumulate
-from typing import TYPE_CHECKING, Literal, assert_never, cast, overload
+from typing import TYPE_CHECKING, Final, Literal, assert_never, cast, overload
 
 import numpy as np
 
@@ -49,7 +49,7 @@ from zarr.core.dtype import parse_data_type
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.io import save_metadata
-from zarr.core.metadata.v3 import AllowedExtraField, check_allowed_extra_field
+from zarr.core.metadata.v3 import AllowedExtraField, extract_extra_fields, parse_extra_fields
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
     ArrayNotFoundError,
@@ -346,6 +346,17 @@ class ConsolidatedMetadata:
         return metadata
 
 
+GROUP_METADATA_KEYS: Final[set[str]] = {
+    "zarr_format",
+    "node_type",
+    "attributes",
+    "consolidated_metadata",
+}
+"""
+The names of the fields of the group metadata document written by Zarr-Python.
+"""
+
+
 @dataclass(frozen=True)
 class GroupMetadata(Metadata):
     """
@@ -408,15 +419,22 @@ class GroupMetadata(Metadata):
         attributes: dict[str, Any] | None = None,
         zarr_format: ZarrFormat = 3,
         consolidated_metadata: ConsolidatedMetadata | None = None,
-        extra_fields: dict[str, AllowedExtraField] | None = None,
+        extra_fields: Mapping[str, AllowedExtraField] | None = None,
     ) -> None:
         attributes_parsed = parse_attributes(attributes)
         zarr_format_parsed = parse_zarr_format(zarr_format)
+        extra_fields_parsed = parse_extra_fields(
+            extra_fields, reserved_keys=GROUP_METADATA_KEYS, node_type="group"
+        )
+        if zarr_format_parsed == 2 and extra_fields_parsed:
+            raise ValueError(
+                "Invalid extra fields. Zarr format 2 group metadata does not support extra fields."
+            )
 
         object.__setattr__(self, "attributes", attributes_parsed)
         object.__setattr__(self, "zarr_format", zarr_format_parsed)
         object.__setattr__(self, "consolidated_metadata", consolidated_metadata)
-        object.__setattr__(self, "extra_fields", dict(extra_fields or {}))
+        object.__setattr__(self, "extra_fields", extra_fields_parsed)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
@@ -431,26 +449,19 @@ class GroupMetadata(Metadata):
             data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(consolidated_metadata)
 
         zarr_format = data.get("zarr_format")
-        if zarr_format == 2 or zarr_format is None:
+        if zarr_format == 3:
+            # Zarr v3 allows an extra key only if it is an object with "must_understand": false.
+            extra_fields = extract_extra_fields(
+                data, reserved_keys=GROUP_METADATA_KEYS, node_type="group"
+            )
+        else:
             # zarr v2 allowed arbitrary keys here.
             # We don't want the GroupMetadata constructor to fail just because someone put an
-            # extra key in the metadata.
-            expected = {x.name for x in fields(cls)}
-            data = {k: v for k, v in data.items() if k in expected}
-        else:
-            # Zarr v3 allows an extra key only if it is an object with "must_understand": false.
-            known = {"attributes", "zarr_format", "consolidated_metadata"}
-            extra = {k: data.pop(k) for k in set(data) - known}
-            invalid = sorted(k for k, v in extra.items() if not check_allowed_extra_field(v))
-            if invalid:
-                raise MetadataValidationError(
-                    f"Got a Zarr V3 group metadata document with disallowed extra fields: {invalid}. "
-                    'Extra fields are only allowed if they are an object with "must_understand" '
-                    "set to false."
-                )
-            data["extra_fields"] = extra
-
-        return cls(**data)
+            # extra key in the metadata, but we don't keep those keys either. An invalid
+            # zarr_format is rejected by the constructor.
+            extra_fields = {}
+        data = {k: v for k, v in data.items() if k in GROUP_METADATA_KEYS}
+        return cls(**data, extra_fields=extra_fields)
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(replace(self, consolidated_metadata=None))
