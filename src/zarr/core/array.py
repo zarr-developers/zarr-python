@@ -628,8 +628,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
     ) -> AsyncArrayV3:
-        await _prepare_overwrite(store_path, zarr_format=3, overwrite=overwrite)
-
         if isinstance(chunk_key_encoding, tuple):
             chunk_key_encoding = (
                 V2ChunkKeyEncoding(separator=chunk_key_encoding[1])
@@ -647,6 +645,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             dimension_names=dimension_names,
             attributes=attributes,
         )
+        # Encode first, so metadata that cannot be stored fails before any existing
+        # node is deleted.
+        encode_documents(store_path, metadata)
+        await _prepare_overwrite(store_path, zarr_format=3, overwrite=overwrite)
 
         array = cls(metadata=metadata, store_path=store_path, config=config)
         await array._save_metadata(metadata, ensure_parents=True)
@@ -703,8 +705,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
     ) -> AsyncArrayV2:
-        await _prepare_overwrite(store_path, zarr_format=2, overwrite=overwrite)
-
         compressor_parsed: CompressorLikev2
         if compressor == "auto":
             compressor_parsed = default_compressor_v2(dtype)
@@ -730,6 +730,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             compressor=compressor_parsed,
             attributes=attributes,
         )
+        # Encode first, so metadata that cannot be stored fails before any existing
+        # node is deleted.
+        encode_documents(store_path, metadata)
+        await _prepare_overwrite(store_path, zarr_format=2, overwrite=overwrite)
 
         array = cls(metadata=metadata, store_path=store_path, config=config)
         await array._save_metadata(metadata, ensure_parents=True)
@@ -1628,15 +1632,19 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """Store the upgrade of this array's current stored document, if it needs one,
         before chunks are written under this handle's metadata.
 
-        Only for metadata read from a document that had to be upgraded (see
+        Only for metadata read from a document whose upgrade moves chunks (see
         `zarr.core.metadata.upgrades`). The document is read again, because the store may
         hold a newer one than this handle's metadata. If that one lays out chunks
-        differently (the array was resized since by software that kept the invalid chunk
-        size), this handle would write chunks no reader finds, so it raises and stores
-        nothing. If it needs no upgrade (the array was re-saved since, possibly by another
-        implementation), it is left as written; if there is none, there is nothing to
-        upgrade. Storing the same upgrade twice is harmless, so concurrent callers need
-        no coordination.
+        differently (another writer stored a different chunk size since), this handle
+        would write chunks no reader finds, so it raises and stores nothing. If it needs
+        no upgrade (the array was re-saved since, possibly by another implementation), it
+        is left as written; if there is none, there is nothing to upgrade.
+
+        Storing the same upgrade twice is harmless, so handles that write chunks
+        concurrently need no coordination. The read and the store are not one atomic
+        step, though: a metadata write by another handle between them (a resize, an
+        attribute update) is replaced by the upgrade of the document read before it, as
+        with any two metadata writes that race.
         """
         if self.metadata._stored_document is None:
             return
@@ -4569,8 +4577,6 @@ async def init_array(
         chunk_key_encoding, zarr_format=zarr_format
     )
 
-    await _prepare_overwrite(store_path, zarr_format=zarr_format, overwrite=overwrite)
-
     # Normalize the user's chunks into a canonical ChunkGrid
 
     if _is_auto(chunks):
@@ -4684,6 +4690,10 @@ async def init_array(
             attributes=attributes,
         )
 
+    # Encode first, so metadata that cannot be stored fails before any existing node is
+    # deleted.
+    encode_documents(store_path, meta)
+    await _prepare_overwrite(store_path, zarr_format=zarr_format, overwrite=overwrite)
     arr = AsyncArray(metadata=meta, store_path=store_path, config=config)
     await arr._save_metadata(meta, ensure_parents=True)
     return arr
