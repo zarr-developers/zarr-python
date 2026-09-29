@@ -348,6 +348,28 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         with zipfile.ZipFile(destination) as zf:
             assert zf.namelist() == ["foo", "bar"]
 
+    async def test_failed_clear_leaves_store_closed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # if clear() fails after closing the archive, the store is closed
+        # rather than left open on a closed handle, and the next use clears
+        store = ZipStore(tmp_path / "data.zip", mode="w")
+        await store.set("foo", cpu.Buffer.from_bytes(b"1"))
+
+        def unavailable(*args: Any, **kwargs: Any) -> None:
+            raise OSError("unavailable")
+
+        with monkeypatch.context() as m:
+            m.setattr(zipfile, "ZipFile", unavailable)
+            with pytest.raises(OSError, match="unavailable"):
+                await store.clear()
+        assert not store._is_open
+
+        await store.set("bar", cpu.Buffer.from_bytes(b"2"))
+        store.close()
+        with zipfile.ZipFile(store.path) as zf:  # type: ignore[arg-type]
+            assert zf.namelist() == ["bar"]
+
     async def test_clear_exclusive_mode_keeps_existing_file(self, tmp_path: Path) -> None:
         # a never-opened "x" store has not claimed the file, so clear() must
         # refuse it the way the first open would instead of deleting it

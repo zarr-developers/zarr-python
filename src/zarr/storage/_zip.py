@@ -272,12 +272,13 @@ class ZipStore(Store):
                 raise NotImplementedError(
                     "clear() is not supported for a ZipStore backed by a file-like object"
                 )
-            # opening first keeps mode "x" from deleting a file it may not claim
-            self._zipfile().close()
-            os.remove(self.path)
-            self._zf = zipfile.ZipFile(
-                self.path, mode="w", compression=self.compression, allowZip64=self.allowZip64
-            )
+            # opening first keeps mode "x" from truncating a file it may not claim
+            self._zipfile()
+            self.close()
+            # "w" truncates; if the open fails the store stays closed, and the
+            # next use tries the truncating open again
+            self._zmode = "w"
+            self._sync_open()
 
     def __str__(self) -> str:
         if self.path is None:
