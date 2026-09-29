@@ -94,8 +94,9 @@ class ZipStore(Store):
         and write a new file. 'w' and 'x' apply to the first open only; the
         store reopens its archive with 'a' after `close()`, `move()`, or
         unpickling, so the entries it already wrote are kept. If `close()`
-        raises, the archive may be incomplete, and every later use of the
-        store raises `RuntimeError` instead of reopening it.
+        raises, the archive may be incomplete, and every later read or write
+        raises `RuntimeError` instead of reopening it; `clear()` replaces the
+        archive and makes the store usable again.
     compression : int, optional
         Compression method to use when writing to the archive.
     allowZip64 : bool, optional
@@ -181,7 +182,7 @@ class ZipStore(Store):
             # makes zipfile start a new archive and drop the earlier entries
             raise RuntimeError(
                 f"closing the archive of {self!r} failed, so it may be incomplete; "
-                "the store will not reopen it"
+                "the store will not reopen it, but clear() replaces it"
             )
         if (
             self.path is None
@@ -236,8 +237,11 @@ class ZipStore(Store):
                 "cannot pickle a ZipStore backed by a file-like object; "
                 "construct the store from a path instead"
             )
-        # We need a copy to not modify the state of the original store
-        state = self.__dict__.copy()
+        # We need a copy to not modify the state of the original store. The
+        # lock keeps it from catching _sync_open between opening with "w" and
+        # switching to "a", which would make unpickling truncate the archive.
+        with self._lock:
+            state = self.__dict__.copy()
         for attr in ["_zf", "_lock"]:
             state.pop(attr, None)
         return state
@@ -272,11 +276,17 @@ class ZipStore(Store):
                 raise NotImplementedError(
                     "clear() is not supported for a ZipStore backed by a file-like object"
                 )
-            # opening first keeps mode "x" from truncating a file it may not claim
-            self._zipfile()
-            self.close()
-            # "w" truncates; if the open fails the store stays closed, and the
-            # next use tries the truncating open again
+            if self._close_failed:
+                # replacing the file cannot drop entries, so clear() is the one
+                # way to recover a store whose close() failed
+                self._close_failed = False
+            else:
+                # opening first keeps mode "x" from deleting a file it may not claim
+                self._zipfile()
+                self.close()
+            os.remove(self.path)
+            # if this open fails the store stays closed, and the next use
+            # creates the archive again
             self._zmode = "w"
             self._sync_open()
 

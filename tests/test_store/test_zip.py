@@ -422,6 +422,28 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         with pytest.raises(RuntimeError, match="closing the archive"):
             await store.set("bar", cpu.Buffer.from_bytes(b"2"))
 
+        # clear() replaces the archive, so it cannot drop entries, and it
+        # makes the store usable again
+        await store.clear()
+        await store.set("baz", cpu.Buffer.from_bytes(b"3"))
+        store.close()
+        with zipfile.ZipFile(store.path) as zf:  # type: ignore[arg-type]
+            assert zf.namelist() == ["baz"]
+
+    async def test_unpickle_state_from_older_release(self, tmp_path: Path) -> None:
+        # a pickle made before _was_opened and _close_failed existed still
+        # reopens the archive it names
+        path = tmp_path / "data.zip"
+        with zipfile.ZipFile(path, mode="w") as zf:
+            zf.writestr("foo", b"1")
+        state = ZipStore(path, mode="r").__getstate__()
+        del state["_was_opened"], state["_close_failed"]
+
+        store = ZipStore.__new__(ZipStore)
+        store.__setstate__(state)
+        assert [k async for k in store.list()] == ["foo"]
+        store.close()
+
     async def test_list_does_not_hold_lock_while_iterating(self, tmp_path: Path) -> None:
         # another thread can use the store while a caller is partway
         # through iterating list()
