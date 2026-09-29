@@ -27,7 +27,7 @@ from typing_extensions import TypeIs
 import zarr
 from zarr.core.common import (
     ShapeLike,
-    ceildiv,
+    ceildiv_int,
     parse_shapelike,
 )
 from zarr.errors import ZarrUserWarning
@@ -62,7 +62,7 @@ class FixedDimension:
             raise ValueError(f"FixedDimension size must be >= 1, got {self.size}")
         if self.extent < 0:
             raise ValueError(f"FixedDimension extent must be >= 0, got {self.extent}")
-        n = ceildiv(self.extent, self.size)
+        n = ceildiv_int(self.extent, self.size)
         object.__setattr__(self, "nchunks", n)
         object.__setattr__(self, "ngridcells", n)
 
@@ -671,7 +671,7 @@ def full_span_chunk_size(span: int, unit: int = 1) -> int:
     size the chunk must be a multiple of: the inner chunk size for a shard, 1
     otherwise.
     """
-    return unit * max(1, ceildiv(span, unit))
+    return unit * max(1, ceildiv_int(span, unit))
 
 
 def _guess_regular_chunks(

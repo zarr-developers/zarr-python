@@ -17,6 +17,8 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
+from zarr_metadata.v3._definition import ChunkKeyEncodingDefinition
+
 V2_CHUNK_KEY_ENCODING_NAME: Final = "v2"
 """The `name` field value of the v2 chunk key encoding."""
 
@@ -58,7 +60,14 @@ The configuration has no required keys (`separator` defaults to `"."`),
 so the short-hand-name form is permitted in addition to the object form.
 """
 
+V2_CHUNK_KEY_ENCODING: Final = ChunkKeyEncodingDefinition(
+    name=V2_CHUNK_KEY_ENCODING_NAME, configuration=V2ChunkKeyEncodingConfiguration
+)
+"""The `v2` chunk key encoding; its `separator` is typed, so it has no rule of its own."""
+
+
 __all__ = [
+    "V2_CHUNK_KEY_ENCODING",
     "V2_CHUNK_KEY_ENCODING_NAME",
     "V2_CHUNK_KEY_ENCODING_SEPARATOR",
     "V2ChunkKeyEncodingConfiguration",
