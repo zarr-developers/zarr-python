@@ -23,14 +23,16 @@ RegularChunkGridName = Literal["regular"]
 class RegularChunkGridConfiguration(TypedDict, closed=True):
     """Configuration for the regular chunk grid.
 
-    No chunk extent is negative. "The chunk shape elements are non-zero
-    when the corresponding dimensions of the arrays have non-zero length":
-    an extent of 0 is right for a dimension of length 0, which zarr-python
-    3.0 and 3.1 wrote, and which a grid alone cannot tell from one that is
-    not; the shape rules can, beside the array's shape.
+    Every chunk length is at least 1, along a dimension of length 0 too:
+    "Chunk sizes must be greater than zero"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L40).
+    The core spec's "The chunk shape elements are non-zero when the
+    corresponding dimensions of the arrays have non-zero length"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L284-L285)
+    says less of an empty dimension, and allows nothing the grid does not.
     """
 
-    chunk_shape: tuple[Annotated[int, Ge(0)], ...]
+    chunk_shape: tuple[Annotated[int, Ge(1)], ...]
 
 
 class RegularChunkGridObject(TypedDict, closed=True):
@@ -54,14 +56,11 @@ valid; the short-hand-name form is not permitted by the spec for this grid.
 def _shape_rules(
     configuration: RegularChunkGridConfiguration, nested: Nested, shape: tuple[int, ...]
 ) -> Iterator[ValidationProblem]:
-    """A chunk length for each of the array's dimensions, and 0 only for a dimension of length 0.
+    """A chunk length for each of the array's dimensions.
 
     "The dimensionality of the grid is the same as the dimensionality of
     the array"
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L29-L31),
-    and "The chunk shape elements are non-zero when the corresponding
-    dimensions of the arrays have non-zero length"
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L284-L285).
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L29-L31).
     """
     chunk_shape = configuration["chunk_shape"]
     if len(chunk_shape) != len(shape):
@@ -70,15 +69,6 @@ def _shape_rules(
             f"expected one chunk length per dimension of shape, got {len(chunk_shape)}",
             "invalid_value",
         )
-        return
-    for axis, (length, extent) in enumerate(zip(chunk_shape, shape, strict=True)):
-        if length == 0 and extent != 0:
-            yield ValidationProblem(
-                ("chunk_shape", axis),
-                f"expected a chunk length >= 1 for a dimension of length {extent}, got 0",
-                "invalid_value",
-                ctx={"ge": 1},
-            )
 
 
 def _chunk_lengths(

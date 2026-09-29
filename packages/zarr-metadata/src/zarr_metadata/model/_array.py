@@ -152,8 +152,8 @@ class ZarrV3ArrayMetadata:
         type of any fixed size. Overriding `shape` without `chunk_grid`
         derives a consistent default grid: one regular chunk covering the
         array (`chunk_shape` equal to `shape`, with a length of 1 for a
-        dimension of length 0, which every reader takes: the core spec
-        allows 0 there and the regular grid spec does not,
+        dimension of length 0, since "Chunk sizes must be greater than
+        zero",
         https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L40).
         """
         # The grid derives from a shape the read takes; one it refuses is

@@ -86,7 +86,7 @@ against the chunk it is handed, a shard's inner and index codecs too.
 The validators do no arithmetic on values: whether a fill value survives
 a `cast_value` round trip is not judged.
 
-Three choices the specs' words leave open, or settle two ways:
+Two choices the specs' words leave open, or settle two ways:
 
 - **`attributes` may hold `NaN`, `Infinity` and `-Infinity`.** The spec
   interprets no attribute, and zarr-python and xarray write those numbers
@@ -100,11 +100,13 @@ Three choices the specs' words leave open, or settle two ways:
   reads wrong bytes as surely as one that skips a data type reads wrong
   values. It keeps its meaning on an unknown top-level member, which a
   reader can skip.
-- **A chunk length of 0 is allowed along a dimension of length 0.** The
-  core spec asks for non-zero chunk lengths only "when the corresponding
-  dimensions of the arrays have non-zero length"; the regular grid spec
-  says chunk sizes are greater than zero. The package follows the core
-  spec, which zarr-python 3.0 and 3.1 wrote for an empty dimension.
+
+A regular grid's chunk lengths are at least 1, along a dimension of
+length 0 too: "Chunk sizes must be greater than zero", the regular grid
+spec says. The core spec's "non-zero when the corresponding dimensions
+of the arrays have non-zero length" says less, and allows nothing more,
+so a document with a 0 there, as zarr-python 3.0 and 3.1 wrote for an
+empty dimension, is refused.
 
 `read_array_metadata_v3` reads a document once and returns everything
 the read found: each field as the scope read it -- `Read` by the

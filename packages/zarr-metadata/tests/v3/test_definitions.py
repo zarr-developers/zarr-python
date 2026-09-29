@@ -489,15 +489,6 @@ def test_a_field_is_written_as_every_reader_takes_it(
             {"chunk_shape": (2, 3)},
             [],
         ),
-        # An extent of 0 is right on a dimension of length 0, which only the
-        # array's shape can tell.
-        (
-            {"name": "regular", "configuration": {"chunk_shape": [0, 3]}},
-            ChunkGridDefinition,
-            Read,
-            {"chunk_shape": (0, 3)},
-            [],
-        ),
         # An unknown key is survivable: reported, left out of the
         # configuration, and the field still read.
         (
@@ -579,7 +570,6 @@ def test_a_field_is_written_as_every_reader_takes_it(
         "bytes-bare",
         "bytes-endian",
         "regular-grid",
-        "regular-grid-zero-extent",
         "unknown-key",
         "unknown-key-before-the-rules",
         "not-required-postponed",

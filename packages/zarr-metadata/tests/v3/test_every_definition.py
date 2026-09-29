@@ -493,6 +493,13 @@ def test_error_scale_offset_scalar_is_null() -> None:
     ]
 
 
+def test_error_regular_chunk_length_is_zero() -> None:
+    # Along a dimension of length 0 too: a grid's chunks have a size.
+    assert _one("chunk_grid:regular", {"chunk_shape": [4, 0]}) == [
+        (("configuration", "chunk_shape", 1), "invalid_value")
+    ]
+
+
 def test_error_sharding_inner_chunk_extent_is_zero() -> None:
     configuration = {"chunk_shape": [0], "codecs": ["bytes"], "index_codecs": ["bytes"]}
     assert _one("codecs:sharding_indexed", configuration) == [
@@ -542,9 +549,9 @@ def test_error_sharding_inner_chunk_extent_is_zero() -> None:
         ),
         (
             ChunkGridDefinition,
-            {"name": "regular", "configuration": {"chunk_shape": [2, -1]}},
+            {"name": "regular", "configuration": {"chunk_shape": [2, 0]}},
             ("configuration", "chunk_shape", 1),
-            {"ge": 0},
+            {"ge": 1},
         ),
         (
             ChunkGridDefinition,
