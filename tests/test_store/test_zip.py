@@ -8,7 +8,7 @@ import tempfile
 import threading
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import pytest
@@ -30,7 +30,7 @@ from zarr.storage import ZipStore
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator, AsyncIterator
     from pathlib import Path
     from typing import Any
 
@@ -381,26 +381,57 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
             first_use.result(timeout=5)
         store.close()
 
-    async def test_failed_close_leaves_store_reusable(self, tmp_path: Path) -> None:
-        # if closing the archive raises, the store is still marked closed so
-        # the next use reopens it instead of hitting a dead handle
+    async def test_failed_close_blocks_reopen(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # if the central directory could not be written, reopening in append
+        # mode would start a new archive and drop the entries, so later use
+        # raises instead
         store = ZipStore(tmp_path / "data.zip", mode="w")
         await store.set("foo", cpu.Buffer.from_bytes(b"1"))
-        close_archive = store._zf.close
 
-        def close_then_fail() -> None:
-            close_archive()
+        def disk_full() -> None:
             raise OSError("disk full")
 
-        store._zf.close = close_then_fail  # type: ignore[method-assign]
+        monkeypatch.setattr(store._zf, "_write_end_record", disk_full)
         with pytest.raises(OSError, match="disk full"):
             store.close()
         assert not store._is_open
+        with pytest.raises(RuntimeError, match="closing the archive"):
+            await store.set("bar", cpu.Buffer.from_bytes(b"2"))
 
+    async def test_list_does_not_hold_lock_while_iterating(self, tmp_path: Path) -> None:
+        # another thread can use the store while a caller is partway
+        # through iterating list()
+        store = ZipStore(tmp_path / "data.zip", mode="w")
+        await store.set("foo", cpu.Buffer.from_bytes(b"1"))
         await store.set("bar", cpu.Buffer.from_bytes(b"2"))
+        # list() is an async generator; the annotation hides aclose()
+        keys = cast("AsyncGenerator[str, None]", store.list())
+        pool = ThreadPoolExecutor(max_workers=1)
+        try:
+            assert await anext(keys) == "foo"
+            other = pool.submit(sync, _drain(store.list_dir("")))
+            assert sorted(other.result(timeout=5)) == ["bar", "foo"]
+        finally:
+            await keys.aclose()
+            pool.shutdown()
         store.close()
-        with zipfile.ZipFile(store.path) as zf:  # type: ignore[arg-type]
-            assert zf.namelist() == ["foo", "bar"]
+
+    async def test_move_exclusive_mode_keeps_existing_file(self, tmp_path: Path) -> None:
+        # a never-opened "x" store has not claimed the file, so move() must
+        # refuse it the way the first open would instead of moving it
+        origin = tmp_path / "data.zip"
+        destination = tmp_path / "moved" / "data.zip"
+        with zipfile.ZipFile(origin, mode="w") as zf:
+            zf.writestr("foo", b"1")
+
+        store = ZipStore(origin, mode="x")
+        with pytest.raises(FileExistsError):
+            await store.move(destination)
+        assert not destination.exists()
+        with zipfile.ZipFile(origin) as zf:
+            assert zf.namelist() == ["foo"]
 
 
 class TestZipStoreFileObj:

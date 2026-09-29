@@ -85,15 +85,17 @@ class ZipStore(Store):
         can only be used for reading (`mode="r"`). The file object must stay
         open for the lifetime of the store, and operations that require a
         filesystem location (`clear`, `move`, pickling) are not supported.
-        Using the store again after `close()` reopens the archive to append
-        to it, which requires a file object that is readable and seekable;
-        otherwise it raises `io.UnsupportedOperation`.
+        Using the store again after `close()` reopens the archive, which
+        requires a file object that is readable and seekable; otherwise it
+        raises `io.UnsupportedOperation`.
     mode : str, optional
         One of 'r' to read an existing file, 'w' to truncate and write a new
         file, 'a' to append to an existing file, or 'x' to exclusively create
         and write a new file. 'w' and 'x' apply to the first open only; the
         store reopens its archive with 'a' after `close()`, `move()`, or
-        unpickling, so the entries it already wrote are kept.
+        unpickling, so the entries it already wrote are kept. If `close()`
+        raises, the archive may be incomplete, and every later use of the
+        store raises `RuntimeError` instead of reopening it.
     compression : int, optional
         Compression method to use when writing to the archive.
     allowZip64 : bool, optional
@@ -169,10 +171,18 @@ class ZipStore(Store):
         self.allowZip64 = allowZip64
         self._lock = threading.RLock()
         self._was_opened = False
+        self._close_failed = False
 
     def _sync_open(self) -> None:
         if self._is_open:
             raise ValueError("store is already open")
+        if self._close_failed:
+            # the central directory may be missing; appending to such a file
+            # makes zipfile start a new archive and drop the earlier entries
+            raise RuntimeError(
+                f"closing the archive of {self!r} failed, so it may be incomplete; "
+                "the store will not reopen it"
+            )
         if (
             self.path is None
             and self._fileobj is not None
@@ -234,6 +244,7 @@ class ZipStore(Store):
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__ = state
+        self.__dict__.setdefault("_close_failed", False)
         self._lock = threading.RLock()
         self._is_open = False
         self._zipfile()
@@ -247,9 +258,10 @@ class ZipStore(Store):
                 return
             try:
                 self._zf.close()
+            except BaseException:
+                self._close_failed = True
+                raise
             finally:
-                # a failed close still leaves the handle unusable; mark the
-                # store closed so the next use reopens the archive
                 super().close()
 
     async def clear(self) -> None:
@@ -386,9 +398,10 @@ class ZipStore(Store):
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
-        with self._lock:
-            for key in self._zipfile().namelist():
-                yield key
+        # namelist() is a copy; holding the lock across yield would block
+        # other threads for as long as the caller iterates
+        for key in self._zipfile().namelist():
+            yield key
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
@@ -428,6 +441,8 @@ class ZipStore(Store):
             path = Path(path)
         # hold the lock so that no thread reopens the old path mid-move
         with self._lock:
+            # opening first keeps mode "x" from moving a file it may not claim
+            self._zipfile()
             self.close()
             os.makedirs(path.parent, exist_ok=True)
             shutil.move(self.path, path)
