@@ -40,6 +40,7 @@ from zarr.core.common import (
 )
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
+    data_type_registry,
     get_data_type_from_native_dtype,
 )
 from zarr.core.dtype.common import HasItemSize
@@ -235,6 +236,7 @@ def _clear_registries() -> None:
     registries = zarr.registry._collect_entrypoints()
     for registry in registries:
         registry.lazy_load_list.clear()
+    data_type_registry._lazy_load_list.clear()
 
 
 @pytest.fixture

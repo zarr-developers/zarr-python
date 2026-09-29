@@ -84,8 +84,18 @@ arbitrary fixed-size byte strings. The `str` attribute of a regular NumPy void
 data type is the same as the `str` of a NumPy structured data type. This means that the `str`
 attribute does not convey information about the fields contained in a structured data type.
 For these reasons, Zarr V2 uses a special data type encoding for structured data types.
-They are stored in JSON as lists of pairs, where the first element is a string, and the second
-element is a Zarr V2 data type specification. This representation supports recursion.
+The [V2 specification](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#data-type-encoding)
+represents fields as `[fieldname, datatype]` or `[fieldname, datatype, shape]`, where the
+optional shape describes a subarray field. Field data types can themselves be structured.
+For example, `[["position", "<f4", [2]]]` describes a field containing two float32 values.
+
+Zarr-Python's current structured dtype conversion uses a packed layout. NumPy arrays with alignment, padding,
+or explicit field offsets remain accepted, with a `ZarrUserWarning`: writing preserves
+field values, but the stored dtype's offsets and itemsize may differ from the input.
+The current conversion rejects field titles and subarray fields, including nested ones,
+for both Zarr formats. Subarray rejection is an implementation limitation: V2 supports
+subarray metadata, and Zarr-Python 2.x supported these fields. The V2 specification describes
+field names as strings and does not specify NumPy's `(title, name)` form.
 
 For example:
 

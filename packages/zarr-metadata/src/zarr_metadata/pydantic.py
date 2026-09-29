@@ -7,12 +7,21 @@ Each exported name is an `Annotated` field type over the corresponding core
 model class — the instances ARE the core classes, so values interoperate
 freely with non-pydantic code (equality, isinstance, nesting). Validation
 delegates to the library: a raw document routes through `from_json` (the
-single source of truth for structural validation and normalization, so
-pydantic's field-level coercion can never bypass it), an existing model
+single source of truth for validation and normalization, so pydantic's
+field-level coercion can never bypass it), reading v3 extension points in
+`CORE_AND_EXTENSIONS`, since a field type holds no scope; a reader with a
+scope of its own calls `from_json(..., context=...)` itself. An existing model
 instance passes through unchanged, and serialization emits the canonical
 document via `to_json`. `MetadataValidationError` subclasses `ValueError`,
 so a failed parse surfaces as a pydantic `ValidationError` carrying the
 loc-annotated problem messages.
+
+A node's attributes may hold `NaN`, `Infinity` or `-Infinity`, which the
+models read and write as zarr-python does. Pydantic writes JSON by its own
+rules, and by default writes such a number as `null`. A `BaseModel` holding
+one of these fields keeps it with `ser_json_inf_nan="constants"` in its
+`model_config`; a `TypeAdapter` over a field type takes no `config`, so
+write its value with the model's `to_key_value` instead.
 
 Usage:
 

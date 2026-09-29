@@ -1,19 +1,24 @@
 # Development verbs for the zarr-indexing package. Recipes run with this
 # directory as the working directory regardless of where `just` is invoked.
 
-# List available recipes
 # Quoted arguments must survive delegation from the root Justfile.
 set positional-arguments
 
+# In the repository, recipes overlay the in-repo zarr (editable) so they run
+# against the code beside them. pyproject.toml stays standalone, so from an
+# unpacked sdist, where ../.. is not the repository, there is no overlay and
+# the suites that need zarr skip.
+repo_zarr := if path_exists("../../src/zarr/__init__.py") == "true" { "--with-editable ../.." } else { "" }
+
+# List available recipes
 default:
     @just --list
 
-# The suite runs against the root test environment, which also supplies
-# Zarr for the Dask example. This package is layered in as an editable
-# overlay, using the same test invocation as CI.
+# zarr is not a dependency: repo_zarr supplies it, so the suites that read
+# through zarr run here instead of skipping.
 # Run the test suite; extra args are passed to pytest
 test *args:
-    uv run --project ../.. --group test --with-editable . python -m pytest tests src/zarr_indexing "$@"
+    uv run {{ repo_zarr }} --group test python -m pytest tests src/zarr_indexing "$@"
 
 # TensorStore is the oracle for the parity suites, which skip without it. It
 # ships binary wheels only, so it rides in as a run-time overlay rather than
@@ -21,7 +26,7 @@ test *args:
 # gate the CI job that calls this on the matrix version.
 # Run the tensorstore parity suites; extra args are passed to pytest
 test-tensorstore *args:
-    uv run --project ../.. --group test --with-editable . --with 'tensorstore>=0.1.84' python -m pytest tests/test_ndsel_tensorstore.py tests/test_tensorstore_parity.py "$@"
+    uv run {{ repo_zarr }} --group test --with 'tensorstore>=0.1.84' python -m pytest tests/test_ndsel_tensorstore.py tests/test_tensorstore_parity.py "$@"
 
 # Lint with the same invocation CI uses. Ruff is pinned to the repo-wide
 # version in the root .pre-commit-config.yaml; bump together.

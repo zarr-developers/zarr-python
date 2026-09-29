@@ -24,6 +24,7 @@ from typing import Literal
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
+from packaging.version import parse as parse_version
 
 import zarr
 import zarr.api.asynchronous
@@ -475,6 +476,32 @@ def test_save_errors() -> None:
     ):
         # mode is no valid argument and would get handled as an array
         zarr.save("data/example.zarr", a, mode="w")
+
+
+def test_save_storage_options_is_not_an_array(tmp_path: Path) -> None:
+    # `storage_options` is an option of `save`, not one of the arrays to save, so a
+    # single array still lands as an array and not as a group holding `arr_0`.
+    data = np.arange(10)
+    save(str(tmp_path / "a.zarr"), data, storage_options=None)
+    node = zarr.api.synchronous.open(str(tmp_path / "a.zarr"))
+    assert isinstance(node, Array)
+    assert_array_equal(node[:], data)
+
+
+def test_save_group_storage_options_positional_args(tmp_path: Path) -> None:
+    # `storage_options` has to reach the store for positional arrays too, exactly as it
+    # does for keyword arrays.
+    fsspec = pytest.importorskip("fsspec")
+    # An fsspec URL for a sync filesystem needs AsyncFileSystemWrapper, which landed in
+    # fsspec 2024.12.0. The min-deps CI job pins an older one.
+    if parse_version(fsspec.__version__) < parse_version("2024.12.0"):
+        pytest.skip("No AsyncFileSystemWrapper")
+    data = np.arange(10)
+    url = f"local://{tmp_path}/group.zarr"
+    save_group(url, data, data, storage_options={"auto_mkdir": True})
+    group = zarr.api.synchronous.open(str(tmp_path / "group.zarr"))
+    assert isinstance(group, Group)
+    assert sorted(group) == ["arr_0", "arr_1"]
 
 
 def test_open_with_mode_r(tmp_path: Path) -> None:
