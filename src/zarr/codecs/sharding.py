@@ -460,8 +460,11 @@ class ShardingCodec(
         self,
         *,
         chunk_shape: ChunkShape,
-        codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
-        index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
+        codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(endian="little"),),
+        index_codecs: Iterable[Codec | dict[str, JSON]] = (
+            BytesCodec(endian="little"),
+            Crc32cCodec(),
+        ),
         index_location: ShardingCodecIndexLocation | IndexLocation = "end",
         subchunk_write_order: SubchunkWriteOrder = "morton",
     ) -> None:
