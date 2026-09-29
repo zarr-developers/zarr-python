@@ -85,10 +85,15 @@ class ZipStore(Store):
         can only be used for reading (`mode="r"`). The file object must stay
         open for the lifetime of the store, and operations that require a
         filesystem location (`clear`, `move`, pickling) are not supported.
+        Using the store again after `close()` reopens the archive to append
+        to it, which requires a file object that is readable and seekable;
+        otherwise it raises `io.UnsupportedOperation`.
     mode : str, optional
         One of 'r' to read an existing file, 'w' to truncate and write a new
         file, 'a' to append to an existing file, or 'x' to exclusively create
-        and write a new file.
+        and write a new file. 'w' and 'x' apply to the first open only; the
+        store reopens its archive with 'a' after `close()`, `move()`, or
+        unpickling, so the entries it already wrote are kept.
     compression : int, optional
         Compression method to use when writing to the archive.
     allowZip64 : bool, optional
@@ -172,13 +177,15 @@ class ZipStore(Store):
             self.path is None
             and self._fileobj is not None
             and self._was_opened
-            and not self._fileobj.readable()
+            and not (self._fileobj.readable() and self._fileobj.seekable())
         ):
-            # reopening appends, which needs to read the archive back; zipfile
-            # would instead start a new archive and drop the earlier entries
+            # reopening appends, which needs to read the archive back; on a
+            # write-only file zipfile would start a new archive and drop the
+            # earlier entries
             raise io.UnsupportedOperation(
-                "a ZipStore backed by a write-only file object cannot be used "
-                "again after close(), because the archive it wrote cannot be read back"
+                "a ZipStore backed by a file object that is not readable and "
+                "seekable cannot be used again after close(), because the "
+                "archive it wrote cannot be read back"
             )
 
         self._zf = zipfile.ZipFile(
@@ -207,6 +214,10 @@ class ZipStore(Store):
         with self._lock:
             self._sync_open()
 
+    async def _ensure_open(self) -> None:
+        # the base class checks _is_open outside the lock
+        self._zipfile()
+
     def __getstate__(self) -> dict[str, Any]:
         if self.path is None:
             # A path-backed store pickles its path and reopens the file on
@@ -234,8 +245,12 @@ class ZipStore(Store):
         with self._lock:
             if not self._is_open:
                 return
-            self._zf.close()
-            super().close()
+            try:
+                self._zf.close()
+            finally:
+                # a failed close still leaves the handle unusable; mark the
+                # store closed so the next use reopens the archive
+                super().close()
 
     async def clear(self) -> None:
         # docstring inherited

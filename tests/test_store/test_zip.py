@@ -7,6 +7,7 @@ import shutil
 import tempfile
 import threading
 import zipfile
+from concurrent.futures import ThreadPoolExecutor, wait
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -29,6 +30,7 @@ from zarr.storage import ZipStore
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
     from pathlib import Path
     from typing import Any
 
@@ -41,6 +43,10 @@ pytestmark = [
         "ignore:coroutine method 'aclose' of 'ZipStore.list' was never awaited:RuntimeWarning"
     )
 ]
+
+
+async def _drain(keys: AsyncIterator[str]) -> list[str]:
+    return [k async for k in keys]
 
 
 class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
@@ -355,6 +361,47 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         with zipfile.ZipFile(path) as zf:
             assert zf.namelist() == ["foo"]
 
+    @pytest.mark.parametrize(
+        "use",
+        [
+            pytest.param(lambda s: s._ensure_open(), id="ensure_open"),
+            pytest.param(lambda s: _drain(s.list_dir("")), id="list_dir"),
+        ],
+    )
+    async def test_first_use_waits_for_lock(self, tmp_path: Path, use: Any) -> None:
+        # a thread's first use must wait while another thread holds the lock,
+        # then find the archive that thread opened instead of opening it again
+        store = ZipStore(tmp_path / "data.zip", mode="w")
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with store._lock:
+                first_use = pool.submit(sync, use(store))
+                wait([first_use], timeout=0.2)
+                assert not store._is_open
+                store._zipfile()
+            first_use.result(timeout=5)
+        store.close()
+
+    async def test_failed_close_leaves_store_reusable(self, tmp_path: Path) -> None:
+        # if closing the archive raises, the store is still marked closed so
+        # the next use reopens it instead of hitting a dead handle
+        store = ZipStore(tmp_path / "data.zip", mode="w")
+        await store.set("foo", cpu.Buffer.from_bytes(b"1"))
+        close_archive = store._zf.close
+
+        def close_then_fail() -> None:
+            close_archive()
+            raise OSError("disk full")
+
+        store._zf.close = close_then_fail  # type: ignore[method-assign]
+        with pytest.raises(OSError, match="disk full"):
+            store.close()
+        assert not store._is_open
+
+        await store.set("bar", cpu.Buffer.from_bytes(b"2"))
+        store.close()
+        with zipfile.ZipFile(store.path) as zf:  # type: ignore[arg-type]
+            assert zf.namelist() == ["foo", "bar"]
+
 
 class TestZipStoreFileObj:
     """ZipStore backed by an open binary file-like object instead of a path."""
@@ -407,11 +454,22 @@ class TestZipStoreFileObj:
             store = ZipStore(f, mode="w", read_only=False)
             await store.set("foo", cpu.Buffer.from_bytes(b"1"))
             store.close()
-            with pytest.raises(io.UnsupportedOperation, match="write-only"):
+            with pytest.raises(io.UnsupportedOperation, match="readable and seekable"):
                 await store.set("bar", cpu.Buffer.from_bytes(b"2"))
 
         with zipfile.ZipFile(path) as zf:
             assert zf.namelist() == ["foo"]
+
+    async def test_unseekable_reuse_after_close_raises(self) -> None:
+        # a file object that cannot seek cannot be read back either, so reuse
+        # after close() raises the same error as a write-only one
+        buffer = io.BytesIO()
+        pipe = io.BufferedRWPair(buffer, buffer)  # readable, not seekable
+        store = ZipStore(pipe, mode="w", read_only=False)  # type: ignore[arg-type]
+        await store.set("foo", cpu.Buffer.from_bytes(b"1"))
+        store.close()
+        with pytest.raises(io.UnsupportedOperation, match="readable and seekable"):
+            await store.set("bar", cpu.Buffer.from_bytes(b"2"))
 
     async def test_clear_unsupported(self, zip_bytes: bytes) -> None:
         # clear() requires a filesystem location, so it raises a clear error
