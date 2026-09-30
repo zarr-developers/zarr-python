@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON, AccessModeLiteral, MemoryOrder, ZarrFormat
     from zarr.types import AnyArray
 
+import asyncio
 import contextlib
 from typing import Literal
 
@@ -470,6 +471,60 @@ def test_array_open_array_not_found_sync() -> None:
     # Try to open an array that does not exist
     with pytest.raises(ArrayNotFoundError):
         Array.open(store)
+
+
+@pytest.mark.parametrize("func", [zarr.empty_like, zarr.zeros_like, zarr.ones_like, zarr.full_like])
+@pytest.mark.parametrize("source_format", [2, 3])
+@pytest.mark.parametrize("zarr_format", [None, 2, 3])
+def test_like_zarr_format(
+    func: Callable[..., AnyArray], source_format: ZarrFormat, zarr_format: ZarrFormat | None
+) -> None:
+    """
+    An array created like a zarr array has the zarr format of the source unless another is
+    requested, and keeps the codecs of the source only when the formats match.
+    """
+    source = zarr.create_array(
+        {},
+        shape=(4,),
+        dtype="int32",
+        compressors=None,
+        zarr_format=source_format,
+        fill_value=7,
+    )
+    new = func(source, zarr_format=zarr_format)
+    expected_format = source_format if zarr_format is None else zarr_format
+    assert new.metadata.zarr_format == expected_format
+    assert new.shape == source.shape
+    assert new.dtype == source.dtype
+    if expected_format == source_format:
+        assert new.compressors == source.compressors
+    else:
+        assert (
+            new.compressors
+            == zarr.create_array(
+                {}, shape=(4,), dtype="int32", zarr_format=expected_format
+            ).compressors
+        )
+
+
+@pytest.mark.parametrize("source_format", [2, 3])
+@pytest.mark.parametrize("target_format", [None, 2, 3])
+def test_open_like_zarr_format(source_format: ZarrFormat, target_format: ZarrFormat | None) -> None:
+    """
+    open_like does not inherit the zarr format of the source: it opens an existing array of
+    any format, and creates a missing one in the default zarr format.
+    """
+    source = zarr.zeros(store={}, shape=(4,), dtype="int32", zarr_format=source_format)
+    store = MemoryStore()
+    if target_format is not None:
+        zarr.create_array(
+            store, name="existing", shape=(4,), dtype="int32", zarr_format=target_format
+        )
+    opened = zarr.open_like(source, path="existing", store=store)
+    assert opened.metadata.zarr_format == (target_format or zarr.config.get("default_zarr_format"))
+    assert set(store._store_dict) & {"existing/zarr.json", "existing/.zarray"} == {
+        "existing/zarr.json" if opened.metadata.zarr_format == 3 else "existing/.zarray"
+    }
 
 
 @pytest.mark.parametrize("store", ["memory", "local", "zip"], indirect=True)
@@ -1767,3 +1822,98 @@ def test_unimplemented_kwarg_warnings(kwarg_name: str) -> None:
     kwargs = {kwarg_name: 1}
     with pytest.warns(RuntimeWarning, match=".* is not yet implemented"):
         zarr.create(shape=(1,), **kwargs)  # type: ignore[arg-type]
+
+
+HELPER_NAMES = ("empty", "zeros", "ones", "full")
+HELPER_FILL_VALUES: dict[str, int] = {"zeros": 0, "ones": 1}
+
+
+def _create_parameters() -> dict[str, inspect.Parameter]:
+    """
+    The named parameters of `create`, plus `mode` and `data`, which `create` takes.
+    """
+    params = {
+        name: p
+        for name, p in inspect.signature(zarr.api.asynchronous.create).parameters.items()
+        if p.kind is not inspect.Parameter.VAR_KEYWORD
+    }
+    for name in ("mode", "data"):
+        params.setdefault(
+            name, inspect.Parameter(name, inspect.Parameter.KEYWORD_ONLY, default=None)
+        )
+    return params
+
+
+@pytest.mark.parametrize("module", [zarr.api.asynchronous, zarr.api.synchronous])
+@pytest.mark.parametrize("func_name", HELPER_NAMES)
+def test_helper_signatures_mirror_create(module: Any, func_name: str) -> None:
+    """
+    `empty`, `zeros`, `ones` and `full` take the parameters of `create`, with the same
+    defaults, except `fill_value` where the function fixes it, and no `**kwargs`.
+    """
+    expected = _create_parameters()
+    if func_name in HELPER_FILL_VALUES:
+        del expected["fill_value"]
+    if func_name == "full":
+        expected["fill_value"] = inspect.Parameter(
+            "fill_value", inspect.Parameter.POSITIONAL_OR_KEYWORD
+        )
+    actual = inspect.signature(getattr(module, func_name)).parameters
+    assert set(actual) == set(expected)
+    assert all(p.kind is not inspect.Parameter.VAR_KEYWORD for p in actual.values())
+    for name, param in actual.items():
+        assert param.default == expected[name].default, name
+
+
+@pytest.mark.parametrize("func_name", HELPER_NAMES)
+async def test_helpers_forward_every_parameter(
+    monkeypatch: pytest.MonkeyPatch, func_name: str
+) -> None:
+    """
+    `empty`, `zeros`, `ones` and `full` pass every argument on to `create` unchanged, and
+    the synchronous versions pass every argument on to the asynchronous ones.
+    """
+    received: dict[str, Any] = {}
+    real = await zarr.api.asynchronous.create(shape=(1,), store=MemoryStore())
+
+    async def record(**kwargs: Any) -> Any:
+        received.update(kwargs)
+        return real
+
+    func = getattr(zarr.api.asynchronous, func_name)
+    args = {name: object() for name in inspect.signature(func).parameters}
+    monkeypatch.setattr(zarr.api.asynchronous, "create", record)
+    with pytest.warns(ZarrDeprecationWarning, match="Passing `data`"):
+        await func(**args)
+    expected = args | (
+        {"fill_value": HELPER_FILL_VALUES[func_name]} if func_name in HELPER_FILL_VALUES else {}
+    )
+    assert received == expected
+
+    received.clear()
+    monkeypatch.setattr(zarr.api.asynchronous, func_name, record)
+    sync_func = getattr(zarr.api.synchronous, func_name)
+    sync_args = {name: object() for name in inspect.signature(sync_func).parameters}
+    await asyncio.to_thread(sync_func, **sync_args)
+    assert received == sync_args
+
+
+@pytest.mark.parametrize("func_name", HELPER_NAMES)
+def test_helpers_data_deprecated(func_name: str) -> None:
+    """
+    Passing `data` to `empty`, `zeros`, `ones` or `full` warns, and the data is still written.
+    """
+    fill = {"fill_value": 5} if func_name == "full" else {}
+    with pytest.warns(ZarrDeprecationWarning, match=f"Passing `data` to `{func_name}`"):
+        z = getattr(zarr, func_name)((3,), data=np.arange(3), **fill)
+    assert_array_equal(z[:], np.arange(3))
+
+
+@pytest.mark.parametrize("func_name", HELPER_NAMES)
+def test_helpers_unknown_keyword(func_name: str) -> None:
+    """
+    `empty`, `zeros`, `ones` and `full` reject keyword arguments that `create` does not take.
+    """
+    fill = {"fill_value": 5} if func_name == "full" else {}
+    with pytest.raises(TypeError, match=rf"^{func_name}\(\) got an unexpected keyword argument"):
+        getattr(zarr, func_name)((3,), typo=1, **fill)

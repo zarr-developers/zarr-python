@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import inspect
 import json
@@ -50,6 +51,7 @@ from zarr.errors import (
     GroupNotFoundError,
     MetadataValidationError,
     NodeTypeValidationError,
+    ZarrDeprecationWarning,
     ZarrUserWarning,
 )
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
@@ -909,6 +911,131 @@ def test_group_array_like_creation(
     assert new_arr.chunks == expect_chunks
     assert new_arr.dtype == expect_dtype
     assert np.all(new_arr[:] == expect_fill)
+
+
+@pytest.mark.parametrize("group_format", [2, 3])
+@pytest.mark.parametrize(
+    "method_name",
+    ["empty", "zeros", "ones", "full", "empty_like", "zeros_like", "ones_like", "full_like"],
+)
+@pytest.mark.parametrize("source_format", [2, 3])
+@pytest.mark.parametrize("pass_zarr_format", [False, True])
+def test_group_array_helpers_use_group_format(
+    group_format: ZarrFormat,
+    method_name: str,
+    source_format: ZarrFormat,
+    pass_zarr_format: bool,
+) -> None:
+    """
+    Group.{empty, zeros, ones, full} and their *_like versions create an array in the zarr
+    format of the group, which makes it a member of the group. For the *_like versions this
+    holds whatever the format of the source array.
+    """
+    group = Group.from_store(MemoryStore(), zarr_format=group_format)
+    kwargs: dict[str, Any] = {"zarr_format": group_format} if pass_zarr_format else {}
+    if method_name == "full":
+        kwargs["fill_value"] = 3
+    if method_name.endswith("_like"):
+        source = zarr.zeros(store={}, shape=(4,), dtype="int32", zarr_format=source_format)
+        arr = getattr(group, method_name)(name="a", data=source, **kwargs)
+    else:
+        arr = getattr(group, method_name)(name="a", shape=(4,), **kwargs)
+    assert arr.metadata.zarr_format == group_format
+    assert list(group.array_keys()) == ["a"]
+
+
+def test_group_array_helpers_other_format() -> None:
+    """
+    Asking a group helper for an array in a zarr format other than the group's raises.
+    """
+    group = Group.from_store(MemoryStore(), zarr_format=2)
+    with pytest.raises(ValueError, match="zarr_format=3 array in a zarr_format=2 group"):
+        group.zeros(name="a", shape=(4,), zarr_format=3)
+
+
+GROUP_HELPER_NAMES = ("empty", "zeros", "ones", "full")
+
+
+@pytest.mark.parametrize("method_name", GROUP_HELPER_NAMES)
+def test_group_helper_signatures_mirror_create(method_name: str) -> None:
+    """
+    The group versions of `empty`, `zeros`, `ones` and `full` take the parameters of the
+    top-level functions, except `store`, `path` and `storage_options`, which the group
+    supplies, plus `name`. They take no `**kwargs`.
+    """
+    top = inspect.signature(getattr(zarr.api.asynchronous, method_name)).parameters
+    expected = {
+        k: v.default for k, v in top.items() if k not in {"store", "path", "storage_options"}
+    }
+    expected["name"] = inspect.Parameter.empty
+    if method_name == "full":
+        expected["fill_value"] = inspect.Parameter.empty
+    for cls in (AsyncGroup, Group):
+        params = inspect.signature(getattr(cls, method_name)).parameters
+        actual = {k: v.default for k, v in params.items() if k != "self"}
+        assert actual == expected, cls
+        assert all(p.kind is not inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+
+@pytest.mark.parametrize("method_name", GROUP_HELPER_NAMES)
+async def test_group_helpers_forward_every_parameter(
+    monkeypatch: pytest.MonkeyPatch, method_name: str
+) -> None:
+    """
+    The group versions of `empty`, `zeros`, `ones` and `full` pass every argument on to the
+    top-level function, adding the group's store and the array's path, and `Group` passes
+    every argument on to `AsyncGroup`.
+    """
+    received: dict[str, Any] = {}
+    real = await zarr.api.asynchronous.create(shape=(1,), store=MemoryStore())
+
+    async def record(*args: Any, **kwargs: Any) -> Any:
+        received.update(kwargs)
+        return real
+
+    group = await AsyncGroup.from_store(MemoryStore(), zarr_format=3)
+    method = getattr(group, method_name)
+    args: dict[str, Any] = {name: object() for name in inspect.signature(method).parameters}
+    args |= {"zarr_format": 3, "mode": None}
+    monkeypatch.setattr(zarr.api.asynchronous, method_name, record)
+    await method(**args)
+    expected = {k: v for k, v in args.items() if k not in {"name", "mode"}}
+    expected |= {"store": group.store_path, "path": args["name"]}
+    assert received == expected
+
+    received.clear()
+    monkeypatch.setattr(AsyncGroup, method_name, record)
+    sync_method = getattr(Group(group), method_name)
+    sync_args = {name: object() for name in inspect.signature(sync_method).parameters}
+    await asyncio.to_thread(sync_method, **sync_args)
+    assert received == sync_args
+
+
+@pytest.mark.parametrize("method_name", GROUP_HELPER_NAMES)
+def test_group_helpers_mode_deprecated(method_name: str) -> None:
+    """
+    Passing `mode` to a group's `empty`, `zeros`, `ones` or `full` warns that it has no
+    effect, and the array is created as without it.
+    """
+    group = Group.from_store(MemoryStore(), zarr_format=3)
+    fill = {"fill_value": 5} if method_name == "full" else {}
+    with pytest.warns(ZarrDeprecationWarning, match=f"Passing `mode` to `Group.{method_name}`"):
+        arr = getattr(group, method_name)(name="a", shape=(3,), mode="w", **fill)
+    assert list(group.array_keys()) == ["a"]
+    assert arr.shape == (3,)
+
+
+@pytest.mark.parametrize("method_name", GROUP_HELPER_NAMES)
+def test_group_helpers_unknown_keyword(method_name: str) -> None:
+    """
+    The group versions of `empty`, `zeros`, `ones` and `full` reject keyword arguments they
+    do not take, including `store` and `path`, which the group supplies.
+    """
+    group = Group.from_store(MemoryStore(), zarr_format=3)
+    fill = {"fill_value": 5} if method_name == "full" else {}
+    for name in ("typo", "store", "path"):
+        with pytest.raises(TypeError, match=f"unexpected keyword argument '{name}'"):
+            getattr(group, method_name)(name="a", shape=(3,), **{name: 1}, **fill)
 
 
 def test_group_array_creation(
