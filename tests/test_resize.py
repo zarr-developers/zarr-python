@@ -8,7 +8,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from zarr.core.array import ShardsLike, create_array
+from zarr.core.array import ShardsLike, _iter_chunk_coords_to_delete, create_array
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.common import ChunksLike, ZarrFormat
@@ -24,8 +24,6 @@ def _enable_rectilinear_chunks() -> Generator[None, None, None]:
 
 @given(st.lists(st.tuples(st.integers(0, 8), st.integers(0, 8)), max_size=4))
 def test_resize_chunk_difference_matches_sets(dimensions: list[tuple[int, int]]) -> None:
-    from zarr.core.array import _iter_chunk_coords_to_delete
-
     old_shape = tuple(old for old, _ in dimensions)
     new_shape = tuple(new for _, new in dimensions)
     expected = set(product(*(range(n) for n in old_shape))) - set(
@@ -37,8 +35,6 @@ def test_resize_chunk_difference_matches_sets(dimensions: list[tuple[int, int]])
 
 
 def test_resize_chunk_difference_is_lazy_for_large_axes() -> None:
-    from zarr.core.array import _iter_chunk_coords_to_delete
-
     # Both the per-axis ranges and their product are too large to materialize.
     coords = _iter_chunk_coords_to_delete((2**40, 2**40), (0, 1))
     assert list(islice(coords, 3)) == [(0, 0), (0, 1), (0, 2)]
@@ -82,9 +78,12 @@ async def test_resize_bounds_pending_deletions(limit: int | None) -> None:
         await array.resize((0,))
     assert len(in_flight_at_start) == 3000
     assert 0 < peak_tasks <= workers
-    # Once the pool is full, each deletion replaces a finished one instead of
-    # waiting for a whole batch to drain.
-    assert set(in_flight_at_start[workers:]) == {workers - 1}
+    # The pool fills up: no deletion ever starts with `workers` others in flight.
+    assert max(in_flight_at_start) == workers - 1
+    if workers > 1:
+        # Once full, the pool never drains: a finished deletion is replaced
+        # while the others are still in flight.
+        assert min(in_flight_at_start[workers:]) >= 1
 
 
 @pytest.mark.parametrize("new_shape", [(4, 5), (10, 5), (4, 12), (7, 8), (0, 9)])

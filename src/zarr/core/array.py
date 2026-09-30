@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import math
 import warnings
-from asyncio import TaskGroup, gather
+from asyncio import gather
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import starmap
@@ -70,6 +70,7 @@ from zarr.core.common import (
     _default_zarr_format,
     _warn_order_kwarg,
     ceildiv_int,
+    concurrent_foreach,
     concurrent_map,
     parse_shapelike,
     product,
@@ -5929,32 +5930,30 @@ async def _resize(
     new_metadata = array.metadata.update_shape(new_shape)
     new_chunk_grid = ChunkGrid.from_metadata(new_metadata)
 
-    # Growing alone cannot leave any chunks outside the new shape.
-    only_growing = all(new >= old for new, old in zip(new_shape, array.metadata.shape, strict=True))
-
-    if delete_outside_chunks and not only_growing:
-        chunk_coords = _iter_chunk_coords_to_delete(
-            array._chunk_grid.grid_shape, new_chunk_grid.grid_shape
+    if delete_outside_chunks:
+        old_grid_shape = array._chunk_grid.grid_shape
+        new_grid_shape = new_chunk_grid.grid_shape
+        # Chunks of the old grid outside the box it shares with the new grid.
+        # Zero whenever no axis loses a whole chunk, including pure growth.
+        n_delete = math.prod(old_grid_shape) - math.prod(
+            min(old, new) for old, new in zip(old_grid_shape, new_grid_shape, strict=True)
         )
+        if n_delete > 0:
 
-        async def _delete_worker() -> None:
-            # Workers share one lazy iterator, so a new deletion starts as soon
-            # as any finishes and nothing beyond the workers is scheduled.
-            for coords in chunk_coords:
+            async def _delete_chunk(coords: tuple[int, ...]) -> None:
                 await (array.store_path / array.metadata.encode_chunk_key(coords)).delete()
 
-        # Bound the worker count even when the user has disabled the I/O
-        # concurrency limit with None.
-        concurrency = zarr_config.get("async.concurrency") or 1000
-        # A TaskGroup cancels the remaining workers on the first failure, so no
-        # deletions continue after resize has raised.
-        try:
-            async with TaskGroup() as tg:
-                for _ in range(concurrency):
-                    tg.create_task(_delete_worker())
-        except ExceptionGroup as eg:
-            # Keep resize's contract of raising the store's own exception.
-            raise eg.exceptions[0] from None
+            # `None` lifts the I/O concurrency limit, but the worker pool still
+            # needs a bound; 1000 keeps the pool far smaller than the grid.
+            limit = zarr_config.get("async.concurrency") or 1000
+            await concurrent_foreach(
+                (
+                    (coords,)
+                    for coords in _iter_chunk_coords_to_delete(old_grid_shape, new_grid_shape)
+                ),
+                _delete_chunk,
+                min(limit, n_delete),
+            )
 
     # Write new metadata
     await save_metadata(array.store_path, new_metadata)
