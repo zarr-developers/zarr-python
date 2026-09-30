@@ -95,6 +95,21 @@ class TransposeCodec(ArrayArrayCodec):
             prototype=chunk_spec.prototype,
         )
 
+    def resolve_chunk_grid(
+        self, *, shape: tuple[int, ...], chunk_grid: ChunkGridMetadata
+    ) -> tuple[tuple[int, ...], ChunkGridMetadata]:
+        """Permute the array shape and the per-axis chunk edges by `order`."""
+        from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
+
+        permuted_shape = tuple(shape[d] for d in self.order)
+        if isinstance(chunk_grid, RegularChunkGridMetadata):
+            return permuted_shape, RegularChunkGridMetadata(
+                chunk_shape=tuple(chunk_grid.chunk_shape[d] for d in self.order)
+            )
+        return permuted_shape, RectilinearChunkGridMetadata(
+            chunk_shapes=tuple(chunk_grid.chunk_shapes[d] for d in self.order)
+        )
+
     def _decode_sync(
         self,
         chunk_array: NDBuffer,

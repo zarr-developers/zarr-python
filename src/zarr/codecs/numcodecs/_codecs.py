@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from zarr.abc.numcodec import Numcodec
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, NDBuffer
+    from zarr.core.metadata.v3 import ChunkGridMetadata
 
 CODEC_PREFIX = "numcodecs."
 
@@ -241,6 +242,12 @@ class Delta(_NumcodecsArrayArrayCodec, codec_name="delta"):
             return replace(chunk_spec, dtype=dtype)
         return chunk_spec
 
+    def resolve_chunk_grid(
+        self, *, shape: tuple[int, ...], chunk_grid: ChunkGridMetadata
+    ) -> tuple[tuple[int, ...], ChunkGridMetadata]:
+        """Delta encoding may change the data type, never the chunk shape."""
+        return shape, chunk_grid
+
 
 class BitRound(_NumcodecsArrayArrayCodec, codec_name="bitround"):
     pass
@@ -252,6 +259,12 @@ class FixedScaleOffset(_NumcodecsArrayArrayCodec, codec_name="fixedscaleoffset")
             dtype = parse_dtype(np.dtype(astype), zarr_format=3)  # type: ignore[call-overload]
             return replace(chunk_spec, dtype=dtype)
         return chunk_spec
+
+    def resolve_chunk_grid(
+        self, *, shape: tuple[int, ...], chunk_grid: ChunkGridMetadata
+    ) -> tuple[tuple[int, ...], ChunkGridMetadata]:
+        """Scaling may change the data type, never the chunk shape."""
+        return shape, chunk_grid
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> FixedScaleOffset:
         if self.codec_config.get("dtype") is None:
@@ -292,6 +305,12 @@ class AsType(_NumcodecsArrayArrayCodec, codec_name="astype"):
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         dtype = parse_dtype(np.dtype(self.codec_config["encode_dtype"]), zarr_format=3)  # type: ignore[arg-type]
         return replace(chunk_spec, dtype=dtype)
+
+    def resolve_chunk_grid(
+        self, *, shape: tuple[int, ...], chunk_grid: ChunkGridMetadata
+    ) -> tuple[tuple[int, ...], ChunkGridMetadata]:
+        """Casting changes the data type, never the chunk shape."""
+        return shape, chunk_grid
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> AsType:
         if self.codec_config.get("decode_dtype") is None:
