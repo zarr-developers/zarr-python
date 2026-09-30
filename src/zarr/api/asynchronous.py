@@ -148,11 +148,18 @@ class _LikeArgs(TypedDict):
     compressor: NotRequired[CompressorLikev2]
     codecs: NotRequired[tuple[Codec, ...]]
     fill_value: NotRequired[Any]
+    zarr_format: NotRequired[ZarrFormat]
 
 
-def _like_args(a: ArrayLike) -> _LikeArgs:
-    """Set default values for shape and chunks if they are not present in the array-like object"""
+def _like_args(a: ArrayLike, zarr_format: ZarrFormat | None) -> _LikeArgs:
+    """
+    Arguments for creating an array like `a` in `zarr_format`.
 
+    If `a` is a zarr array, the new array has the zarr format of `a` unless `zarr_format`
+    requests another. The storage settings of `a` (memory order and codecs) are specific to
+    its zarr format, so they are copied only when the new array has the format of `a`.
+    Otherwise the new array uses the defaults of its own format.
+    """
     new: _LikeArgs = {}
 
     shape, chunks = _get_shape_chunks(a)
@@ -166,20 +173,26 @@ def _like_args(a: ArrayLike) -> _LikeArgs:
 
     if isinstance(a, AsyncArray | Array):
         new["fill_value"] = a.metadata.fill_value
-        if isinstance(a.metadata, ArrayV2Metadata):
-            new["order"] = a.order
-            new["compressor"] = a.metadata.compressor
-            new["filters"] = a.metadata.filters
-        else:
-            # TODO: Remove type: ignore statement when type inference improves.
-            # mypy cannot correctly infer the type of a.metadata here for some reason.
-            new["codecs"] = a.metadata.codecs
+        if zarr_format is None:
+            zarr_format = a.metadata.zarr_format
+        if a.metadata.zarr_format == zarr_format:
+            if isinstance(a.metadata, ArrayV2Metadata):
+                new["order"] = a.order
+                new["compressor"] = a.metadata.compressor
+                new["filters"] = a.metadata.filters
+            else:
+                # TODO: Remove type: ignore statement when type inference improves.
+                # mypy cannot correctly infer the type of a.metadata here for some reason.
+                new["codecs"] = a.metadata.codecs
 
     else:
         # TODO: set default values compressor/codecs
         # to do this, we may need to evaluate if this is a v2 or v3 array
         # new["compressor"] = "default"
         pass
+
+    if zarr_format is not None:
+        new["zarr_format"] = zarr_format
 
     return new
 
@@ -922,7 +935,8 @@ async def create(
     dimension_names: DimensionNamesLike = None,
     storage_options: dict[str, Any] | None = None,
     config: ArrayConfigLike | None = None,
-    **kwargs: Any,
+    mode: AccessModeLiteral | None = None,
+    data: npt.ArrayLike | None = None,
 ) -> AnyAsyncArray:
     """Create an array.
 
@@ -1042,6 +1056,26 @@ async def create(
     config : ArrayConfigLike, optional
         Runtime configuration of the array. If provided, will override the
         default values from `zarr.config.array`.
+    mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
+        Legacy way to control overwriting, kept for compatibility with Zarr-Python 2.
+        Prefer `overwrite`. The access mode used to open `store`; the default, `None`,
+        is `'a'`.
+
+        - `'a'` and `'r+'` create the array and fail if a node exists at `path`,
+          unless `overwrite` is `True`.
+        - `'w'` replaces anything stored under `path` (the whole store if `path` is
+          not set), even if `overwrite` is `False`. On a store that cannot delete
+          keys, `'w'` raises an error instead of replacing an existing node.
+        - `'w-'` fails if anything is stored under `path`, even if `overwrite` is
+          `True`.
+        - `'r'` always fails.
+
+        `mode` has no effect, and is not validated, if `store` is a `StorePath`.
+    data : array-like, optional
+        Values written into the new array after it is created. Unlike the `data`
+        parameter of `create_array`, it does not set the shape or data type of the
+        array. To create an array from existing data, use `create_array(data=...)`.
+        A Zarr array is not supported as `data`.
 
     Returns
     -------
@@ -1066,7 +1100,6 @@ async def create(
     if write_empty_chunks is not None:
         _warn_write_empty_chunks_kwarg()
 
-    mode = kwargs.pop("mode", None)
     if mode is None:
         mode = "a"
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
@@ -1102,7 +1135,7 @@ async def create(
         dimension_names=dimension_names,
         attributes=attributes,
         config=config_parsed,
-        **kwargs,
+        data=data,
     )
 
 
@@ -1126,7 +1159,9 @@ async def empty(shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
     return await create(shape=shape, **kwargs)
 
 
-async def empty_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
+async def empty_like(
+    a: ArrayLike, *, zarr_format: ZarrFormat | None = None, **kwargs: Any
+) -> AnyAsyncArray:
     """Create an empty array like `a`. The contents will be filled with the
     array's fill value or zeros if no fill value is provided.
 
@@ -1134,6 +1169,9 @@ async def empty_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     ----------
     a : array-like
         The array to create an empty array like.
+    zarr_format : {2, 3, None}, optional
+        The zarr format of the new array. If `None` (default), the zarr format of `a` if it
+        is a zarr array, otherwise the default zarr format.
     **kwargs
         Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
 
@@ -1148,7 +1186,7 @@ async def empty_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     retrieve data from an empty Zarr array, any values may be returned,
     and these are not guaranteed to be stable from one access to the next.
     """
-    like_kwargs = _like_args(a) | kwargs
+    like_kwargs = _like_args(a, zarr_format) | kwargs
     return await empty(**like_kwargs)  # type: ignore[arg-type]
 
 
@@ -1175,13 +1213,18 @@ async def full(shape: tuple[int, ...], fill_value: Any, **kwargs: Any) -> AnyAsy
 
 
 # TODO: add type annotations for kwargs
-async def full_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
+async def full_like(
+    a: ArrayLike, *, zarr_format: ZarrFormat | None = None, **kwargs: Any
+) -> AnyAsyncArray:
     """Create a filled array like `a`.
 
     Parameters
     ----------
     a : array-like
         The array to create an empty array like.
+    zarr_format : {2, 3, None}, optional
+        The zarr format of the new array. If `None` (default), the zarr format of `a` if it
+        is a zarr array, otherwise the default zarr format.
     **kwargs
         Keyword arguments passed to [`zarr.api.asynchronous.create`][].
 
@@ -1190,7 +1233,7 @@ async def full_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     Array
         The new array.
     """
-    like_kwargs = _like_args(a) | kwargs
+    like_kwargs = _like_args(a, zarr_format) | kwargs
     return await full(**like_kwargs)  # type: ignore[arg-type]
 
 
@@ -1213,13 +1256,18 @@ async def ones(shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
     return await create(shape=shape, fill_value=1, **kwargs)
 
 
-async def ones_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
+async def ones_like(
+    a: ArrayLike, *, zarr_format: ZarrFormat | None = None, **kwargs: Any
+) -> AnyAsyncArray:
     """Create an array of ones like `a`.
 
     Parameters
     ----------
     a : array-like
         The array to create an empty array like.
+    zarr_format : {2, 3, None}, optional
+        The zarr format of the new array. If `None` (default), the zarr format of `a` if it
+        is a zarr array, otherwise the default zarr format.
     **kwargs
         Keyword arguments passed to [`zarr.api.asynchronous.create`][].
 
@@ -1228,7 +1276,7 @@ async def ones_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     Array
         The new array.
     """
-    like_args = _like_args(a)
+    like_args = _like_args(a, zarr_format)
     # `ones` supplies its own fill_value, so drop any inherited from `a`.
     like_args.pop("fill_value", None)
     like_kwargs = like_args | kwargs
@@ -1289,7 +1337,9 @@ async def open_array(
         raise ArrayNotFoundError(msg) from err
 
 
-async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyAsyncArray:
+async def open_like(
+    a: ArrayLike, path: str, *, zarr_format: ZarrFormat | None = None, **kwargs: Any
+) -> AnyAsyncArray:
     """Open a persistent array like `a`.
 
     Parameters
@@ -1298,6 +1348,10 @@ async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyAsyncArray:
         The shape and data-type of a define these same attributes of the returned array.
     path : str
         The path to the new array.
+    zarr_format : {2, 3, None}, optional
+        The zarr format of the array to open or create. If `None` (default), an existing
+        array of either format is opened, and a missing one is created in the default zarr
+        format. The zarr format of `a` is not inherited.
     **kwargs
         Additional keyword arguments passed to `open_array`.
         If `mode` is omitted or `None`, it defaults to `"a"`. Pass `mode="r"` when
@@ -1308,10 +1362,14 @@ async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyAsyncArray:
     AsyncArray
         The opened array.
     """
-    like_kwargs = _like_args(a) | kwargs
+    # The zarr format of `a` is not inherited: `open_array` would then look for an existing
+    # array in only that format.
+    like_args = _like_args(a, zarr_format or _default_zarr_format())
+    like_args.pop("zarr_format")
+    like_kwargs = like_args | kwargs
     if like_kwargs.get("mode") is None:
         like_kwargs["mode"] = "a"
-    return await open_array(path=path, **like_kwargs)  # type: ignore[arg-type]
+    return await open_array(path=path, zarr_format=zarr_format, **like_kwargs)  # type: ignore[arg-type]
 
 
 async def zeros(shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
@@ -1333,13 +1391,18 @@ async def zeros(shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
     return await create(shape=shape, fill_value=0, **kwargs)
 
 
-async def zeros_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
+async def zeros_like(
+    a: ArrayLike, *, zarr_format: ZarrFormat | None = None, **kwargs: Any
+) -> AnyAsyncArray:
     """Create an array of zeros like `a`.
 
     Parameters
     ----------
     a : array-like
         The array to create an empty array like.
+    zarr_format : {2, 3, None}, optional
+        The zarr format of the new array. If `None` (default), the zarr format of `a` if it
+        is a zarr array, otherwise the default zarr format.
     **kwargs
         Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
 
@@ -1348,7 +1411,7 @@ async def zeros_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     Array
         The new array.
     """
-    like_args = _like_args(a)
+    like_args = _like_args(a, zarr_format)
     # `zeros` supplies its own fill_value, so drop any inherited from `a`.
     like_args.pop("fill_value", None)
     like_kwargs = like_args | kwargs
