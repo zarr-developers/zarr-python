@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools
+import re
 import warnings
 from collections import Counter
 from dataclasses import asdict
@@ -2387,24 +2388,175 @@ def test_set_selection_rejects_value_with_wrong_rank(
 ) -> None:
     """These wrong-rank values are rejected on chunked and sharded arrays alike.
 
-    The sharding codec re-derives an indexer from the selection it is handed
-    and ravels the value when it is the selection's broadcast shape minus
-    integer-indexed axes. The cases here pin that a matching element count
-    alone does not make the codec accept a value the chunked path rejects.
-    That is not a general law: storage layout can change which writes are
-    rejected. ``oindex[np.array([3, 1]), np.array([0, 2])]`` with a
-    ``(2, 2, 1)`` value is accepted on a chunked ``(4, 4)`` array with
-    ``(2, 2)`` chunks, because each chunk receives a ``(1, 1, 1)`` piece numpy
-    can broadcast, while the sharded array raises ``ValueError`` and numpy
-    rejects it outright. Only the rejection is asserted: a write that fails
-    inside the chunk merge may already have touched other chunks.
+    The value is checked against the selection shape before any chunk is
+    touched, so a matching element count does not make a value acceptable,
+    and storage layout does not change which writes are rejected.
     """
     a = np.zeros((4, 4), dtype=np.int32)
     value = np.arange(np.prod(value_shape), dtype=np.int32).reshape(value_shape)
     with zarr.config.set({"codec_pipeline.path": pipeline_path}):
         z = zarr_array_from_numpy_array(store, a, chunk_shape=(2, 2), shards=shards)
-        with pytest.raises(ValueError, match="Attempting to set|shape mismatch"):
+        with pytest.raises(ValueError, match="could not broadcast"):
             getattr(z, kind)[selection] = value
+
+
+_MASK_4X4 = np.eye(4, dtype=bool)
+
+
+@pytest.mark.parametrize("shards", [None, (4, 4)], ids=["chunked", "sharded"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        # input: (indexing kind, zarr selection, equivalent numpy selection, value shape)
+        Expect(input=("basic", ..., ..., (4, 4)), output=None, id="basic-exact"),
+        Expect(input=("basic", ..., ..., (1,)), output=None, id="basic-length-1"),
+        Expect(input=("basic", ..., ..., (4,)), output=None, id="basic-lower-rank"),
+        Expect(input=("basic", ..., ..., (4, 1)), output=None, id="basic-length-1-axis"),
+        Expect(input=("basic", ..., ..., (1, 1, 4)), output=None, id="basic-leading-length-1"),
+        Expect(
+            input=("basic", (1, slice(None)), (1, slice(None)), (1, 4)),
+            output=None,
+            id="basic-int-axis",
+        ),
+        Expect(
+            input=("basic", (slice(1, 3), 2), (slice(1, 3), 2), (1,)),
+            output=None,
+            id="basic-int-axis-length-1",
+        ),
+        Expect(
+            input=("oindex", ([0, 2], [1, 2, 3]), np.ix_([0, 2], [1, 2, 3]), (3,)),
+            output=None,
+            id="oindex-lower-rank",
+        ),
+        Expect(
+            input=("vindex", ([0, 2, 3], [1, 2, 3]), ([0, 2, 3], [1, 2, 3]), (1,)),
+            output=None,
+            id="vindex-length-1",
+        ),
+        Expect(
+            input=("vindex", ([[0, 1], [2, 3]], [[0, 1], [2, 3]]), ([[0, 1], [2, 3]],) * 2, (2,)),
+            output=None,
+            id="vindex-2d-coords-lower-rank",
+        ),
+        Expect(input=("vindex", _MASK_4X4, _MASK_4X4, (4,)), output=None, id="mask-exact"),
+        Expect(input=("vindex", _MASK_4X4, _MASK_4X4, (1,)), output=None, id="mask-length-1"),
+    ],
+    ids=lambda case: case.id,
+)
+def test_set_selection_broadcasts_like_numpy(
+    store: StorePath,
+    case: Expect[tuple[str, Any, Any, tuple[int, ...]], None],
+    shards: tuple[int, ...] | None,
+) -> None:
+    """A value that broadcasts to the selection is written the way numpy writes it."""
+    kind, selection, np_selection, value_shape = case.input
+    expected = np.zeros((4, 4), dtype=np.int32)
+    value = np.arange(1, np.prod(value_shape) + 1, dtype=np.int32).reshape(value_shape)
+    expected[np_selection] = value
+    z = zarr_array_from_numpy_array(
+        store, np.zeros((4, 4), dtype=np.int32), chunk_shape=(2, 2), shards=shards
+    )
+    target = z if kind == "basic" else getattr(z, kind)
+    target[selection] = value
+    assert_array_equal(z[...], expected)
+
+
+@pytest.mark.parametrize("shards", [None, (4, 4)], ids=["chunked", "sharded"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        # The value is longer than the selection, which used to be silently truncated.
+        ExpectFail(
+            input=("basic", ..., (4, 5)),
+            exception=ValueError,
+            msg="could not broadcast input array from shape (4, 5) into shape (4, 4)",
+            escape=True,
+            id="basic-longer",
+        ),
+        ExpectFail(
+            input=("basic", (slice(0, 3), slice(None)), (4, 4)),
+            exception=ValueError,
+            msg="could not broadcast input array from shape (4, 4) into shape (3, 4)",
+            escape=True,
+            id="basic-slice-longer",
+        ),
+        ExpectFail(
+            input=("basic", ..., (2, 4)),
+            exception=ValueError,
+            msg="could not broadcast input array from shape (2, 4) into shape (4, 4)",
+            escape=True,
+            id="basic-shorter",
+        ),
+        ExpectFail(
+            input=("basic", ..., (0,)),
+            exception=ValueError,
+            msg="could not broadcast input array from shape (0,) into shape (4, 4)",
+            escape=True,
+            id="basic-empty",
+        ),
+        ExpectFail(
+            input=("oindex", ([0, 2], [1, 2, 3]), (2, 2)),
+            exception=ValueError,
+            msg="could not broadcast input array from shape (2, 2) into shape (2, 3)",
+            escape=True,
+            id="oindex",
+        ),
+        ExpectFail(
+            input=("vindex", ([0, 2, 3], [1, 2, 3]), (4,)),
+            exception=ValueError,
+            msg="could not broadcast input array from shape (4,) into shape (3,)",
+            escape=True,
+            id="vindex",
+        ),
+        ExpectFail(
+            input=("vindex", _MASK_4X4, (5,)),
+            exception=ValueError,
+            msg="could not broadcast input array from shape (5,) into shape (4,)",
+            escape=True,
+            id="mask",
+        ),
+    ],
+    ids=lambda case: case.id,
+)
+def test_set_selection_rejects_axis_length_mismatch(
+    store: StorePath,
+    case: ExpectFail[tuple[str, Any, tuple[int, ...]]],
+    shards: tuple[int, ...] | None,
+) -> None:
+    """A value whose axis length is neither 1 nor the selection's is rejected before any write."""
+    kind, selection, value_shape = case.input
+    z = zarr_array_from_numpy_array(
+        store, np.zeros((4, 4), dtype=np.int32), chunk_shape=(2, 2), shards=shards
+    )
+    target = z if kind == "basic" else getattr(z, kind)
+    with case.raises():
+        target[selection] = np.ones(value_shape, dtype=np.int32)
+    assert_array_equal(z[...], np.zeros((4, 4), dtype=np.int32))
+
+
+@pytest.mark.parametrize("shards", [None, (4, 4)], ids=["chunked", "sharded"])
+def test_set_selection_rejects_extra_leading_axis(
+    store: StorePath, shards: tuple[int, ...] | None
+) -> None:
+    """A value with more axes than the selection is rejected unless the extra axes have length 1."""
+    z = zarr_array_from_numpy_array(
+        store, np.zeros((4, 4), dtype=np.int32), chunk_shape=(2, 2), shards=shards
+    )
+    with pytest.raises(
+        ValueError,
+        match=re.escape("could not broadcast input array from shape (2, 4, 4) into shape (4, 4)"),
+    ):
+        z[...] = np.ones((2, 4, 4), dtype=np.int32)
+    assert_array_equal(z[...], np.zeros((4, 4), dtype=np.int32))
+
+
+def test_create_rejects_data_with_wrong_shape() -> None:
+    """`zarr.create` writes `data` through the same check, so a mismatched shape raises."""
+    with pytest.raises(
+        ValueError,
+        match=re.escape("could not broadcast input array from shape (4,) into shape (3,)"),
+    ):
+        zarr.create((3,), data=np.arange(4))
 
 
 def test_iter_chunk_regions():
