@@ -41,10 +41,40 @@ def test_docstrings_match(callable_name: str) -> None:
         assert mismatch == []
 
 
-@pytest.mark.parametrize(
-    ("parameter_name", "array_creation_routines"),
-    [
-        pytest.param(
+CREATE_ARRAY_ROUTINES: Final[tuple[Callable[..., Any], ...]] = (
+    asynchronous.create_array,
+    synchronous.create_array,
+    zarr.AsyncGroup.create_array,
+    zarr.Group.create_array,
+    zarr.Group.create,
+)
+"""
+Routines that share the `create_array` signature and must document it identically.
+The legacy `zarr.create` documents a different signature (e.g. `chunks : int or tuple of ints`)
+and is only checked for the parameters it genuinely shares, see the cases below.
+"""
+
+CREATE_ARRAY_EXEMPT_PARAMETERS: Final[frozenset[str]] = frozenset({"name"})
+"""
+Parameters that the `create_array` routines document differently on purpose:
+`name` is relative to the store for the module-level functions and relative to the group
+for the group methods.
+"""
+
+
+def _documented_parameters(routines: tuple[Callable[..., Any], ...]) -> tuple[str, ...]:
+    """The sorted union of the parameter names documented by `routines`."""
+    names: set[str] = set()
+    for routine in routines:
+        names.update(param.name for param in NumpyDocString(routine.__doc__)["Parameters"])
+    return tuple(sorted(names))
+
+
+def _consistency_cases() -> list[Any]:
+    """One test case per (parameter, routine set), so every mismatch is reported separately."""
+    groups: list[tuple[str, tuple[str, ...], tuple[Callable[..., Any], ...]]] = [
+        (
+            "store-path-create_array_group",
             ("store", "path"),
             (
                 asynchronous.create_array,
@@ -54,57 +84,42 @@ def test_docstrings_match(callable_name: str) -> None:
                 zarr.AsyncGroup.create_array,
                 zarr.Group.create_array,
             ),
-            id="store-path-create_array_group",
         ),
-        pytest.param(
-            (
-                "store",
-                "path",
-            ),
-            (
-                asynchronous.create,
-                synchronous.create,
-                zarr.Group.create,
-            ),
-            id="store-path-create",
+        (
+            "store-path-create",
+            ("store", "path"),
+            (asynchronous.create, synchronous.create, zarr.Group.create),
         ),
-        pytest.param(
-            (
-                (
-                    "filters",
-                    "codecs",
-                    "compressors",
-                    "compressor",
-                    "chunks",
-                    "shape",
-                    "dtype",
-                    "shardsfill_value",
-                )
+        (
+            "create_array_variants",
+            tuple(
+                name
+                for name in _documented_parameters(CREATE_ARRAY_ROUTINES)
+                if name not in CREATE_ARRAY_EXEMPT_PARAMETERS
             ),
-            (
-                asynchronous.create,
-                synchronous.create,
-                asynchronous.create_array,
-                synchronous.create_array,
-                zarr.AsyncGroup.create_array,
-                zarr.Group.create_array,
-            ),
-            id="encoding-params-create_and_array",
+            CREATE_ARRAY_ROUTINES,
         ),
-    ],
-)
+    ]
+    return [
+        pytest.param(name, routines, id=f"{group_id}-{name}")
+        for group_id, names, routines in groups
+        for name in names
+    ]
+
+
+@pytest.mark.parametrize(("parameter_name", "array_creation_routines"), _consistency_cases())
 def test_docstring_consistent_parameters(
-    parameter_name: str, array_creation_routines: tuple[Callable[[Any], Any], ...]
+    parameter_name: str, array_creation_routines: tuple[Callable[..., Any], ...]
 ) -> None:
     """
-    Tests that array and group creation routines document the same parameters consistently.
-    This test inspects the docstrings of sets of callables and generates two dicts:
+    Tests that array and group creation routines document the same parameter consistently.
+    This test inspects the docstrings of a set of callables and generates two dicts:
 
     - a dict where the keys are parameter descriptions and the values are the names of the routines with those
     descriptions
     - a dict where the keys are parameter types and the values are the names of the routines with those types
 
-    If each dict has just 1 value, then the parameter description and type in the docstring must be
+    If each dict has at most 1 value, then the parameter description and type in the docstring must be
     identical across different routines. But if these dicts have multiple values, then there must be
     routines that use the same parameter but document it differently, which will trigger a test failure.
     """
@@ -112,17 +127,10 @@ def test_docstring_consistent_parameters(
     types: dict[str, tuple[str, ...]] = {}
     for routine in array_creation_routines:
         key = f"{routine.__module__}.{routine.__qualname__}"
-        docstring = NumpyDocString(routine.__doc__)
-        param_dict = {d.name: d for d in docstring["Parameters"]}
+        param_dict = {d.name: d for d in NumpyDocString(routine.__doc__)["Parameters"]}
         if parameter_name in param_dict:
             val = param_dict[parameter_name]
-            if tuple(val.desc) in descs:
-                descs[tuple(val.desc)] = descs[tuple(val.desc)] + (key,)
-            else:
-                descs[tuple(val.desc)] = (key,)
-            if val.type in types:
-                types[val.type] = types[val.type] + (key,)
-            else:
-                types[val.type] = (key,)
-    assert len(descs) <= 1
-    assert len(types) <= 1
+            descs[tuple(val.desc)] = descs.get(tuple(val.desc), ()) + (key,)
+            types[val.type] = types.get(val.type, ()) + (key,)
+    assert len(descs) <= 1, f"parameter {parameter_name!r} has inconsistent descriptions: {descs}"
+    assert len(types) <= 1, f"parameter {parameter_name!r} has inconsistent types: {types}"
