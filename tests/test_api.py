@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    import numpy.typing as npt
+
     from zarr.abc.store import Store
     from zarr.core.common import JSON, AccessModeLiteral, MemoryOrder, ZarrFormat
     from zarr.types import AnyArray
@@ -43,7 +45,8 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
-from zarr.core.buffer import NDArrayLike
+from zarr.core.buffer import NDArrayLike, default_buffer_prototype
+from zarr.core.sync import sync
 from zarr.errors import (
     ArrayNotFoundError,
     ContainsArrayError,
@@ -85,43 +88,85 @@ def test_create(memory_store: Store) -> None:
         z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize(
-    ("mode", "existing"),
-    [(None, False), ("a", False), ("r+", False), ("w", False), ("w", True), ("w-", False)],
+def _create_async(**kwargs: Any) -> AnyArray:
+    return Array(sync(zarr.api.asynchronous.create(**kwargs)))
+
+
+CREATE_FUNCS = pytest.mark.parametrize(
+    "create_func", [create, _create_async], ids=["sync", "async"]
 )
-@pytest.mark.parametrize("data", [None, np.arange(3, dtype="float64")])
-def test_create_mode_data(mode: AccessModeLiteral | None, existing: bool, data: Any) -> None:
+
+
+def _write_existing_array(store: MemoryStore) -> None:
     """
-    `create` opens the store with `mode` and writes `data` into the new array.
+    Store an array with written chunks, plus a key that belongs to no Zarr node.
+    """
+    old = create_array(store, shape=(4,), chunks=(2,), dtype="int8")
+    old[:] = [1, 2, 3, 4]
+    sync(store.set("junk", default_buffer_prototype().buffer.from_bytes(b"junk")))
+
+
+@CREATE_FUNCS
+@pytest.mark.parametrize(
+    ("mode", "overwrite", "existing"),
+    [
+        (None, False, False),
+        ("a", False, False),
+        ("r+", False, False),
+        ("w", False, False),
+        ("w-", False, False),
+        ("a", True, True),
+        ("r+", True, True),
+        ("w", False, True),
+        ("w", True, True),
+    ],
+    ids=lambda v: repr(v),
+)
+@pytest.mark.parametrize("data", [None, np.arange(3, dtype="int8")], ids=["no-data", "int8-data"])
+def test_create_mode_data(
+    create_func: Callable[..., AnyArray],
+    mode: AccessModeLiteral | None,
+    overwrite: bool,
+    existing: bool,
+    data: npt.NDArray[Any] | None,
+) -> None:
+    """
+    `create` opens the store with `mode`, replaces what is stored under the path when
+    `mode` or `overwrite` says so, and writes `data` without taking its data type.
     """
     store = MemoryStore()
     if existing:
-        create_array(store, shape=(2,), dtype="int8")
-    z = create(shape=(3,), store=store, mode=mode, data=data)
-    assert z.shape == (3,)
+        _write_existing_array(store)
+    reference = MemoryStore()
+    create(shape=(3,), chunks=(2,), store=reference, data=data)
+
+    z = create_func(shape=(3,), chunks=(2,), store=store, mode=mode, overwrite=overwrite, data=data)
+
+    assert sorted(store._store_dict) == sorted(reference._store_dict)
     assert z.dtype == np.dtype("float64")
-    expected = np.zeros(3) if data is None else data
-    assert_array_equal(z[:], expected)
+    assert_array_equal(z[:], np.zeros(3) if data is None else data)
 
 
-def test_create_mode_a_existing_array() -> None:
+@pytest.mark.parametrize("mode", [None, "a", "r+"])
+def test_create_existing_array_without_overwrite(mode: AccessModeLiteral | None) -> None:
     """
-    `create` with mode `'a'` refuses to replace an existing array.
+    `create` refuses to replace an existing array unless `mode` or `overwrite` allows it.
     """
     store = MemoryStore()
-    create_array(store, shape=(2,), dtype="int8")
+    _write_existing_array(store)
     with pytest.raises(ContainsArrayError):
-        create(shape=(3,), store=store, mode="a")
+        create(shape=(3,), store=store, mode=mode)
 
 
-def test_create_mode_w_minus_existing_data() -> None:
+@pytest.mark.parametrize("overwrite", [False, True])
+def test_create_mode_w_minus_existing_data(overwrite: bool) -> None:
     """
-    `create` with mode `'w-'` refuses to write where data is stored.
+    `create` with mode `'w-'` refuses to write where data is stored, whatever `overwrite` says.
     """
     store = MemoryStore()
-    create_array(store, shape=(2,), dtype="int8")
+    _write_existing_array(store)
     with pytest.raises(FileExistsError, match="mode 'w-'"):
-        create(shape=(3,), store=store, mode="w-")
+        create(shape=(3,), store=store, mode="w-", overwrite=overwrite)
 
 
 def test_create_mode_r() -> None:
@@ -132,12 +177,26 @@ def test_create_mode_r() -> None:
         create(shape=(3,), store=MemoryStore(), mode="r")
 
 
-def test_create_unknown_keyword() -> None:
+def test_create_invalid_mode() -> None:
     """
-    `create` rejects keyword arguments it does not declare, naming itself in the error.
+    `create` rejects a mode that is not an access mode.
     """
+    with pytest.raises(ValueError, match="Invalid mode: x"):
+        create(shape=(3,), store=MemoryStore(), mode="x")  # type: ignore[arg-type]
+
+
+@CREATE_FUNCS
+def test_create_unknown_keyword(create_func: Callable[..., AnyArray]) -> None:
+    """
+    `create` rejects keyword arguments it does not declare, naming itself in the error,
+    before `mode="w"` deletes anything.
+    """
+    store = MemoryStore()
+    _write_existing_array(store)
+    before = dict(store._store_dict)
     with pytest.raises(TypeError, match=r"^create\(\) got an unexpected keyword argument 'typo'"):
-        create(shape=(3,), typo=1)  # type: ignore[call-arg]
+        create_func(shape=(3,), store=store, mode="w", typo=1)
+    assert store._store_dict == before
 
 
 @pytest.mark.parametrize(

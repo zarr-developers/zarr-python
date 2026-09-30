@@ -1044,14 +1044,25 @@ async def create(
         Runtime configuration of the array. If provided, will override the
         default values from `zarr.config.array`.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
-        The access mode used to open `store`. The default, `None`, is `'a'`.
-        With `'w'`, everything stored under `path` is deleted before the array is
-        created. With `'w-'`, creation fails if anything is stored under `path`.
-        With `'r'`, the store is opened read-only and creation fails.
-        Ignored if `store` is a `StorePath`, which is already open.
+        Legacy way to control overwriting, kept for compatibility with Zarr-Python 2.
+        Prefer `overwrite`. The access mode used to open `store`; the default, `None`,
+        is `'a'`.
+
+        - `'a'` and `'r+'` create the array and fail if a node exists at `path`,
+          unless `overwrite` is `True`.
+        - `'w'` replaces anything stored under `path` (the whole store if `path` is
+          not set), even if `overwrite` is `False`. On a store that cannot delete
+          keys, `'w'` raises an error instead of replacing an existing node.
+        - `'w-'` fails if anything is stored under `path`, even if `overwrite` is
+          `True`.
+        - `'r'` always fails.
+
+        `mode` has no effect, and is not validated, if `store` is a `StorePath`.
     data : array-like, optional
-        Values written into the new array after it is created, as `array[...] = data`.
-        `data` does not determine the shape or data type of the array.
+        Values written into the new array after it is created. Unlike the `data`
+        parameter of `create_array`, it does not set the shape or data type of the
+        array. To create an array from existing data, use `create_array(data=...)`.
+        A Zarr array is not supported as `data`.
 
     Returns
     -------
