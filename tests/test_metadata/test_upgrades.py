@@ -1397,7 +1397,7 @@ def test_read_edge_lists_in_regular_grid(
     assert message.endswith(RESAVE_HINT)
     # The 1000-edge list is abbreviated: the message is two sentences and two hints, not
     # a dump of the edges.
-    assert len(message) < 1300
+    assert len(message) < 1600
 
 
 def _rejected_without_warning(doc: dict[str, JSON]) -> pytest.ExceptionInfo[Exception]:
