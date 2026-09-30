@@ -1350,7 +1350,9 @@ def test_read_edge_lists_in_regular_grid(
         "follows requires `zarr.config.set({'array.rectilinear_chunks': True})`. "
     ) in message
     assert message.endswith(RESAVE_HINT)
-    assert len(message) < 1000
+    # The 1000-edge list is abbreviated: the message is two sentences and two hints, not
+    # a dump of the edges.
+    assert len(message) < 1300
 
 
 def _rejected_without_warning(doc: dict[str, JSON]) -> pytest.ExceptionInfo[Exception]:
