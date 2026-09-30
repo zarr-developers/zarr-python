@@ -1229,17 +1229,56 @@ def from_array(
     )
 
 
-# TODO: add type annotations for kwargs
-def empty(shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
+def empty(
+    shape: tuple[int, ...] | int,
+    *,
+    chunks: tuple[int, ...] | int | bool | None = None,
+    dtype: ZDTypeLike | None = None,
+    compressor: CompressorLike = "auto",
+    fill_value: Any | None = DEFAULT_FILL_VALUE,
+    order: MemoryOrder | None = None,
+    store: StoreLike | None = None,
+    synchronizer: Any | None = None,
+    overwrite: bool = False,
+    path: PathLike | None = None,
+    chunk_store: StoreLike | None = None,
+    filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
+    cache_metadata: bool | None = None,
+    cache_attrs: bool | None = None,
+    read_only: bool | None = None,
+    object_codec: Codec | None = None,
+    dimension_separator: Literal[".", "/"] | None = None,
+    write_empty_chunks: bool | None = None,
+    zarr_format: ZarrFormat | None = None,
+    meta_array: Any | None = None,
+    attributes: dict[str, JSON] | None = None,
+    chunk_shape: tuple[int, ...] | int | None = None,
+    chunk_key_encoding: (
+        ChunkKeyEncoding
+        | tuple[Literal["default"], Literal[".", "/"]]
+        | tuple[Literal["v2"], Literal[".", "/"]]
+        | None
+    ) = None,
+    codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+    dimension_names: DimensionNamesLike = None,
+    storage_options: dict[str, Any] | None = None,
+    config: ArrayConfigLike | None = None,
+    mode: AccessModeLiteral | None = None,
+    data: npt.ArrayLike | None = None,
+) -> AnyArray:
     """Create an empty array with the specified shape. The contents will be filled with the
-    array's fill value or zeros if no fill value is provided.
+    specified fill value or zeros if no fill value is provided.
+
+    Parameters not listed below are those of
+    [`create`][zarr.api.asynchronous.create], with the same meaning.
 
     Parameters
     ----------
     shape : int or tuple of int
-        Shape of the empty array.
-    **kwargs
-        Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
+        Shape of the array.
+    data : array-like, optional
+        Deprecated. Values written into the new array after it is created. To create an
+        array from existing data, use `create_array(data=...)`.
 
     Returns
     -------
@@ -1252,7 +1291,41 @@ def empty(shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
     retrieve data from an empty Zarr array, any values may be returned,
     and these are not guaranteed to be stable from one access to the next.
     """
-    return Array(sync(async_api.empty(shape, **kwargs)))
+    return Array(
+        sync(
+            async_api.empty(
+                shape=shape,
+                chunks=chunks,
+                dtype=dtype,
+                compressor=compressor,
+                fill_value=fill_value,
+                order=order,
+                store=store,
+                synchronizer=synchronizer,
+                overwrite=overwrite,
+                path=path,
+                chunk_store=chunk_store,
+                filters=filters,
+                cache_metadata=cache_metadata,
+                cache_attrs=cache_attrs,
+                read_only=read_only,
+                object_codec=object_codec,
+                dimension_separator=dimension_separator,
+                write_empty_chunks=write_empty_chunks,
+                zarr_format=zarr_format,
+                meta_array=meta_array,
+                attributes=attributes,
+                chunk_shape=chunk_shape,
+                chunk_key_encoding=chunk_key_encoding,
+                codecs=codecs,
+                dimension_names=dimension_names,
+                storage_options=storage_options,
+                config=config,
+                mode=mode,
+                data=data,
+            )
+        )
+    )
 
 
 # TODO: move ArrayLike to common module
@@ -1285,25 +1358,99 @@ def empty_like(a: ArrayLike, *, zarr_format: ZarrFormat | None = None, **kwargs:
     return Array(sync(async_api.empty_like(a, zarr_format=zarr_format, **kwargs)))
 
 
-# TODO: add type annotations for kwargs and fill_value
-def full(shape: tuple[int, ...], fill_value: Any, **kwargs: Any) -> AnyArray:
-    """Create an array with a default fill value.
+def full(
+    shape: tuple[int, ...] | int,
+    fill_value: Any,
+    *,
+    chunks: tuple[int, ...] | int | bool | None = None,
+    dtype: ZDTypeLike | None = None,
+    compressor: CompressorLike = "auto",
+    order: MemoryOrder | None = None,
+    store: StoreLike | None = None,
+    synchronizer: Any | None = None,
+    overwrite: bool = False,
+    path: PathLike | None = None,
+    chunk_store: StoreLike | None = None,
+    filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
+    cache_metadata: bool | None = None,
+    cache_attrs: bool | None = None,
+    read_only: bool | None = None,
+    object_codec: Codec | None = None,
+    dimension_separator: Literal[".", "/"] | None = None,
+    write_empty_chunks: bool | None = None,
+    zarr_format: ZarrFormat | None = None,
+    meta_array: Any | None = None,
+    attributes: dict[str, JSON] | None = None,
+    chunk_shape: tuple[int, ...] | int | None = None,
+    chunk_key_encoding: (
+        ChunkKeyEncoding
+        | tuple[Literal["default"], Literal[".", "/"]]
+        | tuple[Literal["v2"], Literal[".", "/"]]
+        | None
+    ) = None,
+    codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+    dimension_names: DimensionNamesLike = None,
+    storage_options: dict[str, Any] | None = None,
+    config: ArrayConfigLike | None = None,
+    mode: AccessModeLiteral | None = None,
+    data: npt.ArrayLike | None = None,
+) -> AnyArray:
+    """Create an array, with `fill_value` being used as the default value for
+    uninitialized portions of the array.
+
+    Parameters not listed below are those of
+    [`create`][zarr.api.asynchronous.create], with the same meaning.
 
     Parameters
     ----------
     shape : int or tuple of int
-        Shape of the empty array.
+        Shape of the array.
     fill_value : scalar
         Fill value.
-    **kwargs
-        Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
+    data : array-like, optional
+        Deprecated. Values written into the new array after it is created. To create an
+        array from existing data, use `create_array(data=...)`.
 
     Returns
     -------
     Array
         The new array.
     """
-    return Array(sync(async_api.full(shape=shape, fill_value=fill_value, **kwargs)))
+    return Array(
+        sync(
+            async_api.full(
+                shape=shape,
+                fill_value=fill_value,
+                chunks=chunks,
+                dtype=dtype,
+                compressor=compressor,
+                order=order,
+                store=store,
+                synchronizer=synchronizer,
+                overwrite=overwrite,
+                path=path,
+                chunk_store=chunk_store,
+                filters=filters,
+                cache_metadata=cache_metadata,
+                cache_attrs=cache_attrs,
+                read_only=read_only,
+                object_codec=object_codec,
+                dimension_separator=dimension_separator,
+                write_empty_chunks=write_empty_chunks,
+                zarr_format=zarr_format,
+                meta_array=meta_array,
+                attributes=attributes,
+                chunk_shape=chunk_shape,
+                chunk_key_encoding=chunk_key_encoding,
+                codecs=codecs,
+                dimension_names=dimension_names,
+                storage_options=storage_options,
+                config=config,
+                mode=mode,
+                data=data,
+            )
+        )
+    )
 
 
 # TODO: move ArrayLike to common module
@@ -1329,23 +1476,95 @@ def full_like(a: ArrayLike, *, zarr_format: ZarrFormat | None = None, **kwargs: 
     return Array(sync(async_api.full_like(a, zarr_format=zarr_format, **kwargs)))
 
 
-# TODO: add type annotations for kwargs
-def ones(shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
-    """Create an array with a fill value of one.
+def ones(
+    shape: tuple[int, ...] | int,
+    *,
+    chunks: tuple[int, ...] | int | bool | None = None,
+    dtype: ZDTypeLike | None = None,
+    compressor: CompressorLike = "auto",
+    order: MemoryOrder | None = None,
+    store: StoreLike | None = None,
+    synchronizer: Any | None = None,
+    overwrite: bool = False,
+    path: PathLike | None = None,
+    chunk_store: StoreLike | None = None,
+    filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
+    cache_metadata: bool | None = None,
+    cache_attrs: bool | None = None,
+    read_only: bool | None = None,
+    object_codec: Codec | None = None,
+    dimension_separator: Literal[".", "/"] | None = None,
+    write_empty_chunks: bool | None = None,
+    zarr_format: ZarrFormat | None = None,
+    meta_array: Any | None = None,
+    attributes: dict[str, JSON] | None = None,
+    chunk_shape: tuple[int, ...] | int | None = None,
+    chunk_key_encoding: (
+        ChunkKeyEncoding
+        | tuple[Literal["default"], Literal[".", "/"]]
+        | tuple[Literal["v2"], Literal[".", "/"]]
+        | None
+    ) = None,
+    codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+    dimension_names: DimensionNamesLike = None,
+    storage_options: dict[str, Any] | None = None,
+    config: ArrayConfigLike | None = None,
+    mode: AccessModeLiteral | None = None,
+    data: npt.ArrayLike | None = None,
+) -> AnyArray:
+    """Create an array, with one being used as the default value for
+    uninitialized portions of the array.
+
+    Parameters not listed below are those of
+    [`create`][zarr.api.asynchronous.create], with the same meaning.
 
     Parameters
     ----------
     shape : int or tuple of int
-        Shape of the empty array.
-    **kwargs
-        Keyword arguments passed to [`zarr.api.asynchronous.create`][].
+        Shape of the array.
+    data : array-like, optional
+        Deprecated. Values written into the new array after it is created. To create an
+        array from existing data, use `create_array(data=...)`.
 
     Returns
     -------
     Array
         The new array.
     """
-    return Array(sync(async_api.ones(shape, **kwargs)))
+    return Array(
+        sync(
+            async_api.ones(
+                shape=shape,
+                chunks=chunks,
+                dtype=dtype,
+                compressor=compressor,
+                order=order,
+                store=store,
+                synchronizer=synchronizer,
+                overwrite=overwrite,
+                path=path,
+                chunk_store=chunk_store,
+                filters=filters,
+                cache_metadata=cache_metadata,
+                cache_attrs=cache_attrs,
+                read_only=read_only,
+                object_codec=object_codec,
+                dimension_separator=dimension_separator,
+                write_empty_chunks=write_empty_chunks,
+                zarr_format=zarr_format,
+                meta_array=meta_array,
+                attributes=attributes,
+                chunk_shape=chunk_shape,
+                chunk_key_encoding=chunk_key_encoding,
+                codecs=codecs,
+                dimension_names=dimension_names,
+                storage_options=storage_options,
+                config=config,
+                mode=mode,
+                data=data,
+            )
+        )
+    )
 
 
 # TODO: add type annotations for kwargs
@@ -1445,23 +1664,95 @@ def open_like(
     return Array(sync(async_api.open_like(a, path=path, zarr_format=zarr_format, **kwargs)))
 
 
-# TODO: add type annotations for kwargs
-def zeros(shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
-    """Create an array with a fill value of zero.
+def zeros(
+    shape: tuple[int, ...] | int,
+    *,
+    chunks: tuple[int, ...] | int | bool | None = None,
+    dtype: ZDTypeLike | None = None,
+    compressor: CompressorLike = "auto",
+    order: MemoryOrder | None = None,
+    store: StoreLike | None = None,
+    synchronizer: Any | None = None,
+    overwrite: bool = False,
+    path: PathLike | None = None,
+    chunk_store: StoreLike | None = None,
+    filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
+    cache_metadata: bool | None = None,
+    cache_attrs: bool | None = None,
+    read_only: bool | None = None,
+    object_codec: Codec | None = None,
+    dimension_separator: Literal[".", "/"] | None = None,
+    write_empty_chunks: bool | None = None,
+    zarr_format: ZarrFormat | None = None,
+    meta_array: Any | None = None,
+    attributes: dict[str, JSON] | None = None,
+    chunk_shape: tuple[int, ...] | int | None = None,
+    chunk_key_encoding: (
+        ChunkKeyEncoding
+        | tuple[Literal["default"], Literal[".", "/"]]
+        | tuple[Literal["v2"], Literal[".", "/"]]
+        | None
+    ) = None,
+    codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+    dimension_names: DimensionNamesLike = None,
+    storage_options: dict[str, Any] | None = None,
+    config: ArrayConfigLike | None = None,
+    mode: AccessModeLiteral | None = None,
+    data: npt.ArrayLike | None = None,
+) -> AnyArray:
+    """Create an array, with zero being used as the default value for
+    uninitialized portions of the array.
+
+    Parameters not listed below are those of
+    [`create`][zarr.api.asynchronous.create], with the same meaning.
 
     Parameters
     ----------
     shape : int or tuple of int
-        Shape of the empty array.
-    **kwargs
-        Keyword arguments passed to [`zarr.api.asynchronous.create`][].
+        Shape of the array.
+    data : array-like, optional
+        Deprecated. Values written into the new array after it is created. To create an
+        array from existing data, use `create_array(data=...)`.
 
     Returns
     -------
     Array
         The new array.
     """
-    return Array(sync(async_api.zeros(shape=shape, **kwargs)))
+    return Array(
+        sync(
+            async_api.zeros(
+                shape=shape,
+                chunks=chunks,
+                dtype=dtype,
+                compressor=compressor,
+                order=order,
+                store=store,
+                synchronizer=synchronizer,
+                overwrite=overwrite,
+                path=path,
+                chunk_store=chunk_store,
+                filters=filters,
+                cache_metadata=cache_metadata,
+                cache_attrs=cache_attrs,
+                read_only=read_only,
+                object_codec=object_codec,
+                dimension_separator=dimension_separator,
+                write_empty_chunks=write_empty_chunks,
+                zarr_format=zarr_format,
+                meta_array=meta_array,
+                attributes=attributes,
+                chunk_shape=chunk_shape,
+                chunk_key_encoding=chunk_key_encoding,
+                codecs=codecs,
+                dimension_names=dimension_names,
+                storage_options=storage_options,
+                config=config,
+                mode=mode,
+                data=data,
+            )
+        )
+    )
 
 
 # TODO: add type annotations for kwargs
