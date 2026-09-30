@@ -42,7 +42,7 @@ from zarr.core.common import (
 )
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.json_parse import parse_field
-from zarr.core.metadata.common import parse_attributes
+from zarr.core.metadata.common import check_attributes_json, parse_attributes
 
 
 class ArrayV2MetadataDict(TypedDict):
@@ -142,6 +142,7 @@ class ArrayV2Metadata(Metadata):
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         zarray_dict = self.to_dict()
         zattrs_dict = zarray_dict.pop("attributes", {})
+        check_attributes_json(self.attributes)
         indent = config.get("json_indent")
         return {
             ZARRAY_JSON: json_to_buffer(zarray_dict, prototype=prototype, indent=indent),

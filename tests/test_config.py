@@ -63,6 +63,10 @@ def test_config_defaults_set() -> None:
                 "async": {"concurrency": 10, "timeout": None},
                 "threading": {"max_workers": None},
                 "json_indent": 2,
+                "attributes": {
+                    "non_string_keys": "warn",
+                    "non_finite_floats": "allow",
+                },
                 "codec_pipeline": {
                     "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                     "batch_size": 1,

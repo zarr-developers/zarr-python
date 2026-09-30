@@ -107,6 +107,13 @@ config = Config(
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
             "json_indent": 2,
+            "attributes": {
+                # How attributes that are not valid JSON are handled when they are
+                # written: "allow", "warn", or "raise". See
+                # zarr.core.metadata.common.check_attributes_json.
+                "non_string_keys": "warn",
+                "non_finite_floats": "allow",
+            },
             "codec_pipeline": {
                 # FusedCodecPipeline is the faster synchronous pipeline, but it stays
                 # opt-in for now so behavior is unchanged for existing users. Early

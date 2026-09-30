@@ -48,6 +48,7 @@ from zarr.core.config import config
 from zarr.core.dtype import parse_data_type
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata.common import check_attributes_json
 from zarr.core.metadata.io import save_metadata
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
@@ -359,8 +360,13 @@ class GroupMetadata(Metadata):
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         indent = config.get("json_indent")
         if self.zarr_format == 3:
-            return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype, indent=indent)}
+            # `to_dict` first: it rejects non-string top-level keys with a TypeError,
+            # which must keep taking precedence over the attributes policy.
+            zarr_json = self.to_dict()
+            check_attributes_json(self.attributes)
+            return {ZARR_JSON: json_to_buffer(zarr_json, prototype=prototype, indent=indent)}
         else:
+            check_attributes_json(self.attributes)
             items = {
                 ZGROUP_JSON: json_to_buffer(
                     {"zarr_format": self.zarr_format}, prototype=prototype, indent=indent

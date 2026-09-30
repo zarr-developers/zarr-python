@@ -54,6 +54,28 @@ print(sorted(z.attrs))
 Internally Zarr uses JSON to store array and group attributes, so attribute
 values must be JSON serializable.
 
+Two kinds of value that Python's `json` module accepts are not valid JSON, and
+the config controls how Zarr writes them. Each option takes `"allow"` (write
+without comment), `"warn"` (write, and emit a `ZarrFutureWarning`) or `"raise"`
+(refuse to write):
+
+- Non-string keys, such as `{1: "a"}`, are written as strings, so they read
+  back as different keys. `attributes.non_string_keys` defaults to `"warn"`,
+  and this will become an error in a future version of Zarr.
+- `NaN` and infinite floats are written as non-standard `NaN` / `Infinity`
+  literals that other JSON parsers may reject.
+  `attributes.non_finite_floats` defaults to `"allow"`. Set it to `"raise"` to
+  make sure the documents Zarr writes are valid JSON.
+
+```python exec="true" session="attributes" source="above" result="ansi"
+arr = zarr.create_array(store="memory://attributes-nan-demo", shape=(1,), dtype="f8")
+with zarr.config.set({"attributes.non_finite_floats": "raise"}):
+    try:
+        arr.attrs["scale"] = float("nan")
+    except ValueError as e:
+        print(e)
+```
+
 When copying a Zarr array with [`zarr.from_array`][], its attributes are
 deep-copied by default so nested dictionaries and lists are independent of the
 source. Deeply nested attributes can raise `RecursionError` during this copy,
