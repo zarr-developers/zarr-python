@@ -22,6 +22,7 @@ from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
 from zarr.core import sync_group
 from zarr.core._info import GroupInfo
+from zarr.core.array_spec import ArrayConfig
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import Float64, Int32
@@ -63,6 +64,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from zarr.core.array import ShardsLike
+    from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer.core import Buffer
     from zarr.core.common import JSON, ChunksLike, ZarrFormat
     from zarr.core.dtype import ZDType, ZDTypeLike
@@ -1466,6 +1468,76 @@ async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
     _ = await root.create_group("bar")
     with pytest.raises(TypeError, match="Incompatible object"):
         await root.require_array("bar", shape=(10,), dtype="int8")
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("api", ["sync", "async"])
+@pytest.mark.parametrize("exists", [True, False])
+@pytest.mark.parametrize(
+    ("config", "expected"),
+    [
+        (None, ArrayConfig.from_dict({})),
+        (
+            {"read_missing_chunks": False},
+            ArrayConfig.from_dict({"read_missing_chunks": False}),
+        ),
+        (
+            {"order": "F", "write_empty_chunks": True},
+            ArrayConfig.from_dict({"order": "F", "write_empty_chunks": True}),
+        ),
+        (
+            ArrayConfig.from_dict({"read_missing_chunks": False}),
+            ArrayConfig.from_dict({"read_missing_chunks": False}),
+        ),
+    ],
+)
+async def test_require_array_config(
+    zarr_format: ZarrFormat,
+    api: Literal["sync", "async"],
+    exists: bool,
+    config: ArrayConfigLike | None,
+    expected: ArrayConfig,
+) -> None:
+    """
+    require_array applies the config argument whether it creates the array or returns an
+    existing one, with keys missing from a partial config taken from the global defaults.
+    """
+    group = Group.from_store(MemoryStore(), zarr_format=zarr_format)
+    if exists:
+        group.create_array("a", shape=(4,), dtype="uint8")
+    if api == "sync":
+        observed = group.require_array("a", shape=(4,), dtype="uint8", config=config).config
+    else:
+        observed = (
+            await group._async_group.require_array("a", shape=(4,), dtype="uint8", config=config)
+        ).config
+    assert observed == expected
+
+
+@pytest.mark.parametrize("exists", [True, False])
+def test_require_array_unknown_config_key(exists: bool) -> None:
+    """
+    Requiring an array with a config containing an unknown key raises TypeError, whether the
+    array exists or is created.
+    """
+    group = Group.from_store(MemoryStore())
+    if exists:
+        group.create_array("a", shape=(4,), dtype="uint8")
+    with pytest.raises(TypeError, match=r"Unknown array config keys: \['nope'\]"):
+        group.require_array("a", shape=(4,), dtype="uint8", config={"nope": 1})
+
+
+@pytest.mark.parametrize("exists", [True, False])
+def test_require_array_invalid_config_value(exists: bool) -> None:
+    """
+    Requiring an array with a config containing an invalid value raises ValueError, whether the
+    array exists or is created.
+    """
+    group = Group.from_store(MemoryStore())
+    if exists:
+        group.create_array("a", shape=(4,), dtype="uint8")
+    with pytest.raises(ValueError, match="Expected instance of bool"):
+        group.require_array("a", shape=(4,), dtype="uint8", config={"read_missing_chunks": "yes"})
 
 
 @pytest.mark.parametrize(
