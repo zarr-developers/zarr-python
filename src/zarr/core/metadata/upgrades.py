@@ -52,9 +52,12 @@ it was read."""
 
 RECREATE_HINT: Final = (
     "The array holds only its fill value, so recreate it with the chunk shape you want; "
-    "nothing is lost. To keep it instead, store valid metadata: open the array writable and "
-    "call `array.update_attributes({})`; if a group holds consolidated metadata for the "
-    "array, then also call `zarr.consolidate_metadata` on that group."
+    "nothing is lost: `zarr.from_array(array.store, name=array.path, data=array, "
+    "chunks=<chunk shape>, overwrite=True, write_data=False)` keeps its data type, fill "
+    "value, attributes and codecs. To keep the array as it is instead, store valid metadata "
+    "with `array.update_attributes({})`. Either way, open the array writable first, and if a "
+    "group holds consolidated metadata for the array, then also call "
+    "`zarr.consolidate_metadata` on that group."
 )
 """How to act on a document whose array can hold no data: a stored chunk size of 0 is read
 as the smallest chunk size, which is a poor chunk shape for the data the array grows into,
