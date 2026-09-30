@@ -743,6 +743,51 @@ def test_stale_handle_write_keeps_valid_document_as_written(
     np.testing.assert_array_equal(_open_strictly(path)[...], [9, 0, 0])
 
 
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_recreate_hint_recipe(tmp_path: Path, zarr_format: Literal[2, 3]) -> None:
+    """The recipe the warning gives for an array read from a stored chunk size of 0
+    recreates it with the chunk shape asked for, keeping its data type, fill value,
+    attributes and codecs, and the array then reopens without a warning."""
+    path = tmp_path / "legacy.zarr"
+    zarr.create_array(
+        store=path,
+        shape=(3,),
+        chunks=(3,),
+        dtype="int16",
+        fill_value=7,
+        attributes={"units": "m"},
+        zarr_format=zarr_format,
+    )
+    _rewrite_doc(
+        path,
+        zarr_format,
+        lambda doc: (
+            doc.update(chunks=[0])
+            if zarr_format == 2
+            else doc["chunk_grid"]["configuration"].update(chunk_shape=[0])
+        ),
+    )
+    recipe = (
+        "`zarr.from_array(array.store, name=array.path, data=array, chunks=<chunk shape>, "
+        "overwrite=True, write_data=False)`"
+    )
+    with pytest.warns(ZarrUserWarning, match=re.escape(recipe)):
+        array = zarr.open_array(store=path, mode="r+")
+
+    zarr.from_array(
+        array.store, name=array.path, data=array, chunks=(2,), overwrite=True, write_data=False
+    )
+
+    reopened = _open_strictly(path)
+    assert reopened.chunks == (2,)
+    assert reopened.dtype == array.dtype
+    assert reopened.fill_value == 7
+    assert reopened.attrs.asdict() == {"units": "m"}
+    assert reopened.compressors == array.compressors
+    assert reopened.filters == array.filters
+    np.testing.assert_array_equal(reopened[...], [7, 7, 7])
+
+
 def _store_zero(doc: dict[str, Any]) -> None:
     _stored_chunks(doc)[0] = 0
 
