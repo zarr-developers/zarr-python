@@ -526,20 +526,38 @@ def test_open_like_zarr_format(source_format: ZarrFormat, target_format: ZarrFor
     }
 
 
-def _store_with_array(zarr_format: ZarrFormat) -> MemoryStore:
-    """A MemoryStore holding a written int32 array of shape (4,) at the root."""
-    store = MemoryStore()
-    arr = zarr.create_array(store, shape=(4,), dtype="int32", zarr_format=zarr_format)
-    arr[:] = 1
-    return store
+async def _read_all(store: Store) -> dict[str, bytes]:
+    contents = {}
+    for key in sorted([key async for key in store.list()]):
+        value = await store.get(key, prototype=default_buffer_prototype())
+        assert value is not None
+        contents[key] = value.to_bytes()
+    return contents
 
 
-def _store_contents(store: MemoryStore) -> dict[str, bytes]:
-    return {key: value.to_bytes() for key, value in store._store_dict.items()}
+def _store_contents(store: Store) -> dict[str, bytes]:
+    """Every key in `store` with its bytes."""
+    return sync(_read_all(store))
 
+
+def _seed_array(store: Store, zarr_format: ZarrFormat) -> None:
+    """Write an int32 array of shape (4,), with its chunk, at the root of `store`."""
+    zarr.create_array(store, shape=(4,), dtype="int32", zarr_format=zarr_format)[:] = 1
+
+
+def _seed_group(store: Store, zarr_format: ZarrFormat) -> None:
+    """Write a group with attributes and a child array, with its chunk, at the root of `store`."""
+    root = zarr.create_group(store, zarr_format=zarr_format, attributes={"k": 1})
+    root.create_array("child", shape=(4,), dtype="int32")[:] = 1
+
+
+_SEEDS: dict[str, Callable[[Store, ZarrFormat], None]] = {
+    "array": _seed_array,
+    "group": _seed_group,
+}
 
 # Each call replaces the node at the root of the store it is given.
-_OVERWRITE_CALLS: dict[str, Callable[..., AnyArray | Group]] = {
+_OVERWRITE_CALLS: dict[str, Callable[..., object]] = {
     "open-array": lambda store, **kw: zarr.open(store=store, mode="w", shape=(2,), **kw),
     "open-group": lambda store, **kw: zarr.open(store=store, mode="w", **kw),
     "open_array": lambda store, **kw: zarr.open_array(store=store, mode="w", shape=(2,), **kw),
@@ -552,26 +570,76 @@ _OVERWRITE_CALLS: dict[str, Callable[..., AnyArray | Group]] = {
         store, overwrite=True, shape=(2,), dtype="int32", **kw
     ),
     "save_array": lambda store, **kw: zarr.save_array(store, np.arange(2), mode="w", **kw),
+    "save_group": lambda store, **kw: zarr.save_group(store, np.arange(2), **kw),
     "group": lambda store, **kw: zarr.group(store=store, overwrite=True, **kw),
 }
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("existing", _SEEDS)
 @pytest.mark.parametrize("call", _OVERWRITE_CALLS)
-def test_overwrite_replaces_existing_node(zarr_format: ZarrFormat, call: str) -> None:
+def test_overwrite_replaces_existing_node(
+    zarr_format: ZarrFormat, existing: str, call: str
+) -> None:
     """
     Opening or creating a node in an overwriting mode replaces the node at the path,
-    including its chunks.
+    including its chunks or children: the store ends up exactly as the same call leaves
+    an empty store.
     """
-    store = _store_with_array(zarr_format)
+    store = MemoryStore()
+    _SEEDS[existing](store, zarr_format)
     _OVERWRITE_CALLS[call](store)
-    reopened = zarr.open(store=store, mode="r")
-    if call in {"open-group", "open_group", "group"}:
-        assert isinstance(reopened, Group)
-        assert set(store._store_dict) <= {"zarr.json", ".zgroup", ".zattrs"}
-    else:
-        assert isinstance(reopened, Array)
-        assert reopened.shape == (2,)
+    reference = MemoryStore()
+    _OVERWRITE_CALLS[call](reference)
+    assert _store_contents(store) == _store_contents(reference)
+
+
+@pytest.mark.parametrize("call", _OVERWRITE_CALLS)
+def test_overwrite_without_deletes_creates_node(tmp_path: Path, call: str) -> None:
+    """
+    On a store that cannot delete keys, an overwriting call still creates the node when
+    nothing is stored under the path.
+    """
+    with ZipStore(tmp_path / "store.zip", mode="w") as store:
+        _OVERWRITE_CALLS[call](store)
+        reference = MemoryStore()
+        _OVERWRITE_CALLS[call](reference)
+        assert _store_contents(store) == _store_contents(reference)
+
+
+@pytest.mark.parametrize("call", _OVERWRITE_CALLS)
+def test_overwrite_without_deletes_keeps_existing_node(tmp_path: Path, call: str) -> None:
+    """
+    On a store that cannot delete keys, an overwriting call raises without modifying the
+    store when a node already exists at the path.
+    """
+    with ZipStore(tmp_path / "store.zip", mode="w") as store:
+        _seed_array(store, 3)
+        before = _store_contents(store)
+        with pytest.raises(ContainsArrayError):
+            _OVERWRITE_CALLS[call](store)
+        assert _store_contents(store) == before
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "open-array",
+        "open-group",
+        "open_array",
+        "open_group",
+        "create-mode",
+        "save_array",
+        "save_group",
+    ],
+)
+def test_overwrite_read_only_store_names_mode(call: str) -> None:
+    """
+    An overwriting mode on a read-only store is refused with an error that names the mode
+    that was passed.
+    """
+    with pytest.raises(ValueError, match="mode is 'w'"):
+        _OVERWRITE_CALLS[call](MemoryStore(read_only=True))
 
 
 @pytest.mark.parametrize(
@@ -583,7 +651,8 @@ def test_overwrite_invalid_keyword_keeps_existing_node(call: str) -> None:
     An overwriting call that is given a keyword argument its target cannot accept raises
     without modifying the existing node.
     """
-    store = _store_with_array(3)
+    store = MemoryStore()
+    _seed_array(store, 3)
     before = _store_contents(store)
     kwargs = {"config": {"order": "F"}} if call == "open-group" else {"bogus": 1}
     with pytest.raises(TypeError, match="unexpected keyword argument"):
@@ -600,7 +669,8 @@ def test_overwrite_invalid_fill_value_keeps_existing_node(call: str) -> None:
     An overwriting call whose new array metadata cannot be built raises without modifying
     the existing node.
     """
-    store = _store_with_array(3)
+    store = MemoryStore()
+    _seed_array(store, 3)
     before = _store_contents(store)
     kwargs: dict[str, Any] = {"fill_value": "not a number"}
     if call in {"open-array", "open_array", "create-mode", "create-overwrite"}:
@@ -619,22 +689,37 @@ def test_overwrite_unencodable_attributes_keeps_existing_node(call: str) -> None
     An overwriting call whose new metadata cannot be encoded raises without modifying the
     existing node.
     """
-    store = _store_with_array(3)
+    store = MemoryStore()
+    _seed_array(store, 3)
     before = _store_contents(store)
     with pytest.raises(TypeError, match="not JSON serializable"):
         _OVERWRITE_CALLS[call](store, attributes={"x": object()})
     assert _store_contents(store) == before
 
 
-def test_save_group_invalid_argument_keeps_existing_node() -> None:
+def test_save_group_non_array_argument_keeps_existing_node() -> None:
     """
     save_group given an argument that is not an array raises without modifying the
     existing node.
     """
-    store = _store_with_array(3)
+    store = MemoryStore()
+    _seed_group(store, 3)
     before = _store_contents(store)
     with pytest.raises(TypeError, match="must be a numpy or other NDArrayLike array"):
         zarr.save_group(store, a=np.arange(2), b="not an array")  # type: ignore[arg-type]
+    assert _store_contents(store) == before
+
+
+def test_save_group_unstorable_dtype_keeps_existing_node() -> None:
+    """
+    save_group given an array whose data type Zarr cannot store raises without modifying
+    the existing node.
+    """
+    store = MemoryStore()
+    _seed_group(store, 3)
+    before = _store_contents(store)
+    with pytest.raises(ValueError, match="data type resolution"):
+        zarr.save_group(store, a=np.arange(2), b=np.array([object()], dtype=object))
     assert _store_contents(store) == before
 
 

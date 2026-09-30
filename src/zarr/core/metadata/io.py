@@ -75,8 +75,9 @@ async def save_new_metadata(
     metadata : ArrayMetadata | GroupMetadata
         Metadata of the new node.
     overwrite : bool
-        If true and the store supports deletes, delete any existing node at `store_path`.
-        Otherwise, raise if a node already exists at `store_path`.
+        If true and the store supports deletes, delete everything under `store_path`.
+        Otherwise, raise if a node already exists at `store_path`; a store that cannot
+        delete keys cannot overwrite a node, so it raises the same error either way.
     ensure_parents : bool, optional
         Create any missing parent groups, and check no existing parents are arrays.
     """

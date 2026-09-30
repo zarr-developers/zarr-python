@@ -108,18 +108,6 @@ def _infer_overwrite(mode: AccessModeLiteral) -> bool:
     return mode in _OVERWRITE_MODES
 
 
-def _deferred_overwrite_mode(mode: AccessModeLiteral) -> AccessModeLiteral:
-    """
-    The mode for building the store path of a node that `mode` may overwrite.
-
-    Building a store path with mode `"w"` deletes everything under the path before the new
-    node has been validated, so an invalid argument would destroy the existing node and create
-    nothing. Callers build the store path with mode `"a"` instead and create the node with
-    `overwrite=True`, which deletes the existing node only once the new metadata is valid.
-    """
-    return "a" if mode == "w" else mode
-
-
 def _warn_unimplemented_kwargs(kwargs: dict[str, Any]) -> None:
     """
     Emit a "not yet implemented" warning for each provided keyword argument that is not None.
@@ -378,7 +366,8 @@ async def open(
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
-        (fail if exists).
+        (fail if exists). On a store that cannot delete keys, 'w' raises an
+        error instead of replacing an existing node.
         If the store is read-only, the default is 'r'; otherwise, it is 'a'.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
@@ -413,17 +402,12 @@ async def open(
             mode = "r"
         else:
             mode = "a"
-    store_path = await make_store_path(
-        store,
-        mode=_deferred_overwrite_mode(mode),
-        path=path,
-        storage_options=storage_options,
-    )
+    store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
     # TODO: the mode check below seems wrong!
-    if "shape" not in kwargs and mode in {"a", "r", "r+", "w"}:
+    if "shape" not in kwargs and mode in (*_READ_MODES, "w"):
         # mode "w" replaces any existing node, so there is nothing to open
-        if mode != "w":
+        if mode in _READ_MODES:
             try:
                 metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
                 # TODO: remove this cast when we fix typing for array metadata dicts
@@ -547,9 +531,7 @@ async def save_array(
         raise TypeError("arr argument must be numpy or other NDArrayLike array")
 
     mode = kwargs.pop("mode", "a")
-    store_path = await make_store_path(
-        store, path=path, mode=_deferred_overwrite_mode(mode), storage_options=storage_options
-    )
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
     if np.isscalar(arr):
         arr = np.array(arr)
     shape = arr.shape
@@ -613,8 +595,15 @@ async def save_group(
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
 
-    # mode "w" deletes everything under the path, so the arguments are checked first
+    # Resolve every data type before anything is deleted, so an array that Zarr cannot
+    # store raises while the existing node is still intact.
+    for arr in (*args, *kwargs.values()):
+        get_data_type_from_native_dtype(arr.dtype)
+
     store_path = await make_store_path(store, path=path, mode="w", storage_options=storage_options)
+    # The group replaces whatever is stored under the path, now that the arguments are known
+    # to be valid.
+    await AsyncGroup.from_store(store_path, zarr_format=zarr_format, overwrite=True)
     aws = []
     # `store_path` already consumed `storage_options`, so passing them on again would
     # make `make_store_path` reject them as unused.
@@ -847,7 +836,8 @@ async def open_group(
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
-        (fail if exists).
+        (fail if exists). On a store that cannot delete keys, 'w' raises an
+        error instead of replacing an existing node.
     cache_attrs : bool, optional
         If True (default), user attributes will be cached for attribute read
         operations. If False, user attributes are reloaded from the store prior
@@ -900,9 +890,7 @@ async def open_group(
         }
     )
 
-    store_path = await make_store_path(
-        store, mode=_deferred_overwrite_mode(mode), storage_options=storage_options, path=path
-    )
+    store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
     if attributes is None:
         attributes = {}
 
@@ -1096,7 +1084,8 @@ async def create(
           `True`.
         - `'r'` always fails.
 
-        `mode` has no effect, and is not validated, if `store` is a `StorePath`.
+        If `store` is a `StorePath`, `mode` is not validated against it: `'w'` still
+        sets `overwrite`, and the other modes have no effect.
     data : array-like, optional
         Values written into the new array after it is created. Unlike the `data`
         parameter of `create_array`, it does not set the shape or data type of the
@@ -1129,9 +1118,7 @@ async def create(
     if mode is None:
         mode = "a"
     overwrite = overwrite or _infer_overwrite(mode)
-    store_path = await make_store_path(
-        store, path=path, mode=_deferred_overwrite_mode(mode), storage_options=storage_options
-    )
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     config_parsed = parse_array_config(config)
 
@@ -1345,12 +1332,7 @@ async def open_array(
     """
 
     mode = kwargs.pop("mode", None)
-    store_path = await make_store_path(
-        store,
-        path=path,
-        mode=None if mode is None else _deferred_overwrite_mode(mode),
-        storage_options=storage_options,
-    )
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     if "write_empty_chunks" in kwargs:
         _warn_write_empty_chunks_kwarg()
