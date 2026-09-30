@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import copy
 import math
 import warnings
@@ -147,6 +148,7 @@ from zarr.registry import (
     get_pipeline_class,
 )
 from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_path
+from zarr.storage._memory import MemoryStore
 from zarr.storage._utils import _relativize_path
 
 if TYPE_CHECKING:
@@ -4132,6 +4134,21 @@ type ShardsLike = (
 )
 
 
+def _stores_share_data(a: Store, b: Store) -> bool:
+    """Whether two stores are views onto the same underlying data.
+
+    ``Store.__eq__`` can't answer this directly. Several stores include ``read_only`` in
+    their equality check, so a read-only and a writable view of the same data are
+    unequal. ``MemoryStore`` compares its dicts by value, so two distinct stores with
+    equal contents are equal.
+    """
+    if type(a) is MemoryStore and type(b) is MemoryStore:
+        return a._store_dict is b._store_dict
+    with contextlib.suppress(NotImplementedError):
+        a = a.with_read_only(b.read_only)
+    return a == b
+
+
 async def from_array(
     store: StoreLike,
     *,
@@ -4366,6 +4383,23 @@ async def from_array(
     )
     if not hasattr(data, "dtype") or not hasattr(data, "shape"):
         data = np.array(data)
+
+    # init_array deletes everything under the destination before the copy streams from the
+    # source, so a destination that overlaps the source would copy only fill values.
+    if (
+        write_data
+        and overwrite
+        and isinstance(data, Array)
+        and _stores_share_data(data.store_path.store, store_path.store)
+    ):
+        src_prefix = f"{data.store_path.path}/" if data.store_path.path else ""
+        dest_prefix = f"{store_path.path}/" if store_path.path else ""
+        if src_prefix.startswith(dest_prefix) or dest_prefix.startswith(src_prefix):
+            raise ValueError(
+                f"Cannot overwrite {store_path.path!r} with the array at "
+                f"{data.store_path.path!r} because the paths overlap. Write to a different "
+                "path, or pass data=array[...]."
+            )
 
     result = await init_array(
         store_path=store_path,
