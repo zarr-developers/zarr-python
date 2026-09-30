@@ -725,7 +725,7 @@ def create(
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
-        [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+        [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthBytes`][]. In these cases,
         the default filters contains a single element which is a codec specific to that particular data type.
 
         To create an array with no filters, provide an empty iterable or the value `None`.
@@ -885,7 +885,6 @@ def create_array(
         chunk to bytes.
 
         For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-
         and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
         dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
@@ -896,7 +895,7 @@ def create_array(
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
-        [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+        [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthBytes`][]. In these cases,
         the default filters contains a single element which is a codec specific to that particular data type.
 
         To create an array with no filters, provide an empty iterable or the value `None`.
@@ -914,6 +913,7 @@ def create_array(
         For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
         be provided for Zarr format 2.
         If no `compressor` is provided, a default compressor will be used.
+        This default can be changed by modifying the value of `array.v2_default_compressor`
         in [`zarr.config`][zarr.config].
         Use `None` to omit the default compressor.
     serializer : dict[str, JSON] | ArrayBytesCodec, optional
@@ -938,8 +938,8 @@ def create_array(
         Attributes for the array.
     chunk_key_encoding : ChunkKeyEncodingLike, optional
         A specification of how the chunk keys are represented in storage.
-        For Zarr format 3, the default is `{"name": "default", "separator": "/"}}`.
-        For Zarr format 2, the default is `{"name": "v2", "separator": "."}}`.
+        For Zarr format 3, the default is `{"name": "default", "separator": "/"}`.
+        For Zarr format 2, the default is `{"name": "v2", "separator": "."}`.
     dimension_names : Iterable[str], optional
         The names of the dimensions (default is None).
         Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
@@ -948,7 +948,7 @@ def create_array(
         Ignored otherwise.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
-        If `True`, all existing paths in the store will be deleted.
+        If `True`, any existing keys under that path are deleted first.
     config : ArrayConfigLike, optional
         Runtime configuration for the array.
     write_data : bool
@@ -1139,8 +1139,8 @@ def from_array(
         Pass an empty dict to create the array with no attributes.
     chunk_key_encoding : ChunkKeyEncoding, optional
         A specification of how the chunk keys are represented in storage.
-        For Zarr format 3, the default is `{"name": "default", "separator": "/"}}`.
-        For Zarr format 2, the default is `{"name": "v2", "separator": "."}}`.
+        For Zarr format 3, the default is `{"name": "default", "separator": "/"}`.
+        For Zarr format 2, the default is `{"name": "v2", "separator": "."}`.
         If not specified and the data array has the same zarr format as the target array,
         the chunk key encoding of the data array is used.
     dimension_names : Iterable[str | None] | None
