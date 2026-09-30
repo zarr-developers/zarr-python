@@ -1504,32 +1504,37 @@ async def test_require_array_config(
     group = Group.from_store(MemoryStore(), zarr_format=zarr_format)
     if exists:
         group.create_array("a", shape=(4,), dtype="uint8")
-    kwargs: dict[str, Any] = {} if config is None else {"config": config}
     if api == "sync":
-        observed = group.require_array("a", shape=(4,), dtype="uint8", **kwargs).config
+        observed = group.require_array("a", shape=(4,), dtype="uint8", config=config).config
     else:
         observed = (
-            await group._async_group.require_array("a", shape=(4,), dtype="uint8", **kwargs)
+            await group._async_group.require_array("a", shape=(4,), dtype="uint8", config=config)
         ).config
     assert observed == expected
 
 
-def test_require_array_existing_unknown_config_key() -> None:
+@pytest.mark.parametrize("exists", [True, False])
+def test_require_array_unknown_config_key(exists: bool) -> None:
     """
-    Requiring an existing array with a config containing an unknown key raises TypeError.
+    Requiring an array with a config containing an unknown key raises TypeError, whether the
+    array exists or is created.
     """
     group = Group.from_store(MemoryStore())
-    group.create_array("a", shape=(4,), dtype="uint8")
-    with pytest.raises(TypeError, match="unexpected keyword argument 'nope'"):
+    if exists:
+        group.create_array("a", shape=(4,), dtype="uint8")
+    with pytest.raises(TypeError, match=r"Unknown array config keys: \['nope'\]"):
         group.require_array("a", shape=(4,), dtype="uint8", config={"nope": 1})
 
 
-def test_require_array_existing_invalid_config_value() -> None:
+@pytest.mark.parametrize("exists", [True, False])
+def test_require_array_invalid_config_value(exists: bool) -> None:
     """
-    Requiring an existing array with a config containing an invalid value raises ValueError.
+    Requiring an array with a config containing an invalid value raises ValueError, whether the
+    array exists or is created.
     """
     group = Group.from_store(MemoryStore())
-    group.create_array("a", shape=(4,), dtype="uint8")
+    if exists:
+        group.create_array("a", shape=(4,), dtype="uint8")
     with pytest.raises(ValueError, match="Expected instance of bool"):
         group.require_array("a", shape=(4,), dtype="uint8", config={"read_missing_chunks": "yes"})
 

@@ -28,6 +28,7 @@ from zarr.core.array import (
     _parse_deprecated_compressor,
     create_array,
 )
+from zarr.core.array_spec import parse_array_config
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import (
@@ -1291,9 +1292,10 @@ class AsyncGroup:
             return await self.create_array(name, shape=shape, dtype=dtype, config=config, **kwargs)
 
         # `config` is the runtime configuration of the returned array, not stored metadata,
-        # so it applies to an existing array too.
+        # so it applies to an existing array too. It is parsed the same way as on the create
+        # branch: missing keys come from the global configuration, unknown keys raise.
         if config is not None:
-            return ds.with_config(config)
+            return ds.with_config(parse_array_config(config))
         return ds
 
     async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
