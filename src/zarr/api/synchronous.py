@@ -200,7 +200,8 @@ def open(
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
-        (fail if exists).
+        (fail if exists). On a store that cannot delete keys, 'w' raises an
+        error instead of replacing an existing node.
         If the store is read-only, the default is 'r'; otherwise, it is 'a'.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
@@ -518,7 +519,8 @@ def open_group(
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
-        (fail if exists).
+        (fail if exists). On a store that cannot delete keys, 'w' raises an
+        error instead of replacing an existing node.
     cache_attrs : bool, optional
         If True (default), user attributes will be cached for attribute read
         operations. If False, user attributes are reloaded from the store prior
@@ -800,7 +802,8 @@ def create(
           `True`.
         - `'r'` always fails.
 
-        `mode` has no effect, and is not validated, if `store` is a `StorePath`.
+        If `store` is a `StorePath`, `mode` is not validated against it: `'w'` still
+        sets `overwrite`, and the other modes have no effect.
     data : array-like, optional
         Values written into the new array after it is created. Unlike the `data`
         parameter of `create_array`, it does not set the shape or data type of the
