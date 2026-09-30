@@ -20,7 +20,7 @@ from zarr.core.array import AsyncArray
 from zarr.core.group import ConsolidatedMetadata
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.upgrades import (
-    RESAVE_HINT,
+    RECREATE_HINT,
     upgrade_array_document,
 )
 from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
@@ -128,28 +128,27 @@ def _nested_sharded_doc(inner: list[Any], nested: list[Any]) -> dict[str, JSON]:
             "moved",
             (
                 r"^The stored chunk shape \[0\] is invalid: .* read as \[1\], reading 0 in "
-                r"dimension 0 as 1, as no chunk can be stored under a chunk size of 0, so the "
-                r"array holds only its fill value\.$"
+                r"dimension 0 as 1, as no chunk can be stored under a chunk size of 0\.$"
             ),
         ),
         (
             _v3_doc([4, 3], [4, 0]),
             ((4, 1),),
             "moved",
-            r"reading 0 in dimension 1 as .* holds only its fill value\.$",
+            r"reading 0 in dimension 1 as .* under a chunk size of 0\.$",
         ),
         (
             _v2_doc([0, 3], [0, 0]),
             ((1, 1),),
             "moved",
-            r"read as \[1, 1\], reading 0 in dimension 1 as .* holds only its fill value\.$",
+            r"read as \[1, 1\], reading 0 in dimension 1 as .* under a chunk size of 0\.$",
         ),
         (_v3_doc([0], [0], inner=[4]), ((4,), (4,)), "moved", None),
         (
             _v3_doc([10], [0], inner=[4]),
             ((4,), (4,)),
             "moved",
-            r"as 4, the inner chunk size, as no chunk .* holds only its fill value",
+            r"as 4, the inner chunk size, as no chunk can be stored under a chunk size of 0",
         ),
         (_v3_doc([0, 3], [0, 3], inner=[2, 3]), ((2, 3), (2, 3)), "moved", None),
         (_v3_doc([5], [True], inner=[True]), ((1,), (1,)), "respelled", None),
@@ -188,7 +187,8 @@ def test_upgrade_array_document(
     chunk size read as another size), so the array stores the upgrade before it writes
     chunks, but not one that only respells a value (`true` as 1). It warns once, naming
     the array, only where a chunk size of 0 was stored for a non-empty axis (which then
-    holds only its fill value), saying how that part was read and how to re-save. The
+    holds only its fill value), saying how that part was read and that recreating the
+    array loses nothing (see `RECREATE_HINT`). The
     other readings give what zarr read before, so they are silent."""
     upgraded_doc, readings = upgrade_array_document(doc, cast("ZarrFormat", doc["zarr_format"]))
     assert {
@@ -209,9 +209,9 @@ def test_upgrade_array_document(
     else:
         [message] = messages
         assert message.startswith("Array 'group/array': ")
-        assert message.endswith(RESAVE_HINT)
+        assert message.endswith(RECREATE_HINT)
         assert re.search(
-            warning, message.removeprefix("Array 'group/array': ").removesuffix(f" {RESAVE_HINT}")
+            warning, message.removeprefix("Array 'group/array': ").removesuffix(f" {RECREATE_HINT}")
         )
 
 
