@@ -922,7 +922,8 @@ async def create(
     dimension_names: DimensionNamesLike = None,
     storage_options: dict[str, Any] | None = None,
     config: ArrayConfigLike | None = None,
-    **kwargs: Any,
+    mode: AccessModeLiteral | None = None,
+    data: npt.ArrayLike | None = None,
 ) -> AnyAsyncArray:
     """Create an array.
 
@@ -1042,6 +1043,15 @@ async def create(
     config : ArrayConfigLike, optional
         Runtime configuration of the array. If provided, will override the
         default values from `zarr.config.array`.
+    mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
+        The access mode used to open `store`. The default, `None`, is `'a'`.
+        With `'w'`, everything stored under `path` is deleted before the array is
+        created. With `'w-'`, creation fails if anything is stored under `path`.
+        With `'r'`, the store is opened read-only and creation fails.
+        Ignored if `store` is a `StorePath`, which is already open.
+    data : array-like, optional
+        Values written into the new array after it is created, as `array[...] = data`.
+        `data` does not determine the shape or data type of the array.
 
     Returns
     -------
@@ -1066,7 +1076,6 @@ async def create(
     if write_empty_chunks is not None:
         _warn_write_empty_chunks_kwarg()
 
-    mode = kwargs.pop("mode", None)
     if mode is None:
         mode = "a"
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
@@ -1102,7 +1111,7 @@ async def create(
         dimension_names=dimension_names,
         attributes=attributes,
         config=config_parsed,
-        **kwargs,
+        data=data,
     )
 
 

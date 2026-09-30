@@ -1,0 +1,1 @@
+`zarr.create` and `zarr.api.asynchronous.create` now declare and document their `mode` and `data` parameters. Both parameters were accepted before but were not part of the signature. `create` no longer takes arbitrary keyword arguments, so an unknown keyword raises a `TypeError` naming `create` instead of the private `AsyncArray._create`.

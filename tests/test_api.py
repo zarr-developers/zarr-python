@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from zarr.abc.store import Store
-    from zarr.core.common import JSON, MemoryOrder, ZarrFormat
+    from zarr.core.common import JSON, AccessModeLiteral, MemoryOrder, ZarrFormat
     from zarr.types import AnyArray
 
 import contextlib
@@ -46,6 +46,7 @@ from zarr.api.synchronous import (
 from zarr.core.buffer import NDArrayLike
 from zarr.errors import (
     ArrayNotFoundError,
+    ContainsArrayError,
     MetadataValidationError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
@@ -82,6 +83,61 @@ def test_create(memory_store: Store) -> None:
     # create array with float chunk shape
     with pytest.raises(TypeError, match="Chunk specification must be an integer or an iterable"):
         z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("mode", "existing"),
+    [(None, False), ("a", False), ("r+", False), ("w", False), ("w", True), ("w-", False)],
+)
+@pytest.mark.parametrize("data", [None, np.arange(3, dtype="float64")])
+def test_create_mode_data(mode: AccessModeLiteral | None, existing: bool, data: Any) -> None:
+    """
+    `create` opens the store with `mode` and writes `data` into the new array.
+    """
+    store = MemoryStore()
+    if existing:
+        create_array(store, shape=(2,), dtype="int8")
+    z = create(shape=(3,), store=store, mode=mode, data=data)
+    assert z.shape == (3,)
+    assert z.dtype == np.dtype("float64")
+    expected = np.zeros(3) if data is None else data
+    assert_array_equal(z[:], expected)
+
+
+def test_create_mode_a_existing_array() -> None:
+    """
+    `create` with mode `'a'` refuses to replace an existing array.
+    """
+    store = MemoryStore()
+    create_array(store, shape=(2,), dtype="int8")
+    with pytest.raises(ContainsArrayError):
+        create(shape=(3,), store=store, mode="a")
+
+
+def test_create_mode_w_minus_existing_data() -> None:
+    """
+    `create` with mode `'w-'` refuses to write where data is stored.
+    """
+    store = MemoryStore()
+    create_array(store, shape=(2,), dtype="int8")
+    with pytest.raises(FileExistsError, match="mode 'w-'"):
+        create(shape=(3,), store=store, mode="w-")
+
+
+def test_create_mode_r() -> None:
+    """
+    `create` with mode `'r'` opens the store read-only, so creation fails.
+    """
+    with pytest.raises(ValueError, match="read-only"):
+        create(shape=(3,), store=MemoryStore(), mode="r")
+
+
+def test_create_unknown_keyword() -> None:
+    """
+    `create` rejects keyword arguments it does not declare, naming itself in the error.
+    """
+    with pytest.raises(TypeError, match=r"^create\(\) got an unexpected keyword argument 'typo'"):
+        create(shape=(3,), typo=1)  # type: ignore[call-arg]
 
 
 @pytest.mark.parametrize(
