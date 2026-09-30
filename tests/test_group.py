@@ -22,12 +22,14 @@ from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
 from zarr.core import sync_group
 from zarr.core._info import GroupInfo
+from zarr.core.array_spec import ArrayConfig
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import Float64, Int32
 from zarr.core.dtype.common import unpack_dtype_json
 from zarr.core.dtype.npy.int import UInt8
 from zarr.core.group import (
+    GROUP_METADATA_KEYS,
     ConsolidatedMetadata,
     GroupMetadata,
     ImplicitGroupMarker,
@@ -62,6 +64,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from zarr.core.array import ShardsLike
+    from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer.core import Buffer
     from zarr.core.common import JSON, ChunksLike, ZarrFormat
     from zarr.core.dtype import ZDType, ZDTypeLike
@@ -1467,6 +1470,76 @@ async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
         await root.require_array("bar", shape=(10,), dtype="int8")
 
 
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("api", ["sync", "async"])
+@pytest.mark.parametrize("exists", [True, False])
+@pytest.mark.parametrize(
+    ("config", "expected"),
+    [
+        (None, ArrayConfig.from_dict({})),
+        (
+            {"read_missing_chunks": False},
+            ArrayConfig.from_dict({"read_missing_chunks": False}),
+        ),
+        (
+            {"order": "F", "write_empty_chunks": True},
+            ArrayConfig.from_dict({"order": "F", "write_empty_chunks": True}),
+        ),
+        (
+            ArrayConfig.from_dict({"read_missing_chunks": False}),
+            ArrayConfig.from_dict({"read_missing_chunks": False}),
+        ),
+    ],
+)
+async def test_require_array_config(
+    zarr_format: ZarrFormat,
+    api: Literal["sync", "async"],
+    exists: bool,
+    config: ArrayConfigLike | None,
+    expected: ArrayConfig,
+) -> None:
+    """
+    require_array applies the config argument whether it creates the array or returns an
+    existing one, with keys missing from a partial config taken from the global defaults.
+    """
+    group = Group.from_store(MemoryStore(), zarr_format=zarr_format)
+    if exists:
+        group.create_array("a", shape=(4,), dtype="uint8")
+    if api == "sync":
+        observed = group.require_array("a", shape=(4,), dtype="uint8", config=config).config
+    else:
+        observed = (
+            await group._async_group.require_array("a", shape=(4,), dtype="uint8", config=config)
+        ).config
+    assert observed == expected
+
+
+@pytest.mark.parametrize("exists", [True, False])
+def test_require_array_unknown_config_key(exists: bool) -> None:
+    """
+    Requiring an array with a config containing an unknown key raises TypeError, whether the
+    array exists or is created.
+    """
+    group = Group.from_store(MemoryStore())
+    if exists:
+        group.create_array("a", shape=(4,), dtype="uint8")
+    with pytest.raises(TypeError, match=r"Unknown array config keys: \['nope'\]"):
+        group.require_array("a", shape=(4,), dtype="uint8", config={"nope": 1})
+
+
+@pytest.mark.parametrize("exists", [True, False])
+def test_require_array_invalid_config_value(exists: bool) -> None:
+    """
+    Requiring an array with a config containing an invalid value raises ValueError, whether the
+    array exists or is created.
+    """
+    group = Group.from_store(MemoryStore())
+    if exists:
+        group.create_array("a", shape=(4,), dtype="uint8")
+    with pytest.raises(ValueError, match="Expected instance of bool"):
+        group.require_array("a", shape=(4,), dtype="uint8", config={"read_missing_chunks": "yes"})
+
+
 @pytest.mark.parametrize(
     ("dtype", "expected"),
     [
@@ -1718,11 +1791,74 @@ class TestGroupMetadata:
         data = {
             "attributes": {"key": "value"},
             "_nczarr_superblock": {"version": "2.0.0"},
+            # a key named like the `extra_fields` parameter is dropped, not passed to __init__
+            "extra_fields": {"my_extension": {"must_understand": False}},
             "zarr_format": 2,
         }
         result = GroupMetadata.from_dict(data)
         expected = GroupMetadata(attributes={"key": "value"}, zarr_format=2)
         assert result == expected
+
+    @pytest.mark.parametrize(
+        "extra_fields",
+        [
+            {},
+            {"my_extension": {"must_understand": False, "version": 1}},
+            {"a": {"must_understand": False}, "b": {"must_understand": False, "data": [1, 2]}},
+            {"extra_fields": {"must_understand": False}},
+        ],
+    )
+    def test_v3_extra_fields_round_trip(self, extra_fields: dict[str, Any]) -> None:
+        # https://github.com/zarr-developers/zarr-python/issues/3523
+        data = {"zarr_format": 3, "node_type": "group", "attributes": {}, **extra_fields}
+        expected = GroupMetadata(extra_fields=extra_fields)
+        result = GroupMetadata.from_dict(data)
+        assert result == expected
+        assert result.extra_fields == extra_fields
+        assert result.to_dict() == data
+
+    @pytest.mark.parametrize("value", [{"must_understand": True}, {}, "not an object", 1])
+    def test_from_dict_v3_disallowed_extra_fields(self, value: object) -> None:
+        data = {"zarr_format": 3, "node_type": "group", "my_extension": value}
+        with pytest.raises(MetadataValidationError, match="my_extension"):
+            GroupMetadata.from_dict(data)
+
+    @pytest.mark.parametrize("value", [{"must_understand": True}, {}, "not an object", 1])
+    def test_init_disallowed_extra_fields(self, value: object) -> None:
+        with pytest.raises(MetadataValidationError, match="my_extension"):
+            GroupMetadata(extra_fields={"my_extension": value})  # type: ignore[dict-item]
+
+    @pytest.mark.parametrize("key", sorted(GROUP_METADATA_KEYS))
+    def test_init_extra_fields_collision(self, key: str) -> None:
+        extra_fields: dict[str, Any] = {key: {"must_understand": False}}
+        with pytest.raises(ValueError, match="collide with keys reserved"):
+            GroupMetadata(extra_fields=extra_fields)
+
+    def test_init_extra_fields_v2(self) -> None:
+        with pytest.raises(ValueError, match="Zarr format 2 group metadata does not support"):
+            GroupMetadata(zarr_format=2, extra_fields={"my_extension": {"must_understand": False}})
+
+    @pytest.mark.filterwarnings("ignore:Consolidated metadata is:zarr.errors.ZarrUserWarning")
+    def test_extra_fields_survive_rewrite(self) -> None:
+        extension = {"must_understand": False}
+        doc = {"zarr_format": 3, "node_type": "group", "attributes": {}, "ext": extension}
+        store = MemoryStore()
+        for key in ("zarr.json", "child/zarr.json"):
+            buffer = default_buffer_prototype().buffer.from_bytes(json.dumps(doc).encode())
+            sync(store.set(key, buffer))
+
+        group = zarr.open_group(store=store, mode="r+")
+        group["child"].attrs["key"] = "value"
+        zarr.consolidate_metadata(store)
+
+        written = json.loads(
+            sync(store.get("child/zarr.json", prototype=default_buffer_prototype())).to_bytes()
+        )
+        assert written == {**doc, "attributes": {"key": "value"}}
+        consolidated = zarr.open_consolidated(store)
+        assert consolidated.metadata.extra_fields == {"ext": extension}
+        assert consolidated["child"].metadata.extra_fields == {"ext": extension}
+        assert consolidated["child"].attrs["key"] == "value"
 
 
 class TestInfo:

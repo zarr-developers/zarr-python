@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, NotRequired, TypeGuard, cast
 
@@ -24,6 +25,7 @@ from zarr.core.common import (
     DimensionNamesLike,
     NamedConfig,
     NamedRequiredConfig,
+    NodeType,
     compress_rle,
     expand_rle,
     parse_chunk_edge,
@@ -162,8 +164,8 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
 
 class AllowedExtraField(TypedDict, extra_items=JSON):  # type: ignore[call-arg]
     """
-    This class models allowed extra fields in array metadata.
-    They must have ``must_understand`` set to ``False``, and may contain
+    This class models allowed extra fields in array or group metadata.
+    They must have `must_understand` set to `False`, and may contain
     arbitrary additional JSON data.
     """
 
@@ -179,22 +181,45 @@ def check_allowed_extra_field(data: object) -> TypeGuard[AllowedExtraField]:
 
 
 def parse_extra_fields(
-    data: Mapping[str, AllowedExtraField] | None,
+    data: Mapping[str, object] | None,
+    *,
+    reserved_keys: AbstractSet[str],
+    node_type: NodeType,
 ) -> dict[str, AllowedExtraField]:
+    """
+    Check the extra fields of a Zarr V3 metadata document.
+
+    Raises `ValueError` if a key collides with a key in `reserved_keys`, and
+    `MetadataValidationError` if a value is not an object with `"must_understand": false`.
+    """
     if data is None:
         return {}
-    else:
-        conflict_keys = ARRAY_METADATA_KEYS & set(data.keys())
-        if len(conflict_keys) > 0:
-            msg = (
-                "Invalid extra fields. "
-                "The following keys: "
-                f"{sorted(conflict_keys)} "
-                "are invalid because they collide with keys reserved for use by the "
-                "array metadata document."
-            )
-            raise ValueError(msg)
-        return dict(data)
+    conflict_keys = reserved_keys & set(data.keys())
+    if len(conflict_keys) > 0:
+        msg = (
+            "Invalid extra fields. "
+            "The following keys: "
+            f"{sorted(conflict_keys)} "
+            "are invalid because they collide with keys reserved for use by the "
+            f"{node_type} metadata document."
+        )
+        raise ValueError(msg)
+    allowed_extra_fields: dict[str, AllowedExtraField] = {}
+    invalid_extra_fields: list[str] = []
+    for key, val in data.items():
+        if check_allowed_extra_field(val):
+            allowed_extra_fields[key] = val
+        else:
+            invalid_extra_fields.append(key)
+    if len(invalid_extra_fields) > 0:
+        msg = (
+            f"Got Zarr V3 {node_type} metadata with the following disallowed extra "
+            f"fields: {sorted(invalid_extra_fields)}. "
+            'Extra fields are not allowed unless they are an object with a "must_understand" '
+            "key which is assigned the value `false`."
+        )
+        raise MetadataValidationError(msg)
+    return allowed_extra_fields
 
 
 # JSON type for a single dimension's rectilinear spec:
@@ -504,7 +529,9 @@ class ArrayV3Metadata(Metadata):
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
-        extra_fields_parsed = parse_extra_fields(extra_fields)
+        extra_fields_parsed = parse_extra_fields(
+            extra_fields, reserved_keys=ARRAY_METADATA_KEYS, node_type="array"
+        )
         array_spec = ArraySpec(
             shape=shape_parsed,
             dtype=data_type,
@@ -642,23 +669,11 @@ class ArrayV3Metadata(Metadata):
             raise TypeError(f"Invalid fill_value: {fill!r}") from e
 
         # check if there are extra keys
-        extra_keys = set(_data.keys()) - ARRAY_METADATA_KEYS
-        allowed_extra_fields: dict[str, AllowedExtraField] = {}
-        invalid_extra_fields = {}
-        for key in extra_keys:
-            val = _data[key]
-            if check_allowed_extra_field(val):
-                allowed_extra_fields[key] = val
-            else:
-                invalid_extra_fields[key] = val
-        if len(invalid_extra_fields) > 0:
-            msg = (
-                "Got a Zarr V3 metadata document with the following disallowed extra fields:"
-                f"{sorted(invalid_extra_fields.keys())}."
-                'Extra fields are not allowed unless they are a dict with a "must_understand" key'
-                "which is assigned the value `False`."
-            )
-            raise MetadataValidationError(msg)
+        allowed_extra_fields = parse_extra_fields(
+            {k: v for k, v in _data.items() if k not in ARRAY_METADATA_KEYS},
+            reserved_keys=ARRAY_METADATA_KEYS,
+            node_type="array",
+        )
         # TODO: replace this with a real type check!
         _data_typed = cast(ArrayMetadataJSON_V3, _data)
 
