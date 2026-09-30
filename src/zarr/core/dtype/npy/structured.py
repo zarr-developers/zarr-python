@@ -583,6 +583,22 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             values.append(value)
         return self._cast_scalar_unchecked(tuple(values))
 
+    def _scalar_bytes_to_void(self, data: bytes, zarr_format: ZarrFormat) -> np.void:
+        """Read the raw bytes of a base64 fill value as a scalar of this data type.
+
+        Zarr V2 metadata spells out the byte order of every field. Zarr V3 metadata has
+        none, so V3 fill value bytes are little-endian, like the default `bytes` codec.
+        """
+        dtype = self.to_native_dtype()
+        stored = dtype if zarr_format == 2 else dtype.newbyteorder("<")
+        return cast("np.void", np.frombuffer(data, dtype=stored).astype(dtype)[0])
+
+    def _void_to_scalar_bytes(self, data: np.void, zarr_format: ZarrFormat) -> bytes:
+        """Inverse of `_scalar_bytes_to_void`."""
+        dtype = self.to_native_dtype()
+        stored = dtype if zarr_format == 2 else dtype.newbyteorder("<")
+        return np.asarray(data).astype(stored).tobytes()
+
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
         """
         Read a JSON-serializable value as a NumPy structured scalar.
@@ -606,8 +622,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
         """
         if check_json_str(data):
             as_bytes = bytes_from_json(data, zarr_format=zarr_format)
-            dtype = self.to_native_dtype()
-            return cast("np.void", np.array([as_bytes]).view(dtype)[0])
+            return self._scalar_bytes_to_void(as_bytes, zarr_format)
         raise TypeError(f"Invalid type: {data}. Expected a string.")
 
     def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str | dict[str, JSON]:
@@ -628,7 +643,9 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             string of the bytes that make up the scalar. Subclasses may return
             a dict for V3 format.
         """
-        return bytes_to_json(self.cast_scalar(data).tobytes(), zarr_format)
+        return bytes_to_json(
+            self._void_to_scalar_bytes(self.cast_scalar(data), zarr_format), zarr_format
+        )
 
     @property
     def item_size(self) -> int:
@@ -776,8 +793,7 @@ class Struct(Structured):
             return self._cast_scalar_unchecked(tuple(field_values))
         elif check_json_str(data):
             as_bytes = bytes_from_json(data, zarr_format=zarr_format)
-            dtype = self.to_native_dtype()
-            return cast("np.void", np.array([as_bytes]).view(dtype)[0])
+            return self._scalar_bytes_to_void(as_bytes, zarr_format)
         raise TypeError(f"Invalid type: {data}. Expected a dict or base64-encoded string.")
 
     def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str | dict[str, JSON]:
@@ -799,7 +815,7 @@ class Struct(Structured):
         """
         scalar = self.cast_scalar(data)
         if zarr_format == 2:
-            return bytes_to_json(scalar.tobytes(), zarr_format)
+            return bytes_to_json(self._void_to_scalar_bytes(scalar, zarr_format), zarr_format)
         result: dict[str, JSON] = {}
         for field_name, field_dtype in self.fields:
             result[field_name] = field_dtype.to_json_scalar(

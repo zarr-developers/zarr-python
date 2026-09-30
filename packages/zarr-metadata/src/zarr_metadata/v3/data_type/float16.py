@@ -7,13 +7,16 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 import re
 from typing import Final, Literal, NewType
 
+from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration, multi_byte
+from zarr_metadata.v3.data_type._float import FloatSpecialFillValue, float_fill_value_rules
+
 FLOAT16_DATA_TYPE_NAME: Final = "float16"
 """The `data_type` value for the `float16` type."""
 
 Float16DataTypeName = Literal["float16"]
 """Literal type of the `data_type` field for `float16`."""
 
-Float16SpecialFillValue = Literal["NaN", "Infinity", "-Infinity"]
+Float16SpecialFillValue = FloatSpecialFillValue
 """Named non-finite fill values permitted by the spec for IEEE 754 floats.
 
 https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L63-L79
@@ -61,10 +64,21 @@ CANONICAL_NEGATIVE_INFINITY_HEX_FLOAT16: Final = "0xfc00"
 """Canonical hex form of the float16 `"-Infinity"` sentinel."""
 
 
+FLOAT16_DATA_TYPE: Final = DataTypeDefinition(
+    name=FLOAT16_DATA_TYPE_NAME,
+    configuration=EmptyConfiguration,
+    fill_value=Float16FillValue,
+    fill_value_rules=float_fill_value_rules("float16", hex_float16),
+    storage=multi_byte,
+)
+"""The `float16` data type: a bare name, with nothing to configure; its fill value a number, a named value or a hex string."""
+
+
 __all__ = [
     "CANONICAL_NAN_HEX_FLOAT16",
     "CANONICAL_NEGATIVE_INFINITY_HEX_FLOAT16",
     "CANONICAL_POSITIVE_INFINITY_HEX_FLOAT16",
+    "FLOAT16_DATA_TYPE",
     "FLOAT16_DATA_TYPE_NAME",
     "Float16DataTypeName",
     "Float16FillValue",
