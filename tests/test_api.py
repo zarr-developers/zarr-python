@@ -375,8 +375,7 @@ def test_like_zarr_format(
         zarr_format=source_format,
         fill_value=7,
     )
-    kwargs = {} if zarr_format is None else {"zarr_format": zarr_format}
-    new = func(source, **kwargs)
+    new = func(source, zarr_format=zarr_format)
     expected_format = source_format if zarr_format is None else zarr_format
     assert new.metadata.zarr_format == expected_format
     assert new.shape == source.shape

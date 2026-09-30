@@ -85,7 +85,7 @@ _V2_ARRAY_ARGS = {
         (
             np.arange(10, dtype=np.dtype("int64")),
             2,
-            {"shape": (10,), "dtype": np.dtype("int64")},
+            {"shape": (10,), "dtype": np.dtype("int64"), "zarr_format": 2},
         ),
         (WithChunks(shape=(1, 2), chunks=(1, 2)), None, {"chunks": (1, 2), "shape": (1, 2)}),
         (
@@ -96,9 +96,9 @@ _V2_ARRAY_ARGS = {
         (
             _V2_ARRAY,
             2,
-            _V2_ARRAY_ARGS | {"compressor": None, "filters": None, "order": "C"},
+            _V2_ARRAY_ARGS | {"zarr_format": 2, "compressor": None, "filters": None, "order": "C"},
         ),
-        (_V2_ARRAY, 3, _V2_ARRAY_ARGS),
+        (_V2_ARRAY, 3, _V2_ARRAY_ARGS | {"zarr_format": 3}),
     ],
 )
 def test_like_args(

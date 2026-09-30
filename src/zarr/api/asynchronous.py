@@ -174,7 +174,7 @@ def _like_args(a: ArrayLike, zarr_format: ZarrFormat | None) -> _LikeArgs:
     if isinstance(a, AsyncArray | Array):
         new["fill_value"] = a.metadata.fill_value
         if zarr_format is None:
-            zarr_format = new["zarr_format"] = a.metadata.zarr_format
+            zarr_format = a.metadata.zarr_format
         if a.metadata.zarr_format == zarr_format:
             if isinstance(a.metadata, ArrayV2Metadata):
                 new["order"] = a.order
@@ -190,6 +190,9 @@ def _like_args(a: ArrayLike, zarr_format: ZarrFormat | None) -> _LikeArgs:
         # to do this, we may need to evaluate if this is a v2 or v3 array
         # new["compressor"] = "default"
         pass
+
+    if zarr_format is not None:
+        new["zarr_format"] = zarr_format
 
     return new
 
@@ -1136,7 +1139,9 @@ async def empty(shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
     return await create(shape=shape, **kwargs)
 
 
-async def empty_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
+async def empty_like(
+    a: ArrayLike, *, zarr_format: ZarrFormat | None = None, **kwargs: Any
+) -> AnyAsyncArray:
     """Create an empty array like `a`. The contents will be filled with the
     array's fill value or zeros if no fill value is provided.
 
@@ -1144,6 +1149,9 @@ async def empty_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     ----------
     a : array-like
         The array to create an empty array like.
+    zarr_format : {2, 3, None}, optional
+        The zarr format of the new array. If `None` (default), the zarr format of `a` if it
+        is a zarr array, otherwise the default zarr format.
     **kwargs
         Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
 
@@ -1158,7 +1166,7 @@ async def empty_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     retrieve data from an empty Zarr array, any values may be returned,
     and these are not guaranteed to be stable from one access to the next.
     """
-    like_kwargs = _like_args(a, kwargs.get("zarr_format")) | kwargs
+    like_kwargs = _like_args(a, zarr_format) | kwargs
     return await empty(**like_kwargs)  # type: ignore[arg-type]
 
 
@@ -1185,13 +1193,18 @@ async def full(shape: tuple[int, ...], fill_value: Any, **kwargs: Any) -> AnyAsy
 
 
 # TODO: add type annotations for kwargs
-async def full_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
+async def full_like(
+    a: ArrayLike, *, zarr_format: ZarrFormat | None = None, **kwargs: Any
+) -> AnyAsyncArray:
     """Create a filled array like `a`.
 
     Parameters
     ----------
     a : array-like
         The array to create an empty array like.
+    zarr_format : {2, 3, None}, optional
+        The zarr format of the new array. If `None` (default), the zarr format of `a` if it
+        is a zarr array, otherwise the default zarr format.
     **kwargs
         Keyword arguments passed to [`zarr.api.asynchronous.create`][].
 
@@ -1200,7 +1213,7 @@ async def full_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     Array
         The new array.
     """
-    like_kwargs = _like_args(a, kwargs.get("zarr_format")) | kwargs
+    like_kwargs = _like_args(a, zarr_format) | kwargs
     return await full(**like_kwargs)  # type: ignore[arg-type]
 
 
@@ -1223,13 +1236,18 @@ async def ones(shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
     return await create(shape=shape, fill_value=1, **kwargs)
 
 
-async def ones_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
+async def ones_like(
+    a: ArrayLike, *, zarr_format: ZarrFormat | None = None, **kwargs: Any
+) -> AnyAsyncArray:
     """Create an array of ones like `a`.
 
     Parameters
     ----------
     a : array-like
         The array to create an empty array like.
+    zarr_format : {2, 3, None}, optional
+        The zarr format of the new array. If `None` (default), the zarr format of `a` if it
+        is a zarr array, otherwise the default zarr format.
     **kwargs
         Keyword arguments passed to [`zarr.api.asynchronous.create`][].
 
@@ -1238,7 +1256,7 @@ async def ones_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     Array
         The new array.
     """
-    like_args = _like_args(a, kwargs.get("zarr_format"))
+    like_args = _like_args(a, zarr_format)
     # `ones` supplies its own fill_value, so drop any inherited from `a`.
     like_args.pop("fill_value", None)
     like_kwargs = like_args | kwargs
@@ -1299,7 +1317,9 @@ async def open_array(
         raise ArrayNotFoundError(msg) from err
 
 
-async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyAsyncArray:
+async def open_like(
+    a: ArrayLike, path: str, *, zarr_format: ZarrFormat | None = None, **kwargs: Any
+) -> AnyAsyncArray:
     """Open a persistent array like `a`.
 
     Parameters
@@ -1308,6 +1328,10 @@ async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyAsyncArray:
         The shape and data-type of a define these same attributes of the returned array.
     path : str
         The path to the new array.
+    zarr_format : {2, 3, None}, optional
+        The zarr format of the array to open or create. If `None` (default), an existing
+        array of either format is opened, and a missing one is created in the default zarr
+        format. The zarr format of `a` is not inherited.
     **kwargs
         Additional keyword arguments passed to `open_array`.
         If `mode` is omitted or `None`, it defaults to `"a"`. Pass `mode="r"` when
@@ -1320,11 +1344,12 @@ async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyAsyncArray:
     """
     # The zarr format of `a` is not inherited: `open_array` would then look for an existing
     # array in only that format.
-    zarr_format = kwargs.get("zarr_format") or _default_zarr_format()
-    like_kwargs = _like_args(a, zarr_format) | kwargs
+    like_args = _like_args(a, zarr_format or _default_zarr_format())
+    like_args.pop("zarr_format")
+    like_kwargs = like_args | kwargs
     if like_kwargs.get("mode") is None:
         like_kwargs["mode"] = "a"
-    return await open_array(path=path, **like_kwargs)  # type: ignore[arg-type]
+    return await open_array(path=path, zarr_format=zarr_format, **like_kwargs)  # type: ignore[arg-type]
 
 
 async def zeros(shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
@@ -1346,13 +1371,18 @@ async def zeros(shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
     return await create(shape=shape, fill_value=0, **kwargs)
 
 
-async def zeros_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
+async def zeros_like(
+    a: ArrayLike, *, zarr_format: ZarrFormat | None = None, **kwargs: Any
+) -> AnyAsyncArray:
     """Create an array of zeros like `a`.
 
     Parameters
     ----------
     a : array-like
         The array to create an empty array like.
+    zarr_format : {2, 3, None}, optional
+        The zarr format of the new array. If `None` (default), the zarr format of `a` if it
+        is a zarr array, otherwise the default zarr format.
     **kwargs
         Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
 
@@ -1361,7 +1391,7 @@ async def zeros_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     Array
         The new array.
     """
-    like_args = _like_args(a, kwargs.get("zarr_format"))
+    like_args = _like_args(a, zarr_format)
     # `zeros` supplies its own fill_value, so drop any inherited from `a`.
     like_args.pop("fill_value", None)
     like_kwargs = like_args | kwargs
