@@ -462,6 +462,36 @@ async def test_fsspec_store_read_array_chunk_via_reference_filesystem() -> None:
     np.testing.assert_array_equal(data, np.array([1, 2, 3, 4], dtype="uint8"))
 
 
+@pytest.mark.parametrize("path", ["", "/"])
+async def test_fsspec_store_list_nested_via_reference_filesystem(path: str) -> None:
+    """Listing below the root of a ``ReferenceFileSystem``-backed store.
+
+    ``FsspecStore.from_url("reference://", ...)`` gives the store a path of
+    ``""``, and the tests above use ``"/"``. Listing a nested prefix used to
+    ask the filesystem for ``"/a"`` or ``"//a"``, which ``ReferenceFileSystem``
+    does not find, so nested groups listed as empty.
+    """
+    import json
+
+    from fsspec.implementations.reference import ReferenceFileSystem
+
+    group_json = json.dumps({"zarr_format": 3, "node_type": "group", "attributes": {}})
+    refs = {"zarr.json": group_json, "a/zarr.json": group_json, "a/b/zarr.json": group_json}
+    fs = ReferenceFileSystem(fo={"version": 1, "refs": refs}, asynchronous=True)
+    store = FsspecStore(fs=fs, path=path, read_only=True)
+
+    assert sorted(await _collect_aiterator(store.list_dir(""))) == ["a", "zarr.json"]
+    assert sorted(await _collect_aiterator(store.list_dir("a"))) == ["b", "zarr.json"]
+    assert sorted(await _collect_aiterator(store.list_prefix("a/"))) == [
+        "a/b/zarr.json",
+        "a/zarr.json",
+    ]
+
+    group = await zarr.api.asynchronous.open_group(store, mode="r")
+    subgroup = await group.getitem("a")
+    assert [name async for name in subgroup.group_keys()] == ["b"]
+
+
 @pytest.mark.skipif(
     parse_version(fsspec.__version__) < parse_version("2024.12.0"),
     reason="No AsyncFileSystemWrapper",

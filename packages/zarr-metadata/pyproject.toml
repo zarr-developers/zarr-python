@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.29.0", "hatch-vcs"]
+requires = ["hatchling>=1.29.0", "hatch-vcs", "setuptools-scm>=9"]
 build-backend = "hatchling.build"
 
 [project]
@@ -47,7 +47,7 @@ Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/z
 Documentation = "https://zarr-metadata.readthedocs.io/"
 
 [dependency-groups]
-test = ["pytest", "pydantic>=2.13", "jsonschema"]
+test = ["pytest", "pydantic>=2.13", "jsonschema", "hypothesis"]
 docs = [
     # Pins match the zarr-python docs environment in the repo-root
     # pyproject.toml so every site renders with the same toolchain, and the
@@ -68,7 +68,7 @@ tag-pattern = '^zarr_metadata-v(?P<version>.+)$'
 # `git_describe_command` ensures we get the zarr_metadata tags instead of latest.
 # `local_scheme` strips the git commit info so the appending info is just a counter from latest tag.
 # test-pypi doesn't accept git commit info in tags, and the count should be enough to distinguish unique runs.
-raw-options = { root = "../..", git_describe_command = "git describe --dirty --tags --long --match zarr_metadata-v*", local_scheme = "no-local-version" }
+raw-options = { root = "../..", scm = { git = { describe_command = "git describe --dirty --tags --long --match zarr_metadata-v*" } }, local_scheme = "no-local-version" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/zarr_metadata"]
@@ -135,14 +135,41 @@ checks = [
     "PR06",
 ]
 
-# CI pins pyright==1.1.404: later versions regress PEP 661 sentinel typing in
-# class attributes (microsoft/pyright#11115), which zarr_metadata.model._sentinel
-# relies on. Use the same pin locally; unpin when the fix lands.
+# The pyright version lives in the justfile, which is what CI runs; pinning it
+# keeps a pyright release from turning CI red on its own schedule.
 [tool.pyright]
-include = ["src"]
+include = ["src", "tests"]
+# Pyright is the only checker that runs on this package (the root mypy
+# config covers the root package alone), and it honours `# type: ignore`
+# as a blanket suppression of every diagnostic on the line. So that
+# spelling is switched off: a suppression is `# pyright: ignore[rule]`,
+# names the rule, and is an error once it stops suppressing anything.
+enableTypeIgnoreComments = false
+reportUnnecessaryTypeIgnoreComment = "error"
+# `tests` is a package imported as `tests.*`, which pytest resolves from the
+# rootdir; pyright needs the same root on its search path.
+extraPaths = ["."]
 enableExperimentalFeatures = true
 typeCheckingMode = "strict"
 pythonVersion = "3.11"
+
+# Tests are checked, but not for the inference strictness the sources are held
+# to: test bodies are full of untyped JSON literals whose inferred types are of
+# no interest, and strict mode reports about ninety of those. What is kept is
+# everything a rename or a signature change breaks -- a dangling import, a call
+# that no longer type-checks, an argument of the wrong type -- which is the
+# reason for checking tests at all. Tests also reach into private modules and
+# define functions purely to be refused at registration, both deliberately.
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+reportMissingTypeArgument = false
+reportPrivateUsage = false
+reportUnknownArgumentType = false
+reportUnknownLambdaType = false
+reportUnknownMemberType = false
+reportUnknownParameterType = false
+reportUnknownVariableType = false
+reportUnusedFunction = false
 
 [tool.towncrier]
 # Fragments for this package live alongside the package source, separate

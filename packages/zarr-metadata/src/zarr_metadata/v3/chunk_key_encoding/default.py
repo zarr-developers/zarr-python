@@ -11,6 +11,8 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
+from zarr_metadata.v3._definition import ChunkKeyEncodingDefinition
+
 DEFAULT_CHUNK_KEY_ENCODING_NAME: Final = "default"
 """The `name` field value of the default chunk key encoding."""
 
@@ -52,7 +54,14 @@ The configuration has no required keys (`separator` defaults to `"/"`),
 so the short-hand-name form is permitted in addition to the object form.
 """
 
+DEFAULT_CHUNK_KEY_ENCODING: Final = ChunkKeyEncodingDefinition(
+    name=DEFAULT_CHUNK_KEY_ENCODING_NAME, configuration=DefaultChunkKeyEncodingConfiguration
+)
+"""The `default` chunk key encoding; its `separator` is typed, so it has no rule of its own."""
+
+
 __all__ = [
+    "DEFAULT_CHUNK_KEY_ENCODING",
     "DEFAULT_CHUNK_KEY_ENCODING_NAME",
     "DEFAULT_CHUNK_KEY_ENCODING_SEPARATOR",
     "DefaultChunkKeyEncodingConfiguration",
