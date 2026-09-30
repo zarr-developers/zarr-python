@@ -773,6 +773,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         cls,
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
+        *,
         config: ArrayConfigLike | None = None,
     ) -> AnyAsyncArray:
         """
@@ -2007,6 +2008,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def open(
         cls,
         store: StoreLike,
+        *,
         config: ArrayConfigLike | None = None,
     ) -> Self:
         """Opens an existing Array from a store.
