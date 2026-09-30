@@ -981,7 +981,7 @@ async def create(
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
-        [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+        [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthBytes`][]. In these cases,
         the default filters contains a single element which is a codec specific to that particular data type.
 
         To create an array with no filters, provide an empty iterable or the value `None`.
