@@ -630,7 +630,6 @@ def create_group(
     )
 
 
-# TODO: add type annotations for kwargs
 def create(
     shape: tuple[int, ...] | int,
     *,  # Note: this is a change from v2
@@ -666,7 +665,8 @@ def create(
     dimension_names: DimensionNamesLike = None,
     storage_options: dict[str, Any] | None = None,
     config: ArrayConfigLike | None = None,
-    **kwargs: Any,
+    mode: AccessModeLiteral | None = None,
+    data: npt.ArrayLike | None = None,
 ) -> AnyArray:
     """Create an array.
 
@@ -786,6 +786,26 @@ def create(
     config : ArrayConfigLike, optional
         Runtime configuration of the array. If provided, will override the
         default values from `zarr.config.array`.
+    mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
+        Legacy way to control overwriting, kept for compatibility with Zarr-Python 2.
+        Prefer `overwrite`. The access mode used to open `store`; the default, `None`,
+        is `'a'`.
+
+        - `'a'` and `'r+'` create the array and fail if a node exists at `path`,
+          unless `overwrite` is `True`.
+        - `'w'` replaces anything stored under `path` (the whole store if `path` is
+          not set), even if `overwrite` is `False`. On a store that cannot delete
+          keys, `'w'` raises an error instead of replacing an existing node.
+        - `'w-'` fails if anything is stored under `path`, even if `overwrite` is
+          `True`.
+        - `'r'` always fails.
+
+        `mode` has no effect, and is not validated, if `store` is a `StorePath`.
+    data : array-like, optional
+        Values written into the new array after it is created. Unlike the `data`
+        parameter of `create_array`, it does not set the shape or data type of the
+        array. To create an array from existing data, use `create_array(data=...)`.
+        A Zarr array is not supported as `data`.
 
     Returns
     -------
@@ -822,7 +842,8 @@ def create(
                 dimension_names=dimension_names,
                 storage_options=storage_options,
                 config=config,
-                **kwargs,
+                mode=mode,
+                data=data,
             )
         )
     )
