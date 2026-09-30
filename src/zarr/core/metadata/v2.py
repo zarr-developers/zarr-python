@@ -6,6 +6,7 @@ from collections.abc import Iterable, Sequence
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast
 
+from zarr import _deprecations
 from zarr.abc.metadata import Metadata
 from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.core.dtype import get_data_type_from_json
@@ -127,12 +128,7 @@ class ArrayV2Metadata(Metadata):
         """
         from zarr.core.chunk_grids import ChunkGrid
 
-        warnings.warn(
-            "ArrayV2Metadata.chunk_grid is deprecated. "
-            "Use ChunkGrid.from_metadata(metadata) instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
+        _deprecations.warn("v2-metadata-chunk-grid")
         return ChunkGrid.from_sizes(self.shape, tuple(self.chunks))
 
     @property

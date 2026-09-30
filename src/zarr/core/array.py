@@ -823,7 +823,11 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return self.store_path.store
 
     @property
-    @deprecated("Use AsyncArray.config instead.", category=ZarrDeprecationWarning)
+    @deprecated(
+        "AsyncArray._config is deprecated and will be removed in a future release. "
+        "Use AsyncArray.config instead.",
+        category=ZarrDeprecationWarning,
+    )
     def _config(self) -> ArrayConfig:
         return self.config
 
@@ -996,14 +1000,14 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         )
 
     @property
-    @deprecated("Use AsyncArray.compressors instead.", category=ZarrDeprecationWarning)
+    @deprecated(
+        "AsyncArray.compressor is deprecated and will be removed in a future release. "
+        "Use AsyncArray.compressors instead.",
+        category=ZarrDeprecationWarning,
+    )
     def compressor(self) -> Numcodec | None:
         """
         Compressor that is applied to each chunk of the array.
-
-        !!! warning "Deprecated"
-            `Array.compressor` is deprecated since v3.0.0 and will be removed in a future release.
-            Use [`Array.compressors`][zarr.AsyncArray.compressors] instead.
         """
         if self.metadata.zarr_format == 2:
             return self.metadata.compressor
@@ -2245,14 +2249,14 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return self.async_array.serializer
 
     @property
-    @deprecated("Use Array.compressors instead.", category=ZarrDeprecationWarning)
+    @deprecated(
+        "Array.compressor is deprecated and will be removed in a future release. "
+        "Use Array.compressors instead.",
+        category=ZarrDeprecationWarning,
+    )
     def compressor(self) -> Numcodec | None:
         """
         Compressor that is applied to each chunk of the array.
-
-        !!! warning "Deprecated"
-            `array.compressor` is deprecated since v3.0.0 and will be removed in a future release.
-            Use [`array.compressors`][zarr.Array.compressors] instead.
         """
         return self.async_array.compressor
 

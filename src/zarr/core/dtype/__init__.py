@@ -287,15 +287,9 @@ def parse_dtype(
 
 def __getattr__(name: str) -> object:
     if name == "DataTypeValidationError":
-        import warnings
+        from zarr import _deprecations
+        from zarr.errors import DataTypeValidationError
 
-        from zarr.errors import DataTypeValidationError, ZarrDeprecationWarning
-
-        warnings.warn(
-            "Importing DataTypeValidationError from zarr.core.dtype is deprecated. "
-            "Use zarr.errors.DataTypeValidationError instead.",
-            ZarrDeprecationWarning,
-            stacklevel=2,
-        )
+        _deprecations.warn("data-type-validation-error-import", module=__name__)
         return DataTypeValidationError
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -112,7 +112,12 @@ class NodeTypeValidationError(MetadataValidationError):
 
 class ZarrFutureWarning(FutureWarning):
     """
-    A warning intended for end users raised to indicate deprecated features.
+    A warning raised to indicate that behavior will change in a future release.
+
+    Python shows `FutureWarning` to end users by default, so this class is for
+    changes that alter results without any change to the user's code, such as a
+    default value that will change. A feature that will be *removed* raises
+    `ZarrDeprecationWarning` instead.
     """
 
 
