@@ -74,7 +74,7 @@ async def test_blosc_evolve(dtype: str) -> None:
 @pytest.mark.parametrize("shuffle", [None, "bitshuffle", "legacy-enum"])
 @pytest.mark.parametrize("typesize", [None, 1, 2])
 def test_tunable_attrs_param(
-    shuffle: None | BloscShuffleLiteral | str, typesize: None | int
+    shuffle: BloscShuffleLiteral | str | None, typesize: int | None
 ) -> None:
     """
     Test that the tunable_attrs parameter is set as expected when creating a BloscCodec.
@@ -83,7 +83,7 @@ def test_tunable_attrs_param(
     # contaminating the BloscCodec construction below with that warning.
     if shuffle == "legacy-enum":
         with pytest.warns(DeprecationWarning, match="BloscShuffle.shuffle"):
-            shuffle_arg: None | BloscShuffleLiteral | str = BloscShuffle.shuffle
+            shuffle_arg: BloscShuffleLiteral | str | None = BloscShuffle.shuffle
     else:
         shuffle_arg = shuffle
 
@@ -118,7 +118,7 @@ def test_tunable_attrs_param(
 
 async def test_typesize() -> None:
     a = np.arange(1000000, dtype=np.uint64)
-    codecs = [zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()]
+    codecs = [zarr.codecs.BytesCodec(endian="little"), zarr.codecs.BloscCodec()]
     z = zarr.array(a, chunks=(10000), codecs=codecs)
     data = await z.store.get("c/0", prototype=default_buffer_prototype())
     assert data is not None

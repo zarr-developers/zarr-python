@@ -22,6 +22,8 @@ __all__ = [
     "SupportsGetSync",
     "SupportsSetSync",
     "SupportsSyncStore",
+    "SyncByteGetter",
+    "SyncByteSetter",
     "set_or_delete",
 ]
 
@@ -469,6 +471,73 @@ class Store(ABC):
         ):
             yield group
 
+    def get_ranges_sync(
+        self,
+        key: str,
+        byte_ranges: Sequence[ByteRequest | None],
+        *,
+        prototype: BufferPrototype,
+        max_gap_bytes: int = 1 << 20,  # 1 MiB
+        max_coalesced_bytes: int = 16 << 20,  # 16 MiB
+    ) -> Sequence[tuple[int, Buffer | None]]:
+        """Synchronous, coalescing counterpart of `get_ranges`.
+
+        Plans merged fetches with the same `coalesce_ranges` policy as the async
+        path, then issues one synchronous `get_sync` per merged group (or per
+        uncoalescable request) and slices results back into per-input buffers.
+        Used by the sync codec pipeline's partial-shard reads so they get the
+        same byte-range coalescing as the async path, without an event loop.
+
+        Returns a list of `(input_index, Buffer | None)`. Raises
+        `BaseExceptionGroup` containing a `FileNotFoundError` if the key is
+        absent (matching `get_ranges`), so callers can handle a deleted shard
+        uniformly across the sync and async paths.
+
+        Requires the store to implement `get_sync` (`SupportsGetSync`).
+        """
+        from zarr.core._coalesce import coalesce_ranges
+
+        if not isinstance(self, SupportsGetSync):
+            raise TypeError(f"{type(self).__name__} does not support synchronous reads")
+
+        groups, uncoalescable = coalesce_ranges(
+            byte_ranges, max_gap_bytes=max_gap_bytes, max_coalesced_bytes=max_coalesced_bytes
+        )
+        results: list[tuple[int, Buffer | None]] = []
+        errors: list[BaseException] = []
+
+        def _get(req: ByteRequest | None) -> Buffer | None:
+            return self.get_sync(key, prototype=prototype, byte_range=req)
+
+        for idx, req in uncoalescable:
+            buf = _get(req)
+            if buf is None:
+                errors.append(FileNotFoundError(key))
+            else:
+                results.append((idx, buf))
+
+        for members in groups:
+            if len(members) == 1:
+                solo_idx, solo_req = members[0]
+                buf = _get(solo_req)
+                if buf is None:
+                    errors.append(FileNotFoundError(key))
+                else:
+                    results.append((solo_idx, buf))
+                continue
+            start = members[0][1].start
+            end = max(r.end for _, r in members)
+            big = _get(RangeByteRequest(start, end))
+            if big is None:
+                errors.append(FileNotFoundError(key))
+                continue
+            for member_idx, r in members:
+                results.append((member_idx, big[r.start - start : r.end - start]))
+
+        if errors:
+            raise BaseExceptionGroup("chunk read failed", errors)
+        return results
+
     async def getsize(self, key: str) -> int:
         """
         Return the size, in bytes, of a value in a Store.
@@ -565,7 +634,43 @@ class ByteSetter(Protocol):
 
 
 @runtime_checkable
+class SyncByteGetter(Protocol):
+    """A `ByteGetter` that can also fetch synchronously, without an event loop.
+
+    Non-StorePath byte getters (e.g. the sharding codec's in-memory
+    `_ShardingByteGetter`) implement this so a synchronous codec pipeline can
+    take its sync fast path on them instead of scheduling one coroutine per
+    chunk. Note that `StorePath` also *has* a `get_sync` method (so it matches
+    this protocol structurally) but it only works when its store supports
+    synchronous IO — callers gate `StorePath` on the store's `SupportsGetSync`
+    instead of on this protocol.
+    """
+
+    def get_sync(
+        self, prototype: BufferPrototype | None = None, byte_range: ByteRequest | None = None
+    ) -> Buffer | None: ...
+
+
+@runtime_checkable
+class SyncByteSetter(SyncByteGetter, Protocol):
+    """A `ByteSetter` that can also write synchronously. See `SyncByteGetter`."""
+
+    def set_sync(self, value: Buffer) -> None: ...
+
+    def delete_sync(self) -> None: ...
+
+
+@runtime_checkable
 class SupportsGetSync(Protocol):
+    """Store protocol for synchronous reads (`get_sync`).
+
+    The store sync surface is all-or-nothing: a store implementing any of the
+    `*_sync` methods must implement all of them (`SupportsSyncStore`), because
+    consumers mix sync reads, writes, and deletes within one operation.
+    Capability-gated callers consult `_store_supports_sync_io` rather than the
+    individual protocols.
+    """
+
     def get_sync(
         self,
         key: str,
@@ -577,16 +682,52 @@ class SupportsGetSync(Protocol):
 
 @runtime_checkable
 class SupportsSetSync(Protocol):
+    """Store protocol for synchronous writes (`set_sync`).
+
+    See `SupportsGetSync` for the all-or-nothing contract on the store sync
+    surface.
+    """
+
     def set_sync(self, key: str, value: Buffer) -> None: ...
 
 
 @runtime_checkable
 class SupportsDeleteSync(Protocol):
+    """Store protocol for synchronous deletes (`delete_sync`).
+
+    See `SupportsGetSync` for the all-or-nothing contract on the store sync
+    surface.
+    """
+
     def delete_sync(self, key: str) -> None: ...
 
 
 @runtime_checkable
-class SupportsSyncStore(SupportsGetSync, SupportsSetSync, SupportsDeleteSync, Protocol): ...
+class SupportsSyncStore(SupportsGetSync, SupportsSetSync, SupportsDeleteSync, Protocol):
+    """The full store sync surface: `get_sync`, `set_sync`, and `delete_sync`."""
+
+
+def _store_supports_sync_io(store: object) -> bool:
+    """Whether `store` can serve the full synchronous IO surface right now.
+
+    Structural membership in `SupportsSyncStore` is necessary but not always
+    sufficient: a store can present the `*_sync` methods while its ability to
+    run them depends on runtime state the type system cannot see. Wrapper
+    stores are the canonical case — `WrapperStore` delegates the sync methods
+    to the store it wraps, so they only work when the wrapped store is itself
+    sync-capable. Such stores opt out dynamically via a `_supports_sync_io`
+    attribute/property (absent means capable).
+
+    This is an interim, private convention pending a formal sync/async store
+    architecture — the store-side twin of the codec-side `_sync_capable`
+    convention consulted by `zarr.abc.codec._codec_supports_sync`.
+
+    Synchronous IO is all-or-nothing: consumers such as the fused codec
+    pipeline mix synchronous reads, writes, and deletes within one batch
+    (e.g. a partial-chunk write reads existing bytes and an all-fill chunk is
+    deleted), so a partial sync surface never satisfies this predicate.
+    """
+    return isinstance(store, SupportsSyncStore) and getattr(store, "_supports_sync_io", True)
 
 
 async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:

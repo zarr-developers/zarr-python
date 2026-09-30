@@ -132,11 +132,16 @@ def test_construction_accepts_numeric(
         ("float64", 10.0, 0.1),
         ("float32", 5.0, 2.0),
         ("int32", 0, 1),
+        (">f8", 10.0, 0.1),
+        ("<f8", 10.0, 0.1),
+        (">i4", -7, 3),
+        (">u8", 2**63, 1),
+        ("<u8", 2**63, 1),
     ],
-    ids=["float64", "float32", "int32-identity"],
+    ids=["float64", "float32", "int32-identity", ">f8", "<f8", ">i4", ">u8", "<u8"],
 )
 def test_encode_decode_roundtrip(dtype: str, offset: float, scale: float) -> None:
-    """Data survives encode → decode."""
+    """Data survives encode → decode, in either byte order."""
 
     arr = zarr.create_array(
         store={},
@@ -145,11 +150,13 @@ def test_encode_decode_roundtrip(dtype: str, offset: float, scale: float) -> Non
         chunks=(100,),
         filters=[ScaleOffset(offset=offset, scale=scale)],
         compressors=None,
-        fill_value=0,
+        fill_value=offset,
     )
-    data = np.arange(100, dtype=dtype)
+    data = np.array([offset + i for i in range(100)], dtype=dtype)
     arr[:] = data
-    np.testing.assert_array_almost_equal(arr[:], data)  # type: ignore[arg-type]
+    result = arr[:]
+    assert result.dtype == np.dtype(dtype)  # type: ignore[union-attr]
+    np.testing.assert_array_almost_equal(result, data)  # type: ignore[arg-type]
 
 
 def test_fill_value_transformed() -> None:
@@ -249,16 +256,31 @@ def test_uint64_encode_rejects_underflow() -> None:
         arr[:] = np.array([100, 50, 200], dtype="uint64")
 
 
-def test_rejects_zero_scale() -> None:
-    """scale=0 is rejected (destroys data and breaks decode division)."""
+@pytest.mark.parametrize(
+    ("dtype", "scale"),
+    [
+        ("int32", 0),
+        ("int32", "0"),
+        ("float64", 0.0),
+        ("float64", "0.0"),
+        ("float64", "0x0000000000000000"),
+    ],
+    ids=["int-numeric", "int-string", "float-numeric", "float-string", "float-hex"],
+)
+def test_rejects_zero_scale(dtype: str, scale: object) -> None:
+    """scale=0 is rejected (destroys data and breaks decode division).
+
+    A string ``scale`` is a documented input, so every spelling of zero has to be
+    rejected the same way as the numeric one.
+    """
 
     with pytest.raises(ValueError, match="scale must be non-zero"):
         zarr.create_array(
             store={},
             shape=(10,),
-            dtype="int32",
+            dtype=dtype,
             chunks=(10,),
-            filters=[ScaleOffset(offset=0, scale=0)],
+            filters=[ScaleOffset(offset=0, scale=scale)],
             compressors=None,
             fill_value=0,
         )
@@ -453,7 +475,7 @@ async def test_decode_int_widened_path() -> None:
     )
     # Encoded values that, when added to offset, stay within uint32
     buf = default_buffer_prototype().buffer.from_bytes(
-        np.array([0, 100, 1000], dtype="uint32").tobytes()
+        np.array([0, 100, 1000], dtype="<u4").tobytes()
     )
     await arr.store_path.store.set("c/0", buf)
     expected = np.array([2**31, 2**31 + 100, 2**31 + 1000], dtype="uint32")

@@ -8,15 +8,10 @@ import numpy as np
 import pytest
 from numcodecs import GZip
 
-try:
-    from numcodecs.errors import UnknownCodecError
-except ImportError:
-    # Older versions of numcodecs don't have a separate errors module
-    UnknownCodecError = ValueError
-
 from zarr import config, create_array, open_array
 from zarr.abc.numcodec import _is_numcodec, _is_numcodec_cls
 from zarr.codecs import numcodecs as _numcodecs
+from zarr.errors import UnknownCodecError
 from zarr.registry import get_codec_class, get_numcodec
 
 if TYPE_CHECKING:
@@ -163,6 +158,40 @@ def test_generic_filter(
     np.testing.assert_array_equal(data, b[:, :])
 
 
+@pytest.mark.parametrize(
+    ("codec_class", "codec_config", "dtype"),
+    [
+        (_numcodecs.Delta, {"dtype": "int64"}, "int64"),
+        (_numcodecs.FixedScaleOffset, {"offset": 0, "scale": 1}, "int64"),
+        (_numcodecs.PackBits, {}, "bool"),
+    ],
+    ids=["delta", "fixedscaleoffset", "packbits"],
+)
+def test_generic_filter_f_contiguous(
+    codec_class: type[_numcodecs._NumcodecsArrayArrayCodec],
+    codec_config: dict[str, JSON],
+    dtype: str,
+) -> None:
+    # gh-3558: F-contiguous chunks were handed to numcodecs filters as is, and
+    # numcodecs flattens in memory order, so the elements came back transposed
+    if dtype == "bool":
+        data = np.asfortranarray(np.tril(np.ones((16, 16), dtype=bool)))
+    else:
+        data = np.asfortranarray(np.arange(256, dtype=dtype).reshape(16, 16))
+
+    a = create_array(
+        {},
+        shape=data.shape,
+        chunks=(16, 16),
+        dtype=data.dtype,
+        fill_value=0,
+        filters=[codec_class(**codec_config)],
+    )
+
+    a[:, :] = data
+    np.testing.assert_array_equal(data, a[:, :])
+
+
 def test_generic_filter_bitround() -> None:
     data = np.linspace(0, 1, 256, dtype="float32").reshape((16, 16))
 
@@ -263,12 +292,7 @@ def test_generic_checksum(codec_class: type[_numcodecs._NumcodecsBytesBytesCodec
 def test_generic_bytes_codec(codec_class: type[_numcodecs._NumcodecsArrayBytesCodec]) -> None:
     try:
         codec_class()._codec  # noqa: B018
-    except ValueError as e:  # pragma: no cover
-        if "codec not available" in str(e):
-            pytest.xfail(f"{codec_class.codec_name} is not available: {e}")  # type: ignore[misc]
-        else:
-            raise
-    except ImportError as e:  # pragma: no cover
+    except (UnknownCodecError, ImportError) as e:  # pragma: no cover
         pytest.xfail(f"{codec_class.codec_name} is not available: {e}")  # type: ignore[misc]
 
     data = np.arange(0, 256, dtype="float32").reshape((16, 16))

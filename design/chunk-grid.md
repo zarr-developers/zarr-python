@@ -162,9 +162,9 @@ class DimensionGrid(Protocol):
     @property
     def extent(self) -> int: ...
     def index_to_chunk(self, idx: int) -> int: ...
-    def chunk_offset(self, chunk_ix: int) -> int: ...     # raises IndexError if OOB
-    def chunk_size(self, chunk_ix: int) -> int: ...        # raises IndexError if OOB
-    def data_size(self, chunk_ix: int) -> int: ...         # raises IndexError if OOB
+    def chunk_offset(self, chunk_ix: int) -> int: ...  # raises IndexError if OOB
+    def chunk_size(self, chunk_ix: int) -> int: ...  # raises IndexError if OOB
+    def data_size(self, chunk_ix: int) -> int: ...  # raises IndexError if OOB
     def indices_to_chunks(self, indices: NDArray[np.intp]) -> NDArray[np.intp]: ...
     @property
     def unique_edge_lengths(self) -> Iterable[int]: ...
@@ -181,8 +181,8 @@ The protocol is `@runtime_checkable`, enabling polymorphic handling of both dime
 ```python
 @dataclass(frozen=True)
 class ChunkSpec:
-    slices: tuple[slice, ...]        # valid data region in array coordinates
-    codec_shape: tuple[int, ...]     # buffer shape for codec processing
+    slices: tuple[slice, ...]  # valid data region in array coordinates
+    codec_shape: tuple[int, ...]  # buffer shape for codec processing
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -199,34 +199,34 @@ For interior chunks, `shape == codec_shape`. For boundary chunks of a regular gr
 
 ```python
 # Creating arrays
-arr = zarr.create_array(shape=(100, 200), chunks=(10, 20))                          # regular
-arr = zarr.create_array(shape=(60, 100), chunks=[[10, 20, 30], [25, 25, 25, 25]])   # rectilinear
+arr = zarr.create_array(shape=(100, 200), chunks=(10, 20))  # regular
+arr = zarr.create_array(shape=(60, 100), chunks=[[10, 20, 30], [25, 25, 25, 25]])  # rectilinear
 
 # ChunkGrid as a collection
-grid = arr._chunk_grid            # ChunkGrid (bound to array shape)
-grid.grid_shape                   # (10, 10) — number of chunks per dimension
-grid.ndim                         # 2
-grid.is_regular                   # True if all dimensions are Fixed
+grid = arr._chunk_grid  # ChunkGrid (bound to array shape)
+grid.grid_shape  # (10, 10) — number of chunks per dimension
+grid.ndim  # 2
+grid.is_regular  # True if all dimensions are Fixed
 
-spec = grid[0, 1]                 # ChunkSpec for chunk at grid position (0, 1)
-spec.slices                       # (slice(0, 10), slice(20, 40))
-spec.shape                        # (10, 20) — data shape
-spec.codec_shape                  # (10, 20) — same for interior chunks
+spec = grid[0, 1]  # ChunkSpec for chunk at grid position (0, 1)
+spec.slices  # (slice(0, 10), slice(20, 40))
+spec.shape  # (10, 20) — data shape
+spec.codec_shape  # (10, 20) — same for interior chunks
 
-boundary = grid[9, 0]             # boundary chunk (extent=100, size=10)
-boundary.shape                    # (10, 20) — data shape
-boundary.codec_shape              # (10, 20) — codec sees full buffer
+boundary = grid[9, 0]  # boundary chunk (extent=100, size=10)
+boundary.shape  # (10, 20) — data shape
+boundary.codec_shape  # (10, 20) — codec sees full buffer
 
-grid[99, 99]                      # None — out of bounds
+grid[99, 99]  # None — out of bounds
 
-for spec in grid:                 # iterate all chunks
+for spec in grid:  # iterate all chunks
     ...
 
 # .chunks property: retained for regular grids, raises NotImplementedError for rectilinear
-arr.chunks                         # (10, 20)
+arr.chunks  # (10, 20)
 
 # .read_chunk_sizes / .write_chunk_sizes: works for all grids (dask-style)
-arr.write_chunk_sizes              # ((10, 10, ..., 10), (20, 20, ..., 20))
+arr.write_chunk_sizes  # ((10, 10, ..., 10), (20, 20, ..., 20))
 ```
 
 `ChunkGrid.__getitem__` constructs `ChunkSpec` using `chunk_size` for `codec_shape` and `data_size` for `slices`:
@@ -274,7 +274,10 @@ When `extent < sum(edges)`, the dimension is always stored as `VaryingDimension`
 {"name": "regular", "configuration": {"chunk_shape": [10, 20]}}
 
 # Rectilinear grid (with RLE compression and "kind" field):
-{"name": "rectilinear", "configuration": {"kind": "inline", "chunk_shapes": [[10, 20, 30], [[25, 4]]]}}
+{
+    "name": "rectilinear",
+    "configuration": {"kind": "inline", "chunk_shapes": [[10, 20, 30], [[25, 4]]]},
+}
 ```
 
 Both names deserialize to the same `ChunkGrid` class. The serialized form does not include the array extent — that comes from `shape` in array metadata and is combined with the chunk grid when constructing a `ChunkGrid` via `ChunkGrid.from_metadata()`.
@@ -324,9 +327,9 @@ The underlying `ChunkGrid.chunk_sizes` property (on the grid, not the array) ret
 #### Resize
 
 ```python
-arr.resize((80, 100))       # re-binds extent; FixedDimension stays fixed
-arr.resize((200, 100))      # VaryingDimension grows by appending a new chunk
-arr.resize((30, 100))       # VaryingDimension shrinks: preserves all edges, re-binds extent
+arr.resize((80, 100))  # re-binds extent; FixedDimension stays fixed
+arr.resize((200, 100))  # VaryingDimension grows by appending a new chunk
+arr.resize((30, 100))  # VaryingDimension shrinks: preserves all edges, re-binds extent
 ```
 
 Resize uses `ChunkGrid.update_shape(new_shape)`, which delegates to each dimension's `.resize()` method:
@@ -363,8 +366,8 @@ When `chunks="keep"`, the logic checks `data._chunk_grid.is_regular`:
 The indexing pipeline is coupled to regular grid assumptions — every per-dimension indexer takes a scalar `dim_chunk_len: int` and uses `//` and `*`:
 
 ```python
-dim_chunk_ix = self.dim_sel // self.dim_chunk_len          # IntDimIndexer
-dim_offset = dim_chunk_ix * self.dim_chunk_len             # SliceDimIndexer
+dim_chunk_ix = self.dim_sel // self.dim_chunk_len  # IntDimIndexer
+dim_offset = dim_chunk_ix * self.dim_chunk_len  # SliceDimIndexer
 ```
 
 Replace `dim_chunk_len: int` with the dimension object (`FixedDimension | VaryingDimension`). The shared interface means the indexer code structure stays the same — `dim_sel // dim_chunk_len` becomes `dim_grid.index_to_chunk(dim_sel)`. O(1) for regular, binary search for varying.
@@ -590,14 +593,18 @@ If cubed needs to support both old and new zarr-python:
 def _create_zarr_indexer(selection, shape, chunks):
     if zarr.__version__[0] == "3":
         from zarr.core.indexing import OrthogonalIndexer
+
         try:
             from zarr.core.chunk_grids import ChunkGrid
+
             return OrthogonalIndexer(selection, shape, ChunkGrid.from_sizes(shape, chunks))
         except ImportError:
             from zarr.core.chunk_grids import RegularChunkGrid
+
             return OrthogonalIndexer(selection, shape, RegularChunkGrid(chunk_shape=chunks))
     else:
         from zarr.indexing import OrthogonalIndexer
+
         return OrthogonalIndexer(selection, ZarrArrayIndexingAdaptor(shape, chunks))
 ```
 
@@ -625,13 +632,15 @@ def _resolve_chunk_grid(chunk_grid, shape):
     """Coerce ChunkGridMetadata to runtime ChunkGrid if needed."""
     from zarr.core.chunk_grids import ChunkGrid as _ChunkGrid
     from zarr.core.metadata.v3 import ChunkGridMetadata
+
     if isinstance(chunk_grid, _ChunkGrid):
         return chunk_grid
     if isinstance(chunk_grid, ChunkGridMetadata):
         warnings.warn(
             "Passing ChunkGridMetadata to indexers is deprecated. "
             "Use ChunkGrid.from_sizes() instead.",
-            DeprecationWarning, stacklevel=2,
+            DeprecationWarning,
+            stacklevel=2,
         )
         if hasattr(chunk_grid, "chunk_shape"):
             return _ChunkGrid.from_sizes(shape, tuple(chunk_grid.chunk_shape))

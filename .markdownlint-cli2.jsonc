@@ -1,0 +1,54 @@
+// markdownlint-cli2 configuration for zarr-python docs.
+//
+// We keep the rules that catch real rendering/structure problems and disable those that
+// are pure style, conflict with house conventions, or fire false positives against our
+// MkDocs/mkdocstrings + pymdownx toolchain. Complementary, not overlapping, with
+// ci/lint_docs.py (RST residue + list-breaking fences) and `mkdocs build --strict`.
+{
+  "config": {
+    "default": true,
+
+    // House style: Markdown paragraphs are single unwrapped lines, so line length is not
+    // a meaningful constraint.
+    "MD013": false,
+
+    // Purely stylistic marker/emphasis choices -- not worth the churn across existing docs.
+    "MD004": false, // ul bullet style (-, *, +)
+    "MD007": false, // ul indentation width
+    "MD050": false, // strong (bold) style
+    "MD035": false, // hr style
+
+    // False positives from our toolchain:
+    // mkdocstrings cross-refs `[`X`][zarr.X]` read as undefined reference links (MD052);
+    // pymdownx.magiclink auto-links bare URLs (MD034);
+    // md_in_html lets us embed intentional raw HTML (MD033);
+    // generated/included files (api stubs, snippets) need not open with an H1 (MD041).
+    "MD052": false,
+    "MD034": false,
+    "MD033": false,
+    "MD041": false,
+
+    // Duplicate headings are legitimate under different sections (e.g. repeated
+    // "Documentation"); only flag true sibling duplicates.
+    "MD024": { "siblings_only": true },
+
+    // Opinionated table/link/command rules with low value for these docs.
+    "MD055": false, // table pipe style
+    "MD060": false, // table column style
+    "MD059": false, // "descriptive" link text (no "click here")
+    "MD014": false, // $ before commands without shown output
+
+    // markdownlint does not understand MkDocs `!!!` admonitions, so it reads their
+    // 4-space-indented bodies as indented code blocks and flags them (and, via inferred
+    // file style, flags real fenced blocks too). Cannot coexist with our admonitions.
+    "MD046": false // code block style (fenced vs indented)
+    // Kept on (structural / real rendering bugs): MD012 (multiple blanks), MD022/MD031/MD032
+    // (blanks around headings/fences/lists), MD025 (single H1), MD029 (ordered-list prefix),
+    // MD040 (fenced code language), MD042 (empty links),
+    // MD047 (trailing newline), MD056 (table column count), among others.
+  },
+  "globs": ["docs/**/*.md"],
+  "ignores": [
+    "docs/api/**" // mkdocstrings stubs (`::: zarr.X`)
+  ]
+}

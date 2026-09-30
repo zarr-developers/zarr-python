@@ -7,14 +7,20 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 import re
 from typing import Final, Literal, NewType
 
+from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration, multi_byte
+from zarr_metadata.v3.data_type._float import FloatSpecialFillValue, float_fill_value_rules
+
 FLOAT32_DATA_TYPE_NAME: Final = "float32"
 """The `data_type` value for the `float32` type."""
 
 Float32DataTypeName = Literal["float32"]
 """Literal type of the `data_type` field for `float32`."""
 
-Float32SpecialFillValue = Literal["NaN", "Infinity", "-Infinity"]
-"""Named non-finite fill values permitted by the spec for IEEE 754 floats."""
+Float32SpecialFillValue = FloatSpecialFillValue
+"""Named non-finite fill values permitted by the spec for IEEE 754 floats.
+
+https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L63-L79
+"""
 
 HexFloat32 = NewType("HexFloat32", str)
 """A 10-character hex string (`0x` + 8 hex digits) encoding the
@@ -45,7 +51,7 @@ encoding the unsigned-integer representation of the IEEE 754 value).
 CANONICAL_NAN_HEX_FLOAT32: Final = "0x7fc00000"
 """Canonical hex form of the float32 NaN sentinel `"NaN"`.
 
-Per spec the named `"NaN"` sentinel denotes the float with sign=0, the
+Per spec (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L72-L74) the named `"NaN"` sentinel denotes the float with sign=0, the
 most significant mantissa bit set, and all other mantissa bits zero
 (the IEEE 754 default quiet NaN). Other NaN bit patterns must be
 encoded with the explicit hex-string form.
@@ -58,10 +64,21 @@ CANONICAL_NEGATIVE_INFINITY_HEX_FLOAT32: Final = "0xff800000"
 """Canonical hex form of the float32 `"-Infinity"` sentinel."""
 
 
+FLOAT32_DATA_TYPE: Final = DataTypeDefinition(
+    name=FLOAT32_DATA_TYPE_NAME,
+    configuration=EmptyConfiguration,
+    fill_value=Float32FillValue,
+    fill_value_rules=float_fill_value_rules("float32", hex_float32),
+    storage=multi_byte,
+)
+"""The `float32` data type: a bare name, with nothing to configure; its fill value a number, a named value or a hex string."""
+
+
 __all__ = [
     "CANONICAL_NAN_HEX_FLOAT32",
     "CANONICAL_NEGATIVE_INFINITY_HEX_FLOAT32",
     "CANONICAL_POSITIVE_INFINITY_HEX_FLOAT32",
+    "FLOAT32_DATA_TYPE",
     "FLOAT32_DATA_TYPE_NAME",
     "Float32DataTypeName",
     "Float32FillValue",

@@ -1,7 +1,7 @@
 """Decode v3 array metadata fixtures via pydantic.
 
 Each `*.json` file in this directory is a representative on-disk
-`zarr.json` that should validate cleanly as `ArrayMetadataV3`.
+`zarr.json` that should validate cleanly as `ZarrV3ArrayMetadataJSON`.
 Fixtures are named for the variant they exercise (regular vs rectilinear
 grid, blosc/gzip/zstd/sharding_indexed codecs, named-config dtypes, optional
 fields, extra fields).
@@ -15,11 +15,11 @@ from pathlib import Path
 import pytest
 from pydantic import TypeAdapter
 
-from zarr_metadata.v3.array import ArrayMetadataV3
+from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 
 FIXTURES_DIR = Path(__file__).parent
 FIXTURES = sorted(FIXTURES_DIR.glob("*.json"))
-ADAPTER = TypeAdapter(ArrayMetadataV3)
+ADAPTER = TypeAdapter(ZarrV3ArrayMetadataJSON)
 
 
 @pytest.mark.parametrize("fixture", FIXTURES, ids=lambda p: p.stem)

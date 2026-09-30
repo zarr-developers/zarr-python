@@ -12,7 +12,7 @@ from zarr.abc.metadata import Metadata
 from zarr.core._json import json_to_buffer
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.chunk_grids import is_regular_nd
+from zarr.core.chunk_grids import FixedDimension, VaryingDimension
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
@@ -34,30 +34,31 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
+from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
-from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
+from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
 
 if TYPE_CHECKING:
     from typing import Self
 
+    from zarr.codecs.sharding import ShardingCodec
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.chunk_grids import ChunksTuple
+    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
-    if data == 3:
-        return 3
-    msg = f"Invalid value for 'zarr_format'. Expected '3'. Got '{data}'."
-    raise MetadataValidationError(msg)
+    return cast(
+        "Literal[3]", parse_field(data, Literal[3], "zarr_format", error=MetadataValidationError)
+    )
 
 
 def parse_node_type_array(data: object) -> Literal["array"]:
-    if data == "array":
-        return "array"
-    msg = f"Invalid value for 'node_type'. Expected 'array'. Got '{data}'."
-    raise NodeTypeValidationError(msg)
+    return cast(
+        'Literal["array"]',
+        parse_field(data, Literal["array"], "node_type", error=NodeTypeValidationError),
+    )
 
 
 def parse_codecs(data: object) -> tuple[Codec, ...]:
@@ -74,10 +75,21 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
         else:
             name_parsed, _ = parse_named_configuration(c, require_configuration=False)
 
+            codec_cls = get_codec_class(name_parsed)
             try:
-                out += (get_codec_class(name_parsed).from_dict(c),)
+                out += (codec_cls.from_dict(c),)
             except KeyError as e:
-                raise UnknownCodecError(f"Unknown codec: {e.args[0]!r}") from e
+                # A codec's `from_dict` may index its configuration directly, so a malformed
+                # configuration surfaces as a KeyError. Convert it: a bare KeyError escaping
+                # metadata parsing is swallowed by the array-then-group fallback in
+                # `zarr.api.asynchronous.open`, which then reports an unrelated group error.
+                # The KeyError may carry no arguments (`raise KeyError`), and it may come from
+                # an internal lookup rather than the configuration mapping itself, so name the
+                # key only when there is one and don't claim it was a missing configuration key.
+                key_text = f" {e.args[0]!r}" if e.args else ""
+                raise MetadataValidationError(
+                    f"KeyError{key_text} while parsing the configuration for codec {name_parsed!r}."
+                ) from e
 
     return out
 
@@ -130,11 +142,12 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
     """
     if data is None:
         return ()
-    if isinstance(data, Iterable):
-        if len(tuple(data)) >= 1:
-            return data  # type: ignore[return-value]
-        else:
-            return ()
+    if isinstance(data, Iterable) and not isinstance(data, (str, bytes)):
+        # Materialise once. The previous implementation called ``len(tuple(data))``
+        # and then returned ``data`` itself, which exhausted (and discarded) a
+        # one-shot iterable and could return a value typed as a tuple that was not
+        # actually a tuple.
+        return tuple(data)
     raise TypeError(
         f"Invalid storage_transformers. Expected an iterable of dicts. Got {type(data)} instead."
     )
@@ -372,32 +385,36 @@ ChunkGridMetadata = RegularChunkGridMetadata | RectilinearChunkGridMetadata
 
 
 def create_chunk_grid_metadata(
-    chunks: ChunksTuple,
+    chunks: ChunkGrid,
 ) -> ChunkGridMetadata:
-    """Construct a chunk grid metadata object from a normalized `ChunksTuple`.
+    """Construct a chunk grid metadata object from a normalized `ChunkGrid`.
 
-    Regular chunks produce a `RegularChunkGridMetadata`.
-    Rectilinear chunks produce a `RectilinearChunkGridMetadata`.
+    Regular grids produce a `RegularChunkGridMetadata`.
+    Rectilinear grids produce a `RectilinearChunkGridMetadata`.
 
     Parameters
     ----------
-    chunks : ChunksTuple
-        Normalized chunk specification, as returned by
+    chunks : ChunkGrid
+        Normalized chunk grid, as returned by
         `normalize_chunks_nd` or `guess_chunks`.
 
     See Also
     --------
     parse_chunk_grid : Deserialize a chunk grid from stored JSON metadata.
     """
-    if is_regular_nd(chunks):
-        # If we know the chunks specification is regular, then we can take the first
-        # chunk size for each dimension as the chunk shape.
-        chunk_shape = tuple(int(dim_chunks[0]) for dim_chunks in chunks)
-        return RegularChunkGridMetadata(chunk_shape=chunk_shape)
-    else:
-        return RectilinearChunkGridMetadata(
-            chunk_shapes=tuple(tuple(int(x) for x in d) for d in chunks)
-        )
+    if chunks.is_regular:
+        return RegularChunkGridMetadata(chunk_shape=chunks.chunk_shape)
+    # Uniform dimensions stay bare ints — the rectilinear grid spec treats
+    # a bare int as a step size repeating to cover the axis.
+    chunk_shapes: list[int | tuple[int, ...]] = []
+    for dim in chunks.dimensions:
+        if isinstance(dim, FixedDimension):
+            chunk_shapes.append(dim.size)
+        elif isinstance(dim, VaryingDimension):
+            chunk_shapes.append(dim.edges)
+        else:
+            raise TypeError(f"Unknown dimension grid type: {type(dim)}")
+    return RectilinearChunkGridMetadata(chunk_shapes=tuple(chunk_shapes))
 
 
 def parse_chunk_grid(
@@ -565,25 +582,31 @@ class ArrayV3Metadata(Metadata):
     # They require knowledge of codecs (ShardingCodec) and don't belong on a metadata DTO.
 
     @property
+    def sharding_codec(self) -> ShardingCodec | None:
+        """The array's sharding codec, or None if the array is not sharded."""
+        from zarr.codecs.sharding import ShardingCodec
+
+        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+            return self.codecs[0]
+        return None
+
+    @property
     def chunks(self) -> tuple[int, ...]:
+        if (sharding_codec := self.sharding_codec) is not None:
+            # Inner chunks are always regular, whatever the shape of the outer
+            # (shard) grid.
+            return sharding_codec.chunk_shape
         if not isinstance(self.chunk_grid, RegularChunkGridMetadata):
             msg = (
                 "The `chunks` attribute is only defined for arrays using regular chunk grids. "
                 "This array has a rectilinear chunk grid. Use `read_chunk_sizes` for general access."
             )
             raise NotImplementedError(msg)
-
-        from zarr.codecs.sharding import ShardingCodec
-
-        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
-            return self.codecs[0].chunk_shape
         return self.chunk_grid.chunk_shape
 
     @property
     def shards(self) -> tuple[int, ...] | None:
-        from zarr.codecs.sharding import ShardingCodec
-
-        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+        if self.sharding_codec is not None:
             if not isinstance(self.chunk_grid, RegularChunkGridMetadata):
                 msg = (
                     "The `shards` attribute is only defined for arrays using regular chunk grids. "
@@ -595,10 +618,8 @@ class ArrayV3Metadata(Metadata):
 
     @property
     def inner_codecs(self) -> tuple[Codec, ...]:
-        from zarr.codecs.sharding import ShardingCodec
-
-        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
-            return self.codecs[0].codecs
+        if (sharding_codec := self.sharding_codec) is not None:
+            return sharding_codec.codecs
         return self.codecs
 
     def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
@@ -656,6 +677,8 @@ class ArrayV3Metadata(Metadata):
             chunk_grid=_data_typed["chunk_grid"],  # type: ignore[arg-type]
             chunk_key_encoding=_data_typed["chunk_key_encoding"],  # type: ignore[arg-type]
             codecs=_data_typed["codecs"],
+            # Attribute values are arbitrary JSON, so they have no field-specific
+            # schema to validate. `__init__` checks the outer dict via `parse_attributes`.
             attributes=_data_typed.get("attributes", {}),  # type: ignore[arg-type]
             dimension_names=_data_typed.get("dimension_names", None),
             fill_value=fill_value_parsed,

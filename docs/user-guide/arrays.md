@@ -5,11 +5,7 @@
 Zarr has several functions for creating arrays. For example:
 
 ```python exec="true" session="arrays"
-import shutil
-shutil.rmtree('data', ignore_errors=True)
 import numpy as np
-
-np.random.seed(0)
 ```
 
 ```python exec="true" session="arrays" source="above" result="ansi"
@@ -21,12 +17,16 @@ print(z)
 The code above creates a 2-dimensional array of 32-bit integers with 10000 rows
 and 10000 columns, divided into chunks where each chunk has 1000 rows and 1000
 columns (and so there will be 100 chunks in total). The data is written to an
-in-memory store (see [`zarr.storage.MemoryStore`][] for more details). See
-[Persistent arrays](#persistent-arrays) for details on storing arrays in other stores,
-and see [Data types](data_types.md) for an in-depth look at the data types supported
-by Zarr.
+in-memory store: when `fsspec` is installed, a `memory://` URL resolves to a
+[`zarr.storage.FsspecStore`][] backed by fsspec's in-memory filesystem; otherwise a
+[`zarr.storage.ManagedMemoryStore`][] is used. See the [Storage guide](storage.md)
+for more details on stores, and
+[Persistent arrays](#persistent-arrays) for details on storing arrays in other stores.
+See [Data types](data_types.md) for an in-depth look at the data types supported
+by Zarr, and [Chunk size and shape](performance.md#chunk-size-and-shape) in the
+performance guide for guidance on choosing chunk shapes.
 
-See the [creation API documentation](../api/zarr/create.md) for more detailed information about
+See the [`zarr.create_array`][] API documentation for more detailed information about
 creating arrays.
 
 ## Reading and writing data
@@ -82,7 +82,7 @@ persistence of data between sessions. To do this, we can change the store
 argument to point to a filesystem path:
 
 ```python exec="true" session="arrays" source="above"
-z1 = zarr.create_array(store='data/example-1.zarr', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
+z1 = zarr.create_array(store='data/example-1.zarr', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32', overwrite=True)
 ```
 
 The array above will store its configuration metadata and all compressed chunk
@@ -110,12 +110,13 @@ print(np.all(z1[:] == z2[:]))
 
 If you are just looking for a fast and convenient way to save NumPy arrays to
 disk then load back into memory later, the functions
-[`zarr.save`][] and [`zarr.load`][] may be
-useful. E.g.:
+[`zarr.save`][], [`zarr.save_array`][] and [`zarr.load`][] may be
+useful. `zarr.save` refuses to replace an array that already exists at the
+path; `zarr.save_array` accepts `mode="w"` to do so. E.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 a = np.arange(10)
-zarr.save('data/example-2.zarr', a)
+zarr.save_array('data/example-2.zarr', a, mode="w")
 print(zarr.load('data/example-2.zarr'))
 ```
 
@@ -128,7 +129,7 @@ A Zarr array can be resized, which means that any of its dimensions can be
 increased or decreased in length. For example:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-z = zarr.create_array(store='data/example-3.zarr', shape=(10000, 10000), dtype='int32',chunks=(1000, 1000))
+z = zarr.create_array(store='data/example-3.zarr', shape=(10000, 10000), dtype='int32', chunks=(1000, 1000), overwrite=True)
 z[:] = 42
 print(f"Original shape: {z.shape}")
 z.resize((20000, 10000))
@@ -144,7 +145,7 @@ used to append data to any axis. E.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 a = np.arange(10000000, dtype='int32').reshape(10000, 1000)
-z = zarr.create_array(store='data/example-4.zarr', shape=a.shape, dtype=a.dtype, chunks=(1000, 100))
+z = zarr.create_array(store='data/example-4.zarr', shape=a.shape, dtype=a.dtype, chunks=(1000, 100), overwrite=True)
 z[:] = a
 print(f"Original shape: {z.shape}")
 z.append(a)
@@ -157,13 +158,15 @@ print(f"Shape after second append: {z.shape}")
 
 Zarr arrays are parametrized with a configuration that determines certain aspects of array behavior.
 
-We currently support three configuration options for arrays: `write_empty_chunks`, `read_missing_chunks`, and `order`.
+We currently support five configuration options for arrays: `order`, `write_empty_chunks`, `read_missing_chunks`, `sharding_coalesce_max_gap_bytes`, and `sharding_coalesce_max_bytes`.
 
 | field | type | default | description |
 | - |     - | - | - |
+| `order` | `Literal["C", "F"]` | `"C"` | The memory layout of arrays returned when reading data from the store.
 | `write_empty_chunks` | `bool` | `False` | Controls whether empty chunks are written to storage. See [Empty chunks](performance.md#empty-chunks).
 | `read_missing_chunks` | `bool` | `True` | Controls whether missing chunks are filled with the array's fill value on read. If `False`, reading missing chunks raises a [`ChunkNotFoundError`][zarr.errors.ChunkNotFoundError].
-| `order` | `Literal["C", "F"]` | `"C"` | The memory layout of arrays returned when reading data from the store.
+| `sharding_coalesce_max_gap_bytes` | `int` | `1048576` (1 MiB) | When reading multiple chunks from the same shard, nearby byte ranges separated by no more than this many bytes are coalesced into a single request to the store.
+| `sharding_coalesce_max_bytes` | `int` | `16777216` (16 MiB) | Requests will not be coalesced if doing so would exceed this byte size.
 
 !!! info
     The Zarr V3 spec states that readers should interpret an uninitialized chunk as containing the
@@ -195,7 +198,7 @@ print(arr_f.config)
 
 A number of different compressors can be used with Zarr. Zarr includes Blosc,
 Zstandard and Gzip compressors. Additional compressors are available through
-a separate package called [NumCodecs](https://numcodecs.readthedocs.io/) which provides various
+a separate package called [NumCodecs](https://numcodecs.readthedocs.io/en/stable/) which provides various
 compressor libraries including LZ4, Zlib, BZ2 and LZMA.
 Different compressors can be provided via the `compressors` keyword
 argument accepted by all array creation functions. For example:
@@ -203,7 +206,7 @@ argument accepted by all array creation functions. For example:
 ```python exec="true" session="arrays" source="above" result="ansi"
 compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=3, shuffle='bitshuffle')
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
-z = zarr.create_array(store='data/example-5.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
+z = zarr.create_array(store='data/example-5.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors, overwrite=True)
 z[:] = data
 print(z.compressors)
 ```
@@ -238,7 +241,7 @@ compressor.
 To create an array without any compression, set `compressors=None`:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-z_no_compress = zarr.create_array(store='data/example-uncompressed.zarr', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32', compressors=None)
+z_no_compress = zarr.create_array(store='data/example-uncompressed.zarr', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32', compressors=None, overwrite=True)
 print(f"Compressors: {z_no_compress.compressors}")
 ```
 
@@ -247,12 +250,12 @@ here is an array using Gzip compression, level 1:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
-z = zarr.create_array(store='data/example-6.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=zarr.codecs.GzipCodec(level=1))
+z = zarr.create_array(store='data/example-6.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=zarr.codecs.GzipCodec(level=1), overwrite=True)
 z[:] = data
 print(f"Compressors: {z.compressors}")
 ```
 
-Here is an example using LZMA from [NumCodecs](https://numcodecs.readthedocs.io/) with a custom filter pipeline including LZMA's
+Here is an example using LZMA from [NumCodecs](https://numcodecs.readthedocs.io/en/stable/) with a custom filter pipeline including LZMA's
 built-in delta filter:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
@@ -262,20 +265,7 @@ from zarr.codecs.numcodecs import LZMA
 lzma_filters = [dict(id=lzma.FILTER_DELTA, dist=4), dict(id=lzma.FILTER_LZMA2, preset=1)]
 compressors = LZMA(filters=lzma_filters)
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
-z = zarr.create_array(store='data/example-7.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
-print(f"Compressors: {z.compressors}")
-```
-
-To disable compression, set `compressors=None` when creating an array, e.g.:
-
-```python exec="true" session="arrays" source="above" result="ansi"
-z = zarr.create_array(
-    store='data/example-8.zarr',
-    shape=(100000000,),
-    chunks=(1000000,),
-    dtype='int32',
-    compressors=None
-)
+z = zarr.create_array(store='data/example-7.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors, overwrite=True)
 print(f"Compressors: {z.compressors}")
 ```
 
@@ -300,11 +290,11 @@ from zarr.codecs.numcodecs import Delta
 filters = [Delta(dtype='int32')]
 compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=1, shuffle='shuffle')
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
-z = zarr.create_array(store='data/example-9.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), filters=filters, compressors=compressors)
+z = zarr.create_array(store='data/example-9.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), filters=filters, compressors=compressors, overwrite=True)
 print(z.info_complete())
 ```
 
-For more information about available filter codecs, see the [Numcodecs](https://numcodecs.readthedocs.io/) documentation.
+For more information about available filter codecs, see the [Numcodecs](https://numcodecs.readthedocs.io/en/stable/) documentation.
 
 ## Advanced indexing
 
@@ -325,7 +315,7 @@ coordinates. E.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(10) ** 2
-z = zarr.create_array(store='data/example-10.zarr', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store='data/example-10.zarr', shape=data.shape, dtype=data.dtype, overwrite=True)
 z[:] = data
 print(z[:])
 print(z.get_coordinate_selection([2, 5]))
@@ -343,7 +333,7 @@ e.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
-z = zarr.create_array(store='data/example-11.zarr', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store='data/example-11.zarr', shape=data.shape, dtype=data.dtype, overwrite=True)
 z[:] = data
 print(z[:])
 ```
@@ -387,7 +377,7 @@ Items can also be extracted by providing a Boolean mask. E.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(10) ** 2
-z = zarr.create_array(store='data/example-12.zarr', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store='data/example-12.zarr', shape=data.shape, dtype=data.dtype, overwrite=True)
 z[:] = data
 print(z[:])
 ```
@@ -408,7 +398,7 @@ Here's a multidimensional example:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
-z = zarr.create_array(store='data/example-13.zarr', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store='data/example-13.zarr', shape=data.shape, dtype=data.dtype, overwrite=True)
 z[:] = data
 print(z[:])
 ```
@@ -451,7 +441,7 @@ example, this allows selecting a subset of rows and/or columns from a
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
-z = zarr.create_array(store='data/example-14.zarr', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store='data/example-14.zarr', shape=data.shape, dtype=data.dtype, overwrite=True)
 z[:] = data
 print(z[:])
 ```
@@ -461,11 +451,11 @@ print(z.get_orthogonal_selection(([0, 2], slice(None))))  # select first and thi
 ```
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-print(z.get_orthogonal_selection((slice(None), [1, 3])))  # select second and fourth columns)
+print(z.get_orthogonal_selection((slice(None), [1, 3])))  # select second and fourth columns
 ```
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-print(z.get_orthogonal_selection(([0, 2], [1, 3])))  # select rows [0, 2] and columns [1, 4]
+print(z.get_orthogonal_selection(([0, 2], [1, 3])))  # select rows [0, 2] and columns [1, 3]
 ```
 
 Data can also be modified, e.g.:
@@ -479,7 +469,7 @@ For convenience, the orthogonal indexing functionality is also available via the
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
-z = zarr.create_array(store='data/example-15.zarr', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store='data/example-15.zarr', shape=data.shape, dtype=data.dtype, overwrite=True)
 z[:] = data
 print(z.oindex[[0, 2], :])  # select first and third rows
 ```
@@ -489,7 +479,7 @@ print(z.oindex[:, [1, 3]])  # select second and fourth columns
 ```
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-print(z.oindex[[0, 2], [1, 3]])  # select rows [0, 2] and columns [1, 4]
+print(z.oindex[[0, 2], [1, 3]])  # select rows [0, 2] and columns [1, 3]
 ```
 
 ```python exec="true" session="arrays" source="above" result="ansi"
@@ -505,12 +495,12 @@ orthogonal indexing is also available directly on the array:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
-z = zarr.create_array(store='data/example-16.zarr', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store='data/example-16.zarr', shape=data.shape, dtype=data.dtype, overwrite=True)
 z[:] = data
 print(np.all(z.oindex[[0, 2], :] == z[[0, 2], :]))
 ```
 
-### Block Indexing
+### Block indexing
 
 Zarr also supports block indexing, which allows selections of whole chunks based on their
 logical indices along each dimension of an array. For example, this allows selecting
@@ -518,7 +508,7 @@ a subset of chunk aligned rows and/or columns from a 2-dimensional array. E.g.:
 
 ```python exec="true" session="arrays" source="above"
 data = np.arange(100).reshape(10, 10)
-z = zarr.create_array(store='data/example-17.zarr', shape=data.shape, dtype=data.dtype, chunks=(3, 3))
+z = zarr.create_array(store='data/example-17.zarr', shape=data.shape, dtype=data.dtype, chunks=(3, 3), overwrite=True)
 z[:] = data
 ```
 
@@ -551,7 +541,7 @@ print(z.blocks[0, 1:3])
 Data can also be modified. Let's start by a simple 2D array:
 
 ```python exec="true" session="arrays" source="above"
-z = zarr.create_array(store='data/example-18.zarr', shape=(6, 6), dtype=int, chunks=(2, 2))
+z = zarr.create_array(store='data/example-18.zarr', shape=(6, 6), dtype=int, chunks=(2, 2), overwrite=True)
 ```
 
 Set data for a selection of items:
@@ -575,15 +565,6 @@ Any combination of integer and slice can be used for block indexing:
 print(z.blocks[2, 1:3])
 ```
 
-```python exec="true" session="arrays" source="above" result="ansi"
-root = zarr.create_group('data/example-19.zarr')
-foo = root.create_array(name='foo', shape=(1000, 100), chunks=(10, 10), dtype='float32')
-bar = root.create_array(name='bar', shape=(100,), dtype='int32')
-foo[:, :] = np.random.random((1000, 100))
-bar[:] = np.arange(100)
-print(root.tree())
-```
-
 ## Sharding
 
 Using small chunk shapes in very large arrays can lead to a very large number of chunks.
@@ -596,12 +577,14 @@ This allows individual chunks to be read independently.
 However, when writing data, a full shard must be written in one go for optimal
 performance and to avoid concurrency issues.
 That means that shards are the units of writing and chunks are the units of reading.
-Users need to configure the chunk and shard shapes accordingly.
+Users need to configure the chunk and shard shapes accordingly. For guidance on
+choosing chunk and shard shapes, see [Sharding](performance.md#sharding) in the
+performance guide.
 
 Sharded arrays can be created by providing the `shards` parameter to [`zarr.create_array`][].
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-a = zarr.create_array('data/example-20.zarr', shape=(10000, 10000), shards=(1000, 1000), chunks=(100, 100), dtype='uint8')
+a = zarr.create_array('data/example-20.zarr', shape=(10000, 10000), shards=(1000, 1000), chunks=(100, 100), dtype='uint8', overwrite=True)
 a[:] = (np.arange(10000 * 10000) % 256).astype('uint8').reshape(10000, 10000)
 print(a.info_complete())
 ```
@@ -619,7 +602,7 @@ Without the `shards` argument, there would be 10,000 chunks stored as individual
     Because the feature is still stabilizing, it is disabled by default and
     must be explicitly enabled:
 
-    ```python exec="true" session="arrays-rectilinear"
+    ```python exec="true" session="arrays" source="above"
     import zarr
     zarr.config.set({"array.rectilinear_chunks": True})
     ```
@@ -641,7 +624,6 @@ To create an array with rectilinear chunks, pass a nested list to the `chunks`
 parameter where each inner list gives the chunk sizes along one dimension:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-zarr.config.set({"array.rectilinear_chunks": True})
 z = zarr.create_array(
     store=zarr.storage.MemoryStore(),
     shape=(60, 100),
@@ -691,8 +673,12 @@ z_regular = zarr.create_array(
 print(z_regular.write_chunk_sizes)
 ```
 
-Note that the `.chunks` property is only available for regular chunk grids. For
-rectilinear arrays, use `.write_chunk_sizes` (or `.read_chunk_sizes`) instead.
+Note that the `.chunks` property is not available for non-sharded rectilinear
+arrays, since there is no single uniform chunk shape — use `.write_chunk_sizes`
+(or `.read_chunk_sizes`) instead. Sharded arrays always have `.chunks`: it
+returns the inner chunk shape, which is always regular — the sharding codec
+requires a single uniform inner chunk shape, so only the shard boundaries can
+be rectilinear (see [Rectilinear shard boundaries](#rectilinear-shard-boundaries)).
 
 ### Resizing and appending
 
@@ -763,6 +749,17 @@ print(z[50:70, 40:60])
 Note that rectilinear inner chunks with sharding are not supported — only the
 shard boundaries can be rectilinear.
 
+For such arrays, `.chunks` returns the (regular) inner chunk shape, while
+`.shards` raises `NotImplementedError` since there is no single uniform shard
+shape — use `.write_chunk_sizes` for the per-dimension shard sizes. `.info`
+reports the shard shape as `<variable>`:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+print(f"chunks={z.chunks}")
+print(f"shard sizes={z.write_chunk_sizes}")
+print(z.info)
+```
+
 ### Metadata format
 
 Rectilinear chunk grid metadata uses run-length encoding (RLE) for compact
@@ -775,9 +772,9 @@ pairs are accepted:
 
 When writing, Zarr automatically compresses repeated values into RLE format.
 
-## Missing features in 3.0
+## Features not yet ported to Zarr-Python 3
 
-The following features have not been ported to 3.0 yet.
+The following Zarr-Python 2 features are not yet available in Zarr-Python 3.
 
 ### Copying and migrating data
 
