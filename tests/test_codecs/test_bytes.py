@@ -392,9 +392,13 @@ def test_uncompressed_partial_read_values(dtype: str, ndim: int) -> None:
     shape = {1: (1000,), 2: (100, 7), 3: (20, 5, 3)}[ndim]
     data = (np.arange(int(np.prod(shape))) % 200).astype(dtype).reshape(shape)
     arr, _ = _single_chunk_array(data, compressors=None)
-    for selection in [np.s_[3:9], np.s_[4], np.s_[-3:], np.s_[1:15:4]]:
+    selections: list[Any] = [np.s_[3:9], np.s_[4], np.s_[-3:], np.s_[1:15:4]]
+    for selection in selections:
         np.testing.assert_array_equal(arr[selection], data[selection])
     np.testing.assert_array_equal(arr.oindex[[1, 5, 2]], data[[1, 5, 2]])
+    mask = np.zeros(shape[0], dtype=bool)
+    mask[[2, 5, 11]] = True
+    np.testing.assert_array_equal(arr.oindex[mask], data[mask])
     coords = tuple(np.array([0, 6, 3]) % n for n in shape)
     np.testing.assert_array_equal(arr.vindex[coords], data[coords])
 
@@ -428,3 +432,22 @@ def test_uncompressed_partial_read_missing_chunk() -> None:
         store, shape=(100, 4), dtype="int16", chunks=(100, 4), compressors=None, fill_value=7
     )
     np.testing.assert_array_equal(arr[10:20], np.full((10, 4), 7, dtype="int16"))
+
+
+class _IgnoresRangeStore(zarr.storage.MemoryStore):
+    """A memory store that sends the whole value for every read, as an HTTP
+    server that ignores the Range header does."""
+
+    async def get(self, key: str, prototype: Any = None, byte_range: Any = None) -> Any:
+        return await super().get(key, prototype)
+
+
+def test_uncompressed_partial_read_store_ignores_range() -> None:
+    data = np.arange(400, dtype="<i2").reshape(100, 4)
+    store = _IgnoresRangeStore()
+    arr = zarr.create_array(
+        store, shape=data.shape, dtype=data.dtype, chunks=data.shape, compressors=None
+    )
+    arr[...] = data
+    np.testing.assert_array_equal(arr[50:52, 0], data[50:52, 0])
+    np.testing.assert_array_equal(arr[7], data[7])

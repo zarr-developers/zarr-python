@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from zarr.abc.store import ByteGetter
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, NDBuffer
-    from zarr.core.indexing import SelectorTuple
+    from zarr.core.indexing import Selector, SelectorTuple
 
 
 EndianLiteral = Literal["little", "big"]
@@ -156,13 +156,13 @@ class BytesCodec(ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin):
         selection is applied to them. A selection that touches every row reads
         the whole chunk, as before.
         """
-        rows = _selected_rows(selection, chunk_spec.shape)
-        if rows is None or rows == (0, chunk_spec.shape[0]):
+        window = _row_window(selection, chunk_spec.shape)
+        if window is None or window[:2] == (0, chunk_spec.shape[0]):
             chunk_bytes = await byte_getter.get(prototype=chunk_spec.prototype)
             if chunk_bytes is None:
                 return None
             return self._decode_sync(chunk_bytes, chunk_spec)[selection]
-        first, stop = rows
+        first, stop, rows_selection = window
         row_items = int(np.prod(chunk_spec.shape[1:]))
         row_bytes = chunk_spec.dtype.to_native_dtype().itemsize * row_items
         chunk_bytes = await byte_getter.get(
@@ -171,8 +171,12 @@ class BytesCodec(ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin):
         )
         if chunk_bytes is None:
             return None
+        if len(chunk_bytes) > (stop - first) * row_bytes:
+            # The store sent the whole chunk, as an HTTP server that ignores
+            # the Range header does.
+            chunk_bytes = chunk_bytes[first * row_bytes : stop * row_bytes]
         rows_spec = replace(chunk_spec, shape=(stop - first, *chunk_spec.shape[1:]))
-        return self._decode_sync(chunk_bytes, rows_spec)[_shift_rows(selection, first)]
+        return self._decode_sync(chunk_bytes, rows_spec)[rows_selection]
 
     def _encode_sync(
         self,
@@ -204,43 +208,38 @@ class BytesCodec(ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin):
         return input_byte_length
 
 
-def _selected_rows(selection: SelectorTuple, shape: tuple[int, ...]) -> tuple[int, int] | None:
-    """The first row along axis 0 that a selection touches and one past the last.
+def _row_window(
+    selection: SelectorTuple, shape: tuple[int, ...]
+) -> tuple[int, int, SelectorTuple] | None:
+    """The rows along axis 0 that a selection touches, and the selection relative to them.
 
-    Returns None when the rows cannot be determined, in which case the whole
-    chunk is read.
+    Returns the first row, one past the last row, and the selection shifted so
+    that it indexes an array holding only those rows. Returns None when the rows
+    cannot be determined, in which case the whole chunk is read.
     """
     if len(shape) == 0 or not isinstance(selection, tuple) or len(selection) == 0:
         return None
     first_axis = selection[0]
+    shifted: Selector
     if isinstance(first_axis, slice):
         rows = range(*first_axis.indices(shape[0]))
-        if len(rows) == 0:
+        if len(rows) == 0 or rows.step < 0:
             return None
-        return min(rows[0], rows[-1]), max(rows[0], rows[-1]) + 1
-    if isinstance(first_axis, int | np.integer):
-        row = int(first_axis) % shape[0]
-        return row, row + 1
-    if isinstance(first_axis, np.ndarray):
-        indices = np.nonzero(first_axis)[0] if first_axis.dtype == bool else first_axis
+        first, stop = rows[0], rows[-1] + 1
+        shifted = slice(0, stop - first, rows.step)
+    elif isinstance(first_axis, int | np.integer):
+        first = int(first_axis) % shape[0]
+        stop = first + 1
+        shifted = 0
+    elif isinstance(first_axis, np.ndarray):
+        if first_axis.dtype == bool:
+            indices = np.nonzero(first_axis)[0]
+        else:
+            indices = first_axis % shape[0]
         if indices.size == 0:
             return None
-        return int(indices.min()) % shape[0], int(indices.max()) % shape[0] + 1
-    return None
-
-
-def _shift_rows(selection: SelectorTuple, first: int) -> SelectorTuple:
-    """The selection relative to the rows fetched, which start at row `first`."""
-    first_axis = selection[0]
-    if isinstance(first_axis, slice):
-        start, stop, step = first_axis.start, first_axis.stop, first_axis.step
-        shifted: object = slice(
-            None if start is None else start - first,
-            None if stop is None else stop - first,
-            step,
-        )
-    elif isinstance(first_axis, np.ndarray) and first_axis.dtype == bool:
-        shifted = first_axis[first:]
+        first, stop = int(indices.min()), int(indices.max()) + 1
+        shifted = first_axis[first:stop] if first_axis.dtype == bool else indices - first
     else:
-        shifted = first_axis - first
-    return (shifted, *selection[1:])
+        return None
+    return first, stop, (shifted, *selection[1:])
