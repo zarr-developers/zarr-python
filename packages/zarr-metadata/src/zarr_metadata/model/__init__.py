@@ -1,16 +1,30 @@
 """In-memory models for Zarr metadata documents.
 
 Models are frozen dataclasses that hold a canonical, semantically lossless
-representation of the JSON documents; they never interpret extension points
-(codecs, chunk grids, data types). Validators check JSON structure, not domain validity.
-Each document concept gets a `validate_*` function returning every problem
-found (a `list[ValidationProblem]`, each with a machine-readable `kind`), an
-`is_*` type guard, and a `parse_*` function that narrows or raises
+representation of the JSON documents. Validators check a document's JSON
+structure and, in a v3 document, read each extension point (codecs, chunk
+grids, data types, ...) through the definition that claims its name in a
+scope, `CORE_AND_EXTENSIONS` unless a `context` is passed, and judge the
+fill value against the data type it names, the chunk grid against
+the shape, and the codecs as a pipeline, each against the chunk it is
+handed. Each document concept gets a
+`validate_*` function returning every problem found (a tuple of
+`ValidationProblem`, each with a machine-readable `kind`), an `is_*` type
+guard, and a `parse_*` function that narrows or raises
 `MetadataValidationError`. Model `from_json` / `from_key_value` constructors
 raise `MetadataValidationError` for every ingestion failure, including
-missing store keys and undecodable bytes.
+missing store keys and undecodable bytes, and the v3 ones take the same
+`context`.
 """
 
+from zarr_metadata._json import (
+    MetadataValidationError,
+    ProblemKind,
+    ValidationProblem,
+    is_json,
+    parse_json,
+    validate_json,
+)
 from zarr_metadata.model._array import (
     ZarrV2ArrayMetadata,
     ZarrV2ArrayMetadataPartial,
@@ -37,27 +51,18 @@ from zarr_metadata.model._validation import (
     GROUP_METADATA_REQUIRED_KEYS_V2,
     GROUP_METADATA_REQUIRED_KEYS_V3,
     GROUP_METADATA_STANDARD_KEYS_V3,
-    MetadataValidationError,
-    ProblemKind,
-    ValidationProblem,
     is_array_metadata_v2,
     is_array_metadata_v3,
     is_group_metadata_v2,
     is_group_metadata_v3,
-    is_json,
-    is_metadata_field_v3,
     parse_array_metadata_v2,
     parse_array_metadata_v3,
     parse_group_metadata_v2,
     parse_group_metadata_v3,
-    parse_json,
-    parse_metadata_field_v3,
     validate_array_metadata_v2,
     validate_array_metadata_v3,
     validate_group_metadata_v2,
     validate_group_metadata_v3,
-    validate_json,
-    validate_metadata_field_v3,
 )
 
 # Store keys are facts about the on-disk specs, so they are defined in the
@@ -78,6 +83,11 @@ from zarr_metadata.v2.consolidated import (
 from zarr_metadata.v2.group import (
     ZARR_V2_GROUP_METADATA_STORE_KEY,
     ZarrV2GroupMetadataStoreKey,
+)
+from zarr_metadata.v3._common import (
+    is_metadata_field_v3,
+    parse_metadata_field_v3,
+    validate_metadata_field_v3,
 )
 from zarr_metadata.v3.array import (
     ZARR_V3_ARRAY_METADATA_STORE_KEY,
