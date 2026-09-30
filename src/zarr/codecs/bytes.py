@@ -5,7 +5,10 @@ import warnings
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, ClassVar, Final, Literal
 
-from zarr.abc.codec import ArrayBytesCodec
+import numpy as np
+
+from zarr.abc.codec import ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin
+from zarr.abc.store import RangeByteRequest
 from zarr.codecs._deprecated_enum import _coerce_enum_input, _DeprecatedStrEnumMeta
 from zarr.core.common import JSON, parse_named_configuration
 from zarr.core.dtype.common import HasEndianness
@@ -14,8 +17,10 @@ from zarr.core.dtype.npy.structured import Struct
 if TYPE_CHECKING:
     from typing import Self
 
+    from zarr.abc.store import ByteGetter
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, NDBuffer
+    from zarr.core.indexing import SelectorTuple
 
 
 EndianLiteral = Literal["little", "big"]
@@ -40,7 +45,7 @@ def _parse_endian(data: object) -> EndianLiteral:
 
 
 @dataclass(frozen=True)
-class BytesCodec(ArrayBytesCodec):
+class BytesCodec(ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin):
     """bytes codec"""
 
     is_fixed_size = True
@@ -137,6 +142,38 @@ class BytesCodec(ArrayBytesCodec):
     ) -> NDBuffer:
         return self._decode_sync(chunk_bytes, chunk_spec)
 
+    async def _decode_partial_single(
+        self,
+        byte_getter: ByteGetter,
+        selection: SelectorTuple,
+        chunk_spec: ArraySpec,
+    ) -> NDBuffer | None:
+        """Read only the part of an uncompressed chunk that a selection needs.
+
+        The chunk is stored in C order, so each row along its first axis is a
+        contiguous run of bytes. The rows from the first to the last one the
+        selection touches are fetched with a single range request, and the
+        selection is applied to them. A selection that touches every row reads
+        the whole chunk, as before.
+        """
+        rows = _selected_rows(selection, chunk_spec.shape)
+        if rows is None or rows == (0, chunk_spec.shape[0]):
+            chunk_bytes = await byte_getter.get(prototype=chunk_spec.prototype)
+            if chunk_bytes is None:
+                return None
+            return self._decode_sync(chunk_bytes, chunk_spec)[selection]
+        first, stop = rows
+        row_items = int(np.prod(chunk_spec.shape[1:]))
+        row_bytes = chunk_spec.dtype.to_native_dtype().itemsize * row_items
+        chunk_bytes = await byte_getter.get(
+            prototype=chunk_spec.prototype,
+            byte_range=RangeByteRequest(first * row_bytes, stop * row_bytes),
+        )
+        if chunk_bytes is None:
+            return None
+        rows_spec = replace(chunk_spec, shape=(stop - first, *chunk_spec.shape[1:]))
+        return self._decode_sync(chunk_bytes, rows_spec)[_shift_rows(selection, first)]
+
     def _encode_sync(
         self,
         chunk_array: NDBuffer,
@@ -165,3 +202,45 @@ class BytesCodec(ArrayBytesCodec):
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length
+
+
+def _selected_rows(selection: SelectorTuple, shape: tuple[int, ...]) -> tuple[int, int] | None:
+    """The first row along axis 0 that a selection touches and one past the last.
+
+    Returns None when the rows cannot be determined, in which case the whole
+    chunk is read.
+    """
+    if len(shape) == 0 or not isinstance(selection, tuple) or len(selection) == 0:
+        return None
+    first_axis = selection[0]
+    if isinstance(first_axis, slice):
+        rows = range(*first_axis.indices(shape[0]))
+        if len(rows) == 0:
+            return None
+        return min(rows[0], rows[-1]), max(rows[0], rows[-1]) + 1
+    if isinstance(first_axis, int | np.integer):
+        row = int(first_axis) % shape[0]
+        return row, row + 1
+    if isinstance(first_axis, np.ndarray):
+        indices = np.nonzero(first_axis)[0] if first_axis.dtype == bool else first_axis
+        if indices.size == 0:
+            return None
+        return int(indices.min()) % shape[0], int(indices.max()) % shape[0] + 1
+    return None
+
+
+def _shift_rows(selection: SelectorTuple, first: int) -> SelectorTuple:
+    """The selection relative to the rows fetched, which start at row `first`."""
+    first_axis = selection[0]
+    if isinstance(first_axis, slice):
+        start, stop, step = first_axis.start, first_axis.stop, first_axis.step
+        shifted: object = slice(
+            None if start is None else start - first,
+            None if stop is None else stop - first,
+            step,
+        )
+    elif isinstance(first_axis, np.ndarray) and first_axis.dtype == bool:
+        shifted = first_axis[first:]
+    else:
+        shifted = first_axis - first
+    return (shifted, *selection[1:])

@@ -338,3 +338,93 @@ def test_bytes_codec_evolve_structured_single_byte_fields_clears_endian() -> Non
     spec = _make_array_spec(dtype)
     evolved = codec.evolve_from_array_spec(spec)
     assert evolved.endian is None
+
+
+class _RangeLoggingStore(zarr.storage.MemoryStore):
+    """A memory store that records the byte ranges it serves for chunk keys."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.reads: list[tuple[str, Any, int]] = []
+
+    async def get(self, key: str, prototype: Any = None, byte_range: Any = None) -> Any:
+        buf = await super().get(key, prototype, byte_range)
+        if buf is not None and not key.endswith("zarr.json"):
+            self.reads.append((key, byte_range, len(buf)))
+        return buf
+
+
+def _single_chunk_array(
+    data: np.ndarray[Any, Any], **kwargs: Any
+) -> tuple[Any, _RangeLoggingStore]:
+    store = _RangeLoggingStore()
+    arr = zarr.create_array(
+        store, shape=data.shape, dtype=data.dtype, chunks=data.shape, fill_value=0, **kwargs
+    )
+    arr[...] = data
+    store.reads.clear()
+    return arr, store
+
+
+@pytest.mark.parametrize(
+    ("selection", "rows_read"),
+    [
+        (np.s_[500:600, 3], 100),
+        (np.s_[500:600], 100),
+        (np.s_[777, 5], 1),
+        (np.s_[-1], 1),
+        (np.s_[10:20:3, ::2], 10),  # rows 10 to 19 are fetched
+        (np.s_[...], 10_000),
+    ],
+)
+def test_uncompressed_partial_read(selection: Any, rows_read: int) -> None:
+    """Reading part of an uncompressed chunk fetches only the rows it touches."""
+    data = np.arange(100_000, dtype="int16").reshape(10_000, 10)
+    arr, store = _single_chunk_array(data, compressors=None)
+    np.testing.assert_array_equal(arr[selection], data[selection])
+    assert sum(n for *_, n in store.reads) == rows_read * 10 * 2
+
+
+@pytest.mark.parametrize("dtype", [">u2", "<f8", "u1", "bool"])
+@pytest.mark.parametrize("ndim", [1, 2, 3])
+def test_uncompressed_partial_read_values(dtype: str, ndim: int) -> None:
+    """Partial reads return the same values as numpy for several dtypes, byte orders, and shapes."""
+    shape = {1: (1000,), 2: (100, 7), 3: (20, 5, 3)}[ndim]
+    data = (np.arange(int(np.prod(shape))) % 200).astype(dtype).reshape(shape)
+    arr, _ = _single_chunk_array(data, compressors=None)
+    for selection in [np.s_[3:9], np.s_[4], np.s_[-3:], np.s_[1:15:4]]:
+        np.testing.assert_array_equal(arr[selection], data[selection])
+    np.testing.assert_array_equal(arr.oindex[[1, 5, 2]], data[[1, 5, 2]])
+    coords = tuple(np.array([0, 6, 3]) % n for n in shape)
+    np.testing.assert_array_equal(arr.vindex[coords], data[coords])
+
+
+def test_uncompressed_partial_read_across_chunks() -> None:
+    """A selection spanning several chunks reads only the touched rows of each."""
+    data = np.arange(40_000, dtype="int32").reshape(4000, 10)
+    store = _RangeLoggingStore()
+    arr = zarr.create_array(
+        store, shape=data.shape, dtype="int32", chunks=(1000, 10), compressors=None
+    )
+    arr[...] = data
+    store.reads.clear()
+    np.testing.assert_array_equal(arr[990:1010, 2], data[990:1010, 2])
+    assert sorted((key, n) for key, _, n in store.reads) == [("c/0/0", 400), ("c/1/0", 400)]
+
+
+def test_compressed_chunks_are_read_whole() -> None:
+    """With a compressor the chunk bytes cannot be split, so the whole chunk is fetched."""
+    data = np.arange(100_000, dtype="int16").reshape(10_000, 10)
+    arr, store = _single_chunk_array(data)  # default compressor
+    np.testing.assert_array_equal(arr[500:600, 3], data[500:600, 3])
+    ((_, byte_range, _),) = store.reads
+    assert byte_range is None
+
+
+def test_uncompressed_partial_read_missing_chunk() -> None:
+    """An unwritten chunk reads as the fill value without fetching anything."""
+    store = _RangeLoggingStore()
+    arr = zarr.create_array(
+        store, shape=(100, 4), dtype="int16", chunks=(100, 4), compressors=None, fill_value=7
+    )
+    np.testing.assert_array_equal(arr[10:20], np.full((10, 4), 7, dtype="int16"))
