@@ -4132,6 +4132,24 @@ type ShardsLike = (
 )
 
 
+async def _copy_from_array(result: AnyAsyncArray, data: AnyArray) -> None:
+    """
+    Stream the data of `data` into `result`, one shard region of `result` at a time.
+
+    `result` must have the shape of `data`.
+    """
+
+    async def _copy_array_region(chunk_coords: tuple[int, ...] | slice, _data: AnyArray) -> None:
+        arr = await _data.async_array.getitem(chunk_coords)
+        await result.setitem(chunk_coords, arr)
+
+    await concurrent_map(
+        [(region, data) for region in result._iter_shard_regions()],
+        _copy_array_region,
+        zarr.core.config.config.get("async.concurrency"),
+    )
+
+
 async def from_array(
     store: StoreLike,
     *,
@@ -4389,19 +4407,7 @@ async def from_array(
 
     if write_data:
         if isinstance(data, Array):
-
-            async def _copy_array_region(
-                chunk_coords: tuple[int, ...] | slice, _data: AnyArray
-            ) -> None:
-                arr = await _data.async_array.getitem(chunk_coords)
-                await result.setitem(chunk_coords, arr)
-
-            # Stream data from the source array to the new array
-            await concurrent_map(
-                [(region, data) for region in result._iter_shard_regions()],
-                _copy_array_region,
-                zarr.core.config.config.get("async.concurrency"),
-            )
+            await _copy_from_array(result, data)
         else:
 
             async def _copy_arraylike_region(chunk_coords: slice, _data: NDArrayLike) -> None:
