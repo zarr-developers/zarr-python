@@ -56,6 +56,17 @@ RESAVE_HINT: Final = (
     "if a group holds consolidated metadata for the array, then also call "
     "`zarr.consolidate_metadata` on that group."
 )
+"""How to store the upgrade of a document whose array holds data."""
+
+RECREATE_HINT: Final = (
+    "The array holds only its fill value, so recreate it with the chunk shape you want; "
+    "nothing is lost. To keep it instead, store valid metadata: open the array writable and "
+    "call `array.update_attributes({})`; if a group holds consolidated metadata for the "
+    "array, then also call `zarr.consolidate_metadata` on that group."
+)
+"""How to act on a document whose array can hold no data: a stored chunk size of 0 is read
+as the smallest chunk size, which is a poor chunk shape for the data the array grows into,
+and a re-save would keep it."""
 
 
 def mark_upgraded[M](
@@ -70,8 +81,9 @@ def mark_upgraded[M](
     upgrades whose `readings` `upgrade_array_document` returned, if any. If a reading
     moves chunks, keep a copy of `stored` as `_stored_document` on `metadata`, so the
     array stores the upgrade before it writes chunks under it and consolidated metadata
-    stores it as it was stored. If `warn`, warn once with the readings' warnings,
-    naming the array at `path` when the caller knows it."""
+    stores it as it was stored. If `warn`, warn once with the readings' warnings (each
+    says what the user must act on and how), naming the array at `path` when the caller
+    knows it."""
     if any(reading.moves_chunks for reading in readings):
         object.__setattr__(metadata, "_stored_document", copy.deepcopy(stored))
     messages = [reading.warning for reading in readings if reading.warning is not None]
@@ -79,7 +91,7 @@ def mark_upgraded[M](
         subject = "" if path is None else f"Array {path!r}: "
         # The synchronous API parses metadata on zarr's IO thread, whose stack holds no
         # user code, so the warning points at the `from_dict` that read the document.
-        warnings.warn(f"{subject}{' '.join(messages)} {RESAVE_HINT}", ZarrUserWarning, stacklevel=2)
+        warnings.warn(f"{subject}{' '.join(messages)}", ZarrUserWarning, stacklevel=2)
     return metadata
 
 
@@ -127,11 +139,10 @@ def _read_chunk_size(
                 unit,
                 True,
                 (
-                    "1, as no chunk can be stored under a chunk size of 0, so the array "
-                    "holds only its fill value"
+                    "1, as no chunk can be stored under a chunk size of 0"
                     if unit == 1
                     else f"{unit}, the inner chunk size, as no chunk can be stored under a "
-                    "chunk size of 0, so the array holds only its fill value"
+                    "chunk size of 0"
                 ),
             )
         case list() if not any(isinstance(edge, list) for edge in size):
@@ -145,9 +156,10 @@ def _read_chunk_shape(
     """Read a stored regular chunk shape, entry by entry (see `_read_chunk_size`), for
     axes of lengths `spans` whose chunks are multiples of `units` (1 where not given).
 
-    Returns the chunk shape and how it was read if any entry was read as another value,
-    else `None` (the warning is a sentence saying how the chunk shape was read); `None`
-    if it cannot be read.
+    Returns the chunk shape and how it was read if any entry was read as another value
+    (the warning says how the chunk shape was read and, as the array then holds only its
+    fill value, recommends recreating it, see `RECREATE_HINT`), else `None`; `None` if
+    it cannot be read.
     """
     if not (isinstance(stored, list) and len(stored) == len(spans)):
         return None
@@ -170,7 +182,7 @@ def _read_chunk_shape(
     warning = (
         f"The stored chunk shape {_abbreviate(stored)} is invalid: chunk sizes must be "
         f"integers of at least 1. It is read as {_abbreviate(edges)}, reading "
-        f"{'; '.join(readings)}."
+        f"{'; '.join(readings)}. {RECREATE_HINT}"
         if readings
         else None
     )
@@ -276,7 +288,7 @@ def _invalid_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, Reading]
         f"lengths in dimensions {edge_axes}, which only a rectilinear chunk grid can declare. "
         "It is read as that rectilinear chunk grid. Re-saving the metadata stores that "
         "rectilinear chunk grid, so each step that follows requires "
-        "`zarr.config.set({'array.rectilinear_chunks': True})`."
+        f"`zarr.config.set({{'array.rectilinear_chunks': True}})`. {RESAVE_HINT}"
     )
     rectilinear: JSON = {
         "name": "rectilinear",
