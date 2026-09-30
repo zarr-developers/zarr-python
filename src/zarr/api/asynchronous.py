@@ -435,6 +435,7 @@ async def save(
     *args: NDArrayLike,
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
+    storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to save
 ) -> None:
     """Convenience function to save an array or group of arrays to the local file system.
@@ -451,6 +452,9 @@ async def save(
         The zarr format to use when saving.
     path : str or None, optional
         The path within the group where the arrays will be saved.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
     **kwargs
         NumPy arrays with data to save.
     """
@@ -458,9 +462,18 @@ async def save(
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
     if len(args) == 1 and len(kwargs) == 0:
-        await save_array(store, args[0], zarr_format=zarr_format, path=path)
+        await save_array(
+            store, args[0], zarr_format=zarr_format, path=path, storage_options=storage_options
+        )
     else:
-        await save_group(store, *args, zarr_format=zarr_format, path=path, **kwargs)
+        await save_group(
+            store,
+            *args,
+            zarr_format=zarr_format,
+            path=path,
+            storage_options=storage_options,
+            **kwargs,
+        )
 
 
 async def save_array(
@@ -566,16 +579,10 @@ async def save_group(
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
     aws = []
+    # `store_path` already consumed `storage_options`, so passing them on again would
+    # make `make_store_path` reject them as unused.
     for i, arr in enumerate(args):
-        aws.append(
-            save_array(
-                store_path,
-                arr,
-                zarr_format=zarr_format,
-                path=f"arr_{i}",
-                storage_options=storage_options,
-            )
-        )
+        aws.append(save_array(store_path, arr, zarr_format=zarr_format, path=f"arr_{i}"))
     for k, arr in kwargs.items():
         aws.append(save_array(store_path, arr, zarr_format=zarr_format, path=k))
     await asyncio.gather(*aws)
@@ -974,7 +981,7 @@ async def create(
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
-        [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+        [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthBytes`][]. In these cases,
         the default filters contains a single element which is a codec specific to that particular data type.
 
         To create an array with no filters, provide an empty iterable or the value `None`.

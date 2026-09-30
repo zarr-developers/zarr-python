@@ -323,6 +323,23 @@ def test_array_metadata_extra_fields_rejected(case: ExpectFail[dict[str, Any]]) 
         ArrayV3Metadata.from_dict(case.input)
 
 
+@pytest.mark.parametrize("value", [{"must_understand": True}, {}, 42])
+def test_init_extra_fields_disallowed(value: object) -> None:
+    """Extra field values that are not objects with `must_understand: false` are rejected."""
+    with pytest.raises(MetadataValidationError, match="disallowed extra fields"):
+        ArrayV3Metadata(
+            shape=(10,),
+            data_type=UInt8(),
+            chunk_grid={"name": "regular", "configuration": {"chunk_shape": (10,)}},
+            chunk_key_encoding={"name": "default", "configuration": {"separator": "/"}},
+            fill_value=0,
+            codecs=({"name": "bytes", "configuration": {"endian": "little"}},),
+            attributes={},
+            dimension_names=None,
+            extra_fields={"my_ext": value},  # type: ignore[dict-item]
+        )
+
+
 def test_init_extra_fields_collision() -> None:
     """Extra field keys that collide with reserved metadata field names are rejected."""
     extra_fields: dict[str, object] = {"shape": (10,), "data_type": "uint8"}
