@@ -230,6 +230,17 @@ async def test_store_path_invalid_mode_raises(
         await StorePath.open(LocalStore(str(tmp_path), read_only=modes[0]), path="", mode=modes[1])  # type: ignore[arg-type]
 
 
+async def test_store_path_open_w_keeps_keys(tmp_path: Path) -> None:
+    """
+    Opening a store path with mode 'w' leaves the keys under it in place: the node created
+    at the path replaces them once it is valid, not the act of opening the path.
+    """
+    store = LocalStore(str(tmp_path))
+    await (StorePath(store, "root") / "key").set(cpu.Buffer.from_bytes(b"data"))
+    store_path = await StorePath.open(store, path="root", mode="w")
+    assert not await store_path.is_empty()
+
+
 async def test_make_store_invalid_mode_raises() -> None:
     """
     Test that make_store raises ValueError for a mode outside the access-mode literals.
