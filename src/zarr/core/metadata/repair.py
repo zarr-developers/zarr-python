@@ -1,21 +1,21 @@
-"""Upgrades that read invalid stored array metadata documents written by older software.
+"""Repairs that read invalid stored array metadata documents written by older software.
 
-This is the only place invalid metadata is read leniently. An upgrade maps a stored
+This is the only place invalid metadata is read leniently. A repair maps a stored
 array metadata document (parsed JSON) to a valid one. `ArrayV2Metadata.from_dict` and
-`ArrayV3Metadata.from_dict` apply the upgrades for their Zarr format, so every path
+`ArrayV3Metadata.from_dict` apply the repairs for their Zarr format, so every path
 that parses a stored document, including consolidated metadata, goes through them.
 
 A reading warns only where the user must act on it; a reading that gives what zarr
-read from the same document before these upgrades existed is silent, so a document
+read from the same document before these repairs existed is silent, so a document
 that opened without a warning still does. The warnings are given once per document,
-after the upgraded document has passed the metadata constructor, so an invalid
+after the repaired document has passed the metadata constructor, so an invalid
 document raises its own error, not a warning about how it was read. Metadata read
-from a document whose upgrade moves chunks (a chunk size read as another size) is
-marked (see `mark_upgraded`), silent or not, so the array stores the upgrade before it
-writes chunks under it. An upgrade that only respells a value zarr already read the
+from a document whose repair moves chunks (a chunk size read as another size) is
+marked (see `mark_repaired`), silent or not, so the array stores the repair before it
+writes chunks under it. A repair that only respells a value zarr already read the
 same way (`true` as 1, `4.0` as 4) moves no chunks, so it is not marked.
 
-To read another kind of invalid document, add an upgrade to `ARRAY_UPGRADES`.
+To read another kind of invalid document, add a repair to `ARRAY_REPAIRS`.
 """
 
 from __future__ import annotations
@@ -36,18 +36,18 @@ type ArrayDocument = Mapping[str, JSON]
 
 
 class Reading(NamedTuple):
-    """How an upgrade read a stored document."""
+    """How a repair read a stored document."""
 
     moves_chunks: bool
-    """Whether chunks written under the upgraded document are not where a reader of the
-    stored document looks for them, so the array must store the upgrade before it
+    """Whether chunks written under the repaired document are not where a reader of the
+    stored document looks for them, so the array must store the repair before it
     writes chunks."""
     warning: str | None
     """What the user must act on, if anything."""
 
 
-type Upgrade = Callable[[ArrayDocument], tuple[ArrayDocument, Reading] | None]
-"""Returns `None` if the document needs no upgrade, else the upgraded document and how
+type Repair = Callable[[ArrayDocument], tuple[ArrayDocument, Reading] | None]
+"""Returns `None` if the document needs no repair, else the repaired document and how
 it was read."""
 
 RECREATE_HINT: Final = (
@@ -64,7 +64,7 @@ as the smallest chunk size, which is a poor chunk shape for the data the array g
 and a re-save would keep it."""
 
 
-def mark_upgraded[M](
+def mark_repaired[M](
     metadata: M,
     stored: ArrayDocument,
     readings: Sequence[Reading],
@@ -73,9 +73,9 @@ def mark_upgraded[M](
     warn: bool = True,
 ) -> M:
     """Record that `metadata` was read from the document `stored`, which needed the
-    upgrades whose `readings` `upgrade_array_document` returned, if any. If a reading
+    repairs whose `readings` `repair_array_document` returned, if any. If a reading
     moves chunks, keep a copy of `stored` as `_stored_document` on `metadata`, so the
-    array stores the upgrade before it writes chunks under it and consolidated metadata
+    array stores the repair before it writes chunks under it and consolidated metadata
     stores it as it was stored. If `warn`, warn once with the readings' warnings (each
     says what the user must act on and how), naming the array at `path` when the caller
     knows it."""
@@ -142,7 +142,7 @@ def _read_chunk_shape(
     Returns the chunk shape and how it was read, if any entry was read as another value
     (the warning says how the chunk shape was read and, as the array then holds only its
     fill value, recommends recreating it, see `RECREATE_HINT`); `None` if it cannot be
-    read or needs no upgrade.
+    read or needs no repair.
     """
     if not (isinstance(stored, list) and len(stored) == len(spans)):
         return None
@@ -190,22 +190,22 @@ def _read_codec(codec: JSON) -> JSON | None:
     no chunks."""
     match codec:
         case {"name": "sharding_indexed", "configuration": Mapping() as configuration}:
-            upgraded: dict[str, JSON] = {}
+            repaired: dict[str, JSON] = {}
             stored = configuration.get("chunk_shape")
             if isinstance(stored, list) and (
                 read := _read_chunk_shape(stored, [None] * len(stored))
             ):
-                upgraded["chunk_shape"] = read[0]
+                repaired["chunk_shape"] = read[0]
             if isinstance(codecs := configuration.get("codecs"), list) and (
                 inner := _read_codecs(codecs)
             ):
-                upgraded["codecs"] = inner
-            if not upgraded:
+                repaired["codecs"] = inner
+            if not repaired:
                 return None
             # The mapping pattern does not narrow `codec` for mypy.
             return {
                 **cast("Mapping[str, JSON]", codec),
-                "configuration": {**configuration, **upgraded},
+                "configuration": {**configuration, **repaired},
             }
     return None
 
@@ -251,8 +251,8 @@ def _invalid_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, Reading]
         return None
     match _read_chunk_shape(configuration.get("chunk_shape"), shape, units):
         case chunk_shape, reading:
-            upgraded = {**configuration, "chunk_shape": chunk_shape}
-            return {**doc, "chunk_grid": {**grid, "configuration": upgraded}}, reading
+            repaired = {**configuration, "chunk_shape": chunk_shape}
+            return {**doc, "chunk_grid": {**grid, "configuration": repaired}}, reading
     return None
 
 
@@ -308,33 +308,33 @@ def _invalid_edge_lengths_v3(doc: ArrayDocument) -> tuple[ArrayDocument, Reading
     read = [_read_rectilinear_axis(axis) for axis in stored]
     if not _respelled(read, stored):
         return None
-    upgraded = {**configuration, "chunk_shapes": read}
+    repaired = {**configuration, "chunk_shapes": read}
     # A stored edge is read as the value it equals, so the reading moves no chunks.
-    return {**doc, "chunk_grid": {**grid, "configuration": upgraded}}, Reading(False, None)
+    return {**doc, "chunk_grid": {**grid, "configuration": repaired}}, Reading(False, None)
 
 
-ARRAY_UPGRADES: Final[Mapping[ZarrFormat, tuple[Upgrade, ...]]] = {
+ARRAY_REPAIRS: Final[Mapping[ZarrFormat, tuple[Repair, ...]]] = {
     2: (_invalid_chunk_sizes_v2,),
     # The inner chunk shape is read first: it gives the unit of the outer chunk shape.
-    # The rectilinear edge lengths are read last, after any upgrade that yields a
+    # The rectilinear edge lengths are read last, after any repair that yields a
     # rectilinear chunk grid.
     3: (_invalid_inner_chunk_sizes_v3, _invalid_chunk_sizes_v3, _invalid_edge_lengths_v3),
 }
-"""The upgrades of an array document of each Zarr format, applied in order."""
+"""The repairs of an array document of each Zarr format, applied in order."""
 
 
-def upgrade_array_document(
+def repair_array_document(
     doc: ArrayDocument, zarr_format: ZarrFormat
 ) -> tuple[ArrayDocument, list[Reading]]:
-    """Apply the upgrades for `zarr_format` to a stored array metadata document.
+    """Apply the repairs for `zarr_format` to a stored array metadata document.
 
-    Returns the upgraded document and the reading of each upgrade that changed it, for
-    `mark_upgraded` once the document has been validated.
+    Returns the repaired document and the reading of each repair that changed it, for
+    `mark_repaired` once the document has been validated.
     """
     readings: list[Reading] = []
-    for upgrade in ARRAY_UPGRADES[zarr_format]:
-        upgraded = upgrade(doc)
-        if upgraded is not None:
-            doc, reading = upgraded
+    for repair in ARRAY_REPAIRS[zarr_format]:
+        repaired = repair(doc)
+        if repaired is not None:
+            doc, reading = repaired
             readings.append(reading)
     return doc, readings

@@ -10,7 +10,7 @@ from zarr.core._json import buffer_to_json_object, json_equal
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
-from zarr.core.metadata.upgrades import mark_upgraded, upgrade_array_document
+from zarr.core.metadata.repair import mark_repaired, repair_array_document
 from zarr.errors import ArrayNotFoundError, ContainsArrayError
 from zarr.storage._common import StorePath, ensure_no_existing_node
 
@@ -116,9 +116,9 @@ ARRAY_DOCUMENTS: Final[Mapping[ZarrFormat, tuple[str, ...]]] = {
 
 def parse_stored_array(documents: Mapping[str, Buffer], zarr_format: ZarrFormat) -> ArrayMetadata:
     """The metadata of an array from its documents (by store key, see `ARRAY_DOCUMENTS`),
-    read with the upgrades but without their warnings (whoever asks has warned, or reads
-    metadata built in code), and marked (see `mark_upgraded`) if they had to be
-    upgraded. Raises `ArrayNotFoundError` if there is no array document among them."""
+    read with the repairs but without their warnings (whoever asks has warned, or reads
+    metadata built in code), and marked (see `mark_repaired`) if they had to be
+    repaired. Raises `ArrayNotFoundError` if there is no array document among them."""
     from zarr.core.array import (
         _array_metadata_dict_v2,
         _array_metadata_dict_v3,
@@ -131,8 +131,8 @@ def parse_stored_array(documents: Mapping[str, Buffer], zarr_format: ZarrFormat)
         stored = _array_metadata_dict_v3(documents[ZARR_JSON])
     else:
         raise ArrayNotFoundError(f"No Zarr format {zarr_format} array metadata document.")
-    upgraded, readings = upgrade_array_document(stored, zarr_format)
-    return mark_upgraded(parse_array_metadata(dict(upgraded)), stored, readings, None, warn=False)
+    repaired, readings = repair_array_document(stored, zarr_format)
+    return mark_repaired(parse_array_metadata(dict(repaired)), stored, readings, None, warn=False)
 
 
 def _build_parents(store_path: StorePath, zarr_format: ZarrFormat) -> dict[str, GroupMetadata]:

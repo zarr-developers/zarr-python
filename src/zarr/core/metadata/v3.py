@@ -40,9 +40,9 @@ from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
-from zarr.core.metadata.upgrades import (
-    mark_upgraded,
-    upgrade_array_document,
+from zarr.core.metadata.repair import (
+    mark_repaired,
+    repair_array_document,
 )
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
@@ -54,7 +54,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
-    from zarr.core.metadata.upgrades import ArrayDocument
+    from zarr.core.metadata.repair import ArrayDocument
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
@@ -499,8 +499,8 @@ class ArrayV3Metadata(Metadata):
     storage_transformers: tuple[dict[str, JSON], ...]
     extra_fields: dict[str, AllowedExtraField]
     _stored_document: ClassVar[ArrayDocument | None] = None
-    """The stored document `from_dict` read this metadata from, if it had to upgrade it
-    (set on the instance by `mark_upgraded`): the store may still hold it."""
+    """The stored document `from_dict` read this metadata from, if it had to repair it
+    (set on the instance by `mark_repaired`): the store may still hold it."""
 
     def __init__(
         self,
@@ -645,11 +645,11 @@ class ArrayV3Metadata(Metadata):
     @classmethod
     def from_dict(cls, data: dict[str, JSON], *, path: str | None = None) -> Self:
         """Read a stored `zarr.json` array document. An invalid document that
-        `zarr.core.metadata.upgrades` can read is read as upgraded; a reading the user
+        `zarr.core.metadata.repair` can read is read as repaired; a reading the user
         must act on warns, naming the array at `path`."""
-        upgraded, readings = upgrade_array_document(data, 3)
+        repaired, readings = repair_array_document(data, 3)
         # a new dict, because we are modifying it
-        _data = dict(upgraded)
+        _data = dict(repaired)
 
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format(_data.pop("zarr_format"))
@@ -691,7 +691,7 @@ class ArrayV3Metadata(Metadata):
             extra_fields=allowed_extra_fields,
             storage_transformers=_data_typed.get("storage_transformers", ()),  # type: ignore[arg-type]
         )
-        return mark_upgraded(metadata, data, readings, path)
+        return mark_repaired(metadata, data, readings, path)
 
     def to_dict(self) -> dict[str, JSON]:
         out_dict = super().to_dict()

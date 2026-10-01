@@ -149,7 +149,7 @@ class ArrayLifecycle(RuleBasedStateMachine):
             warnings.simplefilter("always", ZarrUserWarning)
             arr = zarr.open_array(self.store, path=self.path, mode="r+")
         # A stored chunk size of 0 is read silently on an empty axis; on a non-empty one
-        # it warns that the axis holds only the fill value. Either way it is upgraded.
+        # it warns that the axis holds only the fill value. Either way it is repaired.
         warned = any(issubclass(w.category, ZarrUserWarning) for w in record)
         must_warn = any(self.shape[axis] > 0 for axis in self.legacy_axes)
         assert warned is must_warn, [str(w.message) for w in record]
@@ -277,7 +277,7 @@ class ArrayLifecycle(RuleBasedStateMachine):
     # ------------------------------------------------------------ invariants
     @invariant()
     def no_chunk_under_an_invalid_document(self) -> None:
-        """While the stored document is still one that is upgraded on read, which other
+        """While the stored document is still one that is repaired on read, which other
         readers may reject or read differently, no chunk is stored under it."""
         if self.legacy_axes:
             keys = sync(_list(self.store, f"{self.path}/"))
