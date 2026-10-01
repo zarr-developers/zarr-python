@@ -216,7 +216,7 @@ def parse_array_metadata(data: Any, path: str | None = None) -> ArrayMetadata:
 
     `ArrayV2Metadata` accepts a chunk size of 0, as it always has, though only an
     invalid document holds one: such metadata is read as the documents it would store
-    are (see `zarr.core.metadata.upgrades`), so an array can be built from it. No data
+    are (see `zarr.core.metadata.repair`), so an array can be built from it. No data
     was read or written under that chunk size, so the reading is silent."""
     if isinstance(data, ArrayV2Metadata) and 0 in data.chunks:
         return parse_stored_array(data.to_buffer_dict(default_buffer_prototype()), 2)
@@ -1615,28 +1615,28 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     def _stored_document_replaced(self) -> None:
         """Record that the store no longer holds a document of this array that needs an
-        upgrade: it holds the upgrade, a valid document, or none. The metadata this handle
+        repair: it holds the repair, a valid document, or none. The metadata this handle
         holds, which a consolidated group handle may share, then stops standing for the
-        document it was read from (see `mark_upgraded`), so no later write through either
+        document it was read from (see `mark_repaired`), so no later write through either
         handle stores that document again."""
         object.__setattr__(self.metadata, "_stored_document", None)
 
-    async def _store_upgraded_document(self) -> None:
-        """Store the upgrade of this array's current stored document, if it needs one,
+    async def _store_repaired_document(self) -> None:
+        """Store the repair of this array's current stored document, if it needs one,
         before chunks are written under this handle's metadata.
 
-        Only for metadata read from a document whose upgrade moves chunks (see
-        `zarr.core.metadata.upgrades`). The document is read again, because the store may
+        Only for metadata read from a document whose repair moves chunks (see
+        `zarr.core.metadata.repair`). The document is read again, because the store may
         hold a newer one than this handle's metadata. If that one lays out chunks
         differently (another writer stored a different chunk size since), this handle
         would write chunks no reader finds, so it raises and stores nothing. If it needs
-        no upgrade (the array was re-saved since, possibly by another implementation), it
-        is left as written; if there is none, there is nothing to upgrade.
+        no repair (the array was re-saved since, possibly by another implementation), it
+        is left as written; if there is none, there is nothing to repair.
 
-        Storing the same upgrade twice is harmless, so handles that write chunks
+        Storing the same repair twice is harmless, so handles that write chunks
         concurrently need no coordination. The read and the store are not one atomic
         step, though: a metadata write by another handle between them (a resize, an
-        attribute update) is replaced by the upgrade of the document read before it, as
+        attribute update) is replaced by the repair of the document read before it, as
         with any two metadata writes that race.
         """
         if self.metadata._stored_document is None:
@@ -1666,9 +1666,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fields: Fields | None = None,
     ) -> None:
         if product(indexer.shape) > 0:
-            # Chunks are about to be stored under the upgraded metadata, so store it
+            # Chunks are about to be stored under the repaired metadata, so store it
             # first: every reader of the store then agrees with them.
-            await self._store_upgraded_document()
+            await self._store_repaired_document()
         return await _set_selection(
             self.store_path,
             self.metadata,

@@ -290,7 +290,7 @@ def _subject(name: str, axis: int | None) -> str:
 def _parse_positive_int(value: object, name: str, axis: int | None) -> int:
     """`value` as an `int` of at least 1. A `bool` is read as the `int` it equals; any
     other type, a NumPy integer or a float (even an integral one: stored documents with
-    integral floats are read by `zarr.core.metadata.upgrades`), is rejected."""
+    integral floats are read by `zarr.core.metadata.repair`), is rejected."""
     subject = _subject(name, axis)
     if not isinstance(value, int):
         raise TypeError(f"{subject} must be an int, got {value!r}")
