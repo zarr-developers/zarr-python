@@ -1,4 +1,5 @@
 import contextlib
+import re
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -62,6 +63,20 @@ def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
     assert all(0 < c <= max(s, 1) for c, s in zip(chunks, shape, strict=False))
 
 
+class _IndexedSequence:
+    """A sequence with only `__getitem__` and `__len__`: `list` takes it, but
+    `collections.abc.Iterable` does not recognize it."""
+
+    def __init__(self, *items: int) -> None:
+        self._items = items
+
+    def __getitem__(self, index: int) -> int:
+        return self._items[index]
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+
 @pytest.mark.parametrize(
     ("chunks", "shape", "expected"),
     [
@@ -104,8 +119,14 @@ def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
         ((1, 3, np.int64(16), np.int64(16)), (1, 3, 32, 32), (1, 3, 16, 16)),
         ((np.int32(30), np.int64(-1)), (100, 20), (30, 20)),
         (np.array([10, 10]), (100, 100), (10, 10)),
+        # 0-d integer arrays are integers, as the scalar form and per dimension
+        (np.array(10), (100, 100), (10, 10)),
+        ((np.array(5), np.int64(-1)), (10, 6), (5, 6)),
         # rectilinear chunks given as numpy arrays
         ((np.array([60, 40]), np.array([50, 50])), (100, 100), ((60, 40), (50, 50))),
+        # a sequence with only `__getitem__` and `__len__` is a list of chunk sizes
+        (_IndexedSequence(5, 5), (10, 10), (5, 5)),
+        ((_IndexedSequence(6, 4), 5), (10, 10), ((6, 4), 5)),
     ],
 )
 def test_normalize_chunks(
@@ -198,6 +219,13 @@ def test_chunk_layout_nested() -> None:
             msg="must be an integer or an iterable of integers; got 2.5 of type float",
             escape=True,
         ),
+        # an integral float is still not an integer
+        ExpectFail(
+            input=(10.0, 100),
+            exception=TypeError,
+            id="integral-float-scalar",
+            msg="got 10.0 of type float",
+        ),
         ExpectFail(
             input=([10, -1, 10], 100),
             exception=ValueError,
@@ -251,21 +279,14 @@ def test_normalize_chunks_1d_errors(case: ExpectFail[tuple[Any, int]]) -> None:
 @pytest.mark.parametrize(
     "case",
     [
-        ExpectFail(
-            input=(None, (100,)),
-            exception=ValueError,
-            id="none",
-            msg="None is not a valid chunk input",
-        ),
-        # `True` is rejected explicitly because bool is a subclass of int — without
-        # this guard, `chunks=True` would silently produce size-1 chunks.
-        ExpectFail(
-            input=(True, (100,)),
-            exception=ValueError,
-            id="true",
-            msg="True is not a valid chunk input",
-        ),
         ExpectFail(input=("foo", (100,)), exception=ValueError, id="string", msg="dimensions"),
+        # A 0-d array is an integer only if its dtype is.
+        ExpectFail(
+            input=(np.array(2.0), (100,)),
+            exception=TypeError,
+            id="0-d-float-array",
+            msg="must be an integer or an iterable of integers",
+        ),
         ExpectFail(
             input=((100, 10), (100,)), exception=ValueError, id="too-many-dims", msg="dimensions"
         ),
@@ -288,6 +309,46 @@ def test_normalize_chunks_nd_errors(case: ExpectFail[tuple[Any, tuple[int, ...]]
     chunks, shape = case.input
     with case.raises():
         normalize_chunks_nd(chunks, shape)
+
+
+@pytest.mark.parametrize(
+    "chunks",
+    [
+        True,
+        np.True_,
+        np.array(True),
+        np.array([True, True]),
+        (True, 5),
+        (np.True_, 5),
+        (np.array(True), 5),
+        [[True, 9], 10],
+        [[np.True_, 9], 10],
+        np.False_,
+        np.array(False),
+        np.array([False, False]),
+        (False, 5),
+        (np.False_, 5),
+        (np.array(False), 5),
+        [[False, 9], 10],
+        [[np.False_, 9], 10],
+    ],
+    ids=repr,
+)
+def test_normalize_chunks_nd_rejects_bool(chunks: Any) -> None:
+    """A boolean is a flag, not a chunk size: every spelling of one, as the whole
+    specification, as a dimension's size, or as an edge in a dimension's list, is
+    rejected with the same error rather than read as a size of 0 or 1. The one
+    exception is `False` as the whole specification (one chunk covering every axis)."""
+    with pytest.raises(TypeError, match="A bool is not a chunk size"):
+        normalize_chunks_nd(chunks, (10, 10))
+
+
+@pytest.mark.parametrize("chunks", [True, None])
+def test_normalize_chunks_nd_names_automatic_chunking(chunks: Any) -> None:
+    """`chunks=True` meant automatic chunking in zarr 2, and `chunks=None` means it in
+    `zarr.create`: their errors say how to ask for it here."""
+    with pytest.raises(TypeError, match=re.escape('For automatic chunking, pass "auto"')):
+        normalize_chunks_nd(chunks, (10, 10))
 
 
 @pytest.mark.parametrize(

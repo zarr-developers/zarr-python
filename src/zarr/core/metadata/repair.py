@@ -1,9 +1,10 @@
 """Repairs that read invalid stored array metadata documents written by older software.
 
-This is the only place invalid metadata is read leniently. A repair maps a stored
-array metadata document (parsed JSON) to a valid one. `ArrayV2Metadata.from_dict` and
-`ArrayV3Metadata.from_dict` apply the repairs for their Zarr format, so every path
-that parses a stored document, including consolidated metadata, goes through them.
+This is the only place invalid metadata is read leniently; the metadata constructors
+are strict. A repair maps a stored array metadata document (parsed JSON) to a valid
+one. `ArrayV2Metadata.from_dict` and `ArrayV3Metadata.from_dict` apply the repairs for
+their Zarr format, so every path that parses a stored document, including consolidated
+metadata, goes through them.
 
 A reading warns only where the user must act on it; a reading that gives what zarr
 read from the same document before these repairs existed is silent, so a document
@@ -50,6 +51,13 @@ type Repair = Callable[[ArrayDocument], tuple[ArrayDocument, Reading] | None]
 """Returns `None` if the document needs no repair, else the repaired document and how
 it was read."""
 
+RESAVE_HINT: Final = (
+    "To store valid metadata, open the array writable and call `array.update_attributes({})`; "
+    "if a group holds consolidated metadata for the array, then also call "
+    "`zarr.consolidate_metadata` on that group."
+)
+"""How to store the repair of a document whose array holds data."""
+
 RECREATE_HINT: Final = (
     "The array holds only its fill value, so recreate it with the chunk shape you want; "
     "nothing is lost: `zarr.from_array(array.store, name=array.path, data=array, "
@@ -95,13 +103,20 @@ def _is_int_list(value: object) -> TypeGuard[list[int]]:
     return isinstance(value, list) and all(isinstance(v, int) for v in value)
 
 
+def _abbreviate(value: JSON, limit: int = 60) -> str:
+    """`value` as JSON, cut to at most `limit` characters."""
+    text = json.dumps(value)
+    return text if len(text) <= limit else f"{text[: limit - 3]}..."
+
+
 def _read_chunk_size(
     size: JSON, span: int | None, unit: int
-) -> tuple[int, bool, str | None] | None:
-    """Read one entry of a stored regular chunk shape as a chunk edge length.
+) -> tuple[int | list[JSON], bool, str | None] | None:
+    """Read one entry of a stored regular chunk shape as a chunk edge length, or as the
+    chunk edge lengths of its axis.
 
-    Returns the edge length, whether it moves chunks (it is not the size a reader of
-    the stored entry uses), and, where the user must act on how it was read, how it was
+    Returns the reading, whether it moves chunks (it is not the size a reader of the
+    stored entry uses), and, where the user must act on how it was read, how it was
     read; `None` if the entry cannot be read, which leaves it for the metadata
     constructors to check. A JSON int >= 1 is kept, JSON `true` is read as 1, and 0 or
     JSON `false` is read as `unit`, the smallest chunk edge length the axis can have (1,
@@ -110,7 +125,10 @@ def _read_chunk_size(
     does not depend on how far the axis has grown since. On an axis of positive length no
     chunk can have been stored under a chunk size of 0, so the array holds only its fill
     value. `span` is `None` where no stored 0 is known, as in the inner chunk shape of a
-    sharding codec: 0 is then left as stored.
+    sharding codec: 0 is then left as stored. A flat JSON list is kept as the chunk edge
+    lengths of its axis, which only a rectilinear chunk grid can declare (see
+    `_invalid_chunk_sizes_v3`); its edges are read as those of a stored rectilinear chunk
+    grid (see `_invalid_edge_lengths_v3`).
     """
     match size:
         case True:
@@ -130,23 +148,25 @@ def _read_chunk_size(
                     "chunk size of 0"
                 ),
             )
+        case list() if not any(isinstance(edge, list) for edge in size):
+            return size, False, None
     return None
 
 
 def _read_chunk_shape(
     stored: JSON, spans: Sequence[int | None], units: Iterable[int] = ()
-) -> tuple[list[int], Reading] | None:
+) -> tuple[list[int | list[JSON]], Reading | None] | None:
     """Read a stored regular chunk shape, entry by entry (see `_read_chunk_size`), for
     axes of lengths `spans` whose chunks are multiples of `units` (1 where not given).
 
-    Returns the chunk shape and how it was read, if any entry was read as another value
+    Returns the chunk shape and how it was read if any entry was read as another value
     (the warning says how the chunk shape was read and, as the array then holds only its
-    fill value, recommends recreating it, see `RECREATE_HINT`); `None` if it cannot be
-    read or needs no repair.
+    fill value, recommends recreating it, see `RECREATE_HINT`), else `None`; `None` if
+    it cannot be read.
     """
     if not (isinstance(stored, list) and len(stored) == len(spans)):
         return None
-    edges: list[int] = []
+    edges: list[int | list[JSON]] = []
     changed = moves_chunks = False
     readings: list[str] = []
     axes = zip(stored, spans, chain(units, repeat(1)), strict=False)
@@ -161,11 +181,11 @@ def _read_chunk_shape(
         if how is not None:
             readings.append(f"{json.dumps(size)} in dimension {axis} as {how}")
     if not changed:
-        return None
+        return edges, None
     warning = (
-        f"The stored chunk shape {json.dumps(stored)} is invalid: chunk sizes must be "
-        f"integers of at least 1. It is read as {edges}, reading {'; '.join(readings)}. "
-        f"{RECREATE_HINT}"
+        f"The stored chunk shape {_abbreviate(stored)} is invalid: chunk sizes must be "
+        f"integers of at least 1. It is read as {_abbreviate(edges)}, reading "
+        f"{'; '.join(readings)}. {RECREATE_HINT}"
         if readings
         else None
     )
@@ -177,7 +197,7 @@ def _invalid_chunk_sizes_v2(doc: ArrayDocument) -> tuple[ArrayDocument, Reading]
     if not _is_int_list(shape):
         return None
     match _read_chunk_shape(doc.get("chunks"), shape):
-        case chunks, reading:
+        case chunks, Reading() as reading:
             return {**doc, "chunks": chunks}, reading
     return None
 
@@ -192,10 +212,13 @@ def _read_codec(codec: JSON) -> JSON | None:
         case {"name": "sharding_indexed", "configuration": Mapping() as configuration}:
             repaired: dict[str, JSON] = {}
             stored = configuration.get("chunk_shape")
-            if isinstance(stored, list) and (
-                read := _read_chunk_shape(stored, [None] * len(stored))
+            match (
+                _read_chunk_shape(stored, [None] * len(stored))
+                if isinstance(stored, list)
+                else None
             ):
-                repaired["chunk_shape"] = read[0]
+                case chunk_shape, Reading():
+                    repaired["chunk_shape"] = chunk_shape
             if isinstance(codecs := configuration.get("codecs"), list) and (
                 inner := _read_codecs(codecs)
             ):
@@ -249,11 +272,35 @@ def _invalid_chunk_sizes_v3(doc: ArrayDocument) -> tuple[ArrayDocument, Reading]
     configuration = grid.get("configuration")
     if not isinstance(configuration, Mapping):
         return None
-    match _read_chunk_shape(configuration.get("chunk_shape"), shape, units):
-        case chunk_shape, reading:
-            repaired = {**configuration, "chunk_shape": chunk_shape}
-            return {**doc, "chunk_grid": {**grid, "configuration": repaired}}, reading
-    return None
+    read = _read_chunk_shape(configuration.get("chunk_shape"), shape, units)
+    if read is None:
+        return None
+    chunk_shape, reading = read
+    edge_axes = [axis for axis, size in enumerate(chunk_shape) if isinstance(size, list)]
+    if not edge_axes:
+        if reading is None:
+            return None
+        repaired = {**configuration, "chunk_shape": chunk_shape}
+        return {**doc, "chunk_grid": {**grid, "configuration": repaired}}, reading
+    if len(edge_axes) == len(chunk_shape):
+        # Only a mix of chunk sizes and edge lists was ever stored in a regular grid.
+        return None
+    # The user must act: re-saving this grid needs the rectilinear chunks flag.
+    as_rectilinear = (
+        f"The stored chunk grid is named 'regular', but its chunk shape lists chunk edge "
+        f"lengths in dimensions {edge_axes}, which only a rectilinear chunk grid can declare. "
+        "It is read as that rectilinear chunk grid. Re-saving the metadata stores that "
+        "rectilinear chunk grid, so each step that follows requires "
+        f"`zarr.config.set({{'array.rectilinear_chunks': True}})`. {RESAVE_HINT}"
+    )
+    rectilinear: JSON = {
+        "name": "rectilinear",
+        "configuration": {"kind": "inline", "chunk_shapes": chunk_shape},
+    }
+    warning = " ".join(filter(None, (reading and reading.warning, as_rectilinear)))
+    # Only zarr 3.2.x reads the stored grid, so the array stores the rectilinear grid
+    # before it writes chunks, for every other reader to find them.
+    return {**doc, "chunk_grid": rectilinear}, Reading(moves_chunks=True, warning=warning)
 
 
 def _read_edge_length(edge: JSON) -> JSON:

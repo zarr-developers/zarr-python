@@ -19,6 +19,7 @@ import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
 from hypothesis import assume, event, given, settings
 
+from tests.conftest import declared_chunk_data_sizes
 from zarr.abc.store import Store
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
 from zarr.core.dtype import get_data_type_from_json, get_data_type_from_native_dtype
@@ -26,8 +27,10 @@ from zarr.core.dtype.common import HasItemSize
 from zarr.core.dtype.npy.structured import Struct
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RectilinearChunkGridMetadataJSON
 from zarr.core.sync import sync
 from zarr.errors import ZarrUserWarning
+from zarr.storage import MemoryStore
 from zarr.testing.strategies import (
     array_metadata,
     arrays,
@@ -38,6 +41,8 @@ from zarr.testing.strategies import (
     numpy_arrays,
     orthogonal_indices,
     rectilinear_arrays,
+    rectilinear_chunk_shape_declarations,
+    rectilinear_chunks,
     sharded_arrays,
     simple_arrays,
     stores,
@@ -297,7 +302,18 @@ def test_block_indexing(data: st.DataObject) -> None:
     # across that matrix (rectilinear + sharded is unsupported and not drawn).
     zarray, nparray = data.draw(block_test_arrays())
 
-    block_indexer, array_indexer = data.draw(block_indices(chunk_sizes=zarray.write_chunk_sizes))
+    # The block grid is worked out from the stored declaration, not by zarr's grid code.
+    assert isinstance(zarray.metadata, ArrayV3Metadata)
+    grid = zarray.metadata.chunk_grid
+    declared = (
+        grid.chunk_shapes if isinstance(grid, RectilinearChunkGridMetadata) else grid.chunk_shape
+    )
+    chunk_sizes = tuple(
+        declared_chunk_data_sizes(d, n) for d, n in zip(declared, zarray.shape, strict=True)
+    )
+    assert zarray.write_chunk_sizes == chunk_sizes
+
+    block_indexer, array_indexer = data.draw(block_indices(chunk_sizes=chunk_sizes))
     expected = nparray[array_indexer]
 
     # sync get, via both the .blocks interface and the dedicated method
@@ -570,25 +586,102 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
         assert asdict_dict["fill_value"] == -9223372036854775808
 
 
-def test_chunks_param_from_rectilinear_bare_int_roundtrip() -> None:
-    """Bare-int dims in rectilinear metadata (the spec's step-size shorthand,
-    produced by a scalar dimension of a mixed chunk spec) must pass
-    through the `chunks=` conversion unchanged. Wrapping one in a
-    single-element list turns "repeat to cover the axis" into "exactly one
-    chunk" and re-creation fails the sum-to-span check."""
-    from zarr.core.metadata.v3 import RectilinearChunkGridMetadata
-    from zarr.storage import MemoryStore
-    from zarr.testing.strategies import chunks_param_from_rectilinear
+@given(data=st.data())
+def test_rectilinear_chunk_grid_declarations(data: st.DataObject) -> None:
+    """Every `chunk_shapes` declaration the rectilinear spec allows — bare-int
+    steps, edge lists written in full or run-length encoded in any grouping,
+    edges overhanging the extent — parses to its expanded edges, and the
+    re-serialized form parses back to the same grid."""
+    shape = data.draw(npst.array_shapes(max_dims=3, min_side=0, max_side=20), label="shape")
+    declaration, chunk_shapes = data.draw(
+        rectilinear_chunk_shape_declarations(shape=shape), label="declaration"
+    )
+    stored: RectilinearChunkGridMetadataJSON = {
+        "name": "rectilinear",
+        "configuration": {"kind": "inline", "chunk_shapes": declaration},
+    }
+    meta = RectilinearChunkGridMetadata.from_dict(stored)
+    assert meta.chunk_shapes == chunk_shapes
 
-    with zarr.config.set({"array.rectilinear_chunks": True}):
-        src = zarr.create_array(MemoryStore(), shape=(3, 3), chunks=([1, 2], 1), dtype="uint8")
-        grid = src.metadata.chunk_grid  # type: ignore[union-attr]
-        assert isinstance(grid, RectilinearChunkGridMetadata)
-        assert grid.chunk_shapes == ((1, 2), 1)
-        dst = zarr.create_array(
-            MemoryStore(),
-            shape=src.shape,
-            chunks=chunks_param_from_rectilinear(grid),
-            dtype="uint8",
-        )
-        assert dst.metadata.chunk_grid == grid  # type: ignore[union-attr]
+    serialized = json.loads(json.dumps(meta.to_dict()))
+    assert serialized["name"] == "rectilinear"
+    assert RectilinearChunkGridMetadata.from_dict(serialized) == meta
+
+    # The declaration is read correctly inside a whole stored metadata document.
+    document = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": list(shape),
+        "data_type": "uint8",
+        "chunk_grid": stored,
+        "chunk_key_encoding": {"name": "default", "configuration": {"separator": "/"}},
+        "fill_value": 0,
+        "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
+        "attributes": {},
+    }
+    assert ArrayV3Metadata.from_dict(document).chunk_grid == meta  # type: ignore[arg-type]
+
+
+def _rle_expand(dim: list[Any]) -> list[int]:
+    """Expand one stored run-length encoded dimension: bare edges and
+    `[size, count]` pairs."""
+    edges: list[int] = []
+    for item in dim:
+        if type(item) is int:
+            edges.append(item)
+        else:
+            size, count = item
+            edges.extend([size] * count)
+    return edges
+
+
+@given(data=st.data())
+def test_create_array_stores_declared_rectilinear_chunks(data: st.DataObject) -> None:
+    """A `chunks=` specification mixing bare ints and edge lists in any
+    arrangement is stored as a rectilinear grid whose `chunk_shapes` are
+    exactly the specification: bare ints stay bare ints, and edge lists keep
+    their edges (gh-4374, gh-4272). Checked on the stored JSON."""
+    shape = data.draw(npst.array_shapes(max_dims=3, min_side=0, max_side=20), label="shape")
+    chunks = data.draw(rectilinear_chunks(shape=shape), label="chunks")
+    arr = zarr.create_array(MemoryStore(), shape=shape, chunks=chunks, dtype="uint8")
+
+    zarr_json = sync(arr.store.get(ZARR_JSON, prototype=default_buffer_prototype()))
+    assert zarr_json is not None
+    stored = json.loads(zarr_json.to_bytes())["chunk_grid"]
+    assert stored["name"] == "rectilinear"
+    assert stored["configuration"]["kind"] == "inline"
+    stored_dims = stored["configuration"]["chunk_shapes"]
+    assert [dim if type(dim) is int else _rle_expand(dim) for dim in stored_dims] == chunks
+
+
+@given(data=st.data())
+def test_rectilinear_zero_length_axis_round_trip(data: st.DataObject) -> None:
+    """An array declared with rectilinear `chunks=` over a zero-length axis
+    holds the data written after that axis grows, by `append` or by `resize`,
+    also when it grows past the declared edges."""
+    shape = list(data.draw(npst.array_shapes(max_dims=3, min_side=0, max_side=6), label="shape"))
+    axis = data.draw(st.integers(0, len(shape) - 1), label="zero-length axis")
+    shape[axis] = 0
+    chunks = data.draw(rectilinear_chunks(shape=tuple(shape)), label="chunks")
+    store = MemoryStore()
+    arr = zarr.create_array(store, shape=tuple(shape), chunks=chunks, dtype="int16", fill_value=-1)
+    assert_array_equal(arr[...], np.full(shape, -1, dtype="int16"))
+
+    declared = chunks[axis]
+    declared_span = sum(declared) if isinstance(declared, list) else declared
+    rows = data.draw(st.integers(1, 2 * declared_span + 2), label="rows")
+    if isinstance(declared, list):
+        event("grown axis declared as an edge list")
+        if rows > declared_span:
+            event("grown past the declared edges")
+    grown = [*shape]
+    grown[axis] = rows
+    values = data.draw(npst.arrays(np.dtype("int16"), tuple(grown)), label="values")
+    if data.draw(st.booleans(), label="append"):
+        arr.append(values, axis=axis)
+    else:
+        arr.resize(tuple(grown))
+        arr[...] = values
+    assert arr.shape == tuple(grown)
+    assert_array_equal(arr[...], values)
+    assert_array_equal(zarr.open_array(store, mode="r")[...], values)

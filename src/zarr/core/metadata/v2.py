@@ -38,8 +38,9 @@ from zarr.core.common import (
     JSON,
     ZARRAY_JSON,
     ZATTRS_JSON,
+    ChunkShape,
     MemoryOrder,
-    ShapeLike,
+    parse_chunk_shape,
     parse_shapelike,
 )
 from zarr.core.config import config, parse_indexing_order
@@ -82,7 +83,7 @@ class ArrayV2Metadata(Metadata):
         *,
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunks: tuple[int, ...],
+        chunks: ChunkShape,
         fill_value: Any,
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] = ".",
@@ -330,10 +331,9 @@ def parse_compressor(data: object) -> Numcodec | None:
     raise ValueError(msg)
 
 
-def parse_chunks(chunks: ShapeLike, shape: tuple[int, ...]) -> tuple[int, ...]:
-    """Check a chunk shape: one non-negative integer per array axis (see
-    `parse_shapelike`). Stored chunk sizes of 0 are read by `zarr.core.metadata.repair`."""
-    chunks_parsed = parse_shapelike(chunks)
+def parse_chunks(chunks: object, shape: tuple[int, ...]) -> tuple[int, ...]:
+    """Check a chunk shape: one chunk edge length (an `int` >= 1) per array axis."""
+    chunks_parsed = parse_chunk_shape(chunks)
     if len(chunks_parsed) != len(shape):
         raise ValueError(
             f"The `shape` and `chunks` attributes must have the same length. "

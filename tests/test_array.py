@@ -1168,7 +1168,7 @@ def test_auto_partition_auto_shards_with_auto_chunks_should_be_close_to_1MiB() -
     [(10, 10), [10, 10], np.array([10, 10]), (np.int64(10), np.int64(10))],
     ids=["tuple", "list", "array", "numpy-scalars"],
 )
-def test_chunks_and_shards(chunks: ChunksLike, shards: ShardsLike) -> None:
+def test_chunks_and_shards(chunks: ChunksLike, shards: Any) -> None:
     store = StorePath(MemoryStore())
     shape = (100, 100)
     expected_chunks = normalize_chunks_nd(chunks, shape).chunk_shape

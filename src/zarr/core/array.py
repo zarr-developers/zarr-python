@@ -45,7 +45,6 @@ from zarr.core.chunk_grids import (
     ChunkGrid,
     _is_auto,
     _is_keep,
-    _is_rectilinear_chunks,
     guess_chunks,
     normalize_chunks_nd,
     resolve_outer_and_inner_chunks,
@@ -120,10 +119,12 @@ from zarr.core.metadata import (
 )
 from zarr.core.metadata.io import (
     ARRAY_DOCUMENTS,
+    encode_documents,
     parse_stored_array,
     read_documents,
     save_metadata,
     save_new_metadata,
+    store_documents,
     upsert_metadata,
 )
 from zarr.core.metadata.v2 import (
@@ -210,14 +211,8 @@ def _chunk_sizes_from_shape(
 
 def parse_array_metadata(data: Any, path: str | None = None) -> ArrayMetadata:
     """Array metadata from a metadata object or a metadata document, naming the array at
-    `path` in warnings about how an invalid document was read.
-
-    `ArrayV2Metadata` accepts a chunk size of 0, as it always has, though only an
-    invalid document holds one: such metadata is read as the documents it would store
-    are (see `zarr.core.metadata.repair`), so an array can be built from it. No data
-    was read or written under that chunk size, so the reading is silent."""
-    if isinstance(data, ArrayV2Metadata) and 0 in data.chunks:
-        return parse_stored_array(data.to_buffer_dict(default_buffer_prototype()), 2)
+    `path` in warnings about how an invalid document was read. A metadata object is
+    valid as built: the metadata constructors are strict."""
     if isinstance(data, ArrayMetadata):
         return data
     if isinstance(data, dict):
@@ -463,6 +458,11 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
         # Unify the v2 (chunks) and v3 (chunk_shape) parameter names
         _raw_chunks = chunks if chunks is not None else chunk_shape
+        if _raw_chunks is None:
+            item_size = dtype_parsed.item_size if isinstance(dtype_parsed, HasItemSize) else 1
+            outer_chunks = guess_chunks(shape, item_size)
+        else:
+            outer_chunks = normalize_chunks_nd(_raw_chunks, shape)
 
         config_parsed = parse_array_config(config)
 
@@ -484,13 +484,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             if order is not None:
                 _warn_order_kwarg()
 
-            item_size = 1
-            if isinstance(dtype_parsed, HasItemSize):
-                item_size = dtype_parsed.item_size
-            if _raw_chunks is None:
-                outer_chunks = guess_chunks(shape, item_size)
-            else:
-                outer_chunks = normalize_chunks_nd(_raw_chunks, shape)
             chunk_grid = create_chunk_grid_metadata(outer_chunks)
             result = await cls._create_v3(
                 store_path,
@@ -516,17 +509,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 )
             if dimension_names is not None:
                 raise ValueError("dimension_names cannot be used for arrays with zarr_format 2.")
-            if _is_rectilinear_chunks(_raw_chunks):
+            if not outer_chunks.is_regular:
                 raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
-
-            item_size = 1
-            if isinstance(dtype_parsed, HasItemSize):
-                item_size = dtype_parsed.item_size
-            _raw = chunks or chunk_shape
-            if _raw is None:
-                outer_chunks = guess_chunks(shape, item_size)
-            else:
-                outer_chunks = normalize_chunks_nd(_raw, shape)
             _chunks = outer_chunks.chunk_shape
 
             if order is None:
@@ -646,7 +630,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             dimension_names=dimension_names,
             attributes=attributes,
         )
-
         array = cls(metadata=metadata, store_path=store_path, config=config)
         await save_new_metadata(store_path, metadata, overwrite=overwrite, ensure_parents=True)
         return array
@@ -727,7 +710,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             compressor=compressor_parsed,
             attributes=attributes,
         )
-
         array = cls(metadata=metadata, store_path=store_path, config=config)
         await save_new_metadata(store_path, metadata, overwrite=overwrite, ensure_parents=True)
         return array
@@ -1607,7 +1589,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         """Store `metadata` as this array's own documents, then clear the
-        `_stored_document` mark (see `_stored_document_replaced`)."""
+        `_stored_document` mark (see `_stored_document_replaced`). `_resize` stores the
+        documents it encoded before deleting chunks directly, then clears the mark the
+        same way."""
         await save_metadata(self.store_path, metadata, ensure_parents=ensure_parents)
         self._stored_document_replaced()
 
@@ -1642,14 +1626,14 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         zarr_format = self.metadata.zarr_format
         documents = await read_documents(self.store_path, ARRAY_DOCUMENTS[zarr_format])
         try:
-            current = parse_stored_array(documents, zarr_format)
+            current = parse_stored_array(documents, zarr_format, str(self.store_path))
         except ArrayNotFoundError:
             pass
         else:
             if _chunk_layout(current) != _chunk_layout(self.metadata):
                 raise ValueError(
-                    f"The metadata stored for the array at {str(self.store_path)!r} has "
-                    "changed since this array was opened: reopen the array to write to it."
+                    f"Array {str(self.store_path)!r}: the metadata stored has changed since "
+                    "this array was opened; reopen the array to write to it. Nothing was stored."
                 )
             if current._stored_document is not None:
                 await upsert_metadata(self.store_path, current, documents)
@@ -4568,8 +4552,17 @@ async def init_array(
         chunk_key_encoding, zarr_format=zarr_format
     )
 
-    # Validate rectilinear chunks constraints
-    if _is_rectilinear_chunks(chunks):
+    # Normalize the user's chunks into a canonical ChunkGrid
+
+    if _is_auto(chunks):
+        max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
+        chunks_normalized = guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
+    else:
+        chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
+
+    # Validate rectilinear chunks constraints. The normalized grid is the one
+    # judge of what the user declared.
+    if not chunks_normalized.is_regular:
         if zarr_format == 2:
             raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
         if shards is not None:
@@ -4578,14 +4571,6 @@ async def init_array(
                 "Use rectilinear shards instead: "
                 "chunks=(inner_size, ...), shards=[[shard_sizes], ...]"
             )
-
-    # Normalize the user's chunks into a canonical ChunkGrid
-
-    if _is_auto(chunks):
-        max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
-        chunks_normalized = guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
-    else:
-        chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
 
     # Resolve chunks + shards into outer_chunks (grid metadata) and
     # inner (sub-chunk structure for ShardingCodec, None if no sharding)
@@ -4908,10 +4893,9 @@ def _stored_rectilinear_grid_or_none(
     """The *stored* rectilinear chunk grid, or None if the stored grid is regular
     (in which case `.chunks` and `.shards` are defined).
 
-    Dispatches on the stored metadata, not the runtime ``ChunkGrid``: the
-    runtime grid collapses a rectilinear dimension whose edges happen to be
-    uniform to a ``FixedDimension`` as an optimization, so it can report regular
-    for an array whose stored metadata — and therefore `.chunks` — is
+    Dispatches on the stored metadata, not the runtime `ChunkGrid`: a
+    rectilinear grid whose dimensions are all bare-int step sizes is regular at
+    runtime, while its stored metadata — and therefore `.chunks` — is
     rectilinear. Zarr format 2 grids are always regular.
     """
     if isinstance(metadata, ArrayV3Metadata) and isinstance(
@@ -5904,6 +5888,10 @@ async def _resize(
     # ensure deletion is only run if array is shrinking as the delete_outside_chunks path is unbounded in memory
     only_growing = all(new >= old for new, old in zip(new_shape, array.metadata.shape, strict=True))
 
+    # Encode the new metadata before deleting any chunk: metadata that cannot be stored
+    # then fails with the store untouched.
+    documents = encode_documents(array.store_path, new_metadata)
+
     if delete_outside_chunks and not only_growing:
         # Remove all chunks outside of the new shape
         old_chunk_coords = set(array._chunk_grid.all_chunk_coords())
@@ -5922,7 +5910,8 @@ async def _resize(
         )
 
     # Write new metadata
-    await array._save_metadata(new_metadata)
+    await store_documents(array.store_path, documents)
+    array._stored_document_replaced()
 
     # Update metadata and chunk_grid (in place)
     object.__setattr__(array, "metadata", new_metadata)

@@ -21,6 +21,7 @@ from zarr.core.group import ConsolidatedMetadata
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.repair import (
     RECREATE_HINT,
+    RESAVE_HINT,
     repair_array_document,
 )
 from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
@@ -253,7 +254,7 @@ def _open_strictly(path: Path, mode: Literal["r", "a", "r+"] = "r") -> AnyArray:
 
 def test_stored_negative_chunk_size_rejected() -> None:
     """No known writer stored a negative chunk size: it is rejected, not repaired."""
-    with pytest.raises(ValueError, match="^Expected all values to be non-negative"):
+    with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got -1$"):
         _read_strictly(_v2_doc([4], [-1]))
 
 
@@ -262,6 +263,13 @@ def test_stored_chunk_shape_ndim_mismatch_rejected() -> None:
     rejected."""
     with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got 0$"):
         _read_strictly(_v3_doc([4, 4], [0]))
+
+
+def test_stored_zero_inner_chunk_size_rejected() -> None:
+    """No known writer stored an inner chunk size of 0, and no span defines one: it is
+    rejected, not repaired."""
+    with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got 0$"):
+        _read_strictly(_v3_doc([4], [4], inner=[0]))
 
 
 @pytest.mark.parametrize("inner", [[0], [False]])
@@ -330,9 +338,9 @@ def test_read_invalid_edges_in_rectilinear_grid(
         (_v3_doc([4], [4.5]), "Dimension 0: chunk edge length must be an int, got 4.5"),
         (
             _v3_doc([8], [4], inner=[2.0]),
-            "Expected an iterable of integers. Got [2.0] instead.",
+            "Dimension 0: chunk edge length must be an int, got 2.0",
         ),
-        (_v2_doc([20], [10.0]), "Expected an iterable of integers. Got [10.0] instead."),
+        (_v2_doc([20], [10.0]), "Dimension 0: chunk edge length must be an int, got 10.0"),
         (
             _rectilinear_doc([8], [[[4, 2.0]]]),
             "Dimension 0: RLE repeat count must be an int, got 2.0",
@@ -427,51 +435,47 @@ def _second_edge(grid: RectilinearChunkGridMetadata) -> int:
 
 CHUNK_EDGE_SITES: dict[str, Callable[[Any], object]] = {
     "regular": lambda size: RegularChunkGridMetadata(chunk_shape=(size,)).chunk_shape[0],
+    "v2": lambda size: _v2_metadata((size,)).chunks[0],
     "rectilinear-bare": lambda size: _rectilinear((size,)).chunk_shapes[0],
     "rectilinear-edge": lambda size: _second_edge(_rectilinear(((4, size),))),
     "rectilinear-bare-json": lambda size: _rectilinear_from_dict([size]).chunk_shapes[0],
     "rectilinear-edge-json": lambda size: _second_edge(_rectilinear_from_dict([[4, size]])),
     "rectilinear-rle-json": lambda size: _second_edge(_rectilinear_from_dict([[[size, 2]]])),
+    "sharding-inner": lambda size: ShardingCodec(chunk_shape=(size,)).chunk_shape[0],
 }
-"""Each place chunk grid metadata reads a chunk edge length, returning the edge it read."""
+"""Each place metadata built in code takes a chunk edge length, returning the edge it
+took."""
 
 
 @pytest.mark.parametrize("site", CHUNK_EDGE_SITES)
-@pytest.mark.parametrize(
-    ("size", "expected"),
-    [(4, 4), (True, 1)],
-    ids=["int", "bool"],
-)
-def test_metadata_reads_integer_chunk_edge(site: str, size: object, expected: int) -> None:
-    """Chunk grid metadata reads an `int` or a `bool` as the `int` chunk edge length it
-    equals."""
-    edge = CHUNK_EDGE_SITES[site](size)
+def test_metadata_takes_int_chunk_edge(site: str) -> None:
+    """Metadata built in code takes an `int` chunk edge length of at least 1 as is."""
+    edge = CHUNK_EDGE_SITES[site](4)
     assert type(edge) is int
-    assert edge == expected
+    assert edge == 4
 
 
 @pytest.mark.parametrize("site", CHUNK_EDGE_SITES)
 @pytest.mark.parametrize(
     "size",
-    [4.0, np.float64(4.0), 4.5, float("inf"), "4", None, np.int64(4)],
-    ids=["float", "numpy-float", "fractional", "inf", "str", "none", "numpy-int"],
+    [True, False, 4.0, np.float64(4.0), 4.5, float("inf"), "4", None, np.int64(4)],
+    ids=["true", "false", "float", "numpy-float", "fractional", "inf", "str", "none", "numpy-int"],
 )
-def test_metadata_rejects_non_integer_chunk_edge(site: str, size: object) -> None:
-    """A chunk edge length in metadata built in code is an `int`: a float is rejected,
-    even an integral one (stored documents with integral floats are read by the
-    repairs), and so is a NumPy integer, as zarr 3.4.0 rejected one."""
+def test_metadata_rejects_non_int_chunk_edge(site: str, size: object) -> None:
+    """Metadata built in code takes chunk edge lengths as `int`s only, everywhere: not a
+    `bool`, a float (stored documents with integral floats are read by the repairs) or
+    a NumPy integer."""
     with pytest.raises(
-        TypeError,
-        match=re.escape(f"Dimension 0: chunk edge length must be an int, got {size!r}"),
+        TypeError, match=re.escape(f"Dimension 0: chunk edge length must be an int, got {size!r}")
     ):
         CHUNK_EDGE_SITES[site](size)
 
 
 @pytest.mark.parametrize("site", CHUNK_EDGE_SITES)
-@pytest.mark.parametrize("size", [0, False, -1])
+@pytest.mark.parametrize("size", [0, -1])
 def test_metadata_rejects_chunk_edge_below_one(site: str, size: int) -> None:
-    """Chunk grid metadata built in code is strict: a chunk edge length below 1 is
-    rejected, without a warning."""
+    """Metadata built in code is strict: a chunk edge length below 1 is rejected,
+    without a warning."""
     with warnings.catch_warnings():
         warnings.simplefilter("error", ZarrUserWarning)
         with pytest.raises(
@@ -480,73 +484,37 @@ def test_metadata_rejects_chunk_edge_below_one(site: str, size: int) -> None:
             CHUNK_EDGE_SITES[site](size)
 
 
-@pytest.mark.parametrize("chunk_shape", [4, np.int64(4), None, "44", {"4": 4}])
-def test_regular_chunk_grid_rejects_chunk_shape_not_a_sequence(chunk_shape: Any) -> None:
-    """A regular chunk shape is an iterable of chunk edge lengths, but not a string or a
-    mapping, which is rejected as a whole, not entry by entry."""
+CHUNK_SHAPE_SITES: dict[str, Callable[[Any], object]] = {
+    "regular": lambda chunk_shape: RegularChunkGridMetadata(chunk_shape=chunk_shape),
+    "v2": _v2_metadata,
+    "sharding-inner": lambda chunk_shape: ShardingCodec(chunk_shape=chunk_shape),
+}
+
+
+@pytest.mark.parametrize("site", CHUNK_SHAPE_SITES)
+@pytest.mark.parametrize("chunk_shape", [4, np.int64(4), "10", {"a": 1}, range(1, 2)])
+def test_metadata_rejects_chunk_shape_not_list_or_tuple(site: str, chunk_shape: object) -> None:
+    """A regular chunk shape is a list or tuple; anything else is rejected as a whole,
+    not iterated as if its elements were chunk edge lengths."""
     with pytest.raises(
         TypeError,
         match=re.escape(
-            f"A chunk shape must be an iterable of chunk edge lengths, got {chunk_shape!r}"
+            f"A chunk shape must be a list or tuple of chunk edge lengths, got {chunk_shape!r}"
         ),
     ):
-        RegularChunkGridMetadata(chunk_shape=chunk_shape)
+        CHUNK_SHAPE_SITES[site](chunk_shape)
 
 
-def _sharding_chunk_shape(chunks: Any) -> tuple[tuple[int, ...], object]:
-    codec = ShardingCodec(chunk_shape=chunks)
-    configuration = cast("dict[str, JSON]", codec.to_dict()["configuration"])
-    return codec.chunk_shape, configuration["chunk_shape"]
-
-
-CHUNK_SHAPE_SITES: dict[str, Callable[[Any], tuple[tuple[int, ...], object]]] = {
-    "v2": lambda chunks: ((md := _v2_metadata(chunks)).chunks, md.to_dict()["chunks"]),
-    "sharding-inner": _sharding_chunk_shape,
-}
-"""`ArrayV2Metadata` and `ShardingCodec` read a chunk shape as an array shape, returning
-the chunk shape and the value `to_dict` writes for it."""
-
-
-@pytest.mark.parametrize("site", CHUNK_SHAPE_SITES)
-@pytest.mark.parametrize(
-    ("chunks", "expected"),
-    [
-        ((4,), (4,)),
-        ([4], (4,)),
-        (4, (4,)),
-        (np.int64(4), (4,)),
-        ((np.int64(4),), (4,)),
-        (np.array([4]), (4,)),
-        ((True,), (1,)),
-        ((0,), (0,)),
-        ((False,), (0,)),
-        (range(4, 5), (4,)),
-    ],
-)
-def test_chunk_shape_read_as_array_shape(
-    site: str, chunks: object, expected: tuple[int, ...]
-) -> None:
-    """`ArrayV2Metadata` and `ShardingCodec` read their chunk shape as `parse_shapelike`
-    reads an array shape: an integer or an iterable of non-negative integers, including
-    NumPy integers and bools. A chunk size of 0 is written back as given; reading a
-    stored 0 is `zarr.core.metadata.repair`' business."""
-    parsed, written = CHUNK_SHAPE_SITES[site](chunks)
-    assert parsed == expected
-    assert all(type(size) is int for size in parsed)
-    assert written == expected
-
-
-@pytest.mark.parametrize("site", CHUNK_SHAPE_SITES)
-def test_chunk_shape_read_as_array_shape_rejects_negative(site: str) -> None:
-    with pytest.raises(ValueError, match="Expected all values to be non-negative"):
-        CHUNK_SHAPE_SITES[site]((-1,))
-
-
-@pytest.mark.parametrize("site", CHUNK_SHAPE_SITES)
-@pytest.mark.parametrize("chunks", [(4.0,), "4", None])
-def test_chunk_shape_read_as_array_shape_rejects_non_integer(site: str, chunks: object) -> None:
-    with pytest.raises(TypeError, match="Expected an"):
-        CHUNK_SHAPE_SITES[site](chunks)
+def test_consolidated_member_error_names_member() -> None:
+    """A group whose consolidated metadata holds a member that cannot be read does not
+    open from it; the error names the member."""
+    member = {**_v2_doc([5], [4]), "chunks": 4}
+    with pytest.raises(TypeError, match="A chunk shape must be a list or tuple") as info:
+        ConsolidatedMetadata.from_dict(
+            {"kind": "inline", "must_understand": False, "metadata": {"sub/a": member}},
+            path="group",
+        )
+    assert info.value.__notes__ == ["Member 'group/sub/a' of the consolidated metadata."]
 
 
 def _rewrite_doc(path: Path, zarr_format: Literal[2, 3], edit: Any) -> None:
@@ -833,7 +801,7 @@ def test_stale_handle_write_after_chunk_grid_change_raises(
     _rewrite_doc(path, zarr_format, change)
     documents = {p.name: p.read_bytes() for p in path.iterdir()}
 
-    with pytest.raises(ValueError, match="has changed since this array was opened: reopen"):
+    with pytest.raises(ValueError, match="has changed since this array was opened; reopen"):
         stale[0:3] = [7, 8, 9]
 
     assert stale.metadata._stored_document is not None
@@ -965,39 +933,13 @@ def test_respelled_document_write_stores_only_chunks(
     ],
     ids=["codec-instance", "numpy-integer"],
 )
-def test_from_dict_keeps_values_that_are_not_json(codec: Any) -> None:
+def test_repair_keep_values_that_are_not_json(codec: Any) -> None:
     """`from_dict` takes metadata built in code as well as stored documents, so the
     repairs read values that are not JSON (codec instances, NumPy integers) as they are,
-    without encoding them, and the constructors read them as before."""
+    without encoding them, and leave them for the constructors to check."""
     doc: dict[str, Any] = _v3_doc([4], [4])
     doc["codecs"] = [codec]
-    metadata = ArrayV3Metadata.from_dict(doc)
-    assert metadata._stored_document is None
-    assert isinstance(metadata.codecs[0], ShardingCodec)
-
-
-@pytest.mark.parametrize(("shape", "expected"), [((0,), (1,)), ((3,), (1,))])
-def test_array_from_metadata_with_chunk_size_zero(shape: tuple[int], expected: tuple[int]) -> None:
-    """`ArrayV2Metadata` accepts a chunk size of 0, as a stored document may hold it. An
-    array built from such metadata reads it as the repairs read that document, silently
-    (no data was read or written under it): `create_hierarchy` stores the metadata as
-    given and yields such an array, which stores the repair before its first write."""
-    metadata = ArrayV2Metadata(shape=shape, chunks=(0,), dtype=Int16(), fill_value=0, order="C")
-    store = MemoryStore()
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", ZarrUserWarning)
-        nodes = dict(zarr.create_hierarchy(store=store, nodes={"a": metadata}))
-    array = nodes["a"]
-    assert isinstance(array, zarr.Array)
-    assert array.chunks == expected
-    assert json.loads(store._store_dict["a/.zarray"].to_bytes())["chunks"] == [0]
-
-    array[...] = 1
-
-    # Writing an empty selection stores no chunks, so it stores no metadata either.
-    resaved = list(expected) if array.size else [0]
-    assert json.loads(store._store_dict["a/.zarray"].to_bytes())["chunks"] == resaved
-    np.testing.assert_array_equal(zarr.open_array(store, path="a")[...], np.ones(shape))
+    assert repair_array_document(doc, 3) == (doc, [])
 
 
 def test_array_from_metadata_with_numpy_scalar_codec_configuration() -> None:
@@ -1180,7 +1122,7 @@ def test_consolidated_repaired_member_write_after_chunk_grid_change_raises(
     _rewrite_doc(path / "a", zarr_format, _store_chunk_size_3)
     documents = {p: p.read_bytes() for p in path.rglob("*") if p.is_file()}
 
-    with pytest.raises(ValueError, match="has changed since this array was opened: reopen"):
+    with pytest.raises(ValueError, match="has changed since this array was opened; reopen"):
         array[0:3] = [7, 8, 9]
 
     assert {p: p.read_bytes() for p in path.rglob("*") if p.is_file()} == documents
@@ -1309,3 +1251,340 @@ def test_legacy_chunk_size_consolidated(tmp_path: Path, zarr_format: Literal[2, 
                 array = reopened[name]
                 assert isinstance(array, zarr.Array)
                 assert array.chunks == (1,)
+
+
+# A document copied verbatim from a store that zarr 3.2.1 wrote for
+# `create_array(shape=(6, 20), chunks=(2, (5, 10, 5)), dtype="float32")`.
+MIXED_REGULAR_GRID_DOC = """{
+  "shape": [6, 20],
+  "data_type": "float32",
+  "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [2, [5, 10, 5]]}},
+  "chunk_key_encoding": {"name": "default", "configuration": {"separator": "/"}},
+  "fill_value": 0.0,
+  "codecs": [
+    {"name": "bytes", "configuration": {"endian": "little"}},
+    {"name": "zstd", "configuration": {"level": 0, "checksum": false}}
+  ],
+  "attributes": {},
+  "zarr_format": 3,
+  "node_type": "array",
+  "storage_transformers": []
+}"""
+
+
+def _mixed_doc(shape: list[int], chunk_shape: list[Any]) -> dict[str, JSON]:
+    doc: dict[str, JSON] = json.loads(MIXED_REGULAR_GRID_DOC)
+    doc["shape"] = shape
+    doc["chunk_grid"] = {"name": "regular", "configuration": {"chunk_shape": chunk_shape}}
+    return doc
+
+
+@pytest.mark.parametrize(
+    ("doc", "expected", "warning"),
+    [
+        (json.loads(MIXED_REGULAR_GRID_DOC), (2, (5, 10, 5)), r"^The stored chunk grid .* \[1\]"),
+        (
+            _mixed_doc([6, 20, 4], [2, [5, 10, 5], [1, 3]]),
+            (2, (5, 10, 5), (1, 3)),
+            r"^The stored chunk grid .* in dimensions \[1, 2\]",
+        ),
+        (_mixed_doc([6, 20], [2, [20]]), (2, (20,)), r"^The stored chunk grid .* \[1\]"),
+        (_mixed_doc([6, 12], [2, [5, 10, 5]]), (2, (5, 10, 5)), r"^The stored chunk grid"),
+        (_mixed_doc([0, 20], [2, [5, 10, 5]]), (2, (5, 10, 5)), r"^The stored chunk grid"),
+        (_mixed_doc([6, 0], [2, [5, 10, 5]]), (2, (5, 10, 5)), r"^The stored chunk grid"),
+        # JSON true is read as 1 silently; only the grid reading warns.
+        (_mixed_doc([6, 20], [True, [5, 10, 5]]), (1, (5, 10, 5)), r"^The stored chunk grid"),
+        (_mixed_doc([6, 20], [2, [5.0, 10.0, 5.0]]), (2, (5, 10, 5)), r"^The stored chunk grid"),
+        (
+            _mixed_doc([4, 10_000], [0, [10] * 1000]),
+            (1, (10,) * 1000),
+            r"^The stored chunk shape \[0, \[10, 10, .*\.\.\. is invalid: .* read as \[1, \[10, .*\.\.\.,",
+        ),
+    ],
+    ids=[
+        "written",
+        "3d",
+        "one-edge",
+        "shrunk",
+        "empty-int-axis",
+        "empty-edge-axis",
+        "true",
+        "float-edges",
+        "long",
+    ],
+)
+def test_read_edge_lists_in_regular_grid(
+    doc: dict[str, JSON], expected: tuple[int | tuple[int, ...], ...], warning: str
+) -> None:
+    """A `regular` chunk grid whose chunk shape mixes chunk sizes with lists of chunk
+    edge lengths is read as the rectilinear chunk grid it describes, without the
+    rectilinear chunks flag. `from_dict` warns once, naming the array and the axes,
+    quoting a bounded part of the chunk shape, and saying that re-saving requires the
+    flag."""
+    with (
+        zarr.config.set({"array.rectilinear_chunks": False}),
+        warnings.catch_warnings(record=True) as record,
+    ):
+        warnings.simplefilter("always")
+        metadata = ArrayV3Metadata.from_dict(doc, path="group/array")
+    assert metadata.chunk_grid == RectilinearChunkGridMetadata(chunk_shapes=expected)
+    [message] = [str(w.message) for w in record]
+    assert re.search(warning, message.removeprefix("Array 'group/array': "))
+    assert message.startswith("Array 'group/array': ")
+    assert (
+        "Re-saving the metadata stores that rectilinear chunk grid, so each step that "
+        "follows requires `zarr.config.set({'array.rectilinear_chunks': True})`. "
+    ) in message
+    assert message.endswith(RESAVE_HINT)
+    # The 1000-edge list is abbreviated: the message is two sentences and two hints, not
+    # a dump of the edges.
+    assert len(message) < 1600
+
+
+def _rejected_without_warning(doc: dict[str, JSON]) -> pytest.ExceptionInfo[Exception]:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ZarrUserWarning)
+        with pytest.raises((TypeError, ValueError)) as info:
+            ArrayV3Metadata.from_dict(doc)
+    return info
+
+
+def test_regular_grid_of_only_edge_lists_rejected() -> None:
+    """A regular chunk shape made only of edge lists was never stored (a rectilinear
+    chunk grid was), so it is not read as rectilinear."""
+    info = _rejected_without_warning(_mixed_doc([6, 20], [[1, 5], [5, 10, 5]]))
+    assert info.match(re.escape("Dimension 0: chunk edge length must be an int, got [1, 5]"))
+
+
+def test_run_length_encoded_edges_in_regular_grid_rejected() -> None:
+    """Run-length encoded edges were never stored in a regular chunk shape."""
+    info = _rejected_without_warning(_mixed_doc([6, 20], [2, [[5, 2], 10]]))
+    assert info.match(re.escape("Dimension 1: chunk edge length must be an int, got [[5, 2], 10]"))
+
+
+@pytest.mark.parametrize("edge", [5.5, "5"], ids=["fractional", "string"])
+def test_non_int_edge_in_regular_grid_rejected(edge: object) -> None:
+    """An edge that is not an int is reported as such, not blamed on its list."""
+    info = _rejected_without_warning(_mixed_doc([6, 20], [2, [edge, 15]]))
+    assert info.match(re.escape(f"Dimension 1: chunk edge length must be an int, got {edge!r}"))
+
+
+def test_edge_below_one_in_regular_grid_rejected() -> None:
+    info = _rejected_without_warning(_mixed_doc([6, 20], [2, [0, 20]]))
+    assert info.match("Dimension 1: chunk edge length must be >= 1, got 0")
+
+
+def test_short_edges_in_regular_grid_rejected() -> None:
+    info = _rejected_without_warning(_mixed_doc([6, 20], [2, [5, 10]]))
+    assert info.match("sum to 15 but array shape extent is 20")
+
+
+def _store_mixed_array(path: Path) -> np.ndarray[Any, np.dtype[np.float32]]:
+    """Write the chunks of the verbatim document and the document itself at `path`."""
+    data = np.arange(120, dtype="float32").reshape(6, 20)
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        arr = zarr.create_array(path, shape=data.shape, chunks=(2, (5, 10, 5)), dtype="float32")
+        arr[...] = data
+    (path / "zarr.json").write_text(MIXED_REGULAR_GRID_DOC)
+    return data
+
+
+def _update_attributes(arr: zarr.Array[Any], data: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+    arr.update_attributes({})
+    return data
+
+
+def _write(arr: zarr.Array[Any], data: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
+    arr[:2] = -data[:2]
+    return np.concatenate([-data[:2], data[2:]])
+
+
+@pytest.mark.parametrize("store_metadata", [_update_attributes, _write], ids=["re-save", "write"])
+def test_edge_lists_in_regular_grid_round_trip(
+    tmp_path: Path,
+    store_metadata: Callable[[zarr.Array[Any], np.ndarray[Any, Any]], np.ndarray[Any, Any]],
+) -> None:
+    """A store holding the verbatim document opens without the rectilinear chunks flag
+    and reads its data. With the flag, re-saving the metadata, or writing chunks (which
+    stores the metadata first), stores the rectilinear chunk grid, which then opens
+    cleanly."""
+    path = tmp_path / "mixed.zarr"
+    data = _store_mixed_array(path)
+
+    with (
+        zarr.config.set({"array.rectilinear_chunks": False}),
+        pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"),
+    ):
+        arr = zarr.open_array(path, mode="a")
+    np.testing.assert_array_equal(arr[...], data)
+
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        expected = store_metadata(arr, data)
+        assert json.loads((path / "zarr.json").read_text())["chunk_grid"] == {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": [2, [5, 10, 5]]},
+        }
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", ZarrUserWarning)
+            reopened = zarr.open_array(path)
+    np.testing.assert_array_equal(reopened[...], expected)
+
+
+def _store_mixed_group(path: Path) -> None:
+    """A group at `path` holding the verbatim document at `mixed` and a regular array
+    `n`, with consolidated metadata that quotes the verbatim document."""
+    group = zarr.open_group(path, mode="w")
+    _store_mixed_array(path / "mixed")
+    group.create_array("n", data=np.arange(4), chunks=(2,))
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        zarr.consolidate_metadata(path)
+    group_doc = json.loads((path / "zarr.json").read_text())
+    group_doc["consolidated_metadata"]["metadata"]["mixed"] = json.loads(MIXED_REGULAR_GRID_DOC)
+    (path / "zarr.json").write_text(json.dumps(group_doc))
+
+
+def _resize(path: Path) -> None:
+    zarr.open_array(path / "mixed", mode="a").resize((6, 5))
+
+
+def _write_chunks(path: Path) -> None:
+    zarr.open_array(path / "mixed", mode="a")[...] = 1
+
+
+def _delete_member(path: Path) -> None:
+    del zarr.open_group(path, mode="a")["n"]
+
+
+def _overwrite_hierarchy(path: Path) -> None:
+    mixed = zarr.open_array(path / "mixed")
+    list(zarr.create_hierarchy(store=LocalStore(path), nodes={"n": mixed.metadata}, overwrite=True))
+
+
+def _overwrite_with_create(path: Path) -> None:
+    zarr.create(shape=(4,), chunks=[[2, 2]], dtype="int64", store=path / "n", overwrite=True)  # type: ignore[arg-type]
+
+
+def _overwrite_with_create_array(path: Path) -> None:
+    zarr.create_array(path / "n", shape=(4,), chunks=[[2, 2]], dtype="int64", overwrite=True)
+
+
+def _set_group_attribute(path: Path) -> None:
+    zarr.open_group(path, mode="a").attrs["x"] = 1
+
+
+@pytest.mark.filterwarnings(
+    "ignore:.*read as that rectilinear chunk grid:zarr.errors.ZarrUserWarning"
+)
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+@pytest.mark.parametrize(
+    "action",
+    [
+        _resize,
+        _write_chunks,
+        _overwrite_hierarchy,
+        _overwrite_with_create,
+        _overwrite_with_create_array,
+    ],
+    ids=["resize", "write", "overwrite-hierarchy", "overwrite-create", "overwrite-create-array"],
+)
+def test_store_untouched_without_flag(tmp_path: Path, action: Callable[[Path], None]) -> None:
+    """An operation that would store the rectilinear chunk grid read from the verbatim
+    document fails without the flag before it deletes or writes anything."""
+    path = tmp_path / "group.zarr"
+    _store_mixed_group(path)
+    stored = {p: p.read_bytes() for p in path.rglob("*") if p.is_file()}
+    with (
+        zarr.config.set({"array.rectilinear_chunks": False}),
+        pytest.raises(ValueError, match="experimental and disabled by default"),
+    ):
+        action(path)
+    assert {p: p.read_bytes() for p in path.rglob("*") if p.is_file()} == stored
+
+
+RECTILINEAR_GRID: dict[str, Any] = {
+    "name": "rectilinear",
+    "configuration": {"kind": "inline", "chunk_shapes": [2, [5, 10, 5]]},
+}
+
+
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+@pytest.mark.parametrize("member", ["mixed", "sub/mixed"])
+def test_consolidate_edge_lists_in_regular_grid(tmp_path: Path, member: str) -> None:
+    """Consolidating a group holding the verbatim document copies it as stored, with or
+    without the flag, and leaves the member's document as it is, so the group opens and
+    reads the member without the flag. Once the member's metadata is re-saved (which
+    needs the flag), consolidating copies its rectilinear chunk grid."""
+    path = tmp_path / "group.zarr"
+    zarr.open_group(path, mode="w").create_group("sub")
+    data = _store_mixed_array(path / member)
+    for flag in (False, True):
+        with (
+            zarr.config.set({"array.rectilinear_chunks": flag}),
+            pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"),
+        ):
+            zarr.consolidate_metadata(path)
+        assert (path / member / "zarr.json").read_text() == MIXED_REGULAR_GRID_DOC
+        assert _consolidated_member(path, 3, member) == json.loads(MIXED_REGULAR_GRID_DOC)
+    with (
+        zarr.config.set({"array.rectilinear_chunks": False}),
+        pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"),
+    ):
+        mixed = zarr.open_group(path, mode="r")[member]
+    assert isinstance(mixed, zarr.Array)
+    np.testing.assert_array_equal(mixed[...], data)
+
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        with pytest.warns(ZarrUserWarning, match="read as that rectilinear chunk grid"):
+            zarr.open_array(path / member, mode="a").update_attributes({})
+        zarr.consolidate_metadata(path)
+        assert _consolidated_member(path, 3, member)["chunk_grid"] == RECTILINEAR_GRID
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", ZarrUserWarning)
+            reopened = zarr.open_group(path, mode="r")[member]
+    assert isinstance(reopened, zarr.Array)
+    np.testing.assert_array_equal(reopened[...], data)
+
+
+@pytest.mark.filterwarnings(
+    "ignore:.*read as that rectilinear chunk grid:zarr.errors.ZarrUserWarning"
+)
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+@pytest.mark.parametrize("action", [_delete_member, _set_group_attribute], ids=["delete", "attrs"])
+@pytest.mark.parametrize("flag", [False, True])
+def test_group_write_stores_mixed_member_as_stored(
+    tmp_path: Path, action: Callable[[Path], None], flag: bool
+) -> None:
+    """A group write, with or without the flag, stores the consolidated copy of the
+    verbatim document as stored and leaves the member's own document as it is: the
+    group opens and reads the member without the flag."""
+    path = tmp_path / "group.zarr"
+    _store_mixed_group(path)
+    with zarr.config.set({"array.rectilinear_chunks": flag}):
+        action(path)
+    assert _consolidated_member(path, 3, "mixed") == json.loads(MIXED_REGULAR_GRID_DOC)
+    assert (path / "mixed" / "zarr.json").read_text() == MIXED_REGULAR_GRID_DOC
+    with zarr.config.set({"array.rectilinear_chunks": False}):
+        mixed = zarr.open_group(path, mode="r", use_consolidated=True)["mixed"]
+    assert isinstance(mixed, zarr.Array)
+    assert mixed.read_chunk_sizes == ((2, 2, 2), (5, 10, 5))
+
+
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+def test_delete_member_without_flag_keeps_group(tmp_path: Path) -> None:
+    """A deletion that would store a rectilinear chunk grid in the consolidated metadata
+    fails without the flag before it deletes anything, and leaves the group listing the
+    member."""
+    path = tmp_path / "group.zarr"
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        group = zarr.open_group(path, mode="w")
+        group.create_array("r", shape=(6, 20), chunks=(2, (5, 10, 5)), dtype="float32")
+        group.create_array("n", shape=(2,), chunks=(1,), dtype="int8")
+        zarr.consolidate_metadata(path)
+        group = zarr.open_group(path, mode="a", use_consolidated=True)
+    stored = {p: p.read_bytes() for p in path.rglob("*") if p.is_file()}
+    with zarr.config.set({"array.rectilinear_chunks": False}):
+        with pytest.raises(ValueError, match="experimental and disabled"):
+            del group["n"]
+    assert group.metadata.consolidated_metadata is not None
+    assert sorted(group.metadata.consolidated_metadata.metadata) == ["n", "r"]
+    assert {p: p.read_bytes() for p in path.rglob("*") if p.is_file()} == stored
