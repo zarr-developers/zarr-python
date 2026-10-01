@@ -464,7 +464,7 @@ async def test_chunks_initialized(
 
 
 def test_nbytes_stored() -> None:
-    arr = zarr.create(shape=(100,), chunks=(10,), dtype="i4", codecs=[BytesCodec()])
+    arr = zarr.create(shape=(100,), chunks=(10,), dtype="i4", codecs=[BytesCodec(endian="little")])
     result = arr.nbytes_stored()
     assert result == 502  # the size of the metadata document. This is a fragile test.
     arr[:50] = 1
@@ -477,7 +477,7 @@ def test_nbytes_stored() -> None:
 
 async def test_nbytes_stored_async() -> None:
     arr = await zarr.api.asynchronous.create(
-        shape=(100,), chunks=(10,), dtype="i4", codecs=[BytesCodec()]
+        shape=(100,), chunks=(10,), dtype="i4", codecs=[BytesCodec(endian="little")]
     )
     result = await arr.nbytes_stored()
     assert result == 502  # the size of the metadata document. This is a fragile test.
@@ -542,7 +542,7 @@ class TestInfo:
             _read_only=False,
             _store_type="MemoryStore",
             _compressors=(ZstdCodec(),),
-            _serializer=BytesCodec(),
+            _serializer=BytesCodec(endian="little"),
             _count_bytes=512,
         )
         assert result == expected
@@ -567,7 +567,7 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _serializer=BytesCodec(),
+            _serializer=BytesCodec(endian="little"),
             _count_bytes=512,
             _count_chunks_initialized=0,
             _count_bytes_stored=521 if shards is None else 982,  # the metadata?
@@ -630,7 +630,7 @@ class TestInfo:
             _read_only=False,
             _store_type="MemoryStore",
             _compressors=(ZstdCodec(),),
-            _serializer=BytesCodec(),
+            _serializer=BytesCodec(endian="little"),
             _count_bytes=512,
         )
         assert result == expected
@@ -657,7 +657,7 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _serializer=BytesCodec(),
+            _serializer=BytesCodec(endian="little"),
             _count_bytes=512,
             _count_chunks_initialized=0,
             _count_bytes_stored=521 if shards is None else 982,  # the metadata?
