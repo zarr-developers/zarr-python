@@ -102,6 +102,7 @@ nav:
       - 'zarr-metadata ↪': https://zarr.readthedocs.io/projects/zarr-metadata/
       - 'zarr-indexing ↪': https://zarr.readthedocs.io/projects/zarr-indexing/
   - release-notes.md
+  - deprecations.md
   - roadmap.md
   - contributing.md
   - Blog:
@@ -194,6 +195,7 @@ plugins:
             show_if_no_docstring: true
             extensions:
             - griffe_inherited_docstrings
+            - mkdocs_griffe_extensions.py:DeprecatedExtension
 
           inventories:
             - https://docs.python.org/3/objects.inv

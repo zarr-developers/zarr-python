@@ -14,11 +14,17 @@ superfences highlighter so the block renders exactly like a plain code fence.
 
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from types import ModuleType
+
     from markdown import Markdown
     from mkdocs.config.defaults import MkDocsConfig
+    from mkdocs.structure.files import Files
+    from mkdocs.structure.pages import Page
 
 # Mirrors markdown_exec's _to_bool: everything but these means "true".
 _FALSY = {"", "no", "off", "false", "0"}
@@ -80,3 +86,35 @@ def on_config(config: MkDocsConfig) -> MkDocsConfig:
         }
     )
     return config
+
+
+# The deprecations page holds these markers where its generated tables go. The tables
+# are built at build time, from the source's ``@deprecated`` decorators and from
+# ``zarr._deprecations``, rather than in a markdown-exec block because the docs test
+# harness runs every ``exec="true"`` block under pytest, where griffe is not installed.
+_DEPRECATED_API_MARKER = "<!-- deprecated-api-table -->"
+_DECLARED_DEPRECATIONS_MARKER = "<!-- declared-deprecations-table -->"
+
+
+def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, files: Files) -> str:
+    if _DEPRECATED_API_MARKER not in markdown and _DECLARED_DEPRECATIONS_MARKER not in markdown:
+        return markdown
+    extensions = _griffe_extensions()
+    return markdown.replace(_DEPRECATED_API_MARKER, extensions.deprecated_objects_table()).replace(
+        _DECLARED_DEPRECATIONS_MARKER, extensions.declared_deprecations_table()
+    )
+
+
+def _griffe_extensions() -> ModuleType:
+    """Import the sibling ``mkdocs_griffe_extensions.py``.
+
+    MkDocs loads this hook by file path, so the repository root is not on ``sys.path``
+    and the sibling module is loaded the same way.
+    """
+    path = Path(__file__).with_name("mkdocs_griffe_extensions.py")
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module

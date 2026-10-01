@@ -382,13 +382,12 @@ def save_group(
     )
 
 
-@deprecated("Use Group.tree instead.", category=ZarrDeprecationWarning)
+@deprecated(
+    "zarr.tree is deprecated and will be removed in a future release. Use Group.tree instead.",
+    category=ZarrDeprecationWarning,
+)
 def tree(grp: Group, expand: bool | None = None, level: int | None = None) -> Any:
     """Provide a rich display of the hierarchy.
-
-    !!! warning "Deprecated"
-        `zarr.tree()` is deprecated since v3.0.0 and will be removed in a future release.
-        Use `group.tree()` instead.
 
     Parameters
     ----------

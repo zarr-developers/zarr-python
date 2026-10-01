@@ -5,8 +5,9 @@ See PR #3963 for context on the deprecation pattern.
 
 from __future__ import annotations
 
-import warnings
 from enum import Enum
+
+from zarr import _deprecations
 
 
 class _DeprecatedStrEnumMeta(type):
@@ -22,10 +23,8 @@ class _DeprecatedStrEnumMeta(type):
     def __getattr__(cls, name: str) -> str:
         members: dict[str, str] = type.__getattribute__(cls, "_members")
         if name in members:
-            warnings.warn(
-                f"{cls.__name__}.{name} is deprecated; pass the string {members[name]!r} instead.",
-                DeprecationWarning,
-                stacklevel=2,
+            _deprecations.warn(
+                "codec-enum-member", cls=cls.__name__, name=name, value=members[name]
             )
             return members[name]
         raise AttributeError(name)
@@ -49,11 +48,6 @@ def _coerce_enum_input(value: object, param_name: str, codec_name: str) -> objec
     and gives those callers a migration warning.
     """
     if isinstance(value, Enum):
-        warnings.warn(
-            f"Passing an enum to {codec_name}(..., {param_name}=...) is deprecated; "
-            "pass the equivalent literal string instead.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
+        _deprecations.warn("codec-enum-parameter", stacklevel=3, codec=codec_name, param=param_name)
         return value.value
     return value

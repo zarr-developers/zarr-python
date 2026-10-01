@@ -614,13 +614,13 @@ async def save_group(
     await asyncio.gather(*aws)
 
 
-@deprecated("Use AsyncGroup.tree instead.", category=ZarrDeprecationWarning)
+@deprecated(
+    "zarr.api.asynchronous.tree is deprecated and will be removed in a future release. "
+    "Use AsyncGroup.tree instead.",
+    category=ZarrDeprecationWarning,
+)
 async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = None) -> Any:
     """Provide a rich display of the hierarchy.
-
-    !!! warning "Deprecated"
-        `zarr.tree()` is deprecated since v3.0.0 and will be removed in a future release.
-        Use `group.tree()` instead.
 
     Parameters
     ----------
