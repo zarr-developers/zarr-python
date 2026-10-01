@@ -10,7 +10,7 @@ from zarr.core._json import buffer_to_json_object, json_equal
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
-from zarr.core.metadata.upgrades import mark_upgraded, upgrade_array_document
+from zarr.core.metadata.repair import mark_repaired, repair_array_document
 from zarr.errors import ArrayNotFoundError, ContainsArrayError
 from zarr.storage._common import StorePath, ensure_no_existing_node
 
@@ -138,9 +138,9 @@ def parse_stored_array(
     documents: Mapping[str, Buffer], zarr_format: ZarrFormat, path: str | None = None
 ) -> ArrayMetadata:
     """The metadata of an array from its documents (by store key, see `ARRAY_DOCUMENTS`),
-    read with the upgrades but without their warnings (whoever asks has warned, or reads
-    metadata built in code), and marked (see `mark_upgraded`) if they had to be
-    upgraded. Raises `ArrayNotFoundError` if there is no array document among them.
+    read with the repairs but without their warnings (whoever asks has warned, or reads
+    metadata built in code), and marked (see `mark_repaired`) if they had to be
+    repaired. Raises `ArrayNotFoundError` if there is no array document among them.
 
     Only operations that store metadata read documents this way, so documents read as a
     rectilinear chunk grid require the rectilinear chunks flag, as storing it does; the
@@ -157,9 +157,9 @@ def parse_stored_array(
         stored = _array_metadata_dict_v3(documents[ZARR_JSON])
     else:
         raise ArrayNotFoundError(f"No Zarr format {zarr_format} array metadata document.")
-    upgraded, readings = upgrade_array_document(stored, zarr_format)
-    metadata = parse_array_metadata(dict(upgraded), path)
-    return mark_upgraded(metadata, stored, readings, None, warn=False)
+    repaired, readings = repair_array_document(stored, zarr_format)
+    metadata = parse_array_metadata(dict(repaired), path)
+    return mark_repaired(metadata, stored, readings, None, warn=False)
 
 
 def _build_parents(store_path: StorePath, zarr_format: ZarrFormat) -> dict[str, GroupMetadata]:

@@ -25,7 +25,7 @@ if TYPE_CHECKING:
         TBaseScalar,
         ZDType,
     )
-    from zarr.core.metadata.upgrades import ArrayDocument
+    from zarr.core.metadata.repair import ArrayDocument
 
 from dataclasses import dataclass, field, fields, replace
 
@@ -46,7 +46,7 @@ from zarr.core.common import (
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
-from zarr.core.metadata.upgrades import mark_upgraded, upgrade_array_document
+from zarr.core.metadata.repair import mark_repaired, repair_array_document
 
 
 class ArrayV2MetadataDict(TypedDict):
@@ -75,8 +75,8 @@ class ArrayV2Metadata(Metadata):
     attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
     _stored_document: ClassVar[ArrayDocument | None] = None
-    """The stored document `from_dict` read this metadata from, if it had to upgrade it
-    (set on the instance by `mark_upgraded`): the store may still hold it."""
+    """The stored document `from_dict` read this metadata from, if it had to repair it
+    (set on the instance by `mark_repaired`): the store may still hold it."""
 
     def __init__(
         self,
@@ -155,11 +155,11 @@ class ArrayV2Metadata(Metadata):
     @classmethod
     def from_dict(cls, data: dict[str, Any], *, path: str | None = None) -> ArrayV2Metadata:
         """Read a stored `.zarray` document (with its attributes). An invalid document
-        that `zarr.core.metadata.upgrades` can read is read as upgraded; a reading the user
+        that `zarr.core.metadata.repair` can read is read as repaired; a reading the user
         must act on warns, naming the array at `path`."""
-        upgraded, readings = upgrade_array_document(data, 2)
+        repaired, readings = repair_array_document(data, 2)
         # a new dict, because we are modifying it
-        _data: dict[str, Any] = dict(upgraded)
+        _data: dict[str, Any] = dict(repaired)
         # Check that the zarr_format attribute is correct.
         _ = parse_zarr_format(_data.pop("zarr_format"))
 
@@ -210,7 +210,7 @@ class ArrayV2Metadata(Metadata):
 
         _data = {k: v for k, v in _data.items() if k in expected}
 
-        return mark_upgraded(cls(**_data), data, readings, path)
+        return mark_repaired(cls(**_data), data, readings, path)
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()

@@ -1,4 +1,4 @@
-"""Tests for the upgrades that read invalid stored array metadata documents."""
+"""Tests for the repairs that read invalid stored array metadata documents."""
 
 from __future__ import annotations
 
@@ -19,10 +19,10 @@ from zarr.codecs.numcodecs import Quantize
 from zarr.core.array import AsyncArray
 from zarr.core.group import ConsolidatedMetadata
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.upgrades import (
+from zarr.core.metadata.repair import (
     RECREATE_HINT,
     RESAVE_HINT,
-    upgrade_array_document,
+    repair_array_document,
 )
 from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
 from zarr.core.sync import sync
@@ -114,7 +114,7 @@ def _nested_sharded_doc(inner: list[Any], nested: list[Any]) -> dict[str, JSON]:
 
 
 @pytest.mark.parametrize(
-    ("doc", "expected", "upgraded", "warning"),
+    ("doc", "expected", "repaired", "warning"),
     [
         (_v2_doc([10, 10], [4, 5]), ((4, 5),), "no", None),
         (_v3_doc([0, 0], [1, 1]), ((1, 1),), "no", None),
@@ -175,35 +175,35 @@ def _nested_sharded_doc(inner: list[Any], nested: list[Any]) -> dict[str, JSON]:
         "v3-nested-sharded-true",
     ],
 )
-def test_upgrade_array_document(
+def test_repair_array_document(
     doc: dict[str, JSON],
     expected: tuple[Any, ...],
-    upgraded: Literal["no", "respelled", "moved"],
+    repaired: Literal["no", "respelled", "moved"],
     warning: str | None,
 ) -> None:
     """Valid documents pass unchanged. A stored chunk size of 0 or `false` is read as 1
     (the inner chunk size when sharded), however long the axis, and `true` as 1,
     in the chunk shape and in the inner chunk shape of every sharding codec, nested or
-    not. `from_dict` marks the metadata of a document whose upgrade moves chunks (a
-    chunk size read as another size), so the array stores the upgrade before it writes
+    not. `from_dict` marks the metadata of a document whose repair moves chunks (a
+    chunk size read as another size), so the array stores the repair before it writes
     chunks, but not one that only respells a value (`true` as 1). It warns once, naming
     the array, only where a chunk size of 0 was stored for a non-empty axis (which then
     holds only its fill value), saying how that part was read and that recreating the
     array loses nothing (see `RECREATE_HINT`). The
     other readings give what zarr read before, so they are silent."""
-    upgraded_doc, readings = upgrade_array_document(doc, cast("ZarrFormat", doc["zarr_format"]))
+    repaired_doc, readings = repair_array_document(doc, cast("ZarrFormat", doc["zarr_format"]))
     assert {
-        k: v for k, v in upgraded_doc.items() if k not in ("chunks", "chunk_grid", "codecs")
+        k: v for k, v in repaired_doc.items() if k not in ("chunks", "chunk_grid", "codecs")
     } == {k: v for k, v in doc.items() if k not in ("chunks", "chunk_grid", "codecs")}
-    assert bool(readings) is (upgraded != "no")
-    if upgraded == "no":
-        assert upgraded_doc is doc
+    assert bool(readings) is (repaired != "no")
+    if repaired == "no":
+        assert repaired_doc is doc
     metadata_cls = ArrayV2Metadata if doc["zarr_format"] == 2 else ArrayV3Metadata
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
         metadata = metadata_cls.from_dict(dict(doc), path="group/array")
     assert _chunk_shapes(metadata) == expected
-    assert metadata._stored_document == (doc if upgraded == "moved" else None)
+    assert metadata._stored_document == (doc if repaired == "moved" else None)
     messages = [str(w.message) for w in record]
     if warning is None:
         assert messages == []
@@ -224,11 +224,11 @@ def test_upgrade_array_document(
     ],
     ids=["v2", "v3-sharded"],
 )
-def test_invalid_upgraded_document_raises_without_warning(doc: dict[str, JSON], error: str) -> None:
-    """A document the upgrades read that the metadata constructor then rejects raises
+def test_invalid_repaired_document_raises_without_warning(doc: dict[str, JSON], error: str) -> None:
+    """A document the repairs read that the metadata constructor then rejects raises
     that error, without first warning how it was read."""
     metadata_cls = ArrayV2Metadata if doc["zarr_format"] == 2 else ArrayV3Metadata
-    assert upgrade_array_document(doc, cast("ZarrFormat", doc["zarr_format"]))[1]
+    assert repair_array_document(doc, cast("ZarrFormat", doc["zarr_format"]))[1]
     with warnings.catch_warnings():
         warnings.simplefilter("error", ZarrUserWarning)
         with pytest.raises(ValueError, match=error):
@@ -236,7 +236,7 @@ def test_invalid_upgraded_document_raises_without_warning(doc: dict[str, JSON], 
 
 
 def _read_strictly(doc: dict[str, JSON]) -> ArrayV2Metadata | ArrayV3Metadata:
-    """Read `doc`, failing on any warning that it was upgraded."""
+    """Read `doc`, failing on any warning that it was repaired."""
     metadata_cls = ArrayV2Metadata if doc["zarr_format"] == 2 else ArrayV3Metadata
     with warnings.catch_warnings():
         warnings.simplefilter("error", ZarrUserWarning)
@@ -244,7 +244,7 @@ def _read_strictly(doc: dict[str, JSON]) -> ArrayV2Metadata | ArrayV3Metadata:
 
 
 def _open_strictly(path: Path, mode: Literal["r", "a", "r+"] = "r") -> AnyArray:
-    """Open the array at `path`, failing on any warning that its document was upgraded."""
+    """Open the array at `path`, failing on any warning that its document was repaired."""
     with warnings.catch_warnings():
         warnings.simplefilter("error", ZarrUserWarning)
         array = zarr.open_array(store=path, mode=mode)
@@ -253,13 +253,13 @@ def _open_strictly(path: Path, mode: Literal["r", "a", "r+"] = "r") -> AnyArray:
 
 
 def test_stored_negative_chunk_size_rejected() -> None:
-    """No known writer stored a negative chunk size: it is rejected, not upgraded."""
+    """No known writer stored a negative chunk size: it is rejected, not repaired."""
     with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got -1$"):
         _read_strictly(_v2_doc([4], [-1]))
 
 
 def test_stored_chunk_shape_ndim_mismatch_rejected() -> None:
-    """A chunk shape with the wrong number of dimensions is not upgraded, so its 0 is
+    """A chunk shape with the wrong number of dimensions is not repaired, so its 0 is
     rejected."""
     with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got 0$"):
         _read_strictly(_v3_doc([4, 4], [0]))
@@ -267,7 +267,7 @@ def test_stored_chunk_shape_ndim_mismatch_rejected() -> None:
 
 def test_stored_zero_inner_chunk_size_rejected() -> None:
     """No known writer stored an inner chunk size of 0, and no span defines one: it is
-    rejected, not upgraded."""
+    rejected, not repaired."""
     with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got 0$"):
         _read_strictly(_v3_doc([4], [4], inner=[0]))
 
@@ -277,7 +277,7 @@ def test_stored_zero_chunk_size_of_shard_with_invalid_inner_chunk_shape_rejected
     inner: list[Any],
 ) -> None:
     """A stored chunk size of 0 of a sharded array is read in multiples of the inner
-    chunk size; if that is not an integer of at least 1, the 0 is not upgraded, so it
+    chunk size; if that is not an integer of at least 1, the 0 is not repaired, so it
     is rejected."""
     with pytest.raises(ValueError, match="^Dimension 0: chunk edge length must be >= 1, got 0$"):
         _read_strictly(_v3_doc([4], [0], inner=inner))
@@ -463,7 +463,7 @@ def test_metadata_takes_int_chunk_edge(site: str) -> None:
 )
 def test_metadata_rejects_non_int_chunk_edge(site: str, size: object) -> None:
     """Metadata built in code takes chunk edge lengths as `int`s only, everywhere: not a
-    `bool`, a float (stored documents with integral floats are read by the upgrades) or
+    `bool`, a float (stored documents with integral floats are read by the repairs) or
     a NumPy integer."""
     with pytest.raises(
         TypeError, match=re.escape(f"Dimension 0: chunk edge length must be an int, got {size!r}")
@@ -544,7 +544,7 @@ def test_legacy_chunk_size_round_trip(
 ) -> None:
     """A store whose metadata holds a chunk size written by older software opens (with a
     warning where a non-empty axis was stored with chunk size 0), reads and appends under
-    the upgraded grid, and re-saves valid metadata."""
+    the repaired grid, and re-saves valid metadata."""
     path = tmp_path / "legacy.zarr"
     arr = zarr.create_array(
         store=path,
@@ -591,7 +591,7 @@ def test_legacy_chunk_size_round_trip(
     ids=["v2", "v3", "v3-sharded"],
 )
 @pytest.mark.parametrize("api", ["sync", "async", "async-concurrent"])
-def test_write_stores_upgraded_metadata_first(
+def test_write_stores_repaired_metadata_first(
     tmp_path: Path,
     zarr_format: Literal[2, 3],
     shape: tuple[int, ...],
@@ -599,8 +599,8 @@ def test_write_stores_upgraded_metadata_first(
     expected: tuple[int, ...],
     api: str,
 ) -> None:
-    """Writing chunks to an array read from an upgraded document first stores the
-    upgraded metadata, so readers that do not upgrade (or read it differently) see
+    """Writing chunks to an array read from a repaired document first stores the
+    repaired metadata, so readers that do not repair (or read it differently) see
     the chunks the write stored."""
     path = tmp_path / "legacy.zarr"
     zarr.create_array(
@@ -662,7 +662,7 @@ def _legacy_array(path: Path, zarr_format: Literal[2, 3]) -> None:
 def test_stale_handle_write_keeps_newer_metadata(
     tmp_path: Path, zarr_format: Literal[2, 3]
 ) -> None:
-    """A handle read from an upgraded document stores the upgrade of what the store
+    """A handle read from a repaired document stores the repair of what the store
     holds when it first writes chunks; if another handle stored valid metadata since,
     it stores no metadata and writes only its chunks."""
     path = tmp_path / "legacy.zarr"
@@ -687,8 +687,8 @@ def test_stale_handle_write_keeps_newer_metadata(
 def test_stale_handle_write_keeps_valid_document_as_written(
     tmp_path: Path, zarr_format: Literal[2, 3]
 ) -> None:
-    """If the document the store holds when a handle read from an upgraded document
-    first writes chunks needs no upgrade, it is left as written, even where zarr would
+    """If the document the store holds when a handle read from a repaired document
+    first writes chunks needs no repair, it is left as written, even where zarr would
     encode the same metadata differently (as another implementation may have written it)."""
     path = tmp_path / "legacy.zarr"
     _legacy_array(path, zarr_format)
@@ -786,7 +786,7 @@ def test_stale_handle_write_after_chunk_grid_change_raises(
     sharded: bool,
     change: Callable[[dict[str, Any]], None],
 ) -> None:
-    """If the document the store holds when a handle read from an upgraded document
+    """If the document the store holds when a handle read from a repaired document
     first writes chunks lays out chunks differently from the handle's metadata (another
     writer stored a different chunk size, or changed the inner chunk shape), the handle's
     chunks would not be found under it: the write raises and stores nothing."""
@@ -814,7 +814,7 @@ def test_stale_handle_write_after_resize_keeping_zero(
 ) -> None:
     """A stored chunk size of 0 is read as 1 however long the axis is, so a resize by
     software that kept it lays out chunks as the handle does: the handle's first write
-    stores the upgrade of the resized document, then its chunks."""
+    stores the repair of the resized document, then its chunks."""
     path = tmp_path / "legacy.zarr"
     _legacy_array(path, zarr_format)
     with pytest.warns(ZarrUserWarning, match="is read as"):
@@ -845,7 +845,7 @@ def test_failed_metadata_save_keeps_stored_document(
     operation: Callable[[AnyArray], None],
 ) -> None:
     """If storing an array's metadata fails, the array still stands for the document
-    the store holds, which still needs its upgrade."""
+    the store holds, which still needs its repair."""
     path = tmp_path / "legacy.zarr"
     _legacy_array(path, zarr_format)
     doc_name = ".zarray" if zarr_format == 2 else "zarr.json"
@@ -870,18 +870,18 @@ def test_failed_metadata_save_keeps_stored_document(
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
 def test_write_without_stored_document(zarr_format: Literal[2, 3]) -> None:
-    """An array read from an upgraded document that no store holds (as
+    """An array read from a repaired document that no store holds (as
     `AsyncArray.from_dict` builds one) writes its chunks as any array does: there is no
-    stored document to upgrade."""
+    stored document to repair."""
     store = MemoryStore()
     doc = _v2_doc([3], [0]) if zarr_format == 2 else _v3_doc([3], [0])
     with pytest.warns(ZarrUserWarning, match="is read as"):
         array = zarr.Array(AsyncArray.from_dict(StorePath(store), doc))
-    upgraded = array.metadata._stored_document is not None
+    repaired = array.metadata._stored_document is not None
 
     array[:] = [1, 2, 3]
 
-    assert (upgraded, array.metadata._stored_document) == (True, None)
+    assert (repaired, array.metadata._stored_document) == (True, None)
     np.testing.assert_array_equal(array[:], [1, 2, 3])
     assert not [key for key in store._store_dict if key.endswith((".zarray", "zarr.json"))]
 
@@ -890,7 +890,7 @@ def test_write_without_stored_document(zarr_format: Literal[2, 3]) -> None:
 def test_respelled_document_write_stores_only_chunks(
     tmp_path: Path, zarr_format: Literal[2, 3]
 ) -> None:
-    """A document whose upgrade only respells a value (a stored chunk size `true`, read
+    """A document whose repair only respells a value (a stored chunk size `true`, read
     as 1 as zarr read it before) moves no chunks, so a write stores its chunks and no
     metadata: in a `ZipStore`, which cannot replace an entry, the write adds no second
     metadata entry and gives no warning."""
@@ -933,13 +933,13 @@ def test_respelled_document_write_stores_only_chunks(
     ],
     ids=["codec-instance", "numpy-integer"],
 )
-def test_upgrades_keep_values_that_are_not_json(codec: Any) -> None:
+def test_repair_keep_values_that_are_not_json(codec: Any) -> None:
     """`from_dict` takes metadata built in code as well as stored documents, so the
-    upgrades read values that are not JSON (codec instances, NumPy integers) as they are,
+    repairs read values that are not JSON (codec instances, NumPy integers) as they are,
     without encoding them, and leave them for the constructors to check."""
     doc: dict[str, Any] = _v3_doc([4], [4])
     doc["codecs"] = [codec]
-    assert upgrade_array_document(doc, 3) == (doc, [])
+    assert repair_array_document(doc, 3) == (doc, [])
 
 
 def test_array_from_metadata_with_numpy_scalar_codec_configuration() -> None:
@@ -1013,7 +1013,7 @@ def _record_store_access(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("member", ["a", "g/a"])
 @pytest.mark.parametrize("operation", ["attrs", "update_attributes_async", "delete-member"])
-def test_group_write_stores_upgraded_consolidated_member_as_stored(
+def test_group_write_stores_repaired_consolidated_member_as_stored(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     zarr_format: Literal[2, 3],
@@ -1022,8 +1022,8 @@ def test_group_write_stores_upgraded_consolidated_member_as_stored(
 ) -> None:
     """A group write stores only the group's own documents, reading none: it reads and
     writes no member document, and stores the consolidated copy of a member read from a
-    document that had to be upgraded exactly as it was stored, so every reader of the
-    consolidated metadata reads that member as upgraded again."""
+    document that had to be repaired exactly as it was stored, so every reader of the
+    consolidated metadata reads that member as repaired again."""
     path = tmp_path / "group.zarr"
     _flagged_consolidated_group(path, zarr_format, member)
     stored = json.dumps(_consolidated_member(path, zarr_format, member))
@@ -1048,11 +1048,11 @@ def test_group_write_stores_upgraded_consolidated_member_as_stored(
 
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_concurrent_deletions_leave_no_upgraded_member(
+def test_concurrent_deletions_leave_no_repaired_member(
     tmp_path: Path, zarr_format: Literal[2, 3]
 ) -> None:
     """Members deleted concurrently through one consolidated group handle stay deleted,
-    also those read from documents that had to be upgraded: no group write stores a
+    also those read from documents that had to be repaired: no group write stores a
     member document."""
     path = tmp_path / "group.zarr"
     zarr.open_group(path, mode="w", zarr_format=zarr_format)
@@ -1084,13 +1084,13 @@ def _consolidated_legacy_member(path: Path, zarr_format: Literal[2, 3]) -> Path:
 
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_consolidated_upgraded_member_stored_by_its_first_write(
+def test_consolidated_repaired_member_stored_by_its_first_write(
     tmp_path: Path, zarr_format: Literal[2, 3]
 ) -> None:
-    """Consolidating a group copies the document of a member that had to be upgraded as
+    """Consolidating a group copies the document of a member that had to be repaired as
     it is stored, and leaves that document as it is. The first chunk write through the
-    consolidated metadata stores the member's upgrade before its chunks, the one write
-    that stores it; consolidating again then copies the upgrade."""
+    consolidated metadata stores the member's repair before its chunks, the one write
+    that stores it; consolidating again then copies the repair."""
     path = tmp_path / "group.zarr"
     document = _consolidated_legacy_member(path, zarr_format)
     legacy = document.read_bytes()
@@ -1108,7 +1108,7 @@ def test_consolidated_upgraded_member_stored_by_its_first_write(
 
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_consolidated_upgraded_member_write_after_chunk_grid_change_raises(
+def test_consolidated_repaired_member_write_after_chunk_grid_change_raises(
     tmp_path: Path, zarr_format: Literal[2, 3]
 ) -> None:
     """A member read from its consolidated copy, whose own document has since been
@@ -1130,12 +1130,12 @@ def test_consolidated_upgraded_member_write_after_chunk_grid_change_raises(
 
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_consolidated_upgraded_member_attributes_kept_by_group_write(
+def test_consolidated_repaired_member_attributes_kept_by_group_write(
     tmp_path: Path, zarr_format: Literal[2, 3]
 ) -> None:
     """Setting attributes of a member read from consolidated metadata stores the member's
-    upgraded document with them. A later write of the group, whose consolidated metadata
-    shares the member's metadata, then stores that upgrade: the new attributes, not the
+    repaired document with them. A later write of the group, whose consolidated metadata
+    shares the member's metadata, then stores that repair: the new attributes, not the
     legacy document as it was stored before."""
     path = tmp_path / "group.zarr"
     _consolidated_legacy_member(path, zarr_format)
@@ -1154,8 +1154,8 @@ def test_consolidated_upgraded_member_attributes_kept_by_group_write(
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_upgraded_metadata_keeps_the_document_it_read(zarr_format: Literal[2, 3]) -> None:
-    """Metadata read from a document that had to be upgraded keeps that document as it
+def test_repaired_metadata_keeps_the_document_it_read(zarr_format: Literal[2, 3]) -> None:
+    """Metadata read from a document that had to be repaired keeps that document as it
     was read, whatever becomes of the caller's dict (or the objects in it, which the
     metadata's attributes may hold): consolidated metadata stores it as read."""
     doc = _v2_doc([0], [0]) if zarr_format == 2 else _v3_doc([0], [0])
@@ -1187,7 +1187,7 @@ def test_empty_write_stores_no_metadata(tmp_path: Path, zarr_format: Literal[2, 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
 def test_async_array_from_dict_names_array(tmp_path: Path, zarr_format: Literal[2, 3]) -> None:
-    """`AsyncArray.from_dict` names the array at its store path in the upgrade warning."""
+    """`AsyncArray.from_dict` names the array at its store path in the repair warning."""
     store_path = sync(make_store_path(tmp_path / "legacy.zarr"))
     doc = _v2_doc([4], [0]) if zarr_format == 2 else _v3_doc([4], [0])
     with pytest.warns(ZarrUserWarning, match=f"^Array {re.escape(repr(str(store_path)))}: "):
@@ -1197,7 +1197,7 @@ def test_async_array_from_dict_names_array(tmp_path: Path, zarr_format: Literal[
 @pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
 @pytest.mark.parametrize("zarr_format", [2, 3])
 def test_legacy_chunk_size_consolidated(tmp_path: Path, zarr_format: Literal[2, 3]) -> None:
-    """Consolidated metadata goes through the same upgrade as the arrays' own documents,
+    """Consolidated metadata goes through the same repair as the arrays' own documents,
     with one warning naming each array by its path; re-saving the arrays and
     consolidating again leaves a group that opens without a warning."""
     path = tmp_path / "group.zarr"

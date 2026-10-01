@@ -136,7 +136,7 @@ def _documents(store: Store) -> dict[str, Any]:
 
 
 def _legacy(zarr_format: Literal[2, 3]) -> tuple[StorePath, ArrayV2Metadata | ArrayV3Metadata]:
-    """An array stored with chunk shape `[0]`, and the metadata its upgrade reads."""
+    """An array stored with chunk shape `[0]`, and the metadata its repair reads."""
     store = _CountingStore()
     array = zarr.create_array(
         store, shape=(3,), chunks=(3,), dtype="int16", zarr_format=zarr_format

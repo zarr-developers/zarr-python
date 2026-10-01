@@ -155,8 +155,8 @@ class ConsolidatedMetadata:
 
     def to_dict(self) -> dict[str, JSON]:
         """The consolidated metadata document. An array read from a stored document that
-        had to be upgraded is written as that document was stored, so every reader of
-        the consolidated metadata reads it as upgraded again (see `mark_upgraded`)."""
+        had to be repaired is written as that document was stored, so every reader of
+        the consolidated metadata reads it as repaired again (see `mark_repaired`)."""
         return {
             "kind": self.kind,
             "must_understand": self.must_understand,
@@ -394,7 +394,7 @@ class GroupMetadata(Metadata):
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         if self.consolidated_metadata is not None:
             for path, member in self.consolidated_metadata.flattened_metadata.items():
-                # A member read from a document that had to be upgraded is stored as it
+                # A member read from a document that had to be repaired is stored as it
                 # was stored (see `ConsolidatedMetadata.to_dict`).
                 if isinstance(member, ArrayV3Metadata) and member._stored_document is None:
                     try:

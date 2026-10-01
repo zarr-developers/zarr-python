@@ -607,7 +607,7 @@ def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
 )
 def test_rle_expand_rejects_non_int(rle_input: list[Any], match: str) -> None:
     """expand_rle takes `int`s only, not `bool`s, floats or NumPy integers; stored
-    integral floats and JSON `true` are read by the upgrades."""
+    integral floats and JSON `true` are read by the repairs."""
     with pytest.raises(TypeError, match=re.escape(match)):
         expand_rle(rle_input)
 
