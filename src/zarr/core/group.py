@@ -150,8 +150,8 @@ class ConsolidatedMetadata:
 
     def to_dict(self) -> dict[str, JSON]:
         """The consolidated metadata document. An array read from a stored document that
-        had to be upgraded is written as that document was stored, so every reader of
-        the consolidated metadata reads it as upgraded again (see `mark_upgraded`)."""
+        had to be repaired is written as that document was stored, so every reader of
+        the consolidated metadata reads it as repaired again (see `mark_repaired`)."""
         return {
             "kind": self.kind,
             "must_understand": self.must_understand,
