@@ -123,6 +123,7 @@ from zarr.core.metadata.io import (
     parse_stored_array,
     read_documents,
     save_metadata,
+    save_new_metadata,
     store_documents,
     upsert_metadata,
 )
@@ -153,7 +154,7 @@ from zarr.registry import (
     _parse_bytes_bytes_codec,
     get_pipeline_class,
 )
-from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_path
+from zarr.storage._common import StorePath, make_store_path
 from zarr.storage._utils import _relativize_path
 
 if TYPE_CHECKING:
@@ -342,22 +343,6 @@ def _array_metadata_dict_v3(zarr_json_bytes: Buffer) -> dict[str, JSON]:
     metadata_dict: dict[str, JSON] = buffer_to_json_object(zarr_json_bytes)
     parse_node_type_array(metadata_dict.get("node_type"))
     return metadata_dict
-
-
-async def _prepare_overwrite(
-    store_path: StorePath, *, zarr_format: ZarrFormat, overwrite: bool
-) -> None:
-    """
-    Prepare a store path for writing a new node.
-
-    If `overwrite` is true and the store supports deletes, any existing node at
-    `store_path` is deleted. Otherwise, the absence of an existing node is enforced
-    (raising if one is present).
-    """
-    if overwrite and store_path.store.supports_deletes:
-        await store_path.delete_dir()
-    else:
-        await ensure_no_existing_node(store_path, zarr_format=zarr_format)
 
 
 @dataclass(frozen=True)
@@ -645,13 +630,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             dimension_names=dimension_names,
             attributes=attributes,
         )
-        # Encode first, so metadata that cannot be stored fails before any existing
-        # node is deleted.
-        encode_documents(store_path, metadata)
-        await _prepare_overwrite(store_path, zarr_format=3, overwrite=overwrite)
-
         array = cls(metadata=metadata, store_path=store_path, config=config)
-        await array._save_metadata(metadata, ensure_parents=True)
+        await save_new_metadata(store_path, metadata, overwrite=overwrite, ensure_parents=True)
         return array
 
     @staticmethod
@@ -730,13 +710,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             compressor=compressor_parsed,
             attributes=attributes,
         )
-        # Encode first, so metadata that cannot be stored fails before any existing
-        # node is deleted.
-        encode_documents(store_path, metadata)
-        await _prepare_overwrite(store_path, zarr_format=2, overwrite=overwrite)
-
         array = cls(metadata=metadata, store_path=store_path, config=config)
-        await array._save_metadata(metadata, ensure_parents=True)
+        await save_new_metadata(store_path, metadata, overwrite=overwrite, ensure_parents=True)
         return array
 
     @classmethod
@@ -4690,12 +4665,8 @@ async def init_array(
             attributes=attributes,
         )
 
-    # Encode first, so metadata that cannot be stored fails before any existing node is
-    # deleted.
-    encode_documents(store_path, meta)
-    await _prepare_overwrite(store_path, zarr_format=zarr_format, overwrite=overwrite)
     arr = AsyncArray(metadata=meta, store_path=store_path, config=config)
-    await arr._save_metadata(meta, ensure_parents=True)
+    await save_new_metadata(store_path, meta, overwrite=overwrite, ensure_parents=True)
     return arr
 
 
