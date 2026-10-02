@@ -220,6 +220,10 @@ class NDBuffer(core.NDBuffer):
         return np.asanyarray(self._data)
 
     def __getitem__(self, key: Any) -> Self:
+        # a trailing Ellipsis makes numpy return a 0-d view instead of a scalar, which
+        # np.asanyarray would copy (slow for large fixed-length string dtypes)
+        if isinstance(key, tuple) and not any(k is Ellipsis for k in key):
+            key = (*key, Ellipsis)
         return self.__class__(np.asanyarray(self._data.__getitem__(key)))
 
     def __setitem__(self, key: Any, value: Any) -> None:
