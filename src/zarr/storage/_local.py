@@ -149,9 +149,8 @@ def _clear(root: Path) -> None:
 
 
 def _delete(path: Path) -> None:
-    if path.is_dir():
-        shutil.rmtree(path)
-    else:
+    # Directories represent key prefixes, not stored objects.
+    if not path.is_dir():
         path.unlink(missing_ok=True)
 
 
@@ -401,8 +400,9 @@ class LocalStore(Store):
 
         Notes
         -----
-        If ``key`` is a directory within this store, the entire directory
-        at ``store.root / key`` is deleted.
+        If ``key`` is a directory within this store, nothing is deleted:
+        directories represent prefixes rather than stored objects. Use
+        :meth:`delete_dir` to remove all keys under a directory.
         """
         # docstring inherited
         self._check_writable()
