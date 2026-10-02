@@ -12,6 +12,7 @@ __all__ = [
     "MetadataValidationError",
     "NegativeStepError",
     "NodeTypeValidationError",
+    "PickleCodecDisabledError",
     "UnknownCodecError",
     "UnstableSpecificationWarning",
     "VindexInvalidSelectionError",
@@ -98,6 +99,15 @@ class MetadataValidationError(BaseZarrError):
 class UnknownCodecError(BaseZarrError):
     """
     Raised when an unknown codec was used.
+    """
+
+
+class PickleCodecDisabledError(BaseZarrError):
+    """
+    Raised when reading data encoded with the pickle codec without opting in.
+
+    Unpickling can execute arbitrary code, so decoding with the pickle codec is
+    disabled unless the ``array.allow_pickle`` configuration option is set to ``True``.
     """
 
 

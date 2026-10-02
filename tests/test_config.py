@@ -59,6 +59,7 @@ def test_config_defaults_set() -> None:
                     "rectilinear_chunks": False,
                     "sharding_coalesce_max_gap_bytes": 1 << 20,
                     "sharding_coalesce_max_bytes": 16 << 20,
+                    "allow_pickle": False,
                 },
                 "async": {"concurrency": 10, "timeout": None},
                 "threading": {"max_workers": None},
