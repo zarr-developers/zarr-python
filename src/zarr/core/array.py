@@ -120,10 +120,12 @@ from zarr.core.metadata import (
 )
 from zarr.core.metadata.io import (
     ARRAY_DOCUMENTS,
+    encode_documents,
     parse_stored_array,
     read_documents,
     save_metadata,
     save_new_metadata,
+    store_documents,
     upsert_metadata,
 )
 from zarr.core.metadata.v2 import (
@@ -646,7 +648,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             dimension_names=dimension_names,
             attributes=attributes,
         )
-
         array = cls(metadata=metadata, store_path=store_path, config=config)
         await save_new_metadata(store_path, metadata, overwrite=overwrite, ensure_parents=True)
         return array
@@ -727,7 +728,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             compressor=compressor_parsed,
             attributes=attributes,
         )
-
         array = cls(metadata=metadata, store_path=store_path, config=config)
         await save_new_metadata(store_path, metadata, overwrite=overwrite, ensure_parents=True)
         return array
@@ -1607,7 +1607,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         """Store `metadata` as this array's own documents, then clear the
-        `_stored_document` mark (see `_stored_document_replaced`)."""
+        `_stored_document` mark (see `_stored_document_replaced`). `_resize` stores the
+        documents it encoded before deleting chunks directly, then clears the mark the
+        same way."""
         await save_metadata(self.store_path, metadata, ensure_parents=ensure_parents)
         self._stored_document_replaced()
 
@@ -1642,14 +1644,14 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         zarr_format = self.metadata.zarr_format
         documents = await read_documents(self.store_path, ARRAY_DOCUMENTS[zarr_format])
         try:
-            current = parse_stored_array(documents, zarr_format)
+            current = parse_stored_array(documents, zarr_format, str(self.store_path))
         except ArrayNotFoundError:
             pass
         else:
             if _chunk_layout(current) != _chunk_layout(self.metadata):
                 raise ValueError(
-                    f"The metadata stored for the array at {str(self.store_path)!r} has "
-                    "changed since this array was opened: reopen the array to write to it."
+                    f"Array {str(self.store_path)!r}: the metadata stored has changed since "
+                    "this array was opened; reopen the array to write to it. Nothing was stored."
                 )
             if current._stored_document is not None:
                 await upsert_metadata(self.store_path, current, documents)
@@ -5904,6 +5906,10 @@ async def _resize(
     # ensure deletion is only run if array is shrinking as the delete_outside_chunks path is unbounded in memory
     only_growing = all(new >= old for new, old in zip(new_shape, array.metadata.shape, strict=True))
 
+    # Encode the new metadata before deleting any chunk: metadata that cannot be stored
+    # then fails with the store untouched.
+    documents = encode_documents(array.store_path, new_metadata)
+
     if delete_outside_chunks and not only_growing:
         # Remove all chunks outside of the new shape
         old_chunk_coords = set(array._chunk_grid.all_chunk_coords())
@@ -5922,7 +5928,8 @@ async def _resize(
         )
 
     # Write new metadata
-    await array._save_metadata(new_metadata)
+    await store_documents(array.store_path, documents)
+    array._stored_document_replaced()
 
     # Update metadata and chunk_grid (in place)
     object.__setattr__(array, "metadata", new_metadata)

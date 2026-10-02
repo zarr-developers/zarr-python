@@ -15,6 +15,8 @@ import numpy as np
 import pytest
 
 import zarr
+from tests.test_metadata.conftest import minimal_metadata_dict_v3
+from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_grids import (
     ChunkGrid,
     ChunkSpec,
@@ -23,7 +25,9 @@ from zarr.core.chunk_grids import (
     _is_rectilinear_chunks,
 )
 from zarr.core.common import compress_rle, expand_rle
+from zarr.core.dtype import UInt8
 from zarr.core.metadata.v3 import (
+    ArrayV3Metadata,
     RectilinearChunkGridMetadata,
     RectilinearChunkGridMetadataJSON,
     RegularChunkGridMetadata,
@@ -102,30 +106,57 @@ def test_dimension_index_to_chunk_last_valid(
 # ---------------------------------------------------------------------------
 
 
+_RECTILINEAR_DOC = minimal_metadata_dict_v3(
+    shape=(30, 50),
+    chunk_grid={
+        "name": "rectilinear",
+        "configuration": {"kind": "inline", "chunk_shapes": [[10, 20], [25, 25]]},
+    },
+)
+
+
 @pytest.mark.parametrize(
     "action",
     [
-        lambda: RectilinearChunkGridMetadata(chunk_shapes=((10, 20), (25, 25))),
-        lambda: RectilinearChunkGridMetadata.from_dict(
-            {
-                "name": "rectilinear",
-                "configuration": {"kind": "inline", "chunk_shapes": [[10, 20, 30], [50, 50]]},
-            }
-        ),
+        lambda: ArrayV3Metadata.from_dict(dict(_RECTILINEAR_DOC)),  # type: ignore[arg-type]
+        lambda: ArrayV3Metadata(
+            shape=(30, 50),
+            data_type=UInt8(),
+            chunk_grid=RectilinearChunkGridMetadata(chunk_shapes=((10, 20), (25, 25))),
+            chunk_key_encoding={"name": "default"},
+            fill_value=0,
+            codecs=[{"name": "bytes"}],
+            attributes=None,
+            dimension_names=None,
+        ).to_buffer_dict(default_buffer_prototype()),
         lambda: zarr.create_array(MemoryStore(), shape=(30,), chunks=[[10, 20]], dtype="int32"),
     ],
-    ids=["constructor", "from_dict", "create_array"],
+    ids=["read", "store", "create_array"],
 )
 def test_rectilinear_feature_flag_blocked(action: Any) -> None:
-    """Rectilinear chunk operations raise ValueError when the feature flag is disabled"""
+    """Reading or storing an array metadata document that declares a rectilinear chunk
+    grid raises ValueError when the feature flag is disabled."""
     with zarr.config.set({"array.rectilinear_chunks": False}):
         with pytest.raises(ValueError, match="experimental and disabled by default"):
             action()
 
 
-def test_rectilinear_feature_flag_enabled() -> None:
-    """Rectilinear chunk grid construction succeeds when the feature flag is enabled"""
+def test_rectilinear_feature_flag_names_stored_array() -> None:
+    """Opening a stored array whose document the flag refuses names the array."""
+    store = MemoryStore()
     with zarr.config.set({"array.rectilinear_chunks": True}):
+        zarr.create_array(store, name="r", shape=(30,), chunks=[[10, 20]], dtype="int32")
+    with (
+        zarr.config.set({"array.rectilinear_chunks": False}),
+        pytest.raises(ValueError, match="experimental and disabled by default") as info,
+    ):
+        zarr.open_array(store, path="r")
+    assert info.value.__notes__ == [f"Array {str(store) + '/r'!r}: nothing was read."]
+
+
+def test_rectilinear_metadata_classes_not_gated() -> None:
+    """The flag gates stored documents, not the chunk grid metadata classes."""
+    with zarr.config.set({"array.rectilinear_chunks": False}):
         grid = RectilinearChunkGridMetadata(chunk_shapes=((10, 20), (25, 25)))
         assert grid.ndim == 2
 
@@ -533,6 +564,7 @@ def test_rle_roundtrip() -> None:
         ([[-10, 2]], "Chunk edge length must be >= 1"),
         ([[5, 0]], "RLE repeat count must be >= 1"),
         ([[5, -1]], "RLE repeat count must be >= 1"),
+        ([[5, 2, 1]], r"RLE entries must be an integer or \[size, count\], got \[5, 2, 1\]"),
     ],
     ids=[
         "zero-edge",
@@ -541,6 +573,7 @@ def test_rle_roundtrip() -> None:
         "negative-rle-size",
         "zero-rle-count",
         "negative-rle-count",
+        "rle-entry-of-three",
     ],
 )
 def test_rle_expand_rejects_invalid(rle_input: list[Any], match: str) -> None:
