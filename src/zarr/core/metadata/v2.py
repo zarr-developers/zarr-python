@@ -33,7 +33,6 @@ import numpy as np
 
 from zarr.core._json import json_to_buffer
 from zarr.core.array_spec import ArrayConfig, ArraySpec
-from zarr.core.chunk_grids import parse_regular_chunk_shape
 from zarr.core.chunk_key_encodings import parse_separator
 from zarr.core.common import (
     JSON,
@@ -332,10 +331,9 @@ def parse_compressor(data: object) -> Numcodec | None:
 
 
 def parse_chunks(chunks: ShapeLike, shape: tuple[int, ...]) -> tuple[int, ...]:
-    """Check a chunk shape: one integer of at least 1 per array axis, as a regular chunk
-    shape (see `parse_regular_chunk_shape`). Stored chunk sizes of 0 are read by
-    `zarr.core.metadata.repair` before they get here."""
-    chunks_parsed = parse_regular_chunk_shape(chunks)
+    """Check a chunk shape: one non-negative integer per array axis (see
+    `parse_shapelike`). Stored chunk sizes of 0 are read by `zarr.core.metadata.repair`."""
+    chunks_parsed = parse_shapelike(chunks)
     if len(chunks_parsed) != len(shape):
         raise ValueError(
             f"The `shape` and `chunks` attributes must have the same length. "

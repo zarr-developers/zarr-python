@@ -824,9 +824,7 @@ def normalize_chunks_nd(
 
     if chunks is None or chunks is True:
         raise ValueError(
-            f"{chunks!r} is not a valid chunk input. For automatic chunking pass "
-            f'chunks="auto" to `create_array` or chunks=None to `zarr.create`; otherwise '
-            f"pass an int or a sequence of ints."
+            f'{chunks!r} is not a valid chunk input. Use chunks=None or chunks="auto" from the top-level API for auto-chunking, or pass an int / tuple of ints.'
         )
 
     # handle no chunking: one chunk covering every axis.
@@ -851,35 +849,6 @@ def normalize_chunks_nd(
             for c, s, u in zip(chunks, shape, unit, strict=True)
         )
     )
-
-
-def parse_regular_chunk_shape(chunk_shape: ShapeLike) -> tuple[int, ...]:
-    """Parse the chunk shape of a regular chunk grid that has no array shape to be
-    normalized against, such as the inner chunk shape of a shard.
-
-    The chunk normalizer's integer test (`_chunk_int`) decides what a chunk size is, and
-    every chunk size is at least 1. A single integer is a one-dimensional chunk shape.
-    Without the lengths of the axes `-1` and `False` cannot be resolved, so they are
-    rejected as non-positive; an explicit list of chunk edges declares a rectilinear
-    dimension, which a regular chunk grid cannot have, and is rejected as a non-integer.
-    """
-    size = _chunk_int(chunk_shape)
-    elements = [size] if size is not None else _chunk_list(chunk_shape)
-    as_ints = [_chunk_int(e) for e in elements]
-    non_int = [
-        (idx, e) for idx, (e, i) in enumerate(zip(elements, as_ints, strict=True)) if i is None
-    ]
-    if non_int:
-        non_int_idxs, non_int_vals = [*zip(*non_int, strict=False)]
-        raise TypeError(
-            f"Each chunk size of a regular chunk shape must be an integer; got non-integer "
-            f"element(s) {non_int_vals!r} at indices {non_int_idxs!r}. A regular chunk shape "
-            f"is a flat sequence of positive integers, one per dimension (e.g. [10, 10])."
-        )
-    sizes = tuple(i for i in as_ints if i is not None)
-    if any(c < 1 for c in sizes):
-        raise ValueError(f"All chunk sizes must be positive, got {list(sizes)}")
-    return sizes
 
 
 def guess_chunks(

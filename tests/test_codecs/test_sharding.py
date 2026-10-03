@@ -765,13 +765,15 @@ def test_structured_dtype_fill_value() -> None:
     [
         ShardingCodec(chunk_shape=(8, 8)),
         ShardingCodec(chunk_shape=(8, 8), subchunk_write_order="lexicographic"),
+        ShardingCodec(chunk_shape=(0,)),
     ],
-    ids=["default", "lexicographic"],
+    ids=["default", "lexicographic", "zero-chunk-size"],
 )
 def test_pickle(codec: ShardingCodec) -> None:
     """ShardingCodec round-trips through pickle, including the non-serialized
     ``subchunk_write_order`` (which ``to_dict`` omits and which must not silently
-    revert to the ``morton`` default)."""
+    revert to the ``morton`` default), and an inner chunk size of 0, which the
+    constructor accepts."""
     restored = pickle.loads(pickle.dumps(codec))
     assert restored == codec
     assert restored.chunk_shape == codec.chunk_shape

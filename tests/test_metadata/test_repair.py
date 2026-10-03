@@ -254,7 +254,7 @@ def _open_strictly(path: Path, mode: Literal["r", "a", "r+"] = "r") -> AnyArray:
 
 def test_stored_negative_chunk_size_rejected() -> None:
     """No known writer stored a negative chunk size: it is rejected, not repaired."""
-    with pytest.raises(ValueError, match=r"^All chunk sizes must be positive, got \[-1\]$"):
+    with pytest.raises(ValueError, match="^Expected all values to be non-negative"):
         _read_strictly(_v2_doc([4], [-1]))
 
 
@@ -331,9 +331,9 @@ def test_read_invalid_edges_in_rectilinear_grid(
         (_v3_doc([4], [4.5]), "Dimension 0: chunk edge length must be an int, got 4.5"),
         (
             _v3_doc([8], [4], inner=[2.0]),
-            "got non-integer element(s) (2.0,) at indices (0,)",
+            "Expected an iterable of integers. Got [2.0] instead.",
         ),
-        (_v2_doc([20], [10.0]), "got non-integer element(s) (10.0,) at indices (0,)"),
+        (_v2_doc([20], [10.0]), "Expected an iterable of integers. Got [10.0] instead."),
         (
             _rectilinear_doc([8], [[[4, 2.0]]]),
             "Dimension 0: RLE repeat count must be an int, got 2.0",
@@ -504,9 +504,8 @@ CHUNK_SHAPE_SITES: dict[str, Callable[[Any], tuple[tuple[int, ...], object]]] = 
     "v2": lambda chunks: ((md := _v2_metadata(chunks)).chunks, md.to_dict()["chunks"]),
     "sharding-inner": _sharding_chunk_shape,
 }
-"""`ArrayV2Metadata` and `ShardingCodec` read a regular chunk shape (see
-`parse_regular_chunk_shape`), returning the chunk shape and the value `to_dict` writes
-for it."""
+"""`ArrayV2Metadata` and `ShardingCodec` read a chunk shape as an array shape, returning
+the chunk shape and the value `to_dict` writes for it."""
 
 
 @pytest.mark.parametrize("site", CHUNK_SHAPE_SITES)
@@ -520,14 +519,18 @@ for it."""
         ((np.int64(4),), (4,)),
         (np.array([4]), (4,)),
         ((True,), (1,)),
+        ((0,), (0,)),
+        ((False,), (0,)),
         (range(4, 5), (4,)),
     ],
 )
-def test_regular_chunk_shape(site: str, chunks: object, expected: tuple[int, ...]) -> None:
-    """`ArrayV2Metadata` and `ShardingCodec` read their chunk shape with the chunk
-    normalizer's integer test: an integer or an iterable of integers of at least 1,
-    including NumPy integers and bools, written back as given. Reading a stored 0 is
-    `zarr.core.metadata.repair`' business, before the constructors see it."""
+def test_chunk_shape_read_as_array_shape(
+    site: str, chunks: object, expected: tuple[int, ...]
+) -> None:
+    """`ArrayV2Metadata` and `ShardingCodec` read their chunk shape as `parse_shapelike`
+    reads an array shape: an integer or an iterable of non-negative integers, including
+    NumPy integers and bools. A chunk size of 0 is written back as given; reading a
+    stored 0 is `zarr.core.metadata.repair`' business."""
     parsed, written = CHUNK_SHAPE_SITES[site](chunks)
     assert parsed == expected
     assert all(type(size) is int for size in parsed)
@@ -535,27 +538,16 @@ def test_regular_chunk_shape(site: str, chunks: object, expected: tuple[int, ...
 
 
 @pytest.mark.parametrize("site", CHUNK_SHAPE_SITES)
-@pytest.mark.parametrize("chunks", [(0,), (False,), (-1,), 0])
-def test_regular_chunk_shape_rejects_non_positive(site: str, chunks: object) -> None:
-    """A chunk size below 1 is rejected, including `-1` and `False`, which have no axis
-    length to be resolved against here."""
-    with pytest.raises(ValueError, match="All chunk sizes must be positive"):
-        CHUNK_SHAPE_SITES[site](chunks)
+def test_chunk_shape_read_as_array_shape_rejects_negative(site: str) -> None:
+    with pytest.raises(ValueError, match="Expected all values to be non-negative"):
+        CHUNK_SHAPE_SITES[site]((-1,))
 
 
 @pytest.mark.parametrize("site", CHUNK_SHAPE_SITES)
-@pytest.mark.parametrize("chunks", [(4.0,), "4", [[2, 2]]])
-def test_regular_chunk_shape_rejects_non_integer(site: str, chunks: object) -> None:
-    """A non-integer chunk size is rejected, and so is an explicit list of chunk edges,
-    which declares a rectilinear dimension that a regular chunk shape cannot have."""
-    with pytest.raises(TypeError, match="Each chunk size of a regular chunk shape must be"):
+@pytest.mark.parametrize("chunks", [(4.0,), "4", None])
+def test_chunk_shape_read_as_array_shape_rejects_non_integer(site: str, chunks: object) -> None:
+    with pytest.raises(TypeError, match="Expected an"):
         CHUNK_SHAPE_SITES[site](chunks)
-
-
-@pytest.mark.parametrize("site", CHUNK_SHAPE_SITES)
-def test_regular_chunk_shape_rejects_non_iterable(site: str) -> None:
-    with pytest.raises(TypeError, match="must be an integer or an iterable of integers"):
-        CHUNK_SHAPE_SITES[site](None)
 
 
 def _rewrite_doc(path: Path, zarr_format: Literal[2, 3], edit: Any) -> None:
@@ -983,6 +975,30 @@ def test_from_dict_keeps_values_that_are_not_json(codec: Any) -> None:
     metadata = ArrayV3Metadata.from_dict(doc)
     assert metadata._stored_document is None
     assert isinstance(metadata.codecs[0], ShardingCodec)
+
+
+@pytest.mark.parametrize(("shape", "expected"), [((0,), (1,)), ((3,), (1,))])
+def test_array_from_metadata_with_chunk_size_zero(shape: tuple[int], expected: tuple[int]) -> None:
+    """`ArrayV2Metadata` accepts a chunk size of 0, as a stored document may hold it. An
+    array built from such metadata reads it as the repairs read that document, silently
+    (no data was read or written under it): `create_hierarchy` stores the metadata as
+    given and yields such an array, which stores the repair before its first write."""
+    metadata = ArrayV2Metadata(shape=shape, chunks=(0,), dtype=Int16(), fill_value=0, order="C")
+    store = MemoryStore()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ZarrUserWarning)
+        nodes = dict(zarr.create_hierarchy(store=store, nodes={"a": metadata}))
+    array = nodes["a"]
+    assert isinstance(array, zarr.Array)
+    assert array.chunks == expected
+    assert json.loads(store._store_dict["a/.zarray"].to_bytes())["chunks"] == [0]
+
+    array[...] = 1
+
+    # Writing an empty selection stores no chunks, so it stores no metadata either.
+    resaved = list(expected) if array.size else [0]
+    assert json.loads(store._store_dict["a/.zarray"].to_bytes())["chunks"] == resaved
+    np.testing.assert_array_equal(zarr.open_array(store, path="a")[...], np.ones(shape))
 
 
 def test_array_from_metadata_with_numpy_scalar_codec_configuration() -> None:
