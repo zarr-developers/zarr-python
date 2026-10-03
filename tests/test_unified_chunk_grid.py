@@ -38,8 +38,10 @@ from zarr.errors import BoundsCheckError
 from zarr.storage import MemoryStore
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Callable, Generator
     from pathlib import Path
+
+    from zarr.core.common import ChunksLike
 
 
 @pytest.fixture(autouse=True)
@@ -1229,7 +1231,9 @@ def test_iter_shard_regions_bounds_check() -> None:
     ],
     ids=["int-first", "list-first", "uniform-list", "uniform-metadata"],
 )
-def test_rectilinear_chunks_gates(shape: tuple[int, ...], chunks: Any) -> None:
+def test_rectilinear_chunks_gates(
+    shape: tuple[int, ...], chunks: ChunksLike | Callable[[], ChunksLike]
+) -> None:
     """The v2 and chunks+shards gates recognize every rectilinear spec as
     rectilinear, regardless of which dimension carries the sequence and
     whether its edges happen to be uniform."""
@@ -1261,7 +1265,9 @@ def test_rectilinear_chunks_gates(shape: tuple[int, ...], chunks: Any) -> None:
     ],
     ids=repr,
 )
-def test_legacy_create_v2_chunks(chunks: Any, expected: tuple[int, ...] | None) -> None:
+def test_legacy_create_v2_chunks(
+    chunks: ChunksLike | None, expected: tuple[int, ...] | None
+) -> None:
     """The legacy `zarr.create` Zarr format 2 path reads a falsy `chunks` as not given
     and chunks automatically (`expected` is `None`). It never tests the truth value of a
     numpy array with more than one element, which has none: that array is the chunk
@@ -1276,8 +1282,7 @@ def test_legacy_create_v2_chunks_all_zero_array_raises() -> None:
     """A numpy `chunks` array with more than one element is given even when every element
     is 0, so the legacy Zarr format 2 path rejects its 0 sizes instead of chunking
     automatically."""
-    # `zarr.create` does not declare numpy arrays for `chunks`; the legacy path reads them.
-    chunks: Any = np.array([0, 0])
+    chunks = np.array([0, 0])
     with pytest.raises(ValueError, match="Chunk size must be positive or -1, got 0"):
         zarr.create(
             store=MemoryStore(), shape=(2**12, 2**12), chunks=chunks, dtype="int32", zarr_format=2
@@ -1352,7 +1357,9 @@ def test_from_array_keep_is_o1_in_chunk_count() -> None:
     [[[10, 10, 10]], partial(RectilinearChunkGridMetadata, chunk_shapes=((10, 10, 10),))],
     ids=["list", "metadata"],
 )
-def test_resize_uniform_rectilinear_appends_edge(rect_chunks: Any) -> None:
+def test_resize_uniform_rectilinear_appends_edge(
+    rect_chunks: ChunksLike | Callable[[], ChunksLike],
+) -> None:
     """Growing an explicitly rectilinear array whose edges look regular appends
     a new edge chunk, while the same sizes declared as a scalar extend the
     uniform pattern instead (gh-4272), so an append-only workload writing the

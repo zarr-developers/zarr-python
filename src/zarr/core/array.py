@@ -442,7 +442,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
         # v3 only
-        chunk_shape: ShapeLike | None = None,
+        chunk_shape: ChunksLike | None = None,
         chunk_key_encoding: (
             ChunkKeyEncodingLike
             | tuple[Literal["default"], Literal[".", "/"]]
@@ -452,7 +452,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: DimensionNamesLike = None,
         # v2 only
-        chunks: ShapeLike | None = None,
+        chunks: ChunksLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
@@ -4173,13 +4173,8 @@ class ShardsConfigParam(TypedDict):
     index_location: IndexLocation | None
 
 
-type ShardsLike = (
-    tuple[int, ...]
-    | Sequence[int | Sequence[int]]
-    | ChunkGridMetadata
-    | ShardsConfigParam
-    | Literal["auto"]
-)
+# A shard shape is given in any form a chunk shape is, or as a sharding configuration.
+type ShardsLike = ChunksLike | ShardsConfigParam | Literal["auto"]
 
 
 async def from_array(
