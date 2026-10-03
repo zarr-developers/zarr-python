@@ -122,7 +122,10 @@ class StorePath:
           fails at the store level.
         * If the mode is 'r' and the store is not read-only, return a copy of the store with read_only set to True.
         * If the mode is 'w-' and the store is not read-only and the StorePath contains keys, raise a FileExistsError.
-        * If the mode is 'w'  and the store is not read-only, delete all keys nested within the StorePath.
+
+        No mode modifies the store. In particular, mode 'w' does not delete the keys nested
+        within the StorePath: the node created at the path replaces them, once that node is
+        valid (see `zarr.core.metadata.io.save_new_metadata`).
 
         Parameters
         ----------
@@ -134,7 +137,7 @@ class StorePath:
             - `'r'`: read only (must exist)
             - `'r+'`: read/write (must exist)
             - `'a'`: read/write (create if doesn't exist)
-            - `'w'`: read/write (overwrite if exists)
+            - `'w'`: read/write (the node created at the path overwrites what exists)
             - `'w-'`: read/write (create if doesn't exist).
 
         Raises
@@ -175,16 +178,11 @@ class StorePath:
             # writable store and writable mode
             self = await cls._create_open_instance(store, path)
 
-        # Handle mode-specific operations
-        match mode:
-            case "w-":
-                if not await self.is_empty():
-                    raise FileExistsError(
-                        f"Cannot create '{path}' with mode 'w-' because it already contains data. "
-                        f"Use mode 'w' to overwrite or 'a' to append."
-                    )
-            case "w":
-                await self.delete_dir()
+        if mode == "w-" and not await self.is_empty():
+            raise FileExistsError(
+                f"Cannot create '{path}' with mode 'w-' because it already contains data. "
+                f"Use mode 'w' to overwrite or 'a' to append."
+            )
         return self
 
     async def get(

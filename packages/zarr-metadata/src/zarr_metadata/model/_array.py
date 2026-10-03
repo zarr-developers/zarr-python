@@ -10,20 +10,23 @@ from typing import TYPE_CHECKING, Literal, TypeAlias, cast
 
 from typing_extensions import TypedDict, Unpack
 
+from zarr_metadata._json import (
+    MetadataValidationError,
+    ValidationProblem,
+)
 from zarr_metadata.model._sentinel import UNSET
 from zarr_metadata.model._validation import (
     ARRAY_METADATA_STANDARD_KEYS_V3,
-    MetadataValidationError,
-    ValidationProblem,
-    arrays_to_tuples,
+    StoreKey,
     dump_store_json,
     load_store_json,
     parse_array_metadata_v2,
     parse_array_metadata_v3,
-    parse_metadata_field_v3,
 )
 from zarr_metadata.v2.array import ZARR_V2_ARRAY_METADATA_STORE_KEY
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
+from zarr_metadata.v3._common import parse_metadata_field_v3
+from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS
 from zarr_metadata.v3.array import ZARR_V3_ARRAY_METADATA_STORE_KEY
 
 if TYPE_CHECKING:
@@ -38,6 +41,7 @@ if TYPE_CHECKING:
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
     from zarr_metadata.v2.codec import ZarrV2CodecMetadata
     from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+    from zarr_metadata.v3._registry import Context
     from zarr_metadata.v3.array import (
         ZarrV3ArrayMetadataJSON,
         ZarrV3ArrayMetadataStoreKey,
@@ -61,10 +65,14 @@ class ZarrV3NamedConfig:
     def to_json(self) -> ZarrV3MetadataFieldJSON:
         if not self.configuration and self.must_understand:
             return self.name
-        out: ZarrV3NamedConfigJSON = {"name": self.name}
-        if self.configuration:
-            # to_json output shares no mutable state with the model.
-            out["configuration"] = copy.deepcopy(self.configuration)
+        # `configuration` is ReadOnly, so it is set in the literal rather than
+        # assigned afterwards. to_json output shares no mutable state with the
+        # model.
+        out: ZarrV3NamedConfigJSON = (
+            {"name": self.name, "configuration": copy.deepcopy(self.configuration)}
+            if self.configuration
+            else {"name": self.name}
+        )
         if not self.must_understand:
             out["must_understand"] = False
         return out
@@ -74,12 +82,8 @@ class ZarrV3NamedConfig:
         field = parse_metadata_field_v3(data)
         if isinstance(field, str):
             return cls(name=field, configuration={}, must_understand=True)
-        # Sound cast: parse_metadata_field_v3 checked the configuration is a
-        # string-keyed mapping of JSON values; arrays_to_tuples only converts
-        # lists to tuples within that shape.
-        configuration = cast(
-            "dict[str, JSONValue]", arrays_to_tuples(dict(field.get("configuration", {})))
-        )
+        # A read model shares no mutable state with what it read.
+        configuration = copy.deepcopy(dict(field.get("configuration", {})))
         return cls(
             name=field["name"],
             configuration=configuration,
@@ -115,18 +119,11 @@ def must_understand_subset(
     runtime isinstance check defends against values looser than the declared
     `ZarrV3ExtensionField`).
     """
-    fields = cast("Mapping[str, object]", extra_fields)
-    return cast(
-        "dict[str, ZarrV3ExtensionField]",
-        {
-            name: value
-            for name, value in fields.items()
-            if not (
-                isinstance(value, Mapping)
-                and cast("Mapping[str, object]", value).get("must_understand") is False
-            )
-        },
-    )
+    return {
+        name: value
+        for name, value in extra_fields.items()
+        if not (isinstance(value, Mapping) and value.get("must_understand") is False)
+    }
 
 
 class ZarrV3ArrayMetadataPartial(TypedDict, total=False):
@@ -163,8 +160,11 @@ class ZarrV3ArrayMetadata:
     content for an array. Extension points (`data_type`, `chunk_grid`,
     `chunk_key_encoding`, `codecs`, `storage_transformers`) are held as
     `ZarrV3MetadataField` values (currently `ZarrV3NamedConfig` name,
-    configuration, and obligation records) and are never interpreted;
-    `fill_value` is held verbatim in its JSON form. Equivalent extension
+    configuration, and obligation records). `from_json` and
+    `from_key_value` read each through the definition that claims its name
+    in a scope -- `CORE_AND_EXTENSIONS` unless a `context` is passed -- and
+    the model holds what they read as written; `fill_value` is held
+    verbatim in its JSON form. Equivalent extension
     spellings normalize to shorthand strings when configuration is empty and
     understanding is required.
     """
@@ -191,19 +191,28 @@ class ZarrV3ArrayMetadata:
         analog of `list()` returning `[]`. Any field can be overridden by keyword
         (the same fields accepted by `update`). Overriding `shape` without
         `chunk_grid` derives a consistent default grid: one regular chunk
-        covering the array (`chunk_shape` equal to `shape`).
+        covering the array (`chunk_shape` equal to `shape`, with a length of
+        1 for a dimension of length 0, since a chunk length is at least 1:
+        https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L40).
 
         The derivation is deliberately one-way. A user-supplied `chunk_grid`
         is an extension point and is taken verbatim — deriving `shape` from
         it would require interpreting the grid's configuration, which this
         layer never does (and cannot do for unrecognized grid names). So
         overriding `chunk_grid` without `shape` keeps the scalar default
-        `shape=()`, and consistency between the two is the caller's
-        responsibility.
+        `shape=()`, which a grid of another rank does not fit: consistency
+        between the two is the caller's responsibility, so pass them
+        together. So is a fill value for an overridden `data_type`:
+        the default `fill_value` is `0`, which a data type whose fill value
+        is not an integer -- `bool`, `string`, a complex or struct type --
+        refuses, so pass the two together; and so are its codecs: the
+        default `bytes` codec has no `endian`, which a data type whose
+        values take several bytes needs.
         """
         if "shape" in overrides and "chunk_grid" not in overrides:
+            chunk_shape = tuple(max(length, 1) for length in overrides["shape"])
             overrides["chunk_grid"] = ZarrV3NamedConfig(
-                name="regular", configuration={"chunk_shape": tuple(overrides["shape"])}
+                name="regular", configuration={"chunk_shape": chunk_shape}
             )
         default = cls(
             shape=(),
@@ -281,15 +290,14 @@ class ZarrV3ArrayMetadata:
         return out
 
     @classmethod
-    def from_json(cls, data: object) -> ZarrV3ArrayMetadata:
-        parsed = parse_array_metadata_v3(arrays_to_tuples(data))
-        # Sound cast: the TypedDict types all non-standard keys as its
-        # `extra_items` (`ZarrV3ExtensionField`); the comprehension's inferred value
-        # type is the union over ALL keys because the key filter cannot narrow it.
-        extra_fields = cast(
-            "dict[str, ZarrV3ExtensionField]",
-            {k: v for k, v in parsed.items() if k not in ARRAY_METADATA_STANDARD_KEYS_V3},
-        )
+    def from_json(
+        cls, data: object, *, context: Context = CORE_AND_EXTENSIONS
+    ) -> ZarrV3ArrayMetadata:
+        # A read model shares no mutable state with what it read.
+        parsed = copy.deepcopy(parse_array_metadata_v3(data, context=context))
+        extra_fields: dict[str, ZarrV3ExtensionField] = {
+            k: v for k, v in parsed.items() if k not in ARRAY_METADATA_STANDARD_KEYS_V3
+        }
         return cls(
             shape=parsed["shape"],
             fill_value=parsed["fill_value"],
@@ -318,13 +326,21 @@ class ZarrV3ArrayMetadata:
         return must_understand_subset(self.extra_fields)
 
     @classmethod
-    def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV3ArrayMetadata:
-        return cls.from_json(load_store_json(mapping, ZARR_V3_ARRAY_METADATA_STORE_KEY))
+    def from_key_value(
+        cls, mapping: Mapping[StoreKey, bytes], *, context: Context = CORE_AND_EXTENSIONS
+    ) -> ZarrV3ArrayMetadata:
+        return cls.from_json(
+            load_store_json(mapping, ZARR_V3_ARRAY_METADATA_STORE_KEY), context=context
+        )
 
     def to_key_value(
-        self, *, indent: int | str | None = None
+        self, *, indent: int | str | None = None, context: Context = CORE_AND_EXTENSIONS
     ) -> Mapping[ZarrV3ArrayMetadataStoreKey, bytes]:
-        return {ZARR_V3_ARRAY_METADATA_STORE_KEY: dump_store_json(self.to_json(), indent=indent)}
+        # A model built by hand is not validated: its document is written only
+        # if it reads as `from_json` reads one in `context`, and every problem
+        # is raised.
+        document = parse_array_metadata_v3(self.to_json(), context=context)
+        return {ZARR_V3_ARRAY_METADATA_STORE_KEY: dump_store_json(document, indent=indent)}
 
 
 class ZarrV2ArrayMetadataPartial(TypedDict, total=False):
@@ -450,7 +466,8 @@ class ZarrV2ArrayMetadata:
 
     @classmethod
     def from_json(cls, data: object) -> ZarrV2ArrayMetadata:
-        parsed = parse_array_metadata_v2(arrays_to_tuples(data))
+        # A read model shares no mutable state with what it read.
+        parsed = copy.deepcopy(parse_array_metadata_v2(data))
         return cls(
             shape=parsed["shape"],
             dtype=parsed["dtype"],
@@ -464,8 +481,8 @@ class ZarrV2ArrayMetadata:
         )
 
     @classmethod
-    def from_key_value(cls, mapping: Mapping[str, bytes]) -> ZarrV2ArrayMetadata:
-        zarray_raw = cast("object", load_store_json(mapping, ZARR_V2_ARRAY_METADATA_STORE_KEY))
+    def from_key_value(cls, mapping: Mapping[StoreKey, bytes]) -> ZarrV2ArrayMetadata:
+        zarray_raw = load_store_json(mapping, ZARR_V2_ARRAY_METADATA_STORE_KEY)
         if not isinstance(zarray_raw, Mapping):
             return cls.from_json(zarray_raw)
         zarray = cast("Mapping[str, object]", zarray_raw)
@@ -480,7 +497,7 @@ class ZarrV2ArrayMetadata:
                 ]
             )
         if ZARR_V2_ATTRIBUTES_STORE_KEY in mapping:
-            zattrs = cast("object", load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY))
+            zattrs = load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY)
             return cls.from_json({**zarray, "attributes": zattrs})
         return cls.from_json(zarray)
 
@@ -489,11 +506,16 @@ class ZarrV2ArrayMetadata:
     ) -> Mapping[ZarrV2ArrayMetadataStoreKey | ZarrV2AttributesStoreKey, bytes]:
         # Attributes live only in the sibling `.zattrs` file; the `.zarray`
         # document must exclude them. The `.zattrs` key is present exactly
-        # when attributes are set (even empty) — UNSET emits no file.
-        zarray = {k: v for k, v in self.to_json().items() if k != "attributes"}
+        # when attributes are set (even empty) — UNSET emits no file. A model
+        # built by hand is not validated: its document is written only if it
+        # reads as `from_json` reads one, and every problem is raised.
+        document = parse_array_metadata_v2(self.to_json())
+        zarray = {k: v for k, v in document.items() if k != "attributes"}
         out: dict[ZarrV2ArrayMetadataStoreKey | ZarrV2AttributesStoreKey, bytes] = {
             ZARR_V2_ARRAY_METADATA_STORE_KEY: dump_store_json(zarray, indent=indent)
         }
-        if self.attributes is not UNSET:
-            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = dump_store_json(self.attributes, indent=indent)
+        if "attributes" in document:
+            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = dump_store_json(
+                document["attributes"], indent=indent
+            )
         return out

@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr.dtype import ZDType, check_dtype_spec_v2, data_type_registry
+from zarr.dtype import ZDType, check_dtype_spec_no_object_codec_v2, data_type_registry
 from zarr.errors import DataTypeValidationError
 from zarr.types import JSON, DTypeConfig_V2, DTypeJSON, ZarrFormat
 
@@ -79,9 +79,7 @@ class Int2(ZDType[int2_dtype_cls, int2_scalar_cls]):
 
         See the Zarr docs for more information about the JSON encoding for data types.
         """
-        return (
-            check_dtype_spec_v2(data) and data["name"] == "int2" and data["object_codec_id"] is None
-        )
+        return check_dtype_spec_no_object_codec_v2(data) and data["name"] == "int2"
 
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["int2"]]:

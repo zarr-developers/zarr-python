@@ -355,7 +355,7 @@ class _ShardReader(ShardMapping):
 
     def __getitem__(self, chunk_coords: tuple[int, ...]) -> Buffer:
         chunk_byte_slice = self.index.get_chunk_slice(chunk_coords)
-        if chunk_byte_slice:
+        if chunk_byte_slice is not None:
             return self.buf[chunk_byte_slice[0] : chunk_byte_slice[1]]
         raise KeyError
 
@@ -422,6 +422,21 @@ def _drops_only_unit_axes(shape: tuple[int, ...], full: tuple[int, ...]) -> bool
     return all(full_size == 1 for full_size in remaining)
 
 
+def _check_index_codecs_fixed_size(index_codecs: tuple[Codec, ...]) -> None:
+    """Reject index codecs whose encoded size is not fixed.
+
+    The spec forbids variable-size codecs (such as compressors) in `index_codecs`:
+    the shard index is located by its byte size, which must be known before the
+    index is read.
+    """
+    variable_size = [codec for codec in index_codecs if not codec.is_fixed_size]
+    if variable_size:
+        raise ValueError(
+            "Sharding `index_codecs` must produce a fixed-size encoding, but these codecs "
+            f"do not: {variable_size}. Compression codecs cannot be used for the shard index."
+        )
+
+
 @dataclass(frozen=True)
 class ShardingCodec(
     ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
@@ -445,14 +460,18 @@ class ShardingCodec(
         self,
         *,
         chunk_shape: ShapeLike,
-        codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
-        index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
+        codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(endian="little"),),
+        index_codecs: Iterable[Codec | dict[str, JSON]] = (
+            BytesCodec(endian="little"),
+            Crc32cCodec(),
+        ),
         index_location: ShardingCodecIndexLocation | IndexLocation = "end",
         subchunk_write_order: SubchunkWriteOrder = "morton",
     ) -> None:
         chunk_shape_parsed = parse_shapelike(chunk_shape)
         codecs_parsed = parse_codecs(codecs)
         index_codecs_parsed = parse_codecs(index_codecs)
+        _check_index_codecs_fixed_size(index_codecs_parsed)
         index_location_coerced = _coerce_enum_input(
             index_location, "index_location", "ShardingCodec"
         )
@@ -648,6 +667,7 @@ class ShardingCodec(
         self, index_bytes: Buffer, chunks_per_shard: tuple[int, ...]
     ) -> _ShardIndex:
         """Decode shard index synchronously using ChunkTransform."""
+        self._check_shard_index_size(index_bytes, chunks_per_shard)
         index_transform = self._get_index_chunk_transform(chunks_per_shard)
         index_spec = self._get_index_chunk_spec(chunks_per_shard)
         index_array = index_transform.decode_chunk(index_bytes, index_spec)
@@ -1384,7 +1404,8 @@ class ShardingCodec(
                 prototype=chunk_spec.prototype,
                 chunks_per_shard=chunks_per_shard,
             )
-            shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
+            if shard_reader is None:
+                shard_reader = _ShardReader.create_empty(chunks_per_shard)
             # Use vectorized lookup for better performance. The lexicographic
             # coordinate array and keys are cached, so neither is rebuilt on
             # every write.
@@ -1528,6 +1549,7 @@ class ShardingCodec(
         # the synchronous read paths cannot use but this async path still can.
         if self._index_codecs_sync_capable():
             return self._decode_shard_index_sync(index_bytes, chunks_per_shard)
+        self._check_shard_index_size(index_bytes, chunks_per_shard)
         index_array = next(
             iter(
                 await get_pipeline_class()
@@ -1561,6 +1583,23 @@ class ShardingCodec(
         if index_bytes is None:
             raise RuntimeError("Encoding the shard index produced no bytes.")
         return index_bytes
+
+    def _check_shard_index_size(
+        self, index_bytes: Buffer, chunks_per_shard: tuple[int, ...]
+    ) -> None:
+        """Raise if `index_bytes` is shorter than the encoded shard index.
+
+        A stored shard always holds its index, so a shorter read means the
+        stored value is truncated (a zero-length value included). Every read
+        and write path decodes the index through here, so they all reject it
+        alike. zarrs and tensorstore also reject such a shard.
+        """
+        expected = self._shard_index_size(chunks_per_shard)
+        if len(index_bytes) < expected:
+            raise ValueError(
+                f"The stored shard is too short to hold its index: read {len(index_bytes)} "
+                f"bytes of index, expected {expected}. The shard is truncated or corrupt."
+            )
 
     def _shard_index_size(self, chunks_per_shard: tuple[int, ...]) -> int:
         return (
@@ -1650,7 +1689,7 @@ class ShardingCodec(
 
         return (
             await _ShardReader.from_bytes(shard_bytes, self, chunks_per_shard)
-            if shard_bytes
+            if shard_bytes is not None
             else None
         )
 

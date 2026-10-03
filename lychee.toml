@@ -16,7 +16,7 @@ exclude_path = [
 
 # URL patterns to ignore (regex, matched against the full URL).
 exclude = [
-  # Local docs preview server shown in the contributing guide ("hatch run serve"),
+  # Local docs preview server shown in the contributing guide ("just docs-serve"),
   # documentation of a command rather than a reachable link.
   '^https?://0\.0\.0\.0',
   '^https?://(localhost|127\.0\.0\.1)(:\d+)?',

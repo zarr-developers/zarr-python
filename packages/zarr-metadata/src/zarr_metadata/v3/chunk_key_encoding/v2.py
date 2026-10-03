@@ -17,6 +17,8 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
+from zarr_metadata.v3._definition import ChunkKeyEncodingDefinition
+
 V2_CHUNK_KEY_ENCODING_NAME: Final = "v2"
 """The `name` field value of the v2 chunk key encoding."""
 
@@ -33,7 +35,7 @@ V2_CHUNK_KEY_ENCODING_SEPARATOR: Final = ("/", ".")
 """Tuple of permitted values for the `separator` field of the v2 chunk key encoding."""
 
 
-class V2ChunkKeyEncodingConfiguration(TypedDict):
+class V2ChunkKeyEncodingConfiguration(TypedDict, closed=True):
     """Configuration for the v2 chunk key encoding.
 
     `separator` is optional and defaults to `"."` per spec.
@@ -43,11 +45,12 @@ class V2ChunkKeyEncodingConfiguration(TypedDict):
     separator: NotRequired[V2ChunkKeyEncodingSeparator]
 
 
-class V2ChunkKeyEncodingObject(TypedDict):
+class V2ChunkKeyEncodingObject(TypedDict, closed=True):
     """v2-compatibility chunk key encoding metadata in object form."""
 
     name: V2ChunkKeyEncodingName
     configuration: NotRequired[V2ChunkKeyEncodingConfiguration]
+    must_understand: NotRequired[bool]
 
 
 V2ChunkKeyEncodingMetadata = V2ChunkKeyEncodingObject | V2ChunkKeyEncodingName
@@ -57,7 +60,14 @@ The configuration has no required keys (`separator` defaults to `"."`),
 so the short-hand-name form is permitted in addition to the object form.
 """
 
+V2_CHUNK_KEY_ENCODING: Final = ChunkKeyEncodingDefinition(
+    name=V2_CHUNK_KEY_ENCODING_NAME, configuration=V2ChunkKeyEncodingConfiguration
+)
+"""The `v2` chunk key encoding; its `separator` is typed, so it has no rule of its own."""
+
+
 __all__ = [
+    "V2_CHUNK_KEY_ENCODING",
     "V2_CHUNK_KEY_ENCODING_NAME",
     "V2_CHUNK_KEY_ENCODING_SEPARATOR",
     "V2ChunkKeyEncodingConfiguration",

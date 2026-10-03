@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import pytest
 
 from zarr.core.dtype.common import DTypeSpec_V2, DTypeSpec_V3, HasItemSize
+from zarr.errors import DataTypeValidationError
 
 if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
@@ -52,8 +53,10 @@ class BaseTestZDType:
         A tuple of invalid numpy dtypes for the ZDType.
     valid_json_v2 : ClassVar[tuple[str | dict[str, object] | list[object], ...]]
         A tuple of valid JSON representations for Zarr format version 2.
-    invalid_json_v2 : ClassVar[tuple[str | dict[str, object] | list[object], ...]]
-        A tuple of invalid JSON representations for Zarr format version 2.
+    invalid_json_v2 : ClassVar[tuple[DTypeSpec_V2, ...]]
+        A tuple of invalid JSON representations for Zarr format version 2. Each has the
+        ``{"name": ..., "object_codec_id": ...}`` shape of a Zarr V2 data type, so that it is
+        rejected for its contents rather than its shape.
     valid_json_v3 : ClassVar[tuple[str | dict[str, object], ...]]
         A tuple of valid JSON representations for Zarr format version 3.
     invalid_json_v3 : ClassVar[tuple[str | dict[str, object], ...]]
@@ -78,7 +81,7 @@ class BaseTestZDType:
     invalid_dtype: ClassVar[tuple[TBaseDType, ...]] = ()
 
     valid_json_v2: ClassVar[tuple[DTypeSpec_V2, ...]] = ()
-    invalid_json_v2: ClassVar[tuple[str | dict[str, object] | list[object], ...]] = ()
+    invalid_json_v2: ClassVar[tuple[DTypeSpec_V2, ...]] = ()
 
     valid_json_v3: ClassVar[tuple[DTypeSpec_V3, ...]] = ()
     invalid_json_v3: ClassVar[tuple[str | dict[str, object], ...]] = ()
@@ -123,6 +126,14 @@ class BaseTestZDType:
     def test_from_json_roundtrip_v3(self, valid_json_v3: DTypeSpec_V3) -> None:
         zdtype = self.test_cls.from_json(valid_json_v3, zarr_format=3)
         assert zdtype.to_json(zarr_format=3) == valid_json_v3
+
+    def test_from_json_invalid_v2(self, invalid_json_v2: DTypeSpec_V2) -> None:
+        with pytest.raises(DataTypeValidationError):
+            self.test_cls.from_json(invalid_json_v2, zarr_format=2)
+
+    def test_from_json_invalid_v3(self, invalid_json_v3: DTypeSpec_V3) -> None:
+        with pytest.raises(DataTypeValidationError):
+            self.test_cls.from_json(invalid_json_v3, zarr_format=3)
 
     def test_scalar_roundtrip_v2(self, scalar_v2_params: tuple[ZDType[Any, Any], Any]) -> None:
         zdtype, scalar_json = scalar_v2_params

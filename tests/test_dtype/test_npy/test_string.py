@@ -19,9 +19,10 @@ class TestVariableLengthString(BaseTestZDType):
     valid_json_v2 = ({"name": "|O", "object_codec_id": "vlen-utf8"},)
     valid_json_v3 = ("string",)
     invalid_json_v2 = (
-        "|S10",
-        "|f8",
-        "invalid",
+        {"name": "|S10", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "invalid", "object_codec_id": None},
+        {"name": "|O", "object_codec_id": "vlen-bytes"},
     )
     invalid_json_v3 = (
         {"name": "variable_length_utf8", "configuration": {"invalid_key": "value"}},
@@ -57,9 +58,10 @@ class TestFixedLengthUTF32(BaseTestZDType):
     )
     valid_json_v3 = ({"name": "fixed_length_utf32", "configuration": {"length_bytes": 320}},)
     invalid_json_v2 = (
-        "|U",
-        "|S10",
-        "|f8",
+        {"name": "|U", "object_codec_id": None},
+        {"name": "|S10", "object_codec_id": None},
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "<U10", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         {"name": "fixed_length_utf32", "configuration": {"length_bits": 0}},

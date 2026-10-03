@@ -14,8 +14,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    import numpy.typing as npt
+
     from zarr.abc.store import Store
-    from zarr.core.common import JSON, MemoryOrder, ZarrFormat
+    from zarr.core.common import JSON, AccessModeLiteral, MemoryOrder, ZarrFormat
     from zarr.types import AnyArray
 
 import contextlib
@@ -24,6 +26,7 @@ from typing import Literal
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
+from packaging.version import parse as parse_version
 
 import zarr
 import zarr.api.asynchronous
@@ -42,9 +45,11 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
-from zarr.core.buffer import NDArrayLike
+from zarr.core.buffer import NDArrayLike, default_buffer_prototype
+from zarr.core.sync import sync
 from zarr.errors import (
     ArrayNotFoundError,
+    ContainsArrayError,
     MetadataValidationError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
@@ -81,6 +86,117 @@ def test_create(memory_store: Store) -> None:
     # create array with float chunk shape
     with pytest.raises(TypeError, match="Chunk specification must be an integer or an iterable"):
         z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore[arg-type]
+
+
+def _create_async(**kwargs: Any) -> AnyArray:
+    return Array(sync(zarr.api.asynchronous.create(**kwargs)))
+
+
+CREATE_FUNCS = pytest.mark.parametrize(
+    "create_func", [create, _create_async], ids=["sync", "async"]
+)
+
+
+def _write_existing_array(store: MemoryStore) -> None:
+    """
+    Store an array with written chunks, plus a key that belongs to no Zarr node.
+    """
+    old = create_array(store, shape=(4,), chunks=(2,), dtype="int8")
+    old[:] = [1, 2, 3, 4]
+    sync(store.set("junk", default_buffer_prototype().buffer.from_bytes(b"junk")))
+
+
+@CREATE_FUNCS
+@pytest.mark.parametrize(
+    ("mode", "overwrite", "existing"),
+    [
+        (None, False, False),
+        ("a", False, False),
+        ("r+", False, False),
+        ("w", False, False),
+        ("w-", False, False),
+        ("a", True, True),
+        ("r+", True, True),
+        ("w", False, True),
+        ("w", True, True),
+    ],
+    ids=lambda v: repr(v),
+)
+@pytest.mark.parametrize("data", [None, np.arange(3, dtype="int8")], ids=["no-data", "int8-data"])
+def test_create_mode_data(
+    create_func: Callable[..., AnyArray],
+    mode: AccessModeLiteral | None,
+    overwrite: bool,
+    existing: bool,
+    data: npt.NDArray[Any] | None,
+) -> None:
+    """
+    `create` opens the store with `mode`, replaces what is stored under the path when
+    `mode` or `overwrite` says so, and writes `data` without taking its data type.
+    """
+    store = MemoryStore()
+    if existing:
+        _write_existing_array(store)
+    reference = MemoryStore()
+    create(shape=(3,), chunks=(2,), store=reference, data=data)
+
+    z = create_func(shape=(3,), chunks=(2,), store=store, mode=mode, overwrite=overwrite, data=data)
+
+    assert sorted(store._store_dict) == sorted(reference._store_dict)
+    assert z.dtype == np.dtype("float64")
+    assert_array_equal(z[:], np.zeros(3) if data is None else data)
+
+
+@pytest.mark.parametrize("mode", [None, "a", "r+"])
+def test_create_existing_array_without_overwrite(mode: AccessModeLiteral | None) -> None:
+    """
+    `create` refuses to replace an existing array unless `mode` or `overwrite` allows it.
+    """
+    store = MemoryStore()
+    _write_existing_array(store)
+    with pytest.raises(ContainsArrayError):
+        create(shape=(3,), store=store, mode=mode)
+
+
+@pytest.mark.parametrize("overwrite", [False, True])
+def test_create_mode_w_minus_existing_data(overwrite: bool) -> None:
+    """
+    `create` with mode `'w-'` refuses to write where data is stored, whatever `overwrite` says.
+    """
+    store = MemoryStore()
+    _write_existing_array(store)
+    with pytest.raises(FileExistsError, match="mode 'w-'"):
+        create(shape=(3,), store=store, mode="w-", overwrite=overwrite)
+
+
+def test_create_mode_r() -> None:
+    """
+    `create` with mode `'r'` opens the store read-only, so creation fails.
+    """
+    with pytest.raises(ValueError, match="read-only"):
+        create(shape=(3,), store=MemoryStore(), mode="r")
+
+
+def test_create_invalid_mode() -> None:
+    """
+    `create` rejects a mode that is not an access mode.
+    """
+    with pytest.raises(ValueError, match="Invalid mode: x"):
+        create(shape=(3,), store=MemoryStore(), mode="x")  # type: ignore[arg-type]
+
+
+@CREATE_FUNCS
+def test_create_unknown_keyword(create_func: Callable[..., AnyArray]) -> None:
+    """
+    `create` rejects keyword arguments it does not declare, naming itself in the error,
+    before `mode="w"` deletes anything.
+    """
+    store = MemoryStore()
+    _write_existing_array(store)
+    before = dict(store._store_dict)
+    with pytest.raises(TypeError, match=r"^create\(\) got an unexpected keyword argument 'typo'"):
+        create_func(shape=(3,), store=store, mode="w", typo=1)
+    assert store._store_dict == before
 
 
 @pytest.mark.parametrize(
@@ -359,6 +475,257 @@ def test_array_open_array_not_found_sync() -> None:
         Array.open(store)
 
 
+@pytest.mark.parametrize("func", [zarr.empty_like, zarr.zeros_like, zarr.ones_like, zarr.full_like])
+@pytest.mark.parametrize("source_format", [2, 3])
+@pytest.mark.parametrize("zarr_format", [None, 2, 3])
+def test_like_zarr_format(
+    func: Callable[..., AnyArray], source_format: ZarrFormat, zarr_format: ZarrFormat | None
+) -> None:
+    """
+    An array created like a zarr array has the zarr format of the source unless another is
+    requested, and keeps the codecs of the source only when the formats match.
+    """
+    source = zarr.create_array(
+        {},
+        shape=(4,),
+        dtype="int32",
+        compressors=None,
+        zarr_format=source_format,
+        fill_value=7,
+    )
+    new = func(source, zarr_format=zarr_format)
+    expected_format = source_format if zarr_format is None else zarr_format
+    assert new.metadata.zarr_format == expected_format
+    assert new.shape == source.shape
+    assert new.dtype == source.dtype
+    if expected_format == source_format:
+        assert new.compressors == source.compressors
+    else:
+        assert (
+            new.compressors
+            == zarr.create_array(
+                {}, shape=(4,), dtype="int32", zarr_format=expected_format
+            ).compressors
+        )
+
+
+@pytest.mark.parametrize("source_format", [2, 3])
+@pytest.mark.parametrize("target_format", [None, 2, 3])
+def test_open_like_zarr_format(source_format: ZarrFormat, target_format: ZarrFormat | None) -> None:
+    """
+    open_like does not inherit the zarr format of the source: it opens an existing array of
+    any format, and creates a missing one in the default zarr format.
+    """
+    source = zarr.zeros(store={}, shape=(4,), dtype="int32", zarr_format=source_format)
+    store = MemoryStore()
+    if target_format is not None:
+        zarr.create_array(
+            store, name="existing", shape=(4,), dtype="int32", zarr_format=target_format
+        )
+    opened = zarr.open_like(source, path="existing", store=store)
+    assert opened.metadata.zarr_format == (target_format or zarr.config.get("default_zarr_format"))
+    assert set(store._store_dict) & {"existing/zarr.json", "existing/.zarray"} == {
+        "existing/zarr.json" if opened.metadata.zarr_format == 3 else "existing/.zarray"
+    }
+
+
+async def _read_all(store: Store) -> dict[str, bytes]:
+    contents = {}
+    for key in sorted([key async for key in store.list()]):
+        value = await store.get(key, prototype=default_buffer_prototype())
+        assert value is not None
+        contents[key] = value.to_bytes()
+    return contents
+
+
+def _store_contents(store: Store) -> dict[str, bytes]:
+    """Every key in `store` with its bytes."""
+    return sync(_read_all(store))
+
+
+def _seed_array(store: Store, zarr_format: ZarrFormat) -> None:
+    """Write an int32 array of shape (4,), with its chunk, at the root of `store`."""
+    zarr.create_array(store, shape=(4,), dtype="int32", zarr_format=zarr_format)[:] = 1
+
+
+def _seed_group(store: Store, zarr_format: ZarrFormat) -> None:
+    """Write a group with attributes and a child array, with its chunk, at the root of `store`."""
+    root = zarr.create_group(store, zarr_format=zarr_format, attributes={"k": 1})
+    root.create_array("child", shape=(4,), dtype="int32")[:] = 1
+
+
+_SEEDS: dict[str, Callable[[Store, ZarrFormat], None]] = {
+    "array": _seed_array,
+    "group": _seed_group,
+}
+
+# Each call replaces the node at the root of the store it is given.
+_OVERWRITE_CALLS: dict[str, Callable[..., object]] = {
+    "open-array": lambda store, **kw: zarr.open(store=store, mode="w", shape=(2,), **kw),
+    "open-group": lambda store, **kw: zarr.open(store=store, mode="w", **kw),
+    "open_array": lambda store, **kw: zarr.open_array(store=store, mode="w", shape=(2,), **kw),
+    "open_group": lambda store, **kw: zarr.open_group(store=store, mode="w", **kw),
+    "create-mode": lambda store, **kw: zarr.create(store=store, mode="w", shape=(2,), **kw),
+    "create-overwrite": lambda store, **kw: zarr.create(
+        store=store, overwrite=True, shape=(2,), **kw
+    ),
+    "create_array": lambda store, **kw: zarr.create_array(
+        store, overwrite=True, shape=(2,), dtype="int32", **kw
+    ),
+    "save_array": lambda store, **kw: zarr.save_array(store, np.arange(2), mode="w", **kw),
+    "save_group": lambda store, **kw: zarr.save_group(store, np.arange(2), **kw),
+    "group": lambda store, **kw: zarr.group(store=store, overwrite=True, **kw),
+}
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("existing", _SEEDS)
+@pytest.mark.parametrize("call", _OVERWRITE_CALLS)
+def test_overwrite_replaces_existing_node(
+    zarr_format: ZarrFormat, existing: str, call: str
+) -> None:
+    """
+    Opening or creating a node in an overwriting mode replaces the node at the path,
+    including its chunks or children: the store ends up exactly as the same call leaves
+    an empty store.
+    """
+    store = MemoryStore()
+    _SEEDS[existing](store, zarr_format)
+    _OVERWRITE_CALLS[call](store)
+    reference = MemoryStore()
+    _OVERWRITE_CALLS[call](reference)
+    assert _store_contents(store) == _store_contents(reference)
+
+
+@pytest.mark.parametrize("call", _OVERWRITE_CALLS)
+def test_overwrite_without_deletes_creates_node(tmp_path: Path, call: str) -> None:
+    """
+    On a store that cannot delete keys, an overwriting call still creates the node when
+    nothing is stored under the path.
+    """
+    with ZipStore(tmp_path / "store.zip", mode="w") as store:
+        _OVERWRITE_CALLS[call](store)
+        reference = MemoryStore()
+        _OVERWRITE_CALLS[call](reference)
+        assert _store_contents(store) == _store_contents(reference)
+
+
+@pytest.mark.parametrize("call", _OVERWRITE_CALLS)
+def test_overwrite_without_deletes_keeps_existing_node(tmp_path: Path, call: str) -> None:
+    """
+    On a store that cannot delete keys, an overwriting call raises without modifying the
+    store when a node already exists at the path.
+    """
+    with ZipStore(tmp_path / "store.zip", mode="w") as store:
+        _seed_array(store, 3)
+        before = _store_contents(store)
+        with pytest.raises(ContainsArrayError):
+            _OVERWRITE_CALLS[call](store)
+        assert _store_contents(store) == before
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "open-array",
+        "open-group",
+        "open_array",
+        "open_group",
+        "create-mode",
+        "save_array",
+        "save_group",
+    ],
+)
+def test_overwrite_read_only_store_names_mode(call: str) -> None:
+    """
+    An overwriting mode on a read-only store is refused with an error that names the mode
+    that was passed.
+    """
+    with pytest.raises(ValueError, match="mode is 'w'"):
+        _OVERWRITE_CALLS[call](MemoryStore(read_only=True))
+
+
+@pytest.mark.parametrize(
+    "call",
+    ["open-array", "open-group", "open_array", "create-mode", "create-overwrite", "save_array"],
+)
+def test_overwrite_invalid_keyword_keeps_existing_node(call: str) -> None:
+    """
+    An overwriting call that is given a keyword argument its target cannot accept raises
+    without modifying the existing node.
+    """
+    store = MemoryStore()
+    _seed_array(store, 3)
+    before = _store_contents(store)
+    kwargs = {"config": {"order": "F"}} if call == "open-group" else {"bogus": 1}
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        _OVERWRITE_CALLS[call](store, **kwargs)
+    assert _store_contents(store) == before
+
+
+@pytest.mark.parametrize(
+    "call",
+    ["open-array", "open_array", "create-mode", "create-overwrite", "create_array", "save_array"],
+)
+def test_overwrite_invalid_fill_value_keeps_existing_node(call: str) -> None:
+    """
+    An overwriting call whose new array metadata cannot be built raises without modifying
+    the existing node.
+    """
+    store = MemoryStore()
+    _seed_array(store, 3)
+    before = _store_contents(store)
+    kwargs: dict[str, Any] = {"fill_value": "not a number"}
+    if call in {"open-array", "open_array", "create-mode", "create-overwrite"}:
+        kwargs["dtype"] = "int32"
+    with pytest.raises(ValueError, match="invalid literal"):
+        _OVERWRITE_CALLS[call](store, **kwargs)
+    assert _store_contents(store) == before
+
+
+@pytest.mark.parametrize(
+    "call",
+    ["open-array", "open-group", "open_array", "open_group", "create_array", "group"],
+)
+def test_overwrite_unencodable_attributes_keeps_existing_node(call: str) -> None:
+    """
+    An overwriting call whose new metadata cannot be encoded raises without modifying the
+    existing node.
+    """
+    store = MemoryStore()
+    _seed_array(store, 3)
+    before = _store_contents(store)
+    with pytest.raises(TypeError, match="not JSON serializable"):
+        _OVERWRITE_CALLS[call](store, attributes={"x": object()})
+    assert _store_contents(store) == before
+
+
+def test_save_group_non_array_argument_keeps_existing_node() -> None:
+    """
+    save_group given an argument that is not an array raises without modifying the
+    existing node.
+    """
+    store = MemoryStore()
+    _seed_group(store, 3)
+    before = _store_contents(store)
+    with pytest.raises(TypeError, match="must be a numpy or other NDArrayLike array"):
+        zarr.save_group(store, a=np.arange(2), b="not an array")  # type: ignore[arg-type]
+    assert _store_contents(store) == before
+
+
+def test_save_group_unstorable_dtype_keeps_existing_node() -> None:
+    """
+    save_group given an array whose data type Zarr cannot store raises without modifying
+    the existing node.
+    """
+    store = MemoryStore()
+    _seed_group(store, 3)
+    before = _store_contents(store)
+    with pytest.raises(ValueError, match="data type resolution"):
+        zarr.save_group(store, a=np.arange(2), b=np.array([object()], dtype=object))
+    assert _store_contents(store) == before
+
+
 @pytest.mark.parametrize("store", ["memory", "local", "zip"], indirect=True)
 def test_v2_and_v3_exist_at_same_path(store: Store) -> None:
     zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=3)
@@ -478,6 +845,32 @@ def test_save_errors() -> None:
     ):
         # mode is no valid argument and would get handled as an array
         zarr.save("data/example.zarr", a, mode="w")
+
+
+def test_save_storage_options_is_not_an_array(tmp_path: Path) -> None:
+    # `storage_options` is an option of `save`, not one of the arrays to save, so a
+    # single array still lands as an array and not as a group holding `arr_0`.
+    data = np.arange(10)
+    save(str(tmp_path / "a.zarr"), data, storage_options=None)
+    node = zarr.api.synchronous.open(str(tmp_path / "a.zarr"))
+    assert isinstance(node, Array)
+    assert_array_equal(node[:], data)
+
+
+def test_save_group_storage_options_positional_args(tmp_path: Path) -> None:
+    # `storage_options` has to reach the store for positional arrays too, exactly as it
+    # does for keyword arrays.
+    fsspec = pytest.importorskip("fsspec")
+    # An fsspec URL for a sync filesystem needs AsyncFileSystemWrapper, which landed in
+    # fsspec 2024.12.0. The min-deps CI job pins an older one.
+    if parse_version(fsspec.__version__) < parse_version("2024.12.0"):
+        pytest.skip("No AsyncFileSystemWrapper")
+    data = np.arange(10)
+    url = f"local://{tmp_path}/group.zarr"
+    save_group(url, data, data, storage_options={"auto_mkdir": True})
+    group = zarr.api.synchronous.open(str(tmp_path / "group.zarr"))
+    assert isinstance(group, Group)
+    assert sorted(group) == ["arr_0", "arr_1"]
 
 
 def test_open_with_mode_r(tmp_path: Path) -> None:

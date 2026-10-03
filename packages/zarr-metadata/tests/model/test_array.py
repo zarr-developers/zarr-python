@@ -3,14 +3,17 @@
 import copy
 import dataclasses
 import json
+import math
+import pickle
 from collections import UserDict
 from collections.abc import Callable
-from typing import TYPE_CHECKING, get_args
+from typing import TYPE_CHECKING, TypeGuard, get_args, get_origin, get_type_hints
 
 import pytest
 from typing_extensions import Unpack
 
 from tests.model._cases import Expect, ExpectFail, mutate_nested_containers
+from zarr_metadata._json import arrays_to_tuples, prefixed
 from zarr_metadata.model import (
     ARRAY_METADATA_OPTIONAL_KEYS_V3,
     ARRAY_METADATA_REQUIRED_KEYS_V3,
@@ -26,6 +29,8 @@ from zarr_metadata.model import (
     ZarrV3NamedConfig,
     is_array_metadata_v2,
     is_array_metadata_v3,
+    is_group_metadata_v2,
+    is_group_metadata_v3,
     is_json,
     is_metadata_field_v3,
     parse_array_metadata_v2,
@@ -37,7 +42,6 @@ from zarr_metadata.model import (
     validate_json,
     validate_metadata_field_v3,
 )
-from zarr_metadata.model._validation import _prefix, arrays_to_tuples
 
 if TYPE_CHECKING:
     from zarr_metadata._common import JSONValue
@@ -178,14 +182,17 @@ def test_json_value_type_accepts_json_shapes() -> None:
 
 
 def test_string_nan_fill_value_roundtrips() -> None:
-    # Non-finite floats are represented as the spec strings ("NaN", "Infinity",
-    # "-Infinity") by the caller — the metadata layer does not interpret dtypes.
+    # A float's non-finite fill values are the spec strings ("NaN",
+    # "Infinity", "-Infinity"):
     #   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L63-L79
     # The string form round-trips cleanly under default dataclass equality,
-    # unlike a raw float('nan') (which is an invalid fill_value the caller must
-    # not pass).
-    """A string 'NaN' fill_value round-trips cleanly (non-finite floats are the caller's responsibility)."""
-    m = ZarrV3ArrayMetadata.create_default(fill_value="NaN")
+    # unlike a raw float('nan'), which is not JSON.
+    """A float array's string 'NaN' fill_value round-trips cleanly."""
+    m = ZarrV3ArrayMetadata.create_default(
+        fill_value="NaN",
+        data_type=ZarrV3NamedConfig(name="float32", configuration={}),
+        codecs=(ZarrV3NamedConfig(name="bytes", configuration={"endian": "little"}),),
+    )
     assert ZarrV3ArrayMetadata.from_json(m.to_json()) == m
     assert ZarrV3ArrayMetadata.from_json(m.to_json()).fill_value == "NaN"
 
@@ -385,7 +392,7 @@ def test_v3_create_default_is_valid_empty_array() -> None:
     assert m.attributes == {}
     assert m.extra_fields == {}
     # the default document is structurally valid and round-trips
-    assert validate_array_metadata_v3(m.to_json()) == []
+    assert validate_array_metadata_v3(m.to_json()) == ()
     assert ZarrV3ArrayMetadata.from_json(m.to_json()) == m
 
 
@@ -407,7 +414,7 @@ def test_v2_create_default_is_valid_empty_array() -> None:
     assert m.compressor is None
     assert m.filters is None
     assert m.attributes is UNSET
-    assert validate_array_metadata_v2(m.to_json()) == []
+    assert validate_array_metadata_v2(m.to_json()) == ()
     assert ZarrV2ArrayMetadata.from_json(m.to_json()) == m
 
 
@@ -551,6 +558,7 @@ def test_v3_from_json_reconstructs_required_fields() -> None:
         shape=(7,),
         attributes={"a": 1},
         data_type=ZarrV3NamedConfig(name="int32", configuration={}),
+        codecs=(ZarrV3NamedConfig(name="bytes", configuration={"endian": "little"}),),
     ).to_json()
     model = ZarrV3ArrayMetadata.from_json(doc)
     assert model.shape == (7,)
@@ -672,29 +680,17 @@ def test_roundtrip_model_json_model(
     assert model_cls.from_json(model.to_json()) == model
 
 
-# --- Round-trips (model → key_value → model, parametrized) -----------------
-
-ROUNDTRIP_KEY_VALUE_PARAMS = [
-    pytest.param(
-        ZarrV3ArrayMetadata,
-        ZarrV3ArrayMetadata.create_default(attributes={"a": 1}),
-        id="v3",
-    ),
-    pytest.param(
-        ZarrV2ArrayMetadata,
-        ZarrV2ArrayMetadata.create_default(attributes={"a": 1}),
-        id="v2",
-    ),
-]
+# --- Round-trips (model → key_value → model) --------------------------------
 
 
-@pytest.mark.parametrize(("model_cls", "model"), ROUNDTRIP_KEY_VALUE_PARAMS)
-def test_roundtrip_via_key_value(
-    model_cls: type[ZarrV3ArrayMetadata | ZarrV2ArrayMetadata],
-    model: ZarrV3ArrayMetadata | ZarrV2ArrayMetadata,
-) -> None:
+def test_roundtrip_via_key_value() -> None:
     """A model round-trips through to_key_value/from_key_value back to an equal model."""
-    assert model_cls.from_key_value(model.to_key_value()) == model
+    # Not parametrized over the two classes: a mapping's key type is
+    # invariant, so a reader cannot take the union of what they write.
+    v3 = ZarrV3ArrayMetadata.create_default(attributes={"a": 1})
+    v2 = ZarrV2ArrayMetadata.create_default(attributes={"a": 1})
+    assert ZarrV3ArrayMetadata.from_key_value(v3.to_key_value()) == v3
+    assert ZarrV2ArrayMetadata.from_key_value(v2.to_key_value()) == v2
 
 
 # --- Round-trips (json → model → json, direction distinct — kept direct) ---
@@ -721,7 +717,9 @@ TO_JSON_NO_ALIASING_PARAMS = [
         ZarrV3ArrayMetadata.create_default(
             shape=(2,),
             attributes={"a": {"b": [1]}},
-            codecs=(ZarrV3NamedConfig(name="blosc", configuration={"opts": {"level": 1}}),),
+            # A name nothing in the scope claims, so reading it back judges only
+            # the document, and its configuration can nest.
+            codecs=(ZarrV3NamedConfig(name="acme.nested", configuration={"opts": {"level": 1}}),),
             extra_fields={"ext": {"must_understand": False, "cfg": {"x": [1]}}},
         ),
         id="v3",
@@ -748,10 +746,25 @@ def test_to_json_shares_no_mutable_state_with_model(
     assert model.to_json() == baseline
 
 
+@pytest.mark.parametrize("model", TO_JSON_NO_ALIASING_PARAMS)
+def test_from_json_shares_no_mutable_state_with_its_input(
+    model: ZarrV3ArrayMetadata | ZarrV2ArrayMetadata,
+) -> None:
+    """Mutating the document a model was read from leaves the model unchanged."""
+    # Arrays as tuples: the reader has nothing to rebuild, so only a copy
+    # keeps the model apart from its input.
+    document = arrays_to_tuples(model.to_json())
+    read = type(model).from_json(document)
+    baseline = copy.deepcopy(read.to_json())
+    mutate_nested_containers(document)
+    assert read.to_json() == baseline
+
+
 def test_v3_parser_accepts_bare_string_data_type() -> None:
     """V3 from_json accepts a bare-string data_type and re-serializes it canonically."""
     doc = ZarrV3ArrayMetadata.create_default().to_json()
     doc["data_type"] = "int32"
+    doc["codecs"] = ({"name": "bytes", "configuration": {"endian": "little"}},)
     model = ZarrV3ArrayMetadata.from_json(doc)
     assert model.data_type == ZarrV3NamedConfig(name="int32", configuration={})
     assert model.to_json()["data_type"] == "int32"
@@ -760,7 +773,7 @@ def test_v3_parser_accepts_bare_string_data_type() -> None:
 @pytest.mark.parametrize("name", ["bytes", "ANY string", "urn:example:codec"])
 def test_metadata_field_accepts_any_string_name(name: str) -> None:
     """The structural layer checks the name type, not syntax or registration."""
-    assert validate_metadata_field_v3({"name": name}) == []
+    assert validate_metadata_field_v3({"name": name}) == ()
 
 
 @pytest.mark.parametrize("value", [0, 1, "false", None])
@@ -779,11 +792,19 @@ def test_metadata_field_rejects_unknown_envelope_member() -> None:
 
 
 @pytest.mark.parametrize("field", ["codecs", "storage_transformers"])
-def test_optional_extension_points_allow_must_understand_false(field: str) -> None:
-    """Codecs and storage transformers may be explicitly ignorable."""
+def test_every_extension_point_rejects_must_understand_false(field: str) -> None:
+    """No extension point may be declared ignorable.
+
+    Ignoring a codec gives wrong bytes as surely as ignoring a data type
+    gives wrong values, so `must_understand` is a property of the kind of
+    metadata rather than a per-occurrence choice. The spec names only the
+    three required points; this package reads that as an oversight.
+    """
     doc: dict[str, object] = dict(ZarrV3ArrayMetadata.create_default().to_json())
     doc[field] = ({"name": "optional", "must_understand": False},)
-    assert validate_array_metadata_v3(doc) == []
+    assert [problem.loc for problem in validate_array_metadata_v3(doc)] == [
+        (field, 0, "must_understand")
+    ]
 
 
 @pytest.mark.parametrize("field", ["data_type", "chunk_grid", "chunk_key_encoding"])
@@ -936,7 +957,7 @@ def test_is_json(case: Expect[object, frozenset[tuple[str | int, ...]]]) -> None
 def test_validate_json(case: Expect[object, frozenset[tuple[str | int, ...]]]) -> None:
     """validate_json reports the problems (and their locs) for a value."""
     problems = validate_json(case.input)
-    assert (problems == []) is (case.output == frozenset())
+    assert (problems == ()) is (case.output == frozenset())
     assert {p.loc for p in problems} >= case.output
 
 
@@ -963,6 +984,25 @@ def test_parse_json_materializes_abstract_containers() -> None:
     json.dumps(parsed, allow_nan=False)
 
 
+@pytest.mark.parametrize(
+    "guard",
+    [
+        is_json,
+        is_metadata_field_v3,
+        is_array_metadata_v3,
+        is_array_metadata_v2,
+        is_group_metadata_v3,
+        is_group_metadata_v2,
+    ],
+    ids=lambda guard: guard.__name__,
+)
+def test_a_guard_narrows_only_when_it_says_yes(guard: Callable[[object], bool]) -> None:
+    """Each guard is False for some values of its type -- `is_json(math.nan)` is,
+    and a NaN is a `float` -- so it is a `TypeGuard`: a `TypeIs` would tell a
+    type checker to narrow such a value away when the guard says no."""
+    assert get_origin(get_type_hints(guard)["return"]) is TypeGuard
+
+
 def test_json_type_guard_rejects_abstract_sequence() -> None:
     """A guard cannot narrow an abstract sequence that only the parser materializes."""
     assert not is_json(range(3))
@@ -977,6 +1017,7 @@ def test_parse_metadata_field_materializes_abstract_containers() -> None:
 
     assert isinstance(parsed, dict)
     assert parsed == {"name": "example", "configuration": {"values": (0, 1)}}
+    assert "configuration" in parsed
     assert type(parsed["configuration"]) is dict
 
 
@@ -1027,7 +1068,7 @@ def test_validate_metadata_field_v3(
 ) -> None:
     """validate_metadata_field_v3 reports the problems for a metadata-field value."""
     problems = validate_metadata_field_v3(case.input)
-    assert (problems == []) is (case.output == frozenset())
+    assert (problems == ()) is (case.output == frozenset())
     assert {p.loc for p in problems} >= case.output
 
 
@@ -1178,7 +1219,7 @@ def test_array_metadata_guards(
     valid = case.output == frozenset()
     assert is_fn(doc) is valid
     problems = validate_fn(doc)
-    assert (problems == []) is valid
+    assert (problems == ()) is valid
     assert {p.loc for p in problems} >= case.output
     if valid:
         assert parse_fn(doc) is doc
@@ -1258,18 +1299,77 @@ def test_metadata_validation_error_holds_problems() -> None:
         ),
     ]
     err = MetadataValidationError(problems)
-    assert err.problems == problems
+    assert err.problems == tuple(problems)
     assert "shape: missing required key" in str(err)
     assert "data_type: expected a metadata field" in str(err)
 
 
+def test_the_error_pickles_and_copies_as_its_problems() -> None:
+    error = MetadataValidationError([ValidationProblem(("a",), "bad a", "invalid_value")])
+    error.add_note("while reading a")
+    for again in (pickle.loads(pickle.dumps(error)), copy.copy(error), copy.deepcopy(error)):
+        assert type(again) is MetadataValidationError
+        assert again.problems == error.problems
+        assert str(again) == str(error)
+        assert again.__notes__ == ["while reading a"]
+
+
+def test_error_a_problem_refuses_a_loc_that_is_not_a_tuple() -> None:
+    # The missing comma: `("level")` is a string, and read as a location
+    # it would be the path through each of its characters.
+    with pytest.raises(TypeError, match="loc is a tuple of keys and indices"):
+        ValidationProblem(("level"), "bad level", "invalid_value")  # pyright: ignore[reportArgumentType]
+
+
+@pytest.mark.parametrize("part", [True, 1.5], ids=["bool", "float"])
+def test_error_a_problem_refuses_a_loc_part_that_is_not_a_key_or_an_index(part: object) -> None:
+    # `True` passes as an `int`, and would index a sequence as 1.
+    with pytest.raises(TypeError, match="loc is a tuple of keys and indices"):
+        ValidationProblem(("a", part), "bad a", "invalid_value")  # pyright: ignore[reportArgumentType]
+
+
+def test_error_a_problem_refuses_a_message_that_is_not_a_string() -> None:
+    with pytest.raises(TypeError, match="message is a string"):
+        ValidationProblem(("level",), 7, "invalid_value")  # pyright: ignore[reportArgumentType]
+
+
+def test_error_a_problem_refuses_a_kind_that_is_not_one() -> None:
+    # A kind outside the set is one a consumer that dispatches on kinds
+    # never sees.
+    with pytest.raises(TypeError, match="kind is one of"):
+        ValidationProblem(("level",), "bad level", "invalid")  # pyright: ignore[reportArgumentType]
+
+
+class _EqualToEveryKind:
+    """Not a kind, though it compares equal to each."""
+
+    def __eq__(self, other: object) -> bool:
+        return True
+
+    def __hash__(self) -> int:
+        return 0
+
+
+def test_error_a_problem_refuses_a_kind_that_only_compares_equal_to_one() -> None:
+    # `in` tests equality, which any object can claim.
+    with pytest.raises(TypeError, match="kind is one of"):
+        ValidationProblem(("level",), "bad level", _EqualToEveryKind())  # pyright: ignore[reportArgumentType]
+
+
+def test_error_the_error_refuses_what_is_not_a_problem() -> None:
+    # A list of one-element tuples of problems is the likely slip: it
+    # would otherwise fail far away, where a `loc` is read off an entry.
+    with pytest.raises(TypeError, match="takes ValidationProblem values, got tuple"):
+        MetadataValidationError([(ValidationProblem(("a",), "bad a", "invalid_value"),)])  # pyright: ignore[reportArgumentType]
+
+
 def test_prefix_prepends_loc_head() -> None:
-    """_prefix prepends a loc head to each problem's loc."""
+    """`prefixed` prepends a loc head to each problem's loc."""
     problems = [ValidationProblem(loc=("name",), message="expected str", kind="invalid_type")]
-    prefixed = _prefix(0, problems)
-    assert prefixed == [
-        ValidationProblem(loc=(0, "name"), message="expected str", kind="invalid_type")
-    ]
+    located = prefixed(0, problems)
+    assert located == (
+        ValidationProblem(loc=(0, "name"), message="expected str", kind="invalid_type"),
+    )
 
 
 # --- Stricter v2/v3 field validation and error kinds -------------------------
@@ -1282,11 +1382,57 @@ def test_v2_dtype_must_be_string_or_records() -> None:
     assert [(p.loc, p.kind) for p in problems] == [(("dtype",), "invalid_type")]
 
 
+@pytest.mark.parametrize(
+    ("validate", "document", "loc"),
+    [
+        (
+            validate_array_metadata_v3,
+            {**ZarrV3ArrayMetadata.create_default().to_json(), "codecs": b""},
+            ("codecs",),
+        ),
+        (
+            validate_array_metadata_v3,
+            {**ZarrV3ArrayMetadata.create_default().to_json(), "storage_transformers": bytearray()},
+            ("storage_transformers",),
+        ),
+        (
+            validate_array_metadata_v3,
+            {**ZarrV3ArrayMetadata.create_default(shape=()).to_json(), "dimension_names": b""},
+            ("dimension_names",),
+        ),
+        (
+            validate_array_metadata_v2,
+            {**ZarrV2ArrayMetadata.create_default().to_json(), "dtype": b""},
+            ("dtype",),
+        ),
+        (
+            validate_array_metadata_v2,
+            {**ZarrV2ArrayMetadata.create_default().to_json(), "dtype": (("f0", b""),)},
+            ("dtype",),
+        ),
+        (
+            validate_array_metadata_v2,
+            {**ZarrV2ArrayMetadata.create_default().to_json(), "filters": b""},
+            ("filters",),
+        ),
+    ],
+    ids=["codecs", "storage-transformers", "dimension-names", "dtype", "dtype-record", "filters"],
+)
+def test_error_bytes_are_not_an_array(
+    validate: Callable[[object], tuple[ValidationProblem, ...]],
+    document: dict[str, object],
+    loc: tuple[str | int, ...],
+) -> None:
+    """`bytes` is a sequence to Python and not an array to JSON: where a document
+    expects an array, an empty one no longer passes as one with no items."""
+    assert [(p.loc, p.kind) for p in validate(document)] == [(loc, "invalid_type")]
+
+
 def test_v2_structured_dtype_records_accepted() -> None:
     """A structured v2 dtype (field records, optionally nested/shaped) validates."""
     dtype = (("a", "<i4"), ("b", (("c", "|u1"),)), ("d", "<f8", (2, 2)))
     doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"dtype": dtype}
-    assert validate_array_metadata_v2(doc) == []
+    assert validate_array_metadata_v2(doc) == ()
 
 
 def test_v2_structured_dtype_malformed_record_rejected() -> None:
@@ -1345,7 +1491,7 @@ def test_v2_filters_may_be_empty() -> None:
     doc = dict(ZarrV2ArrayMetadata.create_default().to_json())
     doc["filters"] = ()
 
-    assert validate_array_metadata_v2(doc) == []
+    assert validate_array_metadata_v2(doc) == ()
     assert ZarrV2ArrayMetadata.from_key_value({".zarray": json.dumps(doc).encode()}).filters == ()
 
 
@@ -1399,13 +1545,39 @@ def test_array_v2_ignores_unknown_document_member() -> None:
     """
     doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"unexpected": 1}
 
-    assert validate_array_metadata_v2(doc) == []
+    assert validate_array_metadata_v2(doc) == ()
     assert "unexpected" not in ZarrV2ArrayMetadata.from_json(doc).to_json()
+
+
+@pytest.mark.parametrize(
+    ("member", "kind"),
+    [
+        (object(), "invalid_type"),
+        ({1, 2}, "invalid_type"),
+        (b"\x00", "invalid_type"),
+        (math.nan, "invalid_value"),
+    ],
+    ids=["object", "set", "bytes", "nan"],
+)
+def test_error_array_v2_unknown_member_that_is_not_json(member: object, kind: str) -> None:
+    """Ignored is not unchecked: an unknown member is a JSON value, as in v3."""
+    doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"unexpected": member}
+
+    assert [(p.loc, p.kind) for p in validate_array_metadata_v2(doc)] == [(("unexpected",), kind)]
+
+
+@pytest.mark.parametrize("key", [7, None, True, (1, 2)], ids=["int", "none", "bool", "tuple"])
+def test_error_array_v2_key_that_is_not_a_string(key: object) -> None:
+    """A document's keys are strings: `parse_array_metadata_v2` returned this one."""
+    doc: dict[object, object] = {**ZarrV2ArrayMetadata.create_default().to_json(), key: "x"}
+
+    assert [(p.loc, p.kind) for p in validate_array_metadata_v2(doc)] == [((), "invalid_type")]
 
 
 def test_array_v3_from_json_materializes_abstract_containers() -> None:
     """A flexible input mapping becomes the canonical dict/tuple model shape."""
-    doc = UserDict(dict(ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json()))
+    # `range(2)` is the shape (0, 1), which the default grid for it fits.
+    doc = UserDict(dict(ZarrV3ArrayMetadata.create_default(shape=(0, 1)).to_json()))
     doc["shape"] = range(2)
 
     model = ZarrV3ArrayMetadata.from_json(doc)
@@ -1415,12 +1587,12 @@ def test_array_v3_from_json_materializes_abstract_containers() -> None:
 
 
 def test_from_key_value_rejects_non_standard_json_constant() -> None:
-    """Store JSON decoding rejects JavaScript NaN/Infinity constants."""
+    """A JavaScript NaN constant outside the attributes is located, not decoded as a fill value."""
     doc = dict(ZarrV3ArrayMetadata.create_default().to_json())
     doc["fill_value"] = float("nan")
     raw = json.dumps(doc)
 
-    with pytest.raises(MetadataValidationError, match="invalid JSON"):
+    with pytest.raises(MetadataValidationError, match="fill_value: non-finite float nan"):
         ZarrV3ArrayMetadata.from_key_value({"zarr.json": raw.encode()})
 
 
@@ -1428,7 +1600,7 @@ def test_to_key_value_rejects_non_finite_model_value() -> None:
     """Strict encoding prevents directly-constructed models from writing invalid JSON."""
     model = ZarrV3ArrayMetadata.create_default(fill_value=float("nan"))
 
-    with pytest.raises(ValueError, match="JSON compliant"):
+    with pytest.raises(MetadataValidationError, match="fill_value: non-finite float nan"):
         model.to_key_value()
 
 
@@ -1444,9 +1616,9 @@ def test_missing_key_kind_is_machine_readable() -> None:
     doc = dict(ZarrV3ArrayMetadata.create_default().to_json())
     del doc["chunk_key_encoding"]
     problems = validate_array_metadata_v3(doc)
-    assert problems == [
-        ValidationProblem(("chunk_key_encoding",), "missing required key", "missing_key")
-    ]
+    assert problems == (
+        ValidationProblem(("chunk_key_encoding",), "missing required key", "missing_key"),
+    )
 
 
 # --- Unified error channels ---------------------------------------------------
@@ -1479,9 +1651,9 @@ def test_from_key_value_missing_key_kind() -> None:
     """A missing store key surfaces as a missing_key problem at the store-key loc."""
     with pytest.raises(MetadataValidationError) as exc_info:
         ZarrV2ArrayMetadata.from_key_value({})
-    assert exc_info.value.problems == [
-        ValidationProblem((".zarray",), "missing store key", "missing_key")
-    ]
+    assert exc_info.value.problems == (
+        ValidationProblem((".zarray",), "missing store key", "missing_key"),
+    )
 
 
 def test_extra_fields_overlap_raises_metadata_error() -> None:
@@ -1559,7 +1731,7 @@ def test_configuration_values_must_be_json() -> None:
 
 def test_v3_extension_keys_must_be_strings() -> None:
     """A non-string top-level key cannot be represented by a v3 document type."""
-    doc: dict[object, object] = dict(ZarrV3ArrayMetadata.create_default().to_json())
+    doc: dict[object, object] = {**ZarrV3ArrayMetadata.create_default().to_json()}
     doc[1] = {"must_understand": False}
     assert [(problem.loc, problem.kind) for problem in validate_array_metadata_v3(doc)] == [
         ((), "invalid_type")
@@ -1616,8 +1788,8 @@ def test_array_parsers_normalize_json_lists_before_narrowing() -> None:
     v3_raw = json.loads(json.dumps(ZarrV3ArrayMetadata.create_default(shape=(2,)).to_json()))
     v2_raw = json.loads(json.dumps(ZarrV2ArrayMetadata.create_default(shape=(2,)).to_json()))
 
-    assert validate_array_metadata_v3(v3_raw) == []
-    assert validate_array_metadata_v2(v2_raw) == []
+    assert validate_array_metadata_v3(v3_raw) == ()
+    assert validate_array_metadata_v2(v2_raw) == ()
     assert not is_array_metadata_v3(v3_raw)
     assert not is_array_metadata_v2(v2_raw)
 
@@ -1631,7 +1803,8 @@ def test_array_parsers_normalize_json_lists_before_narrowing() -> None:
 
 def test_array_guards_reject_noncanonical_nested_json() -> None:
     """Document guards cannot narrow values that only parsers can materialize."""
-    v3 = dict(ZarrV3ArrayMetadata.create_default().to_json())
+    # Raw bits of 16, whose fill value is two byte values.
+    v3 = dict(ZarrV3ArrayMetadata.create_default().to_json()) | {"data_type": "r16"}
     v3["fill_value"] = range(2)
     v2 = dict(ZarrV2ArrayMetadata.create_default().to_json())
     v2["fill_value"] = range(2)
@@ -1724,12 +1897,12 @@ def test_v2_create_default_explicit_chunks_respected() -> None:
 
 
 def test_v3_create_default_zero_length_dimensions() -> None:
-    """chunk_shape == shape is spec-sound even with zero-length dimensions:
-    'The chunk shape elements are non-zero when the corresponding dimensions
-    of the arrays have non-zero length' — the constraint is conditional, so a
-    zero chunk length is permitted exactly where the dimension is empty."""
+    """The derived grid gives a dimension of length 0 a chunk length of 1:
+    the regular grid asks for chunk sizes greater than zero, so the written
+    grid is one every reader takes, and it fits the shape it chunks."""
     model = ZarrV3ArrayMetadata.create_default(shape=(0, 3))
-    assert model.chunk_grid.configuration["chunk_shape"] == (0, 3)
+    assert model.chunk_grid.configuration["chunk_shape"] == (1, 3)
+    assert validate_array_metadata_v3(model.to_json()) == ()
 
 
 def test_create_default_derivation_is_one_way() -> None:
@@ -1758,7 +1931,7 @@ def test_v2_absent_dimension_separator_means_dot() -> None:
     del doc["dimension_separator"]
     model = ZarrV2ArrayMetadata.from_json(doc)
     assert model.dimension_separator == "."
-    assert model.to_json()["dimension_separator"] == "."
+    assert model.to_json().get("dimension_separator") == "."
 
 
 def test_v2_from_key_value_without_separator_means_dot() -> None:

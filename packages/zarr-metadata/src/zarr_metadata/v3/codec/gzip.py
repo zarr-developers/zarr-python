@@ -4,9 +4,13 @@ Gzip codec types.
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/gzip/index.html
 """
 
-from typing import Final, Literal
+from collections.abc import Iterator
+from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
+
+from zarr_metadata._json import ValidationProblem
+from zarr_metadata.v3._definition import CodecDefinition, Nested
 
 GZIP_CODEC_NAME: Final = "gzip"
 """The `name` field value of the `gzip` codec."""
@@ -15,7 +19,7 @@ GzipCodecName = Literal["gzip"]
 """Literal type of the `name` field of the `gzip` codec."""
 
 
-class GzipCodecConfiguration(TypedDict):
+class GzipCodecConfiguration(TypedDict, closed=True):
     """
     Configuration for the Zarr v3 `gzip` codec.
 
@@ -32,11 +36,12 @@ class GzipCodecConfiguration(TypedDict):
     level: int
 
 
-class GzipCodecObject(TypedDict):
+class GzipCodecObject(TypedDict, closed=True):
     """`gzip` codec metadata in object form."""
 
     name: GzipCodecName
     configuration: GzipCodecConfiguration
+    must_understand: NotRequired[bool]
 
 
 GzipCodecMetadata = GzipCodecObject
@@ -47,7 +52,27 @@ and is therefore part of the metadata's reproducibility contract), so
 only the object form is valid; the short-hand-name form is not permitted.
 """
 
+
+def _rules(configuration: GzipCodecConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
+    """`level` is an integer from 0 to 9."""
+    level = configuration["level"]
+    if not 0 <= level <= 9:
+        yield ValidationProblem(
+            ("level",), f"expected an integer in [0, 9], got {level}", "invalid_value"
+        )
+
+
+GZIP_CODEC: Final = CodecDefinition(
+    name=GZIP_CODEC_NAME,
+    configuration=GzipCodecConfiguration,
+    kind="bytes_bytes",
+    size="dynamic",
+    rules=_rules,
+)
+"""The `gzip` codec."""
+
 __all__ = [
+    "GZIP_CODEC",
     "GZIP_CODEC_NAME",
     "GzipCodecConfiguration",
     "GzipCodecMetadata",

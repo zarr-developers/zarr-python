@@ -2,7 +2,7 @@ import enum
 import math
 import pickle
 import warnings
-from typing import Any, cast, get_args
+from typing import TYPE_CHECKING, Any, cast, get_args
 from unittest.mock import AsyncMock
 
 import numpy as np
@@ -18,9 +18,11 @@ from zarr.codecs import (
     BloscCodec,
     BytesCodec,
     Crc32cCodec,
+    GzipCodec,
     ShardingCodec,
     TransposeCodec,
 )
+from zarr.codecs.numcodecs import CRC32
 from zarr.codecs.sharding import (
     INDEX_LOCATION,
     MAX_UINT_64,
@@ -37,6 +39,9 @@ from zarr.storage import MemoryStore, StorePath, ZipStore
 
 from ..conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def _reads_are_sync(store_mock: AsyncMock) -> bool:
@@ -758,17 +763,24 @@ def test_structured_dtype_fill_value() -> None:
     assert np.array_equal(arr[:], expected)
 
 
-def test_pickle() -> None:
+@pytest.mark.parametrize(
+    "codec",
+    [
+        ShardingCodec(chunk_shape=(8, 8)),
+        ShardingCodec(chunk_shape=(8, 8), subchunk_write_order="lexicographic"),
+        ShardingCodec(chunk_shape=(0,)),
+    ],
+    ids=["default", "lexicographic", "zero-chunk-size"],
+)
+def test_pickle(codec: ShardingCodec) -> None:
     """ShardingCodec round-trips through pickle, including the non-serialized
     ``subchunk_write_order`` (which ``to_dict`` omits and which must not silently
-    revert to the ``morton`` default)."""
-    codec = ShardingCodec(chunk_shape=(8, 8))
-    assert pickle.loads(pickle.dumps(codec)) == codec
-
-    ordered = ShardingCodec(chunk_shape=(8, 8), subchunk_write_order="lexicographic")
-    restored = pickle.loads(pickle.dumps(ordered))
-    assert restored == ordered
-    assert restored.subchunk_write_order == "lexicographic"
+    revert to the ``morton`` default), and an inner chunk size of 0, which the
+    constructor accepts."""
+    restored = pickle.loads(pickle.dumps(codec))
+    assert restored == codec
+    assert restored.chunk_shape == codec.chunk_shape
+    assert restored.subchunk_write_order == codec.subchunk_write_order
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
@@ -1043,6 +1055,17 @@ def test_sharding_codec_json_roundtrip_index_location(
     assert restored == codec
 
 
+def test_sharding_codec_default_byte_order_is_little() -> None:
+    """
+    The default inner and index codecs store little-endian bytes, like the default
+    serializer, so a sharded array written with defaults is byte-identical on every host.
+    """
+    serialized = ShardingCodec(chunk_shape=(1,)).to_dict()
+    little = {"name": "bytes", "configuration": {"endian": "little"}}
+    assert serialized["configuration"]["codecs"] == (little,)  # type: ignore[index, call-overload]
+    assert serialized["configuration"]["index_codecs"][0] == little  # type: ignore[index, call-overload]
+
+
 @pytest.mark.parametrize(
     ("member", "expected"),
     [("start", "start"), ("end", "end")],
@@ -1117,6 +1140,44 @@ def test_sharding_codec_rejects_unknown_index_location() -> None:
     kwargs: dict[str, Any] = {"chunk_shape": (1,), "index_location": "middle"}
     with pytest.raises(ValueError, match="index_location must be one of"):
         ShardingCodec(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "index_codecs",
+    [
+        (BytesCodec(),),
+        (BytesCodec(), Crc32cCodec()),
+        (TransposeCodec(order=(1, 0)), BytesCodec(), Crc32cCodec()),
+        (BytesCodec(), CRC32()),
+    ],
+)
+def test_sharding_fixed_size_index_codecs_roundtrip(index_codecs: tuple[Any, ...]) -> None:
+    """
+    Any chain of fixed-size codecs is accepted as `index_codecs`, and data
+    written through it reads back unchanged.
+    """
+    data = np.arange(16, dtype="uint16")
+    arr = zarr.create_array(
+        MemoryStore(),
+        shape=data.shape,
+        dtype=data.dtype,
+        chunks=(2,),
+        shards=(8,),
+        compressors=None,
+        serializer=ShardingCodec(chunk_shape=(2,), index_codecs=index_codecs),
+    )
+    arr[:] = data
+    np.testing.assert_array_equal(arr[:], data)
+
+
+@pytest.mark.parametrize("compressor", [GzipCodec(), BloscCodec()])
+def test_sharding_codec_rejects_variable_size_index_codecs(compressor: Any) -> None:
+    """
+    ShardingCodec rejects an `index_codecs` chain containing a codec whose
+    encoded size is not fixed, as the spec requires.
+    """
+    with pytest.raises(ValueError, match="must produce a fixed-size encoding"):
+        ShardingCodec(chunk_shape=(2,), index_codecs=(BytesCodec(), compressor))
 
 
 def test_sharding_index_location_attribute_error_for_unknown_member() -> None:
@@ -1337,3 +1398,41 @@ def test_sharding_orthogonal_set_multiple_array_dims(
         expected[ix] = value.reshape(expected[ix].shape)
         assert np.array_equal(a[:], expected)
         assert np.array_equal(a.oindex[selection], value)
+
+
+@pytest.mark.parametrize(
+    "pipeline_path",
+    [
+        "zarr.core.codec_pipeline.FusedCodecPipeline",
+        "zarr.core.codec_pipeline.BatchedCodecPipeline",
+    ],
+)
+@pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("stored", [b"", b"abc"])
+@pytest.mark.parametrize("op", ["full read", "partial read", "partial write"])
+def test_sharding_truncated_shard_raises(
+    pipeline_path: str, store: Store, index_location: IndexLocation, stored: bytes, op: str
+) -> None:
+    """A stored shard shorter than its index (zero-length included) is
+    rejected by every read and partial-write path, under either pipeline,
+    rather than read as missing by some paths and failing the checksum in
+    others."""
+    with zarr.config.set({"codec_pipeline.path": pipeline_path}):
+        arr = zarr.create_array(
+            store,
+            shape=(8,),
+            chunks=(2,),
+            shards={"shape": (4,), "index_location": index_location},
+            dtype="i4",
+            compressors=None,
+            fill_value=-1,
+        )
+        zarr.core.sync.sync(store.set("c/0", default_buffer_prototype().buffer.from_bytes(stored)))
+        ops: dict[str, Callable[[], object]] = {
+            "full read": lambda: arr[0:4],
+            "partial read": lambda: arr[0:2],
+            "partial write": lambda: arr.__setitem__(slice(0, 2), 7),
+        }
+        with pytest.raises(ValueError, match="too short to hold its index"):
+            ops[op]()

@@ -20,7 +20,7 @@ from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
 
-class ZarrV3ConsolidatedMetadataJSON(TypedDict):
+class ZarrV3ConsolidatedMetadataJSON(TypedDict, closed=True):
     """
     Inline consolidated metadata embedded in a v3 group.
 

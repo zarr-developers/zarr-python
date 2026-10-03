@@ -43,7 +43,7 @@ STANDALONE_EXAMPLES = PACKAGE_ROOT / "examples"
 DOC_SNIPPETS_DIR = DOCS / "snippets"
 CACHE_EXAMPLE = STANDALONE_EXAMPLES / "system_memory_chunk_cache" / "system_memory_chunk_cache.py"
 
-# Mirrors `pymdownx.snippets: base_path` in mkdocs.yml. If that list changes,
+# Mirrors `pymdownx.snippets: base_path` in ../mkdocs-base.yml. If that list changes,
 # change this one in the same commit.
 SNIPPET_BASE_PATHS = (DOCS, STANDALONE_EXAMPLES, PACKAGE_ROOT)
 
