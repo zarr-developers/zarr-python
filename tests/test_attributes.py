@@ -26,6 +26,20 @@ def test_put(data: dict[str, Any], zarr_format: ZarrFormat) -> None:
     assert deep_nan_equal(dict(attrs), expected)
 
 
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize(
+    "value",
+    [np.float32(1.5), np.float32(np.nan), np.int64(3), np.uint8(7), np.bool_(True)],
+)
+def test_numpy_scalar_attribute_roundtrip(value: Any, zarr_format: ZarrFormat) -> None:
+    """numpy scalars are stored as their Python equivalents and survive reopening the store."""
+    store = zarr.storage.MemoryStore()
+    zarr.create_group(store, zarr_format=zarr_format, attributes={"foo": value})
+    reopened = zarr.open_group(store, mode="r", zarr_format=zarr_format)
+    expected = value.item()
+    assert deep_nan_equal({"foo": reopened.attrs["foo"]}, {"foo": expected})
+
+
 def test_asdict() -> None:
     store = zarr.storage.MemoryStore()
     attrs = zarr.core.attributes.Attributes(

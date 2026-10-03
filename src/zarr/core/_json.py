@@ -25,7 +25,9 @@ Two layers:
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
+
+import numpy as np
 
 from zarr.core.buffer import default_buffer_prototype
 
@@ -33,6 +35,13 @@ if TYPE_CHECKING:
     from zarr.abc.store import ByteRequest, Store
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import JSON
+
+
+def _json_default(obj: Any) -> Any:
+    """Convert a numpy scalar, which `json` cannot encode, to the equivalent Python value."""
+    if isinstance(obj, np.generic):
+        return obj.item()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
 def buffer_to_json(buffer: Buffer) -> JSON:
@@ -96,7 +105,9 @@ def json_to_buffer(
     """
     if prototype is None:
         prototype = default_buffer_prototype()
-    return prototype.buffer.from_bytes(json.dumps(obj, indent=indent, allow_nan=allow_nan).encode())
+    return prototype.buffer.from_bytes(
+        json.dumps(obj, indent=indent, allow_nan=allow_nan, default=_json_default).encode()
+    )
 
 
 async def get_json(store: Store, key: str, *, byte_range: ByteRequest | None = None) -> JSON | None:
