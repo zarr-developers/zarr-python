@@ -572,6 +572,116 @@ def test_group_delitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
         group["subarray"]
 
 
+@pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
+@pytest.mark.parametrize("async_api", [False, True])
+@pytest.mark.parametrize("key", ["missing", "parent/missing", "array/child"])
+@pytest.mark.parametrize("consolidated", [False, True])
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+async def test_group_delitem_missing(
+    store: Store,
+    zarr_format: ZarrFormat,
+    consolidated: bool,
+    async_api: bool,
+    key: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    group = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
+    await group.create_group("parent")
+    await group.create_array("array", shape=(2,), dtype="i4")
+    if consolidated:
+        group = await zarr.api.asynchronous.consolidate_metadata(store)
+    # Objects at a prefix without node metadata are not group members.
+    await store.set(f"{key}/raw", default_buffer_prototype().buffer.from_bytes(b"keep"))
+    before = {
+        name: await store.get(name, default_buffer_prototype()) async for name in store.list()
+    }
+    metadata = group.metadata.to_dict()
+
+    async def unexpected_write(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("Deleting a missing member must not modify the store")
+
+    for method in ("set", "delete", "delete_dir"):
+        monkeypatch.setattr(store, method, unexpected_write)
+
+    if async_api:
+        with pytest.raises(KeyError, match=key):
+            await group.delitem(key)
+    else:
+        with pytest.raises(KeyError, match=key):
+            del Group(group)[key]
+
+    assert group.metadata.to_dict() == metadata
+    assert {
+        name: await store.get(name, default_buffer_prototype()) async for name in store.list()
+    } == before
+
+
+@pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
+@pytest.mark.parametrize("async_api", [False, True])
+@pytest.mark.parametrize("key", ["member", "parent/member", "/parent//member/"])
+@pytest.mark.parametrize("kind", ["array", "group"])
+@pytest.mark.parametrize("consolidated", [False, True])
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+async def test_group_delitem_repeated(
+    store: Store,
+    zarr_format: ZarrFormat,
+    consolidated: bool,
+    async_api: bool,
+    key: str,
+    kind: str,
+) -> None:
+    group = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
+    await group.create_group("parent")
+    if kind == "array":
+        await group.create_array(key, data=np.arange(4))
+    else:
+        member = await group.create_group(key)
+        await member.create_array("data", data=np.arange(4))
+    await group.create_array("keep", data=np.arange(2))
+    if consolidated:
+        group = await zarr.api.asynchronous.consolidate_metadata(store)
+    parent = await group.getitem("parent")
+
+    if async_api:
+        await group.delitem(key)
+    else:
+        del Group(group)[key]
+
+    if async_api:
+        with pytest.raises(KeyError, match="member"):
+            await group.delitem(key)
+    else:
+        with pytest.raises(KeyError, match="member"):
+            del Group(group)[key]
+    with pytest.raises(KeyError):
+        await group.getitem(key)
+    if "/" in key:
+        with pytest.raises(KeyError):
+            await parent.getitem("member")
+    reopened = await zarr.api.asynchronous.open_group(store, use_consolidated=consolidated)
+    with pytest.raises(KeyError):
+        await reopened.getitem(key)
+    np.testing.assert_array_equal(await (await reopened.getitem("keep")).getitem(...), np.arange(2))
+    prefix = normalize_path(key) + "/"
+    assert not [name async for name in store.list() if name.startswith(prefix)]
+
+
+@pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
+@pytest.mark.parametrize("key", ["member", "missing"])
+@pytest.mark.parametrize("consolidated", [False, True])
+@pytest.mark.filterwarnings("ignore:Consolidated metadata is currently not part:UserWarning")
+async def test_group_delitem_read_only(
+    store: Store, zarr_format: ZarrFormat, consolidated: bool, key: str
+) -> None:
+    group = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
+    await group.create_group("member")
+    if consolidated:
+        await zarr.api.asynchronous.consolidate_metadata(store)
+    group = await zarr.api.asynchronous.open_group(store, mode="r", use_consolidated=consolidated)
+    with pytest.raises(ValueError, match="read-only"):
+        await group.delitem(key)
+
+
 def test_group_iter(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the `Group.__iter__` method.
