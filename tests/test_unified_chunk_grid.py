@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Generator
     from pathlib import Path
 
-    from zarr.core.common import ChunksLike
+    from zarr.core.common import ChunksLike, ZarrFormat
 
 
 @pytest.fixture(autouse=True)
@@ -1246,46 +1246,80 @@ def test_rectilinear_chunks_gates(
         zarr.create(store=MemoryStore(), shape=shape, chunks=chunks, zarr_format=2, dtype="uint8")
 
 
+_LEGACY_SHAPE = (2**12, 2**12)
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize(
     ("chunks", "expected"),
     [
-        (None, None),
-        (0, None),
-        ((), None),
-        ([], None),
-        (False, None),
-        (np.int64(0), None),
-        (np.False_, None),
-        (np.array(0), None),
-        (np.array(False), None),
-        (np.array([0]), None),
-        (np.array([]), None),
+        (None, guess_chunks(_LEGACY_SHAPE, 4).chunk_shape),
+        (False, _LEGACY_SHAPE),
         (np.array(7), (7, 7)),
         (np.array([5, 3]), (5, 3)),
     ],
     ids=repr,
 )
-def test_legacy_create_v2_chunks(
-    chunks: ChunksLike | None, expected: tuple[int, ...] | None
+def test_legacy_create_chunks(
+    chunks: ChunksLike | None, expected: tuple[int, ...], zarr_format: ZarrFormat
 ) -> None:
-    """The legacy `zarr.create` Zarr format 2 path reads a falsy `chunks` as not given
-    and chunks automatically (`expected` is `None`). It never tests the truth value of a
-    numpy array with more than one element, which has none: that array is the chunk
-    shape."""
-    shape = (2**12, 2**12)
-    arr = zarr.create(store=MemoryStore(), shape=shape, chunks=chunks, dtype="int32", zarr_format=2)
-    assert arr.chunks == (expected or guess_chunks(shape, 4).chunk_shape)
+    """The legacy `zarr.create` reads `chunks` the same way for both Zarr formats: only
+    `None` means not given and chunks automatically; `False` is one chunk, and a numpy
+    array is the chunk shape."""
+    arr = zarr.create(
+        store=MemoryStore(),
+        shape=_LEGACY_SHAPE,
+        chunks=chunks,
+        dtype="int32",
+        zarr_format=zarr_format,
+    )
+    assert arr.chunks == expected
     assert all(type(c) is int for c in arr.chunks)
 
 
-def test_legacy_create_v2_chunks_all_zero_array_raises() -> None:
-    """A numpy `chunks` array with more than one element is given even when every element
-    is 0, so the legacy Zarr format 2 path rejects its 0 sizes instead of chunking
-    automatically."""
-    chunks = np.array([0, 0])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("chunks", [0, np.int64(0), np.array(0), np.array([0, 0])], ids=repr)
+def test_legacy_create_chunks_rejects_zero(chunks: ChunksLike, zarr_format: ZarrFormat) -> None:
+    """A chunk size of 0 is rejected, not read as "not given"."""
     with pytest.raises(ValueError, match="Chunk size must be positive or -1, got 0"):
         zarr.create(
-            store=MemoryStore(), shape=(2**12, 2**12), chunks=chunks, dtype="int32", zarr_format=2
+            store=MemoryStore(),
+            shape=_LEGACY_SHAPE,
+            chunks=chunks,
+            dtype="int32",
+            zarr_format=zarr_format,
+        )
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("chunks", [(), [], np.array([]), np.array([0])], ids=repr)
+def test_legacy_create_chunks_rejects_wrong_ndim(
+    chunks: ChunksLike, zarr_format: ZarrFormat
+) -> None:
+    """An empty or too-short chunk shape is rejected, not read as "not given"."""
+    with pytest.raises(ValueError, match="dimensions but shape has 2 dimensions"):
+        zarr.create(
+            store=MemoryStore(),
+            shape=_LEGACY_SHAPE,
+            chunks=chunks,
+            dtype="int32",
+            zarr_format=zarr_format,
+        )
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("chunks", [np.False_, np.array(False)], ids=repr)
+def test_legacy_create_chunks_rejects_numpy_bool(
+    chunks: ChunksLike, zarr_format: ZarrFormat
+) -> None:
+    """A numpy boolean is not a chunk size, and is not read as "not given"."""
+    with pytest.raises(TypeError, match="Chunk specification must be an integer"):
+        zarr.create(
+            store=MemoryStore(),
+            shape=_LEGACY_SHAPE,
+            chunks=chunks,
+            dtype="int32",
+            zarr_format=zarr_format,
         )
 
 

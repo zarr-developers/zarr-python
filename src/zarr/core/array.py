@@ -351,18 +351,6 @@ def _array_metadata_dict_v3(zarr_json_bytes: Buffer) -> dict[str, JSON]:
     return metadata_dict
 
 
-def _v2_chunks_given(chunks: object) -> bool:
-    """Whether the legacy Zarr format 2 `chunks` argument is given.
-
-    A falsy `chunks` (such as `None`, 0, `[]` or `False`) is read as not given. A numpy
-    array with more than one element has no truth value and is always given; a shorter
-    one is given when its element is nonzero (an empty array is not given).
-    """
-    if isinstance(chunks, np.ndarray):
-        return chunks.size > 1 or bool(chunks.any())
-    return bool(chunks)
-
-
 @dataclass(frozen=True)
 class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     """
@@ -532,11 +520,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             item_size = 1
             if isinstance(dtype_parsed, HasItemSize):
                 item_size = dtype_parsed.item_size
-            _raw_v2 = chunks if _v2_chunks_given(chunks) else chunk_shape
-            if _raw_v2 is None:
+            if _raw_chunks is None:
                 outer_chunks = guess_chunks(shape, item_size)
             else:
-                outer_chunks = normalize_chunks_nd(_raw_v2, shape)
+                outer_chunks = normalize_chunks_nd(_raw_chunks, shape)
             if not outer_chunks.is_regular:
                 raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
             _chunks = outer_chunks.chunk_shape
