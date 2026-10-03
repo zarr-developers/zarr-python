@@ -1,3 +1,4 @@
+import importlib
 import sys
 import warnings
 from types import ModuleType
@@ -29,6 +30,12 @@ __all__ = [
 
 
 class VerboseModule(ModuleType):
+    def __reduce__(self) -> tuple[Any, ...]:
+        # Pickle by reference, as for a plain module, instead of trying to serialize
+        # this module's instance state. Without this, pickling fails with
+        # "cannot pickle 'VerboseModule' object".
+        return importlib.import_module, (self.__name__,)
+
     def __setattr__(self, attr: str, value: Any) -> None:
         if attr == "default_compressor":
             warnings.warn(

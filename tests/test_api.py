@@ -2018,3 +2018,12 @@ def test_unimplemented_kwarg_warnings(kwarg_name: str) -> None:
     kwargs = {kwarg_name: 1}
     with pytest.warns(RuntimeWarning, match=".* is not yet implemented"):
         zarr.create(shape=(1,), **kwargs)  # type: ignore[arg-type]
+
+
+def test_storage_module_is_picklable() -> None:
+    """`zarr.storage` is pickled by reference, so it can be sent to Dask workers (#4029)."""
+    import pickle
+
+    import zarr.storage
+
+    assert pickle.loads(pickle.dumps(zarr.storage)) is zarr.storage
