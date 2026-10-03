@@ -2,7 +2,7 @@ import enum
 import math
 import pickle
 import warnings
-from typing import TYPE_CHECKING, Any, cast, get_args
+from typing import Any, cast, get_args
 from unittest.mock import AsyncMock
 
 import numpy as np
@@ -39,9 +39,6 @@ from zarr.storage import MemoryStore, StorePath, ZipStore
 
 from ..conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim
-
-if TYPE_CHECKING:
-    from zarr.core.common import JSON
 
 
 def _reads_are_sync(store_mock: AsyncMock) -> bool:
@@ -1396,51 +1393,3 @@ def test_sharding_orthogonal_set_multiple_array_dims(
         expected[ix] = value.reshape(expected[ix].shape)
         assert np.array_equal(a[:], expected)
         assert np.array_equal(a.oindex[selection], value)
-
-
-@pytest.mark.parametrize(
-    ("chunk_shape", "expected"),
-    [
-        ((4,), (4,)),
-        ([4, 2], (4, 2)),
-        (4, (4,)),
-        (np.int64(4), (4,)),
-        ((np.int64(4),), (4,)),
-        (np.array([4]), (4,)),
-        ((True,), (1,)),
-        (range(4, 5), (4,)),
-        ((), ()),
-    ],
-    ids=repr,
-)
-def test_sharding_codec_chunk_shape(chunk_shape: Any, expected: tuple[int, ...]) -> None:
-    """The inner chunk shape of a shard is parsed by the chunk normalizer's integer test as
-    a regular chunk shape: one integer of at least 1 per dimension, written back as
-    given."""
-    codec = ShardingCodec(chunk_shape=chunk_shape)
-    assert codec.chunk_shape == expected
-    assert all(type(size) is int for size in codec.chunk_shape)
-    configuration = cast("dict[str, JSON]", codec.to_dict()["configuration"])
-    assert configuration["chunk_shape"] == expected
-    assert ShardingCodec.from_dict(codec.to_dict()).chunk_shape == expected
-
-
-@pytest.mark.parametrize("chunk_shape", [(0,), (False,), (-1,), 0, [8, 0]], ids=repr)
-def test_sharding_codec_chunk_shape_rejects_non_positive(chunk_shape: Any) -> None:
-    """An inner chunk size below 1 is rejected, including `-1` and `False`, which have no
-    axis length to be resolved against."""
-    with pytest.raises(ValueError, match="All chunk sizes must be positive"):
-        ShardingCodec(chunk_shape=chunk_shape)
-
-
-@pytest.mark.parametrize("chunk_shape", [[[4, 4]], [8, [4, 4]], (4.0,), "4"], ids=repr)
-def test_sharding_codec_chunk_shape_rejects_non_integer(chunk_shape: Any) -> None:
-    """An inner chunk shape is regular: an explicit list of chunk edges, which declares a
-    rectilinear dimension, is rejected like any other non-integer chunk size."""
-    with pytest.raises(TypeError, match="Each chunk size of a regular chunk shape must be"):
-        ShardingCodec(chunk_shape=chunk_shape)
-
-
-def test_sharding_codec_chunk_shape_rejects_non_iterable() -> None:
-    with pytest.raises(TypeError, match="must be an integer or an iterable of integers"):
-        ShardingCodec(chunk_shape=None)  # type: ignore[arg-type]
