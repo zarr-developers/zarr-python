@@ -114,10 +114,28 @@ sub-URL locates a resource with a conventional URL; each subsequent sub-URL name
 *adapter* that reinterprets everything to its left (e.g.
 `s3://bucket/data.zip|zip:|zarr3:`). Adapters are provided by packages through the
 `zarr.url_adapters` entry-point group — see
-[`zarr.abc.url_pipeline`][zarr.abc.url_pipeline] for the adapter interface. Builtin
-adapters (`zip:`, `zarr2:`/`zarr3:`) are under development and will expand this
-section. URLs without a `|` (and without a registered root scheme) are handled
-exactly as before.
+[`zarr.abc.url_pipeline`][zarr.abc.url_pipeline] for the adapter interface. URLs
+without a `|` (and without a registered root scheme) are handled exactly as before.
+
+Zarr ships the `zarr:`, `zarr2:` and `zarr3:` format adapters. The text after the
+colon is a path within the resource to its left, and `zarr2:` / `zarr3:` select the
+Zarr format (`zarr:` auto-detects it). The colon is optional when the path is empty:
+
+```python exec="true" session="storage-url-pipeline" source="above" result="ansi"
+import tempfile
+
+import zarr
+
+root = tempfile.mkdtemp()
+group = zarr.open_group(f"{root}|zarr2:", mode="w")
+group.create_array("data", shape=(4,), dtype="int32")
+print(zarr.open_array(f"{root}|zarr2:data", mode="r").metadata.zarr_format)
+print(zarr.open_group(f"file:{root}|zarr", mode="r").metadata.zarr_format)
+```
+
+A `zarr_format` argument that conflicts with a `zarr2:` / `zarr3:` segment raises
+`ValueError`. `Group.open` and `Array.open` take their format from the pipeline when
+`zarr_format` is not passed.
 
 `storage_options` passed to `zarr.open` apply to the *root* sub-URL (e.g. fsspec
 options for `s3://...`); adapters may consume adapter-specific, namespaced keys.
