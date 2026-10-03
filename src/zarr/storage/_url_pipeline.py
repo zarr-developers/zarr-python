@@ -31,7 +31,7 @@ from zarr.abc.url_pipeline import (
     PipelineSegment,
 )
 from zarr.errors import URLPipelineError
-from zarr.registry import get_url_adapter, list_url_adapter_schemes
+from zarr.registry import _BUILTIN_URL_ADAPTERS, get_url_adapter, list_url_adapter_schemes
 from zarr.storage._memory import ManagedMemoryStore
 from zarr.storage._utils import parse_store_url
 
@@ -54,6 +54,11 @@ _ROOT_SCHEME_RE = re.compile(r"([a-zA-Z][a-zA-Z0-9+.\-]*):(?!:)")
 # dispatched to a registered root adapter, so an installed package cannot
 # intercept zarr's own local-path and in-memory routing.
 _NATIVE_ROOT_SCHEMES = frozenset({"file", "memory"})
+
+# Adapter schemes zarr ships (e.g. `zarr3:`). The spec defines these as adapter
+# schemes only, so they are never dispatched to as a pipeline root: a string
+# without `|` such as `zarr3:foo` keeps its pre-pipeline meaning.
+_BUILTIN_ADAPTER_SCHEMES = frozenset(_BUILTIN_URL_ADAPTERS)
 
 # An absolute Windows drive path (C:\... or C:/...), which counts as an
 # absolute path in a `file:` pipeline root.
@@ -140,12 +145,16 @@ def parse_pipeline(url: str) -> tuple[PipelineSegment, ...]:
 def _root_routes_to_adapter(scheme: str) -> bool:
     """
     Whether a root sub-URL with this scheme is dispatched to a registered
-    root adapter. Schemes zarr resolves natively (`file:`, `memory:`) and
-    opaque roots are excluded; the registry check inspects entry-point
-    names only — no adapter code is imported here.
+    root adapter. Schemes zarr resolves natively (`file:`, `memory:`), the
+    builtin adapter-only schemes (`zarr:`, `zarr3:`, ...) and opaque roots are
+    excluded; the registry check inspects entry-point names only — no adapter
+    code is imported here.
     """
     return (
-        bool(scheme) and scheme not in _NATIVE_ROOT_SCHEMES and scheme in list_url_adapter_schemes()
+        bool(scheme)
+        and scheme not in _NATIVE_ROOT_SCHEMES
+        and scheme not in _BUILTIN_ADAPTER_SCHEMES
+        and scheme in list_url_adapter_schemes()
     )
 
 

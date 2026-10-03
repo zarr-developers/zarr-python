@@ -259,7 +259,9 @@ class TestEntryPointLoading:
             thread.join(timeout=10)
         assert not any(thread.is_alive() for thread in threads)
         assert "untouched" in list_url_adapter_schemes()
-        assert [e.name for e in pending] == ["untouched"]
+        assert [
+            e.name for e in pending if not zarr.registry._is_builtin_url_adapter_entry_point(e)
+        ] == ["untouched"]
         assert get_url_adapter("untouched").__name__ == "Adapter"
 
     def test_import_failure_is_wrapped_and_not_permanent(self) -> None:
