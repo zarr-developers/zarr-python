@@ -2,7 +2,7 @@ import enum
 import math
 import pickle
 import warnings
-from typing import Any, cast, get_args
+from typing import TYPE_CHECKING, Any, cast, get_args
 from unittest.mock import AsyncMock
 
 import numpy as np
@@ -39,6 +39,9 @@ from zarr.storage import MemoryStore, StorePath, ZipStore
 
 from ..conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def _reads_are_sync(store_mock: AsyncMock) -> bool:
@@ -1395,3 +1398,41 @@ def test_sharding_orthogonal_set_multiple_array_dims(
         expected[ix] = value.reshape(expected[ix].shape)
         assert np.array_equal(a[:], expected)
         assert np.array_equal(a.oindex[selection], value)
+
+
+@pytest.mark.parametrize(
+    "pipeline_path",
+    [
+        "zarr.core.codec_pipeline.FusedCodecPipeline",
+        "zarr.core.codec_pipeline.BatchedCodecPipeline",
+    ],
+)
+@pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("stored", [b"", b"abc"])
+@pytest.mark.parametrize("op", ["full read", "partial read", "partial write"])
+def test_sharding_truncated_shard_raises(
+    pipeline_path: str, store: Store, index_location: IndexLocation, stored: bytes, op: str
+) -> None:
+    """A stored shard shorter than its index (zero-length included) is
+    rejected by every read and partial-write path, under either pipeline,
+    rather than read as missing by some paths and failing the checksum in
+    others."""
+    with zarr.config.set({"codec_pipeline.path": pipeline_path}):
+        arr = zarr.create_array(
+            store,
+            shape=(8,),
+            chunks=(2,),
+            shards={"shape": (4,), "index_location": index_location},
+            dtype="i4",
+            compressors=None,
+            fill_value=-1,
+        )
+        zarr.core.sync.sync(store.set("c/0", default_buffer_prototype().buffer.from_bytes(stored)))
+        ops: dict[str, Callable[[], object]] = {
+            "full read": lambda: arr[0:4],
+            "partial read": lambda: arr[0:2],
+            "partial write": lambda: arr.__setitem__(slice(0, 2), 7),
+        }
+        with pytest.raises(ValueError, match="too short to hold its index"):
+            ops[op]()
