@@ -32,6 +32,7 @@ from zarr.core.array_spec import parse_array_config
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import (
+    _UNSPECIFIED,
     JSON,
     ZARR_JSON,
     ZARRAY_JSON,
@@ -44,6 +45,7 @@ from zarr.core.common import (
     ShapeLike,
     ZarrFormat,
     _default_zarr_format,
+    _UnspecifiedType,
     parse_shapelike,
 )
 from zarr.core.config import config
@@ -68,7 +70,7 @@ from zarr.errors import (
     ZarrUserWarning,
 )
 from zarr.storage import StoreLike, StorePath
-from zarr.storage._common import make_store_path
+from zarr.storage._common import _resolve_open_zarr_format, make_store_path
 from zarr.storage._utils import _join_paths, _normalize_path_keys, normalize_path
 
 if TYPE_CHECKING:
@@ -551,7 +553,7 @@ class AsyncGroup:
     async def open(
         cls,
         store: StoreLike,
-        zarr_format: ZarrFormat | None = 3,
+        zarr_format: ZarrFormat | _UnspecifiedType | None = _UNSPECIFIED,
         use_consolidated: bool | str | None = None,
     ) -> AsyncGroup:
         """Open a new AsyncGroup
@@ -559,7 +561,13 @@ class AsyncGroup:
         Parameters
         ----------
         store : StoreLike
-        zarr_format : {2, 3}, optional
+        zarr_format : {2, 3, None}, optional
+            The Zarr format to expect; None means auto-detect from the store
+            contents. When not passed, a URL pipeline decides (its `zarr2:` /
+            `zarr3:` segment, or auto-detection for `zarr:` and pipelines without
+            a format segment), and every other store defaults to 3. An explicit
+            value that conflicts with a pipeline's format segment raises
+            `ValueError`.
         use_consolidated : bool or str, default None
             Whether to use consolidated metadata.
 
@@ -579,7 +587,7 @@ class AsyncGroup:
             to load consolidated metadata from a non-default key.
         """
         store_path = await make_store_path(store)
-        zarr_format = store_path.resolve_zarr_format(zarr_format)
+        zarr_format = _resolve_open_zarr_format(store, store_path, zarr_format, default=3)
         if not store_path.store.supports_consolidated_metadata:
             # Fail if consolidated metadata was requested but the Store doesn't support it
             if use_consolidated:
@@ -2003,7 +2011,7 @@ class Group(SyncMixin):
     def open(
         cls,
         store: StoreLike,
-        zarr_format: ZarrFormat | None = 3,
+        zarr_format: ZarrFormat | _UnspecifiedType | None = _UNSPECIFIED,
     ) -> Group:
         """Open a group from an initialized store.
 
@@ -2014,7 +2022,10 @@ class Group(SyncMixin):
             [storage documentation in the user guide][user-guide-store-like]
             for a description of all valid StoreLike values.
         zarr_format : {2, 3, None}, optional
-            Zarr storage format version.
+            Zarr storage format version; None means auto-detect from the store
+            contents. When not passed, a URL pipeline decides (its `zarr2:` /
+            `zarr3:` segment, or auto-detection for `zarr:` and pipelines without
+            a format segment), and every other store defaults to 3.
 
         Returns
         -------

@@ -852,18 +852,45 @@ class TestZarrFormatMergeInCore:
 
     async def test_group_open(self, tmp_path: Path) -> None:
         zarr.Group.from_store(f"{tmp_path}|fmt2:")
-        # explicit None defers to the pipeline; the default (3) conflicts
+        # the unspecified default defers to the pipeline, as does explicit
+        # None; only an explicit, different format conflicts
+        assert zarr.Group.open(f"{tmp_path}|fmt2:").metadata.zarr_format == 2
         group = zarr.Group.open(f"{tmp_path}|fmt2:", zarr_format=None)
         assert group.metadata.zarr_format == 2
         with pytest.raises(ValueError, match="conflicts with"):
-            zarr.Group.open(f"{tmp_path}|fmt2:")
+            zarr.Group.open(f"{tmp_path}|fmt2:", zarr_format=3)
 
     async def test_array_open(self, tmp_path: Path) -> None:
         zarr.create_array(f"{tmp_path}|fmt2:", name="x", shape=(2,), dtype="i4")
+        assert zarr.Array.open(f"{tmp_path}/x|fmt2:").metadata.zarr_format == 2
         arr = zarr.Array.open(f"{tmp_path}/x|fmt2:", zarr_format=None)
         assert arr.metadata.zarr_format == 2
         with pytest.raises(ValueError, match="conflicts with"):
-            zarr.Array.open(f"{tmp_path}/x|fmt2:")
+            zarr.Array.open(f"{tmp_path}/x|fmt2:", zarr_format=3)
+
+    async def test_async_open_classmethods(self, tmp_path: Path) -> None:
+        from zarr.core.array import AsyncArray
+        from zarr.core.group import AsyncGroup
+
+        zarr.create_array(f"{tmp_path}|fmt2:", name="x", shape=(2,), dtype="i4")
+        group = await AsyncGroup.open(f"{tmp_path}|fmt2:")
+        assert group.metadata.zarr_format == 2
+        arr = await AsyncArray.open(f"{tmp_path}/x|fmt2:")
+        assert arr.metadata.zarr_format == 2
+        with pytest.raises(ValueError, match="conflicts with"):
+            await AsyncArray.open(f"{tmp_path}/x|fmt2:", zarr_format=3)
+
+    async def test_open_classmethod_default_without_pipeline(self, tmp_path: Path) -> None:
+        # non-pipeline callers keep the historical default of 3: a v2 node is
+        # not found unless the caller asks for 2 or None
+        zarr.create_array(tmp_path / "x", shape=(2,), dtype="i4", zarr_format=2)
+        zarr.create_group(tmp_path / "g", zarr_format=2)
+        with pytest.raises(FileNotFoundError):
+            zarr.Array.open(tmp_path / "x")
+        with pytest.raises(FileNotFoundError):
+            zarr.Group.open(tmp_path / "g")
+        assert zarr.Array.open(tmp_path / "x", zarr_format=None).metadata.zarr_format == 2
+        assert zarr.Group.open(tmp_path / "g", zarr_format=None).metadata.zarr_format == 2
 
     async def test_open_like(self, tmp_path: Path) -> None:
         # open_like inherits v2 filters/compressor from the reference; the

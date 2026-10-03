@@ -277,6 +277,24 @@ def _warn_order_kwarg() -> None:
     warnings.warn(msg, ZarrRuntimeWarning, stacklevel=2)
 
 
+class _UnspecifiedType(Enum):
+    """
+    Type of the `_UNSPECIFIED` sentinel.
+
+    Used as a parameter default where "not passed" must be told apart from an
+    explicit `None` (for example, `zarr_format` in `Group.open`, where `None`
+    means "auto-detect").
+    """
+
+    UNSPECIFIED = "unspecified"
+
+    def __repr__(self) -> str:
+        return "<unspecified>"
+
+
+_UNSPECIFIED: Final = _UnspecifiedType.UNSPECIFIED
+
+
 def _default_zarr_format() -> ZarrFormat:
     """Return the default zarr_format."""
     return cast("ZarrFormat", int(zarr_config.get("default_zarr_format", 3)))

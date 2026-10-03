@@ -57,6 +57,7 @@ from zarr.core.chunk_key_encodings import (
     parse_chunk_key_encoding,
 )
 from zarr.core.common import (
+    _UNSPECIFIED,
     JSON,
     ZARR_JSON,
     ZARRAY_JSON,
@@ -67,6 +68,7 @@ from zarr.core.common import (
     ShapeLike,
     ZarrFormat,
     _default_zarr_format,
+    _UnspecifiedType,
     _warn_order_kwarg,
     ceildiv_int,
     concurrent_map,
@@ -154,7 +156,7 @@ from zarr.registry import (
     _parse_bytes_bytes_codec,
     get_pipeline_class,
 )
-from zarr.storage._common import StorePath, make_store_path
+from zarr.storage._common import StorePath, _resolve_open_zarr_format, make_store_path
 from zarr.storage._utils import _relativize_path
 
 if TYPE_CHECKING:
@@ -779,7 +781,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     async def open(
         cls,
         store: StoreLike,
-        zarr_format: ZarrFormat | None = 3,
+        zarr_format: ZarrFormat | _UnspecifiedType | None = _UNSPECIFIED,
     ) -> AnyAsyncArray:
         """
         Async method to open an existing Zarr array from a given store.
@@ -791,7 +793,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             [storage documentation in the user guide][user-guide-store-like]
             for a description of all valid StoreLike values.
         zarr_format : ZarrFormat | None, optional
-            The Zarr format version (default is 3).
+            The Zarr format version; None means auto-detect from the store
+            contents. When not passed, a URL pipeline decides (its `zarr2:` /
+            `zarr3:` segment, or auto-detection for `zarr:` and pipelines without
+            a format segment), and every other store defaults to 3.
 
         Returns
         -------
@@ -820,7 +825,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ```
         """
         store_path = await make_store_path(store)
-        zarr_format = store_path.resolve_zarr_format(zarr_format)
+        zarr_format = _resolve_open_zarr_format(store, store_path, zarr_format, default=3)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
         # TODO: remove this cast when we have better type hints
         _metadata_dict = cast("ArrayMetadataJSON_V3", metadata_dict)
@@ -2055,7 +2060,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def open(
         cls,
         store: StoreLike,
-        zarr_format: ZarrFormat | None = 3,
+        zarr_format: ZarrFormat | _UnspecifiedType | None = _UNSPECIFIED,
     ) -> Self:
         """Opens an existing Array from a store.
 
@@ -2066,8 +2071,10 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             [storage documentation in the user guide][user-guide-store-like]
             for a description of all valid StoreLike values.
         zarr_format : {2, 3, None}, optional
-            The zarr format to expect. If None, the format selected by a URL pipeline
-            segment is used, otherwise the format is inferred from the store contents.
+            The zarr format to expect; None means auto-detect from the store
+            contents. When not passed, a URL pipeline decides (its `zarr2:` /
+            `zarr3:` segment, or auto-detection for `zarr:` and pipelines without
+            a format segment), and every other store defaults to 3.
 
         Returns
         -------

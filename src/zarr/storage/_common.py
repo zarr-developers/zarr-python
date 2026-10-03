@@ -20,6 +20,7 @@ from zarr.core.common import (
     ZGROUP_JSON,
     AccessModeLiteral,
     ZarrFormat,
+    _UnspecifiedType,
 )
 from zarr.errors import (
     ContainsArrayAndGroupError,
@@ -554,6 +555,48 @@ async def make_store_path(
     else:
         store = await make_store(store_like, mode=mode, storage_options=storage_options)
         return await StorePath.open(store, path=path_normalized, mode=mode)
+
+
+def _resolve_open_zarr_format(
+    store_like: StoreLike,
+    store_path: StorePath,
+    zarr_format: ZarrFormat | _UnspecifiedType | None,
+    *,
+    default: ZarrFormat | None,
+) -> ZarrFormat | None:
+    """
+    Resolve the `zarr_format` of an `open` classmethod whose default is unspecified.
+
+    An explicit `zarr_format` (including None, meaning auto-detect) is merged with
+    the format selected by a URL pipeline as in
+    [`StorePath.resolve_zarr_format`][zarr.storage.StorePath.resolve_zarr_format].
+    When the caller did not pass one, a URL pipeline decides: its format segment
+    (`zarr2:`/`zarr3:`) if any, otherwise auto-detection. Every other store keeps
+    `default`, so non-pipeline callers see no change.
+
+    Parameters
+    ----------
+    store_like : StoreLike
+        The store argument the caller passed.
+    store_path : StorePath
+        The store path resolved from `store_like`.
+    zarr_format : ZarrFormat | None | _UnspecifiedType
+        The caller's format, or the unspecified sentinel.
+    default : ZarrFormat | None
+        The format to use when neither the caller nor a URL pipeline selects one.
+
+    Returns
+    -------
+    ZarrFormat | None
+        The format to open with, or None to auto-detect.
+    """
+    if not isinstance(zarr_format, _UnspecifiedType):
+        return store_path.resolve_zarr_format(zarr_format)
+    if store_path.zarr_format is not None:
+        return store_path.zarr_format
+    if isinstance(store_like, str) and is_url_pipeline(store_like):
+        return None
+    return default
 
 
 async def ensure_no_existing_node(
