@@ -1,10 +1,11 @@
 import json
+import pickle
 from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
 import pytest
-from numcodecs import Delta, Zlib
+from numcodecs import Delta, Pickle, VLenUTF8, Zlib
 from numcodecs.blosc import Blosc
 from numcodecs.zstd import Zstd
 
@@ -20,7 +21,7 @@ from zarr.core.dtype.npy.structured import Struct
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.group import Group
 from zarr.core.sync import sync
-from zarr.errors import ZarrDeprecationWarning
+from zarr.errors import PickleCodecDisabledError, ZarrDeprecationWarning
 from zarr.storage import MemoryStore, StorePath
 
 
@@ -310,3 +311,86 @@ def test_other_dtype_roundtrip(fill_value: bytes | None, tmp_path: Path) -> None
     za[...] = a
     za = zarr.open_array(store=array_path)
     assert (a == za[:]).all()
+
+
+def _pickle_compressed_array() -> zarr.Array[Any]:
+    # Writing with the pickle codec is allowed without opting in, only decoding is gated.
+    arr = zarr.create_array(
+        store={},
+        shape=(3,),
+        dtype=VariableLengthUTF8(),  # type: ignore[arg-type]
+        zarr_format=2,
+        filters=[VLenUTF8()],
+        compressors=Pickle(),
+        fill_value="",
+    )
+    arr[:] = np.array(["a", "bb", "ccc"])
+    return arr
+
+
+def test_pickle_codec_read_disabled_by_default() -> None:
+    """Reading data encoded with the pickle codec fails unless the user opts in."""
+    arr = _pickle_compressed_array()
+    with pytest.raises(PickleCodecDisabledError, match=r"array\.allow_pickle"):
+        arr[:]
+
+
+def test_pickle_codec_read_does_not_unpickle() -> None:
+    """A malicious chunk is not unpickled when the pickle codec is disabled."""
+
+    class Payload:
+        def __reduce__(self) -> tuple[Any, ...]:
+            return (exec, ("raise AssertionError('payload was unpickled')",))
+
+    meta = {
+        "zarr_format": 2,
+        "shape": [1],
+        "chunks": [1],
+        "dtype": "|O",
+        "compressor": {"id": "pickle"},
+        "fill_value": None,
+        "filters": [{"id": "vlen-utf8"}],
+        "order": "C",
+    }
+    buffer_cls = default_buffer_prototype().buffer
+    store = {
+        ".zarray": buffer_cls.from_bytes(json.dumps(meta).encode()),
+        "0": buffer_cls.from_bytes(pickle.dumps(Payload())),
+    }
+    arr = zarr.open_array(store=MemoryStore(store), mode="r", zarr_format=2)
+    with pytest.raises(PickleCodecDisabledError):
+        arr[:]
+
+
+def test_pickle_codec_read_enabled_via_config() -> None:
+    arr = _pickle_compressed_array()
+    with config.set({"array.allow_pickle": True}):
+        np.testing.assert_array_equal(arr[:], np.array(["a", "bb", "ccc"]))
+
+
+@pytest.mark.parametrize(("env_value", "allowed"), [("True", True), ("false", False)])
+def test_pickle_codec_read_enabled_via_env_var(
+    monkeypatch: pytest.MonkeyPatch, env_value: str, allowed: bool
+) -> None:
+    """
+    The opt-in can be set with an environment variable. Only a value that parses to ``True``
+    enables it: donfig keeps ``false`` as a (truthy) string, which must not enable it.
+    """
+    arr = _pickle_compressed_array()
+    monkeypatch.setenv("ZARR_ARRAY__ALLOW_PICKLE", env_value)
+    config.refresh()
+    if allowed:
+        np.testing.assert_array_equal(arr[:], np.array(["a", "bb", "ccc"]))
+    else:
+        with pytest.raises(PickleCodecDisabledError):
+            arr[:]
+
+
+def test_pickle_opt_in_does_not_affect_other_codecs() -> None:
+    """Arrays that do not use the pickle codec are read without opting in."""
+    assert config.get("array.allow_pickle") is False
+    arr = zarr.create_array(
+        store={}, shape=(3,), dtype="<i4", zarr_format=2, filters=[Delta(dtype="<i4")]
+    )
+    arr[:] = [1, 2, 3]
+    np.testing.assert_array_equal(arr[:], [1, 2, 3])

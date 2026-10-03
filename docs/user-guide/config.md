@@ -40,6 +40,7 @@ Configuration options include the following:
 - Whether empty chunks are written to storage `array.write_empty_chunks`
 - Enable experimental rectilinear chunks `array.rectilinear_chunks`
 - Whether missing chunks are filled with the array's fill value on read `array.read_missing_chunks` (default `True`). Set to `False` to raise a [`ChunkNotFoundError`][zarr.errors.ChunkNotFoundError] instead.
+- Whether data encoded with the `pickle` codec can be read `array.allow_pickle` (default `False`). Unpickling can execute arbitrary code, so only enable this for data from a source you trust, e.g. with `zarr.config.set({'array.allow_pickle': True})` or the environment variable `ZARR_ARRAY__ALLOW_PICKLE=True`. While it is disabled, reading such data raises a [`PickleCodecDisabledError`][zarr.errors.PickleCodecDisabledError]. Writing with the `pickle` codec is not affected.
 - Async and threading options, e.g. `async.concurrency` and `threading.max_workers`
 - Selections of implementations of codecs, codec pipelines and buffers
 - Enabling GPU support with `zarr.config.enable_gpu()`. See [GPU support](gpu.md) for more.
