@@ -163,3 +163,33 @@ def test_cleanup_resources_idempotent() -> None:
     _get_executor()  # trigger resource creation (iothread, loop, thread-pool)
     cleanup_resources()
     cleanup_resources()
+
+
+def test_sync_timeout_cancels_coroutine() -> None:
+    """B15 — sync() must cancel the underlying future on timeout.
+
+    Before the fix, the coroutine kept running on the IO thread after
+    TimeoutError was raised, because future.cancel() was never called.
+    We verify cancellation by having the coroutine set a flag in its
+    ``finally`` block, which we observe shortly after the timeout.
+    """
+    import threading
+
+    cancelled_flag: list[bool] = [False]
+    lock = threading.Event()
+
+    async def slow_coro() -> None:
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            cancelled_flag[0] = True
+            raise
+        finally:
+            lock.set()
+
+    with pytest.raises(TimeoutError):
+        sync(slow_coro(), timeout=0.02)
+
+    # Give the IO loop a moment to process the cancellation.
+    lock.wait(timeout=1.0)
+    assert cancelled_flag[0], "coroutine must be cancelled after sync() timeout (B15)"
