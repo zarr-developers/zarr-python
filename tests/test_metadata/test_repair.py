@@ -331,7 +331,7 @@ def test_read_invalid_edges_in_rectilinear_grid(
         (_v3_doc([4], [4.5]), "Dimension 0: chunk edge length must be an int, got 4.5"),
         (
             _v3_doc([8], [4], inner=[2.0]),
-            "Expected an iterable of integers. Got [2.0] instead.",
+            "got non-integer element(s) (2.0,) at indices (0,)",
         ),
         (_v2_doc([20], [10.0]), "Expected an iterable of integers. Got [10.0] instead."),
         (
@@ -494,18 +494,12 @@ def test_regular_chunk_grid_rejects_chunk_shape_not_a_sequence(chunk_shape: Any)
         RegularChunkGridMetadata(chunk_shape=chunk_shape)
 
 
-def _sharding_chunk_shape(chunks: Any) -> tuple[tuple[int, ...], object]:
-    codec = ShardingCodec(chunk_shape=chunks)
-    configuration = cast("dict[str, JSON]", codec.to_dict()["configuration"])
-    return codec.chunk_shape, configuration["chunk_shape"]
-
-
 CHUNK_SHAPE_SITES: dict[str, Callable[[Any], tuple[tuple[int, ...], object]]] = {
     "v2": lambda chunks: ((md := _v2_metadata(chunks)).chunks, md.to_dict()["chunks"]),
-    "sharding-inner": _sharding_chunk_shape,
 }
-"""`ArrayV2Metadata` and `ShardingCodec` read a chunk shape as an array shape, returning
-the chunk shape and the value `to_dict` writes for it."""
+"""`ArrayV2Metadata` reads a chunk shape as an array shape, returning the chunk shape
+and the value `to_dict` writes for it. The inner chunk shape of `ShardingCodec` is a
+regular chunk shape instead (see `test_sharding_codec_chunk_shape`)."""
 
 
 @pytest.mark.parametrize("site", CHUNK_SHAPE_SITES)
@@ -527,7 +521,7 @@ the chunk shape and the value `to_dict` writes for it."""
 def test_chunk_shape_read_as_array_shape(
     site: str, chunks: object, expected: tuple[int, ...]
 ) -> None:
-    """`ArrayV2Metadata` and `ShardingCodec` read their chunk shape as `parse_shapelike`
+    """`ArrayV2Metadata` reads its chunk shape as `parse_shapelike`
     reads an array shape: an integer or an iterable of non-negative integers, including
     NumPy integers and bools. A chunk size of 0 is written back as given; reading a
     stored 0 is `zarr.core.metadata.repair`' business."""
