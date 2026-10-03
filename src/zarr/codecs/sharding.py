@@ -355,7 +355,7 @@ class _ShardReader(ShardMapping):
 
     def __getitem__(self, chunk_coords: tuple[int, ...]) -> Buffer:
         chunk_byte_slice = self.index.get_chunk_slice(chunk_coords)
-        if chunk_byte_slice:
+        if chunk_byte_slice is not None:
             return self.buf[chunk_byte_slice[0] : chunk_byte_slice[1]]
         raise KeyError
 
@@ -1403,7 +1403,8 @@ class ShardingCodec(
                 prototype=chunk_spec.prototype,
                 chunks_per_shard=chunks_per_shard,
             )
-            shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
+            if shard_reader is None:
+                shard_reader = _ShardReader.create_empty(chunks_per_shard)
             # Use vectorized lookup for better performance. The lexicographic
             # coordinate array and keys are cached, so neither is rebuilt on
             # every write.
@@ -1669,7 +1670,7 @@ class ShardingCodec(
 
         return (
             await _ShardReader.from_bytes(shard_bytes, self, chunks_per_shard)
-            if shard_bytes
+            if shard_bytes is not None and len(shard_bytes) > 0
             else None
         )
 
