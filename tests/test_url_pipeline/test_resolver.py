@@ -4,11 +4,12 @@ import dataclasses
 import sys
 import threading
 import warnings
-from importlib.metadata import EntryPoint
+from importlib.metadata import EntryPoint, version
 from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 import pytest
+from packaging.version import parse as parse_version
 
 import zarr
 import zarr.registry
@@ -29,6 +30,12 @@ from zarr.storage import ManagedMemoryStore, MemoryStore, WrapperStore
 from zarr.storage._common import _has_fsspec, make_store, make_store_path
 from zarr.storage._url_pipeline import is_url_pipeline, resolve_pipeline
 from zarr.storage._utils import _join_paths
+
+# fsspec < 2024.12.0 has no AsyncFileSystemWrapper, so a plain memory:// URL
+# (a sync filesystem) cannot be opened at all there
+_has_async_fsspec_wrapper = _has_fsspec and parse_version(version("fsspec")) >= parse_version(
+    "2024.12.0"
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -659,7 +666,10 @@ class TestSpecRoots:
         with pytest.raises(URLPipelineError, match="do not accept a query"):
             await resolve_pipeline(f"file:{tmp_path}?v=1|wrap:")
 
-    @pytest.mark.skipif(not _has_fsspec, reason="plain memory:// routes to fsspec only with fsspec")
+    @pytest.mark.skipif(
+        not _has_async_fsspec_wrapper,
+        reason="plain memory:// routes to fsspec only with fsspec>=2024.12.0",
+    )
     async def test_memory_root_is_distinct_from_fsspec_memory_url(self) -> None:
         # documented divergence: a plain memory:// URL is fsspec's in-memory
         # filesystem when fsspec is installed, while a pipeline's memory: root
