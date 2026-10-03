@@ -5,12 +5,18 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal
 
-import hypothesis.extra.numpy as npst
-import hypothesis.strategies as st
 import numpy as np
 import numpy.typing as npt
-from hypothesis import event
-from hypothesis.strategies import SearchStrategy
+
+from zarr.testing._deps import missing_dependency
+
+try:
+    import hypothesis.extra.numpy as npst
+    import hypothesis.strategies as st
+    from hypothesis import event
+    from hypothesis.strategies import SearchStrategy
+except ImportError as e:
+    raise missing_dependency("hypothesis", __name__) from e
 
 import zarr
 from zarr.abc.codec import Codec
