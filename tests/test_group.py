@@ -1245,6 +1245,16 @@ async def test_asyncgroup_delitem(store: Store, zarr_format: ZarrFormat) -> None
         raise AssertionError
 
 
+async def test_asyncgroup_delitem_missing_key_raises(store: Store, zarr_format: ZarrFormat) -> None:
+    """Deleting a member that does not exist raises KeyError instead of silently succeeding."""
+    if not store.supports_deletes:
+        pytest.skip("store does not support deletes")
+
+    agroup = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
+    with pytest.raises(KeyError):
+        await agroup.delitem("does_not_exist")
+
+
 @pytest.mark.parametrize("name", ["a", "/a"])
 async def test_asyncgroup_create_group(
     store: Store,

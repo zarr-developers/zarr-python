@@ -847,7 +847,14 @@ class AsyncGroup:
         ----------
         key : str
             Array or group name
+
+        Raises
+        ------
+        KeyError
+            If there is no member called ``key``.
         """
+        # Raise KeyError for a missing member, as `getitem` does, rather than silently doing nothing.
+        await self.getitem(key)
         store_path = self.store_path / key
         consolidated = self.metadata.consolidated_metadata
         if consolidated is None:
