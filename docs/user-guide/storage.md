@@ -100,8 +100,60 @@ print(group)
    group = zarr.open_group(UPath('s3://noaa-nwm-retro-v2-zarr-pds', anon=True), mode='r')
    ```
 
+- a [URL pipeline](#user-guide-url-pipelines) string containing `|`, such as
+  `s3://bucket/data.zip|zip:`, which is resolved through registered adapters.
+
 - a [`Store`][zarr.abc.store.Store] or [`StorePath`][zarr.storage.StorePath] -
   see explicit store creation below.
+
+## URL Pipelines {#user-guide-url-pipelines}
+
+Zarr supports [URL pipelines](https://github.com/jbms/url-pipeline): `|`-chained URLs
+that address zarr data through nested storage layers, read left to right. The first
+sub-URL locates a resource with a conventional URL; each subsequent sub-URL names an
+*adapter* that reinterprets everything to its left (e.g.
+`s3://bucket/data.zip|zip:|zarr3:`). Adapters are provided by packages through the
+`zarr.url_adapters` entry-point group — see
+[`zarr.abc.url_pipeline`][zarr.abc.url_pipeline] for the adapter interface. URLs
+without a `|` (and without a registered root scheme) are handled exactly as before.
+
+Zarr ships the `zarr:`, `zarr2:` and `zarr3:` format adapters. The text after the
+colon is a path within the resource to its left, and `zarr2:` / `zarr3:` select the
+Zarr format (`zarr:` auto-detects it). The colon is optional when the path is empty:
+
+```python exec="true" session="storage-url-pipeline" source="above" result="ansi"
+import tempfile
+
+import zarr
+
+root = tempfile.mkdtemp()
+group = zarr.open_group(f"{root}|zarr2:", mode="w")
+group.create_array("data", shape=(4,), dtype="int32")
+print(zarr.open_array(f"{root}|zarr2:data", mode="r").metadata.zarr_format)
+print(zarr.open_group(f"file:{root}|zarr", mode="r").metadata.zarr_format)
+```
+
+A `zarr_format` argument that conflicts with a `zarr2:` / `zarr3:` segment raises
+`ValueError`. `Group.open` and `Array.open` take their format from the pipeline when
+`zarr_format` is not passed.
+
+`storage_options` passed to `zarr.open` apply to the *root* sub-URL (e.g. fsspec
+options for `s3://...`); adapters may consume adapter-specific, namespaced keys.
+Non-dict forms of `storage_options` are reserved for future per-segment
+configuration.
+
+The `|` character is reserved as the pipeline delimiter in every string store
+specification, and no percent-escape is decoded: to address a local file whose
+*name* contains `|` (or `#`), pass a `pathlib.Path` instead of a string.
+Registered adapters cannot intercept zarr's native `file:` and `memory:` root
+schemes, and fsspec's chained-URL syntax (`zip::s3://...`) keeps flowing to
+fsspec.
+
+Inside a pipeline, a `memory:` root is zarr's managed in-memory store (`memory:`,
+`memory:/` and `memory://` are equivalent, and `memory:name` selects a named store).
+When fsspec is installed, a plain `memory://name` URL *without* a `|` is still routed to
+fsspec's in-memory filesystem, which is a different store. A `file:` root must carry an
+absolute path; percent-escapes are not decoded, matching the [local store](#local-store).
 
 ## Explicit Store Creation
 
