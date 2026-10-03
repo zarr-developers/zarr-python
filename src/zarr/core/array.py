@@ -466,8 +466,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Deprecated in favor of [`zarr.api.asynchronous.create_array`][].
         """
 
-        dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
         store_path = await make_store_path(store)
+        zarr_format = store_path.resolve_zarr_format(zarr_format) or zarr_format
+        dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
 
         shape = parse_shapelike(shape)
 
@@ -819,6 +820,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ```
         """
         store_path = await make_store_path(store)
+        zarr_format = store_path.resolve_zarr_format(zarr_format)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
         # TODO: remove this cast when we have better type hints
         _metadata_dict = cast("ArrayMetadataJSON_V3", metadata_dict)
@@ -2053,6 +2055,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def open(
         cls,
         store: StoreLike,
+        zarr_format: ZarrFormat | None = 3,
     ) -> Self:
         """Opens an existing Array from a store.
 
@@ -2062,13 +2065,16 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             Store containing the Array. See the
             [storage documentation in the user guide][user-guide-store-like]
             for a description of all valid StoreLike values.
+        zarr_format : {2, 3, None}, optional
+            The zarr format to expect. If None, the format selected by a URL pipeline
+            segment is used, otherwise the format is inferred from the store contents.
 
         Returns
         -------
         Array
             Array opened from the store.
         """
-        async_array = sync(AsyncArray.open(store))
+        async_array = sync(AsyncArray.open(store, zarr_format=zarr_format))
         return cls(async_array)
 
     @property
@@ -4382,6 +4388,7 @@ async def from_array(
     mode: Literal["a"] = "a"
     config_parsed = parse_array_config(config)
     store_path = await make_store_path(store, path=name, mode=mode, storage_options=storage_options)
+    zarr_format = store_path.resolve_zarr_format(zarr_format)
 
     (
         chunks,
@@ -4707,7 +4714,7 @@ async def create_array(
     serializer: SerializerLike = "auto",
     fill_value: Any | None = DEFAULT_FILL_VALUE,
     order: MemoryOrder | None = None,
-    zarr_format: ZarrFormat | None = 3,
+    zarr_format: ZarrFormat | None = None,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
     dimension_names: DimensionNamesLike = None,
@@ -4870,6 +4877,7 @@ async def create_array(
         store_path = await make_store_path(
             store, path=name, mode=mode, storage_options=storage_options
         )
+        zarr_format = store_path.resolve_zarr_format(zarr_format)
         return await init_array(
             store_path=store_path,
             shape=shape_parsed,
