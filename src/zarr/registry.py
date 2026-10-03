@@ -533,6 +533,7 @@ _BUILTIN_URL_ADAPTERS: dict[str, str] = {
     "zarr": "zarr.storage._url_adapters._format:ZarrAdapter",
     "zarr2": "zarr.storage._url_adapters._format:Zarr2Adapter",
     "zarr3": "zarr.storage._url_adapters._format:Zarr3Adapter",
+    "zip": "zarr.storage._url_adapters._zip:ZipAdapter",
 }
 
 
