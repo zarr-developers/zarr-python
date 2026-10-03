@@ -137,6 +137,24 @@ A `zarr_format` argument that conflicts with a `zarr2:` / `zarr3:` segment raise
 `ValueError`. `Group.open` and `Array.open` take their format from the pipeline when
 `zarr_format` is not passed.
 
+The builtin `zip:` adapter reads a ZIP archive addressed by the sub-URLs to its left,
+which may be a local file, an fsspec URL (e.g. `s3://bucket/data.zip`), or an entry of
+another archive (`outer.zip|zip:inner.zip|zip:`). The text after the colon is a path
+within the archive (one leading `/` is ignored). `zip:` is currently read-only: it opens
+archives in modes `"r"` and `"a"` (open-or-create serves the "open" half) and raises
+`URLPipelineError` for `"w"`, `"w-"` and `"r+"`; write archives with
+[`zarr.storage.ZipStore`][].
+
+```python exec="true" session="storage-url-pipeline" source="above" result="ansi"
+import os
+
+archive = os.path.join(root, "example.zip")
+with zarr.storage.ZipStore(archive, mode="w") as store:
+    zarr.create_array(store, name="inner/data", shape=(3,), dtype="int32")[:] = [1, 2, 3]
+
+print(zarr.open_array(f"{archive}|zip:inner|zarr3:data")[:])
+```
+
 `storage_options` passed to `zarr.open` apply to the *root* sub-URL (e.g. fsspec
 options for `s3://...`); adapters may consume adapter-specific, namespaced keys.
 Non-dict forms of `storage_options` are reserved for future per-segment
