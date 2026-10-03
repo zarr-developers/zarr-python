@@ -1520,7 +1520,7 @@ def _overwrite_hierarchy(path: Path) -> None:
 
 
 def _overwrite_with_create(path: Path) -> None:
-    zarr.create(shape=(4,), chunks=[[2, 2]], dtype="int64", store=path / "n", overwrite=True)  # type: ignore[arg-type]
+    zarr.create(shape=(4,), chunks=[[2, 2]], dtype="int64", store=path / "n", overwrite=True)
 
 
 def _overwrite_with_create_array(path: Path) -> None:
