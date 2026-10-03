@@ -236,6 +236,7 @@ here, it's possible to create it yourself: see [Adding new data types](#adding-n
 - [Fixed-length null-terminated bytes][zarr.dtype.NullTerminatedBytes]
 - [Fixed-length raw bytes][zarr.dtype.RawBytes]
 - [Variable-length bytes][zarr.dtype.VariableLengthBytes]
+- [NCZarr character][zarr.dtype.NCZarrChar] (Zarr V2 only)
 
 #### Temporal
 
