@@ -402,7 +402,7 @@ class LocalStore(Store):
         -----
         If ``key`` is a directory within this store, nothing is deleted:
         directories represent prefixes rather than stored objects. Use
-        :meth:`delete_dir` to remove all keys under a directory.
+        `delete_dir` to remove all keys under a directory.
         """
         # docstring inherited
         self._check_writable()
