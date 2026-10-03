@@ -535,13 +535,13 @@ def test_is_total_shard_1d() -> None:
 
 def test_inner_codecs_fixed_size_no_compression() -> None:
     """Inner codecs without compression should be fixed-size."""
-    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec()])
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec(endian="little")])
     assert codec._inner_codecs_fixed_size is True
 
 
 def test_inner_codecs_fixed_size_with_compression() -> None:
     """Inner codecs with compression should NOT be fixed-size."""
-    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec(), GzipCodec()])
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec(endian="little"), GzipCodec()])
     assert codec._inner_codecs_fixed_size is False
 
 
@@ -668,7 +668,7 @@ def test_decode_single_encode_single_roundtrip(write_empty_chunks: bool) -> None
         config=ArrayConfig(order="C", write_empty_chunks=write_empty_chunks),
         prototype=default_buffer_prototype(),
     )
-    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec()])
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec(endian="little")])
     data = np.arange(50, dtype="float64")
     value = CPUNDBuffer.from_numpy_array(data)
 
@@ -689,7 +689,7 @@ def test_encode_single_all_empty_returns_none() -> None:
         config=ArrayConfig(order="C", write_empty_chunks=False),
         prototype=default_buffer_prototype(),
     )
-    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec()])
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec(endian="little")])
     fill = CPUNDBuffer.from_numpy_array(np.zeros(50, dtype="float64"))
 
     assert asyncio.run(codec._encode_single(fill, spec)) is None
@@ -706,7 +706,7 @@ def test_decode_single_all_empty_fills() -> None:
         config=ArrayConfig(order="C", write_empty_chunks=False),
         prototype=default_buffer_prototype(),
     )
-    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec()])
+    codec = ShardingCodec(chunk_shape=(10,), codecs=[BytesCodec(endian="little")])
     # an empty shard is just the encoded empty index
     empty_index = asyncio.run(codec._encode_shard_index(_ShardIndex.create_empty((5,))))
     decoded = asyncio.run(codec._decode_single(empty_index, spec))
@@ -733,7 +733,7 @@ class _AsyncOnlyBytesCodec(ArrayBytesCodec):
     """
 
     is_fixed_size = True
-    _inner = BytesCodec()
+    _inner = BytesCodec(endian="little")
 
     def to_dict(self) -> dict[str, Any]:
         return {"name": "_async_only_bytes"}
@@ -765,7 +765,7 @@ def test_shard_index_async_fallback_for_async_only_index_codec() -> None:
 
     codec = ShardingCodec(
         chunk_shape=(10,),
-        codecs=[BytesCodec()],
+        codecs=[BytesCodec(endian="little")],
         index_codecs=[_AsyncOnlyBytesCodec(), Crc32cCodec()],
     )
     assert not codec._index_codecs_sync_capable()
