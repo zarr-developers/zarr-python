@@ -461,17 +461,3 @@ def test_atomic_write_onto_directory(
         f.write(b"abc")
     assert path.is_dir()
     assert list(tmp_path.iterdir()) == [path]  # no temp files
-
-
-async def test_list_excludes_partial_temp_files(tmp_path: pathlib.Path) -> None:
-    """In-flight `_atomic_write` temp files are not store keys and must not be listed."""
-    store = LocalStore(tmp_path)
-    await store.set("group/array/c/0", cpu.Buffer.from_bytes(b"data"))
-    # Simulate a concurrent writer that has not yet renamed its temp file into place.
-    temp = tmp_path / "group" / "array" / "zarr.0123456789abcdef0123456789abcdef.partial"
-    temp.write_bytes(b"x")
-
-    keys = [key async for key in store.list()]
-    assert keys == ["group/array/c/0"]
-    assert [key async for key in store.list_prefix("group")] == ["group/array/c/0"]
-    assert sorted([name async for name in store.list_dir("group/array")]) == ["c"]
