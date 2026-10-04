@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import io
 import os
+import re
 import shutil
 import sys
 import time
@@ -171,15 +172,27 @@ def _getsize(path: Path) -> int:
     return path.stat().st_size
 
 
+_PARTIAL_SUFFIX_RE = re.compile(r"\.[0-9a-f]{32}\.partial$")
+
+
+def _is_partial_temp(path: Path) -> bool:
+    """Whether `path` is a temporary file created by `_atomic_write` (never a store key)."""
+    return _PARTIAL_SUFFIX_RE.search(path.name) is not None
+
+
 def _list_files(root: Path, prefix: str) -> list[str]:
     """Keys (paths relative to `root`, POSIX style) of every file under `root / prefix`."""
     to_strip = root.as_posix() + "/"
-    return [p.as_posix().removeprefix(to_strip) for p in (root / prefix).rglob("*") if p.is_file()]
+    return [
+        p.as_posix().removeprefix(to_strip)
+        for p in (root / prefix).rglob("*")
+        if p.is_file() and not _is_partial_temp(p)
+    ]
 
 
 def _list_dir(base: Path) -> list[str]:
     try:
-        return [p.name for p in base.iterdir()]
+        return [p.name for p in base.iterdir() if not _is_partial_temp(p)]
     except (FileNotFoundError, NotADirectoryError):
         return []
 
