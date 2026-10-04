@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 import warnings
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, ClassVar, Final, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal
 
 import numpy as np
 
@@ -157,24 +157,55 @@ class BytesCodec(ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin):
         the whole chunk, as before.
         """
         window = _row_window(selection, chunk_spec.shape)
-        if window is None or window[:2] == (0, chunk_spec.shape[0]):
-            chunk_bytes = await byte_getter.get(prototype=chunk_spec.prototype)
-            if chunk_bytes is None:
-                return None
-            return self._decode_sync(chunk_bytes, chunk_spec)[selection]
-        first, stop, rows_selection = window
-        row_items = int(np.prod(chunk_spec.shape[1:]))
-        row_bytes = chunk_spec.dtype.to_native_dtype().itemsize * row_items
         chunk_bytes = await byte_getter.get(
-            prototype=chunk_spec.prototype,
-            byte_range=RangeByteRequest(first * row_bytes, stop * row_bytes),
+            prototype=chunk_spec.prototype, byte_range=_row_byte_range(window, chunk_spec)
         )
+        return self._decode_rows(chunk_bytes, selection, window, chunk_spec)
+
+    def _decode_partial_sync(
+        self,
+        byte_getter: Any,
+        selection: SelectorTuple,
+        chunk_spec: ArraySpec,
+    ) -> NDBuffer | None:
+        """Sync equivalent of `_decode_partial_single`."""
+        window = _row_window(selection, chunk_spec.shape)
+        chunk_bytes = byte_getter.get_sync(
+            prototype=chunk_spec.prototype, byte_range=_row_byte_range(window, chunk_spec)
+        )
+        return self._decode_rows(chunk_bytes, selection, window, chunk_spec)
+
+    def _decode_rows(
+        self,
+        chunk_bytes: Buffer | None,
+        selection: SelectorTuple,
+        window: tuple[int, int, SelectorTuple] | None,
+        chunk_spec: ArraySpec,
+    ) -> NDBuffer | None:
+        """Decode the bytes fetched for a row window and apply the selection to them."""
         if chunk_bytes is None:
             return None
-        if len(chunk_bytes) > (stop - first) * row_bytes:
-            # The store sent the whole chunk, as an HTTP server that ignores
-            # the Range header does.
-            chunk_bytes = chunk_bytes[first * row_bytes : stop * row_bytes]
+        if window is None:
+            return self._decode_sync(chunk_bytes, chunk_spec)[selection]
+        first, stop, rows_selection = window
+        row_bytes = _row_bytes(chunk_spec)
+        start, end = first * row_bytes, stop * row_bytes
+        chunk_size = chunk_spec.shape[0] * row_bytes
+        # A store may not honor the byte range it was given. The length of what
+        # it sent tells which bytes those are.
+        if len(chunk_bytes) == end - start:
+            pass
+        elif len(chunk_bytes) == chunk_size:
+            # The whole chunk, as an HTTP server that ignores the Range header sends.
+            chunk_bytes = chunk_bytes[start:end]
+        elif len(chunk_bytes) == chunk_size - start:
+            # Everything from the start of the range to the end of the chunk.
+            chunk_bytes = chunk_bytes[: end - start]
+        else:
+            raise ValueError(
+                f"Requested bytes {start} to {end} of a {chunk_size} byte chunk, "
+                f"but the store returned {len(chunk_bytes)} bytes."
+            )
         rows_spec = replace(chunk_spec, shape=(stop - first, *chunk_spec.shape[1:]))
         return self._decode_sync(chunk_bytes, rows_spec)[rows_selection]
 
@@ -214,8 +245,9 @@ def _row_window(
     """The rows along axis 0 that a selection touches, and the selection relative to them.
 
     Returns the first row, one past the last row, and the selection shifted so
-    that it indexes an array holding only those rows. Returns None when the rows
-    cannot be determined, in which case the whole chunk is read.
+    that it indexes an array holding only those rows. Returns None when the
+    selection touches every row or the rows cannot be determined, in which case
+    the whole chunk is read.
     """
     if len(shape) == 0 or not isinstance(selection, tuple) or len(selection) == 0:
         return None
@@ -242,4 +274,23 @@ def _row_window(
         shifted = first_axis[first:stop] if first_axis.dtype == bool else indices - first
     else:
         return None
+    if (first, stop) == (0, shape[0]):
+        return None
     return first, stop, (shifted, *selection[1:])
+
+
+def _row_bytes(chunk_spec: ArraySpec) -> int:
+    """The number of bytes in one row along axis 0 of a chunk."""
+    row_items = int(np.prod(chunk_spec.shape[1:]))
+    return chunk_spec.dtype.to_native_dtype().itemsize * row_items
+
+
+def _row_byte_range(
+    window: tuple[int, int, SelectorTuple] | None, chunk_spec: ArraySpec
+) -> RangeByteRequest | None:
+    """The byte range holding a row window, or None to read the whole chunk."""
+    if window is None:
+        return None
+    first, stop, _ = window
+    row_bytes = _row_bytes(chunk_spec)
+    return RangeByteRequest(first * row_bytes, stop * row_bytes)
