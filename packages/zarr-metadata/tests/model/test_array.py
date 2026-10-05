@@ -2476,11 +2476,12 @@ def test_a_problem_shows_an_integer_too_long_to_write_by_its_size(
 
 
 def test_a_problem_shows_a_value_nested_too_deep_to_write_by_saying_so() -> None:
-    # `_refine` stops at `JSON_DEPTH`; the repr that would show a value it
-    # refused walks as deep as the value nests, and overflows.
+    # `_refine` stops at `JSON_DEPTH`, and a value nested past it is said to
+    # be too deep, not shown by a repr, whose own limit the interpreter and
+    # platform set: one level past, which any repr would write, is enough.
     deep: list[object] = []
     innermost = deep
-    for _ in range(100_000):
+    for _ in range(JSON_DEPTH + 1):
         nested: list[object] = []
         innermost.append(nested)
         innermost = nested

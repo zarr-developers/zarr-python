@@ -427,8 +427,12 @@ def json_text(value: JSONValue) -> str:
 def shown(value: object) -> str:
     """`value` as a problem's message shows it: as the JSON a document writes, `null` and `[1, 2]`, or by its repr when it is not JSON; what the interpreter will not write, an integer of too many digits or a value nested too deep, by saying so."""
     refined, problems = _refine(value, (), finite=False)
+    if any(len(problem.loc) >= JSON_DEPTH for problem in problems):
+        # Nested past the levels a reader walks: said so, not left to the
+        # repr, which overflows at a depth the interpreter and platform set.
+        return "a value nested too deep to show"
     if len(problems) != 0:
-        # Not JSON, or nested past the levels a reader walks.
+        # Not JSON.
         return shown_by_python(value)
     try:
         return json.dumps(refined, ensure_ascii=False)
