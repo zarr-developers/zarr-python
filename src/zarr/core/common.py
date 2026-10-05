@@ -331,15 +331,14 @@ class RunLengthEdges(Sequence[int]):
     The sequence is held as `(size, count)` runs, with adjacent runs of the same size
     merged, so construction, lookups and prefix sums cost time and memory in the number
     of runs, not in the number of edges: `RunLengthEdges([(1, 2**40)])` is one run. It
-    reads like the tuple of edges it stands for (`len`, indexing, iteration, and `==`
-    against a `tuple`), but only iteration and the comparison with a `tuple` visit every
-    edge.
+    reads like the sequence of edges it stands for (`len`, indexing, iteration), but
+    only iteration visits every edge.
 
     Sizes are not checked here: what a valid edge length is, and how to report an invalid
     one, is up to the caller (see `parse_chunk_edge`). Each count must be at least 1.
 
-    Instances hash by their runs, so an instance does not hash like the `tuple` it
-    compares equal to.
+    It is not a `tuple` and equals only another `RunLengthEdges` with the same edges;
+    compare `tuple(edges)` against a tuple.
     """
 
     __slots__ = ("_index_stops", "_lookup_tables", "_offset_stops", "counts", "sizes")
@@ -430,10 +429,6 @@ class RunLengthEdges(Sequence[int]):
     def __eq__(self, other: object) -> bool:
         if isinstance(other, RunLengthEdges):
             return self.sizes == other.sizes and self.counts == other.counts
-        if isinstance(other, tuple):
-            return len(other) == self.num_edges and all(
-                a == b for a, b in zip(self, other, strict=True)
-            )
         return NotImplemented
 
     def __hash__(self) -> int:

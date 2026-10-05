@@ -250,7 +250,7 @@ def test_fixed_dimension_rejects_invalid(size: int, extent: int, match: str) -> 
 def test_varying_dimension_construction() -> None:
     """VaryingDimension stores edges, cumulative sums, nchunks, and extent correctly"""
     d = VaryingDimension([10, 20, 30], extent=60)
-    assert d.edges == (10, 20, 30)
+    assert tuple(d.edges) == (10, 20, 30)
     assert d.cumulative == (10, 30, 60)
     assert d.nchunks == 3
     assert d.extent == 60
@@ -646,7 +646,7 @@ def test_rle_expand_names_dimension(
 def test_parse_rle(rle_input: list[Any]) -> None:
     """parse_rle reads the edges expand_rle expands, as merged runs"""
     parsed = parse_rle(rle_input)
-    assert parsed == tuple(expand_rle(rle_input))
+    assert list(parsed) == expand_rle(rle_input)
     assert parsed.to_rle() == compress_rle(expand_rle(rle_input))
 
 
@@ -667,30 +667,31 @@ def test_parse_rle(rle_input: list[Any]) -> None:
     ids=["one-edge", "one-run", "mixed-runs", "no-repeats", "adjacent-equal-runs"],
 )
 def test_run_length_edges(runs: list[tuple[int, int]]) -> None:
-    """RunLengthEdges reads like the tuple of edges it encodes: length, indexing, slicing,
-    iteration, equality, prefix sums and position lookups all agree with the expanded
-    edges, and adjacent runs of one size are merged"""
+    """RunLengthEdges reads like the sequence of edges it encodes: length, indexing,
+    slicing, iteration, prefix sums and position lookups all agree with the expanded
+    edges, adjacent runs of one size are merged, and it equals only a RunLengthEdges of
+    the same edges, never the tuple of them"""
     expanded = tuple(size for size, count in runs for _ in range(count))
     offsets = (0, *itertools.accumulate(expanded))
     edges = RunLengthEdges(runs)
 
-    assert edges == expanded
+    assert edges != expanded
     assert edges == RunLengthEdges.from_edges(expanded)
     assert hash(edges) == hash(RunLengthEdges.from_edges(expanded))
-    assert edges != (*expanded, 1)
+    assert edges != RunLengthEdges.from_edges((*expanded, 1))
     assert pickle.loads(pickle.dumps(edges)) == edges
     assert all(a != b for (a, _), (b, _) in itertools.pairwise(edges.runs))
     assert len(edges) == edges.num_edges == len(expanded)
     assert edges.total == sum(expanded)
     assert tuple(edges) == expanded
     assert [edges[i] for i in range(-len(expanded), len(expanded))] == [*expanded, *expanded]
-    assert edges[1:] == expanded[1:]
-    assert edges[:-1] == expanded[:-1]
-    assert edges[::2] == expanded[::2]
+    assert tuple(edges[1:]) == expanded[1:]
+    assert tuple(edges[:-1]) == expanded[:-1]
+    assert tuple(edges[::2]) == expanded[::2]
     assert all(edges.count(size) == expanded.count(size) for size in {*expanded, 99})
     assert all((size in edges) == (size in expanded) for size in {*expanded, 99})
     assert edges.to_rle() == compress_rle(expanded)
-    assert edges.with_edge(7) == (*expanded, 7)
+    assert tuple(edges.with_edge(7)) == (*expanded, 7)
     assert [edges.offset_of(i) for i in range(len(expanded) + 1)] == list(offsets)
     positions = np.arange(-2, edges.total + 3, dtype=np.intp)
     expected_indices = np.searchsorted(offsets[1:], positions, side="right")
@@ -1352,7 +1353,7 @@ def test_mixed_scalar_and_list_dims_keep_shorthand(tmp_path: Path) -> None:
     assert isinstance(arr.metadata, ArrayV3Metadata)
     grid = arr.metadata.chunk_grid
     assert isinstance(grid, RectilinearChunkGridMetadata)
-    assert grid.chunk_shapes == (5, (10, 20, 70))
+    assert grid == RectilinearChunkGridMetadata(chunk_shapes=(5, (10, 20, 70)))
 
 
 # The chunk/shard spec matrix for `from_array` round-trip tests. Every kind of
@@ -1599,7 +1600,7 @@ def test_from_array_keep_is_o1_in_chunk_count() -> None:
     dst = zarr.from_array(MemoryStore(), data=src, name="0", write_data=False)
     grid = dst.metadata.chunk_grid
     assert isinstance(grid, RectilinearChunkGridMetadata)
-    assert grid.chunk_shapes == (3, (10, 20))
+    assert grid == RectilinearChunkGridMetadata(chunk_shapes=(3, (10, 20)))
 
 
 @pytest.mark.parametrize(
@@ -1624,7 +1625,7 @@ def test_resize_uniform_rectilinear_appends_edge(
     assert isinstance(rect.metadata, ArrayV3Metadata)
     rect_grid = rect.metadata.chunk_grid
     assert isinstance(rect_grid, RectilinearChunkGridMetadata)
-    assert rect_grid.chunk_shapes == ((10, 10, 10, 15),)
+    assert rect_grid == RectilinearChunkGridMetadata(chunk_shapes=((10, 10, 10, 15),))
     assert rect.nchunks == 4
     # the appended region is exactly the new edge chunk
     rect[30:45] = 1
@@ -2770,7 +2771,7 @@ def test_update_shape_shrink_creates_boundary() -> None:
     new_grid = grid.update_shape((45,))
     dim = new_grid._dimensions[0]
     assert isinstance(dim, VaryingDimension)
-    assert dim.edges == (10, 20, 30)
+    assert tuple(dim.edges) == (10, 20, 30)
     assert dim.extent == 45
     assert dim.chunk_size(2) == 30
     assert dim.data_size(2) == 15
@@ -2782,7 +2783,7 @@ def test_update_shape_shrink_to_exact_boundary() -> None:
     new_grid = grid.update_shape((30,))
     dim = new_grid._dimensions[0]
     assert isinstance(dim, VaryingDimension)
-    assert dim.edges == (10, 20, 30)
+    assert tuple(dim.edges) == (10, 20, 30)
     assert dim.nchunks == 2
     assert dim.ngridcells == 3
     assert dim.extent == 30
@@ -3314,7 +3315,7 @@ def test_rectilinear_from_dict(
 ) -> None:
     """RectilinearChunkGridMetadata.from_dict correctly parses all spec forms."""
     grid = RectilinearChunkGridMetadata.from_dict(json_input)
-    assert grid.chunk_shapes == expected_chunk_shapes
+    assert grid == RectilinearChunkGridMetadata(chunk_shapes=expected_chunk_shapes)
 
 
 @pytest.mark.parametrize(

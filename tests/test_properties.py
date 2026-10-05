@@ -618,7 +618,7 @@ def test_chunks_param_from_rectilinear_bare_int_roundtrip() -> None:
         src = zarr.create_array(MemoryStore(), shape=(3, 3), chunks=([1, 2], 1), dtype="uint8")
         grid = src.metadata.chunk_grid  # type: ignore[union-attr]
         assert isinstance(grid, RectilinearChunkGridMetadata)
-        assert grid.chunk_shapes == ((1, 2), 1)
+        assert grid == RectilinearChunkGridMetadata(chunk_shapes=((1, 2), 1))
         chunks = chunks_param_from_rectilinear(grid)
         # a list of lists, not tuples (`[1, 2] != (1, 2)`)
         assert chunks == [[1, 2], 1]
@@ -646,7 +646,7 @@ def test_rectilinear_chunk_grid_declarations(data: st.DataObject) -> None:
         "configuration": {"kind": "inline", "chunk_shapes": declaration},
     }
     meta = RectilinearChunkGridMetadata.from_dict(stored)
-    assert meta.chunk_shapes == chunk_shapes
+    assert meta == RectilinearChunkGridMetadata(chunk_shapes=chunk_shapes)
 
     serialized = json.loads(json.dumps(meta.to_dict()))
     assert serialized["name"] == "rectilinear"

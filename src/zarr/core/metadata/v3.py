@@ -314,8 +314,8 @@ class RectilinearChunkGridMetadata(Metadata):
       (the spec's single-integer shorthand).
     - A sequence of ``int`` — explicit per-chunk edge lengths. It is given
       as a ``tuple`` or a ``list`` and held as a `RunLengthEdges`, which
-      reads like the tuple of edges (and compares equal to it) but stores
-      one entry per run of equal edges, so a grid costs time and memory in
+      reads like the sequence of edges (but is not a ``tuple``, and does
+      not compare equal to one) and stores one entry per run of equal edges, so a grid costs time and memory in
       the size of its run-length encoded form, not in its number of chunks.
 
     This distinction matters for faithful round-tripping: a bare int
