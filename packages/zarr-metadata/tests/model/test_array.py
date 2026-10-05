@@ -2459,20 +2459,13 @@ def test_a_problem_shows_an_integer_too_long_to_write_by_its_size(
     assert problem.message == (
         "non-string metadata field key a value of type tuple the interpreter will not write"
     )
-    # So is what `refine_json` reports as no JSON at all: a set holding
-    # one, or frozensets nested past what the interpreter's repr walks.
+    # So is what `refine_json` reports as no JSON at all: a set holding one.
     document = {**ZarrV3ArrayMetadata.create_default().to_json(), "attributes": {"a": {10**5000}}}
     (problem,) = validate_array_metadata_v3(document)
     assert (problem.loc, problem.message) == (
         ("attributes", "a"),
         "not a JSON-serializable value: a value of type set the interpreter will not write",
     )
-    frozen: frozenset[object] = frozenset()
-    for _ in range(100_000):
-        frozen = frozenset([frozen])
-    document = {**ZarrV3ArrayMetadata.create_default().to_json(), "attributes": {"a": frozen}}
-    (problem,) = validate_array_metadata_v3(document)
-    assert problem.message == "not a JSON-serializable value: a value nested too deep to show"
 
 
 def test_a_problem_shows_a_value_nested_too_deep_to_write_by_saying_so() -> None:

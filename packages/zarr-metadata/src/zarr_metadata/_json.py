@@ -456,11 +456,9 @@ def shown_key(key: object) -> str:
 
 
 def shown_by_python(value: object) -> str:
-    """`value` as Python shows it, for what is not JSON a reader walks; what the interpreter will not write -- nested too deep for its repr, or holding an integer of more digits than it writes -- said so."""
+    """`value` as Python shows it, for what is not JSON a reader walks; what the interpreter will not write -- holding an integer of more digits than it writes -- said so."""
     try:
         return repr(value)
-    except RecursionError:
-        return "a value nested too deep to show"
     except ValueError:
         return f"a value of type {type(value).__name__} the interpreter will not write"
 
