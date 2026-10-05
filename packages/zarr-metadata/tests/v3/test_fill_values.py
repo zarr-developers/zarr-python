@@ -22,7 +22,7 @@ from zarr_metadata._json import JSON_DEPTH, value_at
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model import validate_array_metadata_v3, validate_group_metadata_v3
 from zarr_metadata.model._array import ZarrV3ArrayMetadata
-from zarr_metadata.v3.data_type._float import FloatWidth, float_bits
+from zarr_metadata.v3.data_type._float import FloatWidth, complex_fill_value_rules, float_bits
 from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
@@ -503,3 +503,20 @@ def test_an_integer_type_takes_exactly_its_range(name: str, low: int, high: int)
             "invalid_value",
             {"ge": low, "le": high},
         )
+
+
+def test_a_complex_fill_value_keeps_what_its_component_rules_found() -> None:
+    """A complex fill value's problems are its component rules' own, each moved under its component's index, with the `input` and `ctx` they carry."""
+
+    def at_least_one(
+        configuration: EmptyConfiguration, nested: Nested, part: object
+    ) -> Iterator[ValidationProblem]:
+        if part == 0:
+            yield ValidationProblem(
+                ("x",), "expected >= 1", "invalid_value", input=0, ctx={"ge": 1}
+            )
+
+    rules = complex_fill_value_rules(at_least_one)
+    (found,) = rules({}, {}, (1.0, 0))
+    assert (found.loc, found.message, found.kind) == ((1, "x"), "expected >= 1", "invalid_value")
+    assert (found.input, dict(found.ctx)) == (0, {"ge": 1})

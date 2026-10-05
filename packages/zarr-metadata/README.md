@@ -153,7 +153,7 @@ root: the document of the node at `/a/b` sits at the key `a/b`, and the
 documents and the group make a tree in which only groups hold nodes and
 each node's parent is held. `NodeName` and `NodePath`, in
 `zarr_metadata.v3`, are the strings the spec's rules for node names and
-paths hold of, modelled on zarrs' types of those names, and
+paths hold of, modeled on zarrs' types of those names, and
 `validate_node_name_v3`, `is_node_name_v3` and `parse_node_name_v3`, and
 their `node_path` twins, judge a string by them.
 

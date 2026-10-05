@@ -50,6 +50,9 @@ the cap takes about half of the interpreter's default limit, a thousand
 frames, and the rest is the caller's.
 """
 
+_PAST_THE_LEVELS: Final = f"nested deeper than the {JSON_DEPTH} levels a reader walks"
+"""The message of the problem a container past the levels a reader walks is."""
+
 
 class _Ctx(Mapping[str, JSONValue]):
     """What a problem holds as its `ctx`: a copy of its own, arrays as tuples, checked to be JSON when it was made, which nothing edits after.
@@ -349,8 +352,7 @@ def nested_past_the_levels(value: object, loc: tuple[str | int, ...]) -> Validat
         return None
     if not isinstance(value, (Mapping, Sequence)) or isinstance(value, (bytes, bytearray)):
         return None
-    message = f"nested deeper than the {JSON_DEPTH} levels a reader walks"
-    return ValidationProblem(loc, message, "invalid_value")
+    return ValidationProblem(loc, _PAST_THE_LEVELS, "invalid_value")
 
 
 def within(
@@ -427,7 +429,7 @@ def json_text(value: JSONValue) -> str:
 def shown(value: object) -> str:
     """`value` as a problem's message shows it: as the JSON a document writes, `null` and `[1, 2]`, or by its repr when it is not JSON; what the interpreter will not write, an integer of too many digits or a value nested too deep, by saying so."""
     refined, problems = _refine(value, (), finite=False)
-    if any(len(problem.loc) >= JSON_DEPTH for problem in problems):
+    if any(problem.message == _PAST_THE_LEVELS for problem in problems):
         # Nested past the levels a reader walks: said so, not left to the
         # repr, which overflows at a depth the interpreter and platform set.
         return "a value nested too deep to show"

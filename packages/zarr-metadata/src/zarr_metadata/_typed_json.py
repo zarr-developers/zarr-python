@@ -1250,8 +1250,9 @@ class Schemas:
         The entry is named `name`, or `name` and a number when another key
         holds that name, and it is reserved before it is written, so a
         schema that holds itself refers to itself. One `write` fails to
-        write is not left reserved: a later reference to it would be to an
-        empty schema, which takes anything.
+        write is not left reserved -- a later reference to it would be to an
+        empty schema, which takes anything -- and nor is anything it wrote
+        or counted before it failed.
         """
         name_held = self._names.get(key)
         if name_held is None:
@@ -1259,12 +1260,16 @@ class Schemas:
             while name_held in self._defs:
                 number += 1
                 name_held = f"{name}{number}"
+            # What a failed write leaves is put back as it was: the entries
+            # it wrote of what it holds, and the uses it counted, as well as
+            # its own name.
+            before = (dict(self._defs), dict(self._names), dict(self._uses))
             self._names[key] = name_held
             self._defs[name_held] = {}
             try:
                 self._defs[name_held] = write()
             except BaseException:
-                del self._names[key], self._defs[name_held]
+                self._defs, self._names, self._uses = before
                 raise
         self._uses[name_held] = self._uses.get(name_held, 0) + 1
         return {"$ref": _pointer(name_held)}

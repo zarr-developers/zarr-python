@@ -9,6 +9,7 @@ A complex fill value is a pair of such components, real then imaginary
 (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L88-L91).
 """
 
+import dataclasses
 import struct
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
@@ -202,7 +203,7 @@ class _ComplexFillValue:
     ) -> Iterator[ValidationProblem]:
         for index, part in enumerate(value):
             for found in self.component(configuration, nested, part):
-                yield ValidationProblem((index, *found.loc), found.message, found.kind)
+                yield dataclasses.replace(found, loc=(index, *found.loc))
 
 
 def complex_fill_value_canonical(

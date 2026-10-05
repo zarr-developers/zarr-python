@@ -30,7 +30,8 @@ def node_metadata_json_schema_v3(*, context: Context = CORE_AND_EXTENSIONS) -> J
     the data type's definition declares for one -- an `int8`'s an integer
     in [-128, 127] -- when the document names a data type in scope. A
     group's `consolidated_metadata` holds array and group documents, by
-    path, or is `null`. Each document is in `$defs` under the name of its
+    path; a `null` one, which a zarr-python 3.0.x bug wrote, is refused, as
+    the validator refuses it. Each document is in `$defs` under the name of its
     TypedDict: `ZarrV3ArrayMetadataJSON` is an array's alone.
 
     A JSON Schema says what each member is, and what the rules say of

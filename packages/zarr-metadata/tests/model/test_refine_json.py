@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from collections import OrderedDict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -116,6 +116,14 @@ def test_error_a_value_nested_deeper_than_a_reader_walks() -> None:
     assert problems[0].loc[:2] == ("a", 0)
 
 
+def _nested(depth: int, innermost: object) -> list[object]:
+    """`innermost` inside `depth` arrays, each holding the next: `innermost` sits `depth` levels down."""
+    value: object = innermost
+    for _ in range(depth):
+        value = [value]
+    return cast("list[object]", value)
+
+
 @pytest.mark.parametrize(
     ("value", "text"),
     [
@@ -126,12 +134,23 @@ def test_error_a_value_nested_deeper_than_a_reader_walks() -> None:
         ({"a": None}, '{"a": null}'),
         (float("nan"), "NaN"),
         ({1: 2}, "{1: 2}"),
+        (_nested(JSON_DEPTH, []), "a value nested too deep to show"),
+        (_nested(JSON_DEPTH, {1}), "[" * JSON_DEPTH + "{1}" + "]" * JSON_DEPTH),
     ],
-    ids=["null", "true", "string", "array", "object", "non-finite", "not-json"],
+    ids=[
+        "null",
+        "true",
+        "string",
+        "array",
+        "object",
+        "non-finite",
+        "not-json",
+        "past-the-levels",
+        "not-json-at-the-last-level",
+    ],
 )
 def test_a_value_is_shown_as_the_json_a_document_writes(value: object, text: str) -> None:
-    # What a problem's message says a document holds: its JSON, and the
-    # value's repr only when it is not JSON.
+    """A problem's message shows a value as its JSON, by its repr when it is not JSON, and says so when it nests past the levels a reader walks: a container there, not a non-JSON value sitting on the last level, which is shown."""
     assert shown(value) == text
 
 

@@ -1,6 +1,6 @@
 """A Zarr v3 hierarchy: the names and paths of its nodes, and the tree they make.
 
-`NodeName` and `NodePath` are modelled on zarrs' types of those names, and
+`NodeName` and `NodePath` are modeled on zarrs' types of those names, and
 hold the spec's rules, which reserve `zarr.json` too. `hierarchy_problems`
 judges the node type of each node of a hierarchy, by its path, as a tree.
 

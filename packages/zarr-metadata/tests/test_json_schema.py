@@ -310,6 +310,16 @@ def test_error_a_schema_that_fails_to_write_leaves_nothing_behind() -> None:
     assert schemas.document({}) == {"$schema": DIALECT}
     with pytest.raises(TypeError, match="is not a shape JSON takes"):
         schemas.of(unread)
+    # Nor is what it wrote of a shape it holds before it failed, nor a use
+    # it counted: a later root of that shape, used once, is written in place.
+    held = _closed("Held", {"x": int})
+    with pytest.raises(TypeError, match="is not a shape JSON takes"):
+        schemas.of(_closed("Partly", {"held": held, "value": bytes}))
+    assert schemas.document({}) == {"$schema": DIALECT}
+    assert schemas.document(schemas.of(held)) == {
+        "$schema": DIALECT,
+        **Schemas().object_of(held),
+    }
 
 
 def test_json_schema_refuses_metadata_check_does_not_hold_a_value_to() -> None:
