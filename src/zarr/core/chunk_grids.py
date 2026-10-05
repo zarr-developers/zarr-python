@@ -14,7 +14,6 @@ from typing import (
     Protocol,
     SupportsIndex,
     cast,
-    runtime_checkable,
 )
 
 import numpy as np
@@ -53,26 +52,21 @@ class FixedDimension:
     size: int  # chunk edge length (>= 1)
     extent: int  # array dimension length (>= 0)
     nchunks: int = field(init=False, repr=False)
-    ngridcells: int = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.size < 1:
             raise ValueError(f"FixedDimension size must be >= 1, got {self.size}")
         if self.extent < 0:
             raise ValueError(f"FixedDimension extent must be >= 0, got {self.extent}")
-        n = ceildiv_int(self.extent, self.size)
-        object.__setattr__(self, "nchunks", n)
-        object.__setattr__(self, "ngridcells", n)
+        object.__setattr__(self, "nchunks", ceildiv_int(self.extent, self.size))
 
     def index_to_chunk(self, idx: int) -> int:
-        if idx < 0:
-            raise IndexError(f"Negative index {idx} is not allowed")
-        if idx >= self.extent:
-            raise IndexError(f"Index {idx} is out of bounds for extent {self.extent}")
+        if idx < 0 or idx >= self.extent:
+            raise IndexError(f"Index {idx} out of bounds for dimension with extent {self.extent}")
         return idx // self.size
 
     def chunk_offset(self, chunk_ix: int) -> int:
-        """Byte-aligned start position of chunk *chunk_ix* in array coordinates.
+        """Start position of chunk *chunk_ix* in array coordinates.
 
         Does not validate *chunk_ix* — callers must ensure it is in
         ``[0, nchunks)``. Use ``ChunkGrid.__getitem__`` for safe access.
@@ -95,34 +89,12 @@ class FixedDimension:
         """
         return max(0, min(self.size, self.extent - chunk_ix * self.size))
 
-    @property
-    def _unique_edge_lengths(self) -> Iterable[int]:
-        """Distinct chunk edge lengths for this dimension.
-
-        Used by shard validation to check that every unique edge length
-        is divisible by the inner chunk size. O(1) for fixed dimensions
-        since there is only one edge length.
-        """
-        return (self.size,)
-
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
         return indices // self.size
 
-    def with_extent(self, new_extent: int) -> FixedDimension:
-        """Re-bind to *new_extent* without modifying edges.
-
-        Used when constructing a grid from existing metadata where edges
-        are already correct. Raises on
-        ``VaryingDimension`` if edges don't cover the new extent.
-        """
-        return FixedDimension(size=self.size, extent=new_extent)
-
     def resize(self, new_extent: int) -> FixedDimension:
-        """Adapt for a user-initiated array resize, growing edges if needed.
-
-        For ``FixedDimension`` this is identical to ``with_extent`` since
-        regular grids don't store explicit edges.
-        """
+        """Adapt for a user-initiated array resize: the chunk size is kept and
+        re-bound to *new_extent*."""
         return FixedDimension(size=self.size, extent=new_extent)
 
     @property
@@ -159,7 +131,6 @@ class VaryingDimension:
     edges: RunLengthEdges  # per-chunk edge lengths (all > 0), run-length encoded
     extent: int  # array dimension length (may be < sum(edges) after resize)
     nchunks: int = field(init=False, repr=False)  # cached at construction
-    ngridcells: int = field(init=False, repr=False)  # cached at construction
 
     def __init__(self, edges: Sequence[int] | RunLengthEdges, extent: int) -> None:
         rle = RunLengthEdges.from_edges(edges)
@@ -176,7 +147,6 @@ class VaryingDimension:
         # Cache nchunks: number of chunks that overlap [0, extent)
         n = 0 if extent == 0 else rle.index_at(extent - 1) + 1
         object.__setattr__(self, "nchunks", n)
-        object.__setattr__(self, "ngridcells", rle.num_edges)
 
     def index_to_chunk(self, idx: int) -> int:
         if idx < 0 or idx >= self.extent:
@@ -184,26 +154,26 @@ class VaryingDimension:
         return self.edges.index_at(idx)
 
     def chunk_offset(self, chunk_ix: int) -> int:
-        """Start position of chunk *chunk_ix* in array coordinates.
+        """Start position of chunk *chunk_ix* in array coordinates; for
+        ``chunk_ix == edges.num_edges``, the sum of all edges.
 
-        Does not validate *chunk_ix* — callers must ensure it is in
-        ``[0, ngridcells)``. Use ``ChunkGrid.__getitem__`` for safe access.
+        Raises ``IndexError`` for any other *chunk_ix* outside
+        ``[0, edges.num_edges)``.
         """
-        return self.edges.offset_of(chunk_ix) if chunk_ix > 0 else 0
+        return self.edges.offset_of(chunk_ix)
 
     def chunk_size(self, chunk_ix: int) -> int:
         """Buffer size for codec processing.
 
-        Does not validate *chunk_ix* — callers must ensure it is in
-        ``[0, ngridcells)``. Use ``ChunkGrid.__getitem__`` for safe access.
+        Raises ``IndexError`` for *chunk_ix* outside ``[0, edges.num_edges)``.
         """
         return self.edges.size_of(chunk_ix)
 
     def data_size(self, chunk_ix: int) -> int:
-        """Valid data region within the buffer — clipped at extent.
+        """Valid data region within the buffer — clipped at extent; 0 for an
+        edge that lies entirely past the extent.
 
-        Does not validate *chunk_ix* — callers must ensure it is in
-        ``[0, ngridcells)``. Use ``ChunkGrid.__getitem__`` for safe access.
+        Raises ``IndexError`` for *chunk_ix* outside ``[0, edges.num_edges)``.
         """
         return max(0, min(self.edges.size_of(chunk_ix), self.extent - self.chunk_offset(chunk_ix)))
 
@@ -215,38 +185,14 @@ class VaryingDimension:
         last = self.nchunks - 1
         return (*itertools.islice(self.edges.expand(), last), self.data_size(last))
 
-    @property
-    def _unique_edge_lengths(self) -> Iterable[int]:
-        """Distinct chunk edge lengths for this dimension, in order of first use.
-
-        Used by shard validation to check that every unique edge length
-        is divisible by the inner chunk size. Reads one size per run of
-        equal edges, not one per chunk.
-        """
-        return tuple(dict.fromkeys(self.edges.sizes))
-
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
         return self.edges.indices_at(indices)
-
-    def with_extent(self, new_extent: int) -> VaryingDimension:
-        """Re-bind to *new_extent* without modifying edges.
-
-        Used when constructing a grid from existing metadata where edges
-        are already correct. Raises if the
-        existing edges don't cover *new_extent*.
-        """
-        edge_sum = self.edges.total
-        if edge_sum < new_extent:
-            raise ValueError(
-                f"VaryingDimension edge sum {edge_sum} is less than new extent {new_extent}"
-            )
-        return VaryingDimension(self.edges, extent=new_extent)
 
     def resize(self, new_extent: int) -> VaryingDimension:
         """Adapt for a user-initiated array resize, growing edges if needed.
 
-        Unlike ``with_extent``, this never fails — if *new_extent* exceeds
-        the current edge sum, a new chunk is appended to cover the gap.
+        If *new_extent* exceeds the current edge sum, a new chunk is
+        appended to cover the gap.
         Shrinking preserves all edges (the spec allows trailing edges
         beyond the array extent).
         """
@@ -263,14 +209,11 @@ class VaryingDimension:
         return _edges_repr(self.edges)
 
 
-@runtime_checkable
 class DimensionGrid(Protocol):
     """Structural interface shared by FixedDimension and VaryingDimension."""
 
     @property
     def nchunks(self) -> int: ...
-    @property
-    def ngridcells(self) -> int: ...
     @property
     def extent(self) -> int: ...
     def index_to_chunk(self, idx: int) -> int: ...
@@ -278,9 +221,6 @@ class DimensionGrid(Protocol):
     def chunk_size(self, chunk_ix: int) -> int: ...
     def data_size(self, chunk_ix: int) -> int: ...
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]: ...
-    @property
-    def _unique_edge_lengths(self) -> Iterable[int]: ...
-    def with_extent(self, new_extent: int) -> DimensionGrid: ...
     def resize(self, new_extent: int) -> DimensionGrid: ...
     @property
     def _size_repr(self) -> str: ...
@@ -363,28 +303,6 @@ def _chunk_list(chunks: object) -> list[Any]:
             f"Chunk specification must be an integer or an iterable of integers; got "
             f"{chunks!r} of type {type(chunks).__name__}."
         ) from None
-
-
-def is_regular_1d(dim_chunks: Sequence[int]) -> bool:
-    """Check if a single dimension's chunk sizes represent a regular grid.
-
-    A regular dimension has either all chunks the same size, or all
-    but the last chunk the same size with the last chunk smaller
-    (boundary chunk).
-    """
-    if len(dim_chunks) <= 1:
-        return True
-    first = dim_chunks[0]
-    for c in dim_chunks[1:-1]:
-        if c != first:
-            return False
-    # Last chunk must be the same size or a smaller boundary chunk
-    return dim_chunks[-1] <= first
-
-
-def is_regular_nd(chunks: Iterable[Sequence[int]]) -> bool:
-    """Check if an N-dimensional chunk specification represents a regular grid."""
-    return all(is_regular_1d(d) for d in chunks)
 
 
 @dataclass(frozen=True)

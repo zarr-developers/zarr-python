@@ -75,13 +75,15 @@ def _edges(grid: ChunkGrid, dim: int) -> tuple[int, ...]:
         (VaryingDimension([10, 20, 30], extent=60), 60, "out of bounds"),
         (VaryingDimension([10, 20, 30], extent=60), 100, "out of bounds"),
         (FixedDimension(size=10, extent=95), 95, "out of bounds"),
-        (FixedDimension(size=10, extent=95), -1, "Negative"),
+        (FixedDimension(size=10, extent=95), -1, "out of bounds"),
+        (VaryingDimension([10, 20, 30], extent=60), -1, "out of bounds"),
     ],
     ids=[
         "varying-at-extent",
         "varying-past-extent",
         "fixed-at-extent",
         "fixed-negative",
+        "varying-negative",
     ],
 )
 def test_dimension_index_to_chunk_bounds(
@@ -748,9 +750,9 @@ def test_varying_dimension_huge_runs() -> None:
     edge_sum = 3 * HUGE + 7 + 2 * HUGE
     dim = VaryingDimension(RunLengthEdges([(3, HUGE), (7, 1), (2, HUGE)]), extent=edge_sum - 3)
 
-    assert dim.ngridcells == 2 * HUGE + 1
+    assert dim.edges.num_edges == 2 * HUGE + 1
     assert dim.nchunks == 2 * HUGE
-    assert tuple(dim._unique_edge_lengths) == (3, 7, 2)
+    assert dim.edges.sizes == (3, 7, 2)
     assert dim._size_repr == f"[[3, {HUGE}], 7, [2, {HUGE}]]"
     lookups = {
         0: 0,
@@ -779,7 +781,7 @@ def test_varying_dimension_huge_runs() -> None:
     grown = dim.resize(edge_sum + 5)
     assert grown.edges.to_rle() == [[3, HUGE], 7, [2, HUGE], 5]
     assert dim.resize(10).edges == dim.edges
-    assert dim.with_extent(edge_sum).nchunks == 2 * HUGE + 1
+    assert VaryingDimension(dim.edges, extent=edge_sum).nchunks == 2 * HUGE + 1
 
 
 def _store_rectilinear_array(
@@ -1017,28 +1019,6 @@ def test_spec_example() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_parse_chunk_grid_varying_extent_mismatch_raises() -> None:
-    """Reconstructing a ChunkGrid with mismatched extents raises ValueError"""
-    g = ChunkGrid.from_sizes((60, 100), [[10, 20, 30], [50, 50]])
-    with pytest.raises(ValueError, match="extent"):
-        ChunkGrid(
-            dimensions=tuple(
-                dim.with_extent(ext) for dim, ext in zip(g._dimensions, (100, 100), strict=True)
-            )
-        )
-
-
-def test_parse_chunk_grid_varying_extent_match_ok() -> None:
-    """Reconstructing a ChunkGrid with matching extents succeeds"""
-    g = ChunkGrid.from_sizes((60, 100), [[10, 20, 30], [50, 50]])
-    g2 = ChunkGrid(
-        dimensions=tuple(
-            dim.with_extent(ext) for dim, ext in zip(g._dimensions, (60, 100), strict=True)
-        )
-    )
-    assert g2._dimensions[0].extent == 60
-
-
 @pytest.mark.parametrize(
     ("chunk_shapes", "array_shape", "match"),
     [
@@ -1097,17 +1077,6 @@ def test_parse_chunk_grid_rectilinear_rle_extent_validated() -> None:
     assert g.grid_shape == (5, 2)
     with pytest.raises(ValueError, match="extent 100 exceeds sum of edges 50"):
         ChunkGrid.from_sizes((100, 50), meta.chunk_shapes)
-
-
-def test_parse_chunk_grid_varying_dimension_extent_mismatch_on_chunkgrid_input() -> None:
-    """ChunkGrid constructor rejects VaryingDimension with extent exceeding sum of edges"""
-    g = ChunkGrid.from_sizes((60, 50), [[10, 20, 30], [25, 25]])
-    with pytest.raises(ValueError, match="less than"):
-        ChunkGrid(
-            dimensions=tuple(
-                dim.with_extent(ext) for dim, ext in zip(g._dimensions, (100, 50), strict=True)
-            )
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -1770,10 +1739,9 @@ def test_fixed_dimension_zero_extent(size: int) -> None:
     """A zero-length axis has zero chunks and behaves like an empty grid."""
     d = FixedDimension(size=size, extent=0)
     assert d.nchunks == 0
-    assert d.ngridcells == 0
     assert d.data_size(0) == 0
-    assert d.with_extent(0) == d
-    assert d.with_extent(3) == FixedDimension(size=size, extent=3)
+    assert d.resize(0) == d
+    assert d.resize(3) == FixedDimension(size=size, extent=3)
     empty = np.array([], dtype=np.intp)
     np.testing.assert_array_equal(d.indices_to_chunks(empty), empty)
     with pytest.raises(IndexError):
@@ -1826,9 +1794,7 @@ def test_parse_chunk_grid_preserves_varying_extent() -> None:
     assert g._dimensions[0].extent == 60
 
     g2 = ChunkGrid(
-        dimensions=tuple(
-            dim.with_extent(ext) for dim, ext in zip(g._dimensions, (60, 100), strict=True)
-        )
+        dimensions=tuple(dim.resize(ext) for dim, ext in zip(g._dimensions, (60, 100), strict=True))
     )
     assert isinstance(g2._dimensions[0], VaryingDimension)
     assert g2._dimensions[0].extent == 60
@@ -1840,9 +1806,7 @@ def test_parse_chunk_grid_rebinds_fixed_extent() -> None:
     assert g._dimensions[0].extent == 100
 
     g2 = ChunkGrid(
-        dimensions=tuple(
-            dim.with_extent(ext) for dim, ext in zip(g._dimensions, (50, 100), strict=True)
-        )
+        dimensions=tuple(dim.resize(ext) for dim, ext in zip(g._dimensions, (50, 100), strict=True))
     )
     assert isinstance(g2._dimensions[0], FixedDimension)
     assert g2._dimensions[0].extent == 50
@@ -2447,7 +2411,7 @@ def test_varying_dimension_zero_extent() -> None:
     """VaryingDimension with extent=0 has zero active chunks but retains all grid cells."""
     d = VaryingDimension([10, 20], extent=0)
     assert d.nchunks == 0
-    assert d.ngridcells == 2
+    assert d.edges.num_edges == 2
     # No chunks overlap [0, 0), so the grid is structurally non-empty but logically empty
     g = ChunkGrid(dimensions=(d,))
     assert g.grid_shape == (0,)
@@ -2483,7 +2447,8 @@ def test_overflow_multiple_chunks_past_extent() -> None:
     """Edges past extent are structural; nchunks counts active only."""
     g = ChunkGrid.from_sizes((50,), [[10, 20, 30, 40]])
     d = g._dimensions[0]
-    assert d.ngridcells == 4
+    assert isinstance(d, VaryingDimension)
+    assert d.edges.num_edges == 4
     assert d.nchunks == 3
     assert d.data_size(0) == 10
     assert d.data_size(1) == 20
@@ -2791,7 +2756,7 @@ def test_update_shape_shrink_to_exact_boundary() -> None:
     assert isinstance(dim, VaryingDimension)
     assert tuple(dim.edges.expand()) == (10, 20, 30)
     assert dim.nchunks == 2
-    assert dim.ngridcells == 3
+    assert dim.edges.num_edges == 3
     assert dim.extent == 30
     assert dim.data_size(1) == 20
 
@@ -2811,9 +2776,7 @@ def test_update_shape_parse_chunk_grid_rebinds_extent() -> None:
     """parse_chunk_grid re-binds VaryingDimension extent to array shape."""
     g = ChunkGrid.from_sizes((60,), [[10, 20, 30]])
     g2 = ChunkGrid(
-        dimensions=tuple(
-            dim.with_extent(ext) for dim, ext in zip(g._dimensions, (50,), strict=True)
-        )
+        dimensions=tuple(dim.resize(ext) for dim, ext in zip(g._dimensions, (50,), strict=True))
     )
     dim = g2._dimensions[0]
     assert isinstance(dim, VaryingDimension)
