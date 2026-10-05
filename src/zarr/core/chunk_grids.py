@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import bisect
 import itertools
 import math
 import operator
@@ -24,6 +23,7 @@ from typing_extensions import TypeIs
 
 import zarr
 from zarr.core.common import (
+    RunLengthEdges,
     ShapeLike,
     ceildiv_int,
     parse_shapelike,
@@ -130,55 +130,67 @@ class FixedDimension:
         return str(self.size)
 
 
-@dataclass(frozen=True)
+_MAX_EDGES_IN_REPR = 100
+"""The most chunk edges of one dimension written out one by one in a repr or an error
+message; a longer dimension is shown run-length encoded."""
+
+
+def _edges_repr(edges: RunLengthEdges) -> str:
+    """The edges as a tuple, or run-length encoded if there are too many to write out."""
+    if edges.num_edges <= _MAX_EDGES_IN_REPR:
+        return repr(tuple(edges))
+    return repr(edges.to_rle())
+
+
+@dataclass(frozen=True, init=False)
 class VaryingDimension:
     """Explicit per-chunk sizes. The last chunk may extend past the array
     extent (``extent < sum(edges)``), in which case ``data_size`` clips to
     the valid region while ``chunk_size`` returns the full edge length for
     codec processing. This underflow is allowed to match how regular grids
     handle boundary chunks, and to support shrinking an array without
-    rewriting chunk edges (the spec allows trailing edges beyond the extent)."""
+    rewriting chunk edges (the spec allows trailing edges beyond the extent).
 
-    edges: tuple[int, ...]  # per-chunk edge lengths (all > 0)
-    cumulative: tuple[int, ...]  # prefix sums for O(log n) lookup
+    The edges are held run-length encoded (see `RunLengthEdges`), so building
+    the dimension, resizing it and every lookup cost time and memory in the
+    number of runs of equal edges, not in the number of chunks: a dimension of
+    ``2**40`` equal chunks is one run."""
+
+    edges: RunLengthEdges  # per-chunk edge lengths (all > 0), run-length encoded
     extent: int  # array dimension length (may be < sum(edges) after resize)
     nchunks: int = field(init=False, repr=False)  # cached at construction
     ngridcells: int = field(init=False, repr=False)  # cached at construction
 
-    # TODO(perf): for long dimensions (O(million chunks)):
-    # - with_extent/resize recompute cumulative sums and nchunks from scratch;
-    #   add a fast path that reuses the existing cumulative tuple.
-    # - Consider storing cumulative as ndarray so bisect calls can use
-    #   np.searchsorted. Scalar lookups (chunk_offset, index_to_chunk)
-    #   would need benchmarking to confirm no regression.
     def __init__(self, edges: Sequence[int], extent: int) -> None:
-        edges_tuple = tuple(edges)
-        if not edges_tuple:
+        rle = RunLengthEdges.from_edges(edges)
+        if rle.num_edges == 0:
             raise ValueError("VaryingDimension edges must not be empty")
-        if any(e <= 0 for e in edges_tuple):
-            raise ValueError(f"All edge lengths must be > 0, got {edges_tuple}")
-        cumulative = tuple(itertools.accumulate(edges_tuple))
+        if any(size <= 0 for size in rle.sizes):
+            raise ValueError(f"All edge lengths must be > 0, got {_edges_repr(rle)}")
         if extent < 0:
             raise ValueError(f"VaryingDimension extent must be >= 0, got {extent}")
-        if extent > cumulative[-1]:
-            raise ValueError(
-                f"VaryingDimension extent {extent} exceeds sum of edges {cumulative[-1]}"
-            )
-        object.__setattr__(self, "edges", edges_tuple)
-        object.__setattr__(self, "cumulative", cumulative)
+        if extent > rle.total:
+            raise ValueError(f"VaryingDimension extent {extent} exceeds sum of edges {rle.total}")
+        object.__setattr__(self, "edges", rle)
         object.__setattr__(self, "extent", extent)
         # Cache nchunks: number of chunks that overlap [0, extent)
-        if extent == 0:
-            n = 0
-        else:
-            n = bisect.bisect_left(cumulative, extent) + 1
+        n = 0 if extent == 0 else rle.index_at(extent - 1) + 1
         object.__setattr__(self, "nchunks", n)
-        object.__setattr__(self, "ngridcells", len(edges_tuple))
+        object.__setattr__(self, "ngridcells", rle.num_edges)
+
+    @property
+    def cumulative(self) -> tuple[int, ...]:
+        """Prefix sums of the edges, one entry per chunk.
+
+        Lookups do not use this: it is computed on each access, in time and
+        memory proportional to the number of chunks.
+        """
+        return tuple(itertools.accumulate(self.edges))
 
     def index_to_chunk(self, idx: int) -> int:
         if idx < 0 or idx >= self.extent:
             raise IndexError(f"Index {idx} out of bounds for dimension with extent {self.extent}")
-        return bisect.bisect_right(self.cumulative, idx)
+        return self.edges.index_at(idx)
 
     def chunk_offset(self, chunk_ix: int) -> int:
         """Start position of chunk *chunk_ix* in array coordinates.
@@ -186,7 +198,7 @@ class VaryingDimension:
         Does not validate *chunk_ix* — callers must ensure it is in
         ``[0, ngridcells)``. Use ``ChunkGrid.__getitem__`` for safe access.
         """
-        return self.cumulative[chunk_ix - 1] if chunk_ix > 0 else 0
+        return self.edges.offset_of(chunk_ix) if chunk_ix > 0 else 0
 
     def chunk_size(self, chunk_ix: int) -> int:
         """Buffer size for codec processing.
@@ -202,25 +214,28 @@ class VaryingDimension:
         Does not validate *chunk_ix* — callers must ensure it is in
         ``[0, ngridcells)``. Use ``ChunkGrid.__getitem__`` for safe access.
         """
-        offset = self.cumulative[chunk_ix - 1] if chunk_ix > 0 else 0
-        return max(0, min(self.edges[chunk_ix], self.extent - offset))
+        return max(0, min(self.edges[chunk_ix], self.extent - self.chunk_offset(chunk_ix)))
+
+    @property
+    def _data_sizes(self) -> tuple[int, ...]:
+        """`data_size` of every chunk that holds data, in order."""
+        if self.nchunks == 0:
+            return ()
+        last = self.nchunks - 1
+        return (*itertools.islice(self.edges, last), self.data_size(last))
 
     @property
     def _unique_edge_lengths(self) -> Iterable[int]:
-        """Distinct chunk edge lengths for this dimension (lazily deduplicated).
+        """Distinct chunk edge lengths for this dimension, in order of first use.
 
         Used by shard validation to check that every unique edge length
-        is divisible by the inner chunk size. Lazy deduplication avoids
-        materializing all edges for dimensions with many repeated sizes.
+        is divisible by the inner chunk size. Reads one size per run of
+        equal edges, not one per chunk.
         """
-        seen: set[int] = set()
-        for e in self.edges:
-            if e not in seen:
-                seen.add(e)
-                yield e
+        return tuple(dict.fromkeys(self.edges.sizes))
 
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
-        return np.searchsorted(self.cumulative, indices, side="right")
+        return self.edges.indices_at(indices)
 
     def with_extent(self, new_extent: int) -> VaryingDimension:
         """Re-bind to *new_extent* without modifying edges.
@@ -229,7 +244,7 @@ class VaryingDimension:
         are already correct. Raises if the
         existing edges don't cover *new_extent*.
         """
-        edge_sum = self.cumulative[-1]
+        edge_sum = self.edges.total
         if edge_sum < new_extent:
             raise ValueError(
                 f"VaryingDimension edge sum {edge_sum} is less than new extent {new_extent}"
@@ -246,15 +261,15 @@ class VaryingDimension:
         """
         if new_extent == self.extent:
             return self
-        elif new_extent > self.cumulative[-1]:
-            expanded_edges = list(self.edges) + [new_extent - self.cumulative[-1]]
-            return VaryingDimension(expanded_edges, extent=new_extent)
+        elif new_extent > self.edges.total:
+            grown = self.edges.with_edge(new_extent - self.edges.total)
+            return VaryingDimension(grown, extent=new_extent)
         else:
             return VaryingDimension(self.edges, extent=new_extent)
 
     @property
     def _size_repr(self) -> str:
-        return repr(tuple(self.edges))
+        return _edges_repr(self.edges)
 
 
 @runtime_checkable
@@ -391,7 +406,7 @@ class ChunkGrid:
     ``grid[coords]`` to return a ``ChunkSpec`` without external parameters.
 
     Internally represents each dimension as either FixedDimension (uniform chunks)
-    or VaryingDimension (per-chunk edge lengths with prefix sums).
+    or VaryingDimension (per-chunk edge lengths, run-length encoded).
     """
 
     _dimensions: tuple[DimensionGrid, ...]
@@ -506,7 +521,12 @@ class ChunkGrid:
             One inner tuple per dimension, each containing the data size
             of every chunk along that dimension.
         """
-        return tuple(tuple(d.data_size(i) for i in range(d.nchunks)) for d in self._dimensions)
+        return tuple(
+            d._data_sizes
+            if isinstance(d, VaryingDimension)
+            else tuple(d.data_size(i) for i in range(d.nchunks))
+            for d in self._dimensions
+        )
 
     # -- Collection interface --
 

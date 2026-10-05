@@ -26,11 +26,11 @@ from zarr.core.common import (
     NamedConfig,
     NamedRequiredConfig,
     NodeType,
-    compress_rle,
-    expand_rle,
+    RunLengthEdges,
     parse_chunk_edge,
     parse_chunk_shape,
     parse_named_configuration,
+    parse_rle,
     parse_shapelike,
     validate_rectilinear_edges,
     validate_rectilinear_kind,
@@ -246,20 +246,28 @@ RectilinearChunkGridMetadataJSON = NamedRequiredConfig[
 
 def _validate_chunk_shapes(
     chunk_shapes: Sequence[int | Sequence[int]],
-) -> tuple[int | tuple[int, ...], ...]:
+) -> tuple[int | RunLengthEdges, ...]:
     """Validate per-dimension chunk specifications.
 
     Each element is either a bare ``int`` (regular step size, must be >= 1)
-    or a sequence of explicit edge lengths (all must be >= 1, non-empty).
+    or a sequence of explicit edge lengths (all must be >= 1, non-empty),
+    which is returned run-length encoded. Edges that already are run-length
+    encoded are checked one run at a time, not one edge at a time.
     """
-    result: list[int | tuple[int, ...]] = []
+    result: list[int | RunLengthEdges] = []
     for dim_idx, dim_spec in enumerate(chunk_shapes):
         match dim_spec:
+            case RunLengthEdges():
+                for size in dim_spec.sizes:
+                    parse_chunk_edge(size, dim_idx)
+                if dim_spec.num_edges == 0:
+                    raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
+                result.append(dim_spec)
             case list() | tuple():
-                edges = tuple(parse_chunk_edge(edge, dim_idx) for edge in dim_spec)
+                edges = [parse_chunk_edge(edge, dim_idx) for edge in dim_spec]
                 if not edges:
                     raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
-                result.append(edges)
+                result.append(RunLengthEdges.from_edges(edges))
             case _:
                 result.append(parse_chunk_edge(dim_spec, dim_idx))
     return tuple(result)
@@ -304,15 +312,18 @@ class RectilinearChunkGridMetadata(Metadata):
 
     - A bare ``int`` — a regular step size that repeats to cover the axis
       (the spec's single-integer shorthand).
-    - A ``tuple[int, ...]`` — explicit per-chunk edge lengths (already
-      expanded from any RLE encoding).
+    - A sequence of ``int`` — explicit per-chunk edge lengths. It is given
+      as a ``tuple`` or a ``list`` and held as a `RunLengthEdges`, which
+      reads like the tuple of edges (and compares equal to it) but stores
+      one entry per run of equal edges, so a grid costs time and memory in
+      the size of its run-length encoded form, not in its number of chunks.
 
     This distinction matters for faithful round-tripping: a bare int
     serializes back as a bare int, while a single-element tuple serializes
     as a list.
     """
 
-    chunk_shapes: tuple[int | tuple[int, ...], ...]
+    chunk_shapes: tuple[int | Sequence[int], ...]
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "chunk_shapes", _validate_chunk_shapes(self.chunk_shapes))
@@ -328,12 +339,9 @@ class RectilinearChunkGridMetadata(Metadata):
                 # Bare int shorthand — serialize as-is
                 serialized_dims.append(dim_spec)
             else:
-                rle = compress_rle(dim_spec)
-                # Use RLE only if it's actually shorter
-                if len(rle) < len(dim_spec):
-                    serialized_dims.append(rle)
-                else:
-                    serialized_dims.append(list(dim_spec))
+                # A run of one edge is written as its bare size, so edges without
+                # repeats come out as a plain list.
+                serialized_dims.append(RunLengthEdges.from_edges(dim_spec).to_rle())
         return {
             "name": "rectilinear",
             "configuration": {
@@ -353,17 +361,17 @@ class RectilinearChunkGridMetadata(Metadata):
           Otherwise edges are kept as-is (the spec allows trailing edges
           beyond the array extent).
         """
-        new_chunk_shapes: list[int | tuple[int, ...]] = []
+        new_chunk_shapes: list[int | Sequence[int]] = []
         for dim_spec, new_ext in zip(self.chunk_shapes, new_shape, strict=True):
             if isinstance(dim_spec, int):
                 # Bare int covers any extent — no change needed
                 new_chunk_shapes.append(dim_spec)
             else:
-                edge_sum = sum(dim_spec)
-                if new_ext > edge_sum:
-                    new_chunk_shapes.append((*dim_spec, new_ext - edge_sum))
+                edges = RunLengthEdges.from_edges(dim_spec)
+                if new_ext > edges.total:
+                    new_chunk_shapes.append(edges.with_edge(new_ext - edges.total))
                 else:
-                    new_chunk_shapes.append(dim_spec)
+                    new_chunk_shapes.append(edges)
         return RectilinearChunkGridMetadata(chunk_shapes=tuple(new_chunk_shapes))
 
     @classmethod
@@ -373,7 +381,7 @@ class RectilinearChunkGridMetadata(Metadata):
         validate_rectilinear_kind(configuration.get("kind"))
         raw_shapes = configuration["chunk_shapes"]
         parsed = [
-            tuple(expand_rle(dim_spec, axis)) if isinstance(dim_spec, list) else dim_spec
+            parse_rle(dim_spec, axis) if isinstance(dim_spec, list) else dim_spec
             for axis, dim_spec in enumerate(raw_shapes)
         ]
         return cls(chunk_shapes=tuple(parsed))
@@ -435,7 +443,7 @@ def create_chunk_grid_metadata(
         return RegularChunkGridMetadata(chunk_shape=chunks.chunk_shape)
     # Uniform dimensions stay bare ints — the rectilinear grid spec treats
     # a bare int as a step size repeating to cover the axis.
-    chunk_shapes: list[int | tuple[int, ...]] = []
+    chunk_shapes: list[int | Sequence[int]] = []
     for dim in chunks.dimensions:
         if isinstance(dim, FixedDimension):
             chunk_shapes.append(dim.size)
