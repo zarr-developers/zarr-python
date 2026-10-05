@@ -198,6 +198,15 @@ def test_gpu_buffer_prototype() -> None:
         ndbuffer.as_scalar()
 
 
+@pytest.mark.parametrize(("shape", "key"), [((), ()), ((3, 4), (1, 2))])
+def test_cpu_ndbuffer_getitem_returns_view(shape: tuple[int, ...], key: tuple[int, ...]) -> None:
+    # https://github.com/zarr-developers/zarr-python/issues/4464
+    data = np.full(shape, b"x" * 10)
+    item = cpu.NDBuffer.from_numpy_array(data)[key].as_numpy_array()
+    assert item.shape == ()
+    assert np.shares_memory(item, data)
+
+
 # TODO: the same test for other buffer classes
 def test_cpu_buffer_as_scalar() -> None:
     buf = cpu.buffer_prototype.nd_buffer.create(shape=(), dtype="int64")
