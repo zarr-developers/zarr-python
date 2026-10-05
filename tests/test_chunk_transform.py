@@ -60,9 +60,9 @@ def _make_nd_buffer(arr: np.ndarray[Any, np.dtype[Any]]) -> NDBuffer:
 @pytest.mark.parametrize(
     ("shape", "codecs"),
     [
-        ((100,), (BytesCodec(),)),
-        ((100,), (BytesCodec(), GzipCodec())),
-        ((3, 4), (TransposeCodec(order=(1, 0)), BytesCodec(), ZstdCodec())),
+        ((100,), (BytesCodec(endian="little"),)),
+        ((100,), (BytesCodec(endian="little"), GzipCodec())),
+        ((3, 4), (TransposeCodec(order=(1, 0)), BytesCodec(endian="little"), ZstdCodec())),
     ],
     ids=["bytes-only", "with-compression", "full-chain"],
 )
@@ -90,14 +90,14 @@ def test_construction_rejects_non_sync(shape: tuple[int, ...], codecs: tuple[Cod
 @pytest.mark.parametrize(
     ("arr", "codecs"),
     [
-        (np.arange(100, dtype="float64"), (BytesCodec(),)),
-        (np.arange(100, dtype="float64"), (BytesCodec(), GzipCodec(level=1))),
+        (np.arange(100, dtype="float64"), (BytesCodec(endian="little"),)),
+        (np.arange(100, dtype="float64"), (BytesCodec(endian="little"), GzipCodec(level=1))),
         (
             np.arange(12, dtype="float64").reshape(3, 4),
-            (TransposeCodec(order=(1, 0)), BytesCodec(), ZstdCodec(level=1)),
+            (TransposeCodec(order=(1, 0)), BytesCodec(endian="little"), ZstdCodec(level=1)),
         ),
-        (np.arange(100, dtype="float64"), (BytesCodec(), Crc32cCodec())),
-        (np.arange(50, dtype="int32"), (BytesCodec(), ZstdCodec(level=1))),
+        (np.arange(100, dtype="float64"), (BytesCodec(endian="little"), Crc32cCodec())),
+        (np.arange(50, dtype="int32"), (BytesCodec(endian="little"), ZstdCodec(level=1))),
     ],
     ids=["bytes-only", "gzip", "transpose+zstd", "crc32c", "int32"],
 )
@@ -118,9 +118,9 @@ def test_encode_decode_roundtrip(
 @pytest.mark.parametrize(
     ("shape", "codecs", "input_size", "expected_size"),
     [
-        ((100,), (BytesCodec(),), 800, 800),
-        ((100,), (BytesCodec(), Crc32cCodec()), 800, 804),
-        ((3, 4), (TransposeCodec(order=(1, 0)), BytesCodec()), 96, 96),
+        ((100,), (BytesCodec(endian="little"),), 800, 800),
+        ((100,), (BytesCodec(endian="little"), Crc32cCodec()), 800, 804),
+        ((3, 4), (TransposeCodec(order=(1, 0)), BytesCodec(endian="little")), 96, 96),
     ],
     ids=["bytes-only", "crc32c", "transpose"],
 )
@@ -147,7 +147,7 @@ def test_encode_returns_none_propagation() -> None:
 
     spec = _make_array_spec((3, 4), np.dtype("float64"))
     chain = ChunkTransform(
-        codecs=(NoneReturningAACodec(order=(1, 0)), BytesCodec()),
+        codecs=(NoneReturningAACodec(order=(1, 0)), BytesCodec(endian="little")),
     )
     arr = np.arange(12, dtype="float64").reshape(3, 4)
     nd_buf = _make_nd_buffer(arr)

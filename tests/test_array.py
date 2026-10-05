@@ -342,7 +342,7 @@ def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat | str)
             "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
             "data_type": "uint8",
             "chunk_key_encoding": {"name": "v2", "configuration": {"separator": "/"}},
-            "codecs": (BytesCodec().to_dict(),),
+            "codecs": (BytesCodec(endian="little").to_dict(),),
             "fill_value": 0,
             "storage_transformers": ({"test": "should_raise"}),
         }
@@ -353,7 +353,7 @@ def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat | str)
             "chunks": (1,),
             "dtype": "|u1",
             "dimension_separator": ".",
-            "codecs": (BytesCodec().to_dict(),),
+            "codecs": (BytesCodec(endian="little").to_dict(),),
             "fill_value": 0,
             "order": "C",
             "storage_transformers": ({"test": "should_raise"}),

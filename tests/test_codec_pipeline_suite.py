@@ -285,7 +285,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             "chunks": (2, 4),
             "shards": None,
             "filters": [TransposeCodec(order=(1, 0))],
-            "serializer": BytesCodec(),
+            "serializer": BytesCodec(endian="little"),
             **_I32,
         },
         writes=((slice(None), np.arange(96, dtype="int32").reshape(8, 12)),),
@@ -298,7 +298,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             "chunks": (2, 4),
             "shards": None,
             "filters": [TransposeCodec(order=(1, 0))],
-            "serializer": BytesCodec(),
+            "serializer": BytesCodec(endian="little"),
             "compressors": GzipCodec(level=1),
             **_I32,
         },
@@ -517,7 +517,9 @@ class CodecPipelineTests:
             compressors=None,
             config={"write_empty_chunks": True},
             serializer=ShardingCodec(
-                chunk_shape=inner, codecs=[BytesCodec()], subchunk_write_order=subchunk_write_order
+                chunk_shape=inner,
+                codecs=[BytesCodec(endian="little")],
+                subchunk_write_order=subchunk_write_order,
             ),
         )
         ref = np.arange(24, dtype="int32").reshape(shape)

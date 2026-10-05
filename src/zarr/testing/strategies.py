@@ -263,8 +263,8 @@ subchunk_write_orders: st.SearchStrategy[SubchunkWriteOrder] = st.sampled_from(S
 # silently disables the fast path under every property test.
 sharding_inner_codecs: st.SearchStrategy[list[BytesCodec | ZstdCodec]] = st.sampled_from(
     [
-        [BytesCodec()],
-        [BytesCodec(), ZstdCodec()],
+        [BytesCodec(endian="little")],
+        [BytesCodec(endian="little"), ZstdCodec()],
     ]
 )
 
@@ -307,7 +307,7 @@ def array_metadata(
             attributes=draw(attributes),  # type: ignore[arg-type]
             dimension_names=draw(dimension_names(ndim=ndim)),
             chunk_key_encoding=DefaultChunkKeyEncoding(separator="/"),  # FIXME
-            codecs=[BytesCodec()],
+            codecs=[BytesCodec(endian="little")],
             storage_transformers=(),
         )
 
@@ -390,7 +390,7 @@ def _sharding_codecs(
     return ShardingCodec(
         subchunk_write_order=subchunk_write_order,
         codecs=inner_codecs,
-        index_codecs=[BytesCodec(), Crc32cCodec()],
+        index_codecs=[BytesCodec(endian="little"), Crc32cCodec()],
         chunk_shape=chunk_shape,
     )
 

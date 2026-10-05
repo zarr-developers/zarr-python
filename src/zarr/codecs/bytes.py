@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import warnings
 from dataclasses import dataclass, replace
+from enum import Enum
 from typing import TYPE_CHECKING, ClassVar, Final, Literal
 
 from zarr.abc.codec import ArrayBytesCodec
@@ -10,6 +11,7 @@ from zarr.codecs._deprecated_enum import _coerce_enum_input, _DeprecatedStrEnumM
 from zarr.core.common import JSON, parse_named_configuration
 from zarr.core.dtype.common import HasEndianness
 from zarr.core.dtype.npy.structured import Struct
+from zarr.errors import ZarrFutureWarning
 
 if TYPE_CHECKING:
     from typing import Self
@@ -33,6 +35,30 @@ class Endian(metaclass=_DeprecatedStrEnumMeta):
     _members: ClassVar[dict[str, str]] = {"little": "little", "big": "big"}
 
 
+class _HostEndian(Enum):
+    """Marks an omitted `endian` argument, which currently means the host byte order."""
+
+    token = 0
+
+
+def _resolve_host_endian() -> EndianLiteral:
+    """The byte order an omitted `endian` argument stands for, warning where it will change.
+
+    The default will become `"little"` on every host, so only big-endian hosts are affected.
+    """
+    if sys.byteorder == "big":
+        warnings.warn(
+            "BytesCodec() without an `endian` argument stores chunks in the byte order of the "
+            "host, which is big-endian here. A future version of Zarr Python will default to "
+            "endian='little' on every host, so that stored bytes do not depend on the machine "
+            "that wrote them. Pass endian='big' to keep the current behavior, or "
+            "endian='little' to adopt the new default now.",
+            ZarrFutureWarning,
+            stacklevel=3,
+        )
+    return sys.byteorder
+
+
 def _parse_endian(data: object) -> EndianLiteral:
     if isinstance(data, str) and data in ENDIAN:
         return data  # type: ignore[return-value]
@@ -41,13 +67,24 @@ def _parse_endian(data: object) -> EndianLiteral:
 
 @dataclass(frozen=True)
 class BytesCodec(ArrayBytesCodec):
-    """bytes codec"""
+    """bytes codec
+
+    When `endian` is omitted it is the byte order of the host. That default is deprecated on
+    big-endian hosts: it will become `"little"` on every host, so that stored bytes do not depend
+    on the machine that wrote them.
+    """
 
     is_fixed_size = True
 
     endian: EndianLiteral | None
 
-    def __init__(self, *, endian: Endian | EndianLiteral | None = sys.byteorder) -> None:
+    def __init__(
+        self,
+        *,
+        endian: Endian | EndianLiteral | Literal[_HostEndian.token] | None = _HostEndian.token,
+    ) -> None:
+        if endian is _HostEndian.token:
+            endian = _resolve_host_endian()
         if endian is None:
             endian_parsed: EndianLiteral | None = None
         else:

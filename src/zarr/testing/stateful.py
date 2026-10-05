@@ -145,7 +145,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
                 paths=st.just(parent),
                 array_names=st.just(name),
                 zarr_formats=st.just(3),
-                compressors=st.just(BytesCodec()),
+                compressors=st.just(BytesCodec(endian="little")),
                 open_mode="a",
             ),
             label="generated array",
