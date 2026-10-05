@@ -45,7 +45,6 @@ from zarr.core.chunk_grids import (
     ChunkGrid,
     _is_auto,
     _is_keep,
-    _is_rectilinear_chunks,
     guess_chunks,
     normalize_chunks_nd,
     resolve_outer_and_inner_chunks,
@@ -120,10 +119,12 @@ from zarr.core.metadata import (
 )
 from zarr.core.metadata.io import (
     ARRAY_DOCUMENTS,
+    encode_documents,
     parse_stored_array,
     read_documents,
     save_metadata,
     save_new_metadata,
+    store_documents,
     upsert_metadata,
 )
 from zarr.core.metadata.v2 import (
@@ -350,6 +351,18 @@ def _array_metadata_dict_v3(zarr_json_bytes: Buffer) -> dict[str, JSON]:
     return metadata_dict
 
 
+def _v2_chunks_given(chunks: object) -> bool:
+    """Whether the legacy Zarr format 2 `chunks` argument is given.
+
+    A falsy `chunks` (such as `None`, 0, `[]` or `False`) is read as not given. A numpy
+    array with more than one element has no truth value and is always given; a shorter
+    one is given when its element is nonzero (an empty array is not given).
+    """
+    if isinstance(chunks, np.ndarray):
+        return chunks.size > 1 or bool(chunks.any())
+    return bool(chunks)
+
+
 @dataclass(frozen=True)
 class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     """
@@ -429,7 +442,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
         # v3 only
-        chunk_shape: ShapeLike | None = None,
+        chunk_shape: ChunksLike | None = None,
         chunk_key_encoding: (
             ChunkKeyEncodingLike
             | tuple[Literal["default"], Literal[".", "/"]]
@@ -439,7 +452,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: DimensionNamesLike = None,
         # v2 only
-        chunks: ShapeLike | None = None,
+        chunks: ChunksLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
@@ -516,17 +529,16 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 )
             if dimension_names is not None:
                 raise ValueError("dimension_names cannot be used for arrays with zarr_format 2.")
-            if _is_rectilinear_chunks(_raw_chunks):
-                raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
-
             item_size = 1
             if isinstance(dtype_parsed, HasItemSize):
                 item_size = dtype_parsed.item_size
-            _raw = chunks or chunk_shape
-            if _raw is None:
+            _raw_v2 = chunks if _v2_chunks_given(chunks) else chunk_shape
+            if _raw_v2 is None:
                 outer_chunks = guess_chunks(shape, item_size)
             else:
-                outer_chunks = normalize_chunks_nd(_raw, shape)
+                outer_chunks = normalize_chunks_nd(_raw_v2, shape)
+            if not outer_chunks.is_regular:
+                raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
             _chunks = outer_chunks.chunk_shape
 
             if order is None:
@@ -646,7 +658,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             dimension_names=dimension_names,
             attributes=attributes,
         )
-
         array = cls(metadata=metadata, store_path=store_path, config=config)
         await save_new_metadata(store_path, metadata, overwrite=overwrite, ensure_parents=True)
         return array
@@ -727,7 +738,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             compressor=compressor_parsed,
             attributes=attributes,
         )
-
         array = cls(metadata=metadata, store_path=store_path, config=config)
         await save_new_metadata(store_path, metadata, overwrite=overwrite, ensure_parents=True)
         return array
@@ -1607,7 +1617,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         """Store `metadata` as this array's own documents, then clear the
-        `_stored_document` mark (see `_stored_document_replaced`)."""
+        `_stored_document` mark (see `_stored_document_replaced`). `_resize` stores the
+        documents it encoded before deleting chunks directly, then clears the mark the
+        same way."""
         await save_metadata(self.store_path, metadata, ensure_parents=ensure_parents)
         self._stored_document_replaced()
 
@@ -1642,14 +1654,14 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         zarr_format = self.metadata.zarr_format
         documents = await read_documents(self.store_path, ARRAY_DOCUMENTS[zarr_format])
         try:
-            current = parse_stored_array(documents, zarr_format)
+            current = parse_stored_array(documents, zarr_format, str(self.store_path))
         except ArrayNotFoundError:
             pass
         else:
             if _chunk_layout(current) != _chunk_layout(self.metadata):
                 raise ValueError(
-                    f"The metadata stored for the array at {str(self.store_path)!r} has "
-                    "changed since this array was opened: reopen the array to write to it."
+                    f"Array {str(self.store_path)!r}: the metadata stored has changed since "
+                    "this array was opened; reopen the array to write to it. Nothing was stored."
                 )
             if current._stored_document is not None:
                 await upsert_metadata(self.store_path, current, documents)
@@ -4161,13 +4173,8 @@ class ShardsConfigParam(TypedDict):
     index_location: IndexLocation | None
 
 
-type ShardsLike = (
-    tuple[int, ...]
-    | Sequence[int | Sequence[int]]
-    | ChunkGridMetadata
-    | ShardsConfigParam
-    | Literal["auto"]
-)
+# A shard shape is given in any form a chunk shape is, or as a sharding configuration.
+type ShardsLike = ChunksLike | ShardsConfigParam | Literal["auto"]
 
 
 async def from_array(
@@ -4568,8 +4575,17 @@ async def init_array(
         chunk_key_encoding, zarr_format=zarr_format
     )
 
-    # Validate rectilinear chunks constraints
-    if _is_rectilinear_chunks(chunks):
+    # Normalize the user's chunks into a canonical ChunkGrid
+
+    if _is_auto(chunks):
+        max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
+        chunks_normalized = guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
+    else:
+        chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
+
+    # Validate rectilinear chunks constraints. The normalized grid is the one
+    # judge of what the user declared.
+    if not chunks_normalized.is_regular:
         if zarr_format == 2:
             raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
         if shards is not None:
@@ -4578,14 +4594,6 @@ async def init_array(
                 "Use rectilinear shards instead: "
                 "chunks=(inner_size, ...), shards=[[shard_sizes], ...]"
             )
-
-    # Normalize the user's chunks into a canonical ChunkGrid
-
-    if _is_auto(chunks):
-        max_bytes = None if shards is None else SHARDED_INNER_CHUNK_MAX_BYTES
-        chunks_normalized = guess_chunks(shape_parsed, item_size, max_bytes=max_bytes)
-    else:
-        chunks_normalized = normalize_chunks_nd(chunks, shape_parsed)
 
     # Resolve chunks + shards into outer_chunks (grid metadata) and
     # inner (sub-chunk structure for ShardingCodec, None if no sharding)
@@ -4908,10 +4916,9 @@ def _stored_rectilinear_grid_or_none(
     """The *stored* rectilinear chunk grid, or None if the stored grid is regular
     (in which case `.chunks` and `.shards` are defined).
 
-    Dispatches on the stored metadata, not the runtime ``ChunkGrid``: the
-    runtime grid collapses a rectilinear dimension whose edges happen to be
-    uniform to a ``FixedDimension`` as an optimization, so it can report regular
-    for an array whose stored metadata — and therefore `.chunks` — is
+    Dispatches on the stored metadata, not the runtime `ChunkGrid`: a
+    rectilinear grid whose dimensions are all bare-int step sizes is regular at
+    runtime, while its stored metadata — and therefore `.chunks` — is
     rectilinear. Zarr format 2 grids are always regular.
     """
     if isinstance(metadata, ArrayV3Metadata) and isinstance(
@@ -5904,6 +5911,10 @@ async def _resize(
     # ensure deletion is only run if array is shrinking as the delete_outside_chunks path is unbounded in memory
     only_growing = all(new >= old for new, old in zip(new_shape, array.metadata.shape, strict=True))
 
+    # Encode the new metadata before deleting any chunk: metadata that cannot be stored
+    # then fails with the store untouched.
+    documents = encode_documents(array.store_path, new_metadata)
+
     if delete_outside_chunks and not only_growing:
         # Remove all chunks outside of the new shape
         old_chunk_coords = set(array._chunk_grid.all_chunk_coords())
@@ -5922,7 +5933,8 @@ async def _resize(
         )
 
     # Write new metadata
-    await array._save_metadata(new_metadata)
+    await store_documents(array.store_path, documents)
+    array._stored_document_replaced()
 
     # Update metadata and chunk_grid (in place)
     object.__setattr__(array, "metadata", new_metadata)

@@ -40,6 +40,7 @@ from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.sync import sync
 from zarr.errors import ZarrUserWarning
 from zarr.storage import MemoryStore
+from zarr.testing.strategies import _rectilinear_chunks
 
 pytestmark = [
     pytest.mark.slow_hypothesis,
@@ -49,24 +50,10 @@ pytestmark = [
 DTYPE = np.dtype("int16")
 METADATA_KEYS = (".zarray", ".zattrs", "zarr.json")
 MAX_SIDE = 6
-
-
-def _rectilinear_dim(extent: int) -> st.SearchStrategy[int | list[int]]:
-    """A bare step, or an edge list covering `extent` (any edges for extent 0).
-
-    A small local copy of what `zarr.testing.strategies` draws for rectilinear
-    declarations, so this test does not depend on that module's experimental API.
-    """
-    steps = st.integers(min_value=1, max_value=MAX_SIDE)
-    if extent == 0:
-        return steps | st.lists(steps, min_size=1, max_size=3)
-    if extent == 1:
-        return steps | st.just([1])
-    cuts = st.lists(st.integers(min_value=1, max_value=extent - 1), unique=True, max_size=3)
-    edges = cuts.map(
-        lambda c: [b - a for a, b in zip([0, *sorted(c)], [*sorted(c), extent], strict=True)]
-    )
-    return steps | edges
+# `append` may grow an axis past `MAX_SIDE`, but not without bound: with chunks of 1,
+# the cells an extent of 100 steps could reach make each full-array read take seconds,
+# and the nightly run of every example together exceeded pytest's faulthandler_timeout.
+MAX_APPEND_EXTENT = 2 * MAX_SIDE
 
 
 async def _list(store: MemoryStore, prefix: str) -> list[str]:
@@ -110,9 +97,7 @@ class ArrayLifecycle(RuleBasedStateMachine):
         elif spelling == "auto":
             chunks = "auto"
         elif spelling == "rectilinear":
-            chunks = [data.draw(_rectilinear_dim(s)) for s in shape]
-            if not any(isinstance(c, list) for c in chunks):
-                chunks[0] = [chunks[0]] if shape[0] == 0 else [shape[0]]
+            chunks = data.draw(_rectilinear_chunks(shape=shape), label="rectilinear chunks")
         else:
             chunks = tuple(data.draw(st.integers(1, 3)) for _ in shape)
             if spelling == "sharded":
@@ -229,7 +214,8 @@ class ArrayLifecycle(RuleBasedStateMachine):
             axes = st.sampled_from(self.legacy_axes) | axes
         axis = data.draw(axes, label="axis")
         block_shape = list(self.shape)
-        block_shape[axis] = data.draw(st.integers(0, 4), label="rows")
+        max_rows = min(4, max(0, MAX_APPEND_EXTENT - self.shape[axis]))
+        block_shape[axis] = data.draw(st.integers(0, max_rows), label="rows")
         block = data.draw(npst.arrays(DTYPE, tuple(block_shape)), label="block")
         note(f"append {block.shape} along {axis} to {self.shape}")
         if self.shape[axis] == 0 and block.shape[axis]:

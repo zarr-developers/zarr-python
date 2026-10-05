@@ -6,7 +6,7 @@ import pickle
 import shutil
 import tempfile
 import zipfile
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pytest
@@ -407,3 +407,23 @@ def test_zipstore_close_lifecycle(tmp_path: Path) -> None:
         lambda: ZipStoreLifecycleMachine(tmp_path),
         settings=settings(max_examples=50, deadline=None),
     )
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_resize_needing_deletes_leaves_array_unchanged(
+    tmp_path: Path, zarr_format: Literal[2, 3]
+) -> None:
+    """A zip store cannot delete, so a resize that must delete chunks fails before it
+    stores the new metadata."""
+    path = tmp_path / "a.zip"
+    store = ZipStore(path, mode="w")
+    arr = create_array(store, shape=(20,), chunks=(5,), dtype="i4", zarr_format=zarr_format)
+    arr[:] = np.arange(20)
+    with pytest.raises(NotImplementedError):
+        arr.resize((5,))
+    assert arr.shape == (20,)
+    store.close()
+    names = zipfile.ZipFile(path).namelist()
+    assert len(names) == len(set(names))
+    reopened = zarr.open_array(ZipStore(path, mode="r"), mode="r")
+    np.testing.assert_array_equal(reopened[:], np.arange(20))
