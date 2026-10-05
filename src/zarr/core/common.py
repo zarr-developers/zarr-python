@@ -27,7 +27,6 @@ from zarr.errors import ZarrRuntimeWarning
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
-    from typing import Self
 
     import numpy.typing as npt
 
@@ -325,20 +324,22 @@ def parse_chunk_shape(data: object) -> tuple[int, ...]:
     raise TypeError(f"A chunk shape must be an iterable of chunk edge lengths, got {data!r}")
 
 
-class RunLengthEdges(Sequence[int]):
-    """An immutable sequence of chunk edge lengths, stored run-length encoded.
+class RunLengthEdges:
+    """The chunk edge lengths of one dimension, stored run-length encoded.
 
-    The sequence is held as `(size, count)` runs, with adjacent runs of the same size
+    The edges are held as `(size, count)` runs, with adjacent runs of the same size
     merged, so construction, lookups and prefix sums cost time and memory in the number
-    of runs, not in the number of edges: `RunLengthEdges([(1, 2**40)])` is one run. It
-    reads like the sequence of edges it stands for (`len`, indexing, iteration), but
-    only iteration visits every edge.
+    of runs, not in the number of edges: `RunLengthEdges([(1, 2**40)])` is one run.
+
+    This is deliberately not a sequence: there is no `len`, indexing or iteration, so
+    nothing visits every edge by accident. `size_of`, `offset_of` and `index_at` answer
+    per-edge questions from the runs, and `expand` is the one method that yields every
+    edge.
 
     Sizes are not checked here: what a valid edge length is, and how to report an invalid
     one, is up to the caller (see `parse_chunk_edge`). Each count must be at least 1.
 
-    It is not a `tuple` and equals only another `RunLengthEdges` with the same edges;
-    compare `tuple(edges)` against a tuple.
+    Two instances are equal if they encode the same edges.
     """
 
     __slots__ = ("_index_stops", "_lookup_tables", "_offset_stops", "counts", "sizes")
@@ -369,10 +370,10 @@ class RunLengthEdges(Sequence[int]):
         self._lookup_tables: tuple[npt.NDArray[np.intp], ...] | None = None
 
     @classmethod
-    def from_edges(cls, edges: Iterable[int]) -> Self:
-        """Run-length encode `edges`, one entry per edge. An instance of this class is
-        returned as it is."""
-        if isinstance(edges, cls):
+    def from_edges(cls, edges: Iterable[int] | RunLengthEdges) -> RunLengthEdges:
+        """Run-length encode `edges`, one entry per edge. A `RunLengthEdges` is returned
+        as it is."""
+        if isinstance(edges, RunLengthEdges):
             return edges
         return cls((size, sum(1 for _ in group)) for size, group in itertools.groupby(edges))
 
@@ -383,7 +384,7 @@ class RunLengthEdges(Sequence[int]):
 
     @property
     def num_edges(self) -> int:
-        """The number of edges. Unlike `len`, this is not limited to `sys.maxsize`."""
+        """The number of edges."""
         return self._index_stops[-1] if self._index_stops else 0
 
     @property
@@ -394,37 +395,15 @@ class RunLengthEdges(Sequence[int]):
     def __reduce__(self) -> tuple[type[RunLengthEdges], tuple[tuple[tuple[int, int], ...]]]:
         return type(self), (self.runs,)
 
-    def __len__(self) -> int:
-        return self.num_edges
-
-    def __iter__(self) -> Iterator[int]:
+    def expand(self) -> Iterator[int]:
+        """Every edge, in order: as many items as there are edges, however few the runs."""
         return itertools.chain.from_iterable(map(itertools.repeat, self.sizes, self.counts))
 
-    def __contains__(self, value: object) -> bool:
-        return value in self.sizes
-
-    @overload
-    def __getitem__(self, index: int) -> int: ...
-    @overload
-    def __getitem__(self, index: slice) -> RunLengthEdges: ...
-    def __getitem__(self, index: int | slice) -> int | RunLengthEdges:
-        num_edges = self.num_edges
-        if isinstance(index, slice):
-            start, stop, step = index.indices(num_edges)
-            if step != 1:
-                return RunLengthEdges.from_edges(self[i] for i in range(start, stop, step))
-            runs: list[tuple[int, int]] = []
-            run_start = 0
-            for size, run_stop in zip(self.sizes, self._index_stops, strict=True):
-                count = min(stop, run_stop) - max(start, run_start)
-                if count > 0:
-                    runs.append((size, count))
-                run_start = run_stop
-            return RunLengthEdges(runs)
-        position = index + num_edges if index < 0 else index
-        if not 0 <= position < num_edges:
-            raise IndexError(f"Edge index {index} is out of range for {num_edges} edges")
-        return self.sizes[bisect.bisect_right(self._index_stops, position)]
+    def size_of(self, index: int) -> int:
+        """The length of edge `index`."""
+        if not 0 <= index < self.num_edges:
+            raise IndexError(f"Edge index {index} is out of range for {self.num_edges} edges")
+        return self.sizes[bisect.bisect_right(self._index_stops, index)]
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, RunLengthEdges):
@@ -436,9 +415,6 @@ class RunLengthEdges(Sequence[int]):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.to_rle()})"
-
-    def count(self, value: object) -> int:
-        return sum(count for size, count in self.runs if size == value)
 
     def to_rle(self) -> list[int | list[int]]:
         """The mixed run-length encoding of the rectilinear chunk grid spec: a run of
@@ -569,7 +545,7 @@ def validate_rectilinear_kind(kind: str | None) -> None:
 
 
 def validate_rectilinear_edges(
-    chunk_shapes: Sequence[int | Sequence[int]], array_shape: Sequence[int]
+    chunk_shapes: Sequence[int | Sequence[int] | RunLengthEdges], array_shape: Sequence[int]
 ) -> None:
     """Validate that rectilinear chunk edges cover the array extent per dimension.
 

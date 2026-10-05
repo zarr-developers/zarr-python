@@ -60,7 +60,7 @@ def _edges(grid: ChunkGrid, dim: int) -> tuple[int, ...]:
     if isinstance(d, FixedDimension):
         return tuple(d.size for _ in range(d.nchunks))
     if isinstance(d, VaryingDimension):
-        return tuple(d.edges)
+        return tuple(d.edges.expand())
     raise TypeError(f"Unexpected dimension type: {type(d)}")
 
 
@@ -250,7 +250,7 @@ def test_fixed_dimension_rejects_invalid(size: int, extent: int, match: str) -> 
 def test_varying_dimension_construction() -> None:
     """VaryingDimension stores edges, cumulative sums, nchunks, and extent correctly"""
     d = VaryingDimension([10, 20, 30], extent=60)
-    assert tuple(d.edges) == (10, 20, 30)
+    assert tuple(d.edges.expand()) == (10, 20, 30)
     assert d.cumulative == (10, 30, 60)
     assert d.nchunks == 3
     assert d.extent == 60
@@ -646,7 +646,7 @@ def test_rle_expand_names_dimension(
 def test_parse_rle(rle_input: list[Any]) -> None:
     """parse_rle reads the edges expand_rle expands, as merged runs"""
     parsed = parse_rle(rle_input)
-    assert list(parsed) == expand_rle(rle_input)
+    assert list(parsed.expand()) == expand_rle(rle_input)
     assert parsed.to_rle() == compress_rle(expand_rle(rle_input))
 
 
@@ -667,10 +667,10 @@ def test_parse_rle(rle_input: list[Any]) -> None:
     ids=["one-edge", "one-run", "mixed-runs", "no-repeats", "adjacent-equal-runs"],
 )
 def test_run_length_edges(runs: list[tuple[int, int]]) -> None:
-    """RunLengthEdges reads like the sequence of edges it encodes: length, indexing,
-    slicing, iteration, prefix sums and position lookups all agree with the expanded
-    edges, adjacent runs of one size are merged, and it equals only a RunLengthEdges of
-    the same edges, never the tuple of them"""
+    """RunLengthEdges answers for the edges it encodes: the edge count, each edge's size,
+    the expansion, prefix sums and position lookups all agree with the expanded edges,
+    adjacent runs of one size are merged, and it equals only a RunLengthEdges of the
+    same edges, never the tuple of them"""
     expanded = tuple(size for size, count in runs for _ in range(count))
     offsets = (0, *itertools.accumulate(expanded))
     edges = RunLengthEdges(runs)
@@ -681,17 +681,12 @@ def test_run_length_edges(runs: list[tuple[int, int]]) -> None:
     assert edges != RunLengthEdges.from_edges((*expanded, 1))
     assert pickle.loads(pickle.dumps(edges)) == edges
     assert all(a != b for (a, _), (b, _) in itertools.pairwise(edges.runs))
-    assert len(edges) == edges.num_edges == len(expanded)
+    assert edges.num_edges == len(expanded)
     assert edges.total == sum(expanded)
-    assert tuple(edges) == expanded
-    assert [edges[i] for i in range(-len(expanded), len(expanded))] == [*expanded, *expanded]
-    assert tuple(edges[1:]) == expanded[1:]
-    assert tuple(edges[:-1]) == expanded[:-1]
-    assert tuple(edges[::2]) == expanded[::2]
-    assert all(edges.count(size) == expanded.count(size) for size in {*expanded, 99})
-    assert all((size in edges) == (size in expanded) for size in {*expanded, 99})
+    assert tuple(edges.expand()) == expanded
+    assert [edges.size_of(i) for i in range(len(expanded))] == list(expanded)
     assert edges.to_rle() == compress_rle(expanded)
-    assert tuple(edges.with_edge(7)) == (*expanded, 7)
+    assert tuple(edges.with_edge(7).expand()) == (*expanded, 7)
     assert [edges.offset_of(i) for i in range(len(expanded) + 1)] == list(offsets)
     positions = np.arange(-2, edges.total + 3, dtype=np.intp)
     expected_indices = np.searchsorted(offsets[1:], positions, side="right")
@@ -705,11 +700,23 @@ def test_run_length_edges_rejects_count_below_one() -> None:
         RunLengthEdges([(5, 0)])
 
 
-@pytest.mark.parametrize("index", [3, -4])
-def test_run_length_edges_getitem_out_of_range(index: int) -> None:
-    """Indexing RunLengthEdges past either end raises IndexError"""
+@pytest.mark.parametrize("index", [3, -1])
+def test_run_length_edges_size_of_out_of_range(index: int) -> None:
+    """size_of raises IndexError for an index that is not an edge"""
     with pytest.raises(IndexError, match=f"Edge index {index} is out of range for 3 edges"):
-        RunLengthEdges([(5, 3)])[index]
+        RunLengthEdges([(5, 3)]).size_of(index)
+
+
+@pytest.mark.parametrize(
+    "use",
+    [len, iter, lambda edges: edges[0], lambda edges: 5 in edges],
+    ids=["len", "iter", "getitem", "contains"],
+)
+def test_run_length_edges_is_not_a_sequence(use: Callable[[Any], object]) -> None:
+    """RunLengthEdges has no length, iteration, indexing or membership test, so no caller
+    visits every edge without asking for `expand`"""
+    with pytest.raises(TypeError):
+        use(RunLengthEdges([(5, 3)]))
 
 
 @pytest.mark.parametrize("index", [4, -1])
@@ -2771,7 +2778,7 @@ def test_update_shape_shrink_creates_boundary() -> None:
     new_grid = grid.update_shape((45,))
     dim = new_grid._dimensions[0]
     assert isinstance(dim, VaryingDimension)
-    assert tuple(dim.edges) == (10, 20, 30)
+    assert tuple(dim.edges.expand()) == (10, 20, 30)
     assert dim.extent == 45
     assert dim.chunk_size(2) == 30
     assert dim.data_size(2) == 15
@@ -2783,7 +2790,7 @@ def test_update_shape_shrink_to_exact_boundary() -> None:
     new_grid = grid.update_shape((30,))
     dim = new_grid._dimensions[0]
     assert isinstance(dim, VaryingDimension)
-    assert tuple(dim.edges) == (10, 20, 30)
+    assert tuple(dim.edges.expand()) == (10, 20, 30)
     assert dim.nchunks == 2
     assert dim.ngridcells == 3
     assert dim.extent == 30

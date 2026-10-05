@@ -45,7 +45,6 @@ from zarr.core.chunk_utils import (
     merge_and_encode_chunk,
 )
 from zarr.core.common import (
-    RunLengthEdges,
     ShapeLike,
     parse_named_configuration,
     parse_shapelike,
@@ -623,8 +622,7 @@ class ShardingCodec(
         elif isinstance(chunk_grid, RectilinearChunkGridMetadata):
             # One size per run of equal edges, not one per chunk.
             edges_per_dim = tuple(
-                (s,) if isinstance(s, int) else RunLengthEdges.from_edges(s).sizes
-                for s in chunk_grid.chunk_shapes
+                (s,) if isinstance(s, int) else s.sizes for s in chunk_grid.chunk_shapes
             )
         else:
             raise TypeError(

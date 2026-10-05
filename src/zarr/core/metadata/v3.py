@@ -245,7 +245,7 @@ RectilinearChunkGridMetadataJSON = NamedRequiredConfig[
 
 
 def _validate_chunk_shapes(
-    chunk_shapes: Sequence[int | Sequence[int]],
+    chunk_shapes: Sequence[int | Sequence[int] | RunLengthEdges],
 ) -> tuple[int | RunLengthEdges, ...]:
     """Validate per-dimension chunk specifications.
 
@@ -304,7 +304,7 @@ class RegularChunkGridMetadata(Metadata):
         return cls(chunk_shape=parse_chunk_shape(configuration["chunk_shape"]))
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, init=False)
 class RectilinearChunkGridMetadata(Metadata):
     """Metadata-only description of a rectilinear chunk grid.
 
@@ -312,21 +312,22 @@ class RectilinearChunkGridMetadata(Metadata):
 
     - A bare ``int`` — a regular step size that repeats to cover the axis
       (the spec's single-integer shorthand).
-    - A sequence of ``int`` — explicit per-chunk edge lengths. It is given
-      as a ``tuple`` or a ``list`` and held as a `RunLengthEdges`, which
-      reads like the sequence of edges (but is not a ``tuple``, and does
-      not compare equal to one) and stores one entry per run of equal edges, so a grid costs time and memory in
-      the size of its run-length encoded form, not in its number of chunks.
+    - A `RunLengthEdges` — explicit per-chunk edge lengths. They may be given
+      as a ``tuple`` or a ``list`` of ``int``, and are held run-length
+      encoded, one entry per run of equal edges, so a grid costs time and
+      memory in the size of its run-length encoded form, not in its number
+      of chunks. A `RunLengthEdges` is not a sequence: use its ``expand``
+      method for one entry per chunk.
 
     This distinction matters for faithful round-tripping: a bare int
-    serializes back as a bare int, while a single-element tuple serializes
+    serializes back as a bare int, while a single explicit edge serializes
     as a list.
     """
 
-    chunk_shapes: tuple[int | Sequence[int], ...]
+    chunk_shapes: tuple[int | RunLengthEdges, ...]
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "chunk_shapes", _validate_chunk_shapes(self.chunk_shapes))
+    def __init__(self, *, chunk_shapes: Sequence[int | Sequence[int] | RunLengthEdges]) -> None:
+        object.__setattr__(self, "chunk_shapes", _validate_chunk_shapes(chunk_shapes))
 
     @property
     def ndim(self) -> int:
@@ -341,7 +342,7 @@ class RectilinearChunkGridMetadata(Metadata):
             else:
                 # A run of one edge is written as its bare size, so edges without
                 # repeats come out as a plain list.
-                serialized_dims.append(RunLengthEdges.from_edges(dim_spec).to_rle())
+                serialized_dims.append(dim_spec.to_rle())
         return {
             "name": "rectilinear",
             "configuration": {
@@ -361,17 +362,16 @@ class RectilinearChunkGridMetadata(Metadata):
           Otherwise edges are kept as-is (the spec allows trailing edges
           beyond the array extent).
         """
-        new_chunk_shapes: list[int | Sequence[int]] = []
+        new_chunk_shapes: list[int | RunLengthEdges] = []
         for dim_spec, new_ext in zip(self.chunk_shapes, new_shape, strict=True):
             if isinstance(dim_spec, int):
                 # Bare int covers any extent — no change needed
                 new_chunk_shapes.append(dim_spec)
             else:
-                edges = RunLengthEdges.from_edges(dim_spec)
-                if new_ext > edges.total:
-                    new_chunk_shapes.append(edges.with_edge(new_ext - edges.total))
+                if new_ext > dim_spec.total:
+                    new_chunk_shapes.append(dim_spec.with_edge(new_ext - dim_spec.total))
                 else:
-                    new_chunk_shapes.append(edges)
+                    new_chunk_shapes.append(dim_spec)
         return RectilinearChunkGridMetadata(chunk_shapes=tuple(new_chunk_shapes))
 
     @classmethod
@@ -443,7 +443,7 @@ def create_chunk_grid_metadata(
         return RegularChunkGridMetadata(chunk_shape=chunks.chunk_shape)
     # Uniform dimensions stay bare ints — the rectilinear grid spec treats
     # a bare int as a step size repeating to cover the axis.
-    chunk_shapes: list[int | Sequence[int]] = []
+    chunk_shapes: list[int | RunLengthEdges] = []
     for dim in chunks.dimensions:
         if isinstance(dim, FixedDimension):
             chunk_shapes.append(dim.size)

@@ -138,7 +138,7 @@ message; a longer dimension is shown run-length encoded."""
 def _edges_repr(edges: RunLengthEdges) -> str:
     """The edges as a tuple, or run-length encoded if there are too many to write out."""
     if edges.num_edges <= _MAX_EDGES_IN_REPR:
-        return repr(tuple(edges))
+        return repr(tuple(edges.expand()))
     return repr(edges.to_rle())
 
 
@@ -161,7 +161,7 @@ class VaryingDimension:
     nchunks: int = field(init=False, repr=False)  # cached at construction
     ngridcells: int = field(init=False, repr=False)  # cached at construction
 
-    def __init__(self, edges: Sequence[int], extent: int) -> None:
+    def __init__(self, edges: Sequence[int] | RunLengthEdges, extent: int) -> None:
         rle = RunLengthEdges.from_edges(edges)
         if rle.num_edges == 0:
             raise ValueError("VaryingDimension edges must not be empty")
@@ -185,7 +185,7 @@ class VaryingDimension:
         Lookups do not use this: it is computed on each access, in time and
         memory proportional to the number of chunks.
         """
-        return tuple(itertools.accumulate(self.edges))
+        return tuple(itertools.accumulate(self.edges.expand()))
 
     def index_to_chunk(self, idx: int) -> int:
         if idx < 0 or idx >= self.extent:
@@ -206,7 +206,7 @@ class VaryingDimension:
         Does not validate *chunk_ix* — callers must ensure it is in
         ``[0, ngridcells)``. Use ``ChunkGrid.__getitem__`` for safe access.
         """
-        return self.edges[chunk_ix]
+        return self.edges.size_of(chunk_ix)
 
     def data_size(self, chunk_ix: int) -> int:
         """Valid data region within the buffer — clipped at extent.
@@ -214,7 +214,7 @@ class VaryingDimension:
         Does not validate *chunk_ix* — callers must ensure it is in
         ``[0, ngridcells)``. Use ``ChunkGrid.__getitem__`` for safe access.
         """
-        return max(0, min(self.edges[chunk_ix], self.extent - self.chunk_offset(chunk_ix)))
+        return max(0, min(self.edges.size_of(chunk_ix), self.extent - self.chunk_offset(chunk_ix)))
 
     @property
     def _data_sizes(self) -> tuple[int, ...]:
@@ -222,7 +222,7 @@ class VaryingDimension:
         if self.nchunks == 0:
             return ()
         last = self.nchunks - 1
-        return (*itertools.islice(self.edges, last), self.data_size(last))
+        return (*itertools.islice(self.edges.expand(), last), self.data_size(last))
 
     @property
     def _unique_edge_lengths(self) -> Iterable[int]:
@@ -447,7 +447,7 @@ class ChunkGrid:
     def from_sizes(
         cls,
         array_shape: ShapeLike,
-        chunk_sizes: Sequence[int | Sequence[int]],
+        chunk_sizes: Sequence[int | Sequence[int] | RunLengthEdges],
     ) -> ChunkGrid:
         """Create a ChunkGrid from per-dimension chunk size specifications.
 
@@ -459,7 +459,7 @@ class ChunkGrid:
             Per-dimension chunk sizes. Each element is either:
 
             - An ``int`` — regular (fixed) chunk size for that dimension.
-            - A ``Sequence[int]`` — explicit per-chunk edge lengths, kept as a
+            - A ``Sequence[int]`` or a `RunLengthEdges` — explicit per-chunk edge lengths, kept as a
               ``VaryingDimension`` even when the edges are uniform: the spec
               form declares the grid kind, as in `normalize_chunks_1d`.
         """

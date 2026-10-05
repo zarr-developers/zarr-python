@@ -2,7 +2,7 @@ import itertools
 import json
 import numbers
 import warnings
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from typing import Any
 
 import numpy as np
@@ -306,9 +306,11 @@ def test_block_indexing(data: st.DataObject) -> None:
     # The block grid is worked out from the stored declaration, not by zarr's grid code.
     assert isinstance(zarray.metadata, ArrayV3Metadata)
     grid = zarray.metadata.chunk_grid
-    declared = (
-        grid.chunk_shapes if isinstance(grid, RectilinearChunkGridMetadata) else grid.chunk_shape
-    )
+    declared: Sequence[int | tuple[int, ...]]
+    if isinstance(grid, RectilinearChunkGridMetadata):
+        declared = [d if isinstance(d, int) else tuple(d.expand()) for d in grid.chunk_shapes]
+    else:
+        declared = grid.chunk_shape
     chunk_sizes = tuple(
         declared_chunk_data_sizes(d, n) for d, n in zip(declared, zarray.shape, strict=True)
     )
