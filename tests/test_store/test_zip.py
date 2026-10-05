@@ -239,8 +239,10 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     async def test_methods_open_store_on_first_use(
         self, store_kwargs: dict[str, Any], call: Any, result: Any, keys: list[str]
     ) -> None:
-        # every method works on a store that was constructed but never opened,
-        # and sees the entries already in the archive
+        """
+        Every method works on a store that was constructed but never opened,
+        and sees the entries already in the archive.
+        """
         seed = await self.store_cls.open(**store_kwargs)
         await seed.set("foo", cpu.Buffer.from_bytes(b"bar"))
         seed.close()
@@ -261,6 +263,10 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     async def test_listing_opens_store_on_first_use(
         self, store_kwargs: dict[str, Any], method: str
     ) -> None:
+        """
+        Listing a store that was constructed but never opened opens the
+        archive and yields the entries already in it.
+        """
         seed = await self.store_cls.open(**store_kwargs)
         await seed.set("foo", cpu.Buffer.from_bytes(b"bar"))
         seed.close()
@@ -275,8 +281,10 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     async def test_reopen_keeps_entries(
         self, tmp_path: Path, mode: ZipStoreAccessModeLiteral, reopen: str
     ) -> None:
-        # "w" truncates and "x" refuses an existing file; neither may apply
-        # when a store that already wrote entries is opened again
+        """
+        "w" truncates and "x" refuses an existing file; neither may apply
+        when a store that already wrote entries is opened again.
+        """
         store = ZipStore(tmp_path / "data.zip", mode=mode)
         await store.set("foo", cpu.Buffer.from_bytes(b"bar"))
         if reopen == "use_after_close":
@@ -301,8 +309,10 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     async def test_close_blocks_concurrent_reopen(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # a thread that uses the store while close() is writing the central
-        # directory must wait until the archive is closed
+        """
+        A thread that uses the store while close() is writing the central
+        directory must wait until the archive is closed.
+        """
         store = ZipStore(tmp_path / "data.zip", mode="w")
         await store.set("foo", cpu.Buffer.from_bytes(b"1"))
         write_end_record = store._zf._write_end_record  # type: ignore[attr-defined]
@@ -326,8 +336,10 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     async def test_move_blocks_concurrent_reopen(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # a thread that uses the store while move() runs must wait for the
-        # move, or it reopens the old path between close and reopen
+        """
+        A thread that uses the store while move() runs must wait for the
+        move, or it reopens the old path between close and reopen.
+        """
         origin = tmp_path / "data.zip"
         destination = tmp_path / "moved" / "data.zip"
         store = ZipStore(origin, mode="w")
@@ -358,8 +370,10 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     async def test_failed_clear_leaves_store_closed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # if clear() fails after closing the archive, the store is closed
-        # rather than left open on a closed handle, and the next use clears
+        """
+        If clear() fails after closing the archive, the store is closed
+        rather than left open on a closed handle, and the next use clears.
+        """
         store = ZipStore(tmp_path / "data.zip", mode="w")
         await store.set("foo", cpu.Buffer.from_bytes(b"1"))
 
@@ -378,8 +392,10 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
             assert zf.namelist() == ["bar"]
 
     async def test_clear_exclusive_mode_keeps_existing_file(self, tmp_path: Path) -> None:
-        # a never-opened "x" store has not claimed the file, so clear() must
-        # refuse it the way the first open would instead of deleting it
+        """
+        A never-opened "x" store has not claimed the file, so clear() must
+        refuse it the way the first open would instead of deleting it.
+        """
         path = tmp_path / "data.zip"
         with zipfile.ZipFile(path, mode="w") as zf:
             zf.writestr("foo", b"1")
@@ -398,8 +414,10 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         ],
     )
     async def test_first_use_waits_for_lock(self, tmp_path: Path, use: Any) -> None:
-        # a thread's first use must wait while another thread holds the lock,
-        # then find the archive that thread opened instead of opening it again
+        """
+        A thread's first use must wait while another thread holds the lock,
+        then find the archive that thread opened instead of opening it again.
+        """
         store = ZipStore(tmp_path / "data.zip", mode="w")
         with ThreadPoolExecutor(max_workers=1) as pool:
             with store._lock:
@@ -414,9 +432,11 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     async def test_failed_close_blocks_reopen(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: type[BaseException]
     ) -> None:
-        # if the central directory could not be written, reopening in append
-        # mode would start a new archive and drop the entries, so later use
-        # raises instead
+        """
+        If the central directory could not be written, reopening in append
+        mode would start a new archive and drop the entries, so later use
+        raises instead.
+        """
         store = ZipStore(tmp_path / "data.zip", mode="w")
         await store.set("foo", cpu.Buffer.from_bytes(b"1"))
 
@@ -439,9 +459,11 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
             assert zf.namelist() == ["baz"]
 
     async def test_unused_copy_of_open_writer_does_not_write(self, tmp_path: Path) -> None:
-        # a copy of a store that is still writing, like those dask makes while
-        # building a graph, leaves the file alone if it is never used, even
-        # when it is collected after the original closes
+        """
+        A copy of a store that is still writing, like those dask makes while
+        building a graph, leaves the file alone if it is never used, even
+        when it is collected after the original closes.
+        """
         store = ZipStore(tmp_path / "data.zip", mode="w")
         await store.set("foo", cpu.Buffer.from_bytes(b"1"))
         copy = pickle.loads(pickle.dumps(store))
@@ -455,9 +477,11 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
             assert zf.testzip() is None
 
     async def test_used_copy_of_open_writer_raises(self, tmp_path: Path) -> None:
-        # the file has no central directory until the original closes, so a
-        # copy that uses it refuses to reopen it instead of starting a new
-        # archive after the entries already written
+        """
+        The file has no central directory until the original closes, so a
+        copy that uses it refuses to reopen it instead of starting a new
+        archive after the entries already written.
+        """
         store = ZipStore(tmp_path / "data.zip", mode="w")
         await store.set("foo", cpu.Buffer.from_bytes(b"1"))
         copy = pickle.loads(pickle.dumps(store))
@@ -471,7 +495,9 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     async def test_failed_clear_keeps_failed_close_guard(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # clear() lifts the failed-close guard only once the old file is gone
+        """
+        Clear() lifts the failed-close guard only once the old file is gone.
+        """
         store = ZipStore(tmp_path / "data.zip", mode="w")
         await store.set("foo", cpu.Buffer.from_bytes(b"1"))
 
@@ -496,8 +522,10 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     async def test_clear_replaces_damaged_file(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, damage: str, close: str
     ) -> None:
-        # clear() replaces the archive even when the file it wrote is no longer
-        # a zip or is gone, including after a failed close()
+        """
+        Clear() replaces the archive even when the file it wrote is no longer
+        a zip or is gone, including after a failed close().
+        """
         path = tmp_path / "data.zip"
         store = ZipStore(path, mode="w")
         await store.set("foo", cpu.Buffer.from_bytes(b"1"))
@@ -523,7 +551,9 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
             assert zf.namelist() == ["bar"]
 
     async def test_reopen_recreates_deleted_file(self, tmp_path: Path) -> None:
-        # a file removed between uses is created again, not refused
+        """
+        A file removed between uses is created again, not refused.
+        """
         path = tmp_path / "data.zip"
         store = ZipStore(path, mode="w")
         await store.set("foo", cpu.Buffer.from_bytes(b"1"))
@@ -536,8 +566,10 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
             assert zf.namelist() == ["bar"]
 
     async def test_first_open_append_on_empty_file(self, tmp_path: Path) -> None:
-        # mode "a" on an empty file, e.g. from tempfile.mkstemp, starts an
-        # archive in it; the reopen guard applies only to archives this store wrote
+        """
+        Mode "a" on an empty file, e.g. from tempfile.mkstemp, starts an
+        archive in it; the reopen guard applies only to archives this store wrote.
+        """
         path = tmp_path / "data.zip"
         path.touch()
         store = ZipStore(path, mode="a")
@@ -548,9 +580,11 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
 
     @pytest.mark.parametrize("file", ["archive", "missing"])
     async def test_clear_read_mode_writable_store(self, tmp_path: Path, file: str) -> None:
-        # a store opened with mode "r" but read_only=False creates the new
-        # archive with "w", since "r" cannot open the file clear() removed,
-        # and it does not need to open the old file first
+        """
+        A store opened with mode "r" but read_only=False creates the new
+        archive with "w", since "r" cannot open the file clear() removed,
+        and it does not need to open the old file first.
+        """
         path = tmp_path / "data.zip"
         if file == "archive":
             with zipfile.ZipFile(path, mode="w") as zf:
@@ -564,8 +598,10 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
             assert zf.namelist() == ["bar"]
 
     async def test_reopen_reports_directory_at_path(self, tmp_path: Path) -> None:
-        # a directory where the archive was is reported as an OS error, not as
-        # an unfinished archive
+        """
+        A directory where the archive was is reported as an OS error, not as
+        an unfinished archive.
+        """
         path = tmp_path / "data.zip"
         store = ZipStore(path, mode="w")
         await store.set("foo", cpu.Buffer.from_bytes(b"1"))
@@ -578,9 +614,11 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
 
     @pytest.mark.parametrize("mode", ["r", "a"])
     async def test_unpickle_state_from_older_release(self, tmp_path: Path, mode: str) -> None:
-        # a pickle made before _was_opened and _close_failed existed opens the
-        # file as a first open would; for "a" on an empty file that starts an
-        # archive rather than tripping the reopen guard
+        """
+        A pickle made before _was_opened and _close_failed existed opens the
+        file as a first open would; for "a" on an empty file that starts an
+        archive rather than tripping the reopen guard.
+        """
         path = tmp_path / "data.zip"
         if mode == "r":
             with zipfile.ZipFile(path, mode="w") as zf:
@@ -598,8 +636,10 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         store.close()
 
     async def test_list_does_not_hold_lock_while_iterating(self, tmp_path: Path) -> None:
-        # another thread can use the store while a caller is partway
-        # through iterating list()
+        """
+        Another thread can use the store while a caller is partway
+        through iterating list().
+        """
         store = ZipStore(tmp_path / "data.zip", mode="w")
         await store.set("foo", cpu.Buffer.from_bytes(b"1"))
         await store.set("bar", cpu.Buffer.from_bytes(b"2"))
@@ -616,8 +656,10 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         store.close()
 
     async def test_move_exclusive_mode_keeps_existing_file(self, tmp_path: Path) -> None:
-        # a never-opened "x" store has not claimed the file, so move() must
-        # refuse it the way the first open would instead of moving it
+        """
+        A never-opened "x" store has not claimed the file, so move() must
+        refuse it the way the first open would instead of moving it.
+        """
         origin = tmp_path / "data.zip"
         destination = tmp_path / "moved" / "data.zip"
         with zipfile.ZipFile(origin, mode="w") as zf:
@@ -662,8 +704,10 @@ class TestZipStoreFileObj:
         assert np.array_equal(array[...], np.arange(4))
 
     async def test_write_after_close_keeps_entries(self) -> None:
-        # reopening a file object after close() appends to the archive it
-        # already holds instead of starting a new one after it
+        """
+        Reopening a file object after close() appends to the archive it
+        already holds instead of starting a new one after it.
+        """
         buffer = io.BytesIO()
         store = ZipStore(buffer, mode="w", read_only=False)
         await store.set("foo", cpu.Buffer.from_bytes(b"1"))
@@ -675,8 +719,10 @@ class TestZipStoreFileObj:
             assert zf.namelist() == ["foo", "bar"]
 
     async def test_write_only_reuse_after_close_raises(self, tmp_path: Path) -> None:
-        # a write-only file object cannot be read back, so reopening it would
-        # start a new archive and drop the entries already written
+        """
+        A write-only file object cannot be read back, so reopening it would
+        start a new archive and drop the entries already written.
+        """
         path = tmp_path / "data.zip"
         with path.open("wb") as f:
             store = ZipStore(f, mode="w", read_only=False)
@@ -693,8 +739,10 @@ class TestZipStoreFileObj:
             assert zf.namelist() == ["foo"]
 
     async def test_unseekable_reuse_after_close_raises(self) -> None:
-        # a file object that cannot seek cannot be read back either, so reuse
-        # after close() raises the same error as a write-only one
+        """
+        A file object that cannot seek cannot be read back either, so reuse
+        after close() raises the same error as a write-only one.
+        """
         buffer = io.BytesIO()
         pipe = io.BufferedRWPair(buffer, buffer)  # readable, not seekable
         store = ZipStore(pipe, mode="w", read_only=False)  # type: ignore[arg-type]
