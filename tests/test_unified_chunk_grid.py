@@ -248,10 +248,9 @@ def test_fixed_dimension_rejects_invalid(size: int, extent: int, match: str) -> 
 
 
 def test_varying_dimension_construction() -> None:
-    """VaryingDimension stores edges, cumulative sums, nchunks, and extent correctly"""
+    """VaryingDimension stores edges, nchunks, and extent correctly"""
     d = VaryingDimension([10, 20, 30], extent=60)
     assert tuple(d.edges.expand()) == (10, 20, 30)
-    assert d.cumulative == (10, 30, 60)
     assert d.nchunks == 3
     assert d.extent == 60
 

@@ -178,15 +178,6 @@ class VaryingDimension:
         object.__setattr__(self, "nchunks", n)
         object.__setattr__(self, "ngridcells", rle.num_edges)
 
-    @property
-    def cumulative(self) -> tuple[int, ...]:
-        """Prefix sums of the edges, one entry per chunk.
-
-        Lookups do not use this: it is computed on each access, in time and
-        memory proportional to the number of chunks.
-        """
-        return tuple(itertools.accumulate(self.edges.expand()))
-
     def index_to_chunk(self, idx: int) -> int:
         if idx < 0 or idx >= self.extent:
             raise IndexError(f"Index {idx} out of bounds for dimension with extent {self.extent}")
