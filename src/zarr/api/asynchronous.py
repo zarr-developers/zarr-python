@@ -24,6 +24,7 @@ from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
     AccessModeLiteral,
+    ChunksLike,
     DimensionNamesLike,
     MemoryOrder,
     ZarrFormat,
@@ -917,7 +918,7 @@ async def open_group(
 async def create(
     shape: tuple[int, ...] | int,
     *,  # Note: this is a change from v2
-    chunks: tuple[int, ...] | int | bool | None = None,
+    chunks: ChunksLike | None = None,
     dtype: ZDTypeLike | None = None,
     compressor: CompressorLike = "auto",
     fill_value: Any | None = DEFAULT_FILL_VALUE,
@@ -938,7 +939,7 @@ async def create(
     meta_array: Any | None = None,  # TODO: need type
     attributes: dict[str, JSON] | None = None,
     # v3 only
-    chunk_shape: tuple[int, ...] | int | None = None,
+    chunk_shape: ChunksLike | None = None,
     chunk_key_encoding: (
         ChunkKeyEncoding
         | tuple[Literal["default"], Literal[".", "/"]]
@@ -958,11 +959,11 @@ async def create(
     ----------
     shape : int or tuple of ints
         Array shape.
-    chunks : int or tuple of ints, optional
-        Chunk shape. If True, will be guessed from `shape` and `dtype`. If
-        False, will be set to `shape`, i.e., single chunk for the whole array.
-        If an int, the chunk size in each dimension will be given by the value
-        of `chunks`. Default is True.
+    chunks : ChunksLike, optional
+        Chunk shape. If None (the default), it is guessed from `shape` and `dtype`. If
+        False, it is set to `shape`, i.e., a single chunk for the whole array. If an
+        int, the chunk size in each dimension is given by the value of `chunks`.
+        `True` is not a chunk shape and raises a `ValueError`.
     dtype : str or dtype, optional
         NumPy dtype.
     compressor : Codec, optional
@@ -1045,7 +1046,7 @@ async def create(
         Not implemented.
     attributes : dict[str, JSON], optional
         A dictionary of user attributes to store with the array.
-    chunk_shape : int or tuple of ints, optional
+    chunk_shape : ChunksLike, optional
         The shape of the Array's chunks (default is None).
         Zarr format 3 only. Zarr format 2 arrays should use `chunks` instead.
     chunk_key_encoding : ChunkKeyEncoding, optional
