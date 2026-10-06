@@ -43,6 +43,7 @@ nav:
         - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.abc.metadata</code>': api/zarr/abc/metadata.md
         - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.abc.numcodec</code>': api/zarr/abc/numcodec.md
         - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.abc.store</code>': api/zarr/abc/store.md
+        - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.abc.url_pipeline</code>': api/zarr/abc/url_pipeline.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.api</code>':
         - api/zarr/api/index.md
         - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.api.asynchronous</code>': api/zarr/api/asynchronous.md
