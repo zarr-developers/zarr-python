@@ -15,6 +15,7 @@ from zarr_metadata._json import (
     ValidationProblem,
     arrays_to_tuples,
     copied,
+    frozen,
     is_canonical_json,
     json_text,
     nested_past_the_levels,
@@ -110,6 +111,7 @@ class ZarrV3GroupMetadata:
         "_key",
         "_members",
         "_reading",
+        "_shown",
     )
 
     zarr_format: Final = 3
@@ -146,6 +148,11 @@ class ZarrV3GroupMetadata:
         self._document = document
         self._context = context
         self._members = members
+        # What the model shows of its members, read-only at every level.
+        self._shown = (
+            frozen(cast("JSONValue", members.attributes)),
+            frozen(cast("JSONValue", members.extra_fields)),
+        )
         held: Mapping[str, ZarrV3NodeMetadataReading] = reading.consolidated
         if members.consolidated is UNSET:
             self._consolidated: ZarrV3ConsolidatedMetadata | UNSET = UNSET
@@ -218,13 +225,13 @@ class ZarrV3GroupMetadata:
 
     @property
     def attributes(self) -> Mapping[str, JSONValue]:
-        """The attributes, a read-only view; empty when the document writes none."""
-        return MappingProxyType(cast("dict[str, JSONValue]", self._members.attributes))
+        """The attributes, read-only at every level; empty when the document writes none."""
+        return cast("Mapping[str, JSONValue]", self._shown[0])
 
     @property
     def extra_fields(self) -> Mapping[str, ZarrV3ExtensionField]:
-        """Each member the spec does not define, `consolidated_metadata` apart, by name: a read-only view."""
-        return MappingProxyType(self._members.extra_fields)
+        """Each member the spec does not define, `consolidated_metadata` apart, by name: read-only at every level."""
+        return cast("Mapping[str, ZarrV3ExtensionField]", self._shown[1])
 
     @property
     def consolidated_metadata(self) -> ZarrV3ConsolidatedMetadata | UNSET:
@@ -283,9 +290,12 @@ class ZarrV3GroupMetadata:
         """Whether this model holds everything `other` holds: the same attributes and extra fields, and consolidated metadata whose every document refines its counterpart."""
         if type(other) is not type(self):
             return False
-        if json_text(dict(self.attributes)) != json_text(dict(other.attributes)):
+        mine, theirs = self._members, other._members
+        if json_text(cast("JSONValue", mine.attributes)) != json_text(
+            cast("JSONValue", theirs.attributes)
+        ):
             return False
-        if json_text(dict(self.extra_fields)) != json_text(dict(other.extra_fields)):
+        if json_text(mine.extra_fields) != json_text(theirs.extra_fields):
             return False
         mine, theirs = self._consolidated, other._consolidated
         if mine is UNSET or theirs is UNSET:
@@ -630,13 +640,7 @@ def read_group_metadata_v3(
     reading, members = read_group_v3(value, context)
     if members is None:
         return reading
-    # A document nested past the levels a reader walks refines to nothing:
-    # it has problems, and no model is built of it or of what it holds.
-    refined, _ = refine_user_data(value)
-    document: dict[str, JSONValue] = (
-        cast("dict[str, JSONValue]", refined) if isinstance(refined, Mapping) else {}
-    )
-    return _with_models(reading, members, document, context)
+    return _with_models(reading, members, value, context)
 
 
 def read_group_v3(
@@ -758,10 +762,11 @@ def _read_consolidated_v3(
 def group_key(model: ZarrV3GroupMetadata) -> tuple[object, ...]:
     """What `==` and `hash` compare of a v3 group model: its attributes and extra fields as JSON text, and what its consolidated metadata holds, by `consolidated_key`."""
     consolidated = model.consolidated_metadata
+    members = model._members  # pyright: ignore[reportPrivateUsage]
     return (
-        json_text(dict(model.attributes)),
+        json_text(cast("JSONValue", members.attributes)),
         UNSET if consolidated is UNSET else consolidated._key,  # pyright: ignore[reportPrivateUsage]
-        json_text(dict(model.extra_fields)),
+        json_text(members.extra_fields),
     )
 
 
@@ -877,24 +882,45 @@ def _below_faults(path: str) -> list[str]:
 def _with_models(
     reading: ZarrV3GroupMetadataReading,
     members: GroupMembersV3,
-    document: dict[str, JSONValue],
+    value: object,
     context: Context,
 ) -> ZarrV3GroupMetadataReading:
-    """`reading`, holding the model of each document its consolidated metadata holds that has no problem, and its own when it has none: each built from `document`, this read's, and `context`."""
+    """`reading`, holding the model of each document its consolidated metadata holds that has no problem, and its own when it has none: each built from `value`, the document this read read, in `context`.
+
+    A document with a problem a reader walks past -- a key that is no
+    string, a value that is no JSON, a level past the cap -- refines to
+    nothing as a whole; each document its consolidated metadata holds is
+    then refined on its own, from where it sits, so the ones without a
+    problem still have their models.
+    """
+    refined, _ = refine_user_data(value)
     if len(reading.problems) == 0:
+        document = cast("dict[str, JSONValue]", refined)
         model = ZarrV3GroupMetadata._of(document, context, reading, members)  # pyright: ignore[reportPrivateUsage]
         return model.reading
-    # A document with problems may hold a member that is no object, or
-    # whose `metadata` is none: then no document in it was read.
-    member = document.get(ZARR_V3_CONSOLIDATED_METADATA_KEY)
-    entries = member.get("metadata") if isinstance(member, Mapping) else None
-    if members.consolidated is UNSET or not isinstance(entries, Mapping):
+    if members.consolidated is UNSET or not isinstance(value, Mapping):
         return reading
+    member = cast("Mapping[object, object]", value).get(ZARR_V3_CONSOLIDATED_METADATA_KEY)
+    if not isinstance(member, Mapping):
+        return reading
+    entries = cast("Mapping[object, object]", member).get("metadata")
+    if not isinstance(entries, Mapping):
+        return reading
+    held_entries = cast("Mapping[object, object]", entries)
+    documents: dict[str, JSONValue] = {}
+    for path in members.consolidated:
+        if path not in held_entries:
+            continue
+        entry, problems = refine_user_data(
+            held_entries[path], (ZARR_V3_CONSOLIDATED_METADATA_KEY, "metadata", path)
+        )
+        if len(problems) == 0 and isinstance(entry, Mapping):
+            documents[path] = entry
     models = _nested_models(
-        cast("Mapping[str, JSONValue]", entries),
+        documents,
         context,
         reading.consolidated,
-        members.consolidated,
+        {path: child for path, child in members.consolidated.items() if path in documents},
     )
     held = {
         path: (models[path].reading if path in models else nested)

@@ -14,6 +14,7 @@ import json
 import math
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Final, Literal, TypeGuard, cast, get_args
 
 from zarr_metadata._common import JSONValue
@@ -560,6 +561,21 @@ def parse_json(value: object) -> JSONValue:
     return refined
 
 
+def frozen(value: JSONValue) -> JSONValue:
+    """`value` as a read-only view at every level: each object a mapping proxy, each array a tuple, so nothing handed out can be changed in place.
+
+    Shares the scalars with `value`, and copies nothing else than the
+    containers a view needs. What a model shows of its document.
+    """
+    if isinstance(value, Mapping):
+        return cast(
+            "JSONValue", MappingProxyType({key: frozen(item) for key, item in value.items()})
+        )
+    if isinstance(value, (tuple, list)):
+        return tuple(frozen(item) for item in value)
+    return value
+
+
 def copied(value: JSONValue) -> JSONValue:
     """`value` in containers of its own, sharing nothing with it: each object a new `dict`, each array a new one of its type.
 
@@ -615,6 +631,7 @@ __all__ = [
     "arrays_to_tuples",
     "choices",
     "copied",
+    "frozen",
     "is_canonical_json",
     "is_json",
     "json_type",

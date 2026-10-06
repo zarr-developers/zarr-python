@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import operator
 import pickle
 from collections.abc import Callable, Iterator, Mapping
 from typing import Any, cast
@@ -358,7 +359,18 @@ CONSOLIDATED: dict[str, Any] = {
     "consolidated_metadata": {
         "kind": "inline",
         "must_understand": False,
-        "metadata": {"a": ARRAY, "b": GROUP, "b/c": SPELLED_OUT},
+        "metadata": {
+            "a": ARRAY,
+            "b": {
+                **GROUP,
+                "consolidated_metadata": {
+                    "kind": "inline",
+                    "must_understand": False,
+                    "metadata": {"c": SPELLED_OUT},
+                },
+            },
+            "b/c": SPELLED_OUT,
+        },
     },
 }
 
@@ -386,7 +398,7 @@ def test_a_group_reads_each_nested_field_once() -> None:
 
     scope = CORE.extended_with(dataclasses.replace(BYTES_CODEC, rules=counted))
     ZarrV3GroupMetadata(CONSOLIDATED, context=scope)
-    assert len(calls) == 2  # `a` and `b/c` each hold one bytes codec
+    assert len(calls) == 3  # `a`, `b/c`, and `c` in `b`'s own listing, each one bytes codec
 
 
 @pytest.mark.parametrize(
@@ -510,7 +522,7 @@ def test_a_scope_conflict_says_where_each_conflict_sits() -> None:
 def test_a_models_reading_holds_the_model_and_with_context_moves_the_whole_tree(
     build: Callable[[], ZarrV3GroupMetadata | None],
 ) -> None:
-    """However a group was built, its reading holds it, each nested reading holds the nested model, and `with_context` into a scope that reads every claim identically moves every nested model to the new scope without reading again."""
+    """However a group was built, its reading holds it, each nested reading holds the nested model, and `with_context` into a scope that reads every claim identically moves every nested model, the nested ones' too, to the new scope without reading again."""
     group = build()
     assert group is not None
     assert group.reading.metadata is group
@@ -525,14 +537,21 @@ def test_a_models_reading_holds_the_model_and_with_context_moves_the_whole_tree(
     held = moved.consolidated_metadata
     assert isinstance(held, ZarrV3ConsolidatedMetadata)
     assert held.context is scope
+    before = nested.metadata["a"]
+    after = held.metadata["a"]
+    assert isinstance(before, ZarrV3ArrayMetadata)
+    assert isinstance(after, ZarrV3ArrayMetadata)
+    assert after.reading.pipeline is before.reading.pipeline  # not read again
     for node in held.metadata.values():
         assert node.context is scope
         assert node.reading.metadata is node
     inner = held.metadata["b"]
     assert isinstance(inner, ZarrV3GroupMetadata)
-    assert inner.consolidated_metadata is UNSET or all(
-        child.context is scope for child in inner.consolidated_metadata.metadata.values()
-    )
+    innermost = inner.consolidated_metadata
+    assert isinstance(innermost, ZarrV3ConsolidatedMetadata)
+    assert innermost.context is scope
+    assert innermost.metadata["c"].context is scope
+    assert innermost.metadata["c"].reading.metadata is innermost.metadata["c"]
 
 
 def test_consolidated_metadata_refines_nothing_of_another_type() -> None:
@@ -540,3 +559,96 @@ def test_consolidated_metadata_refines_nothing_of_another_type() -> None:
     held = ZarrV3GroupMetadata(CONSOLIDATED).consolidated_metadata
     assert isinstance(held, ZarrV3ConsolidatedMetadata)
     assert held.refines(cast("Any", ZarrV3GroupMetadata(GROUP))) is False
+
+
+@pytest.mark.parametrize(
+    ("document", "change"),
+    [
+        (
+            {**ARRAY, "attributes": {"a": {"b": 1}}},
+            lambda model: operator.setitem(model.attributes["a"], "b", 2),
+        ),
+        (
+            {**ARRAY, "acme": {"x": 1, "must_understand": False}},
+            lambda model: operator.setitem(model.extra_fields["acme"], "x", 2),
+        ),
+        (
+            {
+                **ARRAY,
+                "data_type": {
+                    "name": "struct",
+                    "configuration": {"fields": [{"name": "a", "data_type": "uint8"}]},
+                },
+                "fill_value": {"a": 0},
+            },
+            lambda model: operator.setitem(model.fill_value, "a", 7),
+        ),
+    ],
+    ids=["attributes", "extra-fields", "fill-value"],
+)
+def test_a_models_views_cannot_be_changed_in_place(
+    document: dict[str, Any], change: Callable[[ZarrV3ArrayMetadata], None]
+) -> None:
+    """What a model shows -- attributes, extra fields, a fill value -- is read-only at every level, so a model cannot be put in a state its document, its key and `refines` disagree about."""
+    model = ZarrV3ArrayMetadata(document)
+    same = ZarrV3ArrayMetadata(document)
+    with pytest.raises(TypeError):
+        change(model)
+    assert model == same
+    assert model.to_json() == same.to_json()
+    assert model.refines(same)
+
+
+@pytest.mark.parametrize(
+    "problem",
+    [
+        {"attributes": {1: "x"}},
+        {"attributes": 5},
+        {
+            "consolidated_metadata": {
+                "kind": "inline",
+                "must_understand": False,
+                "metadata": {"a": ARRAY, "b": {**GROUP, "attributes": {"s": {1, 2}}}},
+            }
+        },
+        {
+            "consolidated_metadata": {
+                "kind": "inline",
+                "must_understand": False,
+                "metadata": {"a": ARRAY, "b": {**ARRAY, "shape": "x"}},
+            }
+        },
+    ],
+    ids=["non-string-key", "attributes-not-an-object", "sibling-not-json", "sibling-invalid"],
+)
+def test_a_reading_holds_a_model_of_each_nested_document_without_a_problem(
+    problem: dict[str, Any],
+) -> None:
+    """A group document with a problem still holds, in its reading, a model of each document its consolidated metadata holds that has no problem, whatever the problem elsewhere is: one a reader walks past, or one it refuses."""
+    member = {"kind": "inline", "must_understand": False, "metadata": {"a": ARRAY}}
+    document = {**GROUP, "consolidated_metadata": member, **problem}
+    reading = read_group_metadata_v3(document)
+    assert len(reading.problems) != 0
+    assert reading.metadata is None
+    held = reading.consolidated["a"].metadata
+    assert isinstance(held, ZarrV3ArrayMetadata)
+    assert held == ZarrV3ArrayMetadata(ARRAY)
+
+
+def test_a_scope_conflict_inside_consolidated_metadata_is_located_there() -> None:
+    """A group's `refined_in` locates a conflict in a document its consolidated metadata holds under that document's path, in a listing a listed group holds too."""
+    group = ZarrV3GroupMetadata(CONSOLIDATED, context=CORE)
+    with pytest.raises(ScopeConflictError) as raised:
+        group.refined_in(Context.of())
+    locs = {conflict.loc for conflict in raised.value.conflicts}
+    assert ("consolidated_metadata", "metadata", "a", "codecs", 0) in locs
+    assert (
+        "consolidated_metadata",
+        "metadata",
+        "b",
+        "consolidated_metadata",
+        "metadata",
+        "c",
+        "codecs",
+        0,
+    ) in locs

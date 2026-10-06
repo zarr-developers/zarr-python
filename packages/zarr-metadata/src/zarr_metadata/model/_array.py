@@ -14,6 +14,7 @@ from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
     copied,
+    frozen,
     json_text,
     refine_user_data,
     with_input,
@@ -130,7 +131,7 @@ class ZarrV3ArrayMetadata:
     are defined at a module's top level.
     """
 
-    __slots__ = ("_claims", "_context", "_document", "_key", "_members", "_reading")
+    __slots__ = ("_claims", "_context", "_document", "_key", "_members", "_reading", "_shown")
 
     zarr_format: Final = 3
     node_type: Final = "array"
@@ -169,6 +170,12 @@ class ZarrV3ArrayMetadata:
         # hands it back, however the model was built.
         self._reading = dataclasses.replace(reading, metadata=self)
         self._members = members
+        # What the model shows of its members, read-only at every level.
+        self._shown = (
+            frozen(members.fill_value),
+            frozen(members.attributes),
+            frozen(cast("JSONValue", members.extra_fields)),
+        )
         self._key = array_key(self)
         self._claims = MappingProxyType(claims_of(reading.fields()))
 
@@ -229,8 +236,8 @@ class ZarrV3ArrayMetadata:
 
     @property
     def fill_value(self) -> JSONValue:
-        """The fill value as written."""
-        return self._members.fill_value
+        """The fill value as written, read-only at every level."""
+        return self._shown[0]
 
     @property
     def dimension_names(self) -> tuple[str | None, ...] | UNSET:
@@ -239,13 +246,13 @@ class ZarrV3ArrayMetadata:
 
     @property
     def attributes(self) -> Mapping[str, JSONValue]:
-        """The attributes, a read-only view; empty when the document writes none."""
-        return MappingProxyType(self._members.attributes)
+        """The attributes, read-only at every level; empty when the document writes none."""
+        return cast("Mapping[str, JSONValue]", self._shown[1])
 
     @property
     def extra_fields(self) -> Mapping[str, ZarrV3ExtensionField]:
-        """Each member the spec does not define, by name, a read-only view."""
-        return MappingProxyType(self._members.extra_fields)
+        """Each member the spec does not define, by name, read-only at every level."""
+        return cast("Mapping[str, ZarrV3ExtensionField]", self._shown[2])
 
     @property
     def must_understand_fields(self) -> dict[str, ZarrV3ExtensionField]:
@@ -353,7 +360,7 @@ class ZarrV3ArrayMetadata:
         )
         if not all(refines_field(mine, theirs) for mine, theirs in pairs):
             return False
-        if len(fill_value_problems(self.data_type, other.fill_value)) != 0:
+        if len(fill_value_problems(self.data_type, other._members.fill_value)) != 0:
             return False
         return _plain_key(self, self.data_type) == _plain_key(other, self.data_type)
 
@@ -426,17 +433,18 @@ def array_key(model: ZarrV3ArrayMetadata) -> tuple[object, ...]:
     as JSON text when a definition in scope read the data type, and every
     other member as it is, the JSON ones as text.
     """
+    members = model._members  # pyright: ignore[reportPrivateUsage]
     return (
-        model.shape,
+        members.shape,
         _fill_value_key(model),
         field_key(model.data_type),
         field_key(model.chunk_grid),
         tuple(field_key(codec) for codec in model.codecs),
         field_key(model.chunk_key_encoding),
-        model.dimension_names,
-        json_text(dict(model.attributes)),
+        members.dimension_names,
+        json_text(members.attributes),
         tuple(field_key(transformer) for transformer in model.storage_transformers),
-        json_text(dict(model.extra_fields)),
+        json_text(members.extra_fields),
     )
 
 
@@ -458,20 +466,22 @@ def _plain_key(
     model: ZarrV3ArrayMetadata, data_type: Read[DataTypeDefinition[Any]] | Unclaimed
 ) -> tuple[object, ...]:
     """What `refines` compares of a model other than its fields, the fill value spelled as `data_type` -- the more informed side's -- spells it."""
+    members = model._members  # pyright: ignore[reportPrivateUsage]
     return (
-        model.shape,
-        json_text(spelled_canonically(data_type, model.fill_value)),
-        model.dimension_names,
-        json_text(dict(model.attributes)),
-        json_text(dict(model.extra_fields)),
+        members.shape,
+        json_text(spelled_canonically(data_type, members.fill_value)),
+        members.dimension_names,
+        json_text(members.attributes),
+        json_text(members.extra_fields),
     )
 
 
 def _fill_value_key(model: ZarrV3ArrayMetadata) -> str:
     """What `==` compares of `model`'s fill value: its canonical spelling as JSON text when a definition in scope read the data type, and the fill value as written when none did."""
+    fill_value = model._members.fill_value  # pyright: ignore[reportPrivateUsage]
     if isinstance(model.data_type, Read):
-        return json_text(spelled_canonically(model.data_type, model.fill_value))
-    return json_text(model.fill_value)
+        return json_text(spelled_canonically(model.data_type, fill_value))
+    return json_text(fill_value)
 
 
 def read_array_metadata_v3(
