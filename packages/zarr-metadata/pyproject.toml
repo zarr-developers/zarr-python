@@ -139,8 +139,7 @@ checks = [
     "PR06",
 ]
 
-# The pyright version lives in the justfile, which is what CI runs; pinning it
-# keeps a pyright release from turning CI red on its own schedule.
+# Pyright runs unpinned, from the justfile, which is what CI runs.
 [tool.pyright]
 include = ["src", "tests"]
 # Pyright is the only checker that runs on this package (the root mypy
