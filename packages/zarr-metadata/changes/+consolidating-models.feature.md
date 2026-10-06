@@ -1,0 +1,1 @@
+A group's `consolidated_metadata` can be built from node models, in a constructor or `update`: a model is accepted when the group's scope reads it as its own scope did, or claims what that scope left unclaimed, and refused with a problem at its path when the two scopes read a name differently. `Context.joined` gives the scope to consolidate children read in different scopes in.

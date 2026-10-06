@@ -27,7 +27,10 @@ scope and raises `MetadataValidationError` with every problem, so no
 model is built invalid; `to_json` writes the document as written;
 `update` reads new members in the model's own scope; `with_context` and
 `refined_in` read the document in another; `to_key_value` writes a model
-as it is.
+as it is. A group's `consolidated_metadata` takes node models as entries,
+each accepted when its claims refine into the group's scope and refused
+at its path otherwise. Every reader takes `context=None` for the default
+scope.
 """
 
 from zarr_metadata._json import (

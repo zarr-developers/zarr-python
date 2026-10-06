@@ -177,7 +177,11 @@ the document in another scope, and `refined_in` only in one that claims
 what this one left unclaimed and contradicts nothing, raising
 `ScopeConflictError` otherwise. The documents a group's
 `consolidated_metadata` holds are models of the group's scope, built from
-the group's one read.
+the group's one read; it takes node models as entries too, each accepted
+when its claims refine into the group's scope and refused at its path
+otherwise, and `Context.joined` is the scope to consolidate children of
+several scopes in. Every reader takes `context=None` for the default
+scope, `CORE_AND_EXTENSIONS`.
 
 Two models are equal when they mean the same document, however each is
 spelled. What the package interprets -- each field, and the fill value
