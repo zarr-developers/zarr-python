@@ -207,6 +207,11 @@ class ZarrV3ArrayMetadata:
     def __hash__(self) -> int:
         return hash(self._key)
 
+    def __reduce__(self) -> tuple[type[ZarrV3ArrayMetadata], tuple[object, Context]]:
+        # The pair, read again on load: a model's reading never disagrees
+        # with its document.
+        return type(self), (self._document, self._context)
+
     # --- typed views ------------------------------------------------------
 
     @property
