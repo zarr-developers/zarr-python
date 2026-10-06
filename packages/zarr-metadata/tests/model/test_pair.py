@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 import pickle
-from collections.abc import Iterator, Mapping
-from typing import Any
+from collections.abc import Callable, Iterator, Mapping
+from typing import Any, cast
 
 import pytest
 
@@ -17,9 +17,11 @@ from zarr_metadata.model import (
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
     read_array_metadata_v3,
+    read_group_metadata_v3,
 )
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC
 from zarr_metadata.v3.codec.crc32c import Empty
+from zarr_metadata.v3.codec.zstd import ZSTD_CODEC
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
@@ -179,6 +181,22 @@ FLOAT: dict[str, Any] = {
     "fill_value": "0x7fc00000",
     "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
 }
+SHARDED: dict[str, Any] = {
+    **ARRAY,
+    "codecs": [
+        {
+            "name": "sharding_indexed",
+            "configuration": {
+                "chunk_shape": [1],
+                "codecs": ["bytes"],
+                "index_codecs": [
+                    {"name": "bytes", "configuration": {"endian": "little"}},
+                    "crc32c",
+                ],
+            },
+        }
+    ],
+}
 
 
 @pytest.mark.parametrize(
@@ -237,8 +255,9 @@ def test_error_update_refuses_a_document_with_a_problem() -> None:
         (ZarrV3ArrayMetadata(ARRAY, context=Context.of()), CORE, True),
         (ZarrV3ArrayMetadata(ARRAY, context=CORE), CORE_AND_EXTENSIONS, False),
         (ZarrV3ArrayMetadata(FLOAT, context=Context.of()), CORE, True),
+        (ZarrV3ArrayMetadata(SHARDED, context=Context.of()), CORE, True),
     ],
-    ids=["gain", "nothing-to-gain", "gain-data-type-with-fill-value"],
+    ids=["gain", "nothing-to-gain", "gain-data-type-with-fill-value", "gain-of-a-shard"],
 )
 def test_refined_in_moves_a_model_up_the_order(
     model: ZarrV3ArrayMetadata, context: Context, gained: bool
@@ -250,7 +269,8 @@ def test_refined_in_moves_a_model_up_the_order(
     assert refined.refines(model)
     assert (refined == model) is not gained
     if not gained:
-        assert refined.reading is model.reading
+        # Not read again: the reading's pipeline is the one read.
+        assert refined.reading.pipeline is model.reading.pipeline
 
 
 @pytest.mark.parametrize(
@@ -303,6 +323,16 @@ def test_error_with_context_refuses_a_document_the_scope_reads_with_a_problem() 
             ZarrV3ArrayMetadata(FLOAT, context=Context.of()),
             True,
         ),
+        (
+            ZarrV3ArrayMetadata(SHARDED, context=CORE),
+            ZarrV3ArrayMetadata(SHARDED, context=Context.of()),
+            True,
+        ),
+        (
+            ZarrV3ArrayMetadata(FLOAT, context=CORE),
+            ZarrV3ArrayMetadata({**FLOAT, "fill_value": "banana"}, context=Context.of()),
+            False,
+        ),
     ],
     ids=[
         "gain",
@@ -311,12 +341,14 @@ def test_error_with_context_refuses_a_document_the_scope_reads_with_a_problem() 
         "conflict",
         "other-members-differ",
         "fill-value-spelled-by-the-informed-side",
+        "gain-of-a-field-holding-fields",
+        "fill-value-the-gained-definition-refuses",
     ],
 )
 def test_refines_orders_models_by_information(
     upper: ZarrV3ArrayMetadata, lower: ZarrV3ArrayMetadata, expected: bool
 ) -> None:
-    """A model refines another when every field refines its counterpart and every other member is the same, the fill value compared as the more informed data type spells it."""
+    """A model refines another when every field refines its counterpart -- the fields a field holds too, so a shard gained is a gain -- and every other member is the same, the fill value compared as the more informed data type spells it; a fill value that definition refuses is no refinement, and no error."""
     assert upper.refines(lower) is expected
 
 
@@ -441,3 +473,70 @@ def test_the_held_field_machinery_is_gone() -> None:
     assert not hasattr(validation, "NO_SCOPE")
     assert not hasattr(validation, "overlapping")
     assert "held" not in inspect.signature(validation.read_array_v3).parameters
+
+
+def test_error_refined_in_refuses_a_gain_that_surfaces_a_problem() -> None:
+    """A scope that claims a name this one left unclaimed may refuse what was written under it: `refined_in` raises `MetadataValidationError`, the document having a problem in that scope."""
+    loose = ZarrV3ArrayMetadata({**ARRAY, "fill_value": "banana"}, context=Context.of())
+    with pytest.raises(MetadataValidationError) as raised:
+        loose.refined_in(CORE)
+    assert [problem.loc for problem in raised.value.problems] == [("fill_value",)]
+
+
+def test_a_scope_conflict_says_where_each_conflict_sits() -> None:
+    """`refined_in` names each conflict with where the field sits in the document, as a problem is located: a loss of `bytes` at `codecs.0`, in the shard too."""
+    model = ZarrV3ArrayMetadata(SHARDED, context=CORE)
+    with pytest.raises(ScopeConflictError) as raised:
+        model.refined_in(Context.of())
+    assert sorted((conflict.key[1], conflict.loc) for conflict in raised.value.conflicts) == [
+        ("bytes", ("codecs", 0, "configuration", "codecs", 0)),
+        ("bytes", ("codecs", 0, "configuration", "index_codecs", 0)),
+        ("crc32c", ("codecs", 0, "configuration", "index_codecs", 1)),
+        ("default", ("chunk_key_encoding",)),
+        ("regular", ("chunk_grid",)),
+        ("sharding_indexed", ("codecs", 0)),
+        ("uint8", ("data_type",)),
+    ]
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: ZarrV3GroupMetadata(CONSOLIDATED, context=CORE_AND_EXTENSIONS),
+        lambda: read_group_metadata_v3(CONSOLIDATED, context=CORE_AND_EXTENSIONS).metadata,
+    ],
+    ids=["constructor", "reader"],
+)
+def test_a_models_reading_holds_the_model_and_with_context_moves_the_whole_tree(
+    build: Callable[[], ZarrV3GroupMetadata | None],
+) -> None:
+    """However a group was built, its reading holds it, each nested reading holds the nested model, and `with_context` into a scope that reads every claim identically moves every nested model to the new scope without reading again."""
+    group = build()
+    assert group is not None
+    assert group.reading.metadata is group
+    nested = group.consolidated_metadata
+    assert isinstance(nested, ZarrV3ConsolidatedMetadata)
+    for path, node in nested.metadata.items():
+        assert group.reading.consolidated[path].metadata is node
+        assert node.reading.metadata is node
+    scope = CORE.extended_with(ZSTD_CODEC)
+    moved = group.with_context(scope)
+    assert moved.reading is not group.reading
+    held = moved.consolidated_metadata
+    assert isinstance(held, ZarrV3ConsolidatedMetadata)
+    assert held.context is scope
+    for node in held.metadata.values():
+        assert node.context is scope
+        assert node.reading.metadata is node
+    inner = held.metadata["b"]
+    assert isinstance(inner, ZarrV3GroupMetadata)
+    assert inner.consolidated_metadata is UNSET or all(
+        child.context is scope for child in inner.consolidated_metadata.metadata.values()
+    )
+
+
+def test_consolidated_metadata_refines_nothing_of_another_type() -> None:
+    """`refines` of consolidated metadata says False of what is not consolidated metadata, as the array's and group's do, rather than raising."""
+    held = ZarrV3GroupMetadata(CONSOLIDATED).consolidated_metadata
+    assert isinstance(held, ZarrV3ConsolidatedMetadata)
+    assert held.refines(cast("Any", ZarrV3GroupMetadata(GROUP))) is False

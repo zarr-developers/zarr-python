@@ -41,15 +41,19 @@ from zarr_metadata.v3._definition import (
     StorageTransformerDefinition,
     Unclaimed,
     field_key,
+    fill_value_problems,
     spelled_canonically,
 )
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
-from zarr_metadata.v3._scope import Claims, ScopeConflictError, claims_of
+from zarr_metadata.v3._scope import Claims, Conflict, ScopeConflictError, claim_key, claims_of
 from zarr_metadata.v3._scope import refines as refines_field
 from zarr_metadata.v3.array import ZARR_V3_ARRAY_METADATA_STORE_KEY, ZarrV3ExtensionField
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+
     from zarr_metadata._common import JSONValue
+    from zarr_metadata._typed_json import Loc
     from zarr_metadata.v2.array import (
         ZarrV2ArrayDimensionSeparator,
         ZarrV2ArrayMetadataJSON,
@@ -60,6 +64,7 @@ if TYPE_CHECKING:
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
     from zarr_metadata.v2.codec import ZarrV2CodecMetadata
     from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+    from zarr_metadata.v3._definition import Resolved
     from zarr_metadata.v3.array import (
         ZarrV3ArrayMetadataJSON,
         ZarrV3ArrayMetadataJSONPartial,
@@ -160,7 +165,9 @@ class ZarrV3ArrayMetadata:
     ) -> None:
         self._document = document
         self._context = context
-        self._reading = reading
+        # The reading holds the model it built, as `read_array_metadata_v3`
+        # hands it back, however the model was built.
+        self._reading = dataclasses.replace(reading, metadata=self)
         self._members = members
         self._key = array_key(self)
         self._claims = MappingProxyType(claims_of(reading.fields()))
@@ -317,25 +324,36 @@ class ZarrV3ArrayMetadata:
         """This document read in `context`, which may claim what this scope left unclaimed and contradict nothing.
 
         `ScopeConflictError` naming each name `context` reads by another
-        definition, or by none, where this scope read it by one: a loss
-        of meaning is refused as a conflict is. `with_context` reads the
-        document in any scope.
+        definition, or by none, where this scope read it by one -- a loss
+        of meaning is refused as a conflict is -- and where each sits in
+        the document. `MetadataValidationError` when a name `context`
+        claims refuses what was written under it: a gain can surface a
+        problem. `with_context` reads the document in any scope.
         """
         scope = CORE_AND_EXTENSIONS if context is None else context
         found = scope.disagreements(self._claims)
         if len(found.conflicts) != 0:
-            raise ScopeConflictError(found.conflicts)
+            raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
         return self.with_context(scope)
 
     def refines(self, other: ZarrV3ArrayMetadata) -> bool:
-        """Whether this model holds everything `other` holds: each field refines its counterpart, as `refines` orders fields, and every other member is the same, the fill value as the more informed data type spells it."""
+        """Whether this model holds everything `other` holds: each field refines its counterpart, as `refines` orders fields -- the fields a field holds with it -- and every other member is the same, the fill value as the more informed data type spells it; a fill value that data type refuses is no refinement."""
         if type(other) is not type(self):
             return False
-        mine = dict(self._reading.fields())
-        theirs = dict(other._reading.fields())
-        if mine.keys() != theirs.keys():
+        if len(self.codecs) != len(other.codecs) or len(self.storage_transformers) != len(
+            other.storage_transformers
+        ):
             return False
-        if not all(refines_field(mine[loc], theirs[loc]) for loc in mine):
+        pairs = (
+            (self.data_type, other.data_type),
+            (self.chunk_grid, other.chunk_grid),
+            (self.chunk_key_encoding, other.chunk_key_encoding),
+            *zip(self.codecs, other.codecs, strict=True),
+            *zip(self.storage_transformers, other.storage_transformers, strict=True),
+        )
+        if not all(refines_field(mine, theirs) for mine, theirs in pairs):
+            return False
+        if len(fill_value_problems(self.data_type, other.fill_value)) != 0:
             return False
         return _plain_key(self, self.data_type) == _plain_key(other, self.data_type)
 
@@ -422,6 +440,20 @@ def array_key(model: ZarrV3ArrayMetadata) -> tuple[object, ...]:
     )
 
 
+def located_conflicts(
+    fields: Iterable[tuple[Loc, Resolved[Any]]], conflicts: Sequence[Conflict]
+) -> tuple[Conflict, ...]:
+    """Each of `conflicts`, found against a reading's claims, once for each place among `fields` the name it is about sits: located, as a problem is."""
+    located: list[Conflict] = []
+    placed = list(fields)
+    for conflict in conflicts:
+        places = [loc for loc, field in placed if claim_key(field) == conflict.key]
+        if len(places) == 0:
+            located.append(conflict)
+        located.extend(dataclasses.replace(conflict, loc=loc) for loc in places)
+    return tuple(located)
+
+
 def _plain_key(
     model: ZarrV3ArrayMetadata, data_type: Read[DataTypeDefinition[Any]] | Unclaimed
 ) -> tuple[object, ...]:
@@ -462,7 +494,7 @@ def read_array_metadata_v3(
     refined, _ = refine_user_data(value)
     document = cast("dict[str, JSONValue]", refined)
     model = ZarrV3ArrayMetadata._of(document, context, reading, members)  # pyright: ignore[reportPrivateUsage]
-    return dataclasses.replace(reading, metadata=model)
+    return model.reading
 
 
 class ZarrV2ArrayMetadataPartial(TypedDict, total=False):
