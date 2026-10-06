@@ -40,7 +40,6 @@ from zarr_metadata._json import (
     refine_json,
     refine_user_data,
     shown_key,
-    validate_json,
     with_input,
     within,
 )
@@ -48,6 +47,7 @@ from zarr_metadata._json import is_canonical_json as _is_canonical_json
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
+from zarr_metadata.v2.definition import resolve_codec_v2, resolve_dtype_v2
 from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
 from zarr_metadata.v3._definition import (
     Chunk,
@@ -236,30 +236,6 @@ def dimension_lengths(
     return tuple(value), ()
 
 
-def _is_dtype_v2(value: object) -> bool:
-    """Whether `value` is shaped like a v2 dtype: a string or field records.
-
-    A field record is a `(name, dtype)` or `(name, dtype, shape)` sequence,
-    where `dtype` is itself a string or nested field records and `shape` is a
-    sequence of int. The string content is NOT interpreted — whether the
-    string names a real dtype is domain validity, not structure.
-    """
-    if isinstance(value, str):
-        return True
-    if not _is_array(value):
-        return False
-    for record in value:
-        if not _is_array(record) or len(record) not in (2, 3):
-            return False
-        if not isinstance(record[0], str):
-            return False
-        if not _is_dtype_v2(record[1]):
-            return False
-        if len(record) == 3 and not _is_int_sequence(record[2]):
-            return False
-    return True
-
-
 def _is_canonical_dtype_v2(value: object) -> bool:
     """Whether a validated v2 dtype uses the tuple-backed public representation."""
     if isinstance(value, str):
@@ -322,24 +298,6 @@ def _is_canonical_array_metadata_v2(value: object) -> bool:
         isinstance(filters, tuple)
         and all(isinstance(item, dict) for item in cast("tuple[object, ...]", filters))
     )
-
-
-def _is_codec_v2(value: object) -> bool:
-    """Whether `value` is shaped like a v2 codec config: a mapping with a string `id`."""
-    return isinstance(value, Mapping) and isinstance(
-        cast("Mapping[object, object]", value).get("id"), str
-    )
-
-
-def _validate_codec_v2(value: object, loc: tuple[str | int, ...]) -> tuple[ValidationProblem, ...]:
-    """Validate a v2 codec's required shape and JSON-valued configuration, `value` sitting at `loc`."""
-    if not _is_codec_v2(value):
-        return (
-            ValidationProblem(
-                loc, "expected a codec configuration with a string 'id'", "invalid_type"
-            ),
-        )
-    return validate_json(value, loc)
 
 
 def validate_attributes(value: object) -> tuple[ValidationProblem, ...]:
@@ -693,10 +651,10 @@ def parse_array_metadata_v3(
 def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not a structurally-valid v2 array doc.
 
-    Checks structure, not domain validity: `dtype` must be a string or field
-    records, but the string content is not interpreted; `compressor` and
-    `filters` are required keys that may be `None`, and otherwise must be
-    codec configurations (mappings with a string `id`).
+    `dtype`, `compressor` and `filters` are read in `CORE_V2`: a dtype or
+    codec the scope refuses is a problem, one it does not claim is not;
+    `fill_value` is judged by the dtype the scope read. `compressor` and
+    `filters` are required keys that may be `None`.
     """
     if not isinstance(value, Mapping):
         return not_an_object(value)
@@ -722,48 +680,44 @@ def validate_array_metadata_v2(value: object) -> tuple[ValidationProblem, ...]:
                 "invalid_value",
             )
         )
+    dtype = None
     if "dtype" in doc:
-        # JSON first, nested no deeper than a reader walks, then its shape:
-        # field records nest a dtype two levels a record, without bound.
-        found = validate_json(doc["dtype"], ("dtype",))
+        # Read in CORE_V2: a typestr by its family, field records as a struct.
+        dtype, found = resolve_dtype_v2(doc["dtype"], loc=("dtype",))
         problems.extend(found)
-        if len(found) == 0 and not _is_dtype_v2(doc["dtype"]):
-            problems.append(
-                ValidationProblem(
-                    ("dtype",),
-                    "expected a v2 dtype string or an array of field records",
-                    "invalid_type",
-                )
-            )
     if "order" in doc and doc["order"] not in ("C", "F"):
         problems.append(outside_of(("order",), doc["order"], ("C", "F")))
     if "compressor" in doc:
         compressor = doc["compressor"]
         if compressor is not None:
-            problems.extend(_validate_codec_v2(compressor, ("compressor",)))
+            problems.extend(resolve_codec_v2(compressor, loc=("compressor",))[1])
     if "filters" in doc:
         filters = doc["filters"]
-        if filters is not None and (
-            not _is_array(filters) or not all(_is_codec_v2(item) for item in filters)
-        ):
-            problems.append(
-                ValidationProblem(
-                    ("filters",),
-                    "expected null or an array of codec configurations, each with a string 'id'",
-                    "invalid_type",
+        if filters is not None:
+            if not _is_array(filters):
+                problems.append(
+                    ValidationProblem(
+                        ("filters",),
+                        "expected null or an array of codec configurations",
+                        "invalid_type",
+                    )
                 )
-            )
-        elif _is_array(filters):
-            # "A list of JSON objects providing codec configurations, or
-            # null" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79): an empty list is a list.
-            for index, item in enumerate(filters):
-                problems.extend(validate_json(item, ("filters", index)))
+            else:
+                # "A list of JSON objects providing codec configurations, or
+                # null" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79): an empty list is a list.
+                for index, item in enumerate(filters):
+                    problems.extend(resolve_codec_v2(item, loc=("filters", index))[1])
     if "dimension_separator" in doc and doc["dimension_separator"] not in (".", "/"):
         problems.append(
             outside_of(("dimension_separator",), doc["dimension_separator"], (".", "/"))
         )
     if "fill_value" in doc:
-        problems.extend(validate_json(doc["fill_value"], ("fill_value",)))
+        # JSON, judged by the dtype the scope read, when there is one: a
+        # dtype nothing in scope claims leaves it unjudged.
+        fill_value, found = refine_json(doc["fill_value"], ("fill_value",))
+        problems.extend(found)
+        if len(found) == 0 and dtype is not None:
+            problems.extend(fill_value_problems(dtype, fill_value, ("fill_value",)))
     if "attributes" in doc:
         problems.extend(validate_attributes(doc["attributes"]))
     return with_input(problems, doc)

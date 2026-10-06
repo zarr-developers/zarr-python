@@ -157,6 +157,7 @@ def test_v2_recursive_structured_dtype_is_in_pydantic_schema() -> None:
     """The schema accepts nested structured dtypes supported by the v2 specification."""
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
     doc["dtype"] = [["outer", [["inner", "<i4"]]]]
+    doc["fill_value"] = None
     adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
 
     assert adapter.validate_python(doc).dtype == (("outer", (("inner", "<i4"),)),)

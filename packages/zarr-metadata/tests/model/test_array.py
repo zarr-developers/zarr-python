@@ -634,13 +634,13 @@ def test_a_model_holding_nan_user_data_equals_its_copies() -> None:
         ("NaN", "NaN", True),
         (0.0, -0.0, False),
         (1, 1.0, False),
-        (0, False, False),
+        ("Infinity", "NaN", False),
     ],
 )
 def test_two_v2_models_are_one_array_when_their_documents_are_written_alike(
     left: object, right: object, same: bool
 ) -> None:
-    """A v2 data type is not interpreted, so nor is its fill value: the document as text decides."""
+    """A v2 model compares by its document as text: a fill value spelled two ways is two models."""
     model = ZarrV2ArrayMetadata.create_default(shape=(2,), chunks=(2,), dtype="<f4")
     models = [dataclasses.replace(model, fill_value=value) for value in (left, right)]
     assert (models[0] == models[1]) is same
@@ -898,8 +898,11 @@ TO_JSON_NO_ALIASING_PARAMS = [
     pytest.param(
         ZarrV2ArrayMetadata.create_default(
             attributes={"a": {"b": [1]}},
-            compressor={"id": "zstd", "opts": {"level": 1}},
-            filters=({"id": "delta", "cfg": [1]},),
+            # Ids nothing in the scope claims, so their parameters can nest;
+            # a complex type, whose fill value is a pair.
+            dtype="<c8",
+            compressor={"id": "acme.zstd", "opts": {"level": 1}},
+            filters=({"id": "acme.delta", "cfg": [1]},),
             fill_value=[0, 0],
         ),
         id="v2",
@@ -1001,7 +1004,7 @@ def test_v2_roundtrip_with_compressor_and_filters() -> None:
     # Non-None compressor/filters must round-trip; extra assertion on .compressor.
     """A v2 model with non-None compressor and filters round-trips."""
     compressor: ZarrV2CodecMetadata = {"id": "blosc", "clevel": 5}
-    filters: tuple[ZarrV2CodecMetadata, ...] = ({"id": "delta"},)
+    filters: tuple[ZarrV2CodecMetadata, ...] = ({"id": "delta", "dtype": "<i4"},)
     m = ZarrV2ArrayMetadata.create_default(compressor=compressor, filters=filters)
     restored = ZarrV2ArrayMetadata.from_json(m.to_json())
     assert restored == m
@@ -1597,15 +1600,18 @@ def test_error_bytes_are_not_an_array(
 def test_v2_structured_dtype_records_accepted() -> None:
     """A structured v2 dtype (field records, optionally nested/shaped) validates."""
     dtype = (("a", "<i4"), ("b", (("c", "|u1"),)), ("d", "<f8", (2, 2)))
-    doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"dtype": dtype}
+    doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {
+        "dtype": dtype,
+        "fill_value": None,
+    }
     assert validate_array_metadata_v2(doc) == ()
 
 
 def test_v2_structured_dtype_malformed_record_rejected() -> None:
-    """A field record with the wrong arity is rejected."""
+    """A field record with the wrong arity is rejected, at the record."""
     doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"dtype": (("a",),)}
     problems = validate_array_metadata_v2(doc)
-    assert [p.loc for p in problems] == [("dtype",)]
+    assert [p.loc for p in problems] == [("dtype", "fields", 0)]
 
 
 def test_v2_order_literal_enforced() -> None:
@@ -1623,18 +1629,18 @@ def test_v2_compressor_must_be_codec_or_none() -> None:
 
 
 def test_v2_compressor_requires_string_id() -> None:
-    """A compressor mapping without a string id is rejected."""
+    """A compressor mapping without a string id is rejected, at the id."""
     doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"compressor": {"level": 3}}
     problems = validate_array_metadata_v2(doc)
-    assert [p.loc for p in problems] == [("compressor",)]
+    assert [p.loc for p in problems] == [("compressor", "id")]
 
 
 def test_v2_filters_must_be_codec_sequence_or_none() -> None:
-    """Filters that are not null or a sequence of codec configs are rejected."""
-    for bad in (7, (5,), "gzip"):
+    """Filters that are not null or a sequence of codec configs are rejected: an item that is no codec at the item, anything else at the field."""
+    for bad, at in ((7, ("filters",)), ((5,), ("filters", 0)), ("gzip", ("filters",))):
         doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"filters": bad}
         problems = validate_array_metadata_v2(doc)
-        assert [(p.loc, p.kind) for p in problems] == [(("filters",), "invalid_type")], bad
+        assert [(p.loc, p.kind) for p in problems] == [(at, "invalid_type")], bad
 
 
 def test_v2_shape_and_chunks_must_have_equal_rank() -> None:
@@ -1941,6 +1947,7 @@ def test_a_v2_dtype_of_nested_records_is_read_to_the_levels_a_reader_walks() -> 
     document = {
         **ZarrV2ArrayMetadata.create_default(shape=(2,)).to_json(),
         "dtype": records(deepest),
+        "fill_value": None,
     }
     assert validate_array_metadata_v2(document) == ()
     model = ZarrV2ArrayMetadata.from_json(document)
@@ -1957,8 +1964,9 @@ def test_a_v2_document_nested_as_deep_as_a_reader_walks_is_read_and_written() ->
     fill_value: dict[str, object] = {}
     for _ in range(JSON_DEPTH - 2):
         fill_value = {"x": fill_value}
+    # An object type, whose fill value is any JSON.
     document = {
-        **ZarrV2ArrayMetadata.create_default(shape=(2,)).to_json(),
+        **ZarrV2ArrayMetadata.create_default(shape=(2,), dtype="|O").to_json(),
         "fill_value": fill_value,
     }
     assert validate_array_metadata_v2(document) == ()
@@ -2157,7 +2165,8 @@ def test_array_guards_reject_noncanonical_nested_json() -> None:
     # Raw bits of 16, whose fill value is two byte values.
     v3 = dict(ZarrV3ArrayMetadata.create_default().to_json()) | {"data_type": "r16"}
     v3["fill_value"] = range(2)
-    v2 = dict(ZarrV2ArrayMetadata.create_default().to_json())
+    # A complex type, whose fill value is a pair.
+    v2 = dict(ZarrV2ArrayMetadata.create_default(dtype="<c8", fill_value=[0, 0]).to_json())
     v2["fill_value"] = range(2)
 
     assert not is_array_metadata_v3(v3)
