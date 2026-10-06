@@ -21,12 +21,14 @@ from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     Definition,
     StorageTransformerDefinition,
+    spelled,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
     from zarr_metadata._typed_json import Loc
+    from zarr_metadata.v3._definition import Resolved
 
 ClaimKey: TypeAlias = tuple[type[Definition[Any]], str]
 """A kind and the name a definition is filed under: what a scope answers `claimant` for."""
@@ -72,4 +74,37 @@ class ScopeConflictError(ValueError):
         super().__init__("; ".join(str(conflict) for conflict in self.conflicts))
 
 
-__all__ = ["ClaimKey", "Claims", "Conflict", "ScopeConflictError"]
+def claim_key(field: Resolved[Any]) -> ClaimKey | None:
+    """The key `field` is claimed under: its kind and the name its definition is filed under, `r*` for `r16`; None for a field that names nothing."""
+    if field.name is None:
+        return None
+    filed, _ = spelled(field.read_as, field.name)
+    return None if filed is None else (field.read_as, filed)
+
+
+def claims_of(
+    fields: Iterable[tuple[Loc, Resolved[Any]]],
+) -> dict[ClaimKey, Definition[Any] | None]:
+    """What `fields`, each with where it sits, claim of each name: the definition that read it, None where nothing claimed it.
+
+    `fields` are one reading's, as `fields_of` or a reading's `fields()`
+    gives them. A name claimed two ways among them is a
+    `ScopeConflictError`: no one scope read them.
+    """
+    claims: dict[ClaimKey, Definition[Any] | None] = {}
+    conflicts: list[Conflict] = []
+    for loc, field in fields:
+        key = claim_key(field)
+        if key is None:
+            continue
+        definition = field.definition
+        if key in claims and claims[key] != definition:
+            conflicts.append(Conflict(key, claims[key], definition, loc))
+            continue
+        claims[key] = definition
+    if len(conflicts) != 0:
+        raise ScopeConflictError(conflicts)
+    return claims
+
+
+__all__ = ["ClaimKey", "Claims", "Conflict", "ScopeConflictError", "claim_key", "claims_of"]

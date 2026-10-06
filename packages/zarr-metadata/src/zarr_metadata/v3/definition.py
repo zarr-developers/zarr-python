@@ -353,7 +353,14 @@ from zarr_metadata.v3._definition import (
 )
 from zarr_metadata.v3._pipeline import Stage, read_pipeline
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS, Context
-from zarr_metadata.v3._scope import ClaimKey, Claims, Conflict, ScopeConflictError
+from zarr_metadata.v3._scope import (
+    ClaimKey,
+    Claims,
+    Conflict,
+    ScopeConflictError,
+    claim_key,
+    claims_of,
+)
 
 __all__ = [
     "CORE",
@@ -398,6 +405,8 @@ __all__ = [
     "canonicalize",
     "check",
     "chunk_grid_lengths",
+    "claim_key",
+    "claims_of",
     "configuration_of",
     "field_json_schema",
     "fields_of",
