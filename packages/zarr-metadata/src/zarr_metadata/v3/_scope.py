@@ -63,9 +63,12 @@ class Conflict:
     def __str__(self) -> str:
         kind, name = self.key
         where = "" if self.loc is None else f" at {self.loc!r}"
-        return (
-            f"{_KIND_NAMES[kind]} {name!r}{where}: claimed {self.claimed!r}, found {self.found!r}"
-        )
+        return f"{kind_name(kind)} {name!r}{where}: claimed {self.claimed!r}, found {self.found!r}"
+
+
+def kind_name(kind: type[Definition[Any]]) -> str:
+    """A kind of definition as a message names it: `CodecDefinition` is "codec", `ChunkKeyEncodingDefinition` "chunk key encoding"; a kind the table does not know, by its class name."""
+    return _KIND_NAMES.get(kind, kind.__name__)
 
 
 class ScopeConflictError(ValueError):
@@ -184,5 +187,6 @@ __all__ = [
     "claim_key",
     "claims_of",
     "disagreements_of",
+    "kind_name",
     "refines",
 ]

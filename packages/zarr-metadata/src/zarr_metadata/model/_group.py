@@ -60,7 +60,7 @@ from zarr_metadata.v2.consolidated import ZARR_V2_CONSOLIDATED_METADATA_STORE_KE
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY
 from zarr_metadata.v3._hierarchy import NodeType, hierarchy_problems, path_faults, said
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
-from zarr_metadata.v3._scope import Claims, ScopeConflictError, claims_of
+from zarr_metadata.v3._scope import Claims, Conflict, ScopeConflictError, claims_of, kind_name
 from zarr_metadata.v3.array import ZarrV3ExtensionField
 from zarr_metadata.v3.consolidated import ZARR_V3_CONSOLIDATED_METADATA_KEY
 from zarr_metadata.v3.group import ZARR_V3_GROUP_METADATA_STORE_KEY, ZarrV3GroupMetadataJSON
@@ -91,8 +91,8 @@ class ZarrV3ConsolidatedMetadataInput(TypedDict, closed=True):
     A node model is accepted when the group's scope reads every claim of
     it identically, or claims what the model's scope left unclaimed -- it
     is then read again there -- and refused, with a problem at its path,
-    where the two scopes read a name differently, or the group's reads it
-    by none.
+    where the two scopes read a name differently, or the group's scope
+    leaves it unclaimed.
     """
 
     kind: Literal["inline"]
@@ -798,30 +798,51 @@ def _read_node_model(
     scope. A gain reads the document again there, so a problem a newly
     claimed definition finds is reported where it sits.
     """
+    document = entry._document  # pyright: ignore[reportPrivateUsage]
     found = context.disagreements(entry.claims)
     if len(found.conflicts) != 0:
-        conflicts = located_conflicts(entry.reading.fields(), found.conflicts)
+        # Read again in the group's scope, so the reading is of that scope,
+        # as every reading the group holds is; the conflicts are its
+        # problems, each where the field sits.
+        reading, _ = _read_node_v3(document, context, at)
+        written = {loc: field.name for loc, field in entry.reading.fields()}
         problems = tuple(
             ValidationProblem(
                 conflict.loc if conflict.loc is not None else (),
-                f"expected a document read in the group's scope, got a model that reads the "
-                f"{_kind_said(conflict.key[0])} {conflict.key[1]!r} by "
-                f"{_definition_said(conflict.claimed)}, which the group's scope "
-                f"{_reads_said(conflict.found)}",
+                _conflict_said(
+                    conflict, None if conflict.loc is None else written.get(conflict.loc)
+                ),
                 "invalid_value",
             )
-            for conflict in conflicts
+            for conflict in located_conflicts(entry.reading.fields(), found.conflicts)
         )
-        return _without_models(entry.reading, problems), None
+        return _with_problems(reading, (*reading.problems, *problems)), None
     if found.agrees:
+        # The model's own reading, unless the document sits too deep
+        # where it is listed, which a read from there reports.
+        _, past = refine_user_data(document, at)
+        if len(past) != 0:
+            return _read_node_v3(document, context, at)
         moved = entry.with_context(context)
         return moved.reading, moved._members  # pyright: ignore[reportPrivateUsage]
-    return _read_node_v3(entry._document, context, at)  # pyright: ignore[reportPrivateUsage]
+    return _read_node_v3(document, context, at)
 
 
-def _kind_said(kind: type[Definition[Any]]) -> str:
-    """A kind of definition as a message names it: `CodecDefinition` is "codec"."""
-    return kind.__name__.removesuffix("Definition").replace("Type", " type").lower()
+def _conflict_said(conflict: Conflict, written: str | None) -> str:
+    """What a conflict between a model entry's scope and the group's says: the kind and the name as the document writes it, what read it, and how the group's scope reads it -- by another definition, told apart from the model's where the two print alike, or by none."""
+    kind, filed = conflict.key
+    name = filed if written is None else written
+    claimed = _definition_said(conflict.claimed)
+    head = f"expected a document read in the group's scope, got a model that reads the {kind_name(kind)} {name!r}"
+    if conflict.found is None:
+        return f"{head} by {claimed}, which the group's scope leaves unclaimed"
+    found = _definition_said(conflict.found)
+    if claimed == found:
+        return (
+            f"{head} by a definition of that name other than the one the group's scope "
+            f"reads it by, {found}"
+        )
+    return f"{head} by {claimed}, which the group's scope reads by {found}"
 
 
 def _definition_said(definition: Definition[Any] | None) -> str:
@@ -831,28 +852,13 @@ def _definition_said(definition: Definition[Any] | None) -> str:
     return f"{definition!r} of {definition.configuration.__qualname__}"
 
 
-def _reads_said(definition: Definition[Any] | None) -> str:
-    """How the group's scope reads a name, as a message says it: by a definition, or by none."""
-    if definition is None:
-        return "leaves unclaimed"
-    return f"reads by {_definition_said(definition)}"
-
-
-def _without_models(
+def _with_problems(
     reading: ZarrV3NodeMetadataReading, problems: tuple[ValidationProblem, ...]
 ) -> ZarrV3NodeMetadataReading:
-    """`reading`, a model's, as the reading of an entry refused with `problems`: no model, in it or in any document it holds, since a reading of the group's scope holds models of that scope alone."""
-    if isinstance(reading, ZarrV3GroupMetadataReading):
-        nested = MappingProxyType(
-            {
-                path: _without_models(held, held.problems)
-                for path, held in reading.consolidated.items()
-            }
-        )
-        return dataclasses.replace(reading, consolidated=nested, problems=problems, metadata=None)
-    if isinstance(reading, ZarrV3ArrayMetadataReading):
+    """`reading`, a read of a document in the group's scope, with `problems` as its problems and no model."""
+    if isinstance(reading, (ZarrV3GroupMetadataReading, ZarrV3ArrayMetadataReading)):
         return dataclasses.replace(reading, problems=problems, metadata=None)
-    return reading
+    return dataclasses.replace(reading, problems=problems)
 
 
 def _read_consolidated_v3(

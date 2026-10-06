@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import dataclasses
 import pickle
 from typing import Any, cast
 
 import pytest
 
+from zarr_metadata._json import JSON_DEPTH
 from zarr_metadata.model import (
     MetadataValidationError,
     ZarrV3ArrayMetadata,
@@ -19,7 +21,18 @@ from zarr_metadata.model import (
     validate_group_metadata_v3,
 )
 from zarr_metadata.v3.codec.crc32c import Empty
-from zarr_metadata.v3.definition import CORE, CORE_AND_EXTENSIONS, CodecDefinition, Context
+from zarr_metadata.v3.codec.gzip import GZIP_CODEC
+from zarr_metadata.v3.definition import (
+    CORE,
+    CORE_AND_EXTENSIONS,
+    ChunkGridDefinition,
+    ChunkKeyEncodingDefinition,
+    CodecDefinition,
+    Context,
+    DataTypeDefinition,
+    StorageTransformerDefinition,
+    claims_of,
+)
 
 ARRAY: dict[str, Any] = {
     **ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json(),
@@ -153,8 +166,13 @@ def test_readers_see_models_as_the_constructor_does() -> None:
     assert reading.problems == ()
     assert isinstance(reading.consolidated["a"].metadata, ZarrV3ArrayMetadata)
     assert validate_group_metadata_v3(document) == ()
+
+
+def test_error_the_validator_reports_a_conflicting_model_as_the_constructor_does() -> None:
+    """`validate_group_metadata_v3` given a document holding a model the scope conflicts with reports the conflict at the entry's path, as the constructor refuses it."""
     clashing = {
-        **document,
+        "zarr_format": 3,
+        "node_type": "group",
         "consolidated_metadata": {
             **INLINE,
             "metadata": {"a": ZarrV3ArrayMetadata(ARRAY, context=PRIVATE)},
@@ -217,8 +235,8 @@ def test_parse_gives_json_for_a_document_holding_models() -> None:
     assert is_group_metadata_v3(parsed)
 
 
-def test_a_refused_model_entrys_reading_holds_no_model_of_another_scope() -> None:
-    """A group model refused as an entry leaves, in its reading, no model of the scope it was read in: a reading of the group's scope holds models of that scope alone."""
+def test_error_a_refused_model_entrys_reading_is_of_the_groups_scope() -> None:
+    """A group model refused as an entry is read again in the group's scope for its reading, so the group's reading holds no field, and no model, of another scope: `claims_of` its fields finds one scope."""
     child = ZarrV3GroupMetadata(
         _group(CORE_AND_EXTENSIONS, x=ZarrV3ArrayMetadata(WITH_ZSTD)).to_json(),
         context=CORE_AND_EXTENSIONS,
@@ -234,3 +252,63 @@ def test_a_refused_model_entrys_reading_holds_no_model_of_another_scope() -> Non
     assert nested.metadata is None
     assert len(nested.problems) != 0
     assert nested.consolidated["x"].metadata is None
+    assert claims_of(reading.fields()) == claims_of(
+        read_group_metadata_v3(_documents(document), context=CORE).fields()
+    )
+    for _, field in reading.fields():
+        assert field.definition is None or field.definition in CORE.definitions()
+
+
+def test_error_a_model_listed_too_deep_is_refused_where_it_sits() -> None:
+    """A model valid on its own, nested to the last level a reader walks, sits past the cap as a listed document: refused there, as its document would be, by the validator, the constructor and the reader alike."""
+    deep: list[object] = []
+    for _ in range(JSON_DEPTH - 3):
+        deep = [deep]
+    child = ZarrV3ArrayMetadata({**ARRAY, "attributes": {"x": deep}})
+    document = {
+        "zarr_format": 3,
+        "node_type": "group",
+        "consolidated_metadata": {**INLINE, "metadata": {"a": child}},
+    }
+    problems = validate_group_metadata_v3(document)
+    assert [problem.loc[:4] for problem in problems] == [
+        ("consolidated_metadata", "metadata", "a", "attributes")
+    ]
+    with pytest.raises(MetadataValidationError):
+        ZarrV3GroupMetadata(document)
+    assert read_group_metadata_v3(document).metadata is None
+
+
+@pytest.mark.parametrize(
+    ("kind", "said"),
+    [
+        (CodecDefinition, "codec"),
+        (DataTypeDefinition, "data type"),
+        (ChunkGridDefinition, "chunk grid"),
+        (ChunkKeyEncodingDefinition, "chunk key encoding"),
+        (StorageTransformerDefinition, "storage transformer"),
+    ],
+    ids=["codec", "data-type", "chunk-grid", "chunk-key-encoding", "storage-transformer"],
+)
+def test_a_conflict_names_each_kind_as_the_spec_does(kind: type, said: str) -> None:
+    """A conflict's problem names the kind of the field in words: `ChunkKeyEncodingDefinition` is "chunk key encoding", as a scope conflict names it."""
+    from zarr_metadata.v3._scope import kind_name
+
+    assert kind_name(kind) == said
+
+
+def test_error_a_conflict_between_definitions_alike_says_they_differ() -> None:
+    """Two definitions of one name that read the same TypedDict, differing in their rules, are told apart in the message by saying so, since nothing else shows it."""
+    strict = dataclasses.replace(GZIP_CODEC, rules=lambda configuration, nested: iter(()))
+    child = ZarrV3ArrayMetadata(
+        {**ARRAY, "codecs": ("bytes", {"name": "gzip", "configuration": {"level": 1}})},
+        context=CORE.extended_with(strict),
+    )
+    with pytest.raises(MetadataValidationError) as raised:
+        _group(CORE, a=child)
+    (problem,) = raised.value.problems
+    assert problem.message == (
+        "expected a document read in the group's scope, got a model that reads the codec "
+        "'gzip' by a definition of that name other than the one the group's scope reads it "
+        "by, CodecDefinition(name='gzip') of GzipCodecConfiguration"
+    )
