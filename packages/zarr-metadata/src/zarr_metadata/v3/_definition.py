@@ -38,6 +38,7 @@ from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
     Any,
+    ClassVar,
     Final,
     Generic,
     Literal,
@@ -170,6 +171,10 @@ class EmptyConfiguration(TypedDict, closed=True):
     """The configuration of a definition with nothing to configure: its field is written with its name alone."""
 
 
+_FIELD_KINDS: Final[dict[object, type[Definition[Any]]]] = {}
+"""Each field alias, and the kind a member annotated with it is read as; filed by each kind as its class is built."""
+
+
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Definition(Generic[C]):
     """One extension's metadata, as JSON: its name, the TypedDict its configuration is, its rules.
@@ -203,6 +208,17 @@ class Definition(Generic[C]):
     and a `name` or rules that are not what they say.
     """
 
+    is_kind: ClassVar[bool] = False
+    """Whether this class is a kind: what a scope files definitions by.
+
+    Set in a kind's own body and read from it, never inherited: a
+    subclass of a kind is a definition of that kind.
+    """
+    label: ClassVar[str] = "definition"
+    """The kind as a message names it: "codec"."""
+    field_aliases: ClassVar[tuple[object, ...]] = ()
+    """The field aliases a configuration member holding a field of this kind is annotated with: `CodecField` and `StaticCodecField` for a codec."""
+
     name: str
     """The name the metadata carries, which a scope files the definition under."""
     configuration: type[C]
@@ -215,6 +231,15 @@ class Definition(Generic[C]):
     Only the definition's own members: a nested field is put in its own
     canonical form by `canonicalize`, which knows where each one sits.
     """
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        # Named, not `super()`: a dataclass with slots is rebuilt, and the
+        # cell a bare `super()` reads names the class that was thrown away.
+        super(Definition, cls).__init_subclass__(**kwargs)
+        # A dataclass with slots is built twice, and the class built last
+        # is the one a document is read with: it files its aliases last.
+        for alias in cls.__dict__.get("field_aliases", ()):
+            _FIELD_KINDS[alias] = cls
 
     def __post_init__(self) -> None:
         refusal = _malformed(self) or self._refusal()
@@ -381,6 +406,10 @@ class DataTypeDefinition(Definition[C]):
     this definition.
     """
 
+    is_kind: ClassVar[bool] = True
+    label: ClassVar[str] = "data type"
+    field_aliases: ClassVar[tuple[object, ...]] = (DataTypeField,)
+
     fill_value: object = JSONValue
     """The JSON shape of a fill value, as an annotation: `Int8FillValue`."""
     fill_value_rules: Callable[[C, Nested, Any], Iterable[ValidationProblem]] = no_rules
@@ -428,6 +457,10 @@ class ChunkGridDefinition(Definition[C]):
     every axis unknown.
     """
 
+    is_kind: ClassVar[bool] = True
+    label: ClassVar[str] = "chunk grid"
+    field_aliases: ClassVar[tuple[object, ...]] = (ChunkGridField,)
+
     shape_rules: Callable[[C, Nested, tuple[int, ...]], Iterable[ValidationProblem]] = no_rules
     """What the spec disallows in this grid over an array of a shape, located in the configuration."""
     chunk_lengths: Callable[[C, Nested, tuple[int, ...]], Lengths] = unknown_lengths
@@ -437,6 +470,10 @@ class ChunkGridDefinition(Definition[C]):
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class ChunkKeyEncodingDefinition(Definition[C]):
     """A chunk key encoding."""
+
+    is_kind: ClassVar[bool] = True
+    label: ClassVar[str] = "chunk key encoding"
+    field_aliases: ClassVar[tuple[object, ...]] = (ChunkKeyEncodingField,)
 
 
 CodecKind = Literal["array_array", "array_bytes", "bytes_bytes"]
@@ -489,6 +526,10 @@ class CodecDefinition(Definition[C]):
     codec, which is handed bytes -- is refused.
     """
 
+    is_kind: ClassVar[bool] = True
+    label: ClassVar[str] = "codec"
+    field_aliases: ClassVar[tuple[object, ...]] = (CodecField, StaticCodecField)
+
     kind: CodecKind
     size: CodecSize
     chunk_rules: Callable[[C, Nested, Chunk], Iterable[ValidationProblem]] = no_rules
@@ -516,6 +557,10 @@ class CodecDefinition(Definition[C]):
 class StorageTransformerDefinition(Definition[C]):
     """A storage transformer."""
 
+    is_kind: ClassVar[bool] = True
+    label: ClassVar[str] = "storage transformer"
+    field_aliases: ClassVar[tuple[object, ...]] = (StorageTransformerField,)
+
 
 KINDS: Final[tuple[type[Definition[Any]], ...]] = (
     DataTypeDefinition,
@@ -528,35 +573,39 @@ KINDS: Final[tuple[type[Definition[Any]], ...]] = (
 
 
 def kind_of(definition: Definition[Any]) -> type[Definition[Any]] | None:
-    """The kind `definition` is; None for a definition of no kind, which no scope files."""
-    return next((kind for kind in KINDS if isinstance(definition, kind)), None)
+    """The kind `definition` is: the nearest class in its MRO that declares `is_kind`; None for a definition of no kind, which no scope files."""
+    return _kind_in(type(definition))
+
+
+def _kind_in(cls: type) -> type[Definition[Any]] | None:
+    return next(
+        (
+            cast("type[Definition[Any]]", base)
+            for base in cls.__mro__
+            if vars(base).get("is_kind") is True
+        ),
+        None,
+    )
 
 
 def as_kind(kind: object) -> type[Definition[Any]]:
     """The kind of metadata `kind` names, type arguments dropped; `TypeError` if it names none.
 
-    A scope files definitions by kind, so a field is read as one of
-    `KINDS` -- `CodecDefinition`, or `CodecDefinition[Any]` -- and never
-    as the base `Definition` or a class of the caller's own, under which
-    nothing is filed: a field read as one would go unjudged.
+    A scope files definitions by kind, so a field is read as a kind --
+    `CodecDefinition`, or `CodecDefinition[Any]` -- and never as the base
+    `Definition` or a class that declares no kind, under which nothing is
+    filed: a field read as one would go unjudged.
     """
     origin = get_origin(kind) or kind
-    found = next((known for known in KINDS if origin is known), None)
-    if found is None:
-        names = ", ".join(known.__name__ for known in KINDS)
-        msg = f"{kind!r} is not a kind of metadata; read a field as one of {names}"
-        raise TypeError(msg)
-    return found
+    if isinstance(origin, type) and vars(origin).get("is_kind") is True:
+        return cast("type[Definition[Any]]", origin)
+    names = ", ".join(known.__name__ for known in KINDS)
+    msg = (
+        f"{kind!r} is not a kind of metadata; read a field as one of {names}, or as a "
+        "subclass of Definition that sets is_kind in its own body"
+    )
+    raise TypeError(msg)
 
-
-_FIELD_KINDS: Final[Mapping[object, type[Definition[Any]]]] = {
-    DataTypeField: DataTypeDefinition,
-    ChunkGridField: ChunkGridDefinition,
-    ChunkKeyEncodingField: ChunkKeyEncodingDefinition,
-    CodecField: CodecDefinition,
-    StaticCodecField: CodecDefinition,
-    StorageTransformerField: StorageTransformerDefinition,
-}
 
 _STATIC_SIZE: Final[frozenset[object]] = frozenset({StaticCodecField})
 """The field aliases whose codec must be of static size."""
@@ -663,10 +712,10 @@ def _vet(configuration: type) -> None:
         raise TypeError(msg)
 
 
-_KIND_FIELDS: Final[Mapping[type[Definition[Any]], object]] = {
-    kind: alias for alias, kind in _FIELD_KINDS.items() if alias not in _STATIC_SIZE
-}
-"""The field alias of each kind: the one a member holding any field of the kind is annotated with."""
+def kind_field(kind: type[Definition[Any]]) -> object:
+    """The field alias a member holding any field of `kind` is annotated with: the first the kind declares that does not narrow the field, `CodecField` rather than `StaticCodecField`."""
+    return next(alias for alias in kind.field_aliases if alias not in _STATIC_SIZE)
+
 
 _RAW_BYTES_SCHEMA_PATTERN: Final = f"^{RAW_BYTES_NAME_PATTERN.pattern}(?![\\s\\S])"
 """`RAW_BYTES_NAME_PATTERN`, matched whole, as a JSON Schema writes a pattern.
@@ -694,7 +743,7 @@ def field_json_schema(kind: type[Definition[Any]], context: Context) -> JSONSche
     so a field it accepts may still have a problem.
     """
     schemas = Schemas(field_schemas(context))
-    return schemas.document(schemas.of(_KIND_FIELDS[as_kind(kind)]))
+    return schemas.document(schemas.of(kind_field(as_kind(kind))))
 
 
 def field_schemas(context: Context) -> SchemaLeaf:

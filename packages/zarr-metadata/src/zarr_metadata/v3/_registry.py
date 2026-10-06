@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, cast
 
-from zarr_metadata.v3._definition import KINDS, Definition, as_kind, kind_of, spelled
+from zarr_metadata.v3._definition import Definition, as_kind, kind_of, spelled
 from zarr_metadata.v3._scope import Conflict, ScopeConflictError, disagreements_of
 from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
@@ -87,19 +87,18 @@ class Context:
         `TypeError` for a definition of no kind, which no position in a
         document could hold.
         """
-        tables: dict[type[Definition[Any]], dict[str, Definition[Any]]] = {
-            kind: {} for kind in KINDS
-        }
+        tables: dict[type[Definition[Any]], dict[str, Definition[Any]]] = {}
         for definition in definitions:
             kind = kind_of(definition)
             if kind is None:
                 msg = (
                     f"{definition.name!r} is a definition of no kind; build it as a "
                     "CodecDefinition, DataTypeDefinition, ChunkGridDefinition, "
-                    "ChunkKeyEncodingDefinition or StorageTransformerDefinition"
+                    "ChunkKeyEncodingDefinition or StorageTransformerDefinition, or as a "
+                    "kind of your own"
                 )
                 raise TypeError(msg)
-            tables[kind][definition.name] = definition
+            tables.setdefault(kind, {})[definition.name] = definition
         return cls(
             MappingProxyType({kind: MappingProxyType(table) for kind, table in tables.items()})
         )

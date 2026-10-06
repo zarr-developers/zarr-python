@@ -16,14 +16,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 from zarr_metadata.v3._definition import (
-    ChunkGridDefinition,
-    ChunkKeyEncodingDefinition,
-    CodecDefinition,
-    DataTypeDefinition,
     Definition,
     Read,
     Refused,
-    StorageTransformerDefinition,
     Unclaimed,
     field_key,
     own_key,
@@ -42,14 +37,6 @@ ClaimKey: TypeAlias = tuple[type[Definition[Any]], str]
 Claims: TypeAlias = Mapping[ClaimKey, Definition[Any] | None]
 """What a reading claims of each name a document writes: the definition that read it, or None where nothing claimed it."""
 
-_KIND_NAMES: dict[type[Definition[Any]], str] = {
-    CodecDefinition: "codec",
-    DataTypeDefinition: "data type",
-    ChunkGridDefinition: "chunk grid",
-    ChunkKeyEncodingDefinition: "chunk key encoding",
-    StorageTransformerDefinition: "storage transformer",
-}
-
 
 @dataclass(frozen=True, slots=True)
 class Conflict:
@@ -67,8 +54,8 @@ class Conflict:
 
 
 def kind_name(kind: type[Definition[Any]]) -> str:
-    """A kind of definition as a message names it: `CodecDefinition` is "codec", `ChunkKeyEncodingDefinition` "chunk key encoding"; a kind the table does not know, by its class name."""
-    return _KIND_NAMES.get(kind, kind.__name__)
+    """A kind of definition as a message names it: its label, "codec" for `CodecDefinition`."""
+    return kind.label
 
 
 class ScopeConflictError(ValueError):
