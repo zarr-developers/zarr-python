@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import dataclasses
 import pickle
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from typing import Any
 
 import pytest
@@ -13,17 +14,22 @@ from zarr_metadata.model import (
     UNSET,
     MetadataValidationError,
     ZarrV3ArrayMetadata,
+    ZarrV3ConsolidatedMetadata,
+    ZarrV3GroupMetadata,
     read_array_metadata_v3,
 )
+from zarr_metadata.v3.codec.bytes import BYTES_CODEC
 from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
     CodecDefinition,
     Context,
+    Nested,
     Read,
     ScopeConflictError,
     Unclaimed,
+    ValidationProblem,
 )
 
 ARRAY: dict[str, Any] = {
@@ -312,3 +318,115 @@ def test_refines_orders_models_by_information(
 ) -> None:
     """A model refines another when every field refines its counterpart and every other member is the same, the fill value compared as the more informed data type spells it."""
     assert upper.refines(lower) is expected
+
+
+GROUP: dict[str, Any] = {"zarr_format": 3, "node_type": "group", "attributes": {"g": 1}}
+CONSOLIDATED: dict[str, Any] = {
+    **GROUP,
+    "consolidated_metadata": {
+        "kind": "inline",
+        "must_understand": False,
+        "metadata": {"a": ARRAY, "b": GROUP, "b/c": SPELLED_OUT},
+    },
+}
+
+
+def test_a_group_is_its_document_and_scope_and_its_nested_models_share_them() -> None:
+    """A group model is the pair, and each document its consolidated metadata holds is a model of the same scope, built from the group's one read, writing its document as written."""
+    group = ZarrV3GroupMetadata(CONSOLIDATED, context=CORE)
+    held = group.consolidated_metadata
+    assert isinstance(held, ZarrV3ConsolidatedMetadata)
+    assert set(held.metadata) == {"a", "b", "b/c"}
+    for node in held.metadata.values():
+        assert node.context is group.context
+    assert held.metadata["b/c"].to_json()["data_type"] == {"name": "uint8"}
+    assert group.to_json() == refine_json(CONSOLIDATED)[0]
+    assert ZarrV3GroupMetadata(GROUP).consolidated_metadata is UNSET
+
+
+def test_a_group_reads_each_nested_field_once() -> None:
+    """Building a group with consolidated metadata asks a definition's rules once per nested field: the models are built from the read, not read again."""
+    calls: list[int] = []
+
+    def counted(configuration: object, nested: Nested) -> Iterator[ValidationProblem]:
+        calls.append(1)
+        return iter(())
+
+    scope = CORE.extended_with(dataclasses.replace(BYTES_CODEC, rules=counted))
+    ZarrV3GroupMetadata(CONSOLIDATED, context=scope)
+    assert len(calls) == 2  # `a` and `b/c` each hold one bytes codec
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "equal"),
+    [
+        (ZarrV3GroupMetadata(CONSOLIDATED), ZarrV3GroupMetadata(CONSOLIDATED, context=CORE), True),
+        (
+            ZarrV3GroupMetadata(CONSOLIDATED),
+            ZarrV3GroupMetadata(CONSOLIDATED, context=PRIVATE),
+            False,
+        ),
+        (ZarrV3GroupMetadata(GROUP), ZarrV3GroupMetadata({**GROUP, "attributes": {"g": 2}}), False),
+    ],
+    ids=["unused-definitions", "private-bytes-inside", "attributes"],
+)
+def test_groups_are_equal_by_what_their_documents_mean(
+    left: ZarrV3GroupMetadata, right: ZarrV3GroupMetadata, equal: bool
+) -> None:
+    """A group compares by its attributes, extra fields and each nested model's meaning; equal groups hash alike."""
+    assert (left == right) is equal
+    if equal:
+        assert hash(left) == hash(right)
+
+
+@pytest.mark.parametrize("document", [GROUP, CONSOLIDATED], ids=["group", "consolidated"])
+def test_a_group_round_trips_through_its_document_in_its_scope(document: dict[str, Any]) -> None:
+    """`from_json(g.to_json(), context=g.context) == g`, and pickle carries the pair."""
+    group = ZarrV3GroupMetadata(document, context=CORE)
+    assert ZarrV3GroupMetadata(group.to_json(), context=group.context) == group
+    assert pickle.loads(pickle.dumps(group)) == group
+
+
+def test_group_update_with_context_and_refined_in_behave_as_the_arrays_do() -> None:
+    """`update` reads in the group's scope and keeps its consolidated metadata unless given; `refined_in` moves every nested model up the order; `with_context` reads all of it in another scope."""
+    group = ZarrV3GroupMetadata(CONSOLIDATED, context=Context.of())
+    assert group.update(attributes={"g": 2}).consolidated_metadata == group.consolidated_metadata
+    refined = group.refined_in(CORE)
+    assert refined.refines(group)
+    assert refined.context == CORE
+    held = refined.consolidated_metadata
+    assert isinstance(held, ZarrV3ConsolidatedMetadata)
+    array = held.metadata["a"]
+    assert isinstance(array, ZarrV3ArrayMetadata)
+    assert isinstance(array.codecs[0], Read)
+    with pytest.raises(ScopeConflictError):
+        ZarrV3GroupMetadata(CONSOLIDATED).refined_in(PRIVATE)
+    private = group.with_context(PRIVATE).consolidated_metadata
+    assert isinstance(private, ZarrV3ConsolidatedMetadata)
+    private_array = private.metadata["a"]
+    assert isinstance(private_array, ZarrV3ArrayMetadata)
+    assert private_array.codecs[0].definition == MY_BYTES
+
+
+def test_consolidated_metadata_reads_on_its_own() -> None:
+    """`ZarrV3ConsolidatedMetadata(member, context)` reads the member as a group's read reads it, each document a model of that scope."""
+    member = CONSOLIDATED["consolidated_metadata"]
+    held = ZarrV3ConsolidatedMetadata(member, context=CORE)
+    assert held == ZarrV3GroupMetadata(CONSOLIDATED, context=CORE).consolidated_metadata
+    assert held.to_json() == refine_json(member)[0]
+    assert ZarrV3ConsolidatedMetadata.from_json(member) == ZarrV3ConsolidatedMetadata(member)
+
+
+def test_error_a_group_with_a_nested_problem_is_refused_at_the_nested_path() -> None:
+    """A nested document's problem is the group's, located under `consolidated_metadata.metadata.<path>`."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3GroupMetadata(
+            {
+                **CONSOLIDATED,
+                "consolidated_metadata": {
+                    **CONSOLIDATED["consolidated_metadata"],
+                    "metadata": {"a": {**ARRAY, "shape": [-1]}},
+                },
+            }
+        )
+    assert raised.value.problems[0].loc == ("consolidated_metadata", "metadata", "a", "shape")

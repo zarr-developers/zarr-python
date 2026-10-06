@@ -442,47 +442,6 @@ def _fill_value_key(model: ZarrV3ArrayMetadata) -> str:
     return json_text(model.fill_value)
 
 
-def array_json(model: ZarrV3ArrayMetadata) -> ZarrV3ArrayMetadataJSON:
-    """`model`'s document, holding the model's own values: what a writer serializes without copying."""
-    return cast("ZarrV3ArrayMetadataJSON", model._document)  # pyright: ignore[reportPrivateUsage]
-
-
-def array_model(
-    reading: ZarrV3ArrayMetadataReading, members: ArrayMembersV3
-) -> ZarrV3ArrayMetadata:
-    """The model of a document its reading found nothing wrong with, its document rebuilt from the reading.
-
-    A shim for the group reader until it hands the nested documents down
-    with their readings: the document is rebuilt from what was read, so a
-    member written empty is written back as the read holds it.
-    """
-    document: dict[str, JSONValue] = {
-        "zarr_format": 3,
-        "node_type": "array",
-        "shape": members.shape,
-        "data_type": cast("Read[Any] | Unclaimed", reading.data_type).json,
-        "chunk_grid": cast("Read[Any] | Unclaimed", reading.chunk_grid).json,
-        "chunk_key_encoding": cast("Read[Any] | Unclaimed", reading.chunk_key_encoding).json,
-        "fill_value": members.fill_value,
-        "codecs": tuple(
-            cast("Read[Any] | Unclaimed", stage.codec).json for stage in reading.pipeline
-        ),
-    }
-    if members.dimension_names is not UNSET:
-        document["dimension_names"] = members.dimension_names
-    if len(members.attributes) != 0:
-        document["attributes"] = members.attributes
-    if len(reading.storage_transformers) != 0:
-        document["storage_transformers"] = tuple(
-            cast("Read[Any] | Unclaimed", transformer).json
-            for transformer in reading.storage_transformers
-        )
-    document.update(members.extra_fields)
-    return ZarrV3ArrayMetadata._of(  # pyright: ignore[reportPrivateUsage]
-        document, CORE_AND_EXTENSIONS, reading, members
-    )
-
-
 def read_array_metadata_v3(
     value: object, *, context: Context = CORE_AND_EXTENSIONS
 ) -> ZarrV3ArrayMetadataReading:
