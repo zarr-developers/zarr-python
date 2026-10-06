@@ -13,7 +13,10 @@ machine-readable `kind`), an `is_*` type guard, and a `parse_*` function
 that narrows or raises `MetadataValidationError`; a v3 array or group
 document also gets `read_array_metadata_v3` or `read_group_metadata_v3`,
 one read that returns what it read, the problems, and the model when
-there are none. `node_metadata_json_schema_v3` writes what the v3
+there are none. A store another writer made, holding a known writer
+bug, is read by `read_repaired_node_metadata_v3`, which undoes each one
+with `repair_node_metadata_v3` before the strict read and says what it
+changed. `node_metadata_json_schema_v3` writes what the v3
 validators read as a JSON Schema, but for the rules. Model `from_json` /
 `from_key_value` constructors raise
 `MetadataValidationError` for every ingestion failure, including missing
@@ -61,6 +64,17 @@ from zarr_metadata.model._group import (
     validate_node_metadata_v3,
 )
 from zarr_metadata.model._json_schema import node_metadata_json_schema_v3
+from zarr_metadata.model._repair import (
+    Repair,
+    RepairKind,
+    ZarrV3NullConsolidatedGroupMetadataJSON,
+    ZarrV3RepairedNodeMetadataReading,
+    ZarrV3ZeroChunkArrayMetadataJSON,
+    ZarrV3ZeroChunkRegularGridConfigurationJSON,
+    ZarrV3ZeroChunkRegularGridJSON,
+    read_repaired_node_metadata_v3,
+    repair_node_metadata_v3,
+)
 from zarr_metadata.model._validation import (
     ARRAY_METADATA_OPTIONAL_KEYS_V3,
     ARRAY_METADATA_REQUIRED_KEYS_V2,
@@ -143,6 +157,8 @@ __all__ = [
     "ZARR_V3_GROUP_METADATA_STORE_KEY",
     "MetadataValidationError",
     "ProblemKind",
+    "Repair",
+    "RepairKind",
     "ValidationProblem",
     "ZarrV2ArrayMetadata",
     "ZarrV2ArrayMetadataPartial",
@@ -164,7 +180,12 @@ __all__ = [
     "ZarrV3GroupMetadataUpdate",
     "ZarrV3NodeMetadata",
     "ZarrV3NodeMetadataReading",
+    "ZarrV3NullConsolidatedGroupMetadataJSON",
+    "ZarrV3RepairedNodeMetadataReading",
     "ZarrV3UnknownNodeReading",
+    "ZarrV3ZeroChunkArrayMetadataJSON",
+    "ZarrV3ZeroChunkRegularGridConfigurationJSON",
+    "ZarrV3ZeroChunkRegularGridJSON",
     "is_array_metadata_v2",
     "is_array_metadata_v3",
     "is_group_metadata_v2",
@@ -187,6 +208,8 @@ __all__ = [
     "read_array_metadata_v3",
     "read_group_metadata_v3",
     "read_node_metadata_v3",
+    "read_repaired_node_metadata_v3",
+    "repair_node_metadata_v3",
     "validate_array_metadata_v2",
     "validate_array_metadata_v3",
     "validate_group_metadata_v2",

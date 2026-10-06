@@ -315,6 +315,10 @@ _STANDALONE_VOCAB = frozenset(
         "NumpyTimedelta64",
         "ProblemKind",
         "RectilinearDimSpec",
+        # What a repair of a writer's bug changed, as `ValidationProblem` and
+        # `ProblemKind` are what a read found.
+        "Repair",
+        "RepairKind",
         "ScalarMap",
         "ScalarMapEntry",
         "ShardingIndexLocation",
