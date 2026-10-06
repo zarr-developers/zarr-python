@@ -88,6 +88,7 @@ def test_an_id_the_package_does_not_model_is_unclaimed(field: dict[str, Any]) ->
         ({"id": ""}, ("c", "id"), "invalid_value"),
         ({"id": "bz2", "level": 0}, ("c", "level"), "invalid_value"),
         ({"id": "blosc", "cname": "brotli"}, ("c", "cname"), "invalid_value"),
+        ({"id": "blosc", "clevel": -1}, ("c", "clevel"), "invalid_value"),
         ({"id": "blosc", "shuffle": 3}, ("c", "shuffle"), "invalid_value"),
         ({"id": "blosc", "blocksize": -1}, ("c", "blocksize"), "invalid_value"),
         ({"id": "zstd", "level": 23}, ("c", "level"), "invalid_value"),

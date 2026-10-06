@@ -91,8 +91,11 @@ def test_error_what_the_scope_refuses_is_a_problem_of_the_document(
 
 
 def test_create_default_with_a_dtype_takes_no_fill_value() -> None:
-    """`create_default` given a dtype and no fill value builds a model with `null` for one, since `0` is no fill value of most families; a fill value given is kept."""
+    """`create_default` given a dtype and no fill value keeps `0` when the family takes it, and takes `null` otherwise; a fill value given is kept."""
     assert ZarrV2ArrayMetadata.create_default(dtype="|b1").fill_value is None
+    assert ZarrV2ArrayMetadata.create_default(dtype="<f8").fill_value == 0
+    assert ZarrV2ArrayMetadata.create_default(dtype="<i4").fill_value == 0
+    assert ZarrV2ArrayMetadata.create_default(dtype="|S3").fill_value is None
     assert ZarrV2ArrayMetadata.create_default(dtype="<f4", fill_value=1.5).fill_value == 1.5
     assert ZarrV2ArrayMetadata.create_default().fill_value == 0
 

@@ -55,7 +55,7 @@ class ZarrV2BloscParameters(TypedDict, closed=True):
     """`numcodecs.Blosc(cname='lz4', clevel=5, shuffle=1, blocksize=0, typesize=None)`: shuffle -1 is automatic, 0 none, 1 byte, 2 bit."""
 
     cname: NotRequired[ReadOnly[BloscCName]]
-    clevel: NotRequired[ReadOnly[ZarrV2CompressionLevel]]
+    clevel: NotRequired[ReadOnly[Annotated[int, Interval(ge=0, le=9)]]]
     shuffle: NotRequired[ReadOnly[Literal[-1, 0, 1, 2]]]
     blocksize: NotRequired[ReadOnly[Annotated[int, Ge(0)]]]
     typesize: NotRequired[ReadOnly[Annotated[int, Ge(1)] | None]]

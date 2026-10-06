@@ -38,7 +38,20 @@ def test_a_typestr_parses_into_its_code_and_what_it_carries(
 
 
 @pytest.mark.parametrize(
-    "name", ["float32", "f4", "<f", "<f4x", "", "<", "<f4[ns", "[('a','<f4')]", "<M8[ns][s]"]
+    "name",
+    [
+        "float32",
+        "f4",
+        "<f",
+        "<f4x",
+        "",
+        "<",
+        "<f4[ns",
+        "[('a','<f4')]",
+        "<M8[ns][s]",
+        "<f\u0664",
+        "<M8[\u0663ns]",
+    ],
 )
 def test_error_a_string_that_is_no_typestr_parses_to_none(name: str) -> None:
     """A string without a byte order, a type code and a size in that order is not a typestr."""

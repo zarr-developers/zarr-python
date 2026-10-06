@@ -55,7 +55,8 @@ FAMILIES: Final[Mapping[str, str]] = {
 }
 """Each type code the v2 spec lists, and the family its definition is filed under."""
 
-TYPESTR_PATTERN: Final = re.compile(r"([<>|])([A-Za-z])(\d*)(?:\[(\d*)([A-Za-zμ]+)\])?")
+# ASCII digits only: `\d` matches every Unicode digit, which NumPy does not read.
+TYPESTR_PATTERN: Final = re.compile(r"([<>|])([A-Za-z])([0-9]*)(?:\[([0-9]*)([A-Za-z\u03bc]+)\])?")
 """A typestr: a byte order, a type code, a size in bytes if any, and a bracketed time unit with its multiplier if any."""
 
 

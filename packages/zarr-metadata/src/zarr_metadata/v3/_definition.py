@@ -1425,13 +1425,13 @@ def fields_of(resolved: Resolved[Any], loc: Loc = ()) -> Iterator[tuple[Loc, Res
     """`resolved`, a field a scope read, where it sits, then each field it holds and theirs in turn, each where it sits.
 
     `loc` is where `resolved` sits; a field it holds sits in its
-    configuration, at `(*loc, "configuration", *place)`, as `resolve`
+    configuration, at the kind's `configuration_loc` and its place, as `resolve`
     locates its problems. What each holds is its `nested`: a field whose
     configuration was not checked holds none.
     """
     yield loc, resolved
     for place, inner in resolved.nested.items():
-        yield from fields_of(inner, (*loc, "configuration", *place))
+        yield from fields_of(inner, (*resolved.read_as.configuration_loc(loc), *place))
 
 
 def with_problems(

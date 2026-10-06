@@ -13,6 +13,7 @@ from zarr_metadata.v3.definition import (
     Unclaimed,
     canonical_fill_value,
     canonical_of,
+    fields_of,
     fill_value_problems,
     resolve,
 )
@@ -216,3 +217,13 @@ def test_every_family_has_an_example() -> None:
         "object",
         "struct",
     }
+
+
+def test_a_struct_record_type_sits_where_the_document_writes_it() -> None:
+    """`fields_of` places a record's type under the struct's own configuration location, `("dtype", "fields", 0, 1)`, not under a `configuration` key a v2 document does not have."""
+    resolved, _ = resolve([["a", "<i0"], ["b", "<f4"]], ZarrV2DataTypeDefinition, SCOPE, ("dtype",))
+    assert [loc for loc, _ in fields_of(resolved, ("dtype",))] == [
+        ("dtype",),
+        ("dtype", "fields", 0, 1),
+        ("dtype", "fields", 1, 1),
+    ]

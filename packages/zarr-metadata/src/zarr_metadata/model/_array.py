@@ -33,6 +33,7 @@ from zarr_metadata.model._validation import (
 )
 from zarr_metadata.v2.array import ZARR_V2_ARRAY_METADATA_STORE_KEY
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
+from zarr_metadata.v2.definition import resolve_dtype_v2
 from zarr_metadata.v3._definition import (
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
@@ -612,10 +613,13 @@ class ZarrV2ArrayMetadata:
             filters=None,
             attributes=UNSET,
         )
-        # `0` is a fill value of the integer families only: a dtype given
-        # without a fill value takes `null`, which every family takes.
+        # The default fill value, `0`, is a value of the numeric families
+        # only: a dtype of another family given without a fill value takes
+        # `null`, which every family takes.
         if "dtype" in overrides and "fill_value" not in overrides:
-            overrides["fill_value"] = None
+            dtype, _ = resolve_dtype_v2(overrides["dtype"])
+            if len(fill_value_problems(dtype, 0)) != 0:
+                overrides["fill_value"] = None
         return default.update(**overrides)
 
     def __eq__(self, other: object) -> bool:
