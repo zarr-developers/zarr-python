@@ -430,3 +430,14 @@ def test_error_a_group_with_a_nested_problem_is_refused_at_the_nested_path() -> 
             }
         )
     assert raised.value.problems[0].loc == ("consolidated_metadata", "metadata", "a", "shape")
+
+
+def test_the_held_field_machinery_is_gone() -> None:
+    """A v3 model is built only by reading its document, so nothing in the package takes fields read already, or re-reads a model in an empty scope: `NO_SCOPE`, `overlapping` and `held` are gone."""
+    import inspect
+
+    import zarr_metadata.model._validation as validation
+
+    assert not hasattr(validation, "NO_SCOPE")
+    assert not hasattr(validation, "overlapping")
+    assert "held" not in inspect.signature(validation.read_array_v3).parameters

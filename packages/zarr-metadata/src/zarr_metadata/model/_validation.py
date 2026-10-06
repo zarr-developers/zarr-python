@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, TypeGuard, TypeVar, cast, get_args, get_origin
 
@@ -56,10 +56,8 @@ from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     Definition,
     Lengths,
-    Read,
     Resolved,
     StorageTransformerDefinition,
-    Unclaimed,
     chunk_grid_lengths,
     field_kind,
     fields_of,
@@ -463,20 +461,7 @@ class ZarrV3ArrayMetadataReading:
             yield from fields_of(transformer, ("storage_transformers", index))
 
 
-NO_SCOPE: Final = Context.of()
-"""A scope of no definitions, which a model's own document is read in: its fields are read already, and nothing else in it is a field."""
-
 M = TypeVar("M")
-
-
-def overlapping(
-    extra_fields: Mapping[str, object], reserved: frozenset[str], node: str
-) -> tuple[ValidationProblem, ...]:
-    """The problem of a model's extra fields named as a member its document declares, which the model holds apart; none when they are not."""
-    if set(extra_fields).isdisjoint(reserved):
-        return ()
-    message = f"Extra fields cannot overlap with standard Zarr V3 {node} metadata fields"
-    return (ValidationProblem(("extra_fields",), message, "invalid_value"),)
 
 
 def construct(model: type[M], /, **members: object) -> M:
@@ -518,43 +503,14 @@ class ArrayMembersV3:
     extra_fields: dict[str, JSONValue]
 
 
-def read_field(
-    value: object,
-    kind: type[Definition[Any]],
-    context: Context,
-    loc: Loc,
-    *,
-    held: Collection[object],
-) -> tuple[Resolved[Any], tuple[ValidationProblem, ...]]:
-    """`value`, one of a document's fields, as `context` reads it -- or as it is, when it is one of `held`: the fields a model holds, read already.
-
-    A model's own fields come back this way, so a model checks itself
-    without reading them again, and a field read in one scope keeps the
-    definition that read it, however the scope it is handed on in differs.
-    Any other field object -- in a document a caller hands in, or among
-    the members `update` is given -- is not JSON, and is refused as such,
-    so nothing built by hand passes as read but what a model holds.
-    """
-    if _read_as(value, kind) and any(value is field for field in held):
-        return cast("Resolved[Any]", value), ()
-    return resolve(value, kind, context, loc)
-
-
-def _read_as(value: object, kind: type[Definition[Any]]) -> bool:
-    """Whether `value` is a field a scope already read, as a `kind`, which a model holds."""
-    return isinstance(value, (Read, Unclaimed)) and value.read_as is kind
-
-
 def read_array_v3(
-    value: object, context: Context, *, held: Collection[object] = (), at: Loc = ()
+    value: object, context: Context, *, at: Loc = ()
 ) -> tuple[ZarrV3ArrayMetadataReading, ArrayMembersV3 | None]:
     """`value`, a v3 array document, as `context` read it, without its model, and its other members refined; None when it has a problem.
 
-    `read_array_metadata_v3` builds the model from the two. `held` are the
-    fields a model holds, read already, which are taken as they are where
-    the document holds them; any other field object in the document is
-    refused as not JSON. `at` is where the document sits in the one handed
-    in -- a document consolidated metadata holds sits three levels below
+    `read_array_metadata_v3` builds the model from the two. A field object
+    in the document -- a `Read` built by hand -- is not JSON, and is refused
+    as such. `at` is where the document sits in the one handed in -- a document consolidated metadata holds sits three levels below
     its group's -- so the levels a reader walks are counted from that
     one's root; the problems are located in this document.
     """
@@ -584,7 +540,7 @@ def read_array_v3(
     read: dict[str, Resolved[Any]] = {}
     for key, kind in _EXTENSION_POINTS_V3:
         if key in doc:
-            read[key], found = read_field(doc[key], kind, context, (*at, key), held=held)
+            read[key], found = resolve(doc[key], kind, context, (*at, key))
             problems.extend(within(found, at))
     # The fill value is JSON, and judged by the data type the scope read,
     # when there is one: a data type nothing in scope claims leaves it
@@ -611,7 +567,7 @@ def read_array_v3(
             else:
                 listed[key] = []
                 for index, entry in enumerate(entries):
-                    resolved, found = read_field(entry, kind, context, (*at, key, index), held=held)
+                    resolved, found = resolve(entry, kind, context, (*at, key, index))
                     listed[key].append(resolved)
                     problems.extend(within(found, at))
     # The codecs are read as a pipeline, the first handed the grid's chunks
