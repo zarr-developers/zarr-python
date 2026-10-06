@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, ClassVar, TypeVar
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, TypeVar, cast
 
 import pytest
+from annotated_types import Ge
+from typing_extensions import TypedDict
 
+from zarr_metadata._json import ValidationProblem
 from zarr_metadata.v3._definition import as_kind, kind_of
 from zarr_metadata.v3._scope import kind_name
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
@@ -16,8 +20,13 @@ from zarr_metadata.v3.definition import (
     Definition,
     EmptyConfiguration,
     Read,
+    Refused,
+    Unclaimed,
     resolve,
 )
+
+if TYPE_CHECKING:
+    from zarr_metadata._common import JSONValue
 
 C = TypeVar("C")
 
@@ -72,3 +81,75 @@ def test_error_a_class_that_declares_no_kind_is_of_none() -> None:
         Context.of(none)
     with pytest.raises(TypeError, match="is not a kind of metadata"):
         as_kind(NoKind)
+
+
+class Params(TypedDict, closed=True):
+    level: Annotated[int, Ge(0)]
+
+
+Loc = tuple[str | int, ...]
+
+
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
+class Flat(Definition[C]):
+    """A kind whose format writes the parameters beside the name: `{"id": name, **parameters}`."""
+
+    is_kind: ClassVar[bool] = True
+    label: ClassVar[str] = "flat"
+
+    @classmethod
+    def named_configuration(
+        cls, value: object
+    ) -> tuple[str | None, Mapping[str, object] | None, tuple[ValidationProblem, ...]]:
+        if not isinstance(value, Mapping):
+            return None, None, ()
+        entry = cast("Mapping[str, object]", value)
+        name = entry.get("id")
+        if not isinstance(name, str):
+            return None, None, ()
+        return name, {key: item for key, item in entry.items() if key != "id"}, ()
+
+    @classmethod
+    def envelope_problems(cls, value: object) -> tuple[ValidationProblem, ...]:
+        if cls.named_configuration(value)[0] is None:
+            return (ValidationProblem((), "expected an object with a string 'id'", "invalid_type"),)
+        return ()
+
+    @classmethod
+    def envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:
+        return {"id": name, **configuration}
+
+    @classmethod
+    def configuration_loc(cls, loc: Loc) -> Loc:
+        return loc
+
+    @classmethod
+    def name_loc(cls, loc: Loc) -> Loc:
+        return (*loc, "id")
+
+
+FLAT = Flat(name="flat", configuration=Params)
+FLAT_SCOPE = Context.of(FLAT)
+
+
+@pytest.mark.parametrize(
+    ("field", "kind", "problems", "written"),
+    [
+        ({"id": "flat", "level": 1}, Read, [], {"id": "flat", "level": 1}),
+        ({"id": "other", "x": 1}, Unclaimed, [], {"id": "other", "x": 1}),
+        ({"id": "flat", "level": -1}, Refused, [(("c", "level"), "invalid_value")], None),
+        ({"id": "flat", "payload": object()}, Refused, [(("c", "payload"), "invalid_type")], None),
+        ("flat", Refused, [(("c",), "invalid_type")], None),
+    ],
+    ids=["read", "unclaimed", "out-of-range", "not-json", "not-an-object"],
+)
+def test_a_kind_reads_the_envelope_its_format_writes(
+    field: object, kind: type, problems: list[tuple[Loc, str]], written: object
+) -> None:
+    """`resolve` reads a field as its kind's classmethods say the format writes one: the name and parameters are split as the kind splits them, problems sit where the kind puts the configuration, and a field read or unclaimed is written back in the kind's envelope."""
+    resolved, found = resolve(field, Flat, FLAT_SCOPE, ("c",))
+    assert type(resolved) is kind
+    assert [(problem.loc, problem.kind) for problem in found] == problems
+    if written is not None:
+        assert not isinstance(resolved, Refused)
+        assert resolved.to_json() == written

@@ -1337,14 +1337,14 @@ def test_error_a_bad_name_is_a_problem_when_the_field_is_not_json_too() -> None:
 @pytest.mark.parametrize("name", ["Acme", "acme/x", "", "x"])
 def test_error_a_definition_is_named_as_the_spec_names_an_extension(name: str) -> None:
     # No document could name it, so nothing would ever read with it.
-    with pytest.raises(TypeError, match="is not a name the spec gives an extension"):
+    with pytest.raises(TypeError, match="so no document names it"):
         CodecDefinition(
             name=name, configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
         )
 
 
 def test_error_a_field_built_by_hand_is_named_as_the_spec_names_one() -> None:
-    with pytest.raises(TypeError, match="named as the spec names an extension"):
+    with pytest.raises(TypeError, match="named as a document names a"):
         Unclaimed(json="Int8", name="Int8", read_as=CodecDefinition)
 
 

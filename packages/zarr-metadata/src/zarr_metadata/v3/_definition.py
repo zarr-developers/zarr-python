@@ -232,6 +232,60 @@ class Definition(Generic[C]):
     canonical form by `canonicalize`, which knows where each one sits.
     """
 
+    @classmethod
+    def name_problem(cls, name: str, at: Loc) -> ValidationProblem | None:
+        """The problem `name`, at `at`, is when no document of the format writes it for a field of this kind; None when one may: for Zarr v3, when the spec gives an extension such a name."""
+        return name_problem(name, at)
+
+    @classmethod
+    def well_named(cls, name: str) -> bool:
+        """Whether a document of the format may write `name` for a field of this kind, as `name_problem` says."""
+        return cls.name_problem(name, ()) is None
+
+    @classmethod
+    def spelled(cls, name: str) -> tuple[str | None, dict[str, JSONValue] | None]:
+        """How a name a document writes reads: the name its definition is filed under, and the configuration the name carries.
+
+        A name is filed as itself and carries nothing, `(name, None)`. A
+        kind whose names carry configuration says otherwise: a v3 data
+        type `r16` is filed under `r*` with `{"bits": 16}`. A name no
+        document writes, which only files a definition, is `(None, None)`.
+        """
+        return name, None
+
+    def carrying_name(self, configuration: Mapping[str, JSONValue]) -> str | None:
+        """The name that carries `configuration` for this definition, the inverse of `spelled`: `r16` for `r*` with `{"bits": 16}`; None when its names carry nothing."""
+        return None
+
+    @classmethod
+    def named_configuration(
+        cls, value: object
+    ) -> tuple[str | None, Mapping[str, object] | None, Problems]:
+        """`value`, a field as a document of the format writes it, split into `(name, configuration, problems)`, as the module's `named_configuration` splits a v3 field."""
+        return named_configuration(value)
+
+    @classmethod
+    def envelope_problems(cls, value: object) -> Problems:
+        """Every reason `value` is not a field's envelope as the format writes one for this kind, what the configuration holds left unjudged."""
+        return envelope_problems(value, allow_must_understand_false=False)
+
+    @classmethod
+    def envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:
+        """A field of `name` and `configuration` as a document of the format writes it, in the fewest words every reader takes: for v3, an object."""
+        if len(configuration) != 0:
+            return {"name": name, "configuration": configuration}
+        return {"name": name}
+
+    @classmethod
+    def configuration_loc(cls, loc: Loc) -> Loc:
+        """Where the configuration of a field at `loc` sits: under `configuration` for v3; at the field for a format that writes the parameters beside the name."""
+        return (*loc, "configuration")
+
+    @classmethod
+    def name_loc(cls, loc: Loc) -> Loc:
+        """Where the name of a field at `loc`, written as an object, sits: under `name` for v3."""
+        return (*loc, "name")
+
     def __init_subclass__(cls, **kwargs: object) -> None:
         # Named, not `super()`: a dataclass with slots is rebuilt, and the
         # cell a bare `super()` reads names the class that was thrown away.
@@ -305,11 +359,13 @@ def _malformed(definition: Definition[Any]) -> str | None:
         value = getattr(definition, member)
         if not callable(value):
             return f"{name!r}: {member} is a function, got {value!r}"
-    if definition.name != RAW_BYTES_NAME and not well_named(definition.name):
+    kind = type(definition)
+    filed, _ = kind.spelled(name)
+    bad = None if filed is None else kind.name_problem(name, ())
+    if bad is not None:
         return (
-            f"{definition.name!r} is not a name the spec gives an extension -- lower-case "
-            "letters, digits, '-', '_' and '.', starting with a letter, or a URI -- so no "
-            "document names it, and nothing would ever read with this definition"
+            f"{name!r}: {bad.message}, so no document names it, and nothing would ever read "
+            "with this definition"
         )
     return None
 
@@ -355,22 +411,7 @@ def spelled(
     itself is filed under nothing, `(None, None)`, since no document
     writes it.
     """
-    if kind is DataTypeDefinition:
-        if name == RAW_BYTES_NAME:
-            return None, None
-        written = RAW_BYTES_NAME_PATTERN.fullmatch(name)
-        if written is not None:
-            return RAW_BYTES_NAME, {"bits": int(written.group(1))}
-    return name, None
-
-
-def _carrying_name(
-    definition: Definition[Any], configuration: Mapping[str, JSONValue]
-) -> str | None:
-    """The name that carries `configuration` for `definition`: `r16` for `r*` with `{"bits": 16}`; None when its name carries nothing."""
-    if not isinstance(definition, DataTypeDefinition) or definition.name != RAW_BYTES_NAME:
-        return None
-    return f"r{configuration['bits']}"
+    return kind.spelled(name)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
@@ -409,6 +450,28 @@ class DataTypeDefinition(Definition[C]):
     is_kind: ClassVar[bool] = True
     label: ClassVar[str] = "data type"
     field_aliases: ClassVar[tuple[object, ...]] = (DataTypeField,)
+
+    @classmethod
+    def spelled(cls, name: str) -> tuple[str | None, dict[str, JSONValue] | None]:
+        if name == RAW_BYTES_NAME:
+            return None, None
+        written = RAW_BYTES_NAME_PATTERN.fullmatch(name)
+        if written is not None:
+            return RAW_BYTES_NAME, {"bits": int(written.group(1))}
+        return name, None
+
+    def carrying_name(self, configuration: Mapping[str, JSONValue]) -> str | None:
+        if self.name != RAW_BYTES_NAME:
+            return None
+        return f"r{configuration['bits']}"
+
+    @classmethod
+    def envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:
+        # A data type with nothing to configure is its bare name, as core
+        # data types have been written since Zarr v3.0.
+        if len(configuration) != 0:
+            return {"name": name, "configuration": configuration}
+        return name
 
     fill_value: object = JSONValue
     """The JSON shape of a fill value, as an annotation: `Int8FillValue`."""
@@ -649,9 +712,8 @@ def _field(annotation: object) -> Parser | None:
     static = annotation in _STATIC_SIZE
 
     def parse(value: object, loc: Loc) -> Parsed:
-        if not isinstance(value, (str, Mapping)):
-            return value, problem(loc, f"expected a metadata field, got {shown(value)}")
-        # Refined JSON, which the checker only knows as `object`.
+        # Refined JSON, which the checker only knows as `object`; what is
+        # not a field at all, the kind's envelope says.
         return _NestedField(loc, kind, cast("JSONValue", value), static), ()
 
     return parse
@@ -959,7 +1021,7 @@ def _located(prefix: Loc, problems: Iterable[ValidationProblem]) -> Problems:
 
 def _envelope(field: _NestedField) -> Problems:
     """What is wrong with a nested field's envelope, at the field."""
-    return _located(field.loc, envelope_problems(field.json, allow_must_understand_false=False))
+    return _located(field.loc, field.kind.envelope_problems(field.json))
 
 
 def _configuration_checked(
@@ -1127,10 +1189,13 @@ class Unclaimed:
         # arguments dropped, as `resolve` drops them.
         object.__setattr__(self, "read_as", as_kind(self.read_as))
         name = cast("object", self.name)
-        if not isinstance(name, str) or not well_named(name):
-            msg = f"a field nothing in scope claims is named as the spec names an extension, got {name!r}"
+        if not isinstance(name, str) or not self.read_as.well_named(name):
+            msg = (
+                "a field nothing in scope claims is named as a document names a "
+                f"{self.read_as.label}, got {name!r}"
+            )
             raise TypeError(msg)
-        _, written, _ = named_configuration(self.json)
+        _, written, _ = self.read_as.named_configuration(self.json)
         configuration: Mapping[str, object] = {} if written is None else written
         object.__setattr__(self, "configuration", cast("Mapping[str, JSONValue]", configuration))
 
@@ -1259,18 +1324,9 @@ def document_json(field: Resolved[Any]) -> JSONValue | UNSET:
     if isinstance(field, Refused):
         return field.json
     kind = field.read_as
-    if isinstance(field, Read) and spelled(kind, field.name)[1] is not None:
-        return _envelope_json(kind, field.name, {})
-    return _envelope_json(kind, field.name, field.configuration)
-
-
-def _envelope_json(
-    kind: type[Definition[Any]], name: str, configuration: Mapping[str, JSONValue]
-) -> JSONValue:
-    """A field's envelope in the fewest words every reader takes: a data type with nothing to configure by its bare name, any other field an object."""
-    if len(configuration) != 0:
-        return {"name": name, "configuration": configuration}
-    return name if kind is DataTypeDefinition else {"name": name}
+    if isinstance(field, Read) and kind.spelled(field.name)[1] is not None:
+        return kind.envelope_json(field.name, {})
+    return kind.envelope_json(field.name, field.configuration)
 
 
 Nested: TypeAlias = Mapping[Loc, Resolved[Any]]
@@ -1574,8 +1630,8 @@ def resolve(
         # Not JSON, so not read; its name, if it has one, still says what
         # claims it, and one the spec does not give an extension is a
         # problem here as on the other path, asked of no definition.
-        name = named_configuration(data)[0]
-        bad = None if name is None else name_problem(name, (*loc, "name"))
+        name = asked.named_configuration(data)[0]
+        bad = None if name is None else asked.name_problem(name, asked.name_loc(loc))
         claimant = None if name is None or bad is not None else context.claimant(asked, name)
         refused = Refused(json=UNSET, name=name, read_as=asked, definition=claimant)
         found = problems if bad is None else (bad, *problems)
@@ -1594,7 +1650,7 @@ def _resolve_field(
     so it is reported beside the field that was read, which later layers
     can still judge.
     """
-    envelope = _located(loc, envelope_problems(data, allow_must_understand_false=False))
+    envelope = _located(loc, kind.envelope_problems(data))
     resolved, found = _read(data, kind, context, loc)
     return resolved, (*envelope, *found)
 
@@ -1602,10 +1658,10 @@ def _resolve_field(
 def _read(
     data: JSONValue, kind: type[Definition[Any]], context: Context, loc: Loc
 ) -> tuple[Resolved[Definition[Any]], Problems]:
-    name, given, malformed = named_configuration(data)
+    name, given, malformed = kind.named_configuration(data)
     if name is None:
         return Refused(json=data, name=None, read_as=kind), ()
-    if not well_named(name):
+    if not kind.well_named(name):
         # The envelope rule every reader runs first reports it; no
         # definition is asked to claim it.
         return Refused(json=data, name=name, read_as=kind), ()
@@ -1616,10 +1672,10 @@ def _read(
         return Refused(json=data, name=name, read_as=kind, definition=definition), ()
     if definition is None:
         return Unclaimed(json=data, name=name, read_as=kind), ()
-    _, carried = spelled(kind, name)
+    _, carried = kind.spelled(name)
     if carried is not None:
         return _read_carried(data, name, definition, given, carried, loc)
-    at = (*loc, "configuration")
+    at = kind.configuration_loc(loc)
     if given is None and definition.requires_configuration:
         missing = problem(at, f"{name!r} requires a configuration", "missing_key")
         return Refused(json=data, name=name, read_as=kind, definition=definition), missing
@@ -1666,7 +1722,7 @@ def _read(
 
 def _named(field: _NestedField) -> bool:
     """Whether a field a configuration holds is named, with an object for its configuration if it has one."""
-    name, _, malformed = named_configuration(field.json)
+    name, _, malformed = field.kind.named_configuration(field.json)
     return name is not None and len(malformed) == 0
 
 
@@ -1686,7 +1742,9 @@ def _read_carried(
     member of one is a key nothing declares.
     """
     _, beside, _ = _checked(
-        EmptyConfiguration, {} if given is None else given, (*loc, "configuration")
+        EmptyConfiguration,
+        {} if given is None else given,
+        type(definition).configuration_loc(loc),
     )
     configuration, judged = definition.judge(carried)
     # What is wrong with what the name carries is the field's: found at
@@ -1800,10 +1858,10 @@ def _canonical_field(resolved: Read[Any]) -> JSONValue | None:
             f"{list(refused)!r}"
         )
         raise ValueError(msg)
-    carrying = _carrying_name(definition, simplified)
+    carrying = definition.carrying_name(simplified)
     if carrying is not None:
         return carrying
-    return _envelope_json(resolved.read_as, name, simplified)
+    return resolved.read_as.envelope_json(name, simplified)
 
 
 def _replaced(value: JSONValue, path: Loc, new: JSONValue) -> JSONValue:
