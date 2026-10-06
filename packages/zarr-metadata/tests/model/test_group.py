@@ -64,6 +64,8 @@ from zarr_metadata.v3.definition import (
 )
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSONPartial
 
+_INLINE_ENVELOPE: dict[str, Any] = {"kind": "inline", "must_understand": False}
+
 # --- ZarrV3GroupMetadata ---------------------------------------------------
 
 
@@ -105,26 +107,6 @@ def test_group_v3_json_extra_field_roundtrips_as_must_understand() -> None:
     model = ZarrV3GroupMetadata.from_json(doc)
     assert model.to_json()["ext"] == (1, 2)
     assert model.must_understand_fields == {"ext": (1, 2)}
-
-
-def test_group_v3_extra_fields_overlap_rejected() -> None:
-    """Constructing a v3 group model with extra_fields shadowing a standard key raises."""
-    with pytest.raises(ValueError, match="Extra fields"):
-        ZarrV3GroupMetadata(
-            attributes={},
-            consolidated_metadata=UNSET,
-            extra_fields={"node_type": {"name": "x", "must_understand": False}},
-        )
-
-
-def test_group_v3_consolidated_extra_field_rejected() -> None:
-    """extra_fields may not shadow the consolidated_metadata convention key."""
-    with pytest.raises(ValueError, match="Extra fields"):
-        ZarrV3GroupMetadata(
-            attributes={},
-            consolidated_metadata=UNSET,
-            extra_fields={"consolidated_metadata": {"name": "x", "must_understand": False}},
-        )
 
 
 def test_group_v3_missing_required_key() -> None:
@@ -279,7 +261,7 @@ def test_group_v3_key_value_roundtrip() -> None:
 def test_group_v3_update() -> None:
     """update replaces the given fields and returns a new instance."""
     base = ZarrV3GroupMetadata.create_default()
-    updated = base.update(context=CORE_AND_EXTENSIONS, attributes={"a": 1})
+    updated = base.update(attributes={"a": 1})
     assert updated.attributes == {"a": 1}
     assert base.attributes == {}
 
@@ -444,8 +426,8 @@ def test_a_listing_key_too_long_to_write_is_shown_by_its_size(
     assert problem.message == f"non-string key an integer of {(10**5000).bit_length()} bits"
 
 
-def test_a_model_built_of_models_trusts_them_as_it_trusts_its_fields() -> None:
-    """Each held model checked itself at its own root, so a child valid alone can sit too deep in a group built by hand, whose document its validator refuses at the cap, as one holding a hand-built `Read` can; a reader builds only within the cap, the consolidated member's from where it sits."""
+def test_a_group_reads_the_documents_it_holds_from_where_they_sit() -> None:
+    """A child valid alone, nested to the last level a reader walks, sits three levels deeper as a document a group holds: the group's read refuses it at the cap, as the validator does, and so does the consolidated member read on its own, from where it sits under the group's key."""
     # The innermost object sits at the last level a reader walks, alone;
     # three deeper as a document a group holds.
     nested: dict[str, object] = {}
@@ -454,12 +436,11 @@ def test_a_model_built_of_models_trusts_them_as_it_trusts_its_fields() -> None:
     child = ZarrV3GroupMetadata.from_json(
         {"zarr_format": 3, "node_type": "group", "attributes": {"a": nested}}
     )
-    group = dataclasses.replace(
-        ZarrV3GroupMetadata.create_default(),
-        consolidated_metadata=ZarrV3ConsolidatedMetadata(metadata={"a": child}),
-    )
+    written = {
+        **ZarrV3GroupMetadata.create_default().to_json(),
+        "consolidated_metadata": {**_INLINE_ENVELOPE, "metadata": {"a": child.to_json()}},
+    }
     depth = f"nested deeper than the {JSON_DEPTH} levels a reader walks"
-    written = group.to_json()
     assert [(len(p.loc), p.message) for p in validate_group_metadata_v3(written)] == [
         (JSON_DEPTH, depth)
     ]
@@ -667,28 +648,26 @@ def test_group_update_keeps_the_documents_it_holds() -> None:
     child = ZarrV3ArrayMetadata.create_default(
         context=scope, shape=(4,), codecs=(LITTLE, {"name": "acme.x"})
     )
-    group = ZarrV3GroupMetadata(
-        attributes={},
-        consolidated_metadata=ZarrV3ConsolidatedMetadata(metadata={"a": child}),
-        extra_fields={},
+    group = ZarrV3GroupMetadata.create_default(
+        context=scope,
+        consolidated_metadata={**_INLINE_ENVELOPE, "metadata": {"a": child.to_json()}},
     )
-    updated = group.update(context=CORE_AND_EXTENSIONS, attributes={"k": 1})
+    updated = group.update(attributes={"k": 1})
     assert updated.attributes == {"k": 1}
-    assert updated.consolidated_metadata is group.consolidated_metadata
+    assert updated.context == scope
+    assert updated.consolidated_metadata == group.consolidated_metadata
 
 
 def test_group_update_reads_the_documents_it_is_given_in_its_scope() -> None:
     """And `UNSET` leaves them out. `zstd` is an extension, which `CORE` leaves unclaimed."""
     zstd = {"name": "zstd", "configuration": {"level": 3, "checksum": False}}
     member = cast("JSONValue", _inline(a=_array(codecs=[LITTLE, zstd])))
-    updated = ZarrV3GroupMetadata.create_default().update(
-        context=CORE, consolidated_metadata=member
-    )
+    updated = ZarrV3GroupMetadata.create_default(context=CORE).update(consolidated_metadata=member)
     assert updated.consolidated_metadata is not UNSET
     child = updated.consolidated_metadata.metadata["a"]
     assert isinstance(child, ZarrV3ArrayMetadata)
     assert isinstance(child.codecs[1], Unclaimed)
-    removed = updated.update(context=CORE, consolidated_metadata=UNSET)
+    removed = updated.update(consolidated_metadata=UNSET)
     assert removed.consolidated_metadata is UNSET
 
 
@@ -891,8 +870,8 @@ def test_a_listed_group_s_own_listing_lists_what_the_group_lists(
     )
     problems = validate_group_metadata_v3(document)
     assert [(p.loc, p.message, p.kind) for p in problems] == expected
-    # The constructor refuses what the reader reports, built of models: a
-    # listed group whose own listing is wrong is refused as it is built.
+    # The consolidated member read on its own refuses what the group's read
+    # reports: a listed group whose own listing is wrong is refused.
     listing = {"g": _group(consolidated_metadata=_inline(**listed)), **flat}
     deeper = [(loc, message, kind) for loc, message, kind in expected if len(loc) > len(NESTED) + 1]
     if len(deeper) != 0:
@@ -902,12 +881,11 @@ def test_a_listed_group_s_own_listing_lists_what_the_group_lists(
             (loc[3:], message, kind) for loc, message, kind in deeper
         ]
         return
-    members = {key: node_metadata_from_json_v3(value) for key, value in listing.items()}
     if expected == []:
-        assert ZarrV3ConsolidatedMetadata(metadata=members).metadata.keys() == members.keys()
+        assert ZarrV3ConsolidatedMetadata(_inline(**listing)).metadata.keys() == listing.keys()
         return
     with pytest.raises(MetadataValidationError) as raised:
-        ZarrV3ConsolidatedMetadata(metadata=members)
+        ZarrV3ConsolidatedMetadata(_inline(**listing))
     assert [(p.loc[1:], p.message, p.kind) for p in raised.value.problems] == [
         (loc[2:], message, kind) for loc, message, kind in expected
     ]
@@ -1358,15 +1336,18 @@ def test_error_a_null_consolidated_metadata_is_a_value_the_document_wrote() -> N
 
 TO_JSON_NO_ALIASING_PARAMS = [
     pytest.param(
-        ZarrV3GroupMetadata(
+        ZarrV3GroupMetadata.create_default(
             attributes={"a": {"b": [1]}},
-            consolidated_metadata=ZarrV3ConsolidatedMetadata(
-                metadata={
-                    "child": ZarrV3ArrayMetadata.create_default(attributes={"x": {"y": 1}}),
-                    "grp": ZarrV3GroupMetadata.create_default(attributes={"x": {"y": 1}}),
-                }
-            ),
-            extra_fields={"ext": {"must_understand": False, "cfg": {"x": [1]}}},
+            consolidated_metadata={
+                **_INLINE_ENVELOPE,
+                "metadata": {
+                    "child": ZarrV3ArrayMetadata.create_default(
+                        attributes={"x": {"y": 1}}
+                    ).to_json(),
+                    "grp": ZarrV3GroupMetadata.create_default(attributes={"x": {"y": 1}}).to_json(),
+                },
+            },
+            ext={"must_understand": False, "cfg": {"x": [1]}},
         ),
         id="v3-group",
     ),
@@ -1376,7 +1357,14 @@ TO_JSON_NO_ALIASING_PARAMS = [
     ),
     pytest.param(
         ZarrV3ConsolidatedMetadata(
-            metadata={"child": ZarrV3ArrayMetadata.create_default(attributes={"x": {"y": 1}})}
+            {
+                **_INLINE_ENVELOPE,
+                "metadata": {
+                    "child": ZarrV3ArrayMetadata.create_default(
+                        attributes={"x": {"y": 1}}
+                    ).to_json()
+                },
+            }
         ),
         id="v3-consolidated",
     ),

@@ -15,7 +15,7 @@ from zarr_metadata._json import (
     ValidationProblem,
     copied,
     json_text,
-    refine_json,
+    refine_user_data,
     with_input,
 )
 from zarr_metadata._sentinel import UNSET
@@ -135,7 +135,7 @@ class ZarrV3ArrayMetadata:
         reading, members = read_array_v3(document, scope)
         if members is None:
             raise MetadataValidationError(reading.problems)
-        refined, _ = refine_json(document)
+        refined, _ = refine_user_data(document)
         self._adopt(cast("dict[str, JSONValue]", refined), scope, reading, members)
 
     @classmethod
@@ -459,7 +459,7 @@ def read_array_metadata_v3(
     reading, members = read_array_v3(value, context)
     if members is None:
         return reading
-    refined, _ = refine_json(value)
+    refined, _ = refine_user_data(value)
     document = cast("dict[str, JSONValue]", refined)
     model = ZarrV3ArrayMetadata._of(document, context, reading, members)  # pyright: ignore[reportPrivateUsage]
     return dataclasses.replace(reading, metadata=model)

@@ -24,7 +24,6 @@ from zarr_metadata.model import (
     ZarrV2ArrayMetadata,
     ZarrV2ArrayMetadataPartial,
     ZarrV3ArrayMetadata,
-    ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
     is_array_metadata_v2,
     is_array_metadata_v3,
@@ -239,9 +238,10 @@ def test_v3_a_data_type_with_nothing_to_configure_is_written_by_its_bare_name(
         "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
     }
     model = ZarrV3ArrayMetadata.from_json(document)
-    # The field alone is spelled as the document spells it, so a reader
-    # handed either takes it.
-    assert model.to_json()["data_type"] == model.data_type.to_json() == "int32"
+    # The document is written as it was written; the field alone, by its
+    # bare name, which every reader takes.
+    assert model.to_json()["data_type"] == data_type
+    assert model.data_type.to_json() == "int32"
 
 
 def test_v3_dimension_names_included_when_present() -> None:
@@ -292,9 +292,10 @@ def test_v3_single_storage_transformer_included() -> None:
 
 
 def test_v3_no_storage_transformers_omitted() -> None:
-    """V3 to_json omits storage_transformers when empty."""
-    out = ZarrV3ArrayMetadata.create_default(storage_transformers=()).to_json()
-    assert "storage_transformers" not in out
+    """V3 to_json omits storage_transformers when the document wrote none, and writes an empty one as written."""
+    assert "storage_transformers" not in ZarrV3ArrayMetadata.create_default().to_json()
+    written = dict(ZarrV3ArrayMetadata.create_default(storage_transformers=()).to_json())
+    assert written["storage_transformers"] == ()
 
 
 # --- V3 extra fields -------------------------------------------------------
@@ -305,15 +306,6 @@ def test_v3_extra_fields_merged() -> None:
     model = ZarrV3ArrayMetadata.create_default(my_ext={"must_understand": False})
     assert model.extra_fields == {"my_ext": {"must_understand": False}}
     assert model.to_json()["my_ext"] == {"must_understand": False}
-
-
-def test_v3_extra_fields_overlapping_standard_field_rejected() -> None:
-    """Constructing a V3 model with an extra field that collides with a standard key is rejected."""
-    with pytest.raises(ValueError):
-        dataclasses.replace(
-            ZarrV3ArrayMetadata.create_default(),
-            extra_fields={"shape": {"must_understand": False}},
-        )
 
 
 # --- V3 key/value ----------------------------------------------------------
@@ -412,11 +404,7 @@ def test_update_returns_new_instance(
 ) -> None:
     """update returns a new instance with the field replaced, leaving the original unchanged."""
     base = model_cls.create_default(shape=(10,))
-    updated = (
-        base.update(context=CORE_AND_EXTENSIONS, shape=(20,))
-        if isinstance(base, ZarrV3ArrayMetadata)
-        else base.update(shape=(20,))
-    )
+    updated = base.update(shape=(20,))
     assert updated.shape == (20,)
     assert base.shape == (10,)  # original unchanged
     assert isinstance(updated, model_cls)
@@ -434,11 +422,7 @@ def test_update_no_args_returns_equal_model(
 ) -> None:
     """update with no arguments returns a model equal to the original."""
     base = model_cls.create_default()
-    updated = (
-        base.update(context=CORE_AND_EXTENSIONS)
-        if isinstance(base, ZarrV3ArrayMetadata)
-        else base.update()
-    )
+    updated = base.update()
     assert updated == base
 
 
@@ -448,12 +432,12 @@ def test_update_no_args_returns_equal_model(
 def test_update_can_add_an_extension_member() -> None:
     """update can add a member the spec does not define, which the model holds in extra_fields."""
     base = ZarrV3ArrayMetadata.create_default()
-    updated = base.update(context=CORE_AND_EXTENSIONS, my_ext={"must_understand": False})
+    updated = base.update(my_ext={"must_understand": False})
     assert updated.extra_fields == {"my_ext": {"must_understand": False}}
 
 
-def test_update_reads_only_the_members_it_is_given_in_its_scope() -> None:
-    """Each field the model holds is kept as it was read; the members given are read in `context`.
+def test_update_reads_every_member_in_the_models_own_scope() -> None:
+    """`update` reads the document it makes in the scope the model was read in, so a name that scope leaves unclaimed stays unclaimed; `with_context` is how another scope reads it.
 
     `zstd` is an extension, which `CORE` leaves unclaimed and unjudged.
     """
@@ -461,9 +445,10 @@ def test_update_reads_only_the_members_it_is_given_in_its_scope() -> None:
     zstd: ZarrV3NamedConfigJSON = {"name": "zstd", "configuration": {"level": 3, "checksum": False}}
     base = ZarrV3ArrayMetadata.create_default(context=CORE, codecs=(little, zstd))
     assert isinstance(base.codecs[1], Unclaimed)
-    kept = base.update(context=CORE_AND_EXTENSIONS, attributes={"k": 1})
-    assert kept.codecs[1] is base.codecs[1]
-    given = base.update(context=CORE_AND_EXTENSIONS, codecs=(little, zstd))
+    kept = base.update(attributes={"k": 1})
+    assert kept.codecs[1] == base.codecs[1]
+    assert kept.context == CORE
+    given = base.with_context(CORE_AND_EXTENSIONS).update(codecs=(little, zstd))
     assert isinstance(given.codecs[1], Read)
 
 
@@ -473,9 +458,9 @@ def test_update_leaves_out_a_member_given_as_unset() -> None:
         shape=(2,), dimension_names=("x",), attributes={"a": 1}, my_ext={"must_understand": False}
     )
     for updated, member in (
-        (base.update(context=CORE_AND_EXTENSIONS, dimension_names=UNSET), "dimension_names"),
-        (base.update(context=CORE_AND_EXTENSIONS, attributes=UNSET), "attributes"),
-        (base.update(context=CORE_AND_EXTENSIONS, my_ext=UNSET), "my_ext"),
+        (base.update(dimension_names=UNSET), "dimension_names"),
+        (base.update(attributes=UNSET), "attributes"),
+        (base.update(my_ext=UNSET), "my_ext"),
     ):
         written = updated.to_json()
         assert member not in written
@@ -566,16 +551,15 @@ def test_two_models_are_one_array_when_their_fill_values_are_one_value(
         assert hash(models[0]) == hash(models[1])
     # A group holding the arrays says so too.
     groups = [
-        ZarrV3GroupMetadata(
-            attributes={},
-            consolidated_metadata=ZarrV3ConsolidatedMetadata(metadata={"a": model}),
-            extra_fields={},
+        ZarrV3GroupMetadata.create_default(
+            consolidated_metadata={**_INLINE, "metadata": {"a": model.to_json()}}
         )
         for model in models
     ]
     assert (groups[0] == groups[1]) is same
 
 
+_INLINE: dict[str, Any] = {"kind": "inline", "must_understand": False}
 _NOSHUFFLE = {"cname": "lz4", "clevel": 5, "shuffle": "noshuffle", "blocksize": 0}
 
 
@@ -627,10 +611,7 @@ def test_user_json_compares_as_text(
 ) -> None:
     """Attributes, which nothing interprets, compare as a document writes them: `NaN` is itself, `true` is not `1`, `-0.0` is not `0.0`."""
     arrays = [ZarrV3ArrayMetadata.create_default(attributes=held) for held in (left, right)]
-    groups = [
-        ZarrV3GroupMetadata(attributes=held, consolidated_metadata=UNSET, extra_fields={})
-        for held in (left, right)
-    ]
+    groups = [ZarrV3GroupMetadata.create_default(attributes=held) for held in (left, right)]
     v2 = [ZarrV2ArrayMetadata.create_default(attributes=held) for held in (left, right)]
     for models in (arrays, groups, v2):
         assert (models[0] == models[1]) is same
@@ -685,7 +666,7 @@ def test_update_replaces_a_member_rather_than_merging_into_it() -> None:
     base = ZarrV3ArrayMetadata.create_default(
         a={"must_understand": False, "x": 1}, b={"must_understand": False}
     )
-    updated = base.update(context=CORE_AND_EXTENSIONS, a={"must_understand": False})
+    updated = base.update(a={"must_understand": False})
     assert updated.extra_fields == {
         "a": {"must_understand": False},
         "b": {"must_understand": False},
@@ -1832,14 +1813,14 @@ def test_error_update_refuses_a_document_with_a_problem(
 ) -> None:
     base = ZarrV3ArrayMetadata.create_default(shape=(4,))
     with pytest.raises(MetadataValidationError) as raised:
-        base.update(context=CORE_AND_EXTENSIONS, **members)
+        base.update(**members)
     assert [(p.loc, p.kind) for p in raised.value.problems] == problems
 
 
 def test_error_update_refuses_to_leave_out_a_member_a_document_holds() -> None:
     base = ZarrV3ArrayMetadata.create_default(shape=(4,))
     with pytest.raises(MetadataValidationError) as raised:
-        base.update(context=CORE_AND_EXTENSIONS, shape=UNSET)  # pyright: ignore[reportArgumentType]
+        base.update(shape=UNSET)  # pyright: ignore[reportArgumentType]
     assert [(p.loc, p.kind) for p in raised.value.problems] == [(("shape",), "missing_key")]
 
 
@@ -2043,16 +2024,6 @@ def test_from_key_value_missing_key_kind() -> None:
     assert exc_info.value.problems == (
         ValidationProblem((".zarray",), "missing store key", "missing_key"),
     )
-
-
-def test_extra_fields_overlap_raises_metadata_error() -> None:
-    """The extra-fields overlap invariant raises MetadataValidationError (a ValueError)."""
-    with pytest.raises(MetadataValidationError, match="Extra fields") as exc_info:
-        dataclasses.replace(
-            ZarrV3ArrayMetadata.create_default(),
-            extra_fields={"shape": {"must_understand": False}},
-        )
-    assert [p.kind for p in exc_info.value.problems] == ["invalid_value"]
 
 
 # --- Adversarial-probe fixes: documents that used to pass validation ---------
@@ -2393,22 +2364,6 @@ def test_error_a_document_nested_deeper_than_a_reader_walks_is_a_problem() -> No
         ZarrV3ArrayMetadata.from_json(document)
 
 
-def test_a_field_built_by_hand_and_given_to_the_constructor_is_taken_as_read() -> None:
-    """As the class says: a field built by hand is taken as read, what it holds unjudged, so a model can write a document its validator refuses. `Read` judging its own configuration is the follow-up #379 named."""
-    trusted = Read(
-        json="gzip", name="gzip", definition=GZIP_CODEC, configuration={"level": 99, "window": 1}
-    )
-    default = ZarrV3ArrayMetadata.create_default(shape=(2,))
-    model = dataclasses.replace(default, codecs=(*default.codecs, trusted))
-    assert model.codecs[-1] is trusted
-    assert [
-        (problem.loc, problem.kind) for problem in validate_array_metadata_v3(model.to_json())
-    ] == [
-        (("codecs", 1, "configuration", "window"), "unknown_key"),
-        (("codecs", 1, "configuration", "level"), "invalid_value"),
-    ]
-
-
 def test_error_a_field_object_in_a_document_is_not_json() -> None:
     # A `Read` built by hand, with a configuration its definition refuses,
     # smuggled into a document: refused as what it is, so nothing built by
@@ -2426,13 +2381,14 @@ def test_error_a_field_object_in_a_document_is_not_json() -> None:
     assert not is_array_metadata_v3(document)
     with pytest.raises(MetadataValidationError):
         ZarrV3ArrayMetadata.from_json(document)
-    # Nor does `update` take one among the members it is given: only the
-    # fields the model holds are taken as read.
+    # Nor does `update` take one among the members it is given: a model's
+    # own fields are no exception, since `update` reads JSON.
     model = ZarrV3ArrayMetadata.create_default(shape=(2,))
     with pytest.raises(MetadataValidationError) as raised:
-        model.update(context=CORE, codecs=cast("Any", (model.codecs[0].to_json(), smuggled)))
+        model.update(codecs=cast("Any", (model.codecs[0].to_json(), smuggled)))
     assert [(p.loc, p.kind) for p in raised.value.problems] == [(("codecs", 1), "invalid_type")]
-    assert model.update(context=CORE, codecs=(cast("Any", model.codecs[0]),)) == model
+    with pytest.raises(MetadataValidationError):
+        model.update(codecs=(cast("Any", model.codecs[0]),))
 
 
 def test_a_problem_shows_an_integer_too_long_to_write_by_its_size(

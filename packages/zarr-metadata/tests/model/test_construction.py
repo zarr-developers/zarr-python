@@ -1,9 +1,10 @@
 """A model checks itself when it is built, as pydantic's `__init__` does.
 
-Built by hand, or changed as `dataclasses.replace` changes one, a model
-whose document has a problem is refused at the change, with every problem,
-so none is ever invalid. A model a read builds is not read a second time,
-and `to_key_value` writes a model as it is.
+A v3 model is built only by reading its document, and changed only by
+`update`, which reads the document it makes: a document with a problem is
+refused, with every problem, so no model is ever invalid. A v2 model, a
+dataclass still, is refused at a `dataclasses.replace` into an invalid
+one. `to_key_value` writes a model as it is, reading nothing.
 """
 
 from __future__ import annotations
@@ -64,21 +65,27 @@ V2_CONSOLIDATED = ZarrV2ConsolidatedMetadata.from_json(
 )
 
 
+_INLINE: dict[str, Any] = {"kind": "inline", "must_understand": False}
+
+
 @pytest.mark.parametrize(
     "model",
-    [
-        ARRAY,
-        GROUP,
-        GROUP.consolidated_metadata,
-        V2_ARRAY,
-        V2_GROUP,
-        V2_CONSOLIDATED,
-    ],
-    ids=["array", "group", "consolidated", "v2-array", "v2-group", "v2-consolidated"],
+    [ARRAY, GROUP, GROUP.consolidated_metadata],
+    ids=["array", "group", "consolidated"],
 )
-def test_a_model_is_built_as_a_read_builds_it(model: object) -> None:
-    # The constructor checks what the read checked, and of the same members
-    # builds the same model.
+def test_a_v3_model_is_built_of_its_document_in_its_scope(model: object) -> None:
+    """A v3 model is its document read in its scope: built again of the two, it is the same model."""
+    held = cast("Any", model)
+    assert type(held)(held.to_json(), context=held.context) == model
+
+
+@pytest.mark.parametrize(
+    "model",
+    [V2_ARRAY, V2_GROUP, V2_CONSOLIDATED],
+    ids=["v2-array", "v2-group", "v2-consolidated"],
+)
+def test_a_v2_model_is_built_as_a_read_builds_it(model: object) -> None:
+    """A v2 model's constructor checks what the read checked, and of the same members builds the same model."""
     held = cast("Any", model)
     members = {
         member.name: getattr(held, member.name)
@@ -94,22 +101,30 @@ def test_a_model_is_built_as_a_read_builds_it(model: object) -> None:
         (ARRAY, {"shape": [4], "dimension_names": ["x"]}),
         (ARRAY, {"attributes": UserDict({"a": [1, None]})}),
         (GROUP, {"attributes": UserDict({"a": 1})}),
+    ],
+    ids=["array-lists", "array-mapping", "group-mapping"],
+)
+def test_a_v3_model_holds_its_members_as_a_read_refines_them(
+    model: object, changes: dict[str, object]
+) -> None:
+    """Arrays as tuples and objects as dicts, as the read holds them, so a model updated with other containers is the model a read builds, and round-trips through its store."""
+    changed = cast("Any", model).update(**changes)
+    assert changed == model
+    assert type(changed).from_key_value(changed.to_key_value()) == changed
+
+
+@pytest.mark.parametrize(
+    ("model", "changes"),
+    [
         (V2_ARRAY, {"shape": range(4, 5), "chunks": [4], "attributes": {"a": 1}}),
         (V2_CONSOLIDATED, {"metadata": {"a/.zattrs": UserDict({"x": 1})}}),
     ],
-    ids=[
-        "array-lists",
-        "array-mapping",
-        "group-mapping",
-        "v2-sequences",
-        "v2-consolidated-mapping",
-    ],
+    ids=["v2-sequences", "v2-consolidated-mapping"],
 )
-def test_a_model_holds_its_members_as_a_read_refines_them(
+def test_a_v2_model_holds_its_members_as_a_read_refines_them(
     model: object, changes: dict[str, object]
 ) -> None:
-    # Arrays as tuples and objects as dicts, as the read holds them, so a
-    # model built of other containers is the model a read builds.
+    """Arrays as tuples and objects as dicts, as the read holds them, so a v2 model built of other containers is the model a read builds."""
     changed = dataclasses.replace(cast("Any", model), **changes)
     assert changed == model
     assert type(changed).from_key_value(changed.to_key_value()) == changed
@@ -117,15 +132,34 @@ def test_a_model_holds_its_members_as_a_read_refines_them(
 
 @pytest.mark.parametrize(
     ("model", "member"),
-    [
-        (ARRAY, "extra_fields"),
-        (GROUP, "attributes"),
-        (V2_GROUP, "attributes"),
-        (V2_CONSOLIDATED, "metadata"),
-    ],
-    ids=["array-extra-fields", "group-attributes", "v2-group-attributes", "v2-consolidated"],
+    [(ARRAY, "acme.x"), (GROUP, "attributes")],
+    ids=["array-extra-field", "group-attributes"],
 )
-def test_a_model_shares_no_container_with_what_it_was_built_of(model: object, member: str) -> None:
+def test_a_v3_model_shares_no_container_with_what_it_was_built_of(
+    model: object, member: str
+) -> None:
+    """A model holds copies of the containers `update` is given: changing them afterwards changes nothing it holds."""
+    held: dict[str, object] = {"must_understand": False, "z": {"y": 1}}
+    built = cast("Any", model).update(**{member: held})
+    held["w"] = math.nan
+    cast("dict[str, object]", held["z"])["y"] = math.nan
+    expected = {"must_understand": False, "z": {"y": 1}}
+    if member == "attributes":
+        assert built.attributes == expected
+    else:
+        assert built.extra_fields[member] == expected
+    assert type(built).from_key_value(built.to_key_value()) == built
+
+
+@pytest.mark.parametrize(
+    ("model", "member"),
+    [(V2_GROUP, "attributes"), (V2_CONSOLIDATED, "metadata")],
+    ids=["v2-group-attributes", "v2-consolidated"],
+)
+def test_a_v2_model_shares_no_container_with_what_it_was_built_of(
+    model: object, member: str
+) -> None:
+    """A v2 model holds copies of the containers it is built of."""
     held: dict[str, object] = {"acme.x": {"must_understand": False}}
     built = dataclasses.replace(cast("Any", model), **{member: held})
     held["acme.y"] = math.nan
@@ -134,7 +168,8 @@ def test_a_model_shares_no_container_with_what_it_was_built_of(model: object, me
     assert type(built).from_key_value(built.to_key_value()) == built
 
 
-def test_a_model_is_read_once_and_written_as_it_is() -> None:
+def test_a_model_is_read_when_built_and_written_as_it_is() -> None:
+    """A model is read once, when it is built; `to_key_value` reads nothing; `update` reads the document it makes; a group reads the documents it holds once, as part of its own read."""
     values: list[object] = []
 
     def counted(
@@ -146,18 +181,17 @@ def test_a_model_is_read_once_and_written_as_it_is() -> None:
     counting = dataclasses.replace(INT8_DATA_TYPE, fill_value_rules=counted)
     scope = CORE_AND_EXTENSIONS.extended_with(counting)
     model = ZarrV3ArrayMetadata.create_default(context=scope, data_type="int8", fill_value=3)
+    assert values == [3]
     model.to_key_value()
-    # Built by hand, a model is read once, as its own fields read it.
-    dataclasses.replace(model, fill_value=4)
+    assert values == [3]
+    changed = model.update(fill_value=4)
     assert values == [3, 4]
-    # A group checks its own members: each document it holds checked itself.
-    group = ZarrV3GroupMetadata(
-        attributes={},
-        consolidated_metadata=ZarrV3ConsolidatedMetadata(metadata={"a": model}),
-        extra_fields={},
+    group = ZarrV3GroupMetadata.create_default(
+        context=scope, consolidated_metadata={**_INLINE, "metadata": {"a": changed.to_json()}}
     )
-    dataclasses.replace(group, attributes={"b": 1}).to_key_value()
-    assert values == [3, 4]
+    assert values == [3, 4, 4]
+    group.to_key_value()
+    assert values == [3, 4, 4]
 
 
 @pytest.mark.parametrize(
@@ -178,24 +212,51 @@ def test_a_model_is_read_once_and_written_as_it_is() -> None:
         # Empty or not, a value that is no object is judged as one.
         (ARRAY, {"attributes": []}, [(("attributes",), "invalid_type")]),
         (ARRAY, {"attributes": None}, [(("attributes",), "invalid_type")]),
-        # Every problem: an extra field named as a member, and the rest.
-        (
-            ARRAY,
-            {"extra_fields": {"shape": [1]}, "fill_value": math.nan},
-            [(("extra_fields",), "invalid_value"), (("fill_value",), "invalid_value")],
-        ),
         (GROUP, {"attributes": {1: "a"}}, [(("attributes",), "invalid_type")]),
         (GROUP, {"attributes": ()}, [(("attributes",), "invalid_type")]),
-        (GROUP, {"extra_fields": {"acme": math.nan}}, [(("acme",), "invalid_value")]),
-        (
-            GROUP.consolidated_metadata,
-            {"metadata": {"x": ARRAY, "x/a": ARRAY, "__b": ARRAY, "c/d": ARRAY}},
-            [
-                (("metadata", "__b"), "invalid_value"),
-                (("metadata", "x/a"), "invalid_value"),
-                (("metadata", "c"), "missing_key"),
-            ],
-        ),
+        (GROUP, {"acme": math.nan}, [(("acme",), "invalid_value")]),
+    ],
+    ids=[
+        "fill-value-not-json",
+        "names-for-another-rank",
+        "shape-without-its-grid",
+        "attribute-key",
+        "attributes-empty-and-no-object",
+        "attributes-null",
+        "group-attribute-key",
+        "group-attributes-empty-and-no-object",
+        "group-extension-not-json",
+    ],
+)
+def test_error_a_v3_model_updated_into_an_invalid_one_is_refused_at_the_change(
+    model: object, changes: dict[str, object], problems: list[tuple[tuple[str | int, ...], str]]
+) -> None:
+    """`update` reads the document it makes, so a change that makes an invalid one is refused with every problem: no model is invalid, however it came to be."""
+    with pytest.raises(MetadataValidationError) as raised:
+        cast("Any", model).update(**changes)
+    assert [(found.loc, found.kind) for found in raised.value.problems] == problems
+
+
+def test_error_consolidated_metadata_of_documents_at_bad_paths_is_refused() -> None:
+    """The consolidated member read on its own refuses documents at paths no node has, and reports a group missing above one, as the group's read does."""
+    documents = {
+        "x": ARRAY.to_json(),
+        "x/a": ARRAY.to_json(),
+        "__b": ARRAY.to_json(),
+        "c/d": ARRAY.to_json(),
+    }
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3ConsolidatedMetadata({**_INLINE, "metadata": documents})
+    assert [(found.loc, found.kind) for found in raised.value.problems] == [
+        (("metadata", "__b"), "invalid_value"),
+        (("metadata", "x/a"), "invalid_value"),
+        (("metadata", "c"), "missing_key"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("model", "changes", "problems"),
+    [
         (V2_ARRAY, {"order": "Q"}, [(("order",), "invalid_value")]),
         (V2_ARRAY, {"chunks": (4, 4)}, [(("chunks",), "invalid_value")]),
         (V2_GROUP, {"attributes": {1: "a"}}, [(("attributes",), "invalid_type")]),
@@ -206,27 +267,16 @@ def test_a_model_is_read_once_and_written_as_it_is() -> None:
         ),
     ],
     ids=[
-        "fill-value-not-json",
-        "names-for-another-rank",
-        "shape-without-its-grid",
-        "attribute-key",
-        "attributes-empty-and-no-object",
-        "attributes-null",
-        "extra-field-named-as-a-member-and-more",
-        "group-attribute-key",
-        "group-attributes-empty-and-no-object",
-        "group-extension-not-json",
-        "consolidated-paths",
         "v2-order",
         "v2-chunks-for-another-rank",
         "v2-group-attribute-key",
         "v2-consolidated-entry-not-json",
     ],
 )
-def test_error_a_model_changed_by_hand_into_an_invalid_one_is_refused_at_the_change(
+def test_error_a_v2_model_changed_by_hand_into_an_invalid_one_is_refused_at_the_change(
     model: object, changes: dict[str, object], problems: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
-    """As a read reads its document: no model is invalid, however it came to be."""
+    """As a read reads its document: no v2 model is invalid, however it came to be."""
     with pytest.raises(MetadataValidationError) as raised:
         dataclasses.replace(cast("Any", model), **changes)
     assert [(found.loc, found.kind) for found in raised.value.problems] == problems
@@ -252,15 +302,13 @@ def test_error_construct_refuses_a_model_missing_a_member() -> None:
         construct(ZarrV2GroupMetadata)
 
 
-@pytest.mark.parametrize("model", [ARRAY, GROUP], ids=["array", "group"])
-def test_error_extra_fields_are_a_mapping(model: object) -> None:
-    with pytest.raises(TypeError, match="extra_fields: expected a mapping of names to JSON"):
-        dataclasses.replace(cast("Any", model), extra_fields=[("acme", 1)])
-
-
 def test_error_consolidated_metadata_paths_are_strings() -> None:
-    with pytest.raises(TypeError, match="a document's path is a string, got 1"):
-        ZarrV3ConsolidatedMetadata(metadata=cast("Any", {1: ARRAY}))
+    """A `metadata` member keyed by what is no string is a problem of the member, as the read reports it, not a `TypeError`."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3ConsolidatedMetadata({**_INLINE, "metadata": {1: ARRAY.to_json()}})
+    assert [(found.loc, found.kind) for found in raised.value.problems] == [
+        (("metadata",), "invalid_type")
+    ]
 
 
 def test_construct_fills_a_member_from_its_default_factory() -> None:

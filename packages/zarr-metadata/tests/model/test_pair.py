@@ -101,9 +101,9 @@ def test_properties_are_what_the_reading_holds() -> None:
     assert model.extra_fields == {"acme": 1}
     assert (model.zarr_format, model.node_type) == (3, "array")
     with pytest.raises(TypeError):
-        model.attributes["b"] = 1  # type: ignore[index]
+        model.attributes["b"] = 1  # pyright: ignore[reportIndexIssue]
     with pytest.raises(AttributeError):
-        model.shape = (5,)  # type: ignore[misc]
+        model.shape = (5,)  # pyright: ignore[reportAttributeAccessIssue]
     assert isinstance(ZarrV3ArrayMetadata(ARRAY, context=Context.of()).data_type, Unclaimed)
 
 

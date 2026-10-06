@@ -118,7 +118,7 @@ class ZarrV3GroupMetadata:
         reading, members = read_group_v3(document, scope)
         if members is None or len(reading.problems) != 0:
             raise MetadataValidationError(reading.problems)
-        refined, _ = refine_json(document)
+        refined, _ = refine_user_data(document)
         self._adopt(cast("dict[str, JSONValue]", refined), scope, reading, members)
 
     @classmethod
@@ -155,6 +155,8 @@ class ZarrV3GroupMetadata:
                 context,
                 _models(documents, context, reading.consolidated, members.consolidated),
             )
+            # One model per document: the readings hold the models a read
+            # built, which the group holds too.
         self._key = group_key(self)
         self._claims = MappingProxyType(claims_of(reading.fields()))
 
@@ -342,7 +344,7 @@ class ZarrV3ConsolidatedMetadata:
         )
         if len(problems) != 0:
             raise MetadataValidationError(problems)
-        refined, _ = refine_json(member)
+        refined, _ = refine_user_data(member)
         document = cast("dict[str, JSONValue]", refined)
         documents = cast("dict[str, JSONValue]", document["metadata"])
         self._adopt(document, scope, _models(documents, scope, readings, members))
@@ -612,8 +614,13 @@ def read_group_metadata_v3(
     reading, members = read_group_v3(value, context)
     if members is None:
         return reading
-    refined, _ = refine_json(value)
-    return _with_models(reading, members, cast("dict[str, JSONValue]", refined), context)
+    # A document nested past the levels a reader walks refines to nothing:
+    # it has problems, and no model is built of it or of what it holds.
+    refined, _ = refine_user_data(value)
+    document: dict[str, JSONValue] = (
+        cast("dict[str, JSONValue]", refined) if isinstance(refined, Mapping) else {}
+    )
+    return _with_models(reading, members, document, context)
 
 
 def read_group_v3(
@@ -871,10 +878,11 @@ def _with_models(
             reading.consolidated,
             members.consolidated,
         )
+    held = dataclasses.replace(reading, consolidated=readings)
     if len(reading.problems) != 0:
-        return dataclasses.replace(reading, consolidated=readings)
-    model = ZarrV3GroupMetadata._of(document, context, reading, members)  # pyright: ignore[reportPrivateUsage]
-    return dataclasses.replace(reading, consolidated=readings, metadata=model)
+        return held
+    model = ZarrV3GroupMetadata._of(document, context, held, members)  # pyright: ignore[reportPrivateUsage]
+    return dataclasses.replace(held, metadata=model)
 
 
 def _models(
@@ -887,6 +895,11 @@ def _models(
     models: dict[str, ZarrV3NodeMetadata] = {}
     for path, child in members.items():
         reading = readings[path]
+        if reading.metadata is not None:
+            # The reading holds the model a read built already: one model
+            # per document, which `read_group_metadata_v3` hands back too.
+            models[path] = reading.metadata
+            continue
         document = cast("dict[str, JSONValue]", documents[path])
         if isinstance(reading, ZarrV3ArrayMetadataReading):
             models[path] = ZarrV3ArrayMetadata._of(  # pyright: ignore[reportPrivateUsage]
