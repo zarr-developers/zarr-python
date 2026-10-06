@@ -167,8 +167,10 @@ scope, `CORE_AND_EXTENSIONS` when none is given, and raises
 invalid; `to_json` writes the document as it was written, and
 `to_key_value` writes it as it is. Every typed member is a view of that
 read: each field as the scope read it, a `Read` or an `Unclaimed`, and
-`shape`, `attributes` and the rest as the read refined them, a list
-given for an array as a tuple. A model is changed by `update`, which puts
+`shape`, `attributes` and the rest as the read refined them, read-only
+at every level: a list given for an array as a tuple, an object as a
+read-only mapping; `to_json` gives plain containers. A model is changed
+by `update`, which puts
 JSON members in place of the document's and reads the result in the
 model's own scope, so no scope is passed back in; `with_context` reads
 the document in another scope, and `refined_in` only in one that claims
@@ -188,8 +190,9 @@ configuration of a field nothing in scope claims, and every member of a
 v2 document -- compares as JSON text, which tells `true` from `1` and
 `-0.0` from `0.0`, and takes `NaN` for itself. Equal models hash alike,
 and may write two documents: `to_json` writes each as it was given. A
-model's hash is of what its containers held when it was hashed, so a
-model in a set, or a key of a dict, is not changed in place.
+v3 model holds nothing that can be changed in place; a v2 model's hash
+is of what its containers held when it was hashed, so one in a set, or a
+key of a dict, is not changed in place.
 
 `node_metadata_json_schema_v3` writes what the validators read as a
 JSON Schema, draft 2020-12, for an editor that checks a `zarr.json` as it

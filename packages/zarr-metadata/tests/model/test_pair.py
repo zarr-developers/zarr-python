@@ -17,6 +17,7 @@ from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
+    ZarrV3GroupMetadataReading,
     read_array_metadata_v3,
     read_group_metadata_v3,
 )
@@ -652,3 +653,40 @@ def test_a_scope_conflict_inside_consolidated_metadata_is_located_there() -> Non
         "codecs",
         0,
     ) in locs
+
+
+def test_a_models_reading_cannot_be_changed_in_place() -> None:
+    """What a model's reading holds of the documents its consolidated metadata holds is read-only, so nothing planted there is taken up by `with_context`."""
+    group = ZarrV3GroupMetadata(CONSOLIDATED)
+    planted = ZarrV3ArrayMetadata({**ARRAY, "shape": [9]}).reading
+    with pytest.raises(TypeError):
+        operator.setitem(cast("Any", group.reading.consolidated), "a", planted)
+    moved = group.with_context(CORE_AND_EXTENSIONS)
+    assert moved == ZarrV3GroupMetadata(CONSOLIDATED)
+
+
+def test_a_reading_holds_a_model_of_each_healthy_document_in_a_listed_groups_own_listing() -> None:
+    """A listed group with a problem of its own still holds, in its reading, a model of each document in its own listing that has no problem, as the top group does."""
+    inline = {"kind": "inline", "must_understand": False}
+    listed = {
+        **GROUP,
+        "consolidated_metadata": {
+            **inline,
+            "metadata": {"x": ARRAY, "y": {**ARRAY, "shape": [-1]}},
+        },
+    }
+    document = {
+        **GROUP,
+        "consolidated_metadata": {
+            **inline,
+            "metadata": {"a": listed, "a/x": ARRAY, "a/y": {**ARRAY, "shape": [-1]}},
+        },
+    }
+    reading = read_group_metadata_v3(document)
+    assert reading.metadata is None
+    nested = reading.consolidated["a"]
+    assert isinstance(nested, ZarrV3GroupMetadataReading)
+    assert nested.metadata is None
+    held = nested.consolidated["x"].metadata
+    assert isinstance(held, ZarrV3ArrayMetadata)
+    assert held == ZarrV3ArrayMetadata(ARRAY)

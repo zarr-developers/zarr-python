@@ -162,15 +162,20 @@ class ZarrV3GroupMetadata:
             models = _nested_models(documents, context, reading.consolidated, members.consolidated)
             # One model per document, of this scope: each nested reading
             # holds the model the group holds.
-            held = {
-                path: (models[path].reading if path in models else nested)
-                for path, nested in reading.consolidated.items()
-            }
+            held = MappingProxyType(
+                {
+                    path: (models[path].reading if path in models else nested)
+                    for path, nested in reading.consolidated.items()
+                }
+            )
             self._consolidated = ZarrV3ConsolidatedMetadata._of(  # pyright: ignore[reportPrivateUsage]
                 member, context, models
             )
-        # The reading holds the model it built, however the model was built.
-        self._reading = dataclasses.replace(reading, consolidated=held, metadata=self)
+        # The reading holds the model it built, however the model was built;
+        # what it holds of the nested documents is read-only, as the model is.
+        self._reading = dataclasses.replace(
+            reading, consolidated=MappingProxyType(dict(held)), metadata=self
+        )
         self._key = group_key(self)
         self._claims = MappingProxyType(claims_of(reading.fields()))
 
@@ -684,7 +689,7 @@ def read_group_v3(
             raw, context, (*at, ZARR_V3_CONSOLIDATED_METADATA_KEY)
         )
         found.extend(_prefix(ZARR_V3_CONSOLIDATED_METADATA_KEY, inside))
-    reading = ZarrV3GroupMetadataReading(consolidated, with_input(found, whole))
+    reading = ZarrV3GroupMetadataReading(MappingProxyType(consolidated), with_input(found, whole))
     return reading, GroupMembersV3(attributes, extra_fields, held)
 
 
@@ -893,8 +898,8 @@ def _with_models(
     then refined on its own, from where it sits, so the ones without a
     problem still have their models.
     """
-    refined, _ = refine_user_data(value)
     if len(reading.problems) == 0:
+        refined, _ = refine_user_data(value)
         document = cast("dict[str, JSONValue]", refined)
         model = ZarrV3GroupMetadata._of(document, context, reading, members)  # pyright: ignore[reportPrivateUsage]
         return model.reading
@@ -922,11 +927,21 @@ def _with_models(
         reading.consolidated,
         {path: child for path, child in members.consolidated.items() if path in documents},
     )
-    held = {
-        path: (models[path].reading if path in models else nested)
-        for path, nested in reading.consolidated.items()
-    }
-    return dataclasses.replace(reading, consolidated=held)
+    held = dict(reading.consolidated)
+    for path, child in members.consolidated.items():
+        nested = reading.consolidated[path]
+        if path in models:
+            held[path] = models[path].reading
+        elif (
+            path in documents
+            and isinstance(nested, ZarrV3GroupMetadataReading)
+            and isinstance(child, GroupMembersV3)
+        ):
+            # A listed group with a problem of its own still holds, in its
+            # reading, a model of each document in its own listing that
+            # has none.
+            held[path] = _with_models(nested, child, held_entries[path], context)
+    return dataclasses.replace(reading, consolidated=MappingProxyType(held))
 
 
 def _nested_models(
