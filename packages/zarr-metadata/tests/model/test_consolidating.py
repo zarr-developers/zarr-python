@@ -12,6 +12,9 @@ from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
+    ZarrV3GroupMetadataReading,
+    is_group_metadata_v3,
+    parse_group_metadata_v3,
     read_group_metadata_v3,
     validate_group_metadata_v3,
 )
@@ -52,28 +55,50 @@ def _group(scope: Context | None = None, **entries: object) -> ZarrV3GroupMetada
             {"a/x": ZarrV3ArrayMetadata(ARRAY, context=Context.of())},
             True,
         ),
+        (
+            CORE,
+            {
+                "zarr_format": 3,
+                "node_type": "group",
+                "consolidated_metadata": {**INLINE, "metadata": {"x": ZarrV3ArrayMetadata(ARRAY)}},
+            },
+            {"a/x": ARRAY},
+            False,
+        ),
     ],
-    ids=["same-scope", "unused-definitions", "gain", "nested-models"],
+    ids=["same-scope", "unused-definitions", "gain", "nested-models", "model-in-a-document"],
 )
 def test_a_model_is_accepted_as_a_consolidated_entry_when_it_refines_into_the_scope(
     scope: Context,
-    child: ZarrV3ArrayMetadata | ZarrV3GroupMetadata,
-    beside: dict[str, ZarrV3ArrayMetadata],
+    child: ZarrV3ArrayMetadata | ZarrV3GroupMetadata | dict[str, Any],
+    beside: dict[str, Any],
     gained: bool,
 ) -> None:
-    """A node model given where consolidated metadata lists a document is accepted when the group's scope reads every claim of it identically -- its reading is kept, not read again -- or claims what the model's scope left unclaimed, when its document is read again there; the group then holds it in its own scope, equal to the group built of the document. A listed group's own listing is listed flat beside it, as the convention asks."""
+    """A node model given where consolidated metadata lists a document -- at the top, or inside a document listed there -- is accepted when the group's scope reads every claim of it identically -- its reading is kept, not read again -- or claims what the model's scope left unclaimed, when its document is read again there; the group then holds it in its own scope, equal to the group built of the documents, and writes plain JSON. A listed group's own listing is listed flat beside it, as the convention asks."""
     group = _group(scope, a=child, **beside)
     held = group.consolidated_metadata
     assert isinstance(held, ZarrV3ConsolidatedMetadata)
     node = held.metadata["a"]
     assert node.context is group.context
+    if isinstance(child, dict):
+        child = ZarrV3GroupMetadata(_documents(child), context=scope)
     assert cast("Any", node).refines(child)
     assert (node == child) is not gained
     if not gained and isinstance(child, ZarrV3ArrayMetadata):
         assert isinstance(node, ZarrV3ArrayMetadata)
         assert node.reading.pipeline is child.reading.pipeline
-    written = {path: node.to_json() for path, node in beside.items()}
+    written = {path: _documents(entry) for path, entry in beside.items()}
     assert group == _group(scope, a=child.to_json(), **written)
+    assert is_group_metadata_v3(group.to_json())
+
+
+def _documents(value: object) -> object:
+    """`value` with every node model in it replaced by its document, however deep."""
+    if isinstance(value, (ZarrV3ArrayMetadata, ZarrV3GroupMetadata)):
+        return value.to_json()
+    if isinstance(value, dict):
+        return {key: _documents(item) for key, item in cast("dict[str, object]", value).items()}
+    return value
 
 
 def test_documents_as_written_and_pickle() -> None:
@@ -86,14 +111,18 @@ def test_documents_as_written_and_pickle() -> None:
 
 
 def test_error_a_model_that_conflicts_with_the_scope_is_refused_at_its_path() -> None:
-    """A model read with a private `bytes`, given to a group whose scope reads the core `bytes`, is a conflict: a problem at the entry's path, naming the field, not a silent re-read."""
+    """A model read with a private `bytes`, given to a group whose scope reads the core `bytes`, is a conflict: a problem at the entry's path, naming the kind and the name, and telling the two definitions apart, not a silent re-read."""
     child = ZarrV3ArrayMetadata(ARRAY, context=PRIVATE)
     with pytest.raises(MetadataValidationError) as raised:
         _group(CORE_AND_EXTENSIONS, a=child)
     (problem,) = raised.value.problems
     assert problem.loc == ("consolidated_metadata", "metadata", "a", "codecs", 0)
     assert problem.kind == "invalid_value"
-    assert "bytes" in problem.message
+    assert problem.message == (
+        "expected a document read in the group's scope, got a model that reads the codec "
+        "'bytes' by CodecDefinition(name='bytes') of Empty, which the group's scope reads by "
+        "CodecDefinition(name='bytes') of BytesCodecConfiguration"
+    )
 
 
 def test_error_a_model_that_would_lose_a_meaning_is_refused_at_its_path() -> None:
@@ -101,9 +130,9 @@ def test_error_a_model_that_would_lose_a_meaning_is_refused_at_its_path() -> Non
     child = ZarrV3ArrayMetadata(WITH_ZSTD, context=CORE_AND_EXTENSIONS)
     with pytest.raises(MetadataValidationError) as raised:
         _group(CORE, a=child)
-    assert [problem.loc for problem in raised.value.problems] == [
-        ("consolidated_metadata", "metadata", "a", "codecs", 1)
-    ]
+    (problem,) = raised.value.problems
+    assert problem.loc == ("consolidated_metadata", "metadata", "a", "codecs", 1)
+    assert problem.message.endswith("which the group's scope leaves unclaimed")
 
 
 def test_error_a_gain_that_surfaces_a_problem_is_reported_at_the_problem() -> None:
@@ -173,3 +202,35 @@ def test_update_keeps_a_models_scope_apart_from_the_groups() -> None:
     held = updated.consolidated_metadata
     assert isinstance(held, ZarrV3ConsolidatedMetadata)
     assert held.metadata["a"].context == CORE
+
+
+def test_parse_gives_json_for_a_document_holding_models() -> None:
+    """`parse_group_metadata_v3` of a document holding models gives JSON, each model as its document, which the guard then says yes to: the trio agree."""
+    document = {
+        "zarr_format": 3,
+        "node_type": "group",
+        "consolidated_metadata": {**INLINE, "metadata": {"a": ZarrV3ArrayMetadata(ARRAY)}},
+    }
+    parsed = parse_group_metadata_v3(document)
+    member = cast("Any", parsed["consolidated_metadata"])
+    assert member["metadata"]["a"] == ZarrV3ArrayMetadata(ARRAY).to_json()
+    assert is_group_metadata_v3(parsed)
+
+
+def test_a_refused_model_entrys_reading_holds_no_model_of_another_scope() -> None:
+    """A group model refused as an entry leaves, in its reading, no model of the scope it was read in: a reading of the group's scope holds models of that scope alone."""
+    child = ZarrV3GroupMetadata(
+        _group(CORE_AND_EXTENSIONS, x=ZarrV3ArrayMetadata(WITH_ZSTD)).to_json(),
+        context=CORE_AND_EXTENSIONS,
+    )
+    document = {
+        "zarr_format": 3,
+        "node_type": "group",
+        "consolidated_metadata": {**INLINE, "metadata": {"a": child, "a/x": WITH_ZSTD}},
+    }
+    reading = read_group_metadata_v3(document, context=CORE)
+    nested = reading.consolidated["a"]
+    assert isinstance(nested, ZarrV3GroupMetadataReading)
+    assert nested.metadata is None
+    assert len(nested.problems) != 0
+    assert nested.consolidated["x"].metadata is None

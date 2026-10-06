@@ -26,9 +26,11 @@ from zarr_metadata.model import (
     ZarrV3ArrayMetadataStoreKey,
     ZarrV3ArrayMetadataUpdate,
     ZarrV3ConsolidatedMetadata,
+    ZarrV3ConsolidatedMetadataInput,
     ZarrV3GroupMetadata,
     ZarrV3GroupMetadataStoreKey,
     ZarrV3GroupMetadataUpdate,
+    ZarrV3NodeMetadataInput,
 )
 from zarr_metadata.v2.array import (
     ZARR_V2_ARRAY_DIMENSION_SEPARATOR,
@@ -383,6 +385,7 @@ __all__ = [
     "ZarrV3ArrayMetadataStoreKey",
     "ZarrV3ArrayMetadataUpdate",
     "ZarrV3ConsolidatedMetadata",
+    "ZarrV3ConsolidatedMetadataInput",
     "ZarrV3ConsolidatedMetadataJSON",
     "ZarrV3ExtensionField",
     "ZarrV3GroupMetadata",
@@ -392,6 +395,7 @@ __all__ = [
     "ZarrV3GroupMetadataUpdate",
     "ZarrV3MetadataFieldJSON",
     "ZarrV3NamedConfigJSON",
+    "ZarrV3NodeMetadataInput",
     "ZstdCodecMetadata",
     "ZstdCodecName",
     "__version__",

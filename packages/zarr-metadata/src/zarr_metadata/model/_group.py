@@ -73,7 +73,7 @@ if TYPE_CHECKING:
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
     from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataStoreKey
     from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON, ZarrV2GroupMetadataStoreKey
-    from zarr_metadata.v3._definition import Resolved
+    from zarr_metadata.v3._definition import Definition, Resolved
     from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
     from zarr_metadata.v3.consolidated import ZarrV3ConsolidatedMetadataJSON
     from zarr_metadata.v3.group import ZarrV3GroupMetadataJSONPartial, ZarrV3GroupMetadataStoreKey
@@ -781,7 +781,9 @@ def _member_documents_for(member: object) -> object:
             replaced[path] = entry._document  # pyright: ignore[reportPrivateUsage]
             changed = True
         else:
-            replaced[path] = entry
+            # A document listed here may list models of its own.
+            replaced[path] = documents_for(entry)
+            changed = changed or replaced[path] is not entry
     if not changed:
         return cast("object", member)
     return {**cast("Mapping[object, object]", member), "metadata": replaced}
@@ -802,19 +804,55 @@ def _read_node_model(
         problems = tuple(
             ValidationProblem(
                 conflict.loc if conflict.loc is not None else (),
-                f"expected a document read in the group's scope, got a model that reads "
-                f"{conflict.key[1]!r} by {conflict.claimed!r}, which the scope reads by "
-                f"{conflict.found!r}",
+                f"expected a document read in the group's scope, got a model that reads the "
+                f"{_kind_said(conflict.key[0])} {conflict.key[1]!r} by "
+                f"{_definition_said(conflict.claimed)}, which the group's scope "
+                f"{_reads_said(conflict.found)}",
                 "invalid_value",
             )
             for conflict in conflicts
         )
-        refused = dataclasses.replace(entry.reading, problems=problems, metadata=None)
-        return refused, None
+        return _without_models(entry.reading, problems), None
     if found.agrees:
         moved = entry.with_context(context)
         return moved.reading, moved._members  # pyright: ignore[reportPrivateUsage]
     return _read_node_v3(entry._document, context, at)  # pyright: ignore[reportPrivateUsage]
+
+
+def _kind_said(kind: type[Definition[Any]]) -> str:
+    """A kind of definition as a message names it: `CodecDefinition` is "codec"."""
+    return kind.__name__.removesuffix("Definition").replace("Type", " type").lower()
+
+
+def _definition_said(definition: Definition[Any] | None) -> str:
+    """A definition as a message tells it from another of the same name: by the TypedDict its configuration is."""
+    if definition is None:
+        return "no definition"
+    return f"{definition!r} of {definition.configuration.__qualname__}"
+
+
+def _reads_said(definition: Definition[Any] | None) -> str:
+    """How the group's scope reads a name, as a message says it: by a definition, or by none."""
+    if definition is None:
+        return "leaves unclaimed"
+    return f"reads by {_definition_said(definition)}"
+
+
+def _without_models(
+    reading: ZarrV3NodeMetadataReading, problems: tuple[ValidationProblem, ...]
+) -> ZarrV3NodeMetadataReading:
+    """`reading`, a model's, as the reading of an entry refused with `problems`: no model, in it or in any document it holds, since a reading of the group's scope holds models of that scope alone."""
+    if isinstance(reading, ZarrV3GroupMetadataReading):
+        nested = MappingProxyType(
+            {
+                path: _without_models(held, held.problems)
+                for path, held in reading.consolidated.items()
+            }
+        )
+        return dataclasses.replace(reading, consolidated=nested, problems=problems, metadata=None)
+    if isinstance(reading, ZarrV3ArrayMetadataReading):
+        return dataclasses.replace(reading, problems=problems, metadata=None)
+    return reading
 
 
 def _read_consolidated_v3(
@@ -1140,7 +1178,7 @@ def parse_group_metadata_v3(
     problems = validate_group_metadata_v3(value, context=scope)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
-    return cast("ZarrV3GroupMetadataJSON", arrays_to_tuples(value))
+    return cast("ZarrV3GroupMetadataJSON", arrays_to_tuples(documents_for(value)))
 
 
 class ZarrV2GroupMetadataPartial(TypedDict, total=False):

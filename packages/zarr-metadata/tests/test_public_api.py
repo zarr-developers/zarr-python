@@ -50,6 +50,8 @@ EXPECTED = [
     "ZarrV2GroupMetadataPartial",
     "ZarrV3GroupMetadata",
     "ZarrV3GroupMetadataUpdate",
+    "ZarrV3ConsolidatedMetadataInput",
+    "ZarrV3NodeMetadataInput",
     "ZarrV2ConsolidatedMetadata",
     "ZarrV3ConsolidatedMetadata",
     "ValidationProblem",
