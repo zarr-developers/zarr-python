@@ -1,9 +1,4 @@
-"""
-Zarr v2 codec configuration shape.
-
-In v2, compressors and filters are numcodecs configuration dicts: a required
-`id` field naming the codec, plus arbitrary codec-specific extra fields.
-"""
+"""The JSON shape of a v2 codec, in a module of its own so the array document and the codec definitions can both import it."""
 
 from typing_extensions import TypedDict
 
@@ -24,6 +19,4 @@ class ZarrV2CodecMetadata(TypedDict, extra_items=JSONValue):
     id: str
 
 
-__all__ = [
-    "ZarrV2CodecMetadata",
-]
+__all__ = ["ZarrV2CodecMetadata"]

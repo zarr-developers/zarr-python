@@ -6,7 +6,7 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import TypeAliasType, TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.v2.codec import ZarrV2CodecMetadata
+from zarr_metadata.v2._codec_json import ZarrV2CodecMetadata
 
 ZarrV2DataTypeMetadata = TypeAliasType(
     "ZarrV2DataTypeMetadata",
