@@ -1,0 +1,1 @@
+`Context` values are equal when they file the same definitions, and hash alike. `Context.joined` combines scopes, refusing one name filed two ways, and `Context.disagreements` says where a scope would read a document's fields otherwise. `claims_of` and `refines` give what a reading claimed of each name, and whether one reading of a field holds everything another does.

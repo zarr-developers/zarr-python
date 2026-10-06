@@ -292,6 +292,18 @@ TypedDict, and each field alias, is written once, in `$defs`, under its
 name. `node_metadata_json_schema_v3`, in `zarr_metadata.model`, writes a
 whole `zarr.json`, its fill value held to its data type's.
 
+**Scopes as values.** Two scopes are equal when they file the same
+definitions, and equal scopes hash alike. `claims_of(fields_of(field))`
+says what a reading claimed of each name -- the definition that read it,
+or None -- keyed as the scope files it, `r16` under `r*`.
+`refines(field, other)` orders two readings of a field by information: a
+name nothing claimed, read by a definition, is a gain; the reverse a
+loss; one name read by two definitions a conflict.
+`scope.disagreements(claims)` says where a scope would read a reading
+otherwise, and `Context.joined(*scopes)` is the least scope above each,
+or a `ScopeConflictError` naming each name filed two ways; `extended_with`
+remains the way to take a name over on purpose.
+
 A definition checks itself when it is built, and each of these is a
 `TypeError` saying what is wrong: a `configuration` that is not a
 TypedDict, says nothing of the keys it does not declare, or has a member
