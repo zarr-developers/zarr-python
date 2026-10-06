@@ -360,6 +360,7 @@ from zarr_metadata.v3._scope import (
     ScopeConflictError,
     claim_key,
     claims_of,
+    refines,
 )
 
 __all__ = [
@@ -412,6 +413,7 @@ __all__ = [
     "fields_of",
     "fill_value_problems",
     "read_pipeline",
+    "refines",
     "resolve",
     "shown",
     "storage_of",

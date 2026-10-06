@@ -20,7 +20,11 @@ from zarr_metadata.v3._definition import (
     CodecDefinition,
     DataTypeDefinition,
     Definition,
+    Refused,
     StorageTransformerDefinition,
+    Unclaimed,
+    field_key,
+    own_key,
     spelled,
 )
 
@@ -107,4 +111,35 @@ def claims_of(
     return claims
 
 
-__all__ = ["ClaimKey", "Claims", "Conflict", "ScopeConflictError", "claim_key", "claims_of"]
+def refines(field: Resolved[Any], other: Resolved[Any]) -> bool:
+    """Whether `field` holds everything `other` holds: reads the same where both read, and reads what `other` left unclaimed.
+
+    The order one reading of a document refines another in. A name nothing
+    claimed, read by a definition, is a gain; the reverse is a loss; one
+    name read by two definitions is a conflict; a refused field is in the
+    order with nothing. Two fields that refine each other are equal.
+    """
+    if isinstance(field, Refused) or isinstance(other, Refused):
+        return False
+    if isinstance(other, Unclaimed):
+        if isinstance(field, Unclaimed):
+            return field_key(field) == field_key(other)
+        return claim_key(field) == claim_key(other) and field.json == other.json
+    if isinstance(field, Unclaimed):
+        return False
+    if field.definition != other.definition or own_key(field) != own_key(other):
+        return False
+    if set(field.nested) != set(other.nested):
+        return False
+    return all(refines(field.nested[loc], other.nested[loc]) for loc in field.nested)
+
+
+__all__ = [
+    "ClaimKey",
+    "Claims",
+    "Conflict",
+    "ScopeConflictError",
+    "claim_key",
+    "claims_of",
+    "refines",
+]

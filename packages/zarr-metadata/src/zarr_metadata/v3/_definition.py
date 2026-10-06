@@ -1191,6 +1191,11 @@ def field_key(field: Resolved[Any]) -> tuple[object, ...]:
     )
 
 
+def own_key(field: Read[Any]) -> tuple[object, ...]:
+    """What `field_key` compares of a read field without the fields it holds: the definition and the canonical spelling of its own members."""
+    return field_key(field)[:3]
+
+
 def _nested_key(nested: Nested) -> tuple[tuple[Loc, tuple[object, ...]], ...]:
     """The fields a configuration holds, each by its key, where it sits."""
     return tuple((loc, field_key(inner)) for loc, inner in nested.items())
@@ -1809,6 +1814,7 @@ __all__ = [
     "named_configuration",
     "no_pipelines",
     "no_rules",
+    "own_key",
     "read_only",
     "resolve",
     "ruled",

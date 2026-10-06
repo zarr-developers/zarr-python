@@ -6,6 +6,8 @@ import pickle
 from typing import Any
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC
 from zarr_metadata.v3.codec.crc32c import CRC32C_CODEC, Empty
@@ -26,6 +28,7 @@ from zarr_metadata.v3.definition import (
     ScopeConflictError,
     claims_of,
     fields_of,
+    refines,
     resolve,
 )
 
@@ -138,3 +141,92 @@ def test_error_claims_of_refuses_one_name_read_two_ways() -> None:
         MY_GZIP,
         ("codecs", 1),
     )
+
+
+GZIP_FIELD = {"name": "gzip", "configuration": {"level": 5}}
+ZSTD_FIELD = {"name": "zstd", "configuration": {"level": 3}}
+NESTED_ZSTD = {
+    "name": "sharding_indexed",
+    "configuration": {
+        "chunk_shape": [1],
+        "codecs": ["bytes", ZSTD_FIELD],
+        "index_codecs": [{"name": "bytes", "configuration": {"endian": "little"}}, "crc32c"],
+    },
+}
+
+
+@pytest.mark.parametrize(
+    ("field", "other", "expected"),
+    [
+        (_read(GZIP_FIELD, CodecDefinition, CORE), _read(GZIP_FIELD, CodecDefinition, CORE), True),
+        (
+            _read({"name": "crc32c"}, CodecDefinition, CORE),
+            _read("crc32c", CodecDefinition, CORE),
+            True,
+        ),
+        (
+            _read(ZSTD_FIELD, CodecDefinition, CORE_AND_EXTENSIONS),
+            _read(ZSTD_FIELD, CodecDefinition, CORE),
+            True,
+        ),
+        (
+            _read(ZSTD_FIELD, CodecDefinition, CORE),
+            _read(ZSTD_FIELD, CodecDefinition, CORE_AND_EXTENSIONS),
+            False,
+        ),
+        (
+            _read(GZIP_FIELD, CodecDefinition, CORE),
+            _read(GZIP_FIELD, CodecDefinition, Context.of(MY_GZIP)),
+            False,
+        ),
+        (
+            _read(NESTED_ZSTD, CodecDefinition, CORE_AND_EXTENSIONS),
+            _read(NESTED_ZSTD, CodecDefinition, CORE),
+            True,
+        ),
+        (
+            _read(NESTED_ZSTD, CodecDefinition, CORE),
+            _read(NESTED_ZSTD, CodecDefinition, CORE_AND_EXTENSIONS),
+            False,
+        ),
+        (
+            _read({"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, CORE),
+            _read("gzip", CodecDefinition, CORE),
+            False,
+        ),
+        (_read("zstd", CodecDefinition, CORE), _read("zstd", CodecDefinition, CORE), True),
+        (
+            _read({"name": "zstd", "configuration": {"level": 1}}, CodecDefinition, CORE),
+            _read({"name": "zstd", "configuration": {"level": 2}}, CodecDefinition, CORE),
+            False,
+        ),
+    ],
+    ids=[
+        "same",
+        "same-spelled-otherwise",
+        "gain",
+        "loss",
+        "conflict",
+        "nested-gain",
+        "nested-loss",
+        "refused",
+        "both-unclaimed",
+        "unclaimed-differ",
+    ],
+)
+def test_refines_orders_readings_by_information(
+    field: Resolved[Any], other: Resolved[Any], expected: bool
+) -> None:
+    """`field` refines `other` when it reads the same where both read and gains where `other` left a name unclaimed -- in the fields it holds too; a loss, a conflict, a refused field, or two unclaimed fields written differently do not."""
+    assert refines(field, other) is expected
+
+
+@given(st.sampled_from([GZIP_FIELD, "crc32c", {"name": "crc32c"}, ZSTD_FIELD, NESTED_ZSTD]))
+def test_refines_is_reflexive_and_mutual_refinement_is_equality(data: object) -> None:
+    """Every field a scope reads refines itself, and two such fields that refine each other are equal: the order's bottom is equality. A refused field is outside the order, so it is not sampled."""
+    for scope in (CORE, CORE_AND_EXTENSIONS):
+        field = _read(data, CodecDefinition, scope)
+        assert refines(field, field)
+    low = _read(data, CodecDefinition, CORE)
+    high = _read(data, CodecDefinition, CORE_AND_EXTENSIONS)
+    assert (refines(low, high) and refines(high, low)) is (low == high)
