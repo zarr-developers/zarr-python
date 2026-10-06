@@ -548,13 +548,13 @@ def test_group_partial_keys_match_settable_model_fields() -> None:
 
 
 def test_update_takes_every_member_of_the_document_it_may_change() -> None:
-    """Each v3 model's `update` takes each member of its document but `zarr_format` and `node_type`, which it cannot change."""
-    for update, partial in (
-        (ZarrV3ArrayMetadataUpdate, ZarrV3ArrayMetadataJSONPartial),
-        (ZarrV3GroupMetadataUpdate, ZarrV3GroupMetadataJSONPartial),
+    """Each v3 model's `update` takes each member of its document but `zarr_format` and `node_type`, which it cannot change; a group's declares `consolidated_metadata` too, a member the document leaves to its extra items, since `update` takes node models there."""
+    fixed = {"zarr_format", "node_type"}
+    for update, partial, declared in (
+        (ZarrV3ArrayMetadataUpdate, ZarrV3ArrayMetadataJSONPartial, set[str]()),
+        (ZarrV3GroupMetadataUpdate, ZarrV3GroupMetadataJSONPartial, {"consolidated_metadata"}),
     ):
-        fixed = {"zarr_format", "node_type"}
-        assert set(update.__annotations__) == set(partial.__annotations__) - fixed
+        assert set(update.__annotations__) == (set(partial.__annotations__) - fixed) | declared
 
 
 # --- ZarrV3ConsolidatedMetadata --------------------------------------------
@@ -661,7 +661,7 @@ def test_group_update_keeps_the_documents_it_holds() -> None:
 def test_group_update_reads_the_documents_it_is_given_in_its_scope() -> None:
     """And `UNSET` leaves them out. `zstd` is an extension, which `CORE` leaves unclaimed."""
     zstd = {"name": "zstd", "configuration": {"level": 3, "checksum": False}}
-    member = cast("JSONValue", _inline(a=_array(codecs=[LITTLE, zstd])))
+    member = cast("Any", _inline(a=_array(codecs=[LITTLE, zstd])))
     updated = ZarrV3GroupMetadata.create_default(context=CORE).update(consolidated_metadata=member)
     assert updated.consolidated_metadata is not UNSET
     child = updated.consolidated_metadata.metadata["a"]
