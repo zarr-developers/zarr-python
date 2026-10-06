@@ -478,6 +478,22 @@ class ZarrV3GroupMetadataReading:
             for loc, node in reading.fields():
                 yield (ZARR_V3_CONSOLIDATED_METADATA_KEY, "metadata", path, *loc), node
 
+    def __reduce__(
+        self,
+    ) -> tuple[Callable[..., ZarrV3GroupMetadataReading], tuple[object, ...]]:
+        # Pickled and copied as built again: the read-only view the
+        # documents are held as does not pickle, and the dict it views does.
+        return (_group_reading, (dict(self.consolidated), self.problems, self.metadata))
+
+
+def _group_reading(
+    consolidated: dict[str, ZarrV3NodeMetadataReading],
+    problems: tuple[ValidationProblem, ...],
+    metadata: ZarrV3GroupMetadata | None,
+) -> ZarrV3GroupMetadataReading:
+    """A group reading built again from what `ZarrV3GroupMetadataReading.__reduce__` gives, its documents held read-only."""
+    return ZarrV3GroupMetadataReading(MappingProxyType(consolidated), problems, metadata)
+
 
 @dataclass(frozen=True, slots=True)
 class ZarrV3UnknownNodeReading:
@@ -889,14 +905,17 @@ def _with_models(
     members: GroupMembersV3,
     value: object,
     context: Context,
+    at: Loc = (),
 ) -> ZarrV3GroupMetadataReading:
     """`reading`, holding the model of each document its consolidated metadata holds that has no problem, and its own when it has none: each built from `value`, the document this read read, in `context`.
 
     A document with a problem a reader walks past -- a key that is no
     string, a value that is no JSON, a level past the cap -- refines to
     nothing as a whole; each document its consolidated metadata holds is
-    then refined on its own, from where it sits, so the ones without a
-    problem still have their models.
+    then refined on its own, from where it sits in the document handed in
+    -- `at` is where this one sits -- so the ones without a problem still
+    have their models, and a listed group with a problem of its own holds
+    those of its own listing.
     """
     if len(reading.problems) == 0:
         refined, _ = refine_user_data(value)
@@ -917,7 +936,7 @@ def _with_models(
         if path not in held_entries:
             continue
         entry, problems = refine_user_data(
-            held_entries[path], (ZARR_V3_CONSOLIDATED_METADATA_KEY, "metadata", path)
+            held_entries[path], (*at, ZARR_V3_CONSOLIDATED_METADATA_KEY, "metadata", path)
         )
         if len(problems) == 0 and isinstance(entry, Mapping):
             documents[path] = entry
@@ -933,14 +952,21 @@ def _with_models(
         if path in models:
             held[path] = models[path].reading
         elif (
-            path in documents
+            path in held_entries
             and isinstance(nested, ZarrV3GroupMetadataReading)
             and isinstance(child, GroupMembersV3)
         ):
-            # A listed group with a problem of its own still holds, in its
+            # A listed group with a problem of its own -- one the reader
+            # refused, or one it walked past -- still holds, in its
             # reading, a model of each document in its own listing that
             # has none.
-            held[path] = _with_models(nested, child, held_entries[path], context)
+            held[path] = _with_models(
+                nested,
+                child,
+                held_entries[path],
+                context,
+                (*at, ZARR_V3_CONSOLIDATED_METADATA_KEY, "metadata", path),
+            )
     return dataclasses.replace(reading, consolidated=MappingProxyType(held))
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import operator
 import pickle
@@ -665,11 +666,19 @@ def test_a_models_reading_cannot_be_changed_in_place() -> None:
     assert moved == ZarrV3GroupMetadata(CONSOLIDATED)
 
 
-def test_a_reading_holds_a_model_of_each_healthy_document_in_a_listed_groups_own_listing() -> None:
-    """A listed group with a problem of its own still holds, in its reading, a model of each document in its own listing that has no problem, as the top group does."""
+@pytest.mark.parametrize(
+    "fault",
+    [{"attributes": "bad"}, {"attributes": {1: "bad"}}, {"attributes": {"s": {1, 2}}}],
+    ids=["refused", "non-string-key", "not-json"],
+)
+def test_a_reading_holds_a_model_of_each_healthy_document_in_a_listed_groups_own_listing(
+    fault: dict[str, Any],
+) -> None:
+    """A listed group with a problem of its own -- one the reader refuses, or one it walks past -- still holds, in its reading, a model of each document in its own listing that has no problem, as the top group does."""
     inline = {"kind": "inline", "must_understand": False}
     listed = {
         **GROUP,
+        **fault,
         "consolidated_metadata": {
             **inline,
             "metadata": {"x": ARRAY, "y": {**ARRAY, "shape": [-1]}},
@@ -690,3 +699,13 @@ def test_a_reading_holds_a_model_of_each_healthy_document_in_a_listed_groups_own
     held = nested.consolidated["x"].metadata
     assert isinstance(held, ZarrV3ArrayMetadata)
     assert held == ZarrV3ArrayMetadata(ARRAY)
+
+
+@pytest.mark.parametrize("document", [GROUP, CONSOLIDATED], ids=["group", "consolidated"])
+def test_a_group_reading_pickles_and_copies(document: dict[str, Any]) -> None:
+    """A group's reading pickles and deep-copies, with the documents its consolidated metadata holds and the model it built, and compares equal afterwards, as an array's does."""
+    reading = read_group_metadata_v3(document)
+    for again in (pickle.loads(pickle.dumps(reading)), copy.deepcopy(reading)):
+        assert again == reading
+        assert again.metadata == reading.metadata
+        assert set(again.consolidated) == set(reading.consolidated)
