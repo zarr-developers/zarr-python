@@ -52,6 +52,7 @@ from zarr_metadata.model._validation import (
     other_members,
     parse_group_metadata_v2,
     read_array_v3,
+    reading_of,
     unexpected_keys,
 )
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
@@ -478,12 +479,14 @@ class ZarrV3GroupMetadataReading:
             for loc, node in reading.fields():
                 yield (ZARR_V3_CONSOLIDATED_METADATA_KEY, "metadata", path, *loc), node
 
-    def __reduce__(
-        self,
-    ) -> tuple[Callable[..., ZarrV3GroupMetadataReading], tuple[object, ...]]:
-        # Pickled and copied as built again: the read-only view the
-        # documents are held as does not pickle, and the dict it views does.
-        return (_group_reading, (dict(self.consolidated), self.problems, self.metadata))
+    def __reduce__(self) -> tuple[Callable[..., object], tuple[object, ...]]:
+        # A reading that holds its model pickles and copies as the model
+        # does, and comes back as that model's own reading, so one model
+        # per document still; one without is built again from the dict its
+        # read-only view views, which pickles where the view does not.
+        if self.metadata is not None:
+            return (reading_of, (self.metadata,))
+        return (_group_reading, (dict(self.consolidated), self.problems, None))
 
 
 def _group_reading(

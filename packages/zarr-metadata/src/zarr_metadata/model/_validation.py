@@ -440,6 +440,14 @@ class ZarrV3ArrayMetadataReading:
     metadata: ZarrV3ArrayMetadata | None = None
     """The document's model, holding these fields, when there is no problem; None otherwise."""
 
+    def __reduce__(self) -> str | tuple[object, ...]:
+        # A reading that holds its model pickles and copies as the model
+        # does -- the pair, read once on load -- and comes back as that
+        # model's own reading, so one model per document still.
+        if self.metadata is not None:
+            return (reading_of, (self.metadata,))
+        return object.__reduce__(self)
+
     def fields(self) -> Iterator[tuple[Loc, Resolved[Any]]]:
         """Each field the document holds, as the scope read it, with where it sits in the document.
 
@@ -462,6 +470,11 @@ class ZarrV3ArrayMetadataReading:
 
 
 M = TypeVar("M")
+
+
+def reading_of(model: object) -> object:
+    """The reading `model`, a v3 model, holds: what a pickled reading that held a model is built again as."""
+    return cast("Any", model).reading
 
 
 def construct(model: type[M], /, **members: object) -> M:

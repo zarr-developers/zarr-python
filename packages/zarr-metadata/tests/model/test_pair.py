@@ -709,3 +709,20 @@ def test_a_group_reading_pickles_and_copies(document: dict[str, Any]) -> None:
         assert again == reading
         assert again.metadata == reading.metadata
         assert set(again.consolidated) == set(reading.consolidated)
+        # One model per document still: the reading comes back through
+        # the model it holds, which reads once.
+        assert again.metadata is not None
+        assert again.metadata.reading is again
+        for path, nested in again.consolidated.items():
+            held = again.metadata.consolidated_metadata
+            assert isinstance(held, ZarrV3ConsolidatedMetadata)
+            assert nested.metadata is held.metadata[path]
+
+
+def test_an_array_reading_pickles_through_its_model() -> None:
+    """An array's reading that holds a model pickles and deep-copies as that model does, and comes back as the model's own reading."""
+    reading = read_array_metadata_v3(ARRAY)
+    for again in (pickle.loads(pickle.dumps(reading)), copy.deepcopy(reading)):
+        assert again == reading
+        assert again.metadata is not None
+        assert again.metadata.reading is again
