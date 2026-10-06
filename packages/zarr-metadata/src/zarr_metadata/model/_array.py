@@ -44,7 +44,8 @@ from zarr_metadata.v3._definition import (
     spelled_canonically,
 )
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
-from zarr_metadata.v3._scope import Claims, claims_of
+from zarr_metadata.v3._scope import Claims, ScopeConflictError, claims_of
+from zarr_metadata.v3._scope import refines as refines_field
 from zarr_metadata.v3.array import ZARR_V3_ARRAY_METADATA_STORE_KEY, ZarrV3ExtensionField
 
 if TYPE_CHECKING:
@@ -286,6 +287,58 @@ class ZarrV3ArrayMetadata:
             self._reading.storage_transformers,
         )
 
+    # --- changing ---------------------------------------------------------
+
+    def update(self, **members: Unpack[ZarrV3ArrayMetadataUpdate]) -> ZarrV3ArrayMetadata:
+        """This model with `members`, JSON, in place of the document's, `UNSET` leaving one out, read in this model's own scope.
+
+        `MetadataValidationError` when the document they make has a
+        problem, so members that go together are passed together: a
+        `shape` with a grid that fits it.
+        """
+        document: dict[str, object] = {**self._document, **members}
+        for key, value in members.items():
+            if value is UNSET:
+                del document[key]
+        return type(self)(document, context=self._context)
+
+    def with_context(self, context: Context | None = None) -> ZarrV3ArrayMetadata:
+        """This document read in `context`, whatever that changes: a gain, a loss, a conflict.
+
+        `MetadataValidationError` when the document has a problem there.
+        The reading is kept when `context` reads every claim identically.
+        """
+        scope = CORE_AND_EXTENSIONS if context is None else context
+        if scope.disagreements(self._claims).agrees:
+            return self._of(self._document, scope, self._reading, self._members)
+        return type(self)(self._document, context=scope)
+
+    def refined_in(self, context: Context | None = None) -> ZarrV3ArrayMetadata:
+        """This document read in `context`, which may claim what this scope left unclaimed and contradict nothing.
+
+        `ScopeConflictError` naming each name `context` reads by another
+        definition, or by none, where this scope read it by one: a loss
+        of meaning is refused as a conflict is. `with_context` reads the
+        document in any scope.
+        """
+        scope = CORE_AND_EXTENSIONS if context is None else context
+        found = scope.disagreements(self._claims)
+        if len(found.conflicts) != 0:
+            raise ScopeConflictError(found.conflicts)
+        return self.with_context(scope)
+
+    def refines(self, other: ZarrV3ArrayMetadata) -> bool:
+        """Whether this model holds everything `other` holds: each field refines its counterpart, as `refines` orders fields, and every other member is the same, the fill value as the more informed data type spells it."""
+        if type(other) is not type(self):
+            return False
+        mine = dict(self._reading.fields())
+        theirs = dict(other._reading.fields())
+        if mine.keys() != theirs.keys():
+            return False
+        if not all(refines_field(mine[loc], theirs[loc]) for loc in mine):
+            return False
+        return _plain_key(self, self.data_type) == _plain_key(other, self.data_type)
+
     # --- constructors -----------------------------------------------------
 
     @classmethod
@@ -365,6 +418,19 @@ def array_key(model: ZarrV3ArrayMetadata) -> tuple[object, ...]:
         model.dimension_names,
         json_text(dict(model.attributes)),
         tuple(field_key(transformer) for transformer in model.storage_transformers),
+        json_text(dict(model.extra_fields)),
+    )
+
+
+def _plain_key(
+    model: ZarrV3ArrayMetadata, data_type: Read[DataTypeDefinition[Any]] | Unclaimed
+) -> tuple[object, ...]:
+    """What `refines` compares of a model other than its fields, the fill value spelled as `data_type` -- the more informed side's -- spells it."""
+    return (
+        model.shape,
+        json_text(spelled_canonically(data_type, model.fill_value)),
+        model.dimension_names,
+        json_text(dict(model.attributes)),
         json_text(dict(model.extra_fields)),
     )
 

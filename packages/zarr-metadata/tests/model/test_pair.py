@@ -22,6 +22,7 @@ from zarr_metadata.v3.definition import (
     CodecDefinition,
     Context,
     Read,
+    ScopeConflictError,
     Unclaimed,
 )
 
@@ -164,3 +165,150 @@ def test_error_a_model_whose_scope_does_not_pickle_says_so() -> None:
     )
     with pytest.raises((pickle.PicklingError, AttributeError)):
         pickle.dumps(model)
+
+
+FLOAT: dict[str, Any] = {
+    **ARRAY,
+    "data_type": "float32",
+    "fill_value": "0x7fc00000",
+    "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
+}
+
+
+@pytest.mark.parametrize(
+    ("model", "members", "expected"),
+    [
+        (
+            ZarrV3ArrayMetadata(ARRAY),
+            {"attributes": {"a": 1}},
+            ZarrV3ArrayMetadata({**ARRAY, "attributes": {"a": 1}}),
+        ),
+        (
+            ZarrV3ArrayMetadata({**ARRAY, "attributes": {"a": 1}}),
+            {"attributes": UNSET},
+            ZarrV3ArrayMetadata(ARRAY),
+        ),
+        (
+            ZarrV3ArrayMetadata(ARRAY, context=PRIVATE),
+            {"attributes": {"a": 1}},
+            ZarrV3ArrayMetadata({**ARRAY, "attributes": {"a": 1}}, context=PRIVATE),
+        ),
+        (
+            ZarrV3ArrayMetadata(ARRAY),
+            {
+                "shape": (6,),
+                "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (3,)}},
+            },
+            ZarrV3ArrayMetadata(
+                {
+                    **ARRAY,
+                    "shape": [6],
+                    "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [3]}},
+                }
+            ),
+        ),
+    ],
+    ids=["set", "unset", "update-keeps-scope", "members-together"],
+)
+def test_update_reads_new_members_in_the_models_own_scope(
+    model: ZarrV3ArrayMetadata, members: dict[str, Any], expected: ZarrV3ArrayMetadata
+) -> None:
+    """`update` puts JSON members in place of the document's, `UNSET` removing one, and reads the result in the model's own scope, so a model read privately stays private."""
+    updated = model.update(**members)
+    assert updated == expected
+    assert updated.context == model.context
+
+
+def test_error_update_refuses_a_document_with_a_problem() -> None:
+    """`update` raises `MetadataValidationError` when the members make an invalid document, as the constructor does: two dimension names for one dimension."""
+    with pytest.raises(MetadataValidationError):
+        ZarrV3ArrayMetadata(ARRAY).update(dimension_names=("x", "y"))
+
+
+@pytest.mark.parametrize(
+    ("model", "context", "gained"),
+    [
+        (ZarrV3ArrayMetadata(ARRAY, context=Context.of()), CORE, True),
+        (ZarrV3ArrayMetadata(ARRAY, context=CORE), CORE_AND_EXTENSIONS, False),
+        (ZarrV3ArrayMetadata(FLOAT, context=Context.of()), CORE, True),
+    ],
+    ids=["gain", "nothing-to-gain", "gain-data-type-with-fill-value"],
+)
+def test_refined_in_moves_a_model_up_the_order(
+    model: ZarrV3ArrayMetadata, context: Context, gained: bool
+) -> None:
+    """`refined_in` reads the document in a scope that claims what this one left unclaimed and contradicts nothing; the result refines the model, keeps its document, and is the model itself when the scope reads nothing otherwise."""
+    refined = model.refined_in(context)
+    assert refined.context == context
+    assert refined.to_json() == model.to_json()
+    assert refined.refines(model)
+    assert (refined == model) is not gained
+    if not gained:
+        assert refined.reading is model.reading
+
+
+@pytest.mark.parametrize(
+    ("model", "context"),
+    [
+        (ZarrV3ArrayMetadata(ARRAY), PRIVATE),
+        (ZarrV3ArrayMetadata(ARRAY, context=CORE), Context.of()),
+    ],
+    ids=["conflict", "loss"],
+)
+def test_error_refined_in_refuses_a_conflict_or_a_loss(
+    model: ZarrV3ArrayMetadata, context: Context
+) -> None:
+    """`refined_in` raises `ScopeConflictError` naming each name the scope reads by another definition, or by none."""
+    with pytest.raises(ScopeConflictError) as raised:
+        model.refined_in(context)
+    assert "bytes" in [conflict.key[1] for conflict in raised.value.conflicts]
+
+
+def test_with_context_reads_the_document_in_any_scope() -> None:
+    """`with_context` reads the same document in another scope, whatever that changes: a private `bytes` is read as such, and a scope that claims nothing leaves every name unclaimed."""
+    model = ZarrV3ArrayMetadata(ARRAY)
+    private = model.with_context(PRIVATE)
+    assert private.context == PRIVATE
+    assert private.codecs[0].definition == MY_BYTES
+    assert isinstance(model.with_context(Context.of()).codecs[0], Unclaimed)
+    assert model.with_context(None).context == CORE_AND_EXTENSIONS
+
+
+def test_error_with_context_refuses_a_document_the_scope_reads_with_a_problem() -> None:
+    """`with_context` raises `MetadataValidationError` when the document has a problem in the new scope: a gzip `level` the core definition refuses."""
+    loose = ZarrV3ArrayMetadata(
+        {**ARRAY, "codecs": ["bytes", {"name": "gzip", "configuration": {"level": 12}}]},
+        context=Context.of(),
+    )
+    with pytest.raises(MetadataValidationError):
+        loose.with_context(CORE)
+
+
+@pytest.mark.parametrize(
+    ("upper", "lower", "expected"),
+    [
+        (ZarrV3ArrayMetadata(ARRAY), ZarrV3ArrayMetadata(ARRAY, context=Context.of()), True),
+        (ZarrV3ArrayMetadata(ARRAY, context=Context.of()), ZarrV3ArrayMetadata(ARRAY), False),
+        (ZarrV3ArrayMetadata(ARRAY), ZarrV3ArrayMetadata(SPELLED_OUT), True),
+        (ZarrV3ArrayMetadata(ARRAY, context=PRIVATE), ZarrV3ArrayMetadata(ARRAY), False),
+        (ZarrV3ArrayMetadata({**ARRAY, "attributes": {"a": 1}}), ZarrV3ArrayMetadata(ARRAY), False),
+        (
+            ZarrV3ArrayMetadata(FLOAT, context=CORE),
+            ZarrV3ArrayMetadata(FLOAT, context=Context.of()),
+            True,
+        ),
+    ],
+    ids=[
+        "gain",
+        "loss",
+        "equal",
+        "conflict",
+        "other-members-differ",
+        "fill-value-spelled-by-the-informed-side",
+    ],
+)
+def test_refines_orders_models_by_information(
+    upper: ZarrV3ArrayMetadata, lower: ZarrV3ArrayMetadata, expected: bool
+) -> None:
+    """A model refines another when every field refines its counterpart and every other member is the same, the fill value compared as the more informed data type spells it."""
+    assert upper.refines(lower) is expected
