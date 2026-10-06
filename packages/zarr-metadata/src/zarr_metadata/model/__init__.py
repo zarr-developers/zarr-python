@@ -21,10 +21,13 @@ validators read as a JSON Schema, but for the rules. Model `from_json` /
 `from_key_value` constructors raise
 `MetadataValidationError` for every ingestion failure, including missing
 store keys and undecodable bytes, and the v3 ones take the same
-`context`. A model checks itself when it is built, as a pydantic model
-does in `__init__`, so one built by hand, or changed by
-`dataclasses.replace`, is refused at the change when its document has a
-problem, and `to_key_value` writes a model as it is.
+`context`. A v3 model is its document and the scope it was read in:
+`ZarrV3ArrayMetadata(document, context=None)` reads the document in the
+scope and raises `MetadataValidationError` with every problem, so no
+model is built invalid; `to_json` writes the document as written;
+`update` reads new members in the model's own scope; `with_context` and
+`refined_in` read the document in another; `to_key_value` writes a model
+as it is.
 """
 
 from zarr_metadata._json import (

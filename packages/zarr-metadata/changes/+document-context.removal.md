@@ -1,0 +1,1 @@
+The v3 models are no longer dataclasses built from typed fields: `ZarrV3ArrayMetadata(shape=..., data_type=<Read>, ...)`, `dataclasses.replace` and `dataclasses.fields` on them are gone; build a model from a document and change it with `update`. `update` no longer takes `context`. `to_json` no longer respells fields: `"bytes"` stays `"bytes"`.

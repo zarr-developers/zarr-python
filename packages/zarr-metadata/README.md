@@ -160,17 +160,22 @@ their `node_path` twins, judge a string by them.
 A member the spec does not define is not a field; the model's
 `must_understand_fields` names those a reader must understand.
 
-A model checks itself when it is built, as a pydantic model does in
-`__init__`: one built by hand, or changed by `dataclasses.replace`, whose
-document has a problem raises `MetadataValidationError` with every
-problem at the change, so no model is built invalid, and `to_key_value`
-writes each as it is. It holds its members as that read refines them, in
-containers of its own -- a list given for an array as a tuple -- as
-pydantic holds what its `__init__` coerced, and each field, a `Read` or
-an `Unclaimed`, as the scope read it: one built by hand is taken as
-read. A model a read builds is not read a second time. Change a model by
-building another: a container it holds, changed in place, is not
-checked again.
+A v3 model is its document and the scope it was read in:
+`ZarrV3ArrayMetadata(document, context=None)` reads the document in the
+scope, `CORE_AND_EXTENSIONS` when none is given, and raises
+`MetadataValidationError` with every problem, so no model is built
+invalid; `to_json` writes the document as it was written, and
+`to_key_value` writes it as it is. Every typed member is a view of that
+read: each field as the scope read it, a `Read` or an `Unclaimed`, and
+`shape`, `attributes` and the rest as the read refined them, a list
+given for an array as a tuple. A model is changed by `update`, which puts
+JSON members in place of the document's and reads the result in the
+model's own scope, so no scope is passed back in; `with_context` reads
+the document in another scope, and `refined_in` only in one that claims
+what this one left unclaimed and contradicts nothing, raising
+`ScopeConflictError` otherwise. The documents a group's
+`consolidated_metadata` holds are models of the group's scope, built from
+the group's one read.
 
 Two models are equal when they mean the same document, however each is
 spelled. What the package interprets -- each field, and the fill value
