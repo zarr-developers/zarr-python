@@ -65,7 +65,7 @@ Tables = Mapping[type[Definition[Any]], Mapping[str, Definition[Any]]]
 """By kind, then by the name each definition is filed under."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class Context:
     """The definitions in scope while metadata is read.
 
@@ -131,6 +131,22 @@ class Context:
     def __deepcopy__(self, memo: dict[int, object]) -> Context:
         # A scope never changes, so a copy of it is itself.
         return self
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Context):
+            return NotImplemented
+        return self._filed() == other._filed()
+
+    def __hash__(self) -> int:
+        return hash(self._filed())
+
+    def _filed(self) -> frozenset[tuple[type[Definition[Any]], str, Definition[Any]]]:
+        """Every definition in scope with the kind and name it is filed under: what two scopes are compared by."""
+        return frozenset(
+            (kind, name, definition)
+            for kind, table in self.tables.items()
+            for name, definition in table.items()
+        )
 
     def claimant(self, kind: type[D], name: str) -> D | None:
         """The definition of `kind` in scope that reads `name`, a name a document writes; None if none does.
