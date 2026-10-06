@@ -33,6 +33,7 @@ from zarr.codecs.sharding import (
     _ShardReader,
 )
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
+from zarr.core.dtype import Int32
 from zarr.core.indexing import lexicographic_order_coords
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.storage import MemoryStore, StorePath, ZipStore
@@ -768,15 +769,13 @@ def test_structured_dtype_fill_value() -> None:
     [
         ShardingCodec(chunk_shape=(8, 8)),
         ShardingCodec(chunk_shape=(8, 8), subchunk_write_order="lexicographic"),
-        ShardingCodec(chunk_shape=(0,)),
     ],
-    ids=["default", "lexicographic", "zero-chunk-size"],
+    ids=["default", "lexicographic"],
 )
 def test_pickle(codec: ShardingCodec) -> None:
     """ShardingCodec round-trips through pickle, including the non-serialized
     ``subchunk_write_order`` (which ``to_dict`` omits and which must not silently
-    revert to the ``morton`` default), and an inner chunk size of 0, which the
-    constructor accepts."""
+    revert to the ``morton`` default)."""
     restored = pickle.loads(pickle.dumps(codec))
     assert restored == codec
     assert restored.chunk_shape == codec.chunk_shape
@@ -1436,3 +1435,90 @@ def test_sharding_truncated_shard_raises(
         }
         with pytest.raises(ValueError, match="too short to hold its index"):
             ops[op]()
+
+
+@pytest.mark.filterwarnings(
+    "ignore:Combining a `sharding_indexed` codec:zarr.errors.ZarrUserWarning"
+)
+@pytest.mark.parametrize(
+    "inner_codecs",
+    [
+        (ShardingCodec(chunk_shape=(3, 10)),),
+        (ShardingCodec(chunk_shape=(6, 20)),),
+        (TransposeCodec(order=(1, 0)), ShardingCodec(chunk_shape=(10, 3))),
+        (ShardingCodec(chunk_shape=(3, 10), codecs=(ShardingCodec(chunk_shape=(1, 5)),)),),
+    ],
+    ids=["divides", "equal", "after-transpose", "three-levels"],
+)
+def test_nested_sharding_roundtrip(inner_codecs: tuple[Any, ...]) -> None:
+    """A sharding codec nested in a sharding codec is accepted when its inner chunk
+    shape divides the chunk it encodes (the outer codec's inner chunk, as the codecs
+    before it leave it, so permuted after a transpose), and data round-trips."""
+    data = np.arange(1, 121, dtype="int32").reshape(6, 20)
+    store = MemoryStore()
+    arr = zarr.create_array(
+        store,
+        shape=data.shape,
+        dtype=data.dtype,
+        chunks=(6, 20),
+        serializer=ShardingCodec(chunk_shape=(6, 20), codecs=inner_codecs),
+    )
+    arr[:] = data
+    np.testing.assert_array_equal(zarr.open_array(store, mode="r")[:], data)
+
+
+@pytest.mark.filterwarnings(
+    "ignore:Combining a `sharding_indexed` codec:zarr.errors.ZarrUserWarning"
+)
+@pytest.mark.parametrize("nested_chunk_shape", [(4, 7), (12, 40), (3, 20, 1)])
+def test_nested_sharding_rejects_indivisible_inner_chunk_shape(
+    nested_chunk_shape: tuple[int, ...],
+) -> None:
+    """A sharding codec nested in a sharding codec is checked as the outer one is: an
+    inner chunk shape that does not divide the chunk it encodes, or has another number
+    of dimensions, is rejected when the array is created, and nothing is stored. Such
+    arrays used to be created and to read back wrong data."""
+    store = MemoryStore()
+    with pytest.raises(ValueError, match="not divisible|same number of dimensions"):
+        zarr.create_array(
+            store,
+            shape=(6, 20),
+            dtype="int32",
+            chunks=(6, 20),
+            serializer=ShardingCodec(
+                chunk_shape=(6, 20), codecs=(ShardingCodec(chunk_shape=nested_chunk_shape),)
+            ),
+        )
+    assert store._store_dict == {}
+
+
+@pytest.mark.parametrize("chunk_shape", [(0, 5), (5, 0), (False, 5), [0], 0])
+def test_sharding_codec_rejects_inner_chunk_size_zero(chunk_shape: Any) -> None:
+    """`ShardingCodec` rejects an inner chunk size of 0 (or `False`) when it is
+    constructed, with a `ValueError` naming the dimension, so no array metadata, nested
+    codec or stored document can hold one."""
+    with pytest.raises(ValueError, match=r"Dimension \d: chunk edge length must be >= 1, got"):
+        ShardingCodec(chunk_shape=chunk_shape)
+
+
+@pytest.mark.filterwarnings(
+    "ignore:Combining a `sharding_indexed` codec:zarr.errors.ZarrUserWarning"
+)
+def test_open_rejects_stored_nested_sharding_with_indivisible_inner_chunk_shape() -> None:
+    """A stored array document whose nested sharding codec has an inner chunk shape
+    that does not divide the chunk it encodes is rejected when the metadata is parsed,
+    not when chunks are read or written."""
+    valid = ArrayV3Metadata(
+        shape=(6, 20),
+        data_type=Int32(),
+        chunk_grid={"name": "regular", "configuration": {"chunk_shape": (6, 20)}},
+        chunk_key_encoding={"name": "default"},
+        fill_value=0,
+        codecs=(ShardingCodec(chunk_shape=(6, 20), codecs=(ShardingCodec(chunk_shape=(3, 10)),)),),
+        attributes={},
+        dimension_names=None,
+    )
+    doc: Any = valid.to_dict()
+    doc["codecs"][0]["configuration"]["codecs"][0]["configuration"]["chunk_shape"] = (4, 7)
+    with pytest.raises(ValueError, match="not divisible"):
+        ArrayV3Metadata.from_dict(doc)
