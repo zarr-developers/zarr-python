@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Annotated, Any, ClassVar, TypeVar, cast
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, TypeAlias, TypeVar, cast
 
 import pytest
 from annotated_types import Ge
@@ -22,6 +22,9 @@ from zarr_metadata.v3.definition import (
     Read,
     Refused,
     Unclaimed,
+    WithFillValue,
+    canonical_fill_value,
+    fill_value_problems,
     resolve,
 )
 
@@ -153,3 +156,27 @@ def test_a_kind_reads_the_envelope_its_format_writes(
     if written is not None:
         assert not isinstance(resolved, Refused)
         assert resolved.to_json() == written
+
+
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
+class Typed(WithFillValue[C]):
+    """A kind of another format whose definitions take a fill value."""
+
+    is_kind: ClassVar[bool] = True
+    label: ClassVar[str] = "typed"
+
+
+Count: TypeAlias = Annotated[int, Ge(0)] | None
+
+TYPED = Typed(name="typed", configuration=EmptyConfiguration, fill_value=Count)
+
+
+def test_a_fill_value_is_judged_by_any_kind_with_one() -> None:
+    """`fill_value_problems` and `canonical_fill_value` judge a fill value by the definition's `fill_value` members whatever kind it is, since the members live on `WithFillValue`, which every data type kind derives from."""
+    resolved, _ = resolve("typed", Typed, Context.of(TYPED))
+    assert fill_value_problems(resolved, 3) == ()
+    assert fill_value_problems(resolved, None) == ()
+    assert [(p.loc, p.kind) for p in fill_value_problems(resolved, -1, ("fill_value",))] == [
+        (("fill_value",), "invalid_value")
+    ]
+    assert canonical_fill_value(resolved, 3) == 3

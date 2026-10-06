@@ -104,6 +104,7 @@ reads as `CodecDefinition[Mapping[str, JSONValue]]`, nothing unknown.
 T = TypeVar("T")
 
 D = TypeVar("D", bound="Definition[Any]")
+F = TypeVar("F", bound="WithFillValue[Any]")
 
 Problems: TypeAlias = tuple[ValidationProblem, ...]
 
@@ -415,7 +416,39 @@ def spelled(
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class DataTypeDefinition(Definition[C]):
+class WithFillValue(Definition[C]):
+    """A definition of a type whose arrays take a fill value: the JSON shape of one, what the rules disallow in one, and its canonical spelling.
+
+    Not a kind: each format's data type kind derives from it, so
+    `fill_value_problems` judges a fill value of either.
+
+    `fill_value` is the JSON shape of a fill value, as an annotation the
+    checker reads as it reads a configuration's members, its range among
+    it. `fill_value_rules` is what the spec disallows in a fill value of
+    that shape that the type cannot say; it is handed the configuration,
+    the fields it holds as the scope read them, and the typed fill value.
+    `fill_value_canonical` spells a fill value that has no problem in the
+    one spelling its value has, so two fill values are one value of the
+    type exactly when their canonical spellings are written alike.
+    """
+
+    fill_value: object = JSONValue
+    """The JSON shape of a fill value, as an annotation: `Int8FillValue`."""
+    fill_value_rules: Callable[[C, Nested, Any], Iterable[ValidationProblem]] = no_rules
+    """What the spec disallows in a fill value of that shape, located in it."""
+    fill_value_canonical: Callable[[C, Nested, Any], JSONValue] = fill_value_as_written
+    """A fill value that has no problem, in the one spelling its value has."""
+
+    def _refusal(self) -> str | None:
+        try:
+            _fill_value_parser(self.fill_value)
+        except TypeError as error:
+            return f"{self.name!r}: fill_value: {error}"
+        return None
+
+
+@dataclass(frozen=True, kw_only=True, slots=True, repr=False)
+class DataTypeDefinition(WithFillValue[C]):
     """A data type, and the fill value an array of it takes.
 
     `fill_value` is the JSON shape of a fill value -- `Int8FillValue`, an
@@ -473,12 +506,6 @@ class DataTypeDefinition(Definition[C]):
             return {"name": name, "configuration": configuration}
         return name
 
-    fill_value: object = JSONValue
-    """The JSON shape of a fill value, as an annotation: `Int8FillValue`."""
-    fill_value_rules: Callable[[C, Nested, Any], Iterable[ValidationProblem]] = no_rules
-    """What the spec disallows in a fill value of that shape, located in it."""
-    fill_value_canonical: Callable[[C, Nested, Any], JSONValue] = fill_value_as_written
-    """A fill value that has no problem, in the one spelling its value has."""
     storage: Callable[[C, Nested], StorageClass | None] = unknown_storage
     """How its values are stored, given the configuration and the fields it holds; None when unknown."""
 
@@ -488,11 +515,8 @@ class DataTypeDefinition(Definition[C]):
                 f"{self.name!r} is how a document writes raw bits of one size, which read as "
                 f"{RAW_BYTES_NAME!r}; to read raw bits your own way, define {RAW_BYTES_NAME!r}"
             )
-        try:
-            _fill_value_parser(self.fill_value)
-        except TypeError as error:
-            return f"{self.name!r}: fill_value: {error}"
-        return None
+        # Named, not a bare `super()`: a dataclass with slots is rebuilt.
+        return super(DataTypeDefinition, self)._refusal()
 
 
 @functools.cache
@@ -1445,9 +1469,7 @@ def configuration_of(resolved: Resolved[Any], definition: Definition[C]) -> C | 
     return cast("C", resolved.configuration)
 
 
-def fill_value_problems(
-    data_type: Resolved[DataTypeDefinition[Any]], value: object, loc: Loc = ()
-) -> Problems:
+def fill_value_problems(data_type: Resolved[F], value: object, loc: Loc = ()) -> Problems:
     """What is wrong with `value` as a fill value of `data_type`, a data type field a scope read.
 
     `value` is refined to JSON first: not JSON is the first verdict,
@@ -1475,9 +1497,7 @@ def fill_value_problems(
     return with_input((*problems, *refused), value, loc)
 
 
-def canonical_fill_value(
-    data_type: Resolved[DataTypeDefinition[Any]], value: object
-) -> JSONValue | UNSET:
+def canonical_fill_value(data_type: Resolved[F], value: object) -> JSONValue | UNSET:
     """`value`, a fill value of `data_type`, a data type field a scope read, in the one spelling its value has; `UNSET` when it has a problem.
 
     As the data type's `fill_value_canonical` spells it, so two fill
@@ -1495,9 +1515,7 @@ def canonical_fill_value(
     return spelled_canonically(data_type, refined)
 
 
-def spelled_canonically(
-    data_type: Resolved[DataTypeDefinition[Any]], value: JSONValue
-) -> JSONValue:
+def spelled_canonically(data_type: Resolved[F], value: JSONValue) -> JSONValue:
     """`value`, a fill value of `data_type` with no problem, in its canonical spelling, as `canonical_fill_value` gives it, without judging it again.
 
     Its `fill_value_canonical` is the extension author's code: what it
