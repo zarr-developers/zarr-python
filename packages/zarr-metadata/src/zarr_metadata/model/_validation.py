@@ -641,7 +641,7 @@ def read_array_v3(
 
 
 def validate_array_metadata_v3(
-    value: object, *, context: Context = CORE_AND_EXTENSIONS
+    value: object, *, context: Context | None = None
 ) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not a valid v3 array document.
 
@@ -663,25 +663,28 @@ def validate_array_metadata_v3(
     reports as `must_understand_fields`. These are the `problems` of
     `read_array_metadata_v3`, which holds what was read to find them.
     """
-    return read_array_v3(value, context)[0].problems
+    scope = CORE_AND_EXTENSIONS if context is None else context
+    return read_array_v3(value, scope)[0].problems
 
 
 def is_array_metadata_v3(
-    value: object, *, context: Context = CORE_AND_EXTENSIONS
+    value: object, *, context: Context | None = None
 ) -> TypeGuard[ZarrV3ArrayMetadataJSON]:
     """Whether `value` is a v3 array document `validate_array_metadata_v3` finds nothing wrong with, written with tuples."""
+    scope = CORE_AND_EXTENSIONS if context is None else context
     return (
         _is_canonical_json(value, finite=False)
-        and not validate_array_metadata_v3(value, context=context)
+        and not validate_array_metadata_v3(value, context=scope)
         and _is_canonical_array_metadata_v3(value)
     )
 
 
 def parse_array_metadata_v3(
-    value: object, *, context: Context = CORE_AND_EXTENSIONS
+    value: object, *, context: Context | None = None
 ) -> ZarrV3ArrayMetadataJSON:
     """Return `value` as `ZarrV3ArrayMetadataJSON`, or raise `MetadataValidationError`."""
-    problems = validate_array_metadata_v3(value, context=context)
+    scope = CORE_AND_EXTENSIONS if context is None else context
+    problems = validate_array_metadata_v3(value, context=scope)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
     return cast("ZarrV3ArrayMetadataJSON", arrays_to_tuples(value))

@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from zarr_metadata._typed_json import JSONSchema, SchemaLeaf
 
 
-def node_metadata_json_schema_v3(*, context: Context = CORE_AND_EXTENSIONS) -> JSONSchema:
+def node_metadata_json_schema_v3(*, context: Context | None = None) -> JSONSchema:
     """The JSON Schema of a v3 `zarr.json` read in `context`: an array document or a group document, as `validate_node_metadata_v3` reads one, but for the rules.
 
     For an editor that validates a `zarr.json` as it is written, or a
@@ -45,7 +45,8 @@ def node_metadata_json_schema_v3(*, context: Context = CORE_AND_EXTENSIONS) -> J
     as lists: a model's `to_json` writes tuples, which a Python validator
     does not take for arrays.
     """
-    schemas = Schemas(_documents(context))
+    scope = CORE_AND_EXTENSIONS if context is None else context
+    schemas = Schemas(_documents(scope))
     array = schemas.of(ZarrV3ArrayMetadataJSON)
     group = schemas.of(ZarrV3GroupMetadataJSON)
     return schemas.document({"anyOf": [array, group]})

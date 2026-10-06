@@ -205,7 +205,7 @@ class ZarrV3RepairedNodeMetadataReading:
 
 
 def read_repaired_node_metadata_v3(
-    value: object, *, context: Context = CORE_AND_EXTENSIONS
+    value: object, *, context: Context | None = None
 ) -> ZarrV3RepairedNodeMetadataReading:
     """`value`, a v3 `zarr.json`, read in `context` as `read_node_metadata_v3` reads it, once `repair_node_metadata_v3` has undone each known writer bug in it.
 
@@ -214,9 +214,10 @@ def read_repaired_node_metadata_v3(
     applies to is read as it is, and reported as `read_node_metadata_v3`
     reports it.
     """
+    scope = CORE_AND_EXTENSIONS if context is None else context
     repaired, repairs = repair_node_metadata_v3(value)
     return ZarrV3RepairedNodeMetadataReading(
-        read_node_metadata_v3(repaired, context=context), repairs
+        read_node_metadata_v3(repaired, context=scope), repairs
     )
 
 

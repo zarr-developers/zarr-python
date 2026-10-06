@@ -485,7 +485,7 @@ def _fill_value_key(model: ZarrV3ArrayMetadata) -> str:
 
 
 def read_array_metadata_v3(
-    value: object, *, context: Context = CORE_AND_EXTENSIONS
+    value: object, *, context: Context | None = None
 ) -> ZarrV3ArrayMetadataReading:
     """`value`, a v3 array document, as `context` read it, whatever it holds.
 
@@ -498,12 +498,13 @@ def read_array_metadata_v3(
     walk over its `fields()`. A value that is not an object holds no
     field.
     """
-    reading, members = read_array_v3(value, context)
+    scope = CORE_AND_EXTENSIONS if context is None else context
+    reading, members = read_array_v3(value, scope)
     if members is None:
         return reading
     refined, _ = refine_user_data(value)
     document = cast("dict[str, JSONValue]", refined)
-    model = ZarrV3ArrayMetadata._of(document, context, reading, members)  # pyright: ignore[reportPrivateUsage]
+    model = ZarrV3ArrayMetadata._of(document, scope, reading, members)  # pyright: ignore[reportPrivateUsage]
     return model.reading
 
 
