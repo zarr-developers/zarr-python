@@ -11,6 +11,7 @@ built on these.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeAlias
 
@@ -20,6 +21,7 @@ from zarr_metadata.v3._definition import (
     CodecDefinition,
     DataTypeDefinition,
     Definition,
+    Read,
     Refused,
     StorageTransformerDefinition,
     Unclaimed,
@@ -29,7 +31,7 @@ from zarr_metadata.v3._definition import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Sequence
 
     from zarr_metadata._typed_json import Loc
     from zarr_metadata.v3._definition import Resolved
@@ -37,7 +39,7 @@ if TYPE_CHECKING:
 ClaimKey: TypeAlias = tuple[type[Definition[Any]], str]
 """A kind and the name a definition is filed under: what a scope answers `claimant` for."""
 
-Claims: TypeAlias = "Mapping[ClaimKey, Definition[Any] | None]"
+Claims: TypeAlias = Mapping[ClaimKey, Definition[Any] | None]
 """What a reading claims of each name a document writes: the definition that read it, or None where nothing claimed it."""
 
 _KIND_NAMES: dict[type[Definition[Any]], str] = {
@@ -115,16 +117,19 @@ def refines(field: Resolved[Any], other: Resolved[Any]) -> bool:
     """Whether `field` holds everything `other` holds: reads the same where both read, and reads what `other` left unclaimed.
 
     The order one reading of a document refines another in. A name nothing
-    claimed, read by a definition, is a gain; the reverse is a loss; one
-    name read by two definitions is a conflict; a refused field is in the
-    order with nothing. Two fields that refine each other are equal.
+    claimed, read by a definition, is a gain: the read field is compared
+    as the unclaimed one would be, by its name and the configuration as
+    written, as JSON text, so two spellings of one field are one, and
+    `true` is not `1`. The reverse is a loss; one name read by two
+    definitions is a conflict; a refused field refines itself alone. Two
+    fields that refine each other are equal.
     """
     if isinstance(field, Refused) or isinstance(other, Refused):
-        return False
+        return field == other
     if isinstance(other, Unclaimed):
         if isinstance(field, Unclaimed):
             return field_key(field) == field_key(other)
-        return claim_key(field) == claim_key(other) and field.json == other.json
+        return claim_key(field) == claim_key(other) and _as_unclaimed(field) == other
     if isinstance(field, Unclaimed):
         return False
     if field.definition != other.definition or own_key(field) != own_key(other):
@@ -132,6 +137,11 @@ def refines(field: Resolved[Any], other: Resolved[Any]) -> bool:
     if set(field.nested) != set(other.nested):
         return False
     return all(refines(field.nested[loc], other.nested[loc]) for loc in field.nested)
+
+
+def _as_unclaimed(field: Read[Any]) -> Unclaimed:
+    """`field` as it would have been read had nothing claimed its name: what a gain is compared against."""
+    return Unclaimed(json=field.json, name=field.name, read_as=field.read_as)
 
 
 @dataclass(frozen=True, slots=True)

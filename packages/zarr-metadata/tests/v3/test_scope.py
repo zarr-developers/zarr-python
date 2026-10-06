@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pickle
-from typing import Any
+from typing import Any, get_type_hints
 
 import pytest
 from hypothesis import given
@@ -19,6 +19,7 @@ from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
+    Claims,
     CodecDefinition,
     Conflict,
     Context,
@@ -147,6 +148,19 @@ def test_error_claims_of_refuses_one_name_read_two_ways() -> None:
 
 GZIP_FIELD = {"name": "gzip", "configuration": {"level": 5}}
 ZSTD_FIELD = {"name": "zstd", "configuration": {"level": 3}}
+BLOSC = {"cname": "zstd", "shuffle": "noshuffle", "blocksize": 0}
+BLOSC_LEVEL_ONE = {"name": "blosc", "configuration": {**BLOSC, "clevel": 1}}
+BLOSC_LEVEL_TRUE = {"name": "blosc", "configuration": {**BLOSC, "clevel": True}}
+"""Two documents Python's `==` takes for one, which `json_text` tells apart."""
+SHARD_HOLDING_REFUSED = {
+    "name": "sharding_indexed",
+    "configuration": {
+        "chunk_shape": [1],
+        "codecs": ["bytes", {"name": "gzip", "configuration": {"level": 12}}],
+        "index_codecs": [{"name": "bytes", "configuration": {"endian": "little"}}, "crc32c"],
+    },
+}
+"""A shard read, holding a gzip its definition refuses."""
 NESTED_ZSTD = {
     "name": "sharding_indexed",
     "configuration": {
@@ -202,6 +216,21 @@ NESTED_ZSTD = {
             _read({"name": "zstd", "configuration": {"level": 2}}, CodecDefinition, CORE),
             False,
         ),
+        (
+            _read("crc32c", CodecDefinition, CORE),
+            _read({"name": "crc32c"}, CodecDefinition, Context.of()),
+            True,
+        ),
+        (
+            _read(BLOSC_LEVEL_ONE, CodecDefinition, CORE),
+            _read(BLOSC_LEVEL_TRUE, CodecDefinition, Context.of()),
+            False,
+        ),
+        (
+            _read(SHARD_HOLDING_REFUSED, CodecDefinition, CORE),
+            _read(SHARD_HOLDING_REFUSED, CodecDefinition, CORE),
+            True,
+        ),
     ],
     ids=[
         "same",
@@ -214,6 +243,9 @@ NESTED_ZSTD = {
         "refused",
         "both-unclaimed",
         "unclaimed-differ",
+        "gain-over-another-spelling",
+        "no-gain-over-true-for-one",
+        "holding-a-refused-field",
     ],
 )
 def test_refines_orders_readings_by_information(
@@ -223,15 +255,31 @@ def test_refines_orders_readings_by_information(
     assert refines(field, other) is expected
 
 
-@given(st.sampled_from([GZIP_FIELD, "crc32c", {"name": "crc32c"}, ZSTD_FIELD, NESTED_ZSTD]))
-def test_refines_is_reflexive_and_mutual_refinement_is_equality(data: object) -> None:
-    """Every field a scope reads refines itself, and two such fields that refine each other are equal: the order's bottom is equality. A refused field is outside the order, so it is not sampled."""
-    for scope in (CORE, CORE_AND_EXTENSIONS):
-        field = _read(data, CodecDefinition, scope)
-        assert refines(field, field)
-    low = _read(data, CodecDefinition, CORE)
-    high = _read(data, CodecDefinition, CORE_AND_EXTENSIONS)
-    assert (refines(low, high) and refines(high, low)) is (low == high)
+DOCUMENTS = [
+    GZIP_FIELD,
+    "crc32c",
+    {"name": "crc32c"},
+    {"name": "crc32c", "configuration": {}},
+    ZSTD_FIELD,
+    NESTED_ZSTD,
+    BLOSC_LEVEL_ONE,
+    SHARD_HOLDING_REFUSED,
+]
+SCOPES = [Context.of(), CORE, CORE_AND_EXTENSIONS]
+READINGS = [_read(document, CodecDefinition, scope) for document in DOCUMENTS for scope in SCOPES]
+
+
+@given(st.sampled_from(READINGS), st.sampled_from(READINGS), st.sampled_from(READINGS))
+def test_refines_is_a_partial_order_whose_bottom_is_equality(
+    a: Resolved[Any], b: Resolved[Any], c: Resolved[Any]
+) -> None:
+    """Over readings of documents in several scopes and spellings, `refines` is reflexive and transitive, two fields that refine each other are equal, and equal fields refine the same fields."""
+    assert refines(a, a)
+    if refines(a, b) and refines(b, c):
+        assert refines(a, c)
+    assert (refines(a, b) and refines(b, a)) is (a == b)
+    if a == b:
+        assert refines(c, a) is refines(c, b)
 
 
 @pytest.mark.parametrize(
@@ -303,3 +351,12 @@ def test_error_joined_refuses_one_name_filed_two_ways() -> None:
         GZIP_CODEC,
         MY_GZIP,
     )
+
+
+def test_claims_is_a_type_a_signature_can_hold() -> None:
+    """`Claims` resolves as an annotation at run time, as a caller's `get_type_hints` reads one: it is a type, not a string."""
+
+    def read(claims: Claims) -> None:
+        pass
+
+    assert "claims" in get_type_hints(read)

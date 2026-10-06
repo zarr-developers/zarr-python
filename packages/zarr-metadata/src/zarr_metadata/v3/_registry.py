@@ -74,7 +74,8 @@ class Context:
     A value with no reading of its own: `resolve` reads a field in it,
     and `claimant` is the one question it answers, which definition a
     name belongs to. Built from definitions with `Context.of`, extended
-    with more by `extended_with`.
+    with more by `extended_with`; two scopes are equal when they file the
+    same definitions, and equal scopes hash alike.
     """
 
     tables: Tables
