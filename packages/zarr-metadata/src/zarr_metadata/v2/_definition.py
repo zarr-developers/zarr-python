@@ -237,7 +237,8 @@ class ZarrV2CodecDefinition(Definition[C]):
                     "invalid_type",
                 ),
             )
-        return ()
+        bad = cls.name_problem(entry["id"], ("id",))
+        return () if bad is None else (bad,)
 
     @classmethod
     def envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:

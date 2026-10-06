@@ -134,7 +134,7 @@ def envelope_problems(
         return (
             ValidationProblem(
                 (),
-                "expected a metadata field (string or extension object)",
+                f"expected a metadata field (string or extension object), got {shown(value)}",
                 "invalid_type",
             ),
         )

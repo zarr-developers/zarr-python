@@ -828,8 +828,15 @@ def field_json_schema(kind: type[Definition[Any]], context: Context) -> JSONSche
     rule says -- a blosc `typesize` against its `shuffle` -- is not in it,
     so a field it accepts may still have a problem.
     """
+    asked = as_kind(kind)
+    if not any(issubclass(asked, known) for known in KINDS):
+        msg = (
+            f"{asked.__name__} is a kind of another format; the JSON Schema writer writes "
+            "Zarr v3 fields only"
+        )
+        raise TypeError(msg)
     schemas = Schemas(field_schemas(context))
-    return schemas.document(schemas.of(kind_field(as_kind(kind))))
+    return schemas.document(schemas.of(kind_field(asked)))
 
 
 def field_schemas(context: Context) -> SchemaLeaf:

@@ -127,9 +127,10 @@ def test_a_v2_dtype_writes_back_as_a_string_or_records() -> None:
         ({"id": "packbits"}, "packbits", {}, []),
         ({"level": 1}, None, None, [(("id",), "missing_key")]),
         ({"id": 3}, None, None, [(("id",), "invalid_type")]),
+        ({"id": ""}, "", {}, [(("id",), "invalid_value")]),
         ("zlib", None, None, [((), "invalid_type")]),
     ],
-    ids=["parameters", "bare", "no-id", "id-not-a-string", "not-an-object"],
+    ids=["parameters", "bare", "no-id", "id-not-a-string", "empty-id", "not-an-object"],
 )
 def test_a_v2_codec_is_an_object_with_a_string_id(
     value: object,

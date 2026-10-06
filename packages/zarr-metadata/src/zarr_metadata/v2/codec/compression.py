@@ -16,8 +16,8 @@ from zarr_metadata._common import (
 )
 from zarr_metadata.v2._definition import ZarrV2CodecDefinition
 
-ZarrV2CompressionLevel = Annotated[int, Interval(ge=0, le=9)]
-"""A zlib-style compression level, 0 to 9."""
+ZarrV2CompressionLevel = Annotated[int, Interval(ge=-1, le=9)]
+"""A zlib-style compression level, 0 to 9, or -1 for zlib's default, which numcodecs writes as given."""
 
 
 class ZarrV2ZlibParameters(TypedDict, closed=True):

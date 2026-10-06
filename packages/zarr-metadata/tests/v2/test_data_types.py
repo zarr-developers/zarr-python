@@ -57,6 +57,12 @@ def _read(value: object) -> tuple[type, list[tuple[Loc, str]]]:
         ("<m8[D]", "timedelta64", "<m8[D]"),
         ([["x", "<f4"], ["y", "<i4", [2]]], "struct", (("x", "<f4"), ("y", "<i4", (2,)))),
         ([["r", "|u1"], ["s", [["t", "<f4"]]]], "struct", (("r", "|u1"), ("s", (("t", "<f4"),)))),
+        # NumPy names the padding of an aligned struct "", and zarr 2.x writes it.
+        (
+            [["a", "|i1"], ["", "|V3"], ["b", "<i4"], ["", "|V3"]],
+            "struct",
+            (("a", "|i1"), ("", "|V3"), ("b", "<i4"), ("", "|V3")),
+        ),
     ],
 )
 def test_every_family_reads_its_typestrs(value: object, family: str, canonical: object) -> None:
@@ -95,7 +101,6 @@ def test_a_type_code_the_spec_does_not_list_is_unclaimed(value: str) -> None:
         ("|O4", ("dtype",)),
         ([], ("dtype", "fields")),
         ([["x", "<f4"], ["x", "<i4"]], ("dtype", "fields", 1, 0)),
-        ([["", "<f4"]], ("dtype", "fields", 0, 0)),
         ([["x", "float32"]], ("dtype", "fields", 0, 1)),
         ([["x", "<f4", [-1]]], ("dtype", "fields", 0, 2, 0)),
         ([["x"]], ("dtype", "fields", 0)),
@@ -118,7 +123,6 @@ def test_a_type_code_the_spec_does_not_list_is_unclaimed(value: str) -> None:
         "object-size",
         "no-records",
         "duplicate-name",
-        "empty-name",
         "record-type",
         "record-shape",
         "short-record",

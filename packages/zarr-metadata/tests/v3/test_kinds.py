@@ -24,6 +24,7 @@ from zarr_metadata.v3.definition import (
     Unclaimed,
     WithFillValue,
     canonical_fill_value,
+    field_json_schema,
     fill_value_problems,
     resolve,
 )
@@ -180,3 +181,25 @@ def test_a_fill_value_is_judged_by_any_kind_with_one() -> None:
         (("fill_value",), "invalid_value")
     ]
     assert canonical_fill_value(resolved, 3) == 3
+
+
+def test_error_the_json_schema_writer_writes_v3_fields_only() -> None:
+    """`field_json_schema` writes the v3 envelope, so a kind of another format is refused with a `TypeError` naming the limit rather than a wrong schema."""
+    from zarr_metadata.v2.definition import CORE_V2, ZarrV2DataTypeDefinition
+
+    with pytest.raises(TypeError, match="Zarr v3"):
+        field_json_schema(ZarrV2DataTypeDefinition, CORE_V2)
+    with pytest.raises(TypeError, match="Zarr v3"):
+        field_json_schema(Tag, Context.of(Tag(name="tag1", configuration=EmptyConfiguration)))
+
+
+def test_a_v3_value_that_is_no_field_is_shown_in_the_message() -> None:
+    """A nested value that is not a metadata field at all is reported with the value shown, as it was before the kind's envelope judged it."""
+    _, problems = resolve(
+        {"name": "sharding_indexed", "configuration": {"chunk_shape": [1], "codecs": [3]}},
+        CodecDefinition,
+        Context.of(
+            *__import__("zarr_metadata.v3.definition", fromlist=["CORE"]).CORE.definitions()
+        ),
+    )
+    assert any(p.message.endswith("got 3") for p in problems), [p.message for p in problems]

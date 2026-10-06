@@ -16,8 +16,9 @@ Loc = tuple[str | int, ...]
 
 # numcodecs 0.16.5 `get_config()` of a default instance, where one exists.
 EXAMPLES: dict[str, tuple[dict[str, Any], ...]] = {
-    "zlib": ({"id": "zlib", "level": 1}, {"id": "zlib"}),
-    "gzip": ({"id": "gzip", "level": 9},),
+    # -1 is zlib's default-level constant, which numcodecs writes as given.
+    "zlib": ({"id": "zlib", "level": 1}, {"id": "zlib"}, {"id": "zlib", "level": -1}),
+    "gzip": ({"id": "gzip", "level": 9}, {"id": "gzip", "level": -1}),
     "bz2": ({"id": "bz2", "level": 1},),
     "lzma": ({"id": "lzma", "format": 1, "check": -1, "preset": None, "filters": None},),
     "blosc": (
@@ -83,7 +84,8 @@ def test_an_id_the_package_does_not_model_is_unclaimed(field: dict[str, Any]) ->
     ("field", "at", "kind"),
     [
         ({"id": "zlib", "level": 10}, ("c", "level"), "invalid_value"),
-        ({"id": "gzip", "level": -1}, ("c", "level"), "invalid_value"),
+        ({"id": "gzip", "level": -2}, ("c", "level"), "invalid_value"),
+        ({"id": ""}, ("c", "id"), "invalid_value"),
         ({"id": "bz2", "level": 0}, ("c", "level"), "invalid_value"),
         ({"id": "blosc", "cname": "brotli"}, ("c", "cname"), "invalid_value"),
         ({"id": "blosc", "shuffle": 3}, ("c", "shuffle"), "invalid_value"),
