@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, cast
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Final, Literal, cast
 
 from typing_extensions import TypedDict, Unpack
 
@@ -14,12 +15,11 @@ from zarr_metadata._json import (
     ValidationProblem,
     copied,
     json_text,
+    refine_json,
     with_input,
 )
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model._validation import (
-    ARRAY_METADATA_STANDARD_KEYS_V3,
-    NO_SCOPE,
     ArrayMembersV3,
     StoreKey,
     ZarrV3ArrayMetadataReading,
@@ -27,7 +27,6 @@ from zarr_metadata.model._validation import (
     dimension_lengths,
     dump_store_json,
     load_store_json,
-    overlapping,
     parse_array_metadata_v2,
     read_array_v3,
 )
@@ -41,11 +40,11 @@ from zarr_metadata.v3._definition import (
     Read,
     StorageTransformerDefinition,
     Unclaimed,
-    document_json,
     field_key,
     spelled_canonically,
 )
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
+from zarr_metadata.v3._scope import Claims, claims_of
 from zarr_metadata.v3.array import ZARR_V3_ARRAY_METADATA_STORE_KEY, ZarrV3ExtensionField
 
 if TYPE_CHECKING:
@@ -105,54 +104,190 @@ class ZarrV3ArrayMetadataUpdate(TypedDict, total=False, extra_items=ZarrV3Extens
     dimension_names: tuple[str | None, ...] | UNSET
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
 class ZarrV3ArrayMetadata:
-    """In-memory model of a v3 array metadata document.
+    """A v3 array document, and the scope it was read in.
 
-    A canonical, semantically lossless representation of the `zarr.json`
-    content for an array. Each extension point -- `data_type`,
+    The model is the pair: `to_json` is the document as written, refined
+    -- arrays as tuples, string keys -- and `context` the scope. Every
+    typed member is a view of the reading the pair gives: `data_type`,
     `chunk_grid`, `chunk_key_encoding`, each codec and storage transformer
-    -- is held as a scope read it: `Read`, holding the definition that
-    read it, or `Unclaimed`, an extension that scope left unjudged.
-    `fill_value` is held verbatim in its JSON form.
-
-    A model holds no scope: each field keeps the definition that read it,
-    and a scope is asked only to read new JSON -- by `from_json`,
-    `create_default`, and `update`, which each take one. A model checks
-    itself when it is built, as pydantic's `__init__` does: its document,
-    as its own fields read it, has no problem, or the constructor raises
-    `MetadataValidationError` with every one. So a model built by hand, or
-    changed as `dataclasses.replace` changes one, is refused at the
-    change, and none is built invalid. It holds its members as that read
-    refines them, in containers of its own -- a list given for an array
-    as a tuple -- as pydantic holds what its `__init__` coerced, and each
-    field as the scope read it: a field built by hand is taken as read. A
-    model a read builds is not read a second time. Change a model by
-    building another: a container it holds, changed in place, is not
-    checked again. `to_json` writes each extension point as its
-    readers take it, as `Read.to_json` says. A model pickles when the
-    definitions its fields hold do: ones whose functions are defined at a
-    module's top level.
+    as the scope read it, `Read` by the definition that claims its name or
+    `Unclaimed`; `shape`, `fill_value`, `dimension_names`, `attributes` and
+    `extra_fields` as the read refined them. Built only by reading: the
+    constructor reads `document` in `context` and raises
+    `MetadataValidationError` with every problem, so no model is invalid.
+    Two models are equal when their documents mean the same in their
+    scopes, as `array_key` says; the scope itself takes no part. `update`
+    reads new members in the model's own scope; `with_context` and
+    `refined_in` read the document in another. A model pickles as its
+    pair, when the definitions its scope holds do: ones whose functions
+    are defined at a module's top level.
     """
 
-    zarr_format: Literal[3] = field(default=3, init=False)
-    node_type: Literal["array"] = field(default="array", init=False)
-    shape: tuple[int, ...]
-    fill_value: JSONValue
-    data_type: Read[DataTypeDefinition[Any]] | Unclaimed
-    chunk_grid: Read[ChunkGridDefinition[Any]] | Unclaimed
-    codecs: tuple[Read[CodecDefinition[Any]] | Unclaimed, ...]
-    chunk_key_encoding: Read[ChunkKeyEncodingDefinition[Any]] | Unclaimed
-    dimension_names: tuple[str | None, ...] | UNSET
-    attributes: dict[str, JSONValue]
-    storage_transformers: tuple[Read[StorageTransformerDefinition[Any]] | Unclaimed, ...]
-    extra_fields: dict[str, ZarrV3ExtensionField]
+    __slots__ = ("_claims", "_context", "_document", "_key", "_members", "_reading")
+
+    zarr_format: Final = 3
+    node_type: Final = "array"
+
+    def __init__(self, document: object, context: Context | None = None) -> None:
+        scope = CORE_AND_EXTENSIONS if context is None else context
+        reading, members = read_array_v3(document, scope)
+        if members is None:
+            raise MetadataValidationError(reading.problems)
+        refined, _ = refine_json(document)
+        self._adopt(cast("dict[str, JSONValue]", refined), scope, reading, members)
+
+    @classmethod
+    def _of(
+        cls,
+        document: dict[str, JSONValue],
+        context: Context,
+        reading: ZarrV3ArrayMetadataReading,
+        members: ArrayMembersV3,
+    ) -> ZarrV3ArrayMetadata:
+        """A model of a document a read found nothing wrong with, holding that reading: no second read."""
+        model = object.__new__(cls)
+        model._adopt(document, context, reading, members)
+        return model
+
+    def _adopt(
+        self,
+        document: dict[str, JSONValue],
+        context: Context,
+        reading: ZarrV3ArrayMetadataReading,
+        members: ArrayMembersV3,
+    ) -> None:
+        self._document = document
+        self._context = context
+        self._reading = reading
+        self._members = members
+        self._key = array_key(self)
+        self._claims = MappingProxyType(claims_of(reading.fields()))
+
+    # --- the pair ---------------------------------------------------------
+
+    @property
+    def context(self) -> Context:
+        """The scope the document was read in, which `update` reads new members in."""
+        return self._context
+
+    @property
+    def reading(self) -> ZarrV3ArrayMetadataReading:
+        """The document as the scope read it: each field, the pipeline, the chunk each codec is handed."""
+        return self._reading
+
+    @property
+    def claims(self) -> Claims:
+        """What the reading claimed of each name the document writes, keyed as the scope files it."""
+        return self._claims
+
+    def to_json(self) -> ZarrV3ArrayMetadataJSON:
+        """The document as written, refined, sharing nothing with the model."""
+        return cast("ZarrV3ArrayMetadataJSON", copied(self._document))
+
+    def to_key_value(
+        self, *, indent: int | str | None = None
+    ) -> Mapping[ZarrV3ArrayMetadataStoreKey, bytes]:
+        """The document as a store holds it: JSON bytes at `zarr.json`, indented by `indent`.
+
+        `NaN`, `Infinity` and `-Infinity` in `attributes` are written as
+        those bare tokens, as zarr-python writes them, which a strict JSON
+        parser refuses.
+        """
+        return {ZARR_V3_ARRAY_METADATA_STORE_KEY: dump_store_json(self._document, indent=indent)}
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
+
+    def __eq__(self, other: object) -> bool:
+        if type(other) is not type(self):
+            return NotImplemented
+        return self._key == cast("ZarrV3ArrayMetadata", other)._key
+
+    def __hash__(self) -> int:
+        return hash(self._key)
+
+    # --- typed views ------------------------------------------------------
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        """The array's shape."""
+        return self._members.shape
+
+    @property
+    def fill_value(self) -> JSONValue:
+        """The fill value as written."""
+        return self._members.fill_value
+
+    @property
+    def dimension_names(self) -> tuple[str | None, ...] | UNSET:
+        """The dimension names; `UNSET` when the document writes none."""
+        return self._members.dimension_names
+
+    @property
+    def attributes(self) -> Mapping[str, JSONValue]:
+        """The attributes, a read-only view; empty when the document writes none."""
+        return MappingProxyType(self._members.attributes)
+
+    @property
+    def extra_fields(self) -> Mapping[str, ZarrV3ExtensionField]:
+        """Each member the spec does not define, by name, a read-only view."""
+        return MappingProxyType(self._members.extra_fields)
+
+    @property
+    def must_understand_fields(self) -> dict[str, ZarrV3ExtensionField]:
+        """Extra fields the reader is obligated to understand.
+
+        Everything in `extra_fields` not explicitly waived with
+        `must_understand: false` (the spec's implicit-true rule, https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1578). A compliant
+        reader MUST fail to open the array if this contains any field it does
+        not recognize; the model layer only partitions by obligation, since
+        recognition is reader-specific.
+        """
+        return must_understand_subset(self.extra_fields)
+
+    @property
+    def data_type(self) -> Read[DataTypeDefinition[Any]] | Unclaimed:
+        """The data type, as the scope read it."""
+        return cast("Read[DataTypeDefinition[Any]] | Unclaimed", self._reading.data_type)
+
+    @property
+    def chunk_grid(self) -> Read[ChunkGridDefinition[Any]] | Unclaimed:
+        """The chunk grid, as the scope read it."""
+        return cast("Read[ChunkGridDefinition[Any]] | Unclaimed", self._reading.chunk_grid)
+
+    @property
+    def chunk_key_encoding(self) -> Read[ChunkKeyEncodingDefinition[Any]] | Unclaimed:
+        """The chunk key encoding, as the scope read it."""
+        return cast(
+            "Read[ChunkKeyEncodingDefinition[Any]] | Unclaimed", self._reading.chunk_key_encoding
+        )
+
+    @property
+    def codecs(self) -> tuple[Read[CodecDefinition[Any]] | Unclaimed, ...]:
+        """The codecs, each as the scope read it, in pipeline order."""
+        return tuple(
+            cast("Read[CodecDefinition[Any]] | Unclaimed", stage.codec)
+            for stage in self._reading.pipeline
+        )
+
+    @property
+    def storage_transformers(
+        self,
+    ) -> tuple[Read[StorageTransformerDefinition[Any]] | Unclaimed, ...]:
+        """The storage transformers, each as the scope read it."""
+        return cast(
+            "tuple[Read[StorageTransformerDefinition[Any]] | Unclaimed, ...]",
+            self._reading.storage_transformers,
+        )
+
+    # --- constructors -----------------------------------------------------
 
     @classmethod
     def create_default(
         cls,
         *,
-        context: Context = CORE_AND_EXTENSIONS,
+        context: Context | None = None,
         **overrides: Unpack[ZarrV3ArrayMetadataJSONPartial],
     ) -> ZarrV3ArrayMetadata:
         """A scalar `uint8` array, or the one `overrides`, members of its document, make of it, read in `context`.
@@ -184,141 +319,28 @@ class ZarrV3ArrayMetadata:
             "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
             "chunk_key_encoding": {"name": "default"},
         }
-        return cls.from_json({**document, **overrides}, context=context)
-
-    def update(
-        self, *, context: Context, **members: Unpack[ZarrV3ArrayMetadataUpdate]
-    ) -> ZarrV3ArrayMetadata:
-        """This model with `members` in their place, each read in `context`; `UNSET` leaves an optional member out.
-
-        Only the members given are read in `context`: each field the model
-        holds is kept as it was read, whatever scope read it. The document
-        they make is then read as a whole, so `MetadataValidationError`
-        when it has a problem, and members that go together are passed
-        together: a `shape` with a grid that fits it.
-        """
-        document = {**held_document(self), **members}
-        for key, value in members.items():
-            if value is UNSET:
-                del document[key]
-        # The model's own fields are held, read already; the members given
-        # are JSON, read in `context`, a field object among them refused.
-        reading, refined = read_array_v3(document, context, held=own_fields(self))
-        if refined is None:
-            raise MetadataValidationError(reading.problems)
-        return array_model(reading, refined)
-
-    def __post_init__(self) -> None:
-        # The runtime half of the annotations: extra fields by name, and each
-        # extension point a field read as its kind, read or unclaimed, as a
-        # read gives it.
-        extra = cast("object", self.extra_fields)
-        if not isinstance(extra, Mapping):
-            msg = f"extra_fields: expected a mapping of names to JSON, got {extra!r}"
-            raise TypeError(msg)
-        for key, kind, nodes in (
-            ("data_type", DataTypeDefinition, (self.data_type,)),
-            ("chunk_grid", ChunkGridDefinition, (self.chunk_grid,)),
-            ("chunk_key_encoding", ChunkKeyEncodingDefinition, (self.chunk_key_encoding,)),
-            ("codecs", CodecDefinition, self.codecs),
-            ("storage_transformers", StorageTransformerDefinition, self.storage_transformers),
-        ):
-            for node in cast("tuple[object, ...]", nodes):
-                if not isinstance(node, (Read, Unclaimed)) or node.read_as is not kind:
-                    msg = f"{key}: expected a field read as a {kind.__name__}, got {node!r}"
-                    raise TypeError(msg)
-        # The rest held as the read of its document refines it, in containers
-        # of its own, as pydantic holds what its `__init__` coerced.
-        members = _members(self)
-        object.__setattr__(self, "shape", members.shape)
-        object.__setattr__(self, "fill_value", members.fill_value)
-        object.__setattr__(self, "dimension_names", members.dimension_names)
-        object.__setattr__(self, "attributes", members.attributes)
-        object.__setattr__(self, "extra_fields", members.extra_fields)
-        object.__setattr__(self, "codecs", tuple(self.codecs))
-        object.__setattr__(self, "storage_transformers", tuple(self.storage_transformers))
-
-    def __eq__(self, other: object) -> bool:
-        """Whether `other` models the same array: the same document, however each is spelled.
-
-        Compared as `array_key` says: what the package interprets -- each
-        field, and the fill value against the data type -- in its canonical
-        spelling, so `"NaN"` and `"0x7fc00000"` are one `float32` fill value
-        and a blosc with and without the `typesize` that `noshuffle` ignores
-        one codec; and what it does not interpret -- the attributes, the
-        extra fields, the fill value of a data type nothing in scope claims
-        -- as JSON text, which tells `true` from `1` and `-0.0` from `0.0`,
-        and takes `NaN` for itself. So two equal models may write two
-        documents: `to_json` writes each as it was given. Equal models hash
-        alike.
-        """
-        if type(other) is not type(self):
-            return NotImplemented
-        return array_key(self) == array_key(cast("ZarrV3ArrayMetadata", other))
-
-    def __hash__(self) -> int:
-        return hash(array_key(self))
-
-    def to_json(self) -> ZarrV3ArrayMetadataJSON:
-        """The document as JSON, arrays as tuples, sharing no mutable state with the model.
-
-        Each extension point as its readers take it, as `Read.to_json`
-        writes one; `dimension_names` when set, and `attributes` and
-        `storage_transformers` when not empty.
-        """
-        return cast("ZarrV3ArrayMetadataJSON", copied(cast("JSONValue", array_json(self))))
+        return cls({**document, **overrides}, context=context)
 
     @classmethod
-    def from_json(
-        cls, data: object, *, context: Context = CORE_AND_EXTENSIONS
-    ) -> ZarrV3ArrayMetadata:
+    def from_json(cls, data: object, *, context: Context | None = None) -> ZarrV3ArrayMetadata:
         """The model of `data`, a v3 array document read in `context`.
 
         `MetadataValidationError` with every problem the read finds.
         `read_array_metadata_v3` gives the reading this model is built
         from, and the problems of a document with some.
         """
-        reading = read_array_metadata_v3(data, context=context)
-        if reading.metadata is None:
-            raise MetadataValidationError(reading.problems)
-        return reading.metadata
-
-    @property
-    def must_understand_fields(self) -> dict[str, ZarrV3ExtensionField]:
-        """Extra fields the reader is obligated to understand.
-
-        Everything in `extra_fields` not explicitly waived with
-        `must_understand: false` (the spec's implicit-true rule, https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1578). A compliant
-        reader MUST fail to open the array if this contains any field it does
-        not recognize; the model layer only partitions by obligation, since
-        recognition is reader-specific.
-        """
-        return must_understand_subset(self.extra_fields)
+        return cls(data, context=context)
 
     @classmethod
     def from_key_value(
-        cls, mapping: Mapping[StoreKey, bytes], *, context: Context = CORE_AND_EXTENSIONS
+        cls, mapping: Mapping[StoreKey, bytes], *, context: Context | None = None
     ) -> ZarrV3ArrayMetadata:
         """The model of the array document at `zarr.json` in `mapping`, read in `context`.
 
         `MetadataValidationError` when the key is missing, its bytes are not
         JSON, or the document is not valid.
         """
-        return cls.from_json(
-            load_store_json(mapping, ZARR_V3_ARRAY_METADATA_STORE_KEY), context=context
-        )
-
-    def to_key_value(
-        self, *, indent: int | str | None = None
-    ) -> Mapping[ZarrV3ArrayMetadataStoreKey, bytes]:
-        """The document as a store holds it: JSON bytes at `zarr.json`, indented by `indent`.
-
-        A model was checked when it was built, so its document is written
-        as it is. `NaN`, `Infinity` and `-Infinity` in `attributes` are
-        written as those bare tokens, as zarr-python writes them, which a
-        strict JSON parser refuses.
-        """
-        return {ZARR_V3_ARRAY_METADATA_STORE_KEY: dump_store_json(array_json(self), indent=indent)}
+        return cls(load_store_json(mapping, ZARR_V3_ARRAY_METADATA_STORE_KEY), context=context)
 
 
 def array_key(model: ZarrV3ArrayMetadata) -> tuple[object, ...]:
@@ -336,9 +358,9 @@ def array_key(model: ZarrV3ArrayMetadata) -> tuple[object, ...]:
         tuple(field_key(codec) for codec in model.codecs),
         field_key(model.chunk_key_encoding),
         model.dimension_names,
-        json_text(model.attributes),
+        json_text(dict(model.attributes)),
         tuple(field_key(transformer) for transformer in model.storage_transformers),
-        json_text(model.extra_fields),
+        json_text(dict(model.extra_fields)),
     )
 
 
@@ -349,75 +371,45 @@ def _fill_value_key(model: ZarrV3ArrayMetadata) -> str:
     return json_text(model.fill_value)
 
 
-def _members(model: ZarrV3ArrayMetadata) -> ArrayMembersV3:
-    """`model`'s members other than its fields, as the read of its document by its own fields refines them; `MetadataValidationError` with every problem that document has."""
-    reading, members = read_array_v3(held_document(model), NO_SCOPE, held=own_fields(model))
-    extra = overlapping(model.extra_fields, ARRAY_METADATA_STANDARD_KEYS_V3, "array")
-    problems = (*extra, *reading.problems)
-    if len(problems) != 0:
-        raise MetadataValidationError(problems)
-    return cast("ArrayMembersV3", members)
-
-
 def array_json(model: ZarrV3ArrayMetadata) -> ZarrV3ArrayMetadataJSON:
-    """`model`'s document as JSON, holding the model's own values: what `to_key_value` serializes, which changes nothing, and `to_json` copies."""
-    return cast("ZarrV3ArrayMetadataJSON", _document(model, document_json, whole=False))
+    """`model`'s document, holding the model's own values: what a writer serializes without copying."""
+    return cast("ZarrV3ArrayMetadataJSON", model._document)  # pyright: ignore[reportPrivateUsage]
 
 
-def own_fields(model: ZarrV3ArrayMetadata) -> tuple[Read[Any] | Unclaimed, ...]:
-    """The fields `model` holds, each as a scope read it: what a read of the model's own document takes as read."""
-    return (
-        model.data_type,
-        model.chunk_grid,
-        model.chunk_key_encoding,
-        *model.codecs,
-        *model.storage_transformers,
-    )
+def array_model(
+    reading: ZarrV3ArrayMetadataReading, members: ArrayMembersV3
+) -> ZarrV3ArrayMetadata:
+    """The model of a document its reading found nothing wrong with, its document rebuilt from the reading.
 
-
-def held_document(model: ZarrV3ArrayMetadata) -> dict[str, object]:
-    """`model`'s document with each field as it was read, which a read takes as it is: what `update` and the constructor read, reading no field again.
-
-    Every member the model holds, an empty one too, so the read judges
-    each whatever it holds.
+    A shim for the group reader until it hands the nested documents down
+    with their readings: the document is rebuilt from what was read, so a
+    member written empty is written back as the read holds it.
     """
-    return _document(model, _as_read, whole=True)
-
-
-def _as_read(field: Read[Any] | Unclaimed) -> object:
-    return field
-
-
-def _document(
-    model: ZarrV3ArrayMetadata, write: Callable[[Read[Any] | Unclaimed], object], *, whole: bool
-) -> dict[str, object]:
-    """`model`'s document, each field as `write` gives it, the rest as the model holds it; empty `attributes` and `storage_transformers` too when `whole`, where a writer leaves them out."""
-    out: dict[str, object] = {
-        "zarr_format": model.zarr_format,
-        "node_type": model.node_type,
-        "shape": model.shape,
-        "fill_value": model.fill_value,
-        "data_type": write(model.data_type),
-        "chunk_grid": write(model.chunk_grid),
-        "codecs": tuple(write(codec) for codec in model.codecs),
-        "chunk_key_encoding": write(model.chunk_key_encoding),
+    document: dict[str, JSONValue] = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": members.shape,
+        "data_type": cast("Read[Any] | Unclaimed", reading.data_type).json,
+        "chunk_grid": cast("Read[Any] | Unclaimed", reading.chunk_grid).json,
+        "chunk_key_encoding": cast("Read[Any] | Unclaimed", reading.chunk_key_encoding).json,
+        "fill_value": members.fill_value,
+        "codecs": tuple(
+            cast("Read[Any] | Unclaimed", stage.codec).json for stage in reading.pipeline
+        ),
     }
-    if model.dimension_names is not UNSET:
-        out["dimension_names"] = model.dimension_names
-    if whole or len(model.attributes) > 0:
-        out["attributes"] = model.attributes
-    if whole or len(model.storage_transformers) > 0:
-        out["storage_transformers"] = tuple(
-            write(transformer) for transformer in model.storage_transformers
+    if members.dimension_names is not UNSET:
+        document["dimension_names"] = members.dimension_names
+    if len(members.attributes) != 0:
+        document["attributes"] = members.attributes
+    if len(reading.storage_transformers) != 0:
+        document["storage_transformers"] = tuple(
+            cast("Read[Any] | Unclaimed", transformer).json
+            for transformer in reading.storage_transformers
         )
-    # An extra field named as a member the document declares is no member
-    # of it, which the constructor reports.
-    out.update(
-        (key, value)
-        for key, value in model.extra_fields.items()
-        if key not in ARRAY_METADATA_STANDARD_KEYS_V3
+    document.update(members.extra_fields)
+    return ZarrV3ArrayMetadata._of(  # pyright: ignore[reportPrivateUsage]
+        document, CORE_AND_EXTENSIONS, reading, members
     )
-    return out
 
 
 def read_array_metadata_v3(
@@ -430,41 +422,17 @@ def read_array_metadata_v3(
     or `Refused` -- the chunks the codecs are handed, each codec with the
     chunk it is handed, every problem `validate_array_metadata_v3` finds,
     and, when there is none, the document's model, holding the same
-    fields. A policy over the fields, the core spec's alone, say, is a
+    reading. A policy over the fields, the core spec's alone, say, is a
     walk over its `fields()`. A value that is not an object holds no
     field.
     """
     reading, members = read_array_v3(value, context)
     if members is None:
         return reading
-    return dataclasses.replace(reading, metadata=array_model(reading, members))
-
-
-def array_model(
-    reading: ZarrV3ArrayMetadataReading, members: ArrayMembersV3
-) -> ZarrV3ArrayMetadata:
-    """The model of a document its reading found nothing wrong with: its fields as read, and its other members as the read refined them, not read again."""
-    return construct(
-        ZarrV3ArrayMetadata,
-        shape=members.shape,
-        fill_value=members.fill_value,
-        data_type=cast("Read[DataTypeDefinition[Any]] | Unclaimed", reading.data_type),
-        chunk_grid=cast("Read[ChunkGridDefinition[Any]] | Unclaimed", reading.chunk_grid),
-        codecs=tuple(
-            cast("Read[CodecDefinition[Any]] | Unclaimed", stage.codec)
-            for stage in reading.pipeline
-        ),
-        chunk_key_encoding=cast(
-            "Read[ChunkKeyEncodingDefinition[Any]] | Unclaimed", reading.chunk_key_encoding
-        ),
-        dimension_names=members.dimension_names,
-        attributes=members.attributes,
-        storage_transformers=cast(
-            "tuple[Read[StorageTransformerDefinition[Any]] | Unclaimed, ...]",
-            reading.storage_transformers,
-        ),
-        extra_fields=members.extra_fields,
-    )
+    refined, _ = refine_json(value)
+    document = cast("dict[str, JSONValue]", refined)
+    model = ZarrV3ArrayMetadata._of(document, context, reading, members)  # pyright: ignore[reportPrivateUsage]
+    return dataclasses.replace(reading, metadata=model)
 
 
 class ZarrV2ArrayMetadataPartial(TypedDict, total=False):
