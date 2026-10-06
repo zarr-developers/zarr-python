@@ -9,6 +9,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from zarr_metadata.v3._scope import kind_name
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC
 from zarr_metadata.v3.codec.crc32c import CRC32C_CODEC, Empty
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
@@ -19,6 +20,8 @@ from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
+    ChunkGridDefinition,
+    ChunkKeyEncodingDefinition,
     Claims,
     CodecDefinition,
     Conflict,
@@ -29,6 +32,7 @@ from zarr_metadata.v3.definition import (
     Refused,
     Resolved,
     ScopeConflictError,
+    StorageTransformerDefinition,
     claims_of,
     fields_of,
     refines,
@@ -360,3 +364,20 @@ def test_claims_is_a_type_a_signature_can_hold() -> None:
         pass
 
     assert "claims" in get_type_hints(read)
+
+
+@pytest.mark.parametrize(
+    ("kind", "said"),
+    [
+        (CodecDefinition, "codec"),
+        (DataTypeDefinition, "data type"),
+        (ChunkGridDefinition, "chunk grid"),
+        (ChunkKeyEncodingDefinition, "chunk key encoding"),
+        (StorageTransformerDefinition, "storage transformer"),
+    ],
+    ids=["codec", "data-type", "chunk-grid", "chunk-key-encoding", "storage-transformer"],
+)
+def test_a_kind_is_named_in_words(kind: type[Definition[Any]], said: str) -> None:
+    """`kind_name` names each kind of definition as a message does: `ChunkKeyEncodingDefinition` is "chunk key encoding"."""
+    assert kind_name(kind) == said
+    assert said in str(Conflict((kind, "x"), None, None))

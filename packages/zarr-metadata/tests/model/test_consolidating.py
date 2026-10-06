@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import pickle
-from typing import Any, cast
+from typing import Any, cast, get_type_hints
 
 import pytest
 
@@ -13,8 +13,10 @@ from zarr_metadata.model import (
     MetadataValidationError,
     ZarrV3ArrayMetadata,
     ZarrV3ConsolidatedMetadata,
+    ZarrV3ConsolidatedMetadataInput,
     ZarrV3GroupMetadata,
     ZarrV3GroupMetadataReading,
+    ZarrV3NodeMetadataInput,
     is_group_metadata_v3,
     parse_group_metadata_v3,
     read_group_metadata_v3,
@@ -22,15 +24,12 @@ from zarr_metadata.model import (
 )
 from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
+from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
-    ChunkGridDefinition,
-    ChunkKeyEncodingDefinition,
     CodecDefinition,
     Context,
-    DataTypeDefinition,
-    StorageTransformerDefinition,
     claims_of,
 )
 
@@ -279,22 +278,24 @@ def test_error_a_model_listed_too_deep_is_refused_where_it_sits() -> None:
     assert read_group_metadata_v3(document).metadata is None
 
 
-@pytest.mark.parametrize(
-    ("kind", "said"),
-    [
-        (CodecDefinition, "codec"),
-        (DataTypeDefinition, "data type"),
-        (ChunkGridDefinition, "chunk grid"),
-        (ChunkKeyEncodingDefinition, "chunk key encoding"),
-        (StorageTransformerDefinition, "storage transformer"),
-    ],
-    ids=["codec", "data-type", "chunk-grid", "chunk-key-encoding", "storage-transformer"],
-)
-def test_a_conflict_names_each_kind_as_the_spec_does(kind: type, said: str) -> None:
-    """A conflict's problem names the kind of the field in words: `ChunkKeyEncodingDefinition` is "chunk key encoding", as a scope conflict names it."""
-    from zarr_metadata.v3._scope import kind_name
-
-    assert kind_name(kind) == said
+def test_error_a_data_type_conflict_names_the_kind_and_the_written_name() -> None:
+    """A conflict over a data type names the kind in words and the name as the document writes it -- `r16`, filed under `r*` -- and says the two definitions differ when they print alike."""
+    strict = dataclasses.replace(
+        RAW_BYTES_DATA_TYPE, fill_value_rules=lambda configuration, nested, value: iter(())
+    )
+    child = ZarrV3ArrayMetadata(
+        {**ARRAY, "data_type": "r16", "fill_value": [0, 0], "codecs": ("bytes",)},
+        context=CORE.extended_with(strict),
+    )
+    with pytest.raises(MetadataValidationError) as raised:
+        _group(CORE, a=child)
+    (problem,) = raised.value.problems
+    assert problem.loc == ("consolidated_metadata", "metadata", "a", "data_type")
+    assert problem.message == (
+        "expected a document read in the group's scope, got a model that reads the data type "
+        "'r16' by another definition than the one the group's scope reads it by, "
+        "DataTypeDefinition(name='r*') of RawBytesConfiguration"
+    )
 
 
 def test_error_a_conflict_between_definitions_alike_says_they_differ() -> None:
@@ -309,6 +310,30 @@ def test_error_a_conflict_between_definitions_alike_says_they_differ() -> None:
     (problem,) = raised.value.problems
     assert problem.message == (
         "expected a document read in the group's scope, got a model that reads the codec "
-        "'gzip' by a definition of that name other than the one the group's scope reads it "
-        "by, CodecDefinition(name='gzip') of GzipCodecConfiguration"
+        "'gzip' by another definition than the one the group's scope reads it by, "
+        "CodecDefinition(name='gzip') of GzipCodecConfiguration"
     )
+
+
+def test_the_input_types_are_types_a_signature_can_hold() -> None:
+    """`ZarrV3NodeMetadataInput` and `ZarrV3ConsolidatedMetadataInput` resolve as annotations at run time, as a caller's `get_type_hints` reads them: types, not strings."""
+
+    def take(entry: ZarrV3NodeMetadataInput, member: ZarrV3ConsolidatedMetadataInput) -> None:
+        pass
+
+    hints = get_type_hints(take)
+    assert {"entry", "member"} <= set(hints)
+    assert not isinstance(hints["entry"], str)
+
+
+def test_error_a_conflict_is_reported_before_what_the_re_read_finds() -> None:
+    """A model read with the core `bytes` and an `endian`, given to a group whose private `bytes` takes none, is refused for the conflict first, and for the key that `bytes` does not take after it: the cause before its symptom."""
+    child = ZarrV3ArrayMetadata(
+        {**ARRAY, "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},)}
+    )
+    with pytest.raises(MetadataValidationError) as raised:
+        _group(PRIVATE, a=child)
+    assert [problem.loc for problem in raised.value.problems] == [
+        ("consolidated_metadata", "metadata", "a", "codecs", 0),
+        ("consolidated_metadata", "metadata", "a", "codecs", 0, "configuration", "endian"),
+    ]

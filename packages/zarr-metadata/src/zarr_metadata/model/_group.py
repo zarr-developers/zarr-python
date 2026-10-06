@@ -6,7 +6,7 @@ import dataclasses
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, Literal, TypeAlias, TypeGuard, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, TypeGuard, TypeVar, cast
 
 from typing_extensions import TypeAliasType, TypedDict, Unpack
 
@@ -79,8 +79,9 @@ if TYPE_CHECKING:
     from zarr_metadata.v3.group import ZarrV3GroupMetadataJSONPartial, ZarrV3GroupMetadataStoreKey
 
 
-ZarrV3NodeMetadataInput: TypeAlias = (
-    "ZarrV3ArrayMetadataJSON | ZarrV3GroupMetadataJSON | ZarrV3ArrayMetadata | ZarrV3GroupMetadata"
+ZarrV3NodeMetadataInput = TypeAliasType(
+    "ZarrV3NodeMetadataInput",
+    "ZarrV3ArrayMetadataJSON | ZarrV3GroupMetadataJSON | ZarrV3ArrayMetadata | ZarrV3GroupMetadata",
 )
 """What consolidated metadata lists at a path when given to a constructor or `update`: a document, or a model of it."""
 
@@ -816,7 +817,8 @@ def _read_node_model(
             )
             for conflict in located_conflicts(entry.reading.fields(), found.conflicts)
         )
-        return _with_problems(reading, (*reading.problems, *problems)), None
+        # The conflicts first: the cause, before what the re-read finds of it.
+        return _with_problems(reading, (*problems, *reading.problems)), None
     if found.agrees:
         # The model's own reading, unless the document sits too deep
         # where it is listed, which a read from there reports.
@@ -838,10 +840,7 @@ def _conflict_said(conflict: Conflict, written: str | None) -> str:
         return f"{head} by {claimed}, which the group's scope leaves unclaimed"
     found = _definition_said(conflict.found)
     if claimed == found:
-        return (
-            f"{head} by a definition of that name other than the one the group's scope "
-            f"reads it by, {found}"
-        )
+        return f"{head} by another definition than the one the group's scope reads it by, {found}"
     return f"{head} by {claimed}, which the group's scope reads by {found}"
 
 
