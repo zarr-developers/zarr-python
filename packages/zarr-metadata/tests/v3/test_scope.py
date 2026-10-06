@@ -14,6 +14,7 @@ from zarr_metadata.v3.codec.crc32c import CRC32C_CODEC, Empty
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.codec.sharding_indexed import SHARDING_INDEXED_CODEC
 from zarr_metadata.v3.codec.zstd import ZSTD_CODEC
+from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE,
@@ -23,6 +24,7 @@ from zarr_metadata.v3.definition import (
     Context,
     DataTypeDefinition,
     Definition,
+    Disagreements,
     Refused,
     Resolved,
     ScopeConflictError,
@@ -230,3 +232,74 @@ def test_refines_is_reflexive_and_mutual_refinement_is_equality(data: object) ->
     low = _read(data, CodecDefinition, CORE)
     high = _read(data, CodecDefinition, CORE_AND_EXTENSIONS)
     assert (refines(low, high) and refines(high, low)) is (low == high)
+
+
+@pytest.mark.parametrize(
+    ("scope", "claims", "gains", "conflicts"),
+    [
+        (CORE, {(CodecDefinition, "gzip"): GZIP_CODEC}, (), ()),
+        (
+            CORE_AND_EXTENSIONS,
+            {(CodecDefinition, "zstd"): None},
+            ((CodecDefinition, "zstd"),),
+            (),
+        ),
+        (
+            CORE,
+            {(CodecDefinition, "zstd"): ZSTD_CODEC},
+            (),
+            (Conflict((CodecDefinition, "zstd"), ZSTD_CODEC, None),),
+        ),
+        (
+            Context.of(MY_GZIP),
+            {(CodecDefinition, "gzip"): GZIP_CODEC},
+            (),
+            (Conflict((CodecDefinition, "gzip"), GZIP_CODEC, MY_GZIP),),
+        ),
+        (CORE, {(CodecDefinition, "acme.x"): None}, (), ()),
+        (CORE, {(DataTypeDefinition, "r*"): RAW_BYTES_DATA_TYPE}, (), ()),
+    ],
+    ids=["agrees", "gain", "loss", "conflict", "unclaimed-both", "raw-bits"],
+)
+def test_disagreements_says_where_a_scope_reads_claims_otherwise(
+    scope: Context,
+    claims: dict[Any, Any],
+    gains: tuple[Any, ...],
+    conflicts: tuple[Conflict, ...],
+) -> None:
+    """A scope agrees with claims it reads identically, gains where it claims what the claims left unclaimed, and conflicts where it reads a name by another definition or by none."""
+    found = scope.disagreements(claims)
+    assert isinstance(found, Disagreements)
+    assert (found.gains, found.conflicts) == (gains, conflicts)
+    assert found.agrees is (len(gains) == 0 and len(conflicts) == 0)
+
+
+@pytest.mark.parametrize(
+    ("scopes", "joined"),
+    [
+        ((CORE, CORE_AND_EXTENSIONS), CORE_AND_EXTENSIONS),
+        ((Context.of(GZIP_CODEC), Context.of(ZSTD_CODEC)), Context.of(GZIP_CODEC, ZSTD_CODEC)),
+        ((), Context.of()),
+        ((CORE, CORE), CORE),
+        (
+            (Context.of(BYTES_CODEC), Context.of(BYTES_DATA_TYPE)),
+            Context.of(BYTES_CODEC, BYTES_DATA_TYPE),
+        ),
+    ],
+    ids=["subset", "disjoint", "none", "same", "same-name-two-kinds"],
+)
+def test_joined_is_the_least_scope_above_each(scopes: tuple[Context, ...], joined: Context) -> None:
+    """The join of scopes files every definition any of them files, once; one kind's name is not another's."""
+    assert Context.joined(*scopes) == joined
+
+
+def test_error_joined_refuses_one_name_filed_two_ways() -> None:
+    """Scopes that file different definitions under one name have no join: a `ScopeConflictError` naming the key and both definitions."""
+    with pytest.raises(ScopeConflictError) as raised:
+        Context.joined(CORE, Context.of(MY_GZIP))
+    (conflict,) = raised.value.conflicts
+    assert (conflict.key, conflict.claimed, conflict.found) == (
+        (CodecDefinition, "gzip"),
+        GZIP_CODEC,
+        MY_GZIP,
+    )

@@ -289,6 +289,7 @@ _STANDALONE_VOCAB = frozenset(
         "ClaimKey",
         "Claims",
         "Conflict",
+        "Disagreements",
         "ScopeConflictError",
         "CodecKind",
         "CodecSize",

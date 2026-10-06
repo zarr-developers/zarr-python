@@ -29,7 +29,7 @@ from zarr_metadata.v3._definition import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Mapping, Sequence
 
     from zarr_metadata._typed_json import Loc
     from zarr_metadata.v3._definition import Resolved
@@ -134,12 +134,45 @@ def refines(field: Resolved[Any], other: Resolved[Any]) -> bool:
     return all(refines(field.nested[loc], other.nested[loc]) for loc in field.nested)
 
 
+@dataclass(frozen=True, slots=True)
+class Disagreements:
+    """Where a scope reads a reading's claims otherwise: the names it would gain a meaning for, and those it conflicts with, a lost meaning among them."""
+
+    gains: tuple[ClaimKey, ...]
+    conflicts: tuple[Conflict, ...]
+
+    @property
+    def agrees(self) -> bool:
+        """Whether the scope reads every claim identically."""
+        return len(self.gains) == 0 and len(self.conflicts) == 0
+
+
+def disagreements_of(
+    claimant: Callable[[type[Definition[Any]], str], Definition[Any] | None], claims: Claims
+) -> Disagreements:
+    """`Disagreements` between what `claimant`, asked by kind and filed name as a scope's tables answer, gives for each key and what `claims` records."""
+    gains: list[ClaimKey] = []
+    conflicts: list[Conflict] = []
+    for key, claimed in claims.items():
+        kind, name = key
+        found = claimant(kind, name)
+        if found == claimed:
+            continue
+        if claimed is None:
+            gains.append(key)
+        else:
+            conflicts.append(Conflict(key, claimed, found))
+    return Disagreements(tuple(gains), tuple(conflicts))
+
+
 __all__ = [
     "ClaimKey",
     "Claims",
     "Conflict",
+    "Disagreements",
     "ScopeConflictError",
     "claim_key",
     "claims_of",
+    "disagreements_of",
     "refines",
 ]

@@ -22,6 +22,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, cast
 
 from zarr_metadata.v3._definition import KINDS, Definition, as_kind, kind_of, spelled
+from zarr_metadata.v3._scope import Conflict, ScopeConflictError, disagreements_of
 from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
 from zarr_metadata.v3.chunk_key_encoding.default import DEFAULT_CHUNK_KEY_ENCODING
@@ -60,6 +61,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from zarr_metadata.v3._definition import D
+    from zarr_metadata.v3._scope import Claims, Disagreements
 
 Tables = Mapping[type[Definition[Any]], Mapping[str, Definition[Any]]]
 """By kind, then by the name each definition is filed under."""
@@ -147,6 +149,37 @@ class Context:
             for kind, table in self.tables.items()
             for name, definition in table.items()
         )
+
+    def disagreements(self, claims: Claims) -> Disagreements:
+        """Where this scope reads `claims`, a reading's, otherwise: what it would gain, and what it conflicts with, as `Disagreements` says.
+
+        A claim is keyed by the name its definition is filed under -- raw
+        bits under `r*` -- so it is looked up as filed, not as a document
+        writes it.
+        """
+        return disagreements_of(lambda kind, name: self.tables.get(kind, {}).get(name), claims)
+
+    @classmethod
+    def joined(cls, *contexts: Context) -> Context:
+        """The least scope that files everything each of `contexts` files: their join.
+
+        `ScopeConflictError` when two of them file different definitions
+        under one name of one kind; `extended_with` is for taking a name
+        over on purpose.
+        """
+        filed: dict[tuple[type[Definition[Any]], str], Definition[Any]] = {}
+        conflicts: list[Conflict] = []
+        for context in contexts:
+            for kind, table in context.tables.items():
+                for name, definition in table.items():
+                    held = filed.get((kind, name))
+                    if held is not None and held != definition:
+                        conflicts.append(Conflict((kind, name), held, definition))
+                        continue
+                    filed[kind, name] = definition
+        if len(conflicts) != 0:
+            raise ScopeConflictError(conflicts)
+        return cls.of(*filed.values())
 
     def claimant(self, kind: type[D], name: str) -> D | None:
         """The definition of `kind` in scope that reads `name`, a name a document writes; None if none does.
