@@ -353,6 +353,7 @@ from zarr_metadata.v3._definition import (
 )
 from zarr_metadata.v3._pipeline import Stage, read_pipeline
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS, Context
+from zarr_metadata.v3._scope import ClaimKey, Claims, Conflict, ScopeConflictError
 
 __all__ = [
     "CORE",
@@ -362,10 +363,13 @@ __all__ = [
     "ChunkGridField",
     "ChunkKeyEncodingDefinition",
     "ChunkKeyEncodingField",
+    "ClaimKey",
+    "Claims",
     "CodecDefinition",
     "CodecField",
     "CodecKind",
     "CodecSize",
+    "Conflict",
     "Context",
     "DataTypeDefinition",
     "DataTypeField",
@@ -380,6 +384,7 @@ __all__ = [
     "Read",
     "Refused",
     "Resolved",
+    "ScopeConflictError",
     "Stage",
     "StaticCodecField",
     "StorageClass",

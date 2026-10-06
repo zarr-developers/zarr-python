@@ -284,6 +284,12 @@ _STANDALONE_VOCAB = frozenset(
         "BloscCName",
         "BloscShuffle",
         "Chunk",
+        # The algebra of scopes: what a reading claims, and where two
+        # scopes disagree.
+        "ClaimKey",
+        "Claims",
+        "Conflict",
+        "ScopeConflictError",
         "CodecKind",
         "CodecSize",
         "Context",
