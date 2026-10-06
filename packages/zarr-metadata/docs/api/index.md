@@ -16,7 +16,9 @@ The package is organized to mirror the structure of the Zarr specifications:
   typing spec defines them, with every problem located, and
   `json_schema`, which writes what `check` reads as a JSON Schema
 - [`zarr_metadata.v2`](v2.md) — `TypedDict` shapes for Zarr v2 documents
-  (`.zarray`, `.zgroup`, `.zattrs`, `.zmetadata`)
+  (`.zarray`, `.zgroup`, `.zattrs`, `.zmetadata`), and
+  `zarr_metadata.v2.definition`: the v2 dtypes and numcodecs codecs as
+  definitions, `CORE_V2`, and the readers of one `dtype` or codec
 - [`zarr_metadata.v3`](v3/index.md) — `TypedDict` shapes for Zarr v3
   documents, with subpackages for [chunk grids](v3/chunk_grid.md),
   [chunk key encodings](v3/chunk_key_encoding.md), [codecs](v3/codec.md),

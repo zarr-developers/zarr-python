@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
-from typing import Annotated, Final, Literal, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Annotated, Final, Literal, cast
 
 from annotated_types import Ge
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
-from zarr_metadata.v3._definition import Nested
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from zarr_metadata.v3._definition import Nested
 
 ZarrV2ByteOrder = Literal["<", ">", "|"]
 """The byte orders a typestr writes: little-endian, big-endian, and not relevant."""
@@ -23,10 +27,37 @@ class ZarrV2ScalarConfiguration(TypedDict, closed=True):
     itemsize: ReadOnly[Annotated[int, Ge(0)]]
 
 
-Rules = Callable[[ZarrV2ScalarConfiguration, Nested], Iterator[ValidationProblem]]
+@dataclass(frozen=True, slots=True)
+class _Sized:
+    """The rules of a family whose types are `sizes` bytes wide: a value rather than a closure, so a scope holding it pickles."""
+
+    sizes: tuple[int, ...] | None
+    orderless: frozenset[int] | None
+
+    def __call__(
+        self, configuration: ZarrV2ScalarConfiguration, nested: Nested
+    ) -> Iterator[ValidationProblem]:
+        size = configuration["itemsize"]
+        if self.sizes is not None and size not in self.sizes:
+            yield ValidationProblem(
+                ("itemsize",),
+                f"expected a size of {', '.join(map(str, self.sizes))} bytes, got {size}",
+                "invalid_value",
+            )
+            return
+        if (
+            configuration["byteorder"] == "|"
+            and self.orderless is not None
+            and size not in self.orderless
+        ):
+            yield ValidationProblem(
+                ("byteorder",),
+                f"expected a byte order '<' or '>' for a type of {size} bytes, got '|'",
+                "invalid_value",
+            )
 
 
-def sized(sizes: tuple[int, ...] | None, orderless: frozenset[int] | None) -> Rules:
+def sized(sizes: tuple[int, ...] | None, orderless: frozenset[int] | None) -> _Sized:
     """The rules of a family whose types are `sizes` bytes wide, any width when None.
 
     `orderless` is the sizes at which the type has no byte order, which
@@ -34,64 +65,50 @@ def sized(sizes: tuple[int, ...] | None, orderless: frozenset[int] | None) -> Ru
     and void, none for a float; None is every size. At any other size
     the typestr says which end comes first, `<` or `>`.
     """
-
-    def rules(
-        configuration: ZarrV2ScalarConfiguration, nested: Nested
-    ) -> Iterator[ValidationProblem]:
-        size = configuration["itemsize"]
-        if sizes is not None and size not in sizes:
-            yield ValidationProblem(
-                ("itemsize",),
-                f"expected a size of {', '.join(map(str, sizes))} bytes, got {size}",
-                "invalid_value",
-            )
-            return
-        if configuration["byteorder"] == "|" and orderless is not None and size not in orderless:
-            yield ValidationProblem(
-                ("byteorder",),
-                f"expected a byte order '<' or '>' for a type of {size} bytes, got '|'",
-                "invalid_value",
-            )
-
-    return rules
+    return _Sized(sizes, orderless)
 
 
-def orderless_at(
-    sizes: frozenset[int] | None,
-) -> Callable[[ZarrV2ScalarConfiguration], ZarrV2ScalarConfiguration]:
-    """The canonical spelling of a family whose types of `sizes` bytes have no byte order: `|`, as NumPy writes it; None is every size."""
+@dataclass(frozen=True, slots=True)
+class _OrderlessAt:
+    """The canonical spelling of a family whose types of `sizes` bytes have no byte order."""
 
-    def canonical(configuration: ZarrV2ScalarConfiguration) -> ZarrV2ScalarConfiguration:
-        if (sizes is None or configuration["itemsize"] in sizes) and configuration[
-            "byteorder"
-        ] != "|":
+    sizes: frozenset[int] | None
+
+    def __call__(self, configuration: ZarrV2ScalarConfiguration) -> ZarrV2ScalarConfiguration:
+        orderless = self.sizes is None or configuration["itemsize"] in self.sizes
+        if orderless and configuration["byteorder"] != "|":
             return cast("ZarrV2ScalarConfiguration", {**configuration, "byteorder": "|"})
         return configuration
 
-    return canonical
+
+def orderless_at(sizes: frozenset[int] | None) -> _OrderlessAt:
+    """The canonical spelling of a family whose types of `sizes` bytes have no byte order: `|`, as NumPy writes it; None is every size."""
+    return _OrderlessAt(sizes)
 
 
 _ONE_BYTE: Final = frozenset({1})
 
 
-def _in_range(
-    signed: bool,
-) -> Callable[[ZarrV2ScalarConfiguration, Nested, int | None], Iterator[ValidationProblem]]:
+@dataclass(frozen=True, slots=True)
+class _InRange:
     """The rule that an integer fill value lies in the range of the type's size."""
 
-    def rules(
-        configuration: ZarrV2ScalarConfiguration, nested: Nested, value: int | None
+    signed: bool
+
+    def __call__(
+        self, configuration: ZarrV2ScalarConfiguration, nested: Nested, value: int | None
     ) -> Iterator[ValidationProblem]:
         if value is None:
             return
         bits = 8 * configuration["itemsize"]
-        low, high = (-(2 ** (bits - 1)), 2 ** (bits - 1) - 1) if signed else (0, 2**bits - 1)
+        if self.signed:
+            low, high = -(2 ** (bits - 1)), 2 ** (bits - 1) - 1
+        else:
+            low, high = 0, 2**bits - 1
         if not low <= value <= high:
             yield ValidationProblem(
                 (), f"expected an integer in [{low}, {high}], got {value}", "invalid_value"
             )
-
-    return rules
 
 
 ZarrV2FloatSpecial = Literal["NaN", "Infinity", "-Infinity"]
@@ -142,7 +159,7 @@ INT_V2: Final = ZarrV2DataTypeDefinition(
     rules=sized((1, 2, 4, 8), _ONE_BYTE),
     canonical=orderless_at(_ONE_BYTE),
     fill_value=int | None,
-    fill_value_rules=_in_range(True),
+    fill_value_rules=_InRange(True),
 )
 """`i1` to `i8`: signed integers, the fill value in the type's range."""
 
@@ -152,7 +169,7 @@ UINT_V2: Final = ZarrV2DataTypeDefinition(
     rules=sized((1, 2, 4, 8), _ONE_BYTE),
     canonical=orderless_at(_ONE_BYTE),
     fill_value=int | None,
-    fill_value_rules=_in_range(False),
+    fill_value_rules=_InRange(False),
 )
 """`u1` to `u8`: unsigned integers, the fill value in the type's range."""
 
