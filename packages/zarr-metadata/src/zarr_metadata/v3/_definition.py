@@ -1692,7 +1692,7 @@ def _read(
         return Unclaimed(json=data, name=name, read_as=kind), ()
     _, carried = kind.spelled(name)
     if carried is not None:
-        return _read_carried(data, name, definition, given, carried, loc)
+        return _read_carried(data, name, kind, definition, given, carried, loc)
     at = kind.configuration_loc(loc)
     if given is None and definition.requires_configuration:
         missing = problem(at, f"{name!r} requires a configuration", "missing_key")
@@ -1747,6 +1747,7 @@ def _named(field: _NestedField) -> bool:
 def _read_carried(
     data: JSONValue,
     name: str,
+    kind: type[Definition[Any]],
     definition: Definition[Any],
     given: Mapping[str, object] | None,
     carried: Mapping[str, JSONValue],
@@ -1762,7 +1763,7 @@ def _read_carried(
     _, beside, _ = _checked(
         EmptyConfiguration,
         {} if given is None else given,
-        type(definition).configuration_loc(loc),
+        kind.configuration_loc(loc),
     )
     configuration, judged = definition.judge(carried)
     # What is wrong with what the name carries is the field's: found at
@@ -1772,8 +1773,11 @@ def _read_carried(
         *beside,
         *(dataclasses.replace(found, loc=loc, input=UNSET, ctx={}) for found in judged),
     )
-    if configuration is None or not _usable(problems):
-        refused = Refused(json=data, name=name, read_as=DataTypeDefinition, definition=definition)
+    # A name is one word: what it carries that the definition does not
+    # declare cannot be left out, as a stray key beside the name can, so
+    # anything wrong with what the name carries refuses the field.
+    if configuration is None or not _usable(beside) or len(judged) != 0:
+        refused = Refused(json=data, name=name, read_as=kind, definition=definition)
         return refused, problems
     return Read(json=data, name=name, definition=definition, configuration=configuration), problems
 
