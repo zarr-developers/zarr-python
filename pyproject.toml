@@ -435,6 +435,8 @@ addopts = [
     "-ra",
     "--doctest-modules",
     "--ignore=tests/test_regression/scripts",
+    # interoperability reproducers that need other implementations; run by hand, not by pytest
+    "--ignore=tests/interop",
     "--ignore=src/zarr/_cli",
 ]
 filterwarnings = [
