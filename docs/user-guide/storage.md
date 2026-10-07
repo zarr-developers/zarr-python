@@ -226,5 +226,7 @@ print(group.info)
 Zarr-Python [`zarr.abc.store.Store`][] API is meant to be extended. The Store Abstract Base
 Class includes all of the methods needed to be a fully operational store in Zarr Python.
 Zarr also provides a test harness for custom stores: [`zarr.testing.store.StoreTests`][].
+The harness needs pytest, and the hypothesis strategies in `zarr.testing` need hypothesis;
+install both with `pip install 'zarr[testing]'`.
 See the [Custom stores](extending.md#custom-stores) section of the extending guide for
 more on implementing your own store.
