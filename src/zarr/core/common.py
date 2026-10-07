@@ -21,7 +21,7 @@ from typing_extensions import ReadOnly
 
 from zarr.core.config import config as zarr_config
 from zarr.core.json_parse import convert, parse_field
-from zarr.errors import ZarrRuntimeWarning
+from zarr.errors import MetadataValidationError, ZarrRuntimeWarning
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -280,6 +280,22 @@ def _warn_order_kwarg() -> None:
 def _default_zarr_format() -> ZarrFormat:
     """Return the default zarr_format."""
     return cast("ZarrFormat", int(zarr_config.get("default_zarr_format", 3)))
+
+
+def _validate_node_name(name: str) -> None:
+    """Reject a node name the Zarr format reserves or that cannot be addressed.
+
+    Node names may not be ``zarr.json`` or start with ``__``, and no path
+    segment may be ``.`` or ``..``. Without this check,
+    ``create_group("a/zarr.json")`` writes a directory named ``zarr.json`` and
+    ``create_group("__a")`` writes a reserved name; both produce stores other
+    readers cannot interpret. Empty segments are skipped because leading and
+    repeated slashes have long been normalized away by path joining.
+    """
+    for segment in name.split("/"):
+        if segment in (".", "..", ZARR_JSON) or segment.startswith("__"):
+            msg = f"Invalid node name {name!r}: {segment!r} is not a permitted node name."
+            raise MetadataValidationError(msg)
 
 
 def _subject(name: str, axis: int | None) -> str:
