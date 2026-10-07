@@ -140,6 +140,41 @@ def _parse_async_node(
         raise TypeError(f"Unknown node type, got {type(node)}")
 
 
+def _validate_consolidated_key(key: str) -> None:
+    """A consolidated metadata key is a node path: it must be non-empty, and every
+    segment must be a valid node name (non-empty, not ``.``/``..``/``zarr.json``,
+    not ``__``-prefixed)."""
+    segments = key.split("/")
+    if any(not seg or seg in (".", "..", ZARR_JSON) or seg.startswith("__") for seg in segments):
+        msg = f"Invalid node path in consolidated metadata: {key!r}"
+        raise MetadataValidationError(msg)
+
+
+def _validate_consolidated_hierarchy(
+    metadata: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata],
+) -> None:
+    """Every non-root listing key must have all of its ancestors present as
+    group entries. A missing ancestor makes the group unreadable, and a
+    listing below an array is invalid: array nodes may not have children."""
+    for key in metadata:
+        parts = key.split("/")
+        for i in range(1, len(parts)):
+            prefix = "/".join(parts[:i])
+            parent = metadata.get(prefix)
+            if parent is None:
+                msg = (
+                    f"Consolidated metadata lists {key!r} without a listing "
+                    f"for its parent {prefix!r}"
+                )
+                raise MetadataValidationError(msg)
+            if not isinstance(parent, GroupMetadata):
+                msg = (
+                    f"Consolidated metadata lists {key!r} below {prefix!r}, "
+                    "which is an array; array nodes may not have children"
+                )
+                raise MetadataValidationError(msg)
+
+
 @dataclass(frozen=True)
 class ConsolidatedMetadata:
     """
@@ -190,6 +225,9 @@ class ConsolidatedMetadata:
 
         metadata: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] = {}
         if raw_metadata:
+            for k in raw_metadata:
+                _validate_consolidated_key(k)
+
             for k, v in raw_metadata.items():
                 member = k if path is None else _join_paths([path, k])
                 if not isinstance(v, dict):
@@ -216,6 +254,7 @@ class ConsolidatedMetadata:
                 else:
                     assert_never(zarr_format)
 
+            _validate_consolidated_hierarchy(metadata)
             cls._flat_to_nested(metadata)
 
         return cls(metadata=metadata)
