@@ -2647,3 +2647,33 @@ def test_open_array_as_group():
     z = zarr.create_array(shape=(40, 50), chunks=(10, 10), dtype="f8", store={})
     with pytest.raises(ContainsArrayError):
         zarr.open_group(z.store)
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=True)
+@pytest.mark.parametrize("bad", ["__a", "zarr.json", "a/zarr.json", "a/../b", "."])
+def test_create_group_reserved_names_rejected(store: Store, bad: str) -> None:
+    """Reserved or unaddressable node names are refused before anything is
+    written. `zarr.json` as a final segment writes a directory that shadows
+    the parent's metadata document, orphaning the whole subtree."""
+    group = zarr.group(store=store)
+    with pytest.raises(MetadataValidationError, match="not a permitted node name"):
+        group.create_group(bad)
+    with pytest.raises(MetadataValidationError, match="not a permitted node name"):
+        group.create_array(bad, shape=(2,), dtype="i4")
+    assert list(group.members()) == []
+
+
+def test_create_node_reserved_names_rejected_module_level(store: Store) -> None:
+    """The same check applies to `name`/`path` on the module-level creators."""
+    with pytest.raises(MetadataValidationError, match="not a permitted node name"):
+        zarr.create_array(store, name="x/zarr.json", shape=(2,), dtype="i4")
+    with pytest.raises(MetadataValidationError, match="not a permitted node name"):
+        zarr.create_group(store, path="g/__x")
+
+
+def test_create_group_reserved_names_allowed_siblings(store: Store) -> None:
+    """Names that merely contain a `__` infix or `.` infix are permitted."""
+    group = zarr.group(store=store)
+    group.create_group("a__b")
+    group.create_array("x.y", shape=(2,), dtype="i4")
+    assert sorted(n for n, _ in group.members()) == ["a__b", "x.y"]
