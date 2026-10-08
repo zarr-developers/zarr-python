@@ -365,4 +365,6 @@ def test_out_of_bounds_integer_from_json_scalar() -> None:
         (UInt64(), 2**64 - 1),
         (Int64(), -(2**63)),
     ):
-        assert dtype_instance.from_json_scalar(good, zarr_format=3) == dtype_instance.to_native_dtype().type(good)
+        assert dtype_instance.from_json_scalar(
+            good, zarr_format=3
+        ) == dtype_instance.to_native_dtype().type(good)
