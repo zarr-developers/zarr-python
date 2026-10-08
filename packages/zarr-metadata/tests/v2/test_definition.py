@@ -8,9 +8,9 @@ from zarr_metadata.v2.definition import (
     CORE_V2,
     V2_CODECS,
     V2_DATA_TYPES,
+    AcceptedField,
     Context,
-    Read,
-    Unclaimed,
+    UnclaimedField,
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
     resolve_codec_v2,
@@ -39,11 +39,11 @@ def test_core_v2_files_every_v2_definition_apart_from_v3() -> None:
 def test_the_v2_readers_read_one_field_in_core_v2_by_default() -> None:
     """`resolve_dtype_v2` and `resolve_codec_v2` read one field in `CORE_V2` when no scope is given, and in the scope given otherwise, prefixing every problem with `loc`."""
     dtype, problems = resolve_dtype_v2("<f4")
-    assert isinstance(dtype, Read)
+    assert isinstance(dtype, AcceptedField)
     assert problems == ()
     codec, problems = resolve_codec_v2({"id": "zlib", "level": 1}, loc=("compressor",))
-    assert isinstance(codec, Read)
+    assert isinstance(codec, AcceptedField)
     assert problems == ()
     _, problems = resolve_codec_v2({"id": "zlib", "level": 10}, loc=("compressor",))
     assert [p.loc for p in problems] == [("compressor", "level")]
-    assert isinstance(resolve_codec_v2({"id": "zlib"}, Context.of())[0], Unclaimed)
+    assert isinstance(resolve_codec_v2({"id": "zlib"}, Context.of())[0], UnclaimedField)

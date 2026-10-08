@@ -24,7 +24,7 @@ from zarr_metadata.v3.definition import (
     CodecDefinition,
     DataTypeDefinition,
     JSONValue,
-    Resolved,
+    ResolvedField,
     resolve,
 )
 
@@ -37,7 +37,7 @@ LITTLE: JSONValue = {"name": "bytes", "configuration": {"endian": "little"}}
 INDEX: list[JSONValue] = [LITTLE, "crc32c"]
 
 
-def _dt(name: JSONValue) -> Resolved[DataTypeDefinition[Any]]:
+def _dt(name: JSONValue) -> ResolvedField[DataTypeDefinition[Any]]:
     return resolve(name, DataTypeDefinition, CORE_AND_EXTENSIONS)[0]
 
 
@@ -45,7 +45,9 @@ FLOAT32 = _dt("float32")
 UINT64 = _dt("uint64")
 
 
-def _chunk(*axes: set[int] | None, data_type: Resolved[DataTypeDefinition[Any]] = FLOAT32) -> Chunk:
+def _chunk(
+    *axes: set[int] | None, data_type: ResolvedField[DataTypeDefinition[Any]] = FLOAT32
+) -> Chunk:
     return Chunk(tuple(None if axis is None else frozenset(axis) for axis in axes), data_type)
 
 

@@ -12,11 +12,11 @@ from typing_extensions import TypedDict
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.v3._definition import (
+    AcceptedField,
     Chunk,
     CodecDefinition,
     DataTypeField,
     Nested,
-    Read,
     fill_value_problems,
 )
 from zarr_metadata.v3.codec._arithmetic import COMPLEX, FLOATING_POINT, NOT_NUMBERS
@@ -148,7 +148,7 @@ def _rules(
     models no real numbers is the one problem reported of it.
     """
     target = nested.get(("data_type",))
-    if not isinstance(target, Read):
+    if not isinstance(target, AcceptedField):
         return
     name, written = target.definition.name, target.name
     if name in _NO_REAL_NUMBERS:
@@ -179,7 +179,7 @@ def _chunk_rules(
     so the data type it is handed is held to what the one it casts to is.
     """
     source = chunk.data_type
-    if not isinstance(source, Read):
+    if not isinstance(source, AcceptedField):
         return
     if source.definition.name in _NO_REAL_NUMBERS:
         yield ValidationProblem(

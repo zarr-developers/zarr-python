@@ -11,10 +11,10 @@ from zarr_metadata.v3._definition import (
     fields_of,
 )
 from zarr_metadata.v3.definition import (
+    AcceptedField,
     Context,
-    Read,
-    Refused,
-    Unclaimed,
+    RefusedField,
+    UnclaimedField,
     canonical_fill_value,
     fill_value_problems,
     resolve,
@@ -71,7 +71,7 @@ def _read(value: object) -> tuple[type, list[tuple[Loc, str]]]:
 def test_every_family_reads_its_typestrs(value: object, family: str, canonical: object) -> None:
     """Each typestr of a family reads by the family's definition, and its simplest spelling is the typestr NumPy writes: `|` for a type of one byte or no byte order, `us` for a microsecond unit; a records array reads as `struct`, each record's type read too."""
     resolved, problems = resolve(value, ZarrV2DataTypeDefinition, SCOPE)
-    assert isinstance(resolved, Read)
+    assert isinstance(resolved, AcceptedField)
     assert resolved.definition.name == family
     assert problems == ()
     assert canonical_of(resolved, problems) == canonical
@@ -79,9 +79,9 @@ def test_every_family_reads_its_typestrs(value: object, family: str, canonical: 
 
 @pytest.mark.parametrize("value", ["<e2", "<T16", "|a1"])
 def test_a_type_code_the_spec_does_not_list_is_unclaimed(value: str) -> None:
-    """A typestr whose type code the v2 spec does not list is filed under itself, which nothing in scope claims: read as `Unclaimed`, with no problem, and written back as it was."""
+    """A typestr whose type code the v2 spec does not list is filed under itself, which nothing in scope claims: read as `UnclaimedField`, with no problem, and written back as it was."""
     resolved, problems = resolve(value, ZarrV2DataTypeDefinition, SCOPE)
-    assert isinstance(resolved, Unclaimed)
+    assert isinstance(resolved, UnclaimedField)
     assert problems == ()
     assert resolved.to_json() == value
 
@@ -140,7 +140,7 @@ def test_a_type_code_the_spec_does_not_list_is_unclaimed(value: str) -> None:
 def test_error_a_typestr_the_family_does_not_take_is_a_problem(value: object, at: Loc) -> None:
     """A typestr of a size, byte order or unit its family does not take is refused, the problem at the field; a struct's problems sit under `fields`, at the record and its position, and a record's type that is refused is reported there while the struct still reads."""
     kind, problems = _read(value)
-    assert kind is Refused or "fields" in at
+    assert kind is RefusedField or "fields" in at
     assert next(loc for loc, _ in problems) == at
 
 

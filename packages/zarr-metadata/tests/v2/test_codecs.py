@@ -13,10 +13,10 @@ from zarr_metadata.v3._definition import (
     canonical_of,
 )
 from zarr_metadata.v3.definition import (
+    AcceptedField,
     Context,
-    Read,
-    Refused,
-    Unclaimed,
+    RefusedField,
+    UnclaimedField,
     resolve,
 )
 
@@ -70,7 +70,7 @@ def test_every_example_reads_and_is_written_back_as_it_was(
 ) -> None:
     """A numcodecs configuration reads by the definition its id names, with no problem, and is written back as it was: the id beside the parameters, which have one spelling."""
     resolved, problems = resolve(field, ZarrV2CodecDefinition, SCOPE)
-    assert isinstance(resolved, Read)
+    assert isinstance(resolved, AcceptedField)
     assert resolved.definition.name == name
     assert problems == ()
     assert resolved.to_json() == field
@@ -82,9 +82,9 @@ def test_every_example_reads_and_is_written_back_as_it_was(
     [{"id": "categorize", "labels": ["a"]}, {"id": "pickle"}, {"id": "n5_wrapper", "inner": 1}],
 )
 def test_an_id_the_package_does_not_model_is_unclaimed(field: dict[str, Any]) -> None:
-    """A codec id nothing in scope claims reads as `Unclaimed`, its parameters kept and unjudged, as a v3 extension nothing claims is."""
+    """A codec id nothing in scope claims reads as `UnclaimedField`, its parameters kept and unjudged, as a v3 extension nothing claims is."""
     resolved, problems = resolve(field, ZarrV2CodecDefinition, SCOPE)
-    assert isinstance(resolved, Unclaimed)
+    assert isinstance(resolved, UnclaimedField)
     assert problems == ()
     assert json.dumps(resolved.to_json()) == json.dumps(field)
 
@@ -124,4 +124,4 @@ def test_error_a_parameter_outside_what_numcodecs_takes_is_a_problem(
     """A parameter out of its range, of the wrong type, missing when numcodecs has no default, a dtype parameter that is no typestr, or a key no codec declares is reported at the parameter, beside the field."""
     resolved, problems = resolve(field, ZarrV2CodecDefinition, SCOPE, ("c",))
     assert [(p.loc, p.kind) for p in problems] == [(at, kind)]
-    assert isinstance(resolved, Read if kind == "unknown_key" else Refused)
+    assert isinstance(resolved, AcceptedField if kind == "unknown_key" else RefusedField)

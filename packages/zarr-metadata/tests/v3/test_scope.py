@@ -36,8 +36,8 @@ from zarr_metadata.v3.definition import (
     Context,
     DataTypeDefinition,
     Definition,
-    Refused,
-    Resolved,
+    RefusedField,
+    ResolvedField,
     ScopeConflictError,
     StorageTransformerDefinition,
     resolve,
@@ -61,7 +61,7 @@ reads `gzip` otherwise.
 """
 
 
-def _read(data: object, kind: type[Definition[Any]], scope: Context) -> Resolved[Any]:
+def _read(data: object, kind: type[Definition[Any]], scope: Context) -> ResolvedField[Any]:
     return resolve(data, kind, scope)[0]
 
 
@@ -126,12 +126,12 @@ def test_error_a_scope_conflict_says_each_disagreement() -> None:
             _read({"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, CORE),
             {(CodecDefinition, "gzip"): GZIP_CODEC},
         ),
-        (Refused(json=3, name=None, read_as=CodecDefinition), {}),
+        (RefusedField(json=3, name=None, read_as=CodecDefinition), {}),
     ],
     ids=["read", "unclaimed", "raw-bits", "nested", "refused-claimed", "refused-nameless"],
 )
 def test_claims_of_says_what_a_reading_claimed_of_each_name(
-    field: Resolved[Any], claims: dict[object, object]
+    field: ResolvedField[Any], claims: dict[object, object]
 ) -> None:
     """A reading's claims name the definition that read each name the field and the fields it holds write, keyed as the scope files it -- raw bits under `r*` -- and None where nothing claimed one; a field refused by a definition still claims it, and one that names nothing claims nothing."""
     assert claims_of(fields_of(field)) == claims
@@ -257,7 +257,7 @@ NESTED_ZSTD = {
     ],
 )
 def test_refines_orders_readings_by_information(
-    field: Resolved[Any], other: Resolved[Any], expected: bool
+    field: ResolvedField[Any], other: ResolvedField[Any], expected: bool
 ) -> None:
     """`field` refines `other` when it reads the same where both read and gains where `other` left a name unclaimed -- in the fields it holds too; a loss, a conflict, a refused field, or two unclaimed fields written differently do not."""
     assert refines(field, other) is expected
@@ -279,7 +279,7 @@ READINGS = [_read(document, CodecDefinition, scope) for document in DOCUMENTS fo
 
 @given(st.sampled_from(READINGS), st.sampled_from(READINGS), st.sampled_from(READINGS))
 def test_refines_is_a_partial_order_whose_bottom_is_equality(
-    a: Resolved[Any], b: Resolved[Any], c: Resolved[Any]
+    a: ResolvedField[Any], b: ResolvedField[Any], c: ResolvedField[Any]
 ) -> None:
     """Over readings of documents in several scopes and spellings, `refines` is reflexive and transitive, two fields that refine each other are equal, and equal fields refine the same fields."""
     assert refines(a, a)

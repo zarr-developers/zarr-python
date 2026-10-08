@@ -28,31 +28,31 @@ from zarr_metadata.v3._definition import (
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
+    AcceptedField,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
     Context,
     DataTypeDefinition,
     Definition,
-    Read,
-    Refused,
+    RefusedField,
     StorageTransformerDefinition,
-    Unclaimed,
+    UnclaimedField,
     resolve,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-    from zarr_metadata.v3.definition import Lengths, Loc, Resolved
+    from zarr_metadata.v3.definition import Lengths, Loc, ResolvedField
 
 LITTLE = {"name": "bytes", "configuration": {"endian": "little"}}
 ZSTD = {"name": "zstd", "configuration": {"level": 1}}
 
 POINTS: list[tuple[Loc, type[Definition[Any]], type]] = [
-    (("data_type",), DataTypeDefinition, Read),
-    (("chunk_grid",), ChunkGridDefinition, Read),
-    (("chunk_key_encoding",), ChunkKeyEncodingDefinition, Read),
+    (("data_type",), DataTypeDefinition, AcceptedField),
+    (("chunk_grid",), ChunkGridDefinition, AcceptedField),
+    (("chunk_key_encoding",), ChunkKeyEncodingDefinition, AcceptedField),
 ]
 """A default document's single extension points, each read where it sits."""
 
@@ -63,7 +63,7 @@ def _document(shape: tuple[int, ...] = (4,), **fields: object) -> dict[str, Any]
     return cast("dict[str, Any]", arrays_to_tuples(document))
 
 
-def _codec(loc: Loc, variant: type = Read) -> tuple[Loc, type[Definition[Any]], type]:
+def _codec(loc: Loc, variant: type = AcceptedField) -> tuple[Loc, type[Definition[Any]], type]:
     return (loc, CodecDefinition, variant)
 
 
@@ -104,7 +104,7 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
                 *POINTS,
                 _codec(("codecs", 0)),
                 _codec(("codecs", 0, "configuration", "codecs", 0)),
-                _codec(("codecs", 0, "configuration", "codecs", 1), Unclaimed),
+                _codec(("codecs", 0, "configuration", "codecs", 1), UnclaimedField),
                 _codec(("codecs", 0, "configuration", "index_codecs", 0)),
                 _codec(("codecs", 0, "configuration", "index_codecs", 1)),
             ],
@@ -140,9 +140,9 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
             CORE,
             [
                 *POINTS,
-                _codec(("codecs", 0), Refused),
+                _codec(("codecs", 0), RefusedField),
                 _codec(("codecs", 0, "configuration", "codecs", 0)),
-                _codec(("codecs", 0, "configuration", "codecs", 1), Unclaimed),
+                _codec(("codecs", 0, "configuration", "codecs", 1), UnclaimedField),
                 _codec(("codecs", 0, "configuration", "index_codecs", 0)),
             ],
             [(frozenset({8}), frozenset({8}))],
@@ -169,12 +169,12 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
                 (
                     ("data_type", "configuration", "fields", 0, "data_type"),
                     DataTypeDefinition,
-                    Read,
+                    AcceptedField,
                 ),
                 (
                     ("data_type", "configuration", "fields", 1, "data_type"),
                     DataTypeDefinition,
-                    Unclaimed,
+                    UnclaimedField,
                 ),
                 *POINTS[1:],
                 _codec(("codecs", 0)),
@@ -193,11 +193,11 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
             CORE_AND_EXTENSIONS,
             [
                 POINTS[0],
-                (("chunk_grid",), ChunkGridDefinition, Unclaimed),
+                (("chunk_grid",), ChunkGridDefinition, UnclaimedField),
                 POINTS[2],
                 _codec(("codecs", 0)),
-                _codec(("codecs", 1), Refused),
-                (("storage_transformers", 0), StorageTransformerDefinition, Unclaimed),
+                _codec(("codecs", 1), RefusedField),
+                (("storage_transformers", 0), StorageTransformerDefinition, UnclaimedField),
             ],
             [(None,), None],
         ),
@@ -205,7 +205,11 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
         (
             _document(data_type=float("nan")),
             CORE_AND_EXTENSIONS,
-            [(("data_type",), DataTypeDefinition, Refused), *POINTS[1:], _codec(("codecs", 0))],
+            [
+                (("data_type",), DataTypeDefinition, RefusedField),
+                *POINTS[1:],
+                _codec(("codecs", 0)),
+            ],
             [(frozenset({4}),)],
         ),
     ],
@@ -256,14 +260,14 @@ _WITH_PROBLEMS = _document(
 
 def _array_fields(
     document: object,
-) -> Iterator[tuple[Loc, Resolved[Any], tuple[ValidationProblem, ...]]]:
+) -> Iterator[tuple[Loc, ResolvedField[Any], tuple[ValidationProblem, ...]]]:
     reading = read_array_metadata_v3(document)
     return with_problems(reading.fields(), reading.problems)
 
 
 def _group_fields(
     document: object,
-) -> Iterator[tuple[Loc, Resolved[Any], tuple[ValidationProblem, ...]]]:
+) -> Iterator[tuple[Loc, ResolvedField[Any], tuple[ValidationProblem, ...]]]:
     group = {
         "zarr_format": 3,
         "node_type": "group",
@@ -279,7 +283,7 @@ def _group_fields(
 
 def _field_fields(
     document: object,
-) -> Iterator[tuple[Loc, Resolved[Any], tuple[ValidationProblem, ...]]]:
+) -> Iterator[tuple[Loc, ResolvedField[Any], tuple[ValidationProblem, ...]]]:
     resolved, problems = resolve(
         cast("dict[str, Any]", document)["codecs"][0],
         CodecDefinition,
@@ -324,7 +328,9 @@ _IN_A_GROUP = ("consolidated_metadata", "metadata", "a")
     ids=["an-array", "a-document-a-group-holds", "one-field"],
 )
 def test_each_field_comes_with_the_problems_located_in_it(
-    fields: Callable[[object], Iterator[tuple[Loc, Resolved[Any], tuple[ValidationProblem, ...]]]],
+    fields: Callable[
+        [object], Iterator[tuple[Loc, ResolvedField[Any], tuple[ValidationProblem, ...]]]
+    ],
     expected: dict[Loc, list[Loc]],
 ) -> None:
     # Those it was read with and those the document found with it where

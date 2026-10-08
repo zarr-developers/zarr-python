@@ -47,13 +47,13 @@ from zarr_metadata.v2.codec import ZarrV2CodecMetadata
 from zarr_metadata.v2.definition import CORE_V2, resolve_dtype_v2
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._definition import (
+    AcceptedField,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
     DataTypeDefinition,
-    Read,
     StorageTransformerDefinition,
-    Unclaimed,
+    UnclaimedField,
     field_key,
     fill_value_problems,
     held,
@@ -71,7 +71,7 @@ if TYPE_CHECKING:
     from zarr_metadata.v2._definition import ZarrV2CodecDefinition, ZarrV2DataTypeDefinition
     from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON, ZarrV2ArrayMetadataStoreKey
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
-    from zarr_metadata.v3._definition import Resolved
+    from zarr_metadata.v3._definition import ResolvedField
     from zarr_metadata.v3.array import (
         ZarrV3ArrayMetadataJSON,
         ZarrV3ArrayMetadataJSONPartial,
@@ -124,8 +124,8 @@ class ZarrV3ArrayMetadata(Keyed):
     -- arrays as tuples, string keys -- and `context` the scope. Every
     typed member is a view of the reading the pair gives: `data_type`,
     `chunk_grid`, `chunk_key_encoding`, each codec and storage transformer
-    as the scope read it, `Read` by the definition that claims its name or
-    `Unclaimed`; `shape`, `fill_value`, `dimension_names`, `attributes` and
+    as the scope read it, `AcceptedField` by the definition that claims its name or
+    `UnclaimedField`; `shape`, `fill_value`, `dimension_names`, `attributes` and
     `extra_fields` as the read refined them. Built only by reading: the
     constructor reads `document` in `context` and raises
     `MetadataValidationError` with every problem, so no model is invalid.
@@ -241,7 +241,7 @@ class ZarrV3ArrayMetadata(Keyed):
         )
 
     def _plain_key(
-        self, data_type: Read[DataTypeDefinition[Any]] | Unclaimed
+        self, data_type: AcceptedField[DataTypeDefinition[Any]] | UnclaimedField
     ) -> tuple[object, ...]:
         """What `refines` compares of a model other than its fields, the fill value spelled as `data_type` -- the more informed side's -- spells it."""
         members = self._members
@@ -256,7 +256,7 @@ class ZarrV3ArrayMetadata(Keyed):
     def _fill_value_key(self) -> str:
         """What `==` compares of the fill value: its canonical spelling as JSON text when a definition in scope read the data type, and the fill value as written when none did."""
         fill_value = self._members.fill_value
-        if isinstance(self.data_type, Read):
+        if isinstance(self.data_type, AcceptedField):
             return json_text(spelled_canonically(self.data_type, fill_value))
         return json_text(fill_value)
 
@@ -305,29 +305,29 @@ class ZarrV3ArrayMetadata(Keyed):
         return must_understand_subset(self.extra_fields)
 
     @property
-    def data_type(self) -> Read[DataTypeDefinition[Any]] | Unclaimed:
+    def data_type(self) -> AcceptedField[DataTypeDefinition[Any]] | UnclaimedField:
         """The data type, as the scope read it."""
         return held(self._reading.data_type)
 
     @property
-    def chunk_grid(self) -> Read[ChunkGridDefinition[Any]] | Unclaimed:
+    def chunk_grid(self) -> AcceptedField[ChunkGridDefinition[Any]] | UnclaimedField:
         """The chunk grid, as the scope read it."""
         return held(self._reading.chunk_grid)
 
     @property
-    def chunk_key_encoding(self) -> Read[ChunkKeyEncodingDefinition[Any]] | Unclaimed:
+    def chunk_key_encoding(self) -> AcceptedField[ChunkKeyEncodingDefinition[Any]] | UnclaimedField:
         """The chunk key encoding, as the scope read it."""
         return held(self._reading.chunk_key_encoding)
 
     @property
-    def codecs(self) -> tuple[Read[CodecDefinition[Any]] | Unclaimed, ...]:
+    def codecs(self) -> tuple[AcceptedField[CodecDefinition[Any]] | UnclaimedField, ...]:
         """The codecs, each as the scope read it, in pipeline order."""
         return tuple(held(stage.codec) for stage in self._reading.pipeline)
 
     @property
     def storage_transformers(
         self,
-    ) -> tuple[Read[StorageTransformerDefinition[Any]] | Unclaimed, ...]:
+    ) -> tuple[AcceptedField[StorageTransformerDefinition[Any]] | UnclaimedField, ...]:
         """The storage transformers, each as the scope read it."""
         return tuple(held(entry) for entry in self._reading.storage_transformers)
 
@@ -457,7 +457,7 @@ class ZarrV3ArrayMetadata(Keyed):
 
 
 def located_conflicts(
-    fields: Iterable[tuple[Loc, Resolved[Any]]], conflicts: Sequence[Conflict]
+    fields: Iterable[tuple[Loc, ResolvedField[Any]]], conflicts: Sequence[Conflict]
 ) -> tuple[Conflict, ...]:
     """Each of `conflicts`, found against a reading's claims, once for each place among `fields` the name it is about sits: located, as a problem is."""
     located: list[Conflict] = []
@@ -476,8 +476,8 @@ def read_array_metadata_v3(
     """`value`, a v3 array document, as `context` read it, whatever it holds.
 
     Everything a read finds, in one: each extension point as `context`
-    read it -- `Read` by the definition that claims its name, `Unclaimed`,
-    or `Refused` -- the chunks the codecs are handed, each codec with the
+    read it -- `AcceptedField` by the definition that claims its name, `UnclaimedField`,
+    or `RefusedField` -- the chunks the codecs are handed, each codec with the
     chunk it is handed, every problem `validate_array_metadata_v3` finds,
     and, when there is none, the document's model, holding the same
     reading. A policy over the fields, the core spec's alone, say, is a
@@ -499,8 +499,8 @@ def read_array_metadata_v2(
     """`value`, a v2 array document, as `context` read it, `CORE_V2` when none is given, whatever it holds.
 
     Everything a read finds, in one: the dtype, the compressor and each
-    filter as the scope read them -- `Read` by the definition that claims
-    the typestr or id, `Unclaimed`, or `Refused` -- every problem
+    filter as the scope read them -- `AcceptedField` by the definition that claims
+    the typestr or id, `UnclaimedField`, or `RefusedField` -- every problem
     `validate_array_metadata_v2` finds, and, when there is none, the
     document's model.
     """
@@ -542,8 +542,8 @@ class ZarrV2ArrayMetadata(Keyed):
     `dimension_separator` means `"."` by the v2 convention
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L81-L86),
     which the model holds and writes. `dtype`, `compressor` and each
-    filter are views of the reading: `Read` by the definition in scope
-    that claims the typestr or id, or `Unclaimed`. `attributes` is
+    filter are views of the reading: `AcceptedField` by the definition in scope
+    that claims the typestr or id, or `UnclaimedField`. `attributes` is
     `UNSET` when no `.zattrs` exists, distinct from an empty one. A
     member the spec does not define is kept, in `extra_fields`. Built
     only by reading: the constructor reads `document` in `context` and
@@ -668,7 +668,7 @@ class ZarrV2ArrayMetadata(Keyed):
         )
 
     def _plain_key(
-        self, dtype: Read[ZarrV2DataTypeDefinition[Any]] | Unclaimed
+        self, dtype: AcceptedField[ZarrV2DataTypeDefinition[Any]] | UnclaimedField
     ) -> tuple[object, ...]:
         """What `refines` compares of a model other than its fields, the fill value spelled as `dtype` -- the more informed side's -- spells it."""
         members = self._members
@@ -685,7 +685,7 @@ class ZarrV2ArrayMetadata(Keyed):
     def _fill_value_key(self) -> str:
         """What `==` compares of the fill value: its canonical spelling as JSON text when a definition in scope read the dtype, and the fill value as written when none did."""
         fill_value = self._members.fill_value
-        if isinstance(self.dtype, Read):
+        if isinstance(self.dtype, AcceptedField):
             return json_text(spelled_canonically(self.dtype, fill_value))
         return json_text(fill_value)
 
@@ -730,18 +730,20 @@ class ZarrV2ArrayMetadata(Keyed):
         return self._shown[2]
 
     @property
-    def dtype(self) -> Read[ZarrV2DataTypeDefinition[Any]] | Unclaimed:
+    def dtype(self) -> AcceptedField[ZarrV2DataTypeDefinition[Any]] | UnclaimedField:
         """The dtype as the scope read it: by its family's definition, or unclaimed."""
         return held(self._reading.dtype)
 
     @property
-    def compressor(self) -> Read[ZarrV2CodecDefinition[Any]] | Unclaimed | None:
+    def compressor(self) -> AcceptedField[ZarrV2CodecDefinition[Any]] | UnclaimedField | None:
         """The compressor as the scope read it; None when written as `null`."""
         compressor = self._reading.compressor
         return None if compressor is None else held(compressor)
 
     @property
-    def filters(self) -> tuple[Read[ZarrV2CodecDefinition[Any]] | Unclaimed, ...] | None:
+    def filters(
+        self,
+    ) -> tuple[AcceptedField[ZarrV2CodecDefinition[Any]] | UnclaimedField, ...] | None:
         """The filters, each as the scope read it; None when written as `null`."""
         filters = self._reading.filters
         if filters is None:

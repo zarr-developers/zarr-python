@@ -12,10 +12,10 @@ from typing_extensions import TypedDict
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.v3._definition import (
+    AcceptedField,
     Chunk,
     CodecDefinition,
     Nested,
-    Read,
     fill_value_problems,
 )
 from zarr_metadata.v3.codec._arithmetic import NOT_NUMBERS
@@ -95,7 +95,7 @@ def _chunk_rules(
     A null is the rules' to refuse.
     """
     source = chunk.data_type
-    if not isinstance(source, Read):
+    if not isinstance(source, AcceptedField):
         return
     if source.definition.name in NOT_NUMBERS:
         yield ValidationProblem(

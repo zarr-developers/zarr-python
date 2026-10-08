@@ -12,12 +12,12 @@ from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.v3._definition import (
+    AcceptedField,
     Chunk,
     CodecDefinition,
     CodecField,
     Lengths,
     Nested,
-    Read,
     StaticCodecField,
 )
 from zarr_metadata.v3.data_type.uint64 import UINT64_DATA_TYPE, UINT64_DATA_TYPE_NAME
@@ -116,7 +116,7 @@ def _chunk_rules(
             )
 
 
-_UINT64: Final = Read(
+_UINT64: Final = AcceptedField(
     json=UINT64_DATA_TYPE_NAME,
     name=UINT64_DATA_TYPE_NAME,
     definition=UINT64_DATA_TYPE,

@@ -664,13 +664,13 @@ KINDS: Final[tuple[type[Definition[Any]], ...]] = (
 
 def kind_of(definition: Definition[Any]) -> type[Definition[Any]] | None:
     """The kind `definition` is: the nearest class in its MRO declared with `kind=True`; None for a definition of no kind, which no scope files."""
-    bases: tuple[type, ...] = type(definition).__mro__
+    bases: tuple[type[object], ...] = type(definition).__mro__
     return next((base for base in bases if _declares_kind(base)), None)
 
 
-def _declares_kind(cls: type) -> TypeGuard[type[Definition[Any]]]:
+def _declares_kind(cls: type[object]) -> TypeGuard[type[Definition[Any]]]:
     """Whether `cls` itself was declared `kind=True`: the mark is read from its own namespace, which a subclass does not share."""
-    return issubclass(cls, Definition) and vars(cls).get("_is_kind") is True
+    return vars(cls).get("_is_kind") is True and issubclass(cls, Definition)
 
 
 def as_kind(kind: object) -> type[Definition[Any]]:
@@ -1111,7 +1111,7 @@ def _nothing_nested() -> Nested:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class Read(Generic[D]):
+class AcceptedField(Generic[D]):
     """A field a definition in scope read: the name it is written with, the definition, and the configuration it allowed.
 
     A problem with the envelope around it -- a stray member, a
@@ -1186,7 +1186,7 @@ class Read(Generic[D]):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class Unclaimed:
+class UnclaimedField:
     """A field nothing in scope claims: an extension the scope leaves unjudged, which is what keeps the format open.
 
     Equal to another when it is written with the same name and
@@ -1237,12 +1237,12 @@ class Unclaimed:
         return _nothing_nested()
 
     def to_json(self) -> JSONValue:
-        """The field as a document writes it, sharing nothing with the field: its configuration as written, in the envelope every reader takes, as `Read.to_json` writes one."""
+        """The field as a document writes it, sharing nothing with the field: its configuration as written, in the envelope every reader takes, as `AcceptedField.to_json` writes one."""
         return copied(written_json(self))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class Refused(Generic[D]):
+class RefusedField(Generic[D]):
     """A field that could not be read -- not a field at all, not JSON, or refused by the definition that claims its name -- as its problems say."""
 
     json: JSONValue | UNSET
@@ -1275,10 +1275,12 @@ class Refused(Generic[D]):
             raise TypeError(refusal)
 
 
-Resolved = TypeAliasType("Resolved", "Read[D] | Unclaimed | Refused[D]", type_params=(D,))
+ResolvedField = TypeAliasType(
+    "ResolvedField", "AcceptedField[D] | UnclaimedField | RefusedField[D]", type_params=(D,)
+)
 """One metadata field as a scope read it: read by the definition that claims its name, claimed by nothing, or refused."""
 
-_FIELDS: Final = (Read, Unclaimed, Refused)
+_FIELDS: Final = (AcceptedField, UnclaimedField, RefusedField)
 """The three things a scope makes of a field."""
 
 
@@ -1292,7 +1294,7 @@ def _misread(definition: object, kind: type[Definition[Any]], name: object) -> s
     return None
 
 
-def field_key(field: Resolved[Any]) -> tuple[object, ...]:
+def field_key(field: ResolvedField[Any]) -> tuple[object, ...]:
     """What `==` and `hash` compare of a field: what it means, not how it was spelled.
 
     A field read compares by the definition that read it, its
@@ -1304,7 +1306,7 @@ def field_key(field: Resolved[Any]) -> tuple[object, ...]:
     fields are one when what a reader understands of them reads the same,
     and what none interprets is written alike.
     """
-    if isinstance(field, Read):
+    if isinstance(field, AcceptedField):
         definition = cast("Definition[Any]", field.definition)
         configuration: JSONValue = dict(field.configuration)
         # A field it holds is compared by its own key, so its place holds
@@ -1320,7 +1322,7 @@ def field_key(field: Resolved[Any]) -> tuple[object, ...]:
             lambda: json_text(cast("JSONValue", dict(definition.canonical(view)))),
         )
         return ("read", definition, spelled, _nested_key(field.nested))
-    if isinstance(field, Unclaimed):
+    if isinstance(field, UnclaimedField):
         return ("unclaimed", field.read_as, field.name, json_text(field.configuration))
     return (
         "refused",
@@ -1332,7 +1334,7 @@ def field_key(field: Resolved[Any]) -> tuple[object, ...]:
     )
 
 
-def own_key(field: Read[Any]) -> tuple[object, ...]:
+def own_key(field: AcceptedField[Any]) -> tuple[object, ...]:
     """What `field_key` compares of a read field without the fields it holds: the definition and the canonical spelling of its own members."""
     return field_key(field)[:3]
 
@@ -1342,26 +1344,26 @@ def _nested_key(nested: Nested) -> tuple[tuple[Loc, tuple[object, ...]], ...]:
     return tuple((loc, field_key(inner)) for loc, inner in nested.items())
 
 
-def document_json(field: Resolved[Any]) -> JSONValue | UNSET:
+def document_json(field: ResolvedField[Any]) -> JSONValue | UNSET:
     """A field as a document writes it, holding the field's own values: as `to_json` writes it, or as it was written when it was refused, `UNSET` for one that was not JSON.
 
     What a writer serializes, which changes nothing, so it copies nothing;
     `to_json` is this, copied.
     """
-    if isinstance(field, Refused):
+    if isinstance(field, RefusedField):
         return field.json
     return written_json(field)
 
 
-def written_json(field: Read[Any] | Unclaimed) -> JSONValue:
+def written_json(field: AcceptedField[Any] | UnclaimedField) -> JSONValue:
     """A field a scope read or left unclaimed, as a document writes it: `document_json` of one that is JSON."""
     kind = field.read_as
-    if isinstance(field, Read) and kind.spelled(field.name)[1] is not None:
+    if isinstance(field, AcceptedField) and kind.spelled(field.name)[1] is not None:
         return kind.envelope_json(field.name, {})
     return kind.envelope_json(field.name, field.configuration)
 
 
-Nested: TypeAlias = Mapping[Loc, Resolved[Any]]
+Nested: TypeAlias = Mapping[Loc, ResolvedField[Any]]
 """The fields a configuration holds, each as the scope read it, by where it sits in the configuration."""
 
 
@@ -1383,7 +1385,7 @@ class Chunk:
 
     lengths: Lengths | None = None
     """Per axis, the lengths the chunks take along it; None when not even the number of axes is known."""
-    data_type: Resolved[DataTypeDefinition[Any]] | None = None
+    data_type: ResolvedField[DataTypeDefinition[Any]] | None = None
     """The data type field of the values, as a scope read it; None when no field says what they are: a document naming none, which its reading holds as `UNSET`, hands the pipeline a chunk of no known type."""
 
     def __post_init__(self) -> None:
@@ -1402,14 +1404,14 @@ class Chunk:
         return None if self.lengths is None else len(self.lengths)
 
 
-def is_field(value: object) -> TypeGuard[Resolved[Any]]:
-    """Whether `value` is a field a scope read: `Read`, `Unclaimed` or `Refused`."""
+def is_field(value: object) -> TypeGuard[ResolvedField[Any]]:
+    """Whether `value` is a field a scope read: `AcceptedField`, `UnclaimedField` or `RefusedField`."""
     return isinstance(value, _FIELDS)
 
 
-def held(field: Resolved[D] | UNSET) -> Read[D] | Unclaimed:
-    """`field`, one a read found nothing wrong with: `Read` or `Unclaimed`; `TypeError` for one refused or never read, which such a read rules out."""
-    if isinstance(field, (Read, Unclaimed)):
+def held(field: ResolvedField[D] | UNSET) -> AcceptedField[D] | UnclaimedField:
+    """`field`, one a read found nothing wrong with: `AcceptedField` or `UnclaimedField`; `TypeError` for one refused or never read, which such a read rules out."""
+    if isinstance(field, (AcceptedField, UnclaimedField)):
         return field
     msg = f"expected a field a read found nothing wrong with, got {field!r}"
     raise TypeError(msg)
@@ -1435,7 +1437,9 @@ def _is_lengths(value: object) -> TypeGuard[Lengths]:
     return True
 
 
-def fields_of(resolved: Resolved[Any], loc: Loc = ()) -> Iterator[tuple[Loc, Resolved[Any]]]:
+def fields_of(
+    resolved: ResolvedField[Any], loc: Loc = ()
+) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
     """`resolved`, a field a scope read, where it sits, then each field it holds and theirs in turn, each where it sits.
 
     `loc` is where `resolved` sits; a field it holds sits in its
@@ -1449,8 +1453,8 @@ def fields_of(resolved: Resolved[Any], loc: Loc = ()) -> Iterator[tuple[Loc, Res
 
 
 def with_problems(
-    fields: Iterable[tuple[Loc, Resolved[Any]]], problems: Sequence[ValidationProblem]
-) -> Iterator[tuple[Loc, Resolved[Any], Problems]]:
+    fields: Iterable[tuple[Loc, ResolvedField[Any]]], problems: Sequence[ValidationProblem]
+) -> Iterator[tuple[Loc, ResolvedField[Any], Problems]]:
     """Each of `fields`, with where it sits, and the problems among `problems` located in it, in the fields it holds too.
 
     `fields` and `problems` are one read's: a reading's `fields()` and
@@ -1477,20 +1481,20 @@ def with_problems(
         yield loc, field, tuple(held[loc])
 
 
-def configuration_of(resolved: Resolved[Any], definition: Definition[C]) -> C | None:
+def configuration_of(resolved: ResolvedField[Any], definition: Definition[C]) -> C | None:
     """The configuration `resolved` holds, typed as `definition` declares it, if `definition` read it.
 
-    `Read` holds a configuration as the mapping every one is; asked with
+    `AcceptedField` holds a configuration as the mapping every one is; asked with
     the definition that read the field -- or one equal to it, as a
     pickled field's is -- this is the same mapping, as its TypedDict. None
     when another definition read it, or none did.
     """
-    if not isinstance(resolved, Read) or resolved.definition != definition:
+    if not isinstance(resolved, AcceptedField) or resolved.definition != definition:
         return None
     return cast("C", resolved.configuration)
 
 
-def fill_value_problems(data_type: Resolved[F], value: object, loc: Loc = ()) -> Problems:
+def fill_value_problems(data_type: ResolvedField[F], value: object, loc: Loc = ()) -> Problems:
     """What is wrong with `value` as a fill value of `data_type`, a data type field a scope read.
 
     `value` is refined to JSON first: not JSON is the first verdict,
@@ -1504,7 +1508,7 @@ def fill_value_problems(data_type: Resolved[F], value: object, loc: Loc = ()) ->
     value unjudged. `loc` prefixes every problem.
     """
     refined, problems = refine_json(value, loc)
-    if len(problems) != 0 or not isinstance(data_type, Read):
+    if len(problems) != 0 or not isinstance(data_type, AcceptedField):
         return with_input(problems, value, loc)
     definition, configuration = data_type.definition, data_type.configuration
     typed, problems = _fill_value_parser(definition.fill_value)(refined, loc)
@@ -1518,7 +1522,7 @@ def fill_value_problems(data_type: Resolved[F], value: object, loc: Loc = ()) ->
     return with_input((*problems, *refused), value, loc)
 
 
-def canonical_fill_value(data_type: Resolved[F], value: object) -> JSONValue | UNSET:
+def canonical_fill_value(data_type: ResolvedField[F], value: object) -> JSONValue | UNSET:
     """`value`, a fill value of `data_type`, a data type field a scope read, in the one spelling its value has; `UNSET` when it has a problem.
 
     As the data type's `fill_value_canonical` spells it, so two fill
@@ -1536,14 +1540,14 @@ def canonical_fill_value(data_type: Resolved[F], value: object) -> JSONValue | U
     return spelled_canonically(data_type, refined)
 
 
-def spelled_canonically(data_type: Resolved[F], value: JSONValue) -> JSONValue:
+def spelled_canonically(data_type: ResolvedField[F], value: JSONValue) -> JSONValue:
     """`value`, a fill value of `data_type` with no problem, in its canonical spelling, as `canonical_fill_value` gives it, without judging it again.
 
     Its `fill_value_canonical` is the extension author's code: what it
     gives is checked to be JSON, and an error it raises says which data
     type's canonical spelling raised it.
     """
-    if not isinstance(data_type, Read):
+    if not isinstance(data_type, AcceptedField):
         return value
     definition, configuration = data_type.definition, data_type.configuration
     spelled = asked(
@@ -1564,7 +1568,7 @@ def spelled_canonically(data_type: Resolved[F], value: JSONValue) -> JSONValue:
     return refined
 
 
-def storage_of(data_type: Resolved[DataTypeDefinition[Any]]) -> StorageClass | None:
+def storage_of(data_type: ResolvedField[DataTypeDefinition[Any]]) -> StorageClass | None:
     """How the values of `data_type`, a data type field a scope read, are stored; None when unknown.
 
     Unknown when the scope did not read it, or its definition does not
@@ -1572,7 +1576,7 @@ def storage_of(data_type: Resolved[DataTypeDefinition[Any]]) -> StorageClass | N
     checked to be a storage class, and an error it raises says which data
     type's storage raised it.
     """
-    if not isinstance(data_type, Read):
+    if not isinstance(data_type, AcceptedField):
         return None
     definition, configuration = data_type.definition, data_type.configuration
     found = asked(
@@ -1590,7 +1594,7 @@ def storage_of(data_type: Resolved[DataTypeDefinition[Any]]) -> StorageClass | N
 
 
 def chunk_grid_lengths(
-    chunk_grid: Resolved[ChunkGridDefinition[Any]], shape: tuple[int, ...], loc: Loc = ()
+    chunk_grid: ResolvedField[ChunkGridDefinition[Any]], shape: tuple[int, ...], loc: Loc = ()
 ) -> tuple[Lengths, Problems]:
     """The lengths the chunks of `chunk_grid`, a chunk grid field a scope read, take along each axis of an array of `shape`, and what is wrong with the grid over it.
 
@@ -1608,7 +1612,7 @@ def chunk_grid_lengths(
     definition, not the field.
     """
     unknown: Lengths = (None,) * len(shape)
-    if not isinstance(chunk_grid, Read):
+    if not isinstance(chunk_grid, AcceptedField):
         return unknown, ()
     definition, configuration = chunk_grid.definition, chunk_grid.configuration
     at = (*loc, "configuration")
@@ -1644,7 +1648,7 @@ def chunk_grid_lengths(
 
 def resolve(
     data: object, kind: type[D], context: Context, loc: Loc = ()
-) -> tuple[Resolved[D], Problems]:
+) -> tuple[ResolvedField[D], Problems]:
     """`data`, one metadata field, read as a `kind` in `context`: what the scope made of it, and every problem.
 
     All three steps for one field. `data` is refined to JSON and its
@@ -1654,10 +1658,10 @@ def resolve(
     configuration is checked against its TypedDict and judged by its
     rules; each nested field the check met is read the same way, in the
     same scope, and what is wrong with one is its own, reported where it
-    sits, as with a document's fields. What comes back is `Read` by the
-    definition that claims the name; `Unclaimed` when nothing in scope
+    sits, as with a document's fields. What comes back is `AcceptedField` by the
+    definition that claims the name; `UnclaimedField` when nothing in scope
     claims it, an unmodelled extension left unjudged, which is what keeps
-    the format open; or `Refused`, with the problems that say why. `loc`
+    the format open; or `RefusedField`, with the problems that say why. `loc`
     prefixes every problem. `kind` is one of the five kinds --
     `CodecDefinition`, `DataTypeDefinition`, `ChunkGridDefinition`,
     `ChunkKeyEncodingDefinition`, `StorageTransformerDefinition` -- with
@@ -1672,16 +1676,16 @@ def resolve(
         name = asked.named_configuration(data)[0]
         bad = None if name is None else asked.name_problem(name, asked.name_loc(loc))
         claimant = None if name is None or bad is not None else context.claimant(asked, name)
-        refused = Refused(json=UNSET, name=name, read_as=asked, definition=claimant)
+        refused = RefusedField(json=UNSET, name=name, read_as=asked, definition=claimant)
         found = problems if bad is None else (bad, *problems)
-        return cast("Resolved[D]", refused), with_input(found, data, loc)
+        return cast("ResolvedField[D]", refused), with_input(found, data, loc)
     resolved, found = _resolve_field(refined, asked, context, loc)
-    return cast("Resolved[D]", resolved), with_input(found, data, loc)
+    return cast("ResolvedField[D]", resolved), with_input(found, data, loc)
 
 
 def _resolve_field(
     data: JSONValue, kind: type[Definition[Any]], context: Context, loc: Loc
-) -> tuple[Resolved[Definition[Any]], Problems]:
+) -> tuple[ResolvedField[Definition[Any]], Problems]:
     """A refined field with its envelope judged, then read.
 
     What the scope made of it is what became of the configuration. A
@@ -1696,35 +1700,35 @@ def _resolve_field(
 
 def _read(
     data: JSONValue, kind: type[Definition[Any]], context: Context, loc: Loc
-) -> tuple[Resolved[Definition[Any]], Problems]:
+) -> tuple[ResolvedField[Definition[Any]], Problems]:
     name, given, malformed = kind.named_configuration(data)
     if name is None:
-        return Refused(json=data, name=None, read_as=kind), ()
+        return RefusedField(json=data, name=None, read_as=kind), ()
     if not kind.well_named(name):
         # The envelope rule every reader runs first reports it; no
         # definition is asked to claim it.
-        return Refused(json=data, name=name, read_as=kind), ()
+        return RefusedField(json=data, name=name, read_as=kind), ()
     definition = context.claimant(kind, name)
     if len(malformed) != 0:
         # A configuration that is not an object, which the envelope's
         # problems say; the name still says what claims the field.
-        return Refused(json=data, name=name, read_as=kind, definition=definition), ()
+        return RefusedField(json=data, name=name, read_as=kind, definition=definition), ()
     if definition is None:
-        return Unclaimed(json=data, name=name, read_as=kind), ()
+        return UnclaimedField(json=data, name=name, read_as=kind), ()
     _, carried = kind.spelled(name)
     if carried is not None:
         return _read_carried(data, name, kind, definition, given, carried, loc)
     at = kind.configuration_loc(loc)
     if given is None and definition.requires_configuration:
         missing = problem(at, f"{name!r} requires a configuration", "missing_key")
-        return Refused(json=data, name=name, read_as=kind, definition=definition), missing
+        return RefusedField(json=data, name=name, read_as=kind, definition=definition), missing
     typed, found, nested = _typed(definition.configuration, {} if given is None else given, at)
     # The fields it holds are read first, each a frame deeper than this
     # one, so the rules see them as the scope read them; each is put back
     # as a document writes it, so the configuration says what was read
     # however each was spelled. Their problems are reported after the
     # rules'.
-    within: dict[Loc, Resolved[Any]] = {}
+    within: dict[Loc, ResolvedField[Any]] = {}
     written: dict[Loc, JSONValue] = {}
     inside: list[ValidationProblem] = []
     for field in nested:
@@ -1751,9 +1755,11 @@ def _read(
             ruled(definition, lambda: definition.rules(read_only(configuration), within), at)
         )
     if configuration is None or not _usable(own):
-        refused = Refused(json=data, name=name, read_as=kind, definition=definition, nested=within)
+        refused = RefusedField(
+            json=data, name=name, read_as=kind, definition=definition, nested=within
+        )
         return refused, (*own, *inside)
-    read = Read(
+    read = AcceptedField(
         json=data, name=name, definition=definition, configuration=configuration, nested=within
     )
     return read, (*own, *inside)
@@ -1773,7 +1779,7 @@ def _read_carried(
     given: Mapping[str, object] | None,
     carried: Mapping[str, JSONValue],
     loc: Loc,
-) -> tuple[Resolved[Definition[Any]], Problems]:
+) -> tuple[ResolvedField[Definition[Any]], Problems]:
     """A field whose name carries its configuration -- raw bits, `r16` -- read by the definition its name is filed under.
 
     The document wrote a name, so what is wrong with what the name carries
@@ -1798,12 +1804,14 @@ def _read_carried(
     # declare cannot be left out, as a stray key beside the name can, so
     # anything wrong with what the name carries refuses the field.
     if configuration is None or not _usable(beside) or len(judged) != 0:
-        refused = Refused(json=data, name=name, read_as=kind, definition=definition)
+        refused = RefusedField(json=data, name=name, read_as=kind, definition=definition)
         return refused, problems
-    return Read(json=data, name=name, definition=definition, configuration=configuration), problems
+    return AcceptedField(
+        json=data, name=name, definition=definition, configuration=configuration
+    ), problems
 
 
-def _sized(field: _NestedField, inner: Resolved[Any]) -> Problems:
+def _sized(field: _NestedField, inner: ResolvedField[Any]) -> Problems:
     """A codec of dynamic size in a member that takes codecs of static size, as a problem at the field.
 
     A name nothing in scope claims is left unjudged, its size unknown, as
@@ -1852,7 +1860,7 @@ def canonicalize(
 
 
 def canonical_of(
-    resolved: Resolved[Any], problems: Sequence[ValidationProblem]
+    resolved: ResolvedField[Any], problems: Sequence[ValidationProblem]
 ) -> JSONValue | None:
     """`resolved`, a field a scope read, in its simplest equivalent spelling, as `canonicalize` spells one; None when it has a problem.
 
@@ -1868,16 +1876,16 @@ def canonical_of(
     return _simplest(resolved)
 
 
-def _simplest(field: Resolved[Any]) -> JSONValue | None:
+def _simplest(field: ResolvedField[Any]) -> JSONValue | None:
     """A field in its simplest spelling; None when it, or a field it holds, was refused, which has none."""
-    if isinstance(field, Read):
+    if isinstance(field, AcceptedField):
         return _canonical_field(field)
-    if isinstance(field, Unclaimed):
+    if isinstance(field, UnclaimedField):
         return field.to_json()
     return None
 
 
-def _canonical_field(resolved: Read[Any]) -> JSONValue | None:
+def _canonical_field(resolved: AcceptedField[Any]) -> JSONValue | None:
     """A field that read, in its simplest equivalent spelling: the fields it holds first, then its own members; None when one it holds was refused."""
     definition, name = resolved.definition, resolved.name
     configuration: JSONValue = dict(resolved.configuration)
@@ -1924,6 +1932,7 @@ __all__ = [
     "KINDS",
     "RAW_BYTES_NAME",
     "RAW_BYTES_NAME_PATTERN",
+    "AcceptedField",
     "Chunk",
     "ChunkGridDefinition",
     "ChunkGridField",
@@ -1939,14 +1948,13 @@ __all__ = [
     "EmptyConfiguration",
     "Lengths",
     "Nested",
-    "Read",
-    "Refused",
-    "Resolved",
+    "RefusedField",
+    "ResolvedField",
     "StaticCodecField",
     "StorageClass",
     "StorageTransformerDefinition",
     "StorageTransformerField",
-    "Unclaimed",
+    "UnclaimedField",
     "as_kind",
     "asked",
     "canonical_fill_value",

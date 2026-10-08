@@ -11,7 +11,7 @@ what the Zarr v3 specification itself defines, so a document read in it
 uses nothing an implementation could refuse for being optional.
 `CORE_AND_EXTENSIONS` adds what `zarr-extensions` registers and this
 package defines. A name in neither is not refused -- that is what keeps
-the format open -- it is read as `Unclaimed` and left unjudged.
+the format open -- it is read as `UnclaimedField` and left unjudged.
 """
 
 from __future__ import annotations

@@ -16,10 +16,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 from zarr_metadata.v3._definition import (
+    AcceptedField,
     Definition,
-    Read,
-    Refused,
-    Unclaimed,
+    RefusedField,
+    UnclaimedField,
     field_key,
     own_key,
     spelled,
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
 
     from zarr_metadata._typed_json import Loc
-    from zarr_metadata.v3._definition import Resolved
+    from zarr_metadata.v3._definition import ResolvedField
 
 ClaimKey: TypeAlias = tuple[type[Definition[Any]], str]
 """A kind and the name a definition is filed under: what a scope answers `claimant` for."""
@@ -70,7 +70,7 @@ class ScopeConflictError(ValueError):
         super().__init__("; ".join(str(conflict) for conflict in self.conflicts))
 
 
-def claim_key(field: Resolved[Any]) -> ClaimKey | None:
+def claim_key(field: ResolvedField[Any]) -> ClaimKey | None:
     """The key `field` is claimed under: its kind and the name its definition is filed under, `r*` for `r16`; None for a field that names nothing."""
     if field.name is None:
         return None
@@ -79,7 +79,7 @@ def claim_key(field: Resolved[Any]) -> ClaimKey | None:
 
 
 def claims_of(
-    fields: Iterable[tuple[Loc, Resolved[Any]]],
+    fields: Iterable[tuple[Loc, ResolvedField[Any]]],
 ) -> dict[ClaimKey, Definition[Any] | None]:
     """What `fields`, each with where it sits, claim of each name: the definition that read it, None where nothing claimed it.
 
@@ -103,7 +103,7 @@ def claims_of(
     return claims
 
 
-def refines(field: Resolved[Any], other: Resolved[Any]) -> bool:
+def refines(field: ResolvedField[Any], other: ResolvedField[Any]) -> bool:
     """Whether `field` holds everything `other` holds: reads the same where both read, and reads what `other` left unclaimed.
 
     The order one reading of a document refines another in. A name nothing
@@ -114,13 +114,13 @@ def refines(field: Resolved[Any], other: Resolved[Any]) -> bool:
     definitions is a conflict; a refused field refines itself alone. Two
     fields that refine each other are equal.
     """
-    if isinstance(field, Refused) or isinstance(other, Refused):
+    if isinstance(field, RefusedField) or isinstance(other, RefusedField):
         return field == other
-    if isinstance(other, Unclaimed):
-        if isinstance(field, Unclaimed):
+    if isinstance(other, UnclaimedField):
+        if isinstance(field, UnclaimedField):
             return field_key(field) == field_key(other)
         return claim_key(field) == claim_key(other) and _as_unclaimed(field) == other
-    if isinstance(field, Unclaimed):
+    if isinstance(field, UnclaimedField):
         return False
     if field.definition != other.definition or own_key(field) != own_key(other):
         return False
@@ -129,9 +129,9 @@ def refines(field: Resolved[Any], other: Resolved[Any]) -> bool:
     return all(refines(field.nested[loc], other.nested[loc]) for loc in field.nested)
 
 
-def _as_unclaimed(field: Read[Any]) -> Unclaimed:
+def _as_unclaimed(field: AcceptedField[Any]) -> UnclaimedField:
     """`field` as it would have been read had nothing claimed its name: what a gain is compared against."""
-    return Unclaimed(json=field.json, name=field.name, read_as=field.read_as)
+    return UnclaimedField(json=field.json, name=field.name, read_as=field.read_as)
 
 
 @dataclass(frozen=True, slots=True)

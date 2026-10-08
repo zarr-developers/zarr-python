@@ -60,8 +60,8 @@ from zarr_metadata.v3.definition import (
     CodecDefinition,
     EmptyConfiguration,
     Nested,
-    Refused,
-    Unclaimed,
+    RefusedField,
+    UnclaimedField,
     resolve,
 )
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSONPartial
@@ -667,7 +667,7 @@ def test_group_update_reads_the_documents_it_is_given_in_its_scope() -> None:
     assert updated.consolidated_metadata is not UNSET
     child = updated.consolidated_metadata.metadata["a"]
     assert isinstance(child, ZarrV3ArrayMetadata)
-    assert isinstance(child.codecs[1], Unclaimed)
+    assert isinstance(child.codecs[1], UnclaimedField)
     removed = updated.update(consolidated_metadata=UNSET)
     assert removed.consolidated_metadata is UNSET
 
@@ -955,7 +955,7 @@ def test_error_a_group_document_with_a_problem_reads_as_no_model(
     assert {
         path: read.metadata is not None for path, read in reading.consolidated.items()
     } == models
-    assert [loc for loc, field in reading.fields() if isinstance(field, Refused)] == refused
+    assert [loc for loc, field in reading.fields() if isinstance(field, RefusedField)] == refused
 
 
 # --- read_node_metadata_v3 -------------------------------------------------

@@ -20,13 +20,13 @@ from zarr_metadata.v3._definition import (
 from zarr_metadata.v3._scope import kind_name
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
+    AcceptedField,
     CodecDefinition,
     Context,
     Definition,
     EmptyConfiguration,
-    Read,
-    Refused,
-    Unclaimed,
+    RefusedField,
+    UnclaimedField,
     canonical_fill_value,
     fill_value_problems,
     resolve,
@@ -63,7 +63,7 @@ def test_a_subclass_of_a_kind_is_a_definition_of_that_kind() -> None:
     assert kind_of(mine) is CodecDefinition
     scope = Context.of(mine)
     assert scope.claimant(CodecDefinition, "mine") is mine
-    assert isinstance(resolve({"name": "mine"}, CodecDefinition, scope)[0], Read)
+    assert isinstance(resolve({"name": "mine"}, CodecDefinition, scope)[0], AcceptedField)
 
 
 def test_a_kind_of_its_own_is_filed_apart() -> None:
@@ -140,11 +140,16 @@ FLAT_SCOPE = Context.of(FLAT)
 @pytest.mark.parametrize(
     ("field", "kind", "problems", "written"),
     [
-        ({"id": "flat", "level": 1}, Read, [], {"id": "flat", "level": 1}),
-        ({"id": "other", "x": 1}, Unclaimed, [], {"id": "other", "x": 1}),
-        ({"id": "flat", "level": -1}, Refused, [(("c", "level"), "invalid_value")], None),
-        ({"id": "flat", "payload": object()}, Refused, [(("c", "payload"), "invalid_type")], None),
-        ("flat", Refused, [(("c",), "invalid_type")], None),
+        ({"id": "flat", "level": 1}, AcceptedField, [], {"id": "flat", "level": 1}),
+        ({"id": "other", "x": 1}, UnclaimedField, [], {"id": "other", "x": 1}),
+        ({"id": "flat", "level": -1}, RefusedField, [(("c", "level"), "invalid_value")], None),
+        (
+            {"id": "flat", "payload": object()},
+            RefusedField,
+            [(("c", "payload"), "invalid_type")],
+            None,
+        ),
+        ("flat", RefusedField, [(("c",), "invalid_type")], None),
     ],
     ids=["read", "unclaimed", "out-of-range", "not-json", "not-an-object"],
 )
@@ -156,7 +161,7 @@ def test_a_kind_reads_the_envelope_its_format_writes(
     assert type(resolved) is kind
     assert [(problem.loc, problem.kind) for problem in found] == problems
     if written is not None:
-        assert not isinstance(resolved, Refused)
+        assert not isinstance(resolved, RefusedField)
         assert resolved.to_json() == written
 
 

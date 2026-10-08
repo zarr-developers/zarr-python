@@ -41,17 +41,17 @@ its own by a caller that holds nothing but JSON:
    field in a scope: its envelope judged, its name related to a
    definition, its configuration judged, and each nested field read the
    same way. It returns what the scope made of the field, and every
-   problem: `Read` by the definition that claims its name, with the
+   problem: `AcceptedField` by the definition that claims its name, with the
    configuration it checked and allowed and the fields it holds, each
-   read the same way; `Unclaimed`, a name nothing in scope claims, left
-   unjudged, which is what keeps the format open; or `Refused`, whose
+   read the same way; `UnclaimedField`, a name nothing in scope claims, left
+   unjudged, which is what keeps the format open; or `RefusedField`, whose
    problems say why. Each has the field's JSON, the `name` it is
    written with, the kind it was read as, `read_as`, the `definition`
-   that claims its name -- None for `Unclaimed` -- and the fields it
-   holds as the scope read them, `nested`. The two a model holds, `Read`
-   and `Unclaimed`, have a `configuration` and `to_json()`, the field as
+   that claims its name -- None for `UnclaimedField` -- and the fields it
+   holds as the scope read them, `nested`. The two a model holds, `AcceptedField`
+   and `UnclaimedField`, have a `configuration` and `to_json()`, the field as
    a document writes it; two of them are equal when they read the same,
-   however each was spelled. `Resolved` is the three, for `match`. A
+   however each was spelled. `ResolvedField` is the three, for `match`. A
    field is read as one of the five kinds, with or without type
    arguments;
    `resolve(field, Definition, scope)` is a `TypeError`, since nothing
@@ -64,7 +64,7 @@ its own by a caller that holds nothing but JSON:
 
     resolved, problems = resolve({"name": "gzip", "configuration": {"level": 12}},
                                  CodecDefinition, CORE_AND_EXTENSIONS)
-    resolved                # Refused(..., definition=CodecDefinition(name='gzip'), ...)
+    resolved                # RefusedField(..., definition=CodecDefinition(name='gzip'), ...)
     problems[0].loc         # ('configuration', 'level')
     problems[0].input       # 12
     dict(problems[0].ctx)   # {'ge': 0, 'le': 9}
@@ -92,7 +92,7 @@ is a `typing_extensions.TypedDict`: `closed` and `extra_items` are PEP
 728's, which `typing.TypedDict` does not take on the versions this
 package supports. The rules are handed the configuration and the fields
 it holds as the scope read them: a field that is read keeps what it read
-inside it as `Read.nested`, a `Nested` mapping by where each sits, so a
+inside it as `AcceptedField.nested`, a `Nested` mapping by where each sits, so a
 struct's rules reach its field types. `judge`, which reads in no scope,
 hands them none. A rule's message shows a value as the package's own
 messages do, as JSON, with `shown`: `null`, `[1, 2]`, `"C"`. A rule
@@ -320,6 +320,7 @@ from zarr_metadata.v3._common import (
     StorageTransformerField,
 )
 from zarr_metadata.v3._definition import (
+    AcceptedField,
     Chunk,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
@@ -331,12 +332,11 @@ from zarr_metadata.v3._definition import (
     EmptyConfiguration,
     Lengths,
     Nested,
-    Read,
-    Refused,
-    Resolved,
+    RefusedField,
+    ResolvedField,
     StorageClass,
     StorageTransformerDefinition,
-    Unclaimed,
+    UnclaimedField,
     canonical_fill_value,
     fill_value_problems,
     resolve,
@@ -355,6 +355,7 @@ from zarr_metadata.v3._scope import (
 __all__ = [
     "CORE",
     "CORE_AND_EXTENSIONS",
+    "AcceptedField",
     "Chunk",
     "ChunkGridDefinition",
     "ChunkGridField",
@@ -379,16 +380,15 @@ __all__ = [
     "MetadataValidationError",
     "Nested",
     "ProblemKind",
-    "Read",
-    "Refused",
-    "Resolved",
+    "RefusedField",
+    "ResolvedField",
     "ScopeConflictError",
     "Stage",
     "StaticCodecField",
     "StorageClass",
     "StorageTransformerDefinition",
     "StorageTransformerField",
-    "Unclaimed",
+    "UnclaimedField",
     "ValidationProblem",
     "canonical_fill_value",
     "fill_value_problems",

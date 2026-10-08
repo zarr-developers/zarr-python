@@ -31,11 +31,11 @@ from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
 
 from zarr_metadata._json import ValidationProblem, is_object, is_tuple, with_input
 from zarr_metadata.v3._definition import (
+    AcceptedField,
     Chunk,
     CodecDefinition,
     CodecKind,
-    Read,
-    Resolved,
+    ResolvedField,
     asked,
     read_only,
     ruled,
@@ -57,7 +57,7 @@ def _no_stages() -> Mapping[str, tuple[Stage, ...]]:
 class Stage:
     """One codec of a pipeline, and the chunk it is handed."""
 
-    codec: Resolved[CodecDefinition[Any]]
+    codec: ResolvedField[CodecDefinition[Any]]
     """The codec, as the scope read it."""
     incoming: Chunk | None
     """The chunk it is handed.
@@ -85,7 +85,7 @@ _SPOKEN: Final[Mapping[CodecKind, str]] = {
 
 
 def read_pipeline(
-    codecs: Sequence[Resolved[CodecDefinition[Any]]], chunk: Chunk, loc: Loc = ()
+    codecs: Sequence[ResolvedField[CodecDefinition[Any]]], chunk: Chunk, loc: Loc = ()
 ) -> tuple[tuple[Stage, ...], Problems]:
     """Each of `codecs`, codec fields a scope read, as a pipeline handed `chunk`, with the chunk it is handed, and what is wrong with them.
 
@@ -115,7 +115,7 @@ def read_pipeline(
         incoming = Chunk() if handed is None else handed
         at = (*loc, index, "configuration")
         inner = _no_stages()
-        if isinstance(codec, Read):
+        if isinstance(codec, AcceptedField):
             configuration, nested = codec.configuration, codec.nested
             problems.extend(_chunk_problems(definition, configuration, nested, incoming, at))
             inner, found = _inner_pipelines(definition, configuration, nested, incoming, at)
@@ -123,7 +123,7 @@ def read_pipeline(
         stages.append(Stage(codec, incoming, inner))
         if definition.kind == "array_bytes":
             handed = None
-        elif not isinstance(codec, Read):
+        elif not isinstance(codec, AcceptedField):
             handed = Chunk()
         else:
             handed = _handed_on(definition, codec.configuration, codec.nested, incoming, at)
@@ -133,7 +133,7 @@ def read_pipeline(
 
 
 def _order_problems(
-    codecs: Sequence[Resolved[CodecDefinition[Any]]], loc: Loc
+    codecs: Sequence[ResolvedField[CodecDefinition[Any]]], loc: Loc
 ) -> Iterator[ValidationProblem]:
     """Array -> array codecs, then one array -> bytes codec, then bytes -> bytes codecs.
 
@@ -233,7 +233,7 @@ def _is_pipelines(value: object) -> TypeGuard[Mapping[str, Chunk]]:
 
 def _held(
     definition: CodecDefinition[Any], configuration: Mapping[str, Any], nested: Nested, member: str
-) -> tuple[Resolved[CodecDefinition[Any]], ...]:
+) -> tuple[ResolvedField[CodecDefinition[Any]], ...]:
     """The codecs `member` of the configuration holds, as the scope read them.
 
     A member holding anything but a list of fields read as codecs is a

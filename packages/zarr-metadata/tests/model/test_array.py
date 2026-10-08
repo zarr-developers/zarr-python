@@ -58,8 +58,8 @@ from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
-    Read,
-    Unclaimed,
+    AcceptedField,
+    UnclaimedField,
 )
 
 if TYPE_CHECKING:
@@ -450,12 +450,12 @@ def test_update_reads_every_member_in_the_models_own_scope() -> None:
     little: ZarrV3NamedConfigJSON = {"name": "bytes", "configuration": {"endian": "little"}}
     zstd: ZarrV3NamedConfigJSON = {"name": "zstd", "configuration": {"level": 3, "checksum": False}}
     base = ZarrV3ArrayMetadata.create_default(context=CORE, codecs=(little, zstd))
-    assert isinstance(base.codecs[1], Unclaimed)
+    assert isinstance(base.codecs[1], UnclaimedField)
     kept = base.update(attributes={"k": 1})
     assert kept.codecs[1] == base.codecs[1]
     assert kept.context == CORE
     given = base.with_context(CORE_AND_EXTENSIONS).update(codecs=(little, zstd))
-    assert isinstance(given.codecs[1], Read)
+    assert isinstance(given.codecs[1], AcceptedField)
 
 
 def test_update_leaves_out_a_member_given_as_unset() -> None:
@@ -2393,10 +2393,10 @@ def test_error_a_document_nested_deeper_than_a_reader_walks_is_a_problem() -> No
 
 
 def test_error_a_field_object_in_a_document_is_not_json() -> None:
-    # A `Read` built by hand, with a configuration its definition refuses,
+    # A `AcceptedField` built by hand, with a configuration its definition refuses,
     # smuggled into a document: refused as what it is, so nothing built by
     # hand passes as read. A model holds its own fields as read.
-    smuggled = Read(
+    smuggled = AcceptedField(
         json="gzip", name="gzip", definition=GZIP_CODEC, configuration={"level": 99, "window": 1}
     )
     document = {

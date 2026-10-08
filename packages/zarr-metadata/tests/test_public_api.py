@@ -302,14 +302,14 @@ _STANDALONE_VOCAB = frozenset(
         "Nested",
         "NodeName",
         "NodePath",
-        # What a scope made of a field: `Read` by the definition that claims
-        # its name, `Unclaimed`, or `Refused`; `Resolved` is the three.
-        "Read",
-        "Refused",
-        "Resolved",
+        # What a scope made of a field: `AcceptedField` by the definition that claims
+        # its name, `UnclaimedField`, or `RefusedField`; `ResolvedField` is the three.
+        "AcceptedField",
+        "RefusedField",
+        "ResolvedField",
         "Stage",
         "StorageClass",
-        "Unclaimed",
+        "UnclaimedField",
         "CastOutOfRangeMode",
         "CastRoundingMode",
         "Endianness",

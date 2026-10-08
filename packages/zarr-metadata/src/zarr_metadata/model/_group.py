@@ -82,7 +82,7 @@ if TYPE_CHECKING:
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
     from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataStoreKey
     from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON, ZarrV2GroupMetadataStoreKey
-    from zarr_metadata.v3._definition import Definition, Resolved
+    from zarr_metadata.v3._definition import Definition, ResolvedField
     from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
     from zarr_metadata.v3.consolidated import ZarrV3ConsolidatedMetadataJSON
     from zarr_metadata.v3.group import ZarrV3GroupMetadataJSONPartial, ZarrV3GroupMetadataStoreKey
@@ -505,7 +505,7 @@ class ZarrV3GroupMetadataReading:
     metadata: ZarrV3GroupMetadata | None = None
     """The document's model when there is no problem; None otherwise."""
 
-    def fields(self) -> Iterator[tuple[Loc, Resolved[Any]]]:
+    def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
         """Each field of each document its consolidated metadata holds, as read, with where it sits in this document."""
         for path, reading in self.consolidated.items():
             for loc, node in reading.fields():
@@ -547,7 +547,7 @@ class ZarrV3UnknownNodeReading:
         """Its model: none, since no node type says which model it is."""
         return None
 
-    def fields(self) -> Iterator[tuple[Loc, Resolved[Any]]]:
+    def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
         """Its fields as read: none, since none of them is read."""
         return iter(())
 

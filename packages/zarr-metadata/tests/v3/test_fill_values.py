@@ -29,11 +29,11 @@ from zarr_metadata.v3.data_type._float import FloatWidth, complex_fill_value_rul
 from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
+    AcceptedField,
     DataTypeDefinition,
     EmptyConfiguration,
     JSONValue,
     Nested,
-    Read,
     ValidationProblem,
     canonical_fill_value,
     fill_value_problems,
@@ -322,7 +322,7 @@ def test_a_fill_value_nested_as_deep_as_a_reader_walks_is_read() -> None:
 def test_a_struct_read_without_its_field_types_leaves_its_fields_unjudged() -> None:
     # A reading built by hand, holding no field type's reading.
     configuration = {"fields": ({"name": "a", "data_type": "int8"},)}
-    struct = Read(
+    struct = AcceptedField(
         json=STRUCT, name="struct", definition=STRUCT_DATA_TYPE, configuration=configuration
     )
     assert fill_value_problems(struct, {"a": 300}) == ()
@@ -336,10 +336,10 @@ def _alike(left: object, right: object) -> bool:
     return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)
 
 
-def _read(data_type: JSONValue) -> Read[DataTypeDefinition[Any]]:
+def _read(data_type: JSONValue) -> AcceptedField[DataTypeDefinition[Any]]:
     resolved, found = resolve(data_type, DataTypeDefinition, CORE_AND_EXTENSIONS)
     assert found == ()
-    assert isinstance(resolved, Read)
+    assert isinstance(resolved, AcceptedField)
     return resolved
 
 

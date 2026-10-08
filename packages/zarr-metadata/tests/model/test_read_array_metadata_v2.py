@@ -18,10 +18,10 @@ from zarr_metadata.v2.codec.compression import ZLIB_V2
 from zarr_metadata.v2.data_type.scalar import FLOAT_V2
 from zarr_metadata.v2.definition import (
     CORE_V2,
+    AcceptedField,
     Context,
-    Read,
-    Refused,
-    Unclaimed,
+    RefusedField,
+    UnclaimedField,
     ZarrV2CodecDefinition,
 )
 from zarr_metadata.v3.definition import (
@@ -36,7 +36,7 @@ PRIVATE = Context.of(FLOAT_V2, ZLIB_V2)
 @pytest.mark.parametrize(
     ("changes", "context", "dtype", "compressor", "filters", "locs"),
     [
-        ({}, None, Read, None, None, [("dtype",)]),
+        ({}, None, AcceptedField, None, None, [("dtype",)]),
         (
             {
                 "dtype": "<f4",
@@ -44,24 +44,24 @@ PRIVATE = Context.of(FLOAT_V2, ZLIB_V2)
                 "filters": [{"id": "delta", "dtype": "<f4"}],
             },
             None,
-            Read,
-            Read,
-            (Read,),
+            AcceptedField,
+            AcceptedField,
+            (AcceptedField,),
             [("dtype",), ("compressor",), ("filters", 0)],
         ),
         (
             {"dtype": "<e2", "compressor": {"id": "x"}},
             None,
-            Unclaimed,
-            Unclaimed,
+            UnclaimedField,
+            UnclaimedField,
             None,
             [("dtype",), ("compressor",)],
         ),
-        ({"dtype": "|u1"}, PRIVATE, Unclaimed, None, None, [("dtype",)]),
+        ({"dtype": "|u1"}, PRIVATE, UnclaimedField, None, None, [("dtype",)]),
         (
             {"dtype": [["a", "<f4"]], "filters": [], "fill_value": None},
             None,
-            Read,
+            AcceptedField,
             None,
             (),
             [("dtype",), ("dtype", "fields", 0, 1)],
@@ -77,7 +77,7 @@ def test_a_reading_holds_each_field_as_the_scope_read_it(
     filters: object,
     locs: list[Loc],
 ) -> None:
-    """`read_array_metadata_v2` reads the document once in the scope given (`CORE_V2` by default): `dtype`, `compressor` and `filters` are each `Read`, `Unclaimed` or None as written, `fields()` walks them in document order with a struct's record types after it, and a document with no problem has none."""
+    """`read_array_metadata_v2` reads the document once in the scope given (`CORE_V2` by default): `dtype`, `compressor` and `filters` are each `AcceptedField`, `UnclaimedField` or None as written, `fields()` walks them in document order with a struct's record types after it, and a document with no problem has none."""
     reading = read_array_metadata_v2({**BASE, **changes}, context=context)
     assert reading.problems == ()
     assert type(reading.dtype) is dtype
@@ -104,13 +104,13 @@ def test_a_reading_holds_each_field_as_the_scope_read_it(
 def test_error_a_reading_reports_what_the_validator_reports(
     value: object, problems: list[tuple[Loc, str]]
 ) -> None:
-    """A reading of a document with a problem holds every problem `validate_array_metadata_v2` finds, a `Refused` field where one was refused, and no model."""
+    """A reading of a document with a problem holds every problem `validate_array_metadata_v2` finds, a `RefusedField` field where one was refused, and no model."""
     reading = read_array_metadata_v2(value)
     assert [(p.loc, p.kind) for p in reading.problems] == problems
     assert reading.metadata is None
     assert [(p.loc, p.kind) for p in validate_array_metadata_v2(value)] == problems
     if isinstance(value, dict) and "dtype" in problems[0][0]:
-        assert isinstance(reading.dtype, Refused)
+        assert isinstance(reading.dtype, RefusedField)
 
 
 def test_the_v2_readers_read_in_the_scope_given() -> None:

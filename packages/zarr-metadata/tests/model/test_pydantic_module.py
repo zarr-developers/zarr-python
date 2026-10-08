@@ -29,7 +29,7 @@ from zarr_metadata.model import (
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
     CORE,
-    Read,
+    AcceptedField,
 )
 
 V3_ARRAY_DOC = dict(ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json())
@@ -320,7 +320,7 @@ def test_a_v3_field_type_reads_in_the_scope_the_validation_context_holds(
 ) -> None:
     """As pydantic hands any validator its context; `zstd` is an extension, which `CORE` leaves unclaimed."""
     model = TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(_WITH_ZSTD, context=context)
-    assert isinstance(model.codecs[1], Read) is read
+    assert isinstance(model.codecs[1], AcceptedField) is read
 
 
 def test_error_a_validation_context_holds_a_scope_that_is_not_one() -> None:
@@ -390,9 +390,11 @@ def test_a_ctx_member_named_message_yields_to_a_message_holding_a_placeholder() 
 
 def test_a_line_error_for_what_a_problem_could_not_hold_reports_what_sits_there() -> None:
     # A problem holds no input for what is not JSON a reader walks -- a
-    # `Read` built by hand among the codecs -- and the line error reports
+    # `AcceptedField` built by hand among the codecs -- and the line error reports
     # that object, where a missing key's reports the object missing it.
-    smuggled = Read(json="gzip", name="gzip", definition=GZIP_CODEC, configuration={"level": 1})
+    smuggled = AcceptedField(
+        json="gzip", name="gzip", definition=GZIP_CODEC, configuration={"level": 1}
+    )
     doc = {
         **V3_ARRAY_DOC,
         "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}, smuggled],
@@ -444,7 +446,7 @@ def test_the_pydantic_schema_names_an_extension_as_the_reader_does(field: object
 def test_v2_field_types_read_in_the_validation_contexts_scope() -> None:
     """The v2 field types read a document in the scope the validation context holds -- itself a `Context`, or its `zarr_metadata_context` item -- and in `CORE_V2` when it holds none, as the v3 field types read in theirs."""
     from zarr_metadata.v2.data_type.scalar import UINT_V2
-    from zarr_metadata.v2.definition import CORE_V2, Context, Unclaimed
+    from zarr_metadata.v2.definition import CORE_V2, Context, UnclaimedField
 
     adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
@@ -452,7 +454,7 @@ def test_v2_field_types_read_in_the_validation_contexts_scope() -> None:
     small = Context.of(UINT_V2)
     read = adapter.validate_python({**doc, "compressor": {"id": "zlib"}}, context=small)
     assert read.context is small
-    assert isinstance(read.compressor, Unclaimed)
+    assert isinstance(read.compressor, UnclaimedField)
     held = adapter.validate_python(doc, context={"zarr_metadata_context_v2": small})
     assert held.context is small
     group = TypeAdapter(zmp.ZarrV2GroupMetadata).validate_python(V2_GROUP_DOC, context=small)
@@ -462,7 +464,7 @@ def test_v2_field_types_read_in_the_validation_contexts_scope() -> None:
 def test_each_format_reads_in_its_own_context_key() -> None:
     """A mapping context names each format's scope by its own key -- `zarr_metadata_context` for v3, `zarr_metadata_context_v2` for v2 -- so a v3 scope given for the v3 fields leaves the v2 fields in `CORE_V2`; a bare `Context` is the scope of every field type."""
     from zarr_metadata.v2.data_type.scalar import UINT_V2
-    from zarr_metadata.v2.definition import CORE_V2, Context, Unclaimed
+    from zarr_metadata.v2.definition import CORE_V2, Context, UnclaimedField
     from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
 
     adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
@@ -478,5 +480,5 @@ def test_each_format_reads_in_its_own_context_key() -> None:
     assert own.context is small
     bare = adapter.validate_python({**doc, "compressor": {"id": "zlib"}}, context=small)
     assert bare.context is small
-    assert isinstance(bare.compressor, Unclaimed)
+    assert isinstance(bare.compressor, UnclaimedField)
     assert zmp.CONTEXT_KEY_V2 == "zarr_metadata_context_v2"

@@ -28,12 +28,12 @@ from zarr_metadata.v3.codec.zstd import ZSTD_CODEC
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
+    AcceptedField,
     CodecDefinition,
     Context,
     Nested,
-    Read,
     ScopeConflictError,
-    Unclaimed,
+    UnclaimedField,
     ValidationProblem,
 )
 
@@ -96,8 +96,8 @@ def test_to_json_keeps_the_spelling_the_document_was_written_in(
 def test_properties_are_what_the_reading_holds() -> None:
     """The typed members -- fields as the scope read them, shape, fill value, attributes -- are views of the reading, read-only."""
     model = ZarrV3ArrayMetadata({**ARRAY, "attributes": {"a": [1]}, "acme": 1})
-    assert isinstance(model.data_type, Read)
-    assert isinstance(model.codecs[0], Read)
+    assert isinstance(model.data_type, AcceptedField)
+    assert isinstance(model.codecs[0], AcceptedField)
     assert model.shape == (4,)
     assert model.fill_value == 0
     assert model.dimension_names is UNSET
@@ -109,7 +109,7 @@ def test_properties_are_what_the_reading_holds() -> None:
         model.attributes["b"] = 1  # pyright: ignore[reportIndexIssue]
     with pytest.raises(AttributeError):
         model.shape = (5,)  # pyright: ignore[reportAttributeAccessIssue]
-    assert isinstance(ZarrV3ArrayMetadata(ARRAY, context=Context.of()).data_type, Unclaimed)
+    assert isinstance(ZarrV3ArrayMetadata(ARRAY, context=Context.of()).data_type, UnclaimedField)
 
 
 def test_a_reading_without_problems_builds_the_model_without_reading_again() -> None:
@@ -299,7 +299,7 @@ def test_with_context_reads_the_document_in_any_scope() -> None:
     private = model.with_context(PRIVATE)
     assert private.context == PRIVATE
     assert private.codecs[0].definition == MY_BYTES
-    assert isinstance(model.with_context(Context.of()).codecs[0], Unclaimed)
+    assert isinstance(model.with_context(Context.of()).codecs[0], UnclaimedField)
     assert model.with_context(None).context == CORE_AND_EXTENSIONS
 
 
@@ -444,7 +444,7 @@ def test_group_update_with_context_and_refined_in_behave_as_the_arrays_do() -> N
     assert isinstance(held, ZarrV3ConsolidatedMetadata)
     array = held.metadata["a"]
     assert isinstance(array, ZarrV3ArrayMetadata)
-    assert isinstance(array.codecs[0], Read)
+    assert isinstance(array.codecs[0], AcceptedField)
     with pytest.raises(ScopeConflictError):
         ZarrV3GroupMetadata(CONSOLIDATED).refined_in(PRIVATE)
     private = group.with_context(PRIVATE).consolidated_metadata

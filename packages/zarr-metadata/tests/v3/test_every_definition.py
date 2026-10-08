@@ -23,14 +23,14 @@ from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE, RawBytesConfigur
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
+    AcceptedField,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
     Context,
     DataTypeDefinition,
     Definition,
-    Read,
-    Refused,
+    RefusedField,
     ValidationProblem,
     fill_value_problems,
     resolve,
@@ -146,7 +146,7 @@ CASES = [(key, field) for key, fields in EXAMPLES.items() for field in fields]
 
 
 def _read(key: str, field: object) -> tuple[type, list[tuple[tuple[str | int, ...], str]]]:
-    """What the scope made of `field` -- `Read`, `Unclaimed` or `Refused` -- and where each problem is."""
+    """What the scope made of `field` -- `AcceptedField`, `UnclaimedField` or `RefusedField` -- and where each problem is."""
     resolved, problems = resolve(field, KINDS[key.split(":")[0]], CORE_AND_EXTENSIONS)
     return type(resolved), [(found.loc, found.kind) for found in problems]
 
@@ -175,9 +175,9 @@ def test_every_definition_in_scope_has_an_example() -> None:
     ("key", "field"), CASES, ids=[f"{k}:{i}" for i, (k, _) in enumerate(CASES)]
 )
 def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field: object) -> None:
-    # Read, with nothing wrong; and its simplest spelling reads the same,
+    # AcceptedField, with nothing wrong; and its simplest spelling reads the same,
     # and is its own simplest spelling.
-    assert _read(key, field) == (Read, [])
+    assert _read(key, field) == (AcceptedField, [])
     kind = KINDS[key.split(":")[0]]
     simplest, problems = canonicalize(field, kind, CORE_AND_EXTENSIONS)
     assert problems == ()
@@ -336,7 +336,7 @@ def test_raw_bits_read_as_r_star_with_the_size_their_name_carries(
 ) -> None:
     resolved, problems = resolve(field, DataTypeDefinition, CORE_AND_EXTENSIONS)
     assert problems == ()
-    assert isinstance(resolved, Read)
+    assert isinstance(resolved, AcceptedField)
     assert resolved.definition is RAW_BYTES_DATA_TYPE
     assert resolved.json == field
     assert configuration_of(resolved, RAW_BYTES_DATA_TYPE) == {"bits": bits}
@@ -350,11 +350,11 @@ def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
     scope = CORE_AND_EXTENSIONS.extended_with(mine)
     resolved, problems = resolve("r12", DataTypeDefinition, scope)
     assert problems == ()
-    assert isinstance(resolved, Read)
+    assert isinstance(resolved, AcceptedField)
     assert resolved.definition is mine
     # The package's own takes no 12 bits, and refuses them.
     again, _ = resolve("r12", DataTypeDefinition, scope.extended_with(RAW_BYTES_DATA_TYPE))
-    assert isinstance(again, Refused)
+    assert isinstance(again, RefusedField)
     assert again.definition is RAW_BYTES_DATA_TYPE
 
 
@@ -367,7 +367,7 @@ def test_error_r_star_is_notation_and_no_name(field: object, at: tuple[str, ...]
     # How the specification's table writes raw bits, and no document's name
     # for them: `*` is no character of an extension name.
     resolved, problems = resolve(field, DataTypeDefinition, CORE_AND_EXTENSIONS)
-    assert type(resolved) is Refused
+    assert type(resolved) is RefusedField
     assert [(p.loc, p.kind) for p in problems] == [(at, "invalid_value")]
 
 
@@ -863,7 +863,7 @@ def test_error_a_configuration_written_beside_a_raw_bits_name() -> None:
     # The name carries the configuration, so one written beside it holds
     # nothing: each member is a key nothing declares.
     assert _read("data_type:r*", {"name": "r16", "configuration": {"bits": 16}}) == (
-        Read,
+        AcceptedField,
         [(("configuration", "bits"), "unknown_key")],
     )
 

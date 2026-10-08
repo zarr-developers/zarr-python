@@ -123,9 +123,9 @@ so a document with a 0 there, as zarr-python 3.0 and 3.1 wrote for an
 empty dimension, is refused.
 
 `read_array_metadata_v3` reads a document once and returns everything
-the read found: each field as the scope read it -- `Read` by the
-definition that claims its name, `Unclaimed` when none does, or
-`Refused` -- with where it sits and the kind it was read as, each codec
+the read found: each field as the scope read it -- `AcceptedField` by the
+definition that claims its name, `UnclaimedField` when none does, or
+`RefusedField` -- with where it sits and the kind it was read as, each codec
 with the chunk it is handed, every problem, and the model when there is
 none; `from_json` is that model, or the problems raised. A consumer's
 own policy is a walk over the fields, with nothing read twice:
@@ -181,7 +181,7 @@ scope, `CORE_AND_EXTENSIONS` when none is given, and raises
 `MetadataValidationError` with every problem, so no model is built
 invalid; `to_json` writes the document as it was written, and
 `to_key_value` writes it as it is. Every typed member is a view of that
-read: each field as the scope read it, a `Read` or an `Unclaimed`, and
+read: each field as the scope read it, an `AcceptedField` or an `UnclaimedField`, and
 `shape`, `attributes` and the rest as the read refined them, read-only
 at every level: a list given for an array as a tuple, an object as a
 read-only mapping; `to_json` gives plain containers. A model is changed

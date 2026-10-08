@@ -21,10 +21,10 @@ from zarr_metadata.v2.codec.compression import ZLIB_V2
 from zarr_metadata.v2.data_type.scalar import FLOAT_V2, UINT_V2
 from zarr_metadata.v2.definition import (
     CORE_V2,
+    AcceptedField,
     Context,
-    Read,
     ScopeConflictError,
-    Unclaimed,
+    UnclaimedField,
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
 )
@@ -72,12 +72,12 @@ def test_a_model_is_its_document_read_in_its_scope() -> None:
 def test_properties_are_what_the_reading_holds() -> None:
     """`dtype`, `compressor` and `filters` are the fields as the scope read them, None where `null` is written; `shape`, `chunks`, `fill_value`, `order`, `dimension_separator`, `attributes` and `extra_fields` are the members as the read refined them, read-only; `claims` is keyed as the scope files them."""
     model = ZarrV2ArrayMetadata({**ARRAY, "filters": [{"id": "x"}], "extra": [1]})
-    assert isinstance(model.dtype, Read)
+    assert isinstance(model.dtype, AcceptedField)
     assert model.dtype.definition is FLOAT_V2
-    assert isinstance(model.compressor, Read)
+    assert isinstance(model.compressor, AcceptedField)
     assert model.compressor.definition is ZLIB_V2
     assert model.filters is not None
-    assert isinstance(model.filters[0], Unclaimed)
+    assert isinstance(model.filters[0], UnclaimedField)
     members = (model.shape, model.chunks, model.fill_value, model.order, model.dimension_separator)
     assert members == ((4,), (2,), 0, "C", ".")
     assert model.attributes == {"a": (1, 2)}
@@ -199,9 +199,9 @@ def test_error_update_refuses_a_document_with_a_problem(changes: dict[str, Any],
 def test_with_context_and_refined_in_read_the_document_in_another_scope() -> None:
     """`with_context` reads the document in any scope (a loss is allowed), `refined_in` only up the order: a scope that claims what this one left unclaimed is a gain, one that reads a name by another definition or by none is a `ScopeConflictError` naming where the name sits, and a gain that surfaces a problem is a `MetadataValidationError`."""
     unclaimed = ZarrV2ArrayMetadata({**ARRAY, "compressor": {"id": "zlib"}}, SMALL)
-    assert isinstance(unclaimed.compressor, Unclaimed)
+    assert isinstance(unclaimed.compressor, UnclaimedField)
     gained = unclaimed.refined_in(PRIVATE)
-    assert isinstance(gained.compressor, Read)
+    assert isinstance(gained.compressor, AcceptedField)
     assert gained.compressor.definition is BARE_ZLIB
     assert unclaimed.refines(unclaimed)
     assert gained.refines(unclaimed)
@@ -210,7 +210,7 @@ def test_with_context_and_refined_in_read_the_document_in_another_scope() -> Non
         gained.refined_in(CORE_V2)
     assert [c.loc for c in conflict.value.conflicts] == [("compressor",)]
     lost = gained.with_context(SMALL)
-    assert isinstance(lost.compressor, Unclaimed)
+    assert isinstance(lost.compressor, UnclaimedField)
     assert lost == unclaimed
     assert gained.with_context(PRIVATE) == gained
     with pytest.raises(MetadataValidationError):
@@ -341,10 +341,10 @@ def test_consolidated_metadata_is_equal_by_its_nodes_and_moves_scope_with_them()
     assert ZarrV2ConsolidatedMetadata(CONSOLIDATED) != ZarrV2ConsolidatedMetadata(other)
     small = ZarrV2ConsolidatedMetadata(CONSOLIDATED, SMALL)
     assert isinstance(small.nodes["a"], ZarrV2ArrayMetadata)
-    assert isinstance(small.nodes["a"].compressor, Unclaimed)
+    assert isinstance(small.nodes["a"].compressor, UnclaimedField)
     gained = small.refined_in(PRIVATE)
     assert isinstance(gained.nodes["a"], ZarrV2ArrayMetadata)
-    assert isinstance(gained.nodes["a"].compressor, Read)
+    assert isinstance(gained.nodes["a"].compressor, AcceptedField)
     assert gained.refines(small)
     assert not small.refines(gained)
     with pytest.raises(ScopeConflictError) as conflict:

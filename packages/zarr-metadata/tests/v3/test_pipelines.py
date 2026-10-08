@@ -29,7 +29,7 @@ from zarr_metadata.v3.definition import (
     DataTypeField,
     JSONValue,
     Nested,
-    Resolved,
+    ResolvedField,
     resolve,
 )
 
@@ -456,7 +456,9 @@ class AcmeHolderConfiguration(TypedDict, closed=True):
     types: tuple[DataTypeField, ...]
 
 
-def _holder(pipelines: object, types: JSONValue = ("uint8",)) -> Resolved[CodecDefinition[Any]]:
+def _holder(
+    pipelines: object, types: JSONValue = ("uint8",)
+) -> ResolvedField[CodecDefinition[Any]]:
     """A codec holding a pipeline of codecs and a list of data types, `types`, whose pipelines are `pipelines`."""
     holder = CodecDefinition(
         name="acme.holder",

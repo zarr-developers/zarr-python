@@ -74,7 +74,7 @@ from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     Definition,
     Lengths,
-    Resolved,
+    ResolvedField,
     StorageTransformerDefinition,
     chunk_grid_lengths,
     field_kind,
@@ -394,17 +394,17 @@ class ZarrV3ArrayMetadataReading:
     not hold as a list is empty.
     """
 
-    data_type: Resolved[DataTypeDefinition[Any]] | UNSET = UNSET
+    data_type: ResolvedField[DataTypeDefinition[Any]] | UNSET = UNSET
     """The data type, as the scope read it."""
-    chunk_grid: Resolved[ChunkGridDefinition[Any]] | UNSET = UNSET
+    chunk_grid: ResolvedField[ChunkGridDefinition[Any]] | UNSET = UNSET
     """The chunk grid, as the scope read it."""
-    chunk_key_encoding: Resolved[ChunkKeyEncodingDefinition[Any]] | UNSET = UNSET
+    chunk_key_encoding: ResolvedField[ChunkKeyEncodingDefinition[Any]] | UNSET = UNSET
     """The chunk key encoding, as the scope read it."""
     chunk: Chunk = dataclasses.field(default_factory=Chunk)
     """The chunks the codecs are handed: the lengths the grid's chunks take along each axis of the shape, of the data type."""
     pipeline: tuple[Stage, ...] = ()
     """The codecs, read as a pipeline: each as the scope read it, with the chunk it is handed."""
-    storage_transformers: tuple[Resolved[StorageTransformerDefinition[Any]], ...] = ()
+    storage_transformers: tuple[ResolvedField[StorageTransformerDefinition[Any]], ...] = ()
     """The storage transformers, each as the scope read it."""
     problems: tuple[ValidationProblem, ...] = ()
     """Every reason the document is not a valid one."""
@@ -419,7 +419,7 @@ class ZarrV3ArrayMetadataReading:
             return (reading_of, (self.metadata,))
         return object.__reduce__(self)
 
-    def fields(self) -> Iterator[tuple[Loc, Resolved[Any]]]:
+    def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
         """Each field the document holds, as the scope read it, with where it sits in the document.
 
         The extension points, then each codec and storage transformer at its
@@ -427,7 +427,7 @@ class ZarrV3ArrayMetadataReading:
         them: a shard's codecs, a struct's field types. `with_problems`
         gives each with its problems.
         """
-        own: tuple[tuple[str, Resolved[Any] | UNSET], ...] = (
+        own: tuple[tuple[str, ResolvedField[Any] | UNSET], ...] = (
             ("data_type", self.data_type),
             ("chunk_grid", self.chunk_grid),
             ("chunk_key_encoding", self.chunk_key_encoding),
@@ -485,11 +485,11 @@ class ZarrV2ArrayMetadataReading:
     `filters` written as `null` is None.
     """
 
-    dtype: Resolved[ZarrV2DataTypeDefinition[Any]] | UNSET = UNSET
+    dtype: ResolvedField[ZarrV2DataTypeDefinition[Any]] | UNSET = UNSET
     """The dtype, as the scope read it."""
-    compressor: Resolved[ZarrV2CodecDefinition[Any]] | UNSET | None = UNSET
+    compressor: ResolvedField[ZarrV2CodecDefinition[Any]] | UNSET | None = UNSET
     """The compressor, as the scope read it; None when written as `null`."""
-    filters: tuple[Resolved[ZarrV2CodecDefinition[Any]], ...] | UNSET | None = UNSET
+    filters: tuple[ResolvedField[ZarrV2CodecDefinition[Any]], ...] | UNSET | None = UNSET
     """The filters, each as the scope read it; None when written as `null`."""
     problems: tuple[ValidationProblem, ...] = ()
     """Every reason the document is not a valid one."""
@@ -502,7 +502,7 @@ class ZarrV2ArrayMetadataReading:
             return (reading_of, (self.metadata,))
         return object.__reduce__(self)
 
-    def fields(self) -> Iterator[tuple[Loc, Resolved[Any]]]:
+    def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
         """Each field the document holds, as the scope read it, where it sits: the dtype, a struct's record types after it, the compressor, each filter at its index."""
         if self.dtype is not UNSET:
             yield from fields_of(self.dtype, ("dtype",))
@@ -519,7 +519,7 @@ def read_array_v3(
     """`value`, a v3 array document, as `context` read it, without its model, and its other members refined; None when it has a problem.
 
     `read_array_metadata_v3` builds the model from the two. A field object
-    in the document -- a `Read` built by hand -- is not JSON, and is refused
+    in the document -- an `AcceptedField` built by hand -- is not JSON, and is refused
     as such. `at` is where the document sits in the one handed in -- a document consolidated metadata holds sits three levels below
     its group's -- so the levels a reader walks are counted from that
     one's root; the problems are located in this document.
@@ -547,7 +547,7 @@ def read_array_v3(
     # configuration, against the definition in `context` that claims its
     # name. `must_understand: false` keeps its meaning where it has one: an
     # unknown top-level extension *field*, which a reader really can skip.
-    read: dict[str, Resolved[Any]] = {}
+    read: dict[str, ResolvedField[Any]] = {}
     for key, kind in _EXTENSION_POINTS_V3:
         if key in doc:
             read[key], found = resolve(doc[key], kind, context, (*at, key))
@@ -568,7 +568,7 @@ def read_array_v3(
     if "chunk_grid" in read and shape is not None:
         lengths, found = chunk_grid_lengths(read["chunk_grid"], shape, ("chunk_grid",))
         problems.extend(found)
-    listed: dict[str, list[Resolved[Any]]] = {}
+    listed: dict[str, list[ResolvedField[Any]]] = {}
     for key, kind in _EXTENSION_LISTS_V3:
         if key in doc:
             entries = doc[key]
@@ -723,20 +723,20 @@ def read_array_v2(
                 "invalid_value",
             )
         )
-    dtype: Resolved[ZarrV2DataTypeDefinition[Any]] | UNSET = UNSET
+    dtype: ResolvedField[ZarrV2DataTypeDefinition[Any]] | UNSET = UNSET
     if "dtype" in doc:
         # A typestr by its family, field records as a struct.
         dtype, found = resolve_dtype_v2(doc["dtype"], context, ("dtype",))
         problems.extend(found)
     if "order" in doc and doc["order"] not in ("C", "F"):
         problems.append(outside_of(("order",), doc["order"], ("C", "F")))
-    compressor: Resolved[ZarrV2CodecDefinition[Any]] | UNSET | None = UNSET
+    compressor: ResolvedField[ZarrV2CodecDefinition[Any]] | UNSET | None = UNSET
     if "compressor" in doc:
         compressor = None
         if doc["compressor"] is not None:
             compressor, found = resolve_codec_v2(doc["compressor"], context, ("compressor",))
             problems.extend(found)
-    filters: tuple[Resolved[ZarrV2CodecDefinition[Any]], ...] | UNSET | None = UNSET
+    filters: tuple[ResolvedField[ZarrV2CodecDefinition[Any]], ...] | UNSET | None = UNSET
     if "filters" in doc:
         filters = None
         entries = doc["filters"]
@@ -752,7 +752,7 @@ def read_array_v2(
             else:
                 # "A list of JSON objects providing codec configurations, or
                 # null" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79): an empty list is a list.
-                read: list[Resolved[ZarrV2CodecDefinition[Any]]] = []
+                read: list[ResolvedField[ZarrV2CodecDefinition[Any]]] = []
                 for index, item in enumerate(entries):
                     entry, found = resolve_codec_v2(item, context, ("filters", index))
                     read.append(entry)
