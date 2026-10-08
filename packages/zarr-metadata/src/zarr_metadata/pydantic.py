@@ -138,7 +138,6 @@ CONTEXT_KEY: Final = "zarr_metadata_context"
 """The key of a mapping validation context under which the scope the v3 field types read in sits."""
 CONTEXT_KEY_V2: Final = "zarr_metadata_context_v2"
 """The key of a mapping validation context under which the scope the v2 field types read in sits."""
-"""The item of a mapping pydantic's validation context is that holds the scope a v3 field type reads in."""
 
 
 _Read_co = TypeVar("_Read_co", covariant=True)

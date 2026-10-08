@@ -243,7 +243,8 @@ def repair_consolidated_metadata_v2(value: object) -> tuple[object, tuple[Repair
     """`value`, a v2 `.zmetadata`, with each known writer bug in it undone, and what was changed.
 
     zarr-python 3.x writes a `consolidated_metadata` member into each
-    `.zgroup` entry below the root, which is removed. What no repair
+    `.zgroup` entry below the root, which is removed; the root's is left,
+    since no writer puts one there. What no repair
     applies to is left as it is, and `value` is not changed; a document
     with none of the bugs is given back, and no repairs.
     """
@@ -256,8 +257,11 @@ def repair_consolidated_metadata_v2(value: object) -> tuple[object, tuple[Repair
     repairs: list[Repair] = []
     held: dict[object, object] = {}
     for key, entry in cast("Mapping[object, object]", entries).items():
-        if isinstance(key, str) and key.rsplit("/", 1)[-1] == ZARR_V2_GROUP_METADATA_STORE_KEY:
-            entry = _without_consolidated_metadata(entry, ("metadata", key), repairs)
+        if isinstance(key, str):
+            path, _, name = key.rpartition("/")
+            # Below the root only: no writer puts the member in the root's .zgroup.
+            if name == ZARR_V2_GROUP_METADATA_STORE_KEY and path.strip("/") != "":
+                entry = _without_consolidated_metadata(entry, ("metadata", key), repairs)
         held[key] = entry
     if len(repairs) == 0:
         return cast("object", value), ()

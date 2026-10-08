@@ -1548,6 +1548,8 @@ def _entries_by_path(
     problems: list[ValidationProblem] = []
     for key in entries:
         path, _, name = key.rpartition("/")
+        # A node's path, as a store names it: without a `/` at either end.
+        path = path.strip("/")
         if name not in _NODE_FILES:
             continue
         files = by_path.setdefault(path, {})
@@ -1628,9 +1630,10 @@ def _read_consolidated_v2(
     nodes: dict[str, ZarrV2NodeMetadata] = {}
     by_path: dict[str, dict[str, str]] = {}
     if len(problems) == 0:
+        # A second key for one file is one problem among the nodes': every
+        # node is still read, so a user sees everything at once.
         by_path, doubled = _entries_by_path(refined)
         problems.extend(doubled)
-    if len(problems) == 0:
         for path, names in by_path.items():
             node, found = _read_node_v2(path, names, refined, context)
             problems.extend(found)

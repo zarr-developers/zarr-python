@@ -173,6 +173,12 @@ ZMETADATA_CLEAN: dict[str, Any] = {
             ],
         ),
         (ZMETADATA_CLEAN, ZMETADATA_CLEAN, []),
+        # The root's .zgroup: no zarr-python version writes the member there.
+        (
+            {"zarr_consolidated_format": 1, "metadata": {".zgroup": ZGROUP_FROM_ZARR3}},
+            {"zarr_consolidated_format": 1, "metadata": {".zgroup": ZGROUP_FROM_ZARR3}},
+            [],
+        ),
         (
             {
                 "zarr_consolidated_format": 1,
@@ -186,7 +192,7 @@ ZMETADATA_CLEAN: dict[str, Any] = {
         ),
         (3, 3, []),
     ],
-    ids=["zarr-3-zgroup-entry", "clean", "not-the-bug", "not-a-document"],
+    ids=["zarr-3-zgroup-entry", "clean", "root", "not-the-bug", "not-a-document"],
 )
 def test_repair_v2_undoes_the_consolidated_metadata_zarr_3_writes_into_a_zgroup_entry(
     value: object, repaired: object, repairs: list[tuple[tuple[str | int, ...], str]]

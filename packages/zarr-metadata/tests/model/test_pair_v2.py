@@ -393,3 +393,36 @@ def test_the_node_type_is_exported() -> None:
     from zarr_metadata import model
 
     assert "ZarrV2NodeMetadata" in model.__all__
+
+
+def test_error_a_second_key_for_a_node_file_hides_no_other_problem() -> None:
+    """A second key naming one file of one node is one problem among the document's: every node is still read, and each node's problems reported, so a user sees everything at once; a leading `/` does not make a second node."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV2ConsolidatedMetadata(
+            {
+                "zarr_consolidated_format": 1,
+                "metadata": {
+                    "a/.zarray": ZARRAY,
+                    "/a/.zarray": ZARRAY,
+                    "b/.zgroup": {"zarr_format": 3},
+                },
+            }
+        )
+    assert [p.loc for p in raised.value.problems] == [
+        ("metadata", "/a/.zarray"),
+        ("metadata", "b/.zgroup", "zarr_format"),
+    ]
+    one = ZarrV2ConsolidatedMetadata(
+        {"zarr_consolidated_format": 1, "metadata": {"/a/.zarray": ZARRAY}}
+    )
+    assert set(one.nodes) == {"a"}
+    assert one == ZarrV2ConsolidatedMetadata(
+        {"zarr_consolidated_format": 1, "metadata": {"a/.zarray": ZARRAY}}
+    )
+
+
+def test_the_repair_shapes_are_exported() -> None:
+    """The JSON shape of each known v2 writer bug is exported beside the v3 ones."""
+    from zarr_metadata import model
+
+    assert "ZarrV2ZGroupWithConsolidatedMetadataJSON" in model.__all__
