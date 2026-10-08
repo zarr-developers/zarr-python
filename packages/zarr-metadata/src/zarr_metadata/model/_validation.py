@@ -423,13 +423,14 @@ class ZarrV3ArrayMetadataReading:
         them: a shard's codecs, a struct's field types. `with_problems`
         gives each with its problems.
         """
-        for key, field in (
+        own: tuple[tuple[str, Resolved[Any] | UNSET], ...] = (
             ("data_type", self.data_type),
             ("chunk_grid", self.chunk_grid),
             ("chunk_key_encoding", self.chunk_key_encoding),
-        ):
+        )
+        for key, field in own:
             if field is not UNSET:
-                yield from fields_of(cast("Resolved[Any]", field), (key,))
+                yield from fields_of(field, (key,))
         for index, stage in enumerate(self.pipeline):
             yield from fields_of(stage.codec, ("codecs", index))
         for index, transformer in enumerate(self.storage_transformers):
@@ -493,7 +494,7 @@ class ZarrV2ArrayMetadataReading:
     def fields(self) -> Iterator[tuple[Loc, Resolved[Any]]]:
         """Each field the document holds, as the scope read it, where it sits: the dtype, a struct's record types after it, the compressor, each filter at its index."""
         if self.dtype is not UNSET:
-            yield from fields_of(cast("Resolved[Any]", self.dtype), ("dtype",))
+            yield from fields_of(self.dtype, ("dtype",))
         if self.compressor is not UNSET and self.compressor is not None:
             yield from fields_of(self.compressor, ("compressor",))
         if self.filters is not UNSET and self.filters is not None:

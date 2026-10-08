@@ -56,6 +56,7 @@ from typing import (
     NewType,
     NoReturn,
     TypeAlias,
+    TypeGuard,
     TypeVar,
     cast,
     get_args,
@@ -111,9 +112,12 @@ _QUALIFIERS: Final[tuple[object, ...]] = (*_REQUIRED, *_NOT_REQUIRED, *_READ_ONL
 
 # A `type` statement makes a `typing.TypeAliasType`, which is not the
 # `typing_extensions` one on every version that has both.
-_ALIASES: Final[tuple[type, ...]] = (
+_ALIASES: Final[tuple[type[typing_extensions.TypeAliasType], ...]] = (
     typing_extensions.TypeAliasType,
-    getattr(typing, "TypeAliasType", typing_extensions.TypeAliasType),
+    cast(
+        "type[typing_extensions.TypeAliasType]",
+        getattr(typing, "TypeAliasType", typing_extensions.TypeAliasType),
+    ),
 )
 
 
@@ -198,11 +202,9 @@ def is_union(annotation: object) -> bool:
     return get_origin(annotation) in (typing.Union, types.UnionType)
 
 
-def is_alias(annotation: object) -> bool:
+def is_alias(annotation: object) -> TypeGuard[typing_extensions.TypeAliasType]:
     """Whether `annotation` is a type alias that takes no type parameters: `type Level = int`."""
-    if not isinstance(annotation, _ALIASES):
-        return False
-    return len(cast("typing_extensions.TypeAliasType", annotation).__type_params__) == 0
+    return isinstance(annotation, _ALIASES) and len(annotation.__type_params__) == 0
 
 
 @functools.cache
@@ -458,7 +460,7 @@ def _named(annotation: object, seen: frozenset[object]) -> tuple[str, str]:
     if isinstance(inner, NewType):
         return _named(inner.__supertype__, seen)
     if is_alias(inner):
-        alias = cast("typing_extensions.TypeAliasType", inner)
+        alias = inner
         if alias in seen or _holds(alias_value(alias), alias, frozenset()):
             return f"a {alias.__name__}", f"{alias.__name__} values"
         return _named(alias_value(alias), seen | {alias})
@@ -479,7 +481,7 @@ def _holds(annotation: object, alias: object, seen: frozenset[object]) -> bool:
     if is_alias(inner):
         if inner in seen:
             return False
-        value = alias_value(cast("typing_extensions.TypeAliasType", inner))
+        value = alias_value(inner)
         return _holds(value, alias, seen | {inner})
     return any(_holds(argument, alias, seen) for argument in get_args(inner))
 
@@ -497,7 +499,7 @@ def shape_of(annotation: object) -> str | None:
         if isinstance(inner, NewType):
             inner = strip_annotation(inner.__supertype__)[0]
         else:
-            inner = strip_annotation(alias_value(cast("typing_extensions.TypeAliasType", inner)))[0]
+            inner = strip_annotation(alias_value(inner))[0]
     if inner is int:
         return "int"
     if inner is float:
@@ -1064,7 +1066,7 @@ def _compile_type(inner: object, leaf: Leaf, building: _Building) -> Parser | No
         # the code's, for a value it has vouched for.
         return _compile(inner.__supertype__, leaf, building)
     if is_alias(inner):
-        return _alias(cast("typing_extensions.TypeAliasType", inner), leaf, building)
+        return _alias(inner, leaf, building)
     return None
 
 
@@ -1339,7 +1341,7 @@ class Schemas:
         if isinstance(inner, NewType):
             return self.of(inner.__supertype__)
         if is_alias(inner):
-            alias = cast("typing_extensions.TypeAliasType", inner)
+            alias = inner
             return self.defined(alias, alias.__name__, lambda: self.of(alias_value(alias)))
         msg = f"{inner!r} is not a shape JSON takes"
         raise TypeError(msg)

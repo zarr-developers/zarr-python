@@ -19,7 +19,7 @@ from zarr_metadata._json import (
     frozen,
     is_object,
     json_text,
-    refine_user_data,
+    refined_object,
     with_input,
 )
 from zarr_metadata._sentinel import UNSET
@@ -150,8 +150,7 @@ class ZarrV3ArrayMetadata:
         reading, members = read_array_v3(document, scope)
         if members is None:
             raise MetadataValidationError(reading.problems)
-        refined, _ = refine_user_data(document)
-        self._adopt(cast("dict[str, JSONValue]", refined), scope, reading, members)
+        self._adopt(refined_object(document), scope, reading, members)
 
     @classmethod
     def _of(
@@ -183,7 +182,7 @@ class ZarrV3ArrayMetadata:
         self._shown = (
             frozen(members.fill_value),
             frozen(members.attributes),
-            frozen(cast("JSONValue", members.extra_fields)),
+            frozen(members.extra_fields),
         )
         self._key = array_key(self)
         self._claims = MappingProxyType(claims_of(reading.fields()))
@@ -251,12 +250,12 @@ class ZarrV3ArrayMetadata:
     @property
     def attributes(self) -> Mapping[str, JSONValue]:
         """The attributes, read-only at every level; empty when the document writes none."""
-        return cast("Mapping[str, JSONValue]", self._shown[1])
+        return self._shown[1]
 
     @property
     def extra_fields(self) -> Mapping[str, ZarrV3ExtensionField]:
         """Each member the spec does not define, by name, read-only at every level."""
-        return cast("Mapping[str, ZarrV3ExtensionField]", self._shown[2])
+        return self._shown[2]
 
     @property
     def must_understand_fields(self) -> dict[str, ZarrV3ExtensionField]:
@@ -506,8 +505,7 @@ def read_array_metadata_v3(
     reading, members = read_array_v3(value, scope)
     if members is None:
         return reading
-    refined, _ = refine_user_data(value)
-    document = cast("dict[str, JSONValue]", refined)
+    document = refined_object(value)
     model = ZarrV3ArrayMetadata._of(document, scope, reading, members)  # pyright: ignore[reportPrivateUsage]
     return model.reading
 
@@ -527,8 +525,7 @@ def read_array_metadata_v2(
     reading, members = read_array_v2(value, scope)
     if members is None:
         return reading
-    refined, _ = refine_user_data(value)
-    document = cast("dict[str, JSONValue]", refined)
+    document = refined_object(value)
     if "dimension_separator" not in document:
         document = {**document, "dimension_separator": "."}
     model = ZarrV2ArrayMetadata._of(document, scope, reading, members)  # pyright: ignore[reportPrivateUsage]
@@ -588,8 +585,7 @@ class ZarrV2ArrayMetadata:
         reading, members = read_array_v2(document, scope)
         if members is None:
             raise MetadataValidationError(reading.problems)
-        refined, _ = refine_user_data(document)
-        held = cast("dict[str, JSONValue]", refined)
+        held = refined_object(document)
         if "dimension_separator" not in held:
             held = {**held, "dimension_separator": "."}
         self._adopt(held, scope, reading, members)
@@ -622,7 +618,7 @@ class ZarrV2ArrayMetadata:
         self._shown = (
             frozen(members.fill_value),
             UNSET if members.attributes is UNSET else frozen(members.attributes),
-            frozen(cast("JSONValue", members.extra_fields)),
+            frozen(members.extra_fields),
         )
         self._key = array_key_v2(self)
         self._claims = MappingProxyType(claims_of(reading.fields()))
@@ -707,12 +703,12 @@ class ZarrV2ArrayMetadata:
     @property
     def attributes(self) -> Mapping[str, JSONValue] | UNSET:
         """The user attributes a `.zattrs` holds, read-only at every level; `UNSET` when there is no `.zattrs`."""
-        return cast("Mapping[str, JSONValue] | UNSET", self._shown[1])
+        return self._shown[1]
 
     @property
     def extra_fields(self) -> Mapping[str, JSONValue]:
         """Every member the spec does not define, as written, read-only at every level."""
-        return cast("Mapping[str, JSONValue]", self._shown[2])
+        return self._shown[2]
 
     @property
     def dtype(self) -> Read[ZarrV2DataTypeDefinition[Any]] | Unclaimed:

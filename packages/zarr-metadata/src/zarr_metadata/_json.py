@@ -15,7 +15,7 @@ import math
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Final, Literal, TypeGuard, cast, get_args
+from typing import Final, Literal, TypeGuard, cast, get_args, overload
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata._sentinel import UNSET
@@ -311,6 +311,28 @@ def is_object(value: object) -> TypeGuard[Mapping[object, object]]:
     return isinstance(value, Mapping)
 
 
+def refined_object(value: object) -> dict[str, JSONValue]:
+    """`value`, an object a read found nothing wrong with, refined as user data: the document a model holds.
+
+    `TypeError` when it is not an object, which a read that found no
+    problem rules out.
+    """
+    refined, _ = refine_user_data(value)
+    if not isinstance(refined, dict):
+        msg = f"expected an object a read found nothing wrong with, got {shown(value)}"
+        raise TypeError(msg)
+    return refined
+
+
+def object_at(document: Mapping[str, JSONValue], key: str) -> dict[str, JSONValue]:
+    """The object `document`, refined, holds at `key`, which a read found there; `TypeError` when something else is, which that read rules out."""
+    value = document[key]
+    if not isinstance(value, dict):
+        msg = f"expected an object at {key!r}, got {shown(value)}"
+        raise TypeError(msg)
+    return value
+
+
 def is_json_object(value: object) -> TypeGuard[Mapping[str, object]]:
     """Whether `value` is a JSON object with the keys JSON gives one: a mapping whose keys are all strings."""
     return isinstance(value, Mapping) and all(
@@ -587,6 +609,10 @@ def parse_json(value: object) -> JSONValue:
     return refined
 
 
+@overload
+def frozen(value: Mapping[str, JSONValue]) -> Mapping[str, JSONValue]: ...
+@overload
+def frozen(value: JSONValue) -> JSONValue: ...
 def frozen(value: JSONValue) -> JSONValue:
     """`value` as a read-only view at every level: each object a mapping proxy, each array a tuple, so nothing handed out can be changed in place.
 

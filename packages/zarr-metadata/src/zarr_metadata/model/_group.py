@@ -18,13 +18,16 @@ from zarr_metadata._json import (
     copied,
     frozen,
     is_canonical_json,
+    is_json_object,
     is_object,
     json_text,
     nested_past_the_levels,
     not_an_object,
+    object_at,
     outside_of,
     refine_json,
     refine_user_data,
+    refined_object,
     shown,
     shown_key,
     with_input,
@@ -157,8 +160,7 @@ class ZarrV3GroupMetadata:
         reading, members = read_group_v3(document, scope)
         if members is None or len(reading.problems) != 0:
             raise MetadataValidationError(reading.problems)
-        refined, _ = refine_user_data(documents_for(document))
-        self._adopt(cast("dict[str, JSONValue]", refined), scope, reading, members)
+        self._adopt(refined_object(documents_for(document)), scope, reading, members)
 
     @classmethod
     def _of(
@@ -183,17 +185,20 @@ class ZarrV3GroupMetadata:
         self._document = document
         self._context = context
         self._members = members
+        if members.attributes is None:
+            msg = "a group model holds members a read found nothing wrong with"
+            raise TypeError(msg)
         # What the model shows of its members, read-only at every level.
         self._shown = (
-            frozen(cast("JSONValue", members.attributes)),
-            frozen(cast("JSONValue", members.extra_fields)),
+            frozen(members.attributes),
+            frozen(members.extra_fields),
         )
         held: Mapping[str, ZarrV3NodeMetadataReading] = reading.consolidated
         if members.consolidated is UNSET:
             self._consolidated: ZarrV3ConsolidatedMetadata | UNSET = UNSET
         else:
-            member = cast("dict[str, JSONValue]", document[ZARR_V3_CONSOLIDATED_METADATA_KEY])
-            documents = cast("dict[str, JSONValue]", member["metadata"])
+            member = object_at(document, ZARR_V3_CONSOLIDATED_METADATA_KEY)
+            documents = object_at(member, "metadata")
             models = _nested_models(documents, context, reading.consolidated, members.consolidated)
             # One model per document, of this scope: each nested reading
             # holds the model the group holds.
@@ -261,12 +266,12 @@ class ZarrV3GroupMetadata:
     @property
     def attributes(self) -> Mapping[str, JSONValue]:
         """The attributes, read-only at every level; empty when the document writes none."""
-        return cast("Mapping[str, JSONValue]", self._shown[0])
+        return self._shown[0]
 
     @property
     def extra_fields(self) -> Mapping[str, ZarrV3ExtensionField]:
         """Each member the spec does not define, `consolidated_metadata` apart, by name: read-only at every level."""
-        return cast("Mapping[str, ZarrV3ExtensionField]", self._shown[1])
+        return self._shown[1]
 
     @property
     def consolidated_metadata(self) -> ZarrV3ConsolidatedMetadata | UNSET:
@@ -326,9 +331,7 @@ class ZarrV3GroupMetadata:
         if type(other) is not type(self):
             return False
         mine, theirs = self._members, other._members
-        if json_text(cast("JSONValue", mine.attributes)) != json_text(
-            cast("JSONValue", theirs.attributes)
-        ):
+        if json_text(mine.attributes) != json_text(theirs.attributes):
             return False
         if json_text(mine.extra_fields) != json_text(theirs.extra_fields):
             return False
@@ -402,9 +405,8 @@ class ZarrV3ConsolidatedMetadata:
         )
         if len(problems) != 0:
             raise MetadataValidationError(problems)
-        refined, _ = refine_user_data(_member_documents_for(member))
-        document = cast("dict[str, JSONValue]", refined)
-        documents = cast("dict[str, JSONValue]", document["metadata"])
+        document = refined_object(_member_documents_for(member))
+        documents = object_at(document, "metadata")
         self._adopt(document, scope, _nested_models(documents, scope, readings, members))
 
     @classmethod
@@ -767,7 +769,7 @@ def documents_for(value: object) -> object:
     given = document.get(ZARR_V3_CONSOLIDATED_METADATA_KEY)
     member = _member_documents_for(given)
     if member is given:
-        return cast("object", value)
+        return value
     return {**document, ZARR_V3_CONSOLIDATED_METADATA_KEY: member}
 
 
@@ -941,7 +943,7 @@ def group_key(model: ZarrV3GroupMetadata) -> tuple[object, ...]:
     consolidated = model.consolidated_metadata
     members = model._members  # pyright: ignore[reportPrivateUsage]
     return (
-        json_text(cast("JSONValue", members.attributes)),
+        json_text(members.attributes),
         UNSET if consolidated is UNSET else consolidated._key,  # pyright: ignore[reportPrivateUsage]
         json_text(members.extra_fields),
     )
@@ -1074,8 +1076,7 @@ def _with_models(
     those of its own listing.
     """
     if len(reading.problems) == 0:
-        refined, _ = refine_user_data(value)
-        document = cast("dict[str, JSONValue]", refined)
+        document = refined_object(value)
         model = ZarrV3GroupMetadata._of(document, context, reading, members)  # pyright: ignore[reportPrivateUsage]
         return model.reading
     if members.consolidated is UNSET or not is_object(value):
@@ -1140,7 +1141,7 @@ def _nested_models(
         if held is not None and held.context is context:
             models[path] = held
             continue
-        document = cast("dict[str, JSONValue]", documents[path])
+        document = object_at(documents, path)
         if isinstance(reading, ZarrV3ArrayMetadataReading):
             models[path] = ZarrV3ArrayMetadata._of(  # pyright: ignore[reportPrivateUsage]
                 document, context, reading, cast("ArrayMembersV3", child)
@@ -1217,7 +1218,7 @@ class ZarrV2GroupMetadata:
     _context: Context
     _document: dict[str, JSONValue]
     _key: tuple[object, ...]
-    _shown: object
+    _shown: Mapping[str, JSONValue] | UNSET
 
     zarr_format: Final = 2
 
@@ -1229,8 +1230,7 @@ class ZarrV2GroupMetadata:
     def __init__(self, document: object, context: Context | None = None) -> None:
         scope = CORE_V2 if context is None else context
         parsed = parse_group_metadata_v2(document, context=scope)
-        refined, _ = refine_user_data(document)
-        self._adopt(cast("dict[str, JSONValue]", refined), scope, _v2_attributes(parsed))
+        self._adopt(refined_object(document), scope, _v2_attributes(parsed))
 
     @classmethod
     def _of(
@@ -1264,7 +1264,7 @@ class ZarrV2GroupMetadata:
     @property
     def attributes(self) -> Mapping[str, JSONValue] | UNSET:
         """The user attributes a `.zattrs` holds, read-only at every level; `UNSET` when there is no `.zattrs`."""
-        return cast("Mapping[str, JSONValue] | UNSET", self._shown)
+        return self._shown
 
     def to_json(self) -> ZarrV2GroupMetadataJSON:
         """The merged document as written, refined, sharing nothing with the model.
@@ -1395,7 +1395,7 @@ class ZarrV2ConsolidatedMetadata:
     _document: dict[str, JSONValue]
     _key: tuple[object, ...]
     _nodes: dict[str, ZarrV2NodeMetadata]
-    _shown: object
+    _shown: Mapping[str, JSONValue]
 
     zarr_consolidated_format: Final = 1
 
@@ -1421,7 +1421,7 @@ class ZarrV2ConsolidatedMetadata:
         self._document = document
         self._context = context
         self._nodes = nodes
-        self._shown = frozen(document["metadata"])
+        self._shown = frozen(object_at(document, "metadata"))
         self._key = consolidated_key_v2(self)
 
     @property
@@ -1432,7 +1432,7 @@ class ZarrV2ConsolidatedMetadata:
     @property
     def metadata(self) -> Mapping[str, JSONValue]:
         """The entries as written, refined, by store key; read-only at every level."""
-        return cast("Mapping[str, JSONValue]", self._shown)
+        return self._shown
 
     @property
     def nodes(self) -> Mapping[str, ZarrV2NodeMetadata]:
@@ -1478,7 +1478,7 @@ class ZarrV2ConsolidatedMetadata:
         """
         scope = CORE_V2 if context is None else context
         conflicts: list[Conflict] = []
-        entries = cast("Mapping[str, JSONValue]", self._document["metadata"])
+        entries = object_at(self._document, "metadata")
         by_path, _ = _entries_by_path(entries)
         for path, node in self._nodes.items():
             if not isinstance(node, ZarrV2ArrayMetadata):
@@ -1569,7 +1569,7 @@ def _entries_by_path(
 
 def _other_entries_text(model: ZarrV2ConsolidatedMetadata) -> str:
     """The entries no node is read from -- an orphan `.zattrs`, any other key -- as JSON text: what `==` compares of them."""
-    entries = cast("Mapping[str, JSONValue]", model._document["metadata"])  # pyright: ignore[reportPrivateUsage]
+    entries = object_at(model._document, "metadata")  # pyright: ignore[reportPrivateUsage]
     consumed: set[str] = set()
     for path, names in _entries_by_path(entries)[0].items():
         if path in model._nodes:  # pyright: ignore[reportPrivateUsage]
@@ -1665,13 +1665,13 @@ def _read_node_v2(
     if key is None:
         return None, []
     document = entries[key]
-    if not isinstance(document, Mapping):
+    if not is_json_object(document):
         return None, [
             ValidationProblem(
                 ("metadata", key), f"expected an object, got {shown(document)}", "invalid_type"
             )
         ]
-    merged = dict(cast("Mapping[str, JSONValue]", document))
+    merged = dict(document)
     if "attributes" in merged:
         return None, [
             ValidationProblem(
@@ -1696,17 +1696,18 @@ def _read_node_v2(
         reading, members = read_array_v2(merged, context)
         if members is None:
             return None, located(reading.problems)
-        held = merged if "dimension_separator" in merged else {**merged, "dimension_separator": "."}
+        held = refined_object(merged)
+        if "dimension_separator" not in held:
+            held["dimension_separator"] = "."
         return ZarrV2ArrayMetadata._of(held, context, reading, members), []  # pyright: ignore[reportPrivateUsage]
     found = validate_group_metadata_v2(merged, context=context)
     if len(found) != 0:
         return None, located(found)
+    document = refined_object(merged)
     attributes: dict[str, JSONValue] | UNSET = (
-        dict(cast("Mapping[str, JSONValue]", merged["attributes"]))
-        if "attributes" in merged
-        else UNSET
+        object_at(document, "attributes") if "attributes" in document else UNSET
     )
-    return ZarrV2GroupMetadata._of(merged, context, attributes), []  # pyright: ignore[reportPrivateUsage]
+    return ZarrV2GroupMetadata._of(document, context, attributes), []  # pyright: ignore[reportPrivateUsage]
 
 
 def _v2_attributes(document: ZarrV2GroupMetadataJSON) -> dict[str, JSONValue] | UNSET:

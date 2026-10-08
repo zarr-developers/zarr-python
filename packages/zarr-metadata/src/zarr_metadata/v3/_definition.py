@@ -71,6 +71,7 @@ from zarr_metadata._typed_json import (
     Parser,
     SchemaLeaf,
     Schemas,
+    is_alias,
     parser,
     problem,
     typeddict_keys,
@@ -174,7 +175,7 @@ class EmptyConfiguration(TypedDict, closed=True):
     """The configuration of a definition with nothing to configure: its field is written with its name alone."""
 
 
-_FIELD_KINDS: Final[dict[object, type[Definition[Any]]]] = {}
+_FIELD_KINDS: Final[dict[TypeAliasType, type[Definition[Any]]]] = {}
 """Each field alias, and the kind a member annotated with it is read as; filed by each kind as its class is built."""
 
 
@@ -219,7 +220,7 @@ class Definition(Generic[C]):
     """
     label: ClassVar[str] = "definition"
     """The kind as a message names it: "codec"."""
-    field_aliases: ClassVar[tuple[object, ...]] = ()
+    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = ()
     """The field aliases a configuration member holding a field of this kind is annotated with: `CodecField` and `StaticCodecField` for a codec."""
 
     name: str
@@ -484,7 +485,7 @@ class DataTypeDefinition(WithFillValue[C]):
 
     is_kind: ClassVar[bool] = True
     label: ClassVar[str] = "data type"
-    field_aliases: ClassVar[tuple[object, ...]] = (DataTypeField,)
+    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (DataTypeField,)
 
     @classmethod
     def spelled(cls, name: str) -> tuple[str | None, dict[str, JSONValue] | None]:
@@ -548,7 +549,7 @@ class ChunkGridDefinition(Definition[C]):
 
     is_kind: ClassVar[bool] = True
     label: ClassVar[str] = "chunk grid"
-    field_aliases: ClassVar[tuple[object, ...]] = (ChunkGridField,)
+    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ChunkGridField,)
 
     shape_rules: Callable[[C, Nested, tuple[int, ...]], Iterable[ValidationProblem]] = no_rules
     """What the spec disallows in this grid over an array of a shape, located in the configuration."""
@@ -562,7 +563,7 @@ class ChunkKeyEncodingDefinition(Definition[C]):
 
     is_kind: ClassVar[bool] = True
     label: ClassVar[str] = "chunk key encoding"
-    field_aliases: ClassVar[tuple[object, ...]] = (ChunkKeyEncodingField,)
+    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ChunkKeyEncodingField,)
 
 
 CodecKind = Literal["array_array", "array_bytes", "bytes_bytes"]
@@ -617,7 +618,7 @@ class CodecDefinition(Definition[C]):
 
     is_kind: ClassVar[bool] = True
     label: ClassVar[str] = "codec"
-    field_aliases: ClassVar[tuple[object, ...]] = (CodecField, StaticCodecField)
+    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (CodecField, StaticCodecField)
 
     kind: CodecKind
     size: CodecSize
@@ -648,7 +649,7 @@ class StorageTransformerDefinition(Definition[C]):
 
     is_kind: ClassVar[bool] = True
     label: ClassVar[str] = "storage transformer"
-    field_aliases: ClassVar[tuple[object, ...]] = (StorageTransformerField,)
+    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (StorageTransformerField,)
 
 
 KINDS: Final[tuple[type[Definition[Any]], ...]] = (
@@ -696,16 +697,15 @@ def as_kind(kind: object) -> type[Definition[Any]]:
     raise TypeError(msg)
 
 
-_STATIC_SIZE: Final[frozenset[object]] = frozenset({StaticCodecField})
+_STATIC_SIZE: Final[frozenset[TypeAliasType]] = frozenset({StaticCodecField})
 """The field aliases whose codec must be of static size."""
 
 
 def field_kind(annotation: object) -> type[Definition[Any]] | None:
     """The kind of metadata field a member annotated `annotation` holds -- `CodecDefinition` for `CodecField` -- or None when it holds none."""
-    try:
-        return _FIELD_KINDS.get(annotation)
-    except TypeError:  # an unhashable annotation is no field alias
+    if not is_alias(annotation):
         return None
+    return _FIELD_KINDS.get(annotation)
 
 
 @dataclass(frozen=True, slots=True)
@@ -758,7 +758,7 @@ def _vetting(annotation: object) -> Parser | None:
         msg = (
             "a member typed ZarrV3MetadataFieldJSON checks as plain JSON, and is never read as "
             "a field; annotate it with the field alias of its kind: "
-            + ", ".join(cast("TypeAliasType", alias).__name__ for alias in _FIELD_KINDS)
+            + ", ".join(alias.__name__ for alias in _FIELD_KINDS)
         )
         raise TypeError(msg)
     if (
@@ -778,8 +778,8 @@ def _vetting(annotation: object) -> Parser | None:
 
 def _no_field(annotation: object) -> Parser | None:
     """A leaf refusing a field alias: a fill value is a value of its data type, and holds no metadata field."""
-    if field_kind(annotation) is not None:
-        name = cast("TypeAliasType", annotation).__name__
+    if is_alias(annotation) and field_kind(annotation) is not None:
+        name = annotation.__name__
         msg = f"{name} holds a metadata field, and a fill value is a value of its data type"
         raise TypeError(msg)
     return None
@@ -846,9 +846,9 @@ def field_schemas(context: Context) -> SchemaLeaf:
 
     def leaf(annotation: object, schemas: Schemas) -> JSONSchema | None:
         kind = field_kind(annotation)
-        if kind is None:
+        if kind is None or not is_alias(annotation):
             return None
-        alias = cast("TypeAliasType", annotation)
+        alias = annotation
         static = annotation in _STATIC_SIZE
         return schemas.defined(
             alias, alias.__name__, lambda: _field_schema(kind, static, context, schemas)
@@ -1155,9 +1155,9 @@ class Read(Generic[D]):
     """The kind of metadata it was read as: its definition's."""
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, _FIELDS):
+        if not is_field(other):
             return NotImplemented
-        return field_key(self) == field_key(cast("Resolved[Any]", other))
+        return field_key(self) == field_key(other)
 
     def __hash__(self) -> int:
         return hash(field_key(self))
@@ -1188,7 +1188,7 @@ class Read(Generic[D]):
         A name that carries its configuration, as raw bits' does, is
         written alone.
         """
-        return copied(cast("JSONValue", document_json(self)))
+        return copied(written_json(self))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -1210,9 +1210,9 @@ class Unclaimed:
     """The configuration as written, which nothing judged; empty when none is written."""
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, _FIELDS):
+        if not is_field(other):
             return NotImplemented
-        return field_key(self) == field_key(cast("Resolved[Any]", other))
+        return field_key(self) == field_key(other)
 
     def __hash__(self) -> int:
         return hash(field_key(self))
@@ -1244,7 +1244,7 @@ class Unclaimed:
 
     def to_json(self) -> JSONValue:
         """The field as a document writes it, sharing nothing with the field: its configuration as written, in the envelope every reader takes, as `Read.to_json` writes one."""
-        return copied(cast("JSONValue", document_json(self)))
+        return copied(written_json(self))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -1263,9 +1263,9 @@ class Refused(Generic[D]):
     """The fields its configuration holds, each as the scope read it; empty when its configuration was not checked against its TypedDict."""
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, _FIELDS):
+        if not is_field(other):
             return NotImplemented
-        return field_key(self) == field_key(cast("Resolved[Any]", other))
+        return field_key(self) == field_key(other)
 
     def __hash__(self) -> int:
         return hash(field_key(self))
@@ -1356,6 +1356,11 @@ def document_json(field: Resolved[Any]) -> JSONValue | UNSET:
     """
     if isinstance(field, Refused):
         return field.json
+    return written_json(field)
+
+
+def written_json(field: Read[Any] | Unclaimed) -> JSONValue:
+    """A field a scope read or left unclaimed, as a document writes it: `document_json` of one that is JSON."""
     kind = field.read_as
     if isinstance(field, Read) and kind.spelled(field.name)[1] is not None:
         return kind.envelope_json(field.name, {})
@@ -1403,9 +1408,14 @@ class Chunk:
         return None if self.lengths is None else len(self.lengths)
 
 
+def is_field(value: object) -> TypeGuard[Resolved[Any]]:
+    """Whether `value` is a field a scope read: `Read`, `Unclaimed` or `Refused`."""
+    return isinstance(value, _FIELDS)
+
+
 def _is_data_type_field(value: object) -> bool:
     """Whether `value` is a field a scope read as a data type."""
-    return isinstance(value, _FIELDS) and cast("Resolved[Any]", value).read_as is DataTypeDefinition
+    return is_field(value) and value.read_as is DataTypeDefinition
 
 
 def _is_lengths(value: object) -> TypeGuard[Lengths]:

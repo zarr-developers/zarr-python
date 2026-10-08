@@ -259,7 +259,7 @@ def repair_consolidated_metadata_v2(value: object) -> tuple[object, tuple[Repair
     document = value
     entries = document.get("metadata")
     if not is_object(entries):
-        return cast("object", value), ()
+        return value, ()
     repairs: list[Repair] = []
     held: dict[object, object] = {}
     for key, entry in entries.items():
@@ -270,7 +270,7 @@ def repair_consolidated_metadata_v2(value: object) -> tuple[object, tuple[Repair
                 entry = _without_consolidated_metadata(entry, ("metadata", key), repairs)
         held[key] = entry
     if len(repairs) == 0:
-        return cast("object", value), ()
+        return value, ()
     return {**document, "metadata": held}, tuple(repairs)
 
 
@@ -284,7 +284,7 @@ def _without_consolidated_metadata(entry: object, at: Loc, repairs: list[Repair]
         ZarrV2ZGroupWithConsolidatedMetadataJSON,
     )
     if shaped is None or len(problems) != 0:
-        return cast("object", entry)
+        return entry
     repairs.append(
         Repair(
             (*at, ZARR_V3_CONSOLIDATED_METADATA_KEY),

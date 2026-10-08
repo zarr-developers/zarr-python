@@ -119,7 +119,7 @@ class ZarrV2DataTypeDefinition(WithFillValue[C]):
 
     is_kind: ClassVar[bool] = True
     label: ClassVar[str] = "v2 data type"
-    field_aliases: ClassVar[tuple[object, ...]] = (ZarrV2DataTypeField,)
+    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV2DataTypeField,)
 
     def _refusal(self) -> str | None:
         if parse_typestr(self.name) is not None:
