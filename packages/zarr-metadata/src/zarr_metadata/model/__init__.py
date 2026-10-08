@@ -47,6 +47,7 @@ from zarr_metadata.model._array import (
     ZarrV2ArrayMetadataPartial,
     ZarrV3ArrayMetadata,
     ZarrV3ArrayMetadataUpdate,
+    read_array_metadata_v2,
     read_array_metadata_v3,
 )
 from zarr_metadata.model._group import (
@@ -92,6 +93,7 @@ from zarr_metadata.model._validation import (
     GROUP_METADATA_REQUIRED_KEYS_V2,
     GROUP_METADATA_REQUIRED_KEYS_V3,
     GROUP_METADATA_STANDARD_KEYS_V3,
+    ZarrV2ArrayMetadataReading,
     ZarrV3ArrayMetadataReading,
     is_array_metadata_v2,
     is_array_metadata_v3,
@@ -170,6 +172,7 @@ __all__ = [
     "ValidationProblem",
     "ZarrV2ArrayMetadata",
     "ZarrV2ArrayMetadataPartial",
+    "ZarrV2ArrayMetadataReading",
     "ZarrV2ArrayMetadataStoreKey",
     "ZarrV2AttributesStoreKey",
     "ZarrV2ConsolidatedMetadata",
@@ -215,6 +218,7 @@ __all__ = [
     "parse_metadata_field_v3",
     "parse_node_name_v3",
     "parse_node_path_v3",
+    "read_array_metadata_v2",
     "read_array_metadata_v3",
     "read_group_metadata_v3",
     "read_node_metadata_v3",

@@ -23,17 +23,19 @@ from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model._validation import (
     ArrayMembersV3,
     StoreKey,
+    ZarrV2ArrayMetadataReading,
     ZarrV3ArrayMetadataReading,
     construct,
     dimension_lengths,
     dump_store_json,
     load_store_json,
     parse_array_metadata_v2,
+    read_array_v2,
     read_array_v3,
 )
 from zarr_metadata.v2.array import ZARR_V2_ARRAY_METADATA_STORE_KEY
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
-from zarr_metadata.v2.definition import resolve_dtype_v2
+from zarr_metadata.v2.definition import CORE_V2, resolve_dtype_v2
 from zarr_metadata.v3._definition import (
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
@@ -507,6 +509,22 @@ def read_array_metadata_v3(
     document = cast("dict[str, JSONValue]", refined)
     model = ZarrV3ArrayMetadata._of(document, scope, reading, members)  # pyright: ignore[reportPrivateUsage]
     return model.reading
+
+
+def read_array_metadata_v2(
+    value: object, *, context: Context | None = None
+) -> ZarrV2ArrayMetadataReading:
+    """`value`, a v2 array document, as `context` read it, `CORE_V2` when none is given, whatever it holds.
+
+    Everything a read finds, in one: the dtype, the compressor and each
+    filter as the scope read them -- `Read` by the definition that claims
+    the typestr or id, `Unclaimed`, or `Refused` -- every problem
+    `validate_array_metadata_v2` finds, and, when there is none, the
+    document's model.
+    """
+    scope = CORE_V2 if context is None else context
+    reading, _ = read_array_v2(value, scope)
+    return reading
 
 
 class ZarrV2ArrayMetadataPartial(TypedDict, total=False):
