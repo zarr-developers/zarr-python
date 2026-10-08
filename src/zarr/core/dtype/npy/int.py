@@ -203,15 +203,21 @@ class BaseInt[
         TypeError
             If the input is not a valid integer type.
         """
-        if check_json_int(data):
-            return self._cast_scalar_unchecked(data)
-        if check_json_intish_float(data):
-            return self._cast_scalar_unchecked(int(data))
+        if (
+            check_json_int(data)
+            or check_json_intish_float(data)
+            or check_json_intish_str(data)
+        ):
+            value = int(data)
+        else:
+            raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
-        if check_json_intish_str(data):
-            return self._cast_scalar_unchecked(int(data))
-
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
+        info = np.iinfo(self.to_native_dtype())
+        if value < info.min or value > info.max:
+            raise TypeError(
+                f"Invalid type: {data}. Integer is out of bounds for {self.to_native_dtype()}."
+            )
+        return self._cast_scalar_unchecked(value)
 
     def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> int:
         """
