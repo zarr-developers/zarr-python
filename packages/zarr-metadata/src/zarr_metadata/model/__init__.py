@@ -11,7 +11,8 @@ handed. Each document concept gets a `validate_*` function returning
 every problem found (a tuple of `ValidationProblem`, each with a
 machine-readable `kind`), an `is_*` type guard, and a `parse_*` function
 that narrows or raises `MetadataValidationError`; a v3 array or group
-document also gets `read_array_metadata_v3` or `read_group_metadata_v3`,
+document also gets `read_array_metadata_v3`, `read_group_metadata_v3` or
+`read_array_metadata_v2`,
 one read that returns what it read, the problems, and the model when
 there are none. A store another writer made, holding a known writer
 bug, is read by `read_repaired_node_metadata_v3`, which undoes each one

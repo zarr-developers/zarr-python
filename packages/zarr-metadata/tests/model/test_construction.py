@@ -26,9 +26,8 @@ from zarr_metadata.model import (
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
 )
-from zarr_metadata.model._validation import ZarrV3ArrayMetadataReading, construct
 from zarr_metadata.v3.data_type.int8 import INT8_DATA_TYPE
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, Chunk
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -307,9 +306,3 @@ def test_error_consolidated_metadata_paths_are_strings() -> None:
     assert [(found.loc, found.kind) for found in raised.value.problems] == [
         (("metadata",), "invalid_type")
     ]
-
-
-def test_construct_fills_a_member_from_its_default_factory() -> None:
-    reading = construct(ZarrV3ArrayMetadataReading, problems=())
-    assert reading.chunk == Chunk()
-    assert reading.pipeline == ()

@@ -436,3 +436,21 @@ def test_the_pydantic_schema_names_an_extension_as_the_reader_does(field: object
     assert not Draft202012Validator(schema).is_valid(named)
     with pytest.raises(ValidationError):
         TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(named)
+
+
+def test_v2_field_types_read_in_the_validation_contexts_scope() -> None:
+    """The v2 field types read a document in the scope the validation context holds -- itself a `Context`, or its `zarr_metadata_context` item -- and in `CORE_V2` when it holds none, as the v3 field types read in theirs."""
+    from zarr_metadata.v2.data_type.scalar import UINT_V2
+    from zarr_metadata.v2.definition import CORE_V2, Context, Unclaimed
+
+    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
+    doc = json.loads(json.dumps(V2_ARRAY_DOC))
+    assert adapter.validate_python(doc).context is CORE_V2
+    small = Context.of(UINT_V2)
+    read = adapter.validate_python({**doc, "compressor": {"id": "zlib"}}, context=small)
+    assert read.context is small
+    assert isinstance(read.compressor, Unclaimed)
+    held = adapter.validate_python(doc, context={"zarr_metadata_context": small})
+    assert held.context is small
+    group = TypeAdapter(zmp.ZarrV2GroupMetadata).validate_python(V2_GROUP_DOC, context=small)
+    assert group.context is small

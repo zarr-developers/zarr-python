@@ -434,40 +434,9 @@ class ZarrV3ArrayMetadataReading:
             yield from fields_of(transformer, ("storage_transformers", index))
 
 
-M = TypeVar("M")
-
-
 def reading_of(model: object) -> object:
-    """The reading `model`, a v3 model, holds: what a pickled reading that held a model is built again as."""
+    """The reading `model`, a model, holds: what a pickled reading that held a model is built again as."""
     return cast("Any", model).reading
-
-
-def construct(model: type[M], /, **members: object) -> M:
-    """A `model` of `members` a read found nothing wrong with: as its constructor builds one, without checking them again.
-
-    What pydantic's `model_construct` is to its `__init__`. A model checks
-    itself when it is built; a read has checked what it read already, so
-    the model it builds is not checked twice. A member not given, or one
-    the constructor does not take, is its default.
-    """
-    built = object.__new__(model)
-    declared = dataclasses.fields(cast("Any", model))
-    unknown = members.keys() - {member.name for member in declared if member.init}
-    if len(unknown) != 0:
-        msg = f"{model.__name__} has no member {sorted(unknown)!r} to build"
-        raise TypeError(msg)
-    for member in declared:
-        if member.init and member.name in members:
-            value = members[member.name]
-        elif member.default is not dataclasses.MISSING:
-            value = member.default
-        elif member.default_factory is not dataclasses.MISSING:
-            value = member.default_factory()
-        else:
-            msg = f"{model.__name__} is built with {member.name!r}"
-            raise TypeError(msg)
-        object.__setattr__(built, member.name, value)
-    return built
 
 
 @dataclass(frozen=True, slots=True)
