@@ -44,7 +44,7 @@ from zarr_metadata._json import (
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model._array import (
     ZarrV2ArrayMetadata,
-    ZarrV2ArrayMetadataPartial,
+    ZarrV2ArrayMetadataUpdate,
     ZarrV3ArrayMetadata,
     ZarrV3ArrayMetadataUpdate,
     read_array_metadata_v2,
@@ -171,9 +171,9 @@ __all__ = [
     "RepairKind",
     "ValidationProblem",
     "ZarrV2ArrayMetadata",
-    "ZarrV2ArrayMetadataPartial",
     "ZarrV2ArrayMetadataReading",
     "ZarrV2ArrayMetadataStoreKey",
+    "ZarrV2ArrayMetadataUpdate",
     "ZarrV2AttributesStoreKey",
     "ZarrV2ConsolidatedMetadata",
     "ZarrV2ConsolidatedMetadataStoreKey",

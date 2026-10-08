@@ -40,6 +40,16 @@ from zarr_metadata.v3._definition import (
     resolve,
 )
 from zarr_metadata.v3._registry import Context
+from zarr_metadata.v3._scope import (
+    ClaimKey,
+    Claims,
+    Conflict,
+    Disagreements,
+    ScopeConflictError,
+    claim_key,
+    claims_of,
+    refines,
+)
 
 if TYPE_CHECKING:
     from zarr_metadata._typed_json import Loc
@@ -67,17 +77,25 @@ __all__ = [
     "CORE_V2",
     "V2_CODECS",
     "V2_DATA_TYPES",
+    "ClaimKey",
+    "Claims",
+    "Conflict",
     "Context",
+    "Disagreements",
     "Read",
     "Refused",
     "Resolved",
+    "ScopeConflictError",
     "Unclaimed",
     "ZarrV2CodecDefinition",
     "ZarrV2DataTypeDefinition",
     "ZarrV2DataTypeField",
     "canonical_fill_value",
     "canonical_of",
+    "claim_key",
+    "claims_of",
     "fill_value_problems",
+    "refines",
     "resolve_codec_v2",
     "resolve_dtype_v2",
 ]

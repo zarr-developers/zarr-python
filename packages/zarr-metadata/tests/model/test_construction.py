@@ -81,18 +81,17 @@ def test_a_v3_model_is_built_of_its_document_in_its_scope(model: object) -> None
 
 @pytest.mark.parametrize(
     "model",
-    [V2_ARRAY, V2_GROUP, V2_CONSOLIDATED],
+    [
+        V2_ARRAY,
+        pytest.param(V2_GROUP, marks=pytest.mark.xfail(strict=True, reason="Task 3")),
+        pytest.param(V2_CONSOLIDATED, marks=pytest.mark.xfail(strict=True, reason="Task 4")),
+    ],
     ids=["v2-array", "v2-group", "v2-consolidated"],
 )
 def test_a_v2_model_is_built_as_a_read_builds_it(model: object) -> None:
-    """A v2 model's constructor checks what the read checked, and of the same members builds the same model."""
+    """A v2 model is built of its document in its scope, as a read builds it: the constructor given the model's own document and scope builds an equal model."""
     held = cast("Any", model)
-    members = {
-        member.name: getattr(held, member.name)
-        for member in dataclasses.fields(held)
-        if member.init
-    }
-    assert type(held)(**members) == model
+    assert type(held)(held.to_json(), context=held.context) == model
 
 
 @pytest.mark.parametrize(
@@ -117,15 +116,19 @@ def test_a_v3_model_holds_its_members_as_a_read_refines_them(
     ("model", "changes"),
     [
         (V2_ARRAY, {"shape": range(4, 5), "chunks": [4], "attributes": {"a": 1}}),
-        (V2_CONSOLIDATED, {"metadata": {"a/.zattrs": UserDict({"x": 1})}}),
+        pytest.param(
+            V2_CONSOLIDATED,
+            {"metadata": {"a/.zattrs": UserDict({"x": 1})}},
+            marks=pytest.mark.xfail(strict=True, reason="Task 4"),
+        ),
     ],
     ids=["v2-sequences", "v2-consolidated-mapping"],
 )
 def test_a_v2_model_holds_its_members_as_a_read_refines_them(
     model: object, changes: dict[str, object]
 ) -> None:
-    """Arrays as tuples and objects as dicts, as the read holds them, so a v2 model built of other containers is the model a read builds."""
-    changed = dataclasses.replace(cast("Any", model), **changes)
+    """Arrays as tuples and objects as dicts, as the read holds them, so a v2 model updated with other containers is the model a read builds."""
+    changed = cast("Any", model).update(**changes)
     assert changed == model
     assert type(changed).from_key_value(changed.to_key_value()) == changed
 
@@ -153,15 +156,21 @@ def test_a_v3_model_shares_no_container_with_what_it_was_built_of(
 
 @pytest.mark.parametrize(
     ("model", "member"),
-    [(V2_GROUP, "attributes"), (V2_CONSOLIDATED, "metadata")],
-    ids=["v2-group-attributes", "v2-consolidated"],
+    [
+        (V2_ARRAY, "attributes"),
+        (V2_GROUP, "attributes"),
+        pytest.param(
+            V2_CONSOLIDATED, "metadata", marks=pytest.mark.xfail(strict=True, reason="Task 4")
+        ),
+    ],
+    ids=["v2-array-attributes", "v2-group-attributes", "v2-consolidated"],
 )
 def test_a_v2_model_shares_no_container_with_what_it_was_built_of(
     model: object, member: str
 ) -> None:
     """A v2 model holds copies of the containers it is built of."""
     held: dict[str, object] = {"acme.x": {"must_understand": False}}
-    built = dataclasses.replace(cast("Any", model), **{member: held})
+    built = cast("Any", model).update(**{member: held})
     held["acme.y"] = math.nan
     cast("dict[str, object]", held["acme.x"])["z"] = math.nan
     assert getattr(built, member) == {"acme.x": {"must_understand": False}}
@@ -260,10 +269,11 @@ def test_error_consolidated_metadata_of_documents_at_bad_paths_is_refused() -> N
         (V2_ARRAY, {"order": "Q"}, [(("order",), "invalid_value")]),
         (V2_ARRAY, {"chunks": (4, 4)}, [(("chunks",), "invalid_value")]),
         (V2_GROUP, {"attributes": {1: "a"}}, [(("attributes",), "invalid_type")]),
-        (
+        pytest.param(
             V2_CONSOLIDATED,
             {"metadata": {"a/.zarray": {"x": math.nan}}},
             [(("metadata", "a/.zarray", "x"), "invalid_value")],
+            marks=pytest.mark.xfail(strict=True, reason="Task 4"),
         ),
     ],
     ids=[
@@ -278,7 +288,7 @@ def test_error_a_v2_model_changed_by_hand_into_an_invalid_one_is_refused_at_the_
 ) -> None:
     """As a read reads its document: no v2 model is invalid, however it came to be."""
     with pytest.raises(MetadataValidationError) as raised:
-        dataclasses.replace(cast("Any", model), **changes)
+        cast("Any", model).update(**changes)
     assert [(found.loc, found.kind) for found in raised.value.problems] == problems
 
 

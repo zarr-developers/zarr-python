@@ -22,7 +22,7 @@ from zarr_metadata.model import (
     MetadataValidationError,
     ValidationProblem,
     ZarrV2ArrayMetadata,
-    ZarrV2ArrayMetadataPartial,
+    ZarrV2ArrayMetadataUpdate,
     ZarrV3ArrayMetadata,
     ZarrV3GroupMetadata,
     is_array_metadata_v2,
@@ -385,7 +385,7 @@ def test_v2_create_default_applies_overrides() -> None:
     m = ZarrV2ArrayMetadata.create_default(shape=(8,), attributes={"k": "v"})
     assert m.shape == (8,)
     assert m.attributes == {"k": "v"}
-    assert m.dtype == "|u1"  # default dtype unchanged
+    assert m.dtype.to_json() == "|u1"  # default dtype unchanged
 
 
 # --- V3 update -------------------------------------------------------------
@@ -633,16 +633,16 @@ def test_a_model_holding_nan_user_data_equals_its_copies() -> None:
         (0.0, 0.0, True),
         ("NaN", "NaN", True),
         (0.0, -0.0, False),
-        (1, 1.0, False),
+        (1, 1.0, True),
         ("Infinity", "NaN", False),
     ],
 )
 def test_two_v2_models_are_one_array_when_their_documents_are_written_alike(
     left: object, right: object, same: bool
 ) -> None:
-    """A v2 model compares by its document as text: a fill value spelled two ways is two models."""
+    """A v2 model compares by what its document means: a fill value an integer or a float is one value of a float type, `0.0` and `-0.0` two, and `NaN` is itself."""
     model = ZarrV2ArrayMetadata.create_default(shape=(2,), chunks=(2,), dtype="<f4")
-    models = [dataclasses.replace(model, fill_value=value) for value in (left, right)]
+    models = [model.update(fill_value=cast("JSONValue", value)) for value in (left, right)]
     assert (models[0] == models[1]) is same
     if same:
         assert hash(models[0]) == hash(models[1])
@@ -678,8 +678,17 @@ def test_update_replaces_a_member_rather_than_merging_into_it() -> None:
 
 def test_v2_partial_keys_match_settable_model_fields() -> None:
     """The v2 partial TypedDict must list exactly the settable fields."""
-    settable = {f.name for f in dataclasses.fields(ZarrV2ArrayMetadata) if f.init}
-    assert set(ZarrV2ArrayMetadataPartial.__annotations__) == settable
+    assert set(ZarrV2ArrayMetadataUpdate.__annotations__) == {
+        "shape",
+        "dtype",
+        "chunks",
+        "fill_value",
+        "order",
+        "compressor",
+        "filters",
+        "dimension_separator",
+        "attributes",
+    }
 
 
 def test_v2_to_key_value_splits_zarray_and_zattrs() -> None:
@@ -1008,7 +1017,8 @@ def test_v2_roundtrip_with_compressor_and_filters() -> None:
     m = ZarrV2ArrayMetadata.create_default(compressor=compressor, filters=filters)
     restored = ZarrV2ArrayMetadata.from_json(m.to_json())
     assert restored == m
-    assert restored.compressor == {"id": "blosc", "clevel": 5}
+    assert restored.compressor is not None
+    assert restored.compressor.to_json() == {"id": "blosc", "clevel": 5}
 
 
 # --- ZarrV2ArrayMetadata.from_json ----------------------------------------
@@ -1019,7 +1029,7 @@ def test_v2_from_json_reconstructs_fields() -> None:
     doc = ZarrV2ArrayMetadata.create_default(shape=(4,), attributes={"a": 1}, dtype="<i4").to_json()
     model = ZarrV2ArrayMetadata.from_json(doc)
     assert model.shape == (4,)
-    assert model.dtype == "<i4"
+    assert model.dtype.to_json() == "<i4"
     assert model.attributes == {"a": 1}
 
 
@@ -1060,15 +1070,16 @@ def test_v2_from_key_value_rejects_zarray_attributes() -> None:
     ]
 
 
-def test_v2_from_key_value_ignores_zarray_extra_members() -> None:
-    """Other raw `.zarray` members "SHOULD be ignored by implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92)."""
+def test_v2_from_key_value_keeps_zarray_extra_members() -> None:
+    """Other raw `.zarray` members "SHOULD be ignored by implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92): left unjudged, and kept as written."""
     doc: dict[str, object] = dict(ZarrV2ArrayMetadata.create_default().to_json())
     doc.pop("attributes", None)
     doc["vendor_extension"] = {}
 
     model = ZarrV2ArrayMetadata.from_key_value({".zarray": json.dumps(doc).encode()})
 
-    assert "vendor_extension" not in model.to_json()
+    assert model.to_json()["vendor_extension"] == {}
+    assert model.extra_fields == {"vendor_extension": {}}
 
 
 def test_v2_zattrs_presence_round_trips() -> None:
@@ -1269,7 +1280,7 @@ def _build_v3(**overrides: Unpack[ZarrV3ArrayMetadataJSONPartial]) -> dict[str, 
     return dict(ZarrV3ArrayMetadata.create_default(**overrides).to_json())
 
 
-def _build_v2(**overrides: Unpack[ZarrV2ArrayMetadataPartial]) -> dict[str, object]:
+def _build_v2(**overrides: Unpack[ZarrV2ArrayMetadataUpdate]) -> dict[str, object]:
     return dict(ZarrV2ArrayMetadata.create_default(**overrides).to_json())
 
 
@@ -1710,15 +1721,17 @@ def test_array_zarr_format_rejects_float(
     assert [(p.loc, p.kind) for p in validate(document)] == [(("zarr_format",), "invalid_value")]
 
 
-def test_array_v2_ignores_unknown_document_member() -> None:
-    """Other .zarray keys "SHOULD NOT be present ... and SHOULD be ignored": tolerated, dropped.
+def test_array_v2_keeps_an_unknown_document_member() -> None:
+    """Other .zarray keys "SHOULD NOT be present ... and SHOULD be ignored": tolerated, left unjudged, and kept as written, in `extra_fields`.
 
     https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92
     """
     doc = dict(ZarrV2ArrayMetadata.create_default().to_json()) | {"unexpected": 1}
 
     assert validate_array_metadata_v2(doc) == ()
-    assert "unexpected" not in ZarrV2ArrayMetadata.from_json(doc).to_json()
+    model = ZarrV2ArrayMetadata.from_json(doc)
+    assert model.to_json()["unexpected"] == 1
+    assert model.extra_fields == {"unexpected": 1}
 
 
 @pytest.mark.parametrize(

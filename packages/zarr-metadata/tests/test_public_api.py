@@ -43,7 +43,7 @@ EXPECTED = [
     "JSONValue",
     # Category A' — metadata models (in-memory dataclasses over the documents)
     "ZarrV2ArrayMetadata",
-    "ZarrV2ArrayMetadataPartial",
+    "ZarrV2ArrayMetadataUpdate",
     "ZarrV3ArrayMetadata",
     "ZarrV3ArrayMetadataUpdate",
     "ZarrV2GroupMetadata",

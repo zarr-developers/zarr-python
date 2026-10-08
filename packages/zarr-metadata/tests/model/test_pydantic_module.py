@@ -160,7 +160,7 @@ def test_v2_recursive_structured_dtype_is_in_pydantic_schema() -> None:
     doc["fill_value"] = None
     adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
 
-    assert adapter.validate_python(doc).dtype == (("outer", (("inner", "<i4"),)),)
+    assert adapter.validate_python(doc).dtype.to_json() == (("outer", (("inner", "<i4"),)),)
     assert Draft202012Validator(adapter.json_schema()).is_valid(doc)
 
 
@@ -240,12 +240,12 @@ def test_v2_schema_rejects_unknown_document_members(
 
 
 def test_v2_array_schema_allows_unknown_document_members() -> None:
-    """The v2 array document is open ("SHOULD be ignored", https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), in runtime and schema."""
+    """The v2 array document is open ("SHOULD be ignored", https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), in runtime and schema; the member is kept as written."""
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
     doc["unexpected"] = 1
     adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
 
-    assert "unexpected" not in adapter.validate_python(doc).to_json()
+    assert adapter.validate_python(doc).to_json()["unexpected"] == 1
     assert Draft202012Validator(adapter.json_schema()).is_valid(doc)
 
 
