@@ -18,7 +18,7 @@ from zarr.core.dtype.common import (
     check_dtype_spec_v2,
     v3_unstable_dtype_warning,
 )
-from zarr.core.dtype.npy.common import check_json_str
+from zarr.core.dtype.npy.common import check_json_byte_list, check_json_str
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
 from zarr.errors import DataTypeValidationError
 
@@ -524,8 +524,10 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         if check_json_str(data):
             return self.to_native_dtype().type(base64.standard_b64decode(data.encode("ascii")))
+        if check_json_byte_list(data):
+            return self.to_native_dtype().type(bytes(data))
         raise TypeError(
-            f"Invalid type: {data}. Expected a base64-encoded string."
+            f"Invalid type: {data}. Expected a base64-encoded string or a list of byte values."
         )  # pragma: no cover
 
     @property
@@ -919,7 +921,11 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         """
         if check_json_str(data):
             return self.to_native_dtype().type(base64.standard_b64decode(data))
-        raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
+        if check_json_byte_list(data):
+            return self.to_native_dtype().type(bytes(data))
+        raise TypeError(
+            f"Invalid type: {data}. Expected a base64-encoded string or a list of byte values."
+        )  # pragma: no cover
 
     @property
     def item_size(self) -> int:
@@ -1200,7 +1206,11 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
 
         if check_json_str(data):
             return base64.standard_b64decode(data.encode("ascii"))
-        raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
+        if check_json_byte_list(data):
+            return bytes(data)
+        raise TypeError(
+            f"Invalid type: {data}. Expected a base64-encoded string or a list of byte values."
+        )  # pragma: no cover
 
     def _check_scalar(self, data: object) -> TypeGuard[BytesLike]:
         """
