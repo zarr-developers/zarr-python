@@ -8,12 +8,34 @@ import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray_like
 
 from zarr.abc.codec import ArrayBytesCodec
+from zarr.core.config import config
+from zarr.errors import PickleCodecDisabledError
 from zarr.registry import get_ndbuffer_class
 
 if TYPE_CHECKING:
     from zarr.abc.numcodec import Numcodec
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, NDBuffer
+
+
+def _check_pickle_allowed(codecs: tuple[Numcodec | None, ...]) -> None:
+    """
+    Raise if any of ``codecs`` is the pickle codec and reading pickled data has not been enabled.
+
+    Unpickling can run arbitrary code, so data from an untrusted store must not be decoded
+    with the pickle codec unless the user has explicitly opted in.
+    """
+    if not any(getattr(codec, "codec_id", None) == "pickle" for codec in codecs):
+        return
+    # Compare with ``True`` rather than testing truthiness: donfig keeps an environment
+    # variable it cannot parse as a Python literal (e.g. ``false``) as a non-empty string.
+    if config.get("array.allow_pickle") is not True:
+        raise PickleCodecDisabledError(
+            "Refusing to decode data with the 'pickle' codec, because unpickling data "
+            "from an untrusted source can execute arbitrary code. If you trust this data, "
+            "enable the pickle codec with zarr.config.set({'array.allow_pickle': True}) "
+            "or set the environment variable ZARR_ARRAY__ALLOW_PICKLE=True."
+        )
 
 
 @dataclass(frozen=True)
@@ -28,6 +50,7 @@ class V2Codec(ArrayBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> NDBuffer:
+        _check_pickle_allowed((self.compressor, *(self.filters or ())))
         cdata = chunk_bytes.as_array_like()
         # decompress
         if self.compressor:
