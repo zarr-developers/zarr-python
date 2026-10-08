@@ -22,7 +22,7 @@ from typing import Annotated, Literal, TypeAlias, TypedDict, cast
 from annotated_types import Ge
 
 from zarr_metadata._common import (
-    JSONValue,  # noqa: TC001 - a TypedDict's annotations are evaluated at run time
+    JSONValue,
 )
 from zarr_metadata._json import JSON_DEPTH, MetadataValidationError, ValidationProblem
 from zarr_metadata._typed_json import Loc, check

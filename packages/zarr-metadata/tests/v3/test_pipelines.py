@@ -12,7 +12,13 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from typing_extensions import TypedDict
 
-from zarr_metadata.model import ZarrV3ArrayMetadata, validate_array_metadata_v3
+from zarr_metadata.model import (
+    ZarrV3ArrayMetadata,
+    validate_array_metadata_v3,
+)
+from zarr_metadata.v3._pipeline import (
+    read_pipeline,
+)
 from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
@@ -24,7 +30,6 @@ from zarr_metadata.v3.definition import (
     JSONValue,
     Nested,
     Resolved,
-    read_pipeline,
     resolve,
 )
 

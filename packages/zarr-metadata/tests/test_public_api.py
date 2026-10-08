@@ -333,7 +333,6 @@ _STANDALONE_VOCAB = frozenset(
         "ShardingIndexLocation",
         "Struct",
         "StructField",
-        "TypedDictKeys",
         "ValidationProblem",
     }
 )

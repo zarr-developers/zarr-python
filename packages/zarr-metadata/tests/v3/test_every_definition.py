@@ -13,6 +13,11 @@ from typing import Any
 import pytest
 
 from zarr_metadata._json import value_at
+from zarr_metadata.v3._definition import (
+    canonical_of,
+    canonicalize,
+    configuration_of,
+)
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE, RawBytesConfiguration
 from zarr_metadata.v3.definition import (
@@ -27,9 +32,6 @@ from zarr_metadata.v3.definition import (
     Read,
     Refused,
     ValidationProblem,
-    canonical_of,
-    canonicalize,
-    configuration_of,
     fill_value_problems,
     resolve,
 )

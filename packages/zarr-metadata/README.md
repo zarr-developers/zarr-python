@@ -53,6 +53,19 @@ A bare `TypeAdapter` over a public document `TypedDict` is a coercive shape
 adapter, not a Zarr conformance validator; it may coerce values or discard
 members that the strict model parser rejects.
 
+## Dependencies
+
+The core of this package depends on `typing-extensions` and
+`annotated-types` only. It does not depend on a validation framework,
+and it will not: a dependency on pydantic, or any other framework with
+its own release cadence and compiled parts, would pin that framework for
+every consumer of zarr-metadata and collide with the pins consumers
+already carry. Instead the package reads a `TypedDict` as the typing spec
+defines it with its own checker (`zarr_metadata.typed_json.check`), and
+spells bounds in the `annotated-types` vocabulary, which pydantic reads
+too. `zarr_metadata.pydantic` is an optional integration over the models;
+nothing in the core imports it.
+
 ## Validation boundary
 
 The model validators enforce the declared document structure and a small set

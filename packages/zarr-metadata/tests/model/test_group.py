@@ -19,7 +19,9 @@ from zarr_metadata._json import (
     arrays_to_tuples,
     json_text,
 )
-from zarr_metadata.model import UNSET
+from zarr_metadata.model import (
+    UNSET,
+)
 from zarr_metadata.model._array import ZarrV3ArrayMetadata, ZarrV3ArrayMetadataUpdate
 from zarr_metadata.model._group import (
     ZarrV2ConsolidatedMetadata,

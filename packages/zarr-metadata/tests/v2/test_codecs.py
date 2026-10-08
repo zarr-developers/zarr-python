@@ -9,7 +9,16 @@ import pytest
 
 from zarr_metadata.v2._definition import ZarrV2CodecDefinition
 from zarr_metadata.v2.codec import V2_CODECS, ZarrV2CodecMetadata
-from zarr_metadata.v3.definition import Context, Read, Refused, Unclaimed, canonical_of, resolve
+from zarr_metadata.v3._definition import (
+    canonical_of,
+)
+from zarr_metadata.v3.definition import (
+    Context,
+    Read,
+    Refused,
+    Unclaimed,
+    resolve,
+)
 
 SCOPE = Context.of(*V2_CODECS)
 Loc = tuple[str | int, ...]

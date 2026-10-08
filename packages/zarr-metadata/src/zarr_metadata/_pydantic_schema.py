@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping  # noqa: TC003  # resolved by Pydantic at runtime
+from collections.abc import Mapping  # resolved by Pydantic at runtime
 from typing import Annotated, Literal, NotRequired
 
 from pydantic import Field
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.v2.array import (  # noqa: TC001  # resolved by Pydantic at runtime
+from zarr_metadata.v2.array import (  # resolved by Pydantic at runtime
     ZarrV2DataTypeMetadata,
 )
 from zarr_metadata.v2.codec import (  # resolved by Pydantic at runtime

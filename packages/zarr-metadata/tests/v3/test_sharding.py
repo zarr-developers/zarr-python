@@ -11,7 +11,13 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from zarr_metadata.model import ZarrV3ArrayMetadata, validate_array_metadata_v3
+from zarr_metadata.model import (
+    ZarrV3ArrayMetadata,
+    validate_array_metadata_v3,
+)
+from zarr_metadata.v3._pipeline import (
+    read_pipeline,
+)
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
     Chunk,
@@ -19,7 +25,6 @@ from zarr_metadata.v3.definition import (
     DataTypeDefinition,
     JSONValue,
     Resolved,
-    read_pipeline,
     resolve,
 )
 

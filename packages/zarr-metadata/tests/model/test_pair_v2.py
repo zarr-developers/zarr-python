@@ -28,7 +28,9 @@ from zarr_metadata.v2.definition import (
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
 )
-from zarr_metadata.v3.definition import EmptyConfiguration
+from zarr_metadata.v3.definition import (
+    EmptyConfiguration,
+)
 
 Loc = tuple[str | int, ...]
 ARRAY: dict[str, Any] = {
@@ -424,10 +426,3 @@ def test_error_a_second_key_for_a_node_file_hides_no_other_problem() -> None:
     assert one == ZarrV2ConsolidatedMetadata(
         {"zarr_consolidated_format": 1, "metadata": {"a/.zarray": ZARRAY}}
     )
-
-
-def test_the_repair_shapes_are_exported() -> None:
-    """The JSON shape of each known v2 writer bug is exported beside the v3 ones."""
-    from zarr_metadata import model
-
-    assert "ZarrV2ZGroupWithConsolidatedMetadataJSON" in model.__all__

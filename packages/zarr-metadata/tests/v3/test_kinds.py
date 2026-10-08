@@ -11,7 +11,12 @@ from annotated_types import Ge
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import as_kind, kind_of
+from zarr_metadata.v3._definition import (
+    WithFillValue,
+    as_kind,
+    field_json_schema,
+    kind_of,
+)
 from zarr_metadata.v3._scope import kind_name
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
@@ -22,9 +27,7 @@ from zarr_metadata.v3.definition import (
     Read,
     Refused,
     Unclaimed,
-    WithFillValue,
     canonical_fill_value,
-    field_json_schema,
     fill_value_problems,
     resolve,
 )

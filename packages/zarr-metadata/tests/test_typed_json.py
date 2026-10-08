@@ -59,8 +59,13 @@ from zarr_metadata._typed_json import (
     shape_of,
     typeddict_keys,
 )
-from zarr_metadata.model import ZarrV2ArrayMetadata, ZarrV3ArrayMetadata
-from zarr_metadata.typed_json import check
+from zarr_metadata.model import (
+    ZarrV2ArrayMetadata,
+    ZarrV3ArrayMetadata,
+)
+from zarr_metadata.typed_json import (
+    check,
+)
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON, ZarrV2DataTypeMetadata
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.data_type.float32 import Float32FillValue

@@ -12,7 +12,7 @@ from annotated_types import Ge, Interval
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._common import (
-    JSONValue,  # noqa: TC001 - a TypedDict's annotations are evaluated at run time
+    JSONValue,
 )
 from zarr_metadata.v2._definition import ZarrV2CodecDefinition
 

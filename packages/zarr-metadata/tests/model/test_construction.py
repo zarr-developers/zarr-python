@@ -27,7 +27,9 @@ from zarr_metadata.model import (
     ZarrV3GroupMetadata,
 )
 from zarr_metadata.v3.data_type.int8 import INT8_DATA_TYPE
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
+from zarr_metadata.v3.definition import (
+    CORE_AND_EXTENSIONS,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

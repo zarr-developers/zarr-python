@@ -7,7 +7,7 @@ import dataclasses
 import math
 import pickle
 from collections.abc import (
-    Mapping,  # noqa: TC003 - a TypedDict's annotations are evaluated at run time
+    Mapping,
 )
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Annotated, Any, Final, NotRequired, cast
@@ -23,6 +23,14 @@ from zarr_metadata.model import (
     validate_metadata_field_v3,
 )
 from zarr_metadata.model._array import ZarrV3ArrayMetadata
+from zarr_metadata.typed_json import (
+    check,
+)
+from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+from zarr_metadata.v3._definition import (
+    canonical_of,
+    configuration_of,
+)
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
 from zarr_metadata.v3.codec.crc32c import Empty
@@ -47,16 +55,11 @@ from zarr_metadata.v3.definition import (
     StorageTransformerDefinition,
     Unclaimed,
     ValidationProblem,
-    ZarrV3MetadataFieldJSON,
-    canonical_of,
-    check,
-    configuration_of,
     resolve,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
-    from decimal import Decimal
 
 
 class AcmeStackConfiguration(TypedDict, closed=True):
@@ -1132,7 +1135,7 @@ class AcmePlainConfiguration(TypedDict, closed=True):
 
 
 class AcmeDecimal(TypedDict, closed=True):
-    value: Decimal  # a name the type checker sees, and the running module does not
+    value: Decimal  # noqa: F821 - a name the running module does not define  # pyright: ignore[reportUndefinedVariable]
 
 
 class AcmeUnresolvedConfiguration(TypedDict, closed=True):

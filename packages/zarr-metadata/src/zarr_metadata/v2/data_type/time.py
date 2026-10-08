@@ -10,7 +10,7 @@ from typing_extensions import ReadOnly, TypedDict
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
 from zarr_metadata.v2.data_type.scalar import (
-    ZarrV2ByteOrder,  # noqa: TC001 - a TypedDict's annotations are evaluated at run time
+    ZarrV2ByteOrder,
 )
 from zarr_metadata.v3.data_type._numpy_time import (
     NumpyTimeScaleFactor,

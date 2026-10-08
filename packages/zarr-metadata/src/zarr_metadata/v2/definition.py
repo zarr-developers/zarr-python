@@ -35,7 +35,6 @@ from zarr_metadata.v3._definition import (
     Resolved,
     Unclaimed,
     canonical_fill_value,
-    canonical_of,
     fill_value_problems,
     resolve,
 )
@@ -46,9 +45,6 @@ from zarr_metadata.v3._scope import (
     Conflict,
     Disagreements,
     ScopeConflictError,
-    claim_key,
-    claims_of,
-    refines,
 )
 
 if TYPE_CHECKING:
@@ -91,11 +87,7 @@ __all__ = [
     "ZarrV2DataTypeDefinition",
     "ZarrV2DataTypeField",
     "canonical_fill_value",
-    "canonical_of",
-    "claim_key",
-    "claims_of",
     "fill_value_problems",
-    "refines",
     "resolve_codec_v2",
     "resolve_dtype_v2",
 ]

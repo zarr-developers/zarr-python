@@ -8,7 +8,7 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
 from zarr_metadata.v2.data_type.scalar import (
-    ZarrV2ByteOrder,  # noqa: TC001 - a TypedDict's annotations are evaluated at run time
+    ZarrV2ByteOrder,
 )
 
 

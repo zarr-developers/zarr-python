@@ -9,7 +9,7 @@ the validators from `zarr_metadata.model`.
 
 import re
 from collections.abc import Mapping
-from typing import Final, TypeGuard, cast
+from typing import Final, TypeAlias, TypeGuard, cast
 
 from typing_extensions import TypeAliasType
 
@@ -25,7 +25,7 @@ from zarr_metadata._json import (
     with_input,
 )
 
-ZarrV3MetadataFieldJSON = str | ZarrV3NamedConfigJSON
+ZarrV3MetadataFieldJSON: TypeAlias = str | ZarrV3NamedConfigJSON
 """The JSON shape of any v3 metadata extension-point entry: either a bare
 short-hand name string or a `{name, configuration, must_understand}` envelope.
 

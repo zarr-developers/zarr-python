@@ -34,9 +34,16 @@ from zarr_metadata.model._validation import (
     read_array_v2,
     read_array_v3,
 )
-from zarr_metadata.v2.array import ZARR_V2_ARRAY_METADATA_STORE_KEY
+from zarr_metadata.v2.array import (
+    ZARR_V2_ARRAY_METADATA_STORE_KEY,
+    ZarrV2ArrayDimensionSeparator,
+    ZarrV2ArrayOrder,
+    ZarrV2DataTypeMetadata,
+)
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
+from zarr_metadata.v2.codec import ZarrV2CodecMetadata
 from zarr_metadata.v2.definition import CORE_V2, resolve_dtype_v2
+from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._definition import (
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
@@ -59,16 +66,8 @@ if TYPE_CHECKING:
 
     from zarr_metadata._typed_json import Loc
     from zarr_metadata.v2._definition import ZarrV2CodecDefinition, ZarrV2DataTypeDefinition
-    from zarr_metadata.v2.array import (
-        ZarrV2ArrayDimensionSeparator,
-        ZarrV2ArrayMetadataJSON,
-        ZarrV2ArrayMetadataStoreKey,
-        ZarrV2ArrayOrder,
-        ZarrV2DataTypeMetadata,
-    )
+    from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON, ZarrV2ArrayMetadataStoreKey
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
-    from zarr_metadata.v2.codec import ZarrV2CodecMetadata
-    from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
     from zarr_metadata.v3._definition import Resolved
     from zarr_metadata.v3.array import (
         ZarrV3ArrayMetadataJSON,
@@ -140,6 +139,11 @@ class ZarrV3ArrayMetadata:
     zarr_format: Final = 3
     node_type: Final = "array"
 
+    @property
+    def claims(self) -> Claims:
+        """What the reading claimed of each name the document writes, keyed as the scope files it."""
+        return self._claims
+
     def __init__(self, document: object, context: Context | None = None) -> None:
         scope = CORE_AND_EXTENSIONS if context is None else context
         reading, members = read_array_v3(document, scope)
@@ -194,11 +198,6 @@ class ZarrV3ArrayMetadata:
     def reading(self) -> ZarrV3ArrayMetadataReading:
         """The document as the scope read it: each field, the pipeline, the chunk each codec is handed."""
         return self._reading
-
-    @property
-    def claims(self) -> Claims:
-        """What the reading claimed of each name the document writes, keyed as the scope files it."""
-        return self._claims
 
     def to_json(self) -> ZarrV3ArrayMetadataJSON:
         """The document as written, refined, sharing nothing with the model."""
@@ -578,6 +577,11 @@ class ZarrV2ArrayMetadata:
 
     zarr_format: Final = 2
 
+    @property
+    def claims(self) -> Claims:
+        """What the reading claimed of each typestr and codec id the document writes, keyed as the scope files them."""
+        return self._claims
+
     def __init__(self, document: object, context: Context | None = None) -> None:
         scope = CORE_V2 if context is None else context
         reading, members = read_array_v2(document, scope)
@@ -633,11 +637,6 @@ class ZarrV2ArrayMetadata:
     def reading(self) -> ZarrV2ArrayMetadataReading:
         """The document as the scope read it: the dtype, the compressor, each filter."""
         return self._reading
-
-    @property
-    def claims(self) -> Claims:
-        """What the reading claimed of each typestr and codec id the document writes, keyed as the scope files them."""
-        return self._claims
 
     def to_json(self) -> ZarrV2ArrayMetadataJSON:
         """The merged document as written, refined, sharing nothing with the model.

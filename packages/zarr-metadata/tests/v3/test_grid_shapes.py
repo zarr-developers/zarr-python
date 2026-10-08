@@ -11,13 +11,18 @@ from __future__ import annotations
 
 import pytest
 
-from zarr_metadata.model import ZarrV3ArrayMetadata, validate_array_metadata_v3
+from zarr_metadata.model import (
+    ZarrV3ArrayMetadata,
+    validate_array_metadata_v3,
+)
+from zarr_metadata.v3._definition import (
+    chunk_grid_lengths,
+)
 from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
     ChunkGridDefinition,
     JSONValue,
-    chunk_grid_lengths,
     resolve,
 )
 

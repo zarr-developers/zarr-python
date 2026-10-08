@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, TypeAlias, TypeGuard, Typ
 
 from typing_extensions import TypeAliasType, TypedDict, Unpack
 
+from zarr_metadata._common import JSONValue
 from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
@@ -72,7 +73,6 @@ from zarr_metadata.v3.group import ZARR_V3_GROUP_METADATA_STORE_KEY, ZarrV3Group
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from zarr_metadata._common import JSONValue
     from zarr_metadata._typed_json import Loc
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
     from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataStoreKey
@@ -145,6 +145,11 @@ class ZarrV3GroupMetadata:
 
     zarr_format: Final = 3
     node_type: Final = "group"
+
+    @property
+    def claims(self) -> Claims:
+        """What the reading claimed of each name the document and its consolidated documents write, keyed as the scope files it."""
+        return self._claims
 
     def __init__(self, document: object, context: Context | None = None) -> None:
         scope = CORE_AND_EXTENSIONS if context is None else context
@@ -219,11 +224,6 @@ class ZarrV3GroupMetadata:
     def reading(self) -> ZarrV3GroupMetadataReading:
         """The document as the scope read it: each document its consolidated metadata holds, as read."""
         return self._reading
-
-    @property
-    def claims(self) -> Claims:
-        """What the reading claimed of each name the document writes, in the documents it holds, keyed as the scope files it."""
-        return self._claims
 
     def to_json(self) -> ZarrV3GroupMetadataJSON:
         """The document as written, refined, sharing nothing with the model."""
@@ -1220,6 +1220,11 @@ class ZarrV2GroupMetadata:
 
     zarr_format: Final = 2
 
+    @property
+    def claims(self) -> Claims:
+        """What the reading claimed: nothing, since a group holds no field."""
+        return MappingProxyType({})
+
     def __init__(self, document: object, context: Context | None = None) -> None:
         scope = CORE_V2 if context is None else context
         parsed = parse_group_metadata_v2(document, context=scope)
@@ -1254,11 +1259,6 @@ class ZarrV2GroupMetadata:
     def context(self) -> Context:
         """The scope the document was read in, which `update` reads new attributes in."""
         return self._context
-
-    @property
-    def claims(self) -> Claims:
-        """What the reading claimed: nothing, since a group holds no field."""
-        return MappingProxyType({})
 
     @property
     def attributes(self) -> Mapping[str, JSONValue] | UNSET:

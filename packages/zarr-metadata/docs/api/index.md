@@ -25,9 +25,9 @@ The package is organized to mirror the structure of the Zarr specifications:
   and [data types](v3/data_type.md)
 - [`zarr_metadata.v3.definition`](v3/definition.md) — each extension's
   metadata as a definition: the TypedDict its configuration is, and the
-  rules on it; check JSON against a TypedDict, judge a configuration,
-  read a whole field in a scope, read a codec pipeline, or write a
-  scope's fields as a JSON Schema. Its module docstring is the guide
+  rules on it; judge a configuration, read a whole field in a scope, and
+  the scopes, `CORE` and `CORE_AND_EXTENSIONS`, fields are read in. Its
+  module docstring is the guide
 
 The document types, models, and spec vocabulary — including the store keys —
 are re-exported at the top level, so

@@ -28,8 +28,8 @@ the values, `"dynamic"`), `DataTypeDefinition`, `ChunkGridDefinition`,
 **Reading JSON.** Three steps, each feeding the next, and each usable on
 its own by a caller that holds nothing but JSON:
 
-1. `check(value, SomeTypedDict)`, from `zarr_metadata.typed_json` and
-   here too, type-checks JSON against a TypedDict and needs nothing else:
+1. `check(value, SomeTypedDict)`, from `zarr_metadata.typed_json`,
+   type-checks JSON against a TypedDict and needs nothing else:
    a value of the TypedDict or None, and every problem, each located. The
    value holds what the TypedDict admits and nothing else. A member typed
    with a field alias is checked as the JSON a metadata field is.
@@ -55,19 +55,12 @@ its own by a caller that holds nothing but JSON:
    field is read as one of the five kinds, with or without type
    arguments;
    `resolve(field, Definition, scope)` is a `TypeError`, since nothing
-   is filed under it. `configuration_of(resolved, GZIP_CODEC)` is the
-   configuration typed as that definition's TypedDict, when it read it.
-   `fields_of(resolved)` gives the field and each field it holds, with
-   where each sits. A whole v3 array document is read by
-   `read_array_metadata_v3`, in `zarr_metadata.model`.
+   is filed under it. A whole v3 array document is read by
+   `read_array_metadata_v3`, in `zarr_metadata.model`, whose reading
+   gives each field with where it sits in the document.
 
     from zarr_metadata.v3.codec.gzip import GZIP_CODEC
-    from zarr_metadata.v3.definition import (
-        CORE_AND_EXTENSIONS,
-        CodecDefinition,
-        configuration_of,
-        resolve,
-    )
+    from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, CodecDefinition, resolve
 
     resolved, problems = resolve({"name": "gzip", "configuration": {"level": 12}},
                                  CodecDefinition, CORE_AND_EXTENSIONS)
@@ -78,7 +71,8 @@ its own by a caller that holds nothing but JSON:
 
     resolved, problems = resolve({"name": "gzip", "configuration": {"level": 5}},
                                  CodecDefinition, CORE_AND_EXTENSIONS)
-    configuration_of(resolved, GZIP_CODEC)   # {'level': 5}, a GzipCodecConfiguration
+    resolved.definition is GZIP_CODEC        # True
+    resolved.configuration                   # {'level': 5}
 
 Problems are values, not exceptions: `ValidationProblem(loc, message,
 kind)`, with `kind` one of `invalid_type`, `invalid_value`,
@@ -227,9 +221,9 @@ array of a given shape -- a dimension with no chunk length, chunks that
 fall short of one -- located in the configuration. A grid that says
 nothing of the shape fits every one. It also says the lengths its chunks
 take along each axis of an array it fits, `chunk_lengths`: a set per
-axis, since a rectilinear grid's chunks differ. `chunk_grid_lengths(grid,
-shape)` gives both of a chunk grid field the scope read: an entry for
-each dimension of the shape, None where nothing says the lengths.
+axis, since a rectilinear grid's chunks differ. A reading holds both of
+the grid it read: an entry for each dimension of the shape, None where
+nothing says the lengths.
 
 A codec is judged against what it is handed. The array hands its first
 codec a `Chunk`: the lengths of its grid's chunks along each of the
@@ -238,11 +232,10 @@ says. A codec handed an array says what the spec disallows in it handed
 a chunk: `chunk_rules`, located in its configuration -- a `transpose`
 whose `order` has another number of axes. An array -> array codec says
 what it hands the next, whatever its chunk rules found: `transition` --
-`transpose` permutes the axes. `read_pipeline(codecs, chunk)` reads codec
-fields the scope read as a pipeline: their order -- array -> array
-codecs, one array -> bytes codec, bytes -> bytes codecs -- and then each
-against the chunk it is handed, giving each codec's `Stage` with that
-chunk. A codec that holds pipelines of its own says what each is
+`transpose` permutes the axes. A reading reads the codec fields as a
+pipeline: their order -- array -> array codecs, one array -> bytes codec,
+bytes -> bytes codecs -- and then each against the chunk it is handed,
+giving each codec's `Stage` with that chunk. A codec that holds pipelines of its own says what each is
 handed: `pipelines`, by the member of its configuration that holds each
 -- a shard's inner codecs its inner chunks, its index codecs the shard
 index -- and each is read the same way, its stages kept as the codec's
@@ -259,8 +252,8 @@ reads raw bits its own way defines `r*`; a data type named `r16` is
 refused, since that name reads as `r*`. `r*` itself is notation, and a
 document that writes it names nothing in any scope.
 
-**The simplest spelling.** `canonicalize(field, kind, scope)` gives a
-field without problems in its simplest equivalent spelling: each nested
+**The simplest spelling.** A field without problems has a simplest
+equivalent spelling, which is what two fields are compared by: each nested
 field in its own simplest spelling, then the definition's `canonical` --
 blosc drops a `typesize` that `noshuffle` ignores, a rectilinear grid
 run-length encodes its chunk shapes -- and the envelope in the fewest
@@ -271,15 +264,13 @@ back into the name, in decimal, so `r008` is `r8`. A field with any
 problem, an unknown key included, has none: a simpler spelling of it
 would erase what its author wrote. What `canonical` gives is judged
 again: one that does not hold is a `ValueError`, a fault in the
-definition. `canonical_of(resolved, problems)` spells a field a scope
-has read already, given its problems -- as `resolve` gives them, or
-`with_problems` gives each field of a reading -- without reading it
-again, and gives what `canonicalize` gives: None for a field with a
-problem.
+definition. `canonical_fill_value` spells a fill value the same way, as
+the data type that read it spells one.
 
-**JSON Schema.** `field_json_schema(CodecDefinition, SCOPE)` writes the
-fields of one kind a scope reads as a JSON Schema, draft 2020-12, for a
-validator in another language or an editor: each definition's field --
+**JSON Schema.** `node_metadata_json_schema_v3`, in `zarr_metadata.model`,
+writes a whole `zarr.json` as a JSON Schema, draft 2020-12, for a
+validator in another language or an editor, its fields as the scope
+reads them: each definition's field --
 its name, its configuration as its TypedDict says, bounds and all, a
 `must_understand` of `true`, and its bare name when it needs no
 configuration -- and a name nothing in scope claims, with any
@@ -289,20 +280,16 @@ rules are not in it, so a field it accepts may still have a problem;
 one `resolve` reads without a problem, it accepts, as JSON: arrays as
 lists, as a parser gives them. Each configuration
 TypedDict, and each field alias, is written once, in `$defs`, under its
-name. `node_metadata_json_schema_v3`, in `zarr_metadata.model`, writes a
-whole `zarr.json`, its fill value held to its data type's.
+name; the fill value is held to its data type's.
 
 **Scopes as values.** Two scopes are equal when they file the same
-definitions, and equal scopes hash alike. `claims_of(fields_of(field))`
-says what a reading claimed of each name -- the definition that read it,
-or None -- keyed as the scope files it, `r16` under `r*`.
-`refines(field, other)` orders two readings of a field by information: a
+definitions, and equal scopes hash alike. `Context.joined(*scopes)` is
+the least scope above each, or a `ScopeConflictError` naming each name
+filed two ways; `extended_with` remains the way to take a name over on
+purpose. A model's `refined_in` moves it to a scope that claims more and
+contradicts nothing, and `refines` orders two models by information: a
 name nothing claimed, read by a definition, is a gain; the reverse a
 loss; one name read by two definitions a conflict.
-`scope.disagreements(claims)` says where a scope would read a reading
-otherwise, and `Context.joined(*scopes)` is the least scope above each,
-or a `ScopeConflictError` naming each name filed two ways; `extended_with`
-remains the way to take a name over on purpose.
 
 A definition checks itself when it is built, and each of these is a
 `TypeError` saying what is wrong: a `configuration` that is not a
@@ -323,7 +310,7 @@ Nothing happens at class creation.
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import MetadataValidationError, ProblemKind, ValidationProblem, shown
-from zarr_metadata._typed_json import Loc, check
+from zarr_metadata._typed_json import Loc
 from zarr_metadata.v3._common import (
     ChunkGridField,
     ChunkKeyEncodingField,
@@ -331,7 +318,6 @@ from zarr_metadata.v3._common import (
     DataTypeField,
     StaticCodecField,
     StorageTransformerField,
-    ZarrV3MetadataFieldJSON,
 )
 from zarr_metadata.v3._definition import (
     Chunk,
@@ -351,20 +337,12 @@ from zarr_metadata.v3._definition import (
     StorageClass,
     StorageTransformerDefinition,
     Unclaimed,
-    WithFillValue,
     canonical_fill_value,
-    canonical_of,
-    canonicalize,
-    chunk_grid_lengths,
-    configuration_of,
-    field_json_schema,
-    fields_of,
     fill_value_problems,
     resolve,
     storage_of,
-    with_problems,
 )
-from zarr_metadata.v3._pipeline import Stage, read_pipeline
+from zarr_metadata.v3._pipeline import Stage
 from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS, Context
 from zarr_metadata.v3._scope import (
     ClaimKey,
@@ -372,9 +350,6 @@ from zarr_metadata.v3._scope import (
     Conflict,
     Disagreements,
     ScopeConflictError,
-    claim_key,
-    claims_of,
-    refines,
 )
 
 __all__ = [
@@ -415,23 +390,9 @@ __all__ = [
     "StorageTransformerField",
     "Unclaimed",
     "ValidationProblem",
-    "WithFillValue",
-    "ZarrV3MetadataFieldJSON",
     "canonical_fill_value",
-    "canonical_of",
-    "canonicalize",
-    "check",
-    "chunk_grid_lengths",
-    "claim_key",
-    "claims_of",
-    "configuration_of",
-    "field_json_schema",
-    "fields_of",
     "fill_value_problems",
-    "read_pipeline",
-    "refines",
     "resolve",
     "shown",
     "storage_of",
-    "with_problems",
 ]

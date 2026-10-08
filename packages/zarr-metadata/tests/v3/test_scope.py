@@ -9,7 +9,16 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from zarr_metadata.v3._scope import kind_name
+from zarr_metadata.v3._definition import (
+    fields_of,
+)
+from zarr_metadata.v3._scope import (
+    Claims,
+    Disagreements,
+    claims_of,
+    kind_name,
+    refines,
+)
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC
 from zarr_metadata.v3.codec.crc32c import CRC32C_CODEC, Empty
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
@@ -22,20 +31,15 @@ from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
-    Claims,
     CodecDefinition,
     Conflict,
     Context,
     DataTypeDefinition,
     Definition,
-    Disagreements,
     Refused,
     Resolved,
     ScopeConflictError,
     StorageTransformerDefinition,
-    claims_of,
-    fields_of,
-    refines,
     resolve,
 )
 

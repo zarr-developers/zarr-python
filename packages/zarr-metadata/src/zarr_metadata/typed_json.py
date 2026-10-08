@@ -96,10 +96,8 @@ from zarr_metadata._json import ProblemKind, ValidationProblem
 from zarr_metadata._typed_json import (
     JSONSchema,
     Loc,
-    TypedDictKeys,
     check,
     json_schema,
-    typeddict_keys,
 )
 
 __all__ = [
@@ -107,9 +105,7 @@ __all__ = [
     "JSONValue",
     "Loc",
     "ProblemKind",
-    "TypedDictKeys",
     "ValidationProblem",
     "check",
     "json_schema",
-    "typeddict_keys",
 ]

@@ -13,11 +13,16 @@ import pytest
 from typing_extensions import Unpack
 
 from tests.model._cases import Expect, ExpectFail, mutate_nested_containers
-from zarr_metadata._json import JSON_DEPTH, arrays_to_tuples, json_text, prefixed
+from zarr_metadata._json import (
+    JSON_DEPTH,
+    arrays_to_tuples,
+    is_json,
+    json_text,
+    parse_json,
+    prefixed,
+    validate_json,
+)
 from zarr_metadata.model import (
-    ARRAY_METADATA_OPTIONAL_KEYS_V3,
-    ARRAY_METADATA_REQUIRED_KEYS_V3,
-    ARRAY_METADATA_STANDARD_KEYS_V3,
     UNSET,
     MetadataValidationError,
     ValidationProblem,
@@ -29,16 +34,24 @@ from zarr_metadata.model import (
     is_array_metadata_v3,
     is_group_metadata_v2,
     is_group_metadata_v3,
-    is_json,
     is_metadata_field_v3,
     parse_array_metadata_v2,
     parse_array_metadata_v3,
-    parse_json,
     parse_metadata_field_v3,
     validate_array_metadata_v2,
     validate_array_metadata_v3,
-    validate_json,
     validate_metadata_field_v3,
+)
+from zarr_metadata.model._validation import (
+    ARRAY_METADATA_OPTIONAL_KEYS_V3,
+    ARRAY_METADATA_REQUIRED_KEYS_V3,
+    ARRAY_METADATA_STANDARD_KEYS_V3,
+)
+from zarr_metadata.v3._definition import (
+    canonical_of,
+    configuration_of,
+    fields_of,
+    with_problems,
 )
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSONPartial
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
@@ -47,10 +60,6 @@ from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
     Read,
     Unclaimed,
-    canonical_of,
-    configuration_of,
-    fields_of,
-    with_problems,
 )
 
 if TYPE_CHECKING:
@@ -65,8 +74,6 @@ def test_guards_exported_from_package() -> None:
     import zarr_metadata.model
 
     for name in (
-        "is_json",
-        "parse_json",
         "is_metadata_field_v3",
         "parse_metadata_field_v3",
         "is_array_metadata_v3",
@@ -150,7 +157,6 @@ def test_validation_diagnostics_exported_from_package() -> None:
     for name in (
         "ValidationProblem",
         "MetadataValidationError",
-        "validate_json",
         "validate_metadata_field_v3",
         "validate_array_metadata_v3",
         "validate_array_metadata_v2",

@@ -22,6 +22,9 @@ from zarr_metadata.model import (
     read_group_metadata_v3,
     validate_group_metadata_v3,
 )
+from zarr_metadata.v3._scope import (
+    claims_of,
+)
 from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
@@ -30,7 +33,6 @@ from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
     CodecDefinition,
     Context,
-    claims_of,
 )
 
 ARRAY: dict[str, Any] = {

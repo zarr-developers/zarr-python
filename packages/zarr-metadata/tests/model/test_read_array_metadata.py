@@ -21,6 +21,10 @@ from zarr_metadata.model import (
     read_array_metadata_v3,
     read_group_metadata_v3,
 )
+from zarr_metadata.v3._definition import (
+    fields_of,
+    with_problems,
+)
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
@@ -34,9 +38,7 @@ from zarr_metadata.v3.definition import (
     Refused,
     StorageTransformerDefinition,
     Unclaimed,
-    fields_of,
     resolve,
-    with_problems,
 )
 
 if TYPE_CHECKING:

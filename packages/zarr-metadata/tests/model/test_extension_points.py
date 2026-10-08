@@ -25,7 +25,12 @@ from zarr_metadata.model import (
     validate_array_metadata_v3,
     validate_group_metadata_v3,
 )
-from zarr_metadata.v3.definition import CORE, CORE_AND_EXTENSIONS, CodecDefinition, Context
+from zarr_metadata.v3.definition import (
+    CORE,
+    CORE_AND_EXTENSIONS,
+    CodecDefinition,
+    Context,
+)
 
 BYTES = {"name": "bytes", "configuration": {"endian": "little"}}
 

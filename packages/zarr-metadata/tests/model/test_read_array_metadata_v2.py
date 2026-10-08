@@ -24,7 +24,9 @@ from zarr_metadata.v2.definition import (
     Unclaimed,
     ZarrV2CodecDefinition,
 )
-from zarr_metadata.v3.definition import EmptyConfiguration
+from zarr_metadata.v3.definition import (
+    EmptyConfiguration,
+)
 
 Loc = tuple[str | int, ...]
 BASE: dict[str, Any] = dict(ZarrV2ArrayMetadata.create_default(shape=(4,)).to_json())

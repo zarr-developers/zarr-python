@@ -27,7 +27,10 @@ from zarr_metadata.model import (
     ZarrV3GroupMetadata,
 )
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
-from zarr_metadata.v3.definition import CORE, Read
+from zarr_metadata.v3.definition import (
+    CORE,
+    Read,
+)
 
 V3_ARRAY_DOC = dict(ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json())
 V2_ARRAY_DOC = dict(ZarrV2ArrayMetadata.create_default(shape=(4,), chunks=(2,)).to_json())

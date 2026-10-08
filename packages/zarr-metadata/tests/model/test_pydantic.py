@@ -42,7 +42,9 @@ from pydantic import (
 )
 
 from zarr_metadata import JSONValue
-from zarr_metadata.model import ZarrV3ArrayMetadata
+from zarr_metadata.model import (
+    ZarrV3ArrayMetadata,
+)
 
 # --- the integration (this is the example) -----------------------------------
 

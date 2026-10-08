@@ -20,7 +20,14 @@ import pytest
 from annotated_types import Le
 from typing_extensions import TypedDict
 
-from zarr_metadata._json import arrays_to_tuples, is_canonical_json, value_at, with_input, within
+from zarr_metadata._json import (
+    arrays_to_tuples,
+    is_canonical_json,
+    validate_json,
+    value_at,
+    with_input,
+    within,
+)
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model import (
     MetadataValidationError,
@@ -33,13 +40,14 @@ from zarr_metadata.model import (
     validate_array_metadata_v3,
     validate_group_metadata_v2,
     validate_group_metadata_v3,
-    validate_json,
     validate_metadata_field_v3,
     validate_node_metadata_v3,
     validate_node_name_v3,
     validate_node_path_v3,
 )
-from zarr_metadata.typed_json import check
+from zarr_metadata.typed_json import (
+    check,
+)
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,

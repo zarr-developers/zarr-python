@@ -17,7 +17,11 @@ from zarr_metadata.v2.definition import (
     resolve_dtype_v2,
 )
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, CodecDefinition, DataTypeDefinition
+from zarr_metadata.v3.definition import (
+    CORE_AND_EXTENSIONS,
+    CodecDefinition,
+    DataTypeDefinition,
+)
 
 
 def test_core_v2_files_every_v2_definition_apart_from_v3() -> None:

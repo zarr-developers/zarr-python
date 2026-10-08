@@ -11,7 +11,9 @@ from zarr_metadata.v2._definition import (
     ZarrV2DataTypeDefinition,
     parse_typestr,
 )
-from zarr_metadata.v3.definition import EmptyConfiguration
+from zarr_metadata.v3.definition import (
+    EmptyConfiguration,
+)
 
 Loc = tuple[str | int, ...]
 
