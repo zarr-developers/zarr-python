@@ -365,3 +365,30 @@ def test_match_dtype_not_a_numpy_dtype(not_a_dtype: Any) -> None:
     """
     with pytest.raises(ValueError, match="No Zarr data type found"):
         data_type_registry.match_dtype(not_a_dtype)
+
+def test_out_of_bounds_integer_from_json_scalar() -> None:
+    """An integer outside the dtype's range raises a validation error, not
+    numpy's OverflowError. Regression test for
+    https://github.com/zarr-developers/zarr-python/issues/4453 item 4."""
+    for dtype_instance, bad in (
+        (Int8(), 300),
+        (Int8(), -129),
+        (Int8(), "300"),
+        (Int8(), 300.0),
+        (UInt8(), -1),
+        (UInt64(), 2**64),
+        (Int64(), -(2**63) - 1),
+    ):
+        with pytest.raises(TypeError, match="out of bounds"):
+            dtype_instance.from_json_scalar(bad, zarr_format=3)
+        with pytest.raises(TypeError, match="out of bounds"):
+            dtype_instance.from_json_scalar(bad, zarr_format=2)
+
+    for dtype_instance, good in (
+        (Int8(), 127),
+        (Int8(), -128),
+        (UInt8(), 255),
+        (UInt64(), 2**64 - 1),
+        (Int64(), -(2**63)),
+    ):
+        assert dtype_instance.from_json_scalar(good, zarr_format=3) == dtype_instance.to_native_dtype().type(good)
