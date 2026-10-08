@@ -18,6 +18,7 @@ from zarr_metadata._json import (
     copied,
     frozen,
     is_canonical_json,
+    is_object,
     json_text,
     nested_past_the_levels,
     not_an_object,
@@ -652,9 +653,9 @@ def _node_type(value: object) -> tuple[str | None, tuple[ValidationProblem, ...]
     A document that says none is judged by its `zarr_format` too, so one
     of another format says it is not v3.
     """
-    if not isinstance(value, Mapping):
+    if not is_object(value):
         return None, not_an_object(value)
-    document = cast("Mapping[object, object]", value)
+    document = value
     node_type = document.get("node_type")
     if isinstance(node_type, str) and node_type in _NODE_TYPES:
         return node_type, ()
@@ -713,9 +714,9 @@ def read_group_v3(
     so a chain of them is bounded by the levels a reader walks, counted
     from the outermost root.
     """
-    if not isinstance(value, Mapping):
+    if not is_object(value):
         return ZarrV3GroupMetadataReading(problems=not_an_object(value)), None
-    doc = cast("Mapping[object, object]", value)
+    doc = value
     found: list[ValidationProblem] = list(missing_keys(GROUP_METADATA_REQUIRED_KEYS_V3, doc))
     past = members_past_the_levels(doc, at)
     found.extend(past.values())
@@ -760,9 +761,9 @@ def documents_for(value: object) -> object:
     What a group's own document is built from, so a document built of
     models is JSON as any other, each child written as the child wrote it.
     """
-    if not isinstance(value, Mapping):
+    if not is_object(value):
         return value
-    document = cast("Mapping[object, object]", value)
+    document = value
     given = document.get(ZARR_V3_CONSOLIDATED_METADATA_KEY)
     member = _member_documents_for(given)
     if member is given:
@@ -774,14 +775,14 @@ def _member_documents_for(member: object) -> object:
     """A `consolidated_metadata` member with each node model it lists replaced by its document; `member` itself when it lists none."""
     if isinstance(member, ZarrV3ConsolidatedMetadata):
         return member._document  # pyright: ignore[reportPrivateUsage]
-    if not isinstance(member, Mapping):
+    if not is_object(member):
         return member
-    entries = cast("Mapping[object, object]", member).get("metadata")
-    if not isinstance(entries, Mapping):
-        return cast("object", member)
+    entries = member.get("metadata")
+    if not is_object(entries):
+        return member
     replaced: dict[object, object] = {}
     changed = False
-    for path, entry in cast("Mapping[object, object]", entries).items():
+    for path, entry in entries.items():
         if isinstance(entry, (ZarrV3ArrayMetadata, ZarrV3GroupMetadata)):
             replaced[path] = entry._document  # pyright: ignore[reportPrivateUsage]
             changed = True
@@ -790,8 +791,8 @@ def _member_documents_for(member: object) -> object:
             replaced[path] = documents_for(entry)
             changed = changed or replaced[path] is not entry
     if not changed:
-        return cast("object", member)
-    return {**cast("Mapping[object, object]", member), "metadata": replaced}
+        return member
+    return {**member, "metadata": replaced}
 
 
 def _read_node_model(
@@ -884,9 +885,9 @@ def _read_consolidated_v3(
     past = nested_past_the_levels(value, at)
     if past is not None:
         return {}, {}, within((past,), at)
-    if not isinstance(value, Mapping):
+    if not is_object(value):
         return {}, {}, (ValidationProblem((), "expected an object", "invalid_type"),)
-    env = cast("Mapping[object, object]", value)
+    env = value
     # Missing members are reported in the order the envelope declares them.
     problems: list[ValidationProblem] = [
         ValidationProblem((key,), "missing required key", "missing_key")
@@ -901,12 +902,12 @@ def _read_consolidated_v3(
     node_types: dict[str, NodeType | None] = {}
     entries = env.get("metadata")
     past = nested_past_the_levels(entries, (*at, "metadata"))
-    if "metadata" in env and not isinstance(entries, Mapping):
+    if "metadata" in env and not is_object(entries):
         problems.append(ValidationProblem(("metadata",), "expected an object", "invalid_type"))
-    elif isinstance(entries, Mapping) and past is not None:
+    elif is_object(entries) and past is not None:
         problems.extend(within((past,), at))
-    elif isinstance(entries, Mapping):
-        for key, entry in cast("Mapping[object, object]", entries).items():
+    elif is_object(entries):
+        for key, entry in entries.items():
             if not isinstance(key, str):
                 problems.append(
                     ValidationProblem(
@@ -1077,15 +1078,15 @@ def _with_models(
         document = cast("dict[str, JSONValue]", refined)
         model = ZarrV3GroupMetadata._of(document, context, reading, members)  # pyright: ignore[reportPrivateUsage]
         return model.reading
-    if members.consolidated is UNSET or not isinstance(value, Mapping):
+    if members.consolidated is UNSET or not is_object(value):
         return reading
-    member = cast("Mapping[object, object]", value).get(ZARR_V3_CONSOLIDATED_METADATA_KEY)
-    if not isinstance(member, Mapping):
+    member = value.get(ZARR_V3_CONSOLIDATED_METADATA_KEY)
+    if not is_object(member):
         return reading
-    entries = cast("Mapping[object, object]", member).get("metadata")
-    if not isinstance(entries, Mapping):
+    entries = member.get("metadata")
+    if not is_object(entries):
         return reading
-    held_entries = cast("Mapping[object, object]", entries)
+    held_entries = entries
     documents: dict[str, JSONValue] = {}
     for path in members.consolidated:
         if path not in held_entries:
@@ -1347,9 +1348,9 @@ class ZarrV2GroupMetadata:
         JSON, `.zgroup` holds `attributes`, or the document is not valid.
         """
         zgroup_raw = load_store_json(mapping, ZARR_V2_GROUP_METADATA_STORE_KEY)
-        if not isinstance(zgroup_raw, Mapping):
+        if not is_object(zgroup_raw):
             return cls(zgroup_raw, context=context)
-        zgroup = cast("Mapping[str, object]", zgroup_raw)
+        zgroup = zgroup_raw
         if "attributes" in zgroup:
             # A key `.zgroup` does not declare: its attributes are `.zattrs`.
             refused = ValidationProblem(
@@ -1596,9 +1597,9 @@ def _read_consolidated_v2(
     its entry and the attributes' under the `.zattrs` entry. The nodes are
     empty when anything is wrong.
     """
-    if not isinstance(data, Mapping):
+    if not is_object(data):
         return {}, {}, not_an_object(data)
-    doc = cast("Mapping[object, object]", data)
+    doc = data
     problems: list[ValidationProblem] = [
         ValidationProblem((key,), "missing required key", "missing_key")
         for key in ("zarr_consolidated_format", "metadata")
@@ -1609,16 +1610,16 @@ def _read_consolidated_v2(
     refined: dict[str, JSONValue] = {}
     if "metadata" in doc:
         entries = doc["metadata"]
-        if not isinstance(entries, Mapping) or not all(
-            isinstance(k, str) for k in cast("Mapping[object, object]", entries)
-        ):
+        if not is_object(entries) or not all(isinstance(k, str) for k in entries):
             problems.append(
                 ValidationProblem(
                     ("metadata",), "expected an object with string keys", "invalid_type"
                 )
             )
         else:
-            for key, value in cast("Mapping[str, object]", entries).items():
+            for key, value in entries.items():
+                if not isinstance(key, str):
+                    continue
                 refine = (
                     refine_user_data
                     if key.rsplit("/", 1)[-1] == ZARR_V2_ATTRIBUTES_STORE_KEY

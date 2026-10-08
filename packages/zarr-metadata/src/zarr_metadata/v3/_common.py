@@ -8,7 +8,6 @@ the validators from `zarr_metadata.model`.
 """
 
 import re
-from collections.abc import Mapping
 from typing import Final, TypeAlias, TypeGuard, cast
 
 from typing_extensions import TypeAliasType
@@ -19,6 +18,7 @@ from zarr_metadata._json import (
     ValidationProblem,
     arrays_to_tuples,
     is_canonical_json,
+    is_object,
     shown,
     shown_key,
     validate_json,
@@ -130,7 +130,7 @@ def envelope_problems(
     if isinstance(value, str):
         bad = name_problem(value, ())
         return () if bad is None else (bad,)
-    if not isinstance(value, Mapping):
+    if not is_object(value):
         return (
             ValidationProblem(
                 (),
@@ -138,7 +138,7 @@ def envelope_problems(
                 "invalid_type",
             ),
         )
-    field = cast("Mapping[object, object]", value)
+    field = value
     problems: list[ValidationProblem] = []
     for key in field:
         if not isinstance(key, str):
@@ -157,11 +157,11 @@ def envelope_problems(
         problems.append(bad)
     if "configuration" in field:
         configuration = field["configuration"]
-        if not isinstance(configuration, Mapping):
+        if not is_object(configuration):
             problems.append(
                 ValidationProblem(("configuration",), "expected an object", "invalid_type")
             )
-        elif not all(isinstance(k, str) for k in cast("Mapping[object, object]", configuration)):
+        elif not all(isinstance(k, str) for k in configuration):
             problems.append(
                 ValidationProblem(("configuration",), "expected string keys", "invalid_type")
             )
@@ -184,17 +184,18 @@ def envelope_problems(
 
 def _configuration_json_problems(value: object) -> tuple[ValidationProblem, ...]:
     """Each member of `value`'s configuration that is not JSON, located; nothing where no object of string keys is there to walk."""
-    if not isinstance(value, Mapping):
+    if not is_object(value):
         return ()
-    configuration = cast("Mapping[object, object]", value).get("configuration")
-    if not isinstance(configuration, Mapping):
+    configuration = value.get("configuration")
+    if not is_object(configuration):
         return ()
-    members = cast("Mapping[object, object]", configuration)
+    members = configuration
     if not all(isinstance(key, str) for key in members):
         return ()
     return tuple(
         found
-        for key, item in cast("Mapping[str, object]", members).items()
+        for key, item in members.items()
+        if isinstance(key, str)
         for found in validate_json(item, ("configuration", key))
     )
 
@@ -203,10 +204,9 @@ def is_metadata_field_v3(value: object) -> TypeGuard[ZarrV3MetadataFieldJSON]:
     """Whether `value` is a v3 metadata field: a bare name as the spec names an extension, or a named config."""
     if isinstance(value, str):
         return well_named(value)
-    if not isinstance(value, dict):
+    if not is_object(value) or not isinstance(value, dict):
         return False
-    field = cast("dict[object, object]", value)
-    return is_canonical_json(field) and not validate_metadata_field_v3(field)
+    return is_canonical_json(value) and not validate_metadata_field_v3(value)
 
 
 def parse_metadata_field_v3(value: object) -> ZarrV3MetadataFieldJSON:

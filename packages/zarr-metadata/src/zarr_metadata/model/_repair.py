@@ -24,7 +24,13 @@ from annotated_types import Ge
 from zarr_metadata._common import (
     JSONValue,
 )
-from zarr_metadata._json import JSON_DEPTH, MetadataValidationError, ValidationProblem
+from zarr_metadata._json import (
+    JSON_DEPTH,
+    MetadataValidationError,
+    ValidationProblem,
+    is_json_object,
+    is_object,
+)
 from zarr_metadata._typed_json import Loc, check
 from zarr_metadata.model._group import (
     ZarrV2ConsolidatedMetadata,
@@ -111,11 +117,11 @@ def repair_node_metadata_v3(value: object) -> tuple[object, tuple[Repair, ...]]:
 
 
 def _repaired(value: object, at: Loc) -> tuple[object, tuple[Repair, ...]]:
-    if not isinstance(value, Mapping) or len(at) >= JSON_DEPTH:
+    if not is_json_object(value) or len(at) >= JSON_DEPTH:
         # Not a document, or past the levels a reader walks, which the
         # strict read reports.
-        return cast("object", value), ()
-    original = cast("Mapping[str, object]", value)
+        return value, ()
+    original = value
     repairs: list[Repair] = []
     document = _zero_chunk_length(original, at, repairs)
     document = _null_consolidated_metadata(document, at, repairs)
@@ -185,15 +191,15 @@ def _consolidated(
 ) -> Mapping[str, object]:
     """`document` with each document its consolidated metadata holds repaired, where it holds any."""
     member = document.get(ZARR_V3_CONSOLIDATED_METADATA_KEY)
-    if not isinstance(member, Mapping):
+    if not is_object(member):
         return document
-    envelope = cast("Mapping[str, object]", member)
+    envelope = member
     entries = envelope.get("metadata")
-    if not isinstance(entries, Mapping):
+    if not is_object(entries):
         return document
     held: dict[object, object] = {}
     found = len(repairs)
-    for key, entry in cast("Mapping[object, object]", entries).items():
+    for key, entry in entries.items():
         if isinstance(key, str):
             entry, inside = _repaired(
                 entry, (*at, ZARR_V3_CONSOLIDATED_METADATA_KEY, "metadata", key)
@@ -248,15 +254,15 @@ def repair_consolidated_metadata_v2(value: object) -> tuple[object, tuple[Repair
     applies to is left as it is, and `value` is not changed; a document
     with none of the bugs is given back, and no repairs.
     """
-    if not isinstance(value, Mapping):
+    if not is_json_object(value):
         return value, ()
-    document = cast("Mapping[str, object]", value)
+    document = value
     entries = document.get("metadata")
-    if not isinstance(entries, Mapping):
+    if not is_object(entries):
         return cast("object", value), ()
     repairs: list[Repair] = []
     held: dict[object, object] = {}
-    for key, entry in cast("Mapping[object, object]", entries).items():
+    for key, entry in entries.items():
         if isinstance(key, str):
             path, _, name = key.rpartition("/")
             # Below the root only: no writer puts the member in the root's .zgroup.
@@ -270,9 +276,9 @@ def repair_consolidated_metadata_v2(value: object) -> tuple[object, tuple[Repair
 
 def _without_consolidated_metadata(entry: object, at: Loc, repairs: list[Repair]) -> object:
     """`entry`, a `.zgroup` entry, without the member zarr-python 3.x writes into it, when it is one such."""
-    if not isinstance(entry, Mapping):
+    if not is_json_object(entry):
         return entry
-    group = cast("Mapping[str, object]", entry)
+    group = entry
     shaped, problems = check(
         _members(group, ("zarr_format", ZARR_V3_CONSOLIDATED_METADATA_KEY)),
         ZarrV2ZGroupWithConsolidatedMetadataJSON,

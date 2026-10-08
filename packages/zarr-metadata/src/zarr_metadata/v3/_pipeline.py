@@ -26,11 +26,10 @@ known of its chunk and leaves the rest.
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
 
-from zarr_metadata._json import ValidationProblem, with_input
+from zarr_metadata._json import ValidationProblem, is_object, with_input
 from zarr_metadata.v3._definition import (
     Chunk,
     CodecDefinition,
@@ -43,7 +42,7 @@ from zarr_metadata.v3._definition import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
     from zarr_metadata._typed_json import Loc
     from zarr_metadata.v3._definition import Nested, Problems
@@ -227,9 +226,8 @@ def _inner_pipelines(
 
 def _is_pipelines(value: object) -> TypeGuard[Mapping[str, Chunk]]:
     """Whether `value` maps members of a configuration to chunks."""
-    return isinstance(value, Mapping) and all(
-        isinstance(member, str) and isinstance(chunk, Chunk)
-        for member, chunk in cast("Mapping[object, object]", value).items()
+    return is_object(value) and all(
+        isinstance(member, str) and isinstance(chunk, Chunk) for member, chunk in value.items()
     )
 
 

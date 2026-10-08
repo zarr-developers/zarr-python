@@ -34,6 +34,8 @@ from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
     arrays_to_tuples,
+    is_object,
+    is_tuple,
     nested_past_the_levels,
     not_an_object,
     outside_of,
@@ -247,12 +249,12 @@ def _is_canonical_dtype_v2(value: object) -> bool:
     """Whether a validated v2 dtype uses the tuple-backed public representation."""
     if isinstance(value, str):
         return True
-    if not isinstance(value, tuple):
+    if not is_tuple(value):
         return False
-    for record in cast("tuple[object, ...]", value):
-        if not isinstance(record, tuple):
+    for record in value:
+        if not is_tuple(record):
             return False
-        fields = cast("tuple[object, ...]", record)
+        fields = record
         if not _is_canonical_dtype_v2(fields[1]):
             return False
         if len(fields) == 3 and not isinstance(fields[2], tuple):
@@ -346,9 +348,7 @@ def attributes_of(
     the levels a reader walks are counted from that one's root; the
     problems are located in the document holding it.
     """
-    if not isinstance(value, Mapping) or not all(
-        isinstance(k, str) for k in cast("Mapping[object, object]", value)
-    ):
+    if not is_object(value) or not all(isinstance(k, str) for k in value):
         return None, (
             ValidationProblem(
                 ("attributes",), "expected an object with string keys", "invalid_type"
@@ -356,7 +356,9 @@ def attributes_of(
         )
     attributes: dict[str, JSONValue] = {}
     problems: list[ValidationProblem] = []
-    for key, item in cast("Mapping[str, object]", value).items():
+    for key, item in value.items():
+        if not isinstance(key, str):
+            continue
         refined, found = refine_user_data(item, (*at, "attributes", key))
         problems.extend(found)
         attributes[key] = refined
@@ -510,9 +512,9 @@ def read_array_v3(
     its group's -- so the levels a reader walks are counted from that
     one's root; the problems are located in this document.
     """
-    if not isinstance(value, Mapping):
+    if not is_object(value):
         return ZarrV3ArrayMetadataReading(problems=not_an_object(value)), None
-    doc = cast("Mapping[object, object]", value)
+    doc = value
     problems: list[ValidationProblem] = list(missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V3, doc))
     past = members_past_the_levels(doc, at)
     problems.extend(past.values())
@@ -684,9 +686,9 @@ def read_array_v2(
     `filters` are required keys that may be `None`. `at` is where the
     document sits in the one handed in, which prefixes every problem.
     """
-    if not isinstance(value, Mapping):
+    if not is_object(value):
         return ZarrV2ArrayMetadataReading(problems=within(not_an_object(value), at)), None
-    doc = cast("Mapping[object, object]", value)
+    doc = value
     # Unlike the group document ("Other keys MUST NOT be present",
     # https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313), the v2 array document is open: other keys "SHOULD NOT be
     # present within the metadata object and SHOULD be ignored by
@@ -824,9 +826,9 @@ def validate_group_metadata_v2(
     optional `attributes` mapping folded in from `.zattrs`. A group holds
     no field a scope reads; `context` is taken as every v2 reader takes it.
     """
-    if not isinstance(value, Mapping):
+    if not is_object(value):
         return not_an_object(value)
-    doc = cast("Mapping[object, object]", value)
+    doc = value
     problems: list[ValidationProblem] = list(missing_keys(GROUP_METADATA_REQUIRED_KEYS_V2, doc))
     problems.extend(unexpected_keys(GROUP_METADATA_STANDARD_KEYS_V2, doc))
     problems.extend(check_literal(doc, "zarr_format", 2))

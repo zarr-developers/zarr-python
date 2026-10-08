@@ -244,18 +244,13 @@ def prefixed(
 def value_at(value: object, loc: tuple[str | int, ...]) -> object:
     """What `value` holds at `loc`, each key naming a member of an object and each index an element of an array; `UNSET` where it holds nothing."""
     for part in loc:
-        if isinstance(part, str) and isinstance(value, Mapping):
-            members = cast("Mapping[object, object]", value)
+        if isinstance(part, str) and is_object(value):
+            members = value
             if part not in members:
                 return UNSET
             value = members[part]
-        elif (
-            isinstance(part, int)
-            and isinstance(value, Sequence)
-            and not isinstance(value, (str, bytes, bytearray))
-            and 0 <= part < len(cast("Sequence[object]", value))
-        ):
-            value = cast("Sequence[object]", value)[part]
+        elif isinstance(part, int) and is_array(value) and 0 <= part < len(value):
+            value = value[part]
         else:
             return UNSET
     return value
@@ -305,6 +300,37 @@ def not_an_object(value: object) -> tuple[ValidationProblem, ...]:
 def validate_json(value: object, loc: tuple[str | int, ...] = ()) -> tuple[ValidationProblem, ...]:
     """Return every reason `value`, which sits at `loc`, is not JSON, each where it sits: a float that is not finite, a key that is not a string, a value of no JSON type, a level of nesting past `JSON_DEPTH`, counted from the document's root, which `loc` is below."""
     return with_input(refine_json(value, loc)[1], value, loc)
+
+
+def is_object(value: object) -> TypeGuard[Mapping[object, object]]:
+    """Whether `value` is a JSON object as Python holds one: a mapping, of any keys.
+
+    What `isinstance(value, Mapping)` says, narrowed to a mapping of
+    `object`, which the bare check leaves unknown to a type checker.
+    """
+    return isinstance(value, Mapping)
+
+
+def is_json_object(value: object) -> TypeGuard[Mapping[str, object]]:
+    """Whether `value` is a JSON object with the keys JSON gives one: a mapping whose keys are all strings."""
+    return isinstance(value, Mapping) and all(
+        isinstance(key, str) for key in cast("Mapping[object, object]", value)
+    )
+
+
+def is_list_or_tuple(value: object) -> TypeGuard[list[object] | tuple[object, ...]]:
+    """Whether `value` is a list or a tuple: the two containers canonical JSON holds an array in."""
+    return isinstance(value, (list, tuple))
+
+
+def is_tuple(value: object) -> TypeGuard[tuple[object, ...]]:
+    """Whether `value` is a tuple, narrowed to a tuple of `object`."""
+    return isinstance(value, tuple)
+
+
+def is_array(value: object) -> TypeGuard[Sequence[object]]:
+    """Whether `value` is a JSON array as Python holds one: a sequence that is not text or bytes."""
+    return isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
 
 
 def refine_json(
@@ -383,12 +409,12 @@ def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refi
         return value, ()
     if (past := nested_past_the_levels(value, loc)) is not None:
         return None, (past,)
-    if isinstance(value, Mapping):
+    if is_object(value):
         # Walked here rather than through `_refine_members`, so that each
         # level of nesting costs one frame, `JSON_DEPTH` of them at most.
         members: dict[str, JSONValue] = {}
         found_in_members: list[ValidationProblem] = []
-        for key, item in cast("Mapping[object, object]", value).items():
+        for key, item in value.items():
             if not isinstance(key, str):
                 found_in_members.append(
                     ValidationProblem(
@@ -401,10 +427,10 @@ def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refi
             if len(found) == 0:
                 members[key] = member
         return (members if len(found_in_members) == 0 else None), tuple(found_in_members)
-    if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
+    if is_array(value):
         entries: list[JSONValue] = []
         found_in_entries: list[ValidationProblem] = []
-        for index, item in enumerate(cast("Sequence[object]", value)):
+        for index, item in enumerate(value):
             entry, found = _refine(item, (*loc, index), finite=finite)
             found_in_entries.extend(found)
             if len(found) == 0:
@@ -535,13 +561,13 @@ def _is_canonical(value: object, depth: int, *, finite: bool) -> bool:
         return True
     if depth >= JSON_DEPTH:
         return False
-    if isinstance(value, (list, tuple)):
-        for item in cast("list[object] | tuple[object, ...]", value):
+    if is_list_or_tuple(value):
+        for item in value:  # noqa: SIM110 - a loop, not a generator, is one frame per level
             if not _is_canonical(item, depth + 1, finite=finite):
                 return False
         return True
-    if isinstance(value, dict):
-        for key, item in cast("dict[object, object]", value).items():
+    if is_object(value):
+        for key, item in value.items():
             if not isinstance(key, str) or not _is_canonical(item, depth + 1, finite=finite):
                 return False
         return True
@@ -590,31 +616,26 @@ def copied(value: JSONValue) -> JSONValue:
     if isinstance(value, (tuple, list)):
         # A loop, not a comprehension, which is a frame of its own before
         # Python 3.12: one frame for each level.
-        entries: list[JSONValue] = []
-        for item in value:
-            entries.append(copied(item))  # noqa: PERF401
+        entries = list(map(copied, value))
         return entries if isinstance(value, list) else tuple(entries)
     return value
 
 
 def arrays_to_tuples(obj: object) -> object:
     """Recursively materialize mappings and convert array-like values to tuples."""
-    if isinstance(obj, Sequence) and not isinstance(obj, (str, bytes, bytearray)):
-        sequence = cast("Sequence[object]", obj)
+    if is_array(obj):
+        sequence = obj
         # Loops, not comprehensions, which are a frame of their own before
         # Python 3.12: one frame for each level, as `copied` takes.
-        converted_items: list[object] = []
-        for item in sequence:
-            converted_items.append(arrays_to_tuples(item))  # noqa: PERF401
-        converted_sequence = tuple(converted_items)
+        converted_sequence = tuple(map(arrays_to_tuples, sequence))
         if isinstance(obj, tuple) and all(
             converted is original
             for converted, original in zip(converted_sequence, sequence, strict=True)
         ):
             return sequence
         return converted_sequence
-    if isinstance(obj, Mapping):
-        mapping = cast("Mapping[object, object]", obj)
+    if is_object(obj):
+        mapping = obj
         converted: dict[object, object] = {}
         for key, value in mapping.items():
             converted[key] = arrays_to_tuples(value)

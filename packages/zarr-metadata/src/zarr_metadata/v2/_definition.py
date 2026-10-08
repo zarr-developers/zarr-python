@@ -19,17 +19,18 @@ the codec and whose other members are its parameters
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Final, cast
 
 from typing_extensions import TypeAliasType
 
-from zarr_metadata._json import ValidationProblem, shown
+from zarr_metadata._json import ValidationProblem, is_object, shown
 from zarr_metadata.v2.array import ZarrV2DataTypeMetadata
 from zarr_metadata.v3._definition import C, Definition, WithFillValue
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from zarr_metadata._common import JSONValue
     from zarr_metadata._typed_json import Loc
     from zarr_metadata.v3._definition import Problems
@@ -220,23 +221,26 @@ class ZarrV2CodecDefinition(Definition[C]):
     def named_configuration(
         cls, value: object
     ) -> tuple[str | None, Mapping[str, object] | None, Problems]:
-        if not isinstance(value, Mapping):
+        if not is_object(value):
             return None, None, ()
-        entry = cast("Mapping[str, object]", value)
-        name = entry.get("id")
+        name = value.get("id")
         if not isinstance(name, str):
             return None, None, ()
-        return name, {key: item for key, item in entry.items() if key != "id"}, ()
+        return (
+            name,
+            {key: item for key, item in value.items() if isinstance(key, str) and key != "id"},
+            (),
+        )
 
     @classmethod
     def envelope_problems(cls, value: object) -> Problems:
-        if not isinstance(value, Mapping):
+        if not is_object(value):
             return (
                 ValidationProblem(
                     (), "expected a codec configuration with a string 'id'", "invalid_type"
                 ),
             )
-        entry = cast("Mapping[str, object]", value)
+        entry = value
         if "id" not in entry:
             return (ValidationProblem(("id",), "missing required key", "missing_key"),)
         if not isinstance(entry["id"], str):

@@ -73,6 +73,8 @@ from zarr_metadata._json import (
     choices,
     copied,
     is_json,
+    is_list_or_tuple,
+    is_object,
     outside_of,
     refine_json,
     shown,
@@ -582,9 +584,9 @@ def sequence_of(element: Parser) -> Parser:
     """A member whose type is an array of one element type, parsed element by element."""
 
     def parse(value: object, loc: Loc) -> Parsed:
-        if not isinstance(value, (list, tuple)):
+        if not is_list_or_tuple(value):
             return value, problem(loc, f"expected an array, got {shown(value)}")
-        entries = cast("list[object] | tuple[object, ...]", value)
+        entries = value
         parsed: list[object] = []
         found: list[ValidationProblem] = []
         for index, entry in enumerate(entries):
@@ -600,9 +602,9 @@ def fixed_tuple(elements: Sequence[Parser], description: str) -> Parser:
     """A member whose type is an array of a fixed length, parsed position by position."""
 
     def parse(value: object, loc: Loc) -> Parsed:
-        if not isinstance(value, (list, tuple)):
+        if not is_list_or_tuple(value):
             return value, problem(loc, f"expected {description}, got {shown(value)}")
-        entries = tuple(cast("list[object] | tuple[object, ...]", value))
+        entries = tuple(value)
         if len(entries) != len(elements):
             return entries, problem(loc, f"expected {description}, got {shown(entries)}")
         parsed: list[object] = []
@@ -641,7 +643,7 @@ def any_of(branches: Sequence[Branch], description: str, tag: Tag | None = None)
     def parse(value: object, loc: Loc) -> Parsed:
         present = _keys_of(value)
         if tag is not None and present is not None:
-            return _by_tag(branches, tag, cast("Mapping[str, object]", value), loc)
+            return _by_tag(branches, tag, value, loc)
         clean: list[tuple[int, int, Parsed]] = []
         failed: list[tuple[int, int, Parsed]] = []
         for index, (shape, branch, keys) in enumerate(branches):
@@ -663,10 +665,10 @@ def any_of(branches: Sequence[Branch], description: str, tag: Tag | None = None)
     return parse
 
 
-def _by_tag(branches: Sequence[Branch], tag: Tag, value: Mapping[str, object], loc: Loc) -> Parsed:
+def _by_tag(branches: Sequence[Branch], tag: Tag, value: object, loc: Loc) -> Parsed:
     """`value` parsed by the branch its tag picks; a tag missing, or one no branch has, reported at it."""
     key, picks = tag
-    if key not in value:
+    if not is_object(value) or key not in value:
         return value, problem((*loc, key), f"missing required key {key!r}", "missing_key")
     said = value[key]
     index = picks.get((type(said), said)) if _hashable(said) else None
@@ -677,8 +679,8 @@ def _by_tag(branches: Sequence[Branch], tag: Tag, value: Mapping[str, object], l
 
 def _keys_of(value: object) -> AbstractSet[str] | None:
     """The keys of `value` if it is a JSON object, else None."""
-    if isinstance(value, Mapping):
-        return cast("Mapping[str, object]", value).keys()
+    if is_object(value):
+        return {key for key in value if isinstance(key, str)}
     return None
 
 
@@ -697,12 +699,15 @@ def object_of(members: Mapping[str, tuple[Parser, bool]], extra: Parser | None) 
     """
 
     def parse(value: object, loc: Loc) -> Parsed:
-        if not isinstance(value, Mapping):
+        if not is_object(value):
             return value, problem(loc, f"expected an object, got {shown(value)}")
-        entries = cast("Mapping[str, object]", value)
+        entries = value
         parsed: dict[str, object] = {}
         found: list[ValidationProblem] = []
         for key, entry in entries.items():
+            if not isinstance(key, str):
+                found.extend(problem(loc, f"non-string key {shown(key)}"))
+                continue
             if key in members:
                 continue
             if extra is None:
@@ -716,7 +721,9 @@ def object_of(members: Mapping[str, tuple[Parser, bool]], extra: Parser | None) 
                 found.extend(problems)
             elif required:
                 found.extend(problem((*loc, key), f"missing required key {key!r}", "missing_key"))
-        return {key: parsed[key] for key in entries if key in parsed}, tuple(found)
+        return {
+            key: parsed[key] for key in entries if isinstance(key, str) and key in parsed
+        }, tuple(found)
 
     return parse
 
@@ -729,12 +736,15 @@ def mapping_of(value: Parser) -> Parser:
     """
 
     def parse(candidate: object, loc: Loc) -> Parsed:
-        if not isinstance(candidate, Mapping):
+        if not is_object(candidate):
             return candidate, problem(loc, f"expected an object, got {shown(candidate)}")
-        entries = cast("Mapping[str, object]", candidate)
+        entries = candidate
         parsed: dict[str, object] = {}
         found: list[ValidationProblem] = []
         for key, entry in entries.items():
+            if not isinstance(key, str):
+                found.extend(problem(loc, f"non-string key {shown(key)}"))
+                continue
             item, problems = value(entry, (*loc, key))
             parsed[key] = item
             found.extend(problems)

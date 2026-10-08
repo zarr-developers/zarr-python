@@ -56,6 +56,8 @@ from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
 from zarr_metadata._json import (
     ValidationProblem,
     copied,
+    is_object,
+    is_tuple,
     json_text,
     refine_json,
     shown,
@@ -966,8 +968,8 @@ def _collect(value: object, nested: list[_NestedField]) -> None:
     """Each nested field the checker handed back in `value`, in order."""
     if isinstance(value, _NestedField):
         nested.append(value)
-    elif isinstance(value, tuple):
-        for entry in cast("tuple[object, ...]", value):
+    elif is_tuple(value):
+        for entry in value:
             _collect(entry, nested)
     elif isinstance(value, dict):
         for entry in cast("dict[str, object]", value).values():
@@ -991,8 +993,8 @@ def _put_back(value: object, put: Callable[[_NestedField], JSONValue]) -> object
     """`value` with each nested field the checker handed back put back as `put` gives it."""
     if isinstance(value, _NestedField):
         return put(value)
-    if isinstance(value, tuple):
-        return tuple(_put_back(entry, put) for entry in cast("tuple[object, ...]", value))
+    if is_tuple(value):
+        return tuple(_put_back(entry, put) for entry in value)
     if isinstance(value, dict):
         entries = cast("dict[str, object]", value)
         return {key: _put_back(entry, put) for key, entry in entries.items()}
@@ -1091,9 +1093,9 @@ def named_configuration(
     """
     if isinstance(value, str):
         return value, None, ()
-    if not isinstance(value, Mapping):
+    if not is_object(value):
         return None, None, ()
-    entry = cast("Mapping[str, object]", value)
+    entry = value
     name = entry.get("name")
     if not isinstance(name, str):
         return None, None, ()
@@ -1408,9 +1410,9 @@ def _is_data_type_field(value: object) -> bool:
 
 def _is_lengths(value: object) -> TypeGuard[Lengths]:
     """Whether `value` is chunk lengths: per axis, a frozenset of integers, or None."""
-    if not isinstance(value, tuple):
+    if not is_tuple(value):
         return False
-    for axis in cast("tuple[object, ...]", value):
+    for axis in value:
         if axis is None:
             continue
         if not isinstance(axis, frozenset) or not all(

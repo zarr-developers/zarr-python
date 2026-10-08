@@ -17,6 +17,7 @@ from zarr_metadata._json import (
     ValidationProblem,
     copied,
     frozen,
+    is_object,
     json_text,
     refine_user_data,
     with_input,
@@ -851,9 +852,9 @@ class ZarrV2ArrayMetadata:
         JSON, `.zarray` holds `attributes`, or the document is not valid.
         """
         zarray_raw = load_store_json(mapping, ZARR_V2_ARRAY_METADATA_STORE_KEY)
-        if not isinstance(zarray_raw, Mapping):
+        if not is_object(zarray_raw):
             return cls(zarray_raw, context=context)
-        zarray = cast("Mapping[str, object]", zarray_raw)
+        zarray = zarray_raw
         if "attributes" in zarray:
             refused = ValidationProblem(
                 ("attributes",), "unexpected document member", "invalid_value"

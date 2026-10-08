@@ -51,14 +51,13 @@ Static type checkers see each field type as its core model class, so
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import TYPE_CHECKING, Annotated, Final, LiteralString, Protocol, TypeVar, cast
 
 from pydantic import BeforeValidator, InstanceOf, PlainSerializer, ValidationInfo
 from pydantic_core import InitErrorDetails, PydanticCustomError, ValidationError
 
 from zarr_metadata import model as _model
-from zarr_metadata._json import MetadataValidationError, ValidationProblem, value_at
+from zarr_metadata._json import MetadataValidationError, ValidationProblem, is_object, value_at
 from zarr_metadata._pydantic_schema import (
     ZarrV2ArrayMetadataJSON as _ZarrV2ArrayMetadataSchema,
 )
@@ -166,9 +165,9 @@ def _scope(context: object, default: Context, key: str) -> Context:
     """The scope a validation context holds for one format: itself, a `Context`, the scope of every field type; its `key` item, the format's own; or, holding none, `default`, the format's core scope."""
     if isinstance(context, Context):
         return context
-    if not isinstance(context, Mapping) or key not in context:
+    if not is_object(context) or key not in context:
         return default
-    scope = cast("Mapping[object, object]", context)[key]
+    scope = context[key]
     if not isinstance(scope, Context):
         msg = f"{key}: the scope to read in is a Context, got {scope!r}"
         raise TypeError(msg)
