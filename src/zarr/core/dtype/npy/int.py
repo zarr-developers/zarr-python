@@ -203,11 +203,7 @@ class BaseInt[
         TypeError
             If the input is not a valid integer type.
         """
-        if (
-            check_json_int(data)
-            or check_json_intish_float(data)
-            or check_json_intish_str(data)
-        ):
+        if check_json_int(data) or check_json_intish_float(data) or check_json_intish_str(data):
             value = int(data)
         else:
             raise TypeError(f"Invalid type: {data}. Expected an integer.")
