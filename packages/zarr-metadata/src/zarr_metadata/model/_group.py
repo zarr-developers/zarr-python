@@ -1548,8 +1548,8 @@ def _entries_by_path(
     problems: list[ValidationProblem] = []
     for key in entries:
         path, _, name = key.rpartition("/")
-        # A node's path, as a store names it: without a `/` at either end.
-        path = path.strip("/")
+        # A node's path, as a store names it: segments joined by one `/`.
+        path = "/".join(segment for segment in path.split("/") if segment != "")
         if name not in _NODE_FILES:
             continue
         files = by_path.setdefault(path, {})

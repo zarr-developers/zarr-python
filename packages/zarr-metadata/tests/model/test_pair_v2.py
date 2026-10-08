@@ -396,7 +396,7 @@ def test_the_node_type_is_exported() -> None:
 
 
 def test_error_a_second_key_for_a_node_file_hides_no_other_problem() -> None:
-    """A second key naming one file of one node is one problem among the document's: every node is still read, and each node's problems reported, so a user sees everything at once; a leading `/` does not make a second node."""
+    """A second key naming one file of one node is one problem among the document's: every node is still read, and each node's problems reported, so a user sees everything at once; a leading or repeated `/` does not make a second node."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV2ConsolidatedMetadata(
             {
@@ -415,6 +415,11 @@ def test_error_a_second_key_for_a_node_file_hides_no_other_problem() -> None:
     one = ZarrV2ConsolidatedMetadata(
         {"zarr_consolidated_format": 1, "metadata": {"/a/.zarray": ZARRAY}}
     )
+    assert set(
+        ZarrV2ConsolidatedMetadata(
+            {"zarr_consolidated_format": 1, "metadata": {"x//y/.zarray": ZARRAY}}
+        ).nodes
+    ) == {"x/y"}
     assert set(one.nodes) == {"a"}
     assert one == ZarrV2ConsolidatedMetadata(
         {"zarr_consolidated_format": 1, "metadata": {"a/.zarray": ZARRAY}}
