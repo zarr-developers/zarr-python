@@ -1477,15 +1477,13 @@ class ZarrV2ConsolidatedMetadata:
         """
         scope = CORE_V2 if context is None else context
         conflicts: list[Conflict] = []
+        entries = cast("Mapping[str, JSONValue]", self._document["metadata"])
+        by_path, _ = _entries_by_path(entries)
         for path, node in self._nodes.items():
             if not isinstance(node, ZarrV2ArrayMetadata):
                 continue
             found = scope.disagreements(node.claims)
-            key = (
-                f"{path}/{ZARR_V2_ARRAY_METADATA_STORE_KEY}"
-                if path != ""
-                else ZARR_V2_ARRAY_METADATA_STORE_KEY
-            )
+            key = by_path[path][ZARR_V2_ARRAY_METADATA_STORE_KEY]
             conflicts.extend(
                 dataclasses.replace(
                     conflict,
@@ -1542,21 +1540,35 @@ _NODE_FILES: Final = (
 )
 
 
-def _entries_by_path(entries: Mapping[str, JSONValue]) -> dict[str, dict[str, str]]:
-    """The `.zarray`, `.zgroup` and `.zattrs` entries, by node path, then by file: the key each sits under."""
+def _entries_by_path(
+    entries: Mapping[str, JSONValue],
+) -> tuple[dict[str, dict[str, str]], list[ValidationProblem]]:
+    """The `.zarray`, `.zgroup` and `.zattrs` entries, by node path, then by file: the key each sits under; and a problem for each second key naming one file of one node, which would otherwise go unread."""
     by_path: dict[str, dict[str, str]] = {}
+    problems: list[ValidationProblem] = []
     for key in entries:
         path, _, name = key.rpartition("/")
-        if name in _NODE_FILES:
-            by_path.setdefault(path, {})[name] = key
-    return by_path
+        if name not in _NODE_FILES:
+            continue
+        files = by_path.setdefault(path, {})
+        if name in files:
+            problems.append(
+                ValidationProblem(
+                    ("metadata", key),
+                    f"a second {name} for the node at {path!r}, which {files[name]!r} is",
+                    "invalid_value",
+                )
+            )
+            continue
+        files[name] = key
+    return by_path, problems
 
 
 def _other_entries_text(model: ZarrV2ConsolidatedMetadata) -> str:
     """The entries no node is read from -- an orphan `.zattrs`, any other key -- as JSON text: what `==` compares of them."""
     entries = cast("Mapping[str, JSONValue]", model._document["metadata"])  # pyright: ignore[reportPrivateUsage]
     consumed: set[str] = set()
-    for path, names in _entries_by_path(entries).items():
+    for path, names in _entries_by_path(entries)[0].items():
         if path in model._nodes:  # pyright: ignore[reportPrivateUsage]
             consumed.update(names.values())
     return json_text({key: value for key, value in entries.items() if key not in consumed})
@@ -1614,8 +1626,12 @@ def _read_consolidated_v2(
                 problems.extend(found)
                 refined[key] = entry
     nodes: dict[str, ZarrV2NodeMetadata] = {}
+    by_path: dict[str, dict[str, str]] = {}
     if len(problems) == 0:
-        for path, names in _entries_by_path(refined).items():
+        by_path, doubled = _entries_by_path(refined)
+        problems.extend(doubled)
+    if len(problems) == 0:
+        for path, names in by_path.items():
             node, found = _read_node_v2(path, names, refined, context)
             problems.extend(found)
             if node is not None:

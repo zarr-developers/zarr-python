@@ -21,13 +21,24 @@ from typing import Annotated, Literal, TypeAlias, TypedDict, cast
 
 from annotated_types import Ge
 
-from zarr_metadata._json import JSON_DEPTH
+from zarr_metadata._common import (
+    JSONValue,  # noqa: TC001 - a TypedDict's annotations are evaluated at run time
+)
+from zarr_metadata._json import JSON_DEPTH, MetadataValidationError, ValidationProblem
 from zarr_metadata._typed_json import Loc, check
-from zarr_metadata.model._group import ZarrV3NodeMetadataReading, read_node_metadata_v3
+from zarr_metadata.model._group import (
+    ZarrV2ConsolidatedMetadata,
+    ZarrV3NodeMetadataReading,
+    read_node_metadata_v3,
+)
+from zarr_metadata.v2.definition import CORE_V2
+from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
 from zarr_metadata.v3.consolidated import ZARR_V3_CONSOLIDATED_METADATA_KEY
 
-RepairKind: TypeAlias = Literal["zero_chunk_length", "null_consolidated_metadata"]
+RepairKind: TypeAlias = Literal[
+    "zero_chunk_length", "null_consolidated_metadata", "consolidated_metadata_in_zgroup_entry"
+]
 """Each writer bug a repair undoes, by name."""
 
 
@@ -221,14 +232,105 @@ def read_repaired_node_metadata_v3(
     )
 
 
+class ZarrV2ZGroupWithConsolidatedMetadataJSON(TypedDict):
+    """A `.zgroup` entry of a `.zmetadata` as zarr-python 3.x writes one below the root: with a `consolidated_metadata` member, which a v2 group document does not take."""
+
+    zarr_format: Literal[2]
+    consolidated_metadata: Mapping[str, JSONValue]
+
+
+def repair_consolidated_metadata_v2(value: object) -> tuple[object, tuple[Repair, ...]]:
+    """`value`, a v2 `.zmetadata`, with each known writer bug in it undone, and what was changed.
+
+    zarr-python 3.x writes a `consolidated_metadata` member into each
+    `.zgroup` entry below the root, which is removed. What no repair
+    applies to is left as it is, and `value` is not changed; a document
+    with none of the bugs is given back, and no repairs.
+    """
+    if not isinstance(value, Mapping):
+        return value, ()
+    document = cast("Mapping[str, object]", value)
+    entries = document.get("metadata")
+    if not isinstance(entries, Mapping):
+        return cast("object", value), ()
+    repairs: list[Repair] = []
+    held: dict[object, object] = {}
+    for key, entry in cast("Mapping[object, object]", entries).items():
+        if isinstance(key, str) and key.rsplit("/", 1)[-1] == ZARR_V2_GROUP_METADATA_STORE_KEY:
+            entry = _without_consolidated_metadata(entry, ("metadata", key), repairs)
+        held[key] = entry
+    if len(repairs) == 0:
+        return cast("object", value), ()
+    return {**document, "metadata": held}, tuple(repairs)
+
+
+def _without_consolidated_metadata(entry: object, at: Loc, repairs: list[Repair]) -> object:
+    """`entry`, a `.zgroup` entry, without the member zarr-python 3.x writes into it, when it is one such."""
+    if not isinstance(entry, Mapping):
+        return entry
+    group = cast("Mapping[str, object]", entry)
+    shaped, problems = check(
+        _members(group, ("zarr_format", ZARR_V3_CONSOLIDATED_METADATA_KEY)),
+        ZarrV2ZGroupWithConsolidatedMetadataJSON,
+    )
+    if shaped is None or len(problems) != 0:
+        return cast("object", entry)
+    repairs.append(
+        Repair(
+            (*at, ZARR_V3_CONSOLIDATED_METADATA_KEY),
+            "consolidated_metadata_in_zgroup_entry",
+            "a consolidated_metadata, as zarr-python 3.x writes into a .zgroup entry of a "
+            ".zmetadata, removed",
+        )
+    )
+    kept: dict[str, object] = {
+        key: item for key, item in group.items() if key != ZARR_V3_CONSOLIDATED_METADATA_KEY
+    }
+    return kept
+
+
+@dataclass(frozen=True, slots=True)
+class ZarrV2RepairedConsolidatedMetadataReading:
+    """A v2 `.zmetadata` read after its known writer bugs were undone: the repaired document's problems, its model when there are none, and the repairs."""
+
+    problems: tuple[ValidationProblem, ...]
+    """Every problem of the repaired document."""
+    metadata: ZarrV2ConsolidatedMetadata | None
+    """The repaired document's model, when it has no problem; None otherwise."""
+    repairs: tuple[Repair, ...]
+    """What was changed to make the document that was read."""
+
+
+def read_repaired_consolidated_metadata_v2(
+    value: object, *, context: Context | None = None
+) -> ZarrV2RepairedConsolidatedMetadataReading:
+    """`value`, a v2 `.zmetadata`, read in `context` as `ZarrV2ConsolidatedMetadata` reads it, once `repair_consolidated_metadata_v2` has undone each known writer bug in it.
+
+    For a reader of stores other writers made, which asks for repairs by
+    calling this rather than the strict model. Whatever no repair applies
+    to is read as it is, and reported as the strict read reports it.
+    """
+    scope = CORE_V2 if context is None else context
+    repaired, repairs = repair_consolidated_metadata_v2(value)
+    try:
+        model: ZarrV2ConsolidatedMetadata | None = ZarrV2ConsolidatedMetadata(repaired, scope)
+    except MetadataValidationError as error:
+        return ZarrV2RepairedConsolidatedMetadataReading(error.problems, None, repairs)
+    return ZarrV2RepairedConsolidatedMetadataReading((), model, repairs)
+
+
 __all__ = [
     "Repair",
     "RepairKind",
+    "ZarrV2RepairedConsolidatedMetadataReading",
+    "ZarrV2ZGroupWithConsolidatedMetadataJSON",
     "ZarrV3NullConsolidatedGroupMetadataJSON",
     "ZarrV3RepairedNodeMetadataReading",
     "ZarrV3ZeroChunkArrayMetadataJSON",
     "ZarrV3ZeroChunkRegularGridConfigurationJSON",
     "ZarrV3ZeroChunkRegularGridJSON",
+    "read_repaired_consolidated_metadata_v2",
     "read_repaired_node_metadata_v3",
+    "repair_consolidated_metadata_v2",
     "repair_node_metadata_v3",
 ]

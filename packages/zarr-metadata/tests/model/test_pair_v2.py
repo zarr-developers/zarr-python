@@ -369,3 +369,27 @@ def test_error_a_node_entry_with_a_problem_is_refused_at_the_entry(
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV2ConsolidatedMetadata({"zarr_consolidated_format": 1, "metadata": entries})
     assert raised.value.problems[0].loc == at
+
+
+def test_error_two_entries_for_one_node_file_are_refused() -> None:
+    """Two keys that name one file of one node -- `.zarray` and `/.zarray` -- are a problem at the second, since one would otherwise go unread; and a conflict is located at the key the document writes."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV2ConsolidatedMetadata(
+            {"zarr_consolidated_format": 1, "metadata": {".zarray": ZARRAY, "/.zarray": ZARRAY}}
+        )
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [
+        (("metadata", "/.zarray"), "invalid_value")
+    ]
+    gained = ZarrV2ConsolidatedMetadata(
+        {"zarr_consolidated_format": 1, "metadata": {"/.zarray": ZARRAY}}, PRIVATE
+    )
+    with pytest.raises(ScopeConflictError) as conflict:
+        gained.refined_in(CORE_V2)
+    assert [c.loc for c in conflict.value.conflicts] == [("metadata", "/.zarray", "compressor")]
+
+
+def test_the_node_type_is_exported() -> None:
+    """`ZarrV2NodeMetadata`, the type of each node `nodes` holds, is exported beside the models, as `ZarrV3NodeMetadata` is."""
+    from zarr_metadata import model
+
+    assert "ZarrV2NodeMetadata" in model.__all__

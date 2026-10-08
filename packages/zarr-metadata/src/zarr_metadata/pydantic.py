@@ -8,14 +8,18 @@ model class — the instances ARE the core classes, so values interoperate
 freely with non-pydantic code (equality, isinstance, nesting). Validation
 delegates to the library: a raw document routes through `from_json` (the
 single source of truth for validation and normalization, so pydantic's
-field-level coercion can never bypass it). A v3 field type reads extension
-points in the scope pydantic's validation context holds, as pydantic hands
-any validator its context: the context itself, when it is a `Context`, or
-its `"zarr_metadata_context"` item, when it is a mapping; otherwise
-`CORE_AND_EXTENSIONS`:
+field-level coercion can never bypass it). A field type reads the fields
+of its document in the scope pydantic's validation context holds, as
+pydantic hands any validator its context: the context itself, when it is
+a `Context`, which every field type then reads in; or, when it is a
+mapping, its `"zarr_metadata_context"` item for the v3 field types and
+its `"zarr_metadata_context_v2"` item for the v2 ones, so a model holding
+both kinds of field names each format's scope; a format whose scope is
+not given reads in its own, `CORE_AND_EXTENSIONS` or `CORE_V2`:
 
     TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(document, context=SCOPE)
     ArrayManifest.model_validate(data, context={"zarr_metadata_context": SCOPE})
+    Mixed.model_validate(data, context={"zarr_metadata_context": V3, "zarr_metadata_context_v2": V2})
 
 An existing model instance passes through unchanged, as pydantic's does, and
 serialization emits the canonical document via `to_json`. A failed parse
@@ -131,6 +135,9 @@ def _input_of(problem: ValidationProblem, value: object) -> object:
 
 
 CONTEXT_KEY: Final = "zarr_metadata_context"
+"""The key of a mapping validation context under which the scope the v3 field types read in sits."""
+CONTEXT_KEY_V2: Final = "zarr_metadata_context_v2"
+"""The key of a mapping validation context under which the scope the v2 field types read in sits."""
 """The item of a mapping pydantic's validation context is that holds the scope a v3 field type reads in."""
 
 
@@ -142,29 +149,29 @@ class _Reads(Protocol[_Read_co]):
 
 
 def _read_in_scope(
-    cls: type[_M], read: _Reads[_M], default: Context
+    cls: type[_M], read: _Reads[_M], default: Context, key: str
 ) -> Callable[[object, ValidationInfo], _M]:
-    """A validator that passes instances of `cls` through and reads anything else in the scope the validation context holds, `default` when it holds none."""
+    """A validator that passes instances of `cls` through and reads anything else in the scope the validation context holds under `key`, `default` when it holds none."""
 
     def coerce(value: object, info: ValidationInfo) -> _M:
         if isinstance(value, cls):
             return value
         return _as_pydantic_raises(
-            cls, value, lambda: read(value, context=_scope(info.context, default))
+            cls, value, lambda: read(value, context=_scope(info.context, default, key))
         )
 
     return coerce
 
 
-def _scope(context: object, default: Context) -> Context:
-    """The scope a validation context holds: itself, a `Context`; its `CONTEXT_KEY` item; or, holding none, `default`: the format's own scope."""
+def _scope(context: object, default: Context, key: str) -> Context:
+    """The scope a validation context holds for one format: itself, a `Context`, the scope of every field type; its `key` item, the format's own; or, holding none, `default`, the format's core scope."""
     if isinstance(context, Context):
         return context
-    if not isinstance(context, Mapping) or CONTEXT_KEY not in context:
+    if not isinstance(context, Mapping) or key not in context:
         return default
-    scope = cast("Mapping[object, object]", context)[CONTEXT_KEY]
+    scope = cast("Mapping[object, object]", context)[key]
     if not isinstance(scope, Context):
-        msg = f"{CONTEXT_KEY}: the scope to read in is a Context, got {scope!r}"
+        msg = f"{key}: the scope to read in is a Context, got {scope!r}"
         raise TypeError(msg)
     return scope
 
@@ -173,7 +180,10 @@ ZarrV3ArrayMetadata = Annotated[
     InstanceOf[_model.ZarrV3ArrayMetadata],
     BeforeValidator(
         _read_in_scope(
-            _model.ZarrV3ArrayMetadata, _model.ZarrV3ArrayMetadata.from_json, CORE_AND_EXTENSIONS
+            _model.ZarrV3ArrayMetadata,
+            _model.ZarrV3ArrayMetadata.from_json,
+            CORE_AND_EXTENSIONS,
+            CONTEXT_KEY,
         ),
         json_schema_input_type=_ZarrV3ArrayMetadataSchema,
     ),
@@ -184,7 +194,12 @@ ZarrV3ArrayMetadata = Annotated[
 ZarrV2ArrayMetadata = Annotated[
     InstanceOf[_model.ZarrV2ArrayMetadata],
     BeforeValidator(
-        _read_in_scope(_model.ZarrV2ArrayMetadata, _model.ZarrV2ArrayMetadata.from_json, CORE_V2),
+        _read_in_scope(
+            _model.ZarrV2ArrayMetadata,
+            _model.ZarrV2ArrayMetadata.from_json,
+            CORE_V2,
+            CONTEXT_KEY_V2,
+        ),
         json_schema_input_type=_ZarrV2ArrayMetadataSchema,
     ),
     PlainSerializer(_model.ZarrV2ArrayMetadata.to_json, return_type=_ZarrV2ArrayMetadataSchema),
@@ -195,7 +210,10 @@ ZarrV3GroupMetadata = Annotated[
     InstanceOf[_model.ZarrV3GroupMetadata],
     BeforeValidator(
         _read_in_scope(
-            _model.ZarrV3GroupMetadata, _model.ZarrV3GroupMetadata.from_json, CORE_AND_EXTENSIONS
+            _model.ZarrV3GroupMetadata,
+            _model.ZarrV3GroupMetadata.from_json,
+            CORE_AND_EXTENSIONS,
+            CONTEXT_KEY,
         ),
         json_schema_input_type=_ZarrV3GroupMetadataSchema,
     ),
@@ -206,7 +224,12 @@ ZarrV3GroupMetadata = Annotated[
 ZarrV2GroupMetadata = Annotated[
     InstanceOf[_model.ZarrV2GroupMetadata],
     BeforeValidator(
-        _read_in_scope(_model.ZarrV2GroupMetadata, _model.ZarrV2GroupMetadata.from_json, CORE_V2),
+        _read_in_scope(
+            _model.ZarrV2GroupMetadata,
+            _model.ZarrV2GroupMetadata.from_json,
+            CORE_V2,
+            CONTEXT_KEY_V2,
+        ),
         json_schema_input_type=_ZarrV2GroupMetadataSchema,
     ),
     PlainSerializer(_model.ZarrV2GroupMetadata.to_json, return_type=_ZarrV2GroupMetadataSchema),
@@ -220,6 +243,7 @@ ZarrV3ConsolidatedMetadata = Annotated[
             _model.ZarrV3ConsolidatedMetadata,
             _model.ZarrV3ConsolidatedMetadata.from_json,
             CORE_AND_EXTENSIONS,
+            CONTEXT_KEY,
         ),
         json_schema_input_type=_ZarrV3ConsolidatedMetadataSchema,
     ),
@@ -234,7 +258,10 @@ ZarrV2ConsolidatedMetadata = Annotated[
     InstanceOf[_model.ZarrV2ConsolidatedMetadata],
     BeforeValidator(
         _read_in_scope(
-            _model.ZarrV2ConsolidatedMetadata, _model.ZarrV2ConsolidatedMetadata.from_json, CORE_V2
+            _model.ZarrV2ConsolidatedMetadata,
+            _model.ZarrV2ConsolidatedMetadata.from_json,
+            CORE_V2,
+            CONTEXT_KEY_V2,
         ),
         json_schema_input_type=_ZarrV2ConsolidatedMetadataSchema,
     ),
@@ -247,6 +274,7 @@ ZarrV2ConsolidatedMetadata = Annotated[
 
 __all__ = [
     "CONTEXT_KEY",
+    "CONTEXT_KEY_V2",
     "ZarrV2ArrayMetadata",
     "ZarrV2ConsolidatedMetadata",
     "ZarrV2GroupMetadata",

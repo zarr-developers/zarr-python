@@ -450,7 +450,30 @@ def test_v2_field_types_read_in_the_validation_contexts_scope() -> None:
     read = adapter.validate_python({**doc, "compressor": {"id": "zlib"}}, context=small)
     assert read.context is small
     assert isinstance(read.compressor, Unclaimed)
-    held = adapter.validate_python(doc, context={"zarr_metadata_context": small})
+    held = adapter.validate_python(doc, context={"zarr_metadata_context_v2": small})
     assert held.context is small
     group = TypeAdapter(zmp.ZarrV2GroupMetadata).validate_python(V2_GROUP_DOC, context=small)
     assert group.context is small
+
+
+def test_each_format_reads_in_its_own_context_key() -> None:
+    """A mapping context names each format's scope by its own key -- `zarr_metadata_context` for v3, `zarr_metadata_context_v2` for v2 -- so a v3 scope given for the v3 fields leaves the v2 fields in `CORE_V2`; a bare `Context` is the scope of every field type."""
+    from zarr_metadata.v2.data_type.scalar import UINT_V2
+    from zarr_metadata.v2.definition import CORE_V2, Context, Unclaimed
+    from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
+
+    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
+    doc = json.loads(json.dumps(V2_ARRAY_DOC))
+    small = Context.of(UINT_V2)
+    v3_only = adapter.validate_python(doc, context={"zarr_metadata_context": CORE_AND_EXTENSIONS})
+    assert v3_only.context is CORE_V2
+    with pytest.raises(ValidationError):
+        adapter.validate_python(
+            {**doc, "fill_value": "garbage"}, context={"zarr_metadata_context": CORE_AND_EXTENSIONS}
+        )
+    own = adapter.validate_python(doc, context={"zarr_metadata_context_v2": small})
+    assert own.context is small
+    bare = adapter.validate_python({**doc, "compressor": {"id": "zlib"}}, context=small)
+    assert bare.context is small
+    assert isinstance(bare.compressor, Unclaimed)
+    assert zmp.CONTEXT_KEY_V2 == "zarr_metadata_context_v2"

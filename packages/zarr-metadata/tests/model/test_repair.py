@@ -8,10 +8,14 @@ from typing import Any
 import pytest
 
 from zarr_metadata.model import (
+    MetadataValidationError,
+    ZarrV2ConsolidatedMetadata,
     ZarrV3ArrayMetadata,
     ZarrV3GroupMetadata,
     read_node_metadata_v3,
+    read_repaired_consolidated_metadata_v2,
     read_repaired_node_metadata_v3,
+    repair_consolidated_metadata_v2,
     repair_node_metadata_v3,
 )
 
@@ -129,3 +133,91 @@ def test_read_repaired_reports_what_no_repair_applies_to() -> None:
         (("data_type",), "missing_key")
     ]
     assert repaired.reading.metadata is None
+
+
+# --- v2 ---------------------------------------------------------------------
+
+ZGROUP_FROM_ZARR3: dict[str, Any] = {
+    "zarr_format": 2,
+    "consolidated_metadata": {"metadata": {}, "must_understand": False, "kind": "inline"},
+}
+ZMETADATA_FROM_ZARR3: dict[str, Any] = {
+    "zarr_consolidated_format": 1,
+    "metadata": {
+        ".zgroup": {"zarr_format": 2},
+        "b/.zgroup": ZGROUP_FROM_ZARR3,
+        "b/.zattrs": {"x": 1},
+    },
+}
+ZMETADATA_CLEAN: dict[str, Any] = {
+    "zarr_consolidated_format": 1,
+    "metadata": {
+        ".zgroup": {"zarr_format": 2},
+        "b/.zgroup": {"zarr_format": 2},
+        "b/.zattrs": {"x": 1},
+    },
+}
+
+
+@pytest.mark.parametrize(
+    ("value", "repaired", "repairs"),
+    [
+        (
+            ZMETADATA_FROM_ZARR3,
+            ZMETADATA_CLEAN,
+            [
+                (
+                    ("metadata", "b/.zgroup", "consolidated_metadata"),
+                    "consolidated_metadata_in_zgroup_entry",
+                )
+            ],
+        ),
+        (ZMETADATA_CLEAN, ZMETADATA_CLEAN, []),
+        (
+            {
+                "zarr_consolidated_format": 1,
+                "metadata": {"b/.zgroup": {"zarr_format": 2, "consolidated_metadata": 3}},
+            },
+            {
+                "zarr_consolidated_format": 1,
+                "metadata": {"b/.zgroup": {"zarr_format": 2, "consolidated_metadata": 3}},
+            },
+            [],
+        ),
+        (3, 3, []),
+    ],
+    ids=["zarr-3-zgroup-entry", "clean", "not-the-bug", "not-a-document"],
+)
+def test_repair_v2_undoes_the_consolidated_metadata_zarr_3_writes_into_a_zgroup_entry(
+    value: object, repaired: object, repairs: list[tuple[tuple[str | int, ...], str]]
+) -> None:
+    """zarr-python 3.x writes a `consolidated_metadata` member into each non-root `.zgroup` entry of a `.zmetadata`, which the v2 group document does not take; `repair_consolidated_metadata_v2` removes it and says where; anything else is left as it is, and the document handed in is not changed."""
+    before = copy.deepcopy(value)
+    document, made = repair_consolidated_metadata_v2(value)
+    assert document == repaired
+    assert [(repair.loc, repair.kind) for repair in made] == repairs
+    assert value == before
+    if len(repairs) == 0:
+        assert document is value
+
+
+def test_read_repaired_consolidated_v2_reads_what_the_strict_read_refuses() -> None:
+    """The strict `ZarrV2ConsolidatedMetadata` refuses the zarr-python 3.x `.zmetadata` at the entry's member; `read_repaired_consolidated_metadata_v2` reads the repaired document, holds its model, and lists the repairs."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV2ConsolidatedMetadata(ZMETADATA_FROM_ZARR3)
+    assert [p.loc for p in raised.value.problems] == [
+        ("metadata", "b/.zgroup", "consolidated_metadata")
+    ]
+    repaired = read_repaired_consolidated_metadata_v2(ZMETADATA_FROM_ZARR3)
+    assert repaired.problems == ()
+    assert repaired.metadata == ZarrV2ConsolidatedMetadata(ZMETADATA_CLEAN)
+    assert [r.kind for r in repaired.repairs] == ["consolidated_metadata_in_zgroup_entry"]
+    broken = read_repaired_consolidated_metadata_v2(
+        {
+            **ZMETADATA_FROM_ZARR3,
+            "metadata": {**ZMETADATA_FROM_ZARR3["metadata"], "b/.zattrs": {1: "x"}},
+        }
+    )
+    assert broken.metadata is None
+    assert [p.loc for p in broken.problems] == [("metadata", "b/.zattrs")]
+    assert [r.kind for r in broken.repairs] == ["consolidated_metadata_in_zgroup_entry"]
