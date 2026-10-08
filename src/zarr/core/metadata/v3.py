@@ -756,9 +756,14 @@ class ArrayV3Metadata(Metadata):
         # The default dataclass __eq__ compares fields directly, which is wrong for a NaN
         # fill_value: NaN != NaN under IEEE 754. Comparing the JSON-serialized form instead
         # treats matching NaN (and inf) fill values as equal. See issue #2929.
+        # The comparison uses the serialized JSON *text*: dict equality conflates
+        # -0.0 and 0.0, and a non-canonical NaN payload with "NaN", though the
+        # documents write back differently. See issue #4453.
         if not isinstance(other, ArrayV3Metadata):
             return NotImplemented
-        return self.to_dict() == other.to_dict()
+        return json.dumps(self.to_dict(), sort_keys=True) == json.dumps(
+            other.to_dict(), sort_keys=True
+        )
 
     def __hash__(self) -> int:
         # Hash the JSON-serialized form to stay consistent with __eq__: equal metadata
