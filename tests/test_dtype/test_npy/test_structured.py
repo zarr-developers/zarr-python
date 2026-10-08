@@ -392,3 +392,12 @@ def test_subarray_structured_dtype_raises() -> None:
     dtype = np.dtype([("f0", "i4", (2,))])
     with pytest.raises(ValueError, match="field 'f0' is a subarray"):
         Struct.from_native_dtype(dtype)
+
+
+@pytest.mark.parametrize("field_dtype", ["S4", "V4"])
+def test_default_scalar_bytes_field_is_zero(field_dtype: str) -> None:
+    """
+    The default scalar of a bytes field is zero bytes, as for the same dtype outside a struct.
+    """
+    dtype = np.dtype([("a", field_dtype), ("b", "<f4")])
+    assert Struct.from_native_dtype(dtype).default_scalar().tobytes() == bytes(dtype.itemsize)
