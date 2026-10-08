@@ -137,7 +137,11 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[TBaseDType, TBaseSc
 def parse_dimension_names(data: object) -> tuple[str | None, ...] | None:
     if data is None:
         return data
-    elif isinstance(data, Iterable) and all(isinstance(x, type(None) | str) for x in data):
+    elif (
+        isinstance(data, Iterable)
+        and not isinstance(data, str | bytes)
+        and all(isinstance(x, type(None) | str) for x in data)
+    ):
         return tuple(data)
     else:
         msg = f"Expected either None or an iterable of str, got {type(data)}"
@@ -151,7 +155,7 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
     """
     if data is None:
         return ()
-    if isinstance(data, Iterable) and not isinstance(data, (str, bytes)):
+    if isinstance(data, Iterable) and not isinstance(data, str | bytes | dict):
         # Materialise once. The previous implementation called ``len(tuple(data))``
         # and then returned ``data`` itself, which exhausted (and discarded) a
         # one-shot iterable and could return a value typed as a tuple that was not
@@ -541,7 +545,7 @@ class ArrayV3Metadata(Metadata):
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
 
-        shape_parsed = parse_shapelike(shape)
+        shape_parsed = parse_shapelike(shape, reject_bool=True)
         chunk_grid_parsed = parse_chunk_grid(chunk_grid)
         chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)

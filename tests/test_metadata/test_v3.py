@@ -89,11 +89,28 @@ def test_parse_dimension_names_valid(data: Any) -> None:
         assert result == tuple(data)
 
 
-@pytest.mark.parametrize("data", [[1, 2, "a"], [None, 3]])
+@pytest.mark.parametrize("data", [[1, 2, "a"], [None, 3], "xy"])
 def test_parse_dimension_names_invalid(data: Any) -> None:
     """Iterables containing non-string elements are rejected."""
     with pytest.raises(TypeError, match="Expected either None or"):
         parse_dimension_names(data)
+
+
+@pytest.mark.parametrize("data", [[], "str", 5])
+def test_parse_attributes_invalid(data: Any) -> None:
+    """Non-dict attributes values are rejected."""
+    from zarr.core.metadata.common import parse_attributes
+
+    with pytest.raises(TypeError, match="Expected dict with string keys"):
+        parse_attributes(data)
+
+
+@pytest.mark.parametrize("data", [{}, {"a": 1}])
+def test_parse_attributes_valid(data: Any) -> None:
+    """Dicts with string keys are accepted."""
+    from zarr.core.metadata.common import parse_attributes
+
+    assert parse_attributes(data) == data
 
 
 def test_parse_codecs_unknown_raises(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -223,6 +223,15 @@ def test_parse_shapelike_invalid_iterable_types(data: Any) -> None:
         parse_shapelike(data)
 
 
+@pytest.mark.parametrize(("data", "expected"), [(True, (1,)), ([True], (1,)), ((True, 1), (1, 1))])
+def test_parse_shapelike_reject_bool(data: Any, expected: tuple[int, ...]) -> None:
+    """With reject_bool=True, bools are not valid shape elements even though
+    they are int subclasses. The default stays lenient for stored chunk fields."""
+    with pytest.raises(TypeError, match="Expected an"):
+        parse_shapelike(data, reject_bool=True)
+    assert parse_shapelike(data) == expected
+
+
 @pytest.mark.parametrize("data", [(1, 2, 3, -1), (-10,)])
 def test_parse_shapelike_invalid_iterable_values(data: Any) -> None:
     """
