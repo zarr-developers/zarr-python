@@ -13,6 +13,7 @@ from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model import (
     MetadataValidationError,
     ZarrV2ArrayMetadata,
+    ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
     read_array_metadata_v2,
 )
@@ -290,3 +291,81 @@ def test_error_a_group_document_with_a_problem_is_refused_at_construction() -> N
         (("attributes",), "invalid_type"),
         (("extra",), "unknown_key"),
     ]
+
+
+ZARRAY = {k: v for k, v in ARRAY.items() if k != "attributes"}
+CONSOLIDATED: dict[str, Any] = {
+    "zarr_consolidated_format": 1,
+    "metadata": {
+        ".zgroup": {"zarr_format": 2},
+        ".zattrs": {"root": True},
+        "a/.zarray": ZARRAY,
+        "a/.zattrs": {"a": [1, 2]},
+        "b/.zgroup": {"zarr_format": 2},
+        "orphan/.zattrs": {"o": 1},
+    },
+}
+
+
+def _consolidated(**entries: object) -> dict[str, Any]:
+    return {**CONSOLIDATED, "metadata": {**CONSOLIDATED["metadata"], **entries}}
+
+
+def test_consolidated_metadata_holds_its_entries_verbatim_and_each_node_as_a_model() -> None:
+    """`metadata` is the flat file-keyed map as written, refined, read-only; `nodes` is each `.zarray`/`.zgroup` entry merged with its sibling `.zattrs` as a model of the consolidated scope, keyed by node path (`""` for the root); a `.zattrs` with no sibling is kept and makes no node; the whole round-trips through its document, store keys, pickle and copy."""
+    model = ZarrV2ConsolidatedMetadata(CONSOLIDATED, PRIVATE)
+    assert model.context is PRIVATE
+    assert model.metadata["a/.zattrs"] == {"a": (1, 2)}
+    assert set(model.nodes) == {"", "a", "b"}
+    assert model.nodes["a"] == ZarrV2ArrayMetadata(ARRAY, PRIVATE)
+    root = ZarrV2GroupMetadata({"zarr_format": 2, "attributes": {"root": True}}, PRIVATE)
+    assert model.nodes[""] == root
+    assert model.nodes["b"].attributes is UNSET
+    entries = cast("dict[str, Any]", model.to_json()["metadata"])
+    assert entries["orphan/.zattrs"] == {"o": 1}
+    assert ZarrV2ConsolidatedMetadata.from_key_value(model.to_key_value(), context=PRIVATE) == model
+    assert pickle.loads(pickle.dumps(model)) == model
+    assert copy.deepcopy(model) == model
+    with pytest.raises(TypeError):
+        cast("dict[str, object]", model.metadata)["x"] = 1
+    assert not dataclasses.is_dataclass(ZarrV2ConsolidatedMetadata)
+
+
+def test_consolidated_metadata_is_equal_by_its_nodes_and_moves_scope_with_them() -> None:
+    """Two consolidated documents are one when each node means the same and the other entries are written alike; `with_context`/`refined_in` read every node in the new scope, a conflict located at the node's entry; `refines` holds when each node refines its counterpart."""
+    spelled = _consolidated(**{"a/.zarray": {**ZARRAY, "fill_value": 0.0}})
+    assert ZarrV2ConsolidatedMetadata(CONSOLIDATED) == ZarrV2ConsolidatedMetadata(spelled)
+    other = _consolidated(**{"orphan/.zattrs": {"o": 2}})
+    assert ZarrV2ConsolidatedMetadata(CONSOLIDATED) != ZarrV2ConsolidatedMetadata(other)
+    small = ZarrV2ConsolidatedMetadata(CONSOLIDATED, SMALL)
+    assert isinstance(small.nodes["a"], ZarrV2ArrayMetadata)
+    assert isinstance(small.nodes["a"].compressor, Unclaimed)
+    gained = small.refined_in(PRIVATE)
+    assert isinstance(gained.nodes["a"], ZarrV2ArrayMetadata)
+    assert isinstance(gained.nodes["a"].compressor, Read)
+    assert gained.refines(small)
+    assert not small.refines(gained)
+    with pytest.raises(ScopeConflictError) as conflict:
+        gained.refined_in(CORE_V2)
+    assert [c.loc for c in conflict.value.conflicts] == [("metadata", "a/.zarray", "compressor")]
+    assert gained.with_context(SMALL) == small
+
+
+@pytest.mark.parametrize(
+    ("entries", "at"),
+    [
+        ({"a/.zarray": {**ZARRAY, "dtype": "float32"}}, ("metadata", "a/.zarray", "dtype")),
+        ({"a/.zarray": ZARRAY, "a/.zattrs": {1: 2}}, ("metadata", "a/.zattrs")),
+        ({"a/.zarray": ZARRAY, "a/.zgroup": {"zarr_format": 2}}, ("metadata", "a/.zgroup")),
+        ({"a/.zgroup": {"zarr_format": 3}}, ("metadata", "a/.zgroup", "zarr_format")),
+        ({"a/.zarray": 3}, ("metadata", "a/.zarray")),
+    ],
+    ids=["array-dtype", "zattrs-key", "array-and-group", "group-format", "not-an-object"],
+)
+def test_error_a_node_entry_with_a_problem_is_refused_at_the_entry(
+    entries: dict[str, Any], at: Loc
+) -> None:
+    """A `.zarray` or `.zgroup` entry is read as the document it is, in the consolidated scope; its problems sit under the entry, a `.zattrs`'s under its own entry; a path that is both an array and a group is a problem at the `.zgroup`."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV2ConsolidatedMetadata({"zarr_consolidated_format": 1, "metadata": entries})
+    assert raised.value.problems[0].loc == at

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, Literal, TypeGuard, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, TypeAlias, TypeGuard, TypeVar, cast
 
 from typing_extensions import TypeAliasType, TypedDict, Unpack
 
@@ -31,6 +31,7 @@ from zarr_metadata._json import (
 from zarr_metadata._json import prefixed as _prefix
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model._array import (
+    ZarrV2ArrayMetadata,
     ZarrV3ArrayMetadata,
     located_conflicts,
     must_understand_subset,
@@ -44,17 +45,19 @@ from zarr_metadata.model._validation import (
     ZarrV3ArrayMetadataReading,
     attributes_of,
     check_literal,
-    construct,
     dump_store_json,
     load_store_json,
     members_past_the_levels,
     missing_keys,
     other_members,
     parse_group_metadata_v2,
+    read_array_v2,
     read_array_v3,
     reading_of,
     unexpected_keys,
+    validate_group_metadata_v2,
 )
+from zarr_metadata.v2.array import ZARR_V2_ARRAY_METADATA_STORE_KEY
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
 from zarr_metadata.v2.consolidated import ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY
 from zarr_metadata.v2.definition import CORE_V2
@@ -1365,97 +1368,222 @@ def group_key_v2(model: ZarrV2GroupMetadata) -> tuple[object, ...]:
     return (UNSET if attributes is UNSET else json_text(attributes),)
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
-class ZarrV2ConsolidatedMetadata:
-    """In-memory model of a v2 `.zmetadata` document.
+ZarrV2NodeMetadata: TypeAlias = "ZarrV2ArrayMetadata | ZarrV2GroupMetadata"
+"""The model of one node a v2 `.zmetadata` document holds: an array, or a group."""
 
-    The `metadata` map holds the flat file-keyed entries (`"path/.zarray"`,
-    `"path/.zattrs"`, ...) verbatim, preserving the normalized JSON tree.
-    Entries are deliberately NOT merged into per-node models: which nodes had
-    a `.zattrs` file at all is information the canonical representation must
-    keep. Interpreting entries into node models is consumer work. A model
-    checks itself when it is built, as `from_json` checks a document, or
-    the constructor raises `MetadataValidationError`.
+
+class ZarrV2ConsolidatedMetadata:
+    """A v2 `.zmetadata` document, and the scope its nodes were read in.
+
+    `metadata` holds the flat file-keyed entries (`"path/.zarray"`,
+    `"path/.zattrs"`, ...) as written, refined: which nodes had a
+    `.zattrs` at all is kept. `nodes` is each `.zarray` or `.zgroup`
+    entry, merged with its sibling `.zattrs`, as a model of this scope,
+    keyed by the node's path, `""` for the root; a `.zattrs` with no
+    sibling is kept and makes no node, and any other entry is JSON, kept.
+    Built only by reading: the constructor raises `MetadataValidationError`
+    with every problem, each located under its entry. Two documents are
+    equal when each node means the same and the other entries are written
+    alike, as `consolidated_key_v2` says; `refines`, `with_context` and
+    `refined_in` go through the nodes.
     """
 
-    zarr_consolidated_format: Literal[1] = field(default=1, init=False)
-    metadata: dict[str, JSONValue]
+    __slots__ = ("_context", "_document", "_key", "_nodes", "_shown")
 
-    def __post_init__(self) -> None:
-        # Held as a read refines them, in containers of its own.
-        document = {"zarr_consolidated_format": 1, "metadata": self.metadata}
-        refined, problems = _read_consolidated_v2(document)
+    _context: Context
+    _document: dict[str, JSONValue]
+    _key: tuple[object, ...]
+    _nodes: dict[str, ZarrV2NodeMetadata]
+    _shown: object
+
+    zarr_consolidated_format: Final = 1
+
+    def __init__(self, document: object, context: Context | None = None) -> None:
+        scope = CORE_V2 if context is None else context
+        entries, nodes, problems = _read_consolidated_v2(document, scope)
         if len(problems) != 0:
             raise MetadataValidationError(problems)
-        object.__setattr__(self, "metadata", refined)
+        self._adopt({"zarr_consolidated_format": 1, "metadata": entries}, scope, nodes)
 
-    def __eq__(self, other: object) -> bool:
-        """Whether `other` holds the same document: the same JSON text; equal ones hash alike."""
-        if type(other) is not type(self):
-            return NotImplemented
-        return json_text(self.to_json()) == json_text(
-            cast("ZarrV2ConsolidatedMetadata", other).to_json()
-        )
+    @classmethod
+    def _of(
+        cls, document: dict[str, JSONValue], context: Context, nodes: dict[str, ZarrV2NodeMetadata]
+    ) -> ZarrV2ConsolidatedMetadata:
+        """A model of a document a read found nothing wrong with, holding the nodes that read built."""
+        model = object.__new__(cls)
+        model._adopt(document, context, nodes)
+        return model
 
-    def __hash__(self) -> int:
-        return hash(json_text(self.to_json()))
+    def _adopt(
+        self, document: dict[str, JSONValue], context: Context, nodes: dict[str, ZarrV2NodeMetadata]
+    ) -> None:
+        self._document = document
+        self._context = context
+        self._nodes = nodes
+        self._shown = frozen(document["metadata"])
+        self._key = consolidated_key_v2(self)
+
+    @property
+    def context(self) -> Context:
+        """The scope the nodes were read in."""
+        return self._context
+
+    @property
+    def metadata(self) -> Mapping[str, JSONValue]:
+        """The entries as written, refined, by store key; read-only at every level."""
+        return cast("Mapping[str, JSONValue]", self._shown)
+
+    @property
+    def nodes(self) -> Mapping[str, ZarrV2NodeMetadata]:
+        """The model of each node, by its path below the root, `""` for the root: a read-only view."""
+        return MappingProxyType(self._nodes)
 
     def to_json(self) -> dict[str, JSONValue]:
-        """The `.zmetadata` document as JSON, sharing no mutable state with the model."""
-        # to_json output shares no mutable state with the model.
-        return {
-            "zarr_consolidated_format": self.zarr_consolidated_format,
-            "metadata": copied(self.metadata),
-        }
-
-    @classmethod
-    def from_json(cls, data: object) -> ZarrV2ConsolidatedMetadata:
-        """The model of `data`, a `.zmetadata` document, its entries held as written.
-
-        `MetadataValidationError` with every problem: a member missing or
-        unexpected, a format other than 1, an entry that is not JSON. A
-        `.zattrs` entry is user data, and may hold `NaN`, `Infinity` and
-        `-Infinity`.
-        """
-        refined, problems = _read_consolidated_v2(data)
-        if len(problems) != 0:
-            raise MetadataValidationError(problems)
-        return construct(cls, metadata=refined)
-
-    @classmethod
-    def from_key_value(cls, mapping: Mapping[StoreKey, bytes]) -> ZarrV2ConsolidatedMetadata:
-        """The model of the document at `.zmetadata` in `mapping`.
-
-        `MetadataValidationError` when the key is missing, its bytes are not
-        JSON, or the document is not valid.
-        """
-        return cls.from_json(load_store_json(mapping, ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY))
+        """The `.zmetadata` document as written, refined, sharing nothing with the model."""
+        return cast("dict[str, JSONValue]", copied(self._document))
 
     def to_key_value(
         self, *, indent: int | str | None = None
     ) -> Mapping[ZarrV2ConsolidatedMetadataStoreKey, bytes]:
-        """The document as a store holds it: JSON bytes at `.zmetadata`, indented by `indent`.
-
-        A model was checked when it was built, so its document is written
-        as it is.
-        """
+        """The document as a store holds it: JSON bytes at `.zmetadata`, indented by `indent`."""
         return {
-            ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY: dump_store_json(self.to_json(), indent=indent)
+            ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY: dump_store_json(self._document, indent=indent)
         }
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
+
+    def __eq__(self, other: object) -> bool:
+        if type(other) is not type(self):
+            return NotImplemented
+        return self._key == cast("ZarrV2ConsolidatedMetadata", other)._key
+
+    def __hash__(self) -> int:
+        return hash(self._key)
+
+    def __reduce__(self) -> tuple[type[ZarrV2ConsolidatedMetadata], tuple[object, Context]]:
+        return type(self), (self._document, self._context)
+
+    def with_context(self, context: Context | None = None) -> ZarrV2ConsolidatedMetadata:
+        """This document with every node read in `context`, whatever that changes; `MetadataValidationError` when a node has a problem there."""
+        scope = CORE_V2 if context is None else context
+        return type(self)(self._document, context=scope)
+
+    def refined_in(self, context: Context | None = None) -> ZarrV2ConsolidatedMetadata:
+        """This document with every node read in `context`, which may claim what this scope left unclaimed and contradict nothing.
+
+        `ScopeConflictError` naming each conflict, located at the node's
+        entry; `MetadataValidationError` when a gain surfaces a problem.
+        """
+        scope = CORE_V2 if context is None else context
+        conflicts: list[Conflict] = []
+        for path, node in self._nodes.items():
+            if not isinstance(node, ZarrV2ArrayMetadata):
+                continue
+            found = scope.disagreements(node.claims)
+            key = (
+                f"{path}/{ZARR_V2_ARRAY_METADATA_STORE_KEY}"
+                if path != ""
+                else ZARR_V2_ARRAY_METADATA_STORE_KEY
+            )
+            conflicts.extend(
+                dataclasses.replace(
+                    conflict,
+                    loc=("metadata", key, *(() if conflict.loc is None else conflict.loc)),
+                )
+                for conflict in located_conflicts(node.reading.fields(), found.conflicts)
+            )
+        if len(conflicts) != 0:
+            raise ScopeConflictError(conflicts)
+        return self.with_context(scope)
+
+    def refines(self, other: ZarrV2ConsolidatedMetadata) -> bool:
+        """Whether every node this holds refines the one `other` holds at the same path, neither holds a path the other does not, and the other entries are written alike; False of what is not v2 consolidated metadata."""
+        if type(other) is not type(self):
+            return False
+        if self._nodes.keys() != other._nodes.keys():
+            return False
+        if _other_entries_text(self) != _other_entries_text(other):
+            return False
+        return all(_v2_node_refines(self._nodes[path], other._nodes[path]) for path in self._nodes)
+
+    @classmethod
+    def from_json(
+        cls, data: object, *, context: Context | None = None
+    ) -> ZarrV2ConsolidatedMetadata:
+        """The model of `data`, a `.zmetadata` document, its nodes read in `context`; `MetadataValidationError` with every problem."""
+        return cls(data, context=context)
+
+    @classmethod
+    def from_key_value(
+        cls, mapping: Mapping[StoreKey, bytes], *, context: Context | None = None
+    ) -> ZarrV2ConsolidatedMetadata:
+        """The model of the document at `.zmetadata` in `mapping`, read in `context`.
+
+        `MetadataValidationError` when the key is missing, its bytes are not
+        JSON, or the document is not valid.
+        """
+        return cls(
+            load_store_json(mapping, ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY), context=context
+        )
+
+
+def _v2_node_refines(node: ZarrV2NodeMetadata, other: ZarrV2NodeMetadata) -> bool:
+    """Whether `node` refines `other`, as models of one kind refine each other; models of two kinds do not."""
+    if isinstance(node, ZarrV2ArrayMetadata):
+        return isinstance(other, ZarrV2ArrayMetadata) and node.refines(other)
+    return isinstance(other, ZarrV2GroupMetadata) and node.refines(other)
+
+
+_NODE_FILES: Final = (
+    ZARR_V2_ARRAY_METADATA_STORE_KEY,
+    ZARR_V2_GROUP_METADATA_STORE_KEY,
+    ZARR_V2_ATTRIBUTES_STORE_KEY,
+)
+
+
+def _entries_by_path(entries: Mapping[str, JSONValue]) -> dict[str, dict[str, str]]:
+    """The `.zarray`, `.zgroup` and `.zattrs` entries, by node path, then by file: the key each sits under."""
+    by_path: dict[str, dict[str, str]] = {}
+    for key in entries:
+        path, _, name = key.rpartition("/")
+        if name in _NODE_FILES:
+            by_path.setdefault(path, {})[name] = key
+    return by_path
+
+
+def _other_entries_text(model: ZarrV2ConsolidatedMetadata) -> str:
+    """The entries no node is read from -- an orphan `.zattrs`, any other key -- as JSON text: what `==` compares of them."""
+    entries = cast("Mapping[str, JSONValue]", model._document["metadata"])  # pyright: ignore[reportPrivateUsage]
+    consumed: set[str] = set()
+    for path, names in _entries_by_path(entries).items():
+        if path in model._nodes:  # pyright: ignore[reportPrivateUsage]
+            consumed.update(names.values())
+    return json_text({key: value for key, value in entries.items() if key not in consumed})
+
+
+def consolidated_key_v2(model: ZarrV2ConsolidatedMetadata) -> tuple[object, ...]:
+    """What `==` and `hash` compare of v2 consolidated metadata: each node by its path and its own key, and every other entry as JSON text."""
+    nodes = model._nodes  # pyright: ignore[reportPrivateUsage]
+    return (
+        tuple(sorted((path, node._key) for path, node in nodes.items())),  # pyright: ignore[reportPrivateUsage]
+        _other_entries_text(model),
+    )
 
 
 def _read_consolidated_v2(
-    data: object,
-) -> tuple[dict[str, JSONValue], tuple[ValidationProblem, ...]]:
-    """`data`, a `.zmetadata` document: each entry as read, and every problem, located in the document.
+    data: object, context: Context
+) -> tuple[dict[str, JSONValue], dict[str, ZarrV2NodeMetadata], tuple[ValidationProblem, ...]]:
+    """`data`, a `.zmetadata` document: each entry as read, the model of each node read in `context`, and every problem, located in the document.
 
-    Each entry is the document its key names: a `.zattrs` is user data, and
-    any other is JSON by RFC 8259.
+    Each entry is the document its key names: a `.zattrs` is user data,
+    any other is JSON by RFC 8259; a `.zarray` or `.zgroup` is read as the
+    document it is, merged with its sibling `.zattrs`, its problems under
+    its entry and the attributes' under the `.zattrs` entry. The nodes are
+    empty when anything is wrong.
     """
-    # Each entry is refined below, arrays as tuples, no deeper than a
-    # reader walks; the document around them is walked as it is.
     if not isinstance(data, Mapping):
-        return {}, not_an_object(data)
+        return {}, {}, not_an_object(data)
     doc = cast("Mapping[object, object]", data)
     problems: list[ValidationProblem] = [
         ValidationProblem((key,), "missing required key", "missing_key")
@@ -1485,7 +1613,80 @@ def _read_consolidated_v2(
                 entry, found = refine(value, ("metadata", key))
                 problems.extend(found)
                 refined[key] = entry
-    return refined, with_input(problems, doc)
+    nodes: dict[str, ZarrV2NodeMetadata] = {}
+    if len(problems) == 0:
+        for path, names in _entries_by_path(refined).items():
+            node, found = _read_node_v2(path, names, refined, context)
+            problems.extend(found)
+            if node is not None:
+                nodes[path] = node
+    if len(problems) != 0:
+        nodes = {}
+    return refined, nodes, with_input(problems, doc)
+
+
+def _read_node_v2(
+    path: str, names: Mapping[str, str], entries: Mapping[str, JSONValue], context: Context
+) -> tuple[ZarrV2NodeMetadata | None, list[ValidationProblem]]:
+    """The node at `path`, read from its `.zarray` or `.zgroup` entry merged with its `.zattrs`, and every problem, located under the entries; None and no problem when there is only a `.zattrs`."""
+    zarray = names.get(ZARR_V2_ARRAY_METADATA_STORE_KEY)
+    zgroup = names.get(ZARR_V2_GROUP_METADATA_STORE_KEY)
+    zattrs = names.get(ZARR_V2_ATTRIBUTES_STORE_KEY)
+    if zarray is not None and zgroup is not None:
+        return None, [
+            ValidationProblem(
+                ("metadata", zgroup),
+                f"a node is an array or a group, not both: a {ZARR_V2_ARRAY_METADATA_STORE_KEY} is at "
+                f"{path!r} too",
+                "invalid_value",
+            )
+        ]
+    key = zarray if zarray is not None else zgroup
+    if key is None:
+        return None, []
+    document = entries[key]
+    if not isinstance(document, Mapping):
+        return None, [
+            ValidationProblem(
+                ("metadata", key), f"expected an object, got {shown(document)}", "invalid_type"
+            )
+        ]
+    merged = dict(cast("Mapping[str, JSONValue]", document))
+    if "attributes" in merged:
+        return None, [
+            ValidationProblem(
+                ("metadata", key, "attributes"), "unexpected document member", "invalid_value"
+            )
+        ]
+    if zattrs is not None:
+        merged["attributes"] = entries[zattrs]
+
+    def located(found: tuple[ValidationProblem, ...]) -> list[ValidationProblem]:
+        placed: list[ValidationProblem] = []
+        for problem in found:
+            if zattrs is not None and problem.loc[:1] == ("attributes",):
+                placed.append(
+                    dataclasses.replace(problem, loc=("metadata", zattrs, *problem.loc[1:]))
+                )
+            else:
+                placed.append(dataclasses.replace(problem, loc=("metadata", key, *problem.loc)))
+        return placed
+
+    if zarray is not None:
+        reading, members = read_array_v2(merged, context)
+        if members is None:
+            return None, located(reading.problems)
+        held = merged if "dimension_separator" in merged else {**merged, "dimension_separator": "."}
+        return ZarrV2ArrayMetadata._of(held, context, reading, members), []  # pyright: ignore[reportPrivateUsage]
+    found = validate_group_metadata_v2(merged, context=context)
+    if len(found) != 0:
+        return None, located(found)
+    attributes: dict[str, JSONValue] | UNSET = (
+        dict(cast("Mapping[str, JSONValue]", merged["attributes"]))
+        if "attributes" in merged
+        else UNSET
+    )
+    return ZarrV2GroupMetadata._of(merged, context, attributes), []  # pyright: ignore[reportPrivateUsage]
 
 
 def _v2_attributes(document: ZarrV2GroupMetadataJSON) -> dict[str, JSONValue] | UNSET:

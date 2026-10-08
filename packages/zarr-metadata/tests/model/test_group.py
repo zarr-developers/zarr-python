@@ -1136,10 +1136,10 @@ def test_consolidated_v2_lists_become_tuples() -> None:
     """from_json converts JSON arrays inside entries to tuples."""
     doc = {
         "zarr_consolidated_format": 1,
-        "metadata": {"a/.zarray": {"shape": [2, 3]}},
+        "metadata": {"a/.zattrs": {"shape": [2, 3]}},
     }
     model = ZarrV2ConsolidatedMetadata.from_json(doc)
-    assert model.metadata == {"a/.zarray": {"shape": (2, 3)}}
+    assert model.metadata == {"a/.zattrs": {"shape": (2, 3)}}
 
 
 def test_consolidated_v2_envelope_validation() -> None:
@@ -1368,7 +1368,10 @@ TO_JSON_NO_ALIASING_PARAMS = [
         id="v3-consolidated",
     ),
     pytest.param(
-        ZarrV2ConsolidatedMetadata(metadata={"a/.zarray": {"nested": {"x": [1]}}}),
+        # A `.zattrs` entry: user data, whose containers can nest.
+        ZarrV2ConsolidatedMetadata(
+            {"zarr_consolidated_format": 1, "metadata": {"a/.zattrs": {"nested": {"x": [1]}}}}
+        ),
         id="v2-consolidated",
     ),
 ]
