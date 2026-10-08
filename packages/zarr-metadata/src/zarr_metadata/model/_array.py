@@ -23,6 +23,7 @@ from zarr_metadata._json import (
     with_input,
 )
 from zarr_metadata._sentinel import UNSET
+from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._validation import (
     ArrayMembersV2,
     ArrayMembersV3,
@@ -115,7 +116,7 @@ class ZarrV3ArrayMetadataUpdate(TypedDict, total=False, extra_items=ZarrV3Extens
     dimension_names: tuple[str | None, ...] | UNSET
 
 
-class ZarrV3ArrayMetadata:
+class ZarrV3ArrayMetadata(Keyed):
     """A v3 array document, and the scope it was read in.
 
     The model is the pair: `to_json` is the document as written, refined
@@ -128,14 +129,14 @@ class ZarrV3ArrayMetadata:
     constructor reads `document` in `context` and raises
     `MetadataValidationError` with every problem, so no model is invalid.
     Two models are equal when their documents mean the same in their
-    scopes, as `array_key` says; the scope itself takes no part. `update`
+    scopes, as its key says; the scope itself takes no part. `update`
     reads new members in the model's own scope; `with_context` and
     `refined_in` read the document in another. A model pickles as its
     pair, when the definitions its scope holds do: ones whose functions
     are defined at a module's top level.
     """
 
-    __slots__ = ("_claims", "_context", "_document", "_key", "_members", "_reading", "_shown")
+    __slots__ = ("_claims", "_context", "_document", "_members", "_reading", "_shown")
 
     zarr_format: Final = 3
     node_type: Final = "array"
@@ -160,7 +161,7 @@ class ZarrV3ArrayMetadata:
         reading: ZarrV3ArrayMetadataReading,
         members: ArrayMembersV3,
     ) -> ZarrV3ArrayMetadata:
-        """A model of a document a read found nothing wrong with, holding that reading: no second read."""
+        """A model of a document a read found nothing wrong with, holding that reading: no second read. The readers of this package build models through this, the private use pyright reports."""
         model = object.__new__(cls)
         model._adopt(document, context, reading, members)
         return model
@@ -184,7 +185,7 @@ class ZarrV3ArrayMetadata:
             frozen(members.attributes),
             frozen(members.extra_fields),
         )
-        self._key = array_key(self)
+        self._key = self._key_of()
         self._claims = MappingProxyType(claims_of(reading.fields()))
 
     # --- the pair ---------------------------------------------------------
@@ -217,13 +218,46 @@ class ZarrV3ArrayMetadata:
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
 
-    def __eq__(self, other: object) -> bool:
-        if type(other) is not type(self):
-            return NotImplemented
-        return self._key == cast("ZarrV3ArrayMetadata", other)._key
+    def _key_of(self) -> tuple[object, ...]:
+        """What `==` and `hash` compare of a v3 array model: what its document means.
 
-    def __hash__(self) -> int:
-        return hash(self._key)
+        Each field by its `field_key`, the fill value in its canonical spelling
+        as JSON text when a definition in scope read the data type, and every
+        other member as it is, the JSON ones as text.
+        """
+        members = self._members
+        return (
+            members.shape,
+            self._fill_value_key(),
+            field_key(self.data_type),
+            field_key(self.chunk_grid),
+            tuple(field_key(codec) for codec in self.codecs),
+            field_key(self.chunk_key_encoding),
+            members.dimension_names,
+            json_text(members.attributes),
+            tuple(field_key(transformer) for transformer in self.storage_transformers),
+            json_text(members.extra_fields),
+        )
+
+    def _plain_key(
+        self, data_type: Read[DataTypeDefinition[Any]] | Unclaimed
+    ) -> tuple[object, ...]:
+        """What `refines` compares of a model other than its fields, the fill value spelled as `data_type` -- the more informed side's -- spells it."""
+        members = self._members
+        return (
+            members.shape,
+            json_text(spelled_canonically(data_type, members.fill_value)),
+            members.dimension_names,
+            json_text(members.attributes),
+            json_text(members.extra_fields),
+        )
+
+    def _fill_value_key(self) -> str:
+        """What `==` compares of the fill value: its canonical spelling as JSON text when a definition in scope read the data type, and the fill value as written when none did."""
+        fill_value = self._members.fill_value
+        if isinstance(self.data_type, Read):
+            return json_text(spelled_canonically(self.data_type, fill_value))
+        return json_text(fill_value)
 
     def __reduce__(self) -> tuple[type[ZarrV3ArrayMetadata], tuple[object, Context]]:
         # The pair, read again on load: a model's reading never disagrees
@@ -365,7 +399,7 @@ class ZarrV3ArrayMetadata:
             return False
         if len(fill_value_problems(self.data_type, other._members.fill_value)) != 0:
             return False
-        return _plain_key(self, self.data_type) == _plain_key(other, self.data_type)
+        return self._plain_key(self.data_type) == other._plain_key(self.data_type)
 
     # --- constructors -----------------------------------------------------
 
@@ -429,28 +463,6 @@ class ZarrV3ArrayMetadata:
         return cls(load_store_json(mapping, ZARR_V3_ARRAY_METADATA_STORE_KEY), context=context)
 
 
-def array_key(model: ZarrV3ArrayMetadata) -> tuple[object, ...]:
-    """What `==` and `hash` compare of a v3 array model: what its document means.
-
-    Each field by its `field_key`, the fill value in its canonical spelling
-    as JSON text when a definition in scope read the data type, and every
-    other member as it is, the JSON ones as text.
-    """
-    members = model._members  # pyright: ignore[reportPrivateUsage]
-    return (
-        members.shape,
-        _fill_value_key(model),
-        field_key(model.data_type),
-        field_key(model.chunk_grid),
-        tuple(field_key(codec) for codec in model.codecs),
-        field_key(model.chunk_key_encoding),
-        members.dimension_names,
-        json_text(members.attributes),
-        tuple(field_key(transformer) for transformer in model.storage_transformers),
-        json_text(members.extra_fields),
-    )
-
-
 def located_conflicts(
     fields: Iterable[tuple[Loc, Resolved[Any]]], conflicts: Sequence[Conflict]
 ) -> tuple[Conflict, ...]:
@@ -463,28 +475,6 @@ def located_conflicts(
             located.append(conflict)
         located.extend(dataclasses.replace(conflict, loc=loc) for loc in places)
     return tuple(located)
-
-
-def _plain_key(
-    model: ZarrV3ArrayMetadata, data_type: Read[DataTypeDefinition[Any]] | Unclaimed
-) -> tuple[object, ...]:
-    """What `refines` compares of a model other than its fields, the fill value spelled as `data_type` -- the more informed side's -- spells it."""
-    members = model._members  # pyright: ignore[reportPrivateUsage]
-    return (
-        members.shape,
-        json_text(spelled_canonically(data_type, members.fill_value)),
-        members.dimension_names,
-        json_text(members.attributes),
-        json_text(members.extra_fields),
-    )
-
-
-def _fill_value_key(model: ZarrV3ArrayMetadata) -> str:
-    """What `==` compares of `model`'s fill value: its canonical spelling as JSON text when a definition in scope read the data type, and the fill value as written when none did."""
-    fill_value = model._members.fill_value  # pyright: ignore[reportPrivateUsage]
-    if isinstance(model.data_type, Read):
-        return json_text(spelled_canonically(model.data_type, fill_value))
-    return json_text(fill_value)
 
 
 def read_array_metadata_v3(
@@ -550,7 +540,7 @@ class ZarrV2ArrayMetadataUpdate(TypedDict, total=False, extra_items=JSONValue | 
     attributes: Mapping[str, JSONValue] | UNSET
 
 
-class ZarrV2ArrayMetadata:
+class ZarrV2ArrayMetadata(Keyed):
     """A v2 array document, and the scope it was read in.
 
     The pair, as the v3 models are: `to_json` is the merged document --
@@ -566,12 +556,12 @@ class ZarrV2ArrayMetadata:
     only by reading: the constructor reads `document` in `context` and
     raises `MetadataValidationError` with every problem, so no model is
     invalid. Two models are equal when their documents mean the same in
-    their scopes, as `array_key_v2` says. `update` reads new members in
+    their scopes, as its key says. `update` reads new members in
     the model's own scope; `with_context` and `refined_in` read the
     document in another. A model pickles as its pair.
     """
 
-    __slots__ = ("_claims", "_context", "_document", "_key", "_members", "_reading", "_shown")
+    __slots__ = ("_claims", "_context", "_document", "_members", "_reading", "_shown")
 
     zarr_format: Final = 2
 
@@ -598,7 +588,7 @@ class ZarrV2ArrayMetadata:
         reading: ZarrV2ArrayMetadataReading,
         members: ArrayMembersV2,
     ) -> ZarrV2ArrayMetadata:
-        """A model of a document a read found nothing wrong with, holding that reading: no second read."""
+        """A model of a document a read found nothing wrong with, holding that reading: no second read. The readers of this package build models through this, the private use pyright reports."""
         model = object.__new__(cls)
         model._adopt(document, context, reading, members)
         return model
@@ -620,7 +610,7 @@ class ZarrV2ArrayMetadata:
             UNSET if members.attributes is UNSET else frozen(members.attributes),
             frozen(members.extra_fields),
         )
-        self._key = array_key_v2(self)
+        self._key = self._key_of()
         self._claims = MappingProxyType(claims_of(reading.fields()))
 
     # --- the pair ---------------------------------------------------------
@@ -662,13 +652,49 @@ class ZarrV2ArrayMetadata:
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
 
-    def __eq__(self, other: object) -> bool:
-        if type(other) is not type(self):
-            return NotImplemented
-        return self._key == cast("ZarrV2ArrayMetadata", other)._key
+    def _key_of(self) -> tuple[object, ...]:
+        """What `==` and `hash` compare of a v2 array model: what its document means.
 
-    def __hash__(self) -> int:
-        return hash(self._key)
+        Each field by its `field_key`, the fill value in its canonical spelling
+        as JSON text when a definition in scope read the dtype, and every other
+        member as it is, the JSON ones as text; `attributes` as `UNSET` when
+        there is no `.zattrs`.
+        """
+        members = self._members
+        return (
+            members.shape,
+            members.chunks,
+            members.order,
+            members.dimension_separator,
+            self._fill_value_key(),
+            field_key(self.dtype),
+            None if self.compressor is None else field_key(self.compressor),
+            None if self.filters is None else tuple(field_key(entry) for entry in self.filters),
+            UNSET if members.attributes is UNSET else json_text(members.attributes),
+            json_text(members.extra_fields),
+        )
+
+    def _plain_key(
+        self, dtype: Read[ZarrV2DataTypeDefinition[Any]] | Unclaimed
+    ) -> tuple[object, ...]:
+        """What `refines` compares of a model other than its fields, the fill value spelled as `dtype` -- the more informed side's -- spells it."""
+        members = self._members
+        return (
+            members.shape,
+            members.chunks,
+            members.order,
+            members.dimension_separator,
+            json_text(spelled_canonically(dtype, members.fill_value)),
+            UNSET if members.attributes is UNSET else json_text(members.attributes),
+            json_text(members.extra_fields),
+        )
+
+    def _fill_value_key(self) -> str:
+        """What `==` compares of the fill value: its canonical spelling as JSON text when a definition in scope read the dtype, and the fill value as written when none did."""
+        fill_value = self._members.fill_value
+        if isinstance(self.dtype, Read):
+            return json_text(spelled_canonically(self.dtype, fill_value))
+        return json_text(fill_value)
 
     def __reduce__(self) -> tuple[type[ZarrV2ArrayMetadata], tuple[object, Context]]:
         return type(self), (self._document, self._context)
@@ -787,7 +813,7 @@ class ZarrV2ArrayMetadata:
             return False
         if len(fill_value_problems(self.dtype, other._members.fill_value)) != 0:
             return False
-        return _plain_key_v2(self, self.dtype) == _plain_key_v2(other, self.dtype)
+        return self._plain_key(self.dtype) == other._plain_key(self.dtype)
 
     # --- constructors -----------------------------------------------------
 
@@ -860,50 +886,3 @@ class ZarrV2ArrayMetadata:
             zattrs = load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY)
             return cls({**zarray, "attributes": zattrs}, context=context)
         return cls(zarray, context=context)
-
-
-def array_key_v2(model: ZarrV2ArrayMetadata) -> tuple[object, ...]:
-    """What `==` and `hash` compare of a v2 array model: what its document means.
-
-    Each field by its `field_key`, the fill value in its canonical spelling
-    as JSON text when a definition in scope read the dtype, and every other
-    member as it is, the JSON ones as text; `attributes` as `UNSET` when
-    there is no `.zattrs`.
-    """
-    members = model._members  # pyright: ignore[reportPrivateUsage]
-    return (
-        members.shape,
-        members.chunks,
-        members.order,
-        members.dimension_separator,
-        _fill_value_key_v2(model),
-        field_key(model.dtype),
-        None if model.compressor is None else field_key(model.compressor),
-        None if model.filters is None else tuple(field_key(entry) for entry in model.filters),
-        UNSET if members.attributes is UNSET else json_text(members.attributes),
-        json_text(members.extra_fields),
-    )
-
-
-def _plain_key_v2(
-    model: ZarrV2ArrayMetadata, dtype: Read[ZarrV2DataTypeDefinition[Any]] | Unclaimed
-) -> tuple[object, ...]:
-    """What `refines` compares of a model other than its fields, the fill value spelled as `dtype` -- the more informed side's -- spells it."""
-    members = model._members  # pyright: ignore[reportPrivateUsage]
-    return (
-        members.shape,
-        members.chunks,
-        members.order,
-        members.dimension_separator,
-        json_text(spelled_canonically(dtype, members.fill_value)),
-        UNSET if members.attributes is UNSET else json_text(members.attributes),
-        json_text(members.extra_fields),
-    )
-
-
-def _fill_value_key_v2(model: ZarrV2ArrayMetadata) -> str:
-    """What `==` compares of `model`'s fill value: its canonical spelling as JSON text when a definition in scope read the dtype, and the fill value as written when none did."""
-    fill_value = model._members.fill_value  # pyright: ignore[reportPrivateUsage]
-    if isinstance(model.dtype, Read):
-        return json_text(spelled_canonically(model.dtype, fill_value))
-    return json_text(fill_value)

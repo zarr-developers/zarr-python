@@ -42,6 +42,7 @@ from zarr_metadata.model._array import (
     must_understand_subset,
     read_array_metadata_v3,
 )
+from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._validation import (
     GROUP_METADATA_REQUIRED_KEYS_V3,
     GROUP_METADATA_STANDARD_KEYS_V3,
@@ -122,7 +123,7 @@ class ZarrV3GroupMetadataUpdate(TypedDict, total=False, extra_items=ZarrV3Extens
     consolidated_metadata: ZarrV3ConsolidatedMetadataInput | ZarrV3ConsolidatedMetadata | UNSET
 
 
-class ZarrV3GroupMetadata:
+class ZarrV3GroupMetadata(Keyed):
     """A v3 group document, and the scope it was read in.
 
     The model is the pair, as `ZarrV3ArrayMetadata` is: `to_json` is the
@@ -141,7 +142,6 @@ class ZarrV3GroupMetadata:
         "_consolidated",
         "_context",
         "_document",
-        "_key",
         "_members",
         "_reading",
         "_shown",
@@ -170,7 +170,7 @@ class ZarrV3GroupMetadata:
         reading: ZarrV3GroupMetadataReading,
         members: GroupMembersV3,
     ) -> ZarrV3GroupMetadata:
-        """A model of a document a read found nothing wrong with, holding that reading: no second read."""
+        """A model of a document a read found nothing wrong with, holding that reading: no second read. The readers of this package build models through this, the private use pyright reports."""
         model = object.__new__(cls)
         model._adopt(document, context, reading, members)
         return model
@@ -216,7 +216,7 @@ class ZarrV3GroupMetadata:
         self._reading = dataclasses.replace(
             reading, consolidated=MappingProxyType(dict(held)), metadata=self
         )
-        self._key = group_key(self)
+        self._key = self._key_of()
         self._claims = MappingProxyType(claims_of(reading.fields()))
 
     # --- the pair ---------------------------------------------------------
@@ -249,13 +249,15 @@ class ZarrV3GroupMetadata:
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
 
-    def __eq__(self, other: object) -> bool:
-        if type(other) is not type(self):
-            return NotImplemented
-        return self._key == cast("ZarrV3GroupMetadata", other)._key
-
-    def __hash__(self) -> int:
-        return hash(self._key)
+    def _key_of(self) -> tuple[object, ...]:
+        """What `==` and `hash` compare of a v3 group model: its attributes and extra fields as JSON text, and what its consolidated metadata holds, by its key."""
+        consolidated = self.consolidated_metadata
+        members = self._members
+        return (
+            json_text(members.attributes),
+            UNSET if consolidated is UNSET else consolidated._key,
+            json_text(members.extra_fields),
+        )
 
     def __reduce__(self) -> tuple[type[ZarrV3GroupMetadata], tuple[object, Context]]:
         # The pair, read again on load.
@@ -377,7 +379,7 @@ class ZarrV3GroupMetadata:
         return cls(load_store_json(mapping, ZARR_V3_GROUP_METADATA_STORE_KEY), context=context)
 
 
-class ZarrV3ConsolidatedMetadata:
+class ZarrV3ConsolidatedMetadata(Keyed):
     """A group's inline `consolidated_metadata` member, and the scope it was read in.
 
     Models the reference-implementation convention where consolidated
@@ -391,7 +393,7 @@ class ZarrV3ConsolidatedMetadata:
     path without the leading `/`: the node at `/a/b` at `a/b`.
     """
 
-    __slots__ = ("_context", "_document", "_key", "_metadata")
+    __slots__ = ("_context", "_document", "_metadata")
 
     kind: Final = "inline"
     must_understand: Final = False
@@ -416,7 +418,7 @@ class ZarrV3ConsolidatedMetadata:
         context: Context,
         metadata: dict[str, ZarrV3NodeMetadata],
     ) -> ZarrV3ConsolidatedMetadata:
-        """The member of a group a read found nothing wrong with, holding the models that read built."""
+        """The member of a group a read found nothing wrong with, holding the models that read built. The readers of this package build models through this, the private use pyright reports."""
         model = object.__new__(cls)
         model._adopt(document, context, metadata)
         return model
@@ -430,7 +432,7 @@ class ZarrV3ConsolidatedMetadata:
         self._document = document
         self._context = context
         self._metadata = metadata
-        self._key = consolidated_key(self)
+        self._key = self._key_of()
         # Hidden from the readings, which hold their own models; see `metadata`.
 
     @property
@@ -450,13 +452,12 @@ class ZarrV3ConsolidatedMetadata:
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
 
-    def __eq__(self, other: object) -> bool:
-        if type(other) is not type(self):
-            return NotImplemented
-        return self._key == cast("ZarrV3ConsolidatedMetadata", other)._key
-
-    def __hash__(self) -> int:
-        return hash(self._key)
+    def _key_of(self) -> tuple[object, ...]:
+        """What `==` and `hash` compare of consolidated metadata: each document's key, by its path, in path order."""
+        return tuple(
+            (path, node._key)
+            for path, node in sorted(self.metadata.items(), key=lambda item: item[0])
+        )
 
     def __reduce__(self) -> tuple[type[ZarrV3ConsolidatedMetadata], tuple[object, Context]]:
         return type(self), (self._document, self._context)
@@ -776,7 +777,7 @@ def documents_for(value: object) -> object:
 def _member_documents_for(member: object) -> object:
     """A `consolidated_metadata` member with each node model it lists replaced by its document; `member` itself when it lists none."""
     if isinstance(member, ZarrV3ConsolidatedMetadata):
-        return member._document  # pyright: ignore[reportPrivateUsage]
+        return member.to_json()
     if not is_object(member):
         return member
     entries = member.get("metadata")
@@ -786,7 +787,7 @@ def _member_documents_for(member: object) -> object:
     changed = False
     for path, entry in entries.items():
         if isinstance(entry, (ZarrV3ArrayMetadata, ZarrV3GroupMetadata)):
-            replaced[path] = entry._document  # pyright: ignore[reportPrivateUsage]
+            replaced[path] = entry.to_json()
             changed = True
         else:
             # A document listed here may list models of its own.
@@ -806,7 +807,7 @@ def _read_node_model(
     scope. A gain reads the document again there, so a problem a newly
     claimed definition finds is reported where it sits.
     """
-    document = entry._document  # pyright: ignore[reportPrivateUsage]
+    document = entry.to_json()
     found = context.disagreements(entry.claims)
     if len(found.conflicts) != 0:
         # Read again in the group's scope, so the reading is of that scope,
@@ -936,25 +937,6 @@ def _read_consolidated_v3(
             )
         )
     return readings, members, tuple(problems)
-
-
-def group_key(model: ZarrV3GroupMetadata) -> tuple[object, ...]:
-    """What `==` and `hash` compare of a v3 group model: its attributes and extra fields as JSON text, and what its consolidated metadata holds, by `consolidated_key`."""
-    consolidated = model.consolidated_metadata
-    members = model._members  # pyright: ignore[reportPrivateUsage]
-    return (
-        json_text(members.attributes),
-        UNSET if consolidated is UNSET else consolidated._key,  # pyright: ignore[reportPrivateUsage]
-        json_text(members.extra_fields),
-    )
-
-
-def consolidated_key(model: ZarrV3ConsolidatedMetadata) -> tuple[object, ...]:
-    """What `==` and `hash` compare of consolidated metadata: each document's key, by its path, in path order."""
-    return tuple(
-        (path, node._key)  # pyright: ignore[reportPrivateUsage]
-        for path, node in sorted(model.metadata.items(), key=lambda item: item[0])
-    )
 
 
 def _key_problems(key: str) -> list[ValidationProblem]:
@@ -1198,7 +1180,7 @@ class ZarrV2GroupMetadataUpdate(TypedDict, total=False):
     attributes: Mapping[str, JSONValue] | UNSET
 
 
-class ZarrV2GroupMetadata:
+class ZarrV2GroupMetadata(Keyed):
     """A v2 group document, and the scope it was read in.
 
     The pair, as the v3 models are: `to_json` is the merged document --
@@ -1212,12 +1194,11 @@ class ZarrV2GroupMetadata:
     `group_key_v2` says.
     """
 
-    __slots__ = ("_attributes", "_context", "_document", "_key", "_shown")
+    __slots__ = ("_attributes", "_context", "_document", "_shown")
 
     _attributes: dict[str, JSONValue] | UNSET
     _context: Context
     _document: dict[str, JSONValue]
-    _key: tuple[object, ...]
     _shown: Mapping[str, JSONValue] | UNSET
 
     zarr_format: Final = 2
@@ -1239,7 +1220,7 @@ class ZarrV2GroupMetadata:
         context: Context,
         attributes: dict[str, JSONValue] | UNSET,
     ) -> ZarrV2GroupMetadata:
-        """A model of a document a read found nothing wrong with: no second read."""
+        """A model of a document a read found nothing wrong with: no second read. The readers of this package build models through this, the private use pyright reports."""
         model = object.__new__(cls)
         model._adopt(document, context, attributes)
         return model
@@ -1254,7 +1235,7 @@ class ZarrV2GroupMetadata:
         self._context = context
         self._attributes = attributes
         self._shown = UNSET if attributes is UNSET else frozen(attributes)
-        self._key = group_key_v2(self)
+        self._key = self._key_of()
 
     @property
     def context(self) -> Context:
@@ -1293,13 +1274,10 @@ class ZarrV2GroupMetadata:
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
 
-    def __eq__(self, other: object) -> bool:
-        if type(other) is not type(self):
-            return NotImplemented
-        return self._key == cast("ZarrV2GroupMetadata", other)._key
-
-    def __hash__(self) -> int:
-        return hash(self._key)
+    def _key_of(self) -> tuple[object, ...]:
+        """What `==` and `hash` compare of a v2 group model: its attributes as JSON text, or `UNSET` when there is no `.zattrs`."""
+        attributes = self._attributes
+        return (UNSET if attributes is UNSET else json_text(attributes),)
 
     def __reduce__(self) -> tuple[type[ZarrV2GroupMetadata], tuple[object, Context]]:
         return type(self), (self._document, self._context)
@@ -1363,17 +1341,11 @@ class ZarrV2GroupMetadata:
         return cls(zgroup, context=context)
 
 
-def group_key_v2(model: ZarrV2GroupMetadata) -> tuple[object, ...]:
-    """What `==` and `hash` compare of a v2 group model: its attributes as JSON text, or `UNSET` when there is no `.zattrs`."""
-    attributes = model._attributes  # pyright: ignore[reportPrivateUsage]
-    return (UNSET if attributes is UNSET else json_text(attributes),)
-
-
 ZarrV2NodeMetadata: TypeAlias = "ZarrV2ArrayMetadata | ZarrV2GroupMetadata"
 """The model of one node a v2 `.zmetadata` document holds: an array, or a group."""
 
 
-class ZarrV2ConsolidatedMetadata:
+class ZarrV2ConsolidatedMetadata(Keyed):
     """A v2 `.zmetadata` document, and the scope its nodes were read in.
 
     `metadata` holds the flat file-keyed entries (`"path/.zarray"`,
@@ -1385,15 +1357,14 @@ class ZarrV2ConsolidatedMetadata:
     Built only by reading: the constructor raises `MetadataValidationError`
     with every problem, each located under its entry. Two documents are
     equal when each node means the same and the other entries are written
-    alike, as `consolidated_key_v2` says; `refines`, `with_context` and
+    alike, as its key says; `refines`, `with_context` and
     `refined_in` go through the nodes.
     """
 
-    __slots__ = ("_context", "_document", "_key", "_nodes", "_shown")
+    __slots__ = ("_context", "_document", "_nodes", "_shown")
 
     _context: Context
     _document: dict[str, JSONValue]
-    _key: tuple[object, ...]
     _nodes: dict[str, ZarrV2NodeMetadata]
     _shown: Mapping[str, JSONValue]
 
@@ -1410,7 +1381,7 @@ class ZarrV2ConsolidatedMetadata:
     def _of(
         cls, document: dict[str, JSONValue], context: Context, nodes: dict[str, ZarrV2NodeMetadata]
     ) -> ZarrV2ConsolidatedMetadata:
-        """A model of a document a read found nothing wrong with, holding the nodes that read built."""
+        """A model of a document a read found nothing wrong with, holding the nodes that read built. The readers of this package build models through this, the private use pyright reports."""
         model = object.__new__(cls)
         model._adopt(document, context, nodes)
         return model
@@ -1422,7 +1393,7 @@ class ZarrV2ConsolidatedMetadata:
         self._context = context
         self._nodes = nodes
         self._shown = frozen(object_at(document, "metadata"))
-        self._key = consolidated_key_v2(self)
+        self._key = self._key_of()
 
     @property
     def context(self) -> Context:
@@ -1454,13 +1425,22 @@ class ZarrV2ConsolidatedMetadata:
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
 
-    def __eq__(self, other: object) -> bool:
-        if type(other) is not type(self):
-            return NotImplemented
-        return self._key == cast("ZarrV2ConsolidatedMetadata", other)._key
+    def _key_of(self) -> tuple[object, ...]:
+        """What `==` and `hash` compare of v2 consolidated metadata: each node by its path and its own key, and every other entry as JSON text."""
+        nodes = self._nodes
+        return (
+            tuple(sorted((path, node._key) for path, node in nodes.items())),
+            self._other_entries_text(),
+        )
 
-    def __hash__(self) -> int:
-        return hash(self._key)
+    def _other_entries_text(self) -> str:
+        """The entries no node is read from -- an orphan `.zattrs`, any other key -- as JSON text: what `==` compares of them."""
+        entries = object_at(self._document, "metadata")
+        consumed: set[str] = set()
+        for path, names in _entries_by_path(entries)[0].items():
+            if path in self._nodes:
+                consumed.update(names.values())
+        return json_text({key: value for key, value in entries.items() if key not in consumed})
 
     def __reduce__(self) -> tuple[type[ZarrV2ConsolidatedMetadata], tuple[object, Context]]:
         return type(self), (self._document, self._context)
@@ -1502,7 +1482,7 @@ class ZarrV2ConsolidatedMetadata:
             return False
         if self._nodes.keys() != other._nodes.keys():
             return False
-        if _other_entries_text(self) != _other_entries_text(other):
+        if self._other_entries_text() != other._other_entries_text():
             return False
         return all(_v2_node_refines(self._nodes[path], other._nodes[path]) for path in self._nodes)
 
@@ -1565,25 +1545,6 @@ def _entries_by_path(
             continue
         files[name] = key
     return by_path, problems
-
-
-def _other_entries_text(model: ZarrV2ConsolidatedMetadata) -> str:
-    """The entries no node is read from -- an orphan `.zattrs`, any other key -- as JSON text: what `==` compares of them."""
-    entries = object_at(model._document, "metadata")  # pyright: ignore[reportPrivateUsage]
-    consumed: set[str] = set()
-    for path, names in _entries_by_path(entries)[0].items():
-        if path in model._nodes:  # pyright: ignore[reportPrivateUsage]
-            consumed.update(names.values())
-    return json_text({key: value for key, value in entries.items() if key not in consumed})
-
-
-def consolidated_key_v2(model: ZarrV2ConsolidatedMetadata) -> tuple[object, ...]:
-    """What `==` and `hash` compare of v2 consolidated metadata: each node by its path and its own key, and every other entry as JSON text."""
-    nodes = model._nodes  # pyright: ignore[reportPrivateUsage]
-    return (
-        tuple(sorted((path, node._key) for path, node in nodes.items())),  # pyright: ignore[reportPrivateUsage]
-        _other_entries_text(model),
-    )
 
 
 def _read_consolidated_v2(
