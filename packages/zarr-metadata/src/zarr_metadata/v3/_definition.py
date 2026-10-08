@@ -212,11 +212,11 @@ class Definition(Generic[C]):
     and a `name` or rules that are not what they say.
     """
 
-    is_kind: ClassVar[bool] = False
-    """Whether this class is a kind: what a scope files definitions by.
+    _is_kind: ClassVar[bool] = False
+    """Whether this class is a kind, what a scope files definitions by: set by `class Kind(Definition, kind=True)`.
 
-    Set in a kind's own body and read from it, never inherited: a
-    subclass of a kind is a definition of that kind.
+    Read from a class's own namespace, never inherited: a subclass of a
+    kind is a definition of that kind, and declares no `kind`.
     """
     label: ClassVar[str] = "definition"
     """The kind as a message names it: "codec"."""
@@ -290,12 +290,17 @@ class Definition(Generic[C]):
         """Where the name of a field at `loc`, written as an object, sits: under `name` for v3."""
         return (*loc, "name")
 
-    def __init_subclass__(cls, **kwargs: object) -> None:
+    def __init_subclass__(cls, *, kind: bool = False, **kwargs: object) -> None:
+        """Files a subclass: `kind=True` declares a kind, as `typing.Protocol` and SQLAlchemy's `__abstract__` mark a class and not its subclasses."""
         # Named, not `super()`: a dataclass with slots is rebuilt, and the
         # cell a bare `super()` reads names the class that was thrown away.
         super(Definition, cls).__init_subclass__(**kwargs)
-        # A dataclass with slots is built twice, and the class built last
-        # is the one a document is read with: it files its aliases last.
+        # A dataclass with slots is built twice, the second time without
+        # the class keywords but with the first class's namespace, and the
+        # class built last is the one a document is read with: the mark is
+        # kept in the namespace, and the aliases are filed last.
+        if kind:
+            cls._is_kind = True
         for alias in cls.__dict__.get("field_aliases", ()):
             _FIELD_KINDS[alias] = cls
 
@@ -451,7 +456,7 @@ class WithFillValue(Definition[C]):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class DataTypeDefinition(WithFillValue[C]):
+class DataTypeDefinition(WithFillValue[C], kind=True):
     """A data type, and the fill value an array of it takes.
 
     `fill_value` is the JSON shape of a fill value -- `Int8FillValue`, an
@@ -483,7 +488,6 @@ class DataTypeDefinition(WithFillValue[C]):
     this definition.
     """
 
-    is_kind: ClassVar[bool] = True
     label: ClassVar[str] = "data type"
     field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (DataTypeField,)
 
@@ -529,7 +533,7 @@ def _fill_value_parser(annotation: object) -> Parser:
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class ChunkGridDefinition(Definition[C]):
+class ChunkGridDefinition(Definition[C], kind=True):
     """A chunk grid, and the arrays it fits.
 
     `shape_rules` is what the spec disallows in a grid of this
@@ -547,7 +551,6 @@ class ChunkGridDefinition(Definition[C]):
     every axis unknown.
     """
 
-    is_kind: ClassVar[bool] = True
     label: ClassVar[str] = "chunk grid"
     field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ChunkGridField,)
 
@@ -558,10 +561,9 @@ class ChunkGridDefinition(Definition[C]):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class ChunkKeyEncodingDefinition(Definition[C]):
+class ChunkKeyEncodingDefinition(Definition[C], kind=True):
     """A chunk key encoding."""
 
-    is_kind: ClassVar[bool] = True
     label: ClassVar[str] = "chunk key encoding"
     field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ChunkKeyEncodingField,)
 
@@ -585,7 +587,7 @@ _UNASKED: Final[Mapping[CodecKind, tuple[str, ...]]] = {
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class CodecDefinition(Definition[C]):
+class CodecDefinition(Definition[C], kind=True):
     """A codec: what it does to what it is handed, and whether the size of what it gives out is static.
 
     A codec handed an array -- array -> array, array -> bytes -- says what
@@ -616,7 +618,6 @@ class CodecDefinition(Definition[C]):
     codec, which is handed bytes -- is refused.
     """
 
-    is_kind: ClassVar[bool] = True
     label: ClassVar[str] = "codec"
     field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (CodecField, StaticCodecField)
 
@@ -644,10 +645,9 @@ class CodecDefinition(Definition[C]):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class StorageTransformerDefinition(Definition[C]):
+class StorageTransformerDefinition(Definition[C], kind=True):
     """A storage transformer."""
 
-    is_kind: ClassVar[bool] = True
     label: ClassVar[str] = "storage transformer"
     field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (StorageTransformerField,)
 
@@ -663,19 +663,14 @@ KINDS: Final[tuple[type[Definition[Any]], ...]] = (
 
 
 def kind_of(definition: Definition[Any]) -> type[Definition[Any]] | None:
-    """The kind `definition` is: the nearest class in its MRO that declares `is_kind`; None for a definition of no kind, which no scope files."""
-    return _kind_in(type(definition))
+    """The kind `definition` is: the nearest class in its MRO declared with `kind=True`; None for a definition of no kind, which no scope files."""
+    bases: tuple[type, ...] = type(definition).__mro__
+    return next((base for base in bases if _declares_kind(base)), None)
 
 
-def _kind_in(cls: type) -> type[Definition[Any]] | None:
-    return next(
-        (
-            cast("type[Definition[Any]]", base)
-            for base in cls.__mro__
-            if vars(base).get("is_kind") is True
-        ),
-        None,
-    )
+def _declares_kind(cls: type) -> TypeGuard[type[Definition[Any]]]:
+    """Whether `cls` itself was declared `kind=True`: the mark is read from its own namespace, which a subclass does not share."""
+    return issubclass(cls, Definition) and vars(cls).get("_is_kind") is True
 
 
 def as_kind(kind: object) -> type[Definition[Any]]:
@@ -687,12 +682,12 @@ def as_kind(kind: object) -> type[Definition[Any]]:
     filed: a field read as one would go unjudged.
     """
     origin = get_origin(kind) or kind
-    if isinstance(origin, type) and vars(origin).get("is_kind") is True:
-        return cast("type[Definition[Any]]", origin)
+    if isinstance(origin, type) and _declares_kind(origin):
+        return origin
     names = ", ".join(known.__name__ for known in KINDS)
     msg = (
         f"{kind!r} is not a kind of metadata; read a field as one of {names}, or as a "
-        "subclass of Definition that sets is_kind in its own body"
+        "subclass of Definition declared with kind=True"
     )
     raise TypeError(msg)
 

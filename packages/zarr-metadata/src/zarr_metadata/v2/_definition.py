@@ -106,7 +106,7 @@ def typestr_problem(name: str, at: Loc) -> ValidationProblem | None:
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class ZarrV2DataTypeDefinition(WithFillValue[C]):
+class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True):
     """A v2 data type: one family of NumPy types, and the fill value an array of it takes.
 
     Filed under the family -- `float` -- and read for every typestr of
@@ -117,7 +117,6 @@ class ZarrV2DataTypeDefinition(WithFillValue[C]):
     `("dtype", "fields", 0, 1)` for the type of the first record.
     """
 
-    is_kind: ClassVar[bool] = True
     label: ClassVar[str] = "v2 data type"
     field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV2DataTypeField,)
 
@@ -201,14 +200,13 @@ class ZarrV2DataTypeDefinition(WithFillValue[C]):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class ZarrV2CodecDefinition(Definition[C]):
+class ZarrV2CodecDefinition(Definition[C], kind=True):
     """A v2 codec: a numcodecs id, and the TypedDict its parameters are.
 
     A document writes `{"id": name, **parameters}`; the definition's
     configuration is the parameters, read at the field itself.
     """
 
-    is_kind: ClassVar[bool] = True
     label: ClassVar[str] = "v2 codec"
 
     @classmethod
