@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from zarr_metadata.model import (
-    UNSET,
     MetadataValidationError,
     ValidationProblem,
     ZarrV2ArrayMetadata,
@@ -83,7 +82,7 @@ def test_a_v3_model_is_built_of_its_document_in_its_scope(model: object) -> None
     "model",
     [
         V2_ARRAY,
-        pytest.param(V2_GROUP, marks=pytest.mark.xfail(strict=True, reason="Task 3")),
+        V2_GROUP,
         pytest.param(V2_CONSOLIDATED, marks=pytest.mark.xfail(strict=True, reason="Task 4")),
     ],
     ids=["v2-array", "v2-group", "v2-consolidated"],
@@ -300,16 +299,6 @@ def test_error_v2_create_default_refuses_chunks_its_default_shape_does_not_take(
     assert [(found.loc, found.kind) for found in raised.value.problems] == [
         (("chunks",), "invalid_value")
     ]
-
-
-def test_error_construct_refuses_a_member_the_model_does_not_take() -> None:
-    with pytest.raises(TypeError, match="ZarrV2GroupMetadata has no member \\['bogus'\\] to build"):
-        construct(ZarrV2GroupMetadata, attributes=UNSET, bogus=1)
-
-
-def test_error_construct_refuses_a_model_missing_a_member() -> None:
-    with pytest.raises(TypeError, match="ZarrV2GroupMetadata is built with 'attributes'"):
-        construct(ZarrV2GroupMetadata)
 
 
 def test_error_consolidated_metadata_paths_are_strings() -> None:

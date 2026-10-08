@@ -24,7 +24,7 @@ from zarr_metadata.model._array import ZarrV3ArrayMetadata, ZarrV3ArrayMetadataU
 from zarr_metadata.model._group import (
     ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
-    ZarrV2GroupMetadataPartial,
+    ZarrV2GroupMetadataUpdate,
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
     ZarrV3GroupMetadataReading,
@@ -543,8 +543,7 @@ def test_group_partial_keys_match_settable_model_fields() -> None:
     Guards against drift: adding/removing a settable field on the model
     without updating its `*Partial` TypedDict fails here.
     """
-    settable = {f.name for f in dataclasses.fields(ZarrV2GroupMetadata) if f.init}
-    assert set(ZarrV2GroupMetadataPartial.__annotations__) == settable
+    assert set(ZarrV2GroupMetadataUpdate.__annotations__) == {"attributes"}
 
 
 def test_update_takes_every_member_of_the_document_it_may_change() -> None:

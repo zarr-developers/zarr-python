@@ -13,6 +13,7 @@ from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model import (
     MetadataValidationError,
     ZarrV2ArrayMetadata,
+    ZarrV2GroupMetadata,
     read_array_metadata_v2,
 )
 from zarr_metadata.v2.codec.compression import ZLIB_V2
@@ -239,3 +240,53 @@ def test_the_dataclass_machinery_is_gone() -> None:
     assert not dataclasses.is_dataclass(ZarrV2ArrayMetadata)
     assert not hasattr(zarr_metadata, "ZarrV2ArrayMetadataPartial")
     assert "ZarrV2ArrayMetadataUpdate" in zarr_metadata.__all__
+
+
+GROUP: dict[str, Any] = {"zarr_format": 2, "attributes": {"g": [1]}}
+
+
+@pytest.mark.parametrize(
+    ("document", "attributes"),
+    [
+        (GROUP, {"g": (1,)}),
+        ({"zarr_format": 2}, UNSET),
+        ({"zarr_format": 2, "attributes": {}}, {}),
+    ],
+    ids=["attributes", "no-zattrs", "empty-zattrs"],
+)
+def test_a_group_is_its_document_read_in_its_scope(
+    document: dict[str, Any], attributes: object
+) -> None:
+    """A v2 group model is its document and scope: `attributes` as the read refined them, `UNSET` when no `.zattrs` exists; it round-trips through its document, its store keys, pickle and copy, in any scope."""
+    model = ZarrV2GroupMetadata(document, SMALL)
+    assert model.context is SMALL
+    assert model.attributes == attributes
+    assert model.to_json() == ZarrV2GroupMetadata.from_json(document).to_json()
+    assert ZarrV2GroupMetadata.from_key_value(model.to_key_value(), context=SMALL) == model
+    assert pickle.loads(pickle.dumps(model)) == model
+    assert copy.deepcopy(model) == model
+    assert dict(model.claims) == {}
+
+
+def test_a_group_updates_moves_scope_and_refines_as_the_arrays_do() -> None:
+    """`update` reads the new attributes in the model's own scope and `UNSET` leaves them out; `with_context` and `refined_in` read the document in another scope and conflict with nothing, since a group holds no field; two groups are one when their attributes are written alike, and `refines` is that equality."""
+    model = ZarrV2GroupMetadata(GROUP)
+    assert model.update(attributes={"h": 2}).attributes == {"h": 2}
+    assert model.update(attributes=UNSET).attributes is UNSET
+    assert model.refined_in(SMALL).context is SMALL
+    assert model.with_context(PRIVATE) == model
+    assert model == ZarrV2GroupMetadata({"zarr_format": 2, "attributes": {"g": (1,)}})
+    assert model != ZarrV2GroupMetadata({"zarr_format": 2})
+    assert model.refines(model)
+    assert not model.refines(ZarrV2GroupMetadata({"zarr_format": 2}))
+    assert not dataclasses.is_dataclass(ZarrV2GroupMetadata)
+
+
+def test_error_a_group_document_with_a_problem_is_refused_at_construction() -> None:
+    """A group document with a problem -- a member the spec does not define, an attribute key that is not a string -- is refused with every problem."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV2GroupMetadata({"zarr_format": 2, "attributes": {1: "a"}, "extra": 1})
+    assert sorted((p.loc, p.kind) for p in raised.value.problems) == [
+        (("attributes",), "invalid_type"),
+        (("extra",), "unknown_key"),
+    ]

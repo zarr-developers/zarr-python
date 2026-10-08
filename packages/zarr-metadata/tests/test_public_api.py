@@ -47,7 +47,7 @@ EXPECTED = [
     "ZarrV3ArrayMetadata",
     "ZarrV3ArrayMetadataUpdate",
     "ZarrV2GroupMetadata",
-    "ZarrV2GroupMetadataPartial",
+    "ZarrV2GroupMetadataUpdate",
     "ZarrV3GroupMetadata",
     "ZarrV3GroupMetadataUpdate",
     "ZarrV3ConsolidatedMetadataInput",

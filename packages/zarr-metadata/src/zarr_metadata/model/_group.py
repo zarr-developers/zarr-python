@@ -57,6 +57,7 @@ from zarr_metadata.model._validation import (
 )
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
 from zarr_metadata.v2.consolidated import ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY
+from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY
 from zarr_metadata.v3._hierarchy import NodeType, hierarchy_problems, path_faults, said
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
@@ -1186,118 +1187,165 @@ def parse_group_metadata_v3(
     return cast("ZarrV3GroupMetadataJSON", arrays_to_tuples(documents_for(value)))
 
 
-class ZarrV2GroupMetadataPartial(TypedDict, total=False):
-    """
-    Partial form of the constructor-settable fields of `ZarrV2GroupMetadata`.
+class ZarrV2GroupMetadataUpdate(TypedDict, total=False):
+    """The members `ZarrV2GroupMetadata.update` puts in place: `attributes` as a `.zattrs` writes them, or `UNSET` for no `.zattrs`."""
 
-    Every key is optional and typed with the model's own value types, so it
-    describes valid keyword arguments to `ZarrV2GroupMetadata.update` and
-    `create_default`. The `init=False` field `zarr_format` is intentionally
-    excluded, since it cannot be passed to `dataclasses.replace`.
-
-    Drift between this type and the model's settable fields is prevented by
-    `tests/model/test_group.py::test_group_partial_keys_match_settable_model_fields`.
-    """
-
-    attributes: dict[str, JSONValue] | UNSET
+    attributes: Mapping[str, JSONValue] | UNSET
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
 class ZarrV2GroupMetadata:
-    """In-memory model of a v2 group metadata document.
+    """A v2 group document, and the scope it was read in.
 
-    A canonical, lossless representation of the `.zgroup` content plus the
-    sibling `.zattrs` attributes, folded into a single in-memory value
-    (mirroring the merged `ZarrV2GroupMetadataJSON` document form). `attributes` is
-    `UNSET` when no `.zattrs` file (or merged `attributes` key) exists —
-    distinct from an explicit empty `.zattrs`, which is `{}` and round-trips
-    as a file. A model checks itself when it is built: its document has no
-    problem `validate_group_metadata_v2` finds, or the constructor raises
-    `MetadataValidationError`.
+    The pair, as the v3 models are: `to_json` is the merged document --
+    `.zgroup`, and `attributes` when a `.zattrs` holds them -- as written,
+    refined. `attributes` is `UNSET` when no `.zattrs` exists, distinct
+    from an empty one. A group holds no field a scope reads, so the scope
+    is held for uniformity: `update` reads new attributes in it, and no
+    other scope conflicts with the reading. Built only by reading: the
+    constructor raises `MetadataValidationError` with every problem. Two
+    groups are equal when their attributes are written alike, as
+    `group_key_v2` says.
     """
 
-    zarr_format: Literal[2] = field(default=2, init=False)
-    attributes: dict[str, JSONValue] | UNSET
+    __slots__ = ("_attributes", "_context", "_document", "_key", "_shown")
 
-    def __post_init__(self) -> None:
-        # Held as a read refines them, in containers of its own.
-        object.__setattr__(
-            self, "attributes", _v2_attributes(parse_group_metadata_v2(self.to_json()))
-        )
+    _attributes: dict[str, JSONValue] | UNSET
+    _context: Context
+    _document: dict[str, JSONValue]
+    _key: tuple[object, ...]
+    _shown: object
+
+    zarr_format: Final = 2
+
+    def __init__(self, document: object, context: Context | None = None) -> None:
+        scope = CORE_V2 if context is None else context
+        parsed = parse_group_metadata_v2(document, context=scope)
+        refined, _ = refine_user_data(document)
+        self._adopt(cast("dict[str, JSONValue]", refined), scope, _v2_attributes(parsed))
 
     @classmethod
-    def create_default(cls, **overrides: Unpack[ZarrV2GroupMetadataPartial]) -> ZarrV2GroupMetadata:
-        """
-        Create a default (empty) v2 group metadata model, with optional overrides.
+    def _of(
+        cls,
+        document: dict[str, JSONValue],
+        context: Context,
+        attributes: dict[str, JSONValue] | UNSET,
+    ) -> ZarrV2GroupMetadata:
+        """A model of a document a read found nothing wrong with: no second read."""
+        model = object.__new__(cls)
+        model._adopt(document, context, attributes)
+        return model
 
-        The default is a structurally-valid group with no attributes — the group
-        analog of `list()` returning `[]`. Any field can be overridden by keyword
-        (the same fields accepted by `update`).
-        """
-        default = cls(attributes=UNSET)
-        return default.update(**overrides)
+    def _adopt(
+        self,
+        document: dict[str, JSONValue],
+        context: Context,
+        attributes: dict[str, JSONValue] | UNSET,
+    ) -> None:
+        self._document = document
+        self._context = context
+        self._attributes = attributes
+        self._shown = UNSET if attributes is UNSET else frozen(attributes)
+        self._key = group_key_v2(self)
 
-    def update(self, **kwargs: Unpack[ZarrV2GroupMetadataPartial]) -> ZarrV2GroupMetadata:
-        """
-        Return a new `ZarrV2GroupMetadata` with the given fields updated.
+    @property
+    def context(self) -> Context:
+        """The scope the document was read in, which `update` reads new attributes in."""
+        return self._context
 
-        Only the constructor-settable fields listed in
-        `ZarrV2GroupMetadataPartial` can be updated; the fixed `zarr_format`
-        is rejected at the type level. Each given field fully replaces its
-        previous value. `MetadataValidationError` when the document the
-        change makes has a problem, as the model checks itself when it is
-        built.
-        """
-        return dataclasses.replace(self, **kwargs)
+    @property
+    def claims(self) -> Claims:
+        """What the reading claimed: nothing, since a group holds no field."""
+        return MappingProxyType({})
 
-    def __eq__(self, other: object) -> bool:
-        """Whether `other` models the same group: the same document, as JSON text, which takes `NaN` for itself; equal models hash alike."""
-        if type(other) is not type(self):
-            return NotImplemented
-        return json_text(self.to_json()) == json_text(cast("ZarrV2GroupMetadata", other).to_json())
-
-    def __hash__(self) -> int:
-        return hash(json_text(self.to_json()))
+    @property
+    def attributes(self) -> Mapping[str, JSONValue] | UNSET:
+        """The user attributes a `.zattrs` holds, read-only at every level; `UNSET` when there is no `.zattrs`."""
+        return cast("Mapping[str, JSONValue] | UNSET", self._shown)
 
     def to_json(self) -> ZarrV2GroupMetadataJSON:
-        """Return the merged in-memory document form.
+        """The merged document as written, refined, sharing nothing with the model.
 
-        `attributes` is included when set (even empty). This is not the
-        on-disk `.zgroup` content: a conforming `.zgroup` must exclude
-        `attributes` (they live in the sibling `.zattrs` file). Use
-        `to_key_value` to produce the spec-conforming split for storage
+        `attributes` is included when set, even empty. This is not the
+        on-disk `.zgroup`, which excludes them: `to_key_value` splits the
+        document as a store holds it
         (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313; https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L323-L330).
         """
-        # to_json output shares no mutable state with the model: the document
-        # is copied whole, one frame for each level of nesting.
-        out: ZarrV2GroupMetadataJSON = {"zarr_format": self.zarr_format}
-        if self.attributes is not UNSET:
-            out["attributes"] = self.attributes
-        return cast("ZarrV2GroupMetadataJSON", copied(cast("JSONValue", out)))
+        return cast("ZarrV2GroupMetadataJSON", copied(self._document))
+
+    def to_key_value(
+        self, *, indent: int | str | None = None
+    ) -> Mapping[ZarrV2GroupMetadataStoreKey | ZarrV2AttributesStoreKey, bytes]:
+        """The document as a store holds it: `.zgroup` without the attributes, and `.zattrs` with them when they are set, even empty."""
+        zgroup = {key: value for key, value in self._document.items() if key != "attributes"}
+        out: dict[ZarrV2GroupMetadataStoreKey | ZarrV2AttributesStoreKey, bytes] = {
+            ZARR_V2_GROUP_METADATA_STORE_KEY: dump_store_json(zgroup, indent=indent)
+        }
+        if "attributes" in self._document:
+            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = dump_store_json(
+                self._document["attributes"], indent=indent
+            )
+        return out
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
+
+    def __eq__(self, other: object) -> bool:
+        if type(other) is not type(self):
+            return NotImplemented
+        return self._key == cast("ZarrV2GroupMetadata", other)._key
+
+    def __hash__(self) -> int:
+        return hash(self._key)
+
+    def __reduce__(self) -> tuple[type[ZarrV2GroupMetadata], tuple[object, Context]]:
+        return type(self), (self._document, self._context)
+
+    def update(self, **members: Unpack[ZarrV2GroupMetadataUpdate]) -> ZarrV2GroupMetadata:
+        """This model with `attributes` in place of the document's, `UNSET` leaving them out, read in this model's own scope; `MetadataValidationError` when the document they make has a problem."""
+        document: dict[str, object] = {**self._document, **members}
+        for key, value in members.items():
+            if value is UNSET:
+                del document[key]
+        return type(self)(document, context=self._context)
+
+    def with_context(self, context: Context | None = None) -> ZarrV2GroupMetadata:
+        """This document read in `context`: the same group, holding that scope."""
+        scope = CORE_V2 if context is None else context
+        return self._of(self._document, scope, self._attributes)
+
+    def refined_in(self, context: Context | None = None) -> ZarrV2GroupMetadata:
+        """This document read in `context`: a group holds no field, so no scope conflicts with its reading, and this is `with_context`."""
+        return self.with_context(context)
+
+    def refines(self, other: ZarrV2GroupMetadata) -> bool:
+        """Whether this group holds everything `other` holds: its attributes written alike; False of what is not a v2 group."""
+        return type(other) is type(self) and self._key == other._key
 
     @classmethod
-    def from_json(cls, data: object) -> ZarrV2GroupMetadata:
-        """The model of `data`, a v2 group document with its attributes under `attributes`.
-
-        `MetadataValidationError` with every problem `validate_group_metadata_v2`
-        finds. The model shares no mutable state with `data`.
-        """
-        # A read model shares no mutable state with what it read.
-        parsed = cast(
-            "ZarrV2GroupMetadataJSON", copied(cast("JSONValue", parse_group_metadata_v2(data)))
-        )
-        return construct(cls, attributes=_v2_attributes(parsed))
+    def create_default(
+        cls, *, context: Context | None = None, **overrides: Unpack[ZarrV2GroupMetadataUpdate]
+    ) -> ZarrV2GroupMetadata:
+        """A group with no `.zattrs`, or the one `overrides` make of it, read in `context`; `MetadataValidationError` when the document they make has a problem."""
+        given = {key: value for key, value in overrides.items() if value is not UNSET}
+        return cls({"zarr_format": 2, **given}, context=context)
 
     @classmethod
-    def from_key_value(cls, mapping: Mapping[StoreKey, bytes]) -> ZarrV2GroupMetadata:
-        """The model of the group at `.zgroup` in `mapping`, with the attributes at `.zattrs` when there is one.
+    def from_json(cls, data: object, *, context: Context | None = None) -> ZarrV2GroupMetadata:
+        """The model of `data`, a v2 group document with its attributes under `attributes`, read in `context`; `MetadataValidationError` with every problem."""
+        return cls(data, context=context)
+
+    @classmethod
+    def from_key_value(
+        cls, mapping: Mapping[StoreKey, bytes], *, context: Context | None = None
+    ) -> ZarrV2GroupMetadata:
+        """The model of the group at `.zgroup` in `mapping`, with the attributes at `.zattrs` when there is one, read in `context`.
 
         `MetadataValidationError` when `.zgroup` is missing, bytes are not
         JSON, `.zgroup` holds `attributes`, or the document is not valid.
         """
         zgroup_raw = load_store_json(mapping, ZARR_V2_GROUP_METADATA_STORE_KEY)
         if not isinstance(zgroup_raw, Mapping):
-            return cls.from_json(zgroup_raw)
+            return cls(zgroup_raw, context=context)
         zgroup = cast("Mapping[str, object]", zgroup_raw)
         if "attributes" in zgroup:
             # A key `.zgroup` does not declare: its attributes are `.zattrs`.
@@ -1307,30 +1355,14 @@ class ZarrV2GroupMetadata:
             raise MetadataValidationError(with_input((refused,), zgroup))
         if ZARR_V2_ATTRIBUTES_STORE_KEY in mapping:
             zattrs = load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY)
-            return cls.from_json({**zgroup, "attributes": zattrs})
-        return cls.from_json(zgroup)
+            return cls({**zgroup, "attributes": zattrs}, context=context)
+        return cls(zgroup, context=context)
 
-    def to_key_value(
-        self, *, indent: int | str | None = None
-    ) -> Mapping[ZarrV2GroupMetadataStoreKey | ZarrV2AttributesStoreKey, bytes]:
-        """The document as a store holds it: `.zgroup` without the attributes, and `.zattrs` with them when they are set, even empty.
 
-        A model was checked when it was built, so its document is written
-        as it is.
-        """
-        # Attributes live only in the sibling `.zattrs` file; the `.zgroup`
-        # document must exclude them. The `.zattrs` key is present exactly
-        # when attributes are set (even empty) — UNSET emits no file.
-        document = self.to_json()
-        zgroup = {k: v for k, v in document.items() if k != "attributes"}
-        out: dict[ZarrV2GroupMetadataStoreKey | ZarrV2AttributesStoreKey, bytes] = {
-            ZARR_V2_GROUP_METADATA_STORE_KEY: dump_store_json(zgroup, indent=indent)
-        }
-        if "attributes" in document:
-            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = dump_store_json(
-                document["attributes"], indent=indent
-            )
-        return out
+def group_key_v2(model: ZarrV2GroupMetadata) -> tuple[object, ...]:
+    """What `==` and `hash` compare of a v2 group model: its attributes as JSON text, or `UNSET` when there is no `.zattrs`."""
+    attributes = model._attributes  # pyright: ignore[reportPrivateUsage]
+    return (UNSET if attributes is UNSET else json_text(attributes),)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

@@ -53,7 +53,7 @@ from zarr_metadata.model._array import (
 from zarr_metadata.model._group import (
     ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
-    ZarrV2GroupMetadataPartial,
+    ZarrV2GroupMetadataUpdate,
     ZarrV3ConsolidatedMetadata,
     ZarrV3ConsolidatedMetadataInput,
     ZarrV3GroupMetadata,
@@ -178,8 +178,8 @@ __all__ = [
     "ZarrV2ConsolidatedMetadata",
     "ZarrV2ConsolidatedMetadataStoreKey",
     "ZarrV2GroupMetadata",
-    "ZarrV2GroupMetadataPartial",
     "ZarrV2GroupMetadataStoreKey",
+    "ZarrV2GroupMetadataUpdate",
     "ZarrV3ArrayMetadata",
     "ZarrV3ArrayMetadataReading",
     "ZarrV3ArrayMetadataStoreKey",
