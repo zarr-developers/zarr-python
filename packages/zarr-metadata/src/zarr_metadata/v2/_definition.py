@@ -85,8 +85,17 @@ def parse_typestr(name: str) -> tuple[str, dict[str, JSONValue]] | None:
 
 def typestr_problem(name: str, at: Loc) -> ValidationProblem | None:
     """The problem `name`, at `at`, is when it is no typestr; None when it is one, or is `struct`."""
-    if name == STRUCT_NAME or TYPESTR_PATTERN.fullmatch(name) is not None:
+    if name == STRUCT_NAME:
         return None
+    if TYPESTR_PATTERN.fullmatch(name) is not None:
+        if parse_typestr(name) is not None:
+            return None
+        # "An integer specifying the number of bytes": a listed code without one.
+        return ValidationProblem(
+            at,
+            f"expected a size in bytes after the type code, '<f4', got {shown(name)}",
+            "invalid_value",
+        )
     return ValidationProblem(
         at,
         "expected a NumPy typestr -- a byte order '<', '>' or '|', a type code and a size in "

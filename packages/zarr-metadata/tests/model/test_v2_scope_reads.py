@@ -90,7 +90,7 @@ def test_error_what_the_scope_refuses_is_a_problem_of_the_document(
     assert [(p.loc, p.kind) for p in problems] == [(at, kind)]
 
 
-def test_create_default_with_a_dtype_takes_no_fill_value() -> None:
+def test_create_default_keeps_zero_where_the_family_takes_it() -> None:
     """`create_default` given a dtype and no fill value keeps `0` when the family takes it, and takes `null` otherwise; a fill value given is kept."""
     assert ZarrV2ArrayMetadata.create_default(dtype="|b1").fill_value is None
     assert ZarrV2ArrayMetadata.create_default(dtype="<f8").fill_value == 0

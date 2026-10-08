@@ -88,6 +88,8 @@ def test_a_type_code_the_spec_does_not_list_is_unclaimed(value: str) -> None:
     ("value", "at"),
     [
         ("float32", ("dtype",)),
+        ("<f", ("dtype",)),
+        ("|S", ("dtype",)),
         ("<b2", ("dtype",)),
         ("<i3", ("dtype",)),
         ("|i4", ("dtype",)),
@@ -110,6 +112,8 @@ def test_a_type_code_the_spec_does_not_list_is_unclaimed(value: str) -> None:
     ],
     ids=[
         "no-typestr",
+        "no-size",
+        "no-size-bytes",
         "bool-size",
         "int-size",
         "int-order",
