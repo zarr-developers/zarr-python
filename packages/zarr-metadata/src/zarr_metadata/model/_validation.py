@@ -28,7 +28,17 @@ import dataclasses
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Final, TypeGuard, TypeVar, cast, get_args, get_origin
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Final,
+    Protocol,
+    TypeGuard,
+    TypeVar,
+    cast,
+    get_args,
+    get_origin,
+)
 
 from zarr_metadata._json import (
     MetadataValidationError,
@@ -228,7 +238,7 @@ def _is_int_sequence(value: object) -> TypeGuard[Sequence[int]]:
 
 
 def dimension_lengths(
-    doc: Mapping[object, object], key: str
+    doc: Mapping[object, object] | Mapping[str, object], key: str
 ) -> tuple[tuple[int, ...] | None, tuple[ValidationProblem, ...]]:
     """The dimension lengths `doc` holds at `key` (`shape`, `chunks`), and every problem with them.
 
@@ -269,32 +279,27 @@ def _is_canonical_metadata_field_v3(value: object) -> bool:
 
 def _is_canonical_array_metadata_v3(value: object) -> bool:
     """Whether a validated v3 array document matches `ZarrV3ArrayMetadataJSON` at runtime."""
-    if not isinstance(value, dict):
+    if not is_object(value) or not isinstance(value, dict):
         return False
-    doc = cast("dict[str, object]", value)
-    if not isinstance(doc["shape"], tuple) or not isinstance(doc["codecs"], tuple):
+    doc = value
+    codecs = doc["codecs"]
+    if not isinstance(doc["shape"], tuple) or not is_tuple(codecs):
         return False
-    if "storage_transformers" in doc and not isinstance(doc["storage_transformers"], tuple):
+    transformers = doc.get("storage_transformers", ())
+    if not is_tuple(transformers):
         return False
     if "dimension_names" in doc and not isinstance(doc["dimension_names"], tuple):
         return False
     if not all(_is_canonical_metadata_field_v3(doc[key]) for key, _ in _EXTENSION_POINTS_V3):
         return False
-    if not all(
-        _is_canonical_metadata_field_v3(item) for item in cast("tuple[object, ...]", doc["codecs"])
-    ):
-        return False
-    return "storage_transformers" not in doc or all(
-        _is_canonical_metadata_field_v3(item)
-        for item in cast("tuple[object, ...]", doc["storage_transformers"])
-    )
+    return all(_is_canonical_metadata_field_v3(item) for item in (*codecs, *transformers))
 
 
 def _is_canonical_array_metadata_v2(value: object) -> bool:
     """Whether a validated v2 array document matches `ZarrV2ArrayMetadataJSON` at runtime."""
-    if not isinstance(value, dict):
+    if not is_object(value) or not isinstance(value, dict):
         return False
-    doc = cast("dict[str, object]", value)
+    doc = value
     if not isinstance(doc["shape"], tuple) or not isinstance(doc["chunks"], tuple):
         return False
     if not _is_canonical_dtype_v2(doc["dtype"]):
@@ -304,8 +309,7 @@ def _is_canonical_array_metadata_v2(value: object) -> bool:
         return False
     filters = doc["filters"]
     return filters is None or (
-        isinstance(filters, tuple)
-        and all(isinstance(item, dict) for item in cast("tuple[object, ...]", filters))
+        is_tuple(filters) and all(isinstance(item, dict) for item in filters)
     )
 
 
@@ -437,9 +441,16 @@ class ZarrV3ArrayMetadataReading:
             yield from fields_of(transformer, ("storage_transformers", index))
 
 
-def reading_of(model: object) -> object:
+class _HoldsReading(Protocol):
+    """A model: what holds the reading it was built from."""
+
+    @property
+    def reading(self) -> object: ...
+
+
+def reading_of(model: _HoldsReading) -> object:
     """The reading `model`, a model, holds: what a pickled reading that held a model is built again as."""
-    return cast("Any", model).reading
+    return model.reading
 
 
 @dataclass(frozen=True, slots=True)

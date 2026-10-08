@@ -971,8 +971,8 @@ def _collect(value: object, nested: list[_NestedField]) -> None:
     elif is_tuple(value):
         for entry in value:
             _collect(entry, nested)
-    elif isinstance(value, dict):
-        for entry in cast("dict[str, object]", value).values():
+    elif is_object(value):
+        for entry in value.values():
             _collect(entry, nested)
 
 
@@ -995,9 +995,8 @@ def _put_back(value: object, put: Callable[[_NestedField], JSONValue]) -> object
         return put(value)
     if is_tuple(value):
         return tuple(_put_back(entry, put) for entry in value)
-    if isinstance(value, dict):
-        entries = cast("dict[str, object]", value)
-        return {key: _put_back(entry, put) for key, entry in entries.items()}
+    if is_object(value):
+        return {key: _put_back(entry, put) for key, entry in value.items()}
     return value
 
 
@@ -1411,6 +1410,14 @@ class Chunk:
 def is_field(value: object) -> TypeGuard[Resolved[Any]]:
     """Whether `value` is a field a scope read: `Read`, `Unclaimed` or `Refused`."""
     return isinstance(value, _FIELDS)
+
+
+def held(field: Resolved[D] | UNSET) -> Read[D] | Unclaimed:
+    """`field`, one a read found nothing wrong with: `Read` or `Unclaimed`; `TypeError` for one refused or never read, which such a read rules out."""
+    if isinstance(field, (Read, Unclaimed)):
+        return field
+    msg = f"expected a field a read found nothing wrong with, got {field!r}"
+    raise TypeError(msg)
 
 
 def _is_data_type_field(value: object) -> bool:
@@ -1910,11 +1917,12 @@ def _replaced(value: JSONValue, path: Loc, new: JSONValue) -> JSONValue:
     if len(path) == 0:
         return new
     step, rest = path[0], path[1:]
-    if isinstance(step, str):
-        members = cast("Mapping[str, JSONValue]", value)
-        return {**members, step: _replaced(members[step], rest, new)}
-    entries = cast("tuple[JSONValue, ...]", value)
-    return (*entries[:step], _replaced(entries[step], rest, new), *entries[step + 1 :])
+    if isinstance(step, str) and isinstance(value, Mapping):
+        return {**value, step: _replaced(value[step], rest, new)}
+    if isinstance(step, int) and isinstance(value, tuple):
+        return (*value[:step], _replaced(value[step], rest, new), *value[step + 1 :])
+    msg = f"{path!r} does not lead into {value!r}"
+    raise TypeError(msg)
 
 
 __all__ = [

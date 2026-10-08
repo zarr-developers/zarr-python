@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 from zarr_metadata._typed_json import Schemas
 from zarr_metadata.v3._definition import DataTypeDefinition, field_schemas, written_name
@@ -72,8 +72,10 @@ def _array(context: Context, schemas: Schemas) -> JSONSchema:
     """An array document: its TypedDict, and its fill value held to the data type it names, for each data type in scope."""
     schema = schemas.object_of(ZarrV3ArrayMetadataJSON)
     held: list[JSONValue] = []
-    for definition in context.tables.get(DataTypeDefinition, {}).values():
-        fill_value = schemas.of(cast("DataTypeDefinition[Any]", definition).fill_value)
+    for definition in context.definitions():
+        if not isinstance(definition, DataTypeDefinition):
+            continue
+        fill_value = schemas.of(definition.fill_value)
         if len(fill_value) == 0:
             continue  # a data type that says nothing of its fill value takes any JSON
         name = written_name(definition)

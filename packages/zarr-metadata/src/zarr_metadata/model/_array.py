@@ -56,6 +56,7 @@ from zarr_metadata.v3._definition import (
     Unclaimed,
     field_key,
     fill_value_problems,
+    held,
     spelled_canonically,
 )
 from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
@@ -306,37 +307,29 @@ class ZarrV3ArrayMetadata(Keyed):
     @property
     def data_type(self) -> Read[DataTypeDefinition[Any]] | Unclaimed:
         """The data type, as the scope read it."""
-        return cast("Read[DataTypeDefinition[Any]] | Unclaimed", self._reading.data_type)
+        return held(self._reading.data_type)
 
     @property
     def chunk_grid(self) -> Read[ChunkGridDefinition[Any]] | Unclaimed:
         """The chunk grid, as the scope read it."""
-        return cast("Read[ChunkGridDefinition[Any]] | Unclaimed", self._reading.chunk_grid)
+        return held(self._reading.chunk_grid)
 
     @property
     def chunk_key_encoding(self) -> Read[ChunkKeyEncodingDefinition[Any]] | Unclaimed:
         """The chunk key encoding, as the scope read it."""
-        return cast(
-            "Read[ChunkKeyEncodingDefinition[Any]] | Unclaimed", self._reading.chunk_key_encoding
-        )
+        return held(self._reading.chunk_key_encoding)
 
     @property
     def codecs(self) -> tuple[Read[CodecDefinition[Any]] | Unclaimed, ...]:
         """The codecs, each as the scope read it, in pipeline order."""
-        return tuple(
-            cast("Read[CodecDefinition[Any]] | Unclaimed", stage.codec)
-            for stage in self._reading.pipeline
-        )
+        return tuple(held(stage.codec) for stage in self._reading.pipeline)
 
     @property
     def storage_transformers(
         self,
     ) -> tuple[Read[StorageTransformerDefinition[Any]] | Unclaimed, ...]:
         """The storage transformers, each as the scope read it."""
-        return cast(
-            "tuple[Read[StorageTransformerDefinition[Any]] | Unclaimed, ...]",
-            self._reading.storage_transformers,
-        )
+        return tuple(held(entry) for entry in self._reading.storage_transformers)
 
     # --- changing ---------------------------------------------------------
 
@@ -425,7 +418,7 @@ class ZarrV3ArrayMetadata(Keyed):
         """
         # The grid derives from a shape the read takes; one it refuses is
         # reported by the read, and derives nothing.
-        lengths, _ = dimension_lengths(cast("Mapping[object, object]", overrides), "shape")
+        lengths, _ = dimension_lengths(overrides, "shape")
         document: dict[str, object] = {
             "zarr_format": 3,
             "node_type": "array",
@@ -739,20 +732,24 @@ class ZarrV2ArrayMetadata(Keyed):
     @property
     def dtype(self) -> Read[ZarrV2DataTypeDefinition[Any]] | Unclaimed:
         """The dtype as the scope read it: by its family's definition, or unclaimed."""
-        return cast("Read[ZarrV2DataTypeDefinition[Any]] | Unclaimed", self._reading.dtype)
+        return held(self._reading.dtype)
 
     @property
     def compressor(self) -> Read[ZarrV2CodecDefinition[Any]] | Unclaimed | None:
         """The compressor as the scope read it; None when written as `null`."""
-        return cast("Read[ZarrV2CodecDefinition[Any]] | Unclaimed | None", self._reading.compressor)
+        compressor = self._reading.compressor
+        return None if compressor is None else held(compressor)
 
     @property
     def filters(self) -> tuple[Read[ZarrV2CodecDefinition[Any]] | Unclaimed, ...] | None:
         """The filters, each as the scope read it; None when written as `null`."""
-        return cast(
-            "tuple[Read[ZarrV2CodecDefinition[Any]] | Unclaimed, ...] | None",
-            self._reading.filters,
-        )
+        filters = self._reading.filters
+        if filters is None:
+            return None
+        if filters is UNSET:
+            msg = "expected filters a read found nothing wrong with, got UNSET"
+            raise TypeError(msg)
+        return tuple(held(entry) for entry in filters)
 
     # --- changing ---------------------------------------------------------
 
@@ -844,7 +841,7 @@ class ZarrV2ArrayMetadata(Keyed):
         }
         given: dict[str, object] = dict(overrides)
         if "shape" in given and "chunks" not in given:
-            lengths, _ = dimension_lengths(cast("Mapping[object, object]", given), "shape")
+            lengths, _ = dimension_lengths(given, "shape")
             if lengths is not None:
                 given["chunks"] = lengths
         if "dtype" in given and "fill_value" not in given:

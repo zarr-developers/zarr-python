@@ -29,7 +29,7 @@ import dataclasses
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
 
-from zarr_metadata._json import ValidationProblem, is_object, with_input
+from zarr_metadata._json import ValidationProblem, is_object, is_tuple, with_input
 from zarr_metadata.v3._definition import (
     Chunk,
     CodecDefinition,
@@ -240,11 +240,7 @@ def _held(
     `TypeError`: a fault in the definition that names it.
     """
     entries: object = configuration.get(member)
-    places = (
-        [(member, index) for index in range(len(cast("tuple[object, ...]", entries)))]
-        if isinstance(entries, tuple)
-        else None
-    )
+    places = [(member, index) for index in range(len(entries))] if is_tuple(entries) else None
     if places is None or not all(
         place in nested and nested[place].read_as is CodecDefinition for place in places
     ):
