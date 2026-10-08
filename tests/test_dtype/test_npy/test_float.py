@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
-from zarr.core.dtype.npy.float import Float16, Float32, Float64
+from zarr.core.dtype.npy.float import BaseFloat, Float16, Float32, Float64
 
 
 class _BaseTestFloat(BaseTestZDType):
@@ -229,12 +231,13 @@ def test_noncanonical_nan_serializes_as_hex() -> None:
     """A NaN carrying a non-canonical payload or sign writes back as its hex
     bits; ``"NaN"`` denotes the canonical NaN only. Regression test for
     https://github.com/zarr-developers/zarr-python/issues/4453 item 3."""
-    for dtype, hex_value in [
+    cases: list[tuple[BaseFloat[Any, Any], str]] = [
         (Float16(), "0x7fc1"),
         (Float32(), "0x7fc00001"),
         (Float32(), "0xffc00000"),
         (Float64(), "0x7ff8000000000001"),
-    ]:
+    ]
+    for dtype, hex_value in cases:
         scalar = dtype.from_json_scalar(hex_value, zarr_format=3)
         assert dtype.to_json_scalar(scalar, zarr_format=3) == hex_value
         canonical = dtype.from_json_scalar("NaN", zarr_format=3)
