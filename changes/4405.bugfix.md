@@ -1,0 +1,1 @@
+`from_array` now raises a `ValueError` when `overwrite=True` and the destination overlaps the source array (the same path, a parent of it, or a path inside it). Previously the destination was deleted before the data was copied, which also deleted the source and left an array of fill values.
