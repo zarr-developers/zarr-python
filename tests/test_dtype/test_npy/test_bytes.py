@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
+from zarr.core.common import JSON
 from zarr.core.dtype.npy.bytes import NullTerminatedBytes, RawBytes, VariableLengthBytes
 from zarr.errors import UnstableSpecificationWarning
 
@@ -199,7 +200,7 @@ def test_byte_list_fill_value(
 )
 @pytest.mark.parametrize("data", [[256], [-1], ["a"], [97.0], [True]])
 def test_byte_list_fill_value_invalid(
-    zdtype: NullTerminatedBytes | RawBytes | VariableLengthBytes, data: list[object]
+    zdtype: NullTerminatedBytes | RawBytes | VariableLengthBytes, data: JSON
 ) -> None:
     """
     Test that a JSON list containing non-byte values is rejected as a fill value.
