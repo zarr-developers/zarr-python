@@ -53,6 +53,7 @@ from zarr_metadata.model._validation import (
     attributes_of,
     check_literal,
     dump_store_json,
+    is_canonical_array_metadata_v3,
     load_store_json,
     members_past_the_levels,
     missing_keys,
@@ -77,7 +78,14 @@ from zarr_metadata.v3._registry import (
     ZarrV3Context,
     scoped,
 )
-from zarr_metadata.v3._scope import Claims, Conflict, ScopeConflictError, claims_of, kind_name
+from zarr_metadata.v3._scope import (
+    Claims,
+    Conflict,
+    ScopeConflictError,
+    claims_of,
+    definition_said,
+    kind_name,
+)
 from zarr_metadata.v3.array import ZarrV3ExtensionField
 from zarr_metadata.v3.consolidated import ZARR_V3_CONSOLIDATED_METADATA_KEY
 from zarr_metadata.v3.group import ZARR_V3_GROUP_METADATA_STORE_KEY, ZarrV3GroupMetadataJSON
@@ -89,7 +97,7 @@ if TYPE_CHECKING:
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
     from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataStoreKey
     from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON, ZarrV2GroupMetadataStoreKey
-    from zarr_metadata.v3._definition import Definition, ResolvedField
+    from zarr_metadata.v3._definition import ResolvedField
     from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
     from zarr_metadata.v3.consolidated import ZarrV3ConsolidatedMetadataJSON
     from zarr_metadata.v3.group import ZarrV3GroupMetadataJSONPartial, ZarrV3GroupMetadataStoreKey
@@ -849,21 +857,14 @@ def _conflict_said(conflict: Conflict, written: str | None) -> str:
     """What a conflict between a model entry's scope and the group's says: the kind and the name as the document writes it, what read it, and how the group's scope reads it -- by another definition, told apart from the model's where the two print alike, or by none."""
     kind, filed = conflict.key
     name = filed if written is None else written
-    claimed = _definition_said(conflict.claimed)
+    claimed = definition_said(conflict.claimed)
     head = f"expected a document read in the group's scope, got a model that reads the {kind_name(kind)} {name!r}"
     if conflict.found is None:
         return f"{head} by {claimed}, which the group's scope leaves unclaimed"
-    found = _definition_said(conflict.found)
+    found = definition_said(conflict.found)
     if claimed == found:
         return f"{head} by another definition than the one the group's scope reads it by, {found}"
     return f"{head} by {claimed}, which the group's scope reads by {found}"
-
-
-def _definition_said(definition: Definition[Any] | None) -> str:
-    """A definition as a message tells it from another of the same name: by the TypedDict its configuration is."""
-    if definition is None:
-        return "no definition"
-    return f"{definition!r} of {definition.configuration.__qualname__}"
 
 
 def _with_problems(
@@ -1210,9 +1211,32 @@ def is_group_metadata_v3(
 ) -> TypeGuard[ZarrV3GroupMetadataJSON]:
     """Whether `value` is a v3 group document `validate_group_metadata_v3` finds nothing wrong with, written with tuples."""
     scope = scoped(context, CORE_AND_EXTENSIONS)
-    return is_canonical_json(value, finite=False) and not validate_group_metadata_v3(
-        value, context=scope
+    return (
+        is_canonical_json(value, finite=False)
+        and _is_canonical_group_metadata_v3(value)
+        and not validate_group_metadata_v3(value, context=scope)
     )
+
+
+def _is_canonical_group_metadata_v3(value: object) -> bool:
+    """Whether `value`, a group document, is written with the containers `ZarrV3GroupMetadataJSON` declares: each document its consolidated metadata lists as its TypedDict has it, arrays as `is_canonical_array_metadata_v3` asks, groups so again."""
+    if not is_object(value) or not isinstance(value, dict):
+        return False
+    member = value.get(ZARR_V3_CONSOLIDATED_METADATA_KEY)
+    if not is_object(member):
+        return True
+    entries = member.get("metadata")
+    if not is_object(entries):
+        return True
+    for entry in entries.values():
+        if not is_object(entry):
+            continue
+        node_type = entry.get("node_type")
+        if node_type == "array" and not is_canonical_array_metadata_v3(entry):
+            return False
+        if node_type == "group" and not _is_canonical_group_metadata_v3(entry):
+            return False
+    return True
 
 
 def parse_group_metadata_v3(
@@ -1583,10 +1607,20 @@ def _entries_by_path(
     problems: list[ValidationProblem] = []
     for key in entries:
         path, _, name = key.rpartition("/")
-        # A node's path, as a store names it: segments joined by one `/`.
-        path = "/".join(segment for segment in path.split("/") if segment != "")
         if name not in _NODE_FILES:
             continue
+        # A node's path, as a store names it: segments joined by one `/`.
+        segments = [segment for segment in path.split("/") if segment != ""]
+        if any(segment in (".", "..") for segment in segments):
+            problems.append(
+                ValidationProblem(
+                    ("metadata", key),
+                    f"expected the path of a node, got {key!r}, which has a '.' or '..' segment",
+                    "invalid_value",
+                )
+            )
+            continue
+        path = "/".join(segments)
         files = by_path.setdefault(path, {})
         if name in files:
             problems.append(
@@ -1655,9 +1689,38 @@ def _read_consolidated_v2(
             problems.extend(found)
             if node is not None:
                 nodes[path] = node
+        problems.extend(_hierarchy_problems_v2(by_path))
     if len(problems) != 0:
         nodes = {}
     return refined, nodes, with_input(problems, doc)
+
+
+def _hierarchy_problems_v2(by_path: Mapping[str, Mapping[str, str]]) -> list[ValidationProblem]:
+    """What keeps the nodes a `.zmetadata` holds from making a hierarchy, as `hierarchy_problems` judges one: a node below an array at its entry, a group missing above a node at the entry it would have; an orphan `.zattrs` is no node."""
+    # The root is a group unless an entry says otherwise: a `.zmetadata`
+    # need not list its own `.zgroup`.
+    nodes: dict[str, NodeType] = {"/": "group"}
+    for path, names in by_path.items():
+        if ZARR_V2_ARRAY_METADATA_STORE_KEY in names:
+            nodes[f"/{path}"] = "array"
+        elif ZARR_V2_GROUP_METADATA_STORE_KEY in names:
+            nodes[f"/{path}"] = "group"
+    problems: list[ValidationProblem] = []
+    for found in hierarchy_problems(nodes):
+        at = found.loc[0]
+        path = at[1:] if isinstance(at, str) else ""
+        names = by_path.get(path, {})
+        key = names.get(
+            ZARR_V2_ARRAY_METADATA_STORE_KEY,
+            names.get(
+                ZARR_V2_GROUP_METADATA_STORE_KEY,
+                f"{path}/{ZARR_V2_GROUP_METADATA_STORE_KEY}"
+                if path != ""
+                else ZARR_V2_GROUP_METADATA_STORE_KEY,
+            ),
+        )
+        problems.append(ValidationProblem(("metadata", key), found.message, found.kind))
+    return problems
 
 
 def _read_node_v2(

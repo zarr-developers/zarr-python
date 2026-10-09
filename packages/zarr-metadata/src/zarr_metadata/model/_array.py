@@ -447,10 +447,12 @@ def located_conflicts(
     located: list[Conflict] = []
     placed = list(fields)
     for conflict in conflicts:
-        places = [loc for loc, field in placed if claim_key(field) == conflict.key]
+        places = [(loc, field) for loc, field in placed if claim_key(field) == conflict.key]
         if len(places) == 0:
             located.append(conflict)
-        located.extend(dataclasses.replace(conflict, loc=loc) for loc in places)
+        located.extend(
+            dataclasses.replace(conflict, loc=loc, written=field.name) for loc, field in places
+        )
     return tuple(located)
 
 

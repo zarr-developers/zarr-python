@@ -50,11 +50,24 @@ class Conflict:
     claimed: Definition[Any] | None
     found: Definition[Any] | None
     loc: Loc | None = None
+    written: str | None = None
+    """The name the document writes where the conflict was found, `r16` for a key of `r*`; None when no document is at hand."""
 
     def __str__(self) -> str:
-        kind, name = self.key
+        kind, filed = self.key
+        name = filed if self.written is None else self.written
         where = "" if self.loc is None else f" at {self.loc!r}"
-        return f"{kind_name(kind)} {name!r}{where}: claimed {self.claimed!r}, found {self.found!r}"
+        return (
+            f"{kind_name(kind)} {name!r}{where}: claimed {definition_said(self.claimed)}, "
+            f"found {definition_said(self.found)}"
+        )
+
+
+def definition_said(definition: Definition[Any] | None) -> str:
+    """A definition as a message tells it from another of the same name: by the TypedDict its configuration is; "no definition" for None."""
+    if definition is None:
+        return "no definition"
+    return f"{definition!r} of {definition.configuration.__qualname__}"
 
 
 def kind_name(kind: type[Definition[Any]]) -> str:

@@ -88,6 +88,17 @@ class Context(Generic[F]):
 
     tables: Tables
 
+    def __post_init__(self) -> None:
+        # What `of` builds, the constructor refuses to build otherwise: each
+        # key a kind, and every kind of one format.
+        formats = sorted({format_of(kind) for kind in self.tables})
+        if len(formats) > 1:
+            msg = (
+                "a scope reads documents of one Zarr format; these definitions are of kinds of "
+                f"formats {' and '.join(f'v{found}' for found in formats)}"
+            )
+            raise TypeError(msg)
+
     @property
     def format(self) -> Literal[2, 3] | None:
         """The Zarr format the definitions in scope read, 2 or 3; None for a scope that files nothing."""
@@ -113,13 +124,6 @@ class Context(Generic[F]):
                 )
                 raise TypeError(msg)
             tables.setdefault(kind, {})[definition.name] = definition
-        formats = sorted({format_of(kind) for kind in tables})
-        if len(formats) > 1:
-            msg = (
-                "a scope reads documents of one Zarr format; these definitions are of kinds of "
-                f"formats {' and '.join(f'v{found}' for found in formats)}"
-            )
-            raise TypeError(msg)
         return cls(
             MappingProxyType({kind: MappingProxyType(table) for kind, table in tables.items()})
         )

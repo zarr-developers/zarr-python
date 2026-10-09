@@ -20,7 +20,7 @@ BASE: dict[str, Any] = dict(ZarrV2ArrayMetadata.create_default().to_json())
     "changes",
     [
         {"dtype": "<f4", "fill_value": "NaN"},
-        {"dtype": [["x", "<f4"], ["y", "<i4", [2]]], "fill_value": "AAAAAAAAAAA="},
+        {"dtype": [["x", "<f4"], ["y", "<i4", [2]]], "fill_value": "AAAAAAAAAAAAAAAA"},
         {"dtype": "<M8[ns]", "fill_value": "NaT"},
         {"dtype": "<e2", "fill_value": "anything"},
         {"compressor": {"id": "blosc", "cname": "zstd", "clevel": 3, "shuffle": 1, "blocksize": 0}},

@@ -259,3 +259,47 @@ def test_a_float_fill_value_past_the_largest_of_its_width_reads_as_an_infinity()
         written = ZarrV2ArrayMetadata.create_default(dtype=dtype, fill_value=huge)
         assert written == ZarrV2ArrayMetadata.create_default(dtype=dtype, fill_value=named)
         assert read_array_metadata_v2(written.to_json()).problems == ()
+
+
+@pytest.mark.parametrize(
+    ("dtype", "fill_value", "accepted"),
+    [
+        ("|V4", "AQIDBA==", True),
+        ("|V4", "AQ==", False),
+        ("|S5", "AQID", True),
+        ("|S5", "AQIDBAUG", False),
+        ([["a", "<i4"], ["b", "<f8"]], "AAAAAAAAAAAAAAAA", True),
+        ([["a", "<i4"], ["b", "<f8"]], "AA==", False),
+        ([["a", "<i4", [2]], ["b", "<M8[ns]"]], "AAAAAAAAAAAAAAAAAAAAAA==", True),
+        ([["a", "<i4", [2]], ["b", "<M8[ns]"]], "AAAAAAAAAAAAAAAA", False),
+        ([["a", [["x", "<i2"], ["y", "<i2"]]], ["b", "|V1"]], "AAAAAAA=", True),
+        ([["a", "|O"]], "AA==", True),
+    ],
+    ids=[
+        "void",
+        "void-short",
+        "bytes",
+        "bytes-long",
+        "struct",
+        "struct-short",
+        "subarray",
+        "subarray-short",
+        "nested-struct",
+        "object-field-unknown",
+    ],
+)
+def test_a_base64_fill_value_is_as_long_as_its_item(
+    dtype: JSONValue, fill_value: str, accepted: bool
+) -> None:
+    """A void or struct fill value decodes to exactly the item's size -- a record's the sum of its fields', each times the product of its subarray shape, nested structs included -- and a byte string's to at most it, as NumPy pads a shorter one; a record holding a field of no fixed size, `|O`, is left unjudged. zarr-python 3 fails to open an array whose fill value is of another size."""
+    from zarr_metadata.model import ZarrV2ArrayMetadata, validate_array_metadata_v2
+
+    document = {
+        **ZarrV2ArrayMetadata.create_default(shape=(4,), chunks=(2,)).to_json(),
+        "dtype": dtype,
+        "fill_value": fill_value,
+    }
+    found = validate_array_metadata_v2(document)
+    assert (len(found) == 0) is accepted, [p.message for p in found]
+    if not accepted:
+        assert [(p.loc, p.kind) for p in found] == [(("fill_value",), "invalid_value")]

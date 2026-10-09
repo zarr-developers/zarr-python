@@ -100,8 +100,10 @@ def test_error_a_scope_conflict_says_each_disagreement() -> None:
     )
     assert error.conflicts[0].key == (CodecDefinition, "bytes")
     assert str(error) == (
-        "codec 'bytes' at ('codecs', 0): claimed CodecDefinition(name='bytes'), found None; "
-        "codec 'gzip': claimed None, found CodecDefinition(name='gzip')"
+        "codec 'bytes' at ('codecs', 0): claimed CodecDefinition(name='bytes') of "
+        "BytesCodecConfiguration, found no definition; "
+        "codec 'gzip': claimed no definition, found CodecDefinition(name='gzip') of "
+        "GzipCodecConfiguration"
     )
 
 
@@ -435,3 +437,46 @@ def test_a_scope_conflict_error_pickles_and_copies_with_its_conflicts() -> None:
         assert str(again) == str(error)
         assert str(again).startswith("codec 'gzip'")
         assert again.__notes__ == ["seen in a join"]
+
+
+def test_a_conflict_names_the_field_as_the_document_writes_it_and_tells_the_definitions_apart() -> (
+    None
+):
+    """A conflict found in a document says the name the document writes, `r16`, not the name its definition is filed under, `r*`, and tells two definitions of one name apart by the configuration each declares, as the consolidated entries' messages do."""
+    import dataclasses
+
+    from zarr_metadata.model import ZarrV3ArrayMetadata
+    from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
+
+    document = dict(
+        ZarrV3ArrayMetadata.create_default(shape=(2,), data_type="r16", fill_value=[0, 0]).to_json()
+    )
+    model = ZarrV3ArrayMetadata(document, CORE_AND_EXTENSIONS)
+    other = dataclasses.replace(RAW_BYTES_DATA_TYPE, configuration=Empty)
+    with pytest.raises(ScopeConflictError) as raised:
+        model.refined_in(CORE_AND_EXTENSIONS.extended_with(other))
+    message = str(raised.value)
+    assert message.startswith("data type 'r16'")
+    assert "RawBytesConfiguration" in message
+    assert "Empty" in message
+    with pytest.raises(ScopeConflictError) as joined:
+        Context.joined(Context.of(GZIP_CODEC), Context.of(OTHER_GZIP))
+    assert str(joined.value).count("gzip") >= 2
+    assert "Empty" in str(joined.value)
+
+
+def test_error_a_scope_built_from_tables_keeps_the_invariants_of() -> None:
+    """`Context(tables)`, the constructor, refuses what `Context.of` refuses: a key that is no kind, and kinds of two formats, so no scope is built that `of` could not build."""
+    from types import MappingProxyType
+
+    from zarr_metadata.v2.data_type.scalar import UINT_V2
+    from zarr_metadata.v2.definition import ZarrV2DataTypeDefinition
+
+    with pytest.raises(TypeError, match="one Zarr format"):
+        Context(
+            MappingProxyType(
+                {CodecDefinition: {"gzip": GZIP_CODEC}, ZarrV2DataTypeDefinition: {"uint": UINT_V2}}
+            )
+        )
+    with pytest.raises(TypeError, match="kind"):
+        Context(MappingProxyType({int: {"gzip": GZIP_CODEC}}))  # pyright: ignore[reportArgumentType]

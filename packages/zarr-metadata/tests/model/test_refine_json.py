@@ -187,3 +187,32 @@ def test_error_an_integer_of_more_digits_than_json_text_holds_is_a_problem(
     assert read_array_metadata_v3(document).problems == found
     shaped = {**document, "attributes": {}, "shape": [10**5000]}
     assert [p.loc for p in validate_array_metadata_v3(shaped)] == [("shape", 0)]
+
+
+def test_a_str_or_int_subclass_is_refined_to_the_json_type_it_is() -> None:
+    """A `StrEnum` member, an `IntEnum` member, or any `str`, `int` or `float` subclass, is refined to the plain value JSON writes for it, so a `Literal` and a tag read it as the value, while `bool` stays apart from `int`."""
+    import enum
+
+    from zarr_metadata.model import ZarrV3GroupMetadata
+
+    class NodeType(enum.StrEnum):
+        GROUP = "group"
+
+    class Format(enum.IntEnum):
+        THREE = 3
+
+    class Score(float):
+        pass
+
+    refined, problems = refine_json(
+        {"a": NodeType.GROUP, "b": Format.THREE, "c": Score(1.5), "d": True}
+    )
+    assert problems == ()
+    assert refined == {"a": "group", "b": 3, "c": 1.5, "d": True}
+    assert isinstance(refined, dict)
+    assert all(type(refined[key]) in (str, int, float, bool) for key in refined)
+    assert type(refined["d"]) is bool
+    model = ZarrV3GroupMetadata.from_json(
+        {"zarr_format": Format.THREE, "node_type": NodeType.GROUP}
+    )
+    assert model.to_json() == {"zarr_format": 3, "node_type": "group"}

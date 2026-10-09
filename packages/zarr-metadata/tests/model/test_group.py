@@ -21,6 +21,7 @@ from zarr_metadata._json import (
 )
 from zarr_metadata.model import (
     UNSET,
+    is_array_metadata_v3,
 )
 from zarr_metadata.model._array import ZarrV3ArrayMetadata, ZarrV3ArrayMetadataUpdate
 from zarr_metadata.model._group import (
@@ -1443,3 +1444,21 @@ def test_error_a_listed_group_s_own_listing_holds_the_documents_the_group_lists(
             _group(consolidated_metadata=_inline(b=inner, **{"b/c": ZarrV3ArrayMetadata(same)}))
         )
     assert [(p.loc, p.kind) for p in raised.value.problems] == [(at, "invalid_value")]
+
+
+def test_the_group_guard_asks_tuples_of_the_documents_the_group_lists() -> None:
+    """`is_group_metadata_v3` says no to a group whose consolidated metadata holds an array document written with lists, as `is_array_metadata_v3` says no to that document: a guard narrows to the TypedDict, whose arrays are tuples, at every level."""
+    array = _array()
+    listed = dict(array)
+    listed["shape"] = list(array["shape"])  # pyright: ignore[reportArgumentType]
+    assert not is_array_metadata_v3(listed)
+    group = _group(consolidated_metadata=_inline(a=listed))
+    assert validate_group_metadata_v3(group) == ()
+    assert not is_group_metadata_v3(group)
+    assert is_group_metadata_v3(parse_group_metadata_v3(group))
+    nested = _group(
+        consolidated_metadata=_inline(
+            g=_group(consolidated_metadata=_inline(a=listed)), **{"g/a": array}
+        )
+    )
+    assert not is_group_metadata_v3(nested)

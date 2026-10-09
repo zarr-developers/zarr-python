@@ -423,7 +423,7 @@ def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refi
     """`refine_json`, a non-finite number being JSON unless `finite`."""
     if isinstance(value, float):
         if not finite or math.isfinite(value):
-            return value, ()
+            return float(value), ()
         return None, (
             ValidationProblem(loc, f"non-finite float {value!r} is not JSON", "invalid_value"),
         )
@@ -433,8 +433,13 @@ def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refi
             "here, as sys.get_int_max_str_digits bounds it"
         )
         return None, (ValidationProblem(loc, message, "invalid_value"),)
-    if isinstance(value, (str, int, bool)) or value is None:
+    if isinstance(value, bool) or value is None:
         return value, ()
+    if isinstance(value, str):
+        # A subclass -- a `StrEnum` member -- as the string JSON writes for it.
+        return str.__str__(value), ()
+    if isinstance(value, int):
+        return int(value), ()
     if (past := nested_past_the_levels(value, loc)) is not None:
         return None, (past,)
     if is_object(value):

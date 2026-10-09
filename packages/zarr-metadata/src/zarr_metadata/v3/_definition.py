@@ -422,7 +422,9 @@ ASCII digits only: `\\d` would also match every other Unicode decimal, so
 `r\uff11\uff16` would be read as sixteen bits, and a third-party name
 spelled that way would be taken for raw bits. A size the spec does not
 allow -- `r0`, `r12` -- is still raw bits, so it is reported as a bad
-size rather than passed as an unknown extension.
+size rather than passed as an unknown extension. A hundred digits is
+more than any size: `r` and more digits than that is a name, as the spec
+allows one, which nothing in scope claims.
 """
 
 

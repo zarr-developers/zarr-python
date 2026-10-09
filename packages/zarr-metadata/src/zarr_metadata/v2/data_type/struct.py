@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Final
+import math
+from typing import TYPE_CHECKING, Annotated, Any, Final, cast
 
 from annotated_types import Ge
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.v2._definition import STRUCT_NAME, ZarrV2DataTypeDefinition, ZarrV2DataTypeField
-from zarr_metadata.v2.data_type.fixed_width import ZarrV2Base64FillValue, base64_fill_value_rules
+from zarr_metadata.v2.data_type.fixed_width import ZarrV2Base64FillValue, sized_base64_rules
+from zarr_metadata.v3._definition import AcceptedField
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -50,12 +52,42 @@ def _rules(configuration: ZarrV2StructConfiguration, nested: Nested) -> Iterator
             )
 
 
+def _fill_value_rules(
+    configuration: ZarrV2StructConfiguration, nested: Nested, value: ZarrV2Base64FillValue
+) -> Iterator[ValidationProblem]:
+    """Base64 of exactly one record, when every field's size is known."""
+    yield from sized_base64_rules(value, record_size(configuration, nested), exact=True)
+
+
+def record_size(configuration: ZarrV2StructConfiguration, nested: Nested) -> int | None:
+    """The bytes one record of `configuration` takes: each field's item size times the product of its subarray shape, a nested struct's its own record; None when a field's size is not known, as `|O`'s is not, or its dtype was not read."""
+    total = 0
+    for index, record in enumerate(configuration["fields"]):
+        field = nested.get(("fields", index, 1))
+        if not isinstance(field, AcceptedField):
+            return None
+        size = _item_size(field)
+        if size is None:
+            return None
+        shape = record[2] if len(record) == 3 else ()
+        total += size * math.prod(shape)
+    return total
+
+
+def _item_size(field: AcceptedField[Any]) -> int | None:
+    """The bytes one item of the dtype `field` read takes; None when not known."""
+    if field.name == STRUCT_NAME or "fields" in field.configuration:
+        return record_size(cast("ZarrV2StructConfiguration", field.configuration), field.nested)
+    size = field.configuration.get("itemsize")
+    return size if isinstance(size, int) and not isinstance(size, bool) else None
+
+
 STRUCT_V2: Final = ZarrV2DataTypeDefinition(
     name=STRUCT_NAME,
     configuration=ZarrV2StructConfiguration,
     rules=_rules,
     fill_value=ZarrV2Base64FillValue,
-    fill_value_rules=base64_fill_value_rules,
+    fill_value_rules=_fill_value_rules,
 )
 """A structured type: an array of field records; the fill value base64 of one record (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L191-L193)."""
 

@@ -175,8 +175,11 @@ def unexpected_keys(
 def check_literal(
     doc: Mapping[object, object], key: str, expected: object
 ) -> tuple[ValidationProblem, ...]:
-    """One problem if `doc[key]` is present but not `expected`: of its type, when it is not of `expected`'s JSON type, else of its value."""
-    if key in doc and (type(doc[key]) is not type(expected) or doc[key] != expected):
+    """One problem if `doc[key]` is present but not `expected`: of its type, when it is not of `expected`'s JSON type, else of its value; a value is judged as refined, so a `StrEnum` member is its string."""
+    if key not in doc:
+        return ()
+    value, found = refine_json(doc[key], (key,))
+    if len(found) != 0 or type(value) is not type(expected) or value != expected:
         return (outside_of((key,), doc[key], (expected,)),)
     return ()
 
@@ -286,7 +289,7 @@ def _is_canonical_metadata_field_v3(value: object) -> bool:
     return isinstance(value, (str, dict))
 
 
-def _is_canonical_array_metadata_v3(value: object) -> bool:
+def is_canonical_array_metadata_v3(value: object) -> bool:
     """Whether a validated v3 array document matches `ZarrV3ArrayMetadataJSON` at runtime."""
     if not is_object(value) or not isinstance(value, dict):
         return False
@@ -681,7 +684,7 @@ def is_array_metadata_v3(
     return (
         _is_canonical_json(value, finite=False)
         and not validate_array_metadata_v3(value, context=scope)
-        and _is_canonical_array_metadata_v3(value)
+        and is_canonical_array_metadata_v3(value)
     )
 
 

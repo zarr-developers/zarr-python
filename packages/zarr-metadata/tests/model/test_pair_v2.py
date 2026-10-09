@@ -419,10 +419,54 @@ def test_error_a_second_key_for_a_node_file_hides_no_other_problem() -> None:
     )
     assert set(
         ZarrV2ConsolidatedMetadata(
-            {"zarr_consolidated_format": 1, "metadata": {"x//y/.zarray": ZARRAY}}
+            {
+                "zarr_consolidated_format": 1,
+                "metadata": {"x/.zgroup": {"zarr_format": 2}, "x//y/.zarray": ZARRAY},
+            }
         ).nodes
-    ) == {"x/y"}
+    ) == {"x", "x/y"}
     assert set(one.nodes) == {"a"}
     assert one == ZarrV2ConsolidatedMetadata(
         {"zarr_consolidated_format": 1, "metadata": {"a/.zarray": ZARRAY}}
     )
+
+
+def test_error_a_key_with_a_dot_segment_is_no_node_s_path() -> None:
+    """A `.zmetadata` key whose path has a `.` or `..` segment names no node, as a leading or repeated `/` does not: it is a problem at the key, and not a second node beside the one it would name."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV2ConsolidatedMetadata(
+            {
+                "zarr_consolidated_format": 1,
+                "metadata": {
+                    ".zgroup": {"zarr_format": 2},
+                    "./a/.zarray": ZARRAY,
+                    "b/../a/.zarray": ZARRAY,
+                },
+            }
+        )
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [
+        (("metadata", "./a/.zarray"), "invalid_value"),
+        (("metadata", "b/../a/.zarray"), "invalid_value"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("entries", "at", "kind"),
+    [
+        (
+            {".zgroup": {"zarr_format": 2}, "a/.zarray": ZARRAY, "a/b/.zarray": ZARRAY},
+            "a/b/.zarray",
+            "invalid_value",
+        ),
+        ({".zarray": ZARRAY, "x/.zgroup": {"zarr_format": 2}}, "x/.zgroup", "invalid_value"),
+        ({".zgroup": {"zarr_format": 2}, "x/y/.zarray": ZARRAY}, "x/.zgroup", "missing_key"),
+    ],
+    ids=["below-an-array", "below-the-root-array", "missing-parent"],
+)
+def test_error_the_nodes_of_a_zmetadata_make_a_hierarchy(
+    entries: dict[str, Any], at: str, kind: str
+) -> None:
+    """The nodes a `.zmetadata` holds make a hierarchy, as a v3 group's consolidated metadata does: a node below an array is a problem at its entry, and a group missing above a node a `missing_key` at the entry the group would have."""
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV2ConsolidatedMetadata({"zarr_consolidated_format": 1, "metadata": entries})
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("metadata", at), kind)]
