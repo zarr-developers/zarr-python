@@ -1,0 +1,1 @@
+Structured data types now default byte-string (`S`) and raw-bytes (`V`) fields to zero bytes. Before, an array with a raw-bytes field failed to create without an explicit fill value, and byte-string fields defaulted to `b"0"`.
