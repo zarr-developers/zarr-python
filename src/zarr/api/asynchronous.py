@@ -24,6 +24,7 @@ from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
     AccessModeLiteral,
+    ChunksLike,
     DimensionNamesLike,
     MemoryOrder,
     ZarrFormat,
@@ -366,7 +367,8 @@ async def open(
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
-        (fail if exists).
+        (fail if exists). On a store that cannot delete keys, 'w' raises an
+        error instead of replacing an existing node.
         If the store is read-only, the default is 'r'; otherwise, it is 'a'.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
@@ -404,20 +406,24 @@ async def open(
     store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
     # TODO: the mode check below seems wrong!
-    if "shape" not in kwargs and mode in {"a", "r", "r+", "w"}:
-        try:
-            metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
-            # TODO: remove this cast when we fix typing for array metadata dicts
-            _metadata_dict = cast("ArrayMetadataDict", metadata_dict)
-            # for v2, the above would already have raised an exception if not an array
-            zarr_format = _metadata_dict["zarr_format"]
-            is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
-            if is_v3_array or zarr_format == 2:
-                return AsyncArray(
-                    store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
-                )
-        except (FileNotFoundError, NodeTypeValidationError):
-            pass
+    if "shape" not in kwargs and mode in (*_READ_MODES, "w"):
+        # mode "w" replaces any existing node, so there is nothing to open
+        if mode in _READ_MODES:
+            try:
+                metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
+                # TODO: remove this cast when we fix typing for array metadata dicts
+                _metadata_dict = cast("ArrayMetadataDict", metadata_dict)
+                # for v2, the above would already have raised an exception if not an array
+                zarr_format = _metadata_dict["zarr_format"]
+                is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
+                if is_v3_array or zarr_format == 2:
+                    return AsyncArray(
+                        store_path=store_path,
+                        metadata=_metadata_dict,
+                        config=kwargs.get("config"),
+                    )
+            except (FileNotFoundError, NodeTypeValidationError):
+                pass
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
     try:
@@ -575,8 +581,6 @@ async def save_group(
         NumPy arrays with data to save.
     """
 
-    store_path = await make_store_path(store, path=path, mode="w", storage_options=storage_options)
-
     if zarr_format is None:
         zarr_format = _default_zarr_format()
 
@@ -591,6 +595,16 @@ async def save_group(
 
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
+
+    # Resolve every data type before anything is deleted, so an array that Zarr cannot
+    # store raises while the existing node is still intact.
+    for arr in (*args, *kwargs.values()):
+        get_data_type_from_native_dtype(arr.dtype)
+
+    store_path = await make_store_path(store, path=path, mode="w", storage_options=storage_options)
+    # The group replaces whatever is stored under the path, now that the arguments are known
+    # to be valid.
+    await AsyncGroup.from_store(store_path, zarr_format=zarr_format, overwrite=True)
     aws = []
     # `store_path` already consumed `storage_options`, so passing them on again would
     # make `make_store_path` reject them as unused.
@@ -823,7 +837,8 @@ async def open_group(
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
-        (fail if exists).
+        (fail if exists). On a store that cannot delete keys, 'w' raises an
+        error instead of replacing an existing node.
     cache_attrs : bool, optional
         If True (default), user attributes will be cached for attribute read
         operations. If False, user attributes are reloaded from the store prior
@@ -903,7 +918,7 @@ async def open_group(
 async def create(
     shape: tuple[int, ...] | int,
     *,  # Note: this is a change from v2
-    chunks: tuple[int, ...] | int | bool | None = None,
+    chunks: ChunksLike | None = None,
     dtype: ZDTypeLike | None = None,
     compressor: CompressorLike = "auto",
     fill_value: Any | None = DEFAULT_FILL_VALUE,
@@ -924,7 +939,7 @@ async def create(
     meta_array: Any | None = None,  # TODO: need type
     attributes: dict[str, JSON] | None = None,
     # v3 only
-    chunk_shape: tuple[int, ...] | int | None = None,
+    chunk_shape: ChunksLike | None = None,
     chunk_key_encoding: (
         ChunkKeyEncoding
         | tuple[Literal["default"], Literal[".", "/"]]
@@ -944,11 +959,11 @@ async def create(
     ----------
     shape : int or tuple of ints
         Array shape.
-    chunks : int or tuple of ints, optional
-        Chunk shape. If True, will be guessed from `shape` and `dtype`. If
-        False, will be set to `shape`, i.e., single chunk for the whole array.
-        If an int, the chunk size in each dimension will be given by the value
-        of `chunks`. Default is True.
+    chunks : ChunksLike, optional
+        Chunk shape. If None (the default), it is guessed from `shape` and `dtype`. If
+        False, it is set to `shape`, i.e., a single chunk for the whole array. If an
+        int, the chunk size in each dimension is given by the value of `chunks`.
+        `True` is not a chunk shape and raises a `ValueError`.
     dtype : str or dtype, optional
         NumPy dtype.
     compressor : Codec, optional
@@ -1031,7 +1046,7 @@ async def create(
         Not implemented.
     attributes : dict[str, JSON], optional
         A dictionary of user attributes to store with the array.
-    chunk_shape : int or tuple of ints, optional
+    chunk_shape : ChunksLike, optional
         The shape of the Array's chunks (default is None).
         Zarr format 3 only. Zarr format 2 arrays should use `chunks` instead.
     chunk_key_encoding : ChunkKeyEncoding, optional
@@ -1070,7 +1085,8 @@ async def create(
           `True`.
         - `'r'` always fails.
 
-        `mode` has no effect, and is not validated, if `store` is a `StorePath`.
+        If `store` is a `StorePath`, `mode` is not validated against it: `'w'` still
+        sets `overwrite`, and the other modes have no effect.
     data : array-like, optional
         Values written into the new array after it is created. Unlike the `data`
         parameter of `create_array`, it does not set the shape or data type of the
@@ -1102,6 +1118,7 @@ async def create(
 
     if mode is None:
         mode = "a"
+    overwrite = overwrite or _infer_overwrite(mode)
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     config_parsed = parse_array_config(config)
@@ -1321,20 +1338,20 @@ async def open_array(
     if "write_empty_chunks" in kwargs:
         _warn_write_empty_chunks_kwarg()
 
-    try:
-        return await AsyncArray.open(store_path, zarr_format=zarr_format)
-    except FileNotFoundError as err:
-        if not store_path.read_only and mode in _CREATE_MODES:
-            overwrite = _infer_overwrite(mode)
-            _zarr_format = zarr_format or _default_zarr_format()
-            return await create(
-                store=store_path,
-                zarr_format=_zarr_format,
-                overwrite=overwrite,
-                **kwargs,
-            )
-        msg = f"No array found in store {store_path.store} at path {store_path.path}"
-        raise ArrayNotFoundError(msg) from err
+    # mode "w" replaces any existing array, so there is nothing to open
+    if mode != "w":
+        try:
+            return await AsyncArray.open(store_path, zarr_format=zarr_format)
+        except FileNotFoundError as err:
+            if store_path.read_only or mode not in _CREATE_MODES:
+                msg = f"No array found in store {store_path.store} at path {store_path.path}"
+                raise ArrayNotFoundError(msg) from err
+    return await create(
+        store=store_path,
+        zarr_format=zarr_format or _default_zarr_format(),
+        overwrite=_infer_overwrite(mode),
+        **kwargs,
+    )
 
 
 async def open_like(

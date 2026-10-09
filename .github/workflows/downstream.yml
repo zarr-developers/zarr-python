@@ -45,7 +45,7 @@ jobs:
           python-version: '3.13'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
       - name: Install xarray and test dependencies
         working-directory: xarray
@@ -68,13 +68,16 @@ jobs:
           import xarray; print(f'xarray {xarray.__version__}')
           "
 
-      - name: Run xarray zarr backend tests
+      # xarray keeps its backend tests in the `xarray/tests/backends` package
+      # (pydata/xarray#11633 split the former `test_backends*.py` modules into
+      # it). Running the package covers the zarr store, region/append, API and
+      # DataTree tests; the other backends are installed by the `io` extra, so
+      # their tests run too, as they did before the split.
+      - name: Run xarray backend tests
         working-directory: xarray
         run: |
           uv run --no-sync python -m pytest --no-header -q \
-            xarray/tests/test_backends.py \
-            xarray/tests/test_backends_api.py \
-            xarray/tests/test_backends_datatree.py
+            xarray/tests/backends
 
   numcodecs:
     name: numcodecs zarr3 codec tests
@@ -103,7 +106,7 @@ jobs:
           python-version: '3.13'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
       - name: Install numcodecs with test-zarr-main group
         working-directory: numcodecs
