@@ -416,3 +416,20 @@ def test_a_gain_is_judged_by_what_the_definition_reads_not_by_spelling() -> None
     read, _ = resolve(shard, CodecDefinition, CORE)
     unread, _ = resolve({**shard, "must_understand": True}, CodecDefinition, nothing)
     assert refines(read, unread)
+
+
+OTHER_GZIP = CodecDefinition(name="gzip", configuration=Empty, kind="bytes_bytes", size="static")
+"""A second definition under the core gzip's name: what a join conflicts on."""
+
+
+def test_a_scope_conflict_error_pickles_and_copies_with_its_conflicts() -> None:
+    """`ScopeConflictError` pickles and copies as it was raised: the same conflicts, the same message, as `MetadataValidationError` does, so a conflict reported in another process reads the same here."""
+    import copy
+
+    with pytest.raises(ScopeConflictError) as raised:
+        Context.joined(CORE, Context.of(OTHER_GZIP))
+    error = raised.value
+    for again in (pickle.loads(pickle.dumps(error)), copy.copy(error), copy.deepcopy(error)):
+        assert again.conflicts == error.conflicts
+        assert str(again) == str(error)
+        assert str(again).startswith("codec 'gzip'")

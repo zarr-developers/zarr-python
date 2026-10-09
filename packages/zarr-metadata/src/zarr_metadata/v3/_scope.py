@@ -73,6 +73,11 @@ class ScopeConflictError(ValueError):
         self.conflicts: tuple[Conflict, ...] = tuple(conflicts)
         super().__init__("; ".join(str(conflict) for conflict in self.conflicts))
 
+    def __reduce__(self) -> tuple[type[ScopeConflictError], tuple[tuple[Conflict, ...]]]:
+        # Pickled and copied as it was raised: an exception's default
+        # reduce calls the constructor with its message, not its conflicts.
+        return type(self), (self.conflicts,)
+
 
 def claim_key(field: ResolvedField[Any]) -> ClaimKey | None:
     """The key `field` is claimed under: its kind and the name its definition is filed under, `r*` for `r16`; None for a field that names nothing."""
