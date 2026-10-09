@@ -760,10 +760,13 @@ def create(
 
         The elements of `codecs` specify the transformation from array values to stored bytes.
         Zarr format 3 only. Zarr format 2 arrays should use `filters` and `compressor` instead.
-        In order, a Zarr format 3 pipeline contains zero or more
-        [`zarr.abc.codec.ArrayArrayCodec`][] filters, exactly one
-        [`zarr.abc.codec.ArrayBytesCodec`][] serializer, and zero or more
-        [`zarr.abc.codec.BytesBytesCodec`][] compressors.
+        The [Zarr format 3 specification](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#chunk-encoding)
+        requires, in order, zero or more array -> array codecs
+        ([`zarr.abc.codec.ArrayArrayCodec`][]), exactly one array -> bytes codec
+        ([`zarr.abc.codec.ArrayBytesCodec`][]), and zero or more bytes -> bytes codecs
+        ([`zarr.abc.codec.BytesBytesCodec`][]). Elsewhere in Zarr-Python these are
+        called filters, the serializer, and compressors; those names are Zarr-Python
+        aliases, not terms defined in the specification.
 
         If no codecs are provided, default codecs will be used based on the data type of the array.
         For most data types, the default codecs are the tuple `(BytesCodec(), ZstdCodec())`;

@@ -197,17 +197,30 @@ print(arr_f.config)
 
 ## Zarr format 3 codec pipeline
 
-Zarr format 3 stores a single ordered `codecs` pipeline in array metadata, but
-Zarr-Python's array creation functions expose that pipeline through three
-role-specific parameters:
+Zarr format 3 stores a single ordered list of codecs in the
+[`codecs`](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#array-metadata-codecs)
+field of array metadata. The
+[Zarr format 3 specification](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#chunk-encoding)
+classifies each codec by the input and output of its encode transform, as
+"array -> array", "array -> bytes", or "bytes -> bytes", and requires the list to
+contain zero or more array -> array codecs, followed by exactly one
+array -> bytes codec, followed by zero or more bytes -> bytes codecs.
 
-- `filters`: [`zarr.abc.codec.ArrayArrayCodec`][] instances. These transform chunk
-  arrays into chunk arrays before serialization.
-- `serializer`: one [`zarr.abc.codec.ArrayBytesCodec`][] instance. This transforms
-  a chunk array into bytes. Every Zarr format 3 array needs exactly one
-  array-to-bytes codec, either supplied explicitly or chosen by default.
-- `compressors`: [`zarr.abc.codec.BytesBytesCodec`][] instances. These transform
-  bytes into bytes after serialization.
+Zarr-Python's array creation functions expose that list through three
+parameters: `filters`, `serializer`, and `compressors`. These names are not
+defined in the Zarr format 3 specification. They are Zarr-Python aliases for
+the specification's codec kinds:
+
+- `filters`: the array -> array codecs, given as
+  [`zarr.abc.codec.ArrayArrayCodec`][] instances. These transform chunk arrays
+  into chunk arrays before serialization.
+- `serializer`: the array -> bytes codec, given as one
+  [`zarr.abc.codec.ArrayBytesCodec`][] instance. This transforms a chunk array
+  into bytes. Every Zarr format 3 array needs exactly one array -> bytes codec,
+  either supplied explicitly or chosen by default.
+- `compressors`: the bytes -> bytes codecs, given as
+  [`zarr.abc.codec.BytesBytesCodec`][] instances. These transform bytes into
+  bytes after serialization.
 
 The `compressors` parameter is only for bytes-to-bytes codecs. If a codec is an
 `ArrayBytesCodec`, pass it with `serializer`, not `compressors`. For example, the
