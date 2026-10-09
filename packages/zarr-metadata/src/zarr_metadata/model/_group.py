@@ -368,7 +368,7 @@ class ZarrV3GroupMetadata(Keyed):
         """The model of `data`, a v3 group document read in `context`, with each document its consolidated metadata holds.
 
         `MetadataValidationError` with every problem the read finds. A
-        `consolidated_metadata` of `null`, which a zarr-python 3.0.x bug
+        `consolidated_metadata` of `null`, which zarr-python 3.0 and 3.1
         wrote, is a value the document wrote, and no object: a problem,
         as the spec says an object; `read_repaired_node_metadata_v3` reads
         such a store. A member the spec does not define is held in

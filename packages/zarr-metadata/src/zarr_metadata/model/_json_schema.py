@@ -24,13 +24,13 @@ def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSO
 
     For an editor that validates a `zarr.json` as it is written, or a
     validator in another language. JSON Schema draft 2020-12, as
-    `json_schema` writes one. Each extension point is a field as
-    `field_json_schema` writes one in `context`: one a definition in scope
-    reads, or a name none of them claims. The fill value is the JSON shape
+    `json_schema` writes one. Each extension point is a field as a scope
+    reads one in `context`: one a definition in scope reads, with the
+    configuration its definition declares, or a name none of them claims. The fill value is the JSON shape
     the data type's definition declares for one -- an `int8`'s an integer
     in [-128, 127] -- when the document names a data type in scope. A
     group's `consolidated_metadata` holds array and group documents, by
-    path; a `null` one, which a zarr-python 3.0.x bug wrote, is refused, as
+    path; a `null` one, which zarr-python 3.0 and 3.1 wrote, is refused, as
     the validator refuses it. Each document is in `$defs` under the name of its
     TypedDict: `ZarrV3ArrayMetadataJSON` is an array's alone.
 

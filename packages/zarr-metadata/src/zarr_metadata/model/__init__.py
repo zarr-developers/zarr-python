@@ -1,7 +1,7 @@
 """In-memory models for Zarr metadata documents.
 
-Models are frozen dataclasses that hold a canonical, semantically lossless
-representation of the JSON documents. Validators check a document's JSON
+A model is a metadata document, as written and refined, and the scope it
+was read in; what it hands out is read-only. Validators check a document's JSON
 structure and, in a v3 document, read each extension point (codecs, chunk
 grids, data types, ...) through the definition that claims its name in a
 scope, `CORE_AND_EXTENSIONS` unless a `context` is passed, and judge the

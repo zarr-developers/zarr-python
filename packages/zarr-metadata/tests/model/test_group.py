@@ -1322,7 +1322,7 @@ def test_group_must_understand_fields_partition() -> None:
 
 
 def test_error_a_null_consolidated_metadata_is_a_value_the_document_wrote() -> None:
-    """A zarr-python 3.0.x bug wrote `consolidated_metadata: null`; the spec says an object, and the package models nothing else as right: a reader of those stores strips the key first."""
+    """zarr-python 3.0 and 3.1 wrote `consolidated_metadata: null`; the spec says an object, and the package models nothing else as right: a reader of those stores strips the key first."""
     null_doc = {"zarr_format": 3, "node_type": "group", "consolidated_metadata": None}
     assert [(p.loc, p.kind) for p in validate_group_metadata_v3(null_doc)] == [
         (("consolidated_metadata",), "invalid_type")

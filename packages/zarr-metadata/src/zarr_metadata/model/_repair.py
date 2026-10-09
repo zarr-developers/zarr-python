@@ -94,8 +94,8 @@ class ZarrV3ZeroChunkArrayMetadataJSON(TypedDict):
 class ZarrV3NullConsolidatedGroupMetadataJSON(TypedDict):
     """The members of a group document the `null_consolidated_metadata` repair reads.
 
-    zarr-python 3.0.x wrote `"consolidated_metadata": null` on a group it had
-    not consolidated, which the convention does not allow: the member is
+    zarr-python 3.0 and 3.1 wrote `"consolidated_metadata": null` on a group
+    they had not consolidated, which the convention does not allow: the member is
     an object, or absent. The repair removes it, which is what the writer
     meant.
     """
@@ -180,7 +180,7 @@ def _null_consolidated_metadata(
         Repair(
             (*at, ZARR_V3_CONSOLIDATED_METADATA_KEY),
             "null_consolidated_metadata",
-            "a consolidated_metadata of null, as zarr-python 3.0.x wrote it, removed",
+            "a consolidated_metadata of null, as zarr-python 3.0 and 3.1 wrote it, removed",
         )
     )
     return {key: item for key, item in document.items() if key != ZARR_V3_CONSOLIDATED_METADATA_KEY}

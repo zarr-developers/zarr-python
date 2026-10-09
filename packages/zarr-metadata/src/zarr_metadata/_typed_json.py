@@ -1139,8 +1139,10 @@ def check(
     located under `loc`. What comes back holds what `shape` admits and
     nothing else: a key a closed TypedDict does not declare is reported,
     as `unknown_key`, and left out, and the value still comes back.
-    Anything else wrong and it does not. `TypeError` for a `shape` that is
-    not a TypedDict, or holds something no parser reads.
+    Anything else wrong and it does not. The levels a reader walks are
+    counted from the root of the document `loc` places `value` in, so a
+    `loc` of 255 levels leaves one. `TypeError` for a `shape` that is not
+    a TypedDict, or holds something no parser reads.
     """
     if not is_typeddict(shape):
         msg = f"{shape!r} is not a TypedDict"

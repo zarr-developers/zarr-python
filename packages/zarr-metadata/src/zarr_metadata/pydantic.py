@@ -38,6 +38,12 @@ one of these fields keeps it with `ser_json_inf_nan="constants"` in its
 `model_config`; a `TypeAdapter` over a field type takes no `config`, so
 write its value with the model's `to_key_value` instead.
 
+Pydantic's own JSON paths bound nesting below the 256 levels the readers
+walk: `validate_json` refuses a document nested about 200 levels deep,
+and `dump_json` one nested about 255, each with its own error. A document
+that deep goes through `validate_python` on parsed JSON, and is written
+with the model's `to_key_value`.
+
 Usage:
 
     import zarr_metadata.pydantic as zmp

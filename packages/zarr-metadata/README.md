@@ -13,9 +13,9 @@ Two layers and an optional integration:
   and [Zarr v3](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html)
   specifications, plus types for [`zarr-extensions`](https://github.com/zarr-developers/zarr-extensions/)
   and a few widely-used-but-unspecified entities (e.g. consolidated metadata).
-- **Document models** (`zarr_metadata.model`): canonical frozen-dataclass
-  models of whole metadata documents, with validators, loc-aware
-  parsers, and store-key (de)serialization. A document produced by `to_json`
+- **Document models** (`zarr_metadata.model`): each model is a metadata
+  document and the scope it was read in, with validators, loc-aware
+  readers, and store-key (de)serialization. A document produced by `to_json`
   shares no mutable state with the model that produced it.
 - **Optional Pydantic integration** (`zarr_metadata.pydantic`, requires
   Pydantic 2.13 or newer): each model as a Pydantic field type that validates
@@ -99,9 +99,10 @@ Two choices the specs' words leave open, or settle two ways:
   `copy.deepcopy`, and `pickle` before Python 3.12, two: a document at
   the cap takes about half of the interpreter's default limit, and the
   rest is the caller's.
-- **`consolidated_metadata: null` is a problem.** A zarr-python 3.0.x bug
-  wrote it; the spec says an object, and the package models nothing else
-  as right. A reader of those stores strips the key before reading.
+- **`consolidated_metadata: null` is a problem.** zarr-python 3.0 and 3.1
+  wrote it on a group they had not consolidated; the spec says an object,
+  and the package models nothing else as right.
+  `read_repaired_node_metadata_v3` removes it before reading.
 - **An extension is named as the spec names one**, `^[a-z][a-z0-9-_.]+$`,
   or by a URI, which earlier versions of the spec required; any other
   name is refused before a definition is asked, so `""` and `"foo/bar"`
@@ -202,14 +203,13 @@ against its data type -- compares by its canonical spelling, as
 `canonical_of` and `canonical_fill_value` give it: `"NaN"` and
 `"0x7fc00000"` are one `float32` fill value, `0.0` and `-0.0` two, and a
 blosc with and without the `typesize` that `noshuffle` ignores one
-codec. What it does not interpret -- attributes, extra fields, the
-configuration of a field nothing in scope claims, and every member of a
-v2 document -- compares as JSON text, which tells `true` from `1` and
-`-0.0` from `0.0`, and takes `NaN` for itself. Equal models hash alike,
-and may write two documents: `to_json` writes each as it was given. A
-v3 model holds nothing that can be changed in place; a v2 model's hash
-is of what its containers held when it was hashed, so one in a set, or a
-key of a dict, is not changed in place.
+codec, and a v2 `dtype` by its family and size, `<b1` and `|b1` one
+dtype. What it does not interpret -- attributes, extra fields, and the
+configuration of a field nothing in scope claims -- compares as JSON
+text, which tells `true` from `1` and `-0.0` from `0.0`, and takes `NaN`
+for itself. Equal models hash alike, and may write two documents:
+`to_json` writes each as it was given. A model holds nothing that can be
+changed in place: what it hands out is read-only at every level.
 
 `node_metadata_json_schema_v3` writes what the validators read as a
 JSON Schema, draft 2020-12, for an editor that checks a `zarr.json` as it
