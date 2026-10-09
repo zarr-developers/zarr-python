@@ -42,6 +42,7 @@ from typing import (
     Final,
     Generic,
     Literal,
+    Protocol,
     TypeAlias,
     TypeGuard,
     cast,
@@ -725,6 +726,15 @@ def field_kind(annotation: object) -> type[Definition[Any]] | None:
     if not is_alias(annotation):
         return None
     return _FIELD_KINDS.get(annotation)
+
+
+class Scope(Protocol):
+    """What reading a field asks of a scope: its format, and which definition of a kind claims a name. A `Context` is one; so is anything else that answers the two."""
+
+    @property
+    def format(self) -> Literal[2, 3] | None: ...
+
+    def claimant(self, kind: type[D], name: str) -> D | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -1736,7 +1746,7 @@ def chunk_grid_lengths(
 
 
 def resolve(
-    data: object, kind: type[D], context: Context, loc: Loc = ()
+    data: object, kind: type[D], context: Scope, loc: Loc = ()
 ) -> tuple[ResolvedField[D], Problems]:
     """`data`, one metadata field, read as a `kind` in `context`: what the scope made of it, and every problem.
 
@@ -1779,7 +1789,7 @@ def resolve(
 
 
 def _resolve_field(
-    data: JSONValue, kind: type[Definition[Any]], context: Context, loc: Loc
+    data: JSONValue, kind: type[Definition[Any]], context: Scope, loc: Loc
 ) -> tuple[ResolvedField[Definition[Any]], Problems]:
     """A refined field with its envelope judged, then read.
 
@@ -1794,7 +1804,7 @@ def _resolve_field(
 
 
 def _read(
-    data: JSONValue, kind: type[Definition[Any]], context: Context, loc: Loc
+    data: JSONValue, kind: type[Definition[Any]], context: Scope, loc: Loc
 ) -> tuple[ResolvedField[Definition[Any]], Problems]:
     name, given, malformed = kind.named_configuration(data)
     if name is None:
@@ -1926,7 +1936,7 @@ def _sized(field: _NestedField, inner: ResolvedField[Any]) -> Problems:
 
 
 def canonicalize(
-    data: object, kind: type[D], context: Context, loc: Loc = ()
+    data: object, kind: type[D], context: Scope, loc: Loc = ()
 ) -> tuple[JSONValue | None, Problems]:
     """`data`, one metadata field, in its simplest equivalent spelling, and every problem.
 

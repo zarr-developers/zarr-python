@@ -385,3 +385,34 @@ def test_a_kind_is_named_in_words(kind: type[Definition[Any]], said: str) -> Non
     """`kind_name` names each kind of definition as a message does: `ChunkKeyEncodingDefinition` is "chunk key encoding"."""
     assert kind_name(kind) == said
     assert said in str(Conflict((kind, "x"), None, None))
+
+
+def test_a_gain_is_judged_by_what_the_definition_reads_not_by_spelling() -> None:
+    """An accepted field refines an unclaimed one when its definition, reading what the unclaimed field wrote, reads the accepted field: two spellings of one configuration are one gain, so `refines` is transitive through `==`, and a spelling the definition reads otherwise is no gain."""
+    from zarr_metadata.v3.definition import CORE, ChunkKeyEncodingDefinition, Context, resolve
+
+    nothing = Context.of()
+    spelled_out, _ = resolve(
+        {"name": "default", "configuration": {"separator": "/"}}, ChunkKeyEncodingDefinition, CORE
+    )
+    bare, _ = resolve({"name": "default"}, ChunkKeyEncodingDefinition, CORE)
+    unclaimed, _ = resolve({"name": "default"}, ChunkKeyEncodingDefinition, nothing)
+    assert spelled_out == bare
+    assert refines(bare, unclaimed)
+    assert refines(spelled_out, unclaimed)
+    other, _ = resolve(
+        {"name": "default", "configuration": {"separator": "."}}, ChunkKeyEncodingDefinition, CORE
+    )
+    assert not refines(other, unclaimed)
+    shard = {
+        "name": "sharding_indexed",
+        "configuration": {
+            "chunk_shape": [2],
+            "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
+            "index_codecs": [{"name": "bytes", "configuration": {"endian": "little"}}, "crc32c"],
+            "index_location": "end",
+        },
+    }
+    read, _ = resolve(shard, CodecDefinition, CORE)
+    unread, _ = resolve({**shard, "must_understand": True}, CodecDefinition, nothing)
+    assert refines(read, unread)

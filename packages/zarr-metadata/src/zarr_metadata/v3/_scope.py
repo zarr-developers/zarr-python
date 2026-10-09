@@ -13,15 +13,19 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
 
 from zarr_metadata.v3._definition import (
     AcceptedField,
     Definition,
     RefusedField,
     UnclaimedField,
+    as_kind,
     field_key,
+    fields_of,
+    format_of,
     own_key,
+    resolve,
     spelled,
 )
 
@@ -29,7 +33,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
 
     from zarr_metadata._typed_json import Loc
-    from zarr_metadata.v3._definition import ResolvedField
+    from zarr_metadata.v3._definition import D, ResolvedField
 
 ClaimKey: TypeAlias = tuple[type[Definition[Any]], str]
 """A kind and the name a definition is filed under: what a scope answers `claimant` for."""
@@ -107,10 +111,11 @@ def refines(field: ResolvedField[Any], other: ResolvedField[Any]) -> bool:
     """Whether `field` holds everything `other` holds: reads the same where both read, and reads what `other` left unclaimed.
 
     The order one reading of a document refines another in. A name nothing
-    claimed, read by a definition, is a gain: the read field is compared
-    as the unclaimed one would be, by its name and the configuration as
-    written, as JSON text, so two spellings of one field are one, and
-    `true` is not `1`. The reverse is a loss; one name read by two
+    claimed, read by a definition, is a gain when what the unclaimed field
+    wrote, read by that definition and those of the fields the read field
+    holds, is the read field: two spellings of one configuration are one
+    gain, as they are one field to `==`, so the order is transitive
+    through equality. The reverse is a loss; one name read by two
     definitions is a conflict; a refused field refines itself alone. Two
     fields that refine each other are equal.
     """
@@ -119,7 +124,7 @@ def refines(field: ResolvedField[Any], other: ResolvedField[Any]) -> bool:
     if isinstance(other, UnclaimedField):
         if isinstance(field, UnclaimedField):
             return field_key(field) == field_key(other)
-        return claim_key(field) == claim_key(other) and _as_unclaimed(field) == other
+        return claim_key(field) == claim_key(other) and _gained(field, other)
     if isinstance(field, UnclaimedField):
         return False
     if field.definition != other.definition or own_key(field) != own_key(other):
@@ -129,9 +134,34 @@ def refines(field: ResolvedField[Any], other: ResolvedField[Any]) -> bool:
     return all(refines(field.nested[loc], other.nested[loc]) for loc in field.nested)
 
 
-def _as_unclaimed(field: AcceptedField[Any]) -> UnclaimedField:
-    """`field` as it would have been read had nothing claimed its name: what a gain is compared against."""
-    return UnclaimedField(json=field.json, name=field.name, read_as=field.read_as)
+def _gained(field: AcceptedField[Any], other: UnclaimedField) -> bool:
+    """Whether `other`, read in the scope `field`'s own claims make, is `field`: what a gain is."""
+    again, _ = resolve(other.json, field.read_as, _Claimed.of(field))
+    return again == field
+
+
+@dataclass(frozen=True, slots=True)
+class _Claimed:
+    """The scope a field's own claims make: its definition and those of the fields it holds, by kind and filed name; what a gain re-reads in."""
+
+    filed: Mapping[ClaimKey, Definition[Any]]
+    format: Literal[2, 3] | None
+
+    @classmethod
+    def of(cls, field: AcceptedField[Any]) -> _Claimed:
+        claimed = claims_of(fields_of(field))
+        return cls(
+            {key: definition for key, definition in claimed.items() if definition is not None},
+            format_of(field.read_as),
+        )
+
+    def claimant(self, kind: type[D], name: str) -> D | None:
+        """The definition of `kind` among the claims that reads `name`; None if none does, as `Context.claimant` answers."""
+        asked = as_kind(kind)
+        filed, _ = spelled(asked, name)
+        if filed is None:
+            return None
+        return cast("D | None", self.filed.get((asked, filed)))
 
 
 @dataclass(frozen=True, slots=True)
