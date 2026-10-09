@@ -1,5 +1,19 @@
 # Optimizing performance
 
+## Data representation, filters, and compression
+
+Optimizing Zarr performance involves more than selecting chunk sizes or tuning compression parameters. It is useful to distinguish **data representation transforms** from **compression**, as they address different sources of storage and I/O inefficiency.
+
+**Filters**, sometimes referred to as **array-to-array codecs**, operate on array data prior to serialization. They transform the data into a form that is more suitable for efficient storage or compression. Examples include delta encoding, scale transformations, and byte- or bit-shuffle techniques commonly applied to numeric arrays.
+
+**Compressors**, by contrast, are **bytes-to-bytes codecs** that operate on serialized streams of bytes. They reduce storage size by encoding redundancy in the data, but they do not alter the logical representation of individual values.
+
+This distinction is important for understanding the limits of compression. For example, integer data originating from sensors or analog-to-digital converters often has an effective bit-width that is smaller than the chosen storage data type, such as storing 10–12 bits in a `uint16`. In such cases, part of each value consists of unused bits. General-purpose compression algorithms may exploit redundancy across values, but they cannot remove unused bits that are inherent to the data representation.
+
+Shuffle and bit-shuffle filters can improve compression effectiveness by rearranging the ordering of bytes or bits so that values with similar significance are grouped together. These filters, however, do not reduce the number of bits required to represent each value; they only reorganize existing bits.
+
+Understanding the distinction between representation-level transformations (filters) and compression helps explain why some datasets may remain I/O-bound even when compression is enabled, and why certain performance optimizations require changes to data representation rather than adjustments to compression parameters alone.
+
 ## Chunk optimizations
 
 ### Chunk size and shape
