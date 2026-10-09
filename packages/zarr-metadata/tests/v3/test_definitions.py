@@ -738,7 +738,7 @@ def test_error_null_is_not_a_field() -> None:
         RefusedField(json=None, name=None, read_as=CodecDefinition),
         [((), "invalid_type")],
     )
-    configuration, found = GZIP_CODEC.judge(None)
+    configuration, found = GZIP_CODEC.read_configuration(None)
     assert (configuration, _locs(found)) == (None, [((), "invalid_type")])
 
 
@@ -819,18 +819,18 @@ def test_error_a_nested_envelope_s_problem_is_its_own_and_the_rules_are_asked() 
 
 def test_error_a_container_rule_is_not_asked_of_a_malformed_nested_field() -> None:
     # The stack's rule reads each nested field's name; one with no name is
-    # reported where it sits, and the rule is not asked, as `judge` would not.
+    # reported where it sits, and the rule is not asked, as `read_configuration` would not.
     field = {"name": "acme.stack", "configuration": {"codecs": [{"configuration": {}}]}}
     resolved, found = resolve(field, CodecDefinition, SCOPE)
     assert isinstance(resolved, RefusedField)
     assert _locs(found) == [(("configuration", "codecs", 0, "name"), "missing_key")]
-    assert ACME_STACK.judge(field["configuration"])[0] is None
+    assert ACME_STACK.read_configuration(field["configuration"])[0] is None
 
 
 def test_error_a_rule_about_the_whole_configuration_lands_on_it() -> None:
     # A rule reports relative to the configuration: an empty location is
     # the configuration, judged alone or read in a field.
-    _, judged = ACME_PAIRED.judge({"first": 1})
+    _, judged = ACME_PAIRED.read_configuration({"first": 1})
     _, read = resolve(
         {"name": "acme.paired", "configuration": {"first": 1}}, CodecDefinition, SCOPE
     )
@@ -840,13 +840,13 @@ def test_error_a_rule_about_the_whole_configuration_lands_on_it() -> None:
 
 def test_error_a_rule_reads_the_fields_the_configuration_holds_as_the_scope_read_them() -> None:
     # `bytes` is an array -> bytes codec, which the stack's rule refuses
-    # from what the scope read; `judge` reads in no scope, so its rule sees
+    # from what the scope read; `read_configuration` reads in no scope, so its rule sees
     # nothing read.
     field = {"name": "acme.stack", "configuration": {"codecs": ["crc32c", "bytes"]}}
     resolved, found = resolve(field, CodecDefinition, SCOPE)
     assert isinstance(resolved, RefusedField)
     assert _locs(found) == [(("configuration", "codecs", 1), "invalid_value")]
-    assert ACME_STACK.judge(field["configuration"])[1] == ()
+    assert ACME_STACK.read_configuration(field["configuration"])[1] == ()
 
 
 def test_error_a_nested_member_is_not_a_field() -> None:
@@ -911,30 +911,33 @@ def test_error_check_judges_a_nested_envelope() -> None:
     assert [found.loc for found in problems] == [("codecs", 0, "configuration")]
 
 
-def test_judge_leaves_out_a_member_a_nested_field_s_envelope_does_not_declare() -> None:
+def test_read_configuration_leaves_out_a_member_a_nested_field_s_envelope_does_not_declare() -> (
+    None
+):
     # Reported as an unknown key and left out, as the checker leaves out a
     # key a closed TypedDict does not declare: the configuration comes back.
-    for given in (ACME_STACK.check, ACME_STACK.judge):
-        typed, problems = given({"codecs": [{"name": "crc32c", "x": 1}]})
-        assert typed == {"codecs": ({"name": "crc32c"},)}
-        assert _locs(problems) == [(("codecs", 0, "x"), "unknown_key")]
+    typed, problems = ACME_STACK.read_configuration({"codecs": [{"name": "crc32c", "x": 1}]})
+    assert typed == {"codecs": ({"name": "crc32c"},)}
+    assert _locs(problems) == [(("codecs", 0, "x"), "unknown_key")]
 
 
-def test_error_judge_refuses_a_nested_field_that_need_not_be_understood() -> None:
+def test_error_read_configuration_refuses_a_nested_field_that_need_not_be_understood() -> None:
     # A `must_understand` of false is no unknown key: the configuration
     # does not come back.
-    typed, problems = ACME_STACK.judge({"codecs": [{"name": "crc32c", "must_understand": False}]})
+    typed, problems = ACME_STACK.read_configuration(
+        {"codecs": [{"name": "crc32c", "must_understand": False}]}
+    )
     assert typed is None
     assert _locs(problems) == [(("codecs", 0, "must_understand"), "invalid_value")]
 
 
-def test_judge_is_the_check_and_then_the_rules() -> None:
+def test_read_configuration_is_the_check_and_then_the_rules() -> None:
     # A caller holding one configuration: the rules are asked only of a
     # configuration that type-checked, so they never meet a wrong type.
-    assert GZIP_CODEC.judge({"level": 5}) == ({"level": 5}, ())
-    refused, problems = GZIP_CODEC.judge({"level": 12})
+    assert GZIP_CODEC.read_configuration({"level": 5}) == ({"level": 5}, ())
+    refused, problems = GZIP_CODEC.read_configuration({"level": 12})
     assert (refused, _locs(problems)) == (None, [(("level",), "invalid_value")])
-    mistyped, problems = GZIP_CODEC.judge({"level": "x"})
+    mistyped, problems = GZIP_CODEC.read_configuration({"level": "x"})
     assert (mistyped, _locs(problems)) == (None, [(("level",), "invalid_type")])
 
 
@@ -1386,7 +1389,7 @@ def test_error_a_rule_that_writes_to_the_configuration_fails_there() -> None:
 
 
 def test_error_a_function_that_writes_to_the_configuration_fails_on_every_path() -> None:
-    # `judge` hands the rules the same view `resolve` does, and `==` and
+    # `read_configuration` hands the rules the same view `resolve` does, and `==` and
     # `hash` hand `canonical` one, as `canonical_of` does.
     def writes(
         configuration: GzipCodecConfiguration, nested: Nested
@@ -1395,7 +1398,7 @@ def test_error_a_function_that_writes_to_the_configuration_fails_on_every_path()
         yield from ()
 
     with pytest.raises(TypeError, match="does not support item assignment"):
-        dataclasses.replace(GZIP_CODEC, rules=writes).judge({"level": 1})
+        dataclasses.replace(GZIP_CODEC, rules=writes).read_configuration({"level": 1})
 
     def folds_in_place(configuration: GzipCodecConfiguration) -> GzipCodecConfiguration:
         cast("dict[str, object]", configuration)["level"] = 0

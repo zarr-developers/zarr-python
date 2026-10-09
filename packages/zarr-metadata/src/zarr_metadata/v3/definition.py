@@ -33,10 +33,10 @@ its own by a caller that holds nothing but JSON:
    a value of the TypedDict or None, and every problem, each located. The
    value holds what the TypedDict admits and nothing else. A member typed
    with a field alias is checked as the JSON a metadata field is.
-2. `definition.judge(configuration)` is the check, each nested field's
-   envelope judged -- a stray member, a `must_understand` of `false` --
+2. `definition.read_configuration(configuration)` is the configuration as
+   that definition reads it: type-checked, each nested field's envelope judged -- a stray member, a `must_understand` of `false` --
    and then the rules, for one configuration:
-   `GZIP_CODEC.judge({"level": 12})`.
+   `GZIP_CODEC.read_configuration({"level": 12})`.
 3. `resolve(field, CodecDefinition, CORE_AND_EXTENSIONS)` reads a whole
    field in a scope: its envelope judged, its name related to a
    definition, its configuration judged, and each nested field read the
@@ -93,7 +93,7 @@ is a `typing_extensions.TypedDict`: `closed` and `extra_items` are PEP
 package supports. The rules are handed the configuration and the fields
 it holds as the scope read them: a field that is read keeps what it read
 inside it as `AcceptedField.nested`, a `Nested` mapping by where each sits, so a
-struct's rules reach its field types. `judge`, which reads in no scope,
+struct's rules reach its field types. `read_configuration`, which reads in no scope,
 hands them none. A rule's message shows a value as the package's own
 messages do, as JSON, with `shown`: `null`, `[1, 2]`, `"C"`. A rule
 reports where a problem is; what is found there is the problem's

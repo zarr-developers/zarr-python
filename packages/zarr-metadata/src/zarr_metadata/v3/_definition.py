@@ -13,7 +13,7 @@ Three steps, each feeding the next and needing more than the one before:
    needs none.
 2. The rules need the definition: plain functions over the checked
    TypedDict, for everything finer than a type -- a bound, members read
-   together. `Definition.judge` is the check and then the rules, for a
+   together. `Definition.read_configuration` is the check and then the rules, for a
    caller holding one configuration.
 3. The reading needs a scope. `resolve` relates the field's name to a
    definition through a `Context`, judges the configuration, and reads
@@ -196,7 +196,7 @@ class Definition(Generic[C]):
     the TypedDict admits and nothing else, each member within the bounds
     its type carries, and the fields it holds as the scope read them -- a
     struct's field types -- which is nothing when no scope read it.
-    `judge` is the two, for a caller holding JSON.
+    `read_configuration` is the two, for a caller holding JSON.
 
     Each function is handed the configuration as a read-only view, no
     `dict`: `copy.deepcopy` and `json.dumps` refuse it, and a function that
@@ -328,7 +328,7 @@ class Definition(Generic[C]):
         """Whether a document must write a configuration: whether the TypedDict has a required key."""
         return len(typeddict_keys(self.configuration).required) != 0
 
-    def check(self, value: object, loc: Loc = ()) -> tuple[C | None, Problems]:
+    def _check_configuration(self, value: object, loc: Loc = ()) -> tuple[C | None, Problems]:
         """`value` type-checked as this definition's configuration, each nested field's envelope judged.
 
         `zarr_metadata.typed_json.check` is the type check alone; this also
@@ -337,7 +337,7 @@ class Definition(Generic[C]):
         configuration, problems = _configuration_checked(value, self.configuration, loc)
         return configuration, with_input(problems, value, loc)
 
-    def judge(self, value: object, loc: Loc = ()) -> tuple[C | None, Problems]:
+    def read_configuration(self, value: object, loc: Loc = ()) -> tuple[C | None, Problems]:
         """`value` type-checked, then judged by the rules: the configuration if it holds, and every problem.
 
         The rules are asked only of a configuration that type-checked,
@@ -349,7 +349,7 @@ class Definition(Generic[C]):
         type whose values vary in size -- finds nothing to judge: `resolve`
         reads the field in a scope, and asks every rule.
         """
-        configuration, problems = self.check(value, loc)
+        configuration, problems = self._check_configuration(value, loc)
         if configuration is None:
             return None, problems
         refused = ruled(self, lambda: self.rules(read_only(configuration), _nothing_nested()), loc)
@@ -1056,7 +1056,7 @@ def _configuration_checked(
 ) -> tuple[T | None, Problems]:
     """`value` checked as `shape`, as `typed_json.check` checks it, and each nested field's envelope judged.
 
-    The step a definition's `judge` starts from. A member typed with a
+    The step a definition's `read_configuration` starts from. A member typed with a
     field alias holds a metadata field, whose envelope is judged as a
     document's is: a `must_understand` of `false` is a problem of the
     configuration, and the value does not come back; a stray member is an
@@ -1500,7 +1500,7 @@ def fill_value_problems(data_type: ResolvedField[F], value: object, loc: Loc = (
     `value` is refined to JSON first: not JSON is the first verdict,
     whatever the data type. It is then checked against the JSON shape the
     data type's definition declares, and judged by its fill value rules, as
-    `judge` judges a configuration: a key the shape does not declare is
+    `read_configuration` reads a configuration: a key the shape does not declare is
     reported and left out, and the rules still judge the rest. The rules
     see the fields the configuration holds as the scope read them: a
     struct judges each field's fill value by that field's own type. A data
@@ -1792,7 +1792,7 @@ def _read_carried(
         {} if given is None else given,
         kind.configuration_loc(loc),
     )
-    configuration, judged = definition.judge(carried)
+    configuration, judged = definition.read_configuration(carried)
     # What is wrong with what the name carries is the field's: found at
     # the field, where the name is what is there, and what was expected
     # of a member of the configuration is not expected of it.
@@ -1902,7 +1902,7 @@ def _canonical_field(resolved: AcceptedField[Any]) -> JSONValue | None:
         "canonical",
         lambda: dict(cast("Mapping[str, JSONValue]", definition.canonical(view))),
     )
-    _, refused = definition.judge(simplified)
+    _, refused = definition.read_configuration(simplified)
     if len(refused) != 0:
         msg = (
             f"{definition.name!r}: its canonical gave {simplified!r}, which does not hold: "

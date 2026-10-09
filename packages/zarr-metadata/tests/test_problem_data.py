@@ -219,7 +219,7 @@ BAD_ARRAY_LOCS = {
 
 READERS: list[tuple[Callable[[object], Sequence[ValidationProblem]], object]] = [
     (lambda value: check(value, GzipLevelOnly)[1], {"level": 12, "extra": [1]}),
-    (lambda value: GZIP_CODEC.judge(value)[1], {"level": 12, "extra": [1]}),
+    (lambda value: GZIP_CODEC.read_configuration(value)[1], {"level": 12, "extra": [1]}),
     (
         lambda value: resolve(value, CodecDefinition, CORE_AND_EXTENSIONS)[1],
         {"name": "gzip", "configuration": {"level": 12}, "must_understand": "yes"},
@@ -275,7 +275,7 @@ READERS: list[tuple[Callable[[object], Sequence[ValidationProblem]], object]] = 
     READERS,
     ids=[
         "check",
-        "judge",
+        "read_configuration",
         "resolve",
         "fill-value-problems",
         "validate-json",

@@ -879,7 +879,7 @@ def test_a_rule_is_a_function_over_the_typeddict() -> None:
     # configuration can ask them without a scope or a field around it.
     from zarr_metadata.v3.codec.blosc import BLOSC_CODEC
 
-    _, problems = BLOSC_CODEC.judge({**BLOSC, "clevel": 10})
+    _, problems = BLOSC_CODEC.read_configuration({**BLOSC, "clevel": 10})
     assert problems == (
         ValidationProblem(("clevel",), "expected an integer in [0, 9], got 10", "invalid_value"),
     )
