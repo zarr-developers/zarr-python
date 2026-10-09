@@ -394,10 +394,11 @@ def test_subarray_structured_dtype_raises() -> None:
         Struct.from_native_dtype(dtype)
 
 
-@pytest.mark.parametrize("field_dtype", ["S4", "V4"])
+@pytest.mark.parametrize("field_dtype", ["S4", "U4", "V4"])
 def test_default_scalar_bytes_field_is_zero(field_dtype: str) -> None:
     """
-    The default scalar of a bytes field is zero bytes, as for the same dtype outside a struct.
+    The default scalar of a string or bytes field is zero bytes, as for the same dtype outside
+    a struct.
     """
     dtype = np.dtype([("a", field_dtype), ("b", "<f4")])
     assert Struct.from_native_dtype(dtype).default_scalar().tobytes() == bytes(dtype.itemsize)
