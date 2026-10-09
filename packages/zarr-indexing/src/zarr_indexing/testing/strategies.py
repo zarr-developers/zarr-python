@@ -1,8 +1,8 @@
 """Hypothesis strategies for the selections `LazyArray` accepts.
 
 Each strategy takes the shape of the array being indexed and generates one
-selection for it — an index tuple with one entry per axis, in the spelling its
-mode expects. They are the generators behind
+selection for it, in the spelling its mode expects. Some vectorized selections
+use a partial coordinate tuple or a mask with an ellipsis. They are the generators behind
 [`ChainedIndexingStateMachine`][zarr_indexing.testing.stateful.ChainedIndexingStateMachine]
 and are exported on their own for a project that has its own test harness and
 wants only the hard part.
@@ -16,8 +16,9 @@ def test_my_array_slices_like_numpy(selection):
     assert_array_equal(my_array[selection], reference[selection])
 ```
 
-Every axis of `shape` must be non-empty: a selection over an axis of extent 0
-has no coordinates to draw. Filter or narrow the shape before calling.
+Coordinate-drawing strategies require non-empty axes; vectorized selections
+also require positive rank. The `empty_masks` strategy can generate a mask
+for an empty shape because it does not draw element coordinates.
 
 Requires the `testing` extra (`pip install zarr-indexing[testing]`).
 """
@@ -69,16 +70,11 @@ def _basic_entry(size: int) -> st.SearchStrategy[Any]:
 
 
 def _orthogonal_entry(size: int) -> st.SearchStrategy[Any]:
-    """One axis of an `oindex` selection.
+    """Generate one axis of an orthogonal selection.
 
-    The slices carry a step and are free to stop early. Drawing them as
-    `slice(start, size)` alone meant no strided or reversed slice ever reached
-    `oindex`, and no orthogonal selection ever stopped short of the axis end.
-
-    An empty coordinate list is drawn too. It selects nothing, which is legal
-    and is exactly the shape that lost its axis on the way through JSON — but
-    with `min_size=1` no fancy selection was ever empty.
-    """
+    Include scalar coordinates, coordinate lists, boolean masks, and slices
+    with positive or negative steps and varying endpoints. Empty coordinate
+    lists and all-False masks exercise selections with zero-length axes."""
     coordinate = st.integers(-size, size - 1)
     return st.one_of(
         coordinate,
@@ -118,13 +114,10 @@ def masks(draw: st.DrawFn, shape: tuple[int, ...]) -> np.ndarray[Any, np.dtype[n
 
 
 def empty_masks(shape: tuple[int, ...]) -> st.SearchStrategy[np.ndarray[Any, np.dtype[np.bool_]]]:
-    """The all-False mask over `shape` — a fancy selection that empties the view.
+    """Generate an all-False mask with the given shape.
 
-    Split out from `masks`, which forces a cell True so a chain has something
-    left to index at the next step. Drawn on its own because an empty fancy
-    selection is a shape the code paths treat separately, and nothing generated
-    one.
-    """
+    This selects no elements. Unlike masks(), which includes a True cell,
+    this strategy exercises empty fancy selections."""
     return st.just(np.zeros(shape, dtype=np.bool_))
 
 
@@ -151,8 +144,7 @@ def slice_selections(shape: tuple[int, ...]) -> st.SearchStrategy[tuple[Any, ...
     """Selections of slices alone, for the `oindex` spelling that carries no coordinates.
 
     Such a step is not a fancy selection — it narrows the view's own axes and
-    composes like basic indexing — so it is legal after a fancy step, where
-    genuine coordinates are not. The starts reach past the origin, which is what
+    composes like basic indexing. The starts reach past the origin, which is what
     distinguishes a step that walks an existing index array's dependency axes
     from one that walks its broadcast singletons.
     """

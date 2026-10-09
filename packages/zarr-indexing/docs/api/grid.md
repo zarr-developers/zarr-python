@@ -11,8 +11,9 @@ objects whose `shape` is the valid data size and whose `codec_shape` preserves
 the full codec-buffer size at a regular-grid boundary.
 
 `dimension_grids_from_chunks` returns these compact dimensions: integer chunk
-shapes become `FixedDimension` instances and explicit per-axis edge sequences
-become `VaryingDimension` instances. `DimensionGridLike` remains the narrow
+shapes become `FixedDimension` instances and positive per-axis edge sequences
+become `VaryingDimension` instances. An empty-axis sequence of zeros (including
+an empty sequence) becomes `FixedDimension(size=0, extent=0)`. `DimensionGridLike` remains the narrow
 protocol used by the chunk planner, while `EdgeDimensionGrid` is kept for
 explicit edge-based and coordinate-origin examples.
 

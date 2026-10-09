@@ -9,13 +9,9 @@ zarr array, whose partitioning is discovered from the store rather than
 declared. The zarr case runs a smaller budget: it reads through a store, and it
 exercises the same code paths.
 
-This replaces a seeded `_random_chain` sweep in `test_lazy_array` that read
-chained selections through `parts()`. That sweep did reach the states it was
-meant to, but a rank-0 correlated view was absorbed by a reshape in `result()`
-and mirrored into the sweep rather than read as a failure; asserting the
-documented assembly literally makes that impossible to paper over.
-`test_lazy_array` keeps its `result()`-based sweep, which is the deterministic
-cross-flavor coverage this does not attempt.
+The state machine checks both result() and explicit partition assembly against
+NumPy, including the shape of each partition's values. test_lazy_array also
+provides deterministic selection-chain coverage across source flavors.
 """
 
 from __future__ import annotations

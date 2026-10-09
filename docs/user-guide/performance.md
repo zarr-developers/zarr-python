@@ -164,6 +164,7 @@ def timed_write(write_empty_chunks):
         chunks=chunks,
         dtype=dtype,
         fill_value=0,
+        overwrite=True,
         config={'write_empty_chunks': write_empty_chunks}
      )
     # initialize all chunks
@@ -324,7 +325,7 @@ E.g., pickle/unpickle a local store array:
 ```python exec="true" session="performance" source="above" result="ansi"
 import pickle
 data = np.arange(100000)
-z1 = zarr.create_array(store='data/perf-example-2.zarr', shape=data.shape, chunks=data.shape, dtype=data.dtype)
+z1 = zarr.create_array(store='data/perf-example-2.zarr', shape=data.shape, chunks=data.shape, dtype=data.dtype, overwrite=True)
 z1[:] = data
 s = pickle.dumps(z1)
 z2 = pickle.loads(s)

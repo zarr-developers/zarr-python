@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.29.0", "hatch-vcs"]
+requires = ["hatchling>=1.29.0", "hatch-vcs", "setuptools-scm>=9"]
 build-backend = "hatchling.build"
 
 [project]
@@ -48,25 +48,23 @@ Changelog = "https://github.com/zarr-developers/zarr-python/blob/main/packages/z
 Documentation = "https://zarr-indexing.readthedocs.io/"
 
 [dependency-groups]
-# The transform tests exercise chunk resolution against zarr's ChunkGrid
-# (tests/test_chunk_resolution.py) and are collected by the parent zarr-python
-# test suite, which already has zarr installed. `zarr` is intentionally NOT
-# listed here to avoid a workspace dependency cycle; run these tests from the
-# repo root (`uv run pytest packages/zarr-indexing/tests`), not in isolation.
-# `hypothesis` arrives via the `testing` extra, which is what
-# `zarr_indexing.testing` needs; the repo-root `test` group pins the exact
-# version CI runs against. Bump the two together.
+# Package tests use the local grid protocol and grid implementations. The
+# repository recipes layer this package into the root test environment.
+# This test group and the optional testing extra both declare Hypothesis;
+# keep their supported minimum versions aligned.
 test = ["pytest", "hypothesis>=6.160.0"]
 docs = [
     # Pins match the zarr-python docs environment in the repo-root
-    # pyproject.toml so the two sites render with the same toolchain.
+    # pyproject.toml so every site renders with the same toolchain, and the
+    # shared packages/mkdocs-base.yml sees one set of plugin versions.
+    # Bump them together with the root.
     "mkdocs-material==9.7.7",
     "mkdocs==1.6.1",
     "mkdocstrings==1.0.6",
-    "mkdocstrings-python==2.0.5",
+    "mkdocstrings-python==2.0.8",
     "griffe-inherited-docstrings==1.1.3",
     # mkdocstrings uses ruff to format rendered signatures
-    "ruff==0.15.22",
+    "ruff==0.16.8",
 ]
 
 [tool.hatch.version]
@@ -75,14 +73,14 @@ tag-pattern = '^zarr_indexing-v(?P<version>.+)$'
 # `git_describe_command` ensures we get the zarr_indexing tags instead of latest.
 # `local_scheme` strips the git commit info so the appending info is just a counter from latest tag.
 # test-pypi doesn't accept git commit info in tags, and the count should be enough to distinguish unique runs.
-raw-options = { root = "../..", git_describe_command = "git describe --dirty --tags --long --match zarr_indexing-v*", local_scheme = "no-local-version" }
+raw-options = { root = "../..", scm = { git = { describe_command = "git describe --dirty --tags --long --match zarr_indexing-v*" } }, local_scheme = "no-local-version" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/zarr_indexing"]
 
 # An allowlist, so nothing that merely happens to sit in the package directory
 # — a scratch script, a stray notebook — can ride along in a release. The list
-# keeps an sdist self-testing: `tests/` carries the vendored ndsel conformance
+# includes test assets in the sdist: `tests/` carries the vendored ndsel conformance
 # corpus, and `tests/test_doc_examples.py` executes `docs/snippets/*.py` and
 # `examples/*/*.py`, so those are part of the suite rather than decoration.
 # `pyproject.toml`, `README.md` and `LICENSE.txt` are added by hatchling itself.
@@ -97,23 +95,31 @@ include = [
     "/CHANGELOG.md",
     "/CONTRIBUTING.md",
 ]
+# The shared docs config and header script are symlinks into packages/ in the
+# repository; ship the files they point at, since a link out of the sdist
+# dangles and pip refuses to unpack it.
+exclude = ["/mkdocs-base.yml", "/docs/_static/source-version.js"]
+
+[tool.hatch.build.targets.sdist.force-include]
+"../mkdocs-base.yml" = "mkdocs-base.yml"
+"../source-version.js" = "docs/_static/source-version.js"
 
 [tool.ruff]
 extend = "../../pyproject.toml"
 target-version = "py312"
 
 [tool.ruff.lint.per-file-ignores]
-# Chunk discovery and __dask_tokenize__ deliberately catch Exception: a
-# foreign source's attributes may fail arbitrarily and discovery must degrade
-# to "no information"; a token call must never raise. Configured here (not as
-# noqa comments) because the pinned pre-commit ruff and the floating CI ruff
-# disagree on whether these rules fire, and RUF100 strips the comments.
+# Chunk discovery deliberately catches Exception: a foreign source's
+# attributes may fail, so this path provides fallback metadata. Configured here (not as
+# noqa comments) because different ruff versions
+# have differed on whether these rules fire; RUF100 can remove unused noqa comments.
 "src/zarr_indexing/lazy_array.py" = ["BLE001", "S110"]
 
 [tool.pytest.ini_options]
 minversion = "7"
 # src is collected for its doctests: every public object's Examples section
-# executes under --doctest-modules, so the documented examples cannot rot.
+# is eligible for --doctest-modules. Passing examples do not verify all prose
+# contracts or optional-dependency paths.
 testpaths = ["tests", "src/zarr_indexing"]
 pythonpath = ["."]
 xfail_strict = true
@@ -136,13 +142,8 @@ include = [
 enableExperimentalFeatures = true
 typeCheckingMode = "strict"
 pythonVersion = "3.12"
-# This strict config was written for zarr-metadata's JSON/dataclass-shaped
-# code. zarr-indexing is numpy-heavy, and numpy's stubs return partially
-# unknown types (e.g. `ndarray[Unknown, Unknown]`, `dtype[Unknown]`) even for
-# fully-typed call sites, so the reportUnknown* family below cannot reasonably
-# be satisfied here. Downgraded to warnings (not silenced) rather than
-# disabled outright, and CI (which only fails the pyright job on errors, not
-# warnings) still surfaces them for visibility.
+# Partially unknown types from NumPy stubs are reported as warnings. CI's
+# pyright invocation fails on errors, while retaining these warnings in its output.
 reportUnknownVariableType = "warning"
 reportUnknownArgumentType = "warning"
 reportUnknownMemberType = "warning"
@@ -167,5 +168,35 @@ filename = "CHANGELOG.md"
 package = "zarr_indexing"
 underlines = ["", "", ""]
 title_format = "## {version} ({project_date})"
-issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/issues/{issue})"
+issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/pull/{issue})"
 start_string = "<!-- towncrier release notes start -->\n"
+
+# Declaring any type replaces towncrier's built-in set, so all five the
+# `changes/README.md` menu offers are restated here. They are the defaults
+# verbatim except for `misc`, whose `showcontent` towncrier defaults to false:
+# a `misc` entry would render as a bare PR link, which tells a reader nothing.
+# A change worth a release note is worth a sentence, whatever its category.
+[[tool.towncrier.type]]
+directory = "feature"
+name = "Features"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "bugfix"
+name = "Bugfixes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "doc"
+name = "Improved Documentation"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "removal"
+name = "Deprecations and Removals"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "misc"
+name = "Misc"
+showcontent = true

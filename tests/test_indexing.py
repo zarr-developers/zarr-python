@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import itertools
+import warnings
 from collections import Counter
+from dataclasses import asdict
+from dataclasses import fields as dataclass_fields
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import numpy as np
 import numpy.typing as npt
 import pytest
+from hypothesis import example, given
+from hypothesis import strategies as st
 from numpy.testing import assert_array_equal
 
 import zarr
@@ -15,16 +20,18 @@ from tests.conftest import Expect, ExpectFail
 from zarr import Array
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_grids import ChunkGrid
+from zarr.core.common import ceildiv_int
 from zarr.core.indexing import (
     BasicSelection,
     CoordinateIndexer,
     CoordinateSelection,
+    IntArrayDimIndexer,
+    MaskIndexer,
     OrthogonalSelection,
     Selection,
     _ArrayIndexingOrder,
     _iter_grid,
     _iter_regions,
-    ceildiv,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
@@ -40,6 +47,7 @@ if TYPE_CHECKING:
     from zarr.abc.store import ByteRequest
     from zarr.core.buffer import BufferPrototype
     from zarr.core.buffer.core import Buffer
+    from zarr.core.common import ZarrFormat
 
 
 @pytest.fixture
@@ -939,6 +947,104 @@ def test_orthogonal_indexing_edge_cases(store: StorePath) -> None:
     assert_array_equal(expect, actual)
 
 
+@pytest.mark.parametrize("dtype", ["int8", "int64", "uint8", "uint16", "uint32", "uint64"])
+def test_unsorted_index_unsigned_dtype(store: StorePath, dtype: str) -> None:
+    a = np.arange(8).reshape(4, 2)
+    z = zarr_array_from_numpy_array(store, a, chunk_shape=(2, 1))
+    rows = np.array([3, 0], dtype=dtype)
+
+    assert_array_equal(a[[3, 0], :], z[rows, :])
+    assert_array_equal(a[[3, 0], [1, 0]], z.vindex[rows, np.array([1, 0], dtype=dtype)])
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("indexer", ["oindex", "vindex"])
+@pytest.mark.parametrize("operation", ["read", "write"])
+@pytest.mark.parametrize("index", [4, 2**63, 2**64 - 4, 2**64 - 1])
+def test_unsigned_index_out_of_bounds(
+    zarr_format: ZarrFormat, indexer: str, operation: str, index: int
+) -> None:
+    """Unsigned indices must be checked before narrowing can turn them negative."""
+    data = np.arange(16).reshape(4, 4)
+    arr = zarr.create_array({}, data=data, chunks=(2, 2), zarr_format=zarr_format)
+    selection = (np.array([0, 1]), np.array([0, index], dtype="uint64"))
+    accessor = getattr(arr, indexer)
+
+    if operation == "read":
+        with pytest.raises(IndexError, match="out of bounds"):
+            accessor[selection]
+    else:
+        with pytest.raises(IndexError, match="out of bounds"):
+            accessor[selection] = 99
+
+    assert_array_equal(arr[:], data)
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("indexer", ["oindex", "vindex"])
+@pytest.mark.parametrize("dtype", ["uint8", "uint16", "uint32", "uint64"])
+@pytest.mark.parametrize("indices", [[], [3, 0], [0, 3], [0] * 16 + [3] * 16])
+def test_unsigned_index_roundtrip(
+    zarr_format: ZarrFormat, indexer: str, dtype: str, indices: list[int]
+) -> None:
+    """Valid unsigned reads and writes retain the behavior fixed by #4286."""
+    expected = np.arange(4)
+    arr = zarr.create_array({}, data=expected, chunks=(2,), zarr_format=zarr_format)
+    selection = np.array(indices, dtype=dtype)
+    accessor = getattr(arr, indexer)
+
+    assert_array_equal(accessor[selection], expected[selection])
+    accessor[selection] = 99
+    expected[selection] = 99
+    assert_array_equal(arr[:], expected)
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("indexer", ["oindex", "vindex"])
+@pytest.mark.parametrize("readonly", [False, True])
+@pytest.mark.parametrize("indices", [[-1, 0], [0, 3]])
+def test_index_array_preserved(
+    zarr_format: ZarrFormat, indexer: str, readonly: bool, indices: list[int]
+) -> None:
+    """Shared, strided index arrays remain unchanged after reads and writes."""
+    expected = np.arange(20).reshape(4, 5)
+    arr = zarr.create_array({}, data=expected, chunks=(2, 2), zarr_format=zarr_format)
+    backing = np.array([indices[0], 99, indices[1], 99], dtype=np.intp)
+    original = backing.copy()
+    selection = backing[::2]
+    selection.flags.writeable = not readonly
+    accessor = getattr(arr, indexer)
+    # Reuse the same array on axes of different lengths: -1 must wrap independently.
+    numpy_selection = (
+        np.ix_(selection, selection) if indexer == "oindex" else (selection, selection)
+    )
+    assert_array_equal(accessor[selection, selection], expected[numpy_selection])
+    assert_array_equal(backing, original)
+
+    accessor[selection, selection] = 99
+    expected[numpy_selection] = 99
+    assert_array_equal(arr[:], expected)
+    assert_array_equal(backing, original)
+
+
+@pytest.mark.parametrize("indexer", ["oindex", "vindex"])
+@pytest.mark.parametrize("operation", ["read", "write"])
+def test_invalid_negative_index_array_preserved(indexer: str, operation: str) -> None:
+    """Even a rejected selection must not modify caller-owned indices or array data."""
+    expected = np.arange(4)
+    arr = zarr.create_array({}, data=expected, chunks=(2,))
+    selection = np.array([-5, 0], dtype=np.intp)
+    accessor = getattr(arr, indexer)
+    if operation == "read":
+        with pytest.raises(IndexError, match="out of bounds"):
+            accessor[selection]
+    else:
+        with pytest.raises(IndexError, match="out of bounds"):
+            accessor[selection] = 99
+    assert_array_equal(selection, [-5, 0])
+    assert_array_equal(arr[:], expected)
+
+
 def _test_set_orthogonal_selection(
     v: npt.NDArray[np.int_], a: npt.NDArray[Any], z: Array, selection: OrthogonalSelection
 ) -> None:
@@ -1235,6 +1341,150 @@ def test_coordinate_indexer_1d_sparse_selection_uses_general_path(
     projections = tuple(CoordinateIndexer((coords,), (100,), chunk_grid))
 
     assert tuple(projection.chunk_coords for projection in projections) == ((0,), (99,))
+
+
+@pytest.mark.parametrize("kind", ["coordinate", "coordinate-fast", "integer", "mask"])
+def test_lazy_dense_indexer_attributes(kind: str) -> None:
+    """Dense compatibility arrays are lazy, cached, mutable, and warning-free."""
+    grid = ChunkGrid.from_sizes((20,), (3,))
+    coords = np.array([1, 4, 4, 19])
+    if kind == "coordinate-fast":
+        coords = np.repeat(coords, 100)
+    elif kind == "mask":
+        coords = np.unique(coords)
+    indexer = (
+        IntArrayDimIndexer(coords, 20, grid._dimensions[0])
+        if kind == "integer"
+        else CoordinateIndexer((coords,), (20,), grid)
+    )
+    if kind == "mask":
+        mask = np.zeros(20, dtype=bool)
+        mask[coords] = True
+        indexer = MaskIndexer((mask,), (20,), grid)
+    expected_counts = np.bincount(coords // 3, minlength=7)
+    expected = {"chunk_nitems_cumsum": np.cumsum(expected_counts)}
+    if kind == "integer":
+        expected["chunk_nitems"] = expected_counts
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        tuple(indexer)
+        repr(indexer)
+        assert all(name not in vars(indexer) for name in expected)
+        assert set(expected) <= {f.name for f in dataclass_fields(indexer)}
+        for name, values in expected.items():
+            dense = getattr(indexer, name)
+            assert_array_equal(dense, values)
+            assert getattr(indexer, name) is dense
+            assert_array_equal(asdict(indexer)[name], values)
+            dense[0] = 123
+            assert getattr(indexer, name)[0] == 123
+        # Iteration respects edits to the materialized cumulative offsets.
+        cumulative = indexer.chunk_nitems_cumsum
+        cumulative[:] = expected["chunk_nitems_cumsum"]
+        cumulative[-1] = cumulative[-2]
+        final = tuple(indexer)[-1]
+        output = (
+            final.dim_out_sel if isinstance(indexer, IntArrayDimIndexer) else final.out_selection
+        )
+        assert output == slice(cumulative[-2], cumulative[-2])
+
+
+@pytest.mark.parametrize("kind", ["coordinate", "integer"])
+def test_indexer_unknown_attribute(kind: str) -> None:
+    grid = ChunkGrid.from_sizes((20,), (3,))
+    coords = np.array([1, 4, 19])
+    indexer = (
+        IntArrayDimIndexer(coords, 20, grid._dimensions[0])
+        if kind == "integer"
+        else CoordinateIndexer((coords,), (20,), grid)
+    )
+    with pytest.raises(AttributeError, match="missing_attribute"):
+        _ = indexer.missing_attribute
+
+
+def test_sparse_selections_on_arrays_with_many_chunks(store: StorePath) -> None:
+    """Coordinate and orthogonal selections must scale with the number of selected points,
+    not the total number of chunks in the array. This array has 2**44 chunks, so any dense
+    per-chunk allocation fails before the assertions are reached. See gh-4174."""
+    z = zarr.create_array(
+        store=store / str(uuid4()),
+        shape=(2**22, 2**22),
+        chunks=(1, 1),
+        dtype="int32",
+        fill_value=-1,
+    )
+    # unsorted coords with duplicates force the argsort branch of the general path
+    rows = np.array([7, 0, 3, 0])
+    cols = np.array([1, 5, 2**22 - 1, 5])
+    z.set_coordinate_selection((rows, cols), np.array([10, 20, 30, 20], dtype="int32"))
+    assert_array_equal(
+        z.get_coordinate_selection((rows, cols)), np.array([10, 20, 30, 20], dtype="int32")
+    )
+    # points in untouched chunks come back as fill_value
+    assert_array_equal(
+        z.get_coordinate_selection((np.array([0, 42]), np.array([0, 42]))),
+        np.array([-1, -1], dtype="int32"),
+    )
+    # orthogonal integer-array selections: increasing, decreasing, and unsorted order
+    for coords in ([3, 5, 6], [6, 5, 3], [5, 6, 3]):
+        vals = np.arange(1, len(coords) + 1, dtype="int32")
+        z.set_orthogonal_selection((np.array(coords), 0), vals)
+        assert_array_equal(z.get_orthogonal_selection((np.array(coords), 0)), vals)
+
+
+def test_coordinate_indexer_many_chunks() -> None:
+    """Both CoordinateIndexer paths (sorted-1D fast path and general path) produce correct
+    projections on a grid whose chunk count (2**62) is far too large for any dense per-chunk
+    array. See gh-4174."""
+    dim_len = 2**62
+    chunk_grid = ChunkGrid.from_sizes((dim_len,), (1,))
+
+    # sorted coords, sparse relative to their span: the general path without a sort
+    coords = np.array([3, 4, 4, dim_len - 1])
+    projections = tuple(CoordinateIndexer((coords,), (dim_len,), chunk_grid))
+    assert tuple(p.chunk_coords for p in projections) == ((3,), (4,), (dim_len - 1,))
+    assert [p.out_selection for p in projections] == [slice(0, 1), slice(1, 3), slice(3, 4)]
+    for p in projections:
+        assert_array_equal(p.chunk_selection[0], np.zeros(len(p.chunk_selection[0]), dtype=int))
+
+    # sorted coords, dense relative to their span: the searchsorted fast path
+    coords = np.concatenate([np.full(100, 3), np.full(100, 7)])
+    projections = tuple(CoordinateIndexer((coords,), (dim_len,), chunk_grid))
+    assert tuple(p.chunk_coords for p in projections) == ((3,), (7,))
+    assert [p.out_selection for p in projections] == [slice(0, 100), slice(100, 200)]
+
+    # unsorted coords: the general (argsort) path
+    coords = np.array([dim_len - 1, 5])
+    projections = tuple(CoordinateIndexer((coords,), (dim_len,), chunk_grid))
+    assert tuple(p.chunk_coords for p in projections) == ((5,), (dim_len - 1,))
+    assert [list(p.out_selection) for p in projections] == [[1], [0]]
+
+
+@pytest.mark.parametrize(
+    ("coords", "expected_out_sels"),
+    [
+        pytest.param([3, 5, 5], [slice(0, 1), slice(1, 3)], id="increasing"),
+        pytest.param([5, 3, 1], [[2], [1], [0]], id="decreasing"),
+        pytest.param([5, 1, 3], [[1], [2], [0]], id="unordered"),
+    ],
+)
+def test_int_array_dim_indexer_many_chunks(coords: list[int], expected_out_sels: list[Any]) -> None:
+    """IntArrayDimIndexer produces correct projections for every ordering of the selection
+    on a dimension with 2**62 chunks, where any dense per-chunk array would fail. See gh-4174."""
+    dim_len = 2**62
+    (dim_grid,) = ChunkGrid.from_sizes((dim_len,), (1,))._dimensions
+    indexer = IntArrayDimIndexer(np.array(coords), dim_len, dim_grid)
+
+    projections = tuple(indexer)
+    assert [p.dim_chunk_ix for p in projections] == sorted(set(coords))
+    for p, expected_out_sel in zip(projections, expected_out_sels, strict=True):
+        # chunk size is 1, so every selected point maps to offset 0 within its chunk
+        assert_array_equal(p.dim_chunk_sel, np.zeros(len(p.dim_chunk_sel), dtype=int))
+        if isinstance(expected_out_sel, slice):
+            assert p.dim_out_sel == expected_out_sel
+        else:
+            assert list(p.dim_out_sel) == expected_out_sel
 
 
 def test_get_coordinate_selection_1d_irregular_grid(store: StorePath) -> None:
@@ -2135,14 +2385,19 @@ def test_set_selection_rejects_value_with_wrong_rank(
     shards: tuple[int, ...] | None,
     pipeline_path: str,
 ) -> None:
-    """A value whose rank does not fit the selection raises regardless of storage layout.
+    """These wrong-rank values are rejected on chunked and sharded arrays alike.
 
     The sharding codec re-derives an indexer from the selection it is handed
     and ravels the value when it is the selection's broadcast shape minus
-    integer-indexed axes. Any other rank must fail on a sharded array exactly
-    as it does on a chunked one; an element count that happens to match is
-    not grounds to accept it. Only the rejection is asserted: a write that
-    fails inside the chunk merge may already have touched other chunks.
+    integer-indexed axes. The cases here pin that a matching element count
+    alone does not make the codec accept a value the chunked path rejects.
+    That is not a general law: storage layout can change which writes are
+    rejected. ``oindex[np.array([3, 1]), np.array([0, 2])]`` with a
+    ``(2, 2, 1)`` value is accepted on a chunked ``(4, 4)`` array with
+    ``(2, 2)`` chunks, because each chunk receives a ``(1, 1, 1)`` piece numpy
+    can broadcast, while the sharded array raises ``ValueError`` and numpy
+    rejects it outright. Only the rejection is asserted: a write that fails
+    inside the chunk merge may already have touched other chunks.
     """
     a = np.zeros((4, 4), dtype=np.int32)
     value = np.arange(np.prod(value_shape), dtype=np.int32).reshape(value_shape)
@@ -2196,7 +2451,7 @@ def test_iter_regions(
         origin_parsed = origin
     if selection_shape is None:
         selection_shape_parsed = tuple(
-            ceildiv(ds, rs) - o
+            ceildiv_int(ds, rs) - o
             for ds, o, rs in zip(domain_shape, origin_parsed, region_shape, strict=True)
         )
     else:
@@ -2333,3 +2588,42 @@ class TestAsync:
 
         with pytest.raises(IndexError):
             await async_zarr.oindex.getitem("invalid_indexer")
+
+
+@given(
+    coordinates=st.lists(st.integers(0, 2**62 - 1), max_size=40),
+    chunk_size=st.integers(1, 100),
+)
+@example(coordinates=[2**62 - 1], chunk_size=3)
+def test_sparse_indexer_projection_reconstructs_coordinates(
+    coordinates: list[int], chunk_size: int
+) -> None:
+    """Projection placement reconstructs arbitrary sparse requests without dense grids."""
+    extent = 2**62
+    coords = np.array(coordinates, dtype=np.intp)
+    grid = ChunkGrid.from_sizes((extent,), (chunk_size,))
+    (dimension,) = grid._dimensions
+    expected_chunks = sorted({c // chunk_size for c in coordinates})
+    for indexer in (
+        CoordinateIndexer((coords,), (extent,), grid),
+        IntArrayDimIndexer(coords, extent, dimension),
+    ):
+        reconstructed = np.empty_like(coords)
+        covered = np.zeros(coords.shape, dtype=np.intp)
+        visited = []
+        for projection in indexer:
+            if isinstance(indexer, CoordinateIndexer):
+                chunk = projection.chunk_coords[0]
+                selection = projection.chunk_selection[0]
+                output = projection.out_selection
+            else:
+                chunk = projection.dim_chunk_ix
+                selection = projection.dim_chunk_sel
+                output = projection.dim_out_sel
+            visited.append(chunk)
+            reconstructed[output] = selection + chunk * chunk_size
+            covered[output] += 1
+        assert visited == expected_chunks
+        assert_array_equal(reconstructed, coords)
+        assert_array_equal(covered, np.ones_like(coords))
+        assert len(indexer.chunk_run_ends) == len(expected_chunks)

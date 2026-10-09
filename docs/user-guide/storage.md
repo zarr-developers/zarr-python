@@ -19,7 +19,7 @@ being created automatically:
 import zarr
 
 # Implicitly creates a writable LocalStore
-group = zarr.create_group(store='data/foo/bar')
+group = zarr.create_group(store='data/foo/bar', overwrite=True)
 print(group)
 ```
 

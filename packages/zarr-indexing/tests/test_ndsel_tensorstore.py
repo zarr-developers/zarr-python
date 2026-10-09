@@ -1,14 +1,14 @@
 """Cross-check canonical ndsel bodies against a real TensorStore.
 
-A normalized ndsel `transform` body is, field-for-field, a TensorStore
-`IndexTransform` (minus the `kind` discriminator, which the canonical body never
-carries). This test loads a handful of finite-bound canonical bodies into
+Canonical ndsel bodies use TensorStore's `IndexTransform` field vocabulary,
+but the consumers have different validation constraints. This test loads a
+handful of finite-bound canonical bodies supported by both implementations into
 `tensorstore.IndexTransform(json=...)` and confirms that TensorStore's own
 `to_json()` re-loads, through our engine layer, into an equivalent transform.
 
 Skipped when tensorstore is not installed. Run it explicitly with:
 
-    uv run --with tensorstore pytest \
+    hatch run test.py3.12-optional:pytest \
         packages/zarr-indexing/tests/test_ndsel_tensorstore.py -q
 """
 

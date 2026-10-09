@@ -8,8 +8,9 @@ output map types.
 Key operations:
 
 - **Indexing** (`transform[2:8]`, `.oindex[idx]`, `.vindex[idx]`) —
-  produces a new transform with a narrower input domain and adjusted output
-  maps. No I/O occurs. This is how lazy slicing works.
+  produces a new transform with a new input domain and adjusted output maps.
+  Slices may narrow a domain; fancy indices can repeat cells and enlarge it,
+  and integer/newaxis indexing changes its rank. No I/O occurs.
 
 - **intersect(output_domain)** — restrict to output coordinates within a
   region. This is chunk resolution: "which of my coordinates fall in this
@@ -22,12 +23,13 @@ Key operations:
 
 The transform is the atomic unit that connects user-facing indexing to
 chunk-level I/O. A wrapper holds one — `LazyArray` starts from the identity —
-and `.lazy[...]` composes a new transform lazily rather than reading. Reading
+and `view[...]` composes a new transform lazily rather than reading. Reading
 resolves the transform against the chunk grid via intersect + translate.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -176,6 +178,19 @@ class IndexTransform:
     def output_rank(self) -> int:
         """Number of output dimensions — one per output map."""
         return len(self.output)
+
+    @classmethod
+    def _unchecked(cls, domain: IndexDomain, output: tuple[OutputIndexMap, ...]) -> IndexTransform:
+        """Build a transform whose maps the caller has already fitted to `domain`.
+
+        Skips `__post_init__`. For internal producers such as chunk resolution,
+        which derive every map from an already-valid transform and build two
+        transforms per chunk.
+        """
+        transform = object.__new__(cls)
+        object.__setattr__(transform, "domain", domain)
+        object.__setattr__(transform, "output", output)
+        return transform
 
     @classmethod
     def identity(cls, domain: IndexDomain) -> IndexTransform:
@@ -384,43 +399,33 @@ class IndexTransform:
                 f"{self.input_rank} and {self.output_rank}"
             )
 
+        # Nothing below touches `self`, so validating and building in one pass
+        # leaves no partial state behind when a map is rejected.
         referenced: set[int] = set()
+        inverse_min: list[int] = []
+        inverse_max: list[int] = []
+        inverse_output: dict[int, OutputIndexMap] = {}
         for output_dimension, output_map in enumerate(self.output):
             if isinstance(output_map, ArrayMap):
                 raise ValueError(  # noqa: TRY004 - valid map, invalid inverse
                     f"cannot invert transform: output[{output_dimension}] is an ArrayMap"
                 )
-            if isinstance(output_map, DimensionMap):
-                if output_map.stride not in (-1, 1):
-                    raise ValueError(
-                        "cannot invert transform: DimensionMap stride must be +1 or -1, "
-                        f"got {output_map.stride} for output[{output_dimension}]"
-                    )
-                if output_map.input_dimension in referenced:
-                    raise ValueError(
-                        "cannot invert transform: input dimension "
-                        f"{output_map.input_dimension} is referenced more than once"
-                    )
-                referenced.add(output_map.input_dimension)
-
-        for input_dimension, extent in enumerate(self.domain.shape):
-            if input_dimension not in referenced and extent != 1:
-                raise ValueError(
-                    "cannot invert transform: unreferenced input dimension "
-                    f"{input_dimension} has extent {extent}, not 1"
-                )
-
-        inverse_min: list[int] = []
-        inverse_max: list[int] = []
-        inverse_output: dict[int, OutputIndexMap] = {}
-        for output_dimension, output_map in enumerate(self.output):
             if isinstance(output_map, ConstantMap):
                 inverse_min.append(output_map.offset)
                 inverse_max.append(output_map.offset + 1)
                 continue
-
-            assert isinstance(output_map, DimensionMap)
+            if output_map.stride not in (-1, 1):
+                raise ValueError(
+                    "cannot invert transform: DimensionMap stride must be +1 or -1, "
+                    f"got {output_map.stride} for output[{output_dimension}]"
+                )
             input_dimension = output_map.input_dimension
+            if input_dimension in referenced:
+                raise ValueError(
+                    "cannot invert transform: input dimension "
+                    f"{input_dimension} is referenced more than once"
+                )
+            referenced.add(input_dimension)
             lower = self.domain.inclusive_min[input_dimension]
             upper = self.domain.exclusive_max[input_dimension]
             if output_map.stride == 1:
@@ -439,9 +444,17 @@ class IndexTransform:
                     stride=-1,
                 )
 
-        for input_dimension, lower in enumerate(self.domain.inclusive_min):
-            if input_dimension not in referenced:
-                inverse_output[input_dimension] = ConstantMap(lower)
+        for input_dimension, (lower, extent) in enumerate(
+            zip(self.domain.inclusive_min, self.domain.shape, strict=True)
+        ):
+            if input_dimension in referenced:
+                continue
+            if extent != 1:
+                raise ValueError(
+                    "cannot invert transform: unreferenced input dimension "
+                    f"{input_dimension} has extent {extent}, not 1"
+                )
+            inverse_output[input_dimension] = ConstantMap(lower)
 
         return IndexTransform(
             domain=IndexDomain(tuple(inverse_min), tuple(inverse_max)),
@@ -513,10 +526,20 @@ class IndexTransform:
 
         Returns `(restricted_transform, out_indices)` or None if empty.
 
-        `out_indices` carries the surviving output positions: `None` when all
-        positions survive (ConstantMap/DimensionMap only), a single integer array
-        for one ArrayMap (or correlated/vectorized ArrayMaps), or a dict keyed by
-        output dimension for >= 2 orthogonal ArrayMaps (an outer product).
+        `out_indices` is bookkeeping for chunk resolution. `None` means there
+        are no ArrayMaps; the restricted domain itself records surviving input
+        coordinates, which may be fewer than the original domain's. One
+        orthogonal ArrayMap returns its surviving positional indices; multiple
+        orthogonal ArrayMaps return a dict keyed by output dimension. General
+        array maps return a shared scatter array. For paired public coordinate
+        mappings, use `plan_chunks` and its `cell_transform`.
+
+        Raises
+        ------
+        NotImplementedError
+            For a nonempty transform whose ArrayMap has a non-singleton axis
+            also referenced by a DimensionMap. These dependencies cannot be
+            filtered independently by the current intersection implementation.
         """
         return _intersect(self, output_domain)
 
@@ -545,11 +568,7 @@ class IndexTransform:
             else:
                 # m: ArrayMap (OutputIndexMap = ConstantMap | DimensionMap | ArrayMap)
                 new_output.append(
-                    ArrayMap(
-                        index_array=m.index_array,
-                        offset=m.offset + s,
-                        stride=m.stride,
-                    )
+                    m._with_affine(m.offset + s, m.stride)  # pyright: ignore[reportPrivateUsage]
                 )
         return IndexTransform(domain=self.domain, output=tuple(new_output))
 
@@ -558,8 +577,10 @@ class IndexTransform:
 
         No I/O occurs. Integers and slice bounds are literal domain coordinates
         (TensorStore convention): negative values are not counted from the end,
-        and out-of-domain values raise `BoundsCheckError`. Integer indices drop
-        their input dimension; `None` inserts a size-1 dimension.
+        and nonempty out-of-domain slice intervals raise `BoundsCheckError`.
+        Empty slices (`start == stop`) are accepted even outside the domain.
+        Integer indices must lie inside the domain and drop their input
+        dimension; `None` inserts a size-1 dimension.
         """
         return _apply_basic_indexing(self, selection)
 
@@ -628,14 +649,17 @@ class IndexTransform:
         Returns
         -------
         `"none"` when no output map is an `ArrayMap`; `"orthogonal"` when every
-        `ArrayMap` varies over exactly one input axis, each its own (an outer
-        product, one independent gather per axis); `"general"` otherwise —
+        `ArrayMap` has exactly one non-singleton input axis, distinct from all
+        other ArrayMaps' axes and all DimensionMap input dimensions (one
+        independent gather per axis); `"general"` otherwise —
         correlated (`vindex`) maps sharing their non-singleton axes, maps produced
         by composing fancy steps, maps sharing an input axis (a diagonal gather),
-        and empty or hand-built all-singleton maps whose shape names no axis. The
+        and maps whose shape names no dependency axis. A map can have a
+        non-singleton axis even when another axis has size zero. The
         orthogonal resolvers narrow one axis at a time and are only sound for
         `"orthogonal"`; everything else takes the pointwise path that collapses
-        the joint block. Everything is read off the index arrays' shapes.
+        the joint block or rejects unsupported shared affine/array dependencies.
+        Classification uses index-array shapes and DimensionMap input dimensions.
 
         Examples
         --------
@@ -653,7 +677,7 @@ class IndexTransform:
         >>> t.vindex[np.array([0, 2]), np.array([1, 3])].index_array_structure
         'general'
         """
-        seen: set[int] = set()
+        seen = {m.input_dimension for m in self.output if isinstance(m, DimensionMap)}
         has_array = False
         for m in self.output:
             if not isinstance(m, ArrayMap):
@@ -768,7 +792,10 @@ class IndexTransform:
         that omitted fields — identity `output`, default bounds and labels —
         are filled and validated, then lowered to the engine representation.
         Lower-rank `index_array`s are widened to the full input rank on the way
-        in.
+        in. Every supplied raw index value is checked against the inclusive
+        `index_array_bounds` before offset, stride, or map simplification.
+        Out-of-bounds values raise `NdselError` immediately, even if a later
+        selection would avoid them. Validated immutable maps do not retain bounds.
 
         Examples
         --------
@@ -780,6 +807,7 @@ class IndexTransform:
         True
         """
         from zarr_indexing._wire import (
+            check_index_array_bounds,
             full_rank_index_array,
             lower_bound,
             lower_index_array,
@@ -816,6 +844,7 @@ class IndexTransform:
             if "index_array" in om:
                 where = f"output[{i}]"
                 arr = lower_index_array(om["index_array"], f"{where}.index_array")
+                check_index_array_bounds(arr, om["index_array_bounds"], where)
                 # ndsel leaves index-array rank unvalidated, so an external
                 # producer may send an array of lower rank that broadcasts
                 # against the domain. Widen it here, on the way in, so every
@@ -1026,11 +1055,85 @@ def _intersect_orthogonal(
     return (result, out_indices)
 
 
+@dataclass(frozen=True, slots=True)
+class _CorrelatedBlock:
+    """The correlated index arrays of a general transform, flattened over the broadcast block.
+
+    Built by `_prepare_correlated`: `flat_storage` holds the storage coordinate
+    of every block point per correlated output dimension, `flat_index` the raw
+    index values. Chunk resolution sorts `flat_storage` into chunks once to
+    build a `JointSet`; `_intersect_general` masks it for one output domain.
+    """
+
+    correlated_dims: tuple[int, ...]
+    broadcast_axes: tuple[int, ...]
+    broadcast_shape: tuple[int, ...]
+    flat_index: dict[int, np.ndarray[Any, np.dtype[np.intp]]]
+    flat_storage: dict[int, np.ndarray[Any, np.dtype[np.intp]]]
+
+
+def _prepare_correlated(
+    transform: IndexTransform,
+    *,
+    output_dimensions: tuple[int, ...] | None = None,
+    input_dimensions: tuple[int, ...] | None = None,
+) -> _CorrelatedBlock:
+    """Flatten a general transform's index arrays over its broadcast block."""
+    correlated_dims = (
+        tuple(i for i, m in enumerate(transform.output) if isinstance(m, ArrayMap))
+        if output_dimensions is None
+        else output_dimensions
+    )
+
+    # The broadcast axes are exactly the input axes no `DimensionMap` binds: a
+    # correlated transform's input domain is its residual slice axes plus the
+    # collapsed broadcast block. Deriving them by complement rather than from the
+    # index array's non-singleton axes keeps this correct when a broadcast axis
+    # is itself size 1, and when NumPy's placement rule puts the broadcast block
+    # somewhere other than the front (see `_broadcast_insertion_point`).
+    bound_axes = {m.input_dimension for m in transform.output if isinstance(m, DimensionMap)}
+    broadcast_axes = (
+        tuple(a for a in range(transform.input_rank) if a not in bound_axes)
+        if input_dimensions is None
+        else input_dimensions
+    )
+    broadcast_shape = tuple(transform.domain.shape[a] for a in broadcast_axes)
+
+    flat_index: dict[int, np.ndarray[Any, np.dtype[np.intp]]] = {}
+    flat_storage: dict[int, np.ndarray[Any, np.dtype[np.intp]]] = {}
+    for out_dim in correlated_dims:
+        arr_map = cast("ArrayMap", transform.output[out_dim])
+        if any(a not in broadcast_axes for a in arr_map.dependency_axes):
+            # Reachable only by hand-building a transform: no selection binds
+            # the same input axis to both a slice map and an index array.
+            raise NotImplementedError(
+                "intersecting a transform whose index array varies over an "
+                "input dimension also bound by a slice map is not supported"
+            )
+        arr = arr_map.index_array
+        # Index arrays are singleton on every non-broadcast axis, so they
+        # collapse (C-order) to the broadcast block. A map may also be singleton
+        # along a block axis it does not vary over (an orthogonal member, or a
+        # leftover broadcast axis), so the collapsed array is broadcast up to the
+        # full block rather than reshaped.
+        block = arr.reshape(tuple(arr.shape[a] for a in broadcast_axes))
+        flat = np.ascontiguousarray(np.broadcast_to(block, broadcast_shape)).reshape(-1)
+        flat_index[out_dim] = np.asarray(flat, dtype=np.intp)
+        flat_storage[out_dim] = checked_affine(arr_map.offset, arr_map.stride, flat)
+    return _CorrelatedBlock(
+        correlated_dims=correlated_dims,
+        broadcast_axes=broadcast_axes,
+        broadcast_shape=broadcast_shape,
+        flat_index=flat_index,
+        flat_storage=flat_storage,
+    )
+
+
 def _intersect_general(
     transform: IndexTransform,
     output_domain: IndexDomain,
 ) -> tuple[IndexTransform, np.ndarray[Any, np.dtype[np.intp]]] | None:
-    """Intersect a transform with any index-array structure, pointwise.
+    """Intersect array maps jointly when they are independent of residual affine axes.
 
     Every `ArrayMap` — correlated, orthogonal, or several sharing an axis — is
     treated as a lookup table over the joint block of non-slice axes: a block
@@ -1043,8 +1146,10 @@ def _intersect_general(
     keeps its own resolver.
 
     The surviving broadcast axes collapse to a single axis; the returned
-    `out_indices` is the flat scatter index into the (row-major flattened)
-    output buffer, of shape `(surviving_points,) + (residual slice sizes)`.
+    `out_indices` combines positional broadcast offsets with literal residual
+    slice coordinates, of shape `(surviving_points,) + (residual slice sizes)`.
+    Chunk resolution removes residual origins before treating it as a flat
+    offset into the request buffer.
 
     A rank-0 broadcast block — every coordinate array a scalar, as after
     `vindex[...]` narrowed to a single point — has no axis to collapse and stays
@@ -1052,46 +1157,19 @@ def _intersect_general(
     result keeps only the residual slice axes and `out_indices` loses its leading
     points axis, so the sub-transform's rank still matches the view's.
     """
-    correlated_dims = [i for i, m in enumerate(transform.output) if isinstance(m, ArrayMap)]
-
-    # The broadcast axes are exactly the input axes no `DimensionMap` binds: a
-    # correlated transform's input domain is its residual slice axes plus the
-    # collapsed broadcast block. Deriving them by complement rather than from the
-    # index array's non-singleton axes keeps this correct when a broadcast axis
-    # is itself size 1, and when NumPy's placement rule puts the broadcast block
-    # somewhere other than the front (see `_broadcast_insertion_point`).
-    bound_axes = {m.input_dimension for m in transform.output if isinstance(m, DimensionMap)}
-    broadcast_axes = tuple(a for a in range(transform.input_rank) if a not in bound_axes)
-    broadcast_shape = tuple(transform.domain.shape[a] for a in broadcast_axes)
-
-    for out_dim in correlated_dims:
-        arr_map = cast("ArrayMap", transform.output[out_dim])
-        if any(a not in broadcast_axes for a in arr_map.dependency_axes):
-            # Reachable only by hand-building a transform: no selection binds
-            # the same input axis to both a slice map and an index array.
-            raise NotImplementedError(
-                "intersecting a transform whose index array varies over an "
-                "input dimension also bound by a slice map is not supported"
-            )
+    block = _prepare_correlated(transform)
+    correlated_dims = block.correlated_dims
+    broadcast_axes = block.broadcast_axes
+    broadcast_shape = block.broadcast_shape
 
     # Joint bounds mask over the broadcast block.
-    combined: np.ndarray[Any, np.dtype[np.bool_]] | None = None
+    combined = np.ones(math.prod(broadcast_shape), dtype=np.bool_)
     for out_dim in correlated_dims:
-        cm = cast("ArrayMap", transform.output[out_dim])
-        storage = checked_affine(cm.offset, cm.stride, cm.index_array)
+        storage = block.flat_storage[out_dim]
         lo = output_domain.inclusive_min[out_dim]
         hi = output_domain.exclusive_max[out_dim]
-        mask = (storage >= lo) & (storage < hi)
-        combined = mask if combined is None else (combined & mask)
-    assert combined is not None
-    # Index arrays are singleton on every non-broadcast axis, so the mask
-    # collapses (C-order) to the broadcast block. A map may also be singleton
-    # along a block axis it does not vary over (an orthogonal member, or a
-    # leftover broadcast axis), so the collapsed mask is broadcast up to the
-    # full block rather than reshaped.
-    combined_block = combined.reshape(tuple(combined.shape[a] for a in broadcast_axes))
-    combined_bcast = np.broadcast_to(combined_block, broadcast_shape)
-    surviving = np.nonzero(combined_bcast.reshape(-1))[0].astype(np.intp)
+        combined &= (storage >= lo) & (storage < hi)
+    surviving = np.flatnonzero(combined).astype(np.intp)
     if surviving.size == 0:
         return None
 
@@ -1118,14 +1196,9 @@ def _intersect_general(
 
     n_points = int(surviving.size)
     n_slice = len(slice_dims)
-    corr_values: dict[int, np.ndarray[Any, np.dtype[np.intp]]] = {}
-    for out_dim in correlated_dims:
-        arr = cast("ArrayMap", transform.output[out_dim]).index_array
-        block = arr.reshape(tuple(arr.shape[a] for a in broadcast_axes))
-        corr_values[out_dim] = np.asarray(
-            np.ascontiguousarray(np.broadcast_to(block, broadcast_shape)).reshape(-1)[surviving],
-            dtype=np.intp,
-        )
+    corr_values: dict[int, np.ndarray[Any, np.dtype[np.intp]]] = {
+        out_dim: block.flat_index[out_dim][surviving] for out_dim in correlated_dims
+    }
 
     # A rank-0 broadcast block contributes no axis: the leading `(n_points,)` of
     # the domain, of every index array, and of `out_indices` is present only when
@@ -1146,19 +1219,18 @@ def _intersect_general(
     corr_shape = points_shape + (1,) * n_slice
     new_output: list[OutputIndexMap] = []
     for out_dim, m in enumerate(transform.output):
-        if out_dim in correlated_dims:
-            corr = cast("ArrayMap", m)
+        if isinstance(m, ArrayMap):
+            # `correlated_dims` is exactly the ArrayMap output dimensions.
             new_output.append(
                 ArrayMap(
-                    index_array=corr_values[out_dim].reshape(corr_shape).astype(np.intp),
-                    offset=corr.offset,
-                    stride=corr.stride,
+                    index_array=corr_values[out_dim].reshape(corr_shape),
+                    offset=m.offset,
+                    stride=m.stride,
                 )
             )
         elif isinstance(m, ConstantMap):
             new_output.append(m)
         else:
-            assert isinstance(m, DimensionMap)
             new_output.append(
                 DimensionMap(
                     input_dimension=new_input_dim_of[m.input_dimension],
@@ -1168,10 +1240,9 @@ def _intersect_general(
             )
     result = IndexTransform(domain=new_domain, output=tuple(new_output))
 
-    # Flat scatter index into the caller's row-major output buffer, whose shape
-    # is the *input* domain's shape. The buffer is addressed positionally, so
-    # this assumes a zero-origin domain — the resolvers normalize with
-    # `translate_domain_to` before resolving.
+    # Scatter bookkeeping with row-major input-domain strides. Broadcast
+    # coordinates below are positional; residual coordinates remain literal.
+    # These are not uniformly zero-origin flat indices for nonzero domains.
     #
     # Each surviving point is a flat index into the broadcast block; unravel it
     # to per-axis coordinates so the buffer stride of each broadcast axis is
@@ -1488,7 +1559,7 @@ def _normalize_oindex_selection(
             (indices,) = np.nonzero(sel)
             result.append(indices.astype(np.intp))
         elif isinstance(sel, np.ndarray):
-            result.append(sel.astype(np.intp))
+            result.append(checked_affine(0, 1, sel))
         elif isinstance(sel, slice):
             result.append(sel)
         elif (scalar := as_scalar_index(sel)) is not None:
@@ -1500,7 +1571,9 @@ def _normalize_oindex_selection(
                 (indices,) = np.nonzero(array)
                 result.append(indices.astype(np.intp))
             else:
-                result.append(np.asarray(sel, dtype=np.intp))
+                # Advanced selection validation has already checked the element types.
+                integer_array = cast("npt.NDArray[np.integer[Any]]", array)
+                result.append(checked_affine(0, 1, integer_array))
         else:
             result.append(sel)
 
@@ -1651,8 +1724,9 @@ def _selection_axis_count(selection: Any) -> int:
 def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
     """Apply vectorized indexing to an IndexTransform.
 
-    All array indices are broadcast together. Broadcast dimensions are prepended,
-    followed by non-array (slice) dimensions.
+    All array indices are broadcast together. Their broadcast dimensions occupy
+    the advanced indices' position when adjacent, and lead when a slice axis
+    separates the advanced indices (see `_broadcast_insertion_point`).
 
     A transform that already carries index arrays takes the composition path
     (`_compose_selection`) instead of being rewritten in place; see
@@ -1690,9 +1764,11 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
             indices_tuple = np.nonzero(boolean_array)
             processed.extend(indices.astype(np.intp) for indices in indices_tuple)
         elif isinstance(sel, np.ndarray):
-            processed.append(sel.astype(np.intp))
+            processed.append(checked_affine(0, 1, sel))
         elif isinstance(sel, (list, tuple)):
-            processed.append(np.asarray(sel, dtype=np.intp))
+            # Advanced selection validation has already checked the element types.
+            integer_array = cast("npt.NDArray[np.integer[Any]]", np.asarray(sel))
+            processed.append(checked_affine(0, 1, integer_array))
         elif (scalar := as_scalar_index(sel)) is not None:
             processed.append(np.array([scalar], dtype=np.intp))
         else:
@@ -1700,7 +1776,7 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
 
     # Separate array dims and slice dims
     array_dims: list[int] = []
-    slice_dims: list[int] = []
+    slices: dict[int, slice] = {}
     arrays: list[np.ndarray[Any, np.dtype[np.intp]]] = []
 
     for i, sel in enumerate(processed):
@@ -1711,26 +1787,20 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
             array_dims.append(i)
             arrays.append(sel)
         else:
-            slice_dims.append(i)
+            slices[i] = sel
+    slice_dims = list(slices)
 
-    # Broadcast all arrays together
-    broadcast_arrays: list[np.ndarray[Any, np.dtype[np.intp]]]
-    if len(arrays) > 0:
-        broadcast_arrays = list(np.broadcast_arrays(*arrays))
-        broadcast_shape = broadcast_arrays[0].shape
-    else:
-        broadcast_arrays = []
-        broadcast_shape = ()
+    # Determine the shared domain without expanding the index arrays: their
+    # singleton axes describe independent dependencies during grid partitioning.
+    broadcast_shape = np.broadcast_shapes(*(array.shape for array in arrays)) if arrays else ()
 
     # Slice dimensions (preserved-domain literal semantics, like basic indexing)
     slice_dim_params: dict[int, tuple[int, int, int]] = {}
     slice_bounds: list[tuple[int, int]] = []
-    for old_dim in slice_dims:
-        sel = processed[old_dim]
-        assert isinstance(sel, slice)
+    for old_dim, sl in slices.items():
         lo = transform.domain.inclusive_min[old_dim]
         hi = transform.domain.exclusive_max[old_dim]
-        start, step, origin, size = _resolve_slice_ts(sel, old_dim, lo, hi)
+        start, step, origin, size = _resolve_slice_ts(sl, old_dim, lo, hi)
         slice_bounds.append((origin, origin + size))
         slice_dim_params[old_dim] = (start, step, origin)
 
@@ -1754,7 +1824,7 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
     # Build output maps
     array_dim_to_broadcast: dict[int, np.ndarray[Any, np.dtype[np.intp]]] = {}
     for i, d in enumerate(array_dims):
-        array_dim_to_broadcast[d] = broadcast_arrays[i]
+        array_dim_to_broadcast[d] = arrays[i]
 
     # New dim index for slice dims starts after broadcast dims
     n_broadcast_dims = len(broadcast_shape)
@@ -1766,14 +1836,11 @@ def _apply_vindex(transform: IndexTransform, selection: Any) -> IndexTransform:
         elif isinstance(m, DimensionMap):
             d = m.input_dimension
             if d in array_dim_to_broadcast:
-                # Normalize to full input rank: the broadcast (correlated) axes
-                # come first, followed by a singleton axis per slice dimension.
-                # Every vectorized array shares the same broadcast axes, so the
-                # dependency axes derived from the shape coincide — the signature
-                # of a pointwise scatter rather than an outer product.
+                # Pad to full input rank while retaining broadcast singletons.
                 broadcast_arr = array_dim_to_broadcast[d]
+                padded_shape = (1,) * (n_broadcast_dims - broadcast_arr.ndim) + broadcast_arr.shape
                 full_arr = broadcast_arr.reshape(
-                    (1,) * n_before + broadcast_shape + (1,) * (len(slice_dims) - n_before)
+                    (1,) * n_before + padded_shape + (1,) * (len(slice_dims) - n_before)
                 )
                 new_output.append(array_map_or_constant(full_arr, offset=m.offset, stride=m.stride))
             else:

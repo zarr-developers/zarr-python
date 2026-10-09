@@ -6,13 +6,16 @@ parallel hierarchy), so values interoperate freely with non-pydantic code.
 """
 
 import json
+import math
 import warnings
+from collections.abc import Mapping
 
 import pytest
 from jsonschema import Draft202012Validator
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
 import zarr_metadata.pydantic as zmp
+from zarr_metadata._common import JSONValue
 from zarr_metadata.model import (
     ZarrV2ArrayMetadata,
     ZarrV2ConsolidatedMetadata,
@@ -156,7 +159,9 @@ def test_v2_recursive_structured_dtype_is_in_pydantic_schema() -> None:
     assert Draft202012Validator(adapter.json_schema()).is_valid(doc)
 
 
-def _assert_runtime_and_schema_reject(field_type: object, document: dict[str, object]) -> None:
+def _assert_runtime_and_schema_reject(
+    field_type: object, document: Mapping[str, JSONValue]
+) -> None:
     adapter = TypeAdapter(field_type)
     with pytest.raises(ValidationError):
         adapter.validate_python(document)
@@ -182,19 +187,24 @@ def test_array_schemas_reject_negative_dimensions() -> None:
         _assert_runtime_and_schema_reject(field_type, doc)
 
 
-def test_v2_array_schema_rejects_empty_filters() -> None:
-    """The v2 schema mirrors the runtime one-or-more filter rule."""
+def test_v2_array_schema_allows_empty_filters() -> None:
+    """The v2 schema, like the runtime, takes "a list ... or null" at its word (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79)."""
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
     doc["filters"] = []
+    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
 
-    _assert_runtime_and_schema_reject(zmp.ZarrV2ArrayMetadata, doc)
+    assert adapter.validate_python(doc).filters == ()
+    assert Draft202012Validator(adapter.json_schema()).is_valid(doc)
 
 
-@pytest.mark.parametrize("field", ["data_type", "chunk_grid", "chunk_key_encoding"])
-def test_v3_array_schema_rejects_false_at_mandatory_extension_points(field: str) -> None:
-    """Mandatory v3 extension points cannot opt out of understanding."""
+@pytest.mark.parametrize(
+    "field", ["data_type", "chunk_grid", "chunk_key_encoding", "codecs", "storage_transformers"]
+)
+def test_v3_array_schema_rejects_false_at_every_extension_point(field: str) -> None:
+    """No extension point of an array document opts out of understanding, in the schema as at runtime."""
     doc = json.loads(json.dumps(V3_ARRAY_DOC))
-    doc[field] = {"name": "example", "must_understand": False}
+    entry = {"name": "example", "must_understand": False}
+    doc[field] = [entry] if field in ("codecs", "storage_transformers") else entry
 
     _assert_runtime_and_schema_reject(zmp.ZarrV3ArrayMetadata, doc)
 
@@ -210,7 +220,6 @@ def test_metadata_field_schema_rejects_unknown_members() -> None:
 @pytest.mark.parametrize(
     ("field_type", "source"),
     [
-        (zmp.ZarrV2ArrayMetadata, V2_ARRAY_DOC),
         (zmp.ZarrV2GroupMetadata, V2_GROUP_DOC),
         (zmp.ZarrV2ConsolidatedMetadata, V2_CONSOLIDATED_DOC),
     ],
@@ -223,6 +232,16 @@ def test_v2_schema_rejects_unknown_document_members(
     doc["unexpected"] = 1
 
     _assert_runtime_and_schema_reject(field_type, doc)
+
+
+def test_v2_array_schema_allows_unknown_document_members() -> None:
+    """The v2 array document is open ("SHOULD be ignored", https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), in runtime and schema."""
+    doc = json.loads(json.dumps(V2_ARRAY_DOC))
+    doc["unexpected"] = 1
+    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
+
+    assert "unexpected" not in adapter.validate_python(doc).to_json()
+    assert Draft202012Validator(adapter.json_schema()).is_valid(doc)
 
 
 def test_v3_array_schema_allows_unknown_extension_fields() -> None:
@@ -262,3 +281,18 @@ def test_core_package_does_not_import_pydantic() -> None:
 
     code = "import sys, zarr_metadata; assert 'pydantic' not in sys.modules, 'leaked'"
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_a_non_finite_attribute_is_kept_by_constants_serialization() -> None:
+    """Pydantic writes a non-finite number as `null` unless the enclosing
+    model spells it as the store does; the module docstring says how."""
+
+    class Manifest(BaseModel):
+        model_config = ConfigDict(ser_json_inf_nan="constants")
+        metadata: zmp.ZarrV3GroupMetadata
+
+    document = b'{"metadata": {"zarr_format": 3, "node_type": "group", "attributes": {"x": NaN}}}'
+    written = Manifest.model_validate_json(document).model_dump_json()
+    held = Manifest.model_validate_json(written).metadata.attributes["x"]
+    assert isinstance(held, float)
+    assert math.isnan(held)

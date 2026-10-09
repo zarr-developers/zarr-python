@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import functools
+import http.server
 import json
 import re
+import threading
 import warnings
 from typing import TYPE_CHECKING, Any
 
@@ -459,6 +462,36 @@ async def test_fsspec_store_read_array_chunk_via_reference_filesystem() -> None:
     np.testing.assert_array_equal(data, np.array([1, 2, 3, 4], dtype="uint8"))
 
 
+@pytest.mark.parametrize("path", ["", "/"])
+async def test_fsspec_store_list_nested_via_reference_filesystem(path: str) -> None:
+    """Listing below the root of a ``ReferenceFileSystem``-backed store.
+
+    ``FsspecStore.from_url("reference://", ...)`` gives the store a path of
+    ``""``, and the tests above use ``"/"``. Listing a nested prefix used to
+    ask the filesystem for ``"/a"`` or ``"//a"``, which ``ReferenceFileSystem``
+    does not find, so nested groups listed as empty.
+    """
+    import json
+
+    from fsspec.implementations.reference import ReferenceFileSystem
+
+    group_json = json.dumps({"zarr_format": 3, "node_type": "group", "attributes": {}})
+    refs = {"zarr.json": group_json, "a/zarr.json": group_json, "a/b/zarr.json": group_json}
+    fs = ReferenceFileSystem(fo={"version": 1, "refs": refs}, asynchronous=True)
+    store = FsspecStore(fs=fs, path=path, read_only=True)
+
+    assert sorted(await _collect_aiterator(store.list_dir(""))) == ["a", "zarr.json"]
+    assert sorted(await _collect_aiterator(store.list_dir("a"))) == ["b", "zarr.json"]
+    assert sorted(await _collect_aiterator(store.list_prefix("a/"))) == [
+        "a/b/zarr.json",
+        "a/zarr.json",
+    ]
+
+    group = await zarr.api.asynchronous.open_group(store, mode="r")
+    subgroup = await group.getitem("a")
+    assert [name async for name in subgroup.group_keys()] == ["b"]
+
+
 @pytest.mark.skipif(
     parse_version(fsspec.__version__) < parse_version("2024.12.0"),
     reason="No AsyncFileSystemWrapper",
@@ -559,6 +592,55 @@ def test_open_s3map_raises(endpoint_url: str) -> None:
         match="'storage_options' is only used when the store is passed as an FSSpec URI string.",
     ):
         zarr.open(store=mapper, storage_options={"anon": True}, mode="w", shape=(3, 3))
+
+
+async def test_list_dir_http_yields_only_children(tmp_path: pathlib.Path) -> None:
+    """list_dir over HTTP yields each direct child once, by bare name.
+
+    An HTTP listing is scraped from an HTML index page, whose links include the site
+    root, the parent, in-page anchors, queries, "./" relative links, and directories
+    with a trailing "/".
+    Regression test for https://github.com/zarr-developers/zarr-python/issues/3575,
+    where the site-root link surfaced as a group member named "".
+    """
+    pytest.importorskip("aiohttp")
+    links = [
+        "/",
+        "../",
+        "./",
+        "#",
+        "#usage",
+        "?sort=name",
+        "a/",
+        "a",
+        "b",
+        "./d",
+        ".zgroup",
+        "/group/c/",
+    ]
+    group = tmp_path / "group"
+    group.mkdir()
+    (group / "index.html").write_text(
+        "<html><body>"
+        + "".join(f'<a href="{link}">{link}</a>' for link in links)
+        + "</body></html>"
+    )
+
+    class QuietHandler(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+    handler = functools.partial(QuietHandler, directory=str(tmp_path))
+    with http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        store = FsspecStore.from_url(f"http://127.0.0.1:{server.server_port}/group")
+        try:
+            observed = await _collect_aiterator(store.list_dir(""))
+        finally:
+            store.close()
+            server.shutdown()
+
+    assert sorted(observed) == [".zgroup", "a", "b", "c", "d"]
 
 
 async def test_close_does_not_close_filesystem_session() -> None:
