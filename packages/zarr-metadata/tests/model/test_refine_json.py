@@ -164,3 +164,26 @@ def test_bytes_past_the_levels_a_reader_walks_are_not_json_rather_than_nested() 
     assert [(len(p.loc), p.kind, p.message[:31]) for p in problems] == [
         (JSON_DEPTH, "invalid_type", "not a JSON-serializable value: ")
     ]
+
+
+def test_error_an_integer_of_more_digits_than_json_text_holds_is_a_problem(
+    interpreter_writes_4300_digits: None,
+) -> None:
+    """An integer the interpreter will not convert to text, as `sys.get_int_max_str_digits` bounds one, is an `invalid_value` problem where it sits, so no reader raises on it: the document could not be written back, and `validate_*` and `read_*` agree."""
+    from zarr_metadata.model import (
+        ZarrV3ArrayMetadata,
+        read_array_metadata_v3,
+        validate_array_metadata_v3,
+    )
+
+    refined, problems = refine_json({"x": [10**5000]})
+    assert refined is None
+    assert [(p.loc, p.kind) for p in problems] == [(("x", 0), "invalid_value")]
+    assert "digits" in problems[0].message
+    document = {**ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json()}
+    document["attributes"] = {"x": 10**5000}
+    found = validate_array_metadata_v3(document)
+    assert [(p.loc, p.kind) for p in found] == [(("attributes", "x"), "invalid_value")]
+    assert read_array_metadata_v3(document).problems == found
+    shaped = {**document, "attributes": {}, "shape": [10**5000]}
+    assert [p.loc for p in validate_array_metadata_v3(shaped)] == [("shape", 0)]

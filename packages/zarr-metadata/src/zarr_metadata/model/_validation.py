@@ -253,7 +253,10 @@ def dimension_lengths(
     """
     if key not in doc:
         return None, ()
-    value = doc[key]
+    value, found = refine_json(doc[key], (key,))
+    if len(found) != 0:
+        # An integer JSON text does not hold, or a value nested too deep.
+        return None, found
     if not _is_int_sequence(value):
         return None, (ValidationProblem((key,), "expected an array of integers", "invalid_type"),)
     if any(item < 0 for item in value):

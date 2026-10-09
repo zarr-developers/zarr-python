@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
@@ -19,6 +21,9 @@ from zarr_metadata.v3.definition import (
     fill_value_problems,
     resolve,
 )
+
+if TYPE_CHECKING:
+    from zarr_metadata import JSONValue
 
 SCOPE = Context.of(*V2_DATA_TYPES)
 
@@ -233,3 +238,19 @@ def test_a_struct_record_type_sits_where_the_document_writes_it() -> None:
         ("dtype", "fields", 0, 1),
         ("dtype", "fields", 1, 1),
     ]
+
+
+def test_a_float_fill_value_past_the_largest_float64_reads_as_an_infinity() -> None:
+    """An integer written for a float fill value that no float64 holds is the infinity of its sign, as the v3 float types read one, for a float and for each component of a complex: `read_array_metadata_v2` reads it, and the model equals one written `"Infinity"`."""
+    from zarr_metadata.model import ZarrV2ArrayMetadata, read_array_metadata_v2
+
+    cases: list[tuple[str, JSONValue, JSONValue]] = [
+        ("<f8", 10**400, "Infinity"),
+        ("<f8", -(10**400), "-Infinity"),
+        ("<f2", 10**309, "Infinity"),
+        ("<c16", [10**400, 0], ["Infinity", 0.0]),
+    ]
+    for dtype, huge, named in cases:
+        written = ZarrV2ArrayMetadata.create_default(dtype=dtype, fill_value=huge)
+        assert written == ZarrV2ArrayMetadata.create_default(dtype=dtype, fill_value=named)
+        assert read_array_metadata_v2(written.to_json()).problems == ()

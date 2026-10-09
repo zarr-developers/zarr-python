@@ -127,8 +127,13 @@ ZarrV2ComplexFillValue = tuple[ZarrV2ComplexComponent, ZarrV2ComplexComponent] |
 def _float_canonical(
     configuration: ZarrV2ScalarConfiguration, nested: Nested, value: ZarrV2FloatFillValue
 ) -> ZarrV2FloatFillValue:
-    """An integer written for a float is the float: `0` and `0.0` are one value."""
-    return float(value) if isinstance(value, int) and not isinstance(value, bool) else value
+    """An integer written for a float is the float: `0` and `0.0` are one value, and one past the largest float64 is the infinity of its sign, as the v3 float types read it."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        try:
+            return float(value)
+        except OverflowError:
+            return "-Infinity" if value < 0 else "Infinity"
+    return value
 
 
 def _complex_canonical(
