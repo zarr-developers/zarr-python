@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
-from zarr.core.common import JSON
 from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
+
+if TYPE_CHECKING:
+    from zarr.core.common import JSON
 
 
 class TestInt8(BaseTestZDType):
