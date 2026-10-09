@@ -1,8 +1,10 @@
 import tempfile
 from collections.abc import Awaitable, Callable, Generator
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Literal
 
+import cloudpickle
 import pytest
 from packaging.version import parse as parse_version
 
@@ -434,3 +436,15 @@ def test_different_open_mode(tmp_path: Path) -> None:
         match="Store is not read-only but mode is 'r'. Unable to create a read-only copy of the store. Please use a read-only store or a storage class that implements .with_read_only().",
     ):
         zarr.open_array(store=zip_store, path="a", zarr_format=2, mode="r")
+
+
+def test_storage_module_is_picklable() -> None:
+    # `zarr.storage` used to be swapped for a `VerboseModule` subclass of
+    # `types.ModuleType` in order to warn about the long-deprecated
+    # `zarr.storage.default_compressor` attribute. cloudpickle dispatches on the
+    # exact type of an object, so the subclass was not registered and
+    # serializing the module raised `TypeError: cannot pickle 'VerboseModule'
+    # object`, which broke passing `zarr.storage.ObjectStore` around with Dask.
+    # See issue #4029.
+    assert type(zarr.storage) is ModuleType
+    assert cloudpickle.loads(cloudpickle.dumps(zarr.storage)) is zarr.storage
