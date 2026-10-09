@@ -29,6 +29,7 @@ from zarr.core.common import (
     MemoryOrder,
     ZarrFormat,
     _default_zarr_format,
+    _validate_node_name,
     _warn_write_empty_chunks_kwarg,
 )
 from zarr.core.dtype import ZDTypeLike, get_data_type_from_native_dtype
@@ -801,6 +802,8 @@ async def create_group(
 
     mode: Literal["a"] = "a"
 
+    if path:
+        _validate_node_name(path)
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     return await AsyncGroup.from_store(
