@@ -239,9 +239,7 @@ def test_string_float_from_json_scalar() -> None:
         (Float64(), "0xfff8000000000000"),
     ],
 )
-def test_noncanonical_nan_serializes_as_hex(
-    dtype: BaseFloat[Any, Any], hex_value: str
-) -> None:
+def test_noncanonical_nan_serializes_as_hex(dtype: BaseFloat[Any, Any], hex_value: str) -> None:
     """Only the exact canonical NaN bit pattern writes back as ``"NaN"``;
     every other NaN, including the negative-sign form of the canonical
     payload, writes back as its hex bits. Regression test for
