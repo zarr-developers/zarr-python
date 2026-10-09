@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
+import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
-from zarr.core.dtype.npy.float import Float16, Float32, Float64
+from zarr.core.dtype.npy.float import BaseFloat, Float16, Float32, Float64
 
 
 class _BaseTestFloat(BaseTestZDType):
@@ -223,3 +226,37 @@ def test_string_float_from_json_scalar() -> None:
     # Test that it works for v2 format too
     result = dtype_instance.from_json_scalar("1.5", zarr_format=2)
     assert result == np.float32(1.5)
+
+
+@pytest.mark.parametrize(
+    ("dtype", "hex_value"),
+    [
+        (Float16(), "0x7fc1"),
+        (Float32(), "0x7fc00001"),
+        (Float32(), "0xffc00000"),
+        (Float32(), "0xffc00001"),
+        (Float64(), "0x7ff8000000000001"),
+        (Float64(), "0xfff8000000000000"),
+    ],
+)
+def test_noncanonical_nan_serializes_as_hex(dtype: BaseFloat[Any, Any], hex_value: str) -> None:
+    """Only the exact canonical NaN bit pattern writes back as ``"NaN"``;
+    every other NaN, including the negative-sign form of the canonical
+    payload, writes back as its hex bits. Regression test for
+    https://github.com/zarr-developers/zarr-python/issues/4453 item 3."""
+    scalar = dtype.from_json_scalar(hex_value, zarr_format=3)
+    assert dtype.to_json_scalar(scalar, zarr_format=3) == hex_value
+    canonical = dtype.from_json_scalar("NaN", zarr_format=3)
+    assert dtype.to_json_scalar(canonical, zarr_format=3) == "NaN"
+
+
+def test_noncanonical_nan_serializes_as_hex_complex() -> None:
+    """The complex path applies the same canonical-NaN check to each part."""
+    from zarr.core.dtype.npy.complex import Complex64
+
+    dtype = Complex64()
+    real_nan = np.array([0xFFC00000], dtype=np.uint32).view(np.float32)[0]
+    scalar = np.complex64(complex(real_nan, 0))
+    assert dtype.to_json_scalar(scalar, zarr_format=3) == ("0xffc00000", 0.0)
+    canonical = np.complex64(complex(np.nan, np.nan))
+    assert dtype.to_json_scalar(canonical, zarr_format=3) == ("NaN", "NaN")
