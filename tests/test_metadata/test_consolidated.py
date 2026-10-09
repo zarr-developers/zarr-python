@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -22,7 +23,7 @@ from zarr.core.dtype import parse_dtype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV3Metadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
-from zarr.errors import MetadataValidationError, ZarrUserWarning
+from zarr.errors import MetadataValidationError, ZarrDeprecationWarning, ZarrUserWarning
 from zarr.storage import StorePath
 
 if TYPE_CHECKING:
@@ -918,6 +919,7 @@ _ARRAY_V3 = {
     "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
 }
 _GROUP_V3 = {"zarr_format": 3, "node_type": "group", "attributes": {}}
+_GROUP_V2 = {"zarr_format": 2}
 
 
 def _consolidated_doc(metadata: dict[str, Any]) -> dict[str, Any]:
@@ -926,12 +928,55 @@ def _consolidated_doc(metadata: dict[str, Any]) -> dict[str, Any]:
 
 @pytest.mark.parametrize(
     "key",
-    ["", ".", "..", "zarr.json", "__a", "a/zarr.json", "a/../b", "a//b"],
+    ["", "a//b", "/a", "a/"],
 )
 def test_consolidated_metadata_rejects_invalid_keys(key: str) -> None:
-    """Listing keys are node paths; every segment must be a valid node name."""
+    """Listing keys are node paths; every segment must be non-empty."""
     with pytest.raises(MetadataValidationError, match="Invalid node path"):
         ConsolidatedMetadata.from_dict(_consolidated_doc({key: _GROUP_V3}))
+
+
+@pytest.mark.parametrize(
+    "key",
+    [".", "..", "zarr.json", "__a", "a/zarr.json", "a/__x"],
+)
+def test_consolidated_metadata_warns_on_reserved_v3_keys(key: str) -> None:
+    """v3 reserves '.', '..', 'zarr.json', and '__'-prefixed names, but stores
+    written before the names were rejected still open, so they only warn."""
+    with pytest.warns(ZarrDeprecationWarning, match="reserved"):
+        consolidated = ConsolidatedMetadata.from_dict(
+            _consolidated_doc({key: _GROUP_V3, "a": _GROUP_V3})
+        )
+    if "/" in key:
+        parent, leaf = key.split("/")
+        nested = consolidated.metadata[parent].consolidated_metadata
+        assert nested is not None
+        assert leaf in nested.metadata
+    else:
+        assert key in consolidated.metadata
+
+
+def test_consolidated_metadata_reserved_name_below_missing_parent() -> None:
+    """A reserved name warns before the missing-parent error is raised."""
+    with pytest.warns(ZarrDeprecationWarning, match="reserved"):
+        with pytest.raises(MetadataValidationError, match="without a listing"):
+            ConsolidatedMetadata.from_dict(
+                _consolidated_doc({"a": _GROUP_V3, "a/../b": _GROUP_V3})
+            )
+
+
+@pytest.mark.parametrize(
+    "key",
+    [".", "..", "zarr.json", "__a"],
+)
+def test_consolidated_metadata_ignores_reserved_v2_keys(key: str) -> None:
+    """The v2 specification does not reserve node names."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        consolidated = ConsolidatedMetadata.from_dict(
+            _consolidated_doc({key: _GROUP_V2})
+        )
+    assert key in consolidated.metadata
 
 
 def test_consolidated_metadata_rejects_child_without_parent() -> None:
