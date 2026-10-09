@@ -64,6 +64,7 @@ from zarr.errors import (
     GroupNotFoundError,
     MetadataValidationError,
     NodeTypeValidationError,
+    ZarrDeprecationWarning,
     ZarrUserWarning,
 )
 from zarr.storage import StoreLike, StorePath
@@ -140,14 +141,26 @@ def _parse_async_node(
         raise TypeError(f"Unknown node type, got {type(node)}")
 
 
-def _validate_consolidated_key(key: str) -> None:
-    """A consolidated metadata key is a node path: it must be non-empty, and every
-    segment must be a valid node name (non-empty, not ``.``/``..``/``zarr.json``,
-    not ``__``-prefixed)."""
+def _validate_consolidated_key(key: str, zarr_format: ZarrFormat) -> None:
+    """A consolidated metadata key is a node path: every segment must be non-empty.
+
+    The v3 specification also reserves the names ``.``, ``..``, ``zarr.json``, and
+    every ``__``-prefixed name. Stores written before those names were rejected on
+    creation still open today, so for now such keys only warn. The v2 specification
+    does not reserve any node names, so no name checks apply to v2 listings."""
     segments = key.split("/")
-    if any(not seg or seg in (".", "..", ZARR_JSON) or seg.startswith("__") for seg in segments):
+    if any(not seg for seg in segments):
         msg = f"Invalid node path in consolidated metadata: {key!r}"
         raise MetadataValidationError(msg)
+    if zarr_format == 3 and any(
+        seg in (".", "..", ZARR_JSON) or seg.startswith("__") for seg in segments
+    ):
+        msg = (
+            f"Consolidated metadata lists {key!r}, which contains a name reserved "
+            "by the v3 specification. Rename the node, as reading such listings "
+            "will become an error."
+        )
+        warnings.warn(msg, category=ZarrDeprecationWarning, stacklevel=1)
 
 
 def _validate_consolidated_hierarchy(
@@ -225,9 +238,6 @@ class ConsolidatedMetadata:
 
         metadata: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] = {}
         if raw_metadata:
-            for k in raw_metadata:
-                _validate_consolidated_key(k)
-
             for k, v in raw_metadata.items():
                 member = k if path is None else _join_paths([path, k])
                 if not isinstance(v, dict):
@@ -237,6 +247,7 @@ class ConsolidatedMetadata:
 
                 # zarr_format is present in v2 and v3.
                 zarr_format = parse_zarr_format(v["zarr_format"])
+                _validate_consolidated_key(k, zarr_format)
 
                 if zarr_format == 3:
                     node_type = parse_node_type(v.get("node_type", None))
