@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, NotRequired, TypeGuard, cast
 
 from typing_extensions import TypedDict
 
@@ -12,7 +13,7 @@ from zarr.abc.metadata import Metadata
 from zarr.core._json import json_to_buffer
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.chunk_grids import is_regular_nd
+from zarr.core.chunk_grids import FixedDimension, VaryingDimension
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
@@ -24,8 +25,11 @@ from zarr.core.common import (
     DimensionNamesLike,
     NamedConfig,
     NamedRequiredConfig,
+    NodeType,
     compress_rle,
     expand_rle,
+    parse_chunk_edge,
+    parse_chunk_shape,
     parse_named_configuration,
     parse_shapelike,
     validate_rectilinear_edges,
@@ -34,30 +38,36 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
+from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
-from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
+from zarr.core.metadata.repair import (
+    mark_repaired,
+    repair_array_document,
+)
+from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
 
 if TYPE_CHECKING:
     from typing import Self
 
+    from zarr.codecs.sharding import ShardingCodec
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.chunk_grids import ChunksTuple
+    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
+    from zarr.core.metadata.repair import ArrayDocument
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
-    if data == 3:
-        return 3
-    msg = f"Invalid value for 'zarr_format'. Expected '3'. Got '{data}'."
-    raise MetadataValidationError(msg)
+    return cast(
+        "Literal[3]", parse_field(data, Literal[3], "zarr_format", error=MetadataValidationError)
+    )
 
 
 def parse_node_type_array(data: object) -> Literal["array"]:
-    if data == "array":
-        return "array"
-    msg = f"Invalid value for 'node_type'. Expected 'array'. Got '{data}'."
-    raise NodeTypeValidationError(msg)
+    return cast(
+        'Literal["array"]',
+        parse_field(data, Literal["array"], "node_type", error=NodeTypeValidationError),
+    )
 
 
 def parse_codecs(data: object) -> tuple[Codec, ...]:
@@ -74,10 +84,21 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
         else:
             name_parsed, _ = parse_named_configuration(c, require_configuration=False)
 
+            codec_cls = get_codec_class(name_parsed)
             try:
-                out += (get_codec_class(name_parsed).from_dict(c),)
+                out += (codec_cls.from_dict(c),)
             except KeyError as e:
-                raise UnknownCodecError(f"Unknown codec: {e.args[0]!r}") from e
+                # A codec's `from_dict` may index its configuration directly, so a malformed
+                # configuration surfaces as a KeyError. Convert it: a bare KeyError escaping
+                # metadata parsing is swallowed by the array-then-group fallback in
+                # `zarr.api.asynchronous.open`, which then reports an unrelated group error.
+                # The KeyError may carry no arguments (`raise KeyError`), and it may come from
+                # an internal lookup rather than the configuration mapping itself, so name the
+                # key only when there is one and don't claim it was a missing configuration key.
+                key_text = f" {e.args[0]!r}" if e.args else ""
+                raise MetadataValidationError(
+                    f"KeyError{key_text} while parsing the configuration for codec {name_parsed!r}."
+                ) from e
 
     return out
 
@@ -130,11 +151,12 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
     """
     if data is None:
         return ()
-    if isinstance(data, Iterable):
-        if len(tuple(data)) >= 1:
-            return data  # type: ignore[return-value]
-        else:
-            return ()
+    if isinstance(data, Iterable) and not isinstance(data, (str, bytes)):
+        # Materialise once. The previous implementation called ``len(tuple(data))``
+        # and then returned ``data`` itself, which exhausted (and discarded) a
+        # one-shot iterable and could return a value typed as a tuple that was not
+        # actually a tuple.
+        return tuple(data)
     raise TypeError(
         f"Invalid storage_transformers. Expected an iterable of dicts. Got {type(data)} instead."
     )
@@ -142,8 +164,8 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
 
 class AllowedExtraField(TypedDict, extra_items=JSON):  # type: ignore[call-arg]
     """
-    This class models allowed extra fields in array metadata.
-    They must have ``must_understand`` set to ``False``, and may contain
+    This class models allowed extra fields in array or group metadata.
+    They must have `must_understand` set to `False`, and may contain
     arbitrary additional JSON data.
     """
 
@@ -159,22 +181,45 @@ def check_allowed_extra_field(data: object) -> TypeGuard[AllowedExtraField]:
 
 
 def parse_extra_fields(
-    data: Mapping[str, AllowedExtraField] | None,
+    data: Mapping[str, object] | None,
+    *,
+    reserved_keys: AbstractSet[str],
+    node_type: NodeType,
 ) -> dict[str, AllowedExtraField]:
+    """
+    Check the extra fields of a Zarr V3 metadata document.
+
+    Raises `ValueError` if a key collides with a key in `reserved_keys`, and
+    `MetadataValidationError` if a value is not an object with `"must_understand": false`.
+    """
     if data is None:
         return {}
-    else:
-        conflict_keys = ARRAY_METADATA_KEYS & set(data.keys())
-        if len(conflict_keys) > 0:
-            msg = (
-                "Invalid extra fields. "
-                "The following keys: "
-                f"{sorted(conflict_keys)} "
-                "are invalid because they collide with keys reserved for use by the "
-                "array metadata document."
-            )
-            raise ValueError(msg)
-        return dict(data)
+    conflict_keys = reserved_keys & set(data.keys())
+    if len(conflict_keys) > 0:
+        msg = (
+            "Invalid extra fields. "
+            "The following keys: "
+            f"{sorted(conflict_keys)} "
+            "are invalid because they collide with keys reserved for use by the "
+            f"{node_type} metadata document."
+        )
+        raise ValueError(msg)
+    allowed_extra_fields: dict[str, AllowedExtraField] = {}
+    invalid_extra_fields: list[str] = []
+    for key, val in data.items():
+        if check_allowed_extra_field(val):
+            allowed_extra_fields[key] = val
+        else:
+            invalid_extra_fields.append(key)
+    if len(invalid_extra_fields) > 0:
+        msg = (
+            f"Got Zarr V3 {node_type} metadata with the following disallowed extra "
+            f"fields: {sorted(invalid_extra_fields)}. "
+            'Extra fields are not allowed unless they are an object with a "must_understand" '
+            "key which is assigned the value `false`."
+        )
+        raise MetadataValidationError(msg)
+    return allowed_extra_fields
 
 
 # JSON type for a single dimension's rectilinear spec:
@@ -199,17 +244,6 @@ RectilinearChunkGridMetadataJSON = NamedRequiredConfig[
 ]
 
 
-def _parse_chunk_shape(chunk_shape: Iterable[int]) -> tuple[int, ...]:
-    """Validate and normalize a regular chunk shape.
-
-    Delegates to ``_validate_chunk_shapes`` — a regular chunk shape is just
-    a sequence of bare ints (one per dimension), each of which must be >= 1.
-    """
-    result = _validate_chunk_shapes(tuple(chunk_shape))
-    # Regular grids only have bare ints — cast is safe after validation
-    return cast(tuple[int, ...], result)
-
-
 def _validate_chunk_shapes(
     chunk_shapes: Sequence[int | Sequence[int]],
 ) -> tuple[int | tuple[int, ...], ...]:
@@ -220,23 +254,14 @@ def _validate_chunk_shapes(
     """
     result: list[int | tuple[int, ...]] = []
     for dim_idx, dim_spec in enumerate(chunk_shapes):
-        if isinstance(dim_spec, int):
-            if dim_spec < 1:
-                raise ValueError(
-                    f"Dimension {dim_idx}: integer chunk edge length must be >= 1, got {dim_spec}"
-                )
-            result.append(dim_spec)
-        else:
-            edges = tuple(dim_spec)
-            if not edges:
-                raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
-            bad = [i for i, e in enumerate(edges) if e < 1]
-            if bad:
-                raise ValueError(
-                    f"Dimension {dim_idx} has invalid edge lengths at indices {bad}: "
-                    f"{[edges[i] for i in bad]}"
-                )
-            result.append(edges)
+        match dim_spec:
+            case list() | tuple():
+                edges = tuple(parse_chunk_edge(edge, dim_idx) for edge in dim_spec)
+                if not edges:
+                    raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
+                result.append(edges)
+            case _:
+                result.append(parse_chunk_edge(dim_spec, dim_idx))
     return tuple(result)
 
 
@@ -251,7 +276,7 @@ class RegularChunkGridMetadata(Metadata):
     chunk_shape: tuple[int, ...]
 
     def __post_init__(self) -> None:
-        chunk_shape_parsed = _parse_chunk_shape(self.chunk_shape)
+        chunk_shape_parsed = parse_chunk_shape(self.chunk_shape)
         object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
 
     @property
@@ -268,7 +293,7 @@ class RegularChunkGridMetadata(Metadata):
     def from_dict(cls, data: RegularChunkGridMetadataJSON) -> Self:  # type: ignore[override]
         parse_named_configuration(data, "regular")  # validate name
         configuration = data["configuration"]
-        return cls(chunk_shape=_parse_chunk_shape(configuration["chunk_shape"]))
+        return cls(chunk_shape=parse_chunk_shape(configuration["chunk_shape"]))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -290,12 +315,6 @@ class RectilinearChunkGridMetadata(Metadata):
     chunk_shapes: tuple[int | tuple[int, ...], ...]
 
     def __post_init__(self) -> None:
-        if not config.get("array.rectilinear_chunks"):
-            raise ValueError(
-                "Rectilinear chunk grids are experimental and disabled by default. "
-                "Enable them with: zarr.config.set({'array.rectilinear_chunks': True}) "
-                "or set the environment variable ZARR_ARRAY__RECTILINEAR_CHUNKS=True"
-            )
         object.__setattr__(self, "chunk_shapes", _validate_chunk_shapes(self.chunk_shapes))
 
     @property
@@ -353,51 +372,78 @@ class RectilinearChunkGridMetadata(Metadata):
         configuration = data["configuration"]
         validate_rectilinear_kind(configuration.get("kind"))
         raw_shapes = configuration["chunk_shapes"]
-        parsed: list[int | tuple[int, ...]] = []
-        for dim_spec in raw_shapes:
-            if isinstance(dim_spec, int):
-                if dim_spec < 1:
-                    raise ValueError(f"Integer chunk edge length must be >= 1, got {dim_spec}")
-                parsed.append(dim_spec)
-            elif isinstance(dim_spec, list):
-                parsed.append(tuple(expand_rle(dim_spec)))
-            else:
-                raise TypeError(
-                    f"Invalid chunk_shapes entry: expected int or list, got {type(dim_spec)}"
-                )
+        parsed = [
+            tuple(expand_rle(dim_spec, axis)) if isinstance(dim_spec, list) else dim_spec
+            for axis, dim_spec in enumerate(raw_shapes)
+        ]
         return cls(chunk_shapes=tuple(parsed))
 
 
 ChunkGridMetadata = RegularChunkGridMetadata | RectilinearChunkGridMetadata
 
 
-def create_chunk_grid_metadata(
-    chunks: ChunksTuple,
-) -> ChunkGridMetadata:
-    """Construct a chunk grid metadata object from a normalized `ChunksTuple`.
+class RectilinearChunksDisabledError(ValueError):
+    """Rectilinear chunk grids are used while the `array.rectilinear_chunks` flag is off."""
 
-    Regular chunks produce a `RegularChunkGridMetadata`.
-    Rectilinear chunks produce a `RectilinearChunkGridMetadata`.
+
+def _check_rectilinear_chunks_enabled() -> None:
+    """Raise unless rectilinear chunks are enabled.
+
+    The flag gates storing and reading array metadata documents that declare a
+    rectilinear chunk grid; the chunk grid metadata classes themselves are not gated.
+    """
+    if not config.get("array.rectilinear_chunks"):
+        raise RectilinearChunksDisabledError(
+            "Rectilinear chunk grids are experimental and disabled by default. "
+            "Enable them with: zarr.config.set({'array.rectilinear_chunks': True}) "
+            "or set the environment variable ZARR_ARRAY__RECTILINEAR_CHUNKS=True"
+        )
+
+
+def check_storable(metadata: ArrayV3Metadata) -> None:
+    """Raise if `metadata` may not be stored: a rectilinear chunk grid requires the
+    rectilinear chunks flag. `zarr.core.metadata.io.encode_documents` names the node in
+    the error.
+
+    Every serialization of array metadata for a store calls this, before the store is
+    touched: `ArrayV3Metadata.to_buffer_dict` and, for the arrays in a group's
+    consolidated metadata, `GroupMetadata.to_buffer_dict`.
+    """
+    if isinstance(metadata.chunk_grid, RectilinearChunkGridMetadata):
+        _check_rectilinear_chunks_enabled()
+
+
+def create_chunk_grid_metadata(
+    chunks: ChunkGrid,
+) -> ChunkGridMetadata:
+    """Construct a chunk grid metadata object from a normalized `ChunkGrid`.
+
+    Regular grids produce a `RegularChunkGridMetadata`.
+    Rectilinear grids produce a `RectilinearChunkGridMetadata`.
 
     Parameters
     ----------
-    chunks : ChunksTuple
-        Normalized chunk specification, as returned by
+    chunks : ChunkGrid
+        Normalized chunk grid, as returned by
         `normalize_chunks_nd` or `guess_chunks`.
 
     See Also
     --------
     parse_chunk_grid : Deserialize a chunk grid from stored JSON metadata.
     """
-    if is_regular_nd(chunks):
-        # If we know the chunks specification is regular, then we can take the first
-        # chunk size for each dimension as the chunk shape.
-        chunk_shape = tuple(int(dim_chunks[0]) for dim_chunks in chunks)
-        return RegularChunkGridMetadata(chunk_shape=chunk_shape)
-    else:
-        return RectilinearChunkGridMetadata(
-            chunk_shapes=tuple(tuple(int(x) for x in d) for d in chunks)
-        )
+    if chunks.is_regular:
+        return RegularChunkGridMetadata(chunk_shape=chunks.chunk_shape)
+    # Uniform dimensions stay bare ints — the rectilinear grid spec treats
+    # a bare int as a step size repeating to cover the axis.
+    chunk_shapes: list[int | tuple[int, ...]] = []
+    for dim in chunks.dimensions:
+        if isinstance(dim, FixedDimension):
+            chunk_shapes.append(dim.size)
+        elif isinstance(dim, VaryingDimension):
+            chunk_shapes.append(dim.edges)
+        else:
+            raise TypeError(f"Unknown dimension grid type: {type(dim)}")
+    return RectilinearChunkGridMetadata(chunk_shapes=tuple(chunk_shapes))
 
 
 def parse_chunk_grid(
@@ -473,6 +519,9 @@ class ArrayV3Metadata(Metadata):
     node_type: Literal["array"] = field(default="array", init=False)
     storage_transformers: tuple[dict[str, JSON], ...]
     extra_fields: dict[str, AllowedExtraField]
+    _stored_document: ClassVar[ArrayDocument | None] = None
+    """The stored document `from_dict` read this metadata from, if it had to repair it
+    (set on the instance by `mark_repaired`): the store may still hold it."""
 
     def __init__(
         self,
@@ -501,7 +550,9 @@ class ArrayV3Metadata(Metadata):
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
-        extra_fields_parsed = parse_extra_fields(extra_fields)
+        extra_fields_parsed = parse_extra_fields(
+            extra_fields, reserved_keys=ARRAY_METADATA_KEYS, node_type="array"
+        )
         array_spec = ArraySpec(
             shape=shape_parsed,
             dtype=data_type,
@@ -565,25 +616,31 @@ class ArrayV3Metadata(Metadata):
     # They require knowledge of codecs (ShardingCodec) and don't belong on a metadata DTO.
 
     @property
+    def sharding_codec(self) -> ShardingCodec | None:
+        """The array's sharding codec, or None if the array is not sharded."""
+        from zarr.codecs.sharding import ShardingCodec
+
+        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+            return self.codecs[0]
+        return None
+
+    @property
     def chunks(self) -> tuple[int, ...]:
+        if (sharding_codec := self.sharding_codec) is not None:
+            # Inner chunks are always regular, whatever the shape of the outer
+            # (shard) grid.
+            return sharding_codec.chunk_shape
         if not isinstance(self.chunk_grid, RegularChunkGridMetadata):
             msg = (
                 "The `chunks` attribute is only defined for arrays using regular chunk grids. "
                 "This array has a rectilinear chunk grid. Use `read_chunk_sizes` for general access."
             )
             raise NotImplementedError(msg)
-
-        from zarr.codecs.sharding import ShardingCodec
-
-        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
-            return self.codecs[0].chunk_shape
         return self.chunk_grid.chunk_shape
 
     @property
     def shards(self) -> tuple[int, ...] | None:
-        from zarr.codecs.sharding import ShardingCodec
-
-        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+        if self.sharding_codec is not None:
             if not isinstance(self.chunk_grid, RegularChunkGridMetadata):
                 msg = (
                     "The `shards` attribute is only defined for arrays using regular chunk grids. "
@@ -595,23 +652,36 @@ class ArrayV3Metadata(Metadata):
 
     @property
     def inner_codecs(self) -> tuple[Codec, ...]:
-        from zarr.codecs.sharding import ShardingCodec
-
-        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
-            return self.codecs[0].codecs
+        if (sharding_codec := self.sharding_codec) is not None:
+            return sharding_codec.codecs
         return self.codecs
 
     def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
+        check_storable(self)
         indent = config.get("json_indent")
         return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype, indent=indent)}
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
-        # make a copy because we are modifying the dict
-        _data = data.copy()
+    def from_dict(cls, data: dict[str, JSON], *, path: str | None = None) -> Self:
+        """Read a stored `zarr.json` array document. An invalid document that
+        `zarr.core.metadata.repair` can read is read as repaired; a reading the user
+        must act on warns, and a document the rectilinear chunks flag refuses raises,
+        naming the array at `path`."""
+        # The flag gates what the document declares, so it is checked before repairs.
+        chunk_grid = data.get("chunk_grid")
+        if isinstance(chunk_grid, Mapping) and chunk_grid.get("name") == "rectilinear":
+            try:
+                _check_rectilinear_chunks_enabled()
+            except ValueError as e:
+                if path is not None:
+                    e.add_note(f"Array {path!r}: nothing was read.")
+                raise
+        repaired, readings = repair_array_document(data, 3)
+        # a new dict, because we are modifying it
+        _data = dict(repaired)
 
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format(_data.pop("zarr_format"))
@@ -631,31 +701,21 @@ class ArrayV3Metadata(Metadata):
             raise TypeError(f"Invalid fill_value: {fill!r}") from e
 
         # check if there are extra keys
-        extra_keys = set(_data.keys()) - ARRAY_METADATA_KEYS
-        allowed_extra_fields: dict[str, AllowedExtraField] = {}
-        invalid_extra_fields = {}
-        for key in extra_keys:
-            val = _data[key]
-            if check_allowed_extra_field(val):
-                allowed_extra_fields[key] = val
-            else:
-                invalid_extra_fields[key] = val
-        if len(invalid_extra_fields) > 0:
-            msg = (
-                "Got a Zarr V3 metadata document with the following disallowed extra fields:"
-                f"{sorted(invalid_extra_fields.keys())}."
-                'Extra fields are not allowed unless they are a dict with a "must_understand" key'
-                "which is assigned the value `False`."
-            )
-            raise MetadataValidationError(msg)
+        allowed_extra_fields = parse_extra_fields(
+            {k: v for k, v in _data.items() if k not in ARRAY_METADATA_KEYS},
+            reserved_keys=ARRAY_METADATA_KEYS,
+            node_type="array",
+        )
         # TODO: replace this with a real type check!
         _data_typed = cast(ArrayMetadataJSON_V3, _data)
 
-        return cls(
+        metadata = cls(
             shape=_data_typed["shape"],
             chunk_grid=_data_typed["chunk_grid"],  # type: ignore[arg-type]
             chunk_key_encoding=_data_typed["chunk_key_encoding"],  # type: ignore[arg-type]
             codecs=_data_typed["codecs"],
+            # Attribute values are arbitrary JSON, so they have no field-specific
+            # schema to validate. `__init__` checks the outer dict via `parse_attributes`.
             attributes=_data_typed.get("attributes", {}),  # type: ignore[arg-type]
             dimension_names=_data_typed.get("dimension_names", None),
             fill_value=fill_value_parsed,
@@ -663,6 +723,7 @@ class ArrayV3Metadata(Metadata):
             extra_fields=allowed_extra_fields,
             storage_transformers=_data_typed.get("storage_transformers", ()),  # type: ignore[arg-type]
         )
+        return mark_repaired(metadata, data, readings, path)
 
     def to_dict(self) -> dict[str, JSON]:
         out_dict = super().to_dict()

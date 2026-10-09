@@ -26,6 +26,18 @@ if TYPE_CHECKING:
 logger = getLogger(__name__)
 
 
+def _copy_buffer(value: Buffer) -> Buffer:
+    """Copy `value` so the store does not retain the caller's memory.
+
+    Encoding a chunk can hand the store a zero-copy view of the user's array
+    (an uncompressed write is the common case), and unlike stores that
+    serialize on write, this one keeps whatever it is given alive in a dict.
+    Without this copy a later mutation of the user's array would rewrite
+    chunks already committed to the store.
+    """
+    return type(value).from_array_like(value.as_array_like().copy())
+
+
 class MemoryStore(Store):
     """
     Store for local memory.
@@ -42,6 +54,12 @@ class MemoryStore(Store):
     supports_writes
     supports_deletes
     supports_listing
+
+    Notes
+    -----
+    Writes copy the buffer they are given, so the store never aliases the
+    caller's memory. Buffers passed via `store_dict` are the caller's
+    responsibility and are stored as-is.
     """
 
     supports_writes: bool = True
@@ -100,7 +118,6 @@ class MemoryStore(Store):
             prototype = default_buffer_prototype()
         if not self._is_open:
             self._is_open = True
-        assert isinstance(key, str)
         try:
             value = self._store_dict[key]
             start, stop = _normalize_byte_range_index(value, byte_range)
@@ -112,12 +129,11 @@ class MemoryStore(Store):
         self._check_writable()
         if not self._is_open:
             self._is_open = True
-        assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(
                 f"MemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
             )
-        self._store_dict[key] = value
+        self._store_dict[key] = _copy_buffer(value)
 
     def delete_sync(self, key: str) -> None:
         self._check_writable()
@@ -139,7 +155,6 @@ class MemoryStore(Store):
             prototype = default_buffer_prototype()
         if not self._is_open:
             await self._open()
-        assert isinstance(key, str)
         try:
             value = self._store_dict[key]
             start, stop = _normalize_byte_range_index(value, byte_range)
@@ -168,7 +183,6 @@ class MemoryStore(Store):
         # docstring inherited
         self._check_writable()
         await self._ensure_open()
-        assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(
                 f"MemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
@@ -178,13 +192,13 @@ class MemoryStore(Store):
             buf[byte_range[0] : byte_range[1]] = value
             self._store_dict[key] = buf
         else:
-            self._store_dict[key] = value
+            self._store_dict[key] = _copy_buffer(value)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         # docstring inherited
         self._check_writable()
         await self._ensure_open()
-        self._store_dict.setdefault(key, value)
+        self._store_dict.setdefault(key, _copy_buffer(value))
 
     async def delete(self, key: str) -> None:
         # docstring inherited
@@ -219,7 +233,7 @@ class MemoryStore(Store):
             keys_unique = {
                 key.removeprefix(f"{prefix}/").split("/")[0]
                 for key in self._store_dict
-                if key.startswith(f"{prefix}/") and key != prefix
+                if key.startswith(f"{prefix}/") and key not in {prefix, f"{prefix}/"}
             }
 
         for key in keys_unique:
@@ -287,7 +301,6 @@ class GpuMemoryStore(MemoryStore):
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         # docstring inherited
         self._check_writable()
-        assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(
                 f"GpuMemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
@@ -295,6 +308,18 @@ class GpuMemoryStore(MemoryStore):
         # Convert to gpu.Buffer
         gpu_value = value if isinstance(value, gpu.Buffer) else gpu.Buffer.from_buffer(value)
         await super().set(key, gpu_value, byte_range=byte_range)
+
+    def set_sync(self, key: str, value: Buffer) -> None:
+        # docstring inherited
+        self._check_writable()
+        if not isinstance(value, Buffer):
+            raise TypeError(
+                f"GpuMemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
+        # Convert to gpu.Buffer, mirroring `set` above: every value in this store's
+        # backing dict must be a gpu.Buffer, regardless of which API wrote it.
+        gpu_value = value if isinstance(value, gpu.Buffer) else gpu.Buffer.from_buffer(value)
+        super().set_sync(key, gpu_value)
 
 
 # -----------------------------------------------------------------------------
@@ -554,6 +579,26 @@ class ManagedMemoryStore(MemoryStore):
 
     # Override MemoryStore methods to use path prefix and check process
 
+    def get_sync(
+        self,
+        key: str,
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        # docstring inherited
+        return super().get_sync(
+            _join_paths([self.path, key]), prototype=prototype, byte_range=byte_range
+        )
+
+    def set_sync(self, key: str, value: Buffer) -> None:
+        # docstring inherited
+        super().set_sync(_join_paths([self.path, key]), value)
+
+    def delete_sync(self, key: str) -> None:
+        # docstring inherited
+        super().delete_sync(_join_paths([self.path, key]))
+
     async def get(
         self,
         key: str,
@@ -565,14 +610,9 @@ class ManagedMemoryStore(MemoryStore):
             _join_paths([self.path, key]), prototype=prototype, byte_range=byte_range
         )
 
-    async def get_partial_values(
-        self,
-        prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRequest | None]],
-    ) -> list[Buffer | None]:
-        # docstring inherited
-        key_ranges = [(_join_paths([self.path, key]), byte_range) for key, byte_range in key_ranges]
-        return await super().get_partial_values(prototype, key_ranges)
+    # get_partial_values is intentionally NOT overridden here: MemoryStore.get_partial_values
+    # dispatches per-key through `self.get`, which already resolves to the override above.
+    # Re-prefixing the keys here as well would apply `self.path` twice.
 
     async def exists(self, key: str) -> bool:
         # docstring inherited

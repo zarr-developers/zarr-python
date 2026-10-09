@@ -14,6 +14,7 @@ in the following ways:
     [numcodecs.registry.register_codec](https://numcodecs.readthedocs.io/en/stable/registry.html#numcodecs.registry.register_codec).
 
 There are three types of codecs in Zarr:
+
 - array-to-array
 - array-to-bytes
 - bytes-to-bytes
@@ -50,8 +51,8 @@ Custom codecs should also implement the following methods:
 To use custom codecs in Zarr, they need to be registered using the
 [entrypoint mechanism](https://packaging.python.org/en/latest/specifications/entry-points/).
 Commonly, entrypoints are declared in the `pyproject.toml` of your package under the
-`[project.entry-points."zarr.codecs"]` section. Zarr will automatically discover and
-load all codecs registered with the entrypoint mechanism from imported modules.
+`[project.entry-points."zarr.codecs"]` section. Zarr will automatically discover
+all codecs registered via the entrypoint mechanism in installed packages.
 
 ```toml
 [project.entry-points."zarr.codecs"]
@@ -61,6 +62,13 @@ load all codecs registered with the entrypoint mechanism from imported modules.
 New codecs need to have their own unique identifier. To avoid naming collisions, it is
 strongly recommended to prefix the codec identifier with a unique name. For example,
 the codecs from `numcodecs` are prefixed with `numcodecs.`, e.g. `numcodecs.delta`.
+
+If someone opens an array that uses your codec without your package installed, Zarr raises
+[`zarr.errors.UnknownCodecError`][] explaining how to register an implementation. Zarr also
+keeps a small table of codec names and the published packages that provide them, and names
+those packages in that error. Once your package is on PyPI, please open a pull request adding
+it to the codec-package tables in `src/zarr/registry.py`, so that users get a message telling them
+exactly what to install.
 
 !!! note
     Note that the extension mechanism for the Zarr format 3 is still under development.
@@ -74,7 +82,8 @@ implementation.
 
 ## Custom stores
 
-Coming soon.
+Custom stores can be created by implementing the [`zarr.abc.store.Store`][] interface.
+See [developing custom stores](storage.md#developing-custom-stores) for more information.
 
 ## Custom array buffers
 
@@ -82,7 +91,16 @@ Zarr-python provides control over where and how arrays are stored in memory thro
 [`zarr.abc.buffer.Buffer`][]. Currently both CPU (the default) and GPU implementations are
 provided (see [Using GPUs with Zarr](gpu.md) for more information). You can implement your own buffer
 classes by implementing the interface defined in [`zarr.abc.buffer.BufferPrototype`][].
+Like codecs, custom buffer implementations can be registered via entrypoints, using the
+`zarr.buffer` and `zarr.ndbuffer` entrypoint groups.
+
+## Custom data types
+
+Zarr supports user-defined data types. See the
+[data types documentation](data_types.md) for an explanation of how Zarr Python
+models data types and how to write your own, and the
+[custom data type example](examples/custom_dtype.md) for a complete worked example.
 
 ## Other extensions
 
-In the future, Zarr will support writing custom data types and chunk grids.
+In the future, Zarr will support writing custom chunk grids.

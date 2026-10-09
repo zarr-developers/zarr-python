@@ -13,15 +13,14 @@ from zarr.core.common import (
     NamedConfig,
     parse_named_configuration,
 )
+from zarr.core.json_parse import parse_field
 from zarr.registry import get_chunk_key_encoding_class, register_chunk_key_encoding
 
 SeparatorLiteral = Literal[".", "/"]
 
 
 def parse_separator(data: JSON) -> SeparatorLiteral:
-    if data not in (".", "/"):
-        raise ValueError(f"Expected an '.' or '/' separator. Got {data} instead.")
-    return cast("SeparatorLiteral", data)
+    return cast("SeparatorLiteral", parse_field(data, Literal[".", "/"], "separator"))
 
 
 class ChunkKeyEncodingParams(TypedDict):
@@ -79,7 +78,11 @@ class DefaultChunkKeyEncoding(ChunkKeyEncoding):
     def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
         if chunk_key == "c":
             return ()
-        return tuple(map(int, chunk_key[1:].split(self.separator)))
+        # Strip the "c<sep>" prefix (e.g. "c/" or "c.") before splitting.
+        prefix = "c" + self.separator
+        if chunk_key.startswith(prefix):
+            return tuple(map(int, chunk_key[len(prefix) :].split(self.separator)))
+        raise ValueError(f"Invalid chunk key for default encoding: {chunk_key!r}")
 
     def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
         return self.separator.join(map(str, ("c",) + chunk_coords))

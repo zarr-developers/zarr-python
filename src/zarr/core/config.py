@@ -33,6 +33,8 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from donfig import Config as DConfig
 
+from zarr.core.json_parse import parse_field
+
 if TYPE_CHECKING:
     from donfig.config_obj import ConfigSet
 
@@ -106,8 +108,16 @@ config = Config(
             "threading": {"max_workers": None},
             "json_indent": 2,
             "codec_pipeline": {
+                # FusedCodecPipeline is the faster synchronous pipeline, but it stays
+                # opt-in for now so behavior is unchanged for existing users. Early
+                # adopters can switch with
+                #   zarr.config.set(
+                #       {"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}
+                #   )
                 "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                 "batch_size": 1,
+                # Only read by FusedCodecPipeline (BatchedCodecPipeline ignores it).
+                "max_workers": None,
             },
             "codecs": {
                 "blosc": "zarr.codecs.blosc.BloscCodec",
@@ -151,7 +161,4 @@ config = Config(
 
 
 def parse_indexing_order(data: Any) -> Literal["C", "F"]:
-    if data in ("C", "F"):
-        return cast("Literal['C', 'F']", data)
-    msg = f"Expected one of ('C', 'F'), got {data} instead."
-    raise ValueError(msg)
+    return cast("Literal['C', 'F']", parse_field(data, Literal["C", "F"], "order"))

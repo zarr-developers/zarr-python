@@ -14,13 +14,13 @@ Complete reference documentation for the Zarr-Python API.
 
 - **[Array](array.md)** - The main Zarr array class for N-dimensional data
 - **[Group](group.md)** - Hierarchical organization of arrays and subgroups
-- **[Create](create.md)** - Functions for creating new arrays and groups
-- **[Open](open.md)** - Opening existing Zarr stores and arrays
+- **[create_array](functions/create_array.md)** and **[create_group](functions/create_group.md)** - Creating new arrays and groups
+- **[open](functions/open.md)**, **[open_array](functions/open_array.md)**, and **[open_group](functions/open_group.md)** - Opening existing Zarr stores, arrays, and groups
 
 ### Data Operations
 
-- **[Load](load.md)** - Loading data from Zarr stores
-- **[Save](save.md)** - Saving data to Zarr format
+- **[load](functions/load.md)** - Loading data from Zarr stores
+- **[save](functions/save.md)** - Saving data to Zarr format
 
 ### Data Types and Configuration
 

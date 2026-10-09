@@ -36,14 +36,17 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
 
 
-json_float_v2_roundtrip_cases: tuple[tuple[JSONFloatV2, float | np.floating[Any]], ...] = (
-    ("Infinity", float("inf")),
-    ("Infinity", np.inf),
-    ("-Infinity", float("-inf")),
-    ("-Infinity", -np.inf),
-    ("NaN", float("nan")),
-    ("NaN", np.nan),
-    (1.0, 1.0),
+# Each special value is tested as both a Python float and a numpy scalar. The explicit
+# ids are load-bearing: np.float64("inf") stringifies identically to float("inf"), so
+# without them these parameter sets would produce duplicate test ids.
+json_float_v2_roundtrip_cases: tuple[Any, ...] = (
+    pytest.param("Infinity", float("inf"), id="Infinity-float"),
+    pytest.param("Infinity", np.float64("inf"), id="Infinity-float64"),
+    pytest.param("-Infinity", float("-inf"), id="-Infinity-float"),
+    pytest.param("-Infinity", np.float64("-inf"), id="-Infinity-float64"),
+    pytest.param("NaN", float("nan"), id="NaN-float"),
+    pytest.param("NaN", np.float64("nan"), id="NaN-float64"),
+    pytest.param(1.0, 1.0, id="1.0-1.0"),
 )
 
 json_float_v3_cases = json_float_v2_roundtrip_cases

@@ -4,12 +4,20 @@ v2-compatibility chunk key encoding (Zarr v3 core spec).
 Intended only to allow existing v2 arrays to be converted to v3 without
 having to rename chunks. Not recommended for new arrays.
 
+Naming note: these are Zarr **v3** types. The leading `V2` in
+`V2ChunkKeyEncodingMetadata` (and friends) is the encoding's registered
+*entity name* (`"v2"`), not the format-version marker that `ZarrV2...`
+names carry — this package's version-prefixed names always spell it
+`ZarrV2` / `ZarrV3`.
+
 See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#chunk-key-encoding
 """
 
 from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
+
+from zarr_metadata.v3._definition import ChunkKeyEncodingDefinition
 
 V2_CHUNK_KEY_ENCODING_NAME: Final = "v2"
 """The `name` field value of the v2 chunk key encoding."""
@@ -27,20 +35,22 @@ V2_CHUNK_KEY_ENCODING_SEPARATOR: Final = ("/", ".")
 """Tuple of permitted values for the `separator` field of the v2 chunk key encoding."""
 
 
-class V2ChunkKeyEncodingConfiguration(TypedDict):
+class V2ChunkKeyEncodingConfiguration(TypedDict, closed=True):
     """Configuration for the v2 chunk key encoding.
 
     `separator` is optional and defaults to `"."` per spec.
+      https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-key-encodings/v2/index.rst#L27-L29
     """
 
     separator: NotRequired[V2ChunkKeyEncodingSeparator]
 
 
-class V2ChunkKeyEncodingObject(TypedDict):
+class V2ChunkKeyEncodingObject(TypedDict, closed=True):
     """v2-compatibility chunk key encoding metadata in object form."""
 
     name: V2ChunkKeyEncodingName
     configuration: NotRequired[V2ChunkKeyEncodingConfiguration]
+    must_understand: NotRequired[bool]
 
 
 V2ChunkKeyEncodingMetadata = V2ChunkKeyEncodingObject | V2ChunkKeyEncodingName
@@ -50,7 +60,14 @@ The configuration has no required keys (`separator` defaults to `"."`),
 so the short-hand-name form is permitted in addition to the object form.
 """
 
+V2_CHUNK_KEY_ENCODING: Final = ChunkKeyEncodingDefinition(
+    name=V2_CHUNK_KEY_ENCODING_NAME, configuration=V2ChunkKeyEncodingConfiguration
+)
+"""The `v2` chunk key encoding; its `separator` is typed, so it has no rule of its own."""
+
+
 __all__ = [
+    "V2_CHUNK_KEY_ENCODING",
     "V2_CHUNK_KEY_ENCODING_NAME",
     "V2_CHUNK_KEY_ENCODING_SEPARATOR",
     "V2ChunkKeyEncodingConfiguration",
