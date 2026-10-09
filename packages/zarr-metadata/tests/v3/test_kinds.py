@@ -12,6 +12,7 @@ from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.v3._definition import (
+    DataTypeDefinition,
     WithFillValue,
     as_kind,
     field_json_schema,
@@ -46,7 +47,7 @@ class MyCodec(CodecDefinition[Any]):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class Tag(Definition[C], kind=True):
+class Tag(Definition[C], kind=True, format=3):
     """A kind of its own, filed apart from every v3 kind."""
 
     label: ClassVar[str] = "tag"
@@ -97,7 +98,7 @@ Loc = tuple[str | int, ...]
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class Flat(Definition[C], kind=True):
+class Flat(Definition[C], kind=True, format=3):
     """A kind whose format writes the parameters beside the name: `{"id": name, **parameters}`."""
 
     label: ClassVar[str] = "flat"
@@ -166,7 +167,7 @@ def test_a_kind_reads_the_envelope_its_format_writes(
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class Typed(WithFillValue[C], kind=True):
+class Typed(WithFillValue[C], kind=True, format=3):
     """A kind of another format whose definitions take a fill value."""
 
     label: ClassVar[str] = "typed"
@@ -208,3 +209,54 @@ def test_a_v3_value_that_is_no_field_is_shown_in_the_message() -> None:
         ),
     )
     assert any(p.message.endswith("got 3") for p in problems), [p.message for p in problems]
+
+
+def test_error_a_kind_declares_its_format() -> None:
+    """A kind says which Zarr format its fields belong to, `format=2` or `format=3`, in the class header beside `kind=True`: a kind declared without one, or with a format that is neither, is a `TypeError` at class creation."""
+    with pytest.raises(TypeError, match="format"):
+        type("NoFormat", (Definition,), {}, kind=True)
+    with pytest.raises(TypeError, match="format"):
+        type("WrongFormat", (Definition,), {}, kind=True, format=4)
+    with pytest.raises(TypeError, match="format"):
+        type("FormatOnADefinition", (CodecDefinition,), {}, format=3)
+
+
+TAG = Tag(name="tag", configuration=EmptyConfiguration)
+
+
+def test_a_scope_has_the_format_of_the_kinds_it_files() -> None:
+    """A scope's `format` is the one format of every kind it files: 3 for `CORE`, 2 for `CORE_V2`, and None for a scope that files nothing, which reads in either format."""
+    from zarr_metadata.v2.definition import CORE_V2
+    from zarr_metadata.v3.definition import CORE
+
+    assert CORE.format == 3
+    assert CORE_V2.format == 2
+    assert Context.of().format is None
+    assert CORE.extended_with(TAG).format == 3
+
+
+def test_error_a_scope_files_one_format() -> None:
+    """Definitions of two formats cannot share a scope: `Context.of`, `extended_with` and `joined` each raise `TypeError` naming both formats."""
+    from zarr_metadata.v2.data_type.scalar import UINT_V2
+    from zarr_metadata.v2.definition import CORE_V2
+    from zarr_metadata.v3.definition import CORE
+
+    with pytest.raises(TypeError, match="format"):
+        Context.of(TAG, UINT_V2)
+    with pytest.raises(TypeError, match="format"):
+        CORE.extended_with(UINT_V2)
+    with pytest.raises(TypeError, match="format"):
+        Context.joined(CORE, CORE_V2)
+
+
+def test_error_a_field_is_read_in_a_scope_of_its_format() -> None:
+    """`resolve` refuses a scope of another format than the kind's with `TypeError`, and reads in a scope of no format, which claims nothing."""
+    from zarr_metadata.v2.definition import CORE_V2, ZarrV2DataTypeDefinition
+    from zarr_metadata.v3.definition import CORE
+
+    with pytest.raises(TypeError, match="format"):
+        resolve("<u1", ZarrV2DataTypeDefinition, CORE)
+    with pytest.raises(TypeError, match="format"):
+        resolve("int32", DataTypeDefinition, CORE_V2)
+    field, _ = resolve("<u1", ZarrV2DataTypeDefinition, Context.of())
+    assert isinstance(field, UnclaimedField)

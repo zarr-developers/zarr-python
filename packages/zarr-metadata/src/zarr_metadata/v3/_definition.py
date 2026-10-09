@@ -213,11 +213,13 @@ class Definition(Generic[C]):
     """
 
     _is_kind: ClassVar[bool] = False
-    """Whether this class is a kind, what a scope files definitions by: set by `class Kind(Definition, kind=True)`.
+    """Whether this class is a kind, what a scope files definitions by: set by `class Kind(Definition, kind=True, format=3)`.
 
     Read from a class's own namespace, never inherited: a subclass of a
     kind is a definition of that kind, and declares no `kind`.
     """
+    _format: ClassVar[Literal[2, 3] | None] = None
+    """The Zarr format whose documents hold fields of this kind, declared with the kind and inherited by its definitions: what a scope reads documents of."""
     label: ClassVar[str] = "definition"
     """The kind as a message names it: "codec"."""
     field_aliases: ClassVar[tuple[TypeAliasType, ...]] = ()
@@ -290,8 +292,10 @@ class Definition(Generic[C]):
         """Where the name of a field at `loc`, written as an object, sits: under `name` for v3."""
         return (*loc, "name")
 
-    def __init_subclass__(cls, *, kind: bool = False, **kwargs: object) -> None:
-        """Files a subclass: `kind=True` declares a kind, as `typing.Protocol` and SQLAlchemy's `__abstract__` mark a class and not its subclasses."""
+    def __init_subclass__(
+        cls, *, kind: bool = False, format: Literal[2, 3] | None = None, **kwargs: object
+    ) -> None:
+        """Files a subclass: `kind=True` declares a kind, of the Zarr `format` whose documents hold its fields, as `typing.Protocol` and SQLAlchemy's `__abstract__` mark a class and not its subclasses."""
         # Named, not `super()`: a dataclass with slots is rebuilt, and the
         # cell a bare `super()` reads names the class that was thrown away.
         super(Definition, cls).__init_subclass__(**kwargs)
@@ -300,7 +304,17 @@ class Definition(Generic[C]):
         # class built last is the one a document is read with: the mark is
         # kept in the namespace, and the aliases are filed last.
         if kind:
+            if format not in (2, 3):
+                msg = (
+                    f"{cls.__name__}: a kind declares the Zarr format its fields belong to, "
+                    f"format=2 or format=3, got {format!r}"
+                )
+                raise TypeError(msg)
             cls._is_kind = True
+            cls._format = format
+        elif format is not None:
+            msg = f"{cls.__name__}: only a kind declares a format; a definition of a kind has its kind's"
+            raise TypeError(msg)
         for alias in cls.__dict__.get("field_aliases", ()):
             _FIELD_KINDS[alias] = cls
 
@@ -456,7 +470,7 @@ class WithFillValue(Definition[C]):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class DataTypeDefinition(WithFillValue[C], kind=True):
+class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
     """A data type, and the fill value an array of it takes.
 
     `fill_value` is the JSON shape of a fill value -- `Int8FillValue`, an
@@ -533,7 +547,7 @@ def _fill_value_parser(annotation: object) -> Parser:
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class ChunkGridDefinition(Definition[C], kind=True):
+class ChunkGridDefinition(Definition[C], kind=True, format=3):
     """A chunk grid, and the arrays it fits.
 
     `shape_rules` is what the spec disallows in a grid of this
@@ -561,7 +575,7 @@ class ChunkGridDefinition(Definition[C], kind=True):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class ChunkKeyEncodingDefinition(Definition[C], kind=True):
+class ChunkKeyEncodingDefinition(Definition[C], kind=True, format=3):
     """A chunk key encoding."""
 
     label: ClassVar[str] = "chunk key encoding"
@@ -587,7 +601,7 @@ _UNASKED: Final[Mapping[CodecKind, tuple[str, ...]]] = {
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class CodecDefinition(Definition[C], kind=True):
+class CodecDefinition(Definition[C], kind=True, format=3):
     """A codec: what it does to what it is handed, and whether the size of what it gives out is static.
 
     A codec handed an array -- array -> array, array -> bytes -- says what
@@ -645,7 +659,7 @@ class CodecDefinition(Definition[C], kind=True):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class StorageTransformerDefinition(Definition[C], kind=True):
+class StorageTransformerDefinition(Definition[C], kind=True, format=3):
     """A storage transformer."""
 
     label: ClassVar[str] = "storage transformer"
@@ -668,6 +682,15 @@ def kind_of(definition: Definition[Any]) -> type[Definition[Any]] | None:
     return next((base for base in bases if _declares_kind(base)), None)
 
 
+def format_of(kind: type[Definition[Any]]) -> Literal[2, 3]:
+    """The Zarr format whose documents hold fields of `kind`, as the kind declared it; `TypeError` for a class that is no kind."""
+    found = as_kind(kind)._format  # pyright: ignore[reportPrivateUsage]
+    if found is None:  # a kind cannot be declared without one
+        msg = f"{kind!r} declares no format"
+        raise TypeError(msg)
+    return found
+
+
 def _declares_kind(cls: type[object]) -> TypeGuard[type[Definition[Any]]]:
     """Whether `cls` itself was declared `kind=True`: the mark is read from its own namespace, which a subclass does not share."""
     return vars(cls).get("_is_kind") is True and issubclass(cls, Definition)
@@ -687,7 +710,7 @@ def as_kind(kind: object) -> type[Definition[Any]]:
     names = ", ".join(known.__name__ for known in KINDS)
     msg = (
         f"{kind!r} is not a kind of metadata; read a field as one of {names}, or as a "
-        "subclass of Definition declared with kind=True"
+        "subclass of Definition declared with kind=True and its format"
     )
     raise TypeError(msg)
 
@@ -1668,6 +1691,12 @@ def resolve(
     or without type arguments; anything else is a `TypeError`.
     """
     asked = as_kind(kind)
+    if context.format is not None and context.format != format_of(asked):
+        msg = (
+            f"a {asked.label} is a field of a Zarr v{format_of(asked)} document, read in a scope "
+            f"of that format or of none, got a v{context.format} scope"
+        )
+        raise TypeError(msg)
     refined, problems = refine_json(data, loc)
     if len(problems) != 0:
         # Not JSON, so not read; its name, if it has one, still says what

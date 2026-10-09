@@ -8,7 +8,8 @@ one per id this package models. `CORE_V2` is that scope. Read one field
 in it with `resolve_dtype_v2` or `resolve_codec_v2`, which give `AcceptedField`,
 `UnclaimedField` or `RefusedField` as `zarr_metadata.v3.definition.resolve` does
 for a v3 field; the scope algebra -- `Context.of`, `extended_with`,
-`joined`, `claimant` -- is the same `Context`.
+`joined`, `claimant` -- is the same `Context`, of format 2: a v2 reader
+refuses a v3 scope with `TypeError`, and `ZarrV2Context` is its type.
 
 A dtype reads as its family, the typestr's byte order, size and unit its
 configuration: `<f4` is `float` with `{"byteorder": "<", "itemsize": 4}`,
@@ -38,7 +39,7 @@ from zarr_metadata.v3._definition import (
     fill_value_problems,
     resolve,
 )
-from zarr_metadata.v3._registry import Context
+from zarr_metadata.v3._registry import Context, ZarrV2Context, scoped
 from zarr_metadata.v3._scope import (
     ClaimKey,
     Claims,
@@ -51,22 +52,22 @@ if TYPE_CHECKING:
     from zarr_metadata._typed_json import Loc
     from zarr_metadata.v3._definition import Problems
 
-CORE_V2: Final = Context.of(*V2_DATA_TYPES, *V2_CODECS)
+CORE_V2: Final[ZarrV2Context] = Context.of(*V2_DATA_TYPES, *V2_CODECS)
 """The data types zarr-python 2.x writes and the codecs numcodecs 0.16 configures."""
 
 
 def resolve_dtype_v2(
-    value: object, context: Context | None = None, loc: Loc = ()
+    value: object, context: ZarrV2Context | None = None, loc: Loc = ()
 ) -> tuple[ResolvedField[ZarrV2DataTypeDefinition[Any]], Problems]:
     """`value`, a v2 `dtype`, read in `context`, `CORE_V2` when none is given: what the scope made of it, and every problem, each prefixed with `loc`."""
-    return resolve(value, ZarrV2DataTypeDefinition, CORE_V2 if context is None else context, loc)
+    return resolve(value, ZarrV2DataTypeDefinition, scoped(context, CORE_V2), loc)
 
 
 def resolve_codec_v2(
-    value: object, context: Context | None = None, loc: Loc = ()
+    value: object, context: ZarrV2Context | None = None, loc: Loc = ()
 ) -> tuple[ResolvedField[ZarrV2CodecDefinition[Any]], Problems]:
     """`value`, a v2 `compressor` or one of its `filters`, read in `context`, `CORE_V2` when none is given: what the scope made of it, and every problem, each prefixed with `loc`."""
-    return resolve(value, ZarrV2CodecDefinition, CORE_V2 if context is None else context, loc)
+    return resolve(value, ZarrV2CodecDefinition, scoped(context, CORE_V2), loc)
 
 
 __all__ = [
@@ -84,6 +85,7 @@ __all__ = [
     "ScopeConflictError",
     "UnclaimedField",
     "ZarrV2CodecDefinition",
+    "ZarrV2Context",
     "ZarrV2DataTypeDefinition",
     "ZarrV2DataTypeField",
     "canonical_fill_value",

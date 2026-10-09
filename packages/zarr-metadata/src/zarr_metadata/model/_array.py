@@ -59,7 +59,13 @@ from zarr_metadata.v3._definition import (
     held,
     spelled_canonically,
 )
-from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
+from zarr_metadata.v3._registry import (
+    CORE_AND_EXTENSIONS,
+    Context,
+    ZarrV2Context,
+    ZarrV3Context,
+    scoped,
+)
 from zarr_metadata.v3._scope import Claims, Conflict, ScopeConflictError, claim_key, claims_of
 from zarr_metadata.v3._scope import refines as refines_field
 from zarr_metadata.v3.array import ZARR_V3_ARRAY_METADATA_STORE_KEY, ZarrV3ExtensionField
@@ -147,8 +153,8 @@ class ZarrV3ArrayMetadata(Keyed):
         """What the reading claimed of each name the document writes, keyed as the scope files it."""
         return self._claims
 
-    def __init__(self, document: object, context: Context | None = None) -> None:
-        scope = CORE_AND_EXTENSIONS if context is None else context
+    def __init__(self, document: object, context: ZarrV3Context | None = None) -> None:
+        scope = scoped(context, CORE_AND_EXTENSIONS)
         reading, members = read_array_v3(document, scope)
         if members is None:
             raise MetadataValidationError(reading.problems)
@@ -346,18 +352,18 @@ class ZarrV3ArrayMetadata(Keyed):
                 del document[key]
         return type(self)(document, context=self._context)
 
-    def with_context(self, context: Context | None = None) -> ZarrV3ArrayMetadata:
+    def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3ArrayMetadata:
         """This document read in `context`, whatever that changes: a gain, a loss, a conflict.
 
         `MetadataValidationError` when the document has a problem there.
         The reading is kept when `context` reads every claim identically.
         """
-        scope = CORE_AND_EXTENSIONS if context is None else context
+        scope = scoped(context, CORE_AND_EXTENSIONS)
         if scope.disagreements(self._claims).agrees:
             return self._of(self._document, scope, self._reading, self._members)
         return type(self)(self._document, context=scope)
 
-    def refined_in(self, context: Context | None = None) -> ZarrV3ArrayMetadata:
+    def refined_in(self, context: ZarrV3Context | None = None) -> ZarrV3ArrayMetadata:
         """This document read in `context`, which may claim what this scope left unclaimed and contradict nothing.
 
         `ScopeConflictError` naming each name `context` reads by another
@@ -367,7 +373,7 @@ class ZarrV3ArrayMetadata(Keyed):
         claims refuses what was written under it: a gain can surface a
         problem. `with_context` reads the document in any scope.
         """
-        scope = CORE_AND_EXTENSIONS if context is None else context
+        scope = scoped(context, CORE_AND_EXTENSIONS)
         found = scope.disagreements(self._claims)
         if len(found.conflicts) != 0:
             raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
@@ -400,7 +406,7 @@ class ZarrV3ArrayMetadata(Keyed):
     def create_default(
         cls,
         *,
-        context: Context | None = None,
+        context: ZarrV3Context | None = None,
         **overrides: Unpack[ZarrV3ArrayMetadataJSONPartial],
     ) -> ZarrV3ArrayMetadata:
         """A scalar `uint8` array, or the one `overrides`, members of its document, make of it, read in `context`.
@@ -435,7 +441,9 @@ class ZarrV3ArrayMetadata(Keyed):
         return cls({**document, **overrides}, context=context)
 
     @classmethod
-    def from_json(cls, data: object, *, context: Context | None = None) -> ZarrV3ArrayMetadata:
+    def from_json(
+        cls, data: object, *, context: ZarrV3Context | None = None
+    ) -> ZarrV3ArrayMetadata:
         """The model of `data`, a v3 array document read in `context`.
 
         `MetadataValidationError` with every problem the read finds.
@@ -446,7 +454,7 @@ class ZarrV3ArrayMetadata(Keyed):
 
     @classmethod
     def from_key_value(
-        cls, mapping: Mapping[StoreKey, bytes], *, context: Context | None = None
+        cls, mapping: Mapping[StoreKey, bytes], *, context: ZarrV3Context | None = None
     ) -> ZarrV3ArrayMetadata:
         """The model of the array document at `zarr.json` in `mapping`, read in `context`.
 
@@ -471,7 +479,7 @@ def located_conflicts(
 
 
 def read_array_metadata_v3(
-    value: object, *, context: Context | None = None
+    value: object, *, context: ZarrV3Context | None = None
 ) -> ZarrV3ArrayMetadataReading:
     """`value`, a v3 array document, as `context` read it, whatever it holds.
 
@@ -484,7 +492,7 @@ def read_array_metadata_v3(
     walk over its `fields()`. A value that is not an object holds no
     field.
     """
-    scope = CORE_AND_EXTENSIONS if context is None else context
+    scope = scoped(context, CORE_AND_EXTENSIONS)
     reading, members = read_array_v3(value, scope)
     if members is None:
         return reading
@@ -494,7 +502,7 @@ def read_array_metadata_v3(
 
 
 def read_array_metadata_v2(
-    value: object, *, context: Context | None = None
+    value: object, *, context: ZarrV2Context | None = None
 ) -> ZarrV2ArrayMetadataReading:
     """`value`, a v2 array document, as `context` read it, `CORE_V2` when none is given, whatever it holds.
 
@@ -504,7 +512,7 @@ def read_array_metadata_v2(
     `validate_array_metadata_v2` finds, and, when there is none, the
     document's model.
     """
-    scope = CORE_V2 if context is None else context
+    scope = scoped(context, CORE_V2)
     reading, members = read_array_v2(value, scope)
     if members is None:
         return reading
@@ -563,8 +571,8 @@ class ZarrV2ArrayMetadata(Keyed):
         """What the reading claimed of each typestr and codec id the document writes, keyed as the scope files them."""
         return self._claims
 
-    def __init__(self, document: object, context: Context | None = None) -> None:
-        scope = CORE_V2 if context is None else context
+    def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
+        scope = scoped(context, CORE_V2)
         reading, members = read_array_v2(document, scope)
         if members is None:
             raise MetadataValidationError(reading.problems)
@@ -768,18 +776,18 @@ class ZarrV2ArrayMetadata(Keyed):
                 del document[key]
         return type(self)(document, context=self._context)
 
-    def with_context(self, context: Context | None = None) -> ZarrV2ArrayMetadata:
+    def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2ArrayMetadata:
         """This document read in `context`, whatever that changes: a gain, a loss, a conflict.
 
         `MetadataValidationError` when the document has a problem there.
         The reading is kept when `context` reads every claim identically.
         """
-        scope = CORE_V2 if context is None else context
+        scope = scoped(context, CORE_V2)
         if scope.disagreements(self._claims).agrees:
             return self._of(self._document, scope, self._reading, self._members)
         return type(self)(self._document, context=scope)
 
-    def refined_in(self, context: Context | None = None) -> ZarrV2ArrayMetadata:
+    def refined_in(self, context: ZarrV2Context | None = None) -> ZarrV2ArrayMetadata:
         """This document read in `context`, which may claim what this scope left unclaimed and contradict nothing.
 
         `ScopeConflictError` naming each typestr or id `context` reads by
@@ -787,7 +795,7 @@ class ZarrV2ArrayMetadata(Keyed):
         and where each sits in the document. `MetadataValidationError`
         when a definition `context` claims refuses what was written.
         """
-        scope = CORE_V2 if context is None else context
+        scope = scoped(context, CORE_V2)
         found = scope.disagreements(self._claims)
         if len(found.conflicts) != 0:
             raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
@@ -818,7 +826,7 @@ class ZarrV2ArrayMetadata(Keyed):
 
     @classmethod
     def create_default(
-        cls, *, context: Context | None = None, **overrides: Unpack[ZarrV2ArrayMetadataUpdate]
+        cls, *, context: ZarrV2Context | None = None, **overrides: Unpack[ZarrV2ArrayMetadataUpdate]
     ) -> ZarrV2ArrayMetadata:
         """A scalar `|u1` array, or the one `overrides`, members of its document, make of it, read in `context`.
 
@@ -854,7 +862,9 @@ class ZarrV2ArrayMetadata(Keyed):
         return cls(merged, context=context)
 
     @classmethod
-    def from_json(cls, data: object, *, context: Context | None = None) -> ZarrV2ArrayMetadata:
+    def from_json(
+        cls, data: object, *, context: ZarrV2Context | None = None
+    ) -> ZarrV2ArrayMetadata:
         """The model of `data`, a v2 array document with its attributes under `attributes`, read in `context`.
 
         `MetadataValidationError` with every problem the read finds.
@@ -865,7 +875,7 @@ class ZarrV2ArrayMetadata(Keyed):
 
     @classmethod
     def from_key_value(
-        cls, mapping: Mapping[StoreKey, bytes], *, context: Context | None = None
+        cls, mapping: Mapping[StoreKey, bytes], *, context: ZarrV2Context | None = None
     ) -> ZarrV2ArrayMetadata:
         """The model of the array at `.zarray` in `mapping`, with the attributes at `.zattrs` when there is one, read in `context`.
 

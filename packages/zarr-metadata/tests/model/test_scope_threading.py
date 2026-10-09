@@ -126,3 +126,14 @@ def test_the_json_schema_is_written_in_the_scope_it_is_given() -> None:
     """`node_metadata_json_schema_v3` takes `None` for the default scope, and writes a different schema for an empty one."""
     assert zm.node_metadata_json_schema_v3(context=None) == zm.node_metadata_json_schema_v3()
     assert zm.node_metadata_json_schema_v3(context=EMPTY) != zm.node_metadata_json_schema_v3()
+
+
+@pytest.mark.parametrize("read", ENTRY_POINTS.values(), ids=ENTRY_POINTS.keys())
+def test_error_every_entry_point_refuses_a_scope_of_another_format(
+    read: Callable[..., object],
+) -> None:
+    """A v3 entry point given a v2 scope raises `TypeError`: a scope reads documents of one format, and a v2 scope claims nothing a v3 document writes."""
+    from zarr_metadata.v2.definition import CORE_V2
+
+    with pytest.raises(TypeError, match="format"):
+        read(context=CORE_V2)

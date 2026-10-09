@@ -83,7 +83,13 @@ from zarr_metadata.v3._definition import (
     resolve,
 )
 from zarr_metadata.v3._pipeline import Stage, read_pipeline
-from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
+from zarr_metadata.v3._registry import (
+    CORE_AND_EXTENSIONS,
+    Context,
+    ZarrV2Context,
+    ZarrV3Context,
+    scoped,
+)
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
@@ -638,7 +644,7 @@ def read_array_v3(
 
 
 def validate_array_metadata_v3(
-    value: object, *, context: Context | None = None
+    value: object, *, context: ZarrV3Context | None = None
 ) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not a valid v3 array document.
 
@@ -660,15 +666,15 @@ def validate_array_metadata_v3(
     reports as `must_understand_fields`. These are the `problems` of
     `read_array_metadata_v3`, which holds what was read to find them.
     """
-    scope = CORE_AND_EXTENSIONS if context is None else context
+    scope = scoped(context, CORE_AND_EXTENSIONS)
     return read_array_v3(value, scope)[0].problems
 
 
 def is_array_metadata_v3(
-    value: object, *, context: Context | None = None
+    value: object, *, context: ZarrV3Context | None = None
 ) -> TypeGuard[ZarrV3ArrayMetadataJSON]:
     """Whether `value` is a v3 array document `validate_array_metadata_v3` finds nothing wrong with, written with tuples."""
-    scope = CORE_AND_EXTENSIONS if context is None else context
+    scope = scoped(context, CORE_AND_EXTENSIONS)
     return (
         _is_canonical_json(value, finite=False)
         and not validate_array_metadata_v3(value, context=scope)
@@ -677,10 +683,10 @@ def is_array_metadata_v3(
 
 
 def parse_array_metadata_v3(
-    value: object, *, context: Context | None = None
+    value: object, *, context: ZarrV3Context | None = None
 ) -> ZarrV3ArrayMetadataJSON:
     """Return `value` as `ZarrV3ArrayMetadataJSON`, or raise `MetadataValidationError`."""
-    scope = CORE_AND_EXTENSIONS if context is None else context
+    scope = scoped(context, CORE_AND_EXTENSIONS)
     problems = validate_array_metadata_v3(value, context=scope)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
@@ -797,7 +803,7 @@ def read_array_v2(
 
 
 def validate_array_metadata_v2(
-    value: object, *, context: Context | None = None
+    value: object, *, context: ZarrV2Context | None = None
 ) -> tuple[ValidationProblem, ...]:
     """Every reason `value` is not a valid v2 array document, read in `context`, `CORE_V2` when none is given.
 
@@ -805,11 +811,11 @@ def validate_array_metadata_v2(
     codec the scope refuses is a problem, one it does not claim is not;
     `fill_value` is judged by the dtype the scope read.
     """
-    return read_array_v2(value, CORE_V2 if context is None else context)[0].problems
+    return read_array_v2(value, scoped(context, CORE_V2))[0].problems
 
 
 def is_array_metadata_v2(
-    value: object, *, context: Context | None = None
+    value: object, *, context: ZarrV2Context | None = None
 ) -> TypeGuard[ZarrV2ArrayMetadataJSON]:
     """Whether `value` is a valid v2 array metadata document, read in `context`, `CORE_V2` when none is given."""
     return (
@@ -820,7 +826,7 @@ def is_array_metadata_v2(
 
 
 def parse_array_metadata_v2(
-    value: object, *, context: Context | None = None
+    value: object, *, context: ZarrV2Context | None = None
 ) -> ZarrV2ArrayMetadataJSON:
     """`value` as `ZarrV2ArrayMetadataJSON`, read in `context`, `CORE_V2` when none is given; `MetadataValidationError` with every problem."""
     problems = validate_array_metadata_v2(value, context=context)
@@ -830,7 +836,7 @@ def parse_array_metadata_v2(
 
 
 def validate_group_metadata_v2(
-    value: object, *, context: Context | None = None
+    value: object, *, context: ZarrV2Context | None = None
 ) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not a structurally-valid v2 group doc.
 
@@ -838,6 +844,7 @@ def validate_group_metadata_v2(
     optional `attributes` mapping folded in from `.zattrs`. A group holds
     no field a scope reads; `context` is taken as every v2 reader takes it.
     """
+    scoped(context, CORE_V2)
     if not is_object(value):
         return not_an_object(value)
     doc = value
@@ -850,7 +857,7 @@ def validate_group_metadata_v2(
 
 
 def is_group_metadata_v2(
-    value: object, *, context: Context | None = None
+    value: object, *, context: ZarrV2Context | None = None
 ) -> TypeGuard[ZarrV2GroupMetadataJSON]:
     """Whether `value` is a structurally-valid v2 group metadata document; `context` is taken as every v2 reader takes it."""
     return _is_canonical_json(value, finite=False) and not validate_group_metadata_v2(
@@ -859,7 +866,7 @@ def is_group_metadata_v2(
 
 
 def parse_group_metadata_v2(
-    value: object, *, context: Context | None = None
+    value: object, *, context: ZarrV2Context | None = None
 ) -> ZarrV2GroupMetadataJSON:
     """`value` narrowed to `ZarrV2GroupMetadataJSON`, or `MetadataValidationError`; `context` is taken as every v2 reader takes it."""
     problems = validate_group_metadata_v2(value, context=context)

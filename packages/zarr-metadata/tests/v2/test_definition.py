@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pickle
 
+import pytest
+
 from zarr_metadata.v2.definition import (
     CORE_V2,
     V2_CODECS,
@@ -20,19 +22,20 @@ from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
     CodecDefinition,
-    DataTypeDefinition,
 )
 
 
 def test_core_v2_files_every_v2_definition_apart_from_v3() -> None:
-    """`CORE_V2` files the 12 data types and 21 codecs by their v2 kinds; a scope joined with the v3 scope files all of them apart, since the kinds differ: a v2 `gzip` and a v3 `gzip` are two definitions."""
+    """`CORE_V2` files the 12 data types and 21 codecs by their v2 kinds, and is a scope of format 2: a v2 `gzip` and a v3 `gzip` are two definitions of two kinds, and no scope files both, since `Context.joined` refuses two formats."""
     assert set(CORE_V2.definitions()) == {*V2_DATA_TYPES, *V2_CODECS}
-    both = Context.joined(CORE_V2, CORE_AND_EXTENSIONS)
-    assert both.claimant(ZarrV2CodecDefinition, "gzip") is not GZIP_CODEC
-    assert both.claimant(ZarrV2CodecDefinition, "gzip") is not None
-    assert both.claimant(CodecDefinition, "gzip") is GZIP_CODEC
-    assert both.claimant(ZarrV2DataTypeDefinition, "<f4") is not None
-    assert both.claimant(DataTypeDefinition, "<f4") is None
+    assert CORE_V2.format == 2
+    assert CORE_V2.claimant(ZarrV2CodecDefinition, "gzip") is not GZIP_CODEC
+    assert CORE_V2.claimant(ZarrV2CodecDefinition, "gzip") is not None
+    assert CORE_V2.claimant(CodecDefinition, "gzip") is None
+    assert CORE_AND_EXTENSIONS.claimant(CodecDefinition, "gzip") is GZIP_CODEC
+    assert CORE_V2.claimant(ZarrV2DataTypeDefinition, "<f4") is not None
+    with pytest.raises(TypeError, match="one Zarr format"):
+        Context.joined(CORE_V2, CORE_AND_EXTENSIONS)
     assert pickle.loads(pickle.dumps(CORE_V2)) == CORE_V2
 
 

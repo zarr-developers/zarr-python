@@ -39,7 +39,7 @@ from zarr_metadata.model._group import (
 )
 from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY
-from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
+from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, ZarrV2Context, ZarrV3Context, scoped
 from zarr_metadata.v3.consolidated import ZARR_V3_CONSOLIDATED_METADATA_KEY
 
 RepairKind: TypeAlias = Literal[
@@ -222,7 +222,7 @@ class ZarrV3RepairedNodeMetadataReading:
 
 
 def read_repaired_node_metadata_v3(
-    value: object, *, context: Context | None = None
+    value: object, *, context: ZarrV3Context | None = None
 ) -> ZarrV3RepairedNodeMetadataReading:
     """`value`, a v3 `zarr.json`, read in `context` as `read_node_metadata_v3` reads it, once `repair_node_metadata_v3` has undone each known writer bug in it.
 
@@ -231,7 +231,7 @@ def read_repaired_node_metadata_v3(
     applies to is read as it is, and reported as `read_node_metadata_v3`
     reports it.
     """
-    scope = CORE_AND_EXTENSIONS if context is None else context
+    scope = scoped(context, CORE_AND_EXTENSIONS)
     repaired, repairs = repair_node_metadata_v3(value)
     return ZarrV3RepairedNodeMetadataReading(
         read_node_metadata_v3(repaired, context=scope), repairs
@@ -312,7 +312,7 @@ class ZarrV2RepairedConsolidatedMetadataReading:
 
 
 def read_repaired_consolidated_metadata_v2(
-    value: object, *, context: Context | None = None
+    value: object, *, context: ZarrV2Context | None = None
 ) -> ZarrV2RepairedConsolidatedMetadataReading:
     """`value`, a v2 `.zmetadata`, read in `context` as `ZarrV2ConsolidatedMetadata` reads it, once `repair_consolidated_metadata_v2` has undone each known writer bug in it.
 
@@ -320,7 +320,7 @@ def read_repaired_consolidated_metadata_v2(
     calling this rather than the strict model. Whatever no repair applies
     to is read as it is, and reported as the strict read reports it.
     """
-    scope = CORE_V2 if context is None else context
+    scope = scoped(context, CORE_V2)
     repaired, repairs = repair_consolidated_metadata_v2(value)
     try:
         model: ZarrV2ConsolidatedMetadata | None = ZarrV2ConsolidatedMetadata(repaired, scope)

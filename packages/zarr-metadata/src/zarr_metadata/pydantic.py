@@ -11,7 +11,8 @@ single source of truth for validation and normalization, so pydantic's
 field-level coercion can never bypass it). A field type reads the fields
 of its document in the scope pydantic's validation context holds, as
 pydantic hands any validator its context: the context itself, when it is
-a `Context`, which every field type then reads in; or, when it is a
+a `Context`, which every field type of its format then reads in, the
+other format's refusing it with `TypeError`; or, when it is a
 mapping, its `"zarr_metadata_context"` item for the v3 field types and
 its `"zarr_metadata_context_v2"` item for the v2 ones, so a model holding
 both kinds of field names each format's scope; a format whose scope is
@@ -51,7 +52,7 @@ Static type checkers see each field type as its core model class, so
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Final, LiteralString, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Annotated, Any, Final, LiteralString, Protocol, TypeVar, cast
 
 from pydantic import BeforeValidator, InstanceOf, PlainSerializer, ValidationInfo
 from pydantic_core import InitErrorDetails, PydanticCustomError, ValidationError
@@ -78,7 +79,7 @@ from zarr_metadata._pydantic_schema import (
 )
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.v2.definition import CORE_V2
-from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context
+from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context, is_scope, scoped
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -147,7 +148,7 @@ class _Reads(Protocol[_Read_co]):
 
 
 def _read_in_scope(
-    cls: type[_M], read: _Reads[_M], default: Context, key: str
+    cls: type[_M], read: _Reads[_M], default: Context[Any], key: str
 ) -> Callable[[object, ValidationInfo], _M]:
     """A validator that passes instances of `cls` through and reads anything else in the scope the validation context holds under `key`, `default` when it holds none."""
 
@@ -161,14 +162,19 @@ def _read_in_scope(
     return coerce
 
 
-def _scope(context: object, default: Context, key: str) -> Context:
-    """The scope a validation context holds for one format: itself, a `Context`, the scope of every field type; its `key` item, the format's own; or, holding none, `default`, the format's core scope."""
-    if isinstance(context, Context):
-        return context
+def _scope(context: object, default: Context[Any], key: str) -> Context[Any]:
+    """The scope a validation context holds for one format: itself, a `Context`, the scope of every field type of its format; its `key` item, the format's own; or, holding none, `default`, the format's core scope.
+
+    A bare `Context` of the other format is a `TypeError`, as it is at
+    every reader: a model holding fields of both formats names each
+    format's scope by its key.
+    """
+    if is_scope(context):
+        return scoped(context, default)
     if not is_object(context) or key not in context:
         return default
     scope = context[key]
-    if not isinstance(scope, Context):
+    if not is_scope(scope):
         msg = f"{key}: the scope to read in is a Context, got {scope!r}"
         raise TypeError(msg)
     return scope

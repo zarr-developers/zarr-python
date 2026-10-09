@@ -282,8 +282,12 @@ lists, as a parser gives them. Each configuration
 TypedDict, and each field alias, is written once, in `$defs`, under its
 name; the fill value is held to its data type's.
 
-**Scopes as values.** Two scopes are equal when they file the same
-definitions, and equal scopes hash alike. `Context.joined(*scopes)` is
+**Scopes as values.** A scope reads documents of one Zarr format, the
+`format` every kind it files declares -- `ZarrV3Context` is the type of
+a v3 scope, `ZarrV2Context` of a v2 one -- and a reader refuses a scope
+of the other format with `TypeError`, while a scope that files nothing
+is of no format and reads in either. Two scopes are equal when they file
+the same definitions, and equal scopes hash alike. `Context.joined(*scopes)` is
 the least scope above each, or a `ScopeConflictError` naming each name
 filed two ways; `extended_with` remains the way to take a name over on
 purpose. A model's `refined_in` moves it to a scope that claims more and
@@ -304,8 +308,9 @@ that is not one of the three, or a `size` that is not `"static"` or
 `"dynamic"`; a function no codec of its kind is asked -- chunk rules or
 pipelines of a bytes -> bytes codec, which is handed bytes, or a
 `transition` of a codec that hands on bytes; a data type named as raw
-bits of one size are written. A scope refuses a definition of no kind.
-Nothing happens at class creation.
+bits of one size are written. A scope refuses a definition of no kind,
+and a kind is declared with its format, `class Tag(Definition[C],
+kind=True, format=3)`. Nothing else happens at class creation.
 """
 
 from zarr_metadata._common import JSONValue
@@ -343,7 +348,7 @@ from zarr_metadata.v3._definition import (
     storage_of,
 )
 from zarr_metadata.v3._pipeline import Stage
-from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS, Context
+from zarr_metadata.v3._registry import CORE, CORE_AND_EXTENSIONS, Context, ZarrV3Context
 from zarr_metadata.v3._scope import (
     ClaimKey,
     Claims,
@@ -390,6 +395,7 @@ __all__ = [
     "StorageTransformerField",
     "UnclaimedField",
     "ValidationProblem",
+    "ZarrV3Context",
     "canonical_fill_value",
     "fill_value_problems",
     "resolve",

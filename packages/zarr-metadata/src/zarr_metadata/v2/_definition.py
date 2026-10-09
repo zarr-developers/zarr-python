@@ -106,7 +106,7 @@ def typestr_problem(name: str, at: Loc) -> ValidationProblem | None:
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True):
+class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
     """A v2 data type: one family of NumPy types, and the fill value an array of it takes.
 
     Filed under the family -- `float` -- and read for every typestr of
@@ -200,7 +200,7 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
-class ZarrV2CodecDefinition(Definition[C], kind=True):
+class ZarrV2CodecDefinition(Definition[C], kind=True, format=2):
     """A v2 codec: a numcodecs id, and the TypedDict its parameters are.
 
     A document writes `{"id": name, **parameters}`; the definition's
