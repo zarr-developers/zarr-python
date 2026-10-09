@@ -107,7 +107,6 @@ from zarr.core.indexing import (
     check_no_multi_fields,
     is_pure_fancy_indexing,
     is_pure_orthogonal_indexing,
-    is_scalar,
     pop_fields,
 )
 from zarr.core.metadata import (
@@ -3702,26 +3701,6 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         # setup indexer
         indexer = CoordinateIndexer(selection, self.shape, self._chunk_grid)
 
-        # handle value - need ndarray-like flatten value
-        if not is_scalar(value, self.dtype):
-            try:
-                from numcodecs.compat import ensure_ndarray_like
-
-                value = ensure_ndarray_like(value)  # TODO replace with agnostic
-            except TypeError:
-                # Handle types like `list` or `tuple`
-                value = np.array(value)  # TODO replace with agnostic
-        if hasattr(value, "shape") and len(value.shape) > 1:
-            value = np.array(value).reshape(-1)
-
-        if not is_scalar(value, self.dtype) and (
-            isinstance(value, NDArrayLike) and indexer.shape != value.shape
-        ):
-            raise ValueError(
-                f"Attempting to set a selection of {indexer.sel_shape[0]} "
-                f"elements with an array of {value.shape[0]} elements."
-            )
-
         sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     def get_block_selection(
@@ -5802,6 +5781,33 @@ async def _getitem(
     )
 
 
+def _broadcast_to_selection(value: NDArrayLike, shape: tuple[int, ...]) -> NDArrayLike:
+    """Broadcast `value` to the selection `shape` under numpy's assignment rules.
+
+    Assignment differs from `numpy.broadcast_to` in one way: leading length-1 axes
+    that `shape` does not have are dropped, so a value of shape `(1, 3)` can be
+    assigned to a selection of shape `(3,)`. A 0-d value is returned as is, because
+    the codec pipeline broadcasts it to each chunk itself.
+
+    Raises
+    ------
+    ValueError
+        If `value` does not broadcast to `shape`.
+    """
+    value_shape = value.shape
+    if value_shape in (shape, ()):
+        return value
+    extra = len(value_shape) - len(shape)
+    trimmed = value_shape[extra:] if extra > 0 else value_shape
+    if (extra > 0 and any(d != 1 for d in value_shape[:extra])) or any(
+        v not in (1, s) for v, s in zip(trimmed[::-1], shape[::-1], strict=False)
+    ):
+        raise ValueError(
+            f"could not broadcast input array from shape {value_shape} into shape {shape}"
+        )
+    return cast("NDArrayLike", np.broadcast_to(value.reshape(trimmed), shape))
+
+
 async def _set_selection(
     store_path: StorePath,
     metadata: ArrayMetadata,
@@ -5857,9 +5863,6 @@ async def _set_selection(
     else:
         if not hasattr(value, "shape"):
             value = np.asarray(value, dtype)
-        # assert (
-        #     value.shape == indexer.shape
-        # ), f"shape of value doesn't match indexer shape. Expected {indexer.shape}, got {value.shape}"
         if not hasattr(value, "dtype") or value.dtype.name != dtype.name:
             if hasattr(value, "astype"):
                 # Handle things that are already NDArrayLike more efficiently
@@ -5867,6 +5870,18 @@ async def _set_selection(
             else:
                 value = np.array(value, dtype=dtype, order="A")
     value = cast("NDArrayLike", value)
+
+    # The codec pipeline slices a non-scalar `value` with each chunk's
+    # `out_selection`, so it must have the selection's shape exactly: a larger
+    # value would be silently truncated, and a broadcastable one would be sliced
+    # along its length-1 axes.
+    if isinstance(indexer, CoordinateIndexer):
+        value = _broadcast_to_selection(value, indexer.sel_shape)
+        if value.shape != ():
+            # coordinate and mask selections are processed as a flat run of points
+            value = value.reshape(indexer.shape)
+    else:
+        value = _broadcast_to_selection(value, indexer.shape)
 
     # We accept any ndarray like object from the user and convert it
     # to an NDBuffer (or subclass). From this point onwards, we only pass
