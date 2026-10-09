@@ -758,8 +758,8 @@ def create(
     codecs : Sequence of Codecs or dicts, optional
         An iterable of Codec or dict serializations of Codecs. Zarr V3 only.
 
-        The elements of ``codecs`` specify the transformation from array values to stored bytes.
-        Zarr format 3 only. Zarr format 2 arrays should use ``filters`` and ``compressor`` instead.
+        The elements of `codecs` specify the transformation from array values to stored bytes.
+        Zarr format 3 only. Zarr format 2 arrays should use `filters` and `compressor` instead.
         In order, a Zarr format 3 pipeline contains zero or more
         [`zarr.abc.codec.ArrayArrayCodec`][] filters, exactly one
         [`zarr.abc.codec.ArrayBytesCodec`][] serializer, and zero or more
@@ -900,10 +900,9 @@ def create_array(
         [`zarr.abc.codec.BytesBytesCodec`][], or dict representations of
         [`zarr.abc.codec.BytesBytesCodec`][]. Multiple compressors may be provided
         for Zarr format 3. Codecs that take an array and return bytes are serializers
-        and must be supplied with ``serializer`` instead.
-        If no ``compressors`` are provided, a default set of compressors will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_compressors``
-        in [`zarr.config`][zarr.config].
+        and must be supplied with `serializer` instead.
+        If no `compressors` are provided, the default for Zarr format 3 is
+        `(ZstdCodec(),)`.
         Use `None` to omit default compressors.
 
         For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
@@ -915,10 +914,10 @@ def create_array(
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
         Codecs that are instances of [`zarr.abc.codec.ArrayBytesCodec`][] must be
-        supplied here, not with ``compressors``.
-        If no ``serializer`` is provided, a default serializer will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_serializer``
-        in [`zarr.config`][zarr.config].
+        supplied here, not with `compressors`.
+        If no `serializer` is provided, a default serializer is chosen based on the data type:
+        `VLenUTF8Codec` for variable-length strings, `VLenBytesCodec` for variable-length
+        bytes, and `BytesCodec` otherwise.
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
