@@ -949,7 +949,9 @@ def test_consolidated_metadata_warns_on_reserved_v3_keys(key: str) -> None:
         )
     if "/" in key:
         parent, leaf = key.split("/")
-        nested = consolidated.metadata[parent].consolidated_metadata
+        parent_meta = consolidated.metadata[parent]
+        assert isinstance(parent_meta, GroupMetadata)
+        nested = parent_meta.consolidated_metadata
         assert nested is not None
         assert leaf in nested.metadata
     else:
