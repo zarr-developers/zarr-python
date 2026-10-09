@@ -35,8 +35,8 @@ from zarr.codecs.sharding import (
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
 from zarr.core.dtype import Int32
 from zarr.core.indexing import lexicographic_order_coords
-from zarr.errors import ZarrDeprecationWarning
 from zarr.core.metadata.v3 import ArrayV3Metadata
+from zarr.errors import ZarrDeprecationWarning
 from zarr.storage import MemoryStore, StorePath, ZipStore
 
 from ..conftest import ArrayRequest
@@ -1506,9 +1506,7 @@ def test_sharding_codec_rejects_inner_chunk_size_false() -> None:
     """`False` in an inner chunk shape warns (booleans in shape-like fields are
     deprecated) and is still rejected as a zero edge length."""
     with pytest.warns(ZarrDeprecationWarning, match="Boolean values in shape-like"):
-        with pytest.raises(
-            ValueError, match=r"Dimension \d: chunk edge length must be >= 1, got"
-        ):
+        with pytest.raises(ValueError, match=r"Dimension \d: chunk edge length must be >= 1, got"):
             ShardingCodec(chunk_shape=(False, 5))
 
 
