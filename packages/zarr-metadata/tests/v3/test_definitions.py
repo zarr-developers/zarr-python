@@ -1419,3 +1419,54 @@ def test_error_a_canonical_that_raises_says_which_definition_raised_it() -> None
     with pytest.raises(ValueError, match="no") as raised:
         canonical_of(read, ())
     assert raised.value.__notes__ == ["raised by the canonical of 'gzip'"]
+
+
+def test_error_a_field_s_configuration_and_nested_fields_are_read_only() -> None:
+    """What a field hands out -- its `json`, `configuration` and `nested` fields -- is read-only at every level, so a field cannot be put in a state its key, `==` and `refines` disagree about."""
+    whole = {**SHARD, "index_codecs": [LE, {"name": "crc32c"}]}
+    shard, _ = resolve({"name": "sharding_indexed", "configuration": whole}, CodecDefinition, CORE)
+    assert isinstance(shard, AcceptedField)
+    with pytest.raises(TypeError):
+        shard.configuration["index_location"] = "start"  # pyright: ignore[reportIndexIssue]
+    codecs = shard.configuration["codecs"]
+    assert isinstance(codecs, tuple)
+    inner = codecs[0]
+    assert isinstance(inner, Mapping)
+    with pytest.raises(TypeError):
+        inner["name"] = "crc32c"  # pyright: ignore[reportIndexIssue]
+    with pytest.raises(TypeError):
+        del shard.nested[("codecs", 0)]  # pyright: ignore[reportIndexIssue]
+    assert isinstance(shard.json, Mapping)
+    with pytest.raises(TypeError):
+        shard.json["name"] = "gzip"  # pyright: ignore[reportIndexIssue]
+    unclaimed, _ = resolve({"name": "acme.x", "configuration": {"a": [1]}}, CodecDefinition, CORE)
+    assert isinstance(unclaimed, UnclaimedField)
+    with pytest.raises(TypeError):
+        unclaimed.configuration["a"] = 2  # pyright: ignore[reportIndexIssue]
+    refused, _ = resolve(
+        {"name": "sharding_indexed", "configuration": {**whole, "index_location": "x"}},
+        CodecDefinition,
+        CORE,
+    )
+    assert isinstance(refused, RefusedField)
+    with pytest.raises(TypeError):
+        del refused.nested[("codecs", 0)]  # pyright: ignore[reportIndexIssue]
+
+
+def test_a_field_holding_fields_is_copied_and_pickled_whole() -> None:
+    """A field pickles and deep-copies with the fields it holds, equal to itself, whether accepted, refused or left unclaimed."""
+    whole = {**SHARD, "index_codecs": [LE, {"name": "crc32c"}]}
+    fields = [
+        resolve({"name": "sharding_indexed", "configuration": whole}, CodecDefinition, CORE)[0],
+        resolve({"name": "acme.x", "configuration": {"a": [1]}}, CodecDefinition, CORE)[0],
+        resolve(
+            {"name": "sharding_indexed", "configuration": {**whole, "index_location": "x"}},
+            CodecDefinition,
+            CORE,
+        )[0],
+    ]
+    for field in fields:
+        for again in (pickle.loads(pickle.dumps(field)), copy.deepcopy(field)):
+            assert again == field
+            assert type(again) is type(field)
+            assert again.nested == field.nested

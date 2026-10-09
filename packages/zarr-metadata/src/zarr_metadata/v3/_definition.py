@@ -56,6 +56,7 @@ from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
 from zarr_metadata._json import (
     ValidationProblem,
     copied,
+    frozen,
     is_object,
     is_tuple,
     json_text,
@@ -1192,6 +1193,21 @@ class AcceptedField(Generic[D]):
         if refusal is not None:
             raise TypeError(refusal)
         object.__setattr__(self, "read_as", kind)
+        # What the field hands out is read-only at every level, so a field
+        # cannot be put in a state its key, `==` and `refines` disagree about.
+        object.__setattr__(self, "json", frozen(self.json))
+        object.__setattr__(self, "configuration", frozen(self.configuration))
+        object.__setattr__(self, "nested", MappingProxyType(dict(self.nested)))
+
+    def __reduce__(self) -> tuple[Callable[..., AcceptedField[Any]], tuple[object, ...]]:
+        # Read-only views do not pickle: the field pickles as what it was built from.
+        return _accepted_field, (
+            copied(self.json),
+            self.name,
+            self.definition,
+            copied(self.configuration),
+            dict(self.nested),
+        )
 
     def to_json(self) -> JSONValue:
         """The field as a document writes it, for every reader: its configuration as read, sharing nothing with the field.
@@ -1247,7 +1263,14 @@ class UnclaimedField:
             raise TypeError(msg)
         _, written, _ = self.read_as.named_configuration(self.json)
         configuration: Mapping[str, object] = {} if written is None else written
-        object.__setattr__(self, "configuration", cast("Mapping[str, JSONValue]", configuration))
+        object.__setattr__(self, "json", frozen(self.json))
+        object.__setattr__(
+            self, "configuration", frozen(cast("Mapping[str, JSONValue]", configuration))
+        )
+
+    def __reduce__(self) -> tuple[Callable[..., UnclaimedField], tuple[object, ...]]:
+        # Read-only views do not pickle: the field pickles as what it was built from.
+        return _unclaimed_field, (copied(self.json), self.name, self.read_as)
 
     @property
     def definition(self) -> None:
@@ -1296,12 +1319,55 @@ class RefusedField(Generic[D]):
         refusal = None if definition is None else _misread(definition, kind, self.name)
         if refusal is not None:
             raise TypeError(refusal)
+        if self.json is not UNSET:
+            object.__setattr__(self, "json", frozen(self.json))
+        object.__setattr__(self, "nested", MappingProxyType(dict(self.nested)))
+
+    def __reduce__(self) -> tuple[Callable[..., RefusedField[Any]], tuple[object, ...]]:
+        # Read-only views do not pickle: the field pickles as what it was built from.
+        return _refused_field, (
+            UNSET if self.json is UNSET else copied(self.json),
+            self.name,
+            self.read_as,
+            self.definition,
+            dict(self.nested),
+        )
 
 
 ResolvedField = TypeAliasType(
     "ResolvedField", "AcceptedField[D] | UnclaimedField | RefusedField[D]", type_params=(D,)
 )
 """One metadata field as a scope read it: read by the definition that claims its name, claimed by nothing, or refused."""
+
+
+def _accepted_field(
+    json: JSONValue,
+    name: str,
+    definition: Definition[Any],
+    configuration: Mapping[str, JSONValue],
+    nested: Nested,
+) -> AcceptedField[Any]:
+    """An accepted field built again from what it pickled as."""
+    return AcceptedField(
+        json=json, name=name, definition=definition, configuration=configuration, nested=nested
+    )
+
+
+def _unclaimed_field(json: JSONValue, name: str, read_as: type[Definition[Any]]) -> UnclaimedField:
+    """An unclaimed field built again from what it pickled as."""
+    return UnclaimedField(json=json, name=name, read_as=read_as)
+
+
+def _refused_field(
+    json: JSONValue | UNSET,
+    name: str | None,
+    read_as: type[Definition[Any]],
+    definition: Definition[Any] | None,
+    nested: Nested,
+) -> RefusedField[Any]:
+    """A refused field built again from what it pickled as."""
+    return RefusedField(json=json, name=name, read_as=read_as, definition=definition, nested=nested)
+
 
 _FIELDS: Final = (AcceptedField, UnclaimedField, RefusedField)
 """The three things a scope makes of a field."""

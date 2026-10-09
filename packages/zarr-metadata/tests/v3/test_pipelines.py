@@ -501,3 +501,29 @@ def test_error_pipelines_that_raise_say_whose_they_are() -> None:
     assert raised.value.__notes__ == [
         "raised by the pipelines of 'acme.holder', reading ('codecs', 0, 'configuration')"
     ]
+
+
+def test_error_a_stage_s_inner_pipelines_are_read_only() -> None:
+    """The pipelines a stage holds of a shard's inner codecs cannot be changed in place, and a reading holding them pickles and deep-copies equal to itself."""
+    import copy
+    import pickle
+
+    shard: JSONValue = {
+        "name": "sharding_indexed",
+        "configuration": {
+            "chunk_shape": [2],
+            "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
+            "index_codecs": [
+                {"name": "bytes", "configuration": {"endian": "little"}},
+                {"name": "crc32c"},
+            ],
+            "index_location": "end",
+        },
+    }
+    stages, _ = _read([shard], CHUNK)
+    stage = stages[0]
+    assert "codecs" in stage.inner
+    with pytest.raises(TypeError):
+        stage.inner["codecs"] = ()  # pyright: ignore[reportIndexIssue]
+    for again in (pickle.loads(pickle.dumps(stages)), copy.deepcopy(stages)):
+        assert again == stages

@@ -726,3 +726,15 @@ def test_an_array_reading_pickles_through_its_model() -> None:
         assert again == reading
         assert again.metadata is not None
         assert again.metadata.reading is again
+
+
+def test_error_a_models_fields_cannot_be_changed_in_place() -> None:
+    """The fields a model hands out -- a codec's configuration, the fields a shard holds -- are read-only, so `codecs ==` and `refines` cannot drift from `==`."""
+    model = ZarrV3ArrayMetadata(ARRAY)
+    same = ZarrV3ArrayMetadata(ARRAY)
+    codec = model.codecs[0]
+    assert isinstance(codec, AcceptedField)
+    with pytest.raises(TypeError):
+        codec.configuration["endian"] = "big"  # pyright: ignore[reportIndexIssue]
+    assert model.codecs == same.codecs
+    assert model.refines(same)

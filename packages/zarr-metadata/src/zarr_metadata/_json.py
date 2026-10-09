@@ -472,7 +472,15 @@ def json_text(value: JSONValue) -> str:
     `0.0` and `NaN` for no value at all, but what a document writes: two
     values written alike are one value to every reader.
     """
-    return json.dumps(value, sort_keys=True, ensure_ascii=False)
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, default=_as_object)
+
+
+def _as_object(value: object) -> dict[object, object]:
+    """A read-only view of an object, as `json.dumps` is handed one, written as the object; anything else is the `TypeError` `json.dumps` raises."""
+    if is_object(value):
+        return dict(value)
+    msg = f"{value!r} is not JSON"
+    raise TypeError(msg)
 
 
 def shown(value: object) -> str:

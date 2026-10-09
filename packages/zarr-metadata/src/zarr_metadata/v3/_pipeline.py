@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
 
 from zarr_metadata._json import ValidationProblem, is_object, is_tuple, with_input
@@ -68,6 +69,14 @@ class Stage:
     """
     inner: Mapping[str, tuple[Stage, ...]] = dataclasses.field(default_factory=_no_stages)
     """The pipelines it holds, by the member of its configuration that holds each: each codec with the chunk it is handed."""
+
+    def __post_init__(self) -> None:
+        # Read-only, as everything a reading hands out is.
+        object.__setattr__(self, "inner", MappingProxyType(dict(self.inner)))
+
+    def __reduce__(self) -> tuple[type[Stage], tuple[object, ...]]:
+        # A read-only view does not pickle: the stage pickles as what it was built from.
+        return Stage, (self.codec, self.incoming, dict(self.inner))
 
 
 _POSITIONS: Final[Mapping[CodecKind, int]] = {
