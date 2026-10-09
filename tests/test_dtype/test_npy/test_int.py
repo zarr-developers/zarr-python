@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
+from zarr.core.common import JSON
 from zarr.core.dtype import data_type_registry
 from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
 from zarr.errors import DataTypeValidationError
@@ -380,7 +381,7 @@ def test_match_dtype_not_a_numpy_dtype(not_a_dtype: Any) -> None:
     ],
 )
 def test_out_of_bounds_integer_from_json_scalar(
-    dtype_instance: Int8 | UInt8 | UInt64 | Int64, value: object
+    dtype_instance: Int8 | UInt8 | UInt64 | Int64, value: JSON
 ) -> None:
     """An integer outside the dtype's range raises a validation error, not
     numpy's OverflowError. Regression test for
