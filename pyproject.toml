@@ -109,6 +109,7 @@ homepage = "https://github.com/zarr-developers/zarr-python"
 # pins deliberately, e.g. via dependabot or `uv lock --upgrade`.
 [dependency-groups]
 test = [
+    "cloudpickle==3.1.2",
     "coverage==7.16.2",
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",

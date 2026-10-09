@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -602,6 +602,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/bb/63/f9e1ea081ce35720d8b92acde70daaedace594dc93b693c869e0d5910718/click-8.3.3.tar.gz", hash = "sha256:398329ad4837b2ff7cbe1dd166a4c0f8900c3ca3a218de04466f38f6497f18a2", size = 328061, upload-time = "2026-04-22T15:11:27.506Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ae/44/c1221527f6a71a01ec6fbad7fa78f1d50dfa02217385cf0fa3eec7087d59/click-8.3.3-py3-none-any.whl", hash = "sha256:a2bf429bb3033c89fa4936ffb35d5cb471e3719e1f3c8a7c3fff0b8314305613", size = 110502, upload-time = "2026-04-22T15:11:25.044Z" },
+]
+
+[[package]]
+name = "cloudpickle"
+version = "3.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/27/fb/576f067976d320f5f0114a8d9fa1215425441bb35627b1993e5afd8111e5/cloudpickle-3.1.2.tar.gz", hash = "sha256:7fda9eb655c9c230dab534f1983763de5835249750e85fbcef43aaa30a9a2414", size = 22330, upload-time = "2025-11-03T09:25:26.604Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/39/799be3f2f0f38cc727ee3b4f1445fe6d5e4133064ec2e4115069418a5bb6/cloudpickle-3.1.2-py3-none-any.whl", hash = "sha256:9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a", size = 22228, upload-time = "2025-11-03T09:25:25.534Z" },
 ]
 
 [[package]]
@@ -3670,6 +3679,7 @@ remote = [
 dev = [
     { name = "astroid" },
     { name = "botocore" },
+    { name = "cloudpickle" },
     { name = "coverage" },
     { name = "fsspec" },
     { name = "griffe-inherited-docstrings" },
@@ -3723,6 +3733,7 @@ release = [
 ]
 remote-tests = [
     { name = "botocore" },
+    { name = "cloudpickle" },
     { name = "coverage" },
     { name = "fsspec" },
     { name = "hypothesis" },
@@ -3743,6 +3754,7 @@ remote-tests = [
     { name = "uv" },
 ]
 test = [
+    { name = "cloudpickle" },
     { name = "coverage" },
     { name = "hypothesis" },
     { name = "numpydoc" },
@@ -3780,6 +3792,7 @@ provides-extras = ["cast-value-rs", "cli", "gpu", "optional", "remote"]
 dev = [
     { name = "astroid", specifier = "==4.3.3" },
     { name = "botocore" },
+    { name = "cloudpickle", specifier = "==3.1.2" },
     { name = "coverage", specifier = "==7.16.2" },
     { name = "fsspec", specifier = ">=2023.10.0" },
     { name = "griffe-inherited-docstrings", specifier = "==1.1.3" },
@@ -3831,6 +3844,7 @@ docs = [
 release = [{ name = "towncrier", specifier = "==26.9.0" }]
 remote-tests = [
     { name = "botocore" },
+    { name = "cloudpickle", specifier = "==3.1.2" },
     { name = "coverage", specifier = "==7.16.2" },
     { name = "fsspec", specifier = ">=2023.10.0" },
     { name = "hypothesis", specifier = "==6.168.3" },
@@ -3851,6 +3865,7 @@ remote-tests = [
     { name = "uv", specifier = "==0.12.21" },
 ]
 test = [
+    { name = "cloudpickle", specifier = "==3.1.2" },
     { name = "coverage", specifier = "==7.16.2" },
     { name = "hypothesis", specifier = "==6.168.3" },
     { name = "numpydoc", specifier = "==1.11.0" },
