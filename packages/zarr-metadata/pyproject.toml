@@ -32,6 +32,10 @@ classifiers = [
 ]
 keywords = ["zarr"]
 dependencies = [
+    # The constraints a TypedDict's members carry -- `Ge`, `Interval`,
+    # `MinLen` -- which the checker enforces, in the vocabulary pydantic
+    # and Hypothesis read as well.
+    "annotated-types>=0.6",
     # >=4.16: first release where `Sentinel` pickles by reference
     # (`__reduce__` returns the sentinel's name), so `UNSET` — and any model
     # holding it — can cross process boundaries and be deep-copied with its
@@ -135,8 +139,7 @@ checks = [
     "PR06",
 ]
 
-# The pyright version lives in the justfile, which is what CI runs; pinning it
-# keeps a pyright release from turning CI red on its own schedule.
+# Pyright runs unpinned, from the justfile, which is what CI runs.
 [tool.pyright]
 include = ["src", "tests"]
 # Pyright is the only checker that runs on this package (the root mypy
@@ -212,3 +215,7 @@ showcontent = true
 directory = "misc"
 name = "Misc"
 showcontent = true
+
+[tool.ruff.lint.flake8-type-checking]
+# A TypedDict's annotations are evaluated at run time: the checker reads them.
+runtime-evaluated-base-classes = ["typing_extensions.TypedDict", "typing.TypedDict"]

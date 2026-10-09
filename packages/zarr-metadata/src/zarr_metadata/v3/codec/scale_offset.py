@@ -10,15 +10,15 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata._json import ValidationProblem
+from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.v3._definition import (
+    AcceptedField,
     Chunk,
     CodecDefinition,
     Nested,
     fill_value_problems,
-    named_configuration,
 )
-from zarr_metadata.v3.codec._arithmetic import NOT_NUMBERS, read_name
+from zarr_metadata.v3.codec._arithmetic import NOT_NUMBERS
 
 SCALE_OFFSET_CODEC_NAME: Final = "scale_offset"
 """The `name` field value of the `scale_offset` codec."""
@@ -95,14 +95,12 @@ def _chunk_rules(
     A null is the rules' to refuse.
     """
     source = chunk.data_type
-    name = read_name(source)
-    if source is None or name is None:
+    if not isinstance(source, AcceptedField):
         return
-    if name in NOT_NUMBERS:
-        written, _, _ = named_configuration(source.json)
+    if source.definition.name in NOT_NUMBERS:
         yield ValidationProblem(
             (),
-            f"expected a chunk of a data type with arithmetic, got {written!r}",
+            f"expected a chunk of a data type with arithmetic, got {shown(source.name)}",
             "invalid_value",
         )
         return

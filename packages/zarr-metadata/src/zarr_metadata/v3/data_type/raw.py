@@ -21,7 +21,7 @@ from zarr_metadata.v3._definition import (
     Nested,
     StorageClass,
 )
-from zarr_metadata.v3.data_type._integer import byte_value_problems
+from zarr_metadata.v3.data_type._byte import ByteValue
 
 RawBytesDataTypeName = NewType("RawBytesDataTypeName", str)
 """A spec-conformant `r<N>` raw-bytes name (e.g. `"r8"`, `"r16"`).
@@ -46,7 +46,7 @@ def raw_bytes_dtype_name(value: str) -> RawBytesDataTypeName:
     return RawBytesDataTypeName(value)
 
 
-RawBytesFillValue = tuple[int, ...]
+RawBytesFillValue = tuple[ByteValue, ...]
 """Permitted JSON shape of the `fill_value` field for `r<N>`.
 
 A JSON array of N/8 integers in `[0, 255]` (one per byte).
@@ -78,7 +78,7 @@ def _rules(configuration: RawBytesConfiguration, nested: Nested) -> Iterator[Val
 def _fill_value_rules(
     configuration: RawBytesConfiguration, nested: Nested, value: RawBytesFillValue
 ) -> Iterator[ValidationProblem]:
-    """One byte value, an integer in `[0, 255]`, for each 8 of the size.
+    """One byte value for each 8 of the size.
 
     The spec's text says `N` values for `r<N>`, but `N` counts bits
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L897-L900),
@@ -89,7 +89,6 @@ def _fill_value_rules(
         yield ValidationProblem(
             (), f"expected {expected} byte values, got {len(value)}", "invalid_value"
         )
-    yield from byte_value_problems(value)
 
 
 def _storage(configuration: RawBytesConfiguration, nested: Nested) -> StorageClass | None:

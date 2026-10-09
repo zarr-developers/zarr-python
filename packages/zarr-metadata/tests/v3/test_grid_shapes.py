@@ -11,13 +11,18 @@ from __future__ import annotations
 
 import pytest
 
-from zarr_metadata.model import ZarrV3ArrayMetadata, validate_array_metadata_v3
+from zarr_metadata.model import (
+    ZarrV3ArrayMetadata,
+    validate_array_metadata_v3,
+)
+from zarr_metadata.v3._definition import (
+    chunk_grid_lengths,
+)
 from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
     ChunkGridDefinition,
     JSONValue,
-    chunk_grid_lengths,
     resolve,
 )
 
@@ -44,9 +49,9 @@ def _problems(grid: JSONValue, shape: tuple[int, ...]) -> list[tuple[tuple[str |
     [
         (_regular(), (), ()),
         (_regular(4, 4), (10, 3), ({4}, {4})),
-        # A chunk longer than its dimension, and a chunk length of 0 for a
-        # dimension of length 0.
-        (_regular(8, 0), (3, 0), ({8}, {0})),
+        # A chunk longer than its dimension, and a chunk over a dimension of
+        # length 0.
+        (_regular(8, 1), (3, 0), ({8}, {1})),
         # A bare integer repeats until it covers its dimension.
         (_rectilinear(4), (10,), ({4},)),
         (_rectilinear([4, 4, 2]), (10,), ({4, 2},)),
@@ -77,12 +82,6 @@ def test_every_chunk_grid_gives_the_lengths_of_its_chunks_over_a_shape_it_fits(
 )
 def test_error_a_regular_grid_of_another_rank(grid: JSONValue, shape: tuple[int, ...]) -> None:
     assert _problems(grid, shape) == [(("configuration", "chunk_shape"), "invalid_value")]
-
-
-def test_error_a_regular_chunk_length_of_0_for_a_dimension_that_is_not_empty() -> None:
-    assert _problems(_regular(4, 0), (4, 3)) == [
-        (("configuration", "chunk_shape", 1), "invalid_value")
-    ]
 
 
 @pytest.mark.parametrize(

@@ -12,20 +12,26 @@ from typing import Any
 
 import pytest
 
+from zarr_metadata._json import value_at
+from zarr_metadata.v3._definition import (
+    canonical_of,
+    canonicalize,
+    configuration_of,
+)
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE, RawBytesConfiguration
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
+    AcceptedField,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
     Context,
     DataTypeDefinition,
     Definition,
+    RefusedField,
     ValidationProblem,
-    canonicalize,
-    configuration_of,
     fill_value_problems,
     resolve,
 )
@@ -139,9 +145,10 @@ EXAMPLES: dict[str, tuple[object, ...]] = {
 CASES = [(key, field) for key, fields in EXAMPLES.items() for field in fields]
 
 
-def _read(key: str, field: object) -> tuple[str, list[tuple[tuple[str | int, ...], str]]]:
+def _read(key: str, field: object) -> tuple[type, list[tuple[tuple[str | int, ...], str]]]:
+    """What the scope made of `field` -- `AcceptedField`, `UnclaimedField` or `RefusedField` -- and where each problem is."""
     resolved, problems = resolve(field, KINDS[key.split(":")[0]], CORE_AND_EXTENSIONS)
-    return resolved.resolution, [(found.loc, found.kind) for found in problems]
+    return type(resolved), [(found.loc, found.kind) for found in problems]
 
 
 def _problems(key: str, field: object) -> list[tuple[tuple[str | int, ...], str]]:
@@ -168,14 +175,16 @@ def test_every_definition_in_scope_has_an_example() -> None:
     ("key", "field"), CASES, ids=[f"{k}:{i}" for i, (k, _) in enumerate(CASES)]
 )
 def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field: object) -> None:
-    # Read, with nothing wrong; and its simplest spelling reads the same,
+    # AcceptedField, with nothing wrong; and its simplest spelling reads the same,
     # and is its own simplest spelling.
-    assert _read(key, field) == ("read", [])
+    assert _read(key, field) == (AcceptedField, [])
     kind = KINDS[key.split(":")[0]]
     simplest, problems = canonicalize(field, kind, CORE_AND_EXTENSIONS)
     assert problems == ()
     assert simplest is not None
     assert canonicalize(simplest, kind, CORE_AND_EXTENSIONS) == (simplest, ())
+    # A field read already is spelled as its JSON is, with nothing read again.
+    assert canonical_of(*resolve(field, kind, CORE_AND_EXTENSIONS)) == simplest
 
 
 @pytest.mark.parametrize(
@@ -203,8 +212,12 @@ def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field
                 },
             },
         ),
-        # Nothing configured: the bare name, and no `must_understand: true`.
-        ({"name": "crc32c", "configuration": {}, "must_understand": True}, "crc32c"),
+        # Nothing configured: the name alone, as an object, which every reader
+        # takes, and no `must_understand: true`.
+        ({"name": "crc32c", "configuration": {}, "must_understand": True}, {"name": "crc32c"}),
+        # But a data type with nothing configured is its bare name, as core
+        # data types are written.
+        ({"name": "int8", "configuration": {}, "must_understand": True}, "int8"),
         # Nested fields each in their own simplest spelling.
         (
             {
@@ -222,10 +235,10 @@ def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field
                 "name": "sharding_indexed",
                 "configuration": {
                     "chunk_shape": (2,),
-                    "codecs": ("bytes",),
+                    "codecs": ({"name": "bytes"},),
                     "index_codecs": (
                         {"name": "bytes", "configuration": {"endian": "little"}},
-                        "crc32c",
+                        {"name": "crc32c"},
                     ),
                 },
             },
@@ -248,12 +261,63 @@ def test_every_example_reads_and_its_simplest_spelling_is_stable(key: str, field
                 "configuration": {"kind": "inline", "chunk_shapes": (((32, 3), 16), 8)},
             },
         ),
+        # A member at its spec default is left out: a key encoding's
+        # separator, a shard's index location, zstd's checksum.
+        ({"name": "default", "configuration": {"separator": "/"}}, {"name": "default"}),
+        ({"name": "v2", "configuration": {"separator": "."}}, {"name": "v2"}),
+        (
+            {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": [2],
+                    "codecs": ["bytes"],
+                    "index_codecs": [
+                        {"name": "bytes", "configuration": {"endian": "little"}},
+                        "crc32c",
+                    ],
+                    "index_location": "end",
+                },
+            },
+            {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": (2,),
+                    "codecs": ({"name": "bytes"},),
+                    "index_codecs": (
+                        {"name": "bytes", "configuration": {"endian": "little"}},
+                        {"name": "crc32c"},
+                    ),
+                },
+            },
+        ),
+        (
+            {"name": "zstd", "configuration": {"level": 3, "checksum": False}},
+            {"name": "zstd", "configuration": {"level": 3}},
+        ),
     ],
-    ids=["blosc-noshuffle", "bare-name", "sharding-nested", "cast-value-target", "rectilinear-rle"],
+    ids=[
+        "blosc-noshuffle",
+        "name-alone",
+        "data-type-bare-name",
+        "sharding-nested",
+        "cast-value-target",
+        "rectilinear-rle",
+        "default-separator",
+        "v2-separator",
+        "sharding-index-location",
+        "zstd-checksum",
+    ],
 )
 def test_the_simplest_spelling(field: dict[str, Any], simplest: object) -> None:
-    kind = ChunkGridDefinition if field["name"] == "rectilinear" else CodecDefinition
+    kinds = {
+        "rectilinear": ChunkGridDefinition,
+        "int8": DataTypeDefinition,
+        "default": ChunkKeyEncodingDefinition,
+        "v2": ChunkKeyEncodingDefinition,
+    }
+    kind = kinds.get(field["name"], CodecDefinition)
     assert canonicalize(field, kind, CORE_AND_EXTENSIONS) == (simplest, ())
+    assert canonical_of(*resolve(field, kind, CORE_AND_EXTENSIONS)) == simplest
 
 
 @pytest.mark.parametrize(
@@ -271,7 +335,8 @@ def test_raw_bits_read_as_r_star_with_the_size_their_name_carries(
     field: object, bits: int, simplest: str
 ) -> None:
     resolved, problems = resolve(field, DataTypeDefinition, CORE_AND_EXTENSIONS)
-    assert (resolved.resolution, problems) == ("read", ())
+    assert problems == ()
+    assert isinstance(resolved, AcceptedField)
     assert resolved.definition is RAW_BYTES_DATA_TYPE
     assert resolved.json == field
     assert configuration_of(resolved, RAW_BYTES_DATA_TYPE) == {"bits": bits}
@@ -284,22 +349,58 @@ def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
     mine = DataTypeDefinition(name="r*", configuration=RawBytesConfiguration)
     scope = CORE_AND_EXTENSIONS.extended_with(mine)
     resolved, problems = resolve("r12", DataTypeDefinition, scope)
+    assert problems == ()
+    assert isinstance(resolved, AcceptedField)
     assert resolved.definition is mine
-    assert (resolved.resolution, problems) == ("read", ())
-    again = scope.extended_with(RAW_BYTES_DATA_TYPE)
-    assert resolve("r12", DataTypeDefinition, again)[0].definition is RAW_BYTES_DATA_TYPE
+    # The package's own takes no 12 bits, and refuses them.
+    again, _ = resolve("r12", DataTypeDefinition, scope.extended_with(RAW_BYTES_DATA_TYPE))
+    assert isinstance(again, RefusedField)
+    assert again.definition is RAW_BYTES_DATA_TYPE
 
 
-@pytest.mark.parametrize("field", ["r*", {"name": "r*", "configuration": {"bits": 16}}])
-def test_r_star_is_notation_that_names_nothing(field: object) -> None:
+@pytest.mark.parametrize(
+    ("field", "at"),
+    [("r*", ()), ({"name": "r*", "configuration": {"bits": 16}}, ("name",))],
+    ids=["bare", "object"],
+)
+def test_error_r_star_is_notation_and_no_name(field: object, at: tuple[str, ...]) -> None:
     # How the specification's table writes raw bits, and no document's name
-    # for them: read as any name nothing in scope claims.
+    # for them: `*` is no character of an extension name.
     resolved, problems = resolve(field, DataTypeDefinition, CORE_AND_EXTENSIONS)
-    assert (resolved.resolution, resolved.definition, problems) == ("out_of_scope", None, ())
+    assert type(resolved) is RefusedField
+    assert [(p.loc, p.kind) for p in problems] == [(at, "invalid_value")]
 
 
-def test_an_unclaimed_field_keeps_its_own_spelling() -> None:
-    assert canonicalize({"name": "zfpy"}, CodecDefinition, CORE) == ({"name": "zfpy"}, ())
+@pytest.mark.parametrize(
+    ("field", "kind", "simplest"),
+    [
+        ({"name": "zfpy"}, CodecDefinition, {"name": "zfpy"}),
+        # What it simplifies to is its own definition's call, so its
+        # configuration is kept as written; its envelope is its kind's.
+        (
+            {"name": "zfpy", "configuration": {"level": [1]}},
+            CodecDefinition,
+            {"name": "zfpy", "configuration": {"level": (1,)}},
+        ),
+        ("zfpy", CodecDefinition, {"name": "zfpy"}),
+        (
+            {"name": "zfpy", "configuration": {}, "must_understand": True},
+            CodecDefinition,
+            {"name": "zfpy"},
+        ),
+        ({"name": "acme.decimal"}, DataTypeDefinition, "acme.decimal"),
+    ],
+    ids=["object", "configured", "bare-codec", "spelled-out", "data-type"],
+)
+def test_an_unclaimed_field_keeps_its_configuration_in_its_kind_s_envelope(
+    field: object, kind: type[Definition[Any]], simplest: object
+) -> None:
+    assert canonicalize(field, kind, CORE) == (simplest, ())
+
+
+def _shard(codecs: list[object], index_codecs: list[object]) -> dict[str, object]:
+    configuration = {"chunk_shape": [2], "codecs": codecs, "index_codecs": index_codecs}
+    return {"name": "sharding_indexed", "configuration": configuration}
 
 
 @pytest.mark.parametrize(
@@ -331,9 +432,19 @@ def test_an_unclaimed_field_keeps_its_own_spelling() -> None:
         (
             {"name": "zfpy", "configuration": {}, "extra": 1},
             CodecDefinition,
-            [(("extra",), "invalid_value")],
+            [(("extra",), "unknown_key")],
         ),
         (None, CodecDefinition, [((), "invalid_type")]),
+        (
+            _shard(["bytes", {"name": "gzip", "configuration": {"level": 12}}], ["bytes"]),
+            CodecDefinition,
+            [(("configuration", "codecs", 1, "configuration", "level"), "invalid_value")],
+        ),
+        (
+            _shard(["bytes"], ["bytes", {"name": "gzip", "configuration": {"level": 1}}]),
+            CodecDefinition,
+            [(("configuration", "index_codecs", 1), "invalid_value")],
+        ),
     ],
     ids=[
         "refused-value",
@@ -342,16 +453,21 @@ def test_an_unclaimed_field_keeps_its_own_spelling() -> None:
         "must-understand-false",
         "stray",
         "null",
+        "holding-a-refused-field",
+        "a-codec-of-dynamic-size-where-one-of-static-size-goes",
     ],
 )
 def test_error_a_field_with_a_problem_has_no_simplest_spelling(
     field: dict[str, Any] | None, kind: type[Definition[Any]], found: list[object]
 ) -> None:
     # Whatever the author wrote stays theirs: a simpler spelling would
-    # drop the unknown key, the stray member or the `must_understand`.
+    # drop the unknown key, the stray member or the `must_understand`, or
+    # spell what does not hold. A field read already, given its problems,
+    # has none either.
     simplest, problems = canonicalize(field, kind, CORE_AND_EXTENSIONS)
     assert simplest is None
     assert [(problem.loc, problem.kind) for problem in problems] == found
+    assert canonical_of(*resolve(field, kind, CORE_AND_EXTENSIONS)) is None
 
 
 def test_error_a_canonical_that_does_not_hold_is_the_definitions_fault() -> None:
@@ -392,6 +508,17 @@ def test_error_blosc_typesize_is_missing_while_shuffling() -> None:
     assert _one("codecs:blosc", configuration) == [(("configuration", "typesize"), "missing_key")]
 
 
+def test_a_rule_is_asked_only_of_a_configuration_within_its_bounds() -> None:
+    # As pydantic's after-validators and zod's refinements are: a rule
+    # relies on the bounds its type declares, so a value out of them is
+    # the one problem reported until it is fixed.
+    shuffled = {key: value for key, value in BLOSC.items() if key != "typesize"}
+    assert _one("codecs:blosc", {**shuffled, "clevel": 12}) == [
+        (("configuration", "clevel"), "invalid_value")
+    ]
+    assert _one("codecs:blosc", shuffled) == [(("configuration", "typesize"), "missing_key")]
+
+
 def test_error_blosc_typesize_is_not_positive() -> None:
     assert _one("codecs:blosc", {**BLOSC, "typesize": 0}) == [
         (("configuration", "typesize"), "invalid_value")
@@ -414,10 +541,111 @@ def test_error_scale_offset_scalar_is_null() -> None:
     ]
 
 
+def test_error_regular_chunk_length_is_zero() -> None:
+    # Along a dimension of length 0 too: a grid's chunks have a size.
+    assert _one("chunk_grid:regular", {"chunk_shape": [4, 0]}) == [
+        (("configuration", "chunk_shape", 1), "invalid_value")
+    ]
+
+
 def test_error_sharding_inner_chunk_extent_is_zero() -> None:
     configuration = {"chunk_shape": [0], "codecs": ["bytes"], "index_codecs": ["bytes"]}
     assert _one("codecs:sharding_indexed", configuration) == [
         (("configuration", "chunk_shape", 0), "invalid_value")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("kind", "field", "loc", "ctx"),
+    [
+        (
+            CodecDefinition,
+            {"name": "gzip", "configuration": {"level": 10}},
+            ("configuration", "level"),
+            {"ge": 0, "le": 9},
+        ),
+        (
+            CodecDefinition,
+            {"name": "zstd", "configuration": {"level": -131073}},
+            ("configuration", "level"),
+            {"ge": -131072, "le": 22},
+        ),
+        (
+            CodecDefinition,
+            {"name": "blosc", "configuration": {**BLOSC, "clevel": -1}},
+            ("configuration", "clevel"),
+            {"ge": 0, "le": 9},
+        ),
+        (
+            CodecDefinition,
+            {"name": "blosc", "configuration": {**BLOSC, "blocksize": -1}},
+            ("configuration", "blocksize"),
+            {"ge": 0},
+        ),
+        (
+            CodecDefinition,
+            {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": [2, 0],
+                    "codecs": ["bytes"],
+                    "index_codecs": ["bytes"],
+                },
+            },
+            ("configuration", "chunk_shape", 1),
+            {"ge": 1},
+        ),
+        (
+            ChunkGridDefinition,
+            {"name": "regular", "configuration": {"chunk_shape": [2, 0]}},
+            ("configuration", "chunk_shape", 1),
+            {"ge": 1},
+        ),
+        (
+            ChunkGridDefinition,
+            {"name": "rectilinear", "configuration": {"kind": "inline", "chunk_shapes": [0]}},
+            ("configuration", "chunk_shapes", 0),
+            {"ge": 1},
+        ),
+        (
+            ChunkGridDefinition,
+            {
+                "name": "rectilinear",
+                "configuration": {"kind": "inline", "chunk_shapes": [[4, [2, 0]]]},
+            },
+            ("configuration", "chunk_shapes", 0, 1, 1),
+            {"ge": 1},
+        ),
+        (
+            DataTypeDefinition,
+            {"name": "numpy.timedelta64", "configuration": {"unit": "s", "scale_factor": 2**31}},
+            ("configuration", "scale_factor"),
+            {"ge": 1, "le": 2**31 - 1},
+        ),
+    ],
+    ids=[
+        "gzip-level",
+        "zstd-level",
+        "blosc-clevel",
+        "blosc-blocksize",
+        "sharding-inner-chunk-extent",
+        "regular-chunk-extent",
+        "rectilinear-extent",
+        "rectilinear-run-count",
+        "numpy-time-scale-factor",
+    ],
+)
+def test_a_bound_is_its_member_s_type_and_its_problem_holds_it(
+    kind: type[Definition[Any]],
+    field: dict[str, Any],
+    loc: tuple[str | int, ...],
+    ctx: dict[str, int],
+) -> None:
+    # Declared on the TypedDict, as pydantic reads a bound, and not in a
+    # rule: the problem holds the bound, and what was found.
+    _, problems = resolve(field, kind, CORE_AND_EXTENSIONS)
+    assert [(p.loc, p.kind, p.input, dict(p.ctx)) for p in problems] == [
+        (loc, "invalid_value", value_at(field, loc), ctx)
     ]
 
 
@@ -635,7 +863,7 @@ def test_error_a_configuration_written_beside_a_raw_bits_name() -> None:
     # The name carries the configuration, so one written beside it holds
     # nothing: each member is a key nothing declares.
     assert _read("data_type:r*", {"name": "r16", "configuration": {"bits": 16}}) == (
-        "read",
+        AcceptedField,
         [(("configuration", "bits"), "unknown_key")],
     )
 
@@ -651,7 +879,7 @@ def test_a_rule_is_a_function_over_the_typeddict() -> None:
     # configuration can ask them without a scope or a field around it.
     from zarr_metadata.v3.codec.blosc import BLOSC_CODEC
 
-    _, problems = BLOSC_CODEC.judge({**BLOSC, "clevel": 10})
+    _, problems = BLOSC_CODEC.read_configuration({**BLOSC, "clevel": 10})
     assert problems == (
         ValidationProblem(("clevel",), "expected an integer in [0, 9], got 10", "invalid_value"),
     )

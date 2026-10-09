@@ -31,10 +31,18 @@ writes annotations:
 - Each annotation is evaluated in the module of the class that wrote
   it, as the spec has it, where `get_type_hints` would read what a
   subclass inherited in the subclass's module.
-- `ReadOnly` and `Annotated` are peeled wherever they are written; a
-  `NewType` reads as the type it names, a type alias as the type it
-  stands for, and a TypedDict or alias that holds itself as deep as the
-  value goes.
+- `Required`, `NotRequired` and `ReadOnly` are peeled wherever they are
+  written; a `NewType` reads as the type it names, a type alias as the
+  type it stands for, and a TypedDict or alias that holds itself as deep
+  as the value goes.
+- A number's type may carry bounds, in annotated-types' vocabulary as
+  pydantic reads it: `Gt`, `Ge`, `Lt`, `Le` and `Interval`, at any depth,
+  so `tuple[Annotated[int, Ge(1)], ...]` bounds each element. A value out
+  of them is a problem, `invalid_value`, whose message says what the type
+  admits and whose `ctx` holds the bounds. `Annotated` may also carry a
+  note, a string or a `Doc`; any other metadata is a `TypeError`, since
+  a constraint `check` does not read would be one it does not hold a
+  value to.
 - A union of TypedDicts that each require a key as a `Literal` of values
   of their own is read by the branch that key names, and its problems
   are that branch's. Otherwise a value is read by the first branch it
@@ -47,7 +55,26 @@ object a new dict of the keys its type admits. Problems are values, not
 exceptions: `ValidationProblem(loc, message, kind)`, with `kind` one of
 `missing_key`, `invalid_type`, `invalid_value`, `unknown_key` and
 `invalid_json`, so a caller that tolerates a key the TypedDict does not
-declare can tell it from a wrong value.
+declare can tell it from a wrong value. Each carries its message's data,
+as pydantic's errors and zod's issues do: `input`, the JSON the value
+holds at `loc`, and `ctx`, what was expected there -- a type's bounds, or
+the values of a `Literal`.
+
+`json_schema` writes what `check` reads as a JSON Schema, draft 2020-12,
+for a validator in another language, or an editor: the JSON Schema of
+the values `check` finds no problem with. A TypedDict is an object of its
+keys, closed or not as it says; a bound is JSON Schema's keyword for it,
+`Interval(ge=0, le=9)` a `minimum` and a `maximum`; a TypedDict or a type
+alias is written once, in `$defs`, under its name. JSON Schema takes a
+number with no fraction, `1.0`, for an integer, where `check` wants `1`:
+
+    from zarr_metadata.typed_json import json_schema
+
+    json_schema(GzipCodecConfiguration)
+    # {'$schema': 'https://json-schema.org/draft/2020-12/schema',
+    #  'type': 'object',
+    #  'properties': {'level': {'type': 'integer', 'minimum': 0, 'maximum': 9}},
+    #  'required': ['level'], 'additionalProperties': False}
 
 `check` reads the shapes JSON takes and no others -- `int`, `float` for
 any number, `bool`, `str`, `None`, `JSONValue`, a `Literal`,
@@ -66,14 +93,19 @@ records them on every version.
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ProblemKind, ValidationProblem
-from zarr_metadata._typed_json import Loc, TypedDictKeys, check, typeddict_keys
+from zarr_metadata._typed_json import (
+    JSONSchema,
+    Loc,
+    check,
+    json_schema,
+)
 
 __all__ = [
+    "JSONSchema",
     "JSONValue",
     "Loc",
     "ProblemKind",
-    "TypedDictKeys",
     "ValidationProblem",
     "check",
-    "typeddict_keys",
+    "json_schema",
 ]

@@ -10,14 +10,14 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata._json import ValidationProblem
+from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.v3._definition import (
     DataTypeDefinition,
     DataTypeField,
     Nested,
     StorageClass,
     fill_value_problems,
-    named_configuration,
+    spelled_canonically,
     storage_of,
 )
 
@@ -96,10 +96,10 @@ def _rules(configuration: StructConfiguration, nested: Nested) -> Iterator[Valid
             )
         field_type = nested.get(("fields", index, "data_type"))
         if field_type is not None and storage_of(field_type) == "variable_length":
-            written, _, _ = named_configuration(field_type.json)
             yield ValidationProblem(
                 ("fields", index, "data_type"),
-                f"expected a data type of fixed size, got {written!r}, whose values vary in size",
+                f"expected a data type of fixed size, got {shown(field_type.name)}, whose values "
+                "vary in size",
                 "invalid_value",
             )
 
@@ -115,6 +115,7 @@ def _fill_value_rules(
     not hold, leaves its fill value unjudged.
     """
     names = [member["name"] for member in configuration["fields"]]
+    declared = set(names)
     for index, name in enumerate(names):
         if name not in value:
             yield ValidationProblem(
@@ -125,8 +126,25 @@ def _fill_value_rules(
         if field_type is not None:
             yield from fill_value_problems(field_type, value[name], (name,))
     for key in value:
-        if key not in names:
+        if key not in declared:
             yield ValidationProblem((key,), f"no struct field is named {key!r}", "unknown_key")
+
+
+def _fill_value_canonical(
+    configuration: StructConfiguration, nested: Nested, value: StructFillValue
+) -> dict[str, JSONValue]:
+    """Each field's fill value in the canonical spelling of that field's own type, in the order the fields are declared.
+
+    A field type the scope did not read, or whose reading the struct's does
+    not hold, spells its fill value as written.
+    """
+    spelled: dict[str, JSONValue] = {}
+    for index, member in enumerate(configuration["fields"]):
+        name = member["name"]
+        field_type = nested.get(("fields", index, "data_type"))
+        held = value[name]
+        spelled[name] = held if field_type is None else spelled_canonically(field_type, held)
+    return spelled
 
 
 def _storage(configuration: StructConfiguration, nested: Nested) -> StorageClass | None:
@@ -161,6 +179,7 @@ STRUCT_DATA_TYPE: Final = DataTypeDefinition(
     rules=_rules,
     fill_value=StructFillValue,
     fill_value_rules=_fill_value_rules,
+    fill_value_canonical=_fill_value_canonical,
     storage=_storage,
 )
 """The `struct` data type: a record of named fields, each field's type a nested field."""

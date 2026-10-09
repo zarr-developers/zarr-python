@@ -13,27 +13,31 @@ from the spec alone by the typing spec's rules, not the checker's.
 Values are JSON, their depth capped: drawn from the spec, so they
 conform; drawn at large, so most do not; or drawn from the spec and
 changed in one place, so they nearly do. On every one the checker has to
-agree with the reference, and the two builds with each other.
+agree with the reference, and the two builds with each other; so does
+the JSON Schema written of the type, but for JSON Schema's own reading of
+a number with no fraction, `1.0`, as the integer it equals.
 """
 
 from __future__ import annotations
 
 import copy
 import itertools
+import json
 import sys
 import types
 import typing
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Annotated, Literal, NewType, NotRequired, Required, TypeAlias, Union, cast
+from typing import Annotated, Any, Literal, NewType, NotRequired, Required, TypeAlias, Union, cast
 
 import pytest
 from hypothesis import HealthCheck, event, find, given, note, settings
 from hypothesis import strategies as st
+from jsonschema import Draft202012Validator
 from typing_extensions import ReadOnly, TypeAliasType, TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata._typed_json import Loc, Parsed, no_leaf, parser, typeddict_keys
+from zarr_metadata._typed_json import Loc, Parsed, Schemas, no_leaf, parser, typeddict_keys
 
 # --- specs -----------------------------------------------------------------
 
@@ -662,6 +666,38 @@ def test_the_checker_agrees_with_the_reference(data: st.DataObject) -> None:
     if len(problems) != 0 and all(found.kind == "unknown_key" for found in problems):
         event("only unknown keys")
         assert conforms(typed, spec)
+
+
+def _as_json_schema_reads(value: object) -> object:
+    """`value` as JSON Schema reads it: a number with no fraction is an integer, `1.0` the `1` it equals."""
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, list):
+        return [_as_json_schema_reads(entry) for entry in cast("list[object]", value)]
+    if isinstance(value, dict):
+        entries = cast("dict[str, object]", value)
+        return {key: _as_json_schema_reads(entry) for key, entry in entries.items()}
+    return value
+
+
+@_EXAMPLES
+@given(st.data())
+def test_the_json_schema_agrees_with_the_reference(data: st.DataObject) -> None:
+    # The schema of a type accepts exactly the values of it, as the checker
+    # does, but that JSON Schema takes `1.0` for the integer it equals, which
+    # the checker does not.
+    spec = data.draw(specs(_DEPTH), label="spec")
+    build = Build(data.draw(st.sampled_from(_MODES), label="mode"))
+    annotation = build.annotation(spec)
+    note(build.text_of())
+    schemas = Schemas()
+    schema = schemas.document(schemas.of(annotation))
+    note(json.dumps(schema, indent=1))
+    Draft202012Validator.check_schema(schema)
+    value = data.draw(_values(spec), label="value")
+    expected = conforms(_as_json_schema_reads(value), spec)
+    event("conforms" if expected else "does not conform")
+    assert Draft202012Validator(schema).is_valid(cast("Any", value)) == expected
 
 
 @_EXAMPLES

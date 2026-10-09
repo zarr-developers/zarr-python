@@ -5,8 +5,9 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
 """
 
 from collections.abc import Iterator
-from typing import Final, Literal, NotRequired, cast
+from typing import Annotated, Final, Literal, NotRequired, cast
 
+from annotated_types import Ge, Interval
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
@@ -35,9 +36,9 @@ class BloscCodecConfiguration(TypedDict, closed=True):
     """Configuration for the Zarr v3 `blosc` codec."""
 
     cname: BloscCName
-    clevel: int
+    clevel: Annotated[int, Interval(ge=0, le=9)]
     shuffle: BloscShuffle
-    blocksize: int
+    blocksize: Annotated[int, Ge(0)]
     typesize: NotRequired[int]
 
 
@@ -69,21 +70,13 @@ another member is required.
 
 
 def _rules(configuration: BloscCodecConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
-    """Bounds on `clevel` and `blocksize`; `typesize` against `shuffle`.
+    """`typesize` against `shuffle`.
 
     Under `noshuffle` the spec says of `typesize` that "the value is
     ignored", and the canonical form drops it; under either shuffle it is
-    required, and positive.
+    required, and positive. Whether it is required is not the type's to
+    say, so neither is its bound.
     """
-    clevel, blocksize = configuration["clevel"], configuration["blocksize"]
-    if not 0 <= clevel <= 9:
-        yield ValidationProblem(
-            ("clevel",), f"expected an integer in [0, 9], got {clevel}", "invalid_value"
-        )
-    if blocksize < 0:
-        yield ValidationProblem(
-            ("blocksize",), f"expected an integer >= 0, got {blocksize}", "invalid_value"
-        )
     shuffle = configuration["shuffle"]
     if shuffle != BLOSC_NO_SHUFFLE:
         typesize = configuration.get("typesize")
@@ -93,7 +86,10 @@ def _rules(configuration: BloscCodecConfiguration, nested: Nested) -> Iterator[V
             )
         elif typesize < 1:
             yield ValidationProblem(
-                ("typesize",), f"expected a positive integer, got {typesize}", "invalid_value"
+                ("typesize",),
+                f"expected a positive integer, got {typesize}",
+                "invalid_value",
+                ctx={"ge": 1},
             )
 
 

@@ -5,18 +5,19 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index
 """
 
 from collections.abc import Iterator, Mapping
-from typing import Final, Literal, NotRequired
+from typing import Annotated, Final, Literal, NotRequired, cast
 
+from annotated_types import Ge
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.v3._definition import (
+    AcceptedField,
     Chunk,
     CodecDefinition,
     CodecField,
     Lengths,
     Nested,
-    Resolved,
     StaticCodecField,
 )
 from zarr_metadata.v3.data_type.uint64 import UINT64_DATA_TYPE, UINT64_DATA_TYPE_NAME
@@ -53,7 +54,7 @@ class ShardingIndexedCodecConfiguration(TypedDict, closed=True):
       https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L157-L161
     """
 
-    chunk_shape: tuple[int, ...]
+    chunk_shape: tuple[Annotated[int, Ge(1)], ...]
     codecs: tuple[CodecField, ...]
     index_codecs: tuple[StaticCodecField, ...]
     index_location: NotRequired[ShardingIndexLocation]
@@ -73,20 +74,10 @@ ShardingIndexedCodecMetadata = ShardingIndexedCodecObject
 The configuration has multiple required keys (`chunk_shape`, `codecs`,
 `index_codecs`), so only the object form is valid; the short-hand-name
 form is not permitted by the spec for this codec.
-  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L141-L155 (required members)
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L129-L138 (`chunk_shape`)
+  https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L141-L155 (`codecs` and `index_codecs`, the members the spec marks required)
   https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1562-L1564 (short-hand names only "if no configuration metadata is required")
 """
-
-
-def _rules(
-    configuration: ShardingIndexedCodecConfiguration, nested: Nested
-) -> Iterator[ValidationProblem]:
-    """Every inner chunk extent is at least 1."""
-    for index, extent in enumerate(configuration["chunk_shape"]):
-        if extent < 1:
-            yield ValidationProblem(
-                ("chunk_shape", index), f"expected an integer >= 1, got {extent}", "invalid_value"
-            )
 
 
 def _chunk_rules(
@@ -125,7 +116,12 @@ def _chunk_rules(
             )
 
 
-_UINT64: Final = Resolved(UINT64_DATA_TYPE_NAME, "read", UINT64_DATA_TYPE, {})
+_UINT64: Final = AcceptedField(
+    json=UINT64_DATA_TYPE_NAME,
+    name=UINT64_DATA_TYPE_NAME,
+    definition=UINT64_DATA_TYPE,
+    configuration={},
+)
 """The data type of a shard index, which the spec fixes whatever the scope holds."""
 
 
@@ -170,12 +166,29 @@ def _per_shard(chunk_shape: tuple[int, ...], lengths: Lengths | None) -> Lengths
     )
 
 
+def _canonical(
+    configuration: ShardingIndexedCodecConfiguration,
+) -> ShardingIndexedCodecConfiguration:
+    """Without an `index_location` of `end`, which is what an absent one means.
+
+    "If the parameter is not present, the value defaults to `end`"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L157-L161),
+    so the two spellings are one codec.
+    """
+    if configuration.get("index_location") != "end":
+        return configuration
+    return cast(
+        "ShardingIndexedCodecConfiguration",
+        {key: value for key, value in configuration.items() if key != "index_location"},
+    )
+
+
 SHARDING_INDEXED_CODEC: Final = CodecDefinition(
     name=SHARDING_INDEXED_CODEC_NAME,
     configuration=ShardingIndexedCodecConfiguration,
+    canonical=_canonical,
     kind="array_bytes",
     size="dynamic",
-    rules=_rules,
     chunk_rules=_chunk_rules,
     pipelines=_pipelines,
 )

@@ -8,7 +8,10 @@ others -- `int`, `float` for any number, `bool`, `str`, `None` for null,
 `tuple[T1, T2]`, a union of those, an object described by a TypedDict,
 `Mapping[str, V]`, a `NewType` as the type it names, and a type alias as
 the type it stands for -- which is what keeps it small. An annotation
-outside these implies no parser.
+outside these implies no parser. A number's type may carry bounds, as
+annotated-types spells them and pydantic reads them --
+`Annotated[int, Interval(ge=0, le=9)]` -- and a value out of them is a
+problem; `constraints_of` says which the checker reads.
 
 A TypedDict is read as the typing spec defines it, which is not always
 what its runtime attributes say: `typeddict_keys` reads which keys it
@@ -25,15 +28,22 @@ own passes a `leaf`, which is asked first for every annotation at every
 depth; the parser it returns is used as it is. Parsers are compiled once
 per annotation and are pure functions of the value, so the branch of a
 union that did not match leaves nothing behind.
+
+`json_schema` writes the same reading as a JSON Schema: `Schemas` writes
+each shape as the checker reads it, asking a caller's `SchemaLeaf` first,
+as a parser asks a `Leaf`.
 """
 
 from __future__ import annotations
 
 import functools
+import math
+import operator
 import sys
 import types
 import typing
-from collections.abc import Callable, Mapping, Sequence
+import urllib.parse
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import (
@@ -46,6 +56,7 @@ from typing import (
     NewType,
     NoReturn,
     TypeAlias,
+    TypeGuard,
     TypeVar,
     cast,
     get_args,
@@ -53,11 +64,23 @@ from typing import (
     get_type_hints,
 )
 
+import annotated_types
 import typing_extensions
 from typing_extensions import NoExtraItems, TypeIs, is_typeddict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata._json import ValidationProblem, is_json, refine_json
+from zarr_metadata._json import (
+    ValidationProblem,
+    choices,
+    copied,
+    is_json,
+    is_list_or_tuple,
+    is_object,
+    outside_of,
+    refine_json,
+    shown,
+    with_input,
+)
 
 if TYPE_CHECKING:
     from zarr_metadata._json import ProblemKind
@@ -89,9 +112,12 @@ _QUALIFIERS: Final[tuple[object, ...]] = (*_REQUIRED, *_NOT_REQUIRED, *_READ_ONL
 
 # A `type` statement makes a `typing.TypeAliasType`, which is not the
 # `typing_extensions` one on every version that has both.
-_ALIASES: Final[tuple[type, ...]] = (
+_ALIASES: Final[tuple[type[typing_extensions.TypeAliasType], ...]] = (
     typing_extensions.TypeAliasType,
-    getattr(typing, "TypeAliasType", typing_extensions.TypeAliasType),
+    cast(
+        "type[typing_extensions.TypeAliasType]",
+        getattr(typing, "TypeAliasType", typing_extensions.TypeAliasType),
+    ),
 )
 
 
@@ -131,12 +157,22 @@ def strip_annotation(annotation: object) -> tuple[object, tuple[object, ...]]:
         origin = get_origin(annotation)
         if origin is Annotated:
             inner, *extras = get_args(annotation)
-            metadata.extend(extras)
+            # An inner layer's metadata first, as `Annotated` flattens
+            # nested layers.
+            metadata[:0] = extras
             annotation = inner
         elif origin in _QUALIFIERS:
             (annotation,) = get_args(annotation)
         else:
             return annotation, tuple(metadata)
+
+
+def unqualified(annotation: object) -> object:
+    """A TypedDict key's annotation with its qualifiers peeled and its `Annotated` metadata kept, which says more of the value's type."""
+    inner, metadata = strip_annotation(annotation)
+    if len(metadata) == 0:
+        return inner
+    return Annotated[(inner, *metadata)]
 
 
 Qualifier: TypeAlias = Literal["Required", "NotRequired", "ReadOnly"]
@@ -166,11 +202,9 @@ def is_union(annotation: object) -> bool:
     return get_origin(annotation) in (typing.Union, types.UnionType)
 
 
-def is_alias(annotation: object) -> bool:
+def is_alias(annotation: object) -> TypeGuard[typing_extensions.TypeAliasType]:
     """Whether `annotation` is a type alias that takes no type parameters: `type Level = int`."""
-    if not isinstance(annotation, _ALIASES):
-        return False
-    return len(cast("typing_extensions.TypeAliasType", annotation).__type_params__) == 0
+    return isinstance(annotation, _ALIASES) and len(annotation.__type_params__) == 0
 
 
 @functools.cache
@@ -202,10 +236,11 @@ class TypedDictKeys:
     """What a TypedDict says of an object's keys, read as the typing spec defines it.
 
     `members` holds every key it declares, its bases' included, with the
-    type of the key's value -- qualifiers and `Annotated` metadata peeled
-    -- and whether the key is required. `extra_items` is what any other
-    key may hold: `Never` when the TypedDict is closed, `object` when it
-    is open, and the `extra_items` type otherwise. `declared` is whether
+    type of the key's value -- its qualifiers peeled, and any `Annotated`
+    metadata kept, since a constraint there is part of the type -- and
+    whether the key is required. `extra_items` is what any other key may
+    hold: `Never` when the TypedDict is closed, `object` when it is open,
+    and the `extra_items` type otherwise. `declared` is whether
     that was said, by the TypedDict or a base, rather than defaulted: a
     TypedDict that says nothing is open.
     """
@@ -222,12 +257,13 @@ class TypedDictKeys:
     @property
     def closed(self) -> bool:
         """Whether a key it does not declare is not a key of the type: `closed=True`, or `extra_items=Never`."""
-        return self.extra_items is Never or self.extra_items is NoReturn
+        extra_items = strip_annotation(self.extra_items)[0]
+        return extra_items is Never or extra_items is NoReturn
 
     @property
     def open(self) -> bool:
         """Whether a key it does not declare may hold anything: the default, or `closed=False`."""
-        return self.extra_items is object
+        return strip_annotation(self.extra_items)[0] is object
 
 
 @functools.cache
@@ -269,7 +305,7 @@ def typeddict_keys(typeddict: type) -> TypedDictKeys:
             required = False
         else:
             required = key in required_at_runtime
-        members[key] = (strip_annotation(hint)[0], required)
+        members[key] = (unqualified(hint), required)
     extra_items, declared = _openness(typeddict)
     return TypedDictKeys(types.MappingProxyType(members), extra_items, declared)
 
@@ -332,7 +368,7 @@ def _openness(typeddict: type) -> tuple[object, bool]:
     if closed is not None:
         return (Never if closed else object), True
     inherited = [_openness(base) for base in _typeddict_bases(typeddict)]
-    restricted = {extra for extra, _ in inherited if extra is not object}
+    restricted = {extra for extra, _ in inherited if strip_annotation(extra)[0] is not object}
     if len(restricted) > 1:
         msg = (
             f"{typeddict.__name__}: its bases disagree on what a key they do not declare may "
@@ -345,7 +381,7 @@ def _openness(typeddict: type) -> tuple[object, bool]:
 
 
 def _extra_items_type(typeddict: type, extra_items: object) -> object:
-    """The `extra_items` type, evaluated where `typeddict` was defined, `ReadOnly` peeled."""
+    """The `extra_items` type, evaluated where `typeddict` was defined, `ReadOnly` peeled and any `Annotated` metadata kept."""
     if isinstance(extra_items, (str, ForwardRef)):
         holder = type(
             "_ExtraItems",
@@ -357,7 +393,7 @@ def _extra_items_type(typeddict: type, extra_items: object) -> object:
         except NameError as error:
             msg = f"{typeddict.__name__}: {error}; its extra_items must resolve in its module"
             raise TypeError(msg) from error
-    return strip_annotation(extra_items)[0]
+    return unqualified(extra_items)
 
 
 def _typeddict_bases(typeddict: type) -> tuple[type, ...]:
@@ -375,43 +411,66 @@ def _typeddict_bases(typeddict: type) -> tuple[type, ...]:
 
 def describe(annotation: object, seen: frozenset[object] = frozenset()) -> str:
     """The annotation as a message would name it: "an integer", "an object"."""
+    return _named(annotation, seen)[0]
+
+
+def _named(annotation: object, seen: frozenset[object]) -> tuple[str, str]:
+    """The annotation as a message names one of it and many of it: "an integer", "integers"."""
     inner = strip_annotation(annotation)[0]
     if inner is int:
-        return "an integer"
+        return "an integer", "integers"
     if inner is float:
-        return "a number"
+        return "a number", "numbers"
     if inner is bool:
-        return "a boolean"
+        return "a boolean", "booleans"
     if inner is str:
-        return "a string"
+        return "a string", "strings"
     if inner is None or inner is types.NoneType:
-        return "null"
+        return "null", "nulls"
     if inner is JSONValue:
-        return "a JSON value"
+        return "a JSON value", "JSON values"
     origin = get_origin(inner)
     if origin is Literal:
-        return f"one of {tuple(sorted(get_args(inner), key=repr))!r}"
+        values = get_args(inner)
+        listed = ", ".join(sorted(dict.fromkeys(shown(value) for value in values)))
+        return choices(values), f"values in [{listed}]"
     if is_union(inner):
-        return " or ".join(describe(branch, seen) for branch in get_args(inner))
+        # Each shape once -- two TypedDicts are both "an object" -- and a
+        # broader one takes in a narrower: a number an integer, a string
+        # the strings a `Literal` names.
+        branches = get_args(inner)
+        named = dict.fromkeys(_named(branch, seen) for branch in branches)
+        if ("a number", "numbers") in named:
+            named.pop(("an integer", "integers"), None)
+        if ("a string", "strings") in named:
+            for branch in filter(_strings_only, branches):
+                named.pop(_named(branch, seen), None)
+        return " or ".join(one for one, _ in named), " or ".join(many for _, many in named)
     if origin is tuple:
         arguments = get_args(inner)
         if len(arguments) == 2 and arguments[1] is Ellipsis:
-            return f"an array of {describe(arguments[0], seen)} elements"
+            each = _named(arguments[0], seen)[1]
+            return f"an array of {each}", f"arrays of {each}"
         if len(arguments) == 2:
-            return f"a [{describe(arguments[0], seen)}, {describe(arguments[1], seen)}] pair"
-        return f"an array of {len(arguments)} elements"
-    if origin in (Mapping, dict):
-        return "an object"
+            pair = f"[{describe(arguments[0], seen)}, {describe(arguments[1], seen)}] pair"
+            return f"a {pair}", f"{pair}s"
+        return f"an array of {len(arguments)} elements", f"arrays of {len(arguments)} elements"
+    if origin in (Mapping, dict) or (isinstance(inner, type) and is_typeddict(inner)):
+        return "an object", "objects"
     if isinstance(inner, NewType):
-        return describe(inner.__supertype__, seen)
-    if isinstance(inner, type) and is_typeddict(inner):
-        return "an object"
+        return _named(inner.__supertype__, seen)
     if is_alias(inner):
-        alias = cast("typing_extensions.TypeAliasType", inner)
+        alias = inner
         if alias in seen or _holds(alias_value(alias), alias, frozenset()):
-            return f"a {alias.__name__}"
-        return describe(alias_value(alias), seen | {alias})
-    return "a value"
+            return f"a {alias.__name__}", f"{alias.__name__} values"
+        return _named(alias_value(alias), seen | {alias})
+    return "a value", "values"
+
+
+def _strings_only(annotation: object) -> bool:
+    """Whether `annotation` is a `Literal` of strings, which "a string" takes in."""
+    inner = strip_annotation(annotation)[0]
+    return get_origin(inner) is Literal and all(isinstance(value, str) for value in get_args(inner))
 
 
 def _holds(annotation: object, alias: object, seen: frozenset[object]) -> bool:
@@ -422,7 +481,7 @@ def _holds(annotation: object, alias: object, seen: frozenset[object]) -> bool:
     if is_alias(inner):
         if inner in seen:
             return False
-        value = alias_value(cast("typing_extensions.TypeAliasType", inner))
+        value = alias_value(inner)
         return _holds(value, alias, seen | {inner})
     return any(_holds(argument, alias, seen) for argument in get_args(inner))
 
@@ -440,7 +499,7 @@ def shape_of(annotation: object) -> str | None:
         if isinstance(inner, NewType):
             inner = strip_annotation(inner.__supertype__)[0]
         else:
-            inner = strip_annotation(alias_value(cast("typing_extensions.TypeAliasType", inner)))[0]
+            inner = strip_annotation(alias_value(inner))[0]
     if inner is int:
         return "int"
     if inner is float:
@@ -491,7 +550,7 @@ def _scalar(description: str, admits: Callable[[object], bool]) -> Parser:
     def parse(value: object, loc: Loc) -> Parsed:
         if admits(value):
             return value, ()
-        return value, problem(loc, f"expected {description}, got {value!r}")
+        return value, problem(loc, f"expected {description}, got {shown(value)}")
 
     return parse
 
@@ -510,14 +569,14 @@ def one_of(allowed: tuple[object, ...]) -> Parser:
     """A member whose type is a closed set of values.
 
     Equal and of the same type: JSON `true` is not the integer 1, though
-    Python says `True == 1`.
+    Python says `True == 1`. A value of a JSON type none of them has --
+    a number, where each is a string -- is of the wrong type; one of the
+    right type, the wrong value.
     """
 
     def parse(value: object, loc: Loc) -> Parsed:
         if not any(value == entry and type(value) is type(entry) for entry in allowed):
-            return value, problem(
-                loc, f"expected one of {allowed!r}, got {value!r}", "invalid_value"
-            )
+            return value, (outside_of(loc, value, allowed),)
         return value, ()
 
     return parse
@@ -527,9 +586,9 @@ def sequence_of(element: Parser) -> Parser:
     """A member whose type is an array of one element type, parsed element by element."""
 
     def parse(value: object, loc: Loc) -> Parsed:
-        if not isinstance(value, (list, tuple)):
-            return value, problem(loc, f"expected a sequence, got {value!r}")
-        entries = cast("list[object] | tuple[object, ...]", value)
+        if not is_list_or_tuple(value):
+            return value, problem(loc, f"expected an array, got {shown(value)}")
+        entries = value
         parsed: list[object] = []
         found: list[ValidationProblem] = []
         for index, entry in enumerate(entries):
@@ -545,11 +604,11 @@ def fixed_tuple(elements: Sequence[Parser], description: str) -> Parser:
     """A member whose type is an array of a fixed length, parsed position by position."""
 
     def parse(value: object, loc: Loc) -> Parsed:
-        if not isinstance(value, (list, tuple)):
-            return value, problem(loc, f"expected {description}, got {value!r}")
-        entries = tuple(cast("list[object] | tuple[object, ...]", value))
+        if not is_list_or_tuple(value):
+            return value, problem(loc, f"expected {description}, got {shown(value)}")
+        entries = tuple(value)
         if len(entries) != len(elements):
-            return entries, problem(loc, f"expected {description}, got {entries!r}")
+            return entries, problem(loc, f"expected {description}, got {shown(entries)}")
         parsed: list[object] = []
         found: list[ValidationProblem] = []
         for position, (element, entry) in enumerate(zip(elements, entries, strict=True)):
@@ -586,7 +645,7 @@ def any_of(branches: Sequence[Branch], description: str, tag: Tag | None = None)
     def parse(value: object, loc: Loc) -> Parsed:
         present = _keys_of(value)
         if tag is not None and present is not None:
-            return _by_tag(branches, tag, cast("Mapping[str, object]", value), loc)
+            return _by_tag(branches, tag, value, loc)
         clean: list[tuple[int, int, Parsed]] = []
         failed: list[tuple[int, int, Parsed]] = []
         for index, (shape, branch, keys) in enumerate(branches):
@@ -603,30 +662,27 @@ def any_of(branches: Sequence[Branch], description: str, tag: Tag | None = None)
             return min(clean, key=lambda found: found[:2])[2]
         if len(failed) != 0:
             return min(failed, key=lambda found: found[:2])[2]
-        return value, problem(loc, f"expected {description}, got {value!r}")
+        return value, problem(loc, f"expected {description}, got {shown(value)}")
 
     return parse
 
 
-def _by_tag(branches: Sequence[Branch], tag: Tag, value: Mapping[str, object], loc: Loc) -> Parsed:
+def _by_tag(branches: Sequence[Branch], tag: Tag, value: object, loc: Loc) -> Parsed:
     """`value` parsed by the branch its tag picks; a tag missing, or one no branch has, reported at it."""
     key, picks = tag
-    if key not in value:
+    if not is_object(value) or key not in value:
         return value, problem((*loc, key), f"missing required key {key!r}", "missing_key")
     said = value[key]
     index = picks.get((type(said), said)) if _hashable(said) else None
     if index is None:
-        allowed = tuple(sorted((entry for _, entry in picks), key=repr))
-        return value, problem(
-            (*loc, key), f"expected one of {allowed!r}, got {said!r}", "invalid_value"
-        )
+        return value, (outside_of((*loc, key), said, tuple(entry for _, entry in picks)),)
     return branches[index][1](value, loc)
 
 
 def _keys_of(value: object) -> AbstractSet[str] | None:
     """The keys of `value` if it is a JSON object, else None."""
-    if isinstance(value, Mapping):
-        return cast("Mapping[str, object]", value).keys()
+    if is_object(value):
+        return {key for key in value if isinstance(key, str)}
     return None
 
 
@@ -645,12 +701,15 @@ def object_of(members: Mapping[str, tuple[Parser, bool]], extra: Parser | None) 
     """
 
     def parse(value: object, loc: Loc) -> Parsed:
-        if not isinstance(value, Mapping):
-            return value, problem(loc, f"expected an object, got {value!r}")
-        entries = cast("Mapping[str, object]", value)
+        if not is_object(value):
+            return value, problem(loc, f"expected an object, got {shown(value)}")
+        entries = value
         parsed: dict[str, object] = {}
         found: list[ValidationProblem] = []
         for key, entry in entries.items():
+            if not isinstance(key, str):
+                found.extend(problem(loc, f"non-string key {shown(key)}"))
+                continue
             if key in members:
                 continue
             if extra is None:
@@ -664,7 +723,9 @@ def object_of(members: Mapping[str, tuple[Parser, bool]], extra: Parser | None) 
                 found.extend(problems)
             elif required:
                 found.extend(problem((*loc, key), f"missing required key {key!r}", "missing_key"))
-        return {key: parsed[key] for key in entries if key in parsed}, tuple(found)
+        return {
+            key: parsed[key] for key in entries if isinstance(key, str) and key in parsed
+        }, tuple(found)
 
     return parse
 
@@ -677,18 +738,152 @@ def mapping_of(value: Parser) -> Parser:
     """
 
     def parse(candidate: object, loc: Loc) -> Parsed:
-        if not isinstance(candidate, Mapping):
-            return candidate, problem(loc, f"expected an object, got {candidate!r}")
-        entries = cast("Mapping[str, object]", candidate)
+        if not is_object(candidate):
+            return candidate, problem(loc, f"expected an object, got {shown(candidate)}")
+        entries = candidate
         parsed: dict[str, object] = {}
         found: list[ValidationProblem] = []
         for key, entry in entries.items():
+            if not isinstance(key, str):
+                found.extend(problem(loc, f"non-string key {shown(key)}"))
+                continue
             item, problems = value(entry, (*loc, key))
             parsed[key] = item
             found.extend(problems)
         return parsed, tuple(found)
 
     return parse
+
+
+# --- constraints ---------------------------------------------------------
+
+Constraints: TypeAlias = Mapping[str, int | float]
+"""The bounds a type carries, by the names pydantic gives them: `{"ge": 0, "le": 9}`."""
+
+_BOUNDS: Final[tuple[tuple[type, str], ...]] = (
+    (annotated_types.Gt, "gt"),
+    (annotated_types.Ge, "ge"),
+    (annotated_types.Lt, "lt"),
+    (annotated_types.Le, "le"),
+)
+"""The annotated-types constraints the checker reads, each with its name."""
+
+_FROM_BELOW: Final = frozenset({"gt", "ge"})
+"""The bounds a value must be above."""
+
+_FROM_ABOVE: Final = frozenset({"lt", "le"})
+"""The bounds a value must be below."""
+
+_EXCLUSIVE: Final = frozenset({"gt", "lt"})
+"""The bounds a value may not equal."""
+
+_HOLDS: Final[Mapping[str, Callable[[float, float], bool]]] = {
+    "gt": operator.gt,
+    "ge": operator.ge,
+    "lt": operator.lt,
+    "le": operator.le,
+}
+"""Whether a number keeps within a bound of each name."""
+
+
+def constraints_of(metadata: Sequence[object]) -> dict[str, int | float]:
+    """The bounds among an `Annotated` type's metadata, by name: at most one from below, and one from above.
+
+    annotated-types' `Gt`, `Ge`, `Lt` and `Le`, and an `Interval`, which
+    unpacks to them, as pydantic reads them. A note -- a string, a `Doc`
+    -- says nothing of what a value is, and is passed over. Anything else
+    is a `TypeError`: a constraint the checker does not read -- a
+    `MinLen`, a `Predicate`, pydantic's `Field` -- since a type that says
+    what its values are, and a checker that does not hold them to it,
+    would disagree; a second bound from one side, which pydantic reads as
+    the last one said; and a bound that is not a finite number. A bound
+    is held as the number it equals, an integer when it is one:
+    `Ge(True)`, `Ge(1.0)` and `Ge(1)` are one bound, as Python's
+    `Annotated` cache, which takes equal metadata for the same, may hand
+    back any of them for another.
+    """
+    said: dict[str, int | float] = {}
+    for item in _unpacked(metadata):
+        if isinstance(item, (str, typing_extensions.Doc)):
+            continue
+        name = next((name for kind, name in _BOUNDS if isinstance(item, kind)), None)
+        if name is None:
+            msg = f"{item!r} is not a constraint the checker reads, which are Gt, Ge, Lt and Le"
+            raise TypeError(msg)
+        side = _FROM_BELOW if name in _FROM_BELOW else _FROM_ABOVE
+        if not side.isdisjoint(said):
+            where = "below" if side is _FROM_BELOW else "above"
+            msg = f"{item!r} is a second bound from {where}; a type takes one from each side"
+            raise TypeError(msg)
+        said[name] = _bound(item, name)
+    return said
+
+
+def _unpacked(metadata: Sequence[object]) -> Iterator[object]:
+    """`metadata`, each group of constraints in it -- an `Interval` -- unpacked."""
+    for item in metadata:
+        if isinstance(item, annotated_types.GroupedMetadata):
+            yield from _unpacked(tuple(cast("Sequence[object]", item)))
+        else:
+            yield item
+
+
+def _bound(item: object, name: str) -> int | float:
+    """The number `item`, a bound of `name`, holds a value to, an integer when it is one; `TypeError` for what is not a finite number."""
+    bound = cast("object", getattr(item, name))
+    if isinstance(bound, int):
+        return int(bound)  # a `bool` as the integer it equals, as the `Annotated` cache has it
+    if isinstance(bound, float) and math.isfinite(bound):
+        return int(bound) if bound.is_integer() else bound
+    msg = f"{item!r}: a bound is a finite number"
+    raise TypeError(msg)
+
+
+def _constrainable(inner: object, said: Constraints) -> None:
+    """Refuse bounds on what is not a number: a string, an array, a value of any type."""
+    if len(said) != 0 and shape_of(inner) not in ("int", "number"):
+        msg = f"{', '.join(said)}: a bound is on a number, and {describe(inner)} is not one"
+        raise TypeError(msg)
+
+
+def constrained(parse: Parser, description: str, said: Constraints) -> Parser:
+    """What `parse` reads, held to the bounds its type carries: one problem, `invalid_value`, when it breaks any.
+
+    The message says what the type admits -- "expected an integer in [0,
+    9], got 12" -- and the problem's `ctx` holds the bounds. Only a
+    value its type reads is held to them, as rules are asked only of a
+    value of their type.
+    """
+    expected = f"expected {description} {_admitted(said)}"
+    ctx: dict[str, JSONValue] = dict(said)
+    holds = tuple((_HOLDS[name], bound) for name, bound in said.items())
+
+    def parse_constrained(value: object, loc: Loc) -> Parsed:
+        typed, found = parse(value, loc)
+        if len(found) != 0:
+            return typed, found
+        number = cast("float", typed)
+        for keeps, bound in holds:
+            if not keeps(number, bound):
+                message = f"{expected}, got {shown(value)}"
+                return typed, (ValidationProblem(loc, message, "invalid_value", ctx=ctx),)
+        return typed, ()
+
+    return parse_constrained
+
+
+def _admitted(said: Constraints) -> str:
+    """What the bounds admit, as a message says it after the type: "in [0, 9]", "in (0, 1)", ">= 1"."""
+    low = next(((name, bound) for name, bound in said.items() if name in _FROM_BELOW), None)
+    high = next(((name, bound) for name, bound in said.items() if name in _FROM_ABOVE), None)
+    if low is not None and high is not None:
+        opening = "(" if low[0] in _EXCLUSIVE else "["
+        closing = ")" if high[0] in _EXCLUSIVE else "]"
+        return f"in {opening}{shown(low[1])}, {shown(high[1])}{closing}"
+    if low is not None:
+        return f"{'>' if low[0] in _EXCLUSIVE else '>='} {shown(low[1])}"
+    name, bound = cast("tuple[str, int | float]", high)
+    return f"{'<' if name in _EXCLUSIVE else '<='} {shown(bound)}"
 
 
 # --- the compiler --------------------------------------------------------
@@ -797,6 +992,9 @@ def _object(typeddict: type, leaf: Leaf, building: _Building) -> Parser | None:
         if keys.closed:
             return object_of(members, None)
         if keys.open:
+            # Any JSON value, which a note does not change and a bound
+            # cannot: vetted all the same.
+            _constrainable(object, constraints_of(strip_annotation(keys.extra_items)[1]))
             return object_of(members, _JSON)
         extra = _compile(keys.extra_items, leaf, building)
         return None if extra is None else object_of(members, extra)
@@ -824,7 +1022,19 @@ def _literal(inner: object) -> Parser | None:
 
 
 def _compile(annotation: object, leaf: Leaf, building: _Building) -> Parser | None:
-    inner = strip_annotation(annotation)[0]
+    inner, metadata = strip_annotation(annotation)
+    parse = _compile_type(inner, leaf, building)
+    if parse is None or len(metadata) == 0:
+        return parse
+    said = constraints_of(metadata)
+    if len(said) == 0:
+        return parse
+    _constrainable(inner, said)
+    return constrained(parse, describe(inner), said)
+
+
+def _compile_type(inner: object, leaf: Leaf, building: _Building) -> Parser | None:
+    """The parser of a type, `Annotated` peeled from it."""
     found = leaf(inner)
     if found is not None:
         return found
@@ -856,7 +1066,7 @@ def _compile(annotation: object, leaf: Leaf, building: _Building) -> Parser | No
         # the code's, for a value it has vouched for.
         return _compile(inner.__supertype__, leaf, building)
     if is_alias(inner):
-        return _alias(cast("typing_extensions.TypeAliasType", inner), leaf, building)
+        return _alias(inner, leaf, building)
     return None
 
 
@@ -929,40 +1139,291 @@ def check(
     located under `loc`. What comes back holds what `shape` admits and
     nothing else: a key a closed TypedDict does not declare is reported,
     as `unknown_key`, and left out, and the value still comes back.
-    Anything else wrong and it does not. `TypeError` for a `shape` that is
-    not a TypedDict, or holds something no parser reads.
+    Anything else wrong and it does not. The levels a reader walks are
+    counted from the root of the document `loc` places `value` in, so a
+    `loc` of 255 levels leaves one. `TypeError` for a `shape` that is not
+    a TypedDict, or holds something no parser reads.
     """
     if not is_typeddict(shape):
         msg = f"{shape!r} is not a TypedDict"
         raise TypeError(msg)
     refined, problems = refine_json(value, loc)
     if len(problems) != 0:
-        return None, problems
+        return None, with_input(problems, value, loc)
     typed, found = _checker(shape)(refined, loc)
     readable = all(problem.kind == "unknown_key" for problem in found)
-    return (cast("T", typed) if readable else None), found
+    return (cast("T", typed) if readable else None), with_input(found, value, loc)
+
+
+# --- JSON Schema ---------------------------------------------------------
+
+JSONSchema: TypeAlias = dict[str, JSONValue]
+"""A JSON Schema, as the JSON object it is: arrays as lists, as validators take them."""
+
+SchemaLeaf: TypeAlias = Callable[[object, "Schemas"], "JSONSchema | None"]
+"""A caller's own shapes, written into a schema: asked first for every annotation, as a `Leaf` is, None to decline.
+
+Handed the schema being written, so a shape of the caller's own can hold
+others, written with `of`, or be written once, in `$defs`, with `defined`.
+"""
+
+DIALECT: Final = "https://json-schema.org/draft/2020-12/schema"
+"""The dialect every schema is written in: JSON Schema draft 2020-12, as pydantic and zod write theirs."""
+
+_KEYWORDS: Final[Mapping[str, str]] = {
+    "gt": "exclusiveMinimum",
+    "ge": "minimum",
+    "lt": "exclusiveMaximum",
+    "le": "maximum",
+}
+"""JSON Schema's keyword for each bound."""
+
+_STRICTER: Final[Mapping[str, Callable[[float, float], float]]] = {
+    "exclusiveMinimum": max,
+    "minimum": max,
+    "exclusiveMaximum": min,
+    "maximum": min,
+}
+"""Of two bounds a keyword says, the one a value in both keeps within."""
+
+
+def no_schema_leaf(annotation: object, schemas: Schemas) -> JSONSchema | None:
+    """The schema leaf of a caller with no shapes of its own."""
+    return None
+
+
+class Schemas:
+    """One JSON Schema being written, and the `$defs` it holds so far.
+
+    `of` writes an annotation as the checker reads it, asking the leaf
+    first at every depth, as `parser_for` asks a `Leaf`. A TypedDict and a
+    type alias are each written once, in `$defs`, under its name -- or its
+    name and a number, when another holds that one -- and referred to
+    wherever they occur, so one that holds itself is a schema that refers
+    to itself. `document` is the whole schema.
+    """
+
+    __slots__ = ("_defs", "_leaf", "_names", "_uses")
+
+    def __init__(self, leaf: SchemaLeaf = no_schema_leaf) -> None:
+        self._leaf = leaf
+        self._defs: dict[str, JSONSchema] = {}
+        self._names: dict[object, str] = {}
+        self._uses: dict[str, int] = {}
+
+    def of(self, annotation: object) -> JSONSchema:
+        """`annotation` as the checker reads it: its type, with the bounds and notes `Annotated` carries.
+
+        A bound is the keyword JSON Schema has for it -- `Ge(0)` is
+        `minimum` -- and a `Doc` is the `description`. A type's bounds and
+        the bounds its `NewType` holds are both kept, as the checker holds
+        a value to both: where the two say one keyword, the stricter. An
+        annotation the checker reads is written; any other is a
+        `TypeError`, which a caller that vetted it through `parser` never
+        meets.
+        """
+        inner, metadata = strip_annotation(annotation)
+        schema = self._type(inner)
+        if len(metadata) == 0:
+            return schema
+        notes = [
+            item.documentation
+            for item in _unpacked(metadata)
+            if isinstance(item, typing_extensions.Doc)
+        ]
+        if len(notes) != 0:
+            schema = {**schema, "description": "\n\n".join(notes)}
+        for name, bound in constraints_of(metadata).items():
+            keyword = _KEYWORDS[name]
+            held = cast("int | float | None", schema.get(keyword))
+            schema = {**schema, keyword: bound if held is None else _STRICTER[keyword](held, bound)}
+        return schema
+
+    def object_of(self, typeddict: type) -> JSONSchema:
+        """`typeddict` written in place: its keys, those it requires, and what any other key may hold."""
+        keys = typeddict_keys(typeddict)
+        schema: JSONSchema = {"type": "object"}
+        if len(keys.members) != 0:
+            schema["properties"] = {
+                key: self.of(annotation) for key, (annotation, _) in keys.members.items()
+            }
+        required: list[JSONValue] = [key for key in keys.members if key in keys.required]
+        if len(required) != 0:
+            schema["required"] = required
+        if keys.closed:
+            schema["additionalProperties"] = False
+        elif not keys.open:
+            extra = self.of(keys.extra_items)
+            if len(extra) != 0:
+                schema["additionalProperties"] = extra
+        return schema
+
+    def defined(self, key: object, name: str, write: Callable[[], JSONSchema]) -> JSONSchema:
+        """A reference to the entry in `$defs` for `key`, which `write` writes the first time `key` is asked for.
+
+        The entry is named `name`, or `name` and a number when another key
+        holds that name, and it is reserved before it is written, so a
+        schema that holds itself refers to itself. One `write` fails to
+        write is not left reserved -- a later reference to it would be to an
+        empty schema, which takes anything -- and nor is anything it wrote
+        or counted before it failed.
+        """
+        name_held = self._names.get(key)
+        if name_held is None:
+            name_held, number = name, 1
+            while name_held in self._defs:
+                number += 1
+                name_held = f"{name}{number}"
+            # What a failed write leaves is put back as it was: the entries
+            # it wrote of what it holds, and the uses it counted, as well as
+            # its own name.
+            before = (dict(self._defs), dict(self._names), dict(self._uses))
+            self._names[key] = name_held
+            self._defs[name_held] = {}
+            try:
+                self._defs[name_held] = write()
+            except BaseException:
+                self._defs, self._names, self._uses = before
+                raise
+        self._uses[name_held] = self._uses.get(name_held, 0) + 1
+        return {"$ref": _pointer(name_held)}
+
+    def document(self, root: JSONSchema) -> JSONSchema:
+        """The whole schema: its dialect, `root`, and the `$defs`, by name.
+
+        `root` is written in place when it refers to an entry nothing else
+        refers to, as pydantic writes a model that does not hold itself.
+        What comes back shares nothing with what was written, nor one part
+        of it with another, so a caller may change it where it likes.
+        """
+        defs = dict(self._defs)
+        target = next((name for name in defs if root == {"$ref": _pointer(name)}), None)
+        if target is not None and self._uses[target] == 1:
+            root = defs.pop(target)
+        whole: JSONSchema = {"$schema": DIALECT, **root}
+        if len(defs) != 0:
+            whole["$defs"] = {name: defs[name] for name in sorted(defs)}
+        return cast("JSONSchema", copied(whole))
+
+    def _type(self, inner: object) -> JSONSchema:
+        """The schema of a type, `Annotated` peeled from it."""
+        found = self._leaf(inner, self)
+        if found is not None:
+            return found
+        if inner is int:
+            return {"type": "integer"}
+        if inner is float:
+            return {"type": "number"}
+        if inner is bool:
+            return {"type": "boolean"}
+        if inner is str:
+            return {"type": "string"}
+        if inner is None or inner is types.NoneType:
+            return {"type": "null"}
+        if inner is JSONValue:
+            return {}
+        origin = get_origin(inner)
+        if origin is Literal:
+            # Sorted, as `_literal` sorts them: `get_args` reports a
+            # `Literal`'s values in the order the first one built wrote them.
+            values: list[JSONValue] = sorted(get_args(inner), key=repr)
+            return {"const": values[0]} if len(values) == 1 else {"enum": values}
+        if is_union(inner):
+            return {"anyOf": [self.of(branch) for branch in get_args(inner)]}
+        if origin is tuple:
+            return self._tuple(get_args(inner))
+        if origin in (Mapping, dict):
+            value = self.of(get_args(inner)[1])
+            if len(value) == 0:
+                return {"type": "object"}
+            return {"type": "object", "additionalProperties": value}
+        if isinstance(inner, type) and is_typeddict(inner):
+            typeddict = inner
+            return self.defined(typeddict, typeddict.__name__, lambda: self.object_of(typeddict))
+        if isinstance(inner, NewType):
+            return self.of(inner.__supertype__)
+        if is_alias(inner):
+            alias = inner
+            return self.defined(alias, alias.__name__, lambda: self.of(alias_value(alias)))
+        msg = f"{inner!r} is not a shape JSON takes"
+        raise TypeError(msg)
+
+    def _tuple(self, arguments: tuple[object, ...]) -> JSONSchema:
+        if len(arguments) == 2 and arguments[1] is Ellipsis:
+            items = self.of(arguments[0])
+            return {"type": "array"} if len(items) == 0 else {"type": "array", "items": items}
+        if len(arguments) == 0:
+            return {"type": "array", "maxItems": 0}
+        return {
+            "type": "array",
+            "prefixItems": [self.of(argument) for argument in arguments],
+            "items": False,
+            "minItems": len(arguments),
+        }
+
+
+def _pointer(name: str) -> str:
+    """The reference to the entry in `$defs` named `name`: a JSON pointer, escaped as a URI fragment."""
+    escaped = name.replace("~", "~0").replace("/", "~1")
+    return f"#/$defs/{urllib.parse.quote(escaped, safe='')}"
+
+
+def json_schema(shape: type) -> JSONSchema:
+    """The JSON Schema of the JSON `check` finds no problem with as `shape`, a TypedDict.
+
+    Draft 2020-12, as a JSON object: arrays as lists, and `$schema`
+    first. A TypedDict is an object of its keys, those it requires, and
+    what any other key may hold -- nothing, in a closed one; a bound is
+    the keyword JSON Schema has for it, `Ge(0)` a `minimum`; a `Doc` is
+    the `description`, which is all that says one, as zod writes only
+    what `.describe()` said: a docstring is written for Python's readers;
+    a `Literal` is its values; a union is `anyOf` its branches. A
+    TypedDict or type alias is written once in `$defs`, under its name,
+    and referred to wherever it occurs, but for `shape` itself, which is
+    written in place unless it holds itself.
+
+    One difference is JSON Schema's own: it takes a number with no
+    fraction, `1.0`, for an integer, where `check` wants `1`. `TypeError`
+    for a `shape` that is not a TypedDict, or holds something no parser
+    reads, as `check` raises it.
+    """
+    if not is_typeddict(shape):
+        msg = f"{shape!r} is not a TypedDict"
+        raise TypeError(msg)
+    _checker(shape)
+    schemas = Schemas()
+    return schemas.document(schemas.of(shape))
 
 
 __all__ = [
+    "DIALECT",
     "Branch",
+    "Constraints",
+    "JSONSchema",
     "Leaf",
     "Loc",
     "Parsed",
     "Parser",
     "Qualifier",
+    "SchemaLeaf",
+    "Schemas",
     "Tag",
     "TypedDictKeys",
     "alias_value",
     "any_of",
     "check",
+    "constrained",
+    "constraints_of",
     "describe",
     "fixed_tuple",
     "has_shape",
     "is_alias",
     "is_integer",
     "is_union",
+    "json_schema",
     "mapping_of",
     "no_leaf",
+    "no_schema_leaf",
     "object_of",
     "one_of",
     "parser",
@@ -973,5 +1434,6 @@ __all__ = [
     "shape_of",
     "strip_annotation",
     "typeddict_keys",
+    "unqualified",
     "unread_in",
 ]

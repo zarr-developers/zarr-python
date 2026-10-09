@@ -13,6 +13,7 @@ import math
 from typing import Any, cast
 
 import pytest
+from typing_extensions import TypedDict
 
 from zarr_metadata._json import arrays_to_tuples
 from zarr_metadata.model import (
@@ -24,8 +25,12 @@ from zarr_metadata.model import (
     validate_array_metadata_v3,
     validate_group_metadata_v3,
 )
-from zarr_metadata.v3.codec.gzip import GZIP_CODEC
-from zarr_metadata.v3.definition import CORE, CORE_AND_EXTENSIONS, CodecDefinition, Context
+from zarr_metadata.v3.definition import (
+    CORE,
+    CORE_AND_EXTENSIONS,
+    CodecDefinition,
+    Context,
+)
 
 BYTES = {"name": "bytes", "configuration": {"endian": "little"}}
 
@@ -36,12 +41,17 @@ def _document(**fields: object) -> dict[str, Any]:
     return cast("dict[str, Any]", arrays_to_tuples(document))
 
 
+class LenientGzipConfiguration(TypedDict, closed=True):
+    """A gzip configuration whose `level` is any integer: the bound is the type's, so taking any is a type of its own."""
+
+    level: int
+
+
 LENIENT_GZIP = CodecDefinition(
     name="gzip",
-    configuration=GZIP_CODEC.configuration,
+    configuration=LenientGzipConfiguration,
     kind="bytes_bytes",
     size="dynamic",
-    rules=lambda configuration, nested: [],
 )
 """A reader's own gzip, which takes any level: a scope can grow, and substitute."""
 
@@ -78,13 +88,13 @@ def test_a_document_reads_through_the_definitions_in_its_scope(
     document: dict[str, Any], context: Context
 ) -> None:
     # What the scope holds judges; what it does not is left to the reader.
-    # The model reads and writes in the same scope as the validators.
+    # The model reads in the same scope as the validators, and what it
+    # writes reads back in that scope as the same model.
     assert validate_array_metadata_v3(document, context=context) == ()
     assert is_array_metadata_v3(document, context=context)
     assert parse_array_metadata_v3(document, context=context) is not None
     model = ZarrV3ArrayMetadata.from_json(document, context=context)
-    written = model.to_key_value(context=context)
-    assert ZarrV3ArrayMetadata.from_key_value(written, context=context) == model
+    assert ZarrV3ArrayMetadata.from_key_value(model.to_key_value(), context=context) == model
 
 
 @pytest.mark.parametrize(
@@ -179,20 +189,7 @@ def test_an_array_in_a_group_s_consolidated_metadata_reads_in_the_group_s_scope(
     lenient = CORE.extended_with(LENIENT_GZIP)
     assert validate_group_metadata_v3(group, context=lenient) == ()
     model = ZarrV3GroupMetadata.from_json(group, context=lenient)
-    written = model.to_key_value(context=lenient)
-    assert ZarrV3GroupMetadata.from_key_value(written, context=lenient) == model
-
-
-def test_error_a_model_is_not_written_in_a_scope_that_refuses_it() -> None:
-    # The writer judges in the scope it is given, as the reader does: the
-    # default one refuses the level the reader's own gzip took.
-    document = _document(codecs=[BYTES, {"name": "gzip", "configuration": {"level": 99}}])
-    model = ZarrV3ArrayMetadata.from_json(document, context=CORE.extended_with(LENIENT_GZIP))
-    with pytest.raises(MetadataValidationError) as raised:
-        model.to_key_value()
-    assert [(problem.loc, problem.kind) for problem in raised.value.problems] == [
-        (("codecs", 1, "configuration", "level"), "invalid_value")
-    ]
+    assert ZarrV3GroupMetadata.from_key_value(model.to_key_value(), context=lenient) == model
 
 
 def test_error_an_envelope_is_judged_once() -> None:

@@ -13,7 +13,7 @@ names carry — this package's version-prefixed names always spell it
 See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#chunk-key-encoding
 """
 
-from typing import Final, Literal, NotRequired
+from typing import Final, Literal, NotRequired, cast
 
 from typing_extensions import TypedDict
 
@@ -60,8 +60,23 @@ The configuration has no required keys (`separator` defaults to `"."`),
 so the short-hand-name form is permitted in addition to the object form.
 """
 
+
+def _canonical(configuration: V2ChunkKeyEncodingConfiguration) -> V2ChunkKeyEncodingConfiguration:
+    """Without a `separator` of `.`, which is what an absent one means.
+
+    "If not specified, `separator` defaults to `.`"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-key-encodings/v2/index.rst#L27-L29),
+    so the two spellings are one encoding.
+    """
+    if configuration.get("separator") != ".":
+        return configuration
+    return cast("V2ChunkKeyEncodingConfiguration", {})
+
+
 V2_CHUNK_KEY_ENCODING: Final = ChunkKeyEncodingDefinition(
-    name=V2_CHUNK_KEY_ENCODING_NAME, configuration=V2ChunkKeyEncodingConfiguration
+    name=V2_CHUNK_KEY_ENCODING_NAME,
+    configuration=V2ChunkKeyEncodingConfiguration,
+    canonical=_canonical,
 )
 """The `v2` chunk key encoding; its `separator` is typed, so it has no rule of its own."""
 

@@ -4,7 +4,7 @@ zarr-python writes attributes with the defaults of Python's `json` module,
 so an attribute may hold `NaN`, `Infinity` or `-Infinity`. The model reads
 such a store, validates it, and writes it back the same way. Wherever the
 spec interprets a value, a non-finite number is refused when read, and a
-document the reader would refuse is not written.
+document the reader would refuse makes no model, so it is not written.
 """
 
 from __future__ import annotations
@@ -295,34 +295,44 @@ def test_error_a_non_finite_number_outside_attributes_is_located_when_read(
 
 
 @pytest.mark.parametrize(
-    ("model", "problems"),
+    ("build", "problems"),
     [
         (
-            ZarrV3ArrayMetadata.create_default(fill_value=math.nan, attributes={"x": math.nan}),
+            lambda: ZarrV3ArrayMetadata.create_default(
+                fill_value=math.nan, attributes={"x": math.nan}
+            ),
             [(("fill_value",), "invalid_value")],
         ),
         (
-            ZarrV3GroupMetadata.create_default(attributes={"s": {1, 2}}),  # pyright: ignore[reportArgumentType]
+            lambda: ZarrV3GroupMetadata.create_default(attributes={"s": {1, 2}}),  # pyright: ignore[reportArgumentType]
             [(("attributes", "s"), "invalid_type")],
         ),
         (
-            ZarrV3GroupMetadata.create_default(attributes={1: "a"}),  # pyright: ignore[reportArgumentType]
+            lambda: ZarrV3GroupMetadata.create_default(attributes={1: "a"}),  # pyright: ignore[reportArgumentType]
             [(("attributes",), "invalid_type")],
         ),
         (
-            ZarrV3ArrayMetadata.create_default(shape=(2,), dimension_names=("x", "y")),
+            lambda: ZarrV3ArrayMetadata.create_default(shape=(2,), dimension_names=("x", "y")),
             [(("dimension_names",), "invalid_value")],
         ),
     ],
     ids=["non-finite-fill-value", "not-json", "non-string-key", "dimension-names-past-shape"],
 )
 def test_error_a_document_the_reader_refuses_is_not_written(
-    model: _Stored, problems: list[tuple[tuple[str | int, ...], str]]
+    build: Callable[[], _Stored], problems: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
-    # A model built by hand is not validated; the writer validates what it
-    # writes as the reader does. A non-string key was written as a string,
-    # a value that is not JSON raised `TypeError`, and the last was written
-    # and then refused on read.
+    # A model comes from a read of its document, so one the reader refuses
+    # makes no model to write. Written, a non-string key became a string, a
+    # value that is not JSON raised `TypeError`, and the last was refused
+    # only when read again.
     with pytest.raises(MetadataValidationError) as raised:
-        model.to_key_value()
+        build()
     assert [(problem.loc, problem.kind) for problem in raised.value.problems] == problems
+
+
+def test_error_store_bytes_nested_deeper_than_python_reads_are_invalid_json() -> None:
+    # `json.loads` gives up on a hundred thousand `[` with a `RecursionError`,
+    # which is an ingestion failure like any other.
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3ArrayMetadata.from_key_value({"zarr.json": b"[" * 100_000})
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(("zarr.json",), "invalid_json")]

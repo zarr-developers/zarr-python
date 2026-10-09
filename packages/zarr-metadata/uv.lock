@@ -1135,6 +1135,7 @@ wheels = [
 name = "zarr-metadata"
 source = { editable = "." }
 dependencies = [
+    { name = "annotated-types" },
     { name = "typing-extensions" },
 ]
 
@@ -1155,7 +1156,10 @@ test = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "typing-extensions", specifier = ">=4.16" }]
+requires-dist = [
+    { name = "annotated-types", specifier = ">=0.6" },
+    { name = "typing-extensions", specifier = ">=4.16" },
+]
 
 [package.metadata.requires-dev]
 docs = [

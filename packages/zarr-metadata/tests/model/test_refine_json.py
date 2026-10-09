@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import math
 from collections import OrderedDict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from zarr_metadata._json import refine_json, refine_user_data
+from zarr_metadata._json import JSON_DEPTH, refine_json, refine_user_data, shown
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -93,11 +93,126 @@ def test_error_every_leaf_that_is_not_json_is_reported() -> None:
 
 
 def test_a_value_nested_hundreds_deep_is_read() -> None:
-    # One frame per level of nesting: as deep as the interpreter goes, less
-    # what the test runner's own frames take.
+    # One frame per level of nesting, up to `JSON_DEPTH` of them.
     deep: dict[str, object] = {}
-    for _ in range(600):
+    for _ in range(JSON_DEPTH - 1):
         deep = {"k": deep}
     refined, problems = refine_json(deep)
     assert problems == ()
     assert refined is not None
+
+
+def test_error_a_value_nested_deeper_than_a_reader_walks() -> None:
+    # The level past the last is the problem, wherever it sits, so no
+    # document takes a reader past what the interpreter allows.
+    deep: dict[str, object] = {}
+    for _ in range(JSON_DEPTH + 40):
+        deep = {"k": deep}
+    refined, problems = refine_json({"a": [deep]})
+    assert refined is None
+    assert [(len(p.loc), p.kind, p.message) for p in problems] == [
+        (JSON_DEPTH, "invalid_value", f"nested deeper than the {JSON_DEPTH} levels a reader walks")
+    ]
+    assert problems[0].loc[:2] == ("a", 0)
+
+
+def _nested(depth: int, innermost: object) -> list[object]:
+    """`innermost` inside `depth` arrays, each holding the next: `innermost` sits `depth` levels down."""
+    value: object = innermost
+    for _ in range(depth):
+        value = [value]
+    return cast("list[object]", value)
+
+
+@pytest.mark.parametrize(
+    ("value", "text"),
+    [
+        (None, "null"),
+        (True, "true"),
+        ("C", '"C"'),
+        ((1, (2,)), "[1, [2]]"),
+        ({"a": None}, '{"a": null}'),
+        (float("nan"), "NaN"),
+        ({1: 2}, "{1: 2}"),
+        (_nested(JSON_DEPTH, []), "a value nested too deep to show"),
+        (_nested(JSON_DEPTH, {1}), "[" * JSON_DEPTH + "{1}" + "]" * JSON_DEPTH),
+    ],
+    ids=[
+        "null",
+        "true",
+        "string",
+        "array",
+        "object",
+        "non-finite",
+        "not-json",
+        "past-the-levels",
+        "not-json-at-the-last-level",
+    ],
+)
+def test_a_value_is_shown_as_the_json_a_document_writes(value: object, text: str) -> None:
+    """A problem's message shows a value as its JSON, by its repr when it is not JSON, and says so when it nests past the levels a reader walks: a container there, not a non-JSON value sitting on the last level, which is shown."""
+    assert shown(value) == text
+
+
+def test_bytes_past_the_levels_a_reader_walks_are_not_json_rather_than_nested() -> None:
+    # `bytes` is a sequence to Python and no container to JSON, wherever
+    # it sits: past the cap it is still what it is, not nesting.
+    deep: list[object] = [b""]
+    for _ in range(JSON_DEPTH - 1):
+        deep = [deep]
+    _, problems = refine_json(deep)
+    assert [(len(p.loc), p.kind, p.message[:31]) for p in problems] == [
+        (JSON_DEPTH, "invalid_type", "not a JSON-serializable value: ")
+    ]
+
+
+def test_error_an_integer_of_more_digits_than_json_text_holds_is_a_problem(
+    interpreter_writes_4300_digits: None,
+) -> None:
+    """An integer the interpreter will not convert to text, as `sys.get_int_max_str_digits` bounds one, is an `invalid_value` problem where it sits, so no reader raises on it: the document could not be written back, and `validate_*` and `read_*` agree."""
+    from zarr_metadata.model import (
+        ZarrV3ArrayMetadata,
+        read_array_metadata_v3,
+        validate_array_metadata_v3,
+    )
+
+    refined, problems = refine_json({"x": [10**5000]})
+    assert refined is None
+    assert [(p.loc, p.kind) for p in problems] == [(("x", 0), "invalid_value")]
+    assert "digits" in problems[0].message
+    document = {**ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json()}
+    document["attributes"] = {"x": 10**5000}
+    found = validate_array_metadata_v3(document)
+    assert [(p.loc, p.kind) for p in found] == [(("attributes", "x"), "invalid_value")]
+    assert read_array_metadata_v3(document).problems == found
+    shaped = {**document, "attributes": {}, "shape": [10**5000]}
+    assert [p.loc for p in validate_array_metadata_v3(shaped)] == [("shape", 0)]
+
+
+def test_a_str_or_int_subclass_is_refined_to_the_json_type_it_is() -> None:
+    """A `StrEnum` member, an `IntEnum` member, or any `str`, `int` or `float` subclass, is refined to the plain value JSON writes for it, so a `Literal` and a tag read it as the value, while `bool` stays apart from `int`."""
+    import enum
+
+    from zarr_metadata.model import ZarrV3GroupMetadata
+
+    class NodeType(enum.StrEnum):
+        GROUP = "group"
+
+    class Format(enum.IntEnum):
+        THREE = 3
+
+    class Score(float):
+        pass
+
+    refined, problems = refine_json(
+        {"a": NodeType.GROUP, "b": Format.THREE, "c": Score(1.5), "d": True}
+    )
+    assert problems == ()
+    assert refined == {"a": "group", "b": 3, "c": 1.5, "d": True}
+    assert isinstance(refined, dict)
+    assert all(type(refined[key]) in (str, int, float, bool) for key in refined)
+    assert type(refined["d"]) is bool
+    model = ZarrV3GroupMetadata.from_json(
+        {"zarr_format": Format.THREE, "node_type": NodeType.GROUP}
+    )
+    assert model.to_json() == {"zarr_format": 3, "node_type": "group"}

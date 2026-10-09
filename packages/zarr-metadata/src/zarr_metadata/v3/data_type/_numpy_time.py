@@ -1,20 +1,46 @@
-"""What the two numpy time types share: a unit, and how many of it one tick is.
+"""What the two numpy time types share: how many of a unit one tick is, a count of ticks, and how their values are stored.
 
-Both types' configurations have these two members and the one rule on
-them, so the rule is written here once and neither sibling imports it
-from the other. So is how their values are stored.
+Both types' configurations hold a `scale_factor` of one type, and both
+types' fill values count ticks of one width, so each is written here once
+and neither sibling imports it from the other. So is how their values are
+stored.
 """
 
-from collections.abc import Iterator
-from typing import Final
+from typing import Annotated, Final
 
-from typing_extensions import ReadOnly, TypedDict
+from annotated_types import Interval
 
-from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import Nested, multi_byte
+from zarr_metadata.v3._definition import multi_byte
 
 NUMPY_TIME_MAX_SCALE_FACTOR: Final = 2**31 - 1
 """The largest `scale_factor` numpy stores: the field is a signed int32."""
+
+NumpyTimeScaleFactor = Annotated[int, Interval(ge=1, le=NUMPY_TIME_MAX_SCALE_FACTOR)]
+"""How many of the unit one tick is: a positive int32."""
+
+NumpyTimeTicks = Annotated[int, Interval(ge=-(2**63), le=2**63 - 1)]
+"""A count of ticks, as a fill value writes one: a signed 64-bit integer.
+
+https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.datetime64/README.md?plain=1#L109-L112
+"""
+
+NOT_A_TIME_TICKS: Final = -(2**63)
+"""The tick count `NaT` is stored as, which a fill value may write for it.
+
+"`"fill_value": "NaT"` and `"fill_value": -9223372036854775808` should
+be treated as equivalent representations of the same scalar value"
+(https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.datetime64/README.md?plain=1#L114-L116);
+`numpy.timedelta64` says the same
+(https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.timedelta64/README.md?plain=1#L117-L119).
+"""
+
+
+def numpy_time_fill_value_canonical(
+    configuration: object, nested: object, value: int | str
+) -> int | str:
+    """The canonical spelling of a numpy time fill value: `"NaT"` for `NaT`, however it is written, and any other count of ticks as written."""
+    return "NaT" if value in ("NaT", NOT_A_TIME_TICKS) else value
+
 
 numpy_time_storage: Final = multi_byte
 """Signed 64-bit integers, in the byte order the codecs say.
@@ -29,43 +55,11 @@ configuration of the codecs defined in metadata"
 """
 
 
-class NumpyTimeConfiguration(TypedDict):
-    """The members both numpy time types' configurations have, read-only so either type fits."""
-
-    unit: ReadOnly[str]
-    scale_factor: ReadOnly[int]
-
-
-def numpy_time_rules(
-    configuration: NumpyTimeConfiguration, nested: Nested
-) -> Iterator[ValidationProblem]:
-    """`scale_factor` is a positive int32."""
-    scale_factor = configuration["scale_factor"]
-    if not 1 <= scale_factor <= NUMPY_TIME_MAX_SCALE_FACTOR:
-        yield ValidationProblem(
-            ("scale_factor",),
-            f"expected an integer in [1, {NUMPY_TIME_MAX_SCALE_FACTOR}], got {scale_factor}",
-            "invalid_value",
-        )
-
-
-def numpy_time_fill_value_rules(
-    configuration: NumpyTimeConfiguration, nested: Nested, value: int | str
-) -> Iterator[ValidationProblem]:
-    """An integer fill value is a signed 64-bit one; `"NaT"` is the other form, which the shape admits.
-
-    https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/numpy.datetime64/README.md?plain=1#L109-L112
-    """
-    if isinstance(value, int) and not -(2**63) <= value <= 2**63 - 1:
-        yield ValidationProblem(
-            (), f"expected a signed 64-bit integer or 'NaT', got {value}", "invalid_value"
-        )
-
-
 __all__ = [
+    "NOT_A_TIME_TICKS",
     "NUMPY_TIME_MAX_SCALE_FACTOR",
-    "NumpyTimeConfiguration",
-    "numpy_time_fill_value_rules",
-    "numpy_time_rules",
+    "NumpyTimeScaleFactor",
+    "NumpyTimeTicks",
+    "numpy_time_fill_value_canonical",
     "numpy_time_storage",
 ]

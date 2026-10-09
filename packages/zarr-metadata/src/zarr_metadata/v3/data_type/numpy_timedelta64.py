@@ -10,8 +10,9 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata.v3._definition import DataTypeDefinition
 from zarr_metadata.v3.data_type._numpy_time import (
-    numpy_time_fill_value_rules,
-    numpy_time_rules,
+    NumpyTimeScaleFactor,
+    NumpyTimeTicks,
+    numpy_time_fill_value_canonical,
     numpy_time_storage,
 )
 
@@ -59,7 +60,7 @@ class NumpyTimedelta64Configuration(TypedDict, closed=True):
     """
 
     unit: ReadOnly[NumpyTimeUnit]
-    scale_factor: ReadOnly[int]
+    scale_factor: ReadOnly[NumpyTimeScaleFactor]
 
 
 class NumpyTimedelta64(TypedDict, closed=True):
@@ -70,7 +71,7 @@ class NumpyTimedelta64(TypedDict, closed=True):
     must_understand: NotRequired[bool]
 
 
-NumpyTimedelta64FillValue = int | Literal["NaT"]
+NumpyTimedelta64FillValue = NumpyTimeTicks | Literal["NaT"]
 """Permitted JSON shape of the `fill_value` field for `numpy.timedelta64`.
 
 Either a JSON integer (a count of `unit * scale_factor`), or the string
@@ -80,9 +81,8 @@ Either a JSON integer (a count of `unit * scale_factor`), or the string
 NUMPY_TIMEDELTA64_DATA_TYPE: Final = DataTypeDefinition(
     name=NUMPY_TIMEDELTA64_DATA_TYPE_NAME,
     configuration=NumpyTimedelta64Configuration,
-    rules=numpy_time_rules,
     fill_value=NumpyTimedelta64FillValue,
-    fill_value_rules=numpy_time_fill_value_rules,
+    fill_value_canonical=numpy_time_fill_value_canonical,
     storage=numpy_time_storage,
 )
 """The `numpy.timedelta64` data type."""

@@ -9,12 +9,11 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import TypedDict
 
-from zarr_metadata._json import ValidationProblem
+from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.v3._definition import (
     Chunk,
     CodecDefinition,
     Nested,
-    named_configuration,
     storage_of,
 )
 
@@ -91,7 +90,7 @@ def _chunk_rules(
     if chunk.data_type is None:
         return
     storage = storage_of(chunk.data_type)
-    written, _, _ = named_configuration(chunk.data_type.json)
+    written = chunk.data_type.name
     if storage == "multi_byte" and "endian" not in configuration:
         yield ValidationProblem(
             ("endian",),
@@ -101,7 +100,7 @@ def _chunk_rules(
     elif storage == "variable_length":
         yield ValidationProblem(
             (),
-            f"expected a data type of fixed size, got {written!r}, whose values vary in size",
+            f"expected a data type of fixed size, got {shown(written)}, whose values vary in size",
             "invalid_value",
         )
 

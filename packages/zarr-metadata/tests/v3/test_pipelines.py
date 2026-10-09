@@ -12,7 +12,13 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from typing_extensions import TypedDict
 
-from zarr_metadata.model import ZarrV3ArrayMetadata, validate_array_metadata_v3
+from zarr_metadata.model import (
+    ZarrV3ArrayMetadata,
+    validate_array_metadata_v3,
+)
+from zarr_metadata.v3._pipeline import (
+    read_pipeline,
+)
 from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
@@ -23,8 +29,7 @@ from zarr_metadata.v3.definition import (
     DataTypeField,
     JSONValue,
     Nested,
-    Resolved,
-    read_pipeline,
+    ResolvedField,
     resolve,
 )
 
@@ -367,7 +372,12 @@ def test_error_a_transition_that_raises_says_whose_it_is() -> None:
 
 @pytest.mark.parametrize(
     ("lengths", "data_type", "match"),
-    [((4, 2), None, "a chunk's lengths are"), (None, "float32", "a chunk's data type is")],
+    [
+        ((4, 2), None, "a chunk's lengths are"),
+        (None, "float32", "a chunk's data type is"),
+        # A field read as a codec, though nothing claims it.
+        (None, resolve("acme.t", CodecDefinition, SCOPE)[0], "a chunk's data type is"),
+    ],
 )
 def test_error_a_transition_that_builds_a_chunk_of_something_else(
     lengths: object, data_type: object, match: str
@@ -446,8 +456,10 @@ class AcmeHolderConfiguration(TypedDict, closed=True):
     types: tuple[DataTypeField, ...]
 
 
-def _holder(pipelines: object) -> Resolved[CodecDefinition[Any]]:
-    """A codec holding a pipeline of codecs and a list of data types, whose pipelines are `pipelines`."""
+def _holder(
+    pipelines: object, types: JSONValue = ("uint8",)
+) -> ResolvedField[CodecDefinition[Any]]:
+    """A codec holding a pipeline of codecs and a list of data types, `types`, whose pipelines are `pipelines`."""
     holder = CodecDefinition(
         name="acme.holder",
         configuration=AcmeHolderConfiguration,
@@ -455,7 +467,7 @@ def _holder(pipelines: object) -> Resolved[CodecDefinition[Any]]:
         size="dynamic",
         pipelines=pipelines,  # pyright: ignore[reportArgumentType]
     )
-    field = {"name": "acme.holder", "configuration": {"codecs": [LITTLE], "types": ["uint8"]}}
+    field = {"name": "acme.holder", "configuration": {"codecs": [LITTLE], "types": types}}
     return resolve(field, CodecDefinition, SCOPE.extended_with(holder))[0]
 
 
@@ -465,9 +477,19 @@ def test_error_pipelines_that_give_something_else(given: object) -> None:
         read_pipeline([_holder(lambda configuration, nested, chunk: given)], CHUNK)
 
 
-@pytest.mark.parametrize("member", ["nowhere", "types"])
-def test_error_pipelines_that_name_a_member_holding_no_codecs(member: str) -> None:
-    holder = _holder(lambda configuration, nested, chunk: {member: Chunk()})
+@pytest.mark.parametrize(
+    ("member", "types"),
+    [
+        ("nowhere", ("uint8",)),
+        ("types", ("uint8",)),
+        # Data types nothing in scope claims are still read as data types.
+        ("types", ("acme.t",)),
+    ],
+)
+def test_error_pipelines_that_name_a_member_holding_no_codecs(
+    member: str, types: JSONValue
+) -> None:
+    holder = _holder(lambda configuration, nested, chunk: {member: Chunk()}, types)
     with pytest.raises(TypeError, match=f"its pipelines name {member!r}, which holds no list"):
         read_pipeline([holder], CHUNK)
 
@@ -479,3 +501,29 @@ def test_error_pipelines_that_raise_say_whose_they_are() -> None:
     assert raised.value.__notes__ == [
         "raised by the pipelines of 'acme.holder', reading ('codecs', 0, 'configuration')"
     ]
+
+
+def test_error_a_stage_s_inner_pipelines_are_read_only() -> None:
+    """The pipelines a stage holds of a shard's inner codecs cannot be changed in place, and a reading holding them pickles and deep-copies equal to itself."""
+    import copy
+    import pickle
+
+    shard: JSONValue = {
+        "name": "sharding_indexed",
+        "configuration": {
+            "chunk_shape": [2],
+            "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
+            "index_codecs": [
+                {"name": "bytes", "configuration": {"endian": "little"}},
+                {"name": "crc32c"},
+            ],
+            "index_location": "end",
+        },
+    }
+    stages, _ = _read([shard], CHUNK)
+    stage = stages[0]
+    assert "codecs" in stage.inner
+    with pytest.raises(TypeError):
+        stage.inner["codecs"] = ()  # pyright: ignore[reportIndexIssue]
+    for again in (pickle.loads(pickle.dumps(stages)), copy.deepcopy(stages)):
+        assert again == stages

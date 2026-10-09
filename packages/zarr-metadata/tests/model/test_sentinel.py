@@ -6,8 +6,8 @@ the sentinel's name on its defining module), which preserves the singleton
 across process boundaries; these tests pin that behavior, since models hold
 `UNSET` as field values and must survive pickling and deep-copying.
 
-The model round-trip tests compare whole structures: dataclass equality
-compares every field, and `UNSET` compares by identity, so an impostor
+The model round-trip tests compare whole structures: a model's equality
+compares every member, and `UNSET` compares by identity, so an impostor
 sentinel produced by state-based pickling would fail the equality check.
 """
 
@@ -24,7 +24,6 @@ from zarr_metadata.model import (
     ZarrV2ArrayMetadata,
     ZarrV2GroupMetadata,
     ZarrV3ArrayMetadata,
-    ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
 )
 
@@ -34,8 +33,8 @@ from zarr_metadata.model import (
 # stay distinct from absent), and UNSET nested inside consolidated metadata.
 MODEL_CASES = {
     "array-v3-dimension-names-unset": ZarrV3ArrayMetadata.create_default(shape=(4,)),
-    "array-v3-dimension-names-set": ZarrV3ArrayMetadata.create_default(shape=(2, 2)).update(
-        dimension_names=("x", None)
+    "array-v3-dimension-names-set": ZarrV3ArrayMetadata.create_default(
+        shape=(2, 2), dimension_names=("x", None)
     ),
     "array-v2-attributes-unset": ZarrV2ArrayMetadata.create_default(shape=(4,)),
     "array-v2-attributes-empty": ZarrV2ArrayMetadata.create_default(shape=(4,), attributes={}),
@@ -43,12 +42,14 @@ MODEL_CASES = {
     "group-v2-attributes-set": ZarrV2GroupMetadata.create_default(attributes={"a": 1}),
     "group-v3-consolidated-unset": ZarrV3GroupMetadata.create_default(),
     "group-v3-consolidated-with-unset-inside": ZarrV3GroupMetadata.create_default(
-        consolidated_metadata=ZarrV3ConsolidatedMetadata(
-            metadata={
-                "child": ZarrV3ArrayMetadata.create_default(shape=(4,)),
-                "subgroup": ZarrV3GroupMetadata.create_default(),
-            }
-        )
+        consolidated_metadata={
+            "kind": "inline",
+            "must_understand": False,
+            "metadata": {
+                "child": ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json(),
+                "subgroup": ZarrV3GroupMetadata.create_default().to_json(),
+            },
+        },
     ),
 }
 

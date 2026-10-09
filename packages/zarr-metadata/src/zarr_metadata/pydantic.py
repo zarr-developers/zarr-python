@@ -8,13 +8,28 @@ model class — the instances ARE the core classes, so values interoperate
 freely with non-pydantic code (equality, isinstance, nesting). Validation
 delegates to the library: a raw document routes through `from_json` (the
 single source of truth for validation and normalization, so pydantic's
-field-level coercion can never bypass it), reading v3 extension points in
-`CORE_AND_EXTENSIONS`, since a field type holds no scope; a reader with a
-scope of its own calls `from_json(..., context=...)` itself. An existing model
-instance passes through unchanged, and serialization emits the canonical
-document via `to_json`. `MetadataValidationError` subclasses `ValueError`,
-so a failed parse surfaces as a pydantic `ValidationError` carrying the
-loc-annotated problem messages.
+field-level coercion can never bypass it). A field type reads the fields
+of its document in the scope pydantic's validation context holds, as
+pydantic hands any validator its context: the context itself, when it is
+a `Context`, which every field type of its format then reads in, the
+other format's refusing it with `TypeError`; or, when it is a
+mapping, its `"zarr_metadata_context"` item for the v3 field types and
+its `"zarr_metadata_context_v2"` item for the v2 ones, so a model holding
+both kinds of field names each format's scope; a format whose scope is
+not given reads in its own, `CORE_AND_EXTENSIONS` or `CORE_V2`:
+
+    TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(document, context=SCOPE)
+    ArrayManifest.model_validate(data, context={"zarr_metadata_context": SCOPE})
+    Mixed.model_validate(data, context={"zarr_metadata_context": V3, "zarr_metadata_context_v2": V2})
+
+An existing model instance passes through unchanged, as pydantic's does, and
+serialization emits the canonical document via `to_json`. A failed parse
+surfaces as a pydantic `ValidationError` with one line error per problem,
+as pydantic reports its own: its `type` the problem's `kind`, at the
+problem's `loc` under the field's, with the `input` found there and the
+problem's `ctx` (a message holding a ctx placeholder rides in the ctx as
+`message`, as `_line_error` says). Annotate a field with these types, not the core classes,
+which pydantic cannot build a schema for.
 
 A node's attributes may hold `NaN`, `Infinity` or `-Infinity`, which the
 models read and write as zarr-python does. Pydantic writes JSON by its own
@@ -22,6 +37,12 @@ rules, and by default writes such a number as `null`. A `BaseModel` holding
 one of these fields keeps it with `ser_json_inf_nan="constants"` in its
 `model_config`; a `TypeAdapter` over a field type takes no `config`, so
 write its value with the model's `to_key_value` instead.
+
+Pydantic's own JSON paths bound nesting below the 256 levels the readers
+walk: `validate_json` refuses a document nested about 200 levels deep,
+and `dump_json` one nested about 255, each with its own error. A document
+that deep goes through `validate_python` on parsed JSON, and is written
+with the model's `to_key_value`.
 
 Usage:
 
@@ -37,11 +58,13 @@ Static type checkers see each field type as its core model class, so
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, TypeVar
+from typing import TYPE_CHECKING, Annotated, Any, Final, LiteralString, Protocol, TypeVar, cast
 
-from pydantic import BeforeValidator, InstanceOf, PlainSerializer
+from pydantic import BeforeValidator, InstanceOf, PlainSerializer, ValidationInfo
+from pydantic_core import InitErrorDetails, PydanticCustomError, ValidationError
 
 from zarr_metadata import model as _model
+from zarr_metadata._json import MetadataValidationError, ValidationProblem, is_object, value_at
 from zarr_metadata._pydantic_schema import (
     ZarrV2ArrayMetadataJSON as _ZarrV2ArrayMetadataSchema,
 )
@@ -60,9 +83,9 @@ from zarr_metadata._pydantic_schema import (
 from zarr_metadata._pydantic_schema import (
     ZarrV3GroupMetadataJSON as _ZarrV3GroupMetadataSchema,
 )
-from zarr_metadata._pydantic_schema import (
-    ZarrV3MetadataFieldJSON as _ZarrV3MetadataFieldSchema,
-)
+from zarr_metadata._sentinel import UNSET
+from zarr_metadata.v2.definition import CORE_V2
+from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context, is_scope, scoped
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -70,21 +93,108 @@ if TYPE_CHECKING:
 _M = TypeVar("_M")
 
 
-def _coerce_to(cls: type[_M], parse: Callable[[object], _M]) -> Callable[[object], _M]:
-    """A validator that passes instances of `cls` through and parses anything else."""
+def _as_pydantic_raises(cls: type[_M], value: object, read: Callable[[], _M]) -> _M:
+    """What `read` gives of `value`, or the `MetadataValidationError` it raises as a `pydantic_core.ValidationError`: one line error per problem, its type the problem's kind, at the problem's loc, with its input and ctx.
 
-    def coerce(value: object) -> _M:
+    A missing key's problem reports the object missing it, as pydantic's
+    own `missing` error does; one that holds nothing else, what it found
+    not being JSON a reader walks, reports what sits at its loc.
+    """
+    try:
+        return read()
+    except MetadataValidationError as error:
+        line_errors = [_line_error(problem, value) for problem in error.problems]
+        raise ValidationError.from_exception_data(cls.__name__, line_errors) from error
+
+
+def _line_error(problem: ValidationProblem, value: object) -> InitErrorDetails:
+    """`problem` as one of a `ValidationError`'s line errors: its type the problem's kind, at its loc, with its input and ctx, and its message as `msg`.
+
+    pydantic renders a message as a template of its ctx, each `{key}` the
+    ctx holds replaced, one key at a time in the ctx's order, with no way
+    to escape one. A message that holds one -- a document value written
+    `{expected}`, shown in it -- is handed whole as the ctx's `message`,
+    last, where what it carries is scanned for no key after it, and the
+    template is that placeholder, so `msg` is the problem's message
+    whatever it holds; a ctx member of that name yields to it.
+    """
+    template, ctx = problem.message, dict(problem.ctx)
+    if any(f"{{{key}}}" in template for key in ctx):
+        ctx.pop("message", None)
+        template, ctx = "{message}", {**ctx, "message": problem.message}
+    return InitErrorDetails(
+        type=PydanticCustomError(problem.kind, cast("LiteralString", template), ctx),
+        loc=problem.loc,
+        input=_input_of(problem, value),
+    )
+
+
+def _input_of(problem: ValidationProblem, value: object) -> object:
+    """What a line error reports as its input: what the problem found; for a key that is missing, what `value` holds at the loc above, as pydantic's own `missing` reports the object; for what the problem could not hold, not being JSON a reader walks, what sits at its loc; and `value` itself where that is nothing either."""
+    if problem.input is not UNSET:
+        return problem.input
+    if problem.kind == "missing_key":
+        above = value_at(value, problem.loc[:-1]) if len(problem.loc) != 0 else UNSET
+        return value if above is UNSET else above
+    there = value_at(value, problem.loc)
+    return value if there is UNSET else there
+
+
+CONTEXT_KEY: Final = "zarr_metadata_context"
+"""The key of a mapping validation context under which the scope the v3 field types read in sits."""
+CONTEXT_KEY_V2: Final = "zarr_metadata_context_v2"
+"""The key of a mapping validation context under which the scope the v2 field types read in sits."""
+
+
+_Read_co = TypeVar("_Read_co", covariant=True)
+
+
+class _Reads(Protocol[_Read_co]):
+    def __call__(self, data: object, /, *, context: Context) -> _Read_co: ...
+
+
+def _read_in_scope(
+    cls: type[_M], read: _Reads[_M], default: Context[Any], key: str
+) -> Callable[[object, ValidationInfo], _M]:
+    """A validator that passes instances of `cls` through and reads anything else in the scope the validation context holds under `key`, `default` when it holds none."""
+
+    def coerce(value: object, info: ValidationInfo) -> _M:
         if isinstance(value, cls):
             return value
-        return parse(value)
+        return _as_pydantic_raises(
+            cls, value, lambda: read(value, context=_scope(info.context, default, key))
+        )
 
     return coerce
+
+
+def _scope(context: object, default: Context[Any], key: str) -> Context[Any]:
+    """The scope a validation context holds for one format: itself, a `Context`, the scope of every field type of its format; its `key` item, the format's own; or, holding none, `default`, the format's core scope.
+
+    A bare `Context` of the other format is a `TypeError`, as it is at
+    every reader: a model holding fields of both formats names each
+    format's scope by its key.
+    """
+    if is_scope(context):
+        return scoped(context, default)
+    if not is_object(context) or key not in context:
+        return default
+    scope = context[key]
+    if not is_scope(scope):
+        msg = f"{key}: the scope to read in is a Context, got {scope!r}"
+        raise TypeError(msg)
+    return scope
 
 
 ZarrV3ArrayMetadata = Annotated[
     InstanceOf[_model.ZarrV3ArrayMetadata],
     BeforeValidator(
-        _coerce_to(_model.ZarrV3ArrayMetadata, _model.ZarrV3ArrayMetadata.from_json),
+        _read_in_scope(
+            _model.ZarrV3ArrayMetadata,
+            _model.ZarrV3ArrayMetadata.from_json,
+            CORE_AND_EXTENSIONS,
+            CONTEXT_KEY,
+        ),
         json_schema_input_type=_ZarrV3ArrayMetadataSchema,
     ),
     PlainSerializer(_model.ZarrV3ArrayMetadata.to_json, return_type=_ZarrV3ArrayMetadataSchema),
@@ -94,7 +204,12 @@ ZarrV3ArrayMetadata = Annotated[
 ZarrV2ArrayMetadata = Annotated[
     InstanceOf[_model.ZarrV2ArrayMetadata],
     BeforeValidator(
-        _coerce_to(_model.ZarrV2ArrayMetadata, _model.ZarrV2ArrayMetadata.from_json),
+        _read_in_scope(
+            _model.ZarrV2ArrayMetadata,
+            _model.ZarrV2ArrayMetadata.from_json,
+            CORE_V2,
+            CONTEXT_KEY_V2,
+        ),
         json_schema_input_type=_ZarrV2ArrayMetadataSchema,
     ),
     PlainSerializer(_model.ZarrV2ArrayMetadata.to_json, return_type=_ZarrV2ArrayMetadataSchema),
@@ -104,7 +219,12 @@ ZarrV2ArrayMetadata = Annotated[
 ZarrV3GroupMetadata = Annotated[
     InstanceOf[_model.ZarrV3GroupMetadata],
     BeforeValidator(
-        _coerce_to(_model.ZarrV3GroupMetadata, _model.ZarrV3GroupMetadata.from_json),
+        _read_in_scope(
+            _model.ZarrV3GroupMetadata,
+            _model.ZarrV3GroupMetadata.from_json,
+            CORE_AND_EXTENSIONS,
+            CONTEXT_KEY,
+        ),
         json_schema_input_type=_ZarrV3GroupMetadataSchema,
     ),
     PlainSerializer(_model.ZarrV3GroupMetadata.to_json, return_type=_ZarrV3GroupMetadataSchema),
@@ -114,7 +234,12 @@ ZarrV3GroupMetadata = Annotated[
 ZarrV2GroupMetadata = Annotated[
     InstanceOf[_model.ZarrV2GroupMetadata],
     BeforeValidator(
-        _coerce_to(_model.ZarrV2GroupMetadata, _model.ZarrV2GroupMetadata.from_json),
+        _read_in_scope(
+            _model.ZarrV2GroupMetadata,
+            _model.ZarrV2GroupMetadata.from_json,
+            CORE_V2,
+            CONTEXT_KEY_V2,
+        ),
         json_schema_input_type=_ZarrV2GroupMetadataSchema,
     ),
     PlainSerializer(_model.ZarrV2GroupMetadata.to_json, return_type=_ZarrV2GroupMetadataSchema),
@@ -124,9 +249,11 @@ ZarrV2GroupMetadata = Annotated[
 ZarrV3ConsolidatedMetadata = Annotated[
     InstanceOf[_model.ZarrV3ConsolidatedMetadata],
     BeforeValidator(
-        _coerce_to(
+        _read_in_scope(
             _model.ZarrV3ConsolidatedMetadata,
             _model.ZarrV3ConsolidatedMetadata.from_json,
+            CORE_AND_EXTENSIONS,
+            CONTEXT_KEY,
         ),
         json_schema_input_type=_ZarrV3ConsolidatedMetadataSchema,
     ),
@@ -140,9 +267,11 @@ ZarrV3ConsolidatedMetadata = Annotated[
 ZarrV2ConsolidatedMetadata = Annotated[
     InstanceOf[_model.ZarrV2ConsolidatedMetadata],
     BeforeValidator(
-        _coerce_to(
+        _read_in_scope(
             _model.ZarrV2ConsolidatedMetadata,
             _model.ZarrV2ConsolidatedMetadata.from_json,
+            CORE_V2,
+            CONTEXT_KEY_V2,
         ),
         json_schema_input_type=_ZarrV2ConsolidatedMetadataSchema,
     ),
@@ -153,22 +282,13 @@ ZarrV2ConsolidatedMetadata = Annotated[
 ]
 """Field type for a v2 `.zmetadata` document."""
 
-ZarrV3MetadataField = Annotated[
-    InstanceOf[_model.ZarrV3NamedConfig],
-    BeforeValidator(
-        _coerce_to(_model.ZarrV3NamedConfig, _model.ZarrV3NamedConfig.from_json),
-        json_schema_input_type=_ZarrV3MetadataFieldSchema,
-    ),
-    PlainSerializer(_model.ZarrV3NamedConfig.to_json, return_type=_ZarrV3MetadataFieldSchema),
-]
-"""Field type for one normalized v3 metadata extension envelope."""
-
 __all__ = [
+    "CONTEXT_KEY",
+    "CONTEXT_KEY_V2",
     "ZarrV2ArrayMetadata",
     "ZarrV2ConsolidatedMetadata",
     "ZarrV2GroupMetadata",
     "ZarrV3ArrayMetadata",
     "ZarrV3ConsolidatedMetadata",
     "ZarrV3GroupMetadata",
-    "ZarrV3MetadataField",
 ]

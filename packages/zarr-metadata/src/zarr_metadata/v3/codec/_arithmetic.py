@@ -17,9 +17,9 @@ codec that supports arrays of signed 64-bit integers"
 which both codecs do, while neither lists them.
 """
 
-from typing import Any, Final
+from typing import Final
 
-from zarr_metadata.v3._definition import RAW_BYTES_NAME, Resolved
+from zarr_metadata.v3._definition import RAW_BYTES_NAME
 from zarr_metadata.v3.data_type.bool import BOOL_DATA_TYPE_NAME
 from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE_NAME
 from zarr_metadata.v3.data_type.complex64 import COMPLEX64_DATA_TYPE_NAME
@@ -67,11 +67,4 @@ does not name them.
 """
 
 
-def read_name(data_type: Resolved[Any] | None) -> str | None:
-    """The name the definition that read `data_type` is filed under; None when no definition read it."""
-    if data_type is None or data_type.resolution != "read" or data_type.definition is None:
-        return None
-    return data_type.definition.name
-
-
-__all__ = ["COMPLEX", "FLOATING_POINT", "NOT_NUMBERS", "read_name"]
+__all__ = ["COMPLEX", "FLOATING_POINT", "NOT_NUMBERS"]

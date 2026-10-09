@@ -1,12 +1,19 @@
 """Zarr v3 array metadata types."""
 
 from collections.abc import Mapping
-from typing import Final, Literal, NotRequired, TypeAlias
+from typing import Annotated, Final, Literal, NotRequired, TypeAlias
 
+from annotated_types import Ge
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+from zarr_metadata.v3._common import (
+    ChunkGridField,
+    ChunkKeyEncodingField,
+    CodecField,
+    DataTypeField,
+    StorageTransformerField,
+)
 
 ZarrV3ExtensionField: TypeAlias = JSONValue
 """The JSON value of an unknown top-level v3 metadata field.
@@ -21,21 +28,24 @@ class ZarrV3ArrayMetadataJSON(TypedDict, extra_items=ZarrV3ExtensionField):
     """
     Zarr v3 array metadata document (the `zarr.json` content for an array).
 
-    Extra keys may contain arbitrary JSON values.
+    Extra keys may contain arbitrary JSON values. Each extension point is
+    annotated with the field alias of its kind -- `data_type` a
+    `DataTypeField`, each of `codecs` a `CodecField` -- which is the JSON
+    a metadata field is, and says what a scope reads it as.
 
     See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#array-metadata
     """
 
     zarr_format: Literal[3]
     node_type: Literal["array"]
-    data_type: ZarrV3MetadataFieldJSON
-    shape: tuple[int, ...]
-    chunk_grid: ZarrV3MetadataFieldJSON
-    chunk_key_encoding: ZarrV3MetadataFieldJSON
+    data_type: DataTypeField
+    shape: tuple[Annotated[int, Ge(0)], ...]
+    chunk_grid: ChunkGridField
+    chunk_key_encoding: ChunkKeyEncodingField
     fill_value: JSONValue
-    codecs: tuple[ZarrV3MetadataFieldJSON, ...]
+    codecs: tuple[CodecField, ...]
     attributes: NotRequired[Mapping[str, JSONValue]]
-    storage_transformers: NotRequired[tuple[ZarrV3MetadataFieldJSON, ...]]
+    storage_transformers: NotRequired[tuple[StorageTransformerField, ...]]
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 
@@ -64,14 +74,14 @@ class ZarrV3ArrayMetadataJSONPartial(TypedDict, total=False, extra_items=ZarrV3E
 
     zarr_format: Literal[3]
     node_type: Literal["array"]
-    data_type: ZarrV3MetadataFieldJSON
-    shape: tuple[int, ...]
-    chunk_grid: ZarrV3MetadataFieldJSON
-    chunk_key_encoding: ZarrV3MetadataFieldJSON
+    data_type: DataTypeField
+    shape: tuple[Annotated[int, Ge(0)], ...]
+    chunk_grid: ChunkGridField
+    chunk_key_encoding: ChunkKeyEncodingField
     fill_value: JSONValue
-    codecs: tuple[ZarrV3MetadataFieldJSON, ...]
+    codecs: tuple[CodecField, ...]
     attributes: NotRequired[Mapping[str, JSONValue]]
-    storage_transformers: NotRequired[tuple[ZarrV3MetadataFieldJSON, ...]]
+    storage_transformers: NotRequired[tuple[StorageTransformerField, ...]]
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 

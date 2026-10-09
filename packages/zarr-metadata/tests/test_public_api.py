@@ -43,17 +43,17 @@ EXPECTED = [
     "JSONValue",
     # Category A' — metadata models (in-memory dataclasses over the documents)
     "ZarrV2ArrayMetadata",
-    "ZarrV2ArrayMetadataPartial",
+    "ZarrV2ArrayMetadataUpdate",
     "ZarrV3ArrayMetadata",
-    "ZarrV3ArrayMetadataPartial",
+    "ZarrV3ArrayMetadataUpdate",
     "ZarrV2GroupMetadata",
-    "ZarrV2GroupMetadataPartial",
+    "ZarrV2GroupMetadataUpdate",
     "ZarrV3GroupMetadata",
-    "ZarrV3GroupMetadataPartial",
+    "ZarrV3GroupMetadataUpdate",
+    "ZarrV3ConsolidatedMetadataInput",
+    "ZarrV3NodeMetadataInput",
     "ZarrV2ConsolidatedMetadata",
     "ZarrV3ConsolidatedMetadata",
-    "ZarrV3NamedConfig",
-    "ZarrV3MetadataField",
     "ValidationProblem",
     "MetadataValidationError",
     "ProblemKind",
@@ -240,7 +240,7 @@ def test_all_is_grouped_and_unique() -> None:
 
 # Core document/model names: the format version comes first (`ZarrV2` /
 # `ZarrV3`), then the CamelCase entity, then an optional role suffix
-# (`JSON`, `JSONPartial`, `Partial`, `StoreKey`) — validated loosely here
+# (`JSON`, `JSONPartial`, `Partial`, `Reading`, `StoreKey`) — validated loosely here
 # because `JSON` decomposes into single-letter words under any strict
 # word-splitting regex.
 _CORE_NAME = re.compile(r"^ZarrV[23](?:[A-Z][a-z0-9]*)+$")
@@ -286,6 +286,13 @@ _STANDALONE_VOCAB = frozenset(
         "BloscCName",
         "BloscShuffle",
         "Chunk",
+        # The algebra of scopes: what a reading claims, and where two
+        # scopes disagree.
+        "ClaimKey",
+        "Claims",
+        "Conflict",
+        "Disagreements",
+        "ScopeConflictError",
         "CodecKind",
         "CodecSize",
         "Context",
@@ -293,17 +300,23 @@ _STANDALONE_VOCAB = frozenset(
         "Lengths",
         "Loc",
         "Nested",
-        "Resolution",
-        "Resolved",
+        "NodeName",
+        "NodePath",
+        # What a scope made of a field: `AcceptedField` by the definition that claims
+        # its name, `UnclaimedField`, or `RefusedField`; `ResolvedField` is the three.
+        "AcceptedField",
+        "RefusedField",
+        "ResolvedField",
         "Stage",
         "StorageClass",
-        "Unread",
+        "UnclaimedField",
         "CastOutOfRangeMode",
         "CastRoundingMode",
         "Endianness",
         "HexFloat16",
         "HexFloat32",
         "HexFloat64",
+        "JSONSchema",
         "JSONValue",
         "MetadataValidationError",
         "NumpyDatetime64",
@@ -311,12 +324,15 @@ _STANDALONE_VOCAB = frozenset(
         "NumpyTimedelta64",
         "ProblemKind",
         "RectilinearDimSpec",
+        # What a repair of a writer's bug changed, as `ValidationProblem` and
+        # `ProblemKind` are what a read found.
+        "Repair",
+        "RepairKind",
         "ScalarMap",
         "ScalarMapEntry",
         "ShardingIndexLocation",
         "Struct",
         "StructField",
-        "TypedDictKeys",
         "ValidationProblem",
     }
 )
