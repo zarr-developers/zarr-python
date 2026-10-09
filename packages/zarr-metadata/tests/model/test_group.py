@@ -1414,3 +1414,32 @@ def test_a_group_writes_no_empty_attributes() -> None:
     assert model.attributes == {}
     assert "attributes" not in model.to_json()
     assert json.loads(model.to_key_value()["zarr.json"]) == {"zarr_format": 3, "node_type": "group"}
+
+
+def test_error_a_listed_group_s_own_listing_holds_the_documents_the_group_lists() -> None:
+    """One node, one document: a group listed in consolidated metadata may list a node the group lists too, but with the document the group holds at the joined key, as it is read; a document that reads otherwise is a problem at the nested entry, in the validator, the group model and the models given as entries alike."""
+    same = _array(shape=(4,), attributes={"a": 1})
+    other = _array(shape=(9,), attributes={"a": 1})
+    agreed = _group(
+        consolidated_metadata=_inline(
+            b=_group(consolidated_metadata=_inline(c=same)), **{"b/c": same}
+        )
+    )
+    assert validate_group_metadata_v3(agreed) == ()
+    contradicted = _group(
+        consolidated_metadata=_inline(
+            b=_group(consolidated_metadata=_inline(c=other)), **{"b/c": same}
+        )
+    )
+    found = validate_group_metadata_v3(contradicted)
+    at = ("consolidated_metadata", "metadata", "b", "consolidated_metadata", "metadata", "c")
+    assert [(p.loc, p.kind) for p in found] == [(at, "invalid_value")]
+    assert "/b/c" in found[0].message
+    with pytest.raises(MetadataValidationError):
+        ZarrV3GroupMetadata(contradicted)
+    inner = ZarrV3GroupMetadata(_group(consolidated_metadata=_inline(c=other)))
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3GroupMetadata(
+            _group(consolidated_metadata=_inline(b=inner, **{"b/c": ZarrV3ArrayMetadata(same)}))
+        )
+    assert [(p.loc, p.kind) for p in raised.value.problems] == [(at, "invalid_value")]

@@ -6,7 +6,7 @@ import dataclasses
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, Literal, TypeAlias, TypeGuard, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, TypeAlias, TypeGuard, cast
 
 from typing_extensions import TypeAliasType, TypedDict, Unpack
 
@@ -38,6 +38,7 @@ from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model._array import (
     ZarrV2ArrayMetadata,
     ZarrV3ArrayMetadata,
+    array_key_of,
     located_conflicts,
     must_understand_subset,
     read_array_metadata_v3,
@@ -757,8 +758,6 @@ def read_group_v3(
     return reading, GroupMembersV3(attributes, extra_fields, held)
 
 
-T = TypeVar("T")
-
 _CONSOLIDATED_MEMBERS: Final = ("kind", "must_understand", "metadata")
 """The members of an inline `consolidated_metadata`, in the order the convention declares them."""
 
@@ -941,7 +940,7 @@ def _read_consolidated_v3(
     for key in node_types:
         problems.extend(
             _nested_listing_problems(
-                key, _reading_listing(readings[key]), node_types, _node_type_of
+                key, readings[key], members.get(key), readings, members, node_types
             )
         )
     return readings, members, tuple(problems)
@@ -964,24 +963,27 @@ def _key_problems(key: str) -> list[ValidationProblem]:
 
 def _nested_listing_problems(
     key: str,
-    listing: Mapping[str, T],
+    listed: ZarrV3NodeMetadataReading,
+    listed_members: ArrayMembersV3 | GroupMembersV3 | None,
+    readings: Mapping[str, ZarrV3NodeMetadataReading],
+    members: Mapping[str, ArrayMembersV3 | GroupMembersV3],
     node_types: Mapping[str, NodeType | None],
-    node_type: Callable[[T], NodeType | None],
 ) -> list[ValidationProblem]:
-    """What is wrong with `listing`, the own consolidated listing of the group at `key`, against `node_types`, the group's flat listing: each problem at the nested entry.
+    """What is wrong with the own consolidated listing of `listed`, the group at `key`, against the group's flat listing, `readings` and their `node_types`: each problem at the nested entry.
 
     The reference implementation lists every node below the group in the
     group's own listing, flat, and gives each group it lists an empty
     listing of its own. So a node a listed group lists is one the group
-    lists too, at the joined key, of the same node type: one it lists
-    alone would be dropped by the reference reader, and one it lists as
-    another type contradicts the tree. Only the listing's own entries are
-    judged: what a group listed there lists in turn is that group's own to
-    judge, when its document is read. `node_type` says what each entry is,
-    so readings and models are judged alike.
+    lists too, at the joined key, of the same node type, and the same
+    document, as each is read: one it lists alone would be dropped by the
+    reference reader, one it lists as another type contradicts the tree,
+    and one it lists otherwise would give a reader two answers for one
+    node. Only the listing's own entries are judged: what a group listed
+    there lists in turn is that group's own to judge, when its document is
+    read, and a document with a problem of its own is judged by that.
     """
     problems: list[ValidationProblem] = []
-    for path, entry in listing.items():
+    for path, entry in _reading_listing(listed).items():
         if len(_below_faults(path)) != 0:
             # Its own reader reports a key that is no node's path.
             continue
@@ -994,14 +996,56 @@ def _nested_listing_problems(
             )
             problems.append(ValidationProblem(here, message, "invalid_value"))
             continue
-        listed, nested = node_types[joined], node_type(entry)
-        if listed is not None and nested is not None and listed != nested:
+        flat, nested = node_types[joined], _node_type_of(entry)
+        if flat is not None and nested is not None and flat != nested:
             message = (
-                f"expected {_an(listed)}, as the group lists {shown(f'/{joined}')}, "
-                f"got {_an(nested)}"
+                f"expected {_an(flat)}, as the group lists {shown(f'/{joined}')}, got {_an(nested)}"
+            )
+            problems.append(ValidationProblem(here, message, "invalid_value"))
+            continue
+        own = _own_listing_members(listed_members).get(path)
+        flat_members = members.get(joined)
+        if (
+            own is not None
+            and flat_members is not None
+            and not _read_alike(readings[joined], flat_members, entry, own)
+        ):
+            message = (
+                f"expected the document the group lists at {shown(f'/{joined}')}, got one "
+                "that reads otherwise: one node, one document"
             )
             problems.append(ValidationProblem(here, message, "invalid_value"))
     return problems
+
+
+def _own_listing_members(
+    listed: ArrayMembersV3 | GroupMembersV3 | None,
+) -> Mapping[str, ArrayMembersV3 | GroupMembersV3]:
+    """The members of each document a listed group's own listing holds that a model can be built of; none for an array, a group listing nothing, or a document with a problem."""
+    if isinstance(listed, GroupMembersV3) and listed.consolidated is not UNSET:
+        return listed.consolidated
+    return {}
+
+
+def _read_alike(
+    reading: ZarrV3NodeMetadataReading,
+    members: ArrayMembersV3 | GroupMembersV3,
+    other: ZarrV3NodeMetadataReading,
+    other_members: ArrayMembersV3 | GroupMembersV3,
+) -> bool:
+    """Whether two documents of one node read the same: arrays by what their models compare, groups by their own members, each listing judged where it sits."""
+    if isinstance(reading, ZarrV3ArrayMetadataReading) and isinstance(
+        other, ZarrV3ArrayMetadataReading
+    ):
+        if not isinstance(members, ArrayMembersV3) or not isinstance(other_members, ArrayMembersV3):
+            return True
+        return array_key_of(reading, members) == array_key_of(other, other_members)
+    if isinstance(members, GroupMembersV3) and isinstance(other_members, GroupMembersV3):
+        return (json_text(members.attributes), json_text(members.extra_fields)) == (
+            json_text(other_members.attributes),
+            json_text(other_members.extra_fields),
+        )
+    return True
 
 
 def _an(node_type: NodeType) -> str:

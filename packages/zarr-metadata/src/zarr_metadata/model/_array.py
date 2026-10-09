@@ -226,25 +226,8 @@ class ZarrV3ArrayMetadata(Keyed):
         return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
 
     def _key_of(self) -> tuple[object, ...]:
-        """What `==` and `hash` compare of a v3 array model: what its document means.
-
-        Each field by its `field_key`, the fill value in its canonical spelling
-        as JSON text when a definition in scope read the data type, and every
-        other member as it is, the JSON ones as text.
-        """
-        members = self._members
-        return (
-            members.shape,
-            self._fill_value_key(),
-            field_key(self.data_type),
-            field_key(self.chunk_grid),
-            tuple(field_key(codec) for codec in self.codecs),
-            field_key(self.chunk_key_encoding),
-            members.dimension_names,
-            json_text(members.attributes),
-            tuple(field_key(transformer) for transformer in self.storage_transformers),
-            json_text(members.extra_fields),
-        )
+        """What `==` and `hash` compare of a v3 array model: what its document means, as `array_key_of` says."""
+        return array_key_of(self._reading, self._members)
 
     def _plain_key(
         self, data_type: AcceptedField[DataTypeDefinition[Any]] | UnclaimedField
@@ -258,13 +241,6 @@ class ZarrV3ArrayMetadata(Keyed):
             json_text(members.attributes),
             json_text(members.extra_fields),
         )
-
-    def _fill_value_key(self) -> str:
-        """What `==` compares of the fill value: its canonical spelling as JSON text when a definition in scope read the data type, and the fill value as written when none did."""
-        fill_value = self._members.fill_value
-        if isinstance(self.data_type, AcceptedField):
-            return json_text(spelled_canonically(self.data_type, fill_value))
-        return json_text(fill_value)
 
     def __reduce__(self) -> tuple[type[ZarrV3ArrayMetadata], tuple[object, Context]]:
         # The pair, read again on load: a model's reading never disagrees
@@ -476,6 +452,36 @@ def located_conflicts(
             located.append(conflict)
         located.extend(dataclasses.replace(conflict, loc=loc) for loc in places)
     return tuple(located)
+
+
+def array_key_of(
+    reading: ZarrV3ArrayMetadataReading, members: ArrayMembersV3
+) -> tuple[object, ...]:
+    """What a v3 array document means, as `reading` read it and `members` refine it: what `==` and `hash` compare of its model, and what two listings of one node are compared by.
+
+    Each field by its `field_key`, the fill value in its canonical spelling
+    as JSON text when a definition in scope read the data type and as
+    written when none did, and every other member as it is, the JSON ones
+    as text.
+    """
+    data_type = held(reading.data_type)
+    fill_value = (
+        spelled_canonically(data_type, members.fill_value)
+        if isinstance(data_type, AcceptedField)
+        else members.fill_value
+    )
+    return (
+        members.shape,
+        json_text(fill_value),
+        field_key(data_type),
+        field_key(held(reading.chunk_grid)),
+        tuple(field_key(held(stage.codec)) for stage in reading.pipeline),
+        field_key(held(reading.chunk_key_encoding)),
+        members.dimension_names,
+        json_text(members.attributes),
+        tuple(field_key(held(entry)) for entry in reading.storage_transformers),
+        json_text(members.extra_fields),
+    )
 
 
 def read_array_metadata_v3(
