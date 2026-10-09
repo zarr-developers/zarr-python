@@ -296,23 +296,18 @@ def float_to_json_v3(data: float | np.floating[Any]) -> JSONFloatV3:
 
     Notes
     -----
-    ``"NaN"`` denotes the canonical NaN, meaning the quiet NaN payload with
-    no extra payload bits; the sign bit is not significant for this check.
-    A NaN carrying a non-canonical payload is written as its hexadecimal bit
-    pattern, per the spec's hex-bits encoding (``"0x7fc00001"`` for a float32
-    NaN with payload 1), which is the only way to name a non-canonical NaN.
+    ``"NaN"`` denotes exactly the canonical NaN bit pattern, sign bit
+    included. Any other NaN, including the negative-sign form of the
+    canonical payload, is written as its hexadecimal bit pattern per the
+    spec's hex-bits encoding (``"0x7fc00001"`` for a float32 NaN with
+    payload 1), which is the only way to name a non-canonical NaN.
     """
     if np.isnan(data) and isinstance(data, np.floating):
         uint_dtype = {2: np.uint16, 4: np.uint32, 8: np.uint64}.get(data.dtype.itemsize)
         if uint_dtype is not None:
             bits = int(np.asarray(data).view(uint_dtype))
-            canonical = {
-                2: 0x7E00,
-                4: 0x7FC00000,
-                8: 0x7FF8000000000000,
-            }[data.dtype.itemsize]
-            sign = 1 << (data.dtype.itemsize * 8 - 1)
-            if bits & ~sign == canonical:
+            canonical = int(np.asarray(np.nan, dtype=data.dtype).view(uint_dtype))
+            if bits == canonical:
                 return float_to_json_v2(data)
             return f"0x{bits:0{data.dtype.itemsize * 2}x}"
     return float_to_json_v2(data)

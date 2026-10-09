@@ -761,14 +761,12 @@ class ArrayV3Metadata(Metadata):
         # documents write back differently. See issue #4453.
         if not isinstance(other, ArrayV3Metadata):
             return NotImplemented
-        return json.dumps(self.to_dict(), sort_keys=True) == json.dumps(
-            other.to_dict(), sort_keys=True
-        )
+        return json.dumps(self.to_dict()) == json.dumps(other.to_dict())
 
     def __hash__(self) -> int:
         # Hash the JSON-serialized form to stay consistent with __eq__: equal metadata
         # must hash equally, which a field-based hash violates for a NaN fill_value.
-        return hash(json.dumps(self.to_dict(), sort_keys=True))
+        return hash(json.dumps(self.to_dict()))
 
     def update_shape(self, shape: tuple[int, ...]) -> Self:
         chunk_grid = self.chunk_grid
