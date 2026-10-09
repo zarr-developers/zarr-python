@@ -73,10 +73,13 @@ class ScopeConflictError(ValueError):
         self.conflicts: tuple[Conflict, ...] = tuple(conflicts)
         super().__init__("; ".join(str(conflict) for conflict in self.conflicts))
 
-    def __reduce__(self) -> tuple[type[ScopeConflictError], tuple[tuple[Conflict, ...]]]:
-        # Pickled and copied as it was raised: an exception's default
-        # reduce calls the constructor with its message, not its conflicts.
-        return type(self), (self.conflicts,)
+    def __reduce__(
+        self,
+    ) -> tuple[type[ScopeConflictError], tuple[tuple[Conflict, ...]], dict[str, object]]:
+        # Pickled and copied as it was raised, its notes and attributes kept:
+        # an exception's default reduce calls the constructor with its
+        # message, not its conflicts.
+        return type(self), (self.conflicts,), dict(self.__dict__)
 
 
 def claim_key(field: ResolvedField[Any]) -> ClaimKey | None:

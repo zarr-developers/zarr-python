@@ -429,7 +429,9 @@ def test_a_scope_conflict_error_pickles_and_copies_with_its_conflicts() -> None:
     with pytest.raises(ScopeConflictError) as raised:
         Context.joined(CORE, Context.of(OTHER_GZIP))
     error = raised.value
+    error.add_note("seen in a join")
     for again in (pickle.loads(pickle.dumps(error)), copy.copy(error), copy.deepcopy(error)):
         assert again.conflicts == error.conflicts
         assert str(again) == str(error)
         assert str(again).startswith("codec 'gzip'")
+        assert again.__notes__ == ["seen in a join"]

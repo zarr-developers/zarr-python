@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+import struct
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated, Final, Literal, cast
 
@@ -12,7 +14,7 @@ from zarr_metadata._json import ValidationProblem
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
     from zarr_metadata.v3._definition import Nested
 
@@ -127,13 +129,31 @@ ZarrV2ComplexFillValue = tuple[ZarrV2ComplexComponent, ZarrV2ComplexComponent] |
 def _float_canonical(
     configuration: ZarrV2ScalarConfiguration, nested: Nested, value: ZarrV2FloatFillValue
 ) -> ZarrV2FloatFillValue:
-    """An integer written for a float is the float: `0` and `0.0` are one value, and one past the largest float64 is the infinity of its sign, as the v3 float types read it."""
-    if isinstance(value, int) and not isinstance(value, bool):
-        try:
-            return float(value)
-        except OverflowError:
-            return "-Infinity" if value < 0 else "Infinity"
-    return value
+    """An integer written for a float is the float, `0` and `0.0` one value, and a number past the largest float of the dtype's width is the infinity of its sign, as the v3 float types read one and NumPy stores it."""
+    return _held_in(value, configuration["itemsize"])
+
+
+def _held_in(value: ZarrV2FloatFillValue, itemsize: int) -> ZarrV2FloatFillValue:
+    """`value` as a float of `itemsize` bytes holds it: itself as a float, or the infinity of its sign past the largest such float; a width no float has keeps the value."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return value
+    try:
+        held = float(value)
+        narrowed = held
+        if itemsize in _FLOAT_CODES:
+            # `struct` refuses a float16 past the largest, and packs a
+            # float32 past the largest as an infinity.
+            code = _FLOAT_CODES[itemsize]
+            (narrowed,) = struct.unpack(code, struct.pack(code, held))
+    except OverflowError:
+        return "-Infinity" if value < 0 else "Infinity"
+    if math.isinf(narrowed):
+        return "-Infinity" if value < 0 else "Infinity"
+    return held
+
+
+_FLOAT_CODES: Final[Mapping[int, str]] = {2: "e", 4: "f", 8: "d"}
+"""The `struct` code of the float each size in bytes is: what refuses a value past the largest."""
 
 
 def _complex_canonical(
@@ -143,9 +163,10 @@ def _complex_canonical(
     if value is None:
         return None
     real, imag = value
+    width = configuration["itemsize"] // 2
     return (
-        cast("ZarrV2ComplexComponent", _float_canonical(configuration, nested, real)),
-        cast("ZarrV2ComplexComponent", _float_canonical(configuration, nested, imag)),
+        cast("ZarrV2ComplexComponent", _held_in(real, width)),
+        cast("ZarrV2ComplexComponent", _held_in(imag, width)),
     )
 
 

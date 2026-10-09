@@ -240,15 +240,20 @@ def test_a_struct_record_type_sits_where_the_document_writes_it() -> None:
     ]
 
 
-def test_a_float_fill_value_past_the_largest_float64_reads_as_an_infinity() -> None:
-    """An integer written for a float fill value that no float64 holds is the infinity of its sign, as the v3 float types read one, for a float and for each component of a complex: `read_array_metadata_v2` reads it, and the model equals one written `"Infinity"`."""
+def test_a_float_fill_value_past_the_largest_of_its_width_reads_as_an_infinity() -> None:
+    """A number written for a float fill value that no float of the dtype's width holds -- `<f4` past float32, `<f2` past float16, as an integer or a float -- is the infinity of its sign, as the v3 float types read one and as NumPy stores it, for a float and for each component of a complex: `read_array_metadata_v2` reads it, and the model equals one written `"Infinity"`."""
     from zarr_metadata.model import ZarrV2ArrayMetadata, read_array_metadata_v2
 
     cases: list[tuple[str, JSONValue, JSONValue]] = [
         ("<f8", 10**400, "Infinity"),
         ("<f8", -(10**400), "-Infinity"),
+        ("<f4", 10**39, "Infinity"),
+        ("<f4", 1e39, "Infinity"),
+        ("<f4", -(2**128), "-Infinity"),
+        ("<f2", 70000, "Infinity"),
         ("<f2", 10**309, "Infinity"),
         ("<c16", [10**400, 0], ["Infinity", 0.0]),
+        ("<c8", [10**39, -1e39], ["Infinity", "-Infinity"]),
     ]
     for dtype, huge, named in cases:
         written = ZarrV2ArrayMetadata.create_default(dtype=dtype, fill_value=huge)
