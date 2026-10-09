@@ -21,7 +21,7 @@ from typing_extensions import ReadOnly
 
 from zarr.core.config import config as zarr_config
 from zarr.core.json_parse import convert, parse_field
-from zarr.errors import ZarrRuntimeWarning
+from zarr.errors import ZarrDeprecationWarning, ZarrRuntimeWarning
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -211,18 +211,21 @@ def parse_named_configuration(
     return name_parsed, configuration_parsed
 
 
-def parse_shapelike(data: ShapeLike, *, reject_bool: bool = False) -> tuple[int, ...]:
+def _warn_bool_shapelike() -> None:
+    msg = (
+        "Boolean values in shape-like fields are deprecated and will be "
+        "rejected in a future release."
+    )
+    warnings.warn(msg, ZarrDeprecationWarning, stacklevel=3)
+
+
+def parse_shapelike(data: ShapeLike) -> tuple[int, ...]:
     """
     Parse a shape-like input into an explicit shape.
-
-    ``reject_bool`` controls whether JSON ``true``/``false`` values are rejected.
-    Stored chunk sizes written as ``true`` by older versions of this library are
-    still read leniently, so the default is ``False``; document ``shape`` fields
-    pass ``reject_bool=True``.
     """
-    if reject_bool and isinstance(data, bool):
-        msg = f"Expected an integer or an iterable of integers. Got {data} instead."
-        raise TypeError(msg)
+    if isinstance(data, bool):
+        # bools are int subclasses; accept them for now but deprecate
+        _warn_bool_shapelike()
     if isinstance(data, int | np.integer):
         if data < 0:
             raise ValueError(f"Expected a non-negative integer. Got {data} instead")
@@ -233,11 +236,11 @@ def parse_shapelike(data: ShapeLike, *, reject_bool: bool = False) -> tuple[int,
         msg = f"Expected an integer or an iterable of integers. Got {data} instead."
         raise TypeError(msg) from e
 
-    if not all(isinstance(v, int | np.integer) for v in data_tuple) or (
-        reject_bool and any(isinstance(v, bool) for v in data_tuple)
-    ):
+    if not all(isinstance(v, int | np.integer) for v in data_tuple):
         msg = f"Expected an iterable of integers. Got {data} instead."
         raise TypeError(msg)
+    if any(isinstance(v, bool) for v in data_tuple):
+        _warn_bool_shapelike()
     if not all(v > -1 for v in data_tuple):
         msg = f"Expected all values to be non-negative. Got {data} instead."
         raise ValueError(msg)

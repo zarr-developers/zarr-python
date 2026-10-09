@@ -27,7 +27,7 @@ from zarr.core.metadata.repair import (
 from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
 from zarr.core.sync import sync
 from zarr.dtype import Int16
-from zarr.errors import ZarrUserWarning
+from zarr.errors import ZarrDeprecationWarning, ZarrUserWarning
 from zarr.storage import LocalStore, MemoryStore, StorePath
 from zarr.storage._common import make_store_path
 
@@ -518,7 +518,6 @@ the chunk shape and the value `to_dict` writes for it."""
         (np.int64(4), (4,)),
         ((np.int64(4),), (4,)),
         (np.array([4]), (4,)),
-        ((True,), (1,)),
         (range(4, 5), (4,)),
     ],
 )
@@ -527,18 +526,36 @@ def test_chunk_shape_read_as_array_shape(
 ) -> None:
     """`ArrayV2Metadata` and `ShardingCodec` read their chunk shape as `parse_shapelike`
     reads an array shape: an integer or an iterable of integers, including NumPy
-    integers and bools."""
+    integers."""
     parsed, written = CHUNK_SHAPE_SITES[site](chunks)
     assert parsed == expected
     assert all(type(size) is int for size in parsed)
     assert written == expected
 
 
-@pytest.mark.parametrize("chunks", [(0,), (False,)])
+@pytest.mark.parametrize("site", CHUNK_SHAPE_SITES)
+def test_chunk_shape_bool_deprecated(site: str) -> None:
+    """A bool chunk size still reads as 1, but warns pending removal."""
+    with pytest.warns(ZarrDeprecationWarning, match="Boolean values"):
+        parsed, written = CHUNK_SHAPE_SITES[site]((True,))
+    assert parsed == (1,)
+    assert written == (1,)
+
+
+@pytest.mark.parametrize("chunks", [(0,)])
 def test_v2_chunk_size_zero_written_as_given(chunks: tuple[Any, ...]) -> None:
     """`ArrayV2Metadata` accepts a chunk size of 0 and writes it back as given; reading
     a stored 0 is `zarr.core.metadata.repair`' business. `ShardingCodec` rejects one."""
     metadata = _v2_metadata(chunks)
+    assert metadata.chunks == (0,)
+    assert metadata.to_dict()["chunks"] == (0,)
+
+
+def test_v2_chunk_size_false_written_as_given() -> None:
+    """A bool chunk size still reads and writes as before, but warns pending
+    removal."""
+    with pytest.warns(ZarrDeprecationWarning, match="Boolean values"):
+        metadata = _v2_metadata((False,))
     assert metadata.chunks == (0,)
     assert metadata.to_dict()["chunks"] == (0,)
 

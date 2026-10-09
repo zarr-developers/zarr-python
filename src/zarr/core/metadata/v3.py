@@ -545,7 +545,7 @@ class ArrayV3Metadata(Metadata):
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
 
-        shape_parsed = parse_shapelike(shape, reject_bool=True)
+        shape_parsed = parse_shapelike(shape)
         chunk_grid_parsed = parse_chunk_grid(chunk_grid)
         chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
