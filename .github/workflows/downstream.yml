@@ -68,13 +68,16 @@ jobs:
           import xarray; print(f'xarray {xarray.__version__}')
           "
 
-      - name: Run xarray zarr backend tests
+      # xarray keeps its backend tests in the `xarray/tests/backends` package
+      # (pydata/xarray#11633 split the former `test_backends*.py` modules into
+      # it). Running the package covers the zarr store, region/append, API and
+      # DataTree tests; the other backends are installed by the `io` extra, so
+      # their tests run too, as they did before the split.
+      - name: Run xarray backend tests
         working-directory: xarray
         run: |
           uv run --no-sync python -m pytest --no-header -q \
-            xarray/tests/test_backends.py \
-            xarray/tests/test_backends_api.py \
-            xarray/tests/test_backends_datatree.py
+            xarray/tests/backends
 
   numcodecs:
     name: numcodecs zarr3 codec tests
