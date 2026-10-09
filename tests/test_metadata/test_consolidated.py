@@ -960,9 +960,7 @@ def test_consolidated_metadata_reserved_name_below_missing_parent() -> None:
     """A reserved name warns before the missing-parent error is raised."""
     with pytest.warns(ZarrDeprecationWarning, match="reserved"):
         with pytest.raises(MetadataValidationError, match="without a listing"):
-            ConsolidatedMetadata.from_dict(
-                _consolidated_doc({"a": _GROUP_V3, "a/../b": _GROUP_V3})
-            )
+            ConsolidatedMetadata.from_dict(_consolidated_doc({"a": _GROUP_V3, "a/../b": _GROUP_V3}))
 
 
 @pytest.mark.parametrize(
@@ -973,9 +971,7 @@ def test_consolidated_metadata_ignores_reserved_v2_keys(key: str) -> None:
     """The v2 specification does not reserve node names."""
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        consolidated = ConsolidatedMetadata.from_dict(
-            _consolidated_doc({key: _GROUP_V2})
-        )
+        consolidated = ConsolidatedMetadata.from_dict(_consolidated_doc({key: _GROUP_V2}))
     assert key in consolidated.metadata
 
 
