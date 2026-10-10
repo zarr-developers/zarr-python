@@ -28,6 +28,7 @@ from zarr.core.common import (
     NodeType,
     compress_rle,
     expand_rle,
+    expand_short_hand_name,
     parse_chunk_edge,
     parse_chunk_shape,
     parse_named_configuration,
@@ -82,6 +83,7 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
         ):  # Can't use Codec here because of mypy limitation
             out += (c,)
         else:
+            c = expand_short_hand_name(c)
             name_parsed, _ = parse_named_configuration(c, require_configuration=False)
 
             codec_cls = get_codec_class(name_parsed)
@@ -156,7 +158,7 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
         # and then returned ``data`` itself, which exhausted (and discarded) a
         # one-shot iterable and could return a value typed as a tuple that was not
         # actually a tuple.
-        return tuple(data)
+        return tuple(expand_short_hand_name(t) for t in data)
     raise TypeError(
         f"Invalid storage_transformers. Expected an iterable of dicts. Got {type(data)} instead."
     )
@@ -458,6 +460,7 @@ def parse_chunk_grid(
     if isinstance(data, (RegularChunkGridMetadata, RectilinearChunkGridMetadata)):
         return data
 
+    data = expand_short_hand_name(data)
     name, _ = parse_named_configuration(data)
     if name == "regular":
         return RegularChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
