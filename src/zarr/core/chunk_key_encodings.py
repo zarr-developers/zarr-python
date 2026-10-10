@@ -11,6 +11,7 @@ from zarr.abc.metadata import Metadata
 from zarr.core.common import (
     JSON,
     NamedConfig,
+    expand_short_hand_name,
     parse_named_configuration,
 )
 from zarr.core.json_parse import parse_field
@@ -111,6 +112,8 @@ def parse_chunk_key_encoding(data: ChunkKeyEncodingLike) -> ChunkKeyEncoding:
     """
     if isinstance(data, ChunkKeyEncoding):
         return data
+
+    data = expand_short_hand_name(data)
 
     # handle ChunkKeyEncodingParams
     if "name" in data and "separator" in data:
