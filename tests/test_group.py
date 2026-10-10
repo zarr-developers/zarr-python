@@ -217,38 +217,42 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
         )
     )
 
-    # this warning shows up when extra objects show up in the hierarchy
-    warn_context = pytest.warns(
-        ZarrUserWarning,
-        match=r"(?:Object at .* is not recognized as a component of a Zarr hierarchy.)|(?:Consolidated metadata is currently not part in the Zarr format 3 specification.)",
-    )
     if consolidated_metadata:
+        consolidate_warn_context = (
+            pytest.warns(
+                ZarrUserWarning,
+                match="Consolidated metadata is currently not part in the Zarr format 3 specification.",
+            )
+            if zarr_format == 3
+            else contextlib.nullcontext()
+        )
         if isinstance(store, ZipStore):
-            with warn_context:
+            with consolidate_warn_context:
                 with pytest.warns(UserWarning, match="Duplicate name: "):
                     zarr.consolidate_metadata(store=store, zarr_format=zarr_format)
         else:
-            with warn_context:
+            with consolidate_warn_context:
                 zarr.consolidate_metadata(store=store, zarr_format=zarr_format)
-        # now that we've consolidated the store, we shouldn't get the warnings from the unrecognized objects anymore
-        # we use a nullcontext to handle these cases
-        warn_context = contextlib.nullcontext()
         group = zarr.open_consolidated(store=store, zarr_format=zarr_format)
 
-    with warn_context:
+    # extra objects in the hierarchy are skipped without warning
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ZarrUserWarning)
         members_observed = group.members()
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
 
     # partial
-    with warn_context:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ZarrUserWarning)
         members_observed = group.members(max_depth=1)
     members_expected["subgroup/subsubgroup"] = subsubgroup
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
 
     # total
-    with warn_context:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ZarrUserWarning)
         members_observed = group.members(max_depth=None)
     members_expected["subgroup/subsubgroup/subsubsubgroup"] = subsubsubgroup
     # members are not guaranteed to be ordered, so sort before comparing
