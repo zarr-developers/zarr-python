@@ -5846,6 +5846,8 @@ async def _set_selection(
     # check fields are sensible
     check_fields(fields, dtype)
     fields = check_no_multi_fields(fields)
+    # the dtype of the values being written: a single field, or the whole record
+    value_dtype = check_fields(fields, dtype)
 
     # check value shape
     if np.isscalar(value):
@@ -5854,20 +5856,38 @@ async def _set_selection(
             # TODO: need to handle array types that don't support __array_function__
             # like PyTorch and JAX
             array_like_ = cast("np._typing._SupportsArrayFunc", array_like)
-        value = np.asanyarray(value, dtype=dtype, like=array_like_)
+        value = np.asanyarray(value, dtype=value_dtype, like=array_like_)
     else:
         if not hasattr(value, "shape"):
-            value = np.asarray(value, dtype)
+            value = np.asarray(value, value_dtype)
         # assert (
         #     value.shape == indexer.shape
         # ), f"shape of value doesn't match indexer shape. Expected {indexer.shape}, got {value.shape}"
-        if not hasattr(value, "dtype") or value.dtype.name != dtype.name:
+        if not hasattr(value, "dtype") or value.dtype.name != value_dtype.name:
             if hasattr(value, "astype"):
                 # Handle things that are already NDArrayLike more efficiently
-                value = value.astype(dtype=dtype, order="A")
+                value = value.astype(dtype=value_dtype, order="A")
             else:
-                value = np.array(value, dtype=dtype, order="A")
+                value = np.array(value, dtype=value_dtype, order="A")
     value = cast("NDArrayLike", value)
+
+    if fields:
+        # A field write must preserve the other fields of each record, so read the
+        # selected records, replace the field, and write the whole records back.
+        # Missing chunks are read as the fill value, as for any partial chunk write.
+        records = prototype.nd_buffer.empty(shape=indexer.shape, dtype=dtype)
+        await _get_selection(
+            store_path,
+            metadata,
+            codec_pipeline,
+            replace(config, read_missing_chunks=True),
+            chunk_grid,
+            indexer,
+            prototype=prototype,
+            out=records,
+        )
+        records[fields] = value
+        value = records.as_ndarray_like()
 
     # We accept any ndarray like object from the user and convert it
     # to an NDBuffer (or subclass). From this point onwards, we only pass
