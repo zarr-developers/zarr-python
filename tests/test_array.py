@@ -847,14 +847,14 @@ def test_resize_growing_skips_chunk_enumeration(
     np.testing.assert_array_equal(np.ones((10, 10), dtype="i4"), z[:10, :10])
     np.testing.assert_array_equal(np.zeros((10, 10), dtype="i4"), z[10:, 10:])
 
-    # shrink - ensure no regression of behaviour
+    # Shrinking also avoids full-grid enumeration.
     with mock.patch.object(
         grid_cls,
         "all_chunk_coords",
         wraps=z._chunk_grid.all_chunk_coords,
     ) as mock_coords:
         z.resize((5, 5))
-        assert mock_coords.call_count > 0
+        mock_coords.assert_not_called()
 
     assert z.shape == (5, 5)
     np.testing.assert_array_equal(np.ones((5, 5), dtype="i4"), z[:])
@@ -877,7 +877,7 @@ def test_resize_growing_skips_chunk_enumeration(
         wraps=z2._chunk_grid.all_chunk_coords,
     ) as mock_coords:
         z2.resize((20, 5))
-        assert mock_coords.call_count > 0
+        mock_coords.assert_not_called()
 
     assert z2.shape == (20, 5)
     np.testing.assert_array_equal(np.ones((10, 5), dtype="i4"), z2[:10, :])
@@ -1975,6 +1975,61 @@ def test_from_array_arraylike_gains_no_attributes() -> None:
     assert result.fill_value == 0
 
 
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=True)
+@pytest.mark.parametrize(
+    ("src_name", "dest_name"),
+    [("a", "a"), ("g/a", "g"), ("g/a", ""), ("a", "a/c")],
+)
+def test_from_array_overwrite_overlapping_source_raises(
+    store: Store, src_name: str, dest_name: str
+) -> None:
+    """Overwriting a destination that overlaps the source array raises instead of
+    deleting the source before its data is copied."""
+    src = zarr.create_array(store, name=src_name, data=np.arange(4.0), fill_value=-1.0)
+    with pytest.raises(ValueError, match="paths overlap"):
+        zarr.from_array(store, name=dest_name, data=src, overwrite=True)
+    np.testing.assert_array_equal(src[...], np.arange(4.0))
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=True)
+def test_from_array_overwrite_read_only_source_raises(store: Store) -> None:
+    """A read-only view of the destination store still counts as overlapping."""
+    zarr.create_array(store, name="a", data=np.arange(4.0), fill_value=-1.0)
+    src = zarr.open_array(store.with_read_only(True), path="a")
+    with pytest.raises(ValueError, match="paths overlap"):
+        zarr.from_array(store, name="a", data=src, overwrite=True)
+    np.testing.assert_array_equal(src[...], np.arange(4.0))
+
+
+def test_from_array_overwrite_equal_memory_stores() -> None:
+    """Distinct MemoryStores with equal contents don't overlap."""
+    src_store, dest_store = MemoryStore(), MemoryStore()
+    src = zarr.create_array(src_store, name="a", data=np.arange(4.0), fill_value=-1.0)
+    zarr.create_array(dest_store, name="a", data=np.arange(4.0), fill_value=-1.0)
+    result = zarr.from_array(dest_store, name="a", data=src, overwrite=True)
+    np.testing.assert_array_equal(result[...], np.arange(4.0))
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_from_array_overwrite_non_overlapping_source(store: Store) -> None:
+    """Overlap checks respect path boundaries, and metadata-only copies are allowed."""
+    src = zarr.create_array(
+        store,
+        name="ab",
+        data=np.arange(4.0),
+        chunks=(2,),
+        fill_value=-1.0,
+        attributes={"units": "K"},
+    )
+    zarr.create_array(store, name="a", shape=(2,), dtype="int8")
+    result = zarr.from_array(store, name="a", data=src, overwrite=True)
+    np.testing.assert_array_equal(result[...], np.arange(4.0))
+
+    meta_only = zarr.from_array(store, name="ab", data=src, overwrite=True, write_data=False)
+    np.testing.assert_array_equal(meta_only[...], np.full(4, -1.0))
+    assert zarr.open_array(store, path="ab").metadata == src.metadata
+
+
 def test_from_array_F_order() -> None:
     arr = zarr.create_array(store={}, data=np.array([1]), order="F", zarr_format=2)
     with pytest.warns(
@@ -2095,6 +2150,41 @@ def test_multiprocessing(
     with ctx.Pool() as pool:
         results = pool.starmap(_index_array, [(arr, slice(len(data)))])
     assert all(np.array_equal(r, data) for r in results)
+
+
+@pytest.mark.skipif(
+    sys.platform in ("win32", "darwin"),
+    reason="fork not supported on Windows or OSX",
+)
+@pytest.mark.filterwarnings(
+    r"ignore:This process \(pid=\d+\) is multi-threaded, use of fork\(\):DeprecationWarning"
+)
+@pytest.mark.parametrize("store", ["local"], indirect=True)
+def test_multiprocessing_fork_codec_pipeline_pool(store: Store) -> None:
+    """A forked child must not reuse the parent's codec-pipeline thread pool.
+
+    Regression test for https://github.com/zarr-developers/zarr-python/issues/4478:
+    submitting to the inherited pool hung forever because its threads did not
+    survive the fork. The child must read FEWER chunks than the pool's inherited
+    idle permits: once submissions exceed the stale permits, a real thread is
+    spawned and the queued work drains normally. Single-chunk batches bypass the
+    pool entirely.
+    """
+    data = np.arange(100).reshape(10, 10)
+    with zarr.config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.FusedCodecPipeline"}):
+        arr = zarr.create_array(store=store, shape=data.shape, chunks=(5, 5), dtype=data.dtype)
+        arr[:] = data
+        # Two multi-chunk reads: spawn 4 pool threads and leave all of their
+        # idle-semaphore permits released before the fork.
+        arr[:]
+        arr[:]
+        ctx = mp.get_context("fork")
+        with ctx.Pool() as pool:
+            # [:5] spans 2 chunks — below the ~4 inherited idle permits, so on
+            # unfixed code both submissions are swallowed by the dead pool.
+            result = pool.starmap_async(_index_array, [(arr, np.s_[:5])])
+            (read_back,) = result.get(timeout=30)
+        assert np.array_equal(read_back, data[:5])
 
 
 def test_create_array_method_signature() -> None:
