@@ -11,7 +11,7 @@ import pytest
 from tests.conftest import Expect, ExpectFail
 from tests.test_metadata.conftest import minimal_metadata_dict_v3
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.chunk_grids import ChunkGrid, is_regular_1d, is_regular_nd
+from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.config import config
 from zarr.core.dtype import Float64, UInt8
 from zarr.core.group import GroupMetadata, parse_node_type
@@ -106,47 +106,6 @@ def test_parse_codecs_unknown_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(zarr.registry, "_codec_registries", defaultdict(Registry))
     with pytest.raises(UnknownCodecError):
         parse_codecs([{"name": "unknown"}])
-
-
-# ---------------------------------------------------------------------------
-# Chunk-grid regularity helpers
-# ---------------------------------------------------------------------------
-
-_REGULAR_1D_CASES: list[Expect[list[int], bool]] = [
-    Expect(input=[], output=True, id="empty"),
-    Expect(input=[10], output=True, id="single-chunk"),
-    Expect(input=[10, 10, 10], output=True, id="all-equal"),
-    Expect(input=[10, 10, 10, 7], output=True, id="smaller-boundary"),
-    Expect(input=[10, 10, 10, 10], output=True, id="exact-multiple"),
-    Expect(input=[10, 5, 10], output=False, id="middle-mismatch"),
-    Expect(input=[10, 10, 10, 12], output=False, id="last-larger"),
-    # The first chunk anchors the size; later mismatches in the middle fail
-    # before the boundary check.
-    Expect(input=[5, 10, 5], output=False, id="middle-larger"),
-]
-
-
-@pytest.mark.parametrize("case", _REGULAR_1D_CASES, ids=lambda c: c.id)
-def test_is_regular_1d_sequence(case: Expect[list[int], bool]) -> None:
-    """`is_regular_1d` accepts plain Python sequences."""
-    assert is_regular_1d(case.input) is case.output
-    assert is_regular_1d(tuple(case.input)) is case.output
-
-
-@pytest.mark.parametrize(
-    "case",
-    [
-        Expect(input=[[10, 10, 10], [5, 5]], output=True, id="all-regular"),
-        Expect(input=[[10, 10, 7], [5, 5, 5, 3]], output=True, id="all-regular-with-boundary"),
-        Expect(input=[[10, 10, 10], [5, 8, 5]], output=False, id="second-dim-irregular"),
-        Expect(input=[[10, 5, 10], [5, 5]], output=False, id="first-dim-irregular"),
-        Expect(input=[], output=True, id="zero-dims"),
-    ],
-    ids=lambda c: c.id,
-)
-def test_is_regular_nd_sequence(case: Expect[list[list[int]], bool]) -> None:
-    """`is_regular_nd` returns True iff every per-dim spec is regular."""
-    assert is_regular_nd(case.input) is case.output
 
 
 def test_create_chunk_grid_metadata_unknown_dimension_type() -> None:

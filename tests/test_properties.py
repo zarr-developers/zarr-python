@@ -2,7 +2,7 @@ import itertools
 import json
 import numbers
 import warnings
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from typing import Any
 
 import numpy as np
@@ -306,9 +306,11 @@ def test_block_indexing(data: st.DataObject) -> None:
     # The block grid is worked out from the stored declaration, not by zarr's grid code.
     assert isinstance(zarray.metadata, ArrayV3Metadata)
     grid = zarray.metadata.chunk_grid
-    declared = (
-        grid.chunk_shapes if isinstance(grid, RectilinearChunkGridMetadata) else grid.chunk_shape
-    )
+    declared: Sequence[int | tuple[int, ...]]
+    if isinstance(grid, RectilinearChunkGridMetadata):
+        declared = [d if isinstance(d, int) else tuple(d.expand()) for d in grid.chunk_shapes]
+    else:
+        declared = grid.chunk_shape
     chunk_sizes = tuple(
         declared_chunk_data_sizes(d, n) for d, n in zip(declared, zarray.shape, strict=True)
     )
@@ -618,7 +620,7 @@ def test_chunks_param_from_rectilinear_bare_int_roundtrip() -> None:
         src = zarr.create_array(MemoryStore(), shape=(3, 3), chunks=([1, 2], 1), dtype="uint8")
         grid = src.metadata.chunk_grid  # type: ignore[union-attr]
         assert isinstance(grid, RectilinearChunkGridMetadata)
-        assert grid.chunk_shapes == ((1, 2), 1)
+        assert grid == RectilinearChunkGridMetadata(chunk_shapes=((1, 2), 1))
         chunks = chunks_param_from_rectilinear(grid)
         # a list of lists, not tuples (`[1, 2] != (1, 2)`)
         assert chunks == [[1, 2], 1]
@@ -646,7 +648,7 @@ def test_rectilinear_chunk_grid_declarations(data: st.DataObject) -> None:
         "configuration": {"kind": "inline", "chunk_shapes": declaration},
     }
     meta = RectilinearChunkGridMetadata.from_dict(stored)
-    assert meta.chunk_shapes == chunk_shapes
+    assert meta == RectilinearChunkGridMetadata(chunk_shapes=chunk_shapes)
 
     serialized = json.loads(json.dumps(meta.to_dict()))
     assert serialized["name"] == "rectilinear"
