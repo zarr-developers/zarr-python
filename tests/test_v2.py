@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import numpy as np
 import pytest
@@ -250,6 +250,22 @@ def test_structured_dtype_roundtrip(fill_value: float | bytes, tmp_path: Path) -
     za[...] = a
     za = zarr.open_array(store=array_path)
     assert (a == za[:]).all()
+
+
+def test_structured_dtype_field_selection(tmp_path: Path) -> None:
+    a = np.array(
+        [("Rex", 9, 81.0), ("Fido", 3, 27.0)],
+        dtype=[("name", "U10"), ("age", "i4"), ("weight", "f4")],
+    )
+    za = zarr.create_array(store=tmp_path / "data.zarr", data=a, zarr_format=2)
+
+    np.testing.assert_array_equal(cast(Any, za)["name"], a["name"])
+    np.testing.assert_array_equal(
+        za.get_basic_selection(slice(1, None), fields="age"), a["age"][1:]
+    )
+    np.testing.assert_array_equal(
+        za.get_basic_selection(Ellipsis, fields=["name", "age"]), a[["name", "age"]]
+    )
 
 
 @pytest.mark.parametrize(
