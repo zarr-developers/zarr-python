@@ -579,7 +579,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
                 # zero count is representable by viewing the integer storage.
                 value = np.zeros(1, dtype=dtype.byteorder + "i8").view(dtype)[0]
             else:
-                value = np.array([0], dtype=dtype)[0]
+                value = np.zeros(1, dtype=dtype)[0]
             values.append(value)
         return self._cast_scalar_unchecked(tuple(values))
 
