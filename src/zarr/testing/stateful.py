@@ -152,16 +152,12 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         )
         note(f"Adding array:  path='{path}'  shape={a.shape}  chunks={a.metadata.chunk_grid}")
 
-        # Recreate the same array in the store under test.
-        # The data is copied here rather than by `write_data=True`,
-        # whose shard-wise copy does not support rectilinear chunk grids.
-        arr = zarr.from_array(
+        # Recreate the same array, including its data, in the store under test.
+        zarr.from_array(
             self.store,
             data=a,
             name=path,
-            write_data=False,
         )
-        arr[:] = a[:]
         self.all_arrays.add(path)
 
     @rule()

@@ -3,10 +3,10 @@
 This module implements the [ndsel](https://github.com/zarr-developers/ndsel) draft wire
 format: a JSON-serializable representation of NumPy-style n-dimensional
 selections that adapts TensorStore's `IndexTransform` model. It is a **pure
-JSON→JSON** layer: it depends on nothing but the standard library, imposes no
-engine (numpy/array) constraints, and never rounds, clamps, or drops
-information. Engine constraints (finite bounds, in-memory `IndexTransform`
-construction) live one layer up, in `json.py`.
+JSON→JSON** layer depending only on the standard library. It validates and
+desugars messages, removing redundant fields on constant maps. It limits input
+rank to 32 and checks affine references against that rank. Finite bounds and
+in-memory array construction are enforced by the engine lowering layer.
 
 Two entry points:
 
@@ -18,11 +18,12 @@ Two entry points:
   `IndexTransform` JSON body, without the `kind` discriminator. `normalize` is
   idempotent when its output is re-tagged with `kind: "transform"`.
 
-The canonical body is, field-for-field, a TensorStore `IndexTransform` (minus
-`kind`), so a normalized `transform` loads directly into TensorStore once
-`kind` is stripped.
+The canonical body uses TensorStore's `IndexTransform` field vocabulary.
+Normalization alone does not guarantee TensorStore acceptance: index-array
+content is deferred, and TensorStore has additional coordinate and label limits.
 
-Value rules enforced here: every integer is a 64-bit signed value; JSON
+Value rules for validated fields (excluding the verbatim `index_array` payload
+and discarded constant-map fields): integers are 64-bit signed values; JSON
 booleans are **not** integers (Python's `isinstance(True, int)` is guarded
 against explicitly); the `"-inf"`/`"+inf"` sentinels are legal only in bound
 positions; an implicit bound is the one-element `[n]`-bracket form, and its
@@ -43,7 +44,7 @@ __all__ = [
 # Error taxonomy
 # ---------------------------------------------------------------------------
 
-#: The complete set of ndsel reason codes (spec section 6).
+#: Current ndsel reason codes plus the recognized retired negative-step code.
 REASON_CODES = frozenset(
     {
         "invalid_json",
@@ -117,7 +118,7 @@ _OUTPUT_MAP_FIELDS = frozenset(
 # An upper bound on `input_rank`, because normalization allocates proportionally
 # to it — an identity `output`, a bound per dimension, a label per dimension —
 # from a document that carries no data behind the number. Matches the rank
-# TensorStore accepts, which is well above any real array.
+# TensorStore accepts. This is an implementation limit, not an ndsel limit.
 _MAX_RANK = 32
 
 
@@ -202,6 +203,18 @@ def _bound_is_implicit(bound: int | str | list[int | str]) -> bool:
     return isinstance(bound, list)
 
 
+def _finite(value: int | str, where: str) -> int:
+    """The integer behind a validated `index-value` that is not a sentinel.
+
+    Every value reaching the desugaring helpers has passed `_check_index_value`,
+    so a string here is one of the two sentinels, which each helper handles
+    before calling this. Anything else is an internal error, not bad input.
+    """
+    if isinstance(value, int):
+        return value
+    raise RuntimeError(f"{where} is {value!r}; expected an integer or an infinity sentinel")
+
+
 def _ext_key(value: int | str) -> tuple[int, int]:
     """A sort key giving the extended-integer order `-inf < n < +inf` exactly.
 
@@ -212,8 +225,7 @@ def _ext_key(value: int | str) -> tuple[int, int]:
         return (0, 0)
     if value == "+inf":
         return (2, 0)
-    assert isinstance(value, int)
-    return (1, value)
+    return (1, _finite(value, "bound"))
 
 
 def _rewrap(value: int | str, *, implicit: bool) -> int | str | list[int | str]:
@@ -275,10 +287,10 @@ def _resolve_upper_bound(
     The implicit/explicit bracket travels with the extent-bearing field (the
     upper bound, or `shape`), matching the spec's `[n]`-bracket convention.
     """
-    if upper_field is None:
+    if upper_raw is None:
+        # No upper-bound field was supplied (`upper_field` is None as well).
         return [["+inf"] for _ in range(rank)]
 
-    assert upper_raw is not None
     if kind_of == "exclusive":
         return list(upper_raw)
 
@@ -315,8 +327,7 @@ def _checked_i64(value: int, where: str) -> int:
 def _inclusive_to_exclusive(value: int | str, where: str) -> int | str:
     if value == "+inf" or value == "-inf":
         return value
-    assert isinstance(value, int)
-    return _checked_i64(value + 1, f"{where} converted to an exclusive bound")
+    return _checked_i64(_finite(value, where) + 1, f"{where} converted to an exclusive bound")
 
 
 def _shape_to_exclusive(min_value: int | str, shape_value: int | str, where: str) -> int | str:
@@ -329,9 +340,10 @@ def _shape_to_exclusive(min_value: int | str, shape_value: int | str, where: str
         return "+inf"
     if min_value == "-inf":
         return "-inf"
-    assert isinstance(min_value, int)
-    assert isinstance(shape_value, int)
-    return _checked_i64(min_value + shape_value, f"{where} added to its inclusive_min")
+    return _checked_i64(
+        _finite(min_value, f"inclusive_min for {where}") + _finite(shape_value, where),
+        f"{where} added to its inclusive_min",
+    )
 
 
 def _validate_domain(inclusive_min: list[Any], exclusive_max: list[Any], *, prefix: str) -> None:
@@ -480,8 +492,8 @@ def _normalize_slice(obj: dict[str, Any]) -> dict[str, Any]:
         m = -(-length // abs(s))  # ceil(length / |s|)
         o = _trunc_div(a, s)  # trunc(a / s), toward zero, both signs
         offset = a - s * o  # lattice phase, |offset| < |s|
-        inclusive_min.append(o)
-        exclusive_max.append(o + m)
+        inclusive_min.append(_checked_i64(o, f"input_inclusive_min[{k}]"))
+        exclusive_max.append(_checked_i64(o + m, f"input_exclusive_max[{k}]"))
         output.append({"offset": offset, "stride": s, "input_dimension": k})
 
     labels = labels_raw if labels_raw is not None else [""] * n
@@ -555,7 +567,7 @@ def _normalize_output_map(raw: Any, where: str) -> dict[str, Any]:
     if has_index_array:
         stride = _check_int(raw["stride"], f"{where}.stride") if "stride" in raw else 1
         bounds = (
-            _check_index_array_bounds(raw["index_array_bounds"], where)
+            validate_index_array_bounds(raw["index_array_bounds"], where)
             if "index_array_bounds" in raw
             else ["-inf", "+inf"]
         )
@@ -584,7 +596,8 @@ def _normalize_output_map(raw: Any, where: str) -> dict[str, Any]:
     return {"offset": offset}
 
 
-def _check_index_array_bounds(value: Any, where: str) -> list[int | str]:
+def validate_index_array_bounds(value: Any, where: str) -> list[int | str]:
+    """Validate the syntax and ordering of an inclusive index-array interval."""
     if not isinstance(value, list) or len(value) != 2:
         raise NdselError(
             "invalid_json",
@@ -730,17 +743,23 @@ def normalize_ndsel(obj: Any) -> dict[str, Any]:
     """
     message = _require_object(obj)
     kind = _message_kind(message)
-    return _NORMALIZERS[kind](message)
+    canonical = _NORMALIZERS[kind](message)
+    # Apply the same limit to inferred and shorthand ranks as to explicit
+    # transform ranks, so every result can be normalized again.
+    if canonical["input_rank"] > _MAX_RANK:
+        raise NdselError(
+            "invalid_json", f"input_rank must be <= {_MAX_RANK}, got {canonical['input_rank']}"
+        )
+    return canonical
 
 
 def parse_ndsel(obj: Any) -> dict[str, Any]:
     """Structurally validate an ndsel message, returning it unchanged.
 
-    A lighter gate than `normalize_ndsel`: it confirms the message is a
-    well-formed ndsel message of a recognized kind (correct field membership,
-    JSON types, upper-bound exclusivity, domain ordering, step signs) and
-    raises `NdselError` otherwise, but does not desugar it. Useful for
-    validating a message you intend to keep in its compact shorthand form.
+    Runs the same validation and desugaring as `normalize_ndsel`, discards
+    the canonical body, and returns the original object. Useful for validating
+    a message you intend to keep in its compact shorthand form. Index-array
+    payload validation remains the engine's responsibility.
 
     Examples
     --------

@@ -5,22 +5,19 @@
 Zarr has several functions for creating arrays. For example:
 
 ```python exec="true" session="arrays"
-import shutil
 import numpy as np
 ```
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 import zarr
-z = zarr.create_array(store="memory://arrays-demo", shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
+z = zarr.create_array(store={}, shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
 print(z)
 ```
 
 The code above creates a 2-dimensional array of 32-bit integers with 10000 rows
 and 10000 columns, divided into chunks where each chunk has 1000 rows and 1000
 columns (and so there will be 100 chunks in total). The data is written to an
-in-memory store: when `fsspec` is installed, a `memory://` URL resolves to a
-[`zarr.storage.FsspecStore`][] backed by fsspec's in-memory filesystem; otherwise a
-[`zarr.storage.ManagedMemoryStore`][] is used. See the [Storage guide](storage.md)
+in-memory [`zarr.storage.MemoryStore`][]. See the [Storage guide](storage.md)
 for more details on stores, and
 [Persistent arrays](#persistent-arrays) for details on storing arrays in other stores.
 See [Data types](data_types.md) for an in-depth look at the data types supported
@@ -83,13 +80,18 @@ persistence of data between sessions. To do this, we can change the store
 argument to point to a filesystem path:
 
 ```python exec="true" session="arrays" source="above"
-shutil.rmtree('data/example-1.zarr', ignore_errors=True)
-z1 = zarr.create_array(store='data/example-1.zarr', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+array_directory = TemporaryDirectory(prefix='zarr-arrays-')
+array_path = Path(array_directory.name) / 'example-1.zarr'
+z1 = zarr.create_array(store=array_path, shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
 ```
 
 The array above will store its configuration metadata and all compressed chunk
-data in a directory called `'data/example-1.zarr'` relative to the current working
-directory. The [`zarr.create_array`][] function provides a convenient way
+data at `array_path` inside a temporary directory. This directory is automatically
+removed when `array_directory` is cleaned up; choose your own path to retain data
+between Python sessions. The [`zarr.create_array`][] function provides a convenient way
 to create a new persistent array or continue working with an existing
 array. Note, there is no need to close an array: data are automatically
 flushed to disk, and files are automatically closed whenever an array is modified.
@@ -106,20 +108,22 @@ z1[:, 0] = np.arange(10000)
 Check that the data have been written and can be read again:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-z2 = zarr.open_array('data/example-1.zarr', mode='r')
+z2 = zarr.open_array(array_path, mode='r')
 print(np.all(z1[:] == z2[:]))
 ```
 
 If you are just looking for a fast and convenient way to save NumPy arrays to
 disk then load back into memory later, the functions
-[`zarr.save`][] and [`zarr.load`][] may be
-useful. E.g.:
+[`zarr.save`][], [`zarr.save_array`][] and [`zarr.load`][] may be
+useful. `zarr.save` refuses to replace an array that already exists at the
+path; `zarr.save_array` accepts `mode="w"` to do so. E.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 a = np.arange(10)
-shutil.rmtree('data/example-2.zarr', ignore_errors=True)
-zarr.save('data/example-2.zarr', a)
-print(zarr.load('data/example-2.zarr'))
+saved_array_path = Path(array_directory.name) / 'example-2.zarr'
+zarr.save_array(saved_array_path, a, mode='w')
+print(zarr.load(saved_array_path))
+array_directory.cleanup()
 ```
 
 Please note that there are a number of other options for persistent array
@@ -131,7 +135,7 @@ A Zarr array can be resized, which means that any of its dimensions can be
 increased or decreased in length. For example:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-z = zarr.create_array(store='memory://arrays-example-3', shape=(10000, 10000), dtype='int32', chunks=(1000, 1000))
+z = zarr.create_array(store={}, shape=(10000, 10000), dtype='int32', chunks=(1000, 1000))
 z[:] = 42
 print(f"Original shape: {z.shape}")
 z.resize((20000, 10000))
@@ -147,7 +151,7 @@ used to append data to any axis. E.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 a = np.arange(10000000, dtype='int32').reshape(10000, 1000)
-z = zarr.create_array(store='memory://arrays-example-4', shape=a.shape, dtype=a.dtype, chunks=(1000, 100))
+z = zarr.create_array(store={}, shape=a.shape, dtype=a.dtype, chunks=(1000, 100))
 z[:] = a
 print(f"Original shape: {z.shape}")
 z.append(a)
@@ -208,7 +212,7 @@ argument accepted by all array creation functions. For example:
 ```python exec="true" session="arrays" source="above" result="ansi"
 compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=3, shuffle='bitshuffle')
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
-z = zarr.create_array(store='memory://arrays-example-5', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
+z = zarr.create_array(store={}, shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
 z[:] = data
 print(z.compressors)
 ```
@@ -243,7 +247,7 @@ compressor.
 To create an array without any compression, set `compressors=None`:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-z_no_compress = zarr.create_array(store='memory://arrays-example-uncompressed', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32', compressors=None)
+z_no_compress = zarr.create_array(store={}, shape=(10000, 10000), chunks=(1000, 1000), dtype='int32', compressors=None)
 print(f"Compressors: {z_no_compress.compressors}")
 ```
 
@@ -252,7 +256,7 @@ here is an array using Gzip compression, level 1:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
-z = zarr.create_array(store='memory://arrays-example-6', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=zarr.codecs.GzipCodec(level=1))
+z = zarr.create_array(store={}, shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=zarr.codecs.GzipCodec(level=1))
 z[:] = data
 print(f"Compressors: {z.compressors}")
 ```
@@ -267,7 +271,7 @@ from zarr.codecs.numcodecs import LZMA
 lzma_filters = [dict(id=lzma.FILTER_DELTA, dist=4), dict(id=lzma.FILTER_LZMA2, preset=1)]
 compressors = LZMA(filters=lzma_filters)
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
-z = zarr.create_array(store='memory://arrays-example-7', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
+z = zarr.create_array(store={}, shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
 print(f"Compressors: {z.compressors}")
 ```
 
@@ -292,7 +296,7 @@ from zarr.codecs.numcodecs import Delta
 filters = [Delta(dtype='int32')]
 compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=1, shuffle='shuffle')
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
-z = zarr.create_array(store='memory://arrays-example-9', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), filters=filters, compressors=compressors)
+z = zarr.create_array(store={}, shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), filters=filters, compressors=compressors)
 print(z.info_complete())
 ```
 
@@ -317,7 +321,7 @@ coordinates. E.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(10) ** 2
-z = zarr.create_array(store='memory://arrays-example-10', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store={}, shape=data.shape, dtype=data.dtype)
 z[:] = data
 print(z[:])
 print(z.get_coordinate_selection([2, 5]))
@@ -335,7 +339,7 @@ e.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
-z = zarr.create_array(store='memory://arrays-example-11', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store={}, shape=data.shape, dtype=data.dtype)
 z[:] = data
 print(z[:])
 ```
@@ -379,7 +383,7 @@ Items can also be extracted by providing a Boolean mask. E.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(10) ** 2
-z = zarr.create_array(store='memory://arrays-example-12', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store={}, shape=data.shape, dtype=data.dtype)
 z[:] = data
 print(z[:])
 ```
@@ -400,7 +404,7 @@ Here's a multidimensional example:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
-z = zarr.create_array(store='memory://arrays-example-13', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store={}, shape=data.shape, dtype=data.dtype)
 z[:] = data
 print(z[:])
 ```
@@ -443,7 +447,7 @@ example, this allows selecting a subset of rows and/or columns from a
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
-z = zarr.create_array(store='memory://arrays-example-14', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store={}, shape=data.shape, dtype=data.dtype)
 z[:] = data
 print(z[:])
 ```
@@ -471,7 +475,7 @@ For convenience, the orthogonal indexing functionality is also available via the
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
-z = zarr.create_array(store='memory://arrays-example-15', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store={}, shape=data.shape, dtype=data.dtype)
 z[:] = data
 print(z.oindex[[0, 2], :])  # select first and third rows
 ```
@@ -497,7 +501,7 @@ orthogonal indexing is also available directly on the array:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
-z = zarr.create_array(store='memory://arrays-example-16', shape=data.shape, dtype=data.dtype)
+z = zarr.create_array(store={}, shape=data.shape, dtype=data.dtype)
 z[:] = data
 print(np.all(z.oindex[[0, 2], :] == z[[0, 2], :]))
 ```
@@ -510,7 +514,7 @@ a subset of chunk aligned rows and/or columns from a 2-dimensional array. E.g.:
 
 ```python exec="true" session="arrays" source="above"
 data = np.arange(100).reshape(10, 10)
-z = zarr.create_array(store='memory://arrays-example-17', shape=data.shape, dtype=data.dtype, chunks=(3, 3))
+z = zarr.create_array(store={}, shape=data.shape, dtype=data.dtype, chunks=(3, 3))
 z[:] = data
 ```
 
@@ -543,7 +547,7 @@ print(z.blocks[0, 1:3])
 Data can also be modified. Let's start by a simple 2D array:
 
 ```python exec="true" session="arrays" source="above"
-z = zarr.create_array(store='memory://arrays-example-18', shape=(6, 6), dtype=int, chunks=(2, 2))
+z = zarr.create_array(store={}, shape=(6, 6), dtype=int, chunks=(2, 2))
 ```
 
 Set data for a selection of items:
@@ -586,7 +590,7 @@ performance guide.
 Sharded arrays can be created by providing the `shards` parameter to [`zarr.create_array`][].
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-a = zarr.create_array(store='memory://arrays-example-20', shape=(10000, 10000), shards=(1000, 1000), chunks=(100, 100), dtype='uint8')
+a = zarr.create_array(store={}, shape=(10000, 10000), shards=(1000, 1000), chunks=(100, 100), dtype='uint8')
 a[:] = (np.arange(10000 * 10000) % 256).astype('uint8').reshape(10000, 10000)
 print(a.info_complete())
 ```
@@ -675,8 +679,12 @@ z_regular = zarr.create_array(
 print(z_regular.write_chunk_sizes)
 ```
 
-Note that the `.chunks` property is only available for regular chunk grids. For
-rectilinear arrays, use `.write_chunk_sizes` (or `.read_chunk_sizes`) instead.
+Note that the `.chunks` property is not available for non-sharded rectilinear
+arrays, since there is no single uniform chunk shape — use `.write_chunk_sizes`
+(or `.read_chunk_sizes`) instead. Sharded arrays always have `.chunks`: it
+returns the inner chunk shape, which is always regular — the sharding codec
+requires a single uniform inner chunk shape, so only the shard boundaries can
+be rectilinear (see [Rectilinear shard boundaries](#rectilinear-shard-boundaries)).
 
 ### Resizing and appending
 
@@ -704,6 +712,12 @@ The `append` method also works with rectilinear arrays:
 z.append(np.arange(10, dtype='float64'))
 print(f"After append:  shape={z.shape}, chunk_sizes={z.write_chunk_sizes}")
 ```
+
+A rectilinear array can also be created with a zero-length dimension: because no
+non-empty list of positive chunk sizes can sum to 0, the chunk sizes given for such a
+dimension are stored as-is and describe the chunks the dimension will grow into
+on `append` or `resize` — the same state as resizing an existing rectilinear
+dimension down to 0.
 
 ### Compressors and filters
 
@@ -746,6 +760,17 @@ print(z[50:70, 40:60])
 
 Note that rectilinear inner chunks with sharding are not supported — only the
 shard boundaries can be rectilinear.
+
+For such arrays, `.chunks` returns the (regular) inner chunk shape, while
+`.shards` raises `NotImplementedError` since there is no single uniform shard
+shape — use `.write_chunk_sizes` for the per-dimension shard sizes. `.info`
+reports the shard shape as `<variable>`:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+print(f"chunks={z.chunks}")
+print(f"shard sizes={z.write_chunk_sizes}")
+print(z.info)
+```
 
 ### Metadata format
 

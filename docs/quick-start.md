@@ -29,10 +29,11 @@ import numpy as np
 
 # Create a 2D Zarr array
 z = zarr.create_array(
-    store="memory://quickstart-scale-demo",
+    store={},
     shape=(100, 100),
     chunks=(10, 10),
-    dtype="f4"
+    dtype="f4",
+    overwrite=True,
 )
 
 # Assign data to the array
@@ -42,7 +43,7 @@ print(z.info)
 
 Here, we created a 2D array of shape `(100, 100)`, chunked into blocks of
 `(10, 10)`, and filled it with random floating-point data. This array was
-written to the in-memory store `memory://quickstart-scale-demo`.
+written to a fresh in-memory store.
 
 ### Compression and Filters
 
@@ -52,10 +53,11 @@ Zarr supports data compression and filters. For example, to use Blosc compressio
 
 # Create a 2D Zarr array with Blosc compression
 z = zarr.create_array(
-    store="memory://quickstart-compression-demo",
+    store={},
     shape=(100, 100),
     chunks=(10, 10),
     dtype="f4",
+    overwrite=True,
     compressors=zarr.codecs.BloscCodec(
         cname="zstd",
         clevel=3,
@@ -77,7 +79,7 @@ Zarr allows you to create hierarchical groups, similar to directories:
 ```python exec="true" session="quickstart" source="above" result="ansi"
 
 # Create nested groups and add arrays
-root = zarr.group("memory://quickstart-groups-demo")
+root = zarr.group(store={})
 foo = root.create_group(name="foo")
 bar = root.create_array(
     name="bar", shape=(100, 10), chunks=(10, 10), dtype="f4"
@@ -102,7 +104,7 @@ Suppose we want to copy existing groups and arrays into a new storage backend:
 ```python exec="true" session="quickstart" source="above" result="code"
 
 # Create nested groups and add arrays
-root = zarr.group("memory://quickstart-hierarchy-source", attributes={'name': 'root'})
+root = zarr.group(store={}, attributes={'name': 'root'})
 foo = root.create_group(name="foo")
 bar = root.create_array(
     name="bar", shape=(100, 10), chunks=(10, 10), dtype="f4"
@@ -131,10 +133,13 @@ A single-file store can also be created using the [`zarr.storage.ZipStore`][]:
 
 ```python exec="true" session="quickstart" source="above"
 from pathlib import Path
-Path("data").mkdir(exist_ok=True)
+from tempfile import TemporaryDirectory
+
+zip_directory = TemporaryDirectory(prefix="zarr-quickstart-")
+zip_path = Path(zip_directory.name) / "example.zip"
 
 # Store the array in a ZIP file
-store = zarr.storage.ZipStore("data/example-5.zip", mode="w")
+store = zarr.storage.ZipStore(zip_path, mode="w")
 
 z = zarr.create_array(
     store=store,
@@ -155,12 +160,14 @@ To open an existing array from a ZIP file:
 ```python exec="true" session="quickstart" source="above" result="ansi"
 
 # Open the ZipStore in read-only mode
-store = zarr.storage.ZipStore("data/example-5.zip", read_only=True)
+store = zarr.storage.ZipStore(zip_path, read_only=True)
 
 z = zarr.open_array(store, mode='r')
 
 # read the data as a NumPy Array
 print(z[:])
+store.close()
+zip_directory.cleanup()
 ```
 
 Zarr also integrates seamlessly with cloud object storage such as Amazon S3 and Google

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import itertools
-import math
 import numbers
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from functools import lru_cache
 from types import EllipsisType
@@ -23,7 +22,7 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.core.chunk_grids import FixedDimension
-from zarr.core.common import ceildiv, product
+from zarr.core.common import ceildiv_int, product
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.errors import (
@@ -207,7 +206,7 @@ def _iter_regions(
     # ((slice(0, 1, 1), slice(0, 2, 1)), (slice(1, 2, 1), slice(0, 2, 1)))
     ```
     """
-    grid_shape = tuple(itertools.starmap(ceildiv, zip(domain_shape, region_shape, strict=True)))
+    grid_shape = tuple(itertools.starmap(ceildiv_int, zip(domain_shape, region_shape, strict=True)))
     for grid_position in _iter_grid(
         grid_shape=grid_shape, origin=origin, selection_shape=selection_shape, order=order
     ):
@@ -415,7 +414,7 @@ class SliceDimIndexer:
 
         object.__setattr__(self, "dim_len", dim_len)
         object.__setattr__(self, "dim_grid", dim_grid)
-        object.__setattr__(self, "nitems", max(0, ceildiv((stop - start), step)))
+        object.__setattr__(self, "nitems", max(0, ceildiv_int((stop - start), step)))
         object.__setattr__(self, "nchunks", dim_grid.nchunks)
 
     def __iter__(self) -> Iterator[ChunkDimProjection]:
@@ -441,7 +440,7 @@ class SliceDimIndexer:
                 if remainder:
                     dim_chunk_sel_start += self.step - remainder
                 # compute number of previous items, provides offset into output array
-                dim_out_offset = ceildiv((dim_offset - self.start), self.step)
+                dim_out_offset = ceildiv_int((dim_offset - self.start), self.step)
             else:
                 # selection starts within current chunk
                 dim_chunk_sel_start = self.start - dim_offset
@@ -455,7 +454,7 @@ class SliceDimIndexer:
                 dim_chunk_sel_stop = self.stop - dim_offset
 
             dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop, self.step)
-            dim_chunk_nitems = ceildiv((dim_chunk_sel_stop - dim_chunk_sel_start), self.step)
+            dim_chunk_nitems = ceildiv_int((dim_chunk_sel_stop - dim_chunk_sel_start), self.step)
 
             # If there are no elements on the selection within this chunk, then skip
             if dim_chunk_nitems == 0:
@@ -715,8 +714,8 @@ class Order(Enum):
 
     @staticmethod
     def check(a: npt.NDArray[Any]) -> Order:
-        diff = np.diff(a)
-        diff_positive = diff >= 0
+        # compare, don't subtract: np.diff wraps on unsigned dtypes
+        diff_positive = a[1:] >= a[:-1]
         n_diff_positive = np.count_nonzero(diff_positive)
         all_increasing = n_diff_positive == len(diff_positive)
         any_increasing = n_diff_positive > 0
@@ -729,16 +728,36 @@ class Order(Enum):
         return order
 
 
-def wraparound_indices(x: npt.NDArray[Any], dim_len: int) -> None:
+def wraparound_indices(x: npt.NDArray[Any], dim_len: int) -> npt.NDArray[Any]:
+    """Normalize negative indices, copying only when normalization is needed."""
     loc_neg = x < 0
     if np.any(loc_neg):
+        x = x.copy()
         x[loc_neg] += dim_len
+    return x
 
 
 def boundscheck_indices(x: npt.NDArray[Any], dim_len: int) -> None:
     if np.any(x < 0) or np.any(x >= dim_len):
         msg = f"index out of bounds for dimension with length {dim_len}"
         raise BoundsCheckError(msg)
+
+
+def sorted_run_ends(
+    a: npt.NDArray[Any],
+) -> tuple[npt.NDArray[np.intp], npt.NDArray[np.intp]]:
+    """Group a sorted 1-D integer array into runs of equal values.
+
+    Returns `(values, run_ends)` where `values` holds the distinct values in order and
+    `run_ends[i]` is the exclusive end offset of run `i` in `a`. Cost is O(len(a)),
+    independent of the range of values — unlike a dense `np.bincount` histogram, which
+    allocates O(max value) memory (see gh-4174).
+    """
+    if a.size == 0:
+        return np.empty(0, dtype=np.intp), np.empty(0, dtype=np.intp)
+    run_starts = np.concatenate(([0], np.nonzero(np.diff(a))[0] + 1))
+    run_ends = np.append(run_starts[1:], a.size).astype(np.intp, copy=False)
+    return a[run_starts].astype(np.intp, copy=False), run_ends
 
 
 @dataclass(frozen=True)
@@ -752,9 +771,12 @@ class IntArrayDimIndexer:
     order: Order
     dim_sel: npt.NDArray[np.intp]
     dim_out_sel: npt.NDArray[np.intp]
-    chunk_nitems: int
+    # Dense compatibility arrays are populated on first access, not during indexing.
+    chunk_nitems: npt.NDArray[np.intp] = field(repr=False)
     dim_chunk_ixs: npt.NDArray[np.intp]
-    chunk_nitems_cumsum: npt.NDArray[np.intp]
+    chunk_nitems_cumsum: npt.NDArray[np.intp] = field(repr=False)
+    # end offset of each occupied chunk's run of selected items, aligned with dim_chunk_ixs
+    chunk_run_ends: npt.NDArray[np.intp]
 
     def __init__(
         self,
@@ -769,6 +791,11 @@ class IntArrayDimIndexer:
         dim_sel = np.asanyarray(dim_sel)
         if not is_integer_array(dim_sel, 1):
             raise IndexError("integer arrays in an orthogonal selection must be 1-dimensional only")
+        # Check unsigned values before narrowing: uint64 can wrap to a valid negative index.
+        if boundscheck and dim_sel.dtype.kind == "u":
+            boundscheck_indices(dim_sel, dim_len)
+        # uint64 promotes to float against the signed chunk offset
+        dim_sel = dim_sel.astype(np.intp, copy=False)
 
         nitems = len(dim_sel)
         g = dim_grid
@@ -776,7 +803,7 @@ class IntArrayDimIndexer:
 
         # handle wraparound
         if wraparound:
-            wraparound_indices(dim_sel, dim_len)
+            dim_sel = wraparound_indices(dim_sel, dim_len)
 
         # handle out of bounds
         if boundscheck:
@@ -794,23 +821,21 @@ class IntArrayDimIndexer:
 
         if order == Order.INCREASING:
             dim_out_sel = None
+            dim_sel_chunk_sorted = dim_sel_chunk
         elif order == Order.DECREASING:
             dim_sel = dim_sel[::-1]
             # TODO should be possible to do this without creating an arange
             dim_out_sel = np.arange(nitems - 1, -1, -1)
+            dim_sel_chunk_sorted = dim_sel_chunk[::-1]
         else:
             # sort indices to group by chunk
             dim_out_sel = np.argsort(dim_sel_chunk)
             dim_sel = np.take(dim_sel, dim_out_sel)
+            dim_sel_chunk_sorted = dim_sel_chunk[dim_out_sel]
 
-        # precompute number of selected items for each chunk
-        chunk_nitems = np.bincount(dim_sel_chunk, minlength=nchunks)
-
-        # find chunks that we need to visit
-        dim_chunk_ixs = np.nonzero(chunk_nitems)[0]
-
-        # compute offsets into the output array
-        chunk_nitems_cumsum = np.cumsum(chunk_nitems)
+        # the chunks to visit and, per occupied chunk, the end offset of its run of
+        # selected items — O(nitems), never O(nchunks)
+        dim_chunk_ixs, chunk_run_ends = sorted_run_ends(dim_sel_chunk_sorted)
 
         # store attributes
         object.__setattr__(self, "dim_len", dim_len)
@@ -820,21 +845,32 @@ class IntArrayDimIndexer:
         object.__setattr__(self, "order", order)
         object.__setattr__(self, "dim_sel", dim_sel)
         object.__setattr__(self, "dim_out_sel", dim_out_sel)
-        object.__setattr__(self, "chunk_nitems", chunk_nitems)
         object.__setattr__(self, "dim_chunk_ixs", dim_chunk_ixs)
-        object.__setattr__(self, "chunk_nitems_cumsum", chunk_nitems_cumsum)
+        object.__setattr__(self, "chunk_run_ends", chunk_run_ends)
+
+    def __getattr__(self, name: str) -> npt.NDArray[np.intp]:
+        if name not in ("chunk_nitems", "chunk_nitems_cumsum"):
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+        dense = np.zeros(self.nchunks, dtype=np.intp)
+        dense[self.dim_chunk_ixs] = np.diff(self.chunk_run_ends, prepend=0)
+        if name == "chunk_nitems_cumsum":
+            np.cumsum(dense, out=dense)
+        object.__setattr__(self, name, dense)
+        return dense
 
     def __iter__(self) -> Iterator[ChunkDimProjection]:
         g = self.dim_grid
+        dense_cumsum = self.__dict__.get("chunk_nitems_cumsum")
 
-        for dim_chunk_ix in self.dim_chunk_ixs:
+        for i, dim_chunk_ix in enumerate(self.dim_chunk_ixs):
             dim_out_sel: slice | npt.NDArray[np.intp]
             # find region in output
-            if dim_chunk_ix == 0:
-                start = 0
+            if dense_cumsum is None:
+                start = 0 if i == 0 else self.chunk_run_ends[i - 1]
+                stop = self.chunk_run_ends[i]
             else:
-                start = self.chunk_nitems_cumsum[dim_chunk_ix - 1]
-            stop = self.chunk_nitems_cumsum[dim_chunk_ix]
+                start = 0 if dim_chunk_ix == 0 else dense_cumsum[dim_chunk_ix - 1]
+                stop = dense_cumsum[dim_chunk_ix]
             if self.order == Order.INCREASING:
                 dim_out_sel = slice(start, stop)
             else:
@@ -1172,7 +1208,11 @@ class CoordinateIndexer(Indexer):
     sel_shape: tuple[int, ...]
     selection: CoordinateSelectionNormalized
     sel_sort: npt.NDArray[np.intp] | None
-    chunk_nitems_cumsum: npt.NDArray[np.intp]
+    # Exclude the lazy dense field from repr to keep inspection sparse.
+    chunk_nitems_cumsum: npt.NDArray[np.intp] = field(repr=False)
+    cdata_shape: tuple[int, ...]
+    # end offset of each occupied chunk's run of selected points, aligned with chunk_rixs
+    chunk_run_ends: npt.NDArray[np.intp]
     chunk_rixs: npt.NDArray[np.intp]
     chunk_mixs: tuple[npt.NDArray[np.intp], ...]
     shape: tuple[int, ...]
@@ -1189,7 +1229,6 @@ class CoordinateIndexer(Indexer):
             cdata_shape = (1,)
         else:
             cdata_shape = tuple(g.nchunks for g in dim_grids)
-        nchunks = math.prod(cdata_shape)
 
         # some initial normalization
         selection_normalized = cast("CoordinateSelectionNormalized", ensure_tuple(selection))
@@ -1207,6 +1246,15 @@ class CoordinateIndexer(Indexer):
                 "(coordinate) array per dimension of the target array, "
                 f"got {selection!r}"
             )
+        # Check unsigned values before narrowing can turn an out-of-bounds value negative.
+        for dim_sel, dim_len in zip(selection_normalized, shape, strict=True):
+            if dim_sel.dtype.kind == "u":
+                boundscheck_indices(dim_sel, dim_len)
+        # keep indices integral: uint64 against a signed offset promotes to float
+        selection_normalized = cast(
+            "CoordinateSelectionNormalized",
+            tuple(np.asarray(s, dtype=np.intp) for s in selection_normalized),
+        )
 
         # Optimization for a single sorted, in-bounds, 1-D integer coordinate array over a
         # regular (fixed-size) chunk grid. The general path below makes several full passes over
@@ -1245,15 +1293,15 @@ class CoordinateIndexer(Indexer):
                         edges = np.arange(first + 1, last + 1, dtype=coords.dtype) * size
                         cuts = np.searchsorted(coords, edges)
                         counts = np.diff(cuts, prepend=0, append=coords.size)
-                    chunk_rixs = (first + np.nonzero(counts)[0]).astype(np.intp)
-                    chunk_nitems = np.zeros(nchunks, dtype=np.intp)
-                    chunk_nitems[first : last + 1] = counts
-                    chunk_nitems_cumsum = np.cumsum(chunk_nitems)
+                    occupied = np.nonzero(counts)[0]
+                    chunk_rixs = (first + occupied).astype(np.intp)
+                    chunk_run_ends = np.cumsum(counts[occupied])
 
                     object.__setattr__(self, "sel_shape", coords.shape)
                     object.__setattr__(self, "selection", (coords,))
                     object.__setattr__(self, "sel_sort", None)
-                    object.__setattr__(self, "chunk_nitems_cumsum", chunk_nitems_cumsum)
+                    object.__setattr__(self, "cdata_shape", cdata_shape)
+                    object.__setattr__(self, "chunk_run_ends", chunk_run_ends)
                     object.__setattr__(self, "chunk_rixs", chunk_rixs)
                     object.__setattr__(self, "chunk_mixs", (chunk_rixs,))
                     object.__setattr__(self, "dim_grids", dim_grids)
@@ -1261,12 +1309,12 @@ class CoordinateIndexer(Indexer):
                     object.__setattr__(self, "drop_axes", ())
                     return
 
-        # handle wraparound, boundscheck
-        for dim_sel, dim_len in zip(selection_normalized, shape, strict=True):
-            # handle wraparound
+        # Normalize each axis independently without modifying caller-owned index arrays.
+        selection_normalized = tuple(
             wraparound_indices(dim_sel, dim_len)
-
-            # handle out of bounds
+            for dim_sel, dim_len in zip(selection_normalized, shape, strict=True)
+        )
+        for dim_sel, dim_len in zip(selection_normalized, shape, strict=True):
             boundscheck_indices(dim_sel, dim_len)
 
         # compute chunk index for each point in the selection
@@ -1298,16 +1346,15 @@ class CoordinateIndexer(Indexer):
             # optimisation, only sort if needed
             sel_sort = np.argsort(chunks_raveled_indices)
             selection_broadcast = tuple(dim_sel[sel_sort] for dim_sel in selection_broadcast)
+            chunks_raveled_indices = chunks_raveled_indices[sel_sort]
         else:
             sel_sort = None
 
         shape = selection_broadcast[0].shape or (1,)
 
-        # precompute number of selected items for each chunk
-        chunk_nitems = np.bincount(chunks_raveled_indices, minlength=nchunks)
-        chunk_nitems_cumsum = np.cumsum(chunk_nitems)
-        # locate the chunks we need to process
-        chunk_rixs = np.nonzero(chunk_nitems)[0]
+        # the chunks to visit and, per occupied chunk, the end offset of its run of
+        # selected points — O(npoints), never O(nchunks)
+        chunk_rixs, chunk_run_ends = sorted_run_ends(chunks_raveled_indices)
 
         # unravel chunk indices
         chunk_mixs = np.unravel_index(chunk_rixs, cdata_shape)
@@ -1315,22 +1362,35 @@ class CoordinateIndexer(Indexer):
         object.__setattr__(self, "sel_shape", sel_shape)
         object.__setattr__(self, "selection", selection_broadcast)
         object.__setattr__(self, "sel_sort", sel_sort)
-        object.__setattr__(self, "chunk_nitems_cumsum", chunk_nitems_cumsum)
+        object.__setattr__(self, "cdata_shape", cdata_shape)
+        object.__setattr__(self, "chunk_run_ends", chunk_run_ends)
         object.__setattr__(self, "chunk_rixs", chunk_rixs)
         object.__setattr__(self, "chunk_mixs", chunk_mixs)
         object.__setattr__(self, "dim_grids", dim_grids)
         object.__setattr__(self, "shape", shape)
         object.__setattr__(self, "drop_axes", ())
 
+    def __getattr__(self, name: str) -> npt.NDArray[np.intp]:
+        if name != "chunk_nitems_cumsum":
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+        dense = np.zeros(product(self.cdata_shape), dtype=np.intp)
+        dense[self.chunk_rixs] = np.diff(self.chunk_run_ends, prepend=0)
+        np.cumsum(dense, out=dense)
+        object.__setattr__(self, name, dense)
+        return dense
+
     def __iter__(self) -> Iterator[ChunkProjection]:
+        dense_cumsum = self.__dict__.get("chunk_nitems_cumsum")
         # iterate over chunks
-        for i, chunk_rix in enumerate(self.chunk_rixs):
+        for i in range(len(self.chunk_rixs)):
             chunk_coords = tuple(m[i] for m in self.chunk_mixs)
-            if chunk_rix == 0:
-                start = 0
+            if dense_cumsum is None:
+                start = 0 if i == 0 else self.chunk_run_ends[i - 1]
+                stop = self.chunk_run_ends[i]
             else:
-                start = self.chunk_nitems_cumsum[chunk_rix - 1]
-            stop = self.chunk_nitems_cumsum[chunk_rix]
+                chunk_rix = self.chunk_rixs[i]
+                start = 0 if chunk_rix == 0 else dense_cumsum[chunk_rix - 1]
+                stop = dense_cumsum[chunk_rix]
             out_selection: slice | npt.NDArray[np.intp]
             if self.sel_sort is None:
                 out_selection = slice(start, stop)

@@ -39,7 +39,7 @@ only that `result()` is self-consistent.
 The `choose_reader` rule draws a reader and applies it to the view, so the
 execution strategy becomes part of the chain. Every reader listed by a subclass
 must preserve the NumPy model for its source. The universal `basic_reader` is
-always exercised, even when a subclass lists only specialized readers; with no
+always eligible to be drawn, even when a subclass lists only specialized readers; with no
 declared readers it is the sole strategy drawn.
 
 Requires the `testing` extra (`pip install zarr-indexing[testing]`).
@@ -105,13 +105,12 @@ DEFAULT_SETTINGS = settings(
         HealthCheck.too_slow,
     ],
 )
-"""Enough examples to find a defect reachable only through a narrow chain, at a
-few seconds per run when there is nothing to find. Every step is followed by
-checks that each materialize the whole view, so the budget buys examples rather
-than long chains — a chain runs out of axes to index within a few steps anyway.
+"""A budget of 250 examples with at most 10 state-machine steps per example.
 
-`filter_too_much` is suppressed because a chain that reaches a rank-0 view
-leaves only `repartition` enabled, so a run that opens there is discarded."""
+Invariants materialize the whole view after steps. Deadlines and selected
+health checks are disabled to accommodate those potentially expensive reads;
+the budget does not guarantee discovery of every defect.
+"""
 
 
 # --------------------------------------------------------------------------- #
@@ -244,8 +243,9 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
     def _indexable(self) -> bool:
         """Whether there is anything left to index.
 
-        A rank-0 or empty view takes no further step — NumPy would reject one
-        too — so the chain ends there, and the invariants keep checking.
+        This harness stops drawing selections for rank-0 or empty views.
+        Reader changes, repartitioning and invariant checks remain possible.
+        NumPy itself permits some indexing of such arrays, such as `[()]`.
         """
         return self.model.ndim > 0 and self.model.size > 0
 
@@ -253,11 +253,11 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
         self.chain.append((mode, selection))
         self.model = apply_selection(self.model, selection, mode)
         if mode == "basic":
-            self.view = self.view.lazy[selection]
+            self.view = self.view[selection]
         elif mode == "orthogonal":
-            self.view = self.view.lazy.oindex[selection]
+            self.view = self.view.oindex[selection]
         else:
-            self.view = self.view.lazy.vindex[selection]
+            self.view = self.view.vindex[selection]
 
     # -- rules --------------------------------------------------------------
 
@@ -307,11 +307,9 @@ class ChainedIndexingStateMachine(RuleBasedStateMachine):
     def repartition(self, data: st.DataObject) -> None:
         """Re-box a chain that has run out of axes to index.
 
-        Something must stay enabled once the view is rank-0 or empty, or
-        Hypothesis has no move to make and abandons the run. Re-boxing is the
-        useful thing to do there: it changes nothing the invariants may see, and
-        a rank-0 view read through every partitioning is exactly the state a
-        collapsed correlated selection reaches.
+        Once the harness stops drawing selections, this rule tests another
+        partitioning of the same view while the reader-change rule also remains
+        enabled. The invariants must continue to match the NumPy model.
         """
         parts = data.draw(st.sampled_from(list(type(self).partitionings)))
         self.view = repartition(self.view, parts)

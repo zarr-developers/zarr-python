@@ -8,7 +8,7 @@ To create a group, use the [`zarr.create_group`][] function:
 
 ```python exec="true" session="groups" source="above" result="ansi"
 import zarr
-root = zarr.create_group(store="memory://groups-demo")
+root = zarr.create_group(store={})
 print(root)
 ```
 
@@ -83,12 +83,18 @@ print(root.tree())
 
 The [`zarr.open_group`][] function provides a convenient way to create or
 re-open a group stored in a directory on the file-system, with sub-groups stored in
-sub-directories, e.g.:
+sub-directories. This example uses a temporary directory that is automatically
+removed when `group_directory` is cleaned up; use a path of your choice to retain
+data between Python sessions:
+
 
 ```python exec="true" session="groups" source="above" result="ansi"
-import shutil
-shutil.rmtree('data/group.zarr', ignore_errors=True)
-root = zarr.open_group('data/group.zarr', mode='w')
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+group_directory = TemporaryDirectory(prefix='zarr-groups-')
+group_path = Path(group_directory.name) / 'group.zarr'
+root = zarr.open_group(group_path, mode='w')
 print(root)
 ```
 
@@ -148,13 +154,11 @@ from zarr.storage import LocalStore
 
 from pprint import pprint
 import io
-import shutil
 
-# This block deliberately demonstrates the LocalStore backend, so it writes to
-# the local `data/` directory; clean up first for a reproducible build.
-shutil.rmtree('data', ignore_errors=True)
+# Keep this LocalStore example in the session's own temporary directory.
+hierarchy_path = Path(group_directory.name) / 'hierarchy.zarr'
 node_spec = {'a/b/c': GroupMetadata()}
-nodes_created = dict(create_hierarchy(store=LocalStore(root='data'), nodes=node_spec))
+nodes_created = dict(create_hierarchy(store=LocalStore(root=hierarchy_path), nodes=node_spec, overwrite=True))
 # Report nodes (pprint is used for cleaner rendering in the docs)
 output = io.StringIO()
 pprint(nodes_created, stream=output, width=60)
@@ -177,7 +181,7 @@ Diagnostic information about arrays and groups is available via the `info`
 property. E.g.:
 
 ```python exec="true" session="groups" source="above" result="ansi"
-root = zarr.group(store="memory://diagnostics-demo")
+root = zarr.group(store={})
 foo = root.create_group('foo')
 bar = foo.create_array(name='bar', shape=1000000, chunks=100000, dtype='int64')
 bar[:] = 42
@@ -202,4 +206,5 @@ Groups also have the [`zarr.Group.tree`][] method, e.g.:
 
 ```python exec="true" session="groups" source="above" result="ansi"
 print(root.tree())
+group_directory.cleanup()
 ```

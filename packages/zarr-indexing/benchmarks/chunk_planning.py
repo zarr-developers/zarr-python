@@ -25,6 +25,11 @@ if TYPE_CHECKING:
 
 
 def measure(operation: Callable[[], Any], repeats: int) -> dict[str, float]:
+    """Time repeated calls, then trace one additional call's incremental peak.
+
+    State retained by earlier calls can affect the extra call; this is not a
+    measurement of process RSS or all memory owned by the operation's inputs.
+    """
     samples = []
     for _ in range(repeats):
         start = time.perf_counter()
@@ -84,6 +89,8 @@ def main() -> None:
         for row in range(len(table)):
             table.local[table.run(row)]
 
+    # The first timed call fills table.local; later calls, including the traced
+    # allocation probe, reuse it. The table and retained cache are not re-created.
     results["local_rows"] = measure(read_local_rows, args.repeats)
     part = plan_chunks(
         IndexTransform.from_shape((100, 100, 100)),
