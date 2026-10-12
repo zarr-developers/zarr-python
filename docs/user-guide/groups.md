@@ -87,7 +87,6 @@ sub-directories. This example uses a temporary directory that is automatically
 removed when `group_directory` is cleaned up; use a path of your choice to retain
 data between Python sessions:
 
-
 ```python exec="true" session="groups" source="above" result="ansi"
 from pathlib import Path
 from tempfile import TemporaryDirectory
