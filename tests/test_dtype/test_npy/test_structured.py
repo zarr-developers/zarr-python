@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pytest
@@ -240,6 +240,18 @@ def test_fill_value_legacy_base64() -> None:
     assert fill_value["field2"] == 1.0
 
 
+@pytest.mark.parametrize("endianness", ["little", "big"])
+def test_v3_base64_fill_value_is_little_endian(endianness: Literal["little", "big"]) -> None:
+    """Zarr V3 data type metadata has no byte order, so the bytes of a base64 fill value are
+    little-endian whatever byte order the fields have in memory."""
+    fields = (("field1", Int32(endianness=endianness)), ("field2", Float64(endianness=endianness)))
+    encoded = "AQAAAAAAAAAAAPA/"
+    for cls in (Structured, Struct):
+        fill_value = cls(fields=fields).from_json_scalar(encoded, zarr_format=3)
+        assert (fill_value["field1"], fill_value["field2"]) == (1, 1.0)
+    assert Structured(fields=fields).to_json_scalar((1, 1.0), zarr_format=3) == encoded
+
+
 def test_fill_value_to_json_dict_form() -> None:
     """Test that fill values are serialized as dict form."""
     dtype = Struct(fields=(("x", Int32()), ("y", Float64())))
@@ -278,12 +290,12 @@ def test_struct_from_native_dtype() -> None:
         # flat
         np.dtype([("a", "i1"), ("b", "i8")]),
         # one level of nesting
-        np.dtype([("a", "<i4"), ("nested", [("x", "<f4"), ("y", "<f8")])]),
+        np.dtype([("a", "i4"), ("nested", [("x", "f4"), ("y", "f8")])]),
         # two levels of nesting
         np.dtype(
             [
-                ("a", "<i4"),
-                ("lvl1", [("b", "<i2"), ("lvl2", [("x", "<f4"), ("y", "<f8")])]),
+                ("a", "i4"),
+                ("lvl1", [("b", "i2"), ("lvl2", [("x", "f4"), ("y", "f8")])]),
             ]
         ),
     ],
@@ -380,3 +392,13 @@ def test_subarray_structured_dtype_raises() -> None:
     dtype = np.dtype([("f0", "i4", (2,))])
     with pytest.raises(ValueError, match="field 'f0' is a subarray"):
         Struct.from_native_dtype(dtype)
+
+
+@pytest.mark.parametrize("field_dtype", ["S4", "U4", "V4"])
+def test_default_scalar_bytes_field_is_zero(field_dtype: str) -> None:
+    """
+    The default scalar of a string or bytes field is zero bytes, as for the same dtype outside
+    a struct.
+    """
+    dtype = np.dtype([("a", field_dtype), ("b", "<f4")])
+    assert Struct.from_native_dtype(dtype).default_scalar().tobytes() == bytes(dtype.itemsize)

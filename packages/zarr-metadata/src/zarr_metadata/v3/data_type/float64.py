@@ -7,13 +7,16 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 import re
 from typing import Final, Literal, NewType
 
+from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration, multi_byte
+from zarr_metadata.v3.data_type._float import FloatSpecialFillValue, float_fill_value_rules
+
 FLOAT64_DATA_TYPE_NAME: Final = "float64"
 """The `data_type` value for the `float64` type."""
 
 Float64DataTypeName = Literal["float64"]
 """Literal type of the `data_type` field for `float64`."""
 
-Float64SpecialFillValue = Literal["NaN", "Infinity", "-Infinity"]
+Float64SpecialFillValue = FloatSpecialFillValue
 """Named non-finite fill values permitted by the spec for IEEE 754 floats.
 
 https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L63-L79
@@ -62,10 +65,21 @@ CANONICAL_NEGATIVE_INFINITY_HEX_FLOAT64: Final = "0xfff0000000000000"
 """Canonical hex form of the float64 `"-Infinity"` sentinel."""
 
 
+FLOAT64_DATA_TYPE: Final = DataTypeDefinition(
+    name=FLOAT64_DATA_TYPE_NAME,
+    configuration=EmptyConfiguration,
+    fill_value=Float64FillValue,
+    fill_value_rules=float_fill_value_rules("float64", hex_float64),
+    storage=multi_byte,
+)
+"""The `float64` data type: a bare name, with nothing to configure; its fill value a number, a named value or a hex string."""
+
+
 __all__ = [
     "CANONICAL_NAN_HEX_FLOAT64",
     "CANONICAL_NEGATIVE_INFINITY_HEX_FLOAT64",
     "CANONICAL_POSITIVE_INFINITY_HEX_FLOAT64",
+    "FLOAT64_DATA_TYPE",
     "FLOAT64_DATA_TYPE_NAME",
     "Float64DataTypeName",
     "Float64FillValue",

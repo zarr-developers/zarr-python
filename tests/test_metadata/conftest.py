@@ -31,7 +31,7 @@ def minimal_metadata_dict_v3(
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (4, 4)}},
         "chunk_key_encoding": {"name": "default", "configuration": {"separator": "/"}},
         "fill_value": 0,
-        "codecs": (BytesCodec().to_dict(),),  # type: ignore[typeddict-item]
+        "codecs": (BytesCodec(endian="little").to_dict(),),  # type: ignore[typeddict-item]
         "attributes": {},
         "storage_transformers": (),
     }

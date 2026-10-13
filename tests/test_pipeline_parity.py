@@ -82,13 +82,18 @@ CodecConfig = dict[str, Any]
 CODEC_CONFIGS: list[tuple[str, CodecConfig]] = [
     ("bytes-only", {"compressors": None}),
     ("gzip", {"compressors": GzipCodec(level=1)}),
-    # Big-endian serializer: the on-disk byte order is carried by the BytesCodec,
-    # not the dtype. Guards the bulk whole-shard decode against ignoring endian
-    # (it would otherwise reinterpret big-endian bytes as native — silent
-    # corruption). dtype is int32 so endianness is observable.
+    # Explicit serializer byte order: the on-disk byte order is carried by the
+    # BytesCodec, not the dtype. Guards the bulk whole-shard decode against ignoring
+    # endian (it would otherwise reinterpret stored bytes as native — silent
+    # corruption). dtype is int32 so endianness is observable. Both orders are
+    # listed so that one of them is non-native on any host.
     (
         "bytes-big-endian",
         {"compressors": None, "serializer": BytesCodec(endian="big"), "dtype": "int32"},
+    ),
+    (
+        "bytes-little-endian",
+        {"compressors": None, "serializer": BytesCodec(endian="little"), "dtype": "int32"},
     ),
     # crc32c as a bytes->bytes codec after the serializer: the bulk fast path
     # must NOT silently drop checksum verification (it falls through to the

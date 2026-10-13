@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -200,10 +201,14 @@ class HasLength:
 @dataclass(frozen=True, kw_only=True)
 class HasEndianness:
     """
-    A mix-in class for data types with an endianness attribute
+    A mix-in class for data types with an endianness attribute.
+
+    The endianness is the byte order of the in-memory array, not the byte order of
+    stored chunks, which the `bytes` codec sets. Zarr V3 data type metadata carries
+    no byte order, so it defaults to the byte order of the host.
     """
 
-    endianness: EndiannessStr = "little"
+    endianness: EndiannessStr = sys.byteorder
 
 
 @dataclass(frozen=True, kw_only=True)

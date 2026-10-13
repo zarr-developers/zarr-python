@@ -224,6 +224,15 @@ def test_parse_data_type(
         assert observed == data_type
 
 
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@pytest.mark.parametrize("data_type", zdtype_examples, ids=str)
+def test_v3_data_types_parse_in_host_byte_order(data_type: ZDType[TBaseDType, TBaseScalar]) -> None:
+    """Zarr V3 data type metadata has no byte order, so a data type parsed from it holds values
+    in the host byte order, like the NumPy dtype of the same name."""
+    parsed = get_data_type_from_json(data_type.to_json(zarr_format=3), zarr_format=3)
+    assert parsed.to_native_dtype().isnative
+
+
 class _LittleEndianUInt8(UInt8):
     """A data type that declares the non-canonical spelling "<u1" as its own Zarr V2 name."""
 

@@ -46,6 +46,7 @@ from zarr.core.chunk_utils import (
 )
 from zarr.core.common import (
     ShapeLike,
+    parse_chunk_shape,
     parse_named_configuration,
     parse_shapelike,
     product,
@@ -355,7 +356,7 @@ class _ShardReader(ShardMapping):
 
     def __getitem__(self, chunk_coords: tuple[int, ...]) -> Buffer:
         chunk_byte_slice = self.index.get_chunk_slice(chunk_coords)
-        if chunk_byte_slice:
+        if chunk_byte_slice is not None:
             return self.buf[chunk_byte_slice[0] : chunk_byte_slice[1]]
         raise KeyError
 
@@ -437,6 +438,12 @@ def _check_index_codecs_fixed_size(index_codecs: tuple[Codec, ...]) -> None:
         )
 
 
+def _parse_inner_chunk_shape(data: ShapeLike) -> tuple[int, ...]:
+    """Parse the inner chunk shape of a sharding codec: a shape (see `parse_shapelike`)
+    whose every size is a chunk edge length, so at least 1 (see `parse_chunk_shape`)."""
+    return parse_chunk_shape(parse_shapelike(data))
+
+
 @dataclass(frozen=True)
 class ShardingCodec(
     ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
@@ -460,12 +467,15 @@ class ShardingCodec(
         self,
         *,
         chunk_shape: ShapeLike,
-        codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
-        index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
+        codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(endian="little"),),
+        index_codecs: Iterable[Codec | dict[str, JSON]] = (
+            BytesCodec(endian="little"),
+            Crc32cCodec(),
+        ),
         index_location: ShardingCodecIndexLocation | IndexLocation = "end",
         subchunk_write_order: SubchunkWriteOrder = "morton",
     ) -> None:
-        chunk_shape_parsed = parse_shapelike(chunk_shape)
+        chunk_shape_parsed = _parse_inner_chunk_shape(chunk_shape)
         codecs_parsed = parse_codecs(codecs)
         index_codecs_parsed = parse_codecs(index_codecs)
         _check_index_codecs_fixed_size(index_codecs_parsed)
@@ -504,7 +514,7 @@ class ShardingCodec(
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         config = state["configuration"]
-        object.__setattr__(self, "chunk_shape", parse_shapelike(config["chunk_shape"]))
+        object.__setattr__(self, "chunk_shape", _parse_inner_chunk_shape(config["chunk_shape"]))
         object.__setattr__(self, "codecs", parse_codecs(config["codecs"]))
         object.__setattr__(self, "index_codecs", parse_codecs(config["index_codecs"]))
         object.__setattr__(self, "index_location", _parse_index_location(config["index_location"]))
@@ -632,6 +642,28 @@ class ShardingCodec(
                         f"Chunk edge length {edge} in dimension {i} is not "
                         f"divisible by the shard's inner chunk size {inner}."
                     )
+        self._validate_inner_codecs(dtype)
+
+    def _validate_inner_codecs(self, dtype: ZDType[TBaseDType, TBaseScalar]) -> None:
+        """Validate the codecs that encode each inner chunk, as array metadata validates
+        its codecs: each against the chunk the codecs before it leave it, a regular
+        grid of one inner chunk. A sharding codec among them is thereby checked against
+        the chunk it splits, which `validate` of the outer codec alone does not see.
+        """
+        spec = ArraySpec(
+            shape=self.chunk_shape,
+            dtype=dtype,
+            fill_value=dtype.default_scalar(),
+            config=ArrayConfig.from_dict({}),
+            prototype=default_buffer_prototype(),
+        )
+        for codec in self.codecs:
+            codec.validate(
+                shape=spec.shape,
+                dtype=spec.dtype,
+                chunk_grid=RegularChunkGridMetadata(chunk_shape=spec.shape),
+            )
+            spec = codec.resolve_metadata(spec)
 
     def _get_inner_chunk_transform(self, shard_spec: ArraySpec) -> Any:
         """The synchronous transform for the inner codec chain.
@@ -664,6 +696,7 @@ class ShardingCodec(
         self, index_bytes: Buffer, chunks_per_shard: tuple[int, ...]
     ) -> _ShardIndex:
         """Decode shard index synchronously using ChunkTransform."""
+        self._check_shard_index_size(index_bytes, chunks_per_shard)
         index_transform = self._get_index_chunk_transform(chunks_per_shard)
         index_spec = self._get_index_chunk_spec(chunks_per_shard)
         index_array = index_transform.decode_chunk(index_bytes, index_spec)
@@ -1400,7 +1433,8 @@ class ShardingCodec(
                 prototype=chunk_spec.prototype,
                 chunks_per_shard=chunks_per_shard,
             )
-            shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
+            if shard_reader is None:
+                shard_reader = _ShardReader.create_empty(chunks_per_shard)
             # Use vectorized lookup for better performance. The lexicographic
             # coordinate array and keys are cached, so neither is rebuilt on
             # every write.
@@ -1544,6 +1578,7 @@ class ShardingCodec(
         # the synchronous read paths cannot use but this async path still can.
         if self._index_codecs_sync_capable():
             return self._decode_shard_index_sync(index_bytes, chunks_per_shard)
+        self._check_shard_index_size(index_bytes, chunks_per_shard)
         index_array = next(
             iter(
                 await get_pipeline_class()
@@ -1577,6 +1612,23 @@ class ShardingCodec(
         if index_bytes is None:
             raise RuntimeError("Encoding the shard index produced no bytes.")
         return index_bytes
+
+    def _check_shard_index_size(
+        self, index_bytes: Buffer, chunks_per_shard: tuple[int, ...]
+    ) -> None:
+        """Raise if `index_bytes` is shorter than the encoded shard index.
+
+        A stored shard always holds its index, so a shorter read means the
+        stored value is truncated (a zero-length value included). Every read
+        and write path decodes the index through here, so they all reject it
+        alike. zarrs and tensorstore also reject such a shard.
+        """
+        expected = self._shard_index_size(chunks_per_shard)
+        if len(index_bytes) < expected:
+            raise ValueError(
+                f"The stored shard is too short to hold its index: read {len(index_bytes)} "
+                f"bytes of index, expected {expected}. The shard is truncated or corrupt."
+            )
 
     def _shard_index_size(self, chunks_per_shard: tuple[int, ...]) -> int:
         return (
@@ -1666,7 +1718,7 @@ class ShardingCodec(
 
         return (
             await _ShardReader.from_bytes(shard_bytes, self, chunks_per_shard)
-            if shard_bytes
+            if shard_bytes is not None
             else None
         )
 

@@ -229,13 +229,17 @@ class ArrayMetadataV3Spec(BaseModel, Generic[AttrsT]):
         """Route every input document through the library's validation and
         normalization; pydantic then parses only canonical documents."""
         if isinstance(data, Mapping):
-            doc = dict(ZarrV3ArrayMetadata.from_json(data).to_json())
+            metadata = ZarrV3ArrayMetadata.from_json(data).to_json()
+            doc: dict[str, object] = dict(metadata)
             for key in ("data_type", "chunk_grid", "chunk_key_encoding"):
                 if isinstance(doc[key], str):
                     doc[key] = {"name": doc[key]}
-            for key in ("codecs", "storage_transformers"):
+            for key, entries in (
+                ("codecs", metadata["codecs"]),
+                ("storage_transformers", metadata.get("storage_transformers", ())),
+            ):
                 doc[key] = tuple(
-                    {"name": item} if isinstance(item, str) else item for item in doc.get(key, ())
+                    {"name": item} if isinstance(item, str) else item for item in entries
                 )
             doc.setdefault("attributes", {})
             return doc
