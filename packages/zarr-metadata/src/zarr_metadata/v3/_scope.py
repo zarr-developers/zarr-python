@@ -23,10 +23,10 @@ from zarr_metadata.v3._definition import (
     as_kind,
     field_key,
     fields_of,
+    filed_under,
     format_of,
     own_key,
     resolve,
-    spelled,
 )
 
 if TYPE_CHECKING:
@@ -99,7 +99,7 @@ def claim_key(field: ResolvedField[Any]) -> ClaimKey | None:
     """The key `field` is claimed under: its kind and the name its definition is filed under, `r*` for `r16`; None for a field that names nothing."""
     if field.name is None:
         return None
-    filed, _ = spelled(field.read_as, field.name)
+    filed, _ = filed_under(field.read_as, field.name)
     return None if filed is None else (field.read_as, filed)
 
 
@@ -179,7 +179,7 @@ class _Claimed:
     def claimant(self, kind: type[D], name: str) -> D | None:
         """The definition of `kind` among the claims that reads `name`; None if none does, as `Context.claimant` answers."""
         asked = as_kind(kind)
-        filed, _ = spelled(asked, name)
+        filed, _ = filed_under(asked, name)
         if filed is None:
             return None
         return cast("D | None", self.filed.get((asked, filed)))

@@ -107,7 +107,12 @@ ZarrV3NodeMetadataInput = TypeAliasType(
     "ZarrV3NodeMetadataInput",
     "ZarrV3ArrayMetadataJSON | ZarrV3GroupMetadataJSON | ZarrV3ArrayMetadata | ZarrV3GroupMetadata",
 )
-"""What consolidated metadata lists at a path when given to a constructor or `update`: a document, or a model of it."""
+"""What consolidated metadata lists at a path when given to a constructor or `update`: a document, or a model of it.
+
+An `Input` is what a constructor takes, as a `JSON` TypedDict is what a
+document writes and an `Update` what `update` puts in place: the one of
+the three that may hold a model.
+"""
 
 
 class ZarrV3ConsolidatedMetadataInput(TypedDict, closed=True):
@@ -548,7 +553,7 @@ def _group_reading(
 
 
 @dataclass(frozen=True, slots=True)
-class ZarrV3UnknownNodeReading:
+class ZarrV3UnknownNodeMetadataReading:
     """A v3 document of no node type the spec defines -- its `node_type` missing, or neither `"array"` nor `"group"` -- or not an object at all: nothing else of it is read but its `zarr_format`, as its problems say.
 
     So a document of another format says so: zarr-python 2's draft of v3
@@ -571,7 +576,7 @@ class ZarrV3UnknownNodeReading:
 
 ZarrV3NodeMetadataReading = TypeAliasType(
     "ZarrV3NodeMetadataReading",
-    "ZarrV3ArrayMetadataReading | ZarrV3GroupMetadataReading | ZarrV3UnknownNodeReading",
+    "ZarrV3ArrayMetadataReading | ZarrV3GroupMetadataReading | ZarrV3UnknownNodeMetadataReading",
 )
 """A v3 `zarr.json` as `read_node_metadata_v3` reads it: as the array or group its `node_type` says, or as neither."""
 
@@ -585,7 +590,7 @@ def read_node_metadata_v3(
     zod's discriminated union read one: an array is read as
     `read_array_metadata_v3` reads it, a group as `read_group_metadata_v3`
     does, and a document that says neither, or is not an object, is
-    `ZarrV3UnknownNodeReading`, with the problems, its `zarr_format`'s
+    `ZarrV3UnknownNodeMetadataReading`, with the problems, its `zarr_format`'s
     among them. So no caller reads `node_type` from JSON it has not read,
     and a document of another format says it is not v3.
     """
@@ -595,7 +600,7 @@ def read_node_metadata_v3(
         return read_array_metadata_v3(value, context=scope)
     if node_type == "group":
         return read_group_metadata_v3(value, context=scope)
-    return ZarrV3UnknownNodeReading(problems)
+    return ZarrV3UnknownNodeMetadataReading(problems)
 
 
 ZarrV3NodeMetadata = TypeAliasType(
@@ -654,13 +659,13 @@ def _read_node_v3(
     """
     past = nested_past_the_levels(value, at)
     if past is not None:
-        return ZarrV3UnknownNodeReading(within((past,), at)), None
+        return ZarrV3UnknownNodeMetadataReading(within((past,), at)), None
     node_type, problems = _node_type(value)
     if node_type == "array":
         return read_array_v3(value, context, at=at)
     if node_type == "group":
         return read_group_v3(value, context, at=at)
-    return ZarrV3UnknownNodeReading(problems), None
+    return ZarrV3UnknownNodeMetadataReading(problems), None
 
 
 _NODE_TYPES: Final = ("array", "group")

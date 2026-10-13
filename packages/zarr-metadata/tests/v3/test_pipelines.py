@@ -24,12 +24,12 @@ from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
     Chunk,
     CodecDefinition,
-    CodecField,
     DataTypeDefinition,
-    DataTypeField,
     JSONValue,
     Nested,
     ResolvedField,
+    ZarrV3CodecField,
+    ZarrV3DataTypeField,
     resolve,
 )
 
@@ -452,8 +452,8 @@ def test_error_an_array_document_s_codecs_out_of_order_or_not_fitting_its_chunks
 
 
 class AcmeHolderConfiguration(TypedDict, closed=True):
-    codecs: tuple[CodecField, ...]
-    types: tuple[DataTypeField, ...]
+    codecs: tuple[ZarrV3CodecField, ...]
+    types: tuple[ZarrV3DataTypeField, ...]
 
 
 def _holder(

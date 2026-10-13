@@ -15,8 +15,8 @@ from zarr_metadata.v3._definition import (
     AcceptedField,
     Chunk,
     CodecDefinition,
-    DataTypeField,
     Nested,
+    ZarrV3DataTypeField,
     fill_value_problems,
 )
 from zarr_metadata.v3.codec._arithmetic import COMPLEX, FLOATING_POINT, NOT_NUMBERS
@@ -82,7 +82,7 @@ class CastValueCodecConfiguration(TypedDict, closed=True):
     bare-string primitive name or a `{name, configuration}` envelope.
     """
 
-    data_type: DataTypeField
+    data_type: ZarrV3DataTypeField
     rounding: NotRequired[CastRoundingMode]
     out_of_range: NotRequired[CastOutOfRangeMode]
     scalar_map: NotRequired[ScalarMap]

@@ -44,7 +44,6 @@ from zarr_metadata.v3.definition import (
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
-    CodecField,
     Context,
     DataTypeDefinition,
     Definition,
@@ -55,6 +54,7 @@ from zarr_metadata.v3.definition import (
     StorageTransformerDefinition,
     UnclaimedField,
     ValidationProblem,
+    ZarrV3CodecField,
     resolve,
 )
 
@@ -65,7 +65,7 @@ if TYPE_CHECKING:
 class AcmeStackConfiguration(TypedDict, closed=True):
     """A third party's container: a codec holding a pipeline of codecs."""
 
-    codecs: tuple[CodecField, ...]
+    codecs: tuple[ZarrV3CodecField, ...]
 
 
 def acme_stack_rules(
@@ -115,7 +115,7 @@ class AcmeTreeConfiguration(TypedDict, closed=True):
 
 
 class ByCodec(TypedDict, closed=True):
-    codec: CodecField
+    codec: ZarrV3CodecField
     weight: int
 
 
@@ -130,7 +130,7 @@ class AcmeFallbackConfiguration(TypedDict, closed=True):
     fallback: ByCodec | Raw
 
 
-class AcmeRoutesConfiguration(TypedDict, extra_items=CodecField):
+class AcmeRoutesConfiguration(TypedDict, extra_items=ZarrV3CodecField):
     """Every key a route, holding the codec that takes it."""
 
 
@@ -1240,8 +1240,12 @@ def test_error_a_data_type_fill_value_no_checker_reads() -> None:
 
 def test_error_a_data_type_fill_value_holding_a_metadata_field() -> None:
     # A value of the data type, which no scope reads as a field.
-    with pytest.raises(TypeError, match="'acme.f': fill_value: CodecField holds a metadata field"):
-        DataTypeDefinition(name="acme.f", configuration=Empty, fill_value=tuple[CodecField, ...])
+    with pytest.raises(
+        TypeError, match="'acme.f': fill_value: ZarrV3CodecField holds a metadata field"
+    ):
+        DataTypeDefinition(
+            name="acme.f", configuration=Empty, fill_value=tuple[ZarrV3CodecField, ...]
+        )
 
 
 @pytest.mark.parametrize(

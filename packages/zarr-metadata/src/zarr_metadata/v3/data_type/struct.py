@@ -13,9 +13,9 @@ from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem, shown
 from zarr_metadata.v3._definition import (
     DataTypeDefinition,
-    DataTypeField,
     Nested,
     StorageClass,
+    ZarrV3DataTypeField,
     fill_value_problems,
     spelled_canonically,
     storage_of,
@@ -42,7 +42,7 @@ class StructField(TypedDict, closed=True):
     """
 
     name: ReadOnly[str]
-    data_type: ReadOnly[DataTypeField]
+    data_type: ReadOnly[ZarrV3DataTypeField]
 
 
 class StructConfiguration(TypedDict, closed=True):

@@ -8,11 +8,11 @@ from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.v3._common import (
-    ChunkGridField,
-    ChunkKeyEncodingField,
-    CodecField,
-    DataTypeField,
-    StorageTransformerField,
+    ZarrV3ChunkGridField,
+    ZarrV3ChunkKeyEncodingField,
+    ZarrV3CodecField,
+    ZarrV3DataTypeField,
+    ZarrV3StorageTransformerField,
 )
 
 ZarrV3ExtensionField: TypeAlias = JSONValue
@@ -30,7 +30,7 @@ class ZarrV3ArrayMetadataJSON(TypedDict, extra_items=ZarrV3ExtensionField):
 
     Extra keys may contain arbitrary JSON values. Each extension point is
     annotated with the field alias of its kind -- `data_type` a
-    `DataTypeField`, each of `codecs` a `CodecField` -- which is the JSON
+    `ZarrV3DataTypeField`, each of `codecs` a `ZarrV3CodecField` -- which is the JSON
     a metadata field is, and says what a scope reads it as.
 
     See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#array-metadata
@@ -38,14 +38,14 @@ class ZarrV3ArrayMetadataJSON(TypedDict, extra_items=ZarrV3ExtensionField):
 
     zarr_format: Literal[3]
     node_type: Literal["array"]
-    data_type: DataTypeField
+    data_type: ZarrV3DataTypeField
     shape: tuple[Annotated[int, Ge(0)], ...]
-    chunk_grid: ChunkGridField
-    chunk_key_encoding: ChunkKeyEncodingField
+    chunk_grid: ZarrV3ChunkGridField
+    chunk_key_encoding: ZarrV3ChunkKeyEncodingField
     fill_value: JSONValue
-    codecs: tuple[CodecField, ...]
+    codecs: tuple[ZarrV3CodecField, ...]
     attributes: NotRequired[Mapping[str, JSONValue]]
-    storage_transformers: NotRequired[tuple[StorageTransformerField, ...]]
+    storage_transformers: NotRequired[tuple[ZarrV3StorageTransformerField, ...]]
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 
@@ -74,14 +74,14 @@ class ZarrV3ArrayMetadataJSONPartial(TypedDict, total=False, extra_items=ZarrV3E
 
     zarr_format: Literal[3]
     node_type: Literal["array"]
-    data_type: DataTypeField
+    data_type: ZarrV3DataTypeField
     shape: tuple[Annotated[int, Ge(0)], ...]
-    chunk_grid: ChunkGridField
-    chunk_key_encoding: ChunkKeyEncodingField
+    chunk_grid: ZarrV3ChunkGridField
+    chunk_key_encoding: ZarrV3ChunkKeyEncodingField
     fill_value: JSONValue
-    codecs: tuple[CodecField, ...]
+    codecs: tuple[ZarrV3CodecField, ...]
     attributes: NotRequired[Mapping[str, JSONValue]]
-    storage_transformers: NotRequired[tuple[StorageTransformerField, ...]]
+    storage_transformers: NotRequired[tuple[ZarrV3StorageTransformerField, ...]]
     dimension_names: NotRequired[tuple[str | None, ...]]
 
 

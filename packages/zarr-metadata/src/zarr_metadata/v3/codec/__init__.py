@@ -13,7 +13,7 @@ a bare-string short-hand form). For the underlying `<X>CodecObject`,
 For the JSON of any codec entry -- one of array metadata's `codecs` --
 import `ZarrV3MetadataFieldJSON` from `zarr_metadata.v3`. A configuration
 member holding a codec, as sharding's inner pipelines do, is annotated
-`CodecField` from `zarr_metadata.v3.definition` instead, so it is read as
+`ZarrV3CodecField` from `zarr_metadata.v3.definition` instead, so it is read as
 the codec it is.
 
 Each codec's pipeline position (`array -> array`, `array -> bytes`,

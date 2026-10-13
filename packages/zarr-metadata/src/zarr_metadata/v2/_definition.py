@@ -134,7 +134,7 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
         return typestr_problem(name, at)
 
     @classmethod
-    def spelled(cls, name: str) -> tuple[str | None, dict[str, JSONValue] | None]:
+    def filed_under(cls, name: str) -> tuple[str | None, dict[str, JSONValue] | None]:
         if name == STRUCT_NAME:
             return name, None
         if name in FAMILIES.values():

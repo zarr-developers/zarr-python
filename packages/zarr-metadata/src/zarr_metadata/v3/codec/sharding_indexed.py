@@ -15,10 +15,10 @@ from zarr_metadata.v3._definition import (
     AcceptedField,
     Chunk,
     CodecDefinition,
-    CodecField,
     Lengths,
     Nested,
-    StaticCodecField,
+    ZarrV3CodecField,
+    ZarrV3StaticCodecField,
 )
 from zarr_metadata.v3.data_type.uint64 import UINT64_DATA_TYPE, UINT64_DATA_TYPE_NAME
 
@@ -55,8 +55,8 @@ class ShardingIndexedCodecConfiguration(TypedDict, closed=True):
     """
 
     chunk_shape: tuple[Annotated[int, Ge(1)], ...]
-    codecs: tuple[CodecField, ...]
-    index_codecs: tuple[StaticCodecField, ...]
+    codecs: tuple[ZarrV3CodecField, ...]
+    index_codecs: tuple[ZarrV3StaticCodecField, ...]
     index_location: NotRequired[ShardingIndexLocation]
 
 

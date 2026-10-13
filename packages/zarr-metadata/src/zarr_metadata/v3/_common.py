@@ -40,20 +40,22 @@ codec.
 # kind, which a scope reads it as. Each alias is the JSON a field is, so to
 # a type checker, and to `check`, it is `ZarrV3MetadataFieldJSON`.
 
-DataTypeField = TypeAliasType("DataTypeField", ZarrV3MetadataFieldJSON)
+ZarrV3DataTypeField = TypeAliasType("ZarrV3DataTypeField", ZarrV3MetadataFieldJSON)
 """A member holding a data type: a document's `data_type`, or a struct field's; read in the scope what holds it is read in."""
-ChunkGridField = TypeAliasType("ChunkGridField", ZarrV3MetadataFieldJSON)
+ZarrV3ChunkGridField = TypeAliasType("ZarrV3ChunkGridField", ZarrV3MetadataFieldJSON)
 """A member holding a chunk grid: a document's `chunk_grid`."""
-ChunkKeyEncodingField = TypeAliasType("ChunkKeyEncodingField", ZarrV3MetadataFieldJSON)
+ZarrV3ChunkKeyEncodingField = TypeAliasType("ZarrV3ChunkKeyEncodingField", ZarrV3MetadataFieldJSON)
 """A member holding a chunk key encoding: a document's `chunk_key_encoding`."""
-CodecField = TypeAliasType("CodecField", ZarrV3MetadataFieldJSON)
-"""A member holding a codec: a document's `codecs` is `tuple[CodecField, ...]`, and so is a shard's."""
-StaticCodecField = TypeAliasType("StaticCodecField", ZarrV3MetadataFieldJSON)
+ZarrV3CodecField = TypeAliasType("ZarrV3CodecField", ZarrV3MetadataFieldJSON)
+"""A member holding a codec: a document's `codecs` is `tuple[ZarrV3CodecField, ...]`, and so is a shard's."""
+ZarrV3StaticCodecField = TypeAliasType("ZarrV3StaticCodecField", ZarrV3MetadataFieldJSON)
 """A member holding a codec of static size: a shard's `index_codecs` is one,
 since a reader finds the index by a size it knows before reading it.
 """
-StorageTransformerField = TypeAliasType("StorageTransformerField", ZarrV3MetadataFieldJSON)
-"""A member holding a storage transformer: a document's `storage_transformers` is `tuple[StorageTransformerField, ...]`."""
+ZarrV3StorageTransformerField = TypeAliasType(
+    "ZarrV3StorageTransformerField", ZarrV3MetadataFieldJSON
+)
+"""A member holding a storage transformer: a document's `storage_transformers` is `tuple[ZarrV3StorageTransformerField, ...]`."""
 
 
 def validate_metadata_field_v3(
@@ -220,13 +222,13 @@ def parse_metadata_field_v3(value: object) -> ZarrV3MetadataFieldJSON:
 __all__ = [
     "ENVELOPE_KEYS",
     "EXTENSION_NAME_SCHEMA_PATTERN",
-    "ChunkGridField",
-    "ChunkKeyEncodingField",
-    "CodecField",
-    "DataTypeField",
-    "StaticCodecField",
-    "StorageTransformerField",
+    "ZarrV3ChunkGridField",
+    "ZarrV3ChunkKeyEncodingField",
+    "ZarrV3CodecField",
+    "ZarrV3DataTypeField",
     "ZarrV3MetadataFieldJSON",
+    "ZarrV3StaticCodecField",
+    "ZarrV3StorageTransformerField",
     "envelope_problems",
     "is_metadata_field_v3",
     "name_problem",

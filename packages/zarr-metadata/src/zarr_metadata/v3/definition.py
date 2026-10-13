@@ -173,11 +173,11 @@ built, since a type the checker does not hold its values to would say
 what is not so.
 
 A member holding another metadata field is annotated with the field alias
-of its kind -- a shard's `codecs: tuple[CodecField, ...]` -- and read in
+of its kind -- a shard's `codecs: tuple[ZarrV3CodecField, ...]` -- and read in
 the scope its field is read in. What is wrong with the field it holds is
 that field's own, reported where it sits: the field holding it is still
 read, as a document holding it would be. A member that takes codecs of
-static size only is annotated `StaticCodecField` -- a shard's
+static size only is annotated `ZarrV3StaticCodecField` -- a shard's
 `index_codecs`, since a reader finds the index by a size it knows before
 reading it -- and a codec of dynamic size there is a problem at its
 place, where the field is read in a scope; a name nothing claims is left
@@ -317,12 +317,12 @@ from zarr_metadata._common import JSONValue
 from zarr_metadata._json import MetadataValidationError, ProblemKind, ValidationProblem, shown
 from zarr_metadata._typed_json import Loc
 from zarr_metadata.v3._common import (
-    ChunkGridField,
-    ChunkKeyEncodingField,
-    CodecField,
-    DataTypeField,
-    StaticCodecField,
-    StorageTransformerField,
+    ZarrV3ChunkGridField,
+    ZarrV3ChunkKeyEncodingField,
+    ZarrV3CodecField,
+    ZarrV3DataTypeField,
+    ZarrV3StaticCodecField,
+    ZarrV3StorageTransformerField,
 )
 from zarr_metadata.v3._definition import (
     AcceptedField,
@@ -363,19 +363,15 @@ __all__ = [
     "AcceptedField",
     "Chunk",
     "ChunkGridDefinition",
-    "ChunkGridField",
     "ChunkKeyEncodingDefinition",
-    "ChunkKeyEncodingField",
     "ClaimKey",
     "Claims",
     "CodecDefinition",
-    "CodecField",
     "CodecKind",
     "CodecSize",
     "Conflict",
     "Context",
     "DataTypeDefinition",
-    "DataTypeField",
     "Definition",
     "Disagreements",
     "EmptyConfiguration",
@@ -389,13 +385,17 @@ __all__ = [
     "ResolvedField",
     "ScopeConflictError",
     "Stage",
-    "StaticCodecField",
     "StorageClass",
     "StorageTransformerDefinition",
-    "StorageTransformerField",
     "UnclaimedField",
     "ValidationProblem",
+    "ZarrV3ChunkGridField",
+    "ZarrV3ChunkKeyEncodingField",
+    "ZarrV3CodecField",
     "ZarrV3Context",
+    "ZarrV3DataTypeField",
+    "ZarrV3StaticCodecField",
+    "ZarrV3StorageTransformerField",
     "canonical_fill_value",
     "fill_value_problems",
     "resolve",

@@ -271,7 +271,7 @@ _EXTENSION_ROLES = (
     # the value holding a codec's name, configuration TypedDict and rules.
     "Definition",
     # A configuration member holding a metadata field of that kind:
-    # `CodecField`, read in the scope its field is read in.
+    # `ZarrV3CodecField`, read in the scope its field is read in.
     "Field",
 )
 _EXTENSION_NAME = re.compile(r"^(?:[A-Z][a-z0-9]*)+?(?:" + "|".join(_EXTENSION_ROLES) + r")$")

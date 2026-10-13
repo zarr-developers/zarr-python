@@ -80,7 +80,7 @@ def test_a_v2_dtype_name_is_filed_under_its_family(
     name: str, filed: str | None, carried: dict[str, Any] | None
 ) -> None:
     """A typestr is filed under its family and carries its byte order, size and unit; `struct` is filed as itself; a typestr of a type code the spec does not list is filed under itself, so a scope leaves it unclaimed; a family name is filed by nothing, since no document writes it."""
-    assert ZarrV2DataTypeDefinition.spelled(name) == (filed, carried)
+    assert ZarrV2DataTypeDefinition.filed_under(name) == (filed, carried)
 
 
 @pytest.mark.parametrize(
@@ -163,7 +163,7 @@ def test_a_v2_codec_writes_back_with_its_id_beside_its_parameters() -> None:
     assert ZarrV2CodecDefinition.envelope_json("zlib", {"level": 1}) == {"id": "zlib", "level": 1}
     assert ZarrV2CodecDefinition.configuration_loc(("compressor",)) == ("compressor",)
     assert ZarrV2CodecDefinition.name_loc(("compressor",)) == ("compressor", "id")
-    assert ZarrV2CodecDefinition.spelled("zlib") == ("zlib", None)
+    assert ZarrV2CodecDefinition.filed_under("zlib") == ("zlib", None)
 
 
 def test_error_a_v2_definition_is_named_as_its_format_names_one() -> None:

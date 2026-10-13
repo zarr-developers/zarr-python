@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, Final, Generic, Literal, TypeAlias, TypeG
 
 from typing_extensions import TypeVar
 
-from zarr_metadata.v3._definition import Definition, as_kind, format_of, kind_of, spelled
+from zarr_metadata.v3._definition import Definition, as_kind, filed_under, format_of, kind_of
 from zarr_metadata.v3._scope import Conflict, ScopeConflictError, disagreements_of
 from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
@@ -209,11 +209,11 @@ class Context(Generic[F]):
     def claimant(self, kind: type[D], name: str) -> D | None:
         """The definition of `kind` in scope that reads `name`, a name a document writes; None if none does.
 
-        The one filed under the name `spelled` reads it as: itself, but
+        The one filed under the name `filed_under` reads it as: itself, but
         for raw bits, `r16` read by the definition of `r*`.
         """
         asked = as_kind(kind)
-        filed, _ = spelled(asked, name)
+        filed, _ = filed_under(asked, name)
         if filed is None:
             return None
         return cast("D | None", self.tables.get(asked, {}).get(filed))

@@ -7,7 +7,7 @@ Three steps, each feeding the next and needing more than the one before:
    its shape, member by member, every problem located, and a value of
    the TypedDict back -- a key it does not declare is reported and left
    out. A member holding another metadata field -- a shard's codecs, a
-   cast's data type -- is annotated with a field alias, `CodecField`,
+   cast's data type -- is annotated with a field alias, `ZarrV3CodecField`,
    and checked as an envelope: a name, or a named configuration. Which
    definition the name denotes is a scope's question, so the check
    needs none.
@@ -82,12 +82,12 @@ from zarr_metadata._typed_json import (
 from zarr_metadata.v3._common import (
     ENVELOPE_KEYS,
     EXTENSION_NAME_SCHEMA_PATTERN,
-    ChunkGridField,
-    ChunkKeyEncodingField,
-    CodecField,
-    DataTypeField,
-    StaticCodecField,
-    StorageTransformerField,
+    ZarrV3ChunkGridField,
+    ZarrV3ChunkKeyEncodingField,
+    ZarrV3CodecField,
+    ZarrV3DataTypeField,
+    ZarrV3StaticCodecField,
+    ZarrV3StorageTransformerField,
     envelope_problems,
     name_problem,
     well_named,
@@ -225,7 +225,7 @@ class Definition(Generic[C]):
     label: ClassVar[str] = "definition"
     """The kind as a message names it: "codec"."""
     field_aliases: ClassVar[tuple[TypeAliasType, ...]] = ()
-    """The field aliases a configuration member holding a field of this kind is annotated with: `CodecField` and `StaticCodecField` for a codec."""
+    """The field aliases a configuration member holding a field of this kind is annotated with: `ZarrV3CodecField` and `ZarrV3StaticCodecField` for a codec."""
 
     name: str
     """The name the metadata carries, which a scope files the definition under."""
@@ -251,7 +251,7 @@ class Definition(Generic[C]):
         return cls.name_problem(name, ()) is None
 
     @classmethod
-    def spelled(cls, name: str) -> tuple[str | None, dict[str, JSONValue] | None]:
+    def filed_under(cls, name: str) -> tuple[str | None, dict[str, JSONValue] | None]:
         """How a name a document writes reads: the name its definition is filed under, and the configuration the name carries.
 
         A name is filed as itself and carries nothing, `(name, None)`. A
@@ -262,7 +262,7 @@ class Definition(Generic[C]):
         return name, None
 
     def carrying_name(self, configuration: Mapping[str, JSONValue]) -> str | None:
-        """The name that carries `configuration` for this definition, the inverse of `spelled`: `r16` for `r*` with `{"bits": 16}`; None when its names carry nothing."""
+        """The name that carries `configuration` for this definition, the inverse of `filed_under`: `r16` for `r*` with `{"bits": 16}`; None when its names carry nothing."""
         return None
 
     @classmethod
@@ -385,7 +385,7 @@ def _malformed(definition: Definition[Any]) -> str | None:
         if not callable(value):
             return f"{name!r}: {member} is a function, got {value!r}"
     kind = type(definition)
-    filed, _ = kind.spelled(name)
+    filed, _ = kind.filed_under(name)
     bad = None if filed is None else kind.name_problem(name, ())
     if bad is not None:
         return (
@@ -409,7 +409,7 @@ RAW_BYTES_NAME: Final = "r*"
 """The name raw bits are filed under: `r*`, as the specification's table of data types writes them.
 
 A document writes `r` and the size in bits -- `r8`, `r16` -- so raw bits
-are the one data type whose name carries its configuration. `spelled`
+are the one data type whose name carries its configuration. `filed_under`
 reads such a name as `r*` with the size as its configuration; `r*` itself
 is the table's notation, never a name a document writes
 (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L46-L47).
@@ -428,7 +428,7 @@ allows one, which nothing in scope claims.
 """
 
 
-def spelled(
+def filed_under(
     kind: type[Definition[Any]], name: str
 ) -> tuple[str | None, dict[str, JSONValue] | None]:
     """How a name a document writes reads: the name its definition is filed under, and the configuration the name carries.
@@ -438,7 +438,7 @@ def spelled(
     itself is filed under nothing, `(None, None)`, since no document
     writes it.
     """
-    return kind.spelled(name)
+    return kind.filed_under(name)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
@@ -507,10 +507,10 @@ class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
     """
 
     label: ClassVar[str] = "data type"
-    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (DataTypeField,)
+    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV3DataTypeField,)
 
     @classmethod
-    def spelled(cls, name: str) -> tuple[str | None, dict[str, JSONValue] | None]:
+    def filed_under(cls, name: str) -> tuple[str | None, dict[str, JSONValue] | None]:
         if name == RAW_BYTES_NAME:
             return None, None
         written = RAW_BYTES_NAME_PATTERN.fullmatch(name)
@@ -570,7 +570,7 @@ class ChunkGridDefinition(Definition[C], kind=True, format=3):
     """
 
     label: ClassVar[str] = "chunk grid"
-    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ChunkGridField,)
+    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV3ChunkGridField,)
 
     shape_rules: Callable[[C, Nested, tuple[int, ...]], Iterable[ValidationProblem]] = no_rules
     """What the spec disallows in this grid over an array of a shape, located in the configuration."""
@@ -583,7 +583,7 @@ class ChunkKeyEncodingDefinition(Definition[C], kind=True, format=3):
     """A chunk key encoding."""
 
     label: ClassVar[str] = "chunk key encoding"
-    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ChunkKeyEncodingField,)
+    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV3ChunkKeyEncodingField,)
 
 
 CodecKind = Literal["array_array", "array_bytes", "bytes_bytes"]
@@ -637,7 +637,7 @@ class CodecDefinition(Definition[C], kind=True, format=3):
     """
 
     label: ClassVar[str] = "codec"
-    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (CodecField, StaticCodecField)
+    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV3CodecField, ZarrV3StaticCodecField)
 
     kind: CodecKind
     size: CodecSize
@@ -667,7 +667,7 @@ class StorageTransformerDefinition(Definition[C], kind=True, format=3):
     """A storage transformer."""
 
     label: ClassVar[str] = "storage transformer"
-    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (StorageTransformerField,)
+    field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV3StorageTransformerField,)
 
 
 KINDS: Final[tuple[type[Definition[Any]], ...]] = (
@@ -719,12 +719,12 @@ def as_kind(kind: object) -> type[Definition[Any]]:
     raise TypeError(msg)
 
 
-_STATIC_SIZE: Final[frozenset[TypeAliasType]] = frozenset({StaticCodecField})
+_STATIC_SIZE: Final[frozenset[TypeAliasType]] = frozenset({ZarrV3StaticCodecField})
 """The field aliases whose codec must be of static size."""
 
 
 def field_kind(annotation: object) -> type[Definition[Any]] | None:
-    """The kind of metadata field a member annotated `annotation` holds -- `CodecDefinition` for `CodecField` -- or None when it holds none."""
+    """The kind of metadata field a member annotated `annotation` holds -- `CodecDefinition` for `ZarrV3CodecField` -- or None when it holds none."""
     if not is_alias(annotation):
         return None
     return _FIELD_KINDS.get(annotation)
@@ -832,7 +832,7 @@ def _vet(configuration: type) -> None:
 
 
 def kind_field(kind: type[Definition[Any]]) -> object:
-    """The field alias a member holding any field of `kind` is annotated with: the first the kind declares that does not narrow the field, `CodecField` rather than `StaticCodecField`."""
+    """The field alias a member holding any field of `kind` is annotated with: the first the kind declares that does not narrow the field, `ZarrV3CodecField` rather than `ZarrV3StaticCodecField`."""
     return next(alias for alias in kind.field_aliases if alias not in _STATIC_SIZE)
 
 
@@ -1390,7 +1390,7 @@ def _misread(definition: object, kind: type[Definition[Any]], name: object) -> s
     if not isinstance(definition, kind):
         return f"a field read as a {kind.__name__} is read by one, got {definition!r}"
     filed = cast("Definition[Any]", definition).name
-    if not isinstance(name, str) or spelled(kind, name)[0] != filed:
+    if not isinstance(name, str) or filed_under(kind, name)[0] != filed:
         return f"a field named {name!r} is read by the definition filed under it, got {filed!r}"
     return None
 
@@ -1459,7 +1459,7 @@ def document_json(field: ResolvedField[Any]) -> JSONValue | UNSET:
 def written_json(field: AcceptedField[Any] | UnclaimedField) -> JSONValue:
     """A field a scope read or left unclaimed, as a document writes it: `document_json` of one that is JSON."""
     kind = field.read_as
-    if isinstance(field, AcceptedField) and kind.spelled(field.name)[1] is not None:
+    if isinstance(field, AcceptedField) and kind.filed_under(field.name)[1] is not None:
         return kind.envelope_json(field.name, {})
     return kind.envelope_json(field.name, field.configuration)
 
@@ -1822,7 +1822,7 @@ def _read(
         return RefusedField(json=data, name=name, read_as=kind, definition=definition), ()
     if definition is None:
         return UnclaimedField(json=data, name=name, read_as=kind), ()
-    _, carried = kind.spelled(name)
+    _, carried = kind.filed_under(name)
     if carried is not None:
         return _read_carried(data, name, kind, definition, given, carried, loc)
     at = kind.configuration_loc(loc)
@@ -2042,26 +2042,26 @@ __all__ = [
     "AcceptedField",
     "Chunk",
     "ChunkGridDefinition",
-    "ChunkGridField",
     "ChunkKeyEncodingDefinition",
-    "ChunkKeyEncodingField",
     "CodecDefinition",
-    "CodecField",
     "CodecKind",
     "CodecSize",
     "DataTypeDefinition",
-    "DataTypeField",
     "Definition",
     "EmptyConfiguration",
     "Lengths",
     "Nested",
     "RefusedField",
     "ResolvedField",
-    "StaticCodecField",
     "StorageClass",
     "StorageTransformerDefinition",
-    "StorageTransformerField",
     "UnclaimedField",
+    "ZarrV3ChunkGridField",
+    "ZarrV3ChunkKeyEncodingField",
+    "ZarrV3CodecField",
+    "ZarrV3DataTypeField",
+    "ZarrV3StaticCodecField",
+    "ZarrV3StorageTransformerField",
     "as_kind",
     "asked",
     "canonical_fill_value",
@@ -2073,6 +2073,7 @@ __all__ = [
     "field_key",
     "field_kind",
     "field_schemas",
+    "filed_under",
     "fill_value_as_written",
     "fill_value_problems",
     "kind_of",
@@ -2085,7 +2086,6 @@ __all__ = [
     "resolve",
     "ruled",
     "single_byte",
-    "spelled",
     "spelled_canonically",
     "storage_of",
     "unchanged",
