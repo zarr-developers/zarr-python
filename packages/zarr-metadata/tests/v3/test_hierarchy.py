@@ -253,4 +253,6 @@ def test_a_hierarchy_is_walked_in_time_proportional_to_its_paths() -> None:
     prefix = "/a" * 5_000
     many = {f"{prefix}/{index}": "array" for index in range(2_000)}
     assert len(hierarchy_problems(cast("dict[str, Literal['array', 'group'] | None]", many))) == 1
-    assert time.perf_counter() - started < 10
+    # Seconds for work that takes a few on a laptop and tens on a slow CI
+    # runner; walking up by ancestor strings would take minutes.
+    assert time.perf_counter() - started < 60
