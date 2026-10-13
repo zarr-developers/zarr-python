@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -98,6 +99,24 @@ def _get_pool(max_workers: int) -> ThreadPoolExecutor:
                 _pool = ThreadPoolExecutor(max_workers=max_workers)
                 _pool_size = max_workers
     return _pool
+
+
+def _reset_pool_after_fork() -> None:
+    """Discard the pool a forked child inherits from its parent.
+
+    Executor threads do not survive `fork()`, so the inherited pool accepts
+    submissions that no thread ever runs. The lock is recreated too: it may
+    have been held by a thread that no longer exists in the child.
+    """
+    global _pool, _pool_size, _pool_lock
+    _pool = None  # pragma: no cover
+    _pool_size = 0  # pragma: no cover
+    _pool_lock = threading.Lock()  # pragma: no cover
+
+
+# this is only available on certain operating systems
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_pool_after_fork)
 
 
 def _unzip2[T, U](iterable: Iterable[tuple[T, U]]) -> tuple[list[T], list[U]]:
