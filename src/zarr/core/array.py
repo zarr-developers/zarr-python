@@ -5114,8 +5114,14 @@ def default_compressors_v3(dtype: ZDType[Any, Any]) -> tuple[BytesBytesCodec, ..
     Given a data type, return the default compressors for that data type.
 
     This is just a tuple containing an instance of the default "zstd" codec class.
+
+    The codec is resolved through the registry (rather than hard-coding ``ZstdCodec``)
+    so that configuration overrides -- e.g. ``zarr.config.enable_gpu()`` mapping
+    "zstd" to ``NvcompZstdCodec`` -- take effect. ``get_codec_class`` returns
+    ``type[Codec]``, so the instance is narrowed to ``BytesBytesCodec`` with a
+    runtime check.
     """
-    return (cast(BytesBytesCodec, get_codec_class("zstd")()),)
+    return (_parse_bytes_bytes_codec(get_codec_class("zstd")()),)
 
 
 def default_serializer_v3(dtype: ZDType[Any, Any]) -> ArrayBytesCodec:
