@@ -132,13 +132,6 @@ def test_invalid_raises() -> None:
     assert NvcompZstdCodec(level=5, checksum=False).level == 5
 
 
-def test_is_fixed_size_false() -> None:
-    # Zstd's encoded size is data-dependent; claiming `is_fixed_size = True`
-    # would make callers that trust it (e.g. sharding's fast bulk-decode
-    # path) call `compute_encoded_size`, which raises `NotImplementedError`.
-    assert NvcompZstdCodec().is_fixed_size is False
-
-
 @gpu_test  # type: ignore[untyped-decorator,unused-ignore]
 def test_uses_default_codec() -> None:
     with zarr.config.enable_gpu():

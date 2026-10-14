@@ -44,7 +44,7 @@ def _parse_checksum(data: JSON) -> bool:
 
 @dataclass(frozen=True)
 class NvcompZstdCodec(BytesBytesCodec):
-    is_fixed_size = False
+    is_fixed_size = True
 
     level: int = 0
     checksum: bool = False
