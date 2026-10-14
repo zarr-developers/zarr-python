@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
 
-    from zarr.core.common import BytesLike, ChunkCoords
+    from zarr.core.common import BytesLike
 
 try:
     import cupy as cp
@@ -148,8 +148,8 @@ class NDBuffer(core.NDBuffer):
                 "Cannot use zarr.buffer.gpu.NDBuffer without cupy. Please install cupy."
             )
 
-        # assert array.ndim > 0
-        assert array.dtype != object
+        if array.dtype == object:
+            raise TypeError("gpu.NDBuffer does not support object dtype arrays")
         self._data = array
 
         if not hasattr(array, "__cuda_array_interface__"):
