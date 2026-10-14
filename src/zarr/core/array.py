@@ -4683,10 +4683,13 @@ async def init_array(
         )
         sub_codecs = cast("tuple[Codec, ...]", (*array_array, array_bytes, *bytes_bytes))
 
-        if order is not None and not any(
-            isinstance(codec, TransposeCodec) for codec in sub_codecs
-        ):
-            sub_codecs = (*array_array, TransposeCodec(order=tuple(reversed(range(len(shape_parsed))))), array_bytes, *bytes_bytes)
+        if order is not None and not any(isinstance(codec, TransposeCodec) for codec in sub_codecs):
+            sub_codecs = (
+                *array_array,
+                TransposeCodec(order=tuple(reversed(range(len(shape_parsed))))),
+                array_bytes,
+                *bytes_bytes,
+            )
             config = replace(parse_array_config(config), order=order)
         # A stored chunk grid passed as chunks= / shards= (e.g. by the "keep"
         # path of from_array) becomes the stored grid verbatim, so the new

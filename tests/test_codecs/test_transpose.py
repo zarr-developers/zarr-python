@@ -76,7 +76,7 @@ def test_create_array_v3_order_f_preserves_fortran_output(store: Store) -> None:
     a[:] = data
 
     reopened = zarr.open_array(spath).with_config({"order": "F"})
-    read_data = reopened[:]
+    read_data = np.asarray(reopened[:])
 
     assert np.array_equal(read_data, data)
     assert read_data.flags["F_CONTIGUOUS"]
