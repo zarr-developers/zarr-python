@@ -175,6 +175,21 @@ def _check_representable(
         ) from e
 
 
+def _same_scalar(a: np.ndarray, b: np.ndarray) -> bool:
+    """Return whether two one-element arrays of the same dtype hold the same value.
+
+    NaN equals NaN, whatever its payload, and the sign of zero must match, as
+    the `cast_value` spec requires signed zero to be preserved. Comparing bytes
+    covers both, and works for every permitted dtype, including the
+    `ml_dtypes` floats.
+    """
+    a_is_nan = bool(a[0] != a[0])
+    b_is_nan = bool(b[0] != b[0])
+    if a_is_nan or b_is_nan:
+        return a_is_nan and b_is_nan
+    return a.tobytes() == b.tobytes()
+
+
 # ---------------------------------------------------------------------------
 # Codec
 # ---------------------------------------------------------------------------
@@ -364,20 +379,60 @@ class CastValue(ArrayArrayCodec):
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         """
         Update the fill value of the output spec by applying casting procedure.
+
+        The fill value must survive a round trip: encoding it and decoding the
+        result must give back the original fill value. Otherwise a chunk that
+        is only partly written would read back a different value wherever it
+        holds the fill value. See the ``data_type`` section of the
+        [`cast_value` spec](https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/cast_value#data_type).
+
+        Raises
+        ------
+        ValueError
+            If the fill value cannot be cast to the target data type, cannot
+            be cast back, or does not decode to the original fill value.
         """
         target_zdtype = self.dtype
         target_native = target_zdtype.to_native_dtype()
         source_native = chunk_spec.dtype.to_native_dtype()
+        source_name = chunk_spec.dtype.to_json(zarr_format=3)
+        target_name = target_zdtype.to_json(zarr_format=3)
 
-        fill = chunk_spec.fill_value
-        fill_arr = np.array([fill], dtype=source_native)
+        fill_arr = np.array([chunk_spec.fill_value], dtype=source_native)
+        fill = fill_arr[0]
 
-        new_fill_arr = self._do_cast(
-            fill_arr, target_dtype=target_native, scalar_map=self._get_scalar_map("encode")
-        )
-        new_fill = target_native.type(new_fill_arr[0])
+        try:
+            new_fill_arr = self._do_cast(
+                fill_arr, target_dtype=target_native, scalar_map=self._get_scalar_map("encode")
+            )
+        except (ValueError, OverflowError) as e:
+            raise ValueError(
+                f"The fill value {fill} cannot be cast from {source_name} to {target_name} "
+                f"by the cast_value codec: {e}"
+            ) from e
+        new_fill = new_fill_arr[0]
 
-        return replace(chunk_spec, dtype=target_zdtype, fill_value=new_fill)
+        try:
+            decoded_arr = self._do_cast(
+                new_fill_arr, target_dtype=source_native, scalar_map=self._get_scalar_map("decode")
+            )
+        except (ValueError, OverflowError) as e:
+            raise ValueError(
+                f"The fill value {fill} does not survive a round trip through the cast_value "
+                f"codec: it encodes from {source_name} to {new_fill} in {target_name}, which "
+                f"cannot be cast back to {source_name}: {e}"
+            ) from e
+        decoded = decoded_arr[0]
+
+        if not _same_scalar(fill_arr, decoded_arr):
+            raise ValueError(
+                f"The fill value {fill} does not survive a round trip through the cast_value "
+                f"codec: it encodes from {source_name} to {new_fill} in {target_name}, which "
+                f"decodes back to {decoded} in {source_name}. Choose a fill value that the "
+                f"codec's data_type, rounding, out_of_range, and scalar_map preserve."
+            )
+
+        return replace(chunk_spec, dtype=target_zdtype, fill_value=target_native.type(new_fill))
 
     def _encode_sync(
         self,
