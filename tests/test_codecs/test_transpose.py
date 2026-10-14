@@ -62,6 +62,29 @@ async def test_transpose(
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+def test_create_array_v3_order_f_preserves_fortran_output(store: Store) -> None:
+    data = np.arange(12, dtype="float32").reshape((3, 4), order="F")
+    spath = StorePath(store, "transpose_from_order")
+
+    a = zarr.create_array(
+        spath,
+        shape=data.shape,
+        chunks=data.shape,
+        dtype=data.dtype,
+        order="F",
+    )
+    a[:] = data
+
+    reopened = zarr.open_array(spath).with_config({"order": "F"})
+    read_data = reopened[:]
+
+    assert np.array_equal(read_data, data)
+    assert read_data.flags["F_CONTIGUOUS"]
+    assert not read_data.flags["C_CONTIGUOUS"]
+    assert any(isinstance(codec, TransposeCodec) for codec in reopened.filters)
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("order", [[1, 2, 0], [1, 2, 3, 0], [3, 2, 4, 0, 1]])
 def test_transpose_non_self_inverse(store: Store, order: list[int]) -> None:
     shape = [i + 3 for i in range(len(order))]

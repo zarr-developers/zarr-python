@@ -27,6 +27,7 @@ from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Co
 from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.codecs._v2 import V2Codec
 from zarr.codecs.bytes import BytesCodec
+from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core._info import ArrayInfo
@@ -4681,6 +4682,12 @@ async def init_array(
             dtype=zdtype,
         )
         sub_codecs = cast("tuple[Codec, ...]", (*array_array, array_bytes, *bytes_bytes))
+
+        if order is not None and not any(
+            isinstance(codec, TransposeCodec) for codec in sub_codecs
+        ):
+            sub_codecs = (*array_array, TransposeCodec(order=tuple(reversed(range(len(shape_parsed))))), array_bytes, *bytes_bytes)
+            config = replace(parse_array_config(config), order=order)
         # A stored chunk grid passed as chunks= / shards= (e.g. by the "keep"
         # path of from_array) becomes the stored grid verbatim, so the new
         # array preserves the source grid exactly — including trailing edges
@@ -4710,7 +4717,7 @@ async def init_array(
         else:
             codecs_out = sub_codecs
 
-        if order is not None:
+        if order is not None and not any(isinstance(codec, TransposeCodec) for codec in sub_codecs):
             _warn_order_kwarg()
         meta = AsyncArray._create_metadata_v3(
             shape=shape_parsed,
