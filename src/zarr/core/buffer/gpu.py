@@ -149,7 +149,7 @@ class NDBuffer(core.NDBuffer):
             )
 
         if array.dtype == object:
-            raise TypeError("gpu.NDBuffer does not support object dtype arrays")
+            raise TypeError("zarr.buffer.gpu.NDBuffer does not support arrays with object dtype.")
         self._data = array
 
         if not hasattr(array, "__cuda_array_interface__"):

@@ -68,25 +68,6 @@ with zarr.config.enable_gpu():
 
 ## Default Configuration
 
-## Codecs
-
-Zarr and zarr-python split the logical codec definition from the implementation.
-The Zarr metadata serialized in the store specifies just the codec name and
-configuration. To resolve the specific implementation, a Python class, that's
-used at runtime to encode or decode data, zarr-python looks up the codec name
-in the codec registry.
-
-For example, after calling `zarr.config.enable_gpu()`, an nvcomp-based
-codec will be used:
-
-```python
->>> with zarr.config.enable_gpu():
-...     print(zarr.config.get('codecs.zstd'))
-zarr.codecs.gpu.NvcompZstdCodec
-```
-
-## Default Configuration
-
 This is the current default configuration:
 
 ```python exec="true" session="config" source="above" result="ansi"
