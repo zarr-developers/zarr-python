@@ -54,19 +54,10 @@ class NvcompZstdCodec(BytesBytesCodec):
     checksum: bool = False
 
     def __init__(self, *, level: int = 0, checksum: bool = False) -> None:
+        # TODO: Set CUDA device appropriately here and also set CUDA stream
+
         level_parsed = _parse_zstd_level(level)
         checksum_parsed = _parse_checksum(checksum)
-
-        if level_parsed != 0:
-            # nvCOMP's Zstd manager has no configurable compression-level
-            # knob (unlike the CPU ZstdCodec) -- silently accepting a
-            # nonzero value here would round-trip it through metadata while
-            # never actually applying it. Reject rather than lie about it.
-            raise NotImplementedError(
-                "NvcompZstdCodec does not support a configurable 'level'; "
-                "nvCOMP's Zstd implementation always uses its internal "
-                "default. Pass level=0 (the only supported value)."
-            )
 
         object.__setattr__(self, "level", level_parsed)
         object.__setattr__(self, "checksum", checksum_parsed)
