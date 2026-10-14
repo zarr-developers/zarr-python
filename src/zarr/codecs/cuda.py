@@ -44,10 +44,6 @@ def _parse_checksum(data: JSON) -> bool:
 
 @dataclass(frozen=True)
 class NvcompZstdCodec(BytesBytesCodec):
-    # Zstd's encoded size is data-dependent (it's a compressor), same as the
-    # CPU ZstdCodec's `is_fixed_size = False` -- claiming True here made
-    # `compute_encoded_size`'s `NotImplementedError` reachable by any caller
-    # that (correctly) trusts `is_fixed_size` before calling it.
     is_fixed_size = False
 
     level: int = 0
