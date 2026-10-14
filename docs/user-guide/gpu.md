@@ -5,14 +5,14 @@ Zarr can use GPUs to accelerate your workload by running `zarr.config.enable_gpu
 ## Installation
 
 Zarr's GPU support requires [CuPy](https://cupy.dev), which in turn requires a
-CUDA-compatible NVIDIA GPU. CuPy can be installed alongside Zarr with the `gpu`
+CUDA-compatible NVIDIA GPU. CuPy and nvCOMP can be installed alongside Zarr with the `cuda`
 extra (see [Installation](installation.md) for the other optional dependency groups):
 
 ```console
-pip install "zarr[gpu]"
+pip install "zarr[cuda]"
 ```
 
-This installs the `cupy-cuda12x` package. If you need a CuPy build for a different
+This installs the `cupy-cuda12x` and `nvidia-nvcomp-cu12` packages. If you need a CuPy build for a different
 CUDA version, see the [CuPy installation guide](https://docs.cupy.dev/en/stable/install.html)
 and install the appropriate package yourself.
 

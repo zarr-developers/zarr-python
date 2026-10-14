@@ -4,7 +4,7 @@ from zarr.codecs.blosc import BloscCname, BloscCodec, BloscShuffle
 from zarr.codecs.bytes import BytesCodec, Endian
 from zarr.codecs.cast_value import CastValue
 from zarr.codecs.crc32c_ import Crc32cCodec
-from zarr.codecs.gpu import NvcompZstdCodec
+from zarr.codecs.cuda import NvcompZstdCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.numcodecs import (
     BZ2,

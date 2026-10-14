@@ -3678,7 +3678,7 @@ cast-value-rs = [
 cli = [
     { name = "typer" },
 ]
-gpu = [
+cuda = [
     { name = "cupy-cuda12x", marker = "sys_platform != 'darwin'" },
     { name = "nvidia-nvcomp-cu12", marker = "sys_platform != 'darwin'" },
 ]
@@ -3785,21 +3785,21 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "cast-value-rs", marker = "extra == 'cast-value-rs'", specifier = ">=0.4.2" },
-    { name = "cupy-cuda12x", marker = "sys_platform != 'darwin' and extra == 'gpu'" },
+    { name = "cupy-cuda12x", marker = "sys_platform != 'darwin' and extra == 'cuda'" },
     { name = "donfig", specifier = ">=0.8" },
     { name = "fsspec", marker = "extra == 'remote'", specifier = ">=2023.10.0" },
     { name = "google-crc32c", specifier = ">=1.5" },
     { name = "msgspec", specifier = ">=0.19" },
     { name = "numcodecs", specifier = ">=0.16" },
     { name = "numpy", specifier = ">=2" },
-    { name = "nvidia-nvcomp-cu12", marker = "sys_platform != 'darwin' and extra == 'gpu'" },
+    { name = "nvidia-nvcomp-cu12", marker = "sys_platform != 'darwin' and extra == 'cuda'" },
     { name = "obstore", marker = "extra == 'remote'", specifier = ">=0.5.1" },
     { name = "packaging", specifier = ">=22.0" },
     { name = "typer", marker = "extra == 'cli'" },
     { name = "typing-extensions", specifier = ">=4.14" },
     { name = "universal-pathlib", marker = "extra == 'optional'" },
 ]
-provides-extras = ["cast-value-rs", "cli", "gpu", "optional", "remote"]
+provides-extras = ["cast-value-rs", "cli", "cuda", "optional", "remote"]
 
 [package.metadata.requires-dev]
 dev = [

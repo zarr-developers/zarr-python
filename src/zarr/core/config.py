@@ -69,7 +69,7 @@ class Config(DConfig):  # type: ignore[misc]
             {
                 "buffer": "zarr.buffer.gpu.Buffer",
                 "ndbuffer": "zarr.buffer.gpu.NDBuffer",
-                "codecs": {"zstd": "zarr.codecs.gpu.NvcompZstdCodec"},
+                "codecs": {"zstd": "zarr.codecs.cuda.NvcompZstdCodec"},
                 "codec_pipeline": {
                     "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                     "batch_size": 65536,

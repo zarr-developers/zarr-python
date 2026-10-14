@@ -80,7 +80,7 @@ remote = [
     "fsspec>=2023.10.0",
     "obstore>=0.5.1",
 ]
-gpu = [
+cuda = [
     "cupy-cuda12x; sys_platform != 'darwin'",
     "nvidia-nvcomp-cu12; sys_platform != 'darwin'",
 ]
@@ -217,7 +217,7 @@ extra-dependencies = [
     # docs example is never executed on GPU hardware.
     "pytest-examples",
 ]
-features = ["gpu"]
+features = ["cuda"]
 
 [[tool.hatch.envs.gputest.matrix]]
 python = ["3.12", "3.13"]
