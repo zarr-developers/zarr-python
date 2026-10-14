@@ -66,7 +66,9 @@ def test_create_array_v3_order_f_preserves_fortran_output(store: Store) -> None:
     data = np.arange(12, dtype="float32").reshape((3, 4), order="F")
     spath = StorePath(store, "transpose_from_order")
 
-    with pytest.warns(RuntimeWarning, match="The `order` keyword argument has no effect for Zarr format 3 arrays"):
+    with pytest.warns(
+        RuntimeWarning, match="The `order` keyword argument has no effect for Zarr format 3 arrays"
+    ):
         a = zarr.create_array(
             spath,
             shape=data.shape,
