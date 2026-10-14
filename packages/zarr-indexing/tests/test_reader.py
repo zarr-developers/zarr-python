@@ -69,7 +69,7 @@ SUCCESSFUL_CONTRACT_CASES = (
         np.zeros((1, 0), dtype=np.intp),
         np.array([[3]], dtype=np.intp),
         np.array(3),
-        lambda array: array.lazy[3],
+        lambda array: array[3],
         id="constant",
     ),
     pytest.param(
@@ -79,7 +79,7 @@ SUCCESSFUL_CONTRACT_CASES = (
         np.array([[0], [1], [2], [3]], dtype=np.intp),
         np.array([[1], [3], [5], [7]], dtype=np.intp),
         np.array([1, 3, 5, 7]),
-        lambda array: array.lazy[1:8:2],
+        lambda array: array[1:8:2],
         id="positive-affine",
     ),
     pytest.param(
@@ -89,7 +89,7 @@ SUCCESSFUL_CONTRACT_CASES = (
         np.array([[-3], [-2], [-1], [0]], dtype=np.intp),
         np.array([[7], [5], [3], [1]], dtype=np.intp),
         np.array([7, 5, 3, 1]),
-        lambda array: array.lazy[::-2],
+        lambda array: array[::-2],
         id="negative-affine",
     ),
     pytest.param(
@@ -102,7 +102,7 @@ SUCCESSFUL_CONTRACT_CASES = (
         np.array([[0], [1], [2]], dtype=np.intp),
         np.array([[2], [2], [2]], dtype=np.intp),
         np.array([2, 2, 2]),
-        lambda array: array.lazy.oindex[[2, 2, 2]],
+        lambda array: array.oindex[[2, 2, 2]],
         id="zero-affine",
     ),
     pytest.param(
@@ -112,7 +112,7 @@ SUCCESSFUL_CONTRACT_CASES = (
         np.array([[0, 0], [0, 1], [1, 0], [1, 1], [2, 0], [2, 1]], dtype=np.intp),
         np.array([[3, 4], [3, 0], [1, 4], [1, 0], [1, 4], [1, 0]], dtype=np.intp),
         np.array([[19, 15], [9, 5], [9, 5]]),
-        lambda array: array.lazy.oindex[[3, 1, 1], [4, 0]],
+        lambda array: array.oindex[[3, 1, 1], [4, 0]],
         id="orthogonal-array",
     ),
     pytest.param(
@@ -122,7 +122,7 @@ SUCCESSFUL_CONTRACT_CASES = (
         np.array([[0], [1], [2]], dtype=np.intp),
         np.array([[3, 4], [1, 0], [1, 4]], dtype=np.intp),
         np.array([19, 5, 9]),
-        lambda array: array.lazy.vindex[[3, 1, 1], [4, 0, 4]],
+        lambda array: array.vindex[[3, 1, 1], [4, 0, 4]],
         id="correlated-array",
     ),
     pytest.param(
@@ -145,7 +145,7 @@ SUCCESSFUL_CONTRACT_CASES = (
         np.empty((0, 1), dtype=np.intp),
         np.empty((0, 1), dtype=np.intp),
         np.array([], dtype=np.intp),
-        lambda array: array.lazy[2:2],
+        lambda array: array[2:2],
         id="empty",
     ),
 )
@@ -210,8 +210,65 @@ def test_successful_transform_contract_across_planning_readers_and_lazy_array(
         np.testing.assert_array_equal(out, expected_values)
 
     if lazy_selection is not None:
-        view = lazy_selection(LazyArray.from_numpy(source_data).with_parts(chunk_shape))
-        np.testing.assert_array_equal(view.result(), expected_values)
+        reader = ProjectionRequiredReader()
+        view = lazy_selection(
+            LazyArray.from_numpy(source_data).with_parts(chunk_shape).with_reader(reader)
+        )
+        parts = tuple(view.parts())
+        np.testing.assert_array_equal(view.result(parts=parts), expected_values)
+        parent_contexts = tuple(reader.contexts)
+        reader.contexts.clear()
+        assembled = np.empty(view.shape, dtype=view.dtype)
+        for part in reversed(parts):
+            values = part.view.result()
+            assert not np.shares_memory(values, source_data)
+            assert values.dtype == expected_values.dtype
+            assembled[part.out_selection] = values
+        np.testing.assert_array_equal(assembled, expected_values)
+        for independent, parent in zip(reversed(reader.contexts), parent_contexts, strict=True):
+            assert independent.transform == parent.transform
+            assert independent.projection is not None
+            assert parent.projection is not None
+            assert independent.projection.chunk_coords == parent.projection.chunk_coords
+            assert independent.projection.chunk_domain == parent.projection.chunk_domain
+            assert independent.projection.chunk_transform == parent.projection.chunk_transform
+        for candidate in (view, view.unpartitioned()):
+            np.testing.assert_array_equal(candidate.result(), expected_values)
+        for part in parts:
+            assert part.view.base_shape == source_data.shape
+            for child in part.view.parts():
+                np.testing.assert_array_equal(child.view.result(), part.view.result())
+            reverse = (slice(None, None, -1),) * part.view.ndim
+            np.testing.assert_array_equal(part.view[reverse].result(), part.view.result()[reverse])
+            for candidate in (
+                part.view.unpartitioned(),
+                part.view.with_parts((1,) * source_data.ndim),
+            ):
+                np.testing.assert_array_equal(candidate.result(), part.view.result())
+
+
+class ProjectionRequiredReader:
+    """Read through chunk-local coordinates so losing the projection breaks execution."""
+
+    def __init__(self) -> None:
+        self.contexts: list[ReadContext] = []
+
+    def read_into(self, source: Any, context: ReadContext, out: Any, /) -> None:
+        projection = context.projection
+        assert projection is not None
+        self.contexts.append(context)
+        for position, cell in zip(
+            np.ndindex(out.shape),
+            _domain_coordinates(projection.chunk_transform.domain),
+            strict=True,
+        ):
+            local = projection.chunk_transform.apply(cell)
+            global_position = tuple(
+                coord + origin
+                for coord, origin in zip(local, projection.chunk_domain.inclusive_min, strict=True)
+            )
+            assert context.transform.apply(position) == global_position
+            out[position] = source[global_position]
 
 
 def _domain_coordinates(domain: IndexDomain) -> list[tuple[int, ...]]:
@@ -349,15 +406,12 @@ def test_builtin_readers_share_transform_affine_overflow(reader_name: str) -> No
 
 
 def test_empty_domain_composed_fancy_transform_reads_as_empty() -> None:
-    """An ArrayMap composed over an empty domain resolves like any other map.
+    """An empty composed domain reads as empty for every built-in reader.
 
-    The composed map is legitimately empty along the vanished axis; the
-    resolvers used to fail reshaping it instead of noticing that an empty
-    domain selects nothing.
-    """
+    Empty index arrays are valid when the domain selects no elements."""
     source_data = np.arange(6).reshape(2, 3)
-    view = LazyArray.from_numpy(source_data).lazy.oindex[slice(0, 0), np.array([2, 1, 2, 0])]
-    transform = view.lazy.oindex[slice(None), np.array([1, 3, 1])].transform
+    view = LazyArray.from_numpy(source_data).oindex[slice(0, 0), np.array([2, 1, 2, 0])]
+    transform = view.oindex[slice(None), np.array([1, 3, 1])].transform
     assert transform.domain.shape == (0, 3)
 
     for reader, source in (
@@ -370,19 +424,19 @@ def test_empty_domain_composed_fancy_transform_reads_as_empty() -> None:
 
 
 def test_unit_step_reader_reads_through_lazy_array() -> None:
-    """The full dialect resolves through a source that only accepts unit-step slices.
+    """The parametrized selections resolve through a unit-step-only source.
 
     `UnitStepOnlySource` asserts the shape of every key it receives, so each
     selection here also proves no strided, descending, or non-slice key
     reached the source — partitioned and unpartitioned alike.
     """
     selections: tuple[Callable[[LazyArray], LazyArray], ...] = (
-        lambda v: v.lazy[1:5, ::2, ::-1],
-        lambda v: v.lazy[5:1:-2, None, 3, ::3],
-        lambda v: v.lazy.oindex[[3, 0, 3], ::-2, [7, 7]],
-        lambda v: v.lazy.vindex[np.array([[0, 5]]), np.array([[6], [0]]), 2],
-        lambda v: v.lazy[2:2, :, ::-1],
-        lambda v: v.lazy[::5, 6, 1:8:4],
+        lambda v: v[1:5, ::2, ::-1],
+        lambda v: v[5:1:-2, None, 3, ::3],
+        lambda v: v.oindex[[3, 0, 3], ::-2, [7, 7]],
+        lambda v: v.vindex[np.array([[0, 5]]), np.array([[6], [0]]), 2],
+        lambda v: v[2:2, :, ::-1],
+        lambda v: v[::5, 6, 1:8:4],
     )
     for select in selections:
         for parts in (None, (2, 3, 8), (6, 7, 1)):

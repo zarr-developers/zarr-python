@@ -56,13 +56,10 @@ def _array_map_dependency_axes(index_array: np.ndarray[Any, Any]) -> tuple[int, 
     Normalized `ArrayMap` index arrays carry the full input rank of their
     enclosing transform: an axis the array varies over has its full size, while
     an axis the array is independent of is a singleton (size 1). The dependency
-    axes are therefore exactly the axes of size 2 or more. An orthogonal
-    (`oindex`) array depends on a single axis; a vectorized (`vindex`) array
-    depends on all of the (shared) broadcast axes.
-
-    A size-**0** axis carries no dependency either: the array has no values to
-    vary, so an empty selection stays the flavor it was made as rather than
-    reading as correlated with every other axis.
+    axes are therefore exactly the axes of size 2 or more. This is structural:
+    values are not inspected for constant or repeated coordinates. An array
+    with shape `(0, 2)` is empty but still reports axis 1; the zero-size axis
+    itself is not reported.
     """
     return tuple(axis for axis, size in enumerate(index_array.shape) if size > 1)
 
@@ -76,8 +73,9 @@ class ConstantMap:
 
     Examples
     --------
-    Every input cell maps to the same output coordinate — the NumPy analogy
-    is a broadcast (`np.broadcast_to(5, (3,))`), not an index:
+    Every input cell maps to the same output coordinate, like broadcasting
+    coordinate 5 with `np.broadcast_to(5, (3,))`. Repeated fancy indices can
+    also describe these coordinates, using an explicit list:
 
     >>> from zarr_indexing.domain import IndexDomain
     >>> from zarr_indexing.transform import IndexTransform
@@ -154,11 +152,11 @@ class ArrayMap:
     the result. Arises from fancy indexing (e.g., `arr[[5, 1, 1]]` or boolean
     masks).
 
-    Freshly constructed maps are normalized to the **full input rank** of their
-    enclosing transform: `index_array` has the enclosing domain's rank, sized
+    A map used in a transform must have its **full input rank**:
+    `index_array` has the enclosing domain's rank, sized
     fully on the axes it varies over and singleton (size 1) elsewhere. The
     shape is the single source of truth for what the map depends on — its
-    **dependency axes** are exactly its non-singleton axes (see
+    **dependency axes** are exactly its axes of size greater than one (see
     `_array_map_dependency_axes`) — and it distinguishes the two
     flavors of multi-array fancy indexing:
 
@@ -196,15 +194,12 @@ class ArrayMap:
     """Multiplier applied to each `index_array` value before `offset` is added."""
 
     def __post_init__(self) -> None:
-        """Own the index array and expose it read-only.
+        """Own an immutable snapshot of the integer index coordinates.
 
-        A map is frozen, but the array inside it was not: reaching through a
-        view's transform to `index_array[0] = 9` silently changed what the view
-        returned, in a package whose whole contract is that a view is a
-        description of a read and resolving it twice answers alike. Owning the
-        array also prevents the caller from changing the contents behind the
-        read-only view, which would invalidate this value object's hash.
-        """
+        The snapshot is backed by immutable bytes, so callers cannot modify it
+        or re-enable its WRITEABLE flag. Changes to the supplied array do not
+        change the map's coordinates or hash. This freezes the coordinate
+        mapping, not the source values read through it."""
         # Immutable bytes are the ultimate owner so callers cannot re-enable
         # the WRITEABLE flag, as they can on a read-only array that owns its
         # allocation. `asarray` also accepts the NumPy scalars that reach here
@@ -223,15 +218,22 @@ class ArrayMap:
             (self.index_array, self.offset, self.stride),
         )
 
-    def __eq__(self, other: object) -> bool:
-        """Value equality, comparing index arrays element-wise.
+    def _with_affine(self, offset: int, stride: int) -> ArrayMap:
+        """Return a map with a different affine adjustment.
 
-        The generated `__eq__` compares them with `==`, whose result for two
-        arrays is an array — so asking whether two maps are equal raised
-        `ValueError: the truth value of an array ... is ambiguous`. `frozen=True`
-        reads as a promise that a value can be compared and hashed, and this is
-        what makes good on it.
-        """
+        Share the immutable index array while replacing the offset and stride.
+        This preserves coordinate ownership without copying the array."""
+        new = object.__new__(ArrayMap)
+        object.__setattr__(new, "index_array", self.index_array)
+        object.__setattr__(new, "offset", offset)
+        object.__setattr__(new, "stride", stride)
+        return new
+
+    def __eq__(self, other: object) -> bool:
+        """Compare offset, stride, array shape, and index values.
+
+        Return a scalar boolean for another ArrayMap and NotImplemented for
+        other types."""
         if not isinstance(other, ArrayMap):
             return NotImplemented
         return (
@@ -242,11 +244,10 @@ class ArrayMap:
         )
 
     def __hash__(self) -> int:
-        """Hashed by the array's contents, so equal maps hash alike.
+        """Hash the offset, stride, array shape, and index bytes.
 
-        The generated `__hash__` hashed the ndarray itself, which is unhashable;
-        a map could therefore not go in a set, or key a cache.
-        """
+        The immutable coordinate snapshot keeps the hash stable, and equal
+        maps have equal hashes."""
         return hash(
             (
                 self.offset,
@@ -258,11 +259,12 @@ class ArrayMap:
 
     @property
     def dependency_axes(self) -> tuple[int, ...]:
-        """Every input axis this map varies over: its non-singleton axes.
+        """Structural dependency axes: axes of size greater than one.
 
-        One axis means orthogonal, several mean correlated, and none means
-        the map is degenerate — the shape is the single source of truth for
-        all three.
+        Axes of size greater than one are reported, regardless of coordinate
+        values or a zero-size axis elsewhere. Whether the whole transform is
+        orthogonal also depends on how other maps use these axes; a single
+        map's shape does not establish independence.
 
         Examples
         --------
@@ -287,7 +289,7 @@ class ArrayMap:
         -------
         int or None
             The axis the map varies over, or `None` when it varies over no input
-            axis at all — an empty map, or a hand-built all-singleton one. `None`
+            axis of size greater than one, such as an all-singleton map. `None`
             is a valid result, not an error; such maps resolve through the
             pointwise (general) path.
 
@@ -351,9 +353,13 @@ class ArrayMap:
 def output_index_map_from_json(data: OutputIndexMapJSON) -> OutputIndexMap:
     """Construct the output map a canonical wire form names.
 
-    The wire form is a tagged union — `index_array`, then `input_dimension`,
-    else constant — so loading it dispatches to the right kind here rather
-    than on any one of them.
+    The wire form is structurally discriminated: the presence of `index_array`
+    selects an array map, `input_dimension` selects a dimension map, and
+    neither selects a constant map.
+
+    Validate every raw index value against the inclusive `index_array_bounds`
+    before applying offset and stride. Out-of-bounds values raise `NdselError`
+    at load time. Validated immutable maps do not retain the bounds.
 
     Examples
     --------
@@ -362,11 +368,13 @@ def output_index_map_from_json(data: OutputIndexMapJSON) -> OutputIndexMap:
     >>> output_index_map_from_json({"offset": 0, "stride": 2, "input_dimension": 1})
     DimensionMap(input_dimension=1, offset=0, stride=2)
     """
-    from zarr_indexing._wire import lower_index_array
+    from zarr_indexing._wire import check_index_array_bounds, lower_index_array
 
     if "index_array" in data:
+        array = lower_index_array(data["index_array"], "index_array")
+        check_index_array_bounds(array, data.get("index_array_bounds", ["-inf", "+inf"]), "output")
         return ArrayMap(
-            index_array=lower_index_array(data["index_array"], "index_array"),
+            index_array=array,
             offset=data.get("offset", 0),
             stride=data.get("stride", 1),
         )

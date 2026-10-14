@@ -11,9 +11,9 @@ links:
   [Lazy views compose](../guide/index.md#lazy-views-compose),
   then open [`zarr_indexing.lazy_array`](lazy_array.md) for `LazyArray`.
 - **Integrate a chunked source:** finish
-  [One cell domain, two projections](../guide/index.md#one-cell-domain-two-projections),
+  [A plan is a product of per-axis tables](../guide/index.md#a-plan-is-a-product-of-per-axis-tables),
   then open [`zarr_indexing.chunk_resolution`](chunk_resolution.md) for
-  `plan_chunks`. Start with
+  `plan_chunks` and `GridPartition`. Start with
   [Coordinates are addresses](../guide/index.md#coordinates-are-addresses) if
   literal coordinates are unfamiliar.
 
@@ -25,18 +25,20 @@ and the wire format built on top of it.
 - [`zarr_indexing.domain`](domain.md) — `IndexDomain`, a rectangular region of
   integer coordinates with an explicit (possibly non-zero) origin
 - [`zarr_indexing.output_map`](output_map.md) — `ConstantMap`, `DimensionMap`,
-  and `ArrayMap`: three representations of a set of integer coordinates, one
-  per storage dimension
+  and `ArrayMap`: three coordinate mappings that preserve order and duplicates,
+  one per storage dimension
 - [`zarr_indexing.transform`](transform.md) — `IndexTransform`, which pairs a
   domain with output maps, plus the indexing (`[...]`, `.oindex`, `.vindex`),
-  `intersect`, and `translate` operations, and `selection_to_transform`
-  transforms into one
+  `intersect`, `translate`, and `compose` operations, and `selection_to_transform`
 
 **Chunk resolution**
 
 - [`zarr_indexing.chunk_resolution`](chunk_resolution.md) —
   `plan_chunks`, which lazily projects a request through a caller-selected grid,
-  plus the reusable `ChunkPlan` and paired-transform `ChunkProjection` values
+  the reusable `ChunkPlan` and paired-transform `ChunkProjection` values, and
+  the plan's factored form: `GridPartition` (from `ChunkPlan.partition`),
+  holding one `StridedSet` or `IndexedSet` table per axis and `joint_sets`
+  for connected index-array components
 - [`zarr_indexing.grid`](grid.md) — `DimensionGridLike`, the Protocol
   describing the narrow chunk-grid surface chunk resolution consumes, so that
   nothing here imports `zarr`, plus `EdgeDimensionGrid` and
@@ -46,7 +48,7 @@ and the wire format built on top of it.
 **Lazy arrays**
 
 - [`zarr_indexing.lazy_array`](lazy_array.md) — `LazyArray`, a wrapper for
-  system-memory/basic-indexing sources that adds a `.lazy` accessor for
+  system-memory/basic-indexing sources with lazy indexing for
   TensorStore-style deferred indexing, plus `Partition` and `parts()` /
   `with_parts()`, which determine the boxes a read is broken into. Device
   sources require an explicit custom reader that transfers into the supplied

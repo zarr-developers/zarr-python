@@ -12,6 +12,7 @@ __all__ = [
     "MetadataValidationError",
     "NegativeStepError",
     "NodeTypeValidationError",
+    "UnknownCodecError",
     "UnstableSpecificationWarning",
     "VindexInvalidSelectionError",
     "ZarrDeprecationWarning",

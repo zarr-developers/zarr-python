@@ -29,6 +29,7 @@ from zarr.core.group import GroupMetadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGridMetadata
 from zarr.core.sync import sync
+from zarr.errors import UnknownCodecError
 from zarr.registry import get_codec_class
 from zarr.storage import StorePath
 from zarr.types import AnyArray
@@ -273,7 +274,7 @@ def _find_numcodecs_zarr3(numcodecs_codec: numcodecs.abc.Codec) -> Codec:
 
     try:
         codec_v3 = get_codec_class(numcodec_name)
-    except KeyError as exc:
+    except UnknownCodecError as exc:
         raise ValueError(
             f"Couldn't find corresponding zarr.codecs.numcodecs codec for {numcodecs_codec.codec_id}"
         ) from exc

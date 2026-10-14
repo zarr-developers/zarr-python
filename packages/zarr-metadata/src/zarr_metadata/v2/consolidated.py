@@ -34,7 +34,7 @@ class ZarrV2ConsolidatedMetadataJSON(TypedDict):
     `key.endswith(".zarray")` etc.
     """
 
-    zarr_consolidated_format: int
+    zarr_consolidated_format: Literal[1]
     metadata: Mapping[str, ZarrV2ZArrayJSON | ZarrV2ZGroupJSON | ZarrV2ZAttrsJSON]
 
 

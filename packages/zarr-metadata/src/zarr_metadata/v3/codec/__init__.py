@@ -10,9 +10,15 @@ each codec's permitted JSON shapes (object form plus, where the spec allows,
 a bare-string short-hand form). For the underlying `<X>CodecObject`,
 `<X>CodecConfiguration`, etc., import directly from the leaf submodule.
 
-For the field-level "any codec entry" alias (used in array metadata's
-`codecs` list and in sharding's inner pipelines), import `ZarrV3MetadataFieldJSON`
-from `zarr_metadata.v3`.
+For the JSON of any codec entry -- one of array metadata's `codecs` --
+import `ZarrV3MetadataFieldJSON` from `zarr_metadata.v3`. A configuration
+member holding a codec, as sharding's inner pipelines do, is annotated
+`CodecField` from `zarr_metadata.v3.definition` instead, so it is read as
+the codec it is.
+
+Each codec's pipeline position (`array -> array`, `array -> bytes`,
+`bytes -> bytes`) is its definition's `kind`, in
+`zarr_metadata.v3.definition`.
 
 See https://zarr-specs.readthedocs.io/en/latest/v3/codecs/index.html
 """

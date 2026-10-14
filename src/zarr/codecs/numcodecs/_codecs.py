@@ -303,6 +303,8 @@ class AsType(_NumcodecsArrayArrayCodec, codec_name="astype"):
 
 # bytes-to-bytes checksum codecs
 class _NumcodecsChecksumCodec(_NumcodecsBytesBytesCodec):
+    is_fixed_size = True
+
     def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
         return input_byte_length + 4  # pragma: no cover
 

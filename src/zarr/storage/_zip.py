@@ -271,7 +271,6 @@ class ZipStore(Store):
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
-        assert isinstance(key, str)
 
         with self._lock:
             return self._get(key, prototype=prototype, byte_range=byte_range)
@@ -306,7 +305,6 @@ class ZipStore(Store):
         self._check_writable()
         if not self._is_open:
             self._sync_open()
-        assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(
                 f"ZipStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."

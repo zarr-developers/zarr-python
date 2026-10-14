@@ -6,6 +6,7 @@ import io
 import os
 import shutil
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal, Self
@@ -22,7 +23,7 @@ from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import AccessModeLiteral, concurrent_map
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterable, Iterator
+    from collections.abc import AsyncIterator, Callable, Iterable, Iterator
 
     from zarr.core.buffer import BufferPrototype
 
@@ -58,6 +59,51 @@ else:
         os.unlink(src)
 
 
+# Windows error codes that MoveFileEx reports when the destination could not be
+# superseded. Replacing a name that was itself replaced moments earlier
+# intermittently fails this way with no second process and no open handle
+# involved, and a retry clears it in well under a millisecond. Zarr v2 hit the
+# same thing and fixed it in #698.
+#
+# ERROR_ACCESS_DENIED is also what Windows reports for conditions that will not
+# clear (the destination is a directory, is read-only, or is ACL-denied). Those
+# are retried too and surface the same error after the bounded delay below.
+#
+# Nothing else is retried. In particular the FileExistsError that the exclusive
+# path relies on to report an existing node is ERROR_ALREADY_EXISTS (183), so it
+# still propagates on the first attempt.
+_TRANSIENT_WINERRORS = frozenset(
+    {
+        5,  # ERROR_ACCESS_DENIED
+        32,  # ERROR_SHARING_VIOLATION
+    }
+)
+
+# Delay before each retry. The sequence sums to well under a second so that a
+# genuine failure still surfaces promptly; in practice most transient failures
+# clear on the first retry.
+_RETRY_DELAYS = (0.001, 0.005, 0.02, 0.05, 0.2)
+
+
+def _move_with_retry(tmp_path: Path, path: Path, move: Callable[[Path, Path], object]) -> None:
+    """Run `move(tmp_path, path)`, retrying while the destination is busy.
+
+    This is a single attempt on every platform but Windows, without needing to
+    test for one: only `winerror` values are ever retried, and off Windows an
+    `OSError` does not carry one.
+    """
+    for delay in _RETRY_DELAYS:
+        try:
+            move(tmp_path, path)
+        except OSError as e:
+            if getattr(e, "winerror", None) not in _TRANSIENT_WINERRORS:
+                raise
+            time.sleep(delay)
+        else:
+            return
+    move(tmp_path, path)
+
+
 @contextlib.contextmanager
 def _atomic_write(
     path: Path,
@@ -69,9 +115,9 @@ def _atomic_write(
         with tmp_path.open(mode) as f:
             yield f
         if exclusive:
-            _safe_move(tmp_path, path)
+            _move_with_retry(tmp_path, path, _safe_move)
         else:
-            tmp_path.replace(path)
+            _move_with_retry(tmp_path, path, Path.replace)
     except Exception:
         tmp_path.unlink(missing_ok=True)
         raise
@@ -83,6 +129,66 @@ def _put(path: Path, value: Buffer, exclusive: bool = False) -> int:
     view = value.as_buffer_like()
     with _atomic_write(path, "wb", exclusive=exclusive) as f:
         return f.write(view)
+
+
+# The helpers below do the blocking filesystem work behind LocalStore's async methods.
+# Each async method runs exactly one of them via `asyncio.to_thread` so that the event
+# loop is never stalled on disk I/O; the synchronous methods call them directly.
+
+
+def _ensure_root(root: Path, *, create: bool) -> None:
+    if create:
+        root.mkdir(parents=True, exist_ok=True)
+    if not root.exists():
+        raise FileNotFoundError(f"{root} does not exist")
+
+
+def _clear(root: Path) -> None:
+    shutil.rmtree(root)
+    root.mkdir()
+
+
+def _delete(path: Path) -> None:
+    if path.is_dir():
+        shutil.rmtree(path)
+    else:
+        path.unlink(missing_ok=True)
+
+
+def _delete_dir(path: Path, prefix: str) -> None:
+    if path.is_dir():
+        shutil.rmtree(path)
+    elif path.is_file():
+        raise ValueError(f"delete_dir was passed a {prefix=!r} that is a file")
+    # A non-existent directory is a no-op; test_group:test_create_creates_parents relies on it.
+
+
+def _exists(path: Path) -> bool:
+    return path.is_file()
+
+
+def _getsize(path: Path) -> int:
+    return path.stat().st_size
+
+
+def _list_files(root: Path, prefix: str) -> list[str]:
+    """Keys (paths relative to `root`, POSIX style) of every file under `root / prefix`."""
+    to_strip = root.as_posix() + "/"
+    return [p.as_posix().removeprefix(to_strip) for p in (root / prefix).rglob("*") if p.is_file()]
+
+
+def _list_dir(base: Path) -> list[str]:
+    try:
+        return [p.name for p in base.iterdir()]
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+
+
+def _move(src: Path, dest_root: Path) -> None:
+    dest_root.parent.mkdir(parents=True, exist_ok=True)
+    if dest_root.exists():
+        raise FileExistsError(f"Destination root {dest_root} already exists.")
+    shutil.move(src, dest_root)
 
 
 class LocalStore(Store):
@@ -165,18 +271,25 @@ class LocalStore(Store):
         return store
 
     async def _open(self, *, mode: AccessModeLiteral | None = None) -> None:
-        if not self.read_only:
-            self.root.mkdir(parents=True, exist_ok=True)
-
-        if not self.root.exists():
-            raise FileNotFoundError(f"{self.root} does not exist")
+        await asyncio.to_thread(_ensure_root, self.root, create=not self.read_only)
         return await super()._open()
+
+    async def _ensure_open(self) -> None:
+        # docstring inherited
+        if not self._is_open:
+            # Concurrent lazy opens (every `set` of a `set_many`, say) can all get here
+            # before any of them finishes, so each one verifies the root. That is
+            # idempotent, and so is setting the flag, so the calls cannot conflict.
+            # Going through `self._open()` instead would make every call after the first
+            # fail, because `Store._open` raises on a store that is already open.
+            # As in `_ensure_open_sync`, a subclass's `_open` override is not run here.
+            await asyncio.to_thread(_ensure_root, self.root, create=not self.read_only)
+            self._is_open = True
 
     async def clear(self) -> None:
         # docstring inherited
         self._check_writable()
-        shutil.rmtree(self.root)
-        self.root.mkdir()
+        await asyncio.to_thread(_clear, self.root)
 
     def __str__(self) -> str:
         return f"file://{self.root.as_posix()}"
@@ -193,10 +306,7 @@ class LocalStore(Store):
 
     def _ensure_open_sync(self) -> None:
         if not self._is_open:
-            if not self.read_only:
-                self.root.mkdir(parents=True, exist_ok=True)
-            if not self.root.exists():
-                raise FileNotFoundError(f"{self.root} does not exist")
+            _ensure_root(self.root, create=not self.read_only)
             self._is_open = True
 
     def get_sync(
@@ -209,7 +319,6 @@ class LocalStore(Store):
         if prototype is None:
             prototype = default_buffer_prototype()
         self._ensure_open_sync()
-        assert isinstance(key, str)
         path = self.root / key
         try:
             return _get(path, prototype, byte_range)
@@ -219,7 +328,6 @@ class LocalStore(Store):
     def set_sync(self, key: str, value: Buffer) -> None:
         self._ensure_open_sync()
         self._check_writable()
-        assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(
                 f"LocalStore.set(): `value` must be a Buffer instance. "
@@ -231,11 +339,7 @@ class LocalStore(Store):
     def delete_sync(self, key: str) -> None:
         self._ensure_open_sync()
         self._check_writable()
-        path = self.root / key
-        if path.is_dir():
-            shutil.rmtree(path)
-        else:
-            path.unlink(missing_ok=True)
+        _delete(self.root / key)
 
     async def get(
         self,
@@ -246,9 +350,7 @@ class LocalStore(Store):
         # docstring inherited
         if prototype is None:
             prototype = default_buffer_prototype()
-        if not self._is_open:
-            await self._open()
-        assert isinstance(key, str)
+        await self._ensure_open()
         path = self.root / key
 
         try:
@@ -264,7 +366,6 @@ class LocalStore(Store):
         # docstring inherited
         args = []
         for key, byte_range in key_ranges:
-            assert isinstance(key, str)
             path = self.root / key
             args.append((_get, path, prototype, byte_range))
         return await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
@@ -281,10 +382,8 @@ class LocalStore(Store):
             pass
 
     async def _set(self, key: str, value: Buffer, exclusive: bool = False) -> None:
-        if not self._is_open:
-            await self._open()
+        await self._ensure_open()
         self._check_writable()
-        assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(
                 f"LocalStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
@@ -307,54 +406,31 @@ class LocalStore(Store):
         """
         # docstring inherited
         self._check_writable()
-        path = self.root / key
-        if path.is_dir():  # TODO: support deleting directories? shutil.rmtree?
-            shutil.rmtree(path)
-        else:
-            await asyncio.to_thread(path.unlink, True)  # Q: we may want to raise if path is missing
+        await asyncio.to_thread(_delete, self.root / key)
 
     async def delete_dir(self, prefix: str) -> None:
         # docstring inherited
         self._check_writable()
-        path = self.root / prefix
-        if path.is_dir():
-            shutil.rmtree(path)
-        elif path.is_file():
-            raise ValueError(f"delete_dir was passed a {prefix=!r} that is a file")
-        else:
-            # Non-existent directory
-            # This path is tested by test_group:test_create_creates_parents for one
-            pass
+        await asyncio.to_thread(_delete_dir, self.root / prefix, prefix)
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
-        path = self.root / key
-        return await asyncio.to_thread(path.is_file)
+        return await asyncio.to_thread(_exists, self.root / key)
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
-        to_strip = self.root.as_posix() + "/"
-        for p in list(self.root.rglob("*")):
-            if p.is_file():
-                yield p.as_posix().replace(to_strip, "")
+        for key in await asyncio.to_thread(_list_files, self.root, ""):
+            yield key
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
-        to_strip = self.root.as_posix() + "/"
-        prefix = prefix.rstrip("/")
-        for p in (self.root / prefix).rglob("*"):
-            if p.is_file():
-                yield p.as_posix().replace(to_strip, "")
+        for key in await asyncio.to_thread(_list_files, self.root, prefix.rstrip("/")):
+            yield key
 
     async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
-        base = self.root / prefix
-        try:
-            key_iter = base.iterdir()
-            for key in key_iter:
-                yield key.relative_to(base).as_posix()
-        except (FileNotFoundError, NotADirectoryError):
-            pass
+        for name in await asyncio.to_thread(_list_dir, self.root / prefix):
+            yield name
 
     async def move(self, dest_root: Path | str) -> None:
         """
@@ -362,11 +438,9 @@ class LocalStore(Store):
         """
         if isinstance(dest_root, str):
             dest_root = Path(dest_root)
-        os.makedirs(dest_root.parent, exist_ok=True)
-        if dest_root.exists():
-            raise FileExistsError(f"Destination root {dest_root} already exists.")
-        shutil.move(self.root, dest_root)
+        await asyncio.to_thread(_move, self.root, dest_root)
         self.root = dest_root
 
     async def getsize(self, key: str) -> int:
-        return (self.root / key).stat().st_size
+        # docstring inherited
+        return await asyncio.to_thread(_getsize, self.root / key)

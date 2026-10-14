@@ -271,8 +271,8 @@ def test_structured_dtype_roundtrip(fill_value: float | bytes, tmp_path: Path) -
         ),
         (
             b"\x01\x00\x00\x00\x02\x00\x00\x00",
-            np.dtype([("x", "i4"), ("y", "i4")]),
-            np.array([(1, 2)], dtype=[("x", "i4"), ("y", "i4")])[0],
+            np.dtype([("x", "<i4"), ("y", "<i4")]),
+            np.array([(1, 2)], dtype=[("x", "<i4"), ("y", "<i4")])[0],
         ),
     ],
     ids=[

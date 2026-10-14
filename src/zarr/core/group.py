@@ -5,9 +5,9 @@ import logging
 import unicodedata
 import warnings
 from collections import defaultdict
-from dataclasses import asdict, dataclass, field, fields, replace
+from dataclasses import asdict, dataclass, field, replace
 from itertools import accumulate
-from typing import TYPE_CHECKING, Literal, assert_never, cast, overload
+from typing import TYPE_CHECKING, Final, Literal, assert_never, cast, overload
 
 import numpy as np
 
@@ -28,6 +28,7 @@ from zarr.core.array import (
     _parse_deprecated_compressor,
     create_array,
 )
+from zarr.core.array_spec import parse_array_config
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import (
@@ -48,7 +49,13 @@ from zarr.core.config import config
 from zarr.core.dtype import parse_data_type
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.io import save_metadata
+from zarr.core.metadata.io import (
+    encode_documents,
+    save_metadata,
+    save_new_metadata,
+    store_documents,
+)
+from zarr.core.metadata.v3 import AllowedExtraField, check_storable, parse_extra_fields
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
     ArrayNotFoundError,
@@ -56,10 +63,11 @@ from zarr.errors import (
     ContainsGroupError,
     GroupNotFoundError,
     MetadataValidationError,
+    NodeTypeValidationError,
     ZarrUserWarning,
 )
 from zarr.storage import StoreLike, StorePath
-from zarr.storage._common import ensure_no_existing_node, make_store_path
+from zarr.storage._common import make_store_path
 from zarr.storage._utils import _join_paths, _normalize_path_keys, normalize_path
 
 if TYPE_CHECKING:
@@ -146,11 +154,16 @@ class ConsolidatedMetadata:
     must_understand: Literal[False] = False
 
     def to_dict(self) -> dict[str, JSON]:
+        """The consolidated metadata document. An array read from a stored document that
+        had to be repaired is written as that document was stored, so every reader of
+        the consolidated metadata reads it as repaired again (see `mark_repaired`)."""
         return {
             "kind": self.kind,
             "must_understand": self.must_understand,
             "metadata": {
                 k: v.to_dict()
+                if isinstance(v, GroupMetadata) or v._stored_document is None
+                else dict(v._stored_document)
                 for k, v in sorted(
                     self.flattened_metadata.items(),
                     key=lambda item: (
@@ -162,7 +175,9 @@ class ConsolidatedMetadata:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> ConsolidatedMetadata:
+    def from_dict(cls, data: dict[str, JSON], *, path: str | None = None) -> ConsolidatedMetadata:
+        """Read consolidated metadata, naming each member by its path under the group at
+        `path` (or relative to that group, when `path` is not given) in warnings."""
         data = dict(data)
 
         kind = data.get("kind")
@@ -176,6 +191,7 @@ class ConsolidatedMetadata:
         metadata: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] = {}
         if raw_metadata:
             for k, v in raw_metadata.items():
+                member = k if path is None else _join_paths([path, k])
                 if not isinstance(v, dict):
                     raise TypeError(
                         f"Invalid value for metadata items. key='{k}', type='{type(v).__name__}'"
@@ -187,16 +203,16 @@ class ConsolidatedMetadata:
                 if zarr_format == 3:
                     node_type = parse_node_type(v.get("node_type", None))
                     if node_type == "group":
-                        metadata[k] = GroupMetadata.from_dict(v)
+                        metadata[k] = GroupMetadata.from_dict(v, path=member)
                     elif node_type == "array":
-                        metadata[k] = ArrayV3Metadata.from_dict(v)
+                        metadata[k] = ArrayV3Metadata.from_dict(v, path=member)
                     else:
                         assert_never(node_type)
                 elif zarr_format == 2:
                     if "shape" in v:
-                        metadata[k] = ArrayV2Metadata.from_dict(v)
+                        metadata[k] = ArrayV2Metadata.from_dict(v, path=member)
                     else:
-                        metadata[k] = GroupMetadata.from_dict(v)
+                        metadata[k] = GroupMetadata.from_dict(v, path=member)
                 else:
                     assert_never(zarr_format)
 
@@ -310,9 +326,9 @@ class ConsolidatedMetadata:
                 "group-1": GroupMetadata(),
             }
         )
-        # {'group-0': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group'),
-        #  'group-0/group-0-0': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group'),
-        #  'group-1': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group')}
+        # {'group-0': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group', extra_fields={}),
+        #  'group-0/group-0-0': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group', extra_fields={}),
+        #  'group-1': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group', extra_fields={})}
         ```
         """
         metadata = {}
@@ -344,6 +360,18 @@ class ConsolidatedMetadata:
         return metadata
 
 
+GROUP_METADATA_KEYS: Final[set[str]] = {
+    "zarr_format",
+    "node_type",
+    "attributes",
+    "consolidated_metadata",
+}
+"""
+The names of the fields of the group metadata document. `consolidated_metadata` is not in the
+Zarr V3 spec; Zarr-Python writes it.
+"""
+
+
 @dataclass(frozen=True)
 class GroupMetadata(Metadata):
     """
@@ -354,8 +382,19 @@ class GroupMetadata(Metadata):
     zarr_format: ZarrFormat = 3
     consolidated_metadata: ConsolidatedMetadata | None = None
     node_type: Literal["group"] = field(default="group", init=False)
+    extra_fields: dict[str, AllowedExtraField] = field(default_factory=dict)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
+        if self.consolidated_metadata is not None:
+            for path, member in self.consolidated_metadata.flattened_metadata.items():
+                # A member read from a document that had to be repaired is stored as it
+                # was stored (see `ConsolidatedMetadata.to_dict`).
+                if isinstance(member, ArrayV3Metadata) and member._stored_document is None:
+                    try:
+                        check_storable(member)
+                    except ValueError as e:
+                        e.add_note(f"Array {path!r} in the consolidated metadata.")
+                        raise
         indent = config.get("json_indent")
         if self.zarr_format == 3:
             return {ZARR_JSON: json_to_buffer(self.to_dict(), prototype=prototype, indent=indent)}
@@ -372,7 +411,11 @@ class GroupMetadata(Metadata):
                     ZATTRS_JSON: self.attributes,
                 }
                 consolidated_metadata = self.consolidated_metadata.to_dict()["metadata"]
-                assert isinstance(consolidated_metadata, dict)
+                if not isinstance(consolidated_metadata, dict):
+                    raise TypeError(
+                        "Expected consolidated metadata to serialize to a dict, "
+                        f"got {type(consolidated_metadata).__name__}."
+                    )
                 for k, v in consolidated_metadata.items():
                     attrs = v.pop("attributes", {})
                     d[f"{k}/{ZATTRS_JSON}"] = attrs
@@ -401,34 +444,56 @@ class GroupMetadata(Metadata):
         attributes: dict[str, Any] | None = None,
         zarr_format: ZarrFormat = 3,
         consolidated_metadata: ConsolidatedMetadata | None = None,
+        extra_fields: Mapping[str, AllowedExtraField] | None = None,
     ) -> None:
         attributes_parsed = parse_attributes(attributes)
         zarr_format_parsed = parse_zarr_format(zarr_format)
+        if zarr_format_parsed == 2 and extra_fields:
+            raise ValueError(
+                "Invalid extra fields. Zarr format 2 group metadata does not support extra fields."
+            )
+        extra_fields_parsed = parse_extra_fields(
+            extra_fields, reserved_keys=GROUP_METADATA_KEYS, node_type="group"
+        )
 
         object.__setattr__(self, "attributes", attributes_parsed)
         object.__setattr__(self, "zarr_format", zarr_format_parsed)
         object.__setattr__(self, "consolidated_metadata", consolidated_metadata)
+        object.__setattr__(self, "extra_fields", extra_fields_parsed)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
+    def from_dict(cls, data: dict[str, Any], *, path: str | None = None) -> GroupMetadata:
+        """Read a stored group document; `path` names the group in warnings about the
+        consolidated metadata it holds."""
         data = dict(data)
-        assert data.pop("node_type", None) in ("group", None)
+        node_type = data.pop("node_type", None)
+        if node_type not in ("group", None):
+            raise NodeTypeValidationError(
+                f"Invalid value for 'node_type'. Expected 'group' or None. Got {node_type!r}."
+            )
         consolidated_metadata = data.pop("consolidated_metadata", None)
         if consolidated_metadata:
-            data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(consolidated_metadata)
+            data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(
+                consolidated_metadata, path=path
+            )
 
         zarr_format = data.get("zarr_format")
-        if zarr_format == 2 or zarr_format is None:
-            # zarr v2 allowed arbitrary keys here.
-            # We don't want the GroupMetadata constructor to fail just because someone put an
-            # extra key in the metadata.
-            expected = {x.name for x in fields(cls)}
-            data = {k: v for k, v in data.items() if k in expected}
-
-        return cls(**data)
+        if zarr_format == 3:
+            # Zarr v3 allows an extra key only if it is an object with "must_understand": false.
+            extra_fields = parse_extra_fields(
+                {k: v for k, v in data.items() if k not in GROUP_METADATA_KEYS},
+                reserved_keys=GROUP_METADATA_KEYS,
+                node_type="group",
+            )
+        else:
+            # Zarr v2 allowed arbitrary keys; they are dropped rather than kept.
+            extra_fields = {}
+        data = {k: v for k, v in data.items() if k in GROUP_METADATA_KEYS}
+        return cls(**data, extra_fields=extra_fields)
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(replace(self, consolidated_metadata=None))
+        result.update(result.pop("extra_fields"))
         if self.consolidated_metadata is not None:
             result["consolidated_metadata"] = self.consolidated_metadata.to_dict()
         else:
@@ -468,20 +533,14 @@ class AsyncGroup:
         zarr_format: ZarrFormat = 3,
     ) -> AsyncGroup:
         store_path = await make_store_path(store)
-
-        if overwrite:
-            if store_path.store.supports_deletes:
-                await store_path.delete_dir()
-            else:
-                await ensure_no_existing_node(store_path, zarr_format=zarr_format)
-        else:
-            await ensure_no_existing_node(store_path, zarr_format=zarr_format)
         attributes = attributes or {}
         group = cls(
             metadata=GroupMetadata(attributes=attributes, zarr_format=zarr_format),
             store_path=store_path,
         )
-        await group._save_metadata(ensure_parents=True)
+        await save_new_metadata(
+            store_path, group.metadata, overwrite=overwrite, ensure_parents=True
+        )
         return group
 
     @classmethod
@@ -583,8 +642,8 @@ class AsyncGroup:
             raise MetadataValidationError(msg)
 
         if zarr_format == 2:
-            # this is checked above, asserting here for mypy
-            assert zgroup_bytes is not None
+            if zgroup_bytes is None:
+                raise FileNotFoundError(store_path)
 
             if use_consolidated and maybe_consolidated_metadata_bytes is None:
                 # the user requested consolidated metadata, but it was missing
@@ -600,7 +659,8 @@ class AsyncGroup:
             )
         else:
             # V3 groups are comprised of a zarr.json object
-            assert zarr_json_bytes is not None
+            if zarr_json_bytes is None:
+                raise FileNotFoundError(store_path)
             if not isinstance(use_consolidated, bool | None):
                 raise TypeError("use_consolidated must be a bool or None for Zarr format 3.")
 
@@ -685,7 +745,7 @@ class AsyncGroup:
             msg = f"Node type in metadata ({node_type}) is not 'group'"
             raise GroupNotFoundError(msg)
         return cls(
-            metadata=GroupMetadata.from_dict(data),
+            metadata=GroupMetadata.from_dict(data, path=str(store_path)),
             store_path=store_path,
         )
 
@@ -742,9 +802,6 @@ class AsyncGroup:
         # Note that this is a regular def (non async) function.
         # This shouldn't do any additional I/O.
 
-        # the caller needs to verify this!
-        assert self.metadata.consolidated_metadata is not None
-
         # we support nested getitems like group/subgroup/array
         indexers = normalize_path(key).split("/")
         indexers.reverse()
@@ -792,11 +849,24 @@ class AsyncGroup:
             Array or group name
         """
         store_path = self.store_path / key
-
+        consolidated = self.metadata.consolidated_metadata
+        if consolidated is None:
+            await store_path.delete_dir()
+            return
+        # Encode the group metadata without the member before deleting it: metadata that
+        # cannot be stored then fails with the store and this group untouched. What is
+        # stored is encoded after the deletion, from the metadata as it then is, so
+        # concurrent deletions each store the deletions made before them.
+        members = {name: node for name, node in consolidated.metadata.items() if name != key}
+        encode_documents(
+            self.store_path,
+            replace(self.metadata, consolidated_metadata=replace(consolidated, metadata=members)),
+        )
         await store_path.delete_dir()
-        if self.metadata.consolidated_metadata:
-            self.metadata.consolidated_metadata.metadata.pop(key, None)
-            await self._save_metadata()
+        # In place, so every handle sharing this consolidated metadata (a parent's or a
+        # subgroup's) sees the deletion.
+        consolidated.metadata.pop(key, None)
+        await store_documents(self.store_path, encode_documents(self.store_path, self.metadata))
 
     async def get[DefaultT](
         self, key: str, default: DefaultT | None = None
@@ -1049,7 +1119,6 @@ class AsyncGroup:
                     raise TypeError(
                         f"Incompatible object ({item.__class__.__name__}) already exists"
                     )
-                assert isinstance(item, AsyncGroup)  # make mypy happy
                 grp = item
             except KeyError:
                 grp = await self.create_group(name)
@@ -1101,17 +1170,24 @@ class AsyncGroup:
         Parameters
         ----------
         name : str
-            The name of the array relative to the group. If ``path`` is ``None``, the array will be located
+            The name of the array relative to the group. If `path` is `None`, the array will be located
             at the root of the store.
-        shape : tuple[int, ...]
-            Shape of the array.
-        dtype : npt.DTypeLike
-            Data type of the array.
-        chunks : tuple[int, ...], optional
+        shape : ShapeLike, optional
+            Shape of the array. Must be `None` if `data` is provided.
+        dtype : ZDTypeLike | None
+            Data type of the array. Must be `None` if `data` is provided.
+        data : np.ndarray, optional
+            Array-like data to use for initializing the array. If this parameter is provided, the
+            `shape` and `dtype` parameters must be `None`.
+        chunks : tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"], default="auto"
             Chunk shape of the array.
-            If not specified, default are guessed based on the shape and dtype.
+            If chunks is "auto", a chunk shape is guessed based on the shape of the array and the dtype.
+            A nested list of per-dimension edge sizes creates a rectilinear grid.
+            Rectilinear chunk grids are experimental and must be explicitly enabled
+            with `zarr.config.set({'array.rectilinear_chunks': True})` while the
+            feature is stabilizing.
         shards : tuple[int, ...], optional
-            Shard shape of the array. The default value of ``None`` results in no sharding at all.
+            Shard shape of the array. The default value of `None` results in no sharding at all.
         filters : Iterable[Codec] | Literal["auto"], optional
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
             chunk to bytes.
@@ -1123,37 +1199,38 @@ class AsyncGroup:
             For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
             order of your filters is consistent with the behavior of each filter.
 
-            The default value of ``"auto"`` instructs Zarr to use a default based on the data
+            The default value of `"auto"` instructs Zarr to use a default based on the data
             type of the array and the Zarr format specified. For all data types in Zarr V3, and most
             data types in Zarr V2, the default filters are empty. The only cases where default filters
             are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
-            [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+            [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthBytes`][]. In these cases,
             the default filters contains a single element which is a codec specific to that particular data type.
 
-            To create an array with no filters, provide an empty iterable or the value ``None``.
+            To create an array with no filters, provide an empty iterable or the value `None`.
         compressors : Iterable[Codec], optional
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified) and the data is serialized into bytes.
 
             For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
             returns another bytestream. Multiple compressors may be provided for Zarr format 3.
-            If no ``compressors`` are provided, a default set of compressors will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_compressors``
+            If no `compressors` are provided, a default set of compressors will be used.
+            These defaults can be changed by modifying the value of `array.v3_default_compressors`
             in [`zarr.config`][zarr.config].
-            Use ``None`` to omit default compressors.
+            Use `None` to omit default compressors.
 
             For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
             be provided for Zarr format 2.
-            If no ``compressor`` is provided, a default compressor will be used.
+            If no `compressor` is provided, a default compressor will be used.
+            This default can be changed by modifying the value of `array.v2_default_compressor`
             in [`zarr.config`][zarr.config].
-            Use ``None`` to omit the default compressor.
+            Use `None` to omit the default compressor.
         compressor : Codec, optional
-            Deprecated in favor of ``compressors``.
+            Deprecated in favor of `compressors`.
         serializer : dict[str, JSON] | ArrayBytesCodec, optional
             Array-to-bytes codec to use for encoding the array data.
             Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-            If no ``serializer`` is provided, a default serializer will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_serializer``
+            If no `serializer` is provided, a default serializer will be used.
+            These defaults can be changed by modifying the value of `array.v3_default_serializer`
             in [`zarr.config`][zarr.config].
         fill_value : Any, optional
             Fill value for the array.
@@ -1162,15 +1239,15 @@ class AsyncGroup:
             For Zarr format 2, this parameter sets the memory order of the array.
             For Zarr format 3, this parameter is deprecated, because memory order
             is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
-            order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
-            If no ``order`` is provided, a default order will be used.
-            This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][zarr.config].
+            order for Zarr format 3 arrays is via the `config` parameter, e.g. `{'config': 'C'}`.
+            If no `order` is provided, a default order will be used.
+            This default can be changed by modifying the value of `array.order` in [`zarr.config`][zarr.config].
         attributes : dict, optional
             Attributes for the array.
-        chunk_key_encoding : ChunkKeyEncoding, optional
+        chunk_key_encoding : ChunkKeyEncodingLike, optional
             A specification of how the chunk keys are represented in storage.
-            For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
-            For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
+            For Zarr format 3, the default is `{"name": "default", "separator": "/"}`.
+            For Zarr format 2, the default is `{"name": "v2", "separator": "."}`.
         dimension_names : Iterable[str], optional
             The names of the dimensions (default is None).
             Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
@@ -1179,12 +1256,13 @@ class AsyncGroup:
             Ignored otherwise.
         overwrite : bool, default False
             Whether to overwrite an array with the same name in the store, if one exists.
-        config : ArrayConfig or ArrayConfigLike, optional
+            If `True`, any existing keys under that path are deleted first.
+        config : ArrayConfigLike, optional
             Runtime configuration for the array.
         write_data : bool
-            If a pre-existing array-like object was provided to this function via the ``data`` parameter
-            then ``write_data`` determines whether the values in that array-like object should be
-            written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
+            If a pre-existing array-like object was provided to this function via the `data` parameter
+            then `write_data` determines whether the values in that array-like object should be
+            written to the Zarr array created by this function. If `write_data` is `False`, then the
             array will be left empty.
 
         Returns
@@ -1225,6 +1303,7 @@ class AsyncGroup:
         shape: ShapeLike,
         dtype: ZDTypeLike | None = None,
         exact: bool = False,
+        config: ArrayConfigLike | None = None,
         **kwargs: Any,
     ) -> AnyAsyncArray:
         """Obtain an array, creating if it doesn't exist.
@@ -1243,6 +1322,9 @@ class AsyncGroup:
         exact : bool, optional
             If True, require `dtype` to match exactly. If false, require
             `dtype` can be cast from array dtype.
+        config : ArrayConfigLike or None, default=None
+            Runtime configuration for the array, whether it is created or already exists.
+            Keys not specified are taken from the global configuration.
 
         Returns
         -------
@@ -1269,8 +1351,13 @@ class AsyncGroup:
                 if not np.can_cast(ds.dtype, dtype):
                     raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
         except KeyError:
-            ds = await self.create_array(name, shape=shape, dtype=dtype, **kwargs)
+            return await self.create_array(name, shape=shape, dtype=dtype, config=config, **kwargs)
 
+        # `config` is the runtime configuration of the returned array, not stored metadata,
+        # so it applies to an existing array too. It is parsed the same way as on the create
+        # branch: missing keys come from the global configuration, unknown keys raise.
+        if config is not None:
+            return ds.with_config(parse_array_config(config))
         return ds
 
     async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
@@ -1613,6 +1700,20 @@ class AsyncGroup:
             raise NotImplementedError("'expand' is not yet implemented.")
         return await group_tree_async(self, max_depth=level, max_nodes=max_nodes, plain=plain)
 
+    def _member_zarr_format(self, zarr_format: ZarrFormat | None) -> ZarrFormat:
+        """
+        The zarr format of a new array in this group, which is the format of the group.
+
+        A group only lists members of its own format, so an array of another format
+        would be written into the group without becoming a member of it.
+        """
+        if zarr_format is not None and zarr_format != self.metadata.zarr_format:
+            raise ValueError(
+                f"Cannot create a zarr_format={zarr_format} array in a "
+                f"zarr_format={self.metadata.zarr_format} group."
+            )
+        return self.metadata.zarr_format
+
     async def empty(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
         """Create an empty array with the specified shape in this Group. The contents will
         be filled with the array's fill value or zeros if no fill value is provided.
@@ -1632,7 +1733,13 @@ class AsyncGroup:
         retrieve data from an empty Zarr array, any values may be returned,
         and these are not guaranteed to be stable from one access to the next.
         """
-        return await async_api.empty(shape=shape, store=self.store_path, path=name, **kwargs)
+        return await async_api.empty(
+            shape=shape,
+            store=self.store_path,
+            path=name,
+            zarr_format=self._member_zarr_format(kwargs.pop("zarr_format", None)),
+            **kwargs,
+        )
 
     async def zeros(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
         """Create an array, with zero being used as the default value for uninitialized portions of the array.
@@ -1651,7 +1758,13 @@ class AsyncGroup:
         AsyncArray
             The new array.
         """
-        return await async_api.zeros(shape=shape, store=self.store_path, path=name, **kwargs)
+        return await async_api.zeros(
+            shape=shape,
+            store=self.store_path,
+            path=name,
+            zarr_format=self._member_zarr_format(kwargs.pop("zarr_format", None)),
+            **kwargs,
+        )
 
     async def ones(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
         """Create an array, with one being used as the default value for uninitialized portions of the array.
@@ -1670,7 +1783,13 @@ class AsyncGroup:
         AsyncArray
             The new array.
         """
-        return await async_api.ones(shape=shape, store=self.store_path, path=name, **kwargs)
+        return await async_api.ones(
+            shape=shape,
+            store=self.store_path,
+            path=name,
+            zarr_format=self._member_zarr_format(kwargs.pop("zarr_format", None)),
+            **kwargs,
+        )
 
     async def full(
         self, *, name: str, shape: tuple[int, ...], fill_value: Any | None, **kwargs: Any
@@ -1698,6 +1817,7 @@ class AsyncGroup:
             fill_value=fill_value,
             store=self.store_path,
             path=name,
+            zarr_format=self._member_zarr_format(kwargs.pop("zarr_format", None)),
             **kwargs,
         )
 
@@ -1721,7 +1841,13 @@ class AsyncGroup:
         AsyncArray
             The new array.
         """
-        return await async_api.empty_like(a=data, store=self.store_path, path=name, **kwargs)
+        return await async_api.empty_like(
+            a=data,
+            store=self.store_path,
+            path=name,
+            zarr_format=self._member_zarr_format(kwargs.pop("zarr_format", None)),
+            **kwargs,
+        )
 
     async def zeros_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
@@ -1742,7 +1868,13 @@ class AsyncGroup:
         AsyncArray
             The new array.
         """
-        return await async_api.zeros_like(a=data, store=self.store_path, path=name, **kwargs)
+        return await async_api.zeros_like(
+            a=data,
+            store=self.store_path,
+            path=name,
+            zarr_format=self._member_zarr_format(kwargs.pop("zarr_format", None)),
+            **kwargs,
+        )
 
     async def ones_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
@@ -1763,7 +1895,13 @@ class AsyncGroup:
         AsyncArray
             The new array.
         """
-        return await async_api.ones_like(a=data, store=self.store_path, path=name, **kwargs)
+        return await async_api.ones_like(
+            a=data,
+            store=self.store_path,
+            path=name,
+            zarr_format=self._member_zarr_format(kwargs.pop("zarr_format", None)),
+            **kwargs,
+        )
 
     async def full_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
@@ -1784,7 +1922,13 @@ class AsyncGroup:
         AsyncArray
             The new array.
         """
-        return await async_api.full_like(a=data, store=self.store_path, path=name, **kwargs)
+        return await async_api.full_like(
+            a=data,
+            store=self.store_path,
+            path=name,
+            zarr_format=self._member_zarr_format(kwargs.pop("zarr_format", None)),
+            **kwargs,
+        )
 
     async def move(self, source: str, dest: str) -> None:
         """Move a sub-group or sub-array from one path to another.
@@ -2544,19 +2688,24 @@ class Group(SyncMixin):
         Parameters
         ----------
         name : str
-            The name of the array relative to the group. If ``path`` is ``None``, the array will be located
+            The name of the array relative to the group. If `path` is `None`, the array will be located
             at the root of the store.
         shape : ShapeLike, optional
-            Shape of the array. Must be ``None`` if ``data`` is provided.
-        dtype : npt.DTypeLike | None
-            Data type of the array. Must be ``None`` if ``data`` is provided.
-        data : Array-like data to use for initializing the array. If this parameter is provided, the
-            ``shape`` and ``dtype`` parameters must be ``None``.
-        chunks : tuple[int, ...], optional
+            Shape of the array. Must be `None` if `data` is provided.
+        dtype : ZDTypeLike | None
+            Data type of the array. Must be `None` if `data` is provided.
+        data : np.ndarray, optional
+            Array-like data to use for initializing the array. If this parameter is provided, the
+            `shape` and `dtype` parameters must be `None`.
+        chunks : tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"], default="auto"
             Chunk shape of the array.
-            If not specified, default are guessed based on the shape and dtype.
+            If chunks is "auto", a chunk shape is guessed based on the shape of the array and the dtype.
+            A nested list of per-dimension edge sizes creates a rectilinear grid.
+            Rectilinear chunk grids are experimental and must be explicitly enabled
+            with `zarr.config.set({'array.rectilinear_chunks': True})` while the
+            feature is stabilizing.
         shards : tuple[int, ...], optional
-            Shard shape of the array. The default value of ``None`` results in no sharding at all.
+            Shard shape of the array. The default value of `None` results in no sharding at all.
         filters : Iterable[Codec] | Literal["auto"], optional
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
             chunk to bytes.
@@ -2568,38 +2717,39 @@ class Group(SyncMixin):
             For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
             order of your filters is consistent with the behavior of each filter.
 
-            The default value of ``"auto"`` instructs Zarr to use a default based on the data
+            The default value of `"auto"` instructs Zarr to use a default based on the data
             type of the array and the Zarr format specified. For all data types in Zarr V3, and most
             data types in Zarr V2, the default filters are empty. The only cases where default filters
             are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
-            [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+            [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthBytes`][]. In these cases,
             the default filters contains a single element which is a codec specific to that particular data type.
 
-            To create an array with no filters, provide an empty iterable or the value ``None``.
+            To create an array with no filters, provide an empty iterable or the value `None`.
         compressors : Iterable[Codec], optional
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified) and the data is serialized into bytes.
 
             For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
             returns another bytestream. Multiple compressors may be provided for Zarr format 3.
-            If no ``compressors`` are provided, a default set of compressors will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_compressors``
-            in [`zarr.config`][].
-            Use ``None`` to omit default compressors.
+            If no `compressors` are provided, a default set of compressors will be used.
+            These defaults can be changed by modifying the value of `array.v3_default_compressors`
+            in [`zarr.config`][zarr.config].
+            Use `None` to omit default compressors.
 
             For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
             be provided for Zarr format 2.
-            If no ``compressor`` is provided, a default compressor will be used.
-            in [`zarr.config`][].
-            Use ``None`` to omit the default compressor.
+            If no `compressor` is provided, a default compressor will be used.
+            This default can be changed by modifying the value of `array.v2_default_compressor`
+            in [`zarr.config`][zarr.config].
+            Use `None` to omit the default compressor.
         compressor : Codec, optional
-            Deprecated in favor of ``compressors``.
+            Deprecated in favor of `compressors`.
         serializer : dict[str, JSON] | ArrayBytesCodec, optional
             Array-to-bytes codec to use for encoding the array data.
             Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-            If no ``serializer`` is provided, a default serializer will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_serializer``
-            in [`zarr.config`][].
+            If no `serializer` is provided, a default serializer will be used.
+            These defaults can be changed by modifying the value of `array.v3_default_serializer`
+            in [`zarr.config`][zarr.config].
         fill_value : Any, optional
             Fill value for the array.
         order : {"C", "F"}, optional
@@ -2607,15 +2757,15 @@ class Group(SyncMixin):
             For Zarr format 2, this parameter sets the memory order of the array.
             For Zarr format 3, this parameter is deprecated, because memory order
             is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
-            order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
-            If no ``order`` is provided, a default order will be used.
-            This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][].
+            order for Zarr format 3 arrays is via the `config` parameter, e.g. `{'config': 'C'}`.
+            If no `order` is provided, a default order will be used.
+            This default can be changed by modifying the value of `array.order` in [`zarr.config`][zarr.config].
         attributes : dict, optional
             Attributes for the array.
-        chunk_key_encoding : ChunkKeyEncoding, optional
+        chunk_key_encoding : ChunkKeyEncodingLike, optional
             A specification of how the chunk keys are represented in storage.
-            For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
-            For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
+            For Zarr format 3, the default is `{"name": "default", "separator": "/"}`.
+            For Zarr format 2, the default is `{"name": "v2", "separator": "."}`.
         dimension_names : Iterable[str], optional
             The names of the dimensions (default is None).
             Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
@@ -2624,12 +2774,13 @@ class Group(SyncMixin):
             Ignored otherwise.
         overwrite : bool, default False
             Whether to overwrite an array with the same name in the store, if one exists.
-        config : ArrayConfig or ArrayConfigLike, optional
+            If `True`, any existing keys under that path are deleted first.
+        config : ArrayConfigLike, optional
             Runtime configuration for the array.
         write_data : bool
-            If a pre-existing array-like object was provided to this function via the ``data`` parameter
-            then ``write_data`` determines whether the values in that array-like object should be
-            written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
+            If a pre-existing array-like object was provided to this function via the `data` parameter
+            then `write_data` determines whether the values in that array-like object should be
+            written to the Zarr array created by this function. If `write_data` is `False`, then the
             array will be left empty.
 
         Returns
@@ -2688,19 +2839,24 @@ class Group(SyncMixin):
         Parameters
         ----------
         name : str
-            The name of the array relative to the group. If ``path`` is ``None``, the array will be located
+            The name of the array relative to the group. If `path` is `None`, the array will be located
             at the root of the store.
         shape : ShapeLike, optional
-            Shape of the array. Must be ``None`` if ``data`` is provided.
-        dtype : npt.DTypeLike | None
-            Data type of the array. Must be ``None`` if ``data`` is provided.
-        data : Array-like data to use for initializing the array. If this parameter is provided, the
-            ``shape`` and ``dtype`` parameters must be ``None``.
-        chunks : tuple[int, ...], optional
+            Shape of the array. Must be `None` if `data` is provided.
+        dtype : ZDTypeLike | None
+            Data type of the array. Must be `None` if `data` is provided.
+        data : np.ndarray, optional
+            Array-like data to use for initializing the array. If this parameter is provided, the
+            `shape` and `dtype` parameters must be `None`.
+        chunks : tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"], default="auto"
             Chunk shape of the array.
-            If not specified, default are guessed based on the shape and dtype.
+            If chunks is "auto", a chunk shape is guessed based on the shape of the array and the dtype.
+            A nested list of per-dimension edge sizes creates a rectilinear grid.
+            Rectilinear chunk grids are experimental and must be explicitly enabled
+            with `zarr.config.set({'array.rectilinear_chunks': True})` while the
+            feature is stabilizing.
         shards : tuple[int, ...], optional
-            Shard shape of the array. The default value of ``None`` results in no sharding at all.
+            Shard shape of the array. The default value of `None` results in no sharding at all.
         filters : Iterable[Codec] | Literal["auto"], optional
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
             chunk to bytes.
@@ -2712,37 +2868,38 @@ class Group(SyncMixin):
             For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
             order of your filters is consistent with the behavior of each filter.
 
-            The default value of ``"auto"`` instructs Zarr to use a default based on the data
+            The default value of `"auto"` instructs Zarr to use a default based on the data
             type of the array and the Zarr format specified. For all data types in Zarr V3, and most
             data types in Zarr V2, the default filters are empty. The only cases where default filters
             are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
-            [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+            [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthBytes`][]. In these cases,
             the default filters contains a single element which is a codec specific to that particular data type.
 
-            To create an array with no filters, provide an empty iterable or the value ``None``.
+            To create an array with no filters, provide an empty iterable or the value `None`.
         compressors : Iterable[Codec], optional
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified) and the data is serialized into bytes.
 
             For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
             returns another bytestream. Multiple compressors may be provided for Zarr format 3.
-            If no ``compressors`` are provided, a default set of compressors will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_compressors``
+            If no `compressors` are provided, a default set of compressors will be used.
+            These defaults can be changed by modifying the value of `array.v3_default_compressors`
             in [`zarr.config`][zarr.config].
-            Use ``None`` to omit default compressors.
+            Use `None` to omit default compressors.
 
             For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
             be provided for Zarr format 2.
-            If no ``compressor`` is provided, a default compressor will be used.
+            If no `compressor` is provided, a default compressor will be used.
+            This default can be changed by modifying the value of `array.v2_default_compressor`
             in [`zarr.config`][zarr.config].
-            Use ``None`` to omit the default compressor.
+            Use `None` to omit the default compressor.
         compressor : Codec, optional
-            Deprecated in favor of ``compressors``.
+            Deprecated in favor of `compressors`.
         serializer : dict[str, JSON] | ArrayBytesCodec, optional
             Array-to-bytes codec to use for encoding the array data.
             Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-            If no ``serializer`` is provided, a default serializer will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_serializer``
+            If no `serializer` is provided, a default serializer will be used.
+            These defaults can be changed by modifying the value of `array.v3_default_serializer`
             in [`zarr.config`][zarr.config].
         fill_value : Any, optional
             Fill value for the array.
@@ -2751,15 +2908,15 @@ class Group(SyncMixin):
             For Zarr format 2, this parameter sets the memory order of the array.
             For Zarr format 3, this parameter is deprecated, because memory order
             is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
-            order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
-            If no ``order`` is provided, a default order will be used.
-            This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][zarr.config].
+            order for Zarr format 3 arrays is via the `config` parameter, e.g. `{'config': 'C'}`.
+            If no `order` is provided, a default order will be used.
+            This default can be changed by modifying the value of `array.order` in [`zarr.config`][zarr.config].
         attributes : dict, optional
             Attributes for the array.
-        chunk_key_encoding : ChunkKeyEncoding, optional
+        chunk_key_encoding : ChunkKeyEncodingLike, optional
             A specification of how the chunk keys are represented in storage.
-            For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
-            For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
+            For Zarr format 3, the default is `{"name": "default", "separator": "/"}`.
+            For Zarr format 2, the default is `{"name": "v2", "separator": "."}`.
         dimension_names : Iterable[str], optional
             The names of the dimensions (default is None).
             Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
@@ -2768,12 +2925,13 @@ class Group(SyncMixin):
             Ignored otherwise.
         overwrite : bool, default False
             Whether to overwrite an array with the same name in the store, if one exists.
-        config : ArrayConfig or ArrayConfigLike, optional
+            If `True`, any existing keys under that path are deleted first.
+        config : ArrayConfigLike, optional
             Runtime configuration for the array.
         write_data : bool
-            If a pre-existing array-like object was provided to this function via the ``data`` parameter
-            then ``write_data`` determines whether the values in that array-like object should be
-            written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
+            If a pre-existing array-like object was provided to this function via the `data` parameter
+            then `write_data` determines whether the values in that array-like object should be
+            written to the Zarr array created by this function. If `write_data` is `False`, then the
             array will be left empty.
 
         Returns
@@ -2808,7 +2966,14 @@ class Group(SyncMixin):
             )
         )
 
-    def require_array(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> AnyArray:
+    def require_array(
+        self,
+        name: str,
+        *,
+        shape: ShapeLike,
+        config: ArrayConfigLike | None = None,
+        **kwargs: Any,
+    ) -> AnyArray:
         """Obtain an array, creating if it doesn't exist.
 
         Other `kwargs` are as per [zarr.Group.create_array][].
@@ -2817,6 +2982,9 @@ class Group(SyncMixin):
         ----------
         name : str
             Array name.
+        config : ArrayConfigLike or None, default=None
+            Runtime configuration for the array, whether it is created or already exists.
+            Keys not specified are taken from the global configuration.
         **kwargs :
             See [zarr.Group.create_array][].
 
@@ -2824,7 +2992,9 @@ class Group(SyncMixin):
         -------
         a : Array
         """
-        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
+        return Array(
+            self._sync(self._async_group.require_array(name, shape=shape, config=config, **kwargs))
+        )
 
     def empty(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
         """Create an empty array with the specified shape in this Group. The contents will be filled with
@@ -3072,6 +3242,7 @@ async def create_hierarchy(
     # ensure that all nodes have the same zarr_format, and add implicit groups as needed
     nodes_parsed = _parse_hierarchy_dict(data=nodes_normed_keys)
     redundant_implicit_groups = []
+    to_delete_keys: list[str] = []
 
     # empty hierarchies should be a no-op
     if len(nodes_parsed) > 0:
@@ -3104,13 +3275,7 @@ async def create_hierarchy(
         if overwrite:
             # we will remove any nodes that collide with arrays and non-implicit groups defined in
             # nodes
-
-            # track the keys of nodes we need to delete
-            to_delete_keys = []
-            to_delete_keys.extend(
-                [k for k, v in nodes_parsed.items() if k not in implicit_group_keys]
-            )
-            await asyncio.gather(*(store.delete_dir(key) for key in to_delete_keys))
+            to_delete_keys = [k for k in nodes_parsed if k not in implicit_group_keys]
         else:
             # This type is long.
             coros: (
@@ -3170,7 +3335,11 @@ async def create_hierarchy(
             else:
                 nodes_explicit[k] = v
 
-    async for key, node in create_nodes(store=store, nodes=nodes_explicit):
+    # Build and encode every node before deleting anything: a node that cannot be built
+    # or whose metadata cannot be stored then fails with the store untouched.
+    built, documents = _prepare_nodes(store, nodes_explicit)
+    await asyncio.gather(*(store.delete_dir(key) for key in to_delete_keys))
+    async for key, node in _store_nodes(store, nodes_explicit, built, documents):
         yield key, node
 
 
@@ -3200,15 +3369,42 @@ async def create_nodes(
     AsyncGroup | AsyncArray
         The created nodes in the order they are created.
     """
+    async for key, node in _store_nodes(store, nodes, *_prepare_nodes(store, nodes)):
+        yield key, node
 
+
+def _prepare_nodes(
+    store: Store, nodes: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]
+) -> tuple[dict[str, AsyncGroup | AnyAsyncArray], dict[str, Buffer]]:
+    """The array or group each of `nodes` describes, at its path in `store`, and the
+    metadata documents of `nodes`, by their keys in the store: every node is built and
+    encoded before anything is stored."""
+    built = {
+        path: _build_node(store=store, path=path, metadata=meta) for path, meta in nodes.items()
+    }
+    documents = {
+        _join_paths([path, key]): value
+        for path, metadata in nodes.items()
+        for key, value in encode_documents(StorePath(store, path), metadata).items()
+    }
+    return built, documents
+
+
+async def _store_nodes(
+    store: Store,
+    nodes: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+    built: Mapping[str, AsyncGroup | AnyAsyncArray],
+    documents: Mapping[str, Buffer],
+) -> AsyncIterator[tuple[str, AsyncGroup | AnyAsyncArray]]:
+    """Store the `documents` encoded from `nodes` and yield the nodes built from them, as
+    `_prepare_nodes` returns them (see `create_nodes`)."""
     # Note: the only way to alter this value is via the config. If that's undesirable for some reason,
     # then we should consider adding a keyword argument to this function
     semaphore = asyncio.Semaphore(config.get("async.concurrency"))
-    create_tasks: list[Coroutine[None, None, str]] = []
-
-    for key, value in nodes.items():
-        # make the key absolute
-        create_tasks.extend(_persist_metadata(store, key, value, semaphore=semaphore))
+    create_tasks = [
+        _set_return_key(store=store, key=key, value=value, semaphore=semaphore)
+        for key, value in documents.items()
+    ]
 
     created_object_keys = []
 
@@ -3228,7 +3424,7 @@ async def create_nodes(
             node_name = created_key[: created_key.rfind("/")]
             meta_out = nodes[node_name]
         if meta_out.zarr_format == 3:
-            yield node_name, _build_node(store=store, path=node_name, metadata=meta_out)
+            yield node_name, built[node_name]
         else:
             # For zarr v2
             # we only want to yield when both the metadata and attributes are created
@@ -3243,7 +3439,7 @@ async def create_nodes(
                 meta_done = _join_paths([node_name, ZARRAY_JSON]) in created_object_keys
 
             if meta_done and attrs_done:
-                yield node_name, _build_node(store=store, path=node_name, metadata=meta_out)
+                yield node_name, built[node_name]
 
             continue
 
@@ -3498,7 +3694,9 @@ async def _read_metadata_v3(store: Store, path: str) -> ArrayV3Metadata | GroupM
     )
     if zarr_json_bytes is None:
         raise FileNotFoundError(path)
-    return _build_metadata_v3(buffer_to_json_object(zarr_json_bytes))
+    return _build_metadata_v3(
+        buffer_to_json_object(zarr_json_bytes), path=str(StorePath(store, path))
+    )
 
 
 async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupMetadata:
@@ -3533,7 +3731,7 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
         else:
             zmeta = buffer_to_json_object(zgroup_bytes)
 
-    return _build_metadata_v2(zmeta, zattrs)
+    return _build_metadata_v2(zmeta, zattrs, path=str(StorePath(store, path)))
 
 
 async def _read_group_metadata_v2(store: Store, path: str) -> GroupMetadata:
@@ -3564,7 +3762,9 @@ async def _read_group_metadata(
     return await _read_group_metadata_v3(store=store, path=path)
 
 
-def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMetadata:
+def _build_metadata_v3(
+    zarr_json: dict[str, JSON], *, path: str | None = None
+) -> ArrayV3Metadata | GroupMetadata:
     """
     Convert a dict representation of Zarr V3 metadata into the corresponding metadata class.
     """
@@ -3573,9 +3773,9 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
         raise MetadataValidationError(msg)
     match zarr_json:
         case {"node_type": "array"}:
-            return ArrayV3Metadata.from_dict(zarr_json)
+            return ArrayV3Metadata.from_dict(zarr_json, path=path)
         case {"node_type": "group"}:
-            return GroupMetadata.from_dict(zarr_json)
+            return GroupMetadata.from_dict(zarr_json, path=path)
         case _:  # pragma: no cover
             raise ValueError(
                 "invalid value for `node_type` key in metadata document"
@@ -3583,16 +3783,16 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
 
 
 def _build_metadata_v2(
-    zarr_json: dict[str, JSON], attrs_json: dict[str, JSON]
+    zarr_json: dict[str, JSON], attrs_json: dict[str, JSON], *, path: str | None = None
 ) -> ArrayV2Metadata | GroupMetadata:
     """
     Convert a dict representation of Zarr V2 metadata into the corresponding metadata class.
     """
     match zarr_json:
         case {"shape": _}:
-            return ArrayV2Metadata.from_dict(zarr_json | {"attributes": attrs_json})
+            return ArrayV2Metadata.from_dict(zarr_json | {"attributes": attrs_json}, path=path)
         case _:  # pragma: no cover
-            return GroupMetadata.from_dict(zarr_json | {"attributes": attrs_json})
+            return GroupMetadata.from_dict(zarr_json | {"attributes": attrs_json}, path=path)
 
 
 @overload
@@ -3715,23 +3915,6 @@ async def _set_return_key(
     else:
         await store.set(key, value)
     return key
-
-
-def _persist_metadata(
-    store: Store,
-    path: str,
-    metadata: ArrayV2Metadata | ArrayV3Metadata | GroupMetadata,
-    semaphore: asyncio.Semaphore | None = None,
-) -> tuple[Coroutine[None, None, str], ...]:
-    """
-    Prepare to save a metadata document to storage, returning a tuple of coroutines that must be awaited.
-    """
-
-    to_save = metadata.to_buffer_dict(default_buffer_prototype())
-    return tuple(
-        _set_return_key(store=store, key=_join_paths([path, key]), value=value, semaphore=semaphore)
-        for key, value in to_save.items()
-    )
 
 
 async def create_rooted_hierarchy(
