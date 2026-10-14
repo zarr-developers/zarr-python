@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from functools import cached_property
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -69,25 +70,16 @@ class NvcompZstdCodec(BytesBytesCodec):
             "configuration": {"level": self.level, "checksum": self.checksum},
         }
 
-    def _zstd_codec(self, stream: cp.cuda.Stream) -> nvcomp.Codec:
-        # Built fresh on every call (not cached) and bound to the *caller's*
-        # current device/stream, passed in explicitly. `NvcompZstdCodec`
-        # instances are cached and reused (e.g. by the sharding codec's
-        # pipeline cache), so caching this per-instance would silently pin
-        # every future call to whatever device/stream happened to be current
-        # the first time this codec instance ran.
-        device = cp.cuda.Device()  # the current device
-        checksum_policy = (
-            nvcomp.ChecksumPolicy.COMPUTE_AND_VERIFY
-            if self.checksum
-            else nvcomp.ChecksumPolicy.NO_COMPUTE_NO_VERIFY
-        )
+    @cached_property
+    def _zstd_codec(self) -> nvcomp.Codec:
+        device = cp.cuda.Device()  # Select the current default device
+        stream = cp.cuda.get_current_stream()  # Use the current default stream
+        # Note: this returns an array with dtype=np.dtype("int8")
         return nvcomp.Codec(
             algorithm="Zstd",
             bitstream_kind=nvcomp.BitstreamKind.RAW,
             device_id=device.id,
             cuda_stream=stream.ptr,
-            checksum_policy=checksum_policy,
         )
 
     def _convert_to_nvcomp_arrays(
@@ -138,18 +130,12 @@ class NvcompZstdCodec(BytesBytesCodec):
         # Convert to nvcomp arrays
         filtered_inputs, none_indices = self._convert_to_nvcomp_arrays(chunks_and_specs)
 
-        stream = cp.cuda.get_current_stream()
-        codec = self._zstd_codec(stream)
-        outputs = codec.decode(filtered_inputs) if len(filtered_inputs) > 0 else []
+        outputs = self._zstd_codec.decode(filtered_inputs) if len(filtered_inputs) > 0 else []
 
-        # Record the event on the stream the decode was enqueued on, then
-        # wait for it off the event loop thread. Previously this created an
-        # event but never called `.record()`, so an unrecorded event is
-        # already "complete" and `.synchronize()` returned immediately
-        # regardless of whether the decode kernels had actually finished --
-        # a race, not just a wasted thread-pool hop.
+        # Record event for synchronization
         event = cp.cuda.Event()
-        event.record(stream)
+        event.record(cp.cuda.get_current_stream())
+        # Wait for decode to complete in a separate async thread
         await asyncio.to_thread(event.synchronize)
 
         for index in none_indices:
@@ -179,14 +165,12 @@ class NvcompZstdCodec(BytesBytesCodec):
         # Convert to nvcomp arrays
         filtered_inputs, none_indices = self._convert_to_nvcomp_arrays(chunks_and_specs)
 
-        stream = cp.cuda.get_current_stream()
-        codec = self._zstd_codec(stream)
-        outputs = codec.encode(filtered_inputs) if len(filtered_inputs) > 0 else []
+        outputs = self._zstd_codec.encode(filtered_inputs) if len(filtered_inputs) > 0 else []
 
-        # See the matching comment in `decode` -- this now actually
-        # synchronizes on the stream the encode was enqueued on.
+        # Record event for synchronization
         event = cp.cuda.Event()
-        event.record(stream)
+        event.record(cp.cuda.get_current_stream())
+        # Wait for encode to complete in a separate async thread
         await asyncio.to_thread(event.synchronize)
 
         for index in none_indices:
