@@ -4675,6 +4675,8 @@ async def init_array(
             attributes=attributes,
         )
     else:
+        if order is not None and config is None:
+            _warn_order_kwarg()
         array_array, array_bytes, bytes_bytes = _parse_chunk_encoding_v3(
             compressors=compressors,
             filters=filters,
@@ -4720,8 +4722,6 @@ async def init_array(
         else:
             codecs_out = sub_codecs
 
-        if order is not None and not any(isinstance(codec, TransposeCodec) for codec in sub_codecs):
-            _warn_order_kwarg()
         meta = AsyncArray._create_metadata_v3(
             shape=shape_parsed,
             dtype=zdtype,
