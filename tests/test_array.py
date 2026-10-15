@@ -747,6 +747,49 @@ def test_prepend_writes_the_data_in_front(store: MemoryStore) -> None:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_prepend_along_a_negative_axis_writes_in_front_of_that_axis(store: MemoryStore) -> None:
+    z = zarr.create_array(
+        store=store,
+        shape=(2, 4),
+        chunks=(2, 2),
+        dtype="uint8",
+        chunk_key_encoding={"name": "offset", "offset": (0, 0)},
+    )
+    z[:] = 1
+
+    assert z.prepend(np.full((2, 2), 5, dtype="uint8"), axis=-1) == (2, 6)
+
+    np.testing.assert_array_equal(z[:, :2], 5)
+    np.testing.assert_array_equal(z[:, 2:], 1)
+    assert _chunk_keys(store) == {"c/0/-1", "c/0/0", "c/0/1"}
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_prepend_on_a_sharded_array_grows_by_whole_shards(store: MemoryStore) -> None:
+    """The store key addresses a shard, so the unit of growth is the shard, not the inner
+    chunk: four rows in front of a shard of four is one shard, one new key."""
+    z = zarr.create_array(
+        store=store,
+        shape=(4, 2),
+        chunks=(2, 2),
+        shards=(4, 2),
+        dtype="int16",
+        chunk_key_encoding={"name": "offset", "offset": (0, 0)},
+    )
+    z[:] = 1
+    assert _chunk_keys(store) == {"c/0/0"}
+
+    assert z.prepend(np.full((4, 2), 3, dtype="int16"), axis=0) == (8, 2)
+
+    assert z.shape == (8, 2)
+    np.testing.assert_array_equal(z[:4], 3)
+    np.testing.assert_array_equal(z[4:], 1)
+    assert _chunk_keys(store) == {"c/-1/0", "c/0/0"}
+    with pytest.raises(ValueError, match="whole shards"):
+        z.prepend(np.zeros((2, 2), dtype="int16"), axis=0)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_prepend_chunks_along_a_later_axis_and_a_negative_axis(store: MemoryStore) -> None:
     z = zarr.create_array(
         store=store,

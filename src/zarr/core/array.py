@@ -1803,7 +1803,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return await _append(self, data, axis)
 
     async def prepend_chunks(self, n_chunks: int, axis: int = 0) -> tuple[int, ...]:
-        """Grow the array by `n_chunks` whole chunks before index 0 of `axis`.
+        """Grow the array by `n_chunks` whole chunks (shards, when sharded) before index 0 of
+        `axis`.
 
         A metadata-only operation: the array must use the ``offset`` chunk key encoding,
         under which the new leading chunks take new keys and every existing chunk keeps
@@ -1833,7 +1834,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """Prepend `data` to `axis`: grow the array before index 0 and write `data` there.
 
         The array must use the ``offset`` chunk key encoding, and the extent of `data`
-        along `axis` must be a whole number of chunks; see `prepend_chunks`.
+        along `axis` must be a whole number of chunks (shards, when sharded); see
+        `prepend_chunks`.
 
         Parameters
         ----------
@@ -4078,7 +4080,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         return sync(self.async_array.append(data, axis=axis))
 
     def prepend_chunks(self, n_chunks: int, axis: int = 0) -> tuple[int, ...]:
-        """Grow the array by `n_chunks` whole chunks before index 0 of `axis`.
+        """Grow the array by `n_chunks` whole chunks (shards, when sharded) before index 0 of
+        `axis`.
 
         A metadata-only operation: the array must use the ``offset`` chunk key encoding,
         under which the new leading chunks take new keys and every existing chunk keeps
@@ -4115,7 +4118,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """Prepend `data` to `axis`: grow the array before index 0 and write `data` there.
 
         The array must use the ``offset`` chunk key encoding, and the extent of `data`
-        along `axis` must be a whole number of chunks; see `prepend_chunks`.
+        along `axis` must be a whole number of chunks (shards, when sharded); see
+        `prepend_chunks`.
 
         Parameters
         ----------
@@ -6265,6 +6269,13 @@ async def _prepend(
     if not hasattr(data, "shape"):
         data = np.asanyarray(data)
 
+    # Validates the encoding, the chunk grid and the axis without changing anything.
+    await _prepend_chunks(array, 0, axis)
+    metadata = cast("ArrayV3Metadata", array.metadata)
+    chunk_grid = cast("RegularChunkGridMetadata", metadata.chunk_grid)
+    ndim = len(metadata.shape)
+    axis %= ndim
+
     self_shape_preserved = tuple(s for i, s in enumerate(array.shape) if i != axis)
     data_shape_preserved = tuple(s for i, s in enumerate(data.shape) if i != axis)
     if self_shape_preserved != data_shape_preserved:
@@ -6276,18 +6287,18 @@ async def _prepend(
             "prepended."
         )
     extent = data.shape[axis]
-    chunk = array.chunks[axis]
-    if extent % chunk:
+    # The unit of growth is what a store key addresses: the shard when sharded, else the chunk.
+    unit = chunk_grid.chunk_shape[axis]
+    if extent % unit:
+        what = "shards" if array.shards is not None else "chunks"
         raise ValueError(
-            f"prepend grows the array by whole chunks, but the data spans {extent} along axis "
-            f"{axis} and the chunk length there is {chunk}."
+            f"prepend grows the array by whole {what}, but the data spans {extent} along axis "
+            f"{axis} and the {what[:-1]} length there is {unit}."
         )
 
-    new_shape = await _prepend_chunks(array, extent // chunk, axis)
+    new_shape = await _prepend_chunks(array, extent // unit, axis)
 
-    prepend_selection = tuple(
-        slice(None) if i != axis else slice(0, extent) for i in range(len(new_shape))
-    )
+    prepend_selection = tuple(slice(None) if i != axis else slice(0, extent) for i in range(ndim))
     await array.setitem(prepend_selection, data)
 
     return new_shape
