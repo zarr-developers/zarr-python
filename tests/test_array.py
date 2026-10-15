@@ -685,11 +685,18 @@ async def _collect(it: AsyncIterator[str]) -> list[str]:
     return [key async for key in it]
 
 
+def _chunk_bytes(store: Store) -> dict[str, bytes]:
+    proto = default_buffer_prototype()
+    return {
+        key: sync(store.get(key, prototype=proto)).to_bytes()  # type: ignore[union-attr]
+        for key in _chunk_keys(store)
+    }
+
+
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_prepend_chunks_is_a_metadata_only_edit(store: MemoryStore) -> None:
-    """Growing before index 0 touches zarr.json and nothing else: the chunk key set is
-    unchanged, the old data reads back at its new indices, and the new region reads as the
-    fill value until written."""
+def test_prepend_writes_in_front_and_leaves_every_existing_chunk_untouched(
+    store: MemoryStore,
+) -> None:
     z = zarr.create_array(
         store=store,
         shape=(6, 4),
@@ -700,30 +707,27 @@ def test_prepend_chunks_is_a_metadata_only_edit(store: MemoryStore) -> None:
     )
     data = np.arange(24, dtype="int32").reshape(6, 4)
     z[:] = data
-    keys_before = _chunk_keys(store)
-    assert keys_before == {"c/0/0", "c/0/1", "c/1/0", "c/1/1"}
+    before = _chunk_bytes(store)
+    assert set(before) == {"c/0/0", "c/0/1", "c/1/0", "c/1/1"}
 
-    assert z.prepend_chunks(2, axis=0) == (12, 4)
+    assert z.prepend(np.full((6, 4), 7, dtype="int32"), axis=0) == (12, 4)
 
-    assert z.shape == (12, 4)
-    assert _chunk_keys(store) == keys_before
+    after = _chunk_bytes(store)
+    assert {k: after[k] for k in before} == before
+    assert set(after) - set(before) == {"c/-2/0", "c/-2/1", "c/-1/0", "c/-1/1"}
+    np.testing.assert_array_equal(z[:6], 7)
     np.testing.assert_array_equal(z[6:], data)
-    np.testing.assert_array_equal(z[:6], -1)
     assert z.metadata.to_dict()["chunk_key_encoding"] == {
         "name": "offset",
         "configuration": {"separator": "/", "offset": [-2, 0]},
     }
-
-    z[:3] = 7
-    assert _chunk_keys(store) == keys_before | {"c/-2/0", "c/-2/1"}
-
     reopened = zarr.open_array(store=store, mode="r")
     assert reopened.shape == (12, 4)
     np.testing.assert_array_equal(reopened[:], z[:])
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_prepend_writes_the_data_in_front(store: MemoryStore) -> None:
+def test_prepend_requires_whole_chunks_and_matching_other_dimensions(store: MemoryStore) -> None:
     z = zarr.create_array(
         store=store,
         shape=(4, 3),
@@ -731,29 +735,23 @@ def test_prepend_writes_the_data_in_front(store: MemoryStore) -> None:
         dtype="uint8",
         chunk_key_encoding={"name": "offset", "offset": (0, 0)},
     )
-    z[:] = 1
-    front = np.full((4, 3), 9, dtype="uint8")
-
-    assert z.prepend(front, axis=0) == (8, 3)
-
-    np.testing.assert_array_equal(z[:4], 9)
-    np.testing.assert_array_equal(z[4:], 1)
-    assert _chunk_keys(store) == {"c/-2/0", "c/-1/0", "c/0/0", "c/1/0"}
-
     with pytest.raises(ValueError, match="whole chunks"):
         z.prepend(np.zeros((3, 3), dtype="uint8"), axis=0)
     with pytest.raises(ValueError, match="not compatible"):
         z.prepend(np.zeros((2, 4), dtype="uint8"), axis=0)
+    with pytest.raises(ValueError, match="out of range"):
+        z.prepend(np.zeros((2, 3), dtype="uint8"), axis=2)
+    assert z.shape == (4, 3)
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_prepend_along_a_negative_axis_writes_in_front_of_that_axis(store: MemoryStore) -> None:
+def test_prepend_along_a_negative_axis_with_a_dot_separator(store: MemoryStore) -> None:
     z = zarr.create_array(
         store=store,
         shape=(2, 4),
         chunks=(2, 2),
         dtype="uint8",
-        chunk_key_encoding={"name": "offset", "offset": (0, 0)},
+        chunk_key_encoding={"name": "offset", "separator": ".", "offset": (0, 0)},
     )
     z[:] = 1
 
@@ -761,13 +759,11 @@ def test_prepend_along_a_negative_axis_writes_in_front_of_that_axis(store: Memor
 
     np.testing.assert_array_equal(z[:, :2], 5)
     np.testing.assert_array_equal(z[:, 2:], 1)
-    assert _chunk_keys(store) == {"c/0/-1", "c/0/0", "c/0/1"}
+    assert _chunk_keys(store) == {"c.0.-1", "c.0.0", "c.0.1"}
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_prepend_on_a_sharded_array_grows_by_whole_shards(store: MemoryStore) -> None:
-    """The store key addresses a shard, so the unit of growth is the shard, not the inner
-    chunk: four rows in front of a shard of four is one shard, one new key."""
     z = zarr.create_array(
         store=store,
         shape=(4, 2),
@@ -781,7 +777,6 @@ def test_prepend_on_a_sharded_array_grows_by_whole_shards(store: MemoryStore) ->
 
     assert z.prepend(np.full((4, 2), 3, dtype="int16"), axis=0) == (8, 2)
 
-    assert z.shape == (8, 2)
     np.testing.assert_array_equal(z[:4], 3)
     np.testing.assert_array_equal(z[4:], 1)
     assert _chunk_keys(store) == {"c/-1/0", "c/0/0"}
@@ -790,54 +785,16 @@ def test_prepend_on_a_sharded_array_grows_by_whole_shards(store: MemoryStore) ->
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_prepend_chunks_along_a_later_axis_and_a_negative_axis(store: MemoryStore) -> None:
-    z = zarr.create_array(
-        store=store,
-        shape=(2, 6),
-        chunks=(2, 3),
-        dtype="int8",
-        chunk_key_encoding={"name": "offset", "separator": ".", "offset": (0, 0)},
-    )
-    z[:] = np.arange(12, dtype="int8").reshape(2, 6)
-
-    assert z.prepend_chunks(1, axis=-1) == (2, 9)
-
-    np.testing.assert_array_equal(z[:, 3:], np.arange(12, dtype="int8").reshape(2, 6))
-    assert _chunk_keys(store) == {"c.0.0", "c.0.1"}
-    assert z.prepend_chunks(0, axis=1) == (2, 9)
-
-
-@pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_prepend_chunks_refuses_an_array_without_the_offset_encoding(
+def test_prepend_refuses_an_array_without_the_offset_encoding(
     store: MemoryStore, zarr_format: ZarrFormat
 ) -> None:
-    """A default-encoded array cannot grow in front without every chunk changing its key,
-    so the request is refused and names the encoding that allows it."""
     z = zarr.create_array(
         store=store, shape=(4,), chunks=(2,), dtype="int8", zarr_format=zarr_format
     )
-
-    with pytest.raises(TypeError, match="offset chunk key encoding"):
-        z.prepend_chunks(1)
     with pytest.raises(TypeError, match="offset chunk key encoding"):
         z.prepend(np.zeros(2, dtype="int8"))
     assert z.shape == (4,)
-
-
-@pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_prepend_chunks_rejects_a_bad_axis_or_count(store: MemoryStore) -> None:
-    z = zarr.create_array(
-        store=store,
-        shape=(4,),
-        chunks=(2,),
-        dtype="int8",
-        chunk_key_encoding={"name": "offset", "offset": (0,)},
-    )
-    with pytest.raises(ValueError, match="out of range"):
-        z.prepend_chunks(1, axis=1)
-    with pytest.raises(ValueError, match="non-negative"):
-        z.prepend_chunks(-1)
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)

@@ -119,15 +119,9 @@ def parse_offset(data: object) -> tuple[int, ...]:
 @dataclass(frozen=True)
 class OffsetChunkKeyEncoding(ChunkKeyEncoding):
     """
-    The ``default`` encoding applied to ``chunk_coords + offset``.
+    The ``default`` encoding applied to ``chunk_coords + offset``, one integer per dimension.
 
-    ``offset`` holds one integer per array dimension and may be negative. Array indexing is
-    unchanged and zero-based; only the mapping from chunk coordinates to store keys moves, so
-    growing the array by ``k`` whole chunks before index 0 along an axis is two metadata edits
-    (``shape += k * chunk``, ``offset -= k``) under which every existing chunk keeps its key.
-    With an all-zero ``offset`` the keys are those of ``default`` with the same separator.
-
-    See https://github.com/zarr-developers/zarr-extensions/tree/main/chunk-key-encodings/offset
+    https://github.com/zarr-developers/zarr-extensions/tree/main/chunk-key-encodings/offset
     """
 
     name: ClassVar[Literal["offset"]] = "offset"

@@ -154,29 +154,21 @@ z.append(np.vstack([a, a]), axis=1)
 print(f"Shape after second append: {z.shape}")
 ```
 
-### Growing before index 0
+### Prepending
 
-`resize` and `append` only move the high edge of a dimension. Adding data *before* index
-0 would shift every array index and, under the `default` chunk key encoding, change the key
-of every chunk. The `offset` chunk key encoding stores each chunk under the `default` key of
-its grid coordinate plus a fixed per-dimension offset, so that
-[`zarr.Array.prepend_chunks`][] can grow a dimension by whole chunks as a metadata-only
-change: the new leading chunks take new (negative) keys and every existing chunk keeps its
-key. [`zarr.Array.prepend`][] grows and writes in one call. An array opts in at creation:
+[`zarr.Array.prepend`][] adds data before index 0 of an axis. Under the `default` chunk key
+encoding that would change every chunk's key, so it needs the `offset` encoding, which stores
+each chunk under the `default` key of its grid coordinate plus a per-dimension offset. The
+growth is then a metadata change and the existing chunks stay where they are; the data must
+span a whole number of chunks along the axis. An array opts in at creation:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 z = zarr.create_array(store='data/example-5.zarr', shape=(6, 4), dtype='int32', chunks=(3, 4),
                       chunk_key_encoding={'name': 'offset', 'offset': (0, 0)}, overwrite=True)
 z[:] = 1
-print(f"Original shape: {z.shape}, offset: {z.metadata.chunk_key_encoding.offset}")
 z.prepend(np.full((6, 4), 2, dtype='int32'))
 print(f"Shape after prepend: {z.shape}, offset: {z.metadata.chunk_key_encoding.offset}")
-print(f"Chunks written: {z.nchunks_initialized}")
 ```
-
-With an all-zero offset the keys are those of the `default` encoding, so an existing array
-can adopt the encoding by rewriting its metadata, without moving a chunk. Readers that do not
-implement the encoding refuse the array rather than misplace its chunks.
 
 ## Runtime configuration
 

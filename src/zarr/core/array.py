@@ -1802,40 +1802,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         return await _append(self, data, axis)
 
-    async def prepend_chunks(self, n_chunks: int, axis: int = 0) -> tuple[int, ...]:
-        """Grow the array by `n_chunks` whole chunks (shards, when sharded) before index 0 of
-        `axis`.
-
-        A metadata-only operation: the array must use the ``offset`` chunk key encoding,
-        under which the new leading chunks take new keys and every existing chunk keeps
-        its key, so no chunk is read, moved or rewritten. The new region reads as the fill
-        value until written.
-
-        Parameters
-        ----------
-        n_chunks : int
-            Number of whole chunks to add before index 0.
-        axis : int
-            Axis along which to grow.
-
-        Returns
-        -------
-        new_shape : tuple
-
-        Raises
-        ------
-        TypeError
-            If the array does not use the ``offset`` chunk key encoding, or its chunk grid
-            is not regular.
-        """
-        return await _prepend_chunks(self, n_chunks, axis)
-
     async def prepend(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
-        """Prepend `data` to `axis`: grow the array before index 0 and write `data` there.
-
-        The array must use the ``offset`` chunk key encoding, and the extent of `data`
-        along `axis` must be a whole number of chunks (shards, when sharded); see
-        `prepend_chunks`.
+        """Prepend `data` to `axis`.
 
         Parameters
         ----------
@@ -1851,7 +1819,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Notes
         -----
         The size of all dimensions other than `axis` must match between this
-        array and `data`.
+        array and `data`, and the size along `axis` must be a whole number of
+        chunks (shards, when sharded). The array must use the ``offset`` chunk
+        key encoding; existing chunks keep their keys.
         """
         return await _prepend(self, data, axis)
 
@@ -4079,47 +4049,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         return sync(self.async_array.append(data, axis=axis))
 
-    def prepend_chunks(self, n_chunks: int, axis: int = 0) -> tuple[int, ...]:
-        """Grow the array by `n_chunks` whole chunks (shards, when sharded) before index 0 of
-        `axis`.
-
-        A metadata-only operation: the array must use the ``offset`` chunk key encoding,
-        under which the new leading chunks take new keys and every existing chunk keeps
-        its key, so no chunk is read, moved or rewritten. The new region reads as the fill
-        value until written.
-
-        Parameters
-        ----------
-        n_chunks : int
-            Number of whole chunks to add before index 0.
-        axis : int
-            Axis along which to grow.
-
-        Returns
-        -------
-        new_shape : tuple
-
-        Examples
-        --------
-        ```python
-        import zarr
-        z = zarr.create_array(store={}, shape=(6, 4), chunks=(3, 4), dtype="int32",
-                              chunk_key_encoding={"name": "offset", "offset": (0, 0)})
-        z[:] = 1
-        z.prepend_chunks(2, axis=0)
-        z.shape
-        #> (12, 4)
-        z[:6] = 0
-        ```
-        """
-        return sync(self.async_array.prepend_chunks(n_chunks, axis=axis))
-
     def prepend(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
-        """Prepend `data` to `axis`: grow the array before index 0 and write `data` there.
-
-        The array must use the ``offset`` chunk key encoding, and the extent of `data`
-        along `axis` must be a whole number of chunks (shards, when sharded); see
-        `prepend_chunks`.
+        """Prepend `data` to `axis`.
 
         Parameters
         ----------
@@ -4135,7 +4066,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Notes
         -----
         The size of all dimensions other than `axis` must match between this
-        array and `data`.
+        array and `data`, and the size along `axis` must be a whole number of
+        chunks (shards, when sharded). The array must use the ``offset`` chunk
+        key encoding; existing chunks keep their keys.
         """
         return sync(self.async_array.prepend(data, axis=axis))
 
@@ -6180,70 +6113,6 @@ async def _append(
     return new_shape
 
 
-async def _prepend_chunks(
-    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
-    n_chunks: int,
-    axis: int = 0,
-) -> tuple[int, ...]:
-    """
-    Grow an array by whole chunks before index 0 of `axis`, as a metadata-only change.
-
-    Parameters
-    ----------
-    array : AsyncArray
-        The array to grow. Must use the ``offset`` chunk key encoding and a regular chunk grid.
-    n_chunks : int
-        Number of whole chunks to add.
-    axis : int
-        Axis along which to grow.
-
-    Returns
-    -------
-    new_shape : tuple[int, ...]
-        The new shape of the array.
-    """
-    metadata = array.metadata
-    if not isinstance(metadata, ArrayV3Metadata) or not isinstance(
-        metadata.chunk_key_encoding, OffsetChunkKeyEncoding
-    ):
-        raise TypeError(
-            "Growing an array before index 0 without moving its chunks needs the offset chunk "
-            "key encoding (chunk_key_encoding={'name': 'offset', 'offset': (0,) * ndim} at "
-            "creation); this array uses "
-            f"{metadata.chunk_key_encoding.to_dict() if isinstance(metadata, ArrayV3Metadata) else 'Zarr v2 keys'}."
-        )
-    if not isinstance(metadata.chunk_grid, RegularChunkGridMetadata):
-        raise TypeError("prepend_chunks needs a regular chunk grid.")
-    ndim = len(metadata.shape)
-    if not -ndim <= axis < ndim:
-        raise ValueError(f"axis {axis} is out of range for a {ndim}-dimensional array.")
-    axis %= ndim
-    if n_chunks < 0:
-        raise ValueError(f"n_chunks must be non-negative, got {n_chunks}.")
-    if n_chunks == 0:
-        return metadata.shape
-
-    chunk = metadata.chunk_grid.chunk_shape[axis]
-    new_shape = tuple(
-        s + n_chunks * chunk if i == axis else s for i, s in enumerate(metadata.shape)
-    )
-    new_offset = tuple(
-        o - n_chunks if i == axis else o for i, o in enumerate(metadata.chunk_key_encoding.offset)
-    )
-    new_metadata = replace(
-        metadata.update_shape(new_shape),
-        chunk_key_encoding=replace(metadata.chunk_key_encoding, offset=new_offset),
-    )
-    new_chunk_grid = ChunkGrid.from_metadata(new_metadata)
-
-    # Both edits land in one document write, so a reader never sees one without the other.
-    await store_documents(array.store_path, encode_documents(array.store_path, new_metadata))
-    array._stored_document_replaced()
-    object.__setattr__(array, "metadata", new_metadata)
-    object.__setattr__(array, "_chunk_grid", new_chunk_grid)
-    return new_shape
-
-
 async def _prepend(
     array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
     data: npt.ArrayLike,
@@ -6257,7 +6126,7 @@ async def _prepend(
     array : AsyncArray
         The array to prepend to. Must use the ``offset`` chunk key encoding.
     data : npt.ArrayLike
-        Data to be prepended. Its extent along `axis` must be a whole number of chunks.
+        Data to be prepended. Its size along `axis` must be a whole number of chunks.
     axis : int
         Axis along which to prepend.
 
@@ -6269,11 +6138,19 @@ async def _prepend(
     if not hasattr(data, "shape"):
         data = np.asanyarray(data)
 
-    # Validates the encoding, the chunk grid and the axis without changing anything.
-    await _prepend_chunks(array, 0, axis)
-    metadata = cast("ArrayV3Metadata", array.metadata)
-    chunk_grid = cast("RegularChunkGridMetadata", metadata.chunk_grid)
+    metadata = array.metadata
+    if not isinstance(metadata, ArrayV3Metadata) or not isinstance(
+        metadata.chunk_key_encoding, OffsetChunkKeyEncoding
+    ):
+        raise TypeError(
+            "prepend needs the offset chunk key encoding "
+            "(chunk_key_encoding={'name': 'offset', 'offset': (0,) * ndim} at creation)."
+        )
+    if not isinstance(metadata.chunk_grid, RegularChunkGridMetadata):
+        raise TypeError("prepend needs a regular chunk grid.")
     ndim = len(metadata.shape)
+    if not -ndim <= axis < ndim:
+        raise ValueError(f"axis {axis} is out of range for a {ndim}-dimensional array.")
     axis %= ndim
 
     self_shape_preserved = tuple(s for i, s in enumerate(array.shape) if i != axis)
@@ -6287,16 +6164,28 @@ async def _prepend(
             "prepended."
         )
     extent = data.shape[axis]
-    # The unit of growth is what a store key addresses: the shard when sharded, else the chunk.
-    unit = chunk_grid.chunk_shape[axis]
+    unit = metadata.chunk_grid.chunk_shape[axis]
     if extent % unit:
         what = "shards" if array.shards is not None else "chunks"
         raise ValueError(
             f"prepend grows the array by whole {what}, but the data spans {extent} along axis "
             f"{axis} and the {what[:-1]} length there is {unit}."
         )
+    n_units = extent // unit
 
-    new_shape = await _prepend_chunks(array, extent // unit, axis)
+    new_shape = tuple(s + n_units * unit if i == axis else s for i, s in enumerate(metadata.shape))
+    new_offset = tuple(
+        o - n_units if i == axis else o for i, o in enumerate(metadata.chunk_key_encoding.offset)
+    )
+    new_metadata = replace(
+        metadata.update_shape(new_shape),
+        chunk_key_encoding=replace(metadata.chunk_key_encoding, offset=new_offset),
+    )
+    new_chunk_grid = ChunkGrid.from_metadata(new_metadata)
+    await store_documents(array.store_path, encode_documents(array.store_path, new_metadata))
+    array._stored_document_replaced()
+    object.__setattr__(array, "metadata", new_metadata)
+    object.__setattr__(array, "_chunk_grid", new_chunk_grid)
 
     prepend_selection = tuple(slice(None) if i != axis else slice(0, extent) for i in range(ndim))
     await array.setitem(prepend_selection, data)
