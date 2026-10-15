@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypedDict, cast
 
@@ -24,8 +25,9 @@ def parse_separator(data: JSON) -> SeparatorLiteral:
 
 
 class ChunkKeyEncodingParams(TypedDict):
-    name: Literal["v2", "default"]
+    name: Literal["v2", "default", "offset"]
     separator: NotRequired[SeparatorLiteral]
+    offset: NotRequired[tuple[int, ...]]
 
 
 @dataclass(frozen=True)
@@ -105,6 +107,70 @@ class V2ChunkKeyEncoding(ChunkKeyEncoding):
         return "0" if chunk_identifier == "" else chunk_identifier
 
 
+def parse_offset(data: object) -> tuple[int, ...]:
+    if isinstance(data, (str, bytes)) or not isinstance(data, Iterable):
+        raise TypeError(f"offset must be a sequence of integers, got {data!r}")
+    offset = tuple(data)
+    if any(isinstance(o, bool) or not isinstance(o, int) for o in offset):
+        raise TypeError(f"offset must be a sequence of integers, got {data!r}")
+    return offset
+
+
+@dataclass(frozen=True)
+class OffsetChunkKeyEncoding(ChunkKeyEncoding):
+    """
+    The ``default`` encoding applied to ``chunk_coords + offset``.
+
+    ``offset`` holds one integer per array dimension and may be negative. Array indexing is
+    unchanged and zero-based; only the mapping from chunk coordinates to store keys moves, so
+    growing the array by ``k`` whole chunks before index 0 along an axis is two metadata edits
+    (``shape += k * chunk``, ``offset -= k``) under which every existing chunk keeps its key.
+    With an all-zero ``offset`` the keys are those of ``default`` with the same separator.
+
+    See https://github.com/zarr-developers/zarr-extensions/tree/main/chunk-key-encodings/offset
+    """
+
+    name: ClassVar[Literal["offset"]] = "offset"
+    offset: tuple[int, ...]
+    separator: SeparatorLiteral = "/"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "offset", parse_offset(self.offset))
+        object.__setattr__(self, "separator", parse_separator(self.separator))
+
+    @classmethod
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
+        _, config_parsed = parse_named_configuration(data, require_configuration=False)
+        if not config_parsed or "offset" not in config_parsed:
+            raise ValueError(
+                "The offset chunk key encoding requires an offset in its configuration."
+            )
+        return cls(**cast("dict[str, Any]", config_parsed))
+
+    def to_dict(self) -> dict[str, JSON]:
+        return {
+            "name": self.name,
+            "configuration": {"separator": self.separator, "offset": list(self.offset)},
+        }
+
+    def _check_rank(self, chunk_coords: tuple[int, ...]) -> None:
+        if len(chunk_coords) != len(self.offset):
+            raise ValueError(
+                f"The offset has {len(self.offset)} dimension(s) but the chunk coordinates "
+                f"{chunk_coords!r} have {len(chunk_coords)}."
+            )
+
+    def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
+        shifted = DefaultChunkKeyEncoding(separator=self.separator).decode_chunk_key(chunk_key)
+        self._check_rank(shifted)
+        return tuple(c - o for c, o in zip(shifted, self.offset, strict=True))
+
+    def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
+        self._check_rank(chunk_coords)
+        shifted = tuple(c + o for c, o in zip(chunk_coords, self.offset, strict=True))
+        return self.separator.join(map(str, ("c",) + shifted))
+
+
 def parse_chunk_key_encoding(data: ChunkKeyEncodingLike) -> ChunkKeyEncoding:
     """
     Take an implicit specification of a chunk key encoding and parse it into a ChunkKeyEncoding object.
@@ -113,8 +179,10 @@ def parse_chunk_key_encoding(data: ChunkKeyEncodingLike) -> ChunkKeyEncoding:
         return data
 
     # handle ChunkKeyEncodingParams
-    if "name" in data and "separator" in data:
-        data = {"name": data["name"], "configuration": {"separator": data["separator"]}}  # type: ignore[typeddict-item]
+    if "name" in data and "configuration" not in data and ("separator" in data or "offset" in data):
+        params = cast("dict[str, JSON]", data)
+        configuration = {key: params[key] for key in ("separator", "offset") if key in params}
+        data = cast("dict[str, JSON]", {"name": params["name"], "configuration": configuration})
 
     # Now must be a named config
     data = cast("dict[str, JSON]", data)
@@ -130,3 +198,4 @@ def parse_chunk_key_encoding(data: ChunkKeyEncodingLike) -> ChunkKeyEncoding:
 
 register_chunk_key_encoding("default", DefaultChunkKeyEncoding)
 register_chunk_key_encoding("v2", V2ChunkKeyEncoding)
+register_chunk_key_encoding("offset", OffsetChunkKeyEncoding)
