@@ -810,15 +810,16 @@ def test_prepend_accepts_a_plain_list_and_refuses_a_rectilinear_grid(store: Memo
     assert z.prepend([4, 5]) == (4,)
     np.testing.assert_array_equal(z[:], [4, 5, 1, 1])
 
-    rectilinear = zarr.create_array(
-        store=MemoryStore(),
-        shape=(4,),
-        chunks=[[2, 2]],
-        dtype="int8",
-        chunk_key_encoding={"name": "offset", "offset": (0,)},
-    )
-    with pytest.raises(TypeError, match="regular chunk grid"):
-        rectilinear.prepend(np.zeros(2, dtype="int8"))
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        rectilinear = zarr.create_array(
+            store=MemoryStore(),
+            shape=(4,),
+            chunks=[[2, 2]],
+            dtype="int8",
+            chunk_key_encoding={"name": "offset", "offset": (0,)},
+        )
+        with pytest.raises(TypeError, match="regular chunk grid"):
+            rectilinear.prepend(np.zeros(2, dtype="int8"))
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
