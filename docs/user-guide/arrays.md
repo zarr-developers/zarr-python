@@ -156,18 +156,22 @@ print(f"Shape after second append: {z.shape}")
 
 ### Prepending
 
-[`zarr.Array.prepend`][] adds data before index 0 of an axis. Under the `default` chunk key
-encoding that would change every chunk's key, so it needs the `offset` encoding, which stores
-each chunk under the `default` key of its grid coordinate plus a per-dimension offset. The
-growth is then a metadata change and the existing chunks stay where they are; the data must
-span a whole number of chunks along the axis. An array opts in at creation:
+[`zarr.Array.prepend`][] adds data before index 0 of an axis, the way [`zarr.Array.append`][]
+adds it after the end. The existing chunks keep their keys and their bytes. Data that does not
+fill a whole chunk goes into a partly filled first chunk, like the partly filled last chunk of
+any array.
+
+The first prepend switches the chunk grid from `regular` to `regular_bounded`, which records
+the coordinate of the first element (`lower_bound`) and of the start of chunk 0 (`origin`), so
+chunks in front of the old start get negative keys such as `c/-1/0`. Indexing stays zero-based,
+and [`zarr.Array.domain`][] gives the coordinate range of each dimension. Readers that do not
+implement `regular_bounded` refuse such an array rather than misread it.
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-z = zarr.create_array(store='data/example-5.zarr', shape=(6, 4), dtype='int32', chunks=(3, 4),
-                      chunk_key_encoding={'name': 'offset', 'offset': (0, 0)}, overwrite=True)
+z = zarr.create_array(store='data/example-5.zarr', shape=(6, 4), dtype='int32', chunks=(4, 4), overwrite=True)
 z[:] = 1
-z.prepend(np.full((6, 4), 2, dtype='int32'))
-print(f"Shape after prepend: {z.shape}, offset: {z.metadata.chunk_key_encoding.offset}")
+z.prepend(np.full((3, 4), 2, dtype='int32'))
+print(f"Shape: {z.shape}, domain: {z.domain}")
 ```
 
 ## Runtime configuration

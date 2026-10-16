@@ -54,7 +54,6 @@ from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
     DefaultChunkKeyEncoding,
-    OffsetChunkKeyEncoding,
     V2ChunkKeyEncoding,
     parse_chunk_key_encoding,
 )
@@ -139,6 +138,7 @@ from zarr.core.metadata.v2 import (
 from zarr.core.metadata.v3 import (
     ChunkGridMetadata,
     RectilinearChunkGridMetadata,
+    RegularBoundedChunkGridMetadata,
     RegularChunkGridMetadata,
     create_chunk_grid_metadata,
     parse_node_type_array,
@@ -949,6 +949,20 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
 
         return self._chunk_grid.chunk_sizes
+
+    @property
+    def domain(self) -> tuple[tuple[int, int], ...]:
+        """The half-open coordinate range ``(start, stop)`` of each dimension.
+
+        Index ``i`` along a dimension is coordinate ``start + i``. ``start`` is 0
+        unless the array has been grown with `prepend`.
+        """
+        grid = getattr(self.metadata, "chunk_grid", None)
+        if isinstance(grid, RegularBoundedChunkGridMetadata):
+            lower_bound = grid.lower_bound
+        else:
+            lower_bound = (0,) * len(self.shape)
+        return tuple((lb, lb + n) for lb, n in zip(lower_bound, self.shape, strict=True))
 
     @property
     def shards(self) -> tuple[int, ...] | None:
@@ -1819,9 +1833,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Notes
         -----
         The size of all dimensions other than `axis` must match between this
-        array and `data`, and the size along `axis` must be a whole number of
-        chunks (shards, when sharded). The array must use the ``offset`` chunk
-        key encoding; existing chunks keep their keys.
+        array and `data`. Existing chunks keep their keys. The first prepend
+        switches a ``regular`` chunk grid to ``regular_bounded``, which readers
+        without that chunk grid refuse.
         """
         return await _prepend(self, data, axis)
 
@@ -2217,6 +2231,15 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         ((10, 10, 10, 10),)
         """
         return self.async_array.write_chunk_sizes
+
+    @property
+    def domain(self) -> tuple[tuple[int, int], ...]:
+        """The half-open coordinate range ``(start, stop)`` of each dimension.
+
+        Index ``i`` along a dimension is coordinate ``start + i``. ``start`` is 0
+        unless the array has been grown with `prepend`.
+        """
+        return self.async_array.domain
 
     @property
     def shards(self) -> tuple[int, ...] | None:
@@ -4066,9 +4089,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Notes
         -----
         The size of all dimensions other than `axis` must match between this
-        array and `data`, and the size along `axis` must be a whole number of
-        chunks (shards, when sharded). The array must use the ``offset`` chunk
-        key encoding; existing chunks keep their keys.
+        array and `data`. Existing chunks keep their keys. The first prepend
+        switches a ``regular`` chunk grid to ``regular_bounded``, which readers
+        without that chunk grid refuse.
         """
         return sync(self.async_array.prepend(data, axis=axis))
 
@@ -5612,7 +5635,7 @@ async def _nchunks_initialized(
     grid = array._chunk_grid
     total = 0
     for key in await _shards_initialized(array):
-        spec = grid[meta.chunk_key_encoding.decode_chunk_key(key)]
+        spec = grid[meta.decode_chunk_key(key)]
         if spec is not None:
             total += product(
                 tuple(s // c for s, c in zip(spec.codec_shape, inner_chunks, strict=True))
@@ -6124,9 +6147,9 @@ async def _prepend(
     Parameters
     ----------
     array : AsyncArray
-        The array to prepend to. Must use the ``offset`` chunk key encoding.
+        The array to prepend to. Must be a Zarr v3 array with a regular chunk grid.
     data : npt.ArrayLike
-        Data to be prepended. Its size along `axis` must be a whole number of chunks.
+        Data to be prepended.
     axis : int
         Axis along which to prepend.
 
@@ -6140,14 +6163,9 @@ async def _prepend(
 
     metadata = array.metadata
     if not isinstance(metadata, ArrayV3Metadata) or not isinstance(
-        metadata.chunk_key_encoding, OffsetChunkKeyEncoding
+        metadata.chunk_grid, RegularChunkGridMetadata
     ):
-        raise TypeError(
-            "prepend needs the offset chunk key encoding "
-            "(chunk_key_encoding={'name': 'offset', 'offset': (0,) * ndim} at creation)."
-        )
-    if not isinstance(metadata.chunk_grid, RegularChunkGridMetadata):
-        raise TypeError("prepend needs a regular chunk grid.")
+        raise TypeError("prepend needs a Zarr v3 array with a regular chunk grid.")
     ndim = len(metadata.shape)
     if not -ndim <= axis < ndim:
         raise ValueError(f"axis {axis} is out of range for a {ndim}-dimensional array.")
@@ -6164,23 +6182,19 @@ async def _prepend(
             "prepended."
         )
     extent = data.shape[axis]
-    unit = metadata.chunk_grid.chunk_shape[axis]
-    if extent % unit:
-        what = "shards" if array.shards is not None else "chunks"
-        raise ValueError(
-            f"prepend grows the array by whole {what}, but the data spans {extent} along axis "
-            f"{axis} and the {what[:-1]} length there is {unit}."
-        )
-    n_units = extent // unit
+    grid = metadata.chunk_grid
+    if isinstance(grid, RegularBoundedChunkGridMetadata):
+        origin, lower_bound = grid.origin, grid.lower_bound
+    else:
+        origin = lower_bound = (0,) * ndim
 
-    new_shape = tuple(s + n_units * unit if i == axis else s for i, s in enumerate(metadata.shape))
-    new_offset = tuple(
-        o - n_units if i == axis else o for i, o in enumerate(metadata.chunk_key_encoding.offset)
+    new_shape = tuple(s + extent if i == axis else s for i, s in enumerate(metadata.shape))
+    new_grid = RegularBoundedChunkGridMetadata(
+        chunk_shape=grid.chunk_shape,
+        origin=origin,
+        lower_bound=tuple(lb - extent if i == axis else lb for i, lb in enumerate(lower_bound)),
     )
-    new_metadata = replace(
-        metadata.update_shape(new_shape),
-        chunk_key_encoding=replace(metadata.chunk_key_encoding, offset=new_offset),
-    )
+    new_metadata = replace(metadata, shape=new_shape, chunk_grid=new_grid)
     new_chunk_grid = ChunkGrid.from_metadata(new_metadata)
     await store_documents(array.store_path, encode_documents(array.store_path, new_metadata))
     array._stored_document_replaced()

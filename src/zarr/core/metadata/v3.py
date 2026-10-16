@@ -17,7 +17,6 @@ from zarr.core.chunk_grids import FixedDimension, VaryingDimension
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
-    OffsetChunkKeyEncoding,
     parse_chunk_key_encoding,
 )
 from zarr.core.common import (
@@ -232,6 +231,12 @@ class RegularChunkGridMetadataConfig(TypedDict):
     chunk_shape: Sequence[int]
 
 
+class RegularBoundedChunkGridMetadataConfig(TypedDict):
+    chunk_shape: Sequence[int]
+    origin: Sequence[int]
+    lower_bound: Sequence[int]
+
+
 class RectilinearChunkGridMetadataConfig(TypedDict):
     kind: Literal["inline"]
     chunk_shapes: Sequence[RectilinearDimSpecJSON]
@@ -239,6 +244,9 @@ class RectilinearChunkGridMetadataConfig(TypedDict):
 
 RegularChunkGridMetadataJSON = NamedRequiredConfig[
     Literal["regular"], RegularChunkGridMetadataConfig
+]
+RegularBoundedChunkGridMetadataJSON = NamedRequiredConfig[
+    Literal["regular_bounded"], RegularBoundedChunkGridMetadataConfig
 ]
 RectilinearChunkGridMetadataJSON = NamedRequiredConfig[
     Literal["rectilinear"], RectilinearChunkGridMetadataConfig
@@ -295,6 +303,73 @@ class RegularChunkGridMetadata(Metadata):
         parse_named_configuration(data, "regular")  # validate name
         configuration = data["configuration"]
         return cls(chunk_shape=parse_chunk_shape(configuration["chunk_shape"]))
+
+
+def _parse_int_tuple(data: object, name: str, ndim: int) -> tuple[int, ...]:
+    if isinstance(data, (str, bytes)) or not isinstance(data, Sequence):
+        raise TypeError(f"{name} must be a sequence of integers, got {data!r}")
+    parsed = tuple(data)
+    if any(isinstance(v, bool) or not isinstance(v, int) for v in parsed):
+        raise TypeError(f"{name} must be a sequence of integers, got {data!r}")
+    if len(parsed) != ndim:
+        raise ValueError(f"{name} has {len(parsed)} element(s), expected {ndim}")
+    return parsed
+
+
+@dataclass(frozen=True, kw_only=True)
+class RegularBoundedChunkGridMetadata(RegularChunkGridMetadata):
+    """A regular chunk grid whose chunk 0 starts at array coordinate ``origin`` and whose
+    first element is at array coordinate ``lower_bound``.
+
+    Chunk grid indices may be negative. Array indexing in zarr-python stays zero-based:
+    index ``i`` is coordinate ``lower_bound + i``.
+    """
+
+    origin: tuple[int, ...]
+    lower_bound: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        object.__setattr__(self, "origin", _parse_int_tuple(self.origin, "origin", self.ndim))
+        object.__setattr__(
+            self, "lower_bound", _parse_int_tuple(self.lower_bound, "lower_bound", self.ndim)
+        )
+
+    @property
+    def first_chunk(self) -> tuple[int, ...]:
+        """Grid index of the chunk holding the first element, per dimension."""
+        return tuple(
+            (lb - o) // c
+            for lb, o, c in zip(self.lower_bound, self.origin, self.chunk_shape, strict=True)
+        )
+
+    @property
+    def first_chunk_offset(self) -> tuple[int, ...]:
+        """Position of the first element inside its chunk, per dimension."""
+        return tuple(
+            (lb - o) % c
+            for lb, o, c in zip(self.lower_bound, self.origin, self.chunk_shape, strict=True)
+        )
+
+    def to_dict(self) -> RegularBoundedChunkGridMetadataJSON:  # type: ignore[override]
+        return {
+            "name": "regular_bounded",
+            "configuration": {
+                "chunk_shape": self.chunk_shape,
+                "origin": self.origin,
+                "lower_bound": self.lower_bound,
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, data: RegularBoundedChunkGridMetadataJSON) -> Self:  # type: ignore[override]
+        parse_named_configuration(data, "regular_bounded")
+        configuration = data["configuration"]
+        return cls(
+            chunk_shape=parse_chunk_shape(configuration["chunk_shape"]),
+            origin=configuration["origin"],  # type: ignore[arg-type]
+            lower_bound=configuration["lower_bound"],  # type: ignore[arg-type]
+        )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -462,6 +537,8 @@ def parse_chunk_grid(
     name, _ = parse_named_configuration(data)
     if name == "regular":
         return RegularChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
+    if name == "regular_bounded":
+        return RegularBoundedChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
     if name == "rectilinear":
         return RectilinearChunkGridMetadata.from_dict(data)  # type: ignore[arg-type]
     raise ValueError(f"Unknown chunk grid name: {name!r}")
@@ -545,13 +622,6 @@ class ArrayV3Metadata(Metadata):
         shape_parsed = parse_shapelike(shape)
         chunk_grid_parsed = parse_chunk_grid(chunk_grid)
         chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
-        if isinstance(chunk_key_encoding_parsed, OffsetChunkKeyEncoding) and len(
-            chunk_key_encoding_parsed.offset
-        ) != len(shape_parsed):
-            raise ValueError(
-                f"The offset chunk key encoding has {len(chunk_key_encoding_parsed.offset)} "
-                f"offset(s) but the array has {len(shape_parsed)} dimension(s)."
-            )
         dimension_names_parsed = parse_dimension_names(dimension_names)
         # Note: relying on a type method is numpy-specific
         fill_value_parsed = data_type.cast_scalar(fill_value)
@@ -665,7 +735,19 @@ class ArrayV3Metadata(Metadata):
         return self.codecs
 
     def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
+        if isinstance(self.chunk_grid, RegularBoundedChunkGridMetadata):
+            chunk_coords = tuple(
+                c + f for c, f in zip(chunk_coords, self.chunk_grid.first_chunk, strict=True)
+            )
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
+
+    def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
+        chunk_coords = self.chunk_key_encoding.decode_chunk_key(chunk_key)
+        if isinstance(self.chunk_grid, RegularBoundedChunkGridMetadata):
+            chunk_coords = tuple(
+                c - f for c, f in zip(chunk_coords, self.chunk_grid.first_chunk, strict=True)
+            )
+        return chunk_coords
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         check_storable(self)

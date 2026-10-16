@@ -694,54 +694,140 @@ def _chunk_bytes(store: Store) -> dict[str, bytes]:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("extent", [3, 4, 9])
 def test_prepend_writes_in_front_and_leaves_every_existing_chunk_untouched(
-    store: MemoryStore,
+    store: MemoryStore, extent: int
 ) -> None:
-    z = zarr.create_array(
-        store=store,
-        shape=(6, 4),
-        chunks=(3, 2),
-        dtype="int32",
-        fill_value=-1,
-        chunk_key_encoding={"name": "offset", "offset": (0, 0)},
-    )
+    z = zarr.create_array(store=store, shape=(6, 4), chunks=(4, 2), dtype="int32", fill_value=-1)
     data = np.arange(24, dtype="int32").reshape(6, 4)
     z[:] = data
     before = _chunk_bytes(store)
     assert set(before) == {"c/0/0", "c/0/1", "c/1/0", "c/1/1"}
 
-    assert z.prepend(np.full((6, 4), 7, dtype="int32"), axis=0) == (12, 4)
+    front = np.full((extent, 4), 7, dtype="int32")
+    assert z.prepend(front, axis=0) == (6 + extent, 4)
 
     after = _chunk_bytes(store)
     assert {k: after[k] for k in before} == before
-    assert set(after) - set(before) == {"c/-2/0", "c/-2/1", "c/-1/0", "c/-1/1"}
-    np.testing.assert_array_equal(z[:6], 7)
-    np.testing.assert_array_equal(z[6:], data)
-    assert z.metadata.to_dict()["chunk_key_encoding"] == {
-        "name": "offset",
-        "configuration": {"separator": "/", "offset": [-2, 0]},
+    first = -(-extent // 4)
+    assert set(after) - set(before) == {f"c/{-g}/{d}" for g in range(1, first + 1) for d in (0, 1)}
+    np.testing.assert_array_equal(z[:extent], front)
+    np.testing.assert_array_equal(z[extent:], data)
+    assert z.domain == ((-extent, 6), (0, 4))
+    assert z.metadata.to_dict()["chunk_grid"] == {
+        "name": "regular_bounded",
+        "configuration": {"chunk_shape": (4, 2), "origin": (0, 0), "lower_bound": (-extent, 0)},
     }
     reopened = zarr.open_array(store=store, mode="r")
-    assert reopened.shape == (12, 4)
+    assert reopened.domain == z.domain
     np.testing.assert_array_equal(reopened[:], z[:])
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_prepend_requires_whole_chunks_and_matching_other_dimensions(store: MemoryStore) -> None:
-    z = zarr.create_array(
-        store=store,
-        shape=(4, 3),
-        chunks=(2, 3),
-        dtype="uint8",
-        chunk_key_encoding={"name": "offset", "offset": (0, 0)},
+def test_prepend_twice_and_resize_keep_coordinates_stable(store: MemoryStore) -> None:
+    z = zarr.create_array(store=store, shape=(5,), chunks=(4,), dtype="int16", fill_value=0)
+    z[:] = np.arange(5, dtype="int16")
+    z.prepend(np.array([-2, -1], dtype="int16"))
+    z.prepend(np.array([-5, -4, -3], dtype="int16"))
+    assert z.domain == ((-5, 5),)
+    np.testing.assert_array_equal(z[:], np.arange(-5, 5))
+    assert _chunk_keys(store) == {"c/-2", "c/-1", "c/0", "c/1"}
+
+    z.resize((7,))
+    assert z.domain == ((-5, 2),)
+    np.testing.assert_array_equal(z[:], np.arange(-5, 2))
+    assert _chunk_keys(store) == {"c/-2", "c/-1", "c/0"}
+
+
+def _bounded_reference() -> tuple[zarr.Array[Any], npt.NDArray[Any]]:
+    z = zarr.create_array(store={}, shape=(7, 9), chunks=(3, 4), dtype="int32", fill_value=-1)
+    ref = np.arange(63, dtype="int32").reshape(7, 9)
+    z[:] = ref
+    z.prepend(np.full((2, 9), 100, dtype="int32"), axis=0)
+    z.prepend(np.full((9, 3), 200, dtype="int32"), axis=1)
+    ref = np.concatenate([np.full((2, 9), 100, dtype="int32"), ref], axis=0)
+    ref = np.concatenate([np.full((9, 3), 200, dtype="int32"), ref], axis=1)
+    assert z.metadata.chunk_grid.first_chunk_offset == (1, 1)  # type: ignore[union-attr]
+    return z, ref
+
+
+@pytest.mark.parametrize(
+    "selection",
+    [
+        (0, 0),
+        (slice(None), slice(None)),
+        (slice(0, 2), slice(1, 10)),
+        (slice(None, None, 2), slice(1, None, 3)),
+        (slice(1, 8), 5),
+    ],
+)
+def test_basic_selection_matches_numpy_on_a_partial_first_chunk(selection: Any) -> None:
+    z, ref = _bounded_reference()
+    np.testing.assert_array_equal(z[selection], ref[selection])
+    z[selection] = 9
+    ref[selection] = 9
+    np.testing.assert_array_equal(z[:], ref)
+
+
+def test_advanced_selections_match_numpy_on_a_partial_first_chunk() -> None:
+    z, ref = _bounded_reference()
+    rows = np.array([0, 2, 3, 8])
+    cols = np.array([11, 0, 3, 4])
+    mask = np.zeros(ref.shape, dtype=bool)
+    mask[0, 0] = mask[2, 3] = mask[8, 11] = True
+    row_mask = np.zeros(ref.shape[0], dtype=bool)
+    row_mask[[0, 1, 5]] = True
+
+    np.testing.assert_array_equal(z.get_orthogonal_selection((rows, cols)), ref[np.ix_(rows, cols)])
+    np.testing.assert_array_equal(
+        z.get_orthogonal_selection((row_mask, slice(0, 4))), ref[row_mask, :4]
     )
-    with pytest.raises(ValueError, match="whole chunks"):
-        z.prepend(np.zeros((3, 3), dtype="uint8"), axis=0)
+    np.testing.assert_array_equal(z.get_coordinate_selection((rows, cols)), ref[rows, cols])
+    np.testing.assert_array_equal(z.get_mask_selection(mask), ref[mask])
+    np.testing.assert_array_equal(z.get_block_selection((0, 0)), ref[:2, :3])
+    np.testing.assert_array_equal(z.get_block_selection((slice(0, 2), 1)), ref[:5, 3:7])
+
+    z.set_orthogonal_selection((rows, cols), 1)
+    ref[np.ix_(rows, cols)] = 1
+    z.set_coordinate_selection((np.array([0, 8]), np.array([0, 11])), 2)
+    ref[[0, 8], [0, 11]] = 2
+    z.set_mask_selection(mask, 3)
+    ref[mask] = 3
+    z.set_orthogonal_selection((row_mask, slice(0, 2)), 4)
+    ref[row_mask, :2] = 4
+    z.set_block_selection((0, 0), 5)
+    ref[:2, :3] = 5
+    np.testing.assert_array_equal(z[:], ref)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_prepend_on_a_sharded_array_by_part_of_a_shard(store: MemoryStore) -> None:
+    z = zarr.create_array(
+        store=store, shape=(4, 2), chunks=(2, 2), shards=(4, 2), dtype="int16", fill_value=0
+    )
+    z[:] = 1
+    before = _chunk_bytes(store)
+    assert set(before) == {"c/0/0"}
+
+    z.prepend(np.full((3, 2), 3, dtype="int16"), axis=0)
+
+    np.testing.assert_array_equal(z[:3], 3)
+    np.testing.assert_array_equal(z[3:], 1)
+    after = _chunk_bytes(store)
+    assert after["c/0/0"] == before["c/0/0"]
+    assert set(after) == {"c/-1/0", "c/0/0"}
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_prepend_validates_its_input(store: MemoryStore) -> None:
+    z = zarr.create_array(store=store, shape=(4, 3), chunks=(2, 3), dtype="uint8")
     with pytest.raises(ValueError, match="not compatible"):
         z.prepend(np.zeros((2, 4), dtype="uint8"), axis=0)
     with pytest.raises(ValueError, match="out of range"):
         z.prepend(np.zeros((2, 3), dtype="uint8"), axis=2)
-    assert z.shape == (4, 3)
+    assert z.prepend([[4, 5, 6]]) == (5, 3)
+    np.testing.assert_array_equal(z[0], [4, 5, 6])
+    assert z.prepend(np.zeros((0, 3), dtype="uint8")) == (5, 3)
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -751,87 +837,46 @@ def test_prepend_along_a_negative_axis_with_a_dot_separator(store: MemoryStore) 
         shape=(2, 4),
         chunks=(2, 2),
         dtype="uint8",
-        chunk_key_encoding={"name": "offset", "separator": ".", "offset": (0, 0)},
+        chunk_key_encoding={"name": "default", "separator": "."},
     )
     z[:] = 1
-
     assert z.prepend(np.full((2, 2), 5, dtype="uint8"), axis=-1) == (2, 6)
-
     np.testing.assert_array_equal(z[:, :2], 5)
     np.testing.assert_array_equal(z[:, 2:], 1)
     assert _chunk_keys(store) == {"c.0.-1", "c.0.0", "c.0.1"}
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_prepend_on_a_sharded_array_grows_by_whole_shards(store: MemoryStore) -> None:
-    z = zarr.create_array(
-        store=store,
-        shape=(4, 2),
-        chunks=(2, 2),
-        shards=(4, 2),
-        dtype="int16",
-        chunk_key_encoding={"name": "offset", "offset": (0, 0)},
-    )
-    z[:] = 1
-    assert _chunk_keys(store) == {"c/0/0"}
-
-    assert z.prepend(np.full((4, 2), 3, dtype="int16"), axis=0) == (8, 2)
-
-    np.testing.assert_array_equal(z[:4], 3)
-    np.testing.assert_array_equal(z[4:], 1)
-    assert _chunk_keys(store) == {"c/-1/0", "c/0/0"}
-    with pytest.raises(ValueError, match="whole shards"):
-        z.prepend(np.zeros((2, 2), dtype="int16"), axis=0)
-
-
-@pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_prepend_refuses_an_array_without_the_offset_encoding(
+def test_prepend_refuses_v2_and_rectilinear_arrays(
     store: MemoryStore, zarr_format: ZarrFormat
 ) -> None:
     z = zarr.create_array(
         store=store, shape=(4,), chunks=(2,), dtype="int8", zarr_format=zarr_format
     )
-    with pytest.raises(TypeError, match="offset chunk key encoding"):
-        z.prepend(np.zeros(2, dtype="int8"))
-    assert z.shape == (4,)
-
-
-@pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_prepend_accepts_a_plain_list_and_refuses_a_rectilinear_grid(store: MemoryStore) -> None:
-    z = zarr.create_array(
-        store=store,
-        shape=(2,),
-        chunks=(2,),
-        dtype="int8",
-        chunk_key_encoding={"name": "offset", "offset": (0,)},
-    )
-    z[:] = 1
-    assert z.prepend([4, 5]) == (4,)
-    np.testing.assert_array_equal(z[:], [4, 5, 1, 1])
-
+    if zarr_format == 2:
+        with pytest.raises(TypeError, match="regular chunk grid"):
+            z.prepend(np.zeros(2, dtype="int8"))
+        assert z.shape == (4,)
     with zarr.config.set({"array.rectilinear_chunks": True}):
         rectilinear = zarr.create_array(
-            store=MemoryStore(),
-            shape=(4,),
-            chunks=[[2, 2]],
-            dtype="int8",
-            chunk_key_encoding={"name": "offset", "offset": (0,)},
+            store=MemoryStore(), shape=(4,), chunks=[[2, 2]], dtype="int8"
         )
         with pytest.raises(TypeError, match="regular chunk grid"):
             rectilinear.prepend(np.zeros(2, dtype="int8"))
 
 
-@pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_create_array_rejects_an_offset_of_the_wrong_rank(store: MemoryStore) -> None:
-    with pytest.raises(ValueError, match="2 dimension"):
-        zarr.create_array(
-            store=store,
-            shape=(4, 4),
-            chunks=(2, 2),
-            dtype="int8",
-            chunk_key_encoding={"name": "offset", "offset": (0,)},
-        )
+def test_regular_bounded_grid_round_trips_and_validates() -> None:
+    from zarr.core.metadata.v3 import RegularBoundedChunkGridMetadata, parse_chunk_grid
+
+    grid = RegularBoundedChunkGridMetadata(chunk_shape=(4, 5), origin=(-2, 0), lower_bound=(-7, 3))
+    assert parse_chunk_grid(grid.to_dict()) == grid
+    assert grid.first_chunk == (-2, 0)
+    assert grid.first_chunk_offset == (3, 3)
+    with pytest.raises(ValueError, match="origin has 1"):
+        RegularBoundedChunkGridMetadata(chunk_shape=(4, 5), origin=(0,), lower_bound=(0, 0))
+    with pytest.raises(TypeError, match="lower_bound must be a sequence of integers"):
+        RegularBoundedChunkGridMetadata(chunk_shape=(4,), origin=(0,), lower_bound=(1.5,))  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
