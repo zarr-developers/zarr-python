@@ -798,6 +798,30 @@ def test_prepend_refuses_an_array_without_the_offset_encoding(
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_prepend_accepts_a_plain_list_and_refuses_a_rectilinear_grid(store: MemoryStore) -> None:
+    z = zarr.create_array(
+        store=store,
+        shape=(2,),
+        chunks=(2,),
+        dtype="int8",
+        chunk_key_encoding={"name": "offset", "offset": (0,)},
+    )
+    z[:] = 1
+    assert z.prepend([4, 5]) == (4,)
+    np.testing.assert_array_equal(z[:], [4, 5, 1, 1])
+
+    rectilinear = zarr.create_array(
+        store=MemoryStore(),
+        shape=(4,),
+        chunks=[[2, 2]],
+        dtype="int8",
+        chunk_key_encoding={"name": "offset", "offset": (0,)},
+    )
+    with pytest.raises(TypeError, match="regular chunk grid"):
+        rectilinear.prepend(np.zeros(2, dtype="int8"))
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_create_array_rejects_an_offset_of_the_wrong_rank(store: MemoryStore) -> None:
     with pytest.raises(ValueError, match="2 dimension"):
         zarr.create_array(
