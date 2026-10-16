@@ -281,8 +281,11 @@ def is_pure_fancy_indexing(selection: Any, ndim: int) -> bool:
         with boolean or slices).
     """
     if is_bool_array(selection):
-        # is mask selection
-        return True
+        # A full-shape Boolean array is a mask selection, which is vectorized
+        # indexing. A shorter one is a partial Boolean index along the leading
+        # axes, which NumPy resolves like orthogonal indexing, and a zero-length
+        # one selects nothing at all; both are handled by the orthogonal path.
+        return selection.ndim == ndim and selection.size > 0
 
     if ndim == 1 and (
         is_integer_list(selection) or is_integer_array(selection) or is_bool_list(selection)
@@ -642,8 +645,10 @@ class BoolArrayDimIndexer:
         if not is_bool_array(dim_sel, 1):
             raise IndexError("Boolean arrays in an orthogonal selection must be 1-dimensional only")
 
-        # check shape
-        if dim_sel.shape[0] != dim_len:
+        # check shape: a zero-length Boolean array selects nothing, which NumPy
+        # allows even when the axis is non-empty (it is treated as an empty
+        # integer selection); any other mismatch is an error.
+        if dim_sel.shape[0] != dim_len and dim_sel.shape[0] != 0:
             raise IndexError(
                 f"Boolean array has the wrong length for dimension; expected {dim_len}, got {dim_sel.shape[0]}"
             )
