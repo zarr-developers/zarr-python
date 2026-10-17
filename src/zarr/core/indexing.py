@@ -510,16 +510,12 @@ def replace_ellipsis(selection: Any, shape: tuple[int, ...]) -> SelectionNormali
 
 
 def replace_lists(selection: SelectionNormalized) -> SelectionNormalized:
-    def _as_array(dim_sel: list[Any]) -> Any:
-        # An empty list carries no dtype to infer from. NumPy treats it as an
-        # empty integer index selection, so default to an integer array.
-        return cast(
-            "ArrayOfIntOrBool",
-            np.asarray(dim_sel, dtype=np.intp) if not dim_sel else np.asarray(dim_sel),
-        )
-
+    # An empty list has no dtype to infer; NumPy indexes with it as an empty integer array.
     return tuple(
-        _as_array(dim_sel) if isinstance(dim_sel, list) else dim_sel for dim_sel in selection
+        cast("ArrayOfIntOrBool", np.asarray(dim_sel, dtype=np.intp if len(dim_sel) == 0 else None))
+        if isinstance(dim_sel, list)
+        else dim_sel
+        for dim_sel in selection
     )
 
 
