@@ -7,6 +7,7 @@ configuration. Public consumers import `ZarrV3MetadataFieldJSON` from
 the validators from `zarr_metadata.model`.
 """
 
+import functools
 import re
 from typing import Final, TypeAlias, TypeGuard, cast
 
@@ -93,8 +94,9 @@ EXTENSION_NAME_SCHEMA_PATTERN: Final = rf"^({_EXTENSION_NAME.pattern}|{_URI.patt
 r"""What `well_named` accepts, as a JSON Schema `pattern`: the two patterns it matches whole, `(?![\s\S])` where `$` would take a final newline, as `_RAW_BYTES_SCHEMA_PATTERN` has it."""
 
 
+@functools.lru_cache(maxsize=4096)
 def well_named(name: str) -> bool:
-    """Whether `name` is an extension name as the spec names one.
+    """Whether `name` is an extension name as the spec names one; remembered per name, since a document names few and a reader meets each many times.
 
     A registered name "MUST start with one lower case letter a-z and then
     be followed by only lower case letters a-z, numerals 0-9, underscores,

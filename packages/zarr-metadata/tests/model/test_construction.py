@@ -26,6 +26,7 @@ from zarr_metadata.model import (
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
 )
+from zarr_metadata.v3.codec.gzip import GZIP_CODEC, GzipCodecConfiguration
 from zarr_metadata.v3.data_type.int8 import INT8_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
@@ -308,3 +309,33 @@ def test_error_consolidated_metadata_paths_are_strings() -> None:
     assert [(found.loc, found.kind) for found in raised.value.problems] == [
         (("metadata",), "invalid_type")
     ]
+
+
+def test_a_model_s_key_is_computed_when_it_is_first_compared() -> None:
+    """`==` and `hash` compare a key of what the document means, computed the first time either is asked for and kept: a model that is only read never asks a definition for its `canonical` spelling."""
+    asked: list[int] = []
+
+    def counting(configuration: GzipCodecConfiguration) -> GzipCodecConfiguration:
+        asked.append(1)
+        return configuration
+
+    scope = CORE_AND_EXTENSIONS.extended_with(dataclasses.replace(GZIP_CODEC, canonical=counting))
+    document = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": [4],
+        "data_type": "int8",
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [4]}},
+        "chunk_key_encoding": {"name": "default", "configuration": {"separator": "/"}},
+        "fill_value": 0,
+        "codecs": [{"name": "bytes"}, {"name": "gzip", "configuration": {"level": 1}}],
+    }
+    model = ZarrV3ArrayMetadata(document, scope)
+    assert model.to_json()["codecs"][1] == {"name": "gzip", "configuration": {"level": 1}}
+    assert asked == []
+    other = ZarrV3ArrayMetadata(document, scope)
+    assert model == other
+    assert len(asked) == 2
+    assert hash(model) == hash(other)
+    assert model != ZarrV3ArrayMetadata({**document, "fill_value": 1}, scope)
+    assert len(asked) == 3

@@ -63,8 +63,6 @@ from zarr_metadata.v2.definition import (
     CORE_V2,
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
-    resolve_codec_v2,
-    resolve_dtype_v2,
 )
 from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
 from zarr_metadata.v3._definition import (
@@ -80,7 +78,7 @@ from zarr_metadata.v3._definition import (
     field_kind,
     fields_of,
     fill_value_problems,
-    resolve,
+    resolve_refined,
 )
 from zarr_metadata.v3._pipeline import Stage, read_pipeline
 from zarr_metadata.v3._registry import (
@@ -474,6 +472,8 @@ class ArrayMembersV3:
     dimension_names: tuple[str | None, ...] | UNSET
     attributes: dict[str, JSONValue]
     extra_fields: dict[str, JSONValue]
+    document: dict[str, JSONValue]
+    """The document, refined: each member as the read refined it, in the order the document writes them, which the model holds."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -487,6 +487,8 @@ class ArrayMembersV2:
     dimension_separator: ZarrV2ArrayDimensionSeparator
     attributes: dict[str, JSONValue] | UNSET
     extra_fields: dict[str, JSONValue]
+    document: dict[str, JSONValue]
+    """The document, refined: each member as the read refined it, in the order the document writes them, which the model holds."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -559,10 +561,21 @@ def read_array_v3(
     # configuration, against the definition in `context` that claims its
     # name. `must_understand: false` keeps its meaning where it has one: an
     # unknown top-level extension *field*, which a reader really can skip.
+    # Each member is refined once, here, and what was refined is kept: the
+    # document the model holds is built of it, so nothing is walked twice.
+    refined: dict[str, JSONValue] = {
+        **extra_fields,
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": shape,
+    }
     read: dict[str, ResolvedField[Any]] = {}
     for key, kind in _EXTENSION_POINTS_V3:
         if key in doc:
-            read[key], found = resolve(doc[key], kind, context, (*at, key))
+            refined[key], found = refine_json(doc[key], (*at, key))
+            read[key], found = resolve_refined(
+                doc[key], refined[key], found, kind, context, (*at, key)
+            )
             problems.extend(within(found, at))
     # The fill value is JSON, and judged by the data type the scope read,
     # when there is one: a data type nothing in scope claims leaves it
@@ -570,6 +583,7 @@ def read_array_v3(
     fill_value: JSONValue = None
     if "fill_value" in doc:
         fill_value, found = refine_json(doc["fill_value"], (*at, "fill_value"))
+        refined["fill_value"] = fill_value
         problems.extend(within(found, at))
         if len(found) == 0 and "data_type" in read:
             problems.extend(fill_value_problems(read["data_type"], fill_value, ("fill_value",)))
@@ -588,10 +602,16 @@ def read_array_v3(
                 problems.append(ValidationProblem((key,), "expected an array", "invalid_type"))
             else:
                 listed[key] = []
+                items: list[JSONValue] = []
                 for index, entry in enumerate(entries):
-                    resolved, found = resolve(entry, kind, context, (*at, key, index))
+                    item, found = refine_json(entry, (*at, key, index))
+                    items.append(item)
+                    resolved, found = resolve_refined(
+                        entry, item, found, kind, context, (*at, key, index)
+                    )
                     listed[key].append(resolved)
                     problems.extend(within(found, at))
+                refined[key] = tuple(items)
     # The codecs are read as a pipeline, the first handed the grid's chunks
     # of the array's data type: in order, each judged against the chunk it
     # is handed. That holds one array -> bytes codec, so it is not empty.
@@ -603,6 +623,7 @@ def read_array_v3(
     attributes: dict[str, JSONValue] | None = {}
     if "attributes" in doc:
         attributes, found = attributes_of(doc["attributes"], at)
+        refined["attributes"] = attributes
         problems.extend(found)
     if "dimension_names" in doc:
         # Simple typed sequences (dimension_names, shape, chunks) report a single
@@ -638,13 +659,19 @@ def read_array_v3(
     )
     if len(problems) != 0 or shape is None or attributes is None:
         return reading, None
-    names = doc.get("dimension_names", UNSET)
+    dimension_names: tuple[str | None, ...] | UNSET = UNSET
+    if "dimension_names" in doc:
+        # An array of strings and nulls, as judged above: refined, each
+        # string as JSON writes it.
+        dimension_names = cast("tuple[str | None, ...]", refine_json(doc["dimension_names"])[0])
+        refined["dimension_names"] = dimension_names
     members = ArrayMembersV3(
         shape=shape,
         fill_value=fill_value,
-        dimension_names=UNSET if names is UNSET else tuple(cast("Sequence[str | None]", names)),
+        dimension_names=dimension_names,
         attributes=attributes,
         extra_fields=extra_fields,
+        document={key: refined[key] for key in cast("Mapping[str, object]", doc)},
     )
     return reading, members
 
@@ -735,22 +762,45 @@ def read_array_v2(
                 "invalid_value",
             )
         )
+    # Each member is refined once, here, and what was refined is kept: the
+    # document the model holds is built of it, so nothing is walked twice.
+    refined: dict[str, JSONValue] = {
+        **extra_fields,
+        "zarr_format": 2,
+        "shape": shape,
+        "chunks": chunks,
+    }
     dtype: ResolvedField[ZarrV2DataTypeDefinition[Any]] | UNSET = UNSET
     if "dtype" in doc:
         # A typestr by its family, field records as a struct.
-        dtype, found = resolve_dtype_v2(doc["dtype"], context, ("dtype",))
+        refined["dtype"], found = refine_json(doc["dtype"], ("dtype",))
+        dtype, found = resolve_refined(
+            doc["dtype"], refined["dtype"], found, ZarrV2DataTypeDefinition, context, ("dtype",)
+        )
         problems.extend(found)
-    if "order" in doc and doc["order"] not in ("C", "F"):
-        problems.append(outside_of(("order",), doc["order"], ("C", "F")))
+    if "order" in doc:
+        refined["order"], _ = refine_json(doc["order"])
+        if doc["order"] not in ("C", "F"):
+            problems.append(outside_of(("order",), doc["order"], ("C", "F")))
     compressor: ResolvedField[ZarrV2CodecDefinition[Any]] | UNSET | None = UNSET
     if "compressor" in doc:
         compressor = None
+        refined["compressor"] = None
         if doc["compressor"] is not None:
-            compressor, found = resolve_codec_v2(doc["compressor"], context, ("compressor",))
+            refined["compressor"], found = refine_json(doc["compressor"], ("compressor",))
+            compressor, found = resolve_refined(
+                doc["compressor"],
+                refined["compressor"],
+                found,
+                ZarrV2CodecDefinition,
+                context,
+                ("compressor",),
+            )
             problems.extend(found)
     filters: tuple[ResolvedField[ZarrV2CodecDefinition[Any]], ...] | UNSET | None = UNSET
     if "filters" in doc:
         filters = None
+        refined["filters"] = None
         entries = doc["filters"]
         if entries is not None:
             if not _is_array(entries):
@@ -765,26 +815,41 @@ def read_array_v2(
                 # "A list of JSON objects providing codec configurations, or
                 # null" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79): an empty list is a list.
                 read: list[ResolvedField[ZarrV2CodecDefinition[Any]]] = []
+                items: list[JSONValue] = []
                 for index, item in enumerate(entries):
-                    entry, found = resolve_codec_v2(item, context, ("filters", index))
+                    refined_item, found = refine_json(item, ("filters", index))
+                    items.append(refined_item)
+                    entry, found = resolve_refined(
+                        item,
+                        refined_item,
+                        found,
+                        ZarrV2CodecDefinition,
+                        context,
+                        ("filters", index),
+                    )
                     read.append(entry)
                     problems.extend(found)
                 filters = tuple(read)
-    if "dimension_separator" in doc and doc["dimension_separator"] not in (".", "/"):
-        problems.append(
-            outside_of(("dimension_separator",), doc["dimension_separator"], (".", "/"))
-        )
+                refined["filters"] = tuple(items)
+    if "dimension_separator" in doc:
+        refined["dimension_separator"], _ = refine_json(doc["dimension_separator"])
+        if doc["dimension_separator"] not in (".", "/"):
+            problems.append(
+                outside_of(("dimension_separator",), doc["dimension_separator"], (".", "/"))
+            )
     fill_value: JSONValue = None
     if "fill_value" in doc:
         # JSON, judged by the dtype the scope read, when there is one: a
         # dtype nothing in scope claims leaves it unjudged.
         fill_value, found = refine_json(doc["fill_value"], ("fill_value",))
+        refined["fill_value"] = fill_value
         problems.extend(found)
         if len(found) == 0 and dtype is not UNSET:
             problems.extend(fill_value_problems(dtype, fill_value, ("fill_value",)))
     attributes: dict[str, JSONValue] | UNSET | None = UNSET
     if "attributes" in doc:
         attributes, found = attributes_of(doc["attributes"])
+        refined["attributes"] = attributes
         problems.extend(found)
     reading = ZarrV2ArrayMetadataReading(
         dtype=dtype,
@@ -804,8 +869,17 @@ def read_array_v2(
         ),
         attributes=attributes,
         extra_fields=extra_fields,
+        document={key: refined[key] for key in cast("Mapping[str, object]", doc)},
     )
     return reading, members
+
+
+def array_document_v2(members: ArrayMembersV2) -> dict[str, JSONValue]:
+    """The document a v2 array model holds: as the read refined it, with the `dimension_separator` a document that writes none means, `.`."""
+    document = members.document
+    if "dimension_separator" not in document:
+        return {**document, "dimension_separator": "."}
+    return document
 
 
 def validate_array_metadata_v2(

@@ -260,3 +260,11 @@ def test_error_a_field_is_read_in_a_scope_of_its_format() -> None:
         resolve("int32", DataTypeDefinition, CORE_V2)
     field, _ = resolve("<u1", ZarrV2DataTypeDefinition, Context.of())
     assert isinstance(field, UnclaimedField)
+
+
+def test_error_what_nothing_hashes_is_not_a_kind() -> None:
+    """A field is read as a kind, a class: a list or a dict given for one is refused as any other non-kind is, not with the `TypeError` hashing it raises."""
+    with pytest.raises(TypeError, match="is not a kind of metadata"):
+        as_kind(["codec"])
+    with pytest.raises(TypeError, match="is not a kind of metadata"):
+        as_kind({"kind": CodecDefinition})

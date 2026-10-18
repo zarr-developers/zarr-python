@@ -16,6 +16,7 @@ import pytest
 from annotated_types import Ge, Predicate
 from typing_extensions import TypedDict
 
+from zarr_metadata._json import refine_json
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model import (
     is_metadata_field_v3,
@@ -26,10 +27,12 @@ from zarr_metadata.model._array import ZarrV3ArrayMetadata
 from zarr_metadata.typed_json import (
     check,
 )
+from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._definition import (
     canonical_of,
     configuration_of,
+    resolve_refined,
 )
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
@@ -1474,3 +1477,60 @@ def test_a_field_holding_fields_is_copied_and_pickled_whole() -> None:
             assert again == field
             assert type(again) is type(field)
             assert again.nested == field.nested
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "crc32c",
+        {"name": "gzip", "configuration": {"level": 1}},
+        {"name": "gzip", "configuration": {"level": 12}},
+        {"name": "gzip", "configuration": {"level": 1}, "must_understand": False},
+        {"name": "acme.x", "configuration": {"a": [1, {"b": None}]}},
+        {"name": "BAD NAME"},
+        {"name": "sharding_indexed", "configuration": {**SHARD, "index_location": "x"}},
+        {"configuration": {}},
+    ],
+    ids=[
+        "bare",
+        "read",
+        "refused",
+        "envelope",
+        "unclaimed",
+        "ill-named",
+        "nested-refused",
+        "nameless",
+    ],
+)
+def test_a_field_its_caller_refined_reads_as_resolve_reads_it(field: object) -> None:
+    """`resolve_refined` is `resolve` for a caller that refined the field already: the same field, the same problems, located the same, with the same `input`."""
+    refined, problems = refine_json(field, ("codecs", 0))
+    assert problems == ()
+    expected = resolve(field, CodecDefinition, CORE, ("codecs", 0))
+    found = resolve_refined(field, refined, problems, CodecDefinition, CORE, ("codecs", 0))
+    assert found == expected
+    assert [(p.loc, p.kind, p.input) for p in found[1]] == [
+        (p.loc, p.kind, p.input) for p in expected[1]
+    ]
+
+
+def test_error_a_field_its_caller_found_not_to_be_json_is_refused_unread() -> None:
+    """What `refine_json` found wrong is the field's problems, and the field is refused as not JSON, its name still saying what claims it, as `resolve` refuses one."""
+    field = {"name": "gzip", "configuration": {"level": {1, 2}}}
+    refined, problems = refine_json(field, ("codecs", 0))
+    assert refined is None
+    resolved, found = resolve_refined(
+        field, refined, problems, CodecDefinition, CORE, ("codecs", 0)
+    )
+    assert resolved == RefusedField(
+        json=UNSET, name="gzip", read_as=CodecDefinition, definition=GZIP_CODEC
+    )
+    assert [(p.loc, p.kind) for p in found] == [
+        (("codecs", 0, "configuration", "level"), "invalid_type")
+    ]
+    assert (resolved, found) == resolve(field, CodecDefinition, CORE, ("codecs", 0))
+
+
+def test_error_a_refined_field_is_not_read_in_a_scope_of_the_other_format() -> None:
+    with pytest.raises(TypeError, match="got a v2 scope"):
+        resolve_refined("gzip", "gzip", (), CodecDefinition, CORE_V2)

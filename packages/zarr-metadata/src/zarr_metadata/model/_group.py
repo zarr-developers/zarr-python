@@ -50,6 +50,7 @@ from zarr_metadata.model._validation import (
     ArrayMembersV3,
     StoreKey,
     ZarrV3ArrayMetadataReading,
+    array_document_v2,
     attributes_of,
     check_literal,
     dump_store_json,
@@ -58,7 +59,6 @@ from zarr_metadata.model._validation import (
     members_past_the_levels,
     missing_keys,
     other_members,
-    parse_group_metadata_v2,
     read_array_v2,
     read_array_v3,
     reading_of,
@@ -172,15 +172,19 @@ class ZarrV3GroupMetadata(Keyed):
 
     @property
     def claims(self) -> Claims:
-        """What the reading claimed of each name the document and its consolidated documents write, keyed as the scope files it."""
-        return self._claims
+        """What the reading claimed of each name the document and its consolidated documents write, keyed as the scope files it; computed the first time it is asked for."""
+        try:
+            return self._claims
+        except AttributeError:
+            self._claims = MappingProxyType(claims_of(self._reading.fields()))
+            return self._claims
 
     def __init__(self, document: object, context: ZarrV3Context | None = None) -> None:
         scope = scoped(context, CORE_AND_EXTENSIONS)
         reading, members = read_group_v3(document, scope)
         if members is None or len(reading.problems) != 0:
             raise MetadataValidationError(reading.problems)
-        self._adopt(refined_object(documents_for(document)), scope, reading, members)
+        self._adopt(_document_of(members), scope, reading, members)
 
     @classmethod
     def _of(
@@ -218,8 +222,7 @@ class ZarrV3GroupMetadata(Keyed):
             self._consolidated: ZarrV3ConsolidatedMetadata | UNSET = UNSET
         else:
             member = object_at(document, ZARR_V3_CONSOLIDATED_METADATA_KEY)
-            documents = object_at(member, "metadata")
-            models = _nested_models(documents, context, reading.consolidated, members.consolidated)
+            models = _nested_models(context, reading.consolidated, members.consolidated)
             # One model per document, of this scope: each nested reading
             # holds the model the group holds.
             held = MappingProxyType(
@@ -236,8 +239,6 @@ class ZarrV3GroupMetadata(Keyed):
         self._reading = dataclasses.replace(
             reading, consolidated=MappingProxyType(dict(held)), metadata=self
         )
-        self._key = self._key_of()
-        self._claims = MappingProxyType(claims_of(reading.fields()))
 
     # --- the pair ---------------------------------------------------------
 
@@ -275,7 +276,7 @@ class ZarrV3GroupMetadata(Keyed):
         members = self._members
         return (
             json_text(members.attributes),
-            UNSET if consolidated is UNSET else consolidated._key,
+            UNSET if consolidated is UNSET else consolidated._model_key,
             json_text(members.extra_fields),
         )
 
@@ -330,7 +331,7 @@ class ZarrV3GroupMetadata(Keyed):
     def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3GroupMetadata:
         """This document read in `context`, whatever that changes; `MetadataValidationError` when it has a problem there. The reading is kept when `context` reads every claim identically."""
         scope = scoped(context, CORE_AND_EXTENSIONS)
-        if scope.disagreements(self._claims).agrees:
+        if scope.disagreements(self.claims).agrees:
             return self._of(self._document, scope, self._reading, self._members)
         return type(self)(self._document, context=scope)
 
@@ -343,7 +344,7 @@ class ZarrV3GroupMetadata(Keyed):
         name `context` claims refuses what was written under it.
         """
         scope = scoped(context, CORE_AND_EXTENSIONS)
-        found = scope.disagreements(self._claims)
+        found = scope.disagreements(self.claims)
         if len(found.conflicts) != 0:
             raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
         return self.with_context(scope)
@@ -424,14 +425,12 @@ class ZarrV3ConsolidatedMetadata(Keyed):
         scope = scoped(context, CORE_AND_EXTENSIONS)
         # The member sits under a group's key wherever it is read, so the
         # levels a reader walks are counted from there, as in the group.
-        readings, members, problems = _read_consolidated_v3(
+        readings, members, document, problems = _read_consolidated_v3(
             member, scope, (ZARR_V3_CONSOLIDATED_METADATA_KEY,)
         )
-        if len(problems) != 0:
+        if len(problems) != 0 or document is None:
             raise MetadataValidationError(problems)
-        document = refined_object(_member_documents_for(member))
-        documents = object_at(document, "metadata")
-        self._adopt(document, scope, _nested_models(documents, scope, readings, members))
+        self._adopt(document, scope, _nested_models(scope, readings, members))
 
     @classmethod
     def _of(
@@ -454,7 +453,6 @@ class ZarrV3ConsolidatedMetadata(Keyed):
         self._document = document
         self._context = context
         self._metadata = metadata
-        self._key = self._key_of()
         # Hidden from the readings, which hold their own models; see `metadata`.
 
     @property
@@ -477,7 +475,7 @@ class ZarrV3ConsolidatedMetadata(Keyed):
     def _key_of(self) -> tuple[object, ...]:
         """What `==` and `hash` compare of consolidated metadata: each document's key, by its path, in path order."""
         return tuple(
-            (path, node._key)
+            (path, node._model_key)
             for path, node in sorted(self.metadata.items(), key=lambda item: item[0])
         )
 
@@ -705,6 +703,8 @@ class GroupMembersV3:
     """Each member the spec does not define that is JSON."""
     consolidated: Mapping[str, ArrayMembersV3 | GroupMembersV3] | UNSET
     """Each array its consolidated metadata holds that has no problem, and each group, by path; UNSET when it holds none."""
+    document: dict[str, JSONValue] | None
+    """The document, refined, which the model holds: each member as the read refined it, in the order the document writes them, each document its consolidated metadata holds among them; None when the read found a problem."""
 
 
 def read_group_metadata_v3(
@@ -762,19 +762,32 @@ def read_group_v3(
     raw = doc.get(ZARR_V3_CONSOLIDATED_METADATA_KEY, UNSET)
     consolidated: dict[str, ZarrV3NodeMetadataReading] = {}
     held: Mapping[str, ArrayMembersV3 | GroupMembersV3] | UNSET = UNSET
+    member: dict[str, JSONValue] | None = None
     if raw is not UNSET:
-        consolidated, held, inside = _read_consolidated_v3(
+        consolidated, held, member, inside = _read_consolidated_v3(
             raw, context, (*at, ZARR_V3_CONSOLIDATED_METADATA_KEY)
         )
         found.extend(_prefix(ZARR_V3_CONSOLIDATED_METADATA_KEY, inside))
     reading = ZarrV3GroupMetadataReading(MappingProxyType(consolidated), with_input(found, whole))
-    return reading, GroupMembersV3(attributes, extra_fields, held)
+    document: dict[str, JSONValue] | None = None
+    if len(found) == 0 and attributes is not None:
+        # Each member as refined above, in the document's order: what the
+        # model holds, built of what was read rather than refined again.
+        refined: dict[str, JSONValue] = {
+            **extra_fields,
+            "zarr_format": 3,
+            "node_type": "group",
+            "attributes": attributes,
+            ZARR_V3_CONSOLIDATED_METADATA_KEY: member,
+        }
+        document = {key: refined[key] for key in cast("Mapping[str, object]", doc)}
+    return reading, GroupMembersV3(attributes, extra_fields, held, document)
 
 
 _CONSOLIDATED_MEMBERS: Final = ("kind", "must_understand", "metadata")
 """The members of an inline `consolidated_metadata`, in the order the convention declares them."""
 
-_CONSOLIDATED_ENVELOPE: Final[dict[str, object]] = {"kind": "inline", "must_understand": False}
+_CONSOLIDATED_ENVELOPE: Final[dict[str, JSONValue]] = {"kind": "inline", "must_understand": False}
 """What the member declares, by declaration."""
 
 
@@ -886,9 +899,10 @@ def _read_consolidated_v3(
 ) -> tuple[
     dict[str, ZarrV3NodeMetadataReading],
     dict[str, ArrayMembersV3 | GroupMembersV3],
+    dict[str, JSONValue] | None,
     tuple[ValidationProblem, ...],
 ]:
-    """An inline `consolidated_metadata` member, as `context` read it: each document it holds, read once, as `read_node_metadata_v3` reads one, by its path; the members of each a model can be built of; and every problem, located in the member.
+    """An inline `consolidated_metadata` member, as `context` read it: each document it holds, read once, as `read_node_metadata_v3` reads one, by its path; the members of each a model can be built of; the member refined, each document as its read refined it, when nothing is wrong, else None; and every problem, located in the member.
 
     `at` is where the member sits in the document handed in. Each container
     the reader descends into -- the member, its `metadata`, each document
@@ -900,9 +914,9 @@ def _read_consolidated_v3(
         value = {**_CONSOLIDATED_ENVELOPE, "metadata": dict(value.metadata)}
     past = nested_past_the_levels(value, at)
     if past is not None:
-        return {}, {}, within((past,), at)
+        return {}, {}, None, within((past,), at)
     if not is_object(value):
-        return {}, {}, (ValidationProblem((), "expected an object", "invalid_type"),)
+        return {}, {}, None, (ValidationProblem((), "expected an object", "invalid_type"),)
     env = value
     # Missing members are reported in the order the envelope declares them.
     problems: list[ValidationProblem] = [
@@ -949,7 +963,24 @@ def _read_consolidated_v3(
                 key, readings[key], members.get(key), readings, members, node_types
             )
         )
-    return readings, members, tuple(problems)
+    refined: dict[str, JSONValue] | None = None
+    if len(problems) == 0:
+        # Nothing is wrong, so every entry has members, and a document;
+        # the envelope in the member's order, by declaration.
+        documents = {
+            path: _document_of(members[path]) for path in cast("Mapping[str, object]", entries)
+        }
+        held: dict[str, JSONValue] = {**_CONSOLIDATED_ENVELOPE, "metadata": documents}
+        refined = {key: held[key] for key in cast("Mapping[str, object]", env)}
+    return readings, members, refined, tuple(problems)
+
+
+def _document_of(members: ArrayMembersV3 | GroupMembersV3) -> dict[str, JSONValue]:
+    """The document `members`, a node's a read found nothing wrong with, holds refined; `TypeError` for a group's with a problem, which such a read rules out."""
+    if members.document is None:
+        msg = "expected the members of a document a read found nothing wrong with"
+        raise TypeError(msg)
+    return members.document
 
 
 def _key_problems(key: str) -> list[ValidationProblem]:
@@ -1105,19 +1136,17 @@ def _with_models(
     context: Context,
     at: Loc = (),
 ) -> ZarrV3GroupMetadataReading:
-    """`reading`, holding the model of each document its consolidated metadata holds that has no problem, and its own when it has none: each built from `value`, the document this read read, in `context`.
+    """`reading`, holding the model of each document its consolidated metadata holds that has no problem, and its own when it has none: each built of what the read refined, as `members` holds it, in `context`.
 
-    A document with a problem a reader walks past -- a key that is no
-    string, a value that is no JSON, a level past the cap -- refines to
-    nothing as a whole; each document its consolidated metadata holds is
-    then refined on its own, from where it sits in the document handed in
-    -- `at` is where this one sits -- so the ones without a problem still
-    have their models, and a listed group with a problem of its own holds
-    those of its own listing.
+    A document with a problem -- a key that is no string, a value that is
+    no JSON, a level past the cap -- has no model; each document its
+    consolidated metadata holds was read on its own, from where it sits in
+    `value`, the document this read read -- `at` is where this one sits --
+    so the ones without a problem still have their models, and a listed
+    group with a problem of its own holds those of its own listing.
     """
     if len(reading.problems) == 0:
-        document = refined_object(value)
-        model = ZarrV3GroupMetadata._of(document, context, reading, members)  # pyright: ignore[reportPrivateUsage]
+        model = ZarrV3GroupMetadata._of(_document_of(members), context, reading, members)  # pyright: ignore[reportPrivateUsage]
         return model.reading
     if members.consolidated is UNSET or not is_object(value):
         return reading
@@ -1128,21 +1157,7 @@ def _with_models(
     if not is_object(entries):
         return reading
     held_entries = entries
-    documents: dict[str, JSONValue] = {}
-    for path in members.consolidated:
-        if path not in held_entries:
-            continue
-        entry, problems = refine_user_data(
-            held_entries[path], (*at, ZARR_V3_CONSOLIDATED_METADATA_KEY, "metadata", path)
-        )
-        if len(problems) == 0 and isinstance(entry, Mapping):
-            documents[path] = entry
-    models = _nested_models(
-        documents,
-        context,
-        reading.consolidated,
-        {path: child for path, child in members.consolidated.items() if path in documents},
-    )
+    models = _nested_models(context, reading.consolidated, members.consolidated)
     held = dict(reading.consolidated)
     for path, child in members.consolidated.items():
         nested = reading.consolidated[path]
@@ -1168,12 +1183,11 @@ def _with_models(
 
 
 def _nested_models(
-    documents: Mapping[str, JSONValue],
     context: Context,
     readings: Mapping[str, ZarrV3NodeMetadataReading],
     members: Mapping[str, ArrayMembersV3 | GroupMembersV3],
 ) -> dict[str, ZarrV3NodeMetadata]:
-    """The model of each document in `documents`, a `metadata` member's, a model can be built of, in `context`: the one its reading holds already when that is of `context`, else built from its reading and members, not read again."""
+    """The model of each document among `members`, a `metadata` member's, a model can be built of, in `context`: the one its reading holds already when that is of `context`, else built from its reading and members, which hold the document refined, not read again."""
     models: dict[str, ZarrV3NodeMetadata] = {}
     for path, child in members.items():
         reading = readings[path]
@@ -1181,14 +1195,17 @@ def _nested_models(
         if held is not None and held.context is context:
             models[path] = held
             continue
-        document = object_at(documents, path)
-        if isinstance(reading, ZarrV3ArrayMetadataReading):
+        if isinstance(reading, ZarrV3ArrayMetadataReading) and isinstance(child, ArrayMembersV3):
             models[path] = ZarrV3ArrayMetadata._of(  # pyright: ignore[reportPrivateUsage]
-                document, context, reading, cast("ArrayMembersV3", child)
+                child.document, context, reading, child
             )
-        elif isinstance(reading, ZarrV3GroupMetadataReading) and len(reading.problems) == 0:
+        elif (
+            isinstance(reading, ZarrV3GroupMetadataReading)
+            and isinstance(child, GroupMembersV3)
+            and child.document is not None
+        ):
             models[path] = ZarrV3GroupMetadata._of(  # pyright: ignore[reportPrivateUsage]
-                document, context, reading, cast("GroupMembersV3", child)
+                child.document, context, reading, child
             )
     return models
 
@@ -1291,8 +1308,16 @@ class ZarrV2GroupMetadata(Keyed):
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
         scope = scoped(context, CORE_V2)
-        parsed = parse_group_metadata_v2(document, context=scope)
-        self._adopt(refined_object(document), scope, _v2_attributes(parsed))
+        problems = validate_group_metadata_v2(document, context=scope)
+        if len(problems) != 0:
+            raise MetadataValidationError(problems)
+        # Refined once: the attributes the model holds are the document's,
+        # which shares nothing with what was handed in.
+        refined = refined_object(document)
+        attributes: dict[str, JSONValue] | UNSET = (
+            object_at(refined, "attributes") if "attributes" in refined else UNSET
+        )
+        self._adopt(refined, scope, attributes)
 
     @classmethod
     def _of(
@@ -1316,7 +1341,6 @@ class ZarrV2GroupMetadata(Keyed):
         self._context = context
         self._attributes = attributes
         self._shown = UNSET if attributes is UNSET else frozen(attributes)
-        self._key = self._key_of()
 
     @property
     def context(self) -> Context:
@@ -1382,7 +1406,7 @@ class ZarrV2GroupMetadata(Keyed):
 
     def refines(self, other: ZarrV2GroupMetadata) -> bool:
         """Whether this group holds everything `other` holds: its attributes written alike; False of what is not a v2 group."""
-        return type(other) is type(self) and self._key == other._key
+        return type(other) is type(self) and self._model_key == other._model_key
 
     @classmethod
     def create_default(
@@ -1476,7 +1500,6 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         self._context = context
         self._nodes = nodes
         self._shown = frozen(object_at(document, "metadata"))
-        self._key = self._key_of()
 
     @property
     def context(self) -> Context:
@@ -1512,7 +1535,7 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         """What `==` and `hash` compare of v2 consolidated metadata: each node by its path and its own key, and every other entry as JSON text."""
         nodes = self._nodes
         return (
-            tuple(sorted((path, node._key) for path, node in nodes.items())),
+            tuple(sorted((path, node._model_key) for path, node in nodes.items())),
             self._other_entries_text(),
         )
 
@@ -1779,10 +1802,7 @@ def _read_node_v2(
         reading, members = read_array_v2(merged, context)
         if members is None:
             return None, located(reading.problems)
-        held = refined_object(merged)
-        if "dimension_separator" not in held:
-            held["dimension_separator"] = "."
-        return ZarrV2ArrayMetadata._of(held, context, reading, members), []  # pyright: ignore[reportPrivateUsage]
+        return ZarrV2ArrayMetadata._of(array_document_v2(members), context, reading, members), []  # pyright: ignore[reportPrivateUsage]
     found = validate_group_metadata_v2(merged, context=context)
     if len(found) != 0:
         return None, located(found)
@@ -1791,8 +1811,3 @@ def _read_node_v2(
         object_at(document, "attributes") if "attributes" in document else UNSET
     )
     return ZarrV2GroupMetadata._of(document, context, attributes), []  # pyright: ignore[reportPrivateUsage]
-
-
-def _v2_attributes(document: ZarrV2GroupMetadataJSON) -> dict[str, JSONValue] | UNSET:
-    """The attributes of the v2 group model of `document`, which `parse_group_metadata_v2` gave: `UNSET` when it holds none."""
-    return dict(document["attributes"]) if "attributes" in document else UNSET

@@ -23,6 +23,11 @@ from zarr_metadata.v3._definition import EmptyConfiguration, Nested
 FloatSpecialFillValue = Literal["NaN", "Infinity", "-Infinity"]
 """The named non-finite fill values every IEEE 754 floating-point type takes."""
 
+FLOAT_SPECIAL_FILL_VALUES: Final[tuple[FloatSpecialFillValue, ...]] = get_args(
+    FloatSpecialFillValue
+)
+"""The strings a float fill value may be instead of a number, as the fill value rules take them."""
+
 
 def float_fill_value_rules(
     name: str, hex_form: Callable[[str], str]
@@ -47,14 +52,14 @@ class _FloatFillValue:
     def __call__(
         self, configuration: EmptyConfiguration, nested: Nested, value: float | str
     ) -> Iterator[ValidationProblem]:
-        if not isinstance(value, str) or value in get_args(FloatSpecialFillValue):
+        if not isinstance(value, str) or value in FLOAT_SPECIAL_FILL_VALUES:
             return
         try:
             self.hex_form(value)
         except ValueError:
             yield ValidationProblem(
                 (),
-                f"expected a number, {choices(get_args(FloatSpecialFillValue))}, or a "
+                f"expected a number, {choices(FLOAT_SPECIAL_FILL_VALUES)}, or a "
                 f"{self.name} hex string, got {shown(value)}",
                 "invalid_value",
             )

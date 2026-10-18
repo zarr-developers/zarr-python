@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import math
-from collections import OrderedDict
+from collections import OrderedDict, UserDict
+from types import MappingProxyType
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -216,3 +217,37 @@ def test_a_str_or_int_subclass_is_refined_to_the_json_type_it_is() -> None:
         {"zarr_format": Format.THREE, "node_type": NodeType.GROUP}
     )
     assert model.to_json() == {"zarr_format": 3, "node_type": "group"}
+
+
+def test_a_mapping_or_sequence_of_another_type_is_refined_as_a_dict_or_list_is() -> None:
+    """A mapping proxy, a `UserDict`, a subclass of `dict` or `list`, a tuple: refined to the JSON the dict or list it holds refines to, and judged the same, each problem where it sits."""
+
+    class Listed(list[object]):
+        pass
+
+    class Mapped(dict[str, object]):
+        pass
+
+    held: dict[str, object] = {"a": [1, {"b": (2, 3)}], "c": "x", "d": [True, None, 2.5]}
+    expected = refine_json(held)
+    assert expected == ({"a": (1, {"b": (2, 3)}), "c": "x", "d": (True, None, 2.5)}, ())
+    for other in (
+        MappingProxyType(held),
+        UserDict(held),
+        Mapped(held),
+        {**held, "a": Listed(cast("list[object]", held["a"]))},
+    ):
+        assert refine_json(other) == expected
+    bad: dict[str, object] = {"a": [1, {"b": math.nan}], "c": {1, 2}}
+    for other in (
+        bad,
+        MappingProxyType(bad),
+        Mapped(bad),
+        {**bad, "a": Listed([1, {"b": math.nan}])},
+    ):
+        refined, problems = refine_json(other)
+        assert refined is None
+        assert [(p.loc, p.kind) for p in problems] == [
+            (("a", 1, "b"), "invalid_value"),
+            (("c",), "invalid_type"),
+        ]

@@ -39,6 +39,10 @@ ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_j
 """
 
 
+PROBLEM_KINDS: Final[tuple[ProblemKind, ...]] = get_args(ProblemKind)
+"""The kinds a problem is one of, as `ValidationProblem` checks its own."""
+
+
 JSON_DEPTH: Final = 256
 """How many levels of nesting a reader walks.
 
@@ -152,8 +156,8 @@ class ValidationProblem:
             msg = f"a ValidationProblem's message is a string, got {message!r}"
             raise TypeError(msg)
         kind = cast("object", self.kind)
-        if not isinstance(kind, str) or kind not in get_args(ProblemKind):
-            msg = f"a ValidationProblem's kind is one of {get_args(ProblemKind)!r}, got {kind!r}"
+        if not isinstance(kind, str) or kind not in PROBLEM_KINDS:
+            msg = f"a ValidationProblem's kind is one of {PROBLEM_KINDS!r}, got {kind!r}"
             raise TypeError(msg)
         ctx = cast("object", self.ctx)
         if isinstance(ctx, _Ctx):
@@ -308,7 +312,7 @@ def is_object(value: object) -> TypeGuard[Mapping[object, object]]:
     What `isinstance(value, Mapping)` says, narrowed to a mapping of
     `object`, which the bare check leaves unknown to a type checker.
     """
-    return isinstance(value, Mapping)
+    return type(value) is dict or isinstance(value, Mapping)
 
 
 def refined_object(value: object) -> dict[str, JSONValue]:
@@ -412,6 +416,8 @@ def within(
     A problem not below `at` is a `TypeError`: a reader that located one
     from the wrong root would otherwise report it in the wrong place.
     """
+    if len(problems) == 0:
+        return ()
     for problem in problems:
         if problem.loc[: len(at)] != at:
             msg = f"a problem at {problem.loc!r} does not sit below {at!r}"
@@ -421,33 +427,56 @@ def within(
 
 def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refined:
     """`refine_json`, a non-finite number being JSON unless `finite`."""
-    if isinstance(value, float):
-        if not finite or math.isfinite(value):
-            return float(value), ()
-        return None, (
-            ValidationProblem(loc, f"non-finite float {value!r} is not JSON", "invalid_value"),
-        )
-    if isinstance(value, int) and not isinstance(value, bool) and not _writable(value):
-        message = (
-            f"an integer of {value.bit_length()} bits has more digits than JSON text holds "
-            "here, as sys.get_int_max_str_digits bounds it"
-        )
-        return None, (ValidationProblem(loc, message, "invalid_value"),)
-    if isinstance(value, bool) or value is None:
+    # The types `json.loads` builds, told apart by type alone: what nearly
+    # every value is, so the subclass checks below are reached by the rest
+    # -- a `StrEnum` member, an `IntEnum` member, a mapping proxy.
+    if type(value) is str or type(value) is bool or value is None:
         return value, ()
-    if isinstance(value, str):
-        # A subclass -- a `StrEnum` member -- as the string JSON writes for it.
-        return str.__str__(value), ()
-    if isinstance(value, int):
-        return int(value), ()
-    if (past := nested_past_the_levels(value, loc)) is not None:
-        return None, (past,)
-    if is_object(value):
+    if type(value) is int:
+        if _writable(value):
+            return value, ()
+        return None, (ValidationProblem(loc, _too_many_digits(value), "invalid_value"),)
+    if type(value) is float:
+        if not finite or math.isfinite(value):
+            return value, ()
+        return None, (_not_finite(value, loc),)
+    cls = type(value)
+    if cls is dict:
+        mapping = True
+    elif cls is list or cls is tuple:
+        mapping = False
+    else:
+        if isinstance(value, float):
+            if not finite or math.isfinite(value):
+                return float(value), ()
+            return None, (_not_finite(value, loc),)
+        if isinstance(value, int) and not isinstance(value, bool) and not _writable(value):
+            return None, (ValidationProblem(loc, _too_many_digits(value), "invalid_value"),)
+        if isinstance(value, bool):
+            return value, ()
+        if isinstance(value, str):
+            # A subclass -- a `StrEnum` member -- as the string JSON writes for it.
+            return str.__str__(value), ()
+        if isinstance(value, int):
+            return int(value), ()
+        mapping = is_object(value)
+        if not mapping and not is_array(value):
+            return None, (
+                ValidationProblem(
+                    loc,
+                    f"not a JSON-serializable value: {shown_by_python(value)}",
+                    "invalid_type",
+                ),
+            )
+    # A container: judged where it sits, as `nested_past_the_levels` judges one.
+    if len(loc) >= JSON_DEPTH:
+        return None, (ValidationProblem(loc, _PAST_THE_LEVELS, "invalid_value"),)
+    if mapping:
         # Walked here rather than through `_refine_members`, so that each
         # level of nesting costs one frame, `JSON_DEPTH` of them at most.
         members: dict[str, JSONValue] = {}
         found_in_members: list[ValidationProblem] = []
-        for key, item in value.items():
+        for key, item in cast("Mapping[object, object]", value).items():
             if not isinstance(key, str):
                 found_in_members.append(
                     ValidationProblem(
@@ -460,19 +489,26 @@ def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refi
             if len(found) == 0:
                 members[key] = member
         return (members if len(found_in_members) == 0 else None), tuple(found_in_members)
-    if is_array(value):
-        entries: list[JSONValue] = []
-        found_in_entries: list[ValidationProblem] = []
-        for index, item in enumerate(value):
-            entry, found = _refine(item, (*loc, index), finite=finite)
-            found_in_entries.extend(found)
-            if len(found) == 0:
-                entries.append(entry)
-        return (tuple(entries) if len(found_in_entries) == 0 else None), tuple(found_in_entries)
-    return None, (
-        ValidationProblem(
-            loc, f"not a JSON-serializable value: {shown_by_python(value)}", "invalid_type"
-        ),
+    entries: list[JSONValue] = []
+    found_in_entries: list[ValidationProblem] = []
+    for index, item in enumerate(cast("Sequence[object]", value)):
+        entry, found = _refine(item, (*loc, index), finite=finite)
+        found_in_entries.extend(found)
+        if len(found) == 0:
+            entries.append(entry)
+    return (tuple(entries) if len(found_in_entries) == 0 else None), tuple(found_in_entries)
+
+
+def _not_finite(value: float, loc: tuple[str | int, ...]) -> ValidationProblem:
+    """The problem a non-finite number at `loc` is, where JSON holds no such number."""
+    return ValidationProblem(loc, f"non-finite float {value!r} is not JSON", "invalid_value")
+
+
+def _too_many_digits(value: int) -> str:
+    """What is wrong with an integer the interpreter will not write: its size."""
+    return (
+        f"an integer of {value.bit_length()} bits has more digits than JSON text holds "
+        "here, as sys.get_int_max_str_digits bounds it"
     )
 
 
@@ -494,7 +530,7 @@ def json_text(value: JSONValue) -> str:
     `0.0` and `NaN` for no value at all, but what a document writes: two
     values written alike are one value to every reader.
     """
-    return json.dumps(value, sort_keys=True, ensure_ascii=False, default=_as_object)
+    return _TEXT_ENCODER.encode(value)
 
 
 def _as_object(value: object) -> dict[object, object]:
@@ -503,6 +539,10 @@ def _as_object(value: object) -> dict[object, object]:
         return dict(value)
     msg = f"{value!r} is not JSON"
     raise TypeError(msg)
+
+
+_TEXT_ENCODER: Final = json.JSONEncoder(sort_keys=True, ensure_ascii=False, default=_as_object)
+"""The encoder `json_text` writes with: what `json.dumps` builds for those arguments on every call, built once."""
 
 
 def shown(value: object) -> str:
@@ -651,13 +691,30 @@ def frozen(value: JSONValue) -> JSONValue:
     Shares the scalars with `value`, and copies nothing else than the
     containers a view needs. What a model shows of its document.
     """
-    if isinstance(value, Mapping):
+    cls = type(value)
+    if cls in _SCALARS:
+        return value
+    if cls is dict or isinstance(value, Mapping):
+        members = cast("Mapping[str, JSONValue]", value)
         return cast(
-            "JSONValue", MappingProxyType({key: frozen(item) for key, item in value.items()})
+            "JSONValue",
+            MappingProxyType(
+                {
+                    key: item if type(item) in _SCALARS else frozen(item)
+                    for key, item in members.items()
+                }
+            ),
         )
-    if isinstance(value, (tuple, list)):
-        return tuple(frozen(item) for item in value)
+    if cls is tuple or cls is list or isinstance(value, (tuple, list)):
+        return tuple(
+            item if type(item) in _SCALARS else frozen(item)
+            for item in cast("Sequence[JSONValue]", value)
+        )
     return value
+
+
+_SCALARS: Final[frozenset[type]] = frozenset({str, int, float, bool, type(None)})
+"""The types a JSON scalar is held as, which a read-only view shares as they are."""
 
 
 def copied(value: JSONValue) -> JSONValue:

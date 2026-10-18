@@ -17,7 +17,7 @@ the format open -- it is read as `UnclaimedField` and left unjudged.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, Generic, Literal, TypeAlias, TypeGuard, cast
 
@@ -87,10 +87,11 @@ class Context(Generic[F]):
     """
 
     tables: Tables
+    _format: Literal[2, 3] | None = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         # What `of` builds, the constructor refuses to build otherwise: each
-        # key a kind, and every kind of one format.
+        # key a kind, and every kind of one format, which is the scope's.
         formats = sorted({format_of(kind) for kind in self.tables})
         if len(formats) > 1:
             msg = (
@@ -98,11 +99,12 @@ class Context(Generic[F]):
                 f"formats {' and '.join(f'v{found}' for found in formats)}"
             )
             raise TypeError(msg)
+        object.__setattr__(self, "_format", formats[0] if len(formats) == 1 else None)
 
     @property
     def format(self) -> Literal[2, 3] | None:
         """The Zarr format the definitions in scope read, 2 or 3; None for a scope that files nothing."""
-        return next((format_of(kind) for kind in self.tables), None)
+        return self._format
 
     @classmethod
     def of(cls, *definitions: Definition[Any]) -> Context[Any]:

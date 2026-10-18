@@ -19,7 +19,6 @@ from zarr_metadata._json import (
     frozen,
     is_object,
     json_text,
-    refined_object,
     with_input,
 )
 from zarr_metadata._sentinel import UNSET
@@ -30,6 +29,7 @@ from zarr_metadata.model._validation import (
     StoreKey,
     ZarrV2ArrayMetadataReading,
     ZarrV3ArrayMetadataReading,
+    array_document_v2,
     dimension_lengths,
     dump_store_json,
     load_store_json,
@@ -150,15 +150,19 @@ class ZarrV3ArrayMetadata(Keyed):
 
     @property
     def claims(self) -> Claims:
-        """What the reading claimed of each name the document writes, keyed as the scope files it."""
-        return self._claims
+        """What the reading claimed of each name the document writes, keyed as the scope files it; computed the first time it is asked for."""
+        try:
+            return self._claims
+        except AttributeError:
+            self._claims = MappingProxyType(claims_of(self._reading.fields()))
+            return self._claims
 
     def __init__(self, document: object, context: ZarrV3Context | None = None) -> None:
         scope = scoped(context, CORE_AND_EXTENSIONS)
         reading, members = read_array_v3(document, scope)
         if members is None:
             raise MetadataValidationError(reading.problems)
-        self._adopt(refined_object(document), scope, reading, members)
+        self._adopt(members.document, scope, reading, members)
 
     @classmethod
     def _of(
@@ -192,8 +196,6 @@ class ZarrV3ArrayMetadata(Keyed):
             frozen(members.attributes),
             frozen(members.extra_fields),
         )
-        self._key = self._key_of()
-        self._claims = MappingProxyType(claims_of(reading.fields()))
 
     # --- the pair ---------------------------------------------------------
 
@@ -335,7 +337,7 @@ class ZarrV3ArrayMetadata(Keyed):
         The reading is kept when `context` reads every claim identically.
         """
         scope = scoped(context, CORE_AND_EXTENSIONS)
-        if scope.disagreements(self._claims).agrees:
+        if scope.disagreements(self.claims).agrees:
             return self._of(self._document, scope, self._reading, self._members)
         return type(self)(self._document, context=scope)
 
@@ -350,7 +352,7 @@ class ZarrV3ArrayMetadata(Keyed):
         problem. `with_context` reads the document in any scope.
         """
         scope = scoped(context, CORE_AND_EXTENSIONS)
-        found = scope.disagreements(self._claims)
+        found = scope.disagreements(self.claims)
         if len(found.conflicts) != 0:
             raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
         return self.with_context(scope)
@@ -504,8 +506,7 @@ def read_array_metadata_v3(
     reading, members = read_array_v3(value, scope)
     if members is None:
         return reading
-    document = refined_object(value)
-    model = ZarrV3ArrayMetadata._of(document, scope, reading, members)  # pyright: ignore[reportPrivateUsage]
+    model = ZarrV3ArrayMetadata._of(members.document, scope, reading, members)  # pyright: ignore[reportPrivateUsage]
     return model.reading
 
 
@@ -524,10 +525,7 @@ def read_array_metadata_v2(
     reading, members = read_array_v2(value, scope)
     if members is None:
         return reading
-    document = refined_object(value)
-    if "dimension_separator" not in document:
-        document = {**document, "dimension_separator": "."}
-    model = ZarrV2ArrayMetadata._of(document, scope, reading, members)  # pyright: ignore[reportPrivateUsage]
+    model = ZarrV2ArrayMetadata._of(array_document_v2(members), scope, reading, members)  # pyright: ignore[reportPrivateUsage]
     return model.reading
 
 
@@ -576,18 +574,19 @@ class ZarrV2ArrayMetadata(Keyed):
 
     @property
     def claims(self) -> Claims:
-        """What the reading claimed of each typestr and codec id the document writes, keyed as the scope files them."""
-        return self._claims
+        """What the reading claimed of each typestr and codec id the document writes, keyed as the scope files them; computed the first time it is asked for."""
+        try:
+            return self._claims
+        except AttributeError:
+            self._claims = MappingProxyType(claims_of(self._reading.fields()))
+            return self._claims
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
         scope = scoped(context, CORE_V2)
         reading, members = read_array_v2(document, scope)
         if members is None:
             raise MetadataValidationError(reading.problems)
-        held = refined_object(document)
-        if "dimension_separator" not in held:
-            held = {**held, "dimension_separator": "."}
-        self._adopt(held, scope, reading, members)
+        self._adopt(array_document_v2(members), scope, reading, members)
 
     @classmethod
     def _of(
@@ -619,8 +618,6 @@ class ZarrV2ArrayMetadata(Keyed):
             UNSET if members.attributes is UNSET else frozen(members.attributes),
             frozen(members.extra_fields),
         )
-        self._key = self._key_of()
-        self._claims = MappingProxyType(claims_of(reading.fields()))
 
     # --- the pair ---------------------------------------------------------
 
@@ -791,7 +788,7 @@ class ZarrV2ArrayMetadata(Keyed):
         The reading is kept when `context` reads every claim identically.
         """
         scope = scoped(context, CORE_V2)
-        if scope.disagreements(self._claims).agrees:
+        if scope.disagreements(self.claims).agrees:
             return self._of(self._document, scope, self._reading, self._members)
         return type(self)(self._document, context=scope)
 
@@ -804,7 +801,7 @@ class ZarrV2ArrayMetadata(Keyed):
         when a definition `context` claims refuses what was written.
         """
         scope = scoped(context, CORE_V2)
-        found = scope.disagreements(self._claims)
+        found = scope.disagreements(self.claims)
         if len(found.conflicts) != 0:
             raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
         return self.with_context(scope)

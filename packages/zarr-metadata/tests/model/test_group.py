@@ -25,6 +25,7 @@ from zarr_metadata.model import (
 )
 from zarr_metadata.model._array import ZarrV3ArrayMetadata, ZarrV3ArrayMetadataUpdate
 from zarr_metadata.model._group import (
+    GroupMembersV3,
     ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
     ZarrV2GroupMetadataUpdate,
@@ -1462,3 +1463,11 @@ def test_the_group_guard_asks_tuples_of_the_documents_the_group_lists() -> None:
         )
     )
     assert not is_group_metadata_v3(nested)
+
+
+def test_error_a_model_is_built_only_of_members_a_read_found_nothing_wrong_with() -> None:
+    """The members of a group read with a problem hold no document; a model built of them is a `TypeError`, not a model of nothing."""
+    from zarr_metadata.model._group import _document_of
+
+    with pytest.raises(TypeError, match="nothing wrong with"):
+        _document_of(GroupMembersV3(None, {}, UNSET, None))

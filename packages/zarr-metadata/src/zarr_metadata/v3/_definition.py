@@ -153,6 +153,9 @@ struct of `int8` fields -- has no byte order, and a value whose size
 varies takes a codec of its own.
 """
 
+STORAGE_CLASSES: Final[tuple[StorageClass, ...]] = get_args(StorageClass)
+"""The storage classes, as `storage_of` checks what a definition gives against them."""
+
 
 def single_byte(*_: object) -> StorageClass:
     """The storage of a data type made of single bytes, which no byte order applies to: `uint8`."""
@@ -682,8 +685,13 @@ KINDS: Final[tuple[type[Definition[Any]], ...]] = (
 
 def kind_of(definition: Definition[Any]) -> type[Definition[Any]] | None:
     """The kind `definition` is: the nearest class in its MRO declared with `kind=True`; None for a definition of no kind, which no scope files."""
-    bases: tuple[type[object], ...] = type(definition).__mro__
-    return next((base for base in bases if _declares_kind(base)), None)
+    return _kind_of_class(type(definition))
+
+
+@functools.cache
+def _kind_of_class(cls: type[object]) -> type[Definition[Any]] | None:
+    """`kind_of` a definition of class `cls`: a walk of its MRO, once per class."""
+    return next((base for base in cls.__mro__ if _declares_kind(base)), None)
 
 
 def format_of(kind: type[Definition[Any]]) -> Literal[2, 3]:
@@ -700,6 +708,10 @@ def _declares_kind(cls: type[object]) -> TypeGuard[type[Definition[Any]]]:
     return vars(cls).get("_is_kind") is True and issubclass(cls, Definition)
 
 
+_KIND_NAMED: dict[object, type[Definition[Any]]] = {}
+"""What `as_kind` answered for each way a kind was named -- `CodecDefinition`, `CodecDefinition[Any]` -- which never changes: a class is a kind by its declaration."""
+
+
 def as_kind(kind: object) -> type[Definition[Any]]:
     """The kind of metadata `kind` names, type arguments dropped; `TypeError` if it names none.
 
@@ -708,8 +720,14 @@ def as_kind(kind: object) -> type[Definition[Any]]:
     `Definition` or a class that declares no kind, under which nothing is
     filed: a field read as one would go unjudged.
     """
+    try:
+        return _KIND_NAMED[kind]
+    except (KeyError, TypeError):
+        # Not asked before, or not hashable, which no kind is.
+        pass
     origin = get_origin(kind) or kind
     if isinstance(origin, type) and _declares_kind(origin):
+        _KIND_NAMED[kind] = origin
         return origin
     names = ", ".join(known.__name__ for known in KINDS)
     msg = (
@@ -979,7 +997,7 @@ def _checked(
 ) -> tuple[object, Problems, tuple[_NestedField, ...]]:
     """`value` checked as `shape`: the typed value, every problem, and the fields nested in it, in order, each put back as it was written."""
     typed, found, nested = _typed(shape, value, loc)
-    return _put_back(typed, _as_written), found, nested
+    return _put_back(typed, _as_written, nested), found, nested
 
 
 def _typed(
@@ -1020,14 +1038,23 @@ def _declared(field: _NestedField) -> JSONValue:
     return {key: value for key, value in envelope.items() if key in ENVELOPE_KEYS}
 
 
-def _put_back(value: object, put: Callable[[_NestedField], JSONValue]) -> object:
-    """`value` with each nested field the checker handed back put back as `put` gives it."""
+def _put_back(
+    value: object, put: Callable[[_NestedField], JSONValue], nested: Sequence[_NestedField]
+) -> object:
+    """`value` with each of `nested`, the fields the checker handed back in it, put back as `put` gives it: `value` itself when there are none."""
+    if len(nested) == 0:
+        return value
+    return _putting_back(value, put)
+
+
+def _putting_back(value: object, put: Callable[[_NestedField], JSONValue]) -> object:
+    """`_put_back` of a value that holds nested fields: a walk."""
     if isinstance(value, _NestedField):
         return put(value)
     if is_tuple(value):
-        return tuple(_put_back(entry, put) for entry in value)
+        return tuple(_putting_back(entry, put) for entry in value)
     if is_object(value):
-        return {key: _put_back(entry, put) for key, entry in value.items()}
+        return {key: _putting_back(entry, put) for key, entry in value.items()}
     return value
 
 
@@ -1056,9 +1083,14 @@ def asked(definition: Definition[Any], what: str, ask: Callable[[], T], at: Loc 
     try:
         return ask()
     except Exception as error:
-        where = "" if at is None else f", reading {at!r}"
-        error.add_note(f"raised by the {what} of {definition.name!r}{where}")
+        error.add_note(_raised_by(definition, what, at))
         raise
+
+
+def _raised_by(definition: Definition[Any], what: str, at: Loc | None) -> str:
+    """The note an error raised by `definition`'s `what` carries: which definition's function raised it, and where it was reading, when that is known."""
+    where = "" if at is None else f", reading {at!r}"
+    return f"raised by the {what} of {definition.name!r}{where}"
 
 
 def ruled(
@@ -1070,7 +1102,13 @@ def ruled(
     what they declare, and an error one raises says which definition's rules
     raised it, and where they were reading.
     """
-    found = asked(definition, "rules", lambda: tuple(cast("Iterable[object]", ask())), at)
+    try:
+        found = tuple(cast("Iterable[object]", ask()))
+    except Exception as error:
+        error.add_note(_raised_by(definition, "rules", at))
+        raise
+    if len(found) == 0:
+        return ()
     for item in found:
         if not isinstance(item, ValidationProblem):
             msg = f"{definition.name!r}: its rules yield ValidationProblem values, got {item!r}"
@@ -1078,7 +1116,10 @@ def ruled(
     return _located(at, cast("tuple[ValidationProblem, ...]", found))
 
 
-def _located(prefix: Loc, problems: Iterable[ValidationProblem]) -> Problems:
+def _located(prefix: Loc, problems: Sequence[ValidationProblem]) -> Problems:
+    """`problems`, each located under `prefix`."""
+    if len(problems) == 0:
+        return ()
     return tuple(dataclasses.replace(found, loc=(*prefix, *found.loc)) for found in problems)
 
 
@@ -1107,7 +1148,7 @@ def _configuration_checked(
     problems = (*found, *(problem for field in nested for problem in _envelope(field)))
     if not _usable(problems):
         return None, problems
-    return cast("T", _put_back(typed, _declared)), problems
+    return cast("T", _put_back(typed, _declared, nested)), problems
 
 
 def named_configuration(
@@ -1685,13 +1726,13 @@ def storage_of(data_type: ResolvedField[DataTypeDefinition[Any]]) -> StorageClas
         "storage",
         lambda: cast("object", definition.storage(read_only(configuration), data_type.nested)),
     )
-    if found is not None and found not in get_args(StorageClass):
+    if found is not None and found not in STORAGE_CLASSES:
         msg = (
-            f"{definition.name!r}: its storage gives one of {get_args(StorageClass)!r} or None, "
+            f"{definition.name!r}: its storage gives one of {STORAGE_CLASSES!r} or None, "
             f"got {found!r}"
         )
         raise TypeError(msg)
-    return cast("StorageClass | None", found)
+    return found
 
 
 def chunk_grid_lengths(
@@ -1768,14 +1809,33 @@ def resolve(
     `ChunkKeyEncodingDefinition`, `StorageTransformerDefinition` -- with
     or without type arguments; anything else is a `TypeError`.
     """
+    refined, problems = refine_json(data, loc)
+    return resolve_refined(data, refined, problems, kind, context, loc)
+
+
+def resolve_refined(
+    data: object,
+    refined: JSONValue | None,
+    problems: Problems,
+    kind: type[D],
+    context: Scope,
+    loc: Loc = (),
+) -> tuple[ResolvedField[D], Problems]:
+    """`resolve` of `data`, which the caller refined already: `refined` and `problems` are what `refine_json(data, loc)` gave.
+
+    For a reader that refines a document's members once and keeps what it
+    refined -- the document a model holds is built of it -- rather than
+    refining each field again here. `problems` says whether `data` is
+    JSON: when it holds any, `refined` is not read.
+    """
     asked = as_kind(kind)
-    if context.format is not None and context.format != format_of(asked):
+    scope_format = context.format
+    if scope_format is not None and scope_format != format_of(asked):
         msg = (
             f"a {asked.label} is a field of a Zarr v{format_of(asked)} document, read in a scope "
-            f"of that format or of none, got a v{context.format} scope"
+            f"of that format or of none, got a v{scope_format} scope"
         )
         raise TypeError(msg)
-    refined, problems = refine_json(data, loc)
     if len(problems) != 0:
         # Not JSON, so not read; its name, if it has one, still says what
         # claims it, and one the spec does not give an extension is a
@@ -1852,7 +1912,10 @@ def _read(
     # one is its own, reported where it sits, as a document's fields are.
     sound = _usable(found) and all(_named(field) for field in nested)
     configuration = (
-        cast("Mapping[str, JSONValue]", _put_back(typed, lambda field: written[field.loc]))
+        cast(
+            "Mapping[str, JSONValue]",
+            _put_back(typed, lambda field: written[field.loc], nested),
+        )
         if sound
         else None
     )
