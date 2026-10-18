@@ -316,12 +316,13 @@ class TestStringsAreNeverPipelines:
     are registered.
     """
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="'|' is not allowed in Windows file names")
     async def test_local_path_containing_pipe_is_a_local_store(self, tmp_path: Path) -> None:
         """A string path with `|` and a registered adapter's name is still a local directory."""
-        register_url_adapter("zip", WrapperAdapter)
-        store_path = await make_store_path(f"{tmp_path}/a|zip:x", mode="w")
+        register_url_adapter("wrap", WrapperAdapter)
+        store_path = await make_store_path(f"{tmp_path}/a|wrap:x", mode="w")
         assert isinstance(store_path.store, LocalStore)
-        assert store_path.store.root == tmp_path / "a|zip:x"
+        assert store_path.store.root == tmp_path / "a|wrap:x"
 
     async def test_registered_root_scheme_string_is_not_routed(self) -> None:
         """A URL whose scheme names a registered root adapter is not handed to that adapter."""
