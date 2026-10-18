@@ -488,3 +488,45 @@ def test_compute_encoded_size() -> None:
     # The chunk_spec argument is unused; pass any sentinel
     assert codec.compute_encoded_size(input_byte_length=100, _chunk_spec=None) == 100  # type: ignore[arg-type]
     assert codec.compute_encoded_size(input_byte_length=0, _chunk_spec=None) == 0  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# Fill-value tolerance in resolve_metadata (issue #4511)
+# ---------------------------------------------------------------------------
+
+
+def test_creation_with_unencodable_default_fill_value() -> None:
+    """A scale/offset pair mapping only a subrange of the dtype makes the default
+    fill value (0) unencodable. Array creation must still succeed: the fill value
+    is metadata, not chunk data, and is never required to pass through the codec
+    chain (https://github.com/zarr-developers/zarr-python/issues/4511).
+    """
+    arr = zarr.create_array(
+        store=MemoryStore(),
+        shape=(4,),
+        dtype="uint16",
+        chunks=(4,),
+        filters=[ScaleOffset(offset=100, scale=1)],
+        compressors=None,
+    )
+    # Full-chunk writes contain no fill positions, so they encode cleanly.
+    # Encoded values must stay within uint16 after decode adds the offset back.
+    data = np.array([100, 150, 200, 65435], dtype="uint16")
+    arr[:] = data
+    np.testing.assert_array_equal(arr[:], data)
+
+
+def test_unencodable_fill_value_does_not_mask_invalid_config() -> None:
+    """Tolerating an unencodable fill value must not weaken validation: a codec
+    configuration that is structurally incompatible with the dtype still raises
+    at array creation time.
+    """
+    with pytest.raises(ValueError, match="only supports integer and floating-point"):
+        zarr.create_array(
+            store=MemoryStore(),
+            shape=(4,),
+            dtype="str",
+            chunks=(4,),
+            filters=[ScaleOffset(offset=100, scale=1)],
+            compressors=None,
+        )
