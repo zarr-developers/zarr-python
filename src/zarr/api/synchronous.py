@@ -316,7 +316,7 @@ def save(
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save
 ) -> None:
-    """Save an array or group of arrays to the local file system.
+    """Save an array or group of arrays to a store.
 
     Parameters
     ----------
@@ -357,7 +357,7 @@ def save_array(
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save_array
 ) -> None:
-    """Save a NumPy array to the local file system.
+    """Save a NumPy array to a store.
 
     Follows a similar API to the NumPy save() function.
 
@@ -400,7 +400,7 @@ def save_group(
     storage_options: dict[str, Any] | None = None,
     **kwargs: NDArrayLike,
 ) -> None:
-    """Save several NumPy arrays to the local file system.
+    """Save several NumPy arrays to a store.
 
     Follows a similar API to the NumPy savez()/savez_compressed() functions.
 

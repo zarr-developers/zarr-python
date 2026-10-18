@@ -512,7 +512,7 @@ async def save(
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to save
 ) -> None:
-    """Convenience function to save an array or group of arrays to the local file system.
+    """Convenience function to save an array or group of arrays to a store.
 
     Parameters
     ----------
@@ -559,7 +559,7 @@ async def save_array(
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to create
 ) -> None:
-    """Convenience function to save a NumPy array to the local file system, following a
+    """Convenience function to save a NumPy array to a store, following a
     similar API to the NumPy save() function.
 
     Parameters
@@ -615,7 +615,7 @@ async def save_group(
     storage_options: dict[str, Any] | None = None,
     **kwargs: NDArrayLike,
 ) -> None:
-    """Convenience function to save several NumPy arrays to the local file system, following a
+    """Convenience function to save several NumPy arrays to a store, following a
     similar API to the NumPy savez()/savez_compressed() functions.
 
     Parameters
