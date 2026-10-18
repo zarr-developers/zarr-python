@@ -642,7 +642,7 @@ def test_creation_with_unencodable_default_fill_value() -> None:
     data = np.array([120.0, 180.0, 100.0, 200.0], dtype="float32")
     arr[:] = data
     # Quantization to uint16 introduces a small rounding error.
-    np.testing.assert_allclose(arr[:], data, atol=1e-2)
+    np.testing.assert_allclose(np.asarray(arr[:]), data, atol=1e-2)
 
 
 @requires_cast_value_rs
