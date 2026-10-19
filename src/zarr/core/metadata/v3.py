@@ -270,7 +270,7 @@ class RegularChunkGridMetadata(Metadata):
     """Metadata-only description of a regular chunk grid.
 
     Stores just the chunk shape — no array extent, no runtime logic.
-    This is what lives on ``ArrayV3Metadata.chunk_grid``.
+    This is what lives on ``ArrayMetadataV3.chunk_grid``.
     """
 
     chunk_shape: tuple[int, ...]
@@ -400,13 +400,13 @@ def _check_rectilinear_chunks_enabled() -> None:
         )
 
 
-def check_storable(metadata: ArrayV3Metadata) -> None:
+def check_storable(metadata: ArrayMetadataV3) -> None:
     """Raise if `metadata` may not be stored: a rectilinear chunk grid requires the
     rectilinear chunks flag. `zarr.core.metadata.io.encode_documents` names the node in
     the error.
 
     Every serialization of array metadata for a store calls this, before the store is
-    touched: `ArrayV3Metadata.to_buffer_dict` and, for the arrays in a group's
+    touched: `ArrayMetadataV3.to_buffer_dict` and, for the arrays in a group's
     consolidated metadata, `GroupMetadata.to_buffer_dict`.
     """
     if isinstance(metadata.chunk_grid, RectilinearChunkGridMetadata):
@@ -506,7 +506,7 @@ ARRAY_METADATA_KEYS: Final[set[str]] = {
 
 
 @dataclass(frozen=True, kw_only=True)
-class ArrayV3Metadata(Metadata):
+class ArrayMetadataV3(Metadata):
     shape: tuple[int, ...]
     data_type: ZDType[TBaseDType, TBaseScalar]
     chunk_grid: ChunkGridMetadata
@@ -756,7 +756,7 @@ class ArrayV3Metadata(Metadata):
         # The default dataclass __eq__ compares fields directly, which is wrong for a NaN
         # fill_value: NaN != NaN under IEEE 754. Comparing the JSON-serialized form instead
         # treats matching NaN (and inf) fill values as equal. See issue #2929.
-        if not isinstance(other, ArrayV3Metadata):
+        if not isinstance(other, ArrayMetadataV3):
             return NotImplemented
         return self.to_dict() == other.to_dict()
 
@@ -773,3 +773,6 @@ class ArrayV3Metadata(Metadata):
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:
         return replace(self, attributes=attributes)
+
+
+ArrayV3Metadata = ArrayMetadataV3
