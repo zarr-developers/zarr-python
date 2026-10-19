@@ -62,7 +62,7 @@ type CompressorLikev2 = dict[str, JSON] | Numcodec | None
 
 
 @dataclass(frozen=True, kw_only=True)
-class ArrayV2Metadata(Metadata):
+class ArrayMetadataV2(Metadata):
     shape: tuple[int, ...]
     chunks: tuple[int, ...]
     dtype: ZDType[TBaseDType, TBaseScalar]
@@ -152,7 +152,7 @@ class ArrayV2Metadata(Metadata):
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any], *, path: str | None = None) -> ArrayV2Metadata:
+    def from_dict(cls, data: dict[str, Any], *, path: str | None = None) -> ArrayMetadataV2:
         """Read a stored `.zarray` document (with its attributes). An invalid document
         that `zarr.core.metadata.repair` can read is read as repaired; a reading the user
         must act on warns, naming the array at `path`."""
@@ -187,7 +187,7 @@ class ArrayV2Metadata(Metadata):
             _data["fill_value"] = fill_value
 
         # zarr v2 allowed arbitrary keys here.
-        # We don't want the ArrayV2Metadata constructor to fail just because someone put an
+        # We don't want the ArrayMetadataV2 constructor to fail just because someone put an
         # extra key in the metadata.
         expected = {x.name for x in fields(cls)}
         expected |= {"dtype", "chunks"}
@@ -248,7 +248,7 @@ class ArrayV2Metadata(Metadata):
         # The default dataclass __eq__ compares fields directly, which is wrong for a NaN
         # fill_value: NaN != NaN under IEEE 754. Comparing the JSON-serialized form instead
         # treats matching NaN (and inf) fill values as equal. See issue #2929.
-        if not isinstance(other, ArrayV2Metadata):
+        if not isinstance(other, ArrayMetadataV2):
             return NotImplemented
         return self.to_dict() == other.to_dict()
 
@@ -277,6 +277,9 @@ class ArrayV2Metadata(Metadata):
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:
         return replace(self, attributes=attributes)
+
+
+ArrayV2Metadata = ArrayMetadataV2
 
 
 def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
