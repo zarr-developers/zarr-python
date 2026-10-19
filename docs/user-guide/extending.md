@@ -91,47 +91,44 @@ See [developing custom stores](storage.md#developing-custom-stores) for more inf
 `s3://bucket/data.zip|zip:|zarr3:`. Each sub-URL after the first names an *adapter*
 that reinterprets everything to its left. A package provides an adapter for a scheme by
 subclassing [`zarr.abc.url_pipeline.URLPipelineAdapter`][] and implementing its single
-classmethod, which resolves the adapter's segment into an open store and a residual path:
+classmethod, which resolves the adapter's segment into an open store and a residual path,
+returned as a [`StorePath`][zarr.storage.StorePath]:
 
 ```python test="true" session="url-adapter"
-import dataclasses
-
-from zarr.abc.url_pipeline import (
-    AdapterResolution,
-    PipelineContext,
-    PipelineSegment,
-    URLPipelineAdapter,
-)
-from zarr.storage import WrapperStore
+from zarr.abc.url_pipeline import URLPipelineAdapter
+from zarr.storage import PipelineContext, PipelineSegment, StorePath, WrapperStore
 
 
 class MyAdapter(URLPipelineAdapter):
     @classmethod
     async def open_pipeline_segment(
         cls, segment: PipelineSegment, context: PipelineContext
-    ) -> AdapterResolution:
-        # A *wrapper* adapter opens the resource to its left and wraps it. Join the
-        # preceding residual path with this segment's own path, and keep every other
-        # field via dataclasses.replace.
+    ) -> StorePath:
+        # A *wrapper* adapter opens the resource to its left and wraps it, joining the
+        # preceding residual path with this segment's own path.
         preceding = await context.resolve_preceding()
         store = WrapperStore(preceding.store)
         path = "/".join(part.strip("/") for part in (preceding.path, segment.body) if part)
-        return dataclasses.replace(preceding, store=store, path=path)
+        return StorePath(store, path)
 ```
+
+To resolve the preceding pipeline with a different mode or options (for example
+read-only, or without the adapter's own `storage_options` keys), resolve through a derived
+context: `await dataclasses.replace(context, mode="r").resolve_preceding()`.
 
 Wrapper adapters compose: in `memory://x|mypackage.myscheme:a|mypackage.myscheme:b` the
 inner adapter sees the outer one's residual path `a` and the pipeline resolves to `a/b`.
 
 ```python test="true" session="url-adapter"
-import asyncio
-
+import zarr
 from zarr.registry import register_url_adapter
 from zarr.storage import URLPipeline
 
 register_url_adapter("mypackage.myscheme", MyAdapter)
-pipeline = URLPipeline.from_url("memory://x|mypackage.myscheme:a|mypackage.myscheme:b")
-resolution = asyncio.run(pipeline.resolve())
-assert resolution.path == "a/b"
+url = "memory://x|mypackage.myscheme:a|mypackage.myscheme:b"
+created = zarr.create_group(URLPipeline.from_url(url))
+group = zarr.open_url(url)
+assert group.path == "a/b"
 ```
 
 Register the class under the `zarr.url_adapters` entry-point group, using the URL
@@ -149,7 +146,8 @@ which case `context.preceding` is empty; such a URL reaches the adapter only thr
 `zarr.open_url` or a `URLPipeline`, never as a plain string store specification. The returned store must honor
 `context.read_only`, and `open_pipeline_segment` runs on zarr's internal event loop, so
 it must not block or call zarr's synchronous API. See
-[`zarr.abc.url_pipeline`][] for the full contract.
+[`zarr.abc.url_pipeline`][] and [`PipelineContext`][zarr.storage.PipelineContext] for the
+full contract.
 
 ## Custom array buffers
 

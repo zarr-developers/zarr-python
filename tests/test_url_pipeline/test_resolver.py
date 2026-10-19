@@ -15,19 +15,23 @@ from packaging.version import parse as parse_version
 import zarr
 import zarr.registry
 from zarr.abc.store import Store
-from zarr.abc.url_pipeline import (
-    AdapterResolution,
-    PipelineContext,
-    PipelineSegment,
-    URLPipelineAdapter,
-)
+from zarr.abc.url_pipeline import URLPipelineAdapter
 from zarr.errors import URLPipelineError, ZarrUserWarning
 from zarr.registry import (
-    get_url_adapter,
-    list_url_adapter_schemes,
+    _get_url_adapter,
+    _list_url_adapter_schemes,
     register_url_adapter,
 )
-from zarr.storage import LocalStore, ManagedMemoryStore, MemoryStore, URLPipeline, WrapperStore
+from zarr.storage import (
+    LocalStore,
+    ManagedMemoryStore,
+    MemoryStore,
+    PipelineContext,
+    PipelineSegment,
+    StorePath,
+    URLPipeline,
+    WrapperStore,
+)
 from zarr.storage._common import _has_fsspec, make_store, make_store_path
 from zarr.storage._utils import _join_paths
 
@@ -56,22 +60,19 @@ class WrapperAdapter(URLPipelineAdapter):
     """
     A wrapper-style adapter: resolves the preceding pipeline into a store.
 
-    Follows the wrapper contract: the preceding resolution's residual path
-    is carried forward (joined with this segment's own path), and unchanged
-    fields survive via `dataclasses.replace`.
+    Follows the wrapper contract: the preceding residual path is carried
+    forward, joined with this segment's own path.
     """
 
     @classmethod
     async def open_pipeline_segment(
         cls, segment: PipelineSegment, context: PipelineContext
-    ) -> AdapterResolution:
+    ) -> StorePath:
         preceding = await context.resolve_preceding()
         store = TracingStore(preceding.store)
         store.context = context
         store.segment = segment
-        return dataclasses.replace(
-            preceding, store=store, path=_join_paths([preceding.path, segment.body])
-        )
+        return StorePath(store, _join_paths([preceding.path, segment.body]))
 
 
 class NativeAdapter(URLPipelineAdapter):
@@ -82,10 +83,10 @@ class NativeAdapter(URLPipelineAdapter):
     @classmethod
     async def open_pipeline_segment(
         cls, segment: PipelineSegment, context: PipelineContext
-    ) -> AdapterResolution:
+    ) -> StorePath:
         cls.seen_urls.append(context.preceding_url)
         store = await MemoryStore.open(read_only=context.read_only)
-        return AdapterResolution(store=store, path=segment.body)
+        return StorePath(store, path=segment.body)
 
 
 class RootAdapter(URLPipelineAdapter):
@@ -94,12 +95,12 @@ class RootAdapter(URLPipelineAdapter):
     @classmethod
     async def open_pipeline_segment(
         cls, segment: PipelineSegment, context: PipelineContext
-    ) -> AdapterResolution:
+    ) -> StorePath:
         assert context.preceding == ()
         if context.mode in ("w", "w-", "r+"):
             raise ValueError("read-only scheme")
         store = await MemoryStore.open(read_only=True)
-        return AdapterResolution(store=store, path=segment.body.lstrip("/"))
+        return StorePath(store, path=segment.body.lstrip("/"))
 
 
 class DisobedientAdapter(URLPipelineAdapter):
@@ -108,46 +109,46 @@ class DisobedientAdapter(URLPipelineAdapter):
     @classmethod
     async def open_pipeline_segment(
         cls, segment: PipelineSegment, context: PipelineContext
-    ) -> AdapterResolution:
-        return AdapterResolution(store=await MemoryStore.open(read_only=False))
+    ) -> StorePath:
+        return StorePath(await MemoryStore.open(read_only=False))
 
 
 class TestRegistry:
     def test_register_and_get(self) -> None:
         register_url_adapter("demo", WrapperAdapter)
-        assert get_url_adapter("demo") is WrapperAdapter
-        assert get_url_adapter("DEMO") is WrapperAdapter
-        assert "demo" in list_url_adapter_schemes()
+        assert _get_url_adapter("demo") is WrapperAdapter
+        assert _get_url_adapter("DEMO") is WrapperAdapter
+        assert "demo" in _list_url_adapter_schemes()
 
     def test_unknown_scheme(self) -> None:
         with pytest.raises(URLPipelineError, match="no URL pipeline adapter is registered"):
-            get_url_adapter("nonexistent-scheme")
+            _get_url_adapter("nonexistent-scheme")
 
     def test_reregistering_scheme_warns(self) -> None:
         register_url_adapter("demo", WrapperAdapter)
         with pytest.warns(ZarrUserWarning, match="is being replaced"):
             register_url_adapter("demo", NativeAdapter)
-        assert get_url_adapter("demo") is NativeAdapter
+        assert _get_url_adapter("demo") is NativeAdapter
         # re-registering the same class is not a collision
         register_url_adapter("demo", NativeAdapter)
 
     @pytest.mark.usefixtures("set_path")
     def test_entrypoint_discovery(self) -> None:
-        assert "example-pkg.entrypoint-scheme" in list_url_adapter_schemes()
-        cls = get_url_adapter("example-pkg.entrypoint-scheme")
+        assert "example-pkg.entrypoint-scheme" in _list_url_adapter_schemes()
+        cls = _get_url_adapter("example-pkg.entrypoint-scheme")
         assert cls.__name__ == "TestEntrypointURLAdapter"
 
     @pytest.mark.usefixtures("set_path")
     async def test_entrypoint_end_to_end(self) -> None:
         result = await URLPipeline.from_url(
             "memory://src|example-pkg.entrypoint-scheme:sub/path"
-        ).resolve()
+        )._resolve_store_path()
         assert result.path == "sub/path"
 
     @pytest.mark.usefixtures("set_path")
     def test_entrypoint_scheme_lookup_is_case_insensitive(self) -> None:
         # entry-point names are matched case-insensitively, like schemes
-        cls = get_url_adapter("Example-PKG.Entrypoint-Scheme")
+        cls = _get_url_adapter("Example-PKG.Entrypoint-Scheme")
         assert cls.__name__ == "TestEntrypointURLAdapter"
 
     @pytest.mark.usefixtures("set_path")
@@ -156,9 +157,9 @@ class TestRegistry:
         registry = zarr.registry._url_adapter_registry
         assert any(e.name == "example-pkg.entrypoint-scheme" for e in registry.lazy_load_list)
         with pytest.raises(URLPipelineError, match="no URL pipeline adapter"):
-            get_url_adapter("some-other-scheme")
+            _get_url_adapter("some-other-scheme")
         assert any(e.name == "example-pkg.entrypoint-scheme" for e in registry.lazy_load_list)
-        assert get_url_adapter("example-pkg.entrypoint-scheme").__name__ == (
+        assert _get_url_adapter("example-pkg.entrypoint-scheme").__name__ == (
             "TestEntrypointURLAdapter"
         )
 
@@ -177,14 +178,14 @@ def _fake_entry_point(
 
 
 _ADAPTER_SOURCE = """
-from zarr.abc.url_pipeline import AdapterResolution, URLPipelineAdapter
-from zarr.storage import MemoryStore
+from zarr.abc.url_pipeline import URLPipelineAdapter
+from zarr.storage import MemoryStore, StorePath
 {prelude}
 
 class Adapter(URLPipelineAdapter):
     @classmethod
     async def open_pipeline_segment(cls, segment, context):
-        return AdapterResolution(store=await MemoryStore.open(read_only=context.read_only))
+        return StorePath(await MemoryStore.open(read_only=context.read_only))
 """
 
 
@@ -207,7 +208,7 @@ class TestEntryPointLoading:
                     prelude=(
                         "import zarr.registry\n"
                         "try:\n"
-                        "    zarr.registry.get_url_adapter('no-such-scheme-at-import')\n"
+                        "    zarr.registry._get_url_adapter('no-such-scheme-at-import')\n"
                         "except Exception:\n"
                         "    pass\n"
                     )
@@ -215,10 +216,10 @@ class TestEntryPointLoading:
             )
         )
         result: list[object] = []
-        thread = threading.Thread(target=lambda: result.append(get_url_adapter("reentrant")))
+        thread = threading.Thread(target=lambda: result.append(_get_url_adapter("reentrant")))
         thread.start()
         thread.join(timeout=10)
-        assert not thread.is_alive(), "get_url_adapter deadlocked on a re-entrant lookup"
+        assert not thread.is_alive(), "_get_url_adapter deadlocked on a re-entrant lookup"
         assert getattr(result[0], "__name__", None) == "Adapter"
 
     def test_concurrent_loads_keep_other_schemes_pending(
@@ -242,16 +243,17 @@ class TestEntryPointLoading:
                 )
             )
         threads = [
-            threading.Thread(target=get_url_adapter, args=(scheme,)) for scheme in ("slow", "quick")
+            threading.Thread(target=_get_url_adapter, args=(scheme,))
+            for scheme in ("slow", "quick")
         ]
         for thread in threads:
             thread.start()
         for thread in threads:
             thread.join(timeout=10)
         assert not any(thread.is_alive() for thread in threads)
-        assert "untouched" in list_url_adapter_schemes()
+        assert "untouched" in _list_url_adapter_schemes()
         assert [e.name for e in pending] == ["untouched"]
-        assert get_url_adapter("untouched").__name__ == "Adapter"
+        assert _get_url_adapter("untouched").__name__ == "Adapter"
 
     def test_import_failure_is_wrapped_and_not_permanent(self) -> None:
         pending = zarr.registry._url_adapter_registry.lazy_load_list
@@ -259,11 +261,11 @@ class TestEntryPointLoading:
             EntryPoint(name="broken", value="no_such_module_xyz:Adapter", group="zarr.url_adapters")
         )
         with pytest.raises(URLPipelineError, match="could not be loaded"):
-            get_url_adapter("broken")
+            _get_url_adapter("broken")
         # still advertised, so a transient failure can be retried
-        assert "broken" in list_url_adapter_schemes()
+        assert "broken" in _list_url_adapter_schemes()
         with pytest.raises(URLPipelineError, match="could not be loaded"):
-            get_url_adapter("broken")
+            _get_url_adapter("broken")
 
     def test_registered_adapter_shadows_entry_point_with_warning(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -282,12 +284,12 @@ class TestEntryPointLoading:
         )
         register_url_adapter("shadowed", NativeAdapter)
         with pytest.warns(ZarrUserWarning, match="already registered"):
-            assert get_url_adapter("shadowed") is NativeAdapter
+            assert _get_url_adapter("shadowed") is NativeAdapter
         assert not any(e.name == "shadowed" for e in pending)
         # a second lookup is silent
         with warnings.catch_warnings():
             warnings.simplefilter("error")
-            assert get_url_adapter("shadowed") is NativeAdapter
+            assert _get_url_adapter("shadowed") is NativeAdapter
 
     def test_duplicate_entry_points_warn_and_first_wins(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -304,7 +306,7 @@ class TestEntryPointLoading:
                 )
             )
         with pytest.warns(ZarrUserWarning, match="multiple 'zarr.url_adapters' entry points"):
-            cls = get_url_adapter("dup")
+            cls = _get_url_adapter("dup")
         assert getattr(sys.modules[cls.__module__], "ORIGIN", None) == "dup_first"
         assert not any(e.name == "dup" for e in pending)
 
@@ -332,7 +334,7 @@ class TestStringsAreNeverPipelines:
             @classmethod
             async def open_pipeline_segment(
                 cls, segment: PipelineSegment, context: PipelineContext
-            ) -> AdapterResolution:
+            ) -> StorePath:
                 calls.append(segment)
                 return await super().open_pipeline_segment(segment, context)
 
@@ -355,7 +357,9 @@ class TestStringsAreNeverPipelines:
 class TestResolve:
     async def test_wrapper_adapter_chain(self, tmp_path: Path) -> None:
         register_url_adapter("wrap", WrapperAdapter)
-        result = await URLPipeline.from_url(f"file:{tmp_path.as_posix()}|wrap:inner/path").resolve()
+        result = await URLPipeline.from_url(
+            f"file:{tmp_path.as_posix()}|wrap:inner/path"
+        )._resolve_store_path()
         assert isinstance(result.store, TracingStore)
         assert result.path == "inner/path"
         assert result.store.context.preceding_url == f"file:{tmp_path.as_posix()}"
@@ -366,25 +370,27 @@ class TestResolve:
         # each wrapper joins the preceding residual path with its own, so
         # no segment's path is lost in root|wrap:a|wrap:b
         register_url_adapter("wrap", WrapperAdapter)
-        result = await URLPipeline.from_url(f"file:{tmp_path.as_posix()}|wrap:a|wrap:b").resolve()
+        result = await URLPipeline.from_url(
+            f"file:{tmp_path.as_posix()}|wrap:a|wrap:b"
+        )._resolve_store_path()
         assert result.path == "a/b"
 
     async def test_native_adapter_gets_preceding_url(self) -> None:
         register_url_adapter("native", NativeAdapter)
         NativeAdapter.seen_urls.clear()
-        await URLPipeline.from_url("s3://bucket/repo|native:").resolve()
+        await URLPipeline.from_url("s3://bucket/repo|native:")._resolve_store_path()
         assert NativeAdapter.seen_urls == ["s3://bucket/repo"]
 
     async def test_multi_segment_preceding_url(self) -> None:
         register_url_adapter("wrap", WrapperAdapter)
         register_url_adapter("native", NativeAdapter)
         NativeAdapter.seen_urls.clear()
-        await URLPipeline.from_url("memory://base|wrap:a|native:x").resolve()
+        await URLPipeline.from_url("memory://base|wrap:a|native:x")._resolve_store_path()
         assert NativeAdapter.seen_urls == ["memory://base|wrap:a"]
 
     async def test_root_adapter(self) -> None:
         register_url_adapter("rooty", RootAdapter)
-        result = await URLPipeline.from_url("rooty://org/repo").resolve()
+        result = await URLPipeline.from_url("rooty://org/repo")._resolve_store_path()
         assert result.path == "org/repo"
         assert result.store.read_only
 
@@ -392,16 +398,20 @@ class TestResolve:
         register_url_adapter("rooty", RootAdapter)
         register_url_adapter("native", NativeAdapter)
         NativeAdapter.seen_urls.clear()
-        await URLPipeline.from_url("rooty://org/repo|native:x").resolve()
+        await URLPipeline.from_url("rooty://org/repo|native:x")._resolve_store_path()
         assert NativeAdapter.seen_urls == ["rooty://org/repo"]
 
     async def test_read_only_flag(self, tmp_path: Path) -> None:
         register_url_adapter("wrap", WrapperAdapter)
-        result = await URLPipeline.from_url(f"file:{tmp_path.as_posix()}|wrap:").resolve(mode="r")
+        result = await URLPipeline.from_url(
+            f"file:{tmp_path.as_posix()}|wrap:"
+        )._resolve_store_path(mode="r")
         assert isinstance(result.store, TracingStore)
         assert result.store.context.read_only
         assert result.store.context.mode == "r"
-        result = await URLPipeline.from_url(f"file:{tmp_path.as_posix()}|wrap:").resolve()
+        result = await URLPipeline.from_url(
+            f"file:{tmp_path.as_posix()}|wrap:"
+        )._resolve_store_path()
         assert isinstance(result.store, TracingStore)
         assert not result.store.context.read_only
         assert result.store.context.mode is None
@@ -410,7 +420,7 @@ class TestResolve:
         # the resolver downgrades a writable store returned under mode "r"
         # instead of trusting the adapter to have honored context.read_only
         register_url_adapter("bad", DisobedientAdapter)
-        result = await URLPipeline.from_url("memory://base|bad:").resolve(mode="r")
+        result = await URLPipeline.from_url("memory://base|bad:")._resolve_store_path(mode="r")
         assert result.store.read_only
         store = await make_store(URLPipeline.from_url("memory://base|bad:"), mode="r")
         assert store.read_only
@@ -425,12 +435,12 @@ class TestResolve:
             @classmethod
             async def open_pipeline_segment(
                 cls, segment: PipelineSegment, context: PipelineContext
-            ) -> AdapterResolution:
-                return AdapterResolution(store=await StubbornStore.open(read_only=False))
+            ) -> StorePath:
+                return StorePath(await StubbornStore.open(read_only=False))
 
         register_url_adapter("stubborn", StubbornAdapter)
         with pytest.raises(URLPipelineError, match="does not support read-only conversion"):
-            await URLPipeline.from_url("memory://base|stubborn:").resolve(mode="r")
+            await URLPipeline.from_url("memory://base|stubborn:")._resolve_store_path(mode="r")
 
     async def test_read_only_enforcement_failure_closes_store(self) -> None:
         # the adapter's store must not leak when it cannot be made read-only
@@ -448,12 +458,12 @@ class TestResolve:
             @classmethod
             async def open_pipeline_segment(
                 cls, segment: PipelineSegment, context: PipelineContext
-            ) -> AdapterResolution:
-                return AdapterResolution(store=await StubbornStore.open(read_only=False))
+            ) -> StorePath:
+                return StorePath(await StubbornStore.open(read_only=False))
 
         register_url_adapter("stubborn", StubbornAdapter)
         with pytest.raises(URLPipelineError):
-            await URLPipeline.from_url("memory://base|stubborn:").resolve(mode="r")
+            await URLPipeline.from_url("memory://base|stubborn:")._resolve_store_path(mode="r")
         assert closed == [True]
 
     async def test_resolve_preceding_mode_override(self, tmp_path: Path) -> None:
@@ -463,15 +473,15 @@ class TestResolve:
             @classmethod
             async def open_pipeline_segment(
                 cls, segment: PipelineSegment, context: PipelineContext
-            ) -> AdapterResolution:
-                preceding = await context.resolve_preceding(mode="r")
+            ) -> StorePath:
+                preceding = await dataclasses.replace(context, mode="r").resolve_preceding()
                 assert preceding.store.read_only
-                return dataclasses.replace(preceding, path=segment.body)
+                return StorePath(preceding.store, segment.body)
 
         register_url_adapter("rowrap", ReadOnlyRootWrapper)
-        result = await URLPipeline.from_url(f"file:{tmp_path.as_posix()}|rowrap:x").resolve(
-            mode="w"
-        )
+        result = await URLPipeline.from_url(
+            f"file:{tmp_path.as_posix()}|rowrap:x"
+        )._resolve_store_path(mode="w")
         assert result.path == "x"
 
     async def test_wrapper_on_local_file_root_read_only(self, tmp_path: Path) -> None:
@@ -481,7 +491,9 @@ class TestResolve:
         target = tmp_path / "data.bin"
         target.write_bytes(b"payload")
         register_url_adapter("wrap", WrapperAdapter)
-        result = await URLPipeline.from_url(f"file:{target.as_posix()}|wrap:").resolve(mode="r")
+        result = await URLPipeline.from_url(f"file:{target.as_posix()}|wrap:")._resolve_store_path(
+            mode="r"
+        )
         assert isinstance(result.store, TracingStore)
         assert result.store.read_only
 
@@ -500,7 +512,7 @@ class TestResolve:
         target = tmp_path / "data.bin"
         target.write_bytes(b"payload")
         register_url_adapter("wrap", WrapperAdapter)
-        await URLPipeline.from_url(f"file:{target.as_posix()}|wrap:").resolve(mode=mode)
+        await URLPipeline.from_url(f"file:{target.as_posix()}|wrap:")._resolve_store_path(mode=mode)
 
     async def test_resolve_preceding_storage_options_override(self, tmp_path: Path) -> None:
         # an adapter that consumed its namespaced keys strips them before
@@ -511,16 +523,20 @@ class TestResolve:
             @classmethod
             async def open_pipeline_segment(
                 cls, segment: PipelineSegment, context: PipelineContext
-            ) -> AdapterResolution:
+            ) -> StorePath:
                 options = dict(context.storage_options or {})
                 cls.seen = options.pop("consuming_secret", None)
-                preceding = await context.resolve_preceding(storage_options=options or None)
-                return dataclasses.replace(preceding, path=segment.body)
+                preceding = await dataclasses.replace(
+                    context, storage_options=options or None
+                ).resolve_preceding()
+                return StorePath(preceding.store, segment.body)
 
         register_url_adapter("consuming", ConsumingWrapper)
         # the local-path root rejects any surviving storage_options, so this
         # passing proves the adapter's keys were stripped before resolution
-        result = await URLPipeline.from_url(f"file:{tmp_path.as_posix()}|consuming:x").resolve(
+        result = await URLPipeline.from_url(
+            f"file:{tmp_path.as_posix()}|consuming:x"
+        )._resolve_store_path(
             storage_options={"consuming_secret": "s3cr3t"},
         )
         assert result.path == "x"
@@ -535,50 +551,54 @@ class TestResolve:
             @classmethod
             async def open_pipeline_segment(
                 cls, segment: PipelineSegment, context: PipelineContext
-            ) -> AdapterResolution:
+            ) -> StorePath:
                 cls.seen_options = context.storage_options
                 return await super().open_pipeline_segment(segment, context)
 
         register_url_adapter("probe", OptionsProbe)
         opts = {"anon": True}
-        await URLPipeline.from_url("s3://bucket/x|probe:").resolve(storage_options=opts)
+        await URLPipeline.from_url("s3://bucket/x|probe:")._resolve_store_path(storage_options=opts)
         assert OptionsProbe.seen_options == opts
 
     async def test_wrapper_at_root_position_raises(self) -> None:
         # a wrapper adapter used as the pipeline root has nothing to wrap
         register_url_adapter("wrap", WrapperAdapter)
         with pytest.raises(URLPipelineError, match="no preceding sub-URL"):
-            await URLPipeline.from_url("wrap:whatever").resolve()
+            await URLPipeline.from_url("wrap:whatever")._resolve_store_path()
 
     async def test_single_url_is_a_trivial_pipeline(self) -> None:
         """A URL without `|` resolves as a pipeline consisting of its root alone."""
-        result = await URLPipeline.from_url("memory://plain").resolve()
+        result = await URLPipeline.from_url("memory://plain")._resolve_store_path()
         assert isinstance(result.store, ManagedMemoryStore)
         assert result.path == ""
 
     async def test_resolve_method(self, tmp_path: Path) -> None:
         """`URLPipeline.resolve` yields the adapter's store and residual path."""
         register_url_adapter("wrap", WrapperAdapter)
-        result = await URLPipeline.from_url(f"file:{tmp_path.as_posix()}|wrap:a").resolve()
+        result = await URLPipeline.from_url(
+            f"file:{tmp_path.as_posix()}|wrap:a"
+        )._resolve_store_path()
         assert isinstance(result.store, TracingStore)
         assert result.path == "a"
 
     async def test_format_segment_path_joins_residual_path(self, tmp_path: Path) -> None:
         """The node path of a trailing format segment extends the adapters' residual path."""
         register_url_adapter("wrap", WrapperAdapter)
-        result = await URLPipeline.from_url(f"file:{tmp_path.as_posix()}|wrap:a|zarr3:b").resolve()
+        result = await URLPipeline.from_url(
+            f"file:{tmp_path.as_posix()}|wrap:a|zarr3:b"
+        )._resolve_store_path()
         assert result.path == "a/b"
 
     async def test_unknown_adapter_scheme_raises(self) -> None:
         with pytest.raises(URLPipelineError, match="no URL pipeline adapter is registered"):
-            await URLPipeline.from_url("memory://base|no-such-adapter:").resolve()
+            await URLPipeline.from_url("memory://base|no-such-adapter:")._resolve_store_path()
 
     async def test_base_case_value_error_is_wrapped(self) -> None:
         # a root that only the fallback scheme detection accepts must not
         # leak urlparse's ValueError out of the base case
         register_url_adapter("wrap", WrapperAdapter)
         with pytest.raises(URLPipelineError, match="could not resolve the pipeline root"):
-            await URLPipeline.from_url("vendor.x://[authority]/path|wrap:").resolve()
+            await URLPipeline.from_url("vendor.x://[authority]/path|wrap:")._resolve_store_path()
 
 
 class TestSpecRoots:
@@ -587,7 +607,7 @@ class TestSpecRoots:
     @pytest.mark.parametrize("root", ["memory:", "memory:/", "memory://"])
     async def test_memory_root_spellings_equivalent(self, root: str) -> None:
         register_url_adapter("wrap", WrapperAdapter)
-        result = await URLPipeline.from_url(f"{root}|wrap:").resolve()
+        result = await URLPipeline.from_url(f"{root}|wrap:")._resolve_store_path()
         assert isinstance(result.store, TracingStore)
         inner = result.store._store
         assert isinstance(inner, ManagedMemoryStore)
@@ -597,7 +617,7 @@ class TestSpecRoots:
     @pytest.mark.parametrize("root", ["memory:a/b", "memory:/a/b", "memory://a/b"])
     async def test_memory_root_named_spellings_equivalent(self, root: str) -> None:
         register_url_adapter("wrap", WrapperAdapter)
-        result = await URLPipeline.from_url(f"{root}|wrap:").resolve()
+        result = await URLPipeline.from_url(f"{root}|wrap:")._resolve_store_path()
         assert isinstance(result.store, TracingStore)
         inner = result.store._store
         assert isinstance(inner, ManagedMemoryStore)
@@ -614,12 +634,14 @@ class TestSpecRoots:
     async def test_memory_root_rejects_query(self) -> None:
         register_url_adapter("wrap", WrapperAdapter)
         with pytest.raises(URLPipelineError, match="do not accept a query"):
-            await URLPipeline.from_url("memory:a?opt=1|wrap:").resolve()
+            await URLPipeline.from_url("memory:a?opt=1|wrap:")._resolve_store_path()
 
     async def test_memory_root_rejects_storage_options(self) -> None:
         register_url_adapter("wrap", WrapperAdapter)
         with pytest.raises(TypeError, match="'storage_options' was provided but unused"):
-            await URLPipeline.from_url("memory:a|wrap:").resolve(storage_options={"anon": True})
+            await URLPipeline.from_url("memory:a|wrap:")._resolve_store_path(
+                storage_options={"anon": True}
+            )
 
     async def test_file_root_localhost_authority(self, tmp_path: Path) -> None:
         # file://localhost/p and file:///p are equivalent to file:/p
@@ -645,26 +667,26 @@ class TestSpecRoots:
             # chdir into tmp so it is created there
             monkeypatch.chdir(tmp_path)
             drive_path = "C:/drive/data"
-        r1 = await URLPipeline.from_url(f"file:{drive_path}|wrap:").resolve()
-        r2 = await URLPipeline.from_url(f"file:///{drive_path}|wrap:").resolve()
+        r1 = await URLPipeline.from_url(f"file:{drive_path}|wrap:")._resolve_store_path()
+        r2 = await URLPipeline.from_url(f"file:///{drive_path}|wrap:")._resolve_store_path()
         assert isinstance(r1.store, TracingStore)
         assert isinstance(r2.store, TracingStore)
 
     async def test_file_root_rejects_other_authority(self) -> None:
         register_url_adapter("wrap", WrapperAdapter)
         with pytest.raises(URLPipelineError, match="unsupported authority"):
-            await URLPipeline.from_url("file://example.com/tmp/x|wrap:").resolve()
+            await URLPipeline.from_url("file://example.com/tmp/x|wrap:")._resolve_store_path()
 
     @pytest.mark.parametrize("root", ["file:relative/path", "file://localhost"])
     async def test_file_root_rejects_relative_paths(self, root: str) -> None:
         register_url_adapter("wrap", WrapperAdapter)
         with pytest.raises(URLPipelineError, match="absolute path"):
-            await URLPipeline.from_url(f"{root}|wrap:").resolve()
+            await URLPipeline.from_url(f"{root}|wrap:")._resolve_store_path()
 
     async def test_file_root_rejects_query(self, tmp_path: Path) -> None:
         register_url_adapter("wrap", WrapperAdapter)
         with pytest.raises(URLPipelineError, match="do not accept a query"):
-            await URLPipeline.from_url(f"file:{tmp_path}?v=1|wrap:").resolve()
+            await URLPipeline.from_url(f"file:{tmp_path}?v=1|wrap:")._resolve_store_path()
 
     @pytest.mark.skipif(
         not _has_async_fsspec_wrapper,
@@ -685,7 +707,7 @@ class TestSpecRoots:
         # documented divergence from RFC 8089: consistent with LocalStore, no
         # percent-escape is decoded, so %20 names a literal directory
         register_url_adapter("wrap", WrapperAdapter)
-        await URLPipeline.from_url(f"file:{tmp_path.as_posix()}/a%20b|wrap:").resolve()
+        await URLPipeline.from_url(f"file:{tmp_path.as_posix()}/a%20b|wrap:")._resolve_store_path()
         assert (tmp_path / "a%20b").is_dir()
         assert not (tmp_path / "a b").exists()
 
@@ -719,9 +741,9 @@ class TestMakeStoreIntegration:
             @classmethod
             async def open_pipeline_segment(
                 cls, segment: PipelineSegment, context: PipelineContext
-            ) -> AdapterResolution:
+            ) -> StorePath:
                 preceding = await context.resolve_preceding()
-                return dataclasses.replace(preceding, path="/")
+                return StorePath(preceding.store, "/")
 
         register_url_adapter("slashy", SlashRootAdapter)
         store = await make_store(URLPipeline.from_url(f"file:{tmp_path.as_posix()}|slashy:"))
@@ -739,8 +761,8 @@ class TestMakeStoreIntegration:
             @classmethod
             async def open_pipeline_segment(
                 cls, segment: PipelineSegment, context: PipelineContext
-            ) -> AdapterResolution:
-                return AdapterResolution(store=await ClosingStore.open(), path="residual")
+            ) -> StorePath:
+                return StorePath(await ClosingStore.open(), path="residual")
 
         register_url_adapter("leaky", LeakProbe)
         with pytest.raises(URLPipelineError, match="resolves to a path inside a store"):

@@ -35,8 +35,6 @@ __all__ = [
     "get_codec_class",
     "get_ndbuffer_class",
     "get_pipeline_class",
-    "get_url_adapter",
-    "list_url_adapter_schemes",
     "register_buffer",
     "register_chunk_key_encoding",
     "register_codec",
@@ -533,7 +531,7 @@ def register_url_adapter(scheme: str, cls: type[URLPipelineAdapter]) -> None:
     _url_adapter_registry.register(cls, key)
 
 
-def list_url_adapter_schemes() -> set[str]:
+def _list_url_adapter_schemes() -> set[str]:
     """
     The set of URL schemes with a registered URL pipeline adapter.
 
@@ -549,7 +547,7 @@ def list_url_adapter_schemes() -> set[str]:
 _url_adapter_lock = threading.Lock()
 
 
-def get_url_adapter(scheme: str) -> type[URLPipelineAdapter]:
+def _get_url_adapter(scheme: str) -> type[URLPipelineAdapter]:
     """
     Get the URL pipeline adapter class registered for `scheme`.
 
@@ -612,7 +610,7 @@ def get_url_adapter(scheme: str) -> type[URLPipelineAdapter]:
     try:
         return _url_adapter_registry[key]
     except KeyError:
-        registered_schemes = sorted(list_url_adapter_schemes())
+        registered_schemes = sorted(_list_url_adapter_schemes())
         raise URLPipelineError(
             f"no URL pipeline adapter is registered for scheme {scheme!r}. "
             f"Registered schemes: {registered_schemes}. Adapters are provided by "

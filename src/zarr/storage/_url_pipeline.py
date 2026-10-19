@@ -21,21 +21,144 @@ import dataclasses
 import re
 from typing import TYPE_CHECKING, Any
 
-from zarr.abc.url_pipeline import (
-    AdapterResolution,
-    PipelineContext,
-    PipelineSegment,
-)
 from zarr.errors import URLPipelineError
-from zarr.registry import get_url_adapter, list_url_adapter_schemes
+from zarr.registry import _get_url_adapter, _list_url_adapter_schemes
 from zarr.storage._memory import ManagedMemoryStore
 from zarr.storage._utils import _join_paths, normalize_path
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
     from zarr.core.common import AccessModeLiteral, ZarrFormat
+    from zarr.storage._common import StorePath
 
-__all__ = ["URLPipeline"]
+__all__ = ["PipelineContext", "PipelineSegment", "URLPipeline"]
+
+
+@dataclasses.dataclass(frozen=True)
+class PipelineSegment:
+    """
+    One `|`-delimited sub-URL of a URL pipeline.
+
+    Attributes
+    ----------
+    scheme : str
+        The lowercased URL scheme.
+    body : str
+        The text after `scheme:` and before any `?`. Interpretation is
+        scheme-defined; it is **not** URL-normalized, so case-significant
+        content (e.g. icechunk snapshot IDs) is preserved.
+    query : str | None
+        The raw query string after `?`, or None. Interpretation is
+        scheme-defined.
+    raw : str
+        The exact original sub-URL text, preserved for lossless
+        reconstruction of the pipeline.
+    """
+
+    scheme: str
+    body: str
+    query: str | None
+    raw: str
+
+    def __str__(self) -> str:
+        return self.raw
+
+
+@dataclasses.dataclass(frozen=True, eq=False)
+class PipelineContext:
+    """
+    Context handed to a [`URLPipelineAdapter`][zarr.abc.url_pipeline.URLPipelineAdapter]
+    describing the pipeline to the left of its segment.
+
+    Instances are immutable but compare and hash by identity. An adapter that
+    needs to resolve the preceding pipeline with a different mode or options
+    derives a new context with `dataclasses.replace` (see
+    [`resolve_preceding`][zarr.storage.PipelineContext.resolve_preceding]).
+
+    Attributes
+    ----------
+    preceding : tuple[PipelineSegment, ...]
+        The parsed sub-URLs to the left of the adapter's segment, outer to
+        inner. Empty when the adapter's segment is the pipeline root.
+    mode : AccessModeLiteral | None
+        The access mode requested by the caller (e.g.
+        `zarr.open_url(mode=...)`), or None when unspecified. Adapters for
+        read-only resources should raise for every mode that may write, and
+        open read-only for `"r"` and None.
+    storage_options : dict[str, Any] | None
+        Options passed by the caller. By convention these configure the
+        *root* sub-URL (e.g. fsspec options); adapters may consume
+        adapter-specific keys, and should namespace them (e.g.
+        `myscheme_credentials`) to avoid collisions with other segments'
+        backends. An adapter that consumes keys should strip them before
+        resolving the rest of the pipeline.
+    """
+
+    preceding: tuple[PipelineSegment, ...]
+    mode: AccessModeLiteral | None
+    storage_options: dict[str, Any] | None
+
+    @property
+    def read_only(self) -> bool:
+        """
+        True when the caller requires a read-only store (`mode == "r"`).
+
+        Adapters must construct their store read-only when this is set
+        (the resolver enforces it afterwards); when it is False, they may
+        construct a writable store if the underlying resource supports
+        writing.
+        """
+        return self.mode == "r"
+
+    @property
+    def preceding_url(self) -> str:
+        """
+        The pipeline to the left of this segment, reconstructed exactly.
+
+        An adapter that consumes this string instead of calling
+        [`resolve_preceding`][zarr.storage.PipelineContext.resolve_preceding]
+        takes ownership of the *entire* preceding pipeline: it must
+        validate every preceding segment itself and raise
+        [`URLPipelineError`][zarr.errors.URLPipelineError] for segments it
+        does not understand, so that no segment is ever silently ignored.
+        """
+        return "|".join(segment.raw for segment in self.preceding)
+
+    async def resolve_preceding(self) -> StorePath:
+        """
+        Resolve the preceding pipeline into a store and a residual path.
+
+        This is the entry point for *wrapper* adapters (e.g. `zip:`) that
+        operate on the resource produced by the segments to their left. It
+        composes with any preceding adapters, because each segment is
+        resolved by its own adapter. Adapters backed by their own I/O
+        machinery (e.g. `icechunk:`) may instead consume
+        [`preceding_url`][zarr.storage.PipelineContext.preceding_url]
+        and never materialize the intermediate store — subject to the
+        ownership contract documented there.
+
+        The preceding pipeline is resolved with this context's `mode` and
+        `storage_options`. To use others, resolve through a derived
+        context:
+
+            preceding = await dataclasses.replace(
+                context, mode="r", storage_options=remaining_options
+            ).resolve_preceding()
+
+        Wrapper adapters that only read the preceding resource should pass
+        `mode="r"`, so the root is opened read-only and without create-on-open
+        side effects. Note that a local *file* root (e.g. `file:/data.zip|zip:`)
+        can currently only be resolved in mode `"r"`: every other mode creates
+        a directory at the root and fails with `FileExistsError`, because
+        there is no file-resource primitive yet.
+        """
+        if not self.preceding:
+            raise URLPipelineError(
+                "this adapter segment is at the pipeline root; "
+                "there is no preceding sub-URL to resolve"
+            )
+        return await _resolve(self.preceding, mode=self.mode, storage_options=self.storage_options)
+
 
 # Format segments are consumed by zarr-python itself rather than by a
 # registered adapter: they select the zarr format of the node the pipeline
@@ -135,8 +258,7 @@ class URLPipeline:
     A parsed URL pipeline, ready to be passed wherever a `StoreLike` is accepted.
 
     Construct one with [`from_url`][zarr.storage.URLPipeline.from_url] and open it
-    through any `StoreLike`-taking function, or resolve it directly with
-    [`resolve`][zarr.storage.URLPipeline.resolve]. Because a
+    through any `StoreLike`-taking function. Because a
     `URLPipeline` is an explicit object, no plain string store specification is
     ever interpreted as a pipeline: `zarr.open("data|x.zarr")` still addresses a
     local directory of that name, while
@@ -202,7 +324,7 @@ class URLPipeline:
         return None
 
     @property
-    def store_segments(self) -> tuple[PipelineSegment, ...]:
+    def _store_segments(self) -> tuple[PipelineSegment, ...]:
         """
         The segments that address a store: the root and any adapter segments,
         i.e. `segments` without a trailing format segment.
@@ -212,7 +334,7 @@ class URLPipeline:
         return self.segments[:-1]
 
     @property
-    def zarr_format(self) -> ZarrFormat | None:
+    def _zarr_format(self) -> ZarrFormat | None:
         """The format selected by a trailing `zarr2:`/`zarr3:` segment, or None."""
         format_segment = self._format_segment
         if format_segment is None:
@@ -220,7 +342,7 @@ class URLPipeline:
         return _FORMAT_SCHEMES[format_segment.scheme]
 
     @property
-    def path(self) -> str:
+    def _node_path(self) -> str:
         """
         The node path given as the body of a trailing format segment,
         normalized. Empty when there is no format segment or its body is empty.
@@ -230,7 +352,7 @@ class URLPipeline:
             return ""
         return normalize_path(format_segment.body)
 
-    def resolve_zarr_format(self, zarr_format: ZarrFormat | None) -> ZarrFormat | None:
+    def _resolve_zarr_format(self, zarr_format: ZarrFormat | None) -> ZarrFormat | None:
         """
         Combine the format selected by this pipeline with a caller-supplied one.
 
@@ -250,7 +372,7 @@ class URLPipeline:
         ValueError
             If the caller's format differs from the one selected by the pipeline.
         """
-        pipeline_format = self.zarr_format
+        pipeline_format = self._zarr_format
         if pipeline_format is None:
             return zarr_format
         if zarr_format is not None and zarr_format != pipeline_format:
@@ -261,19 +383,19 @@ class URLPipeline:
             )
         return pipeline_format
 
-    async def resolve(
+    async def _resolve_store_path(
         self,
         *,
         mode: AccessModeLiteral | None = None,
         storage_options: dict[str, Any] | None = None,
-    ) -> AdapterResolution:
+    ) -> StorePath:
         """
         Resolve the pipeline into a store and a residual path.
 
         The residual path joins the path returned by the adapters with the
         node path of a trailing format segment (`...|zarr3:path/to/node`).
-        The format itself is not part of the resolution; read it from
-        `zarr_format`.
+        The format itself is not part of the result; read it from
+        `_zarr_format`.
 
         Parameters
         ----------
@@ -298,12 +420,14 @@ class URLPipeline:
             directory in mode `"r"`) propagate unchanged, as for non-pipeline
             stores.
         """
-        resolution = await _resolve(self.store_segments, mode=mode, storage_options=storage_options)
-        if self.path:
-            resolution = dataclasses.replace(
-                resolution, path=_join_paths([normalize_path(resolution.path), self.path])
-            )
-        return resolution
+        from zarr.storage._common import StorePath  # circular import
+
+        resolved = await _resolve(self._store_segments, mode=mode, storage_options=storage_options)
+        if not self._node_path:
+            return resolved
+        return StorePath(
+            resolved.store, _join_paths([normalize_path(resolved.path), self._node_path])
+        )
 
     def __str__(self) -> str:
         return "|".join(segment.raw for segment in self.segments)
@@ -316,7 +440,7 @@ def _root_routes_to_adapter(scheme: str) -> bool:
     excluded; the registry check inspects entry-point names only — no
     adapter code is imported here.
     """
-    return scheme not in _NATIVE_ROOT_SCHEMES and scheme in list_url_adapter_schemes()
+    return scheme not in _NATIVE_ROOT_SCHEMES and scheme in _list_url_adapter_schemes()
 
 
 async def _resolve(
@@ -324,39 +448,41 @@ async def _resolve(
     *,
     mode: AccessModeLiteral | None,
     storage_options: dict[str, Any] | None,
-) -> AdapterResolution:
+) -> StorePath:
+    from zarr.storage._common import StorePath  # circular import
+
     if len(segments) == 1 and not _root_routes_to_adapter(segments[0].scheme):
-        return AdapterResolution(
-            store=await _resolve_root(segments[0], mode=mode, storage_options=storage_options)
+        return StorePath(
+            await _resolve_root(segments[0], mode=mode, storage_options=storage_options)
         )
 
     *preceding, last = segments
-    adapter_cls = get_url_adapter(last.scheme)
+    adapter_cls = _get_url_adapter(last.scheme)
 
     context = PipelineContext(
         preceding=tuple(preceding),
         mode=mode,
         storage_options=storage_options,
     )
-    resolution = await adapter_cls.open_pipeline_segment(last, context)
-    if mode == "r" and not resolution.store.read_only:
+    resolved = await adapter_cls.open_pipeline_segment(last, context)
+    if mode == "r" and not resolved.store.read_only:
         # The caller required read-only; enforce it rather than trusting
         # the adapter to have honored context.read_only.
         try:
-            read_only_store = resolution.store.with_read_only(True)
+            read_only_store = resolved.store.with_read_only(True)
             await read_only_store._ensure_open()
         except NotImplementedError as exc:
-            resolution.store.close()
+            resolved.store.close()
             raise URLPipelineError(
                 f"adapter {last.scheme!r} returned a writable store for mode 'r', "
                 "and the store does not support read-only conversion via "
                 ".with_read_only()"
             ) from exc
         except Exception:
-            resolution.store.close()
+            resolved.store.close()
             raise
-        resolution = dataclasses.replace(resolution, store=read_only_store)
-    return resolution
+        resolved = StorePath(read_only_store, resolved.path)
+    return resolved
 
 
 async def _resolve_root(

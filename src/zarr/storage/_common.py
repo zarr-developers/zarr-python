@@ -360,7 +360,7 @@ async def make_store(
     _read_only = mode == "r"
 
     if isinstance(store_like, URLPipeline):
-        result = await store_like.resolve(mode=mode, storage_options=storage_options)
+        result = await store_like._resolve_store_path(mode=mode, storage_options=storage_options)
         if normalize_path(result.path):
             result.store.close()
             raise URLPipelineError(
@@ -486,7 +486,7 @@ async def make_store_path(
     path_normalized = normalize_path(path)
 
     if isinstance(store_like, URLPipeline):
-        result = await store_like.resolve(mode=mode, storage_options=storage_options)
+        result = await store_like._resolve_store_path(mode=mode, storage_options=storage_options)
         combined_path = _join_paths([normalize_path(result.path), path_normalized])
         return await StorePath.open(result.store, path=combined_path, mode=mode)
 
@@ -526,8 +526,9 @@ def resolve_zarr_format(
     Merge the zarr format selected by a `URLPipeline` store specification with
     the format a caller asked for.
 
-    For any other `StoreLike`, `zarr_format` is returned unchanged. For a
-    pipeline, see [`URLPipeline.resolve_zarr_format`][zarr.storage.URLPipeline].
+    For any other `StoreLike`, `zarr_format` is returned unchanged. A pipeline
+    with a trailing `zarr2:`/`zarr3:` segment selects that format when the
+    caller passes None.
 
     Raises
     ------
@@ -535,7 +536,7 @@ def resolve_zarr_format(
         If `zarr_format` is not None and differs from the pipeline's format.
     """
     if isinstance(store_like, URLPipeline):
-        return store_like.resolve_zarr_format(zarr_format)
+        return store_like._resolve_zarr_format(zarr_format)
     return zarr_format
 
 

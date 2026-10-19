@@ -49,9 +49,9 @@ def test_from_url(
     pipeline = URLPipeline.from_url(url)
     assert pipeline.segments == parse_pipeline(url)
     assert tuple(segment.scheme for segment in pipeline.segments) == schemes
-    assert tuple(segment.scheme for segment in pipeline.store_segments) == store_schemes
-    assert pipeline.zarr_format == zarr_format
-    assert pipeline.path == path
+    assert tuple(segment.scheme for segment in pipeline._store_segments) == store_schemes
+    assert pipeline._zarr_format == zarr_format
+    assert pipeline._node_path == path
     assert str(pipeline) == url
     assert URLPipeline(pipeline.segments) == pipeline
 
@@ -103,11 +103,11 @@ def test_resolve_zarr_format(
     """
     suffix = "" if pipeline_format is None else f"|zarr{pipeline_format}:"
     pipeline = URLPipeline.from_url(f"memory://x{suffix}")
-    assert pipeline.resolve_zarr_format(requested) == expected  # type: ignore[arg-type]
+    assert pipeline._resolve_zarr_format(requested) == expected  # type: ignore[arg-type]
 
 
 def test_resolve_zarr_format_conflict_raises() -> None:
     """A caller-supplied format that differs from the pipeline's segment is an error."""
     pipeline = URLPipeline.from_url("memory://x|zarr2:")
     with pytest.raises(ValueError, match="conflicts with the 'zarr2:' segment"):
-        pipeline.resolve_zarr_format(3)
+        pipeline._resolve_zarr_format(3)
