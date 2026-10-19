@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+from importlib.metadata import EntryPoint
 
 import numcodecs.registry
 import pytest
@@ -23,6 +26,121 @@ from zarr.registry import (
     get_numcodec,
 )
 from zarr.storage import MemoryStore
+
+
+@pytest.mark.parametrize(
+    "imports",
+    [
+        "import zarr.registry\nimport zarr.codecs",
+        "import zarr.codecs\nimport zarr.registry",
+        "import zarr",
+    ],
+    ids=["registry-first", "codecs-first", "zarr-only"],
+)
+def test_builtin_codecs_register_in_any_import_order(imports: str) -> None:
+    """The package bootstrap registers each codec even when registry is imported first."""
+    builtin = {
+        "blosc": "BloscCodec",
+        "cast_value": "CastValue",
+        "bytes": "BytesCodec",
+        "endian": "BytesCodec",
+        "crc32c": "Crc32cCodec",
+        "gzip": "GzipCodec",
+        "scale_offset": "ScaleOffset",
+        "sharding_indexed": "ShardingCodec",
+        "zstd": "ZstdCodec",
+        "vlen-utf8": "VLenUTF8Codec",
+        "vlen-bytes": "VLenBytesCodec",
+        "transpose": "TransposeCodec",
+    }
+    numcodecs = {
+        "bz2": "BZ2",
+        "crc32": "CRC32",
+        "crc32c": "CRC32C",
+        "lz4": "LZ4",
+        "lzma": "LZMA",
+        "zfpy": "ZFPY",
+        "adler32": "Adler32",
+        "astype": "AsType",
+        "bitround": "BitRound",
+        "blosc": "Blosc",
+        "delta": "Delta",
+        "fixedscaleoffset": "FixedScaleOffset",
+        "fletcher32": "Fletcher32",
+        "gzip": "GZip",
+        "jenkins_lookup3": "JenkinsLookup3",
+        "pcodec": "PCodec",
+        "packbits": "PackBits",
+        "quantize": "Quantize",
+        "shuffle": "Shuffle",
+        "zlib": "Zlib",
+        "zstd": "Zstd",
+    }
+    script = f"""
+{imports}
+import zarr.codecs as codecs
+import zarr.codecs.numcodecs as numcodecs
+from zarr.registry import _codec_registries, _register_builtin_codecs, get_codec_class
+
+for name, class_name in {builtin!r}.items():
+    cls = getattr(codecs, class_name)
+    assert get_codec_class(name) is cls, name
+    assert _codec_registries[name][f'{{cls.__module__}}.{{cls.__qualname__}}'] is cls, name
+for name, class_name in {numcodecs!r}.items():
+    cls = getattr(numcodecs, class_name)
+    key = f'numcodecs.{{name}}'
+    assert get_codec_class(key) is cls, key
+    assert _codec_registries[key][f'zarr.codecs.numcodecs.{{class_name}}'] is cls, key
+snapshot = {{key: dict(value) for key, value in _codec_registries.items()}}
+_register_builtin_codecs()
+assert snapshot == {{key: dict(value) for key, value in _codec_registries.items()}}
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, check=False
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_builtin_codec_bootstrap_preserves_custom_registration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Running bootstrap again must not replace user-provided implementations."""
+    from zarr.codecs import BytesCodec
+    from zarr.registry import Registry, _codec_registries, _register_builtin_codecs, register_codec
+
+    class CustomBytesCodec(BytesCodec):
+        pass
+
+    monkeypatch.setitem(
+        _codec_registries["bytes"], "zarr.codecs.bytes.BytesCodec", CustomBytesCodec
+    )
+    monkeypatch.setitem(_codec_registries, "custom_builtin_test", Registry())
+    register_codec("custom_builtin_test", CustomBytesCodec)
+    before = {name: dict(registry) for name, registry in _codec_registries.items()}
+
+    _register_builtin_codecs()
+
+    assert before == {name: dict(registry) for name, registry in _codec_registries.items()}
+    assert get_codec_class("custom_builtin_test") is CustomBytesCodec
+
+
+def test_builtin_codec_bootstrap_preserves_lazy_entrypoints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from zarr.codecs import BytesCodec
+    from zarr.registry import Registry, _codec_registries, _register_builtin_codecs
+
+    name = "custom_entrypoint_test"
+    registry: Registry[BytesCodec] = Registry()
+    registry.lazy_load_list.append(
+        EntryPoint(name=name, value="zarr.codecs.bytes:BytesCodec", group="zarr.codecs")
+    )
+    monkeypatch.setitem(_codec_registries, name, registry)
+
+    _register_builtin_codecs()
+
+    assert get_codec_class(name) is BytesCodec
+    assert registry.lazy_load_list == []
 
 
 @pytest.fixture

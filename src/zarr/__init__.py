@@ -37,6 +37,9 @@ from zarr.api.synchronous import (
 from zarr.core.array import Array, AsyncArray
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup, Group
+from zarr.registry import _register_builtin_codecs
+
+_register_builtin_codecs()
 
 # in case setuptools scm screw up and find version to be 0.0.0
 if __version__.startswith("0.0.0"):
