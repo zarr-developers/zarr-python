@@ -29,6 +29,7 @@ For more information, see the Donfig documentation at https://github.com/pytroll
 
 from __future__ import annotations
 
+import numcodecs
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from donfig import Config as DConfig
@@ -37,8 +38,6 @@ from zarr.core.json_parse import parse_field
 
 if TYPE_CHECKING:
     from donfig.config_obj import ConfigSet
-    import numcodecs
-
 
 class BadConfigError(ValueError):
     _msg = "bad Config: %r"
@@ -62,13 +61,11 @@ class Config(DConfig):  # type: ignore[misc]
         # Call the original donfig set method to handle the config state
         result = super().set(arg, **kwargs)
         # Sync the numcodecs blosc threads setting
-        import numcodecs
         numcodecs.blosc.use_threads = self.get("blosc.use_threads", False)
         return result
 
     def refresh(self, *args, **kwargs):
         result = super().refresh(*args, **kwargs)
-        import numcodecs
         numcodecs.blosc.use_threads = self.get("blosc.use_threads", False)
         return result
 
