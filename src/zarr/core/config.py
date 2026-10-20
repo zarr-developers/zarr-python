@@ -57,19 +57,31 @@ class Config(DConfig):  # type: ignore[misc]
 
     """
 
+    def set(self, arg=None, **kwargs):
+        # Call the original donfig set method to handle the config state
+        result = super().set(arg, **kwargs)
+        # Sync the numcodecs blosc threads setting
+        import numcodecs
+        numcodecs.blosc.use_threads = self.get("blosc.use_threads", False)
+        return result
+
+    def refresh(self, *args, **kwargs):
+        result = super().refresh(*args, **kwargs)
+        import numcodecs
+        numcodecs.blosc.use_threads = self.get("blosc.use_threads", False)
+        return result
+
     def reset(self) -> None:
         self.clear()
         self.refresh()
 
-    def enable_gpu(self) -> ConfigSet:
+    def enable_gpu(self) -> "ConfigSet":
         """
         Configure Zarr to use GPUs where possible.
         """
         return self.set(
             {"buffer": "zarr.buffer.gpu.Buffer", "ndbuffer": "zarr.buffer.gpu.NDBuffer"}
         )
-
-
 # these keys were removed from the config as part of the 3.1.0 release.
 # these deprecations should be removed in 3.1.1 or thereabouts.
 deprecations = {
@@ -118,6 +130,9 @@ config = Config(
                 "batch_size": 1,
                 # Only read by FusedCodecPipeline (BatchedCodecPipeline ignores it).
                 "max_workers": None,
+            },
+            "blosc": {
+                "use_threads": False,
             },
             "codecs": {
                 "blosc": "zarr.codecs.blosc.BloscCodec",

@@ -68,6 +68,9 @@ def test_config_defaults_set() -> None:
                     "batch_size": 1,
                     "max_workers": None,
                 },
+                "blosc": {
+                    "use_threads": False,
+                },
                 "codecs": {
                     "blosc": "zarr.codecs.blosc.BloscCodec",
                     "gzip": "zarr.codecs.gzip.GzipCodec",
@@ -483,3 +486,9 @@ def test_deprecated_config(key: str) -> None:
     with pytest.raises(ValueError):
         with zarr.config.set({key: "foo"}):
             pass
+
+def test_blosc_use_threads_config() -> None:
+    import numcodecs
+    assert numcodecs.blosc.use_threads is False
+    with config.set({"blosc.use_threads": True}):
+        assert numcodecs.blosc.use_threads is True
