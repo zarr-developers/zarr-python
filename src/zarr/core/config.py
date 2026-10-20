@@ -39,6 +39,7 @@ from zarr.core.json_parse import parse_field
 if TYPE_CHECKING:
     from donfig.config_obj import ConfigSet
 
+
 class BadConfigError(ValueError):
     _msg = "bad Config: %r"
 
@@ -73,13 +74,15 @@ class Config(DConfig):  # type: ignore[misc]
         self.clear()
         self.refresh()
 
-    def enable_gpu(self) -> "ConfigSet":
+    def enable_gpu(self) -> ConfigSet:
         """
         Configure Zarr to use GPUs where possible.
         """
         return self.set(
             {"buffer": "zarr.buffer.gpu.Buffer", "ndbuffer": "zarr.buffer.gpu.NDBuffer"}
         )
+
+        
 # these keys were removed from the config as part of the 3.1.0 release.
 # these deprecations should be removed in 3.1.1 or thereabouts.
 deprecations = {
