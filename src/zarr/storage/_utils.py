@@ -90,16 +90,16 @@ def parse_store_url(url: str) -> ParsedStoreUrl:
 
     parsed = urlparse(url)
 
-    # netloc is the "host" part (store name for memory://, bucket for s3://, etc.)
-    name = parsed.netloc or None
-
-    # For URLs with a scheme and netloc (like memory://store/path or s3://bucket/key),
-    # strip the leading slash from the path component.
-    # For local paths (no scheme), preserve the path as-is.
-    if parsed.scheme and parsed.netloc:
-        path = parsed.path.lstrip("/")
+    if parsed.scheme in ("file", ""):
+        name = None
+        path = url.removeprefix("file://")
     else:
-        path = parsed.path
+        # netloc is the "host" part (store name for memory://, bucket for s3://, etc.)
+        name = parsed.netloc or None
+
+        # For URLs with a non-file scheme and netloc (like memory://store/path or s3://bucket/key),
+        # strip the leading slash from the path component.
+        path = parsed.path.lstrip("/")
 
     return ParsedStoreUrl(scheme=parsed.scheme, name=name, path=path, raw=url)
 

@@ -39,9 +39,19 @@ class TestParseStoreUrl:
             scheme="s3", name="bucket", path="key", raw="s3://bucket/key"
         )
 
-    def test_file_url(self) -> None:
-        result = parse_store_url("file:///tmp/test")
-        assert result.scheme == "file"
+    def test_absolute_file_url(self) -> None:
+        url = "file:///something/absolute"
+        result = parse_store_url(url)
+        assert result == ParsedStoreUrl(
+            scheme="file", name=None, path="/something/absolute", raw=url
+        )
+
+    def test_relative_file_url(self) -> None:
+        url = "file://something/relative"
+        result = parse_store_url(url)
+        assert result == ParsedStoreUrl(
+            scheme="file", name=None, path="something/relative", raw=url
+        )
 
     def test_local_absolute_path(self) -> None:
         result = parse_store_url("/local/path")
