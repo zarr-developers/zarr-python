@@ -13,7 +13,6 @@ from zarr.abc.codec import BytesBytesCodec
 from zarr.codecs._deprecated_enum import _coerce_enum_input, _DeprecatedStrEnumMeta
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, NamedRequiredConfig, parse_named_configuration
-from zarr.core.config import config
 from zarr.core.dtype.common import HasItemSize
 from zarr.core.json_parse import parse_field
 
@@ -102,7 +101,8 @@ class BloscCname(metaclass=_DeprecatedStrEnumMeta):
 
 
 # See https://zarr.readthedocs.io/en/stable/user-guide/performance.html#configuring-blosc
-numcodecs.blosc.use_threads = config.get("blosc.use_threads", False)
+numcodecs.blosc.use_threads = False
+
 
 def parse_typesize(data: JSON) -> int:
     parsed: int = parse_field(data, int, "typesize", error=TypeError)

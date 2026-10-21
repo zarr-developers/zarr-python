@@ -28,7 +28,6 @@ For more information, see the Donfig documentation at https://github.com/pytroll
 """
 
 from __future__ import annotations
-
 import importlib
 
 from typing import TYPE_CHECKING, Any, Literal, cast
