@@ -829,7 +829,7 @@ def test_fill_value_cannot_decode_rejected() -> None:
     NaN cannot be cast back to the integer source."""
     with pytest.raises(
         ValueError,
-        match=r"fill value 0 .* from int32 to nan in float64, which cannot be cast back to int32",
+        match=r"encoded fill value nan cannot be cast from float64 to int32",
     ):
         _create_with_fill(
             "int32", 0, CastValue(data_type="float64", scalar_map={"encode": [(0, "NaN")]})

@@ -377,6 +377,40 @@ class CastValue(ArrayArrayCodec):
             return None
         return self.scalar_map.get(direction)  # type: ignore[return-value]
 
+    def _cast_fill(
+        self,
+        fill: np.ndarray,
+        *,
+        source: ZDType[TBaseDType, TBaseScalar],
+        direction: Literal["encode", "decode"],
+    ) -> np.ndarray:
+        """Cast a one-element array holding a fill value, as the codec casts elements.
+
+        `encode` casts `fill`, a scalar of the `source` data type, to the codec's
+        data type; `decode` casts `fill`, a scalar of the codec's data type, back
+        to `source`. Each uses the scalar map of its direction.
+
+        Raises
+        ------
+        ValueError
+            If the cast fails, naming the fill value and both data types.
+        """
+        from_dtype, to_dtype = (
+            (source, self.dtype) if direction == "encode" else (self.dtype, source)
+        )
+        try:
+            return self._do_cast(
+                fill,
+                target_dtype=to_dtype.to_native_dtype(),
+                scalar_map=self._get_scalar_map(direction),
+            )
+        except (ValueError, OverflowError) as e:
+            what = "fill value" if direction == "encode" else "encoded fill value"
+            raise ValueError(
+                f"The {what} {fill[0]} cannot be cast from {from_dtype.to_json(zarr_format=3)} "
+                f"to {to_dtype.to_json(zarr_format=3)} by the cast_value codec: {e}"
+            ) from e
+
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         """
         Update the fill value of the output spec by applying casting procedure.
@@ -386,19 +420,11 @@ class CastValue(ArrayArrayCodec):
         the codec is checked once, when array metadata is created or read, by
         `check_fill_value_round_trip`.
         """
-        target_native = self.dtype.to_native_dtype()
-        fill_arr = np.array([chunk_spec.fill_value], dtype=chunk_spec.dtype.to_native_dtype())
-        try:
-            new_fill_arr = self._do_cast(
-                fill_arr, target_dtype=target_native, scalar_map=self._get_scalar_map("encode")
-            )
-        except (ValueError, OverflowError) as e:
-            raise ValueError(
-                f"The fill value {fill_arr[0]} cannot be cast from "
-                f"{chunk_spec.dtype.to_json(zarr_format=3)} to {self.dtype.to_json(zarr_format=3)} "
-                f"by the cast_value codec: {e}"
-            ) from e
-        return replace(chunk_spec, dtype=self.dtype, fill_value=target_native.type(new_fill_arr[0]))
+        fill = np.array([chunk_spec.fill_value], dtype=chunk_spec.dtype.to_native_dtype())
+        encoded = self._cast_fill(fill, source=chunk_spec.dtype, direction="encode")
+        return replace(
+            chunk_spec, dtype=self.dtype, fill_value=self.dtype.to_native_dtype().type(encoded[0])
+        )
 
     def check_fill_value(self, chunk_spec: ArraySpec) -> None:
         """
@@ -417,32 +443,18 @@ class CastValue(ArrayArrayCodec):
             If the fill value cannot be cast to the target data type, cannot
             be cast back, or does not decode to the original fill value.
         """
-        source_native = chunk_spec.dtype.to_native_dtype()
-        source_name = chunk_spec.dtype.to_json(zarr_format=3)
-        target_name = self.dtype.to_json(zarr_format=3)
-
-        fill_arr = np.array([chunk_spec.fill_value], dtype=source_native)
-        fill = fill_arr[0]
-        new_fill = self.resolve_metadata(chunk_spec).fill_value
-        new_fill_arr = np.array([new_fill], dtype=self.dtype.to_native_dtype())
-
-        try:
-            decoded_arr = self._do_cast(
-                new_fill_arr, target_dtype=source_native, scalar_map=self._get_scalar_map("decode")
-            )
-        except (ValueError, OverflowError) as e:
+        source = chunk_spec.dtype
+        fill = np.array([chunk_spec.fill_value], dtype=source.to_native_dtype())
+        encoded = self._cast_fill(fill, source=source, direction="encode")
+        decoded = self._cast_fill(encoded, source=source, direction="decode")
+        if not _same_scalar(fill, decoded):
+            source_name = source.to_json(zarr_format=3)
             raise ValueError(
-                f"The fill value {fill} does not survive a round trip through the cast_value "
-                f"codec: it encodes from {source_name} to {new_fill} in {target_name}, which "
-                f"cannot be cast back to {source_name}: {e}"
-            ) from e
-
-        if not _same_scalar(fill_arr, decoded_arr):
-            raise ValueError(
-                f"The fill value {fill} does not survive a round trip through the cast_value "
-                f"codec: it encodes from {source_name} to {new_fill} in {target_name}, which "
-                f"decodes back to {decoded_arr[0]} in {source_name}. Choose a fill value that "
-                f"the codec's data_type, rounding, out_of_range, and scalar_map preserve."
+                f"The fill value {fill[0]} does not survive a round trip through the cast_value "
+                f"codec: it encodes from {source_name} to {encoded[0]} in "
+                f"{self.dtype.to_json(zarr_format=3)}, which decodes back to {decoded[0]} in "
+                f"{source_name}. Choose a fill value that the codec's data_type, rounding, "
+                "out_of_range, and scalar_map preserve."
             )
 
     def _encode_sync(
