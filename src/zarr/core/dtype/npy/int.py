@@ -143,6 +143,26 @@ class BaseInt[
 
         return self.to_native_dtype().type(data)  # type: ignore[return-value]
 
+    def _check_int_bounds(self, data: object, value: int) -> None:
+        """
+        Check that an integer value fits in this data type's range.
+
+        Parameters
+        ----------
+        data : object
+            The original input, used in the error message.
+        value : int
+            The integer value to bounds-check.
+
+        Raises
+        ------
+        ValueError
+            If ``value`` is outside the range of the native dtype.
+        """
+        info = np.iinfo(self.to_native_dtype())
+        if value < info.min or value > info.max:
+            raise ValueError(f"{data!r} is out of bounds for {self.to_native_dtype()}.")
+
     def cast_scalar(self, data: object) -> Scalar:
         """
         Attempt to cast a given object to a NumPy integer scalar.
@@ -161,9 +181,12 @@ class BaseInt[
         ------
         TypeError
             If the data cannot be converted to a NumPy integer scalar.
+        ValueError
+            If the data is an integer outside the range of the dtype.
         """
 
         if self._check_scalar(data):
+            self._check_int_bounds(data, int(data))
             return self._cast_scalar_unchecked(data)
         msg = (
             f"Cannot convert object {data!r} with type {type(data)} to a scalar compatible with the "
@@ -202,16 +225,16 @@ class BaseInt[
         ------
         TypeError
             If the input is not a valid integer type.
+        ValueError
+            If the input is an integer outside the range of the dtype.
         """
-        if check_json_int(data):
-            return self._cast_scalar_unchecked(data)
-        if check_json_intish_float(data):
-            return self._cast_scalar_unchecked(int(data))
+        if check_json_int(data) or check_json_intish_float(data) or check_json_intish_str(data):
+            value = int(data)
+        else:
+            raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
-        if check_json_intish_str(data):
-            return self._cast_scalar_unchecked(int(data))
-
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
+        self._check_int_bounds(data, value)
+        return self._cast_scalar_unchecked(value)
 
     def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> int:
         """

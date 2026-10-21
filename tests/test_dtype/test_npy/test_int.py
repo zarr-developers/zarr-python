@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
+import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
+
+if TYPE_CHECKING:
+    from zarr.core.common import JSON
 
 
 class TestInt8(BaseTestZDType):
@@ -337,3 +343,56 @@ def test_string_integer_from_json_scalar() -> None:
     # Test that it works for v2 format too
     result = dtype_instance.from_json_scalar("123", zarr_format=2)
     assert result == np.int32(123)
+
+
+@pytest.mark.parametrize(
+    ("dtype_instance", "value"),
+    [
+        (Int8(), 300),
+        (Int8(), -129),
+        (Int8(), "300"),
+        (Int8(), 300.0),
+        (UInt8(), -1),
+        (UInt64(), 2**64),
+        (Int64(), -(2**63) - 1),
+    ],
+)
+def test_out_of_bounds_integer_from_json_scalar(
+    dtype_instance: Int8 | UInt8 | UInt64 | Int64, value: JSON
+) -> None:
+    """An integer outside the dtype's range raises a validation error, not
+    numpy's OverflowError. Regression test for
+    https://github.com/zarr-developers/zarr-python/issues/4453 item 4."""
+    for zarr_format in (2, 3):
+        with pytest.raises(ValueError, match="out of bounds"):
+            dtype_instance.from_json_scalar(value, zarr_format=zarr_format)
+
+
+@pytest.mark.parametrize(
+    ("dtype_instance", "value"),
+    [
+        (Int8(), 127),
+        (Int8(), -128),
+        (UInt8(), 255),
+        (UInt64(), 2**64 - 1),
+        (Int64(), -(2**63)),
+    ],
+)
+def test_in_bounds_integer_from_json_scalar(
+    dtype_instance: Int8 | UInt8 | UInt64 | Int64, value: int
+) -> None:
+    """In-bounds integers round-trip for both zarr formats."""
+    for zarr_format in (2, 3):
+        assert dtype_instance.from_json_scalar(
+            value, zarr_format=zarr_format
+        ) == dtype_instance.to_native_dtype().type(value)
+
+
+def test_out_of_bounds_integer_cast_scalar() -> None:
+    """cast_scalar raises ValueError for out-of-bounds integers, so
+    create_array(dtype="i1", fill_value=300) fails the same way reading
+    stored metadata does."""
+    with pytest.raises(ValueError, match="out of bounds"):
+        Int8().cast_scalar(300)
+    with pytest.raises(ValueError, match="out of bounds"):
+        UInt64().cast_scalar(2**64)
