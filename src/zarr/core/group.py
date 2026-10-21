@@ -64,6 +64,7 @@ from zarr.errors import (
     GroupNotFoundError,
     MetadataValidationError,
     NodeTypeValidationError,
+    ZarrDeprecationWarning,
     ZarrUserWarning,
 )
 from zarr.storage import StoreLike, StorePath
@@ -140,6 +141,53 @@ def _parse_async_node(
         raise TypeError(f"Unknown node type, got {type(node)}")
 
 
+def _validate_consolidated_key(key: str, zarr_format: ZarrFormat) -> None:
+    """A consolidated metadata key is a node path: every segment must be non-empty.
+
+    The v3 specification also reserves the names ``.``, ``..``, ``zarr.json``, and
+    every ``__``-prefixed name. Stores written before those names were rejected on
+    creation still open today, so for now such keys only warn. The v2 specification
+    does not reserve any node names, so no name checks apply to v2 listings."""
+    segments = key.split("/")
+    if any(not seg for seg in segments):
+        msg = f"Invalid node path in consolidated metadata: {key!r}"
+        raise MetadataValidationError(msg)
+    if zarr_format == 3 and any(
+        seg in (".", "..", ZARR_JSON) or seg.startswith("__") for seg in segments
+    ):
+        msg = (
+            f"Consolidated metadata lists {key!r}, which contains a name reserved "
+            "by the v3 specification. Rename the node, as reading such listings "
+            "will become an error."
+        )
+        warnings.warn(msg, category=ZarrDeprecationWarning, stacklevel=1)
+
+
+def _validate_consolidated_hierarchy(
+    metadata: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata],
+) -> None:
+    """Every non-root listing key must have all of its ancestors present as
+    group entries. A missing ancestor makes the group unreadable, and a
+    listing below an array is invalid: array nodes may not have children."""
+    for key in metadata:
+        parts = key.split("/")
+        for i in range(1, len(parts)):
+            prefix = "/".join(parts[:i])
+            parent = metadata.get(prefix)
+            if parent is None:
+                msg = (
+                    f"Consolidated metadata lists {key!r} without a listing "
+                    f"for its parent {prefix!r}"
+                )
+                raise MetadataValidationError(msg)
+            if not isinstance(parent, GroupMetadata):
+                msg = (
+                    f"Consolidated metadata lists {key!r} below {prefix!r}, "
+                    "which is an array; array nodes may not have children"
+                )
+                raise MetadataValidationError(msg)
+
+
 @dataclass(frozen=True)
 class ConsolidatedMetadata:
     """
@@ -199,6 +247,7 @@ class ConsolidatedMetadata:
 
                 # zarr_format is present in v2 and v3.
                 zarr_format = parse_zarr_format(v["zarr_format"])
+                _validate_consolidated_key(k, zarr_format)
 
                 if zarr_format == 3:
                     node_type = parse_node_type(v.get("node_type", None))
@@ -216,6 +265,7 @@ class ConsolidatedMetadata:
                 else:
                     assert_never(zarr_format)
 
+            _validate_consolidated_hierarchy(metadata)
             cls._flat_to_nested(metadata)
 
         return cls(metadata=metadata)
