@@ -29,7 +29,8 @@ For more information, see the Donfig documentation at https://github.com/pytroll
 
 from __future__ import annotations
 
-import numcodecs
+import importlib
+
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from donfig import Config as DConfig
@@ -58,18 +59,15 @@ class Config(DConfig):  # type: ignore[misc]
 
     """
 
+
     def set(self, arg=None, **kwargs):
-        # Call the original donfig set method to handle the config state
         result = super().set(arg, **kwargs)
-        # Sync the numcodecs blosc threads setting
-        import importlib
         numcodecs = importlib.import_module("numcodecs")
         numcodecs.blosc.use_threads = self.get("blosc.use_threads", False)
         return result
 
     def refresh(self, *args, **kwargs):
         result = super().refresh(*args, **kwargs)
-        import importlib
         numcodecs = importlib.import_module("numcodecs")
         numcodecs.blosc.use_threads = self.get("blosc.use_threads", False)
         return result
@@ -124,6 +122,9 @@ config = Config(
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
             "json_indent": 2,
+            "blosc": {
+                "use_threads": False,
+            },
             "codec_pipeline": {
                 # FusedCodecPipeline is the faster synchronous pipeline, but it stays
                 # opt-in for now so behavior is unchanged for existing users. Early
@@ -135,9 +136,6 @@ config = Config(
                 "batch_size": 1,
                 # Only read by FusedCodecPipeline (BatchedCodecPipeline ignores it).
                 "max_workers": None,
-            },
-            "blosc": {
-                "use_threads": False,
             },
             "codecs": {
                 "blosc": "zarr.codecs.blosc.BloscCodec",
