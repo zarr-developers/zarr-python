@@ -66,11 +66,11 @@ def _make_spec(
 @pytest.mark.parametrize(
     "codecs",
     [
-        (BytesCodec(),),
-        (BytesCodec(), GzipCodec(level=1)),
-        (BytesCodec(), ZstdCodec(level=1)),
-        (TransposeCodec(order=(1, 0)), BytesCodec()),
-        (TransposeCodec(order=(1, 0)), BytesCodec(), ZstdCodec(level=1)),
+        (BytesCodec(endian="little"),),
+        (BytesCodec(endian="little"), GzipCodec(level=1)),
+        (BytesCodec(endian="little"), ZstdCodec(level=1)),
+        (TransposeCodec(order=(1, 0)), BytesCodec(endian="little")),
+        (TransposeCodec(order=(1, 0)), BytesCodec(endian="little"), ZstdCodec(level=1)),
     ],
     ids=["bytes-only", "gzip", "zstd", "transpose", "transpose+zstd"],
 )
@@ -139,7 +139,7 @@ def test_sync_api_compute_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_evolve_from_array_spec() -> None:
     """evolve_from_array_spec creates a sync transform."""
-    pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
+    pipeline = FusedCodecPipeline.from_codecs((BytesCodec(endian="little"),))
     assert pipeline.sync_transform is None
 
     evolved = pipeline.evolve_from_array_spec(_make_spec((100,)))
@@ -173,7 +173,7 @@ def test_read_write_sync_roundtrip(zdtype: ZDType[Any, Any], shape: tuple[int, .
     dtype = zdtype.to_native_dtype()
     spec = _make_spec(shape, zdtype)
 
-    pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
+    pipeline = FusedCodecPipeline.from_codecs((BytesCodec(endian="little"),))
     pipeline = pipeline.evolve_from_array_spec(spec)
 
     data = np.arange(int(np.prod(shape)), dtype=dtype).reshape(shape)
@@ -203,7 +203,7 @@ def test_read_sync_missing_chunk_fills() -> None:
     store = MemoryStore()
     spec = _make_spec((10,), fill_value=42.0)
 
-    pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
+    pipeline = FusedCodecPipeline.from_codecs((BytesCodec(endian="little"),))
     pipeline = pipeline.evolve_from_array_spec(spec)
 
     out = CPUNDBuffer.from_numpy_array(np.zeros(10, dtype="float64"))
@@ -225,7 +225,7 @@ def test_sync_write_async_read_roundtrip() -> None:
     store = MemoryStore()
     spec = _make_spec((100,))
 
-    pipeline = FusedCodecPipeline.from_codecs((BytesCodec(),))
+    pipeline = FusedCodecPipeline.from_codecs((BytesCodec(endian="little"),))
     pipeline = pipeline.evolve_from_array_spec(spec)
 
     data = np.arange(100, dtype="float64")
@@ -291,7 +291,7 @@ def test_chunk_transform_uses_runtime_prototype() -> None:
             return self._decode_sync(chunk_bytes, chunk_spec)
 
     recording = _PrototypeRecordingCodec()
-    transform = ChunkTransform(codecs=(BytesCodec(), recording))
+    transform = ChunkTransform(codecs=(BytesCodec(endian="little"), recording))
 
     def _spec(prototype: BufferPrototype) -> ArraySpec:
         return _make_spec((10,), write_empty_chunks=False, prototype=prototype)
@@ -484,7 +484,7 @@ async def test_encode_and_write_as_completed_cancels_stray_writes_on_failure() -
 
     chunk_spec = _make_spec((1,), UInt8())
     chunk_array = CPUNDBuffer.from_numpy_array(np.zeros(1, dtype="uint8"))
-    transform = ChunkTransform(codecs=(BytesCodec(),))
+    transform = ChunkTransform(codecs=(BytesCodec(endian="little"),))
 
     batch = [
         (_SlowByteSetter(), chunk_array, chunk_spec),
@@ -524,7 +524,7 @@ def test_concurrent_reads_shared_transform_with_pool() -> None:
             chunks=(5, 5),
             dtype="int32",
             filters=[TransposeCodec(order=(1, 0))],
-            serializer=BytesCodec(),
+            serializer=BytesCodec(endian="little"),
             compressors=None,
             fill_value=-1,
         )
@@ -556,7 +556,7 @@ def test_shared_transform_decode_alternating_specs() -> None:
     underpins that guarantee. (The concurrent counterpart is
     `test_concurrent_reads_shared_transform_with_pool`.)
     """
-    transform = ChunkTransform(codecs=(TransposeCodec(order=(1, 0)), BytesCodec()))
+    transform = ChunkTransform(codecs=(TransposeCodec(order=(1, 0)), BytesCodec(endian="little")))
 
     # two distinct specs (different shapes) sharing the one transform + cache slot
     cases = []
@@ -656,7 +656,9 @@ def test_write_over_sync_byte_setter_takes_sync_path() -> None:
     from zarr.codecs.sharding import _ShardingByteSetter
 
     spec = _make_spec((10,), UInt8())
-    pipeline = FusedCodecPipeline.from_codecs([BytesCodec()]).evolve_from_array_spec(spec)
+    pipeline = FusedCodecPipeline.from_codecs([BytesCodec(endian="little")]).evolve_from_array_spec(
+        spec
+    )
     assert pipeline.sync_transform is not None
 
     shard_dict: dict[tuple[int, ...], Any] = {}
@@ -789,22 +791,22 @@ def _bytes_identical(a: bytes, b: bytes) -> bool:
 # encode time.
 _ASYNC_SYNC_PARITY_CASES: list[Expect[tuple[Any, ...], Callable[[bytes, bytes], bool]]] = [
     Expect(
-        input=(BytesCodec(),),
+        input=(BytesCodec(endian="little"),),
         output=_bytes_identical,
         id="bytes-only",
     ),
     Expect(
-        input=(BytesCodec(), GzipCodec(level=1)),
+        input=(BytesCodec(endian="little"), GzipCodec(level=1)),
         output=gzip_streams_equal_except_mtime,
         id="bb",
     ),
     Expect(
-        input=(TransposeCodec(order=(1, 0)), BytesCodec()),
+        input=(TransposeCodec(order=(1, 0)), BytesCodec(endian="little")),
         output=_bytes_identical,
         id="aa",
     ),
     Expect(
-        input=(TransposeCodec(order=(1, 0)), BytesCodec(), ZstdCodec(level=1)),
+        input=(TransposeCodec(order=(1, 0)), BytesCodec(endian="little"), ZstdCodec(level=1)),
         output=_bytes_identical,
         id="aa+ab+bb",
     ),
@@ -853,7 +855,9 @@ def test_async_decode_encode_passes_through_none_chunks() -> None:
     on the fallback path) map a None chunk to None and leave real chunks
     untouched — pins the None-passthrough branch the default sync path skips."""
     spec = _make_spec((4,), Int32())
-    pipeline = FusedCodecPipeline.from_codecs([BytesCodec()]).evolve_from_array_spec(spec)
+    pipeline = FusedCodecPipeline.from_codecs([BytesCodec(endian="little")]).evolve_from_array_spec(
+        spec
+    )
 
     data = np.arange(4, dtype="int32")
     value = CPUNDBuffer.from_numpy_array(data)
@@ -894,7 +898,7 @@ class PartialMixinCodec(
     implement `_decode_partial_sync` / `_encode_partial_sync`.
     """
 
-    inner: BytesCodec = field(default_factory=BytesCodec)
+    inner: BytesCodec = field(default_factory=lambda: BytesCodec(endian="little"))
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PartialMixinCodec:

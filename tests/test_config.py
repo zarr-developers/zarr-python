@@ -298,7 +298,7 @@ def test_config_buffer_implementation() -> None:
         arr_Crc32c = zeros(
             shape=(100, 10),
             store=StoreExpectingTestBuffer(),
-            codecs=[BytesCodec(), Crc32cCodec()],
+            codecs=[BytesCodec(endian="little"), Crc32cCodec()],
         )
         arr_Crc32c[:] = data2d
         assert np.array_equal(arr_Crc32c[:], data2d)

@@ -337,7 +337,7 @@ async def test_dimension_names(store: Store) -> None:
 @pytest.mark.parametrize(
     "codecs",
     [
-        (BytesCodec(), TransposeCodec(order=order_from_dim("F", 2))),
+        (BytesCodec(endian="little"), TransposeCodec(order=order_from_dim("F", 2))),
         (TransposeCodec(order=order_from_dim("F", 2)),),
     ],
 )
@@ -453,7 +453,7 @@ def _resolve_metadata_codecs() -> list[Codec]:
     from zarr.codecs.zstd import ZstdCodec
 
     return [
-        BytesCodec(),
+        BytesCodec(endian="little"),
         GzipCodec(level=1),
         TransposeCodec(order=(0,)),
         Crc32cCodec(),

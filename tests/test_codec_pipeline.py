@@ -275,7 +275,7 @@ _BB = "BB"  # BytesBytesCodec   -> GzipCodec
 
 _CODEC_FACTORY: dict[str, Callable[[], Codec]] = {
     _AA: lambda: TransposeCodec(order=(0, 1)),
-    _AB: BytesCodec,
+    _AB: lambda: BytesCodec(endian="little"),
     _BB: GzipCodec,
 }
 
