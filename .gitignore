@@ -91,3 +91,8 @@ tests/.hypothesis
 
 zarr/version.py
 zarr.egg-info/
+
+# Local agent / planning notes (not versioned)
+.claude/
+CLAUDE.md
+docs/superpowers/

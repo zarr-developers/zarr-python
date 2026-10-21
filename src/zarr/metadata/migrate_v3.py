@@ -27,8 +27,9 @@ from zarr.core.dtype.common import HasEndianness
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 from zarr.core.group import GroupMetadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
-from zarr.core.metadata.v3 import ArrayV3Metadata
+from zarr.core.metadata.v3 import ArrayV3Metadata, RegularChunkGridMetadata
 from zarr.core.sync import sync
+from zarr.errors import UnknownCodecError
 from zarr.registry import get_codec_class
 from zarr.storage import StorePath
 from zarr.types import AnyArray
@@ -211,7 +212,7 @@ def _convert_array_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
     return ArrayV3Metadata(
         shape=metadata_v2.shape,
         data_type=metadata_v2.dtype,
-        chunk_grid=metadata_v2.chunk_grid,
+        chunk_grid=RegularChunkGridMetadata(chunk_shape=metadata_v2.chunks),
         chunk_key_encoding=chunk_key_encoding,
         fill_value=metadata_v2.fill_value,
         codecs=codecs,
@@ -273,7 +274,7 @@ def _find_numcodecs_zarr3(numcodecs_codec: numcodecs.abc.Codec) -> Codec:
 
     try:
         codec_v3 = get_codec_class(numcodec_name)
-    except KeyError as exc:
+    except UnknownCodecError as exc:
         raise ValueError(
             f"Couldn't find corresponding zarr.codecs.numcodecs codec for {numcodecs_codec.codec_id}"
         ) from exc

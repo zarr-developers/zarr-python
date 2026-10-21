@@ -1,3 +1,4 @@
+import inspect
 import os
 from collections.abc import Iterable
 from typing import Any
@@ -17,13 +18,13 @@ from zarr.codecs import (
     Crc32cCodec,
     ShardingCodec,
 )
-from zarr.core.array_spec import ArraySpec
+from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import NDBuffer
 from zarr.core.buffer.core import Buffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
 from zarr.core.indexing import SelectorTuple
-from zarr.errors import ChunkNotFoundError, ZarrUserWarning
+from zarr.errors import ChunkNotFoundError, UnknownCodecError, ZarrUserWarning
 from zarr.registry import (
     fully_qualified_name,
     get_buffer_class,
@@ -55,6 +56,9 @@ def test_config_defaults_set() -> None:
                     "write_empty_chunks": False,
                     "read_missing_chunks": True,
                     "target_shard_size_bytes": None,
+                    "rectilinear_chunks": False,
+                    "sharding_coalesce_max_gap_bytes": 1 << 20,
+                    "sharding_coalesce_max_bytes": 16 << 20,
                 },
                 "async": {"concurrency": 10, "timeout": None},
                 "threading": {"max_workers": None},
@@ -62,6 +66,7 @@ def test_config_defaults_set() -> None:
                 "codec_pipeline": {
                     "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                     "batch_size": 1,
+                    "max_workers": None,
                 },
                 "codecs": {
                     "blosc": "zarr.codecs.blosc.BloscCodec",
@@ -108,6 +113,25 @@ def test_config_defaults_set() -> None:
     assert config.get("json_indent") == 2
 
 
+def test_array_config_init_defaults_match_global_config() -> None:
+    """Each `ArrayConfig.__init__` parameter that has a default must match the
+    value of `array.<param_name>` in the global config. Catches drift between
+    the two sources of truth."""
+    params = inspect.signature(ArrayConfig.__init__).parameters
+    has_defaults = {
+        name: p.default
+        for name, p in params.items()
+        if name != "self" and p.default is not inspect.Parameter.empty
+    }
+    assert has_defaults, "expected at least one default to check"
+    for name, default in has_defaults.items():
+        assert default == config.get(f"array.{name}"), (
+            f"ArrayConfig.__init__ default for {name!r} ({default!r}) does not "
+            f"match global config value for 'array.{name}' "
+            f"({config.get(f'array.{name}')!r})"
+        )
+
+
 @pytest.mark.parametrize(
     ("key", "old_val", "new_val"),
     [("array.order", "C", "F"), ("async.concurrency", 10, 128), ("json_indent", 2, 0)],
@@ -133,7 +157,7 @@ def test_config_codec_pipeline_class(store: Store) -> None:
     # has default value
     assert get_pipeline_class().__name__ != ""
 
-    config.set({"codec_pipeline.name": "zarr.core.codec_pipeline.BatchedCodecPipeline"})
+    config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"})
     assert get_pipeline_class() == zarr.core.codec_pipeline.BatchedCodecPipeline
 
     _mock = Mock()
@@ -188,7 +212,16 @@ def test_config_codec_implementation(store: Store) -> None:
     _mock = Mock()
 
     class MockBloscCodec(BloscCodec):
+        # Record a call from whichever encode entry point the active codec
+        # pipeline uses: the async `_encode_single` (BatchedCodecPipeline, the
+        # default) or the synchronous `_encode_sync` (FusedCodecPipeline).
+        # Overriding both keeps this test ("the configured codec is actually
+        # used") independent of which pipeline is the default.
         async def _encode_single(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
+            _mock.call()
+            return None
+
+        def _encode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
             _mock.call()
             return None
 
@@ -301,7 +334,7 @@ def test_warning_on_missing_codec_config() -> None:
         pass
 
     # error if codec is not registered
-    with pytest.raises(KeyError):
+    with pytest.raises(UnknownCodecError):
         get_codec_class("missing_codec")
 
     # no warning if only one implementation is available

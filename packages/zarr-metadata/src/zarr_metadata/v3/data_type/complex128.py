@@ -1,0 +1,50 @@
+"""
+Zarr v3 `complex128` data type.
+
+See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
+"""
+
+from typing import Final, Literal
+
+from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration, multi_byte
+from zarr_metadata.v3.data_type._float import complex_fill_value_rules
+from zarr_metadata.v3.data_type.float64 import FLOAT64_DATA_TYPE, Float64FillValue
+
+COMPLEX128_DATA_TYPE_NAME: Final = "complex128"
+"""The `data_type` value for the `complex128` type."""
+
+Complex128DataTypeName = Literal["complex128"]
+"""Literal type of the `data_type` field for `complex128`."""
+
+Complex128Component = Float64FillValue
+"""One real or imaginary component of a `complex128` fill value.
+
+Same shape as a `float64` fill value: a JSON number, a named sentinel,
+or a `HexFloat64` string.
+"""
+
+Complex128FillValue = tuple[Complex128Component, Complex128Component]
+"""Permitted JSON shape of the `fill_value` field for `complex128`.
+
+A two-element JSON array `[real, imag]` where each component is a
+`Complex128Component`.
+"""
+
+
+COMPLEX128_DATA_TYPE: Final = DataTypeDefinition(
+    name=COMPLEX128_DATA_TYPE_NAME,
+    configuration=EmptyConfiguration,
+    fill_value=Complex128FillValue,
+    fill_value_rules=complex_fill_value_rules(FLOAT64_DATA_TYPE.fill_value_rules),
+    storage=multi_byte,
+)
+"""The `complex128` data type: a bare name, with nothing to configure; its fill value a pair of `float64` components."""
+
+
+__all__ = [
+    "COMPLEX128_DATA_TYPE",
+    "COMPLEX128_DATA_TYPE_NAME",
+    "Complex128Component",
+    "Complex128DataTypeName",
+    "Complex128FillValue",
+]

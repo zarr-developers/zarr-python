@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from functools import partial
 from itertools import starmap
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
-from zarr.core.sync import sync
-
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, AsyncIterator, Iterable
+    from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Sequence
     from types import TracebackType
     from typing import Any, Self
 
@@ -24,6 +22,8 @@ __all__ = [
     "SupportsGetSync",
     "SupportsSetSync",
     "SupportsSyncStore",
+    "SyncByteGetter",
+    "SyncByteSetter",
     "set_or_delete",
 ]
 
@@ -218,211 +218,6 @@ class Store(ABC):
         """
         ...
 
-    async def _get_bytes(
-        self, key: str, *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
-    ) -> bytes:
-        """
-        Retrieve raw bytes from the store asynchronously.
-
-        This is a convenience method that wraps ``get()`` and converts the result
-        to bytes. Use this when you need the raw byte content of a stored value.
-
-        Parameters
-        ----------
-        key : str
-            The key identifying the data to retrieve.
-        prototype : BufferPrototype
-            The buffer prototype to use for reading the data.
-        byte_range : ByteRequest, optional
-            If specified, only retrieve a portion of the stored data.
-            Can be a ``RangeByteRequest``, ``OffsetByteRequest``, or ``SuffixByteRequest``.
-
-        Returns
-        -------
-        bytes
-            The raw bytes stored at the given key.
-
-        Raises
-        ------
-        FileNotFoundError
-            If the key does not exist in the store.
-
-        See Also
-        --------
-        get : Lower-level method that returns a Buffer object.
-        get_bytes : Synchronous version of this method.
-        get_json : Asynchronous method for retrieving and parsing JSON data.
-
-        Examples
-        --------
-        >>> store = await MemoryStore.open()
-        >>> await store.set("data", Buffer.from_bytes(b"hello world"))
-        >>> data = await store.get_bytes("data", prototype=default_buffer_prototype())
-        >>> print(data)
-        b'hello world'
-        """
-        buffer = await self.get(key, prototype, byte_range)
-        if buffer is None:
-            raise FileNotFoundError(key)
-        return buffer.to_bytes()
-
-    def _get_bytes_sync(
-        self, key: str = "", *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
-    ) -> bytes:
-        """
-        Retrieve raw bytes from the store synchronously.
-
-        This is a synchronous wrapper around ``get_bytes()``. It should only
-        be called from non-async code. For async contexts, use ``get_bytes()``
-        instead.
-
-        Parameters
-        ----------
-        key : str, optional
-            The key identifying the data to retrieve. Defaults to an empty string.
-        prototype : BufferPrototype
-            The buffer prototype to use for reading the data.
-        byte_range : ByteRequest, optional
-            If specified, only retrieve a portion of the stored data.
-            Can be a ``RangeByteRequest``, ``OffsetByteRequest``, or ``SuffixByteRequest``.
-
-        Returns
-        -------
-        bytes
-            The raw bytes stored at the given key.
-
-        Raises
-        ------
-        FileNotFoundError
-            If the key does not exist in the store.
-
-        Warnings
-        --------
-        Do not call this method from async functions. Use ``get_bytes()`` instead
-        to avoid blocking the event loop.
-
-        See Also
-        --------
-        get_bytes : Asynchronous version of this method.
-        get_json_sync : Synchronous method for retrieving and parsing JSON data.
-
-        Examples
-        --------
-        >>> store = MemoryStore()
-        >>> await store.set("data", Buffer.from_bytes(b"hello world"))
-        >>> data = store.get_bytes_sync("data", prototype=default_buffer_prototype())
-        >>> print(data)
-        b'hello world'
-        """
-
-        return sync(self._get_bytes(key, prototype=prototype, byte_range=byte_range))
-
-    async def _get_json(
-        self, key: str, *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
-    ) -> Any:
-        """
-        Retrieve and parse JSON data from the store asynchronously.
-
-        This is a convenience method that retrieves bytes from the store and
-        parses them as JSON.
-
-        Parameters
-        ----------
-        key : str
-            The key identifying the JSON data to retrieve.
-        prototype : BufferPrototype
-            The buffer prototype to use for reading the data.
-        byte_range : ByteRequest, optional
-            If specified, only retrieve a portion of the stored data.
-            Can be a ``RangeByteRequest``, ``OffsetByteRequest``, or ``SuffixByteRequest``.
-            Note: Using byte ranges with JSON may result in invalid JSON.
-
-        Returns
-        -------
-        Any
-            The parsed JSON data. This follows the behavior of ``json.loads()`` and
-            can be any JSON-serializable type: dict, list, str, int, float, bool, or None.
-
-        Raises
-        ------
-        FileNotFoundError
-            If the key does not exist in the store.
-        json.JSONDecodeError
-            If the stored data is not valid JSON.
-
-        See Also
-        --------
-        get_bytes : Method for retrieving raw bytes.
-        get_json_sync : Synchronous version of this method.
-
-        Examples
-        --------
-        >>> store = await MemoryStore.open()
-        >>> metadata = {"zarr_format": 3, "node_type": "array"}
-        >>> await store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
-        >>> data = await store.get_json("zarr.json", prototype=default_buffer_prototype())
-        >>> print(data)
-        {'zarr_format': 3, 'node_type': 'array'}
-        """
-
-        return json.loads(await self._get_bytes(key, prototype=prototype, byte_range=byte_range))
-
-    def _get_json_sync(
-        self, key: str = "", *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
-    ) -> Any:
-        """
-        Retrieve and parse JSON data from the store synchronously.
-
-        This is a synchronous wrapper around ``get_json()``. It should only
-        be called from non-async code. For async contexts, use ``get_json()``
-        instead.
-
-        Parameters
-        ----------
-        key : str, optional
-            The key identifying the JSON data to retrieve. Defaults to an empty string.
-        prototype : BufferPrototype
-            The buffer prototype to use for reading the data.
-        byte_range : ByteRequest, optional
-            If specified, only retrieve a portion of the stored data.
-            Can be a ``RangeByteRequest``, ``OffsetByteRequest``, or ``SuffixByteRequest``.
-            Note: Using byte ranges with JSON may result in invalid JSON.
-
-        Returns
-        -------
-        Any
-            The parsed JSON data. This follows the behavior of ``json.loads()`` and
-            can be any JSON-serializable type: dict, list, str, int, float, bool, or None.
-
-        Raises
-        ------
-        FileNotFoundError
-            If the key does not exist in the store.
-        json.JSONDecodeError
-            If the stored data is not valid JSON.
-
-        Warnings
-        --------
-        Do not call this method from async functions. Use ``get_json()`` instead
-        to avoid blocking the event loop.
-
-        See Also
-        --------
-        get_json : Asynchronous version of this method.
-        get_bytes_sync : Synchronous method for retrieving raw bytes without parsing.
-
-        Examples
-        --------
-        >>> store = MemoryStore()
-        >>> metadata = {"zarr_format": 3, "node_type": "array"}
-        >>> store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
-        >>> data = store.get_json_sync("zarr.json", prototype=default_buffer_prototype())
-        >>> print(data)
-        {'zarr_format': 3, 'node_type': 'array'}
-        """
-
-        return sync(self._get_json(key, prototype=prototype, byte_range=byte_range))
-
     @abstractmethod
     async def get_partial_values(
         self,
@@ -616,6 +411,133 @@ class Store(ABC):
         for req in requests:
             yield (req[0], await self.get(*req))
 
+    async def get_ranges(
+        self,
+        key: str,
+        byte_ranges: Sequence[ByteRequest | None],
+        *,
+        prototype: BufferPrototype,
+        max_concurrency: int = 10,
+        max_gap_bytes: int = 1 << 20,  # 1 MiB
+        max_coalesced_bytes: int = 16 << 20,  # 16 MiB
+    ) -> AsyncIterator[Sequence[tuple[int, Buffer | None]]]:
+        """Read many byte ranges from `key`.
+
+        Yields one batch per underlying I/O operation, each a sequence of
+        `(input_index, Buffer | None)` tuples. Batches across yields arrive in
+        completion order, not input order. The default implementation built
+        into `Store` runs the coalescer over `self.get`, so subclasses get a
+        working implementation for free; stores that have a more efficient
+        backend (e.g. ranged HTTP, S3 byte-range fetches) should override.
+
+        Parameters
+        ----------
+        key
+            Storage key to read from.
+        byte_ranges
+            Input ranges. `None` means "the whole value".
+        prototype
+            Buffer prototype, forwarded to `self.get`.
+        max_concurrency
+            Maximum number of merged fetches in flight at once.
+        max_gap_bytes
+            Two `RangeByteRequest`s separated by at most this many bytes may
+            be merged into one fetch.
+        max_coalesced_bytes
+            Upper bound on the size of a single merged fetch.
+
+        Raises
+        ------
+        BaseExceptionGroup
+            Failures from underlying fetches are reported as a
+            `BaseExceptionGroup` (PEP 654) and should be handled with
+            `except*`. Inner exceptions include `FileNotFoundError` if any
+            fetch returns `None` (i.e. `key` is absent), and any exception
+            raised by `self.get` for the corresponding range. Pending
+            fetches are cancelled as soon as one task fails, so the group
+            typically contains a single non-`CancelledError` exception even
+            under high concurrency.
+        """
+        # Local import: zarr.core._coalesce imports symbols from this module.
+        from zarr.core._coalesce import coalesced_get
+
+        fetch = partial(self.get, key, prototype)
+        async for group in coalesced_get(
+            fetch,
+            byte_ranges,
+            max_concurrency=max_concurrency,
+            max_gap_bytes=max_gap_bytes,
+            max_coalesced_bytes=max_coalesced_bytes,
+        ):
+            yield group
+
+    def get_ranges_sync(
+        self,
+        key: str,
+        byte_ranges: Sequence[ByteRequest | None],
+        *,
+        prototype: BufferPrototype,
+        max_gap_bytes: int = 1 << 20,  # 1 MiB
+        max_coalesced_bytes: int = 16 << 20,  # 16 MiB
+    ) -> Sequence[tuple[int, Buffer | None]]:
+        """Synchronous, coalescing counterpart of `get_ranges`.
+
+        Plans merged fetches with the same `coalesce_ranges` policy as the async
+        path, then issues one synchronous `get_sync` per merged group (or per
+        uncoalescable request) and slices results back into per-input buffers.
+        Used by the sync codec pipeline's partial-shard reads so they get the
+        same byte-range coalescing as the async path, without an event loop.
+
+        Returns a list of `(input_index, Buffer | None)`. Raises
+        `BaseExceptionGroup` containing a `FileNotFoundError` if the key is
+        absent (matching `get_ranges`), so callers can handle a deleted shard
+        uniformly across the sync and async paths.
+
+        Requires the store to implement `get_sync` (`SupportsGetSync`).
+        """
+        from zarr.core._coalesce import coalesce_ranges
+
+        if not isinstance(self, SupportsGetSync):
+            raise TypeError(f"{type(self).__name__} does not support synchronous reads")
+
+        groups, uncoalescable = coalesce_ranges(
+            byte_ranges, max_gap_bytes=max_gap_bytes, max_coalesced_bytes=max_coalesced_bytes
+        )
+        results: list[tuple[int, Buffer | None]] = []
+        errors: list[BaseException] = []
+
+        def _get(req: ByteRequest | None) -> Buffer | None:
+            return self.get_sync(key, prototype=prototype, byte_range=req)
+
+        for idx, req in uncoalescable:
+            buf = _get(req)
+            if buf is None:
+                errors.append(FileNotFoundError(key))
+            else:
+                results.append((idx, buf))
+
+        for members in groups:
+            if len(members) == 1:
+                solo_idx, solo_req = members[0]
+                buf = _get(solo_req)
+                if buf is None:
+                    errors.append(FileNotFoundError(key))
+                else:
+                    results.append((solo_idx, buf))
+                continue
+            start = members[0][1].start
+            end = max(r.end for _, r in members)
+            big = _get(RangeByteRequest(start, end))
+            if big is None:
+                errors.append(FileNotFoundError(key))
+                continue
+            for member_idx, r in members:
+                results.append((member_idx, big[r.start - start : r.end - start]))
+
+        if errors:
+            raise BaseExceptionGroup("chunk read failed", errors)
+        return results
+
     async def getsize(self, key: str) -> int:
         """
         Return the size, in bytes, of a value in a Store.
@@ -683,6 +605,8 @@ class Store(ABC):
         from zarr.core.common import concurrent_map
         from zarr.core.config import config
 
+        if prefix != "" and not prefix.endswith("/"):
+            prefix += "/"
         keys = [(x,) async for x in self.list_prefix(prefix)]
         limit = config.get("async.concurrency")
         sizes = await concurrent_map(keys, self.getsize, limit=limit)
@@ -710,7 +634,43 @@ class ByteSetter(Protocol):
 
 
 @runtime_checkable
+class SyncByteGetter(Protocol):
+    """A `ByteGetter` that can also fetch synchronously, without an event loop.
+
+    Non-StorePath byte getters (e.g. the sharding codec's in-memory
+    `_ShardingByteGetter`) implement this so a synchronous codec pipeline can
+    take its sync fast path on them instead of scheduling one coroutine per
+    chunk. Note that `StorePath` also *has* a `get_sync` method (so it matches
+    this protocol structurally) but it only works when its store supports
+    synchronous IO — callers gate `StorePath` on the store's `SupportsGetSync`
+    instead of on this protocol.
+    """
+
+    def get_sync(
+        self, prototype: BufferPrototype | None = None, byte_range: ByteRequest | None = None
+    ) -> Buffer | None: ...
+
+
+@runtime_checkable
+class SyncByteSetter(SyncByteGetter, Protocol):
+    """A `ByteSetter` that can also write synchronously. See `SyncByteGetter`."""
+
+    def set_sync(self, value: Buffer) -> None: ...
+
+    def delete_sync(self) -> None: ...
+
+
+@runtime_checkable
 class SupportsGetSync(Protocol):
+    """Store protocol for synchronous reads (`get_sync`).
+
+    The store sync surface is all-or-nothing: a store implementing any of the
+    `*_sync` methods must implement all of them (`SupportsSyncStore`), because
+    consumers mix sync reads, writes, and deletes within one operation.
+    Capability-gated callers consult `_store_supports_sync_io` rather than the
+    individual protocols.
+    """
+
     def get_sync(
         self,
         key: str,
@@ -722,16 +682,52 @@ class SupportsGetSync(Protocol):
 
 @runtime_checkable
 class SupportsSetSync(Protocol):
+    """Store protocol for synchronous writes (`set_sync`).
+
+    See `SupportsGetSync` for the all-or-nothing contract on the store sync
+    surface.
+    """
+
     def set_sync(self, key: str, value: Buffer) -> None: ...
 
 
 @runtime_checkable
 class SupportsDeleteSync(Protocol):
+    """Store protocol for synchronous deletes (`delete_sync`).
+
+    See `SupportsGetSync` for the all-or-nothing contract on the store sync
+    surface.
+    """
+
     def delete_sync(self, key: str) -> None: ...
 
 
 @runtime_checkable
-class SupportsSyncStore(SupportsGetSync, SupportsSetSync, SupportsDeleteSync, Protocol): ...
+class SupportsSyncStore(SupportsGetSync, SupportsSetSync, SupportsDeleteSync, Protocol):
+    """The full store sync surface: `get_sync`, `set_sync`, and `delete_sync`."""
+
+
+def _store_supports_sync_io(store: object) -> bool:
+    """Whether `store` can serve the full synchronous IO surface right now.
+
+    Structural membership in `SupportsSyncStore` is necessary but not always
+    sufficient: a store can present the `*_sync` methods while its ability to
+    run them depends on runtime state the type system cannot see. Wrapper
+    stores are the canonical case — `WrapperStore` delegates the sync methods
+    to the store it wraps, so they only work when the wrapped store is itself
+    sync-capable. Such stores opt out dynamically via a `_supports_sync_io`
+    attribute/property (absent means capable).
+
+    This is an interim, private convention pending a formal sync/async store
+    architecture — the store-side twin of the codec-side `_sync_capable`
+    convention consulted by `zarr.abc.codec._codec_supports_sync`.
+
+    Synchronous IO is all-or-nothing: consumers such as the fused codec
+    pipeline mix synchronous reads, writes, and deletes within one batch
+    (e.g. a partial-chunk write reads existing bytes and an all-fill chunk is
+    deleted), so a partial sync surface never satisfies this predicate.
+    """
+    return isinstance(store, SupportsSyncStore) and getattr(store, "_supports_sync_io", True)
 
 
 async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:

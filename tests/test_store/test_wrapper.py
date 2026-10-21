@@ -4,12 +4,12 @@ from typing import TYPE_CHECKING, Any, TypedDict
 
 import pytest
 
-from zarr.abc.store import ByteRequest, Store
+from zarr.abc.store import ByteRequest, Store, _store_supports_sync_io
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.cpu import Buffer as CPUBuffer
 from zarr.core.buffer.cpu import buffer_prototype
-from zarr.storage import LocalStore, WrapperStore
-from zarr.testing.store import StoreTests
+from zarr.storage import LocalStore, MemoryStore, WrapperStore, ZipStore
+from zarr.testing.store import LatencyStore, StoreTests
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -123,3 +123,47 @@ async def test_wrapped_get(store: Store, capsys: pytest.CaptureFixture[str]) -> 
     await store_wrapped.get(key, buffer_prototype)
     captured = capsys.readouterr()
     assert f"getting {key}" in captured.out
+
+
+@pytest.mark.parametrize(
+    ("store_factory", "expected"),
+    [
+        (lambda tmp: MemoryStore(), True),
+        (lambda tmp: LocalStore(str(tmp)), True),
+        (lambda tmp: WrapperStore(MemoryStore()), True),
+        (lambda tmp: LatencyStore(MemoryStore()), True),
+        (lambda tmp: ZipStore(tmp / "store.zip", mode="w"), False),
+        (lambda tmp: WrapperStore(ZipStore(tmp / "store.zip", mode="w")), False),
+    ],
+    ids=[
+        "memory",
+        "local",
+        "wrapper-of-memory",
+        "latency-wrapper-of-memory",
+        "zip",
+        "wrapper-of-zip",
+    ],
+)
+def test_supports_sync_io(store_factory: Any, expected: bool, tmp_path: Path | Any) -> None:
+    """`_store_supports_sync_io` is True only for stores implementing the full
+    sync surface (get_sync + set_sync + delete_sync); wrappers forward the
+    wrapped store's capability via `_supports_sync_io`."""
+    assert _store_supports_sync_io(store_factory(tmp_path)) is expected
+
+
+def test_wrapper_get_sync_without_inner_sync_raises(tmp_path: Any) -> None:
+    store = WrapperStore(ZipStore(tmp_path / "store.zip", mode="w"))
+    with pytest.raises(TypeError, match="does not support synchronous get"):
+        store.get_sync("key")
+
+
+def test_wrapper_set_sync_without_inner_sync_raises(tmp_path: Any) -> None:
+    store = WrapperStore(ZipStore(tmp_path / "store.zip", mode="w"))
+    with pytest.raises(TypeError, match="does not support synchronous set"):
+        store.set_sync("key", CPUBuffer.from_bytes(b"data"))
+
+
+def test_wrapper_delete_sync_without_inner_sync_raises(tmp_path: Any) -> None:
+    store = WrapperStore(ZipStore(tmp_path / "store.zip", mode="w"))
+    with pytest.raises(TypeError, match="does not support synchronous delete"):
+        store.delete_sync("key")

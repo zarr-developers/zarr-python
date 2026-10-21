@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import functools
 import math
-import operator
 import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum
-from itertools import starmap
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -23,10 +20,13 @@ import numpy as np
 from typing_extensions import ReadOnly
 
 from zarr.core.config import config as zarr_config
+from zarr.core.json_parse import convert, parse_field
 from zarr.errors import ZarrRuntimeWarning
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
+
+    from zarr.core.metadata.v3 import ChunkGridMetadata
 
 
 ZARR_JSON = "zarr.json"
@@ -37,6 +37,12 @@ ZMETADATA_V2_JSON = ".zmetadata"
 
 BytesLike = bytes | bytearray | memoryview
 ShapeLike = Iterable[int | np.integer[Any]] | int | np.integer[Any]
+# Per-dimension chunk specs may mix a bare int (uniform chunk size, the
+# rectilinear spec's step-size shorthand) with explicit edge-length sequences.
+# A stored chunk grid (`ChunkGridMetadata`) is also accepted and is used
+# verbatim, under the tolerant stored-metadata validation rules (e.g. trailing
+# edges beyond the array extent, as left behind by a shrinking resize).
+type ChunksLike = ShapeLike | Iterable[int | Iterable[int]] | ChunkGridMetadata
 # For backwards compatibility
 ChunkCoords = tuple[int, ...]
 ZarrFormat = Literal[2, 3]
@@ -82,13 +88,53 @@ class NamedRequiredConfig[TName: str, TConfig: Mapping[str, object]](TypedDict):
 
 
 def product(tup: tuple[int, ...]) -> int:
-    return functools.reduce(operator.mul, tup, 1)
+    return math.prod(tup)
 
 
 def ceildiv(a: float, b: float) -> int:
+    """Ceiling of ``a / b`` using floating-point division; zero when ``a`` is zero."""
     if a == 0:
         return 0
     return math.ceil(a / b)
+
+
+def ceildiv_int(a: int, b: int) -> int:
+    """Ceiling of integer division using exact Python integer arithmetic."""
+    return -(-int(a) // int(b))
+
+
+def concurrent_iter[T: tuple[Any, ...], V](
+    items: Iterable[T],
+    func: Callable[..., Awaitable[V]],
+    limit: int | None = None,
+) -> list[asyncio.Task[V]]:
+    """Launch `func(*item)` for each item concurrently, returning the tasks.
+
+    When `limit` is set, no more than `limit` calls are in flight at once.
+    Tasks are returned in input order; callers that want completion order
+    should wrap the result in `asyncio.as_completed`.
+
+    Every task is scheduled (via `ensure_future`) before this function
+    returns, not on first iteration of the result. That matters for callers
+    that await the returned tasks one at a time — without eager scheduling,
+    each coroutine would only start when individually awaited, serializing
+    the work and defeating the semaphore. It also makes the return type
+    honest (real `Task`s support `.cancel()`, `.done()`, callbacks) rather
+    than bare coroutines.
+
+    See https://docs.python.org/3/library/asyncio-task.html#coroutines:
+    "Note that simply calling a coroutine will not schedule it to be executed:"
+    """
+    if limit is None:
+        return [asyncio.ensure_future(func(*item)) for item in items]
+
+    sem = asyncio.Semaphore(limit)
+
+    async def run(item: T) -> V:
+        async with sem:
+            return await func(*item)
+
+    return [asyncio.ensure_future(run(item)) for item in items]
 
 
 async def concurrent_map[T: tuple[Any, ...], V](
@@ -96,17 +142,57 @@ async def concurrent_map[T: tuple[Any, ...], V](
     func: Callable[..., Awaitable[V]],
     limit: int | None = None,
 ) -> list[V]:
-    if limit is None:
-        return await asyncio.gather(*list(starmap(func, items)))
+    return await asyncio.gather(*concurrent_iter(items, func, limit))
 
-    else:
-        sem = asyncio.Semaphore(limit)
 
-        async def run(item: tuple[Any]) -> V:
-            async with sem:
-                return await func(*item)
+async def concurrent_foreach[T: tuple[Any, ...]](
+    items: Iterable[T],
+    func: Callable[..., Awaitable[object]],
+    limit: int,
+) -> None:
+    """Run `func(*item)` for every item with at most `limit` calls in flight.
 
-        return await asyncio.gather(*[asyncio.ensure_future(run(item)) for item in items])
+    Unlike `concurrent_map`, `items` is consumed lazily: `limit` workers share
+    one iterator and each takes the next item as soon as it finishes the
+    previous one, so auxiliary memory is bounded by `limit`, not by the number
+    of items. Results are discarded.
+
+    Once a call fails, no further items are taken and the calls still in
+    flight are cancelled. The failure is re-raised as itself, so callers catch
+    the store's own exception type. If other in-flight calls failed in the
+    same event-loop iteration, the exception raised is the one from the
+    lowest-numbered worker and the `BaseExceptionGroup` holding every failure
+    is attached as its `__cause__`, so nothing is lost from tracebacks and
+    logs. Cancellation of the caller propagates as `CancelledError`.
+    """
+    if limit < 1:
+        raise ValueError(f"limit must be at least 1, got {limit}")
+    shared = iter(items)
+    failed = False
+
+    async def worker() -> None:
+        nonlocal failed
+        # `next()` on the shared iterator is synchronous, so workers never
+        # re-enter it: a worker only yields to the loop while awaiting `func`.
+        while not failed:
+            try:
+                item = next(shared)
+            except StopIteration:
+                return
+            try:
+                await func(*item)
+            except BaseException:
+                failed = True
+                raise
+
+    try:
+        async with asyncio.TaskGroup() as tg:
+            for _ in range(limit):
+                tg.create_task(worker())
+    except BaseExceptionGroup as eg:
+        if len(eg.exceptions) == 1:
+            raise eg.exceptions[0] from None
+        raise eg.exceptions[0] from eg
 
 
 def enum_names[E: Enum](enum: type[E]) -> Iterator[str]:
@@ -125,12 +211,13 @@ def parse_enum[E: Enum](data: object, cls: type[E]) -> E:
 
 
 def parse_name(data: JSON, expected: str | None = None) -> str:
-    if isinstance(data, str):
-        if expected is None or data == expected:
-            return data
-        raise ValueError(f"Expected '{expected}'. Got {data} instead.")
-    else:
-        raise TypeError(f"Expected a string, got an instance of {type(data)}.")
+    try:
+        data = cast("str", convert(data, str))
+    except (ValueError, TypeError) as exc:
+        raise TypeError(f"Expected a string, got an instance of {type(data)}.") from exc
+    if expected is None or data == expected:
+        return data
+    raise ValueError(f"Expected '{expected}'. Got {data} instead.")
 
 
 def parse_configuration(data: JSON) -> JSON:
@@ -205,15 +292,17 @@ def parse_fill_value(data: Any) -> Any:
 
 
 def parse_order(data: Any) -> Literal["C", "F"]:
-    if data in ("C", "F"):
-        return cast("Literal['C', 'F']", data)
-    raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
+    return cast("Literal['C', 'F']", parse_field(data, Literal["C", "F"], "order"))
 
 
 def parse_bool(data: Any) -> bool:
-    if isinstance(data, bool):
+    return cast("bool", convert(data, bool))
+
+
+def parse_int(data: Any) -> int:
+    if isinstance(data, int) and not isinstance(data, bool):
         return data
-    raise ValueError(f"Expected bool, got {data} instead.")
+    raise ValueError(f"Expected int, got {data} instead.")
 
 
 def _warn_write_empty_chunks_kwarg() -> None:
@@ -239,5 +328,125 @@ def _warn_order_kwarg() -> None:
 
 
 def _default_zarr_format() -> ZarrFormat:
-    """Return the default zarr_version"""
+    """Return the default zarr_format."""
     return cast("ZarrFormat", int(zarr_config.get("default_zarr_format", 3)))
+
+
+def _subject(name: str, axis: int | None) -> str:
+    """`name` as the subject of an error message, prefixed by the dimension `axis`."""
+    return name[0].upper() + name[1:] if axis is None else f"Dimension {axis}: {name}"
+
+
+def _parse_positive_int(value: object, name: str, axis: int | None) -> int:
+    """`value` as an `int` of at least 1. A `bool` is read as the `int` it equals; any
+    other type, a NumPy integer or a float (even an integral one: stored documents with
+    integral floats are read by `zarr.core.metadata.repair`), is rejected."""
+    subject = _subject(name, axis)
+    if not isinstance(value, int):
+        raise TypeError(f"{subject} must be an int, got {value!r}")
+    if value < 1:
+        raise ValueError(f"{subject} must be >= 1, got {value!r}")
+    return int(value)
+
+
+def parse_chunk_edge(size: object, axis: int | None = None) -> int:
+    """Check that `size` is a chunk edge length: an `int` of at least 1 (a `bool` is
+    read as the `int` it equals).
+
+    This is the one rule for chunk edge lengths in metadata: bare chunk sizes, explicit
+    edges and run-length encoded sizes. `axis`, when given, is named in the error.
+    """
+    return _parse_positive_int(size, "chunk edge length", axis)
+
+
+def parse_chunk_shape(data: object) -> tuple[int, ...]:
+    """Check a regular chunk shape: an iterable, other than a string or a mapping, of one
+    chunk edge length per axis (see `parse_chunk_edge`)."""
+    match data:
+        case str() | Mapping():
+            pass
+        case Iterable():
+            return tuple(parse_chunk_edge(size, axis) for axis, size in enumerate(data))
+    raise TypeError(f"A chunk shape must be an iterable of chunk edge lengths, got {data!r}")
+
+
+def expand_rle(data: Sequence[object], axis: int | None = None) -> list[int]:
+    """Expand a mixed array of bare integers and RLE pairs, the edges of dimension
+    `axis` (named in errors, when given).
+
+    Per the rectilinear chunk grid spec, each element can be:
+    - a bare integer (an explicit edge length)
+    - a two-element array ``[value, count]`` (run-length encoded)
+    """
+    result: list[int] = []
+    for item in data:
+        if isinstance(item, list):
+            if len(item) != 2:
+                subject = _subject("RLE entries", axis)
+                raise ValueError(f"{subject} must be an integer or [size, count], got {item}")
+            size, count = item
+            repeat = _parse_positive_int(count, "RLE repeat count", axis)
+            result.extend([parse_chunk_edge(size, axis)] * repeat)
+        else:
+            result.append(parse_chunk_edge(item, axis))
+    return result
+
+
+def compress_rle(sizes: Sequence[int]) -> list[int | list[int]]:
+    """Compress chunk sizes to mixed RLE format per the rectilinear spec.
+
+    Runs of length > 1 are emitted as ``[value, count]`` pairs; runs of
+    length 1 are emitted as bare integers::
+
+        [10, 10, 10, 5] -> [[10, 3], 5]
+    """
+    if not sizes:
+        return []
+    result: list[int | list[int]] = []
+    current = sizes[0]
+    count = 1
+    for s in sizes[1:]:
+        if s == current:
+            count += 1
+        else:
+            result.append([current, count] if count > 1 else current)
+            current = s
+            count = 1
+    result.append([current, count] if count > 1 else current)
+    return result
+
+
+def validate_rectilinear_kind(kind: str | None) -> None:
+    """Validate the ``kind`` field of a rectilinear chunk grid configuration.
+
+    The rectilinear spec requires ``kind: "inline"``.
+    """
+    if kind is None:
+        raise ValueError(
+            "Rectilinear chunk grid configuration requires a 'kind' field. "
+            "Only 'inline' is currently supported."
+        )
+    if kind != "inline":
+        raise ValueError(
+            f"Unsupported rectilinear chunk grid kind: {kind!r}. "
+            "Only 'inline' is currently supported."
+        )
+
+
+def validate_rectilinear_edges(
+    chunk_shapes: Sequence[int | Sequence[int]], array_shape: Sequence[int]
+) -> None:
+    """Validate that rectilinear chunk edges cover the array extent per dimension.
+
+    Bare-int dimensions (regular step) always cover any extent, so they are
+    skipped. Explicit edge lists must sum to at least the array extent.
+    """
+    for i, (dim_spec, extent) in enumerate(zip(chunk_shapes, array_shape, strict=True)):
+        if isinstance(dim_spec, int):
+            continue
+        edge_sum = sum(dim_spec)
+        if edge_sum < extent:
+            raise ValueError(
+                f"Rectilinear chunk edges for dimension {i} sum to {edge_sum} "
+                f"but array shape extent is {extent} (edge sum must be >= extent)"
+            )

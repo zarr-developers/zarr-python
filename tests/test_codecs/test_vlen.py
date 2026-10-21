@@ -10,17 +10,21 @@ from zarr.abc.store import Store
 from zarr.codecs import ZstdCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
 from zarr.core.dtype import get_data_type_from_native_dtype
-from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.storage import StorePath
 
-numpy_str_dtypes: list[type | str | None] = [None, str, "str", np.dtypes.StrDType, "S", "U"]
-expected_array_string_dtype: np.dtype[Any]
-if _NUMPY_SUPPORTS_VLEN_STRING:
-    numpy_str_dtypes.append(np.dtypes.StringDType)
-    expected_array_string_dtype = np.dtypes.StringDType()
-else:
-    expected_array_string_dtype = np.dtype("O")
+# The explicit id for the "str" literal avoids colliding with the auto-generated id for
+# the `str` builtin.
+numpy_str_dtypes: list[Any] = [
+    None,
+    str,
+    pytest.param("str", id="str-literal"),
+    np.dtypes.StrDType,
+    "S",
+    "U",
+    np.dtypes.StringDType,
+]
+expected_array_string_dtype: np.dtype[Any] = np.dtypes.StringDType()
 
 
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
@@ -63,6 +67,34 @@ def test_vlen_string(
     assert np.array_equal(data, b[:, :])
     assert b.metadata.data_type == get_data_type_from_native_dtype(data.dtype)
     assert a.dtype == data.dtype
+
+
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
+@pytest.mark.parametrize(
+    ("dtype", "fill_value", "elements"),
+    [
+        pytest.param("string", "", [f"S{i:05}" for i in range(9)], id="string"),
+        pytest.param("variable_length_bytes", b"", [b"%05d" % i for i in range(9)], id="bytes"),
+    ],
+)
+def test_vlen_f_contiguous(
+    store: Store, dtype: str, fill_value: str | bytes, elements: list[str] | list[bytes]
+) -> None:
+    """An F-contiguous chunk written through a vlen codec round-trips in the original
+    element order rather than the transposed memory order (gh-3558)."""
+    # reshape(order="F") gives an F-contiguous view directly, so the whole-array write
+    # below hands an F-contiguous chunk to the codec; assert it to guard the precondition.
+    data = np.array(elements, dtype=object).reshape((3, 3), order="F")
+    assert data.flags.f_contiguous
+    sp = StorePath(store, path="vlen-f-contiguous")
+    # chunks == shape so the write is a single complete chunk, which the codec pipeline
+    # forwards to the codec untouched; a partial-chunk layout would be recopied to C order.
+    a = zarr.create_array(
+        sp, shape=data.shape, chunks=data.shape, dtype=dtype, fill_value=fill_value
+    )
+    a[:, :] = data
+    assert np.array_equal(data, np.asarray(a[:, :], dtype=object))
 
 
 def test_vlen_utf8_codec_supports_sync() -> None:

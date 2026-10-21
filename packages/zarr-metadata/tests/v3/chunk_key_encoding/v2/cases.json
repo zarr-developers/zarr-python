@@ -1,0 +1,14 @@
+{
+  "no_configuration": {
+    "name": "v2"
+  },
+  "dot_separator": {
+    "name": "v2",
+    "configuration": {"separator": "."}
+  },
+  "slash_separator": {
+    "name": "v2",
+    "configuration": {"separator": "/"}
+  },
+  "short_hand_name": "v2"
+}

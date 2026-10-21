@@ -7,10 +7,12 @@ __all__ = [
     "ContainsArrayAndGroupError",
     "ContainsArrayError",
     "ContainsGroupError",
+    "DataTypeValidationError",
     "GroupNotFoundError",
     "MetadataValidationError",
     "NegativeStepError",
     "NodeTypeValidationError",
+    "UnknownCodecError",
     "UnstableSpecificationWarning",
     "VindexInvalidSelectionError",
     "ZarrDeprecationWarning",
@@ -82,6 +84,9 @@ class ContainsArrayAndGroupError(BaseZarrError):
         "Only one of these files may be present in a given directory / prefix. "
         "Remove the .zarray file, or the .zgroup file, or both."
     )
+
+
+class DataTypeValidationError(ValueError): ...
 
 
 class MetadataValidationError(BaseZarrError):

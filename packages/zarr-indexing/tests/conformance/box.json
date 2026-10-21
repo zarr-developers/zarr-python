@@ -1,0 +1,50 @@
+[
+  {
+    "name": "box/2d-min-max",
+    "input": { "kind": "box", "inclusive_min": [0, 0], "exclusive_max": [3, 4] },
+    "normalized": {
+      "input_rank": 2,
+      "input_inclusive_min": [0, 0],
+      "input_exclusive_max": [3, 4],
+      "input_labels": ["", ""],
+      "output": [
+        { "offset": 0, "stride": 1, "input_dimension": 0 },
+        { "offset": 0, "stride": 1, "input_dimension": 1 }
+      ]
+    }
+  },
+  {
+    "name": "box/shape-only-origin-zero",
+    "input": { "kind": "box", "shape": [5] },
+    "normalized": {
+      "input_rank": 1,
+      "input_inclusive_min": [0],
+      "input_exclusive_max": [5],
+      "input_labels": [""],
+      "output": [ { "offset": 0, "stride": 1, "input_dimension": 0 } ]
+    }
+  },
+  {
+    "name": "box/inclusive-max",
+    "input": { "kind": "box", "inclusive_min": [2], "inclusive_max": [9] },
+    "normalized": {
+      "input_rank": 1, "input_inclusive_min": [2], "input_exclusive_max": [10],
+      "input_labels": [""],
+      "output": [ { "offset": 0, "stride": 1, "input_dimension": 0 } ]
+    }
+  },
+  {
+    "name": "box/implicit-and-infinite-bounds",
+    "input": { "kind": "box", "inclusive_min": [["-inf"], 0], "exclusive_max": [["+inf"], 4], "labels": ["t", ""] },
+    "normalized": {
+      "input_rank": 2,
+      "input_inclusive_min": [["-inf"], 0],
+      "input_exclusive_max": [["+inf"], 4],
+      "input_labels": ["t", ""],
+      "output": [
+        { "offset": 0, "stride": 1, "input_dimension": 0 },
+        { "offset": 0, "stride": 1, "input_dimension": 1 }
+      ]
+    }
+  }
+]

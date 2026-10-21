@@ -1,0 +1,18 @@
+{
+  "zarr_format": 3,
+  "node_type": "array",
+  "shape": [128],
+  "data_type": "int8",
+  "chunk_grid": {
+    "name": "regular",
+    "configuration": {"chunk_shape": [64]}
+  },
+  "chunk_key_encoding": {
+    "name": "default"
+  },
+  "fill_value": 0,
+  "codecs": [
+    {"name": "bytes"},
+    {"name": "zstd", "configuration": {"level": 3, "checksum": false}}
+  ]
+}

@@ -38,9 +38,10 @@ class TestFloat16(_BaseTestFloat):
     )
     valid_json_v3 = ("float16",)
     invalid_json_v2 = (
-        "|f2",
-        "float16",
-        "|i1",
+        {"name": "|f2", "object_codec_id": None},
+        {"name": "float16", "object_codec_id": None},
+        {"name": "|i1", "object_codec_id": None},
+        {"name": "<f2", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|f2",
@@ -88,9 +89,10 @@ class TestFloat32(_BaseTestFloat):
     )
     valid_json_v3 = ("float32",)
     invalid_json_v2 = (
-        "|f4",
-        "float32",
-        "|i1",
+        {"name": "|f4", "object_codec_id": None},
+        {"name": "float32", "object_codec_id": None},
+        {"name": "|i1", "object_codec_id": None},
+        {"name": "<f4", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|f4",
@@ -138,9 +140,10 @@ class TestFloat64(_BaseTestFloat):
     )
     valid_json_v3 = ("float64",)
     invalid_json_v2 = (
-        "|f8",
-        "float64",
-        "|i1",
+        {"name": "|f8", "object_codec_id": None},
+        {"name": "float64", "object_codec_id": None},
+        {"name": "|i1", "object_codec_id": None},
+        {"name": "<f8", "object_codec_id": "vlen-utf8"},
     )
     invalid_json_v3 = (
         "|f8",

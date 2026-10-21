@@ -1,19 +1,19 @@
 # Generate a collection of zdtype instances for use in testing.
 import warnings
+from collections import Counter
 from typing import Any
 
 import numpy as np
 
 from zarr.core.dtype import data_type_registry
 from zarr.core.dtype.common import HasLength
-from zarr.core.dtype.npy.structured import Structured
+from zarr.core.dtype.npy.structured import Struct
 from zarr.core.dtype.npy.time import DateTime64, TimeDelta64
 from zarr.core.dtype.wrapper import ZDType
 
 zdtype_examples: tuple[ZDType[Any, Any], ...] = ()
 for wrapper_cls in data_type_registry.contents.values():
-    # The Structured dtype has to be constructed with some actual fields
-    if wrapper_cls is Structured:
+    if wrapper_cls is Struct:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             zdtype_examples += (
@@ -65,4 +65,19 @@ def pytest_generate_tests(metafunc: Any) -> None:
     for fixture_name in metafunc.fixturenames:
         if hasattr(metafunc.cls, fixture_name):
             params = getattr(metafunc.cls, fixture_name)
-            metafunc.parametrize(fixture_name, params, scope="class", ids=str)
+            metafunc.parametrize(
+                fixture_name, params, scope="class", ids=_unique_ids([str(p) for p in params])
+            )
+
+
+def _unique_ids(ids: list[str]) -> list[str]:
+    """Suffix repeated ids with their positional index so every id is unique.
+
+    Distinct parameters can stringify identically: for example `np.dtype("i")` and
+    `np.dtype("<i4")` both render as `int32` on little-endian platforms, but they are
+    deliberately distinct test cases. Pytest used to deduplicate colliding ids silently;
+    `strict_parametrization_ids` makes them a collection error, so we disambiguate
+    explicitly. Ids that are already unique are left untouched.
+    """
+    counts = Counter(ids)
+    return [f"{id_}-{idx}" if counts[id_] > 1 else id_ for idx, id_ in enumerate(ids)]

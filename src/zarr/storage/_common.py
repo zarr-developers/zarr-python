@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self
 
@@ -12,6 +11,7 @@ from zarr.abc.store import (
     SupportsGetSync,
     SupportsSetSync,
 )
+from zarr.core._json import buffer_to_json_object, get_json
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import (
     ANY_ACCESS_MODE,
@@ -23,8 +23,8 @@ from zarr.core.common import (
 )
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.storage._local import LocalStore
-from zarr.storage._memory import MemoryStore
-from zarr.storage._utils import normalize_path
+from zarr.storage._memory import ManagedMemoryStore, MemoryStore
+from zarr.storage._utils import UPath, _join_paths, normalize_path, parse_store_url
 
 _has_fsspec = importlib.util.find_spec("fsspec")
 if _has_fsspec:
@@ -34,18 +34,7 @@ else:
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
-
-
-def _dereference_path(root: str, path: str) -> str:
-    if not isinstance(root, str):
-        msg = f"{root=} is not a string ({type(root)=})"  # type: ignore[unreachable]
-        raise TypeError(msg)
-    if not isinstance(path, str):
-        msg = f"{path=} is not a string ({type(path)=})"  # type: ignore[unreachable]
-        raise TypeError(msg)
-    root = root.rstrip("/")
-    path = f"{root}/{path}" if root else path
-    return path.rstrip("/")
+    from zarr.core.common import JSON
 
 
 class StorePath:
@@ -86,7 +75,10 @@ class StorePath:
         * If the mode is 'r+', 'w-', 'w', or 'a' and the store is read-only, raise a ValueError.
         * If the mode is 'r' and the store is not read-only, return a copy of the store with read_only set to True.
         * If the mode is 'w-' and the store is not read-only and the StorePath contains keys, raise a FileExistsError.
-        * If the mode is 'w'  and the store is not read-only, delete all keys nested within the StorePath.
+
+        No mode modifies the store. In particular, mode 'w' does not delete the keys nested
+        within the StorePath: the node created at the path replaces them, once that node is
+        valid (see `zarr.core.metadata.io.save_new_metadata`).
 
         Parameters
         ----------
@@ -95,11 +87,11 @@ class StorePath:
 
             The accepted values are:
 
-            - ``'r'``: read only (must exist)
-            - ``'r+'``: read/write (must exist)
-            - ``'a'``: read/write (create if doesn't exist)
-            - ``'w'``: read/write (overwrite if exists)
-            - ``'w-'``: read/write (create if doesn't exist).
+            - `'r'`: read only (must exist)
+            - `'r+'`: read/write (must exist)
+            - `'a'`: read/write (create if doesn't exist)
+            - `'w'`: read/write (the node created at the path overwrites what exists)
+            - `'w-'`: read/write (create if doesn't exist).
 
         Raises
         ------
@@ -137,16 +129,11 @@ class StorePath:
             # writable store and writable mode
             self = await cls._create_open_instance(store, path)
 
-        # Handle mode-specific operations
-        match mode:
-            case "w-":
-                if not await self.is_empty():
-                    raise FileExistsError(
-                        f"Cannot create '{path}' with mode 'w-' because it already contains data. "
-                        f"Use mode 'w' to overwrite or 'a' to append."
-                    )
-            case "w":
-                await self.delete_dir()
+        if mode == "w-" and not await self.is_empty():
+            raise FileExistsError(
+                f"Cannot create '{path}' with mode 'w-' because it already contains data. "
+                f"Use mode 'w' to overwrite or 'a' to append."
+            )
         return self
 
     async def get(
@@ -172,6 +159,23 @@ class StorePath:
         if prototype is None:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
+
+    async def get_json(self, *, byte_range: ByteRequest | None = None) -> JSON | None:
+        """
+        Read and parse the JSON document at this path, or None if it is absent.
+
+        Parameters
+        ----------
+        byte_range : ByteRequest, optional
+            If given, read only this portion of the value. Note that a partial
+            read of a JSON document may not be valid JSON.
+
+        Returns
+        -------
+        JSON or None
+            The parsed JSON value, or None if this path does not exist.
+        """
+        return await get_json(self.store, self.path, byte_range=byte_range)
 
     async def set(self, value: Buffer) -> None:
         """
@@ -203,7 +207,7 @@ class StorePath:
 
     async def set_if_not_exists(self, default: Buffer) -> None:
         """
-        Store a key to ``value`` if the key is not already present.
+        Store a key to `value` if the key is not already present.
 
         Parameters
         ----------
@@ -244,7 +248,7 @@ class StorePath:
         prototype: BufferPrototype | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
-        """Synchronous read — delegates to ``self.store.get_sync(self.path, ...)``."""
+        """Synchronous read — delegates to `self.store.get_sync(self.path, ...)`."""
         if not isinstance(self.store, SupportsGetSync):
             raise TypeError(f"Store {type(self.store).__name__} does not support synchronous get.")
         if prototype is None:
@@ -252,13 +256,13 @@ class StorePath:
         return self.store.get_sync(self.path, prototype=prototype, byte_range=byte_range)
 
     def set_sync(self, value: Buffer) -> None:
-        """Synchronous write — delegates to ``self.store.set_sync(self.path, value)``."""
+        """Synchronous write — delegates to `self.store.set_sync(self.path, value)`."""
         if not isinstance(self.store, SupportsSetSync):
             raise TypeError(f"Store {type(self.store).__name__} does not support synchronous set.")
         self.store.set_sync(self.path, value)
 
     def delete_sync(self) -> None:
-        """Synchronous delete — delegates to ``self.store.delete_sync(self.path)``."""
+        """Synchronous delete — delegates to `self.store.delete_sync(self.path)`."""
         if not isinstance(self.store, SupportsDeleteSync):
             raise TypeError(
                 f"Store {type(self.store).__name__} does not support synchronous delete."
@@ -267,10 +271,10 @@ class StorePath:
 
     def __truediv__(self, other: str) -> StorePath:
         """Combine this store path with another path"""
-        return self.__class__(self.store, _dereference_path(self.path, other))
+        return self.__class__(self.store, _join_paths([self.path, other]))
 
     def __str__(self) -> str:
-        return _dereference_path(str(self.store), self.path)
+        return _join_paths([str(self.store), self.path])
 
     def __repr__(self) -> str:
         return f"StorePath({self.store.__class__.__name__}, '{self}')"
@@ -291,12 +295,11 @@ class StorePath:
         """
         try:
             return self.store == other.store and self.path == other.path  # type: ignore[attr-defined, no-any-return]
-        except Exception:
-            pass
-        return False
+        except AttributeError:
+            return False
 
 
-type StoreLike = Store | StorePath | FSMap | Path | str | dict[str, Buffer]
+type StoreLike = Store | StorePath | FSMap | Path | UPath | str | dict[str, Buffer]
 
 
 async def make_store(
@@ -316,6 +319,7 @@ async def make_store(
     - `dict[str, Buffer]` = `MemoryStore` object.
     - `None` = `MemoryStore` object.
     - `FSMap` = `FsspecStore` object.
+    - `UPath` = `FsspecStore` object, or `LocalStore` for a local `UPath`.
 
     Parameters
     ----------
@@ -342,16 +346,20 @@ async def make_store(
     """
     from zarr.storage._fsspec import FsspecStore  # circular import
 
-    if (
-        not (isinstance(store_like, str) and _is_fsspec_uri(store_like))
-        and storage_options is not None
-    ):
-        raise TypeError(
-            "'storage_options' was provided but unused. "
-            "'storage_options' is only used when the store is passed as an FSSpec URI string.",
-        )
+    # Parse URL early so we can reuse the result for both validation and routing
+    parsed = parse_store_url(store_like) if isinstance(store_like, str) else None
 
-    assert mode in (None, "r", "r+", "a", "w", "w-")
+    # Check if storage_options is valid for this store_like
+    if storage_options is not None:
+        is_fsspec_uri = parsed is not None and parsed.scheme not in ("", "memory", "file")
+        if not is_fsspec_uri:
+            raise TypeError(
+                "'storage_options' was provided but unused. "
+                "'storage_options' is only used when the store is passed as an FSSpec URI string.",
+            )
+
+    if mode is not None and mode not in ANY_ACCESS_MODE:
+        raise ValueError(f"Invalid mode: {mode}, expected one of {ANY_ACCESS_MODE}")
     _read_only = mode == "r"
 
     if isinstance(store_like, StorePath):
@@ -373,19 +381,33 @@ async def make_store(
         # Create a new in-memory store
         return await make_store({}, mode=mode, storage_options=storage_options)
 
+    elif isinstance(store_like, UPath):
+        # This must be checked before Path: in universal-pathlib < 0.3 every UPath, including
+        # remote ones like S3Path, subclasses pathlib.Path, and would otherwise be misrouted to a
+        # LocalStore. Local UPaths get a LocalStore so that UPath("/data") and Path("/data") agree,
+        # mirroring how the equivalent strings are routed below.
+        if store_like.protocol in ("", "file"):
+            return await make_store(
+                Path(store_like.path), mode=mode, storage_options=storage_options
+            )
+        return FsspecStore.from_upath(store_like, read_only=_read_only)
+
     elif isinstance(store_like, Path):
         # Create a new LocalStore
         return await LocalStore.open(root=store_like, mode=mode, read_only=_read_only)
 
-    elif isinstance(store_like, str):
-        # Either an FSSpec URI or a local filesystem path
-        if _is_fsspec_uri(store_like):
+    elif isinstance(store_like, str) and parsed is not None:
+        if parsed.scheme == "memory" and not _has_fsspec:
+            # Create or get a ManagedMemoryStore
+            return ManagedMemoryStore(name=parsed.name, path=parsed.path, read_only=_read_only)
+        elif parsed.scheme == "file" or not parsed.scheme:
+            # Local filesystem path — use parsed.path to strip the file:// scheme
+            return await make_store(Path(parsed.path), mode=mode, storage_options=storage_options)
+        else:
+            # Assume fsspec can handle it (s3://, gs://, http://, etc.)
             return FsspecStore.from_url(
                 store_like, storage_options=storage_options, read_only=_read_only
             )
-        else:
-            # Assume a filesystem path
-            return await make_store(Path(store_like), mode=mode, storage_options=storage_options)
 
     elif _has_fsspec and isinstance(store_like, FSMap):
         return FsspecStore.from_mapper(store_like, read_only=_read_only)
@@ -460,25 +482,6 @@ async def make_store_path(
         return await StorePath.open(store, path=path_normalized, mode=mode)
 
 
-def _is_fsspec_uri(uri: str) -> bool:
-    """
-    Check if a URI looks like a non-local fsspec URI.
-
-    Examples
-    --------
-    ```python
-    from zarr.storage._common import _is_fsspec_uri
-    _is_fsspec_uri("s3://bucket")
-    # True
-    _is_fsspec_uri("my-directory")
-    # False
-    _is_fsspec_uri("local://my-directory")
-    # False
-    ```
-    """
-    return "://" in uri or ("::" in uri and "local://" not in uri)
-
-
 async def ensure_no_existing_node(
     store_path: StorePath,
     zarr_format: ZarrFormat,
@@ -546,14 +549,16 @@ async def _contains_node_v3(store_path: StorePath) -> Literal["array", "group", 
     # if no metadata document could be loaded, then we just return "nothing"
     if extant_meta_bytes is not None:
         try:
-            extant_meta_json = json.loads(extant_meta_bytes.to_bytes())
+            extant_meta_json = buffer_to_json_object(extant_meta_bytes)
             # avoid constructing a full metadata document here in the name of speed.
             if extant_meta_json["node_type"] == "array":
                 result = "array"
             elif extant_meta_json["node_type"] == "group":
                 result = "group"
-        except (KeyError, json.JSONDecodeError):
-            # either of these errors is consistent with no array or group present.
+        except (KeyError, TypeError, ValueError):
+            # any of these errors is consistent with no array or group present. `ValueError`
+            # covers both malformed JSON (`json.JSONDecodeError`) and non-UTF-8 bytes
+            # (`UnicodeDecodeError`), each a `ValueError` subclass.
             pass
     return result
 
@@ -617,11 +622,11 @@ async def contains_array(store_path: StorePath, zarr_format: ZarrFormat) -> bool
             return False
         else:
             try:
-                extant_meta_json = json.loads(extant_meta_bytes.to_bytes())
+                extant_meta_json = buffer_to_json_object(extant_meta_bytes)
                 # we avoid constructing a full metadata document here in the name of speed.
                 if extant_meta_json["node_type"] == "array":
                     return True
-            except (ValueError, KeyError):
+            except (ValueError, KeyError, TypeError):
                 return False
     elif zarr_format == 2:
         return await (store_path / ZARRAY_JSON).exists()
@@ -649,18 +654,7 @@ async def contains_group(store_path: StorePath, zarr_format: ZarrFormat) -> bool
 
     """
     if zarr_format == 3:
-        extant_meta_bytes = await (store_path / ZARR_JSON).get()
-        if extant_meta_bytes is None:
-            return False
-        else:
-            try:
-                extant_meta_json = json.loads(extant_meta_bytes.to_bytes())
-                # we avoid constructing a full metadata document here in the name of speed.
-                result: bool = extant_meta_json["node_type"] == "group"
-            except (ValueError, KeyError):
-                return False
-            else:
-                return result
+        return (await _contains_node_v3(store_path)) == "group"
     elif zarr_format == 2:
         return await (store_path / ZGROUP_JSON).exists()
     msg = f"Invalid zarr_format provided. Got {zarr_format}, expected 2 or 3"  # type: ignore[unreachable]

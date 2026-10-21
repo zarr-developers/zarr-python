@@ -1,13 +1,17 @@
 """Test errors"""
 
+import pytest
+
 from zarr.errors import (
     ArrayNotFoundError,
     ContainsArrayAndGroupError,
     ContainsArrayError,
     ContainsGroupError,
+    DataTypeValidationError,
     GroupNotFoundError,
     MetadataValidationError,
     NodeTypeValidationError,
+    ZarrDeprecationWarning,
 )
 
 
@@ -76,3 +80,22 @@ def test_node_type_validation_error() -> None:
     """
     err = NodeTypeValidationError("a", "b", "c")
     assert str(err) == "Invalid value for 'a'. Expected 'b'. Got 'c'."
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    [
+        "zarr.core.dtype.common",
+        "zarr.core.dtype",
+        "zarr.dtype",
+    ],
+)
+def test_data_type_validation_error_deprecated_import(module_name: str) -> None:
+    import importlib
+
+    module = importlib.import_module(module_name)
+
+    with pytest.warns(ZarrDeprecationWarning, match=f"{module_name}"):
+        cls = module.DataTypeValidationError
+
+    assert cls is DataTypeValidationError

@@ -1,0 +1,26 @@
+{
+  "no_configuration": {
+    "name": "scale_offset"
+  },
+  "empty_configuration": {
+    "name": "scale_offset",
+    "configuration": {}
+  },
+  "offset_only": {
+    "name": "scale_offset",
+    "configuration": {"offset": 5}
+  },
+  "scale_only": {
+    "name": "scale_offset",
+    "configuration": {"scale": 0.1}
+  },
+  "scale_and_offset": {
+    "name": "scale_offset",
+    "configuration": {"offset": 5, "scale": 0.1}
+  },
+  "string_encoded_scalar": {
+    "name": "scale_offset",
+    "configuration": {"offset": "NaN"}
+  },
+  "short_hand_name": "scale_offset"
+}

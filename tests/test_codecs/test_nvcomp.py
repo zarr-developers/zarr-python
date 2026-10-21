@@ -127,6 +127,10 @@ def test_invalid_raises() -> None:
     with pytest.raises(TypeError):
         NvcompZstdCodec(checksum="False")  # type: ignore[arg-type,unused-ignore]
 
+    # a nonzero level is accepted and preserved in metadata so that arrays
+    # written by the CPU ZstdCodec can be read on the GPU
+    assert NvcompZstdCodec(level=5, checksum=False).level == 5
+
 
 @gpu_test  # type: ignore[untyped-decorator,unused-ignore]
 def test_uses_default_codec() -> None:

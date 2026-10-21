@@ -1,0 +1,21 @@
+{
+  "with_typesize": {
+    "name": "blosc",
+    "configuration": {
+      "cname": "zstd",
+      "clevel": 5,
+      "shuffle": "shuffle",
+      "blocksize": 0,
+      "typesize": 4
+    }
+  },
+  "no_typesize": {
+    "name": "blosc",
+    "configuration": {
+      "cname": "lz4",
+      "clevel": 1,
+      "shuffle": "noshuffle",
+      "blocksize": 0
+    }
+  }
+}

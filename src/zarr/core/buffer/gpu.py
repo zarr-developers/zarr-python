@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.core.common import BytesLike
+
 try:
     import cupy as cp
 except ImportError:
@@ -106,14 +107,13 @@ class Buffer(core.Buffer):
         return cast("npt.NDArray[Any]", cp.asnumpy(self._data))
 
     def combine(self, others: Iterable[core.Buffer]) -> Self:
-        data = [cp.asanyarray(self._data)]
+        left = cp.asanyarray(self._data)
+        data = [left]
         for other in others:
-            other_array = other.as_array_like()
-            # Check that the dtype is bytes (itemsize=1)
-            assert other_array.dtype.itemsize == 1
-            gpu_other = Buffer(other_array)
-            gpu_other_array = gpu_other.as_array_like()
-            data.append(cp.asanyarray(gpu_other_array))
+            other_array = cp.asanyarray(other.as_array_like())
+            if other_array.dtype != left.dtype:
+                other_array = other_array.view(left.dtype)
+            data.append(other_array)
         return self.__class__(cp.concatenate(data))
 
 
@@ -148,8 +148,8 @@ class NDBuffer(core.NDBuffer):
                 "Cannot use zarr.buffer.gpu.NDBuffer without cupy. Please install cupy."
             )
 
-        # assert array.ndim > 0
-        assert array.dtype != object
+        if array.dtype == object:
+            raise TypeError("zarr.buffer.gpu.NDBuffer does not support arrays with object dtype.")
         self._data = array
 
         if not hasattr(array, "__cuda_array_interface__"):

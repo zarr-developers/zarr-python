@@ -10,4 +10,4 @@ def parse_attributes(data: dict[str, JSON] | None) -> dict[str, JSON]:
     if data is None:
         return {}
 
-    return data
+    return dict(data)

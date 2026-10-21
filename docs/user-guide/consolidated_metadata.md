@@ -5,7 +5,7 @@
     stores. [zarr-specs#309](https://github.com/zarr-developers/zarr-specs/pull/309)
     has proposed a formal extension to the v3 specification to support consolidated metadata.
 
-Zarr-Python implements the [Consolidated Metadata](https://github.com/zarr-developers/zarr-specs/pull/309) for v2 and v3 stores.
+Zarr-Python implements the Consolidated Metadata feature for both the v2 and v3 formats.
 Consolidated metadata can reduce the time needed to load the metadata for an
 entire hierarchy, especially when the metadata is being served over a network.
 Consolidated metadata essentially stores all the metadata for a hierarchy in the
@@ -17,7 +17,7 @@ If consolidated metadata is present in a Zarr Group's metadata then it is used
 by default.  The initial read to open the group will need to communicate with
 the store (reading from a file for a [`zarr.storage.LocalStore`][], making a
 network request for a [`zarr.storage.FsspecStore`][]). After that, any subsequent
-metadata reads get child Group or Array nodes will *not* require reads from the store.
+metadata reads to get child Group or Array nodes will *not* require reads from the store.
 
 In Python, the consolidated metadata is available on the `.consolidated_metadata`
 attribute of the `GroupMetadata` object.
@@ -27,8 +27,7 @@ import zarr
 import warnings
 
 warnings.filterwarnings("ignore", category=UserWarning)
-store = zarr.storage.MemoryStore()
-group = zarr.create_group(store=store)
+group = zarr.create_group(store="memory://consolidated-metadata-demo")
 print(group)
 array = group.create_array(shape=(1,), name='a', dtype='float64')
 print(array)
@@ -45,38 +44,37 @@ print(array)
 ```
 
 ```python exec="true" session="consolidated_metadata" source="above" result="ansi"
-result = zarr.consolidate_metadata(store)
+result = zarr.consolidate_metadata("memory://consolidated-metadata-demo")
 print(result)
 ```
 
-If we open that group, the Group's metadata has a `zarr.core.group.ConsolidatedMetadata`
-that can be used.:
+If we open that group, the Group's metadata includes a `ConsolidatedMetadata` object
+holding the metadata for every child node, which can be used:
 
 ```python exec="true" session="consolidated_metadata" source="above" result="ansi"
 from pprint import pprint
 import io
 
-consolidated = zarr.open_group(store=store)
+consolidated = zarr.open_group(store="memory://consolidated-metadata-demo")
 consolidated_metadata = consolidated.metadata.consolidated_metadata.metadata
 
-# Note: pprint can be users without capturing the output regularly
 output = io.StringIO()
 pprint(dict(sorted(consolidated_metadata.items())), stream=output, width=60)
 print(output.getvalue())
 ```
 
-Operations on the group to get children automatically use the consolidated metadata.:
+Operations on the group to get children automatically use the consolidated metadata:
 
 ```python exec="true" session="consolidated_metadata" source="above" result="ansi"
 print(consolidated['a'])  # no read / HTTP request to the Store is required
 ```
 
-With nested groups, the consolidated metadata is available on the children, recursively.:
+With nested groups, the consolidated metadata is available on the children, recursively:
 
 ```python exec="true" session="consolidated_metadata" source="above" result="ansi"
 child = group.create_group('child', attributes={'kind': 'child'})
-grandchild = child.create_group('child', attributes={'kind': 'grandchild'})
-consolidated = zarr.consolidate_metadata(store)
+grandchild = child.create_group('grandchild', attributes={'kind': 'grandchild'})
+consolidated = zarr.consolidate_metadata("memory://consolidated-metadata-demo")
 
 output = io.StringIO()
 pprint(consolidated['child'].metadata.consolidated_metadata, stream=output, width=60)
@@ -87,8 +85,25 @@ print(output.getvalue())
     The keys in the consolidated metadata are sorted prior to writing. Keys are
     sorted in ascending order by path depth, where a path is defined as a sequence
     of strings joined by `"/"`. For keys with the same path length, lexicographic
-    order is used to break the tie. This behaviour ensures deterministic metadata
+    order is used to break the tie. This behavior ensures deterministic metadata
     output for a given group.
+
+### Controlling the use of consolidated metadata
+
+By default, [`zarr.open_group`][] uses consolidated metadata if it is present, and
+falls back to reading metadata from the store otherwise. This behavior can be
+controlled with the `use_consolidated` keyword. Pass `use_consolidated=False` to
+ignore consolidated metadata and always read the metadata of child nodes directly
+from the store:
+
+```python exec="true" session="consolidated_metadata" source="above" result="ansi"
+group = zarr.open_group(store="memory://consolidated-metadata-demo", use_consolidated=False)
+print(group.metadata.consolidated_metadata)
+```
+
+Passing `use_consolidated=True` instead raises an error if consolidated metadata is
+not found, which is useful when reading over a network, where relying on many
+per-node metadata requests would be slow.
 
 ## Synchronization and Concurrency
 
@@ -100,8 +115,9 @@ removed, or modified, consolidated metadata may not be desirable.
    would need to be re-consolidated to keep it in sync with the store.
 2. Readers using consolidated metadata will regularly see a "past" version
    of the metadata, at the time they read the root node with its consolidated
-   metadata.
-
+   metadata. Readers who need the latest view of a changing hierarchy can pass
+   `use_consolidated=False` to [`zarr.open_group`][] to always read child
+   metadata directly from the store.
 
 ## Stores Without Support for Consolidated Metadata
 
