@@ -27,6 +27,7 @@ from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Co
 from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.codecs._v2 import V2Codec
 from zarr.codecs.bytes import BytesCodec
+from zarr.codecs.cast_value import check_fill_value_round_trip
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core._info import ArrayInfo
@@ -612,7 +613,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         else:
             fill_value_parsed = fill_value
 
-        return ArrayV3Metadata(
+        metadata = ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
             chunk_grid=chunk_grid,
@@ -622,6 +623,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             dimension_names=tuple(dimension_names) if dimension_names else None,
             attributes=attributes or {},
         )
+        check_fill_value_round_trip(metadata)
+        return metadata
 
     @classmethod
     async def _create_v3(

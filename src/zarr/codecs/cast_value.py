@@ -10,7 +10,7 @@ logic. Install it with: ``pip install 'cast-value-rs>=0.4.2'``.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING, Final, Literal, TypedDict, cast
@@ -25,10 +25,11 @@ from zarr.core.dtype import get_data_type_from_json
 if TYPE_CHECKING:
     from typing import NotRequired, Self
 
+    from zarr.abc.codec import Codec
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import NDBuffer
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-    from zarr.core.metadata.v3 import ChunkGridMetadata
+    from zarr.core.metadata.v3 import ArrayV3Metadata, ChunkGridMetadata
 
     class ScalarMapJSON(TypedDict):
         encode: NotRequired[list[tuple[object, object]]]
@@ -380,10 +381,34 @@ class CastValue(ArrayArrayCodec):
         """
         Update the fill value of the output spec by applying casting procedure.
 
-        The fill value must survive a round trip: encoding it and decoding the
-        result must give back the original fill value. Otherwise a chunk that
-        is only partly written would read back a different value wherever it
-        holds the fill value. See the ``data_type`` section of the
+        This runs for every chunk that is read or written, so it only casts the
+        fill value forward. Whether the fill value survives a round trip through
+        the codec is checked once, when array metadata is created or read, by
+        `check_fill_value_round_trip`.
+        """
+        target_native = self.dtype.to_native_dtype()
+        fill_arr = np.array([chunk_spec.fill_value], dtype=chunk_spec.dtype.to_native_dtype())
+        try:
+            new_fill_arr = self._do_cast(
+                fill_arr, target_dtype=target_native, scalar_map=self._get_scalar_map("encode")
+            )
+        except (ValueError, OverflowError) as e:
+            raise ValueError(
+                f"The fill value {fill_arr[0]} cannot be cast from "
+                f"{chunk_spec.dtype.to_json(zarr_format=3)} to {self.dtype.to_json(zarr_format=3)} "
+                f"by the cast_value codec: {e}"
+            ) from e
+        return replace(chunk_spec, dtype=self.dtype, fill_value=target_native.type(new_fill_arr[0]))
+
+    def check_fill_value(self, chunk_spec: ArraySpec) -> None:
+        """
+        Check that the fill value of `chunk_spec` survives a round trip through the codec.
+
+        Encoding the fill value and decoding the result must give back the
+        original fill value. Otherwise a chunk that is only partly written would
+        read back a different value wherever it holds the fill value, since what
+        is stored there is the encoded fill value. See the ``data_type`` section
+        of the
         [`cast_value` spec](https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/cast_value#data_type).
 
         Raises
@@ -392,25 +417,14 @@ class CastValue(ArrayArrayCodec):
             If the fill value cannot be cast to the target data type, cannot
             be cast back, or does not decode to the original fill value.
         """
-        target_zdtype = self.dtype
-        target_native = target_zdtype.to_native_dtype()
         source_native = chunk_spec.dtype.to_native_dtype()
         source_name = chunk_spec.dtype.to_json(zarr_format=3)
-        target_name = target_zdtype.to_json(zarr_format=3)
+        target_name = self.dtype.to_json(zarr_format=3)
 
         fill_arr = np.array([chunk_spec.fill_value], dtype=source_native)
         fill = fill_arr[0]
-
-        try:
-            new_fill_arr = self._do_cast(
-                fill_arr, target_dtype=target_native, scalar_map=self._get_scalar_map("encode")
-            )
-        except (ValueError, OverflowError) as e:
-            raise ValueError(
-                f"The fill value {fill} cannot be cast from {source_name} to {target_name} "
-                f"by the cast_value codec: {e}"
-            ) from e
-        new_fill = new_fill_arr[0]
+        new_fill = self.resolve_metadata(chunk_spec).fill_value
+        new_fill_arr = np.array([new_fill], dtype=self.dtype.to_native_dtype())
 
         try:
             decoded_arr = self._do_cast(
@@ -422,17 +436,14 @@ class CastValue(ArrayArrayCodec):
                 f"codec: it encodes from {source_name} to {new_fill} in {target_name}, which "
                 f"cannot be cast back to {source_name}: {e}"
             ) from e
-        decoded = decoded_arr[0]
 
         if not _same_scalar(fill_arr, decoded_arr):
             raise ValueError(
                 f"The fill value {fill} does not survive a round trip through the cast_value "
                 f"codec: it encodes from {source_name} to {new_fill} in {target_name}, which "
-                f"decodes back to {decoded} in {source_name}. Choose a fill value that the "
-                f"codec's data_type, rounding, out_of_range, and scalar_map preserve."
+                f"decodes back to {decoded_arr[0]} in {source_name}. Choose a fill value that "
+                f"the codec's data_type, rounding, out_of_range, and scalar_map preserve."
             )
-
-        return replace(chunk_spec, dtype=target_zdtype, fill_value=target_native.type(new_fill))
 
     def _encode_sync(
         self,
@@ -490,3 +501,50 @@ class CastValue(ArrayArrayCodec):
             )
         num_elements = input_byte_length // source_itemsize
         return num_elements * target_itemsize
+
+
+def check_fill_value_round_trip(metadata: ArrayV3Metadata) -> None:
+    """
+    Check that every `cast_value` codec of `metadata` preserves the fill value it receives.
+
+    The fill value is threaded through the codecs as a chunk is encoded, so a
+    `cast_value` codec that follows another array-to-array codec is checked
+    with the fill value that codec hands it. The codecs inside a sharding codec
+    encode each inner chunk, so they are checked with the fill value the
+    sharding codec receives.
+
+    Array creation calls this and refuses the metadata; reading stored metadata
+    calls it and warns, so an array stored with such a fill value still opens.
+
+    Raises
+    ------
+    ValueError
+        If a `cast_value` codec does not preserve its fill value, as
+        `CastValue.check_fill_value` describes.
+    """
+    # Imported here: `zarr.core.metadata.v3` reads metadata with this check, and
+    # importing it at module level would import this module in a cycle.
+    from zarr.core.array_spec import ArrayConfig, ArraySpec
+    from zarr.core.buffer.core import default_buffer_prototype
+
+    spec = ArraySpec(
+        shape=metadata.shape,
+        dtype=metadata.data_type,
+        fill_value=metadata.fill_value,
+        config=ArrayConfig.from_dict({}),
+        prototype=default_buffer_prototype(),
+    )
+    _check_codecs(metadata.codecs, spec)
+
+
+def _check_codecs(codecs: Iterable[Codec], spec: ArraySpec) -> None:
+    """Check the `cast_value` codecs among `codecs` against the fill value threaded
+    through them from `spec`, descending into the codecs of a sharding codec."""
+    from zarr.codecs.sharding import ShardingCodec
+
+    for codec in codecs:
+        if isinstance(codec, CastValue):
+            codec.check_fill_value(spec)
+        elif isinstance(codec, ShardingCodec):
+            _check_codecs(codec.codecs, spec)
+        spec = codec.resolve_metadata(spec)

@@ -8,8 +8,12 @@ from numpy.testing import assert_array_equal
 
 import zarr
 from tests.conftest import Expect, ExpectFail
-from zarr.codecs import BytesCodec, TransposeCodec
+from zarr.codecs import BytesCodec, ScaleOffset, TransposeCodec
 from zarr.codecs.cast_value import CastValue
+from zarr.core.array_spec import ArrayConfig, ArraySpec
+from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.dtype import get_data_type_from_json
+from zarr.errors import ZarrUserWarning
 from zarr.storage import MemoryStore
 
 try:
@@ -618,15 +622,23 @@ def test_enforce_contiguous_arrays() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _create_with_fill(dtype: str, fill_value: Any, codec: CastValue) -> Any:
-    """Create a 4-element array with 2-element chunks, filtered through `codec`."""
+def _create_with_fill(
+    dtype: str,
+    fill_value: Any,
+    *filters: Any,
+    store: MemoryStore | None = None,
+    shards: tuple[int, ...] | None = None,
+) -> Any:
+    """Create a 4-element array with 2-element chunks, filtered through `filters`,
+    in `shards` if given."""
     return zarr.create_array(
-        store=MemoryStore(),
+        store=MemoryStore() if store is None else store,
         shape=(4,),
         chunks=(2,),
+        shards=shards,
         dtype=dtype,
         fill_value=fill_value,
-        filters=[codec],
+        filters=list(filters),
         serializer=BytesCodec(endian="little"),
         compressors=None,
     )
@@ -704,21 +716,65 @@ def test_fill_value_partial_chunk_without_check_reads_wrong_value(
 
     With the round-trip check disabled, float32 fill 1000.0 encodes to int8 127
     under `out_of_range="clamp"`. The unwritten element of a partly written
-    chunk is stored as 127 and reads back as 127.0, not as the fill value. The
-    check refuses this metadata.
+    chunk is stored as 127 and reads back as 127.0, not as the fill value.
+    Array creation refuses this metadata. The array already stored with it
+    still opens, with its fill value and a warning that says what its chunks
+    hold, so its data stays readable.
     """
     import zarr.codecs.cast_value as cast_value_module
 
     codec = CastValue(data_type="int8", out_of_range="clamp")
+    store = MemoryStore()
 
     with monkeypatch.context() as m:
         m.setattr(cast_value_module, "_same_scalar", lambda a, b: True)
-        arr = _create_with_fill("float32", 1000.0, codec)
+        arr = _create_with_fill("float32", 1000.0, codec, store=store)
         arr[0] = 5.0
         assert_array_equal(arr[:], np.array([5.0, 127.0, 1000.0, 1000.0], dtype="float32"))
 
     with pytest.raises(ValueError, match=r"decodes back to 127\.0 in float32"):
         _create_with_fill("float32", 1000.0, codec)
+
+    with pytest.warns(
+        ZarrUserWarning,
+        match=r"decodes back to 127\.0 in float32.*stored with that fill value",
+    ):
+        opened = zarr.open_array(store, mode="r")
+    assert opened.fill_value == np.float32(1000.0)
+    assert_array_equal(opened[:], np.array([5.0, 127.0, 1000.0, 1000.0], dtype="float32"))
+
+
+@requires_cast_value_rs
+def test_fill_value_checked_inside_shards() -> None:
+    """The codecs inside a shard are checked with the array's fill value, not with
+    the default scalar of the data type: a fill value the chain preserves is
+    accepted although the default scalar would be lost to clamping after scaling,
+    and a fill value the chain loses is refused."""
+    scale = ScaleOffset(scale=655.35, offset=100.0)
+    clamp = CastValue(data_type="uint16", out_of_range="clamp")
+    arr = _create_with_fill("float32", 100.0, scale, clamp, shards=(4,))
+    arr[0] = 150.0
+    assert_array_equal(arr[1:], np.full(3, 100.0, dtype="float32"))
+
+    with pytest.raises(ValueError, match=r"decodes back to 127\.0 in float32"):
+        _create_with_fill(
+            "float32", 1000.0, CastValue(data_type="int8", out_of_range="clamp"), shards=(4,)
+        )
+
+
+@requires_cast_value_rs
+def test_resolve_metadata_only_casts_forward() -> None:
+    """`resolve_metadata` runs for every chunk, so it casts the fill value forward
+    without checking the round trip, which metadata creation checks once."""
+    spec = ArraySpec(
+        shape=(2,),
+        dtype=get_data_type_from_json("float32", zarr_format=3),
+        fill_value=np.float32(1000.0),
+        config=ArrayConfig.from_dict({}),
+        prototype=default_buffer_prototype(),
+    )
+    resolved = CastValue(data_type="int8", out_of_range="clamp").resolve_metadata(spec)
+    assert resolved.fill_value == np.int8(127)
 
 
 @requires_cast_value_rs
