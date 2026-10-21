@@ -62,11 +62,15 @@ class Config(DConfig):  # type: ignore[misc]
         # Call the original donfig set method to handle the config state
         result = super().set(arg, **kwargs)
         # Sync the numcodecs blosc threads setting
+        import importlib
+        numcodecs = importlib.import_module("numcodecs")
         numcodecs.blosc.use_threads = self.get("blosc.use_threads", False)
         return result
 
     def refresh(self, *args, **kwargs):
         result = super().refresh(*args, **kwargs)
+        import importlib
+        numcodecs = importlib.import_module("numcodecs")
         numcodecs.blosc.use_threads = self.get("blosc.use_threads", False)
         return result
 
@@ -82,7 +86,7 @@ class Config(DConfig):  # type: ignore[misc]
             {"buffer": "zarr.buffer.gpu.Buffer", "ndbuffer": "zarr.buffer.gpu.NDBuffer"}
         )
 
-        
+
 # these keys were removed from the config as part of the 3.1.0 release.
 # these deprecations should be removed in 3.1.1 or thereabouts.
 deprecations = {
