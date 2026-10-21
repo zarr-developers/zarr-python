@@ -68,6 +68,7 @@ from zarr.core.common import (
     ShapeLike,
     ZarrFormat,
     _default_zarr_format,
+    _validate_node_name,
     _warn_order_kwarg,
     ceildiv_int,
     concurrent_foreach,
@@ -4902,6 +4903,8 @@ async def create_array(
     else:
         mode: Literal["a"] = "a"
 
+        if name:
+            _validate_node_name(name)
         store_path = await make_store_path(
             store, path=name, mode=mode, storage_options=storage_options
         )

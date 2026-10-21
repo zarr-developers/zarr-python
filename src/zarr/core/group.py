@@ -43,6 +43,7 @@ from zarr.core.common import (
     NodeType,
     ShapeLike,
     ZarrFormat,
+    _validate_node_name,
     parse_shapelike,
 )
 from zarr.core.config import config
@@ -1088,6 +1089,7 @@ class AsyncGroup:
         g : AsyncGroup
         """
         attributes = attributes or {}
+        _validate_node_name(name)
         return await type(self).from_store(
             self.store_path / name,
             attributes=attributes,
@@ -1273,6 +1275,7 @@ class AsyncGroup:
         compressors = _parse_deprecated_compressor(
             compressor, compressors, zarr_format=self.metadata.zarr_format
         )
+        _validate_node_name(name)
         return await create_array(
             store=self.store_path,
             name=name,
