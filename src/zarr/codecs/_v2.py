@@ -29,12 +29,12 @@ def _check_pickle_allowed(codecs: tuple[Numcodec | None, ...]) -> None:
         return
     # Compare with ``True`` rather than testing truthiness: donfig keeps an environment
     # variable it cannot parse as a Python literal (e.g. ``false``) as a non-empty string.
-    if config.get("array.allow_pickle") is not True:
+    if config.get("array.allow_unsafe_pickle_decode") is not True:
         raise PickleCodecDisabledError(
             "Refusing to decode data with the 'pickle' codec, because unpickling data "
             "from an untrusted source can execute arbitrary code. If you trust this data, "
-            "enable the pickle codec with zarr.config.set({'array.allow_pickle': True}) "
-            "or set the environment variable ZARR_ARRAY__ALLOW_PICKLE=True. numcodecs has "
+            "enable the pickle codec with zarr.config.set({'array.allow_unsafe_pickle_decode': True}) "
+            "or set the environment variable ZARR_ARRAY__ALLOW_UNSAFE_PICKLE_DECODE=True. numcodecs has "
             "its own opt-in, which must be enabled as well: set "
             "numcodecs.pickles.ALLOW_UNSAFE_PICKLE_DECODE = True, or set the environment "
             "variable NUMCODECS_ALLOW_UNSAFE_PICKLE_DECODE=1 before importing numcodecs."

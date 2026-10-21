@@ -107,7 +107,7 @@ class PickleCodecDisabledError(BaseZarrError):
     Raised when reading data encoded with the pickle codec without opting in.
 
     Unpickling can execute arbitrary code, so decoding with the pickle codec is
-    disabled unless the ``array.allow_pickle`` configuration option is set to ``True``.
+    disabled unless the ``array.allow_unsafe_pickle_decode`` configuration option is set to ``True``.
     """
 
 

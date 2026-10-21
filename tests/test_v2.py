@@ -344,7 +344,9 @@ def allow_numcodecs_unpickle(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_pickle_codec_read_disabled_by_default() -> None:
     """Reading data encoded with the pickle codec fails unless the user opts in."""
     arr = _pickle_compressed_array()
-    with pytest.raises(PickleCodecDisabledError, match=r"array\.allow_pickle") as excinfo:
+    with pytest.raises(
+        PickleCodecDisabledError, match=r"array\.allow_unsafe_pickle_decode"
+    ) as excinfo:
         arr[:]
     # numcodecs has its own opt-in; the message must name it so users are not left guessing
     assert "ALLOW_UNSAFE_PICKLE_DECODE" in str(excinfo.value)
@@ -384,7 +386,7 @@ def test_pickle_codec_zarr_opt_in_does_not_bypass_numcodecs(
     monkeypatch.setattr(numcodecs.pickles, "ALLOW_UNSAFE_PICKLE_DECODE", False)
     arr = _pickle_compressed_array()
     with (
-        config.set({"array.allow_pickle": True}),
+        config.set({"array.allow_unsafe_pickle_decode": True}),
         pytest.raises(numcodecs.errors.UnsafeDecodeError),
     ):
         arr[:]
@@ -393,7 +395,7 @@ def test_pickle_codec_zarr_opt_in_does_not_bypass_numcodecs(
 @pytest.mark.usefixtures("allow_numcodecs_unpickle")
 def test_pickle_codec_read_enabled_via_config() -> None:
     arr = _pickle_compressed_array()
-    with config.set({"array.allow_pickle": True}):
+    with config.set({"array.allow_unsafe_pickle_decode": True}):
         np.testing.assert_array_equal(arr[:], np.array(["a", "bb", "ccc"]))
 
 
@@ -407,7 +409,7 @@ def test_pickle_codec_read_enabled_via_env_var(
     enables it: donfig keeps ``false`` as a (truthy) string, which must not enable it.
     """
     arr = _pickle_compressed_array()
-    monkeypatch.setenv("ZARR_ARRAY__ALLOW_PICKLE", env_value)
+    monkeypatch.setenv("ZARR_ARRAY__ALLOW_UNSAFE_PICKLE_DECODE", env_value)
     config.refresh()
     if allowed:
         np.testing.assert_array_equal(arr[:], np.array(["a", "bb", "ccc"]))
@@ -418,7 +420,7 @@ def test_pickle_codec_read_enabled_via_env_var(
 
 def test_pickle_opt_in_does_not_affect_other_codecs() -> None:
     """Arrays that do not use the pickle codec are read without opting in."""
-    assert config.get("array.allow_pickle") is False
+    assert config.get("array.allow_unsafe_pickle_decode") is False
     arr = zarr.create_array(
         store={}, shape=(3,), dtype="<i4", zarr_format=2, filters=[Delta(dtype="<i4")]
     )

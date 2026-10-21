@@ -105,7 +105,7 @@ config = Config(
                 "sharding_coalesce_max_bytes": 16 << 20,  # 16 MiB
                 # Decoding data with the pickle codec can execute arbitrary code,
                 # so it must be explicitly enabled.
-                "allow_pickle": False,
+                "allow_unsafe_pickle_decode": False,
             },
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
