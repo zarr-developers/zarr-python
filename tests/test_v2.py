@@ -3,6 +3,8 @@ import pickle
 from pathlib import Path
 from typing import Any, Literal
 
+import numcodecs.errors
+import numcodecs.pickles
 import numpy as np
 import pytest
 from numcodecs import Delta, Pickle, VLenUTF8, Zlib
@@ -328,11 +330,24 @@ def _pickle_compressed_array() -> zarr.Array[Any]:
     return arr
 
 
+@pytest.fixture
+def allow_numcodecs_unpickle(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Opt in to numcodecs' own gate on ``Pickle.decode``.
+
+    numcodecs refuses to unpickle unless the process opts in (GHSA-jqc8-qjfv-5m6r). zarr's
+    opt-in is separate, so tests that read pickled data after opting in to zarr also need this.
+    """
+    monkeypatch.setattr(numcodecs.pickles, "ALLOW_UNSAFE_PICKLE_DECODE", True)
+
+
 def test_pickle_codec_read_disabled_by_default() -> None:
     """Reading data encoded with the pickle codec fails unless the user opts in."""
     arr = _pickle_compressed_array()
-    with pytest.raises(PickleCodecDisabledError, match=r"array\.allow_pickle"):
+    with pytest.raises(PickleCodecDisabledError, match=r"array\.allow_pickle") as excinfo:
         arr[:]
+    # numcodecs has its own opt-in; the message must name it so users are not left guessing
+    assert "ALLOW_UNSAFE_PICKLE_DECODE" in str(excinfo.value)
 
 
 def test_pickle_codec_read_does_not_unpickle() -> None:
@@ -362,12 +377,27 @@ def test_pickle_codec_read_does_not_unpickle() -> None:
         arr[:]
 
 
+def test_pickle_codec_zarr_opt_in_does_not_bypass_numcodecs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Opting in to zarr does not disable numcodecs' own gate on ``Pickle.decode``."""
+    monkeypatch.setattr(numcodecs.pickles, "ALLOW_UNSAFE_PICKLE_DECODE", False)
+    arr = _pickle_compressed_array()
+    with (
+        config.set({"array.allow_pickle": True}),
+        pytest.raises(numcodecs.errors.UnsafeDecodeError),
+    ):
+        arr[:]
+
+
+@pytest.mark.usefixtures("allow_numcodecs_unpickle")
 def test_pickle_codec_read_enabled_via_config() -> None:
     arr = _pickle_compressed_array()
     with config.set({"array.allow_pickle": True}):
         np.testing.assert_array_equal(arr[:], np.array(["a", "bb", "ccc"]))
 
 
+@pytest.mark.usefixtures("allow_numcodecs_unpickle")
 @pytest.mark.parametrize(("env_value", "allowed"), [("True", True), ("false", False)])
 def test_pickle_codec_read_enabled_via_env_var(
     monkeypatch: pytest.MonkeyPatch, env_value: str, allowed: bool
