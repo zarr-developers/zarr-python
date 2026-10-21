@@ -737,7 +737,7 @@ def test_fill_value_partial_chunk_without_check_reads_wrong_value(
 
     with pytest.warns(
         ZarrUserWarning,
-        match=r"decodes back to 127\.0 in float32.*stored with that fill value",
+        match=r"decodes back to 127\.0 in float32.*Partly written chunks of this array",
     ):
         opened = zarr.open_array(store, mode="r")
     assert opened.fill_value == np.float32(1000.0)

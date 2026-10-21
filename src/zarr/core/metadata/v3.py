@@ -734,11 +734,11 @@ class ArrayV3Metadata(Metadata):
                 Reading(
                     moves_chunks=False,
                     warning=(
-                        f"{e} The array was stored with that fill value, so the unwritten part "
-                        "of every partly written chunk reads as the value it decodes to, not "
-                        "as the fill value, and other implementations may refuse to read the "
-                        "array. To fix it, copy its data to an array with a fill value the "
-                        "codec preserves."
+                        f"{e} Partly written chunks of this array store the encoded fill "
+                        "value, so their unwritten elements read back as the decoded value, "
+                        "not the fill value. Other implementations may refuse to open the "
+                        "array. To fix it, copy the data to a new array with a fill value "
+                        "the codec preserves."
                     ),
                 )
             )
