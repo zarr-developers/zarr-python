@@ -70,8 +70,28 @@ def _diff(
             yield DocumentChange(path, stored, new)
 
 
+def encode_documents(
+    store_path: StorePath, metadata: ArrayMetadata | GroupMetadata
+) -> dict[str, Buffer]:
+    """The metadata documents `metadata` stores under `store_path`, by key (see
+    `to_buffer_dict`).
+
+    An operation that deletes or writes store content encodes its documents first, so
+    metadata that cannot be stored fails with the store untouched; the error then names
+    the node at `store_path`, as the warnings about stored documents do.
+    """
+    from zarr.core.group import GroupMetadata
+
+    try:
+        return metadata.to_buffer_dict(default_buffer_prototype())
+    except ValueError as e:
+        node = "Group" if isinstance(metadata, GroupMetadata) else "Array"
+        e.add_note(f"{node} {str(store_path)!r}: nothing was stored.")
+        raise
+
+
 async def store_documents(store_path: StorePath, documents: Mapping[str, Buffer]) -> None:
-    """Store metadata documents encoded by `to_buffer_dict` under `store_path`."""
+    """Store metadata documents encoded by `encode_documents` under `store_path`."""
     await asyncio.gather(
         *(set_or_delete(store_path / key, value) for key, value in documents.items())
     )
@@ -97,7 +117,7 @@ async def upsert_metadata(
     The documents are encoded before any is stored, so metadata that cannot be stored
     fails with the store untouched.
     """
-    documents = metadata.to_buffer_dict(default_buffer_prototype())
+    documents = encode_documents(store_path, metadata)
     changes = diff_documents(
         {key: buffer_to_json_object(buf) for key, buf in stored.items() if key in documents},
         {key: buffer_to_json_object(buf) for key, buf in documents.items()},
@@ -114,11 +134,17 @@ ARRAY_DOCUMENTS: Final[Mapping[ZarrFormat, tuple[str, ...]]] = {
 """The store keys of the metadata documents of an array of each Zarr format."""
 
 
-def parse_stored_array(documents: Mapping[str, Buffer], zarr_format: ZarrFormat) -> ArrayMetadata:
+def parse_stored_array(
+    documents: Mapping[str, Buffer], zarr_format: ZarrFormat, path: str | None = None
+) -> ArrayMetadata:
     """The metadata of an array from its documents (by store key, see `ARRAY_DOCUMENTS`),
     read with the repairs but without their warnings (whoever asks has warned, or reads
     metadata built in code), and marked (see `mark_repaired`) if they had to be
-    repaired. Raises `ArrayNotFoundError` if there is no array document among them."""
+    repaired. Raises `ArrayNotFoundError` if there is no array document among them.
+
+    Only operations that store metadata read documents this way, so documents read as a
+    rectilinear chunk grid require the rectilinear chunks flag, as storing it does; the
+    error names the array at `path`."""
     from zarr.core.array import (
         _array_metadata_dict_v2,
         _array_metadata_dict_v3,
@@ -132,7 +158,8 @@ def parse_stored_array(documents: Mapping[str, Buffer], zarr_format: ZarrFormat)
     else:
         raise ArrayNotFoundError(f"No Zarr format {zarr_format} array metadata document.")
     repaired, readings = repair_array_document(stored, zarr_format)
-    return mark_repaired(parse_array_metadata(dict(repaired)), stored, readings, None, warn=False)
+    metadata = parse_array_metadata(dict(repaired), path)
+    return mark_repaired(metadata, stored, readings, None, warn=False)
 
 
 def _build_parents(store_path: StorePath, zarr_format: ZarrFormat) -> dict[str, GroupMetadata]:
@@ -172,7 +199,7 @@ async def save_metadata(
     ------
     ValueError
     """
-    to_save = metadata.to_buffer_dict(default_buffer_prototype())
+    to_save = encode_documents(store_path, metadata)
     await _write_metadata(store_path, to_save, metadata.zarr_format, ensure_parents=ensure_parents)
 
 
@@ -185,8 +212,8 @@ async def save_new_metadata(
 ) -> None:
     """Save the metadata of a new array or group, replacing any existing node if requested.
 
-    The metadata is encoded before the store is modified, so metadata that cannot be
-    encoded raises without deleting an existing node.
+    The metadata is encoded first (see `encode_documents`), so metadata that cannot be
+    stored raises, naming the node, without deleting an existing node.
 
     Parameters
     ----------
@@ -201,7 +228,7 @@ async def save_new_metadata(
     ensure_parents : bool, optional
         Create any missing parent groups, and check no existing parents are arrays.
     """
-    to_save = metadata.to_buffer_dict(default_buffer_prototype())
+    to_save = encode_documents(store_path, metadata)
     if overwrite and store_path.store.supports_deletes:
         await store_path.delete_dir()
     else:

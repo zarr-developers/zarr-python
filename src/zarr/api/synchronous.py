@@ -263,7 +263,7 @@ def save(
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save
 ) -> None:
-    """Save an array or group of arrays to the local file system.
+    """Save an array or group of arrays to a store.
 
     Parameters
     ----------
@@ -304,7 +304,7 @@ def save_array(
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save_array
 ) -> None:
-    """Save a NumPy array to the local file system.
+    """Save a NumPy array to a store.
 
     Follows a similar API to the NumPy save() function.
 
@@ -347,7 +347,7 @@ def save_group(
     storage_options: dict[str, Any] | None = None,
     **kwargs: NDArrayLike,
 ) -> None:
-    """Save several NumPy arrays to the local file system.
+    """Save several NumPy arrays to a store.
 
     Follows a similar API to the NumPy savez()/savez_compressed() functions.
 
@@ -635,7 +635,7 @@ def create_group(
 def create(
     shape: tuple[int, ...] | int,
     *,  # Note: this is a change from v2
-    chunks: tuple[int, ...] | int | bool | None = None,
+    chunks: ChunksLike | None = None,
     dtype: ZDTypeLike | None = None,
     compressor: CompressorLike = "auto",
     fill_value: Any | None = DEFAULT_FILL_VALUE,  # TODO: need type
@@ -656,7 +656,7 @@ def create(
     meta_array: Any | None = None,  # TODO: need type
     attributes: dict[str, JSON] | None = None,
     # v3 only
-    chunk_shape: tuple[int, ...] | int | None = None,
+    chunk_shape: ChunksLike | None = None,
     chunk_key_encoding: (
         ChunkKeyEncoding
         | tuple[Literal["default"], Literal[".", "/"]]
@@ -676,11 +676,11 @@ def create(
     ----------
     shape : int or tuple of ints
         Array shape.
-    chunks : int or tuple of ints, optional
-        Chunk shape. If True, will be guessed from `shape` and `dtype`. If
-        False, will be set to `shape`, i.e., single chunk for the whole array.
-        If an int, the chunk size in each dimension will be given by the value
-        of `chunks`. Default is True.
+    chunks : ChunksLike, optional
+        Chunk shape. If None (the default), it is guessed from `shape` and `dtype`. If
+        False, it is set to `shape`, i.e., a single chunk for the whole array. If an
+        int, the chunk size in each dimension is given by the value of `chunks`.
+        `True` is not a chunk shape and raises a `ValueError`.
     dtype : str or dtype, optional
         NumPy dtype.
     compressor : Codec, optional
@@ -763,7 +763,7 @@ def create(
         Not implemented.
     attributes : dict[str, JSON], optional
         A dictionary of user attributes to store with the array.
-    chunk_shape : int or tuple of ints, optional
+    chunk_shape : ChunksLike, optional
         The shape of the Array's chunks (default is None).
         Zarr format 3 only. Zarr format 2 arrays should use `chunks` instead.
     chunk_key_encoding : ChunkKeyEncoding, optional
