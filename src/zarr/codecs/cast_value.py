@@ -517,22 +517,23 @@ class CastValue(ArrayArrayCodec):
 
 def check_fill_value_round_trip(metadata: ArrayV3Metadata) -> None:
     """
-    Check that every `cast_value` codec of `metadata` preserves the fill value it receives.
+    Check that the fill value of `metadata` survives each `cast_value` codec in its codecs.
 
-    The fill value is threaded through the codecs as a chunk is encoded, so a
-    `cast_value` codec that follows another array-to-array codec is checked
-    with the fill value that codec hands it. The codecs inside a sharding codec
-    encode each inner chunk, so they are checked with the fill value the
-    sharding codec receives.
+    Each codec is checked with the fill value it sees when a chunk is encoded:
+    the array's fill value as transformed by the array-to-array codecs before
+    it. The codecs inside a sharding codec are checked the same way.
 
-    Array creation calls this and refuses the metadata; reading stored metadata
-    calls it and warns, so an array stored with such a fill value still opens.
+    Parameters
+    ----------
+    metadata : ArrayV3Metadata
+        The array metadata whose fill value and codecs to check.
 
     Raises
     ------
     ValueError
-        If a `cast_value` codec does not preserve its fill value, as
-        `CastValue.check_fill_value` describes.
+        If a `cast_value` codec cannot encode its fill value, cannot decode the
+        encoded fill value, or decodes it to a different value. See
+        `CastValue.check_fill_value`.
     """
     # Imported here: `zarr.core.metadata.v3` reads metadata with this check, and
     # importing it at module level would import this module in a cycle.
