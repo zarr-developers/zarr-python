@@ -418,7 +418,7 @@ class CastValue(ArrayArrayCodec):
         This runs for every chunk that is read or written, so it only casts the
         fill value forward. Whether the fill value survives a round trip through
         the codec is checked once, when array metadata is created or read, by
-        `check_fill_value_round_trip`.
+        `_check_fill_value_round_trip`.
         """
         fill = np.array([chunk_spec.fill_value], dtype=chunk_spec.dtype.to_native_dtype())
         encoded = self._cast_fill(fill, source=chunk_spec.dtype, direction="encode")
@@ -426,7 +426,7 @@ class CastValue(ArrayArrayCodec):
             chunk_spec, dtype=self.dtype, fill_value=self.dtype.to_native_dtype().type(encoded[0])
         )
 
-    def check_fill_value(self, chunk_spec: ArraySpec) -> None:
+    def _check_fill_value(self, chunk_spec: ArraySpec) -> None:
         """
         Check that the fill value of `chunk_spec` survives a round trip through the codec.
 
@@ -515,7 +515,7 @@ class CastValue(ArrayArrayCodec):
         return num_elements * target_itemsize
 
 
-def check_fill_value_round_trip(metadata: ArrayV3Metadata) -> None:
+def _check_fill_value_round_trip(metadata: ArrayV3Metadata) -> None:
     """
     Check that the fill value of `metadata` survives each `cast_value` codec in its codecs.
 
@@ -533,7 +533,7 @@ def check_fill_value_round_trip(metadata: ArrayV3Metadata) -> None:
     ValueError
         If a `cast_value` codec cannot encode its fill value, cannot decode the
         encoded fill value, or decodes it to a different value. See
-        `CastValue.check_fill_value`.
+        `CastValue._check_fill_value`.
     """
     # Imported here: `zarr.core.metadata.v3` reads metadata with this check, and
     # importing it at module level would import this module in a cycle.
@@ -557,7 +557,7 @@ def _check_codecs(codecs: Iterable[Codec], spec: ArraySpec) -> None:
 
     for codec in codecs:
         if isinstance(codec, CastValue):
-            codec.check_fill_value(spec)
+            codec._check_fill_value(spec)
         elif isinstance(codec, ShardingCodec):
             _check_codecs(codec.codecs, spec)
         spec = codec.resolve_metadata(spec)

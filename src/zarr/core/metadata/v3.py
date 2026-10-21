@@ -725,10 +725,10 @@ class ArrayV3Metadata(Metadata):
             storage_transformers=_data_typed.get("storage_transformers", ()),  # type: ignore[arg-type]
         )
         # Imported here: `zarr.codecs` imports the chunk pipeline, which imports this module.
-        from zarr.codecs.cast_value import check_fill_value_round_trip
+        from zarr.codecs.cast_value import _check_fill_value_round_trip
 
         try:
-            check_fill_value_round_trip(metadata)
+            _check_fill_value_round_trip(metadata)
         except ValueError as e:
             readings.append(
                 Reading(
