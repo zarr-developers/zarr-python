@@ -93,6 +93,7 @@ nav:
         - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.testing.store</code>': api/zarr/testing/store.md
         - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.testing.strategies</code>': api/zarr/testing/strategies.md
         - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.testing.utils</code>': api/zarr/testing/utils.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.types</code>': api/zarr/types.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.zeros</code>': api/zarr/functions/zeros.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.zeros_like</code>': api/zarr/functions/zeros_like.md
       # The companion packages are Read the Docs subprojects of this one; link
