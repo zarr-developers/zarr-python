@@ -97,6 +97,19 @@ class ZipStore(Store):
         will raise an exception when the ZIP file would require ZIP64
         extensions.
 
+    Notes
+    -----
+    A ``ZipStore`` opened in an archive-writing mode cannot be pickled. ZIP
+    archives do not support independent concurrent writers, and reopening a
+    serialized writer can corrupt the archive. For parallel writes, use a
+    store that supports them and create the ZIP archive after writing is
+    complete.
+
+    Pickling a path-backed reader serializes the state needed to reopen its
+    path, not the archive contents or file identity. The unpickled reader opens
+    the archive that exists at that path at unpickle time; callers that require
+    a stable view must keep the archive unchanged while it is being read.
+
     Attributes
     ----------
     allowed_exceptions
@@ -182,6 +195,13 @@ class ZipStore(Store):
         self._sync_open()
 
     def __getstate__(self) -> dict[str, Any]:
+        if self._zmode != "r":
+            raise TypeError(
+                "ZipStore instances opened in an archive-writing mode cannot be pickled, "
+                "because independent ZIP writers can corrupt the archive. Use a LocalStore "
+                "for parallel writes and create the ZIP archive after writing is complete, "
+                "or reopen the ZipStore with mode='r' before pickling."
+            )
         if self.path is None:
             # A path-backed store pickles its path and reopens the file on
             # unpickling; an open file object cannot be serialized that way.
