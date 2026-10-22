@@ -10,6 +10,10 @@ from zarr.core.dtype import UInt8
 from zarr.core.metadata.v3 import RegularChunkGridMetadata
 
 
+def array_spec(shape: tuple[int, ...]) -> ArraySpec:
+    return ArraySpec(shape, UInt8(), 0, ArrayConfig("C", False), default_buffer_prototype())
+
+
 def test_deserialize() -> None:
     s = '{"name": "reshape", "configuration": {"shape": [5, [1, 2], -1]}}'
     d = json.loads(s)
@@ -20,22 +24,10 @@ def test_deserialize() -> None:
 async def test_encode() -> None:
     arr_flat = np.arange(60, dtype="uint8")
     arr_3x2 = np.reshape(arr_flat, (3, 4, 5))
-    dt = UInt8()
     codec = ReshapeCodec(shape=((0, 1), 5))
     proto = default_buffer_prototype()
     (encoded, *_) = await codec.encode(
-        [
-            (
-                proto.nd_buffer.from_numpy_array(arr_3x2),
-                ArraySpec(
-                    arr_3x2.shape,
-                    dt,
-                    fill_value=0,
-                    config=ArrayConfig("C", False),
-                    prototype=proto,
-                ),
-            )
-        ]
+        [(proto.nd_buffer.from_numpy_array(arr_3x2), array_spec(arr_3x2.shape))]
     )
     assert encoded is not None
     assert encoded.shape == (12, 5)
@@ -121,6 +113,17 @@ def test_validate_invalid(shape: tuple[int, ...], shape_spec: ShapeSpec) -> None
         )
 
 
+@pytest.mark.asyncio
+async def test_decode_unexpected_shape() -> None:
+    codec = ReshapeCodec(shape=((0, 1),))
+    buf = default_buffer_prototype().nd_buffer.from_numpy_array(
+        np.zeros(shape=(30, 40), dtype="uint8")
+    )
+    spec = array_spec((3, 4))
+    with pytest.raises(RuntimeError):
+        await codec.decode([(buf, spec)])
+
+
 @pytest.mark.parametrize(
     ("input_shape", "shape_spec", "output_shape"),
     [
@@ -135,9 +138,7 @@ def test_valid(
     codec = ReshapeCodec(shape=shape_spec)
     dtype = UInt8()
     codec.validate(input_shape, dtype, RegularChunkGridMetadata(chunk_shape=input_shape))
-    input_spec = ArraySpec(
-        input_shape, dtype, 0, ArrayConfig("C", False), default_buffer_prototype()
-    )
+    input_spec = array_spec(input_shape)
     output_spec = codec.resolve_metadata(input_spec)
 
     assert output_spec.dtype == input_spec.dtype
