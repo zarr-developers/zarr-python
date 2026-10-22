@@ -847,25 +847,60 @@ class AsyncGroup:
         ----------
         key : str
             Array or group name
+
+        Raises
+        ------
+        KeyError
+            If the member does not exist.
         """
         store_path = self.store_path / key
+        store_path.store._check_writable()
         consolidated = self.metadata.consolidated_metadata
-        if consolidated is None:
-            await store_path.delete_dir()
-            return
+        normalized = normalize_path(key)
+        if consolidated is not None and not normalized:
+            raise KeyError(key)
+        *parents, name = normalized.split("/")
+        # Check the cached metadata without constructing the member: deletion must
+        # still work when the member cannot be opened (e.g. an unavailable codec).
+        target = consolidated
+        for parent in parents:
+            if target is None:
+                break
+            node = target.metadata.get(parent)
+            target = node.consolidated_metadata if isinstance(node, GroupMetadata) else None
+        if consolidated is None or target is None or name not in target.metadata:
+            # The consolidated index may predate the member. Only check for its
+            # metadata keys, so malformed documents can also be removed.
+            markers = (ZARR_JSON,) if self.metadata.zarr_format == 3 else (ZARRAY_JSON, ZGROUP_JSON)
+            for marker in markers:
+                if await (store_path / marker).exists():
+                    await store_path.delete_dir()
+                    return  # No cached entry to remove or consolidated metadata to rewrite.
+            raise KeyError(key)
         # Encode the group metadata without the member before deleting it: metadata that
         # cannot be stored then fails with the store and this group untouched. What is
         # stored is encoded after the deletion, from the metadata as it then is, so
         # concurrent deletions each store the deletions made before them.
-        members = {name: node for name, node in consolidated.metadata.items() if name != key}
+        # Copy only the dictionaries along the member's path for the encoding check.
+        # The original dictionaries stay shared and untouched until deletion succeeds.
+        updated = replace(consolidated, metadata=consolidated.metadata.copy())
+        current = updated
+        for parent in parents:
+            # The cache traversal above checked every intermediate group and the member.
+            node = cast("GroupMetadata", current.metadata[parent])
+            child_metadata = cast("ConsolidatedMetadata", node.consolidated_metadata)
+            child = replace(child_metadata, metadata=child_metadata.metadata.copy())
+            current.metadata[parent] = replace(node, consolidated_metadata=child)
+            current = child
+        current.metadata.pop(name)
         encode_documents(
             self.store_path,
-            replace(self.metadata, consolidated_metadata=replace(consolidated, metadata=members)),
+            replace(self.metadata, consolidated_metadata=updated),
         )
         await store_path.delete_dir()
         # In place, so every handle sharing this consolidated metadata (a parent's or a
         # subgroup's) sees the deletion.
-        consolidated.metadata.pop(key, None)
+        target.metadata.pop(name, None)
         await store_documents(self.store_path, encode_documents(self.store_path, self.metadata))
 
     async def get[DefaultT](
@@ -2168,6 +2203,11 @@ class Group(SyncMixin):
         ----------
         key : str
             Group member name.
+
+        Raises
+        ------
+        KeyError
+            If the member does not exist.
 
         Examples
         --------
