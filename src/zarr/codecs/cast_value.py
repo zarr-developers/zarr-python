@@ -284,6 +284,7 @@ class CastValue(ArrayArrayCodec):
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGridMetadata,
+        fill_value: TBaseScalar | None = None,
     ) -> None:
         # `dtype` is the source (the array's dtype); `self.dtype` is the
         # cast target. The spec requires both to be permitted, and rules
