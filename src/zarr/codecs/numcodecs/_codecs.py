@@ -155,7 +155,7 @@ class _NumcodecsArrayArrayCodec(_NumcodecsCodec, ArrayArrayCodec):
         super().__init__(**codec_config)
 
     def _decode_sync(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
-        chunk_ndarray = chunk_data.as_ndarray_like()
+        chunk_ndarray = np.ascontiguousarray(chunk_data.as_ndarray_like())
         out = self._codec.decode(chunk_ndarray)
         return chunk_spec.prototype.nd_buffer.from_ndarray_like(out.reshape(chunk_spec.shape))
 
@@ -164,6 +164,7 @@ class _NumcodecsArrayArrayCodec(_NumcodecsCodec, ArrayArrayCodec):
         # would be encoded in transposed element order (gh-3558)
         chunk_ndarray = np.ascontiguousarray(chunk_data.as_ndarray_like())
         out = self._codec.encode(chunk_ndarray)
+        out = out.reshape(self.resolve_metadata(chunk_spec).shape)
         return chunk_spec.prototype.nd_buffer.from_ndarray_like(out)
 
     async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
