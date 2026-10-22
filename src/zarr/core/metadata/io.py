@@ -9,7 +9,7 @@ from zarr.abc.store import set_or_delete
 from zarr.core._json import buffer_to_json_object, json_equal
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
-from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
+from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, validate_node_path
 from zarr.core.metadata.repair import mark_repaired, repair_array_document
 from zarr.errors import ArrayNotFoundError, ContainsArrayError
 from zarr.storage._common import StorePath, ensure_no_existing_node
@@ -228,6 +228,7 @@ async def save_new_metadata(
     ensure_parents : bool, optional
         Create any missing parent groups, and check no existing parents are arrays.
     """
+    validate_node_path(store_path.path, metadata.zarr_format)
     to_save = encode_documents(store_path, metadata)
     if overwrite and store_path.store.supports_deletes:
         await store_path.delete_dir()
