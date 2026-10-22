@@ -121,7 +121,7 @@ test = [
     "pytest-benchmark==5.3.0",
     "pytest-codspeed==5.0.3",
     "tomlkit==0.15.1",
-    "uv==0.12.21",
+    "uv==0.13.4",
 ]
 remote-tests = [
     {include-group = "test"},
@@ -139,7 +139,7 @@ docs = [
     # Doc building
     "mkdocs-material[imaging]==9.7.7",
     "mkdocs==1.6.1",
-    "mkdocstrings==1.0.7",
+    "mkdocstrings==1.0.6",
     "mkdocstrings-python==2.0.9",
     "mike==2.2.0",
     "mkdocs-redirects==1.2.3",
