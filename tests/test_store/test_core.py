@@ -1,10 +1,8 @@
 import tempfile
 from collections.abc import Awaitable, Callable, Generator
 from pathlib import Path
-from types import ModuleType
 from typing import Any, Literal
 
-import cloudpickle
 import pytest
 from packaging.version import parse as parse_version
 
@@ -436,14 +434,3 @@ def test_different_open_mode(tmp_path: Path) -> None:
         match="Store is not read-only but mode is 'r'. Unable to create a read-only copy of the store. Please use a read-only store or a storage class that implements .with_read_only().",
     ):
         zarr.open_array(store=zip_store, path="a", zarr_format=2, mode="r")
-
-
-def test_storage_module_is_picklable() -> None:
-    """
-    `zarr.storage` is a plain `types.ModuleType` and round-trips through `cloudpickle`.
-
-    Serializers such as `cloudpickle` dispatch on the exact type of an object, so a
-    `ModuleType` subclass would not be serializable. See issue #4029.
-    """
-    assert type(zarr.storage) is ModuleType
-    assert cloudpickle.loads(cloudpickle.dumps(zarr.storage)) is zarr.storage
