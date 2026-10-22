@@ -4701,10 +4701,19 @@ async def init_array(
             sharding_codec = ShardingCodec(
                 chunk_shape=inner_chunks_flat, codecs=sub_codecs, index_location=index_location
             )
+            # Probe the inner codec chain with the array's fill value, since that
+            # is the value an unwritten chunk must return. Resolve the sentinel
+            # the same way `_create_metadata_v3` does, so validation and metadata
+            # agree on the fill value.
+            if fill_value is DEFAULT_FILL_VALUE or fill_value is None:
+                fill_value_probe: Any = zdtype.default_scalar()
+            else:
+                fill_value_probe = fill_value
             sharding_codec.validate(
                 shape=inner_chunks_flat,
                 dtype=zdtype,
                 chunk_grid=grid,
+                fill_value=fill_value_probe,
             )
             codecs_out = (sharding_codec,)
         else:

@@ -571,7 +571,12 @@ class ArrayV3Metadata(Metadata):
         spec = array_spec
         for c in codecs_parsed_partial:
             evolved_codec = c.evolve_from_array_spec(spec)
-            evolved_codec.validate(shape=spec.shape, dtype=spec.dtype, chunk_grid=chunk_grid_parsed)
+            evolved_codec.validate(
+                shape=spec.shape,
+                dtype=spec.dtype,
+                chunk_grid=chunk_grid_parsed,
+                fill_value=spec.fill_value,
+            )
             evolved.append(evolved_codec)
             spec = evolved_codec.resolve_metadata(spec)
         codecs_parsed = tuple(evolved)
@@ -602,7 +607,12 @@ class ArrayV3Metadata(Metadata):
         if self.fill_value is None:
             raise ValueError("`fill_value` is required.")
         for codec in self.codecs:
-            codec.validate(shape=self.shape, dtype=self.data_type, chunk_grid=self.chunk_grid)
+            codec.validate(
+                shape=self.shape,
+                dtype=self.data_type,
+                chunk_grid=self.chunk_grid,
+                fill_value=self.fill_value,
+            )
 
     @property
     def ndim(self) -> int:

@@ -619,6 +619,7 @@ class ShardingCodec(
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGridMetadata,
+        fill_value: TBaseScalar | None = None,
     ) -> None:
         if len(self.chunk_shape) != len(shape):
             raise ValueError(
@@ -642,18 +643,26 @@ class ShardingCodec(
                         f"Chunk edge length {edge} in dimension {i} is not "
                         f"divisible by the shard's inner chunk size {inner}."
                     )
-        self._validate_inner_codecs(dtype)
+        self._validate_inner_codecs(dtype, fill_value)
 
-    def _validate_inner_codecs(self, dtype: ZDType[TBaseDType, TBaseScalar]) -> None:
+    def _validate_inner_codecs(
+        self, dtype: ZDType[TBaseDType, TBaseScalar], fill_value: TBaseScalar | None = None
+    ) -> None:
         """Validate the codecs that encode each inner chunk, as array metadata validates
         its codecs: each against the chunk the codecs before it leave it, a regular
         grid of one inner chunk. A sharding codec among them is thereby checked against
         the chunk it splits, which `validate` of the outer codec alone does not see.
+
+        The codec chain is probed with the array's fill value, because that is the
+        value an unwritten chunk must return: the array has to be readable before any
+        chunks have been written. A fill value that cannot be round-tripped through
+        the inner codecs is therefore a genuine error and is raised here. If no fill
+        value is provided, the data type's default scalar is used.
         """
         spec = ArraySpec(
             shape=self.chunk_shape,
             dtype=dtype,
-            fill_value=dtype.default_scalar(),
+            fill_value=dtype.default_scalar() if fill_value is None else fill_value,
             config=ArrayConfig.from_dict({}),
             prototype=default_buffer_prototype(),
         )

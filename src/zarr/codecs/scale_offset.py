@@ -383,6 +383,7 @@ class ScaleOffset(ArrayArrayCodec):
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGridMetadata,
+        fill_value: TBaseScalar | None = None,
     ) -> None:
         native = dtype.to_native_dtype()
         if not np.issubdtype(native, np.integer) and not np.issubdtype(native, np.floating):
@@ -408,17 +409,8 @@ class ScaleOffset(ArrayArrayCodec):
         fill = np.asarray(zdtype.cast_scalar(chunk_spec.fill_value))
         offset = cast("np.generic", zdtype.from_json_scalar(self.offset, zarr_format=3))
         scale = cast("np.generic", zdtype.from_json_scalar(self.scale, zarr_format=3))
-        try:
-            new_fill = _encode(fill, offset, scale).reshape(()).item()
-        except (ValueError, OverflowError):
-            # The fill value may lie outside the encodable domain of this codec (e.g. a
-            # scale/offset pair mapping only a subrange of the dtype, with the fill value
-            # outside that subrange). That is a property of the fill value, not of the
-            # codec configuration, so metadata threading (shape/dtype) must not fail
-            # because of it: carry the fill value forward unchanged. Genuine value
-            # errors for actual chunk data still surface in `_encode_sync`.
-            new_fill = chunk_spec.fill_value
-        return replace(chunk_spec, fill_value=new_fill)
+        new_fill = _encode(fill, offset, scale)
+        return replace(chunk_spec, fill_value=new_fill.reshape(()).item())
 
     def _decode_sync(
         self,

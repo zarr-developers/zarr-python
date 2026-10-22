@@ -284,6 +284,7 @@ class CastValue(ArrayArrayCodec):
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGridMetadata,
+        fill_value: TBaseScalar | None = None,
     ) -> None:
         # `dtype` is the source (the array's dtype); `self.dtype` is the
         # cast target. The spec requires both to be permitted, and rules
@@ -371,19 +372,11 @@ class CastValue(ArrayArrayCodec):
 
         fill = chunk_spec.fill_value
         fill_arr = np.array([fill], dtype=source_native)
-        try:
-            new_fill_arr = self._do_cast(
-                fill_arr, target_dtype=target_native, scalar_map=self._get_scalar_map("encode")
-            )
-            new_fill = target_native.type(new_fill_arr[0])
-        except (ValueError, OverflowError):
-            # The fill value may be outside the encodable domain of this codec (e.g. a
-            # source value that cannot be cast to the target dtype without an explicit
-            # out_of_range policy). That is a property of the fill value, not of the
-            # codec configuration, so metadata threading (shape/dtype) must not fail
-            # because of it: carry the fill value forward unchanged. Genuine value
-            # errors for actual chunk data still surface in `_encode_sync`.
-            new_fill = fill
+
+        new_fill_arr = self._do_cast(
+            fill_arr, target_dtype=target_native, scalar_map=self._get_scalar_map("encode")
+        )
+        new_fill = target_native.type(new_fill_arr[0])
 
         return replace(chunk_spec, dtype=target_zdtype, fill_value=new_fill)
 

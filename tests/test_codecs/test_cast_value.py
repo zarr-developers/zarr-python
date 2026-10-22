@@ -619,18 +619,19 @@ def test_enforce_contiguous_arrays() -> None:
 
 
 @requires_cast_value_rs
-def test_creation_with_unencodable_default_fill_value() -> None:
-    """A ScaleOffset+CastValue chain whose valid input range excludes the default
-    fill value (e.g. float32 values known to lie in [100, 200], scaled to uint16)
-    must not fail array creation: the fill value is metadata, not chunk data, and
-    is never required to pass through the codec chain
-    (https://github.com/zarr-developers/zarr-python/issues/4511).
+def test_creation_with_encodable_fill_value() -> None:
+    """A ScaleOffset+CastValue chain whose valid input range excludes the dtype's
+    default scalar (e.g. float32 values known to lie in [100, 200], scaled to
+    uint16) must not fail array creation when the array's fill value lies inside
+    that range: the fill value is the one probed against the codec chain, and it
+    round-trips (https://github.com/zarr-developers/zarr-python/issues/4511).
     """
     minimum, maximum = 100.0, 200.0
     arr = zarr.create_array(
         store=MemoryStore(),
         shape=(4,),
         dtype="float32",
+        fill_value=minimum,
         chunks=(4,),
         filters=[
             ScaleOffset(scale=65535 / (maximum - minimum), offset=minimum),
@@ -643,6 +644,29 @@ def test_creation_with_unencodable_default_fill_value() -> None:
     arr[:] = data
     # Quantization to uint16 introduces a small rounding error.
     np.testing.assert_allclose(np.asarray(arr[:]), data, atol=1e-2)
+
+
+@requires_cast_value_rs
+def test_creation_with_unencodable_fill_value_raises() -> None:
+    """An array whose fill value cannot be round-tripped through the codec chain
+    must fail creation: the array has to be readable before any chunks have been
+    written, and an unwritten chunk returns the fill value
+    (https://github.com/zarr-developers/zarr-python/issues/4511).
+    """
+    minimum, maximum = 100.0, 200.0
+    with pytest.raises(ValueError, match="out of range"):
+        zarr.create_array(
+            store=MemoryStore(),
+            shape=(4,),
+            dtype="float32",
+            # The default fill value (0.0) lies outside [100, 200].
+            chunks=(4,),
+            filters=[
+                ScaleOffset(scale=65535 / (maximum - minimum), offset=minimum),
+                CastValue(data_type="uint16", rounding="nearest-even"),
+            ],
+            compressors=None,
+        )
 
 
 @requires_cast_value_rs

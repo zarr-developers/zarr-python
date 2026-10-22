@@ -657,9 +657,10 @@ class BatchedCodecPipeline(CodecPipeline):
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGridMetadata,
+        fill_value: TBaseScalar | None = None,
     ) -> None:
         for codec in self:
-            codec.validate(shape=shape, dtype=dtype, chunk_grid=chunk_grid)
+            codec.validate(shape=shape, dtype=dtype, chunk_grid=chunk_grid, fill_value=fill_value)
 
     def compute_encoded_size(self, byte_length: int, array_spec: ArraySpec) -> int:
         for codec in self:
@@ -1068,9 +1069,10 @@ class FusedCodecPipeline(CodecPipeline):
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGridMetadata,
+        fill_value: TBaseScalar | None = None,
     ) -> None:
         for codec in self.codecs:
-            codec.validate(shape=shape, dtype=dtype, chunk_grid=chunk_grid)
+            codec.validate(shape=shape, dtype=dtype, chunk_grid=chunk_grid, fill_value=fill_value)
 
     def compute_encoded_size(self, byte_length: int, array_spec: ArraySpec) -> int:
         for codec in self:
