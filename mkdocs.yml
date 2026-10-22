@@ -81,7 +81,6 @@ nav:
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.open_consolidated</code>': api/zarr/functions/open_consolidated.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.open_group</code>': api/zarr/functions/open_group.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.open_like</code>': api/zarr/functions/open_like.md
-      - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.open_url</code>': api/zarr/functions/open_url.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.print_debug_info</code>': api/zarr/functions/print_debug_info.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr.registry</code>': api/zarr/registry.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code> <code>zarr.save</code>': api/zarr/functions/save.md

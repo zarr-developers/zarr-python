@@ -470,8 +470,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
 
         zarr_format = resolve_zarr_format(store, zarr_format)
-        store_path = await make_store_path(store)
         dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
+        store_path = await make_store_path(store)
 
         shape = parse_shapelike(shape)
 
@@ -2058,7 +2058,6 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def open(
         cls,
         store: StoreLike,
-        zarr_format: ZarrFormat | None = 3,
     ) -> Self:
         """Opens an existing Array from a store.
 
@@ -2068,16 +2067,13 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             Store containing the Array. See the
             [storage documentation in the user guide][user-guide-store-like]
             for a description of all valid StoreLike values.
-        zarr_format : {2, 3, None}, optional
-            The zarr format to expect. If None, the format selected by a URL pipeline
-            segment is used, otherwise the format is inferred from the store contents.
 
         Returns
         -------
         Array
             Array opened from the store.
         """
-        async_array = sync(AsyncArray.open(store, zarr_format=zarr_format))
+        async_array = sync(AsyncArray.open(store))
         return cls(async_array)
 
     @property

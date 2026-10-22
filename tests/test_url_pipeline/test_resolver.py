@@ -42,6 +42,7 @@ _has_async_fsspec_wrapper = _has_fsspec and parse_version(version("fsspec")) >= 
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from zarr.core.common import AccessModeLiteral
@@ -846,66 +847,72 @@ class TestMakeStoreIntegration:
         assert group.metadata.zarr_format == 2
 
 
-class TestOpenURL:
+class TestOpenFunctionsAcceptPipelines:
     """
-    `zarr.open_url` interprets its string argument as a URL pipeline and opens
-    the existing node it addresses. It never creates: creation goes through
-    `create_array` / `create_group` with a `URLPipeline`.
+    `zarr.open`, `open_group`, `open_array` and `open_consolidated` accept a
+    `URLPipeline` and open the node it addresses; the body of a trailing format
+    segment is the node path.
     """
 
-    async def test_open_url_opens_existing_node_with_pipeline_format(self, tmp_path: Path) -> None:
+    @pytest.fixture
+    def root(self, tmp_path: Path) -> str:
         register_url_adapter("wrap", WrapperAdapter)
-        zarr.create_group(URLPipeline.from_url(f"file:{tmp_path.as_posix()}|wrap:|zarr2:"))
-        group = zarr.open_url(f"file:{tmp_path.as_posix()}|wrap:|zarr2:")
+        url = f"file:{tmp_path.as_posix()}|wrap:"
+        group = zarr.create_group(URLPipeline.from_url(url + "|zarr2:"), zarr_format=2)
+        group.create_array("sub/x", shape=(3,), dtype="i4")[:] = [1, 2, 3]
+        zarr.consolidate_metadata(URLPipeline.from_url(url + "|zarr2:"))
+        return url
+
+    async def test_open(self, root: str) -> None:
+        group = zarr.open(URLPipeline.from_url(root + "|zarr2:"), mode="r")
         assert isinstance(group, zarr.Group)
         assert group.metadata.zarr_format == 2
         assert isinstance(group.store, TracingStore)
+        array = zarr.open(URLPipeline.from_url(root + "|zarr2:sub/x"), mode="r")
+        assert isinstance(array, zarr.Array)
+        assert array[1] == 2
+
+    async def test_open_group(self, root: str) -> None:
+        group = zarr.open_group(URLPipeline.from_url(root + "|zarr2:sub"), mode="r")
+        assert group.path == "sub"
         assert group.read_only
 
-    async def test_open_url_format_segment_body_addresses_node(self, tmp_path: Path) -> None:
-        """The node path lives in the URL, as the body of the format segment."""
-        register_url_adapter("wrap", WrapperAdapter)
-        zarr.create_array(
-            URLPipeline.from_url(f"file:{tmp_path.as_posix()}|wrap:"),
-            name="sub/x",
-            shape=(3,),
-            dtype="i4",
-        )
-        array = zarr.open_url(f"file:{tmp_path.as_posix()}|wrap:|zarr3:sub/x")
-        assert isinstance(array, zarr.Array)
+    async def test_open_array(self, root: str) -> None:
+        array = zarr.open_array(URLPipeline.from_url(root + "sub|zarr2:x"), mode="r")
         assert array.store_path.path == "sub/x"
+        assert array[2] == 3
 
-    async def test_open_url_read_write(self, tmp_path: Path) -> None:
-        zarr.create_group(URLPipeline.from_url(f"file:{tmp_path.as_posix()}|zarr3:"))
-        group = zarr.open_url(f"file:{tmp_path.as_posix()}|zarr3:", mode="r+")
-        assert not group.read_only
-        group.attrs["answer"] = 42
-        assert zarr.open_url(f"file:{tmp_path.as_posix()}|zarr3:").attrs["answer"] == 42
-
-    async def test_open_url_missing_node_raises(self, tmp_path: Path) -> None:
-        """Nothing is created on open: a URL to a missing node is an error in every mode."""
-        with pytest.raises(FileNotFoundError):
-            zarr.open_url(f"file:{tmp_path.as_posix()}/missing|zarr3:")
-        with pytest.raises(FileNotFoundError):
-            zarr.open_url(f"file:{tmp_path.as_posix()}/missing|zarr3:", mode="r+")
-
-    async def test_open_url_rejects_create_modes(self, tmp_path: Path) -> None:
-        """The creating modes of `zarr.open` are not accepted."""
-        with pytest.raises(ValueError, match="opens existing nodes only"):
-            zarr.open_url(f"file:{tmp_path.as_posix()}|zarr3:", mode="a")  # type: ignore[arg-type]
-
-    async def test_async_open_url(self, tmp_path: Path) -> None:
-        zarr.create_group(URLPipeline.from_url(f"file:{tmp_path.as_posix()}|zarr2:"))
-        group = await zarr.api.asynchronous.open_url(f"file:{tmp_path.as_posix()}|zarr2:")
+    async def test_open_consolidated(self, root: str) -> None:
+        group = zarr.open_consolidated(URLPipeline.from_url(root + "|zarr2:"), mode="r")
+        assert group.metadata.consolidated_metadata is not None
         assert group.metadata.zarr_format == 2
+
+    async def test_async_open(self, root: str) -> None:
+        group = await zarr.api.asynchronous.open(
+            store=URLPipeline.from_url(root + "|zarr2:"), mode="r"
+        )
+        assert isinstance(group, zarr.AsyncGroup)
+
+    @pytest.mark.parametrize(
+        "open_func",
+        [zarr.open, zarr.open_group, zarr.open_array, zarr.open_consolidated],
+    )
+    @pytest.mark.skipif(sys.platform == "win32", reason="'|' is not allowed in Windows file names")
+    async def test_strings_are_not_pipelines(
+        self, open_func: Callable[..., object], root: str, tmp_path: Path
+    ) -> None:
+        """The same text passed as a string addresses a local path, not the pipeline."""
+        with pytest.raises(FileNotFoundError):
+            open_func(f"{tmp_path}|wrap:|zarr2:", mode="r")
 
 
 class TestZarrFormatMergeInCore:
     """
     Every function taking a StoreLike honors the format selected by a
     `URLPipeline`, not only the top-level zarr.api functions. Functions whose
-    `zarr_format` defaults to 3 need an explicit `zarr_format=None` to defer to
-    the pipeline, and raise when the default conflicts with it.
+    `zarr_format` defaults to 3 raise when the default conflicts with the
+    pipeline; `create_array` and `Group.open` accept `zarr_format=None` to defer
+    to it.
     """
 
     @pytest.fixture
@@ -936,7 +943,7 @@ class TestZarrFormatMergeInCore:
         assert arr.metadata.zarr_format == 2
 
     async def test_group_from_store(self, v2_pipeline: URLPipeline, tmp_path: Path) -> None:
-        group = zarr.Group.from_store(v2_pipeline, zarr_format=None)
+        group = zarr.Group.from_store(v2_pipeline, zarr_format=2)
         assert group.metadata.zarr_format == 2
         with pytest.raises(ValueError, match="conflicts with"):
             zarr.Group.from_store(URLPipeline.from_url(f"file:{tmp_path.as_posix()}/other|zarr2:"))
@@ -948,7 +955,7 @@ class TestZarrFormatMergeInCore:
         assert group.metadata.zarr_format == 3
 
     async def test_group_open(self, v2_pipeline: URLPipeline) -> None:
-        zarr.Group.from_store(v2_pipeline, zarr_format=None)
+        zarr.Group.from_store(v2_pipeline, zarr_format=2)
         group = zarr.Group.open(v2_pipeline, zarr_format=None)
         assert group.metadata.zarr_format == 2
         with pytest.raises(ValueError, match="conflicts with"):
@@ -956,11 +963,17 @@ class TestZarrFormatMergeInCore:
 
     async def test_array_open(self, v2_pipeline: URLPipeline, tmp_path: Path) -> None:
         zarr.create_array(v2_pipeline, name="x", shape=(2,), dtype="i4", zarr_format=None)
-        array_pipeline = URLPipeline.from_url(f"file:{tmp_path.as_posix()}|zarr2:x")
-        arr = zarr.Array.open(array_pipeline, zarr_format=None)
-        assert arr.metadata.zarr_format == 2
+        # Array.open opens zarr v3 only, so a v2 pipeline conflicts with it
         with pytest.raises(ValueError, match="conflicts with"):
-            zarr.Array.open(array_pipeline)
+            zarr.Array.open(URLPipeline.from_url(f"file:{tmp_path.as_posix()}|zarr2:x"))
+        zarr.create_array(
+            URLPipeline.from_url(f"file:{tmp_path.as_posix()}/v3|zarr3:"),
+            name="y",
+            shape=(2,),
+            dtype="i4",
+        )
+        arr = zarr.Array.open(URLPipeline.from_url(f"file:{tmp_path.as_posix()}/v3|zarr3:y"))
+        assert arr.metadata.zarr_format == 3
 
     async def test_open_like(self, v2_pipeline: URLPipeline) -> None:
         # open_like inherits v2 filters/compressor from the reference; the

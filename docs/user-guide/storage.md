@@ -119,8 +119,7 @@ sub-URL locates a resource with a conventional URL; each subsequent sub-URL name
 `zip:` adapter is under development and will expand this section.
 
 A parsed [`URLPipeline`][zarr.storage.URLPipeline] can be passed to any function that
-accepts a `StoreLike`, and [`zarr.open_url`][] opens the *existing* node a pipeline
-string addresses, read-only unless `mode="r+"` is given:
+accepts a `StoreLike`:
 
 ```python exec="true" session="storage" source="above" result="ansi"
 from zarr.storage import URLPipeline
@@ -128,23 +127,20 @@ from zarr.storage import URLPipeline
 pipeline = URLPipeline.from_url("memory://pipeline-demo|zarr2:")
 group = zarr.open_group(pipeline, mode="w")
 print(group.metadata.zarr_format)
-# the same thing, as a one-liner
-print(zarr.open_url("memory://pipeline-demo|zarr2:").metadata.zarr_format)
+print(zarr.open_group(pipeline, mode="r").metadata.zarr_format)
 ```
 
-Only these two entry points read a string as a pipeline. Plain string store
-specifications keep their existing meaning everywhere else, so a local path that
-happens to contain `|` still names a directory, whatever adapters are installed.
-Unlike `zarr.open`, `zarr.open_url` never creates or overwrites: to create a node at a
-pipeline-addressed location, pass the `URLPipeline` to `zarr.create_array` or
-`zarr.create_group`.
+Only `URLPipeline.from_url` reads a string as a pipeline. Plain string store
+specifications keep their existing meaning, so a local path that happens to contain `|`
+still names a directory, whatever adapters are installed.
 
 A trailing `zarr2:` or `zarr3:` segment is a *format segment*. It is not an adapter:
 zarr-python reads it from the pipeline itself and uses it as the `zarr_format` of the
 open or create call, and its body (`zarr3:path/to/node`) is the path of the node to
 open. A `zarr_format` argument that conflicts with the format segment raises
 `ValueError`; functions whose `zarr_format` defaults to 3 (such as `zarr.create_array`
-and `Group.open`) need an explicit `zarr_format=None` to defer to the pipeline.
+and `Group.open`) need an explicit `zarr_format=None` (or the matching format) to defer
+to the pipeline.
 
 `storage_options` apply to the *root* sub-URL (e.g. fsspec options for `s3://...`);
 adapters may consume adapter-specific, namespaced keys. No percent-escape is decoded

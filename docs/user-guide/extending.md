@@ -127,7 +127,7 @@ from zarr.storage import URLPipeline
 register_url_adapter("mypackage.myscheme", MyAdapter)
 url = "memory://x|mypackage.myscheme:a|mypackage.myscheme:b"
 created = zarr.create_group(URLPipeline.from_url(url))
-group = zarr.open_url(url)
+group = zarr.open_group(URLPipeline.from_url(url), mode="r")
 assert group.path == "a/b"
 ```
 
@@ -143,7 +143,7 @@ scheme as the entry-point name. Nonstandard schemes should be vendor-prefixed
 Adapters are loaded lazily, only when a pipeline naming their scheme is resolved. An
 adapter may also be used as a *root* scheme (e.g. `mypackage.myscheme://org/repo`), in
 which case `context.preceding` is empty; such a URL reaches the adapter only through
-`zarr.open_url` or a `URLPipeline`, never as a plain string store specification. The returned store must honor
+a `URLPipeline`, never as a plain string store specification. The returned store must honor
 `context.read_only`, and `open_pipeline_segment` runs on zarr's internal event loop, so
 it must not block or call zarr's synchronous API. See
 [`zarr.abc.url_pipeline`][] and [`PipelineContext`][zarr.storage.PipelineContext] for the

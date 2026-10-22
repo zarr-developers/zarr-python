@@ -43,7 +43,6 @@ from zarr.core.common import (
     NodeType,
     ShapeLike,
     ZarrFormat,
-    _default_zarr_format,
     parse_shapelike,
 )
 from zarr.core.config import config
@@ -531,12 +530,10 @@ class AsyncGroup:
         *,
         attributes: dict[str, Any] | None = None,
         overwrite: bool = False,
-        zarr_format: ZarrFormat | None = 3,
+        zarr_format: ZarrFormat = 3,
     ) -> AsyncGroup:
         zarr_format = resolve_zarr_format(store, zarr_format)
         store_path = await make_store_path(store)
-        if zarr_format is None:
-            zarr_format = _default_zarr_format()
         attributes = attributes or {}
         group = cls(
             metadata=GroupMetadata(attributes=attributes, zarr_format=zarr_format),
@@ -1959,7 +1956,7 @@ class Group(SyncMixin):
         store: StoreLike,
         *,
         attributes: dict[str, Any] | None = None,
-        zarr_format: ZarrFormat | None = 3,
+        zarr_format: ZarrFormat = 3,
         overwrite: bool = False,
     ) -> Group:
         """Instantiate a group from an initialized store.
@@ -1972,9 +1969,8 @@ class Group(SyncMixin):
             for a description of all valid StoreLike values.
         attributes : dict, optional
             A dictionary of JSON-serializable values with user-defined attributes.
-        zarr_format : {2, 3, None}, optional
-            Zarr storage format version. None defers to the format selected by a
-            `URLPipeline` store, falling back to the configured default.
+        zarr_format : {2, 3}, optional
+            Zarr storage format version.
         overwrite : bool, optional
             If True, do not raise an error if the group already exists.
 

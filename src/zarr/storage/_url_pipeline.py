@@ -6,8 +6,7 @@ Importing this module is cheap and has no side effects: third-party adapters
 only when a pipeline URL naming their scheme is actually resolved.
 
 A string is never interpreted as a pipeline on its own: the user wraps it
-in a [`URLPipeline`][zarr.storage.URLPipeline] (or calls `zarr.open_url`),
-and that object is what the `StoreLike` machinery resolves. Plain string
+in a [`URLPipeline`][zarr.storage.URLPipeline], and that object is what the `StoreLike` machinery resolves. Plain string
 store specifications, including local paths that happen to contain `|`,
 keep their pre-existing meaning. No percent-escape is decoded.
 
@@ -82,7 +81,7 @@ class PipelineContext:
         inner. Empty when the adapter's segment is the pipeline root.
     mode : AccessModeLiteral | None
         The access mode requested by the caller (e.g.
-        `zarr.open_url(mode=...)`), or None when unspecified. Adapters for
+        `zarr.open(mode=...)`), or None when unspecified. Adapters for
         read-only resources should raise for every mode that may write, and
         open read-only for `"r"` and None.
     storage_options : dict[str, Any] | None
@@ -262,9 +261,8 @@ class URLPipeline:
     `URLPipeline` is an explicit object, no plain string store specification is
     ever interpreted as a pipeline: `zarr.open("data|x.zarr")` still addresses a
     local directory of that name, while
-    `zarr.open(URLPipeline.from_url("s3://bucket/data.zip|zip:|zarr3:"))` (or the
-    equivalent `zarr.open_url(...)`) resolves the pipeline through registered
-    adapters.
+    `zarr.open(URLPipeline.from_url("s3://bucket/data.zip|zip:|zarr3:"))` resolves
+    the pipeline through registered adapters.
 
     A pipeline is a value: instances are immutable, hashable, and compare equal
     when they hold the same segments. Nothing is resolved until the pipeline is
