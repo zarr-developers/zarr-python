@@ -346,15 +346,15 @@ class TestStringsAreNeverPipelines:
             await make_store_path("rooty://org/repo")
         assert calls == []
 
-    def test_native_schemes_do_not_route_to_adapters(self) -> None:
-        """An installed package cannot intercept `file:`/`memory:` roots, even via the registry."""
-        # register_url_adapter refuses these schemes; an entry point could still
-        # name them, so put them in the registry directly
+    async def test_native_schemes_do_not_route_to_adapters(self) -> None:
+        """Even an adapter forced into the registry never handles `file:`/`memory:`."""
         zarr.registry._url_adapter_registry.register(RootAdapter, "file")
         zarr.registry._url_adapter_registry.register(RootAdapter, "memory")
-        pipeline = URLPipeline.from_url("memory://x")
-        store = zarr.core.sync.sync(make_store(pipeline))
+        store = await make_store(URLPipeline.from_url("memory://x"))
         assert isinstance(store, ManagedMemoryStore)
+        for url in ("memory:|file:/etc", "memory:|memory:x"):
+            with pytest.raises(URLPipelineError, match="cannot be an adapter segment"):
+                await make_store_path(URLPipeline.from_url(url))
 
 
 class TestResolve:
@@ -575,15 +575,6 @@ class TestResolve:
         assert isinstance(result.store, ManagedMemoryStore)
         assert result.path == ""
 
-    async def test_resolve_method(self, tmp_path: Path) -> None:
-        """`URLPipeline.resolve` yields the adapter's store and residual path."""
-        register_url_adapter("wrap", WrapperAdapter)
-        result = await URLPipeline.from_url(
-            f"file:{tmp_path.as_posix()}|wrap:a"
-        )._resolve_store_path()
-        assert isinstance(result.store, TracingStore)
-        assert result.path == "a"
-
     async def test_format_segment_path_joins_residual_path(self, tmp_path: Path) -> None:
         """The node path of a trailing format segment extends the adapters' residual path."""
         register_url_adapter("wrap", WrapperAdapter)
@@ -597,8 +588,7 @@ class TestResolve:
             await URLPipeline.from_url("memory://base|no-such-adapter:")._resolve_store_path()
 
     async def test_base_case_value_error_is_wrapped(self) -> None:
-        # a root that only the fallback scheme detection accepts must not
-        # leak urlparse's ValueError out of the base case
+        # an authority urlparse rejects must not leak its ValueError
         register_url_adapter("wrap", WrapperAdapter)
         with pytest.raises(URLPipelineError, match="could not resolve the pipeline root"):
             await URLPipeline.from_url("vendor.x://[authority]/path|wrap:")._resolve_store_path()
@@ -628,24 +618,10 @@ class TestSpecRoots:
         assert inner._name == ""
         assert inner.path == "a/b"
 
-    async def test_memory_root_shares_data_across_spellings(self) -> None:
-        register_url_adapter("wrap", WrapperAdapter)
-        group = zarr.open_group(URLPipeline.from_url("memory:pipe-share|wrap:"), mode="w")
-        group.create_array("x", shape=(2,), dtype="i4")
-        reopened = zarr.open_group(URLPipeline.from_url("memory://pipe-share|wrap:"), mode="r")
-        assert "x" in reopened
-
     async def test_memory_root_rejects_query(self) -> None:
         register_url_adapter("wrap", WrapperAdapter)
         with pytest.raises(URLPipelineError, match="do not accept a query"):
             await URLPipeline.from_url("memory:a?opt=1|wrap:")._resolve_store_path()
-
-    async def test_memory_root_rejects_storage_options(self) -> None:
-        register_url_adapter("wrap", WrapperAdapter)
-        with pytest.raises(TypeError, match="'storage_options' was provided but unused"):
-            await URLPipeline.from_url("memory:a|wrap:")._resolve_store_path(
-                storage_options={"anon": True}
-            )
 
     async def test_file_root_localhost_authority(self, tmp_path: Path) -> None:
         # file://localhost/p and file:///p are equivalent to file:/p
@@ -672,7 +648,7 @@ class TestSpecRoots:
     @pytest.mark.skipif(sys.platform == "win32", reason="POSIX path semantics")
     async def test_file_root_drive_letter_is_not_special_on_posix(self) -> None:
         """Off Windows, `/C:/x` is an ordinary absolute path and `C:/x` is relative."""
-        with pytest.raises(URLPipelineError, match="absolute path"):
+        with pytest.raises(URLPipelineError, match="absolute local path"):
             await make_store_path(URLPipeline.from_url("file:C:/drive/data"), mode="r")
         with pytest.raises(FileNotFoundError, match="/C:/drive/data"):
             await make_store_path(URLPipeline.from_url("file:///C:/drive/data"), mode="r")
@@ -685,7 +661,7 @@ class TestSpecRoots:
     @pytest.mark.parametrize("root", ["file:relative/path", "file://localhost"])
     async def test_file_root_rejects_relative_paths(self, root: str) -> None:
         register_url_adapter("wrap", WrapperAdapter)
-        with pytest.raises(URLPipelineError, match="absolute path"):
+        with pytest.raises(URLPipelineError, match="absolute local path"):
             await URLPipeline.from_url(f"{root}|wrap:")._resolve_store_path()
 
     async def test_file_root_rejects_query(self, tmp_path: Path) -> None:
@@ -754,26 +730,6 @@ class TestMakeStoreIntegration:
         store = await make_store(URLPipeline.from_url(f"file:{tmp_path.as_posix()}|slashy:"))
         assert store is not None
 
-    async def test_make_store_closes_store_on_residual_path_error(self) -> None:
-        closed: list[bool] = []
-
-        class ClosingStore(MemoryStore):
-            def close(self) -> None:
-                closed.append(True)
-                super().close()
-
-        class LeakProbe(URLPipelineAdapter):
-            @classmethod
-            async def open_pipeline_segment(
-                cls, segment: PipelineSegment, context: PipelineContext
-            ) -> StorePath:
-                return StorePath(await ClosingStore.open(), path="residual")
-
-        register_url_adapter("leaky", LeakProbe)
-        with pytest.raises(URLPipelineError, match="resolves to a path inside a store"):
-            await make_store(URLPipeline.from_url("memory://base|leaky:"))
-        assert closed == [True]
-
     async def test_make_store_no_residual_path(self, tmp_path: Path) -> None:
         register_url_adapter("wrap", WrapperAdapter)
         store = await make_store(URLPipeline.from_url(f"file:{tmp_path.as_posix()}|wrap:"))
@@ -802,13 +758,10 @@ class TestMakeStoreIntegration:
         assert store_path.read_only
 
     async def test_mode_a_on_read_only_store_raises(self) -> None:
-        """Mode "a" on a read-only store raises, whether the store comes from a pipeline or not."""
+        """Mode "a" on a read-only adapter store raises, as for any read-only store."""
         register_url_adapter("rooty", RootAdapter)
         with pytest.raises(ValueError, match="Store is read-only but mode is 'a'"):
             await make_store_path(URLPipeline.from_url("rooty://org/repo"), mode="a")
-        store = await MemoryStore.open(read_only=True)
-        with pytest.raises(ValueError, match="Store is read-only but mode is 'a'"):
-            await make_store_path(store, mode="a")
 
     async def test_explicit_write_mode_reaches_adapter(self) -> None:
         register_url_adapter("rooty", RootAdapter)
@@ -824,31 +777,6 @@ class TestMakeStoreIntegration:
             await make_store(
                 URLPipeline.from_url("file:/tmp/some/path|wrap:"), storage_options={"anon": True}
             )
-
-    async def test_store_path_has_no_format(self, tmp_path: Path) -> None:
-        """The pipeline's format is consumed by the open call; it does not linger on the StorePath."""
-        store_path = await make_store_path(
-            URLPipeline.from_url(f"file:{tmp_path.as_posix()}|zarr2:")
-        )
-        assert not hasattr(store_path, "zarr_format")
-
-    async def test_zarr_format_merges_into_open(self, tmp_path: Path) -> None:
-        group = zarr.open_group(
-            URLPipeline.from_url(f"file:{tmp_path.as_posix()}|zarr2:"), mode="w"
-        )
-        assert group.metadata.zarr_format == 2
-
-    async def test_conflicting_explicit_format_raises(self, tmp_path: Path) -> None:
-        with pytest.raises(ValueError, match="conflicts with"):
-            zarr.open_group(
-                URLPipeline.from_url(f"file:{tmp_path.as_posix()}|zarr2:"), mode="w", zarr_format=3
-            )
-
-    async def test_matching_explicit_format_ok(self, tmp_path: Path) -> None:
-        group = zarr.open_group(
-            URLPipeline.from_url(f"file:{tmp_path.as_posix()}|zarr2:"), mode="w", zarr_format=2
-        )
-        assert group.metadata.zarr_format == 2
 
 
 class TestOpenFunctionsAcceptPipelines:

@@ -87,12 +87,12 @@ See [developing custom stores](storage.md#developing-custom-stores) for more inf
 
 ## Custom URL pipeline adapters
 
-[URL pipelines](storage.md#user-guide-url-pipelines) are `|`-chained URLs such as
-`s3://bucket/data.zip|zip:|zarr3:`. Each sub-URL after the first names an *adapter*
-that reinterprets everything to its left. A package provides an adapter for a scheme by
-subclassing [`zarr.abc.url_pipeline.URLPipelineAdapter`][] and implementing its single
-classmethod, which resolves the adapter's segment into an open store and a residual path,
-returned as a [`StorePath`][zarr.storage.StorePath]:
+In a [URL pipeline](storage.md#user-guide-url-pipelines) such as
+`s3://bucket/data.zip|zip:|zarr3:`, each sub-URL after the first names an *adapter*
+that reinterprets everything to its left. A package provides an adapter by subclassing
+[`zarr.abc.url_pipeline.URLPipelineAdapter`][] and implementing one classmethod, which
+returns an open store and the path addressed inside it as a
+[`StorePath`][zarr.storage.StorePath]:
 
 ```python test="true" session="url-adapter"
 from zarr.abc.url_pipeline import URLPipelineAdapter
@@ -112,12 +112,9 @@ class MyAdapter(URLPipelineAdapter):
         return StorePath(store, path)
 ```
 
-To resolve the preceding pipeline with a different mode or options (for example
-read-only, or without the adapter's own `storage_options` keys), resolve through a derived
-context: `await dataclasses.replace(context, mode="r").resolve_preceding()`.
-
-Wrapper adapters compose: in `memory://x|mypackage.myscheme:a|mypackage.myscheme:b` the
-inner adapter sees the outer one's residual path `a` and the pipeline resolves to `a/b`.
+To resolve the preceding pipeline with another mode or options, use a derived context:
+`await dataclasses.replace(context, mode="r").resolve_preceding()`. Wrapper adapters
+compose: `memory://x|mypackage.myscheme:a|mypackage.myscheme:b` resolves to `a/b`.
 
 ```python test="true" session="url-adapter"
 import zarr
@@ -131,23 +128,27 @@ group = zarr.open_group(URLPipeline.from_url(url), mode="r")
 assert group.path == "a/b"
 ```
 
-Register the class under the `zarr.url_adapters` entry-point group, using the URL
-scheme as the entry-point name. Nonstandard schemes should be vendor-prefixed
-(`vendor.scheme`), per the URL pipeline specification:
+Register the class under the `zarr.url_adapters` entry-point group with the scheme as
+the entry-point name, vendor-prefixed for nonstandard schemes. Adapters are imported
+only when a pipeline naming their scheme is resolved.
 
 ```toml
 [project.entry-points."zarr.url_adapters"]
 "mypackage.myscheme" = "mypackage.zarr_adapter:MyAdapter"
 ```
 
-Adapters are loaded lazily, only when a pipeline naming their scheme is resolved. An
-adapter may also be used as a *root* scheme (e.g. `mypackage.myscheme://org/repo`), in
-which case `context.preceding` is empty; such a URL reaches the adapter only through
-a `URLPipeline`, never as a plain string store specification. The returned store must honor
-`context.read_only`, and `open_pipeline_segment` runs on zarr's internal event loop, so
-it must not block or call zarr's synchronous API. See
-[`zarr.abc.url_pipeline`][] and [`PipelineContext`][zarr.storage.PipelineContext] for the
-full contract.
+An adapter can also be a *root* scheme (`mypackage.myscheme://org/repo`), with an empty
+`context.preceding`. Installing a root adapter for a scheme fsspec also handles takes
+that scheme over at the root of every pipeline. The schemes zarr handles itself
+(`file`, `memory`, `zarr`, `zarr2`, `zarr3`) cannot be registered, and entry points
+with those names are ignored.
+
+Every adapter sees all of the caller's `storage_options`, including credentials meant
+for the root: consume only keys namespaced for your adapter, never log the options, and
+strip your keys before resolving the rest of the pipeline. The returned store must honor
+`context.read_only`. `open_pipeline_segment` runs on zarr's event loop, so it must not
+block or call zarr's synchronous API. See [`PipelineContext`][zarr.storage.PipelineContext]
+for the full contract.
 
 ## Custom array buffers
 

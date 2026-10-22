@@ -528,14 +528,14 @@ async def save_array(
     **kwargs
         Passed through to [`create`][zarr.api.asynchronous.create], e.g., compressor.
     """
+    zarr_format = resolve_zarr_format(store, zarr_format)
+    if zarr_format is None:
+        zarr_format = _default_zarr_format()
     if not isinstance(arr, NDArrayLike):
         raise TypeError("arr argument must be numpy or other NDArrayLike array")
 
     mode = kwargs.pop("mode", "a")
-    zarr_format = resolve_zarr_format(store, zarr_format)
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
-    if zarr_format is None:
-        zarr_format = _default_zarr_format()
     if np.isscalar(arr):
         arr = np.array(arr)
     shape = arr.shape
@@ -584,6 +584,10 @@ async def save_group(
         NumPy arrays with data to save.
     """
 
+    zarr_format = resolve_zarr_format(store, zarr_format)
+    if zarr_format is None:
+        zarr_format = _default_zarr_format()
+
     for arg in args:
         if not isinstance(arg, NDArrayLike):
             raise TypeError(
@@ -601,10 +605,7 @@ async def save_group(
     for arr in (*args, *kwargs.values()):
         get_data_type_from_native_dtype(arr.dtype)
 
-    zarr_format = resolve_zarr_format(store, zarr_format)
     store_path = await make_store_path(store, path=path, mode="w", storage_options=storage_options)
-    if zarr_format is None:
-        zarr_format = _default_zarr_format()
     # The group replaces whatever is stored under the path, now that the arguments are known
     # to be valid.
     await AsyncGroup.from_store(store_path, zarr_format=zarr_format, overwrite=True)
@@ -799,12 +800,13 @@ async def create_group(
         The new group.
     """
 
-    mode: Literal["a"] = "a"
-
     zarr_format = resolve_zarr_format(store, zarr_format)
-    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
     if zarr_format is None:
         zarr_format = _default_zarr_format()
+
+    mode: Literal["a"] = "a"
+
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     return await AsyncGroup.from_store(
         store=store_path,
@@ -1102,6 +1104,10 @@ async def create(
     z : array
         The array.
     """
+    zarr_format = resolve_zarr_format(store, zarr_format)
+    if zarr_format is None:
+        zarr_format = _default_zarr_format()
+
     _warn_unimplemented_kwargs(
         {
             "synchronizer": synchronizer,
@@ -1120,10 +1126,7 @@ async def create(
     if mode is None:
         mode = "a"
     overwrite = overwrite or _infer_overwrite(mode)
-    zarr_format = resolve_zarr_format(store, zarr_format)
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
-    if zarr_format is None:
-        zarr_format = _default_zarr_format()
 
     config_parsed = parse_array_config(config)
 

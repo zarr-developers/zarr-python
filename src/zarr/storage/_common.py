@@ -29,7 +29,7 @@ from zarr.errors import (
 )
 from zarr.storage._local import LocalStore
 from zarr.storage._memory import ManagedMemoryStore, MemoryStore
-from zarr.storage._url_pipeline import URLPipeline
+from zarr.storage._url_pipeline import _FORMAT_SCHEMES, URLPipeline
 from zarr.storage._utils import UPath, _join_paths, normalize_path, parse_store_url
 
 _has_fsspec = importlib.util.find_spec("fsspec")
@@ -326,9 +326,8 @@ async def make_store(
     - `None` = `MemoryStore` object.
     - `FSMap` = `FsspecStore` object.
     - `UPath` = `FsspecStore` object, or `LocalStore` for a local `UPath`.
-    - `URLPipeline` = the store resolved by the [URL pipeline][user-guide-url-pipelines];
-      the pipeline must address the store root (use `make_store_path` for pipelines that
-      address a path within a store). Plain strings are never interpreted as pipelines.
+    - `URLPipeline` = the store the [URL pipeline][user-guide-url-pipelines] resolves to,
+      which must be the store root (`make_store_path` accepts any pipeline).
 
     Parameters
     ----------
@@ -355,16 +354,14 @@ async def make_store(
     """
     from zarr.storage._fsspec import FsspecStore  # circular import
 
-    if mode is not None and mode not in ANY_ACCESS_MODE:
-        raise ValueError(f"Invalid mode: {mode}, expected one of {ANY_ACCESS_MODE}")
-    _read_only = mode == "r"
-
     if isinstance(store_like, URLPipeline):
+        if mode is not None and mode not in ANY_ACCESS_MODE:
+            raise ValueError(f"Invalid mode: {mode}, expected one of {ANY_ACCESS_MODE}")
         result = await store_like._resolve_store_path(mode=mode, storage_options=storage_options)
         if result.path:
             result.store.close()
             raise URLPipelineError(
-                f"the URL pipeline {str(store_like)!r} resolves to a path inside a store; "
+                f"{store_like!r} resolves to a path inside a store; "
                 "use zarr.open() or make_store_path() instead of make_store()"
             )
         return result.store
@@ -380,6 +377,10 @@ async def make_store(
                 "'storage_options' was provided but unused. "
                 "'storage_options' is only used when the store is passed as an FSSpec URI string.",
             )
+
+    if mode is not None and mode not in ANY_ACCESS_MODE:
+        raise ValueError(f"Invalid mode: {mode}, expected one of {ANY_ACCESS_MODE}")
+    _read_only = mode == "r"
 
     if isinstance(store_like, StorePath):
         # Get underlying store
@@ -531,21 +532,27 @@ def resolve_zarr_format(
     store_like: StoreLike | None, zarr_format: ZarrFormat | None
 ) -> ZarrFormat | None:
     """
-    Merge the zarr format selected by a `URLPipeline` store specification with
-    the format a caller asked for.
-
-    For any other `StoreLike`, `zarr_format` is returned unchanged. A pipeline
-    with a trailing `zarr2:`/`zarr3:` segment selects that format when the
-    caller passes None.
+    Merge the format selected by a `URLPipeline`'s trailing `zarr2:`/`zarr3:`
+    segment with the caller's `zarr_format`. Other `StoreLike`s, and a trailing
+    `zarr:` segment, leave `zarr_format` unchanged.
 
     Raises
     ------
     ValueError
         If `zarr_format` is not None and differs from the pipeline's format.
     """
-    if isinstance(store_like, URLPipeline):
-        return store_like._resolve_zarr_format(zarr_format)
-    return zarr_format
+    if not isinstance(store_like, URLPipeline) or store_like._format_segment is None:
+        return zarr_format
+    pipeline_format = _FORMAT_SCHEMES[store_like._format_segment.scheme]
+    if pipeline_format is None:
+        return zarr_format
+    if zarr_format is not None and zarr_format != pipeline_format:
+        raise ValueError(
+            f"zarr_format={zarr_format} conflicts with the 'zarr{pipeline_format}:' segment "
+            f"of {store_like!r}; pass zarr_format={pipeline_format} (or None where accepted), "
+            "or open it with zarr.open_group / zarr.open_array, which follow the pipeline"
+        )
+    return pipeline_format
 
 
 async def ensure_no_existing_node(

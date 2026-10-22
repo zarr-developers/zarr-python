@@ -135,7 +135,7 @@ class TestFormatSegments:
 
     @pytest.mark.parametrize("body", ["../x", "a/../../x", "./x", "a/./b"])
     def test_node_path_dot_segments_rejected_at_parse(self, body: str) -> None:
-        with pytest.raises(URLPipelineError, match="invalid node path"):
+        with pytest.raises(URLPipelineError, match="node path of a format segment"):
             URLPipeline.from_url(f"memory:|zarr3:{body}")
 
     async def test_node_path_traversal_creates_nothing(self, tmp_path: Path) -> None:
@@ -218,9 +218,10 @@ class TestMemoryRoot:
         with pytest.raises(URLPipelineError, match=r"'\.' or '\.\.'"):
             await make_store_path(URLPipeline.from_url(f"memory:{body}"))
 
-    async def test_empty_storage_options_rejected(self) -> None:
+    @pytest.mark.parametrize("storage_options", [{}, {"anon": True}])
+    async def test_storage_options_rejected(self, storage_options: dict[str, object]) -> None:
         with pytest.raises(TypeError, match="'storage_options' was provided but unused"):
-            await make_store_path(URLPipeline.from_url("memory:x"), storage_options={})
+            await make_store_path(URLPipeline.from_url("memory:x"), storage_options=storage_options)
 
 
 class TestRootSchemeCase:
@@ -236,9 +237,7 @@ class TestRootSchemeCase:
 
         store_path = await make_store_path(URLPipeline.from_url("HTTPS://example.com/d"))
         assert isinstance(store_path.store, FsspecStore)
-        assert store_path.store.path.startswith("https://") or "example.com" in str(
-            store_path.store
-        )
+        assert "https" in store_path.store.fs.protocol
 
 
 class TestRegisterURLAdapter:
@@ -296,3 +295,114 @@ class TestMessages:
         with pytest.raises(GroupNotFoundError) as info:
             zarr.open_group(URLPipeline.from_url(f"file:{tmp_path.as_posix()}|zarr3:"), mode="r")
         assert "PipelineSegment(" not in str(info.value)
+
+
+class TestSecretsAreRedacted:
+    URL = "https://user:pw@h/x?token=SECRET|rec:|zarr2:"
+
+    def test_reprs(self) -> None:
+        pipeline = URLPipeline.from_url(self.URL)
+        context = zarr.storage.PipelineContext(
+            preceding=pipeline.segments[:1], mode="r", storage_options={"secret": "SECRET"}
+        )
+        for text in (repr(pipeline), repr(pipeline.segments[0]), repr(context)):
+            assert "SECRET" not in text
+            assert "pw" not in text
+        assert str(pipeline) == self.URL  # str() stays lossless
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://h/x?token=SECRET| zip:",
+            "https://h/x?token=SECRET||zip:",
+            "https://h/x?token=SECRET#frag",
+            "https://h/x?token=SECRET|zarr3:|zip:",
+            "/x?token=SECRET",
+            "a_b://x?token=SECRET",
+        ],
+    )
+    def test_parse_errors(self, url: str) -> None:
+        with pytest.raises(URLPipelineError) as info:
+            URLPipeline.from_url(url)
+        assert "SECRET" not in str(info.value)
+
+    async def test_resolution_errors(self, recording: type[RecordingAdapter]) -> None:
+        with pytest.raises(ValueError, match="conflicts with") as conflict:
+            zarr.open_group(URLPipeline.from_url(self.URL), mode="w", zarr_format=3)
+        with pytest.raises(URLPipelineError) as residual:
+            await make_store(URLPipeline.from_url("memory:?token=SECRET|rec:sub"))
+        with pytest.raises(URLPipelineError) as root:
+            await make_store_path(URLPipeline.from_url("vendor.x://[a]/p?token=SECRET"))
+        for info in (conflict, residual, root):
+            assert "SECRET" not in str(info.value)
+
+
+class TestEntryPointNames:
+    @pytest.mark.parametrize("name", ["file", "Memory", "zarr3", "a b", "x\n"])
+    def test_unusable_entry_point_names_ignored(
+        self, name: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from importlib.metadata import EntryPoint, EntryPoints
+
+        fake = EntryPoints(
+            [EntryPoint(name=name, value="nowhere:Adapter", group="zarr.url_adapters")]
+        )
+        monkeypatch.setattr(zarr.registry, "get_entry_points", lambda: fake)
+        zarr.registry._url_adapter_registry.lazy_load_list.clear()
+        with pytest.warns(ZarrUserWarning, match="ignoring the 'zarr.url_adapters' entry point"):
+            zarr.registry._collect_entrypoints()
+        assert zarr.registry._url_adapter_registry.lazy_load_list == []
+
+    def test_no_adapter_error_does_not_list_installed_schemes(
+        self, recording: type[RecordingAdapter]
+    ) -> None:
+        with pytest.raises(URLPipelineError) as info:
+            zarr.core.sync.sync(make_store_path(URLPipeline.from_url("memory:|nope:")))
+        assert "rec" not in str(info.value)
+
+    @pytest.mark.parametrize("scheme", ["foo\n", "\u212aelvin"])
+    def test_register_rejects_scheme_tricks(self, scheme: str) -> None:
+        with pytest.raises(ValueError, match="not a valid URL scheme"):
+            register_url_adapter(scheme, RecordingAdapter)
+
+
+class TestLimits:
+    def test_hand_built_pipeline_segment_limit(self) -> None:
+        segment = PipelineSegment("w", "", None, "w")
+        root = PipelineSegment("memory", "", None, "memory:")
+        URLPipeline((root, *[segment] * 31))
+        with pytest.raises(URLPipelineError, match="1 to 32 segments"):
+            URLPipeline((root, *[segment] * 32))
+
+
+class TestWindowsFileRoots:
+    """Windows path rules, checked on any platform by patching `sys.platform`."""
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            r"file:/\attacker\share\data",
+            r"file:///\attacker\share",
+            r"file://localhost/\attacker\share",
+            r"file:\\attacker\share",
+        ],
+    )
+    async def test_unc_paths_rejected(self, url: str, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(sys, "platform", "win32")
+        with pytest.raises(URLPipelineError, match="authority|'//'|absolute local path"):
+            await make_store_path(URLPipeline.from_url(url), mode="r")
+
+    @pytest.mark.parametrize(
+        "url", [r"file:C:x", r"file:/C:..\x", "file:C:/a/../b", "file:/C:/a:stream"]
+    )
+    async def test_drive_relative_and_dot_paths_rejected(
+        self, url: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(sys, "platform", "win32")
+        with pytest.raises(URLPipelineError, match=r"absolute local path|'\.' or '\.\.'|':'"):
+            await make_store_path(URLPipeline.from_url(url), mode="r")
+
+
+async def test_file_authority_is_case_insensitive(tmp_path: Path) -> None:
+    zarr.open_group(URLPipeline.from_url(f"file://LOCALHOST{tmp_path.as_posix()}"), mode="w")
+    assert (tmp_path / "zarr.json").exists()

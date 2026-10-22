@@ -13,7 +13,7 @@ adapter for, since parsing is independent of adapter availability — split it
 into the expected sub-URL schemes, and preserve the text losslessly.
 
 To regenerate after a spec update: extract examples per the rule above and
-recompute the expected scheme tuples with `parse_pipeline`, reviewing any
+recompute the expected scheme tuples with `_parse_pipeline`, reviewing any
 changes against the spec diff.
 """
 
@@ -23,7 +23,7 @@ import re
 
 import pytest
 
-from zarr.storage._url_pipeline import parse_pipeline
+from zarr.storage._url_pipeline import _parse_pipeline
 
 SPEC_EXAMPLES: list[tuple[str, tuple[str, ...]]] = [
     # README.md
@@ -245,7 +245,7 @@ def _uppercase_schemes(example: str) -> str:
 
 @pytest.mark.parametrize(("url", "expected_schemes"), SPEC_EXAMPLES, ids=lambda v: str(v))
 def test_spec_example_parses(url: str, expected_schemes: tuple[str, ...]) -> None:
-    segments = parse_pipeline(url)
+    segments = _parse_pipeline(url)
     assert tuple(segment.scheme for segment in segments) == expected_schemes
     # lossless round-trip of the original text
     assert "|".join(segment.raw for segment in segments) == url
@@ -254,5 +254,5 @@ def test_spec_example_parses(url: str, expected_schemes: tuple[str, ...]) -> Non
 @pytest.mark.parametrize(("url", "expected_schemes"), SPEC_EXAMPLES, ids=lambda v: str(v))
 def test_spec_example_schemes_case_insensitive(url: str, expected_schemes: tuple[str, ...]) -> None:
     upper = _uppercase_schemes(url)
-    segments = parse_pipeline(upper)
+    segments = _parse_pipeline(upper)
     assert tuple(segment.scheme for segment in segments) == expected_schemes

@@ -110,54 +110,43 @@ print(group)
 ## URL Pipelines {#user-guide-url-pipelines}
 
 Zarr supports [URL pipelines](https://github.com/jbms/url-pipeline): `|`-chained URLs
-that address zarr data through nested storage layers, read left to right. The first
-sub-URL locates a resource with a conventional URL; each subsequent sub-URL names an
-*adapter* that reinterprets everything to its left (e.g.
-`s3://bucket/data.zip|zip:|zarr3:`). Adapters are provided by packages through the
-`zarr.url_adapters` entry-point group — see
-[`zarr.abc.url_pipeline`][zarr.abc.url_pipeline] for the adapter interface. A builtin
-`zip:` adapter is under development and will expand this section.
+read left to right. The first sub-URL locates a resource with a conventional URL; each
+later sub-URL names an *adapter* that reinterprets everything to its left (e.g.
+`s3://bucket/data.zip|zip:|zarr3:`). Adapters are provided by packages; see
+[custom URL pipeline adapters](extending.md#custom-url-pipeline-adapters).
 
-A parsed [`URLPipeline`][zarr.storage.URLPipeline] can be passed to any function that
-accepts a `StoreLike`:
+Parse a pipeline with [`URLPipeline.from_url`][zarr.storage.URLPipeline.from_url] and
+pass it to any function that accepts a `StoreLike`. This is the only way a string is
+read as a pipeline: a plain string store specification keeps its existing meaning, so a
+local path containing `|` still names a directory.
 
 ```python exec="true" session="storage" source="above" result="ansi"
 from zarr.storage import URLPipeline
 
 pipeline = URLPipeline.from_url("memory://pipeline-demo|zarr2:")
 group = zarr.open_group(pipeline, mode="w")
-print(group.metadata.zarr_format)
 print(zarr.open_group(pipeline, mode="r").metadata.zarr_format)
 ```
 
-Only `URLPipeline.from_url` reads a string as a pipeline. Plain string store
-specifications keep their existing meaning, so a local path that happens to contain `|`
-still names a directory, whatever adapters are installed.
+A trailing `zarr2:` or `zarr3:` *format segment* selects the zarr format of the call,
+and its body (`zarr3:path/to/node`) is the path of the node; `zarr:` gives a node path
+and leaves the format to be detected. A conflicting `zarr_format` argument raises
+`ValueError`. That includes the default of 3 of `zarr.create_array`, `Group.open`,
+`Group.from_store` and `Array.open`: pass the matching format, or use
+`zarr.open_group` / `zarr.open_array`, which follow the pipeline.
 
-A trailing `zarr2:` or `zarr3:` segment is a *format segment*. It is not an adapter:
-zarr-python reads it from the pipeline itself and uses it as the `zarr_format` of the
-open or create call, and its body (`zarr3:path/to/node`) is the path of the node to
-open. The node path must not contain `.` or `..` components. A trailing `zarr:` segment
-also gives a node path, but leaves the format to be detected. A `zarr_format` argument that conflicts with the format segment raises
-`ValueError`; functions whose `zarr_format` defaults to 3 (such as `zarr.create_array`
-and `Group.open`) need an explicit `zarr_format=None` (or the matching format) to defer
-to the pipeline.
+The root sub-URL must carry a scheme, so a local path is spelled as an absolute `file:`
+URL (`file:/data/x.zarr`, with at most a `localhost` authority). Every `memory:` root
+addresses one managed in-memory store, and its body is a path within it (`memory:a` ≡
+`memory:/a` ≡ `memory://a`); data lives only while some store object refers to it.
+Neither root accepts `.` or `..` path components, and drive letters are only special on
+Windows. No percent-escape is decoded anywhere in a pipeline. Other roots, such as
+`s3://...`, are opened exactly as the same plain string would be.
 
-`storage_options` apply to the *root* sub-URL (e.g. fsspec options for `s3://...`);
-adapters may consume adapter-specific, namespaced keys. No percent-escape is decoded
-anywhere in a pipeline. Adapters cannot be registered for the schemes zarr-python
-handles itself: `file`, `memory`, `zarr`, `zarr2` and `zarr3`.
-
-Inside a pipeline, every `memory:` root addresses the same managed in-memory store, and
-its body is a path within that store: `memory:a/b`, `memory:/a/b` and `memory://a/b` are
-equivalent, as are `memory:`, `memory:/` and `memory://`. Data lives only while some
-store object referring to it is alive. When fsspec is installed, a plain `memory://name`
-string store specification is still routed to fsspec's in-memory filesystem, which is a
-different store. A `file:` root must carry an absolute path, with at most a `localhost`
-authority; percent-escapes are not decoded, matching the [local store](#local-store).
-Drive letters are only special on Windows: elsewhere `file:/C:/data` is the absolute
-path `/C:/data`. Neither root accepts `.` or `..` path components. The root always
-carries a scheme: a local path is spelled as a `file:` URL, never as a bare path.
+`storage_options` configure the root sub-URL, and every adapter in the pipeline can
+see them. When a pipeline may come from an untrusted source, keep credentials out of
+`storage_options` unless you trust every installed adapter, and don't accept `memory:`
+roots in a process that serves several users: the in-memory store is process-wide.
 
 ## Explicit Store Creation
 
