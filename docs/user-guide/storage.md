@@ -102,7 +102,7 @@ print(group)
 
 - a [`URLPipeline`][zarr.storage.URLPipeline], the parsed form of a
   [URL pipeline](#user-guide-url-pipelines) such as `s3://bucket/data.zip|zip:`, which
-  is resolved through registered adapters. Strings are never interpreted as pipelines.
+  is resolved through registered adapters.
 
 - a [`Store`][zarr.abc.store.Store] or [`StorePath`][zarr.storage.StorePath] -
   see explicit store creation below.
@@ -128,11 +128,11 @@ group = zarr.open_group(pipeline, mode="w")
 print(zarr.open_group(pipeline, mode="r").metadata.zarr_format)
 ```
 
-A trailing `zarr2:` or `zarr3:` *format segment* selects the zarr format of the call,
-and its body (`zarr3:path/to/node`) is the path of the node; `zarr:` gives a node path
-and leaves the format to be detected. A conflicting `zarr_format` argument raises
-`ValueError`. That includes the default of 3 of `zarr.create_array`, `Group.open`,
-`Group.from_store` and `Array.open`: pass the matching format, or use
+A trailing `zarr2:` or `zarr3:` *format segment* selects the zarr format,
+and its body (`zarr3:path/to/node`) is the node path; `zarr:` gives a node path and
+detects the format. A conflicting `zarr_format` argument raises `ValueError`, including
+the default `zarr_format=3` of `zarr.create_array`, `Group.open`, `Group.from_store` and
+`Array.open`; pass the matching format, or use
 `zarr.open_group` / `zarr.open_array`, which follow the pipeline.
 
 The root sub-URL must carry a scheme, so a local path is spelled as an absolute `file:`

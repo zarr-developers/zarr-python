@@ -49,7 +49,7 @@ def test_empty_pipeline_rejected() -> None:
     ["s3://b|zip:", ["s3://b"], ("s3://b",), [PipelineSegment("s3", "//b", None, "s3://b")]],
 )
 def test_direct_construction_rejects_non_segments(segments: object) -> None:
-    """A string or a list is not a pipeline; `from_url` is the way to parse one."""
+    """Only a tuple of `PipelineSegment` is accepted; `from_url` parses strings."""
     with pytest.raises(TypeError, match="tuple of PipelineSegment"):
         URLPipeline(segments)  # type: ignore[arg-type]
 

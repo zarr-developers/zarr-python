@@ -8,13 +8,10 @@ examples on bullet lines, skipping spans without a `:` or `|`. The spec
 validates each example (and an uppercased-scheme variant) against its ABNF
 grammar, so this corpus is grammar-valid by construction.
 
-The parser must accept every example — including schemes zarr-python has no
-adapter for, since parsing is independent of adapter availability — split it
-into the expected sub-URL schemes, and preserve the text losslessly.
-
-To regenerate after a spec update: extract examples per the rule above and
-recompute the expected scheme tuples with `_parse_pipeline`, reviewing any
-changes against the spec diff.
+The parser must accept every example, whether or not an adapter exists for its
+schemes, split it into the expected schemes, and preserve the text losslessly. To
+regenerate, re-extract the examples and recompute the expected schemes with
+`_parse_pipeline`, reviewing changes against the spec diff.
 """
 
 from __future__ import annotations
@@ -240,10 +237,10 @@ def _uppercase_schemes(example: str) -> str:
     def repl(match: re.Match[str]) -> str:
         return match.group(1) + match.group(2).upper()
 
-    return re.sub(r"((?:^|\|)\s*)([a-zA-Z][a-zA-Z0-9+.-]*)", repl, example)
+    return re.sub(r"(^|\|)([a-zA-Z][a-zA-Z0-9+.-]*)", repl, example)
 
 
-@pytest.mark.parametrize(("url", "expected_schemes"), SPEC_EXAMPLES, ids=lambda v: str(v))
+@pytest.mark.parametrize(("url", "expected_schemes"), SPEC_EXAMPLES, ids=str)
 def test_spec_example_parses(url: str, expected_schemes: tuple[str, ...]) -> None:
     segments = _parse_pipeline(url)
     assert tuple(segment.scheme for segment in segments) == expected_schemes
@@ -251,7 +248,7 @@ def test_spec_example_parses(url: str, expected_schemes: tuple[str, ...]) -> Non
     assert "|".join(segment.raw for segment in segments) == url
 
 
-@pytest.mark.parametrize(("url", "expected_schemes"), SPEC_EXAMPLES, ids=lambda v: str(v))
+@pytest.mark.parametrize(("url", "expected_schemes"), SPEC_EXAMPLES, ids=str)
 def test_spec_example_schemes_case_insensitive(url: str, expected_schemes: tuple[str, ...]) -> None:
     upper = _uppercase_schemes(url)
     segments = _parse_pipeline(upper)

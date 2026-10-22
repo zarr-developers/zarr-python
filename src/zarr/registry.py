@@ -314,7 +314,7 @@ def _collect_entrypoints() -> list[Registry[Any]]:
         else:
             warnings.warn(
                 f"ignoring the 'zarr.url_adapters' entry point {entry_point.name!r} "
-                f"({entry_point.value!r}): it is not a URL scheme an adapter can handle",
+                f"({entry_point.value!r}): not a valid adapter scheme",
                 category=ZarrUserWarning,
                 stacklevel=2,
             )
@@ -521,8 +521,8 @@ def get_chunk_key_encoding_class(key: str) -> type[ChunkKeyEncoding]:
     return _chunk_key_encoding_registry[key]
 
 
-# A URL scheme (RFC 3986, ASCII only), plus "." for vendor-prefixed schemes
-# such as "earthmover.myscheme". Use with fullmatch.
+# An RFC 3986 URL scheme (ASCII only), e.g. "s3" or "earthmover.myscheme".
+# Use with fullmatch.
 _URL_SCHEME_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9+.\-]*")
 
 # Schemes zarr-python handles itself: the native `file:` and `memory:` roots
@@ -590,10 +590,10 @@ def _get_url_adapter(scheme: str) -> type[URLPipelineAdapter]:
 
     Loads pending `zarr.url_adapters` entry points for this scheme only, so
     resolving one scheme never imports other providers' packages. When the
-    scheme is already registered (e.g. with `register_url_adapter`), a same-named entry
-    point is discarded with a [`ZarrUserWarning`][zarr.errors.ZarrUserWarning];
-    when several entry points share the name, the first one wins and a
-    warning names the ones ignored.
+    scheme is already registered (e.g. with `register_url_adapter`), a
+    same-named entry point is discarded with a
+    [`ZarrUserWarning`][zarr.errors.ZarrUserWarning]; when several entry
+    points share the name, the first one wins and a warning names the rest.
 
     Raises
     ------
@@ -606,10 +606,9 @@ def _get_url_adapter(scheme: str) -> type[URLPipelineAdapter]:
         raise URLPipelineError(
             f"'{key}:' is handled by zarr-python itself and cannot be an adapter segment"
         )
-    # Take the matching entry points out of the pending list under the lock,
-    # so concurrent first-time resolutions of different schemes never clobber
-    # each other's view of the list. The import itself runs *outside* the lock:
-    # it may take arbitrarily long and may itself resolve URL adapters.
+    # Claim this scheme's entry points under the lock so concurrent loads of
+    # different schemes can't clobber the list; import outside it, since an
+    # import may be slow or itself resolve URL adapters.
     with _url_adapter_lock:
         registered = _url_adapter_registry.get(key)
         pending = [e for e in _url_adapter_registry.lazy_load_list if e.name.lower() == key]

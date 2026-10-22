@@ -18,7 +18,7 @@ def test_single_root_url() -> None:
 
 @pytest.mark.parametrize("url", ["/local/path", "/local/path|zip:", "relative/path|zip:"])
 def test_schemeless_root_rejected(url: str) -> None:
-    """The root sub-URL must carry a URL scheme; a bare path (or anything urlparse would not read as a scheme) is an error."""
+    """The root sub-URL must carry a URL scheme; a bare path is an error."""
     with pytest.raises(URLPipelineError, match="URL scheme"):
         _parse_pipeline(url)
 
@@ -141,7 +141,7 @@ def test_invalid_adapter_scheme_rejected(segment: str) -> None:
 
 
 def test_scheme_detection_ignores_authority_syntax() -> None:
-    """Scheme detection works on the raw text, so an authority urlparse would reject is no obstacle."""
+    """Scheme detection works on the raw text, so a malformed authority does not affect it."""
     segments = _parse_pipeline("xy://[authority]/path|zip:")
     assert segments[0].scheme == "xy"
     assert segments[0].raw == "xy://[authority]/path"
@@ -155,15 +155,9 @@ def test_round_trip() -> None:
 
 # --- property-based tests -----------------------------------------------
 #
-# These exercise the parser's *splitting invariants*, not URL pipeline spec
-# validity: _parse_pipeline is a permissive segment splitter (bodies and
-# queries are opaque text to it), and semantic validation is left to the
-# resolver and the adapters. Rather than enumerating registered schemes,
-# the strategies sample the full scheme grammar the parser accepts
-# (RFC 3986 plus "." for vendor prefixes), so every valid root/adapter
-# scheme is reachable. Bodies and queries draw from printable ASCII minus
-# the characters the parser itself splits on ("|", "#", and "?" for
-# bodies); the generated text is not required to be a well-formed URI.
+# These check the parser's splitting invariants, not spec validity. Schemes are
+# drawn from the full scheme grammar; bodies and queries from printable ASCII
+# minus the characters the parser splits on ("|", "#", and "?" for bodies).
 
 _ADAPTER_SCHEME = st.from_regex(r"[a-zA-Z][a-zA-Z0-9+.\-]{0,15}", fullmatch=True)
 # two or more characters, so Windows drive-letter handling cannot reclassify

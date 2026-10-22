@@ -77,7 +77,7 @@ class TestModeValidation:
 
 
 class TestStoresClosedOnError:
-    async def test_read_only_store_in_mode_a(self, recording: type[RecordingAdapter]) -> None:
+    def test_read_only_store_in_mode_a(self, recording: type[RecordingAdapter]) -> None:
         recording.read_only_store = True
         with pytest.raises(ValueError, match="Store is read-only but mode is 'a'"):
             zarr.open_group(URLPipeline.from_url("memory:|rec:"), mode="a")
@@ -103,13 +103,13 @@ class TestStoresClosedOnError:
             await make_store(URLPipeline.from_url("memory:|rec:sub"))
         assert len(ClosingStore.closes) == 1
 
-    async def test_success_does_not_close(self, recording: type[RecordingAdapter]) -> None:
+    def test_success_does_not_close(self, recording: type[RecordingAdapter]) -> None:
         zarr.open_group(URLPipeline.from_url("memory:|rec:"), mode="w")
         assert ClosingStore.closes == []
 
 
 class TestConsolidateMetadata:
-    async def test_honors_format_segment(self, tmp_path: Path) -> None:
+    def test_honors_format_segment(self, tmp_path: Path) -> None:
         root = tmp_path.as_posix()
         zarr.create_group(tmp_path, zarr_format=3).create_array("x", shape=(2,), dtype="i4")
         # a zarr2: pipeline over v3 data finds no v2 group
@@ -119,7 +119,7 @@ class TestConsolidateMetadata:
             group = zarr.consolidate_metadata(URLPipeline.from_url(f"file:{root}|zarr3:"))
         assert group.metadata.consolidated_metadata is not None
 
-    async def test_conflicting_format_raises(self, tmp_path: Path) -> None:
+    def test_conflicting_format_raises(self, tmp_path: Path) -> None:
         zarr.create_group(tmp_path, zarr_format=2)
         with pytest.raises(ValueError, match="conflicts with"):
             zarr.consolidate_metadata(
@@ -138,13 +138,13 @@ class TestFormatSegments:
         with pytest.raises(URLPipelineError, match="node path of a format segment"):
             URLPipeline.from_url(f"memory:|zarr3:{body}")
 
-    async def test_node_path_traversal_creates_nothing(self, tmp_path: Path) -> None:
+    def test_node_path_traversal_creates_nothing(self, tmp_path: Path) -> None:
         target = tmp_path / "newdir"
         with pytest.raises(URLPipelineError):
             zarr.open_group(URLPipeline.from_url(f"file:{target.as_posix()}|zarr3:../x"), mode="w")
         assert not target.exists()
 
-    async def test_zarr_segment_detects_format(self, tmp_path: Path) -> None:
+    def test_zarr_segment_detects_format(self, tmp_path: Path) -> None:
         root = tmp_path.as_posix()
         zarr.create_group(URLPipeline.from_url(f"file:{root}|zarr2:g"), zarr_format=2)
         group = zarr.open_group(URLPipeline.from_url(f"file:{root}|zarr:g"), mode="r")
@@ -167,7 +167,7 @@ class TestFileRoots:
     @pytest.mark.parametrize(
         "url", ["file:////data", "file:////nonexistent/data", "file://localhost//data"]
     )
-    async def test_double_slash_path_rejected(
+    def test_double_slash_path_rejected(
         self, url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.chdir(tmp_path)
@@ -176,16 +176,16 @@ class TestFileRoots:
         assert list(tmp_path.iterdir()) == []
 
     @pytest.mark.parametrize("suffix", ["/../x", "/./x", "/a/../../x"])
-    async def test_dot_segments_rejected(self, suffix: str, tmp_path: Path) -> None:
+    def test_dot_segments_rejected(self, suffix: str, tmp_path: Path) -> None:
         with pytest.raises(URLPipelineError, match=r"'\.' or '\.\.'"):
             zarr.open_group(URLPipeline.from_url(f"file:{tmp_path.as_posix()}{suffix}"), mode="w")
 
-    async def test_root_opens_absolute_local_path(self, tmp_path: Path) -> None:
+    def test_root_opens_absolute_local_path(self, tmp_path: Path) -> None:
         group = zarr.open_group(URLPipeline.from_url(f"file:{tmp_path.as_posix()}/g"), mode="w")
         group.attrs["x"] = 1
         assert (tmp_path / "g" / "zarr.json").exists()
 
-    async def test_storage_options_rejected(self, tmp_path: Path) -> None:
+    def test_storage_options_rejected(self, tmp_path: Path) -> None:
         with pytest.raises(TypeError, match="'storage_options' was provided but unused"):
             zarr.open_group(
                 URLPipeline.from_url(f"file:{tmp_path.as_posix()}"),
@@ -193,10 +193,14 @@ class TestFileRoots:
                 storage_options={"anon": True},
             )
 
+    def test_authority_is_case_insensitive(self, tmp_path: Path) -> None:
+        zarr.open_group(URLPipeline.from_url(f"file://LOCALHOST{tmp_path.as_posix()}"), mode="w")
+        assert (tmp_path / "zarr.json").exists()
+
 
 class TestMemoryRoot:
     async def test_single_store_body_is_a_path(self) -> None:
-        """`memory:n/a/b`, `memory:n|...a/b` and `memory:|...n/a/b` address the same node."""
+        """The body of a `memory:` root is a path, so it can be split across adapter segments."""
 
         class PathAdapter(URLPipelineAdapter):
             @classmethod
@@ -225,7 +229,7 @@ class TestMemoryRoot:
 
 
 class TestRootSchemeCase:
-    async def test_uppercase_native_root(self, tmp_path: Path) -> None:
+    def test_uppercase_native_root(self, tmp_path: Path) -> None:
         group = zarr.open_group(URLPipeline.from_url(f"FILE:{tmp_path.as_posix()}"), mode="w")
         assert isinstance(group, zarr.Group)
 
@@ -254,6 +258,11 @@ class TestRegisterURLAdapter:
     def test_vendor_scheme_accepted(self) -> None:
         register_url_adapter("Vendor.My-Scheme+x", RecordingAdapter)
         assert zarr.registry._get_url_adapter("vendor.my-scheme+x") is RecordingAdapter
+
+    @pytest.mark.parametrize("scheme", ["foo\n", "\u212aelvin"])
+    def test_register_rejects_scheme_tricks(self, scheme: str) -> None:
+        with pytest.raises(ValueError, match="not a valid URL scheme"):
+            register_url_adapter(scheme, RecordingAdapter)
 
 
 class TestSegmentValidation:
@@ -291,10 +300,17 @@ class TestMessages:
         assert "%20" not in str(info.value)
 
     @pytest.mark.skipif(sys.platform == "win32", reason="'|' is not allowed in Windows file names")
-    async def test_group_not_found_message_is_readable(self, tmp_path: Path) -> None:
+    def test_group_not_found_message_is_readable(self, tmp_path: Path) -> None:
         with pytest.raises(GroupNotFoundError) as info:
             zarr.open_group(URLPipeline.from_url(f"file:{tmp_path.as_posix()}|zarr3:"), mode="r")
         assert "PipelineSegment(" not in str(info.value)
+
+    def test_no_adapter_error_does_not_list_installed_schemes(
+        self, recording: type[RecordingAdapter]
+    ) -> None:
+        with pytest.raises(URLPipelineError) as info:
+            zarr.core.sync.sync(make_store_path(URLPipeline.from_url("memory:|nope:")))
+        assert "rec" not in str(info.value)
 
 
 class TestSecretsAreRedacted:
@@ -353,18 +369,6 @@ class TestEntryPointNames:
             zarr.registry._collect_entrypoints()
         assert zarr.registry._url_adapter_registry.lazy_load_list == []
 
-    def test_no_adapter_error_does_not_list_installed_schemes(
-        self, recording: type[RecordingAdapter]
-    ) -> None:
-        with pytest.raises(URLPipelineError) as info:
-            zarr.core.sync.sync(make_store_path(URLPipeline.from_url("memory:|nope:")))
-        assert "rec" not in str(info.value)
-
-    @pytest.mark.parametrize("scheme", ["foo\n", "\u212aelvin"])
-    def test_register_rejects_scheme_tricks(self, scheme: str) -> None:
-        with pytest.raises(ValueError, match="not a valid URL scheme"):
-            register_url_adapter(scheme, RecordingAdapter)
-
 
 class TestLimits:
     def test_hand_built_pipeline_segment_limit(self) -> None:
@@ -401,8 +405,3 @@ class TestWindowsFileRoots:
         monkeypatch.setattr(sys, "platform", "win32")
         with pytest.raises(URLPipelineError, match=r"absolute local path|'\.' or '\.\.'|':'"):
             await make_store_path(URLPipeline.from_url(url), mode="r")
-
-
-async def test_file_authority_is_case_insensitive(tmp_path: Path) -> None:
-    zarr.open_group(URLPipeline.from_url(f"file://LOCALHOST{tmp_path.as_posix()}"), mode="w")
-    assert (tmp_path / "zarr.json").exists()

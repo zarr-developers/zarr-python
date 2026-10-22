@@ -326,8 +326,8 @@ async def make_store(
     - `None` = `MemoryStore` object.
     - `FSMap` = `FsspecStore` object.
     - `UPath` = `FsspecStore` object, or `LocalStore` for a local `UPath`.
-    - `URLPipeline` = the store the [URL pipeline][user-guide-url-pipelines] resolves to,
-      which must be the store root (`make_store_path` accepts any pipeline).
+    - `URLPipeline` = the store a [URL pipeline][user-guide-url-pipelines] resolves to;
+      the pipeline must address the store root.
 
     Parameters
     ----------
@@ -475,7 +475,7 @@ async def make_store_path(
     TypeError
         If the StoreLike object is not one of the supported types, or if storage_options is provided but not used.
     ValueError
-        If path is provided for a store that does not support it.
+        If mode is invalid, or path is provided for a store that does not support it.
     URLPipelineError
         If `store_like` is a [URL pipeline][user-guide-url-pipelines] that cannot be
         resolved.

@@ -2,9 +2,7 @@
 Parsing and resolution of URL pipelines (https://github.com/jbms/url-pipeline).
 
 Only [`URLPipeline.from_url`][zarr.storage.URLPipeline.from_url] reads a string
-as a pipeline; plain string store specifications keep their meaning. Adapters
-registered through the `zarr.url_adapters` entry-point group are imported only
-when a pipeline naming their scheme is resolved. No percent-escape is decoded.
+as a pipeline. Adapters are imported lazily, and no percent-escape is decoded.
 """
 
 from __future__ import annotations
@@ -100,8 +98,8 @@ class PipelineContext:
     Context handed to a [`URLPipelineAdapter`][zarr.abc.url_pipeline.URLPipelineAdapter]
     describing the pipeline to the left of its segment.
 
-    Instances are immutable and compare by identity. Derive a context with
-    other values with `dataclasses.replace`.
+    Instances are immutable and compare by identity; use `dataclasses.replace`
+    to derive one with other values.
 
     Attributes
     ----------
@@ -188,14 +186,13 @@ def _parse_pipeline(url: str) -> tuple[PipelineSegment, ...]:
     for index, part in enumerate(parts):
         if part != part.strip():
             raise URLPipelineError(f"sub-URL {_redact(part)!r} has leading or trailing whitespace")
-        body_and_scheme, query = _split_query(part)
-        scheme, sep, body = body_and_scheme.partition(":")
+        scheme_and_body, query = _split_query(part)
+        scheme, sep, body = scheme_and_body.partition(":")
         if index == 0:
             if not sep or not scheme or "/" in scheme or "\\" in scheme:
                 raise URLPipelineError(
-                    f"the root sub-URL {_redact(part)!r} has no URL scheme. Spell a local path "
-                    "as an absolute 'file:' URL; a local path containing '|' cannot be "
-                    "addressed by a URL pipeline, so open it with a plain path instead."
+                    f"the root sub-URL {_redact(part)!r} has no URL scheme; spell a local path "
+                    "as an absolute 'file:' URL, or pass a path containing '|' as a plain string"
                 )
             _check_scheme(scheme, part)
             if len(scheme) == 1:
@@ -261,7 +258,7 @@ class URLPipeline:
                 normalize_path(format_segment.body)
             except ValueError:
                 raise URLPipelineError(
-                    f"the node path of a format segment must not contain '.' or '..': {self!r}"
+                    f"the node path of a format segment must not contain '.' or '..' components: {self!r}"
                 ) from None
 
     @classmethod
@@ -278,8 +275,8 @@ class URLPipeline:
             If the string cannot be parsed: an empty sub-URL, a root without a
             URL scheme (including a local or Windows drive path), an invalid
             scheme, a fragment, an ASCII control character, or whitespace at
-            either end of a sub-URL; or if the pipeline is invalid (see the
-            class docstring).
+            either end of a sub-URL, or the pipeline is invalid (see the class
+            docstring).
         """
         return cls(_parse_pipeline(url))
 
@@ -344,8 +341,7 @@ async def _resolve(
             resolved.store.close()
             raise URLPipelineError(
                 f"adapter {last.scheme!r} returned a writable store for mode 'r', "
-                "and the store does not support read-only conversion via "
-                ".with_read_only()"
+                "and the store does not support read-only conversion via 'with_read_only()'"
             ) from exc
         except Exception:
             resolved.store.close()
@@ -392,9 +388,8 @@ async def _resolve_root(
         return ManagedMemoryStore(name="", path=path, read_only=mode == "r")
 
     if segment.scheme == "file":
-        # file://localhost/p ≡ file:///p ≡ file:/p; other authorities and
-        # relative paths are rejected. On Windows '\' is a separator too, so
-        # check the '/'-spelled path (this also rejects UNC paths like /\host).
+        # file://localhost/p ≡ file:///p ≡ file:/p. On Windows, check the
+        # '/'-spelled path, which also rejects UNC paths like /\host.
         body = segment.body.replace("\\", "/") if sys.platform == "win32" else segment.body
         if body.startswith("//"):
             authority, sep, rest = body[2:].partition("/")

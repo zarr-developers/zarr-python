@@ -35,23 +35,23 @@ from zarr.storage import (
 from zarr.storage._common import _has_fsspec, make_store, make_store_path
 from zarr.storage._utils import _join_paths
 
-# fsspec < 2024.12.0 has no AsyncFileSystemWrapper, so a plain memory:// URL
-# (a sync filesystem) cannot be opened at all there
-_has_async_fsspec_wrapper = _has_fsspec and parse_version(version("fsspec")) >= parse_version(
-    "2024.12.0"
-)
-
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
     from zarr.core.common import AccessModeLiteral
 
+# fsspec < 2024.12.0 has no AsyncFileSystemWrapper, so a plain memory:// URL
+# (a sync filesystem) cannot be opened at all there
+_has_async_fsspec_wrapper = _has_fsspec and parse_version(version("fsspec")) >= parse_version(
+    "2024.12.0"
+)
+
 pytestmark = pytest.mark.usefixtures("clean_url_adapter_registry")
 
 
 class TracingStore(WrapperStore[Store]):
-    """Wrapper that records the context it was created from."""
+    """Wrapper that records the context and segment it was created from."""
 
     context: PipelineContext
     segment: PipelineSegment
@@ -91,7 +91,7 @@ class NativeAdapter(URLPipelineAdapter):
 
 
 class RootAdapter(URLPipelineAdapter):
-    """A root-scheme adapter (no preceding segments), like al://."""
+    """A read-only root-scheme adapter (no preceding segments)."""
 
     @classmethod
     async def open_pipeline_segment(
@@ -546,8 +546,6 @@ class TestResolve:
         assert ConsumingWrapper.seen == "s3cr3t"
 
     async def test_storage_options_visible_to_adapter(self) -> None:
-        register_url_adapter("native", NativeAdapter)
-
         class OptionsProbe(NativeAdapter):
             seen_options: dict[str, object] | None = None
 
@@ -587,8 +585,8 @@ class TestResolve:
         with pytest.raises(URLPipelineError, match="no URL pipeline adapter is registered"):
             await URLPipeline.from_url("memory://base|no-such-adapter:")._resolve_store_path()
 
-    async def test_base_case_value_error_is_wrapped(self) -> None:
-        # an authority urlparse rejects must not leak its ValueError
+    async def test_root_value_error_is_wrapped(self) -> None:
+        # a ValueError from the root store is re-raised as URLPipelineError
         register_url_adapter("wrap", WrapperAdapter)
         with pytest.raises(URLPipelineError, match="could not resolve the pipeline root"):
             await URLPipeline.from_url("vendor.x://[authority]/path|wrap:")._resolve_store_path()
@@ -674,7 +672,7 @@ class TestSpecRoots:
         reason="plain memory:// routes to fsspec only with fsspec>=2024.12.0",
     )
     async def test_memory_root_is_distinct_from_fsspec_memory_url(self) -> None:
-        # documented divergence: a plain memory:// URL is fsspec's in-memory
+        # known divergence: a plain memory:// URL is fsspec's in-memory
         # filesystem when fsspec is installed, while a pipeline's memory: root
         # is zarr's ManagedMemoryStore; the two do not share data
         register_url_adapter("wrap", WrapperAdapter)
@@ -715,7 +713,7 @@ class TestMakeStoreIntegration:
         with pytest.raises(URLPipelineError, match="resolves to a path inside a store"):
             await make_store(URLPipeline.from_url(f"file:{tmp_path.as_posix()}|wrap:|zarr3:node"))
 
-    async def test_make_store_rejects_slash_root_path(self, tmp_path: Path) -> None:
+    async def test_make_store_accepts_slash_root_path(self, tmp_path: Path) -> None:
         # an adapter returning path="/" addresses the store root; the raw
         # value is normalized before the residual-path rejection
         class SlashRootAdapter(WrapperAdapter):
@@ -838,7 +836,7 @@ class TestOpenFunctionsAcceptPipelines:
             open_func(f"{tmp_path}|wrap:|zarr2:", mode="r")
 
 
-class TestZarrFormatMergeInCore:
+class TestZarrFormatFromPipeline:
     """
     Every function taking a StoreLike honors the format selected by a
     `URLPipeline`, not only the top-level zarr.api functions. Functions whose

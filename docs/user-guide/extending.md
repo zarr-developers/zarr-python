@@ -104,7 +104,7 @@ class MyAdapter(URLPipelineAdapter):
     async def open_pipeline_segment(
         cls, segment: PipelineSegment, context: PipelineContext
     ) -> StorePath:
-        # A *wrapper* adapter opens the resource to its left and wraps it, joining the
+        # A wrapper adapter opens the resource to its left and wraps it, joining the
         # preceding residual path with this segment's own path.
         preceding = await context.resolve_preceding()
         store = WrapperStore(preceding.store)
@@ -123,6 +123,7 @@ from zarr.storage import URLPipeline
 
 register_url_adapter("mypackage.myscheme", MyAdapter)
 url = "memory://x|mypackage.myscheme:a|mypackage.myscheme:b"
+# keep a reference: in-memory data lives only while a store refers to it
 created = zarr.create_group(URLPipeline.from_url(url))
 group = zarr.open_group(URLPipeline.from_url(url), mode="r")
 assert group.path == "a/b"
@@ -143,12 +144,12 @@ that scheme over at the root of every pipeline. The schemes zarr handles itself
 (`file`, `memory`, `zarr`, `zarr2`, `zarr3`) cannot be registered, and entry points
 with those names are ignored.
 
-Every adapter sees all of the caller's `storage_options`, including credentials meant
-for the root: consume only keys namespaced for your adapter, never log the options, and
-strip your keys before resolving the rest of the pipeline. The returned store must honor
-`context.read_only`. `open_pipeline_segment` runs on zarr's event loop, so it must not
-block or call zarr's synchronous API. See [`PipelineContext`][zarr.storage.PipelineContext]
-for the full contract.
+Every adapter sees all of the caller's `storage_options`, including the root's
+credentials: consume only keys namespaced for your adapter, strip them before resolving
+the rest of the pipeline, and never log the options. The returned store must honor
+`context.read_only`, and `open_pipeline_segment` must not block or call zarr's
+synchronous API. See [`PipelineContext`][zarr.storage.PipelineContext] for the full
+contract.
 
 ## Custom array buffers
 
