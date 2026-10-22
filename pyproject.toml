@@ -139,7 +139,7 @@ docs = [
     # Doc building
     "mkdocs-material[imaging]==9.7.7",
     "mkdocs==1.6.1",
-    "mkdocstrings==1.0.6",
+    "mkdocstrings==1.0.8",
     "mkdocstrings-python==2.0.9",
     "mike==2.2.0",
     "mkdocs-redirects==1.2.3",
