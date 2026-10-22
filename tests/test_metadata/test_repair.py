@@ -519,8 +519,6 @@ the chunk shape and the value `to_dict` writes for it."""
         ((np.int64(4),), (4,)),
         (np.array([4]), (4,)),
         ((True,), (1,)),
-        ((0,), (0,)),
-        ((False,), (0,)),
         (range(4, 5), (4,)),
     ],
 )
@@ -528,13 +526,21 @@ def test_chunk_shape_read_as_array_shape(
     site: str, chunks: object, expected: tuple[int, ...]
 ) -> None:
     """`ArrayV2Metadata` and `ShardingCodec` read their chunk shape as `parse_shapelike`
-    reads an array shape: an integer or an iterable of non-negative integers, including
-    NumPy integers and bools. A chunk size of 0 is written back as given; reading a
-    stored 0 is `zarr.core.metadata.repair`' business."""
+    reads an array shape: an integer or an iterable of integers, including NumPy
+    integers and bools."""
     parsed, written = CHUNK_SHAPE_SITES[site](chunks)
     assert parsed == expected
     assert all(type(size) is int for size in parsed)
     assert written == expected
+
+
+@pytest.mark.parametrize("chunks", [(0,), (False,)])
+def test_v2_chunk_size_zero_written_as_given(chunks: tuple[Any, ...]) -> None:
+    """`ArrayV2Metadata` accepts a chunk size of 0 and writes it back as given; reading
+    a stored 0 is `zarr.core.metadata.repair`' business. `ShardingCodec` rejects one."""
+    metadata = _v2_metadata(chunks)
+    assert metadata.chunks == (0,)
+    assert metadata.to_dict()["chunks"] == (0,)
 
 
 @pytest.mark.parametrize("site", CHUNK_SHAPE_SITES)

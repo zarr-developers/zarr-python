@@ -57,7 +57,10 @@ jobs:
         run: |
           docker run --rm --platform linux/s390x -v "$PWD":/src:ro zarr-big-endian bash -euc '
             cp -r /src /work && cd /work
-            pip install -q --no-deps --no-build-isolation .
+            # Resolve dependencies against pyproject.toml rather than trusting whatever the
+            # image provides, then fail if any installed package falls outside the constraints.
+            pip install -q --no-build-isolation .
+            pip check
             python -c "import sys; assert sys.byteorder == \"big\", sys.byteorder"
             python -m pytest -p no:cacheprovider --hypothesis-profile ci -n auto \
               tests/test_dtype tests/test_dtype_registry.py \
