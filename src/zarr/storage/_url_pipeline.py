@@ -180,6 +180,13 @@ _NATIVE_ROOT_SCHEMES = frozenset({"file", "memory"})
 # absolute path in a `file:` pipeline root.
 _WINDOWS_DRIVE_RE = re.compile(r"[A-Za-z]:[/\\]")
 
+# A bare Windows drive path as a pipeline root (C:\data, C:/data), as
+# opposed to a single-letter scheme with an authority (x://host/path).
+_BARE_DRIVE_ROOT_RE = re.compile(r"[A-Za-z]:(\\|/(?!/))")
+
+# ASCII control characters (C0 and DEL). No sub-URL may contain them.
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
+
 
 def _root_scheme(root_sub_url: str) -> str:
     """
@@ -187,8 +194,9 @@ def _root_scheme(root_sub_url: str) -> str:
 
     Scheme extraction happens on the raw string, so nothing `urlparse`
     would strip or reject can desync the detected scheme from the body. A
-    single letter followed by `:` is a scheme on every platform: a Windows
-    drive path is spelled `file:/C:/...` in a pipeline, never bare.
+    single letter followed by `:` is a scheme on every platform; a bare
+    Windows drive path (`C:\\...`, `C:/...`) is rejected before this is
+    called, since a pipeline spells it `file:/C:/...`.
     """
     match = _ROOT_SCHEME_RE.match(root_sub_url)
     if match is None:
@@ -220,15 +228,34 @@ def parse_pipeline(url: str) -> tuple[PipelineSegment, ...]:
     in one.
 
     Segment text is preserved verbatim (no case or percent-encoding
-    normalization) except that schemes are lowercased.
+    normalization) except that schemes are lowercased. ASCII control
+    characters, and whitespace at either end of a sub-URL, are rejected
+    rather than stripped.
     """
+    if not isinstance(url, str):
+        raise TypeError(f"a URL pipeline must be a str, not {type(url).__name__}")
+    if (match := _CONTROL_CHAR_RE.search(url)) is not None:
+        raise URLPipelineError(
+            f"URL pipeline contains the control character {match.group()!r}: {url!r}"
+        )
     parts = url.split("|")
     if any(not part for part in parts):
         raise URLPipelineError(f"URL pipeline contains an empty sub-URL: {url!r}")
+    for part in parts:
+        if part != part.strip():
+            raise URLPipelineError(
+                f"sub-URL {part!r} of the URL pipeline {url!r} has leading or trailing "
+                "whitespace; percent-encode it ('%20') if it is part of the URL"
+            )
 
     segments: list[PipelineSegment] = []
     for index, part in enumerate(parts):
         if index == 0:
+            if _BARE_DRIVE_ROOT_RE.match(part):
+                raise URLPipelineError(
+                    f"the root sub-URL {part!r} of the URL pipeline {url!r} is a Windows drive "
+                    "path; spell it as a 'file:' URL (e.g. 'file:/C:/data')."
+                )
             scheme = _root_scheme(part)
             if not scheme:
                 raise URLPipelineError(
@@ -277,6 +304,8 @@ class URLPipeline:
 
     Raises
     ------
+    TypeError
+        If `segments` is not a tuple of `PipelineSegment`.
     URLPipelineError
         If there are no segments, if a format segment (`zarr2:`/`zarr3:`)
         appears anywhere but last, or if a format segment carries a query.
@@ -285,6 +314,14 @@ class URLPipeline:
     segments: tuple[PipelineSegment, ...]
 
     def __post_init__(self) -> None:
+        segments: object = self.segments  # runtime check of a hand-built pipeline
+        if not isinstance(segments, tuple) or not all(
+            isinstance(segment, PipelineSegment) for segment in segments
+        ):
+            raise TypeError(
+                "URLPipeline.segments must be a tuple of PipelineSegment; "
+                "use URLPipeline.from_url to parse a string"
+            )
         if not self.segments:
             raise URLPipelineError("a URL pipeline needs at least one segment")
         for segment in self.segments[1:-1]:
@@ -305,11 +342,18 @@ class URLPipeline:
         Parse a URL pipeline string.
 
         A URL without a `|` is a trivial pipeline consisting of its root alone.
+        Parsing is purely syntactic: nothing is resolved, and no adapter is
+        loaded, until the pipeline is opened.
 
         Raises
         ------
+        TypeError
+            If `url` is not a `str`.
         URLPipelineError
-            If the string cannot be parsed or the resulting pipeline is invalid
+            If the string cannot be parsed: an empty sub-URL, a root without a URL
+            scheme (including a bare local or Windows drive path), an invalid
+            adapter scheme, a fragment, an ASCII control character, or whitespace
+            at either end of a sub-URL; or if the resulting pipeline is invalid
             (see the class docstring).
         """
         return cls(parse_pipeline(url))

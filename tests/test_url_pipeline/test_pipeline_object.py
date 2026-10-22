@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from zarr.errors import URLPipelineError
-from zarr.storage import URLPipeline
+from zarr.storage import PipelineSegment, URLPipeline
 from zarr.storage._url_pipeline import parse_pipeline
 
 
@@ -79,6 +79,22 @@ def test_empty_pipeline_rejected() -> None:
     """A pipeline needs at least a root segment."""
     with pytest.raises(URLPipelineError, match="at least one segment"):
         URLPipeline(())
+
+
+@pytest.mark.parametrize(
+    "segments",
+    ["s3://b|zip:", ["s3://b"], ("s3://b",), [PipelineSegment("s3", "//b", None, "s3://b")]],
+)
+def test_direct_construction_rejects_non_segments(segments: object) -> None:
+    """A string or a list is not a pipeline; `from_url` is the way to parse one."""
+    with pytest.raises(TypeError, match="tuple of PipelineSegment"):
+        URLPipeline(segments)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("url", [None, b"s3://b", URLPipeline.from_url("s3://b")])
+def test_from_url_rejects_non_strings(url: object) -> None:
+    with pytest.raises(TypeError, match="must be a str"):
+        URLPipeline.from_url(url)  # type: ignore[arg-type]
 
 
 def test_hashable() -> None:

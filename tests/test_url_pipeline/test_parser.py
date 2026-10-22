@@ -17,7 +17,7 @@ def test_single_root_url() -> None:
     assert str(segment) == "s3://bucket/key"
 
 
-@pytest.mark.parametrize("url", ["/local/path", "/local/path|zip:", "\tfile:/tmp/x|zip:"])
+@pytest.mark.parametrize("url", ["/local/path", "/local/path|zip:", "relative/path|zip:"])
 def test_schemeless_root_rejected(url: str) -> None:
     """The root sub-URL must carry a URL scheme; a bare path (or anything urlparse would not read as a scheme) is an error."""
     with pytest.raises(URLPipelineError, match="URL scheme"):
@@ -72,12 +72,45 @@ def test_empty_query() -> None:
     assert segment.query == ""
 
 
-def test_single_letter_scheme_is_a_scheme_everywhere() -> None:
-    """A drive-letter-like prefix is a URL scheme on every platform; bare Windows paths are not pipelines."""
-    (segment,) = parse_pipeline(r"C:\data\store")
+@pytest.mark.parametrize("url", [r"C:\data\store", "C:/data/store|zip:", "c:\\x"])
+def test_windows_drive_root_rejected(url: str) -> None:
+    """A bare Windows drive path is rejected on every platform, not read as scheme `c`."""
+    with pytest.raises(URLPipelineError, match="Windows drive path"):
+        parse_pipeline(url)
+
+
+def test_single_letter_scheme_without_slash_is_a_scheme() -> None:
+    (segment,) = parse_pipeline("c:data")
     assert segment.scheme == "c"
-    assert segment.body == r"\data\store"
-    assert segment.raw == r"C:\data\store"
+    assert segment.body == "data"
+
+
+@pytest.mark.parametrize("url", [None, 42, b"s3://b|zip:", ["s3://b"]])
+def test_non_string_rejected(url: object) -> None:
+    with pytest.raises(TypeError, match="must be a str"):
+        parse_pipeline(url)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["s3://b/\x00a", "s3://b/a\n|zip:", "s3://b|zip:\r\n", "s3://b|zip:\x7f", "s3://b\t|zip:"],
+)
+def test_control_characters_rejected(url: str) -> None:
+    with pytest.raises(URLPipelineError, match="control character"):
+        parse_pipeline(url)
+
+
+@pytest.mark.parametrize("url", [" s3://b", "s3://b |zip:", "s3://b| zip:", "s3://b|zip:x\u00a0"])
+def test_surrounding_whitespace_rejected(url: str) -> None:
+    with pytest.raises(URLPipelineError, match="leading or trailing whitespace"):
+        parse_pipeline(url)
+
+
+def test_interior_whitespace_is_preserved() -> None:
+    """zarr does not percent-decode, so a key with a space can only be spelled with one."""
+    segments = parse_pipeline("s3://b/My Data.zip|zip:a b")
+    assert segments[0].body == "//b/My Data.zip"
+    assert segments[1].body == "a b"
 
 
 @pytest.mark.parametrize("url", ["a||b:", "|zip:", "file:/tmp|", ""])
@@ -126,8 +159,13 @@ _ADAPTER_SCHEME = st.from_regex(r"[a-zA-Z][a-zA-Z0-9+.\-]{0,15}", fullmatch=True
 # two or more characters, so Windows drive-letter handling cannot reclassify
 # the root scheme as a local path on one platform but not another
 _ROOT_SCHEME = st.from_regex(r"[a-zA-Z]{2}[a-zA-Z0-9+.\-]{0,14}", fullmatch=True)
-_BODY = st.text(st.characters(min_codepoint=32, max_codepoint=126, exclude_characters="|#?"))
-_QUERY = st.text(st.characters(min_codepoint=32, max_codepoint=126, exclude_characters="|#"))
+# no trailing space: whitespace at either end of a sub-URL is rejected
+_BODY = st.text(
+    st.characters(min_codepoint=32, max_codepoint=126, exclude_characters="|#?")
+).filter(lambda t: not t.endswith(" "))
+_QUERY = st.text(
+    st.characters(min_codepoint=32, max_codepoint=126, exclude_characters="|#")
+).filter(lambda t: not t.endswith(" "))
 
 
 @st.composite
@@ -180,7 +218,7 @@ def test_property_invalid_adapter_scheme_rejected(
     # corrupt one adapter segment's scheme with a leading character the
     # scheme grammar forbids
     index = data.draw(st.integers(1, len(parts) - 1))
-    parts[index] = data.draw(st.sampled_from(["1", " ", "@", "~"])) + parts[index]
+    parts[index] = data.draw(st.sampled_from(["1", "@", "~"])) + parts[index]
     with pytest.raises(URLPipelineError, match="invalid adapter scheme"):
         parse_pipeline("|".join(parts))
 
