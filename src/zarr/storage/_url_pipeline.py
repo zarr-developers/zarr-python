@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import dataclasses
 import re
+import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from zarr.errors import URLPipelineError
@@ -58,6 +60,22 @@ class PipelineSegment:
     body: str
     query: str | None
     raw: str
+
+    def __post_init__(self) -> None:
+        for name in ("scheme", "body", "raw"):
+            if not isinstance(getattr(self, name), str):
+                raise TypeError(
+                    f"PipelineSegment.{name} must be a str, "
+                    f"not {type(getattr(self, name)).__name__}"
+                )
+        if self.query is not None and not isinstance(self.query, str):
+            raise TypeError(
+                f"PipelineSegment.query must be a str or None, not {type(self.query).__name__}"
+            )
+        if not _SCHEME_RE.match(self.scheme) or self.scheme != self.scheme.lower():
+            raise URLPipelineError(
+                f"PipelineSegment.scheme must be a lowercase URL scheme, not {self.scheme!r}"
+            )
 
     def __str__(self) -> str:
         return self.raw
@@ -161,8 +179,8 @@ class PipelineContext:
 
 # Format segments are consumed by zarr-python itself rather than by a
 # registered adapter: they select the zarr format of the node the pipeline
-# addresses, and their body is a path to that node.
-_FORMAT_SCHEMES: dict[str, ZarrFormat] = {"zarr2": 2, "zarr3": 3}
+# addresses (`zarr:` detects it), and their body is a path to that node.
+_FORMAT_SCHEMES: dict[str, ZarrFormat | None] = {"zarr": None, "zarr2": 2, "zarr3": 3}
 
 # Adapter scheme per RFC 3986 plus "." to permit vendor-prefixed
 # nonstandard schemes (e.g. "earthmover.myscheme").
@@ -171,10 +189,18 @@ _SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*$")
 # Root scheme at the very start of the sub-URL.
 _ROOT_SCHEME_RE = re.compile(r"([a-zA-Z][a-zA-Z0-9+.\-]*):")
 
+# Something shaped like a scheme (text up to the first ':' with no '/', '?'
+# or '#' before it) that is not a valid one, e.g. `a_b://x`.
+_SCHEME_LIKE_RE = re.compile(r"[^:/?#]+:")
+
 # Schemes zarr resolves natively at the pipeline root. These are never
 # dispatched to a registered root adapter, so an installed package cannot
 # intercept zarr's own local-path and in-memory routing.
 _NATIVE_ROOT_SCHEMES = frozenset({"file", "memory"})
+
+# Schemes zarr-python handles itself, which therefore cannot be given to a
+# registered adapter.
+_RESERVED_SCHEMES = _NATIVE_ROOT_SCHEMES | frozenset(_FORMAT_SCHEMES)
 
 # An absolute Windows drive path (C:\... or C:/...), which counts as an
 # absolute path in a `file:` pipeline root.
@@ -208,8 +234,8 @@ def _split_query(sub_url: str) -> tuple[str, str | None]:
     """Split a sub-URL on the first `?`. Fragments are not supported."""
     if "#" in sub_url:
         raise URLPipelineError(
-            f"URL pipeline sub-URLs do not support fragments: {sub_url!r}. "
-            "Percent-encode '#' as '%23' if it is part of the path."
+            f"URL pipeline sub-URLs do not support fragments ('#'): {sub_url!r}. "
+            "Percent-escapes are not decoded, so a '#' in a path cannot be addressed."
         )
     body, sep, query = sub_url.partition("?")
     return body, query if sep else None
@@ -245,7 +271,7 @@ def parse_pipeline(url: str) -> tuple[PipelineSegment, ...]:
         if part != part.strip():
             raise URLPipelineError(
                 f"sub-URL {part!r} of the URL pipeline {url!r} has leading or trailing "
-                "whitespace; percent-encode it ('%20') if it is part of the URL"
+                "whitespace; remove it"
             )
 
     segments: list[PipelineSegment] = []
@@ -257,11 +283,18 @@ def parse_pipeline(url: str) -> tuple[PipelineSegment, ...]:
                     "path; spell it as a 'file:' URL (e.g. 'file:/C:/data')."
                 )
             scheme = _root_scheme(part)
+            if not scheme and _SCHEME_LIKE_RE.match(part):
+                invalid = part.partition(":")[0]
+                raise URLPipelineError(
+                    f"invalid URL scheme {invalid!r} in the root sub-URL {part!r} "
+                    f"of the URL pipeline {url!r}"
+                )
             if not scheme:
                 raise URLPipelineError(
                     f"the root sub-URL {part!r} of the URL pipeline {url!r} has no URL scheme. "
-                    "Spell a local path as an absolute 'file:' URL, and a literal '|' in "
-                    "it as '%7C'."
+                    "Spell a local path as an absolute 'file:' URL. Percent-escapes are not "
+                    "decoded, so a local path containing '|' cannot be addressed by a URL "
+                    "pipeline; open it with a plain path or a store object instead."
                 )
             body_and_scheme, query = _split_query(part)
             body = body_and_scheme[len(scheme) + 1 :]
@@ -307,8 +340,9 @@ class URLPipeline:
     TypeError
         If `segments` is not a tuple of `PipelineSegment`.
     URLPipelineError
-        If there are no segments, if a format segment (`zarr2:`/`zarr3:`)
-        appears anywhere but last, or if a format segment carries a query.
+        If there are no segments, if a format segment (`zarr:`/`zarr2:`/`zarr3:`)
+        appears anywhere but last (including as the root), or if a format segment
+        carries a query or a node path with `.` or `..` components.
     """
 
     segments: tuple[PipelineSegment, ...]
@@ -324,6 +358,11 @@ class URLPipeline:
             )
         if not self.segments:
             raise URLPipelineError("a URL pipeline needs at least one segment")
+        if self.segments[0].scheme in _FORMAT_SCHEMES:
+            raise URLPipelineError(
+                f"the format segment {self.segments[0].raw!r} cannot be the root of "
+                f"the URL pipeline {str(self)!r}; the root must locate a resource"
+            )
         for segment in self.segments[1:-1]:
             if segment.scheme in _FORMAT_SCHEMES:
                 raise URLPipelineError(
@@ -335,6 +374,17 @@ class URLPipeline:
             raise URLPipelineError(
                 f"'{format_segment.scheme}:' segments do not accept a query: {format_segment.raw!r}"
             )
+        if format_segment is not None:
+            # validate the node path now, before anything is resolved
+            try:
+                normalize_path(format_segment.body)
+            except ValueError as exc:
+                raise URLPipelineError(
+                    f"invalid node path in the format segment {format_segment.raw!r}: {exc}"
+                ) from None
+
+    def __repr__(self) -> str:
+        return f"URLPipeline({str(self)!r})"
 
     @classmethod
     def from_url(cls, url: str) -> URLPipeline:
@@ -377,7 +427,8 @@ class URLPipeline:
 
     @property
     def _zarr_format(self) -> ZarrFormat | None:
-        """The format selected by a trailing `zarr2:`/`zarr3:` segment, or None."""
+        """The format selected by a trailing `zarr2:`/`zarr3:` segment, or None
+        (also for a trailing `zarr:` segment, which detects the format)."""
         format_segment = self._format_segment
         if format_segment is None:
             return None
@@ -467,9 +518,9 @@ class URLPipeline:
         resolved = await _resolve(self._store_segments, mode=mode, storage_options=storage_options)
         if not self._node_path:
             return resolved
-        return StorePath(
-            resolved.store, _join_paths([normalize_path(resolved.path), self._node_path])
-        )
+        # both paths are already normalized: StorePath normalizes the adapter's,
+        # and __post_init__ validated the format segment's
+        return StorePath(resolved.store, _join_paths([resolved.path, self._node_path]))
 
     def __str__(self) -> str:
         return "|".join(segment.raw for segment in self.segments)
@@ -561,22 +612,48 @@ async def _resolve_root(
                     "'localhost' is allowed"
                 )
             body = f"/{rest}" if sep else ""
-        # a file URL spells a Windows drive path as /C:/...; strip the
-        # leading slash so the local-path machinery sees the drive
-        if body.startswith("/") and _WINDOWS_DRIVE_RE.match(body[1:]):
-            body = body[1:]
-        if not (body.startswith("/") or _WINDOWS_DRIVE_RE.match(body)):
+            if body.startswith("//"):
+                # the spec's file-path-absolute grammar forbids an empty first
+                # path component
+                raise URLPipelineError(
+                    f"'file:' pipeline root paths must not start with '//': {segment.raw!r}"
+                )
+        if sys.platform == "win32":
+            # a file URL spells a Windows drive path as /C:/...; strip the
+            # leading slash so the local-path machinery sees the drive
+            if body.startswith("/") and _WINDOWS_DRIVE_RE.match(body[1:]):
+                body = body[1:]
+            is_absolute = body.startswith("/") or bool(_WINDOWS_DRIVE_RE.match(body))
+        else:
+            is_absolute = body.startswith("/")
+        if not is_absolute:
             raise URLPipelineError(
                 f"'file:' pipeline roots must carry an absolute path: {segment.raw!r}"
             )
-        return await make_store(f"file:{body}", mode=mode, storage_options=storage_options)
+        _reject_dot_segments(body, segment)
+        return await make_store(Path(body), mode=mode, storage_options=storage_options)
 
+    # fsspec matches protocols case-sensitively; schemes are case-insensitive
+    url = segment.scheme + segment.raw[len(segment.scheme) :]
     try:
-        return await make_store(segment.raw, mode=mode, storage_options=storage_options)
+        return await make_store(url, mode=mode, storage_options=storage_options)
     except ValueError as exc:
         raise URLPipelineError(
             f"could not resolve the pipeline root {segment.raw!r}: {exc}"
         ) from exc
+
+
+def _reject_dot_segments(path: str, segment: PipelineSegment) -> None:
+    """Reject `.` and `..` path components in a `file:` or `memory:` root."""
+    if any(part in (".", "..") for part in re.split(r"[/\\]", path)):
+        raise URLPipelineError(
+            f"'{segment.scheme}:' pipeline root paths must not contain '.' or '..' "
+            f"components: {segment.raw!r}"
+        )
+
+
+# The single in-memory store every `memory:` pipeline root addresses.
+_PIPELINE_MEMORY_STORE_NAME = ""
 
 
 def _resolve_memory_root(
@@ -586,17 +663,18 @@ def _resolve_memory_root(
     storage_options: dict[str, Any] | None,
 ) -> Store:
     """
-    Resolve a `memory:` pipeline root per the spec's spelling equivalences:
-    `memory:` ≡ `memory:/` ≡ `memory://`, and `memory:a` ≡ `memory:/a` ≡
-    `memory://a`. The first path component names the managed store; the
-    remainder is a path within it.
+    Resolve a `memory:` pipeline root per the spec: there is a single
+    in-memory store, and the body is a path within it. Spellings follow the
+    spec's equivalences: `memory:` ≡ `memory:/` ≡ `memory://`, and
+    `memory:a/b` ≡ `memory:/a/b` ≡ `memory://a/b`.
     """
     if segment.query is not None:
         raise URLPipelineError(f"'memory:' pipeline roots do not accept a query: {segment.raw!r}")
-    if storage_options:
+    if storage_options is not None:
         raise TypeError(
             "'storage_options' was provided but unused. "
             "'storage_options' is only used when the store is passed as an FSSpec URI string.",
         )
-    name, _, path = segment.body.lstrip("/").partition("/")
-    return ManagedMemoryStore(name=name, path=path, read_only=mode == "r")
+    path = segment.body.lstrip("/")
+    _reject_dot_segments(path, segment)
+    return ManagedMemoryStore(name=_PIPELINE_MEMORY_STORE_NAME, path=path, read_only=mode == "r")

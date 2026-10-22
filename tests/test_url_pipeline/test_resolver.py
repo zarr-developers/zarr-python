@@ -347,9 +347,11 @@ class TestStringsAreNeverPipelines:
         assert calls == []
 
     def test_native_schemes_do_not_route_to_adapters(self) -> None:
-        """An installed package cannot intercept `file:`/`memory:` roots by registering them."""
-        register_url_adapter("file", RootAdapter)
-        register_url_adapter("memory", RootAdapter)
+        """An installed package cannot intercept `file:`/`memory:` roots, even via the registry."""
+        # register_url_adapter refuses these schemes; an entry point could still
+        # name them, so put them in the registry directly
+        zarr.registry._url_adapter_registry.register(RootAdapter, "file")
+        zarr.registry._url_adapter_registry.register(RootAdapter, "memory")
         pipeline = URLPipeline.from_url("memory://x")
         store = zarr.core.sync.sync(make_store(pipeline))
         assert isinstance(store, ManagedMemoryStore)
@@ -616,14 +618,15 @@ class TestSpecRoots:
         assert inner.path == ""
 
     @pytest.mark.parametrize("root", ["memory:a/b", "memory:/a/b", "memory://a/b"])
-    async def test_memory_root_named_spellings_equivalent(self, root: str) -> None:
+    async def test_memory_root_path_spellings_equivalent(self, root: str) -> None:
+        """There is one in-memory store; the whole body is a path within it."""
         register_url_adapter("wrap", WrapperAdapter)
         result = await URLPipeline.from_url(f"{root}|wrap:")._resolve_store_path()
         assert isinstance(result.store, TracingStore)
         inner = result.store._store
         assert isinstance(inner, ManagedMemoryStore)
-        assert inner._name == "a"
-        assert inner.path == "b"
+        assert inner._name == ""
+        assert inner.path == "a/b"
 
     async def test_memory_root_shares_data_across_spellings(self) -> None:
         register_url_adapter("wrap", WrapperAdapter)
@@ -655,23 +658,24 @@ class TestSpecRoots:
         assert isinstance(opened, zarr.Group)
         zarr.open_group(URLPipeline.from_url(f"file://{url_path}|wrap:"), mode="r")
 
-    async def test_file_root_windows_drive_spellings(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # Windows drive paths count as absolute, and the URL spelling
+    @pytest.mark.skipif(sys.platform != "win32", reason="drive paths are Windows-only")
+    async def test_file_root_windows_drive_spellings(self, tmp_path: Path) -> None:
+        # on Windows, drive paths count as absolute, and the URL spelling
         # file:///C:/... has its leading slash stripped before the drive
         register_url_adapter("wrap", WrapperAdapter)
-        if sys.platform == "win32":
-            drive_path = tmp_path.as_posix()  # C:/Users/...
-        else:
-            # off Windows a drive path is just an odd relative directory;
-            # chdir into tmp so it is created there
-            monkeypatch.chdir(tmp_path)
-            drive_path = "C:/drive/data"
+        drive_path = tmp_path.as_posix()  # C:/Users/...
         r1 = await URLPipeline.from_url(f"file:{drive_path}|wrap:")._resolve_store_path()
         r2 = await URLPipeline.from_url(f"file:///{drive_path}|wrap:")._resolve_store_path()
         assert isinstance(r1.store, TracingStore)
         assert isinstance(r2.store, TracingStore)
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX path semantics")
+    async def test_file_root_drive_letter_is_not_special_on_posix(self) -> None:
+        """Off Windows, `/C:/x` is an ordinary absolute path and `C:/x` is relative."""
+        with pytest.raises(URLPipelineError, match="absolute path"):
+            await make_store_path(URLPipeline.from_url("file:C:/drive/data"), mode="r")
+        with pytest.raises(FileNotFoundError, match="/C:/drive/data"):
+            await make_store_path(URLPipeline.from_url("file:///C:/drive/data"), mode="r")
 
     async def test_file_root_rejects_other_authority(self) -> None:
         register_url_adapter("wrap", WrapperAdapter)

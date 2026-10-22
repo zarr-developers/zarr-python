@@ -518,8 +518,24 @@ def register_url_adapter(scheme: str, cls: type[URLPipelineAdapter]) -> None:
 
     Registering a scheme that already has an adapter replaces it and emits a
     [`ZarrUserWarning`][zarr.errors.ZarrUserWarning].
+
+    Raises
+    ------
+    ValueError
+        If `scheme` is not a valid URL scheme, or is one zarr-python handles
+        itself (`file`, `memory`, `zarr`, `zarr2`, `zarr3`), so an adapter
+        registered for it could never be used.
     """
+    from zarr.storage._url_pipeline import _RESERVED_SCHEMES, _SCHEME_RE  # circular import
+
+    if not _SCHEME_RE.match(scheme):
+        raise ValueError(f"{scheme!r} is not a valid URL scheme")
     key = scheme.lower()
+    if key in _RESERVED_SCHEMES:
+        raise ValueError(
+            f"the URL scheme {scheme!r} is handled by zarr-python itself and cannot be "
+            "given to a URL pipeline adapter"
+        )
     previous = _url_adapter_registry.get(key)
     if previous is not None and previous is not cls:
         warnings.warn(

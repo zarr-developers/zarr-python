@@ -137,23 +137,27 @@ still names a directory, whatever adapters are installed.
 A trailing `zarr2:` or `zarr3:` segment is a *format segment*. It is not an adapter:
 zarr-python reads it from the pipeline itself and uses it as the `zarr_format` of the
 open or create call, and its body (`zarr3:path/to/node`) is the path of the node to
-open. A `zarr_format` argument that conflicts with the format segment raises
+open. The node path must not contain `.` or `..` components. A trailing `zarr:` segment
+also gives a node path, but leaves the format to be detected. A `zarr_format` argument that conflicts with the format segment raises
 `ValueError`; functions whose `zarr_format` defaults to 3 (such as `zarr.create_array`
 and `Group.open`) need an explicit `zarr_format=None` (or the matching format) to defer
 to the pipeline.
 
 `storage_options` apply to the *root* sub-URL (e.g. fsspec options for `s3://...`);
 adapters may consume adapter-specific, namespaced keys. No percent-escape is decoded
-anywhere in a pipeline. Registered adapters cannot intercept zarr's native `file:` and
-`memory:` root schemes.
+anywhere in a pipeline. Adapters cannot be registered for the schemes zarr-python
+handles itself: `file`, `memory`, `zarr`, `zarr2` and `zarr3`.
 
-Inside a pipeline, a `memory:` root is zarr's managed in-memory store (`memory:`,
-`memory:/` and `memory://` are equivalent, and `memory:name` selects a named store).
-When fsspec is installed, a plain `memory://name` string store specification is still
-routed to fsspec's in-memory filesystem, which is a different store. A `file:` root
-must carry an absolute path; percent-escapes are not decoded, matching the
-[local store](#local-store). The root always carries a scheme: a local path is spelled
-as a `file:` URL, never as a bare path.
+Inside a pipeline, every `memory:` root addresses the same managed in-memory store, and
+its body is a path within that store: `memory:a/b`, `memory:/a/b` and `memory://a/b` are
+equivalent, as are `memory:`, `memory:/` and `memory://`. Data lives only while some
+store object referring to it is alive. When fsspec is installed, a plain `memory://name`
+string store specification is still routed to fsspec's in-memory filesystem, which is a
+different store. A `file:` root must carry an absolute path, with at most a `localhost`
+authority; percent-escapes are not decoded, matching the [local store](#local-store).
+Drive letters are only special on Windows: elsewhere `file:/C:/data` is the absolute
+path `/C:/data`. Neither root accepts `.` or `..` path components. The root always
+carries a scheme: a local path is spelled as a `file:` URL, never as a bare path.
 
 ## Explicit Store Creation
 

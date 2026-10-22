@@ -234,6 +234,7 @@ async def consolidate_metadata(
         consolidated metadata, this function raises a `TypeError`.
         See `Store.supports_consolidated_metadata`.
     """
+    zarr_format = resolve_zarr_format(store, zarr_format)
     store_path = await make_store_path(store, path=path)
 
     if not store_path.store.supports_consolidated_metadata:

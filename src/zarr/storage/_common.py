@@ -361,7 +361,7 @@ async def make_store(
 
     if isinstance(store_like, URLPipeline):
         result = await store_like._resolve_store_path(mode=mode, storage_options=storage_options)
-        if normalize_path(result.path):
+        if result.path:
             result.store.close()
             raise URLPipelineError(
                 f"the URL pipeline {str(store_like)!r} resolves to a path inside a store; "
@@ -483,12 +483,20 @@ async def make_store_path(
     --------
     make_store
     """
+    if mode is not None and mode not in ANY_ACCESS_MODE:
+        raise ValueError(f"Invalid mode: {mode}, expected one of {ANY_ACCESS_MODE}")
     path_normalized = normalize_path(path)
 
     if isinstance(store_like, URLPipeline):
         result = await store_like._resolve_store_path(mode=mode, storage_options=storage_options)
-        combined_path = _join_paths([normalize_path(result.path), path_normalized])
-        return await StorePath.open(result.store, path=combined_path, mode=mode)
+        try:
+            return await StorePath.open(
+                result.store, path=_join_paths([result.path, path_normalized]), mode=mode
+            )
+        except BaseException:
+            # the store was opened for this call; don't leak it
+            result.store.close()
+            raise
 
     if isinstance(store_like, StorePath):
         # Already a StorePath
