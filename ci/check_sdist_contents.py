@@ -1,28 +1,16 @@
 """
-Check a built sdist ships everything its consumers need, and nothing they don't.
+Check a built sdist ships the paths it needs and none it must not.
 
 Usage:
     python check_sdist_contents.py SDIST
 
 SDIST is a path to a `.tar.gz`, or a directory containing exactly one.
 
-`[tool.hatch.build.targets.sdist]` in pyproject.toml is an allowlist. That is
-the safe default -- a new subpackage under `packages/` stays out of the `zarr`
-sdist unless someone opts it in -- but it inverts the failure mode: instead of
-shipping too much silently, an allowlist can ship too little. This script
-guards that direction.
-
-Wherever possible the expectations are *derived* from configuration that is
-maintained for other reasons, rather than restated here. A hand-written list of
-"files the sdist must contain" would just be a second allowlist to forget to
-update, which is the problem it is meant to solve.
-
-Everything is read out of the tarball, including the configuration the
-expectations are derived from. The check is therefore a property of the
-artifact alone: it gives the same answer against a release sdist downloaded
-from PyPI as it does against a fresh `hatch build`, with no working tree in
-the picture -- which matters, because a git checkout has files the tarball
-does not.
+`[tool.hatch.build.targets.sdist]` in pyproject.toml is an allowlist, so the
+mistake to catch is a needed path that was never listed. Every `testpaths`
+entry must ship, read from the pyproject.toml inside the tarball so the check
+depends on the artifact alone. The paths below are needed but not covered by
+`testpaths`.
 """
 
 import sys
@@ -30,108 +18,60 @@ import tarfile
 import tomllib
 from pathlib import Path
 
-# Paths no test opens, so the sdist test run in `releases.yml` cannot vouch for
-# them, but that packagers do need. conda-forge's recipe installs the sdist
-# (pyproject.toml, README.md, src/) and reads `license_file: LICENSE.txt`; the
-# version file is written into the sdist by the hatch-vcs hook, because an
-# unpacked sdist has no git history to derive a version from.
-# https://github.com/conda-forge/zarr-feedstock/blob/main/recipe/recipe.yaml
-REQUIRED_PATHS = [
-    "pyproject.toml",
-    "README.md",
-    "LICENSE.txt",
-    "PKG-INFO",
-    "src/zarr/__init__.py",
-    "src/zarr/py.typed",
-    "src/zarr/_version.py",
-]
+# `_version.py` is gitignored and written into the sdist by the hatch-vcs hook.
+REQUIRED_FILES = ["src/zarr/_version.py", "src/zarr/py.typed"]
 
-# Each subpackage under `packages/` is its own distribution with its own PyPI
-# release, its own version tags and its own sdist. Before the allowlist they
-# were bundled into every `zarr` sdist -- 2.9M of unrelated sources -- which is
-# the regression this check exists to prevent recurring.
+# `tests/test_examples.py` globs `examples/` and skips silently if it is empty.
+REQUIRED_DIRS = ["examples"]
+
+# Each subpackage under `packages/` is released as its own distribution.
 FORBIDDEN_PREFIXES = ["packages/"]
 
 
-def sdist_members(sdist: Path) -> set[str]:
-    """Every path inside the tarball, relative to its top-level directory."""
+def read_sdist(sdist: Path) -> tuple[set[str], dict[str, object]]:
+    """Return the sdist's paths, relative to its top-level directory, and its pyproject.toml."""
     with tarfile.open(sdist) as tar:
         names = tar.getnames()
-    # Members are `zarr-<version>/<path>`; strip the leading component so the
-    # expectations below don't have to know the version.
-    return {name.split("/", 1)[1] for name in names if "/" in name}
-
-
-def read_member(sdist: Path, path: str) -> bytes:
-    """Read one member of the tarball, addressed relative to its top-level directory."""
-    with tarfile.open(sdist) as tar:
-        roots = {name.split("/", 1)[0] for name in tar.getnames()}
+        roots = {name.split("/", 1)[0] for name in names}
         if len(roots) != 1:
-            raise SystemExit(f"Expected one top-level directory in {sdist}, got {sorted(roots)}")
-        member = tar.extractfile(f"{roots.pop()}/{path}")
-        if member is None:
-            raise SystemExit(f"{path} is missing from {sdist.name}")
-        return member.read()
-
-
-def testpaths(sdist: Path) -> list[str]:
-    """`testpaths` from the pyproject.toml the sdist ships.
-
-    Derived rather than duplicated: adding a directory to `testpaths` without
-    adding it to the sdist allowlist is exactly the mistake this catches. It is
-    also the mistake that was already live -- `docs/user-guide` has been a
-    testpath while `docs/` was excluded, so `pytest` on an unpacked sdist died
-    at collection.
-
-    Read from the tarball rather than the working tree so the two halves of the
-    comparison always come from the same artifact.
-    """
-    config = tomllib.loads(read_member(sdist, "pyproject.toml").decode())
-    return config["tool"]["pytest"]["ini_options"]["testpaths"]
+            raise SystemExit(
+                f"Expected one top-level directory in {sdist.name}, got {sorted(roots)}"
+            )
+        root = roots.pop()
+        pyproject = tar.extractfile(f"{root}/pyproject.toml")
+        if pyproject is None:
+            raise SystemExit(f"pyproject.toml is missing from {sdist.name}")
+        config = tomllib.loads(pyproject.read().decode())
+    members = {name.split("/", 1)[1] for name in names if "/" in name}
+    return members, config
 
 
 def check(sdist: Path) -> int:
     print(f"Checking {sdist.name}")
-    members = sdist_members(sdist)
-    print(f"Found {len(members)} paths")
-    print()
+    members, config = read_sdist(sdist)
+    testpaths = config["tool"]["pytest"]["ini_options"]["testpaths"]
 
-    missing_required = [p for p in REQUIRED_PATHS if p not in members]
-    # A testpath is a directory; it is present if anything ships beneath it.
-    # Skipped when pyproject.toml itself did not ship: it is already reported as
-    # a missing required path, and there is nothing left to read `testpaths` out
-    # of.
-    expected = [] if "pyproject.toml" in missing_required else testpaths(sdist)
-    missing_testpaths = [p for p in expected if not any(m.startswith(f"{p}/") for m in members)]
-    forbidden = sorted(m for m in members if any(m.startswith(p) for p in FORBIDDEN_PREFIXES))
+    missing_files = [p for p in REQUIRED_FILES if p not in members]
+    missing_dirs = [
+        p for p in [*testpaths, *REQUIRED_DIRS] if not any(m.startswith(f"{p}/") for m in members)
+    ]
+    forbidden = sorted(m for m in members if m.startswith(tuple(FORBIDDEN_PREFIXES)))
 
-    if not (missing_required or missing_testpaths or forbidden):
-        print("OK")
+    if not (missing_files or missing_dirs or forbidden):
+        print(f"OK ({len(members)} paths)")
         return 0
 
-    if missing_required:
-        print("Required paths missing from the sdist")
-        print("-------------------------------------")
-        print("\n".join(missing_required))
-        print()
-    if missing_testpaths:
-        print("testpaths entries missing from the sdist")
-        print("----------------------------------------")
-        print("\n".join(missing_testpaths))
-        print("`pytest` on an unpacked sdist will fail to collect these.")
-        print()
-    if forbidden:
-        print("Paths that must not ship in the zarr sdist")
-        print("------------------------------------------")
-        print("\n".join(forbidden[:20]))
-        if len(forbidden) > 20:
-            print(f"... and {len(forbidden) - 20} more")
-        print()
-
-    print(
-        "Fix by editing `[tool.hatch.build.targets.sdist]` in pyproject.toml. "
-        "It is an allowlist: a path ships only if it is listed."
-    )
+    for heading, paths in [
+        ("Missing files", missing_files),
+        ("Missing directories", missing_dirs),
+        ("Paths that must not ship", forbidden),
+    ]:
+        if paths:
+            print(f"\n{heading}:")
+            print("\n".join(paths[:20]))
+            if len(paths) > 20:
+                print(f"... and {len(paths) - 20} more")
+    print("\nFix the allowlist in `[tool.hatch.build.targets.sdist]` in pyproject.toml.")
     return 1
 
 
@@ -139,7 +79,10 @@ if __name__ == "__main__":
     if len(sys.argv) != 2:
         print(__doc__)
         sys.exit(2)
-    target = Path(sys.argv[1]).resolve()
+    target = Path(sys.argv[1])
+    if not target.exists():
+        print(f"{target} does not exist; build the sdist first with `just build`")
+        sys.exit(2)
     if target.is_dir():
         tarballs = sorted(target.glob("*.tar.gz"))
         if len(tarballs) != 1:

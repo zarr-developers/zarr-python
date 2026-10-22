@@ -131,6 +131,10 @@ lock *args:
 build *args:
     hatch build "$@"
 
+# Check the built sdist ships what it needs (default: the one in dist/)
+check-sdist sdist="dist":
+    uv run --no-project python ci/check_sdist_contents.py "$@"
+
 # Create a changelog fragment (interactive without arguments)
 changelog *args:
     {{ docs_run }} towncrier create "$@"
