@@ -20,7 +20,6 @@ from zarr.core.dtype.npy.structured import Struct
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.group import Group
 from zarr.core.sync import sync
-from zarr.errors import ZarrDeprecationWarning
 from zarr.storage import MemoryStore, StorePath
 
 
@@ -223,11 +222,6 @@ def test_v2_non_contiguous(numpy_order: Literal["C", "F"], zarr_order: Literal["
         assert (sub_arr).flags.f_contiguous
     else:
         assert (sub_arr).flags.c_contiguous
-
-
-def test_default_compressor_deprecation_warning() -> None:
-    with pytest.warns(ZarrDeprecationWarning, match="default_compressor is deprecated"):
-        zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"  # type: ignore[attr-defined]
 
 
 @pytest.mark.parametrize("fill_value", [None, (b"", 0, 0.0)], ids=["no_fill", "fill"])
