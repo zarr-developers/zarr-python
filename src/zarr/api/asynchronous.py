@@ -256,6 +256,7 @@ async def consolidate_metadata(
             v = dataclasses.replace(v, consolidated_metadata=ConsolidatedMetadata(metadata={}))
             members_metadata[k] = v
 
+    # UNREGISTERED: v3-consolidated-metadata
     if any(m.zarr_format == 3 for m in members_metadata.values()):
         warnings.warn(
             "Consolidated metadata is currently not part in the Zarr format 3 specification. It "

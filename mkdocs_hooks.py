@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from markdown import Markdown
     from mkdocs.config.defaults import MkDocsConfig
+    from mkdocs.structure.files import Files
+    from mkdocs.structure.pages import Page
 
 # Mirrors markdown_exec's _to_bool: everything but these means "true".
 _FALSY = {"", "no", "off", "false", "0"}
@@ -80,3 +82,37 @@ def on_config(config: MkDocsConfig) -> MkDocsConfig:
         }
     )
     return config
+
+
+# The metadata compatibility page holds this marker where the list of
+# non-conformant and unregistered metadata goes. It is generated at build time from
+# ``zarr.core.metadata.ledger``, which ``tests/test_ledger.py`` checks against the
+# source, so the page lists what the code reads and writes.
+_LEDGER_MARKER = "<!-- metadata-ledger -->"
+
+
+def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, files: Files) -> str:
+    if _LEDGER_MARKER not in markdown:
+        return markdown
+    return markdown.replace(_LEDGER_MARKER, ledger_markdown())
+
+
+def ledger_markdown() -> str:
+    """Render ``zarr.core.metadata.ledger.LEDGER`` as Markdown: the metadata the current
+    zarr still writes, then the metadata it only reads, then which other implementations
+    were tested."""
+    from zarr.core.metadata.ledger import LEDGER, READERS_TESTED
+
+    sections = []
+    for heading, still_written in (("Still written", True), ("No longer written", False)):
+        items = [
+            f"- **{entry.title}** ({entry.conformance})\n"
+            f"    - Written by: {entry.written_by}\n"
+            f"    - Current behavior: {entry.reading}\n"
+            f"    - Other implementations: {entry.other_readers}"
+            for entry in LEDGER.values()
+            if entry.still_written is still_written
+        ]
+        sections.append(f"## {heading}\n\n" + "\n".join(items))
+    sections.append(f"## Other implementations tested\n\n{READERS_TESTED}.")
+    return "\n\n".join(sections)
