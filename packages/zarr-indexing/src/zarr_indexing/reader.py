@@ -45,10 +45,25 @@ class ReadContext:
     """
 
     transform: IndexTransform
-    """Maps zero-origin output-buffer coordinates to global coordinates in the source."""
+    """Maps zero-origin output-buffer coordinates to global coordinates in the source.
+
+    A transform carrying a literal (nonzero-origin) domain, such as a view's,
+    is re-based to origin zero on construction: readers address the buffer
+    they fill, so the origin is fixed here rather than by every caller.
+    """
 
     projection: ChunkProjection | None = None
-    """The partition plan when this read is one part of a partitioned view, else `None`."""
+    """The read plan, always supplied by `LazyArray` execution.
+
+    Direct reader callers may omit it if their reader supports unplanned reads.
+    """
+
+    def __post_init__(self) -> None:
+        origin = self.transform.domain.inclusive_min
+        if any(origin):
+            object.__setattr__(
+                self, "transform", self.transform.translate_domain_to((0,) * len(origin))
+            )
 
 
 class Reader(Protocol):
@@ -85,7 +100,8 @@ class Reader(Protocol):
         to global coordinates in `source`, and its domain shape equals
         `out.shape`. `context.projection`, when present, is the corresponding
         partition plan: its `chunk_transform` is chunk-local, its
-        `cell_transform` describes result placement, and its `chunk_domain`
+        `cell_transform` places cells in the zero-origin result buffer of the
+        view that planned the read, and its `chunk_domain`
         describes the grid cell. Fill every cell in place, preserving the
         transform's exact values, order, and dtype, then return `None`. Do not
         replace or retain `out`; it may be a strided writable view rather than
@@ -103,7 +119,8 @@ class BasicReader:
 
     Each transform is decomposed into the smallest enclosing positive-slice
     slab and a residual transform. The slab is read once with basic indexing,
-    so fancy or negative-step selections may over-read, and the residual is
+    so fancy selections may over-read. Reversals read their selected coordinates
+    in ascending order without requiring a negative source slice. The residual is
     then lowered through NumPy system-memory operations into the supplied
     buffer.
 
@@ -132,12 +149,13 @@ class BasicReader:
 
 
 class NumPyReader:
-    """Reader optimized for NumPy system-memory arrays.
+    """Explicit reader for NumPy system-memory arrays.
 
     This is the reader selected by
     [`LazyArray.from_numpy`][zarr_indexing.lazy_array.LazyArray.from_numpy]. It
     applies the complete transform with NumPy operations and is applicable to
-    `numpy.ndarray` sources, including `numpy.ma.MaskedArray`.
+    `numpy.ndarray` sources, including `numpy.ma.MaskedArray`. Its current
+    implementation uses the same slab and residual path as `BasicReader`.
 
     Examples
     --------
@@ -166,12 +184,13 @@ class UnitStepReader:
     unit-step slab and a residual transform, so the source only ever receives
     `slice(start, stop, 1)` on every axis — the one form an API without
     general strided reads (an FFI binding, an HTTP range endpoint) supports.
-    `BasicReader` instead pushes strided and reversed slices down, which
-    reads less but asks more of the source.
+    `BasicReader` instead requests positive-stride slices for both forward and
+    reversed affine selections, then reverses in memory when needed.
 
     The residual lowering applies strides, reversals, and gathers to the
-    in-memory block, so a strided selection over-reads its cover by the
-    stride factor. Partitioning the wrapping
+    in-memory block. For n selected points at positive spacing k on one axis,
+    the cover contains (n - 1) * k + 1 elements when n is nonzero; its over-read
+    ratio approaches k for long selections. Partitioning the wrapping
     [`LazyArray`][zarr_indexing.lazy_array.LazyArray] (`with_parts`) bounds
     each cover by a part.
 
@@ -360,14 +379,14 @@ def _lower_orthogonal(array: Any, transform: IndexTransform) -> Any:
         if isinstance(m, ConstantMap):
             selection.append(m.offset)
             continue
-        if out_dim in gathered:
-            selection.append(slice(None))
-        else:
-            assert isinstance(m, DimensionMap)
+        if isinstance(m, DimensionMap) and out_dim not in gathered:
             d = m.input_dimension
             lo = transform.domain.inclusive_min[d]
             hi = transform.domain.exclusive_max[d]
             selection.append(slice(m.offset + m.stride * lo, m.offset + m.stride * hi, m.stride))
+        else:
+            # Every ArrayMap, and every non-positive-stride DimensionMap, was gathered above.
+            selection.append(slice(None))
         if isinstance(m, ArrayMap):
             axis = m.dependent_axis
             if axis is None:
@@ -395,15 +414,14 @@ def _lower_general(array: Any, transform: IndexTransform) -> Any:
     flat axis with row-major strides, and a single `take` collects them.
     """
     outputs = transform.output
-    correlated_dims = [d for d, m in enumerate(outputs) if isinstance(m, ArrayMap)]
+    correlated = [(d, m) for d, m in enumerate(outputs) if isinstance(m, ArrayMap)]
+    correlated_dims = [d for d, _ in correlated]
 
     slice_input_dims = {m.input_dimension for m in outputs if isinstance(m, DimensionMap)}
     broadcast_axes = [d for d in range(transform.input_rank) if d not in slice_input_dims]
     broadcast_shape = tuple(transform.domain.shape[d] for d in broadcast_axes)
 
-    for d in correlated_dims:
-        arr_map = outputs[d]
-        assert isinstance(arr_map, ArrayMap)
+    for _, arr_map in correlated:
         # The axes the array varies over (its non-singleton axes; see
         # transform._array_map_dependency_axes) must all live in the block.
         dependency = (axis for axis, size in enumerate(arr_map.index_array.shape) if size > 1)
@@ -435,16 +453,14 @@ def _lower_general(array: Any, transform: IndexTransform) -> Any:
         if isinstance(m, ConstantMap):
             selection.append(m.offset)
             continue
-        if out_dim in correlated_dims:
+        if isinstance(m, ArrayMap):
             selection.append(slice(None))
             correlated_positions.append(axis)
         elif out_dim in gathered:
             selection.append(slice(None))
             residual_positions.append(axis)
-            assert isinstance(m, DimensionMap)
             residual_axis_dims.append(m.input_dimension)
         else:
-            assert isinstance(m, DimensionMap)
             d = m.input_dimension
             lo = transform.domain.inclusive_min[d]
             hi = transform.domain.exclusive_max[d]
@@ -468,10 +484,9 @@ def _lower_general(array: Any, transform: IndexTransform) -> Any:
     flat_index = np.zeros(math.prod(broadcast_shape), dtype=np.intp)
     stride = 1
     for position in range(n_corr - 1, -1, -1):
-        m = outputs[correlated_dims[position]]
-        assert isinstance(m, ArrayMap)
+        _, corr_map = correlated[position]
         flat_index = flat_index + (
-            _correlated_map_coords(m, broadcast_axes, broadcast_shape, transform.input_rank)
+            _correlated_map_coords(corr_map, broadcast_axes, broadcast_shape, transform.input_rank)
             * stride
         )
         stride *= corr_sizes[position]
@@ -489,8 +504,8 @@ def _push_slice_for_dimension_map(
     """The positive-step slice covering a `DimensionMap`, and its block-local map.
 
     A negative step is read forwards and reversed by the residual: a source is
-    only ever asked for a slice that walks upwards, which is the one form every
-    array-like agrees on.
+    only asked for positive-stride slices. Supporting those slices is part of
+    this reader's source contract.
     """
     d = m.input_dimension
     lo = transform.domain.inclusive_min[d]
@@ -524,9 +539,8 @@ def _push_unit_slice_for_dimension_map(
 
     Strides and reversals stay in the residual: the source is only ever asked
     for a contiguous ascending slice, and the original stride is replayed
-    against the in-memory block. The cover therefore over-reads a strided
-    selection by its stride factor, which is the price of a source that
-    accepts nothing but `slice(start, stop, 1)`.
+    against the in-memory block. The cover may include unselected elements;
+    for n distinct points at spacing k it has (n - 1) * k + 1 elements.
     """
     d = m.input_dimension
     lo = transform.domain.inclusive_min[d]

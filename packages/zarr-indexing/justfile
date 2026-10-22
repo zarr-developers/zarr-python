@@ -1,17 +1,24 @@
 # Development verbs for the zarr-indexing package. Recipes run with this
 # directory as the working directory regardless of where `just` is invoked.
 
+# Quoted arguments must survive delegation from the root Justfile.
+set positional-arguments
+
+# In the repository, recipes overlay the in-repo zarr (editable) so they run
+# against the code beside them. pyproject.toml stays standalone, so from an
+# unpacked sdist, where ../.. is not the repository, there is no overlay and
+# the suites that need zarr skip.
+repo_zarr := if path_exists("../../src/zarr/__init__.py") == "true" { "--with-editable ../.." } else { "" }
+
 # List available recipes
 default:
     @just --list
 
-# Nothing here imports `zarr`; the suite runs against the repo-root
-# environment so it shares the parent project's pinned test toolchain
-# (hypothesis, ruff, pyright). The repo is not a uv workspace, so this package
-# is layered in as an editable overlay — the same invocation CI uses.
+# zarr is not a dependency: repo_zarr supplies it, so the suites that read
+# through zarr run here instead of skipping.
 # Run the test suite; extra args are passed to pytest
 test *args:
-    uv run --project ../.. --group test --with-editable . python -m pytest tests src/zarr_indexing {{ args }}
+    uv run {{ repo_zarr }} --group test python -m pytest tests src/zarr_indexing "$@"
 
 # TensorStore is the oracle for the parity suites, which skip without it. It
 # ships binary wheels only, so it rides in as a run-time overlay rather than
@@ -19,10 +26,10 @@ test *args:
 # gate the CI job that calls this on the matrix version.
 # Run the tensorstore parity suites; extra args are passed to pytest
 test-tensorstore *args:
-    uv run --project ../.. --group test --with-editable . --with 'tensorstore>=0.1.84' python -m pytest tests/test_ndsel_tensorstore.py tests/test_tensorstore_parity.py {{ args }}
+    uv run {{ repo_zarr }} --group test --with 'tensorstore>=0.1.84' python -m pytest tests/test_ndsel_tensorstore.py tests/test_tensorstore_parity.py "$@"
 
 # Lint with the same invocation CI uses. Ruff is pinned to the repo-wide
-# version (see pyproject.toml [dependency-groups] docs); bump together.
+# version in the root .pre-commit-config.yaml; bump together.
 lint:
     uvx ruff@0.16.0 check .
 
@@ -30,7 +37,8 @@ lint:
 typecheck:
     uv run --group test --with pyright pyright
 
-# Run everything CI runs for this package
+# Run these checks with the locally selected interpreter and dependencies;
+# CI also exercises its configured Python-version matrix
 check: lint typecheck test test-tensorstore docs-check
 
 # Preview the changelog that the next release would generate

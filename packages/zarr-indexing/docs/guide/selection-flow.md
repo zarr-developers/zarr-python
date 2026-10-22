@@ -171,7 +171,7 @@ pairs:
 | `(0,)` | `[1]` | `[1]` |
 | `(1,)` | `[2, 2, 0]` | `[0, 2, 3]` |
 
-Chunk `(1,)` is fetched once, but its local value `2` contributes to two result
+Chunk `(1,)` is fetched once, but the value at local coordinate `2` contributes to two result
 positions. Chunk visitation order need not be result order; `out_selection`
 restores the requested arrangement.
 
@@ -188,6 +188,9 @@ than one. Repeated coverage is not full; fancy coverage remains conservative.
 
 Zarr's merge operation can skip a read for a full data-extent write and allocate
 a fill-valued codec buffer when the selected data is smaller than that buffer.
+That shortcut also requires the consumer's expected value layout and order;
+complete coverage by a reversal or reordered gather alone does not establish
+that the supplied buffer can be copied directly into codec order.
 Touching every chunk alone does not prove full coverage of each chunk.
 
 Planning does not fetch bytes, decode buffers, choose concurrency, or define

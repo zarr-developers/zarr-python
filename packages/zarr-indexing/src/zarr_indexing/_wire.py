@@ -2,9 +2,9 @@
 
 Package-private: the types that serialize themselves (`IndexDomain`,
 `IndexTransform`, the output map kinds) all need these, so they cannot live in
-any one of them, and they are not API. The three engine constraints named in
-[`zarr_indexing.json`][zarr_indexing.json] — finite bounds, implicit bounds
-lowering by value, integer `index_array` content — are enforced here.
+any one of them, and they are not API. Domain bounds, index-array bounds,
+implicit bounds lowering by value, and integer `index_array` content are
+handled here, as described in [`zarr_indexing.json`][zarr_indexing.json].
 """
 
 from __future__ import annotations
@@ -13,11 +13,35 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from zarr_indexing.messages import NdselError
+from zarr_indexing.messages import NdselError, validate_index_array_bounds
 
 if TYPE_CHECKING:
     from zarr_indexing.domain import IndexDomain
     from zarr_indexing.json import BoundJSON
+
+
+def check_index_array_bounds(array: np.ndarray[Any, Any], bounds: Any, where: str) -> None:
+    """Validate every raw index value against an inclusive interval.
+
+    Validate interval syntax even for empty arrays. Once checked, immutable
+    index coordinates need no retained constraint. Use Python integer extrema
+    to avoid overflow or floating-point rounding at integer limits.
+    """
+    lo, hi = validate_index_array_bounds(bounds, where)
+    if array.size == 0 or (lo == "-inf" and hi == "+inf"):
+        return
+    minimum, maximum = int(array.min()), int(array.max())
+    if (
+        lo == "+inf"
+        or hi == "-inf"
+        or (isinstance(lo, int) and minimum < lo)
+        or (isinstance(hi, int) and maximum > hi)
+    ):
+        raise NdselError(
+            "invalid_json",
+            f"{where}.index_array values [{minimum}, {maximum}] are outside "
+            f"index_array_bounds {bounds!r}",
+        )
 
 
 def lower_bound(bound: BoundJSON, where: str) -> int:
@@ -47,12 +71,28 @@ def lower_index_array(raw: Any, where: str) -> np.ndarray[Any, np.dtype[np.intp]
     and 0. Strings raise here rather than leaking NumPy's own conversion error.
     """
     if not isinstance(raw, list):
-        # A bare integer would become a rank-0 array and then be widened into a
-        # length-1 map, so a document that names no cells would select one.
+        # The wire representation requires a nested array, not a scalar.
         raise NdselError(
             "invalid_json",
             f"{where} must be an array of integers, got {raw!r}",
         )
+    # Validate before NumPy inference can coerce mixed booleans to integers or
+    # conversion to intp can wrap unsigned coordinates.
+    limits = np.iinfo(np.intp)
+    pending = [raw]
+    while pending:
+        for value in pending.pop():
+            if isinstance(value, list):
+                pending.append(value)
+            elif isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+                dtype = np.asarray(value).dtype.name
+                raise NdselError(
+                    "invalid_json", f"{where} must hold integers, got {dtype}: {value!r}"
+                )
+            elif not limits.min <= value <= limits.max:
+                raise NdselError(
+                    "invalid_json", f"{where} coordinate {value} is outside intp range"
+                )
     try:
         arr = np.asarray(raw)
     except (TypeError, ValueError) as exc:
@@ -88,16 +128,17 @@ def full_rank_index_array(
 ) -> np.ndarray[Any, np.dtype[np.intp]]:
     """Give an incoming `index_array` the input rank the engine requires.
 
-    ndsel leaves index-array rank unvalidated, so a conformant producer may send
-    an array of lower rank that broadcasts against the domain. A non-empty one
-    is aligned to the *trailing* input dimensions, which is how NumPy broadcasts
-    and how a producer omitting leading singletons means it to be read.
+    ndsel intends index arrays to have the input rank, but defers validating
+    that constraint. This engine also accepts lower-rank arrays, aligning them
+    to the *trailing* input dimensions as in NumPy broadcasting. This extension
+    does not imply other ndsel consumers accept the same document.
 
     An empty array is a different matter: `[]` is the only spelling of every
     empty shape once the leading axis is the zero-length one, so the axis it
-    varies over cannot be read off it. It is recovered from the domain, which
-    can only be empty on the axis in question — and rejected when the domain
-    leaves that ambiguous. This package never emits such a document (an empty
+    varies over cannot be read off it. When ranks differ, this engine recovers
+    a shape with the domain's single empty axis and singleton axes elsewhere;
+    it rejects recovery if the domain has zero or multiple empty axes.
+    This package never emits such a document (an empty
     map is degenerate and collapses to a constant, as TensorStore's does), so
     this path exists for external producers alone.
     """

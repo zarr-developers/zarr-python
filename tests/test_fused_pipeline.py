@@ -433,6 +433,13 @@ async def test_encode_and_write_as_completed_cancels_stray_writes_on_failure() -
     the caller has already seen the exception -- and its eventual outcome is
     never retrieved (an unraisable "Task exception was never retrieved"
     warning if it later fails).
+
+    The failing write raises only once the slow write is in flight. Encodes
+    land in any order, and if the failing chunk's write has already raised
+    when `gather` is called, `gather` fails its result immediately (it runs
+    done-callbacks of finished children eagerly), so the slow write is
+    cancelled before its first step. That is also correct, but it is not the
+    in-flight cancellation this test checks.
     """
     from zarr.core.codec_pipeline import _encode_and_write_as_completed
 
@@ -464,6 +471,9 @@ async def test_encode_and_write_as_completed_cancels_stray_writes_on_failure() -
             return None
 
         async def set(self, value: Buffer) -> None:
+            # Bounded so a regression that never starts the slow write fails
+            # with a TimeoutError instead of hanging.
+            await asyncio.wait_for(write_started.wait(), timeout=5)
             raise RuntimeError("simulated write failure")
 
         async def delete(self) -> None:

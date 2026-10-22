@@ -13,11 +13,9 @@ literal coordinates.
 
 Note
 ----
-`zarr.Array` currently carries its own copy of this normalization, tuned to a
-different boundary contract (`Array.lazy[...]` deliberately exposes the literal
-dialect, so a view's coordinates keep their meaning across composition). This
-module is the generic, zarr-free version used by `LazyArray`; consolidating
-zarr's copy onto it is left to a follow-up.
+This module provides the positional boundary used by `LazyArray`, independently
+of Zarr's own array indexers. Direct `IndexTransform` indexing continues to use
+literal coordinates.
 """
 
 from __future__ import annotations
@@ -132,8 +130,8 @@ def _expanded_axis_walk(entries: tuple[Any, ...], ndim: int, mode: SelectionMode
     """The starting axis each entry addresses, with an ellipsis expanded.
 
     The returned list has one entry per element of `entries`; the value for an
-    `Ellipsis` (or a `newaxis`) is the axis it starts at, which is also the axis
-    the following entry resumes from once the skipped axes are accounted for.
+    `Ellipsis` (or a `newaxis`) is the axis it starts at. The following entry
+    advances past the ellipsis's skipped axes; a `newaxis` consumes no axis.
     """
     for sel in entries:
         if is_bool_scalar(sel):
@@ -210,11 +208,9 @@ def split_scalar_axes(
     scalar with the advanced indices for the purpose of placing the broadcast
     result, so the two disagree when a scalar and an index array are separated:
     `a[0, ..., [1, 2]]` has shape `(2, 3)` for a `(2, 3, 4)` array, where
-    `a[0][..., [1, 2]]` has shape `(3, 2)`. The earlier claim here that they
-    always agree rested on `a[0, [1, 2], :]`, where the indices are adjacent and
-    they happen to. Scalar-first is the documented dialect (see the `lazy_array`
-    module docstring) — the divergence is deliberate, and this note exists so
-    that the correct end is not "fixed" later.
+    `a[0][..., [1, 2]]` has shape `(3, 2)`. Scalar-first processing is the
+    wrapper's indexing dialect; it does not implement NumPy's full advanced-axis
+    placement rules.
 
     Parameters
     ----------

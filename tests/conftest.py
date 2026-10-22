@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import math
 import os
 import pathlib
@@ -40,6 +41,7 @@ from zarr.core.common import (
 )
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
+    data_type_registry,
     get_data_type_from_native_dtype,
 )
 from zarr.core.dtype.common import HasItemSize
@@ -235,6 +237,7 @@ def _clear_registries() -> None:
     registries = zarr.registry._collect_entrypoints()
     for registry in registries:
         registry.lazy_load_list.clear()
+    data_type_registry._lazy_load_list.clear()
 
 
 @pytest.fixture
@@ -570,6 +573,21 @@ def deep_nan_equal(a: object, b: object) -> bool:
     if isinstance(a, Sequence) and isinstance(b, Sequence):
         return all(deep_nan_equal(a[i], b[i]) for i in range(len(a)))
     return nan_equal(a, b)
+
+
+def declared_chunk_data_sizes(declared: int | Sequence[int], extent: int) -> tuple[int, ...]:
+    """The data sizes of the chunks one declared chunk grid dimension places
+    over `extent`, worked out from the declaration alone: a bare int repeats
+    to cover the extent, explicit edges are clipped to it. An oracle that does
+    not go through zarr's chunk grid code."""
+    sizes: list[int] = []
+    offset = 0
+    for edge in itertools.repeat(declared) if isinstance(declared, int) else declared:
+        if offset >= extent:
+            break
+        sizes.append(min(edge, extent - offset))
+        offset += edge
+    return tuple(sizes)
 
 
 def gzip_streams_equal_except_mtime(a: bytes, b: bytes) -> bool:
