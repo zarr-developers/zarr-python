@@ -56,6 +56,10 @@ docs = [
     "mkdocs-material==9.7.7",
     "mkdocs==1.6.1",
     "mkdocstrings==1.0.8",
+    # pymdown-extensions 12.3 changed the Highlight extension API; mkdocstrings 1.0.6
+    # cannot drive it (Highlight.__init__() missing argument "md"). Match the
+    # version in the repo-root uv.lock until mkdocstrings is bumped everywhere.
+    "pymdown-extensions==11.0.1",
     "mkdocstrings-python==2.0.8",
     "griffe-inherited-docstrings==1.1.3",
     # mkdocstrings uses ruff to format rendered signatures

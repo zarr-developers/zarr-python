@@ -740,6 +740,7 @@ docs = [
     { name = "mkdocs-material" },
     { name = "mkdocstrings" },
     { name = "mkdocstrings-python" },
+    { name = "pymdown-extensions" },
     { name = "ruff" },
 ]
 test = [
@@ -761,6 +762,7 @@ docs = [
     { name = "mkdocs-material", specifier = "==9.7.7" },
     { name = "mkdocstrings", specifier = "==1.0.8" },
     { name = "mkdocstrings-python", specifier = "==2.0.8" },
+    { name = "pymdown-extensions", specifier = "==11.0.1" },
     { name = "ruff", specifier = "==0.16.8" },
 ]
 test = [
