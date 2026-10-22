@@ -779,8 +779,11 @@ def read_array_v2(
         )
         problems.extend(found)
     if "order" in doc:
-        refined["order"], _ = refine_json(doc["order"])
-        if doc["order"] not in ("C", "F"):
+        # Judged as refined, so a value that only compares equal to "C" is
+        # refused as every other value outside the set is.
+        order, found = refine_json(doc["order"], ("order",))
+        refined["order"] = order
+        if len(found) != 0 or order not in ("C", "F"):
             problems.append(outside_of(("order",), doc["order"], ("C", "F")))
     compressor: ResolvedField[ZarrV2CodecDefinition[Any]] | UNSET | None = UNSET
     if "compressor" in doc:
@@ -832,8 +835,9 @@ def read_array_v2(
                 filters = tuple(read)
                 refined["filters"] = tuple(items)
     if "dimension_separator" in doc:
-        refined["dimension_separator"], _ = refine_json(doc["dimension_separator"])
-        if doc["dimension_separator"] not in (".", "/"):
+        separator, found = refine_json(doc["dimension_separator"], ("dimension_separator",))
+        refined["dimension_separator"] = separator
+        if len(found) != 0 or separator not in (".", "/"):
             problems.append(
                 outside_of(("dimension_separator",), doc["dimension_separator"], (".", "/"))
             )
@@ -863,9 +867,9 @@ def read_array_v2(
         shape=shape,
         chunks=chunks,
         fill_value=fill_value,
-        order=cast("ZarrV2ArrayOrder", doc["order"]),
+        order=cast("ZarrV2ArrayOrder", refined["order"]),
         dimension_separator=cast(
-            "ZarrV2ArrayDimensionSeparator", doc.get("dimension_separator", ".")
+            "ZarrV2ArrayDimensionSeparator", refined.get("dimension_separator", ".")
         ),
         attributes=attributes,
         extra_fields=extra_fields,

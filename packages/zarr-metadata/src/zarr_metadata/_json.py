@@ -395,16 +395,23 @@ _Refined = tuple[JSONValue | None, tuple[ValidationProblem, ...]]
 def nested_past_the_levels(value: object, loc: tuple[str | int, ...]) -> ValidationProblem | None:
     """The problem `value` is when it is a container -- an object or an array -- at `loc`, past the levels a reader walks, `JSON_DEPTH` of them; None for a scalar, or within them.
 
-    `_refine` asks it of every value it reaches, and a reader of each
-    container it walks without refining -- a document's members, the
-    consolidated metadata it descends into -- so a chain of documents is
-    bounded as any other nesting is, and every container is judged where
-    it sits, as `refine_json` of the whole document would judge it.
+    `_refine` judges each container it reaches by this rule, as
+    `_past_the_levels` states it for a value known to be one, and a reader
+    of each container it walks without refining -- a document's members,
+    the consolidated metadata it descends into -- asks this, so a chain of
+    documents is bounded as any other nesting is, and every container is
+    judged where it sits, as `refine_json` of the whole document would
+    judge it.
     """
     if len(loc) < JSON_DEPTH or isinstance(value, (str, int, float, bool)) or value is None:
         return None
     if not isinstance(value, (Mapping, Sequence)) or isinstance(value, (bytes, bytearray)):
         return None
+    return _past_the_levels(loc)
+
+
+def _past_the_levels(loc: tuple[str | int, ...]) -> ValidationProblem:
+    """The problem a container at `loc`, past the levels a reader walks, is: what `nested_past_the_levels` finds, for a value known to be a container."""
     return ValidationProblem(loc, _PAST_THE_LEVELS, "invalid_value")
 
 
@@ -468,9 +475,10 @@ def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refi
                     "invalid_type",
                 ),
             )
-    # A container: judged where it sits, as `nested_past_the_levels` judges one.
+    # A container: judged where it sits, by the rule `nested_past_the_levels`
+    # states, which `_refine` reaches only for a container.
     if len(loc) >= JSON_DEPTH:
-        return None, (ValidationProblem(loc, _PAST_THE_LEVELS, "invalid_value"),)
+        return None, (_past_the_levels(loc),)
     if mapping:
         # Walked here rather than through `_refine_members`, so that each
         # level of nesting costs one frame, `JSON_DEPTH` of them at most.

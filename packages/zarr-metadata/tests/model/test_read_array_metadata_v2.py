@@ -8,6 +8,7 @@ import pytest
 
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model import (
+    MetadataValidationError,
     ZarrV2ArrayMetadata,
     is_array_metadata_v2,
     parse_array_metadata_v2,
@@ -123,3 +124,32 @@ def test_the_v2_readers_read_in_the_scope_given() -> None:
     assert validate_array_metadata_v2(doc) == ()
     found = validate_array_metadata_v2(doc, context=CORE_V2.extended_with(bare))
     assert [p.loc for p in found] == [("compressor", "level")]
+
+
+class _EqualTo:
+    """A value that compares equal to a string without being one."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    def __eq__(self, other: object) -> bool:
+        return other == self.text
+
+    __hash__ = None  # pyright: ignore[reportAssignmentType]
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [("order", _EqualTo("C")), ("dimension_separator", _EqualTo("."))],
+    ids=["order", "dimension_separator"],
+)
+def test_error_a_v2_member_that_only_compares_equal_to_an_allowed_value_is_refused(
+    key: str, value: object
+) -> None:
+    """`order` and `dimension_separator` are judged as refined: a value that is no string, and only compares equal to one the set allows, is outside the set, of the wrong type, and never a model's."""
+    document = {**BASE, key: value}
+    problems = validate_array_metadata_v2(document)
+    assert [(found.loc, found.kind) for found in problems] == [((key,), "invalid_type")]
+    assert read_array_metadata_v2(document).metadata is None
+    with pytest.raises(MetadataValidationError):
+        ZarrV2ArrayMetadata(document)

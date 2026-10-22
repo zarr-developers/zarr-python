@@ -688,9 +688,9 @@ def kind_of(definition: Definition[Any]) -> type[Definition[Any]] | None:
     return _kind_of_class(type(definition))
 
 
-@functools.cache
+@functools.lru_cache(maxsize=256)
 def _kind_of_class(cls: type[object]) -> type[Definition[Any]] | None:
-    """`kind_of` a definition of class `cls`: a walk of its MRO, once per class."""
+    """`kind_of` a definition of class `cls`: a walk of its MRO, once per class; bounded, so a class built per call is not kept for good."""
     return next((base for base in cls.__mro__ if _declares_kind(base)), None)
 
 
@@ -708,8 +708,13 @@ def _declares_kind(cls: type[object]) -> TypeGuard[type[Definition[Any]]]:
     return vars(cls).get("_is_kind") is True and issubclass(cls, Definition)
 
 
-_KIND_NAMED: dict[object, type[Definition[Any]]] = {}
-"""What `as_kind` answered for each way a kind was named -- `CodecDefinition`, `CodecDefinition[Any]` -- which never changes: a class is a kind by its declaration."""
+@functools.lru_cache(maxsize=256)
+def _kind_named(kind: object) -> type[Definition[Any]] | None:
+    """The kind `kind` names, type arguments dropped, or None: what `as_kind` answers, once per way a kind is named -- `CodecDefinition`, `CodecDefinition[Any]` -- since a class is a kind by its declaration; bounded, so a class built per call is not kept for good."""
+    origin = get_origin(kind) or kind
+    if isinstance(origin, type) and _declares_kind(origin):
+        return origin
+    return None
 
 
 def as_kind(kind: object) -> type[Definition[Any]]:
@@ -721,14 +726,12 @@ def as_kind(kind: object) -> type[Definition[Any]]:
     filed: a field read as one would go unjudged.
     """
     try:
-        return _KIND_NAMED[kind]
-    except (KeyError, TypeError):
-        # Not asked before, or not hashable, which no kind is.
-        pass
-    origin = get_origin(kind) or kind
-    if isinstance(origin, type) and _declares_kind(origin):
-        _KIND_NAMED[kind] = origin
-        return origin
+        found = _kind_named(kind)
+    except TypeError:
+        # Not hashable, which no kind is.
+        found = None
+    if found is not None:
+        return found
     names = ", ".join(known.__name__ for known in KINDS)
     msg = (
         f"{kind!r} is not a kind of metadata; read a field as one of {names}, or as a "
@@ -1116,11 +1119,12 @@ def ruled(
     return _located(at, cast("tuple[ValidationProblem, ...]", found))
 
 
-def _located(prefix: Loc, problems: Sequence[ValidationProblem]) -> Problems:
-    """`problems`, each located under `prefix`."""
-    if len(problems) == 0:
+def _located(prefix: Loc, problems: Iterable[ValidationProblem]) -> Problems:
+    """`problems`, each located under `prefix`; a kind's `envelope_problems` may give them lazily."""
+    found = tuple(problems)
+    if len(found) == 0:
         return ()
-    return tuple(dataclasses.replace(found, loc=(*prefix, *found.loc)) for found in problems)
+    return tuple(dataclasses.replace(each, loc=(*prefix, *each.loc)) for each in found)
 
 
 def _envelope(field: _NestedField) -> Problems:

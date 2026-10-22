@@ -1471,3 +1471,34 @@ def test_error_a_model_is_built_only_of_members_a_read_found_nothing_wrong_with(
 
     with pytest.raises(TypeError, match="nothing wrong with"):
         _document_of(GroupMembersV3(None, {}, UNSET, None))
+
+
+def test_error_the_unset_sentinel_at_consolidated_metadata_is_not_an_absent_member() -> None:
+    """`UNSET` is what a reader gives for a key a document does not hold; written at `consolidated_metadata`, it is a value that is no object, as any other such value is, and never written back as null."""
+    document = {
+        "zarr_format": 3,
+        "node_type": "group",
+        "attributes": {},
+        "consolidated_metadata": UNSET,
+    }
+    assert [(found.loc, found.kind) for found in validate_group_metadata_v3(document)] == [
+        (("consolidated_metadata",), "invalid_type")
+    ]
+    with pytest.raises(MetadataValidationError):
+        ZarrV3GroupMetadata(document)
+
+
+def test_a_consolidated_model_given_as_the_member_keeps_the_order_its_document_writes() -> None:
+    """A `ZarrV3ConsolidatedMetadata` given as the member is read as its document, in its document's order, so the group writes it as the member wrote it."""
+    array = ZarrV3ArrayMetadata.create_default(shape=(2,))
+    member = ZarrV3ConsolidatedMetadata(
+        {"metadata": {"a": array.to_json()}, "kind": "inline", "must_understand": False}
+    )
+    group = ZarrV3GroupMetadata(
+        {"zarr_format": 3, "node_type": "group", "consolidated_metadata": member}
+    )
+    written = cast("dict[str, object]", group.to_json()["consolidated_metadata"])
+    assert list(written) == ["metadata", "kind", "must_understand"]
+    assert group == ZarrV3GroupMetadata(
+        {"zarr_format": 3, "node_type": "group", "consolidated_metadata": member.to_json()}
+    )

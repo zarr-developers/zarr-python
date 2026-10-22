@@ -339,3 +339,27 @@ def test_a_model_s_key_is_computed_when_it_is_first_compared() -> None:
     assert hash(model) == hash(other)
     assert model != ZarrV3ArrayMetadata({**document, "fill_value": 1}, scope)
     assert len(asked) == 3
+
+
+def test_error_a_canonical_that_raises_is_raised_when_the_model_is_first_compared() -> None:
+    """A definition's `canonical` is the extension author's code, first asked when a model is first compared: the model builds, and `hash` raises what `canonical` raised, with the note naming the definition."""
+
+    def refuses(configuration: GzipCodecConfiguration) -> GzipCodecConfiguration:
+        raise ValueError("no")
+
+    scope = CORE_AND_EXTENSIONS.extended_with(dataclasses.replace(GZIP_CODEC, canonical=refuses))
+    document = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": [4],
+        "data_type": "int8",
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": [4]}},
+        "chunk_key_encoding": {"name": "default", "configuration": {"separator": "/"}},
+        "fill_value": 0,
+        "codecs": [{"name": "bytes"}, {"name": "gzip", "configuration": {"level": 1}}],
+    }
+    model = ZarrV3ArrayMetadata(document, scope)
+    assert model.to_json()["codecs"][1] == {"name": "gzip", "configuration": {"level": 1}}
+    with pytest.raises(ValueError, match="no") as raised:
+        hash(model)
+    assert raised.value.__notes__ == ["raised by the canonical of 'gzip'"]

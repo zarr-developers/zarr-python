@@ -268,3 +268,34 @@ def test_error_what_nothing_hashes_is_not_a_kind() -> None:
         as_kind(["codec"])
     with pytest.raises(TypeError, match="is not a kind of metadata"):
         as_kind({"kind": CodecDefinition})
+
+
+class _LazyEnvelope(CodecDefinition[Any], kind=True, format=3):
+    """A kind whose envelope rule yields its problems rather than returning a tuple of them."""
+
+    label: ClassVar[str] = "lazy codec"
+
+    @classmethod
+    def envelope_problems(cls, value: object) -> Any:  # noqa: ANN401 - what a kind's author may write
+        yield from CodecDefinition.envelope_problems(value)
+
+
+def test_a_kind_may_yield_its_envelope_problems() -> None:
+    """`envelope_problems` is a kind's to write; one that yields its problems is read as one that returns them, with and without a problem to yield."""
+    lazy = _LazyEnvelope(
+        name="gzip",
+        configuration=GZIP_CODEC.configuration,
+        kind=GZIP_CODEC.kind,
+        size=GZIP_CODEC.size,
+    )
+    scope = Context.of(lazy)
+    read, problems = resolve({"name": "gzip", "configuration": {"level": 1}}, _LazyEnvelope, scope)
+    assert isinstance(read, AcceptedField)
+    assert problems == ()
+    refused, problems = resolve(
+        {"name": "gzip", "configuration": 5}, _LazyEnvelope, scope, ("codecs", 0)
+    )
+    assert isinstance(refused, RefusedField)
+    assert [(found.loc, found.kind) for found in problems] == [
+        (("codecs", 0, "configuration"), "invalid_type")
+    ]

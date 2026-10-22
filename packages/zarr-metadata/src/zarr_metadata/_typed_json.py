@@ -574,13 +574,8 @@ def one_of(allowed: tuple[object, ...]) -> Parser:
     right type, the wrong value.
     """
 
-    # Each value with its type, since `True == 1` and `1.0 == 1` in Python
-    # and not in JSON; a value nothing hashes, an object or an array, is
-    # none of them.
-    admitted = frozenset((type(entry), entry) for entry in allowed)
-
     def parse(value: object, loc: Loc) -> Parsed:
-        if not _hashable(value) or (type(value), value) not in admitted:
+        if not any(value == entry and type(value) is type(entry) for entry in allowed):
             return value, (outside_of(loc, value, allowed),)
         return value, ()
 

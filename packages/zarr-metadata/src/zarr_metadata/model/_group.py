@@ -723,7 +723,7 @@ def read_group_metadata_v3(
     reading, members = read_group_v3(value, scope)
     if members is None:
         return reading
-    return _with_models(reading, members, documents_for(value), scope)
+    return _with_models(reading, members, value, scope)
 
 
 def read_group_v3(
@@ -759,13 +759,17 @@ def read_group_v3(
     if "attributes" in doc:
         attributes, problems = attributes_of(doc["attributes"], at)
         found.extend(problems)
-    raw = doc.get(ZARR_V3_CONSOLIDATED_METADATA_KEY, UNSET)
     consolidated: dict[str, ZarrV3NodeMetadataReading] = {}
     held: Mapping[str, ArrayMembersV3 | GroupMembersV3] | UNSET = UNSET
     member: dict[str, JSONValue] | None = None
-    if raw is not UNSET:
+    if ZARR_V3_CONSOLIDATED_METADATA_KEY in doc:
+        # Whatever is written there is read, the `UNSET` sentinel among it:
+        # a document holds no sentinel, and a reader that took one for an
+        # absent key would write it as null.
         consolidated, held, member, inside = _read_consolidated_v3(
-            raw, context, (*at, ZARR_V3_CONSOLIDATED_METADATA_KEY)
+            doc[ZARR_V3_CONSOLIDATED_METADATA_KEY],
+            context,
+            (*at, ZARR_V3_CONSOLIDATED_METADATA_KEY),
         )
         found.extend(_prefix(ZARR_V3_CONSOLIDATED_METADATA_KEY, inside))
     reading = ZarrV3GroupMetadataReading(MappingProxyType(consolidated), with_input(found, whole))
@@ -910,8 +914,9 @@ def _read_consolidated_v3(
     documents is bounded by the levels a reader walks.
     """
     if isinstance(value, ZarrV3ConsolidatedMetadata):
-        # Another group's member, given whole: its models at their paths.
-        value = {**_CONSOLIDATED_ENVELOPE, "metadata": dict(value.metadata)}
+        # Another group's member, given whole: its models at their paths,
+        # in the member's own order, as its document writes it.
+        value = {**value._document, "metadata": dict(value.metadata)}  # pyright: ignore[reportPrivateUsage]
     past = nested_past_the_levels(value, at)
     if past is not None:
         return {}, {}, None, within((past,), at)
@@ -1134,20 +1139,20 @@ def _with_models(
     members: GroupMembersV3,
     value: object,
     context: Context,
-    at: Loc = (),
 ) -> ZarrV3GroupMetadataReading:
     """`reading`, holding the model of each document its consolidated metadata holds that has no problem, and its own when it has none: each built of what the read refined, as `members` holds it, in `context`.
 
     A document with a problem -- a key that is no string, a value that is
     no JSON, a level past the cap -- has no model; each document its
-    consolidated metadata holds was read on its own, from where it sits in
-    `value`, the document this read read -- `at` is where this one sits --
-    so the ones without a problem still have their models, and a listed
-    group with a problem of its own holds those of its own listing.
+    consolidated metadata holds was read on its own, so the ones without
+    a problem still have their models, and a listed group with a problem
+    of its own holds those of its own listing, found by walking `value`,
+    the document this read read, down to it.
     """
     if len(reading.problems) == 0:
         model = ZarrV3GroupMetadata._of(_document_of(members), context, reading, members)  # pyright: ignore[reportPrivateUsage]
         return model.reading
+    value = documents_for(value)
     if members.consolidated is UNSET or not is_object(value):
         return reading
     member = value.get(ZARR_V3_CONSOLIDATED_METADATA_KEY)
@@ -1172,13 +1177,7 @@ def _with_models(
             # refused, or one it walked past -- still holds, in its
             # reading, a model of each document in its own listing that
             # has none.
-            held[path] = _with_models(
-                nested,
-                child,
-                held_entries[path],
-                context,
-                (*at, ZARR_V3_CONSOLIDATED_METADATA_KEY, "metadata", path),
-            )
+            held[path] = _with_models(nested, child, held_entries[path], context)
     return dataclasses.replace(reading, consolidated=MappingProxyType(held))
 
 
