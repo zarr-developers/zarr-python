@@ -844,6 +844,12 @@ def test_save_errors() -> None:
         zarr.save("data/example.zarr", a, mode="w")
 
 
+def test_save_array_rejects_scalar() -> None:
+    # numpy scalars lack __len__ and __setitem__, so they fail the NDArrayLike check
+    with pytest.raises(TypeError, match="arr argument must be numpy or other NDArrayLike array"):
+        save_array("data/example.zarr", np.float64(1.0))  # type: ignore[arg-type]
+
+
 def test_save_storage_options_is_not_an_array(tmp_path: Path) -> None:
     # `storage_options` is an option of `save`, not one of the arrays to save, so a
     # single array still lands as an array and not as a group holding `arr_0`.
