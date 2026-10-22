@@ -48,10 +48,12 @@ is not `None`. Explicit chunk sizes are not affected by this value.
 @dataclass(frozen=True)
 class FixedDimension:
     """Uniform chunk size. Boundary chunks contain less data but are
-    encoded at full size by the codec pipeline."""
+    encoded at full size by the codec pipeline. With a non-zero ``shift`` the
+    first element sits ``shift`` positions into the first chunk's buffer."""
 
     size: int  # chunk edge length (>= 1)
     extent: int  # array dimension length (>= 0)
+    shift: int = 0  # position of array index 0 inside the first chunk, in [0, size)
     nchunks: int = field(init=False, repr=False)
     ngridcells: int = field(init=False, repr=False)
 
@@ -60,7 +62,9 @@ class FixedDimension:
             raise ValueError(f"FixedDimension size must be >= 1, got {self.size}")
         if self.extent < 0:
             raise ValueError(f"FixedDimension extent must be >= 0, got {self.extent}")
-        n = ceildiv_int(self.extent, self.size)
+        if not 0 <= self.shift < self.size:
+            raise ValueError(f"FixedDimension shift must be in [0, {self.size}), got {self.shift}")
+        n = ceildiv_int(self.extent + self.shift, self.size) if self.extent else 0
         object.__setattr__(self, "nchunks", n)
         object.__setattr__(self, "ngridcells", n)
 
@@ -69,15 +73,19 @@ class FixedDimension:
             raise IndexError(f"Negative index {idx} is not allowed")
         if idx >= self.extent:
             raise IndexError(f"Index {idx} is out of bounds for extent {self.extent}")
-        return idx // self.size
+        return (idx + self.shift) // self.size
 
     def chunk_offset(self, chunk_ix: int) -> int:
-        """Byte-aligned start position of chunk *chunk_ix* in array coordinates.
+        """Start of the valid data region of chunk *chunk_ix* in array coordinates.
 
         Does not validate *chunk_ix* — callers must ensure it is in
         ``[0, nchunks)``. Use ``ChunkGrid.__getitem__`` for safe access.
         """
-        return chunk_ix * self.size
+        return max(0, chunk_ix * self.size - self.shift)
+
+    def buffer_offset(self, chunk_ix: int) -> int:
+        """Position of the valid data region inside the chunk's buffer."""
+        return self.shift if chunk_ix == 0 else 0
 
     def chunk_size(self, chunk_ix: int) -> int:
         """Buffer size for codec processing — always uniform.
@@ -93,7 +101,8 @@ class FixedDimension:
         Does not validate *chunk_ix* — callers must ensure it is in
         ``[0, nchunks)``. Use ``ChunkGrid.__getitem__`` for safe access.
         """
-        return max(0, min(self.size, self.extent - chunk_ix * self.size))
+        start = self.chunk_offset(chunk_ix)
+        return max(0, min((chunk_ix + 1) * self.size - self.shift, self.extent) - start)
 
     @property
     def _unique_edge_lengths(self) -> Iterable[int]:
@@ -106,7 +115,7 @@ class FixedDimension:
         return (self.size,)
 
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
-        return indices // self.size
+        return (indices + self.shift) // self.size
 
     def with_extent(self, new_extent: int) -> FixedDimension:
         """Re-bind to *new_extent* without modifying edges.
@@ -115,7 +124,7 @@ class FixedDimension:
         are already correct. Raises on
         ``VaryingDimension`` if edges don't cover the new extent.
         """
-        return FixedDimension(size=self.size, extent=new_extent)
+        return FixedDimension(size=self.size, extent=new_extent, shift=self.shift)
 
     def resize(self, new_extent: int) -> FixedDimension:
         """Adapt for a user-initiated array resize, growing edges if needed.
@@ -123,7 +132,7 @@ class FixedDimension:
         For ``FixedDimension`` this is identical to ``with_extent`` since
         regular grids don't store explicit edges.
         """
-        return FixedDimension(size=self.size, extent=new_extent)
+        return FixedDimension(size=self.size, extent=new_extent, shift=self.shift)
 
     @property
     def _size_repr(self) -> str:
@@ -205,6 +214,10 @@ class VaryingDimension:
         offset = self.cumulative[chunk_ix - 1] if chunk_ix > 0 else 0
         return max(0, min(self.edges[chunk_ix], self.extent - offset))
 
+    def buffer_offset(self, chunk_ix: int) -> int:
+        """Position of the valid data region inside the chunk's buffer."""
+        return 0
+
     @property
     def _unique_edge_lengths(self) -> Iterable[int]:
         """Distinct chunk edge lengths for this dimension (lazily deduplicated).
@@ -271,6 +284,7 @@ class DimensionGrid(Protocol):
     def chunk_offset(self, chunk_ix: int) -> int: ...
     def chunk_size(self, chunk_ix: int) -> int: ...
     def data_size(self, chunk_ix: int) -> int: ...
+    def buffer_offset(self, chunk_ix: int) -> int: ...
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]: ...
     @property
     def _unique_edge_lengths(self) -> Iterable[int]: ...
@@ -416,11 +430,27 @@ class ChunkGrid:
         For v3 metadata, dispatches on the chunk grid type.
         """
         from zarr.core.metadata import ArrayV2Metadata
-        from zarr.core.metadata.v3 import RectilinearChunkGridMetadata, RegularChunkGridMetadata
+        from zarr.core.metadata.v3 import (
+            RectilinearChunkGridMetadata,
+            RegularBoundedChunkGridMetadata,
+            RegularChunkGridMetadata,
+        )
 
         if isinstance(metadata, ArrayV2Metadata):
             return cls.from_sizes(metadata.shape, tuple(metadata.chunks))
         chunk_grid_meta = metadata.chunk_grid
+        if isinstance(chunk_grid_meta, RegularBoundedChunkGridMetadata):
+            return cls(
+                dimensions=tuple(
+                    FixedDimension(size=c, extent=e, shift=s)
+                    for c, e, s in zip(
+                        chunk_grid_meta.chunk_shape,
+                        metadata.shape,
+                        chunk_grid_meta.first_chunk_offset,
+                        strict=True,
+                    )
+                )
+            )
         if isinstance(chunk_grid_meta, RegularChunkGridMetadata):
             return cls.from_sizes(metadata.shape, tuple(chunk_grid_meta.chunk_shape))
         elif isinstance(chunk_grid_meta, RectilinearChunkGridMetadata):
