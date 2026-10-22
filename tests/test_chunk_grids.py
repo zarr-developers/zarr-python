@@ -44,7 +44,9 @@ def _assert_chunks_equal(
             assert isinstance(a, VaryingDimension), (
                 f"axis {axis}: expected VaryingDimension, got {a!r}"
             )
-            assert a.edges == tuple(e), f"axis {axis}: edges {a.edges} != {tuple(e)}"
+            assert tuple(a.edges.expand()) == tuple(e), (
+                f"axis {axis}: edges {a.edges} != {tuple(e)}"
+            )
         assert a.extent == span, f"axis {axis}: extent {a.extent} != {span}"
 
 
