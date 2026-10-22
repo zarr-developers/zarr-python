@@ -28,7 +28,6 @@ from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.codecs._v2 import V2Codec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
-from zarr.codecs.zstd import ZstdCodec
 from zarr.core._info import ArrayInfo
 from zarr.core._json import buffer_to_json_object
 from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArraySpec, parse_array_config
@@ -154,6 +153,7 @@ from zarr.registry import (
     _parse_array_array_codec,
     _parse_array_bytes_codec,
     _parse_bytes_bytes_codec,
+    get_codec_class,
     get_pipeline_class,
 )
 from zarr.storage._common import StorePath, make_store_path
@@ -5113,9 +5113,15 @@ def default_compressors_v3(dtype: ZDType[Any, Any]) -> tuple[BytesBytesCodec, ..
     """
     Given a data type, return the default compressors for that data type.
 
-    This is just a tuple containing `ZstdCodec`
+    This is just a tuple containing an instance of the default "zstd" codec class.
+
+    The codec is resolved through the registry (rather than hard-coding ``ZstdCodec``)
+    so that configuration overrides -- e.g. ``zarr.config.enable_gpu()`` mapping
+    "zstd" to ``NvcompZstdCodec`` -- take effect. ``get_codec_class`` returns
+    ``type[Codec]``, so the instance is narrowed to ``BytesBytesCodec`` with a
+    runtime check.
     """
-    return (ZstdCodec(),)
+    return (_parse_bytes_bytes_codec(get_codec_class("zstd")()),)
 
 
 def default_serializer_v3(dtype: ZDType[Any, Any]) -> ArrayBytesCodec:
