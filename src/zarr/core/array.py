@@ -1005,20 +1005,6 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         )
 
     @property
-    @deprecated("Use AsyncArray.compressors instead.", category=ZarrDeprecationWarning)
-    def compressor(self) -> Numcodec | None:
-        """
-        Compressor that is applied to each chunk of the array.
-
-        !!! warning "Deprecated"
-            `Array.compressor` is deprecated since v3.0.0 and will be removed in a future release.
-            Use [`Array.compressors`][zarr.AsyncArray.compressors] instead.
-        """
-        if self.metadata.zarr_format == 2:
-            return self.metadata.compressor
-        raise TypeError("`compressor` is not available for Zarr format 3 arrays.")
-
-    @property
     def compressors(self) -> tuple[Numcodec, ...] | tuple[BytesBytesCodec, ...]:
         """
         Compressors that are applied to each chunk of the array. Compressors are applied in order, and after any
@@ -2296,18 +2282,6 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Array-to-bytes codec to use for serializing the chunks into bytes.
         """
         return self.async_array.serializer
-
-    @property
-    @deprecated("Use Array.compressors instead.", category=ZarrDeprecationWarning)
-    def compressor(self) -> Numcodec | None:
-        """
-        Compressor that is applied to each chunk of the array.
-
-        !!! warning "Deprecated"
-            `array.compressor` is deprecated since v3.0.0 and will be removed in a future release.
-            Use [`array.compressors`][zarr.Array.compressors] instead.
-        """
-        return self.async_array.compressor
 
     @property
     def compressors(self) -> tuple[Numcodec, ...] | tuple[BytesBytesCodec, ...]:
