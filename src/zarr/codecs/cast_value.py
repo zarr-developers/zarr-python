@@ -10,7 +10,7 @@ logic. Install it with: ``pip install 'cast-value-rs>=0.4.2'``.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING, Final, Literal, TypedDict, cast
@@ -25,10 +25,11 @@ from zarr.core.dtype import get_data_type_from_json
 if TYPE_CHECKING:
     from typing import NotRequired, Self
 
+    from zarr.abc.codec import Codec
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import NDBuffer
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-    from zarr.core.metadata.v3 import ChunkGridMetadata
+    from zarr.core.metadata.v3 import ArrayV3Metadata, ChunkGridMetadata
 
     class ScalarMapJSON(TypedDict):
         encode: NotRequired[list[tuple[object, object]]]
@@ -173,6 +174,21 @@ def _check_representable(
         raise ValueError(
             f"{label} {value!r} is not representable in dtype {zdtype.to_native_dtype()}."
         ) from e
+
+
+def _same_scalar(a: np.ndarray, b: np.ndarray) -> bool:
+    """Return whether two one-element arrays of the same dtype hold the same value.
+
+    NaN equals NaN, whatever its payload, and the sign of zero must match, as
+    the `cast_value` spec requires signed zero to be preserved. Comparing bytes
+    covers both, and works for every permitted dtype, including the
+    `ml_dtypes` floats.
+    """
+    a_is_nan = bool(a[0] != a[0])
+    b_is_nan = bool(b[0] != b[0])
+    if a_is_nan or b_is_nan:
+        return a_is_nan and b_is_nan
+    return a.tobytes() == b.tobytes()
 
 
 # ---------------------------------------------------------------------------
@@ -361,23 +377,85 @@ class CastValue(ArrayArrayCodec):
             return None
         return self.scalar_map.get(direction)  # type: ignore[return-value]
 
+    def _cast_fill(
+        self,
+        fill: np.ndarray,
+        *,
+        source: ZDType[TBaseDType, TBaseScalar],
+        direction: Literal["encode", "decode"],
+    ) -> np.ndarray:
+        """Cast a one-element array holding a fill value, as the codec casts elements.
+
+        `encode` casts `fill`, a scalar of the `source` data type, to the codec's
+        data type; `decode` casts `fill`, a scalar of the codec's data type, back
+        to `source`. Each uses the scalar map of its direction.
+
+        Raises
+        ------
+        ValueError
+            If the cast fails, naming the fill value and both data types.
+        """
+        from_dtype, to_dtype = (
+            (source, self.dtype) if direction == "encode" else (self.dtype, source)
+        )
+        try:
+            return self._do_cast(
+                fill,
+                target_dtype=to_dtype.to_native_dtype(),
+                scalar_map=self._get_scalar_map(direction),
+            )
+        except (ValueError, OverflowError) as e:
+            what = "fill value" if direction == "encode" else "encoded fill value"
+            raise ValueError(
+                f"The {what} {fill[0]} cannot be cast from {from_dtype.to_json(zarr_format=3)} "
+                f"to {to_dtype.to_json(zarr_format=3)} by the cast_value codec: {e}"
+            ) from e
+
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         """
         Update the fill value of the output spec by applying casting procedure.
+
+        This runs for every chunk that is read or written, so it only casts the
+        fill value forward. Whether the fill value survives a round trip through
+        the codec is checked once, when array metadata is created or read, by
+        `_check_fill_value_round_trip`.
         """
-        target_zdtype = self.dtype
-        target_native = target_zdtype.to_native_dtype()
-        source_native = chunk_spec.dtype.to_native_dtype()
-
-        fill = chunk_spec.fill_value
-        fill_arr = np.array([fill], dtype=source_native)
-
-        new_fill_arr = self._do_cast(
-            fill_arr, target_dtype=target_native, scalar_map=self._get_scalar_map("encode")
+        fill = np.array([chunk_spec.fill_value], dtype=chunk_spec.dtype.to_native_dtype())
+        encoded = self._cast_fill(fill, source=chunk_spec.dtype, direction="encode")
+        return replace(
+            chunk_spec, dtype=self.dtype, fill_value=self.dtype.to_native_dtype().type(encoded[0])
         )
-        new_fill = target_native.type(new_fill_arr[0])
 
-        return replace(chunk_spec, dtype=target_zdtype, fill_value=new_fill)
+    def _check_fill_value(self, chunk_spec: ArraySpec) -> None:
+        """
+        Check that the fill value of `chunk_spec` survives a round trip through the codec.
+
+        Encoding the fill value and decoding the result must give back the
+        original fill value. Otherwise a chunk that is only partly written would
+        read back a different value wherever it holds the fill value, since what
+        is stored there is the encoded fill value. See the ``data_type`` section
+        of the
+        [`cast_value` spec](https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/cast_value#data_type).
+
+        Raises
+        ------
+        ValueError
+            If the fill value cannot be cast to the target data type, cannot
+            be cast back, or does not decode to the original fill value.
+        """
+        source = chunk_spec.dtype
+        fill = np.array([chunk_spec.fill_value], dtype=source.to_native_dtype())
+        encoded = self._cast_fill(fill, source=source, direction="encode")
+        decoded = self._cast_fill(encoded, source=source, direction="decode")
+        if not _same_scalar(fill, decoded):
+            source_name = source.to_json(zarr_format=3)
+            raise ValueError(
+                f"The fill value {fill[0]} does not survive a round trip through the cast_value "
+                f"codec: it encodes from {source_name} to {encoded[0]} in "
+                f"{self.dtype.to_json(zarr_format=3)}, which decodes back to {decoded[0]} in "
+                f"{source_name}. Choose a fill value that the codec's data_type, rounding, "
+                "out_of_range, and scalar_map preserve."
+            )
 
     def _encode_sync(
         self,
@@ -435,3 +513,51 @@ class CastValue(ArrayArrayCodec):
             )
         num_elements = input_byte_length // source_itemsize
         return num_elements * target_itemsize
+
+
+def _check_fill_value_round_trip(metadata: ArrayV3Metadata) -> None:
+    """
+    Check that the fill value of `metadata` survives each `cast_value` codec in its codecs.
+
+    Each codec is checked with the fill value it sees when a chunk is encoded:
+    the array's fill value as transformed by the array-to-array codecs before
+    it. The codecs inside a sharding codec are checked the same way.
+
+    Parameters
+    ----------
+    metadata : ArrayV3Metadata
+        The array metadata whose fill value and codecs to check.
+
+    Raises
+    ------
+    ValueError
+        If a `cast_value` codec cannot encode its fill value, cannot decode the
+        encoded fill value, or decodes it to a different value. See
+        `CastValue._check_fill_value`.
+    """
+    # Imported here: `zarr.core.metadata.v3` reads metadata with this check, and
+    # importing it at module level would import this module in a cycle.
+    from zarr.core.array_spec import ArrayConfig, ArraySpec
+    from zarr.core.buffer.core import default_buffer_prototype
+
+    spec = ArraySpec(
+        shape=metadata.shape,
+        dtype=metadata.data_type,
+        fill_value=metadata.fill_value,
+        config=ArrayConfig.from_dict({}),
+        prototype=default_buffer_prototype(),
+    )
+    _check_codecs(metadata.codecs, spec)
+
+
+def _check_codecs(codecs: Iterable[Codec], spec: ArraySpec) -> None:
+    """Check the `cast_value` codecs among `codecs` against the fill value threaded
+    through them from `spec`, descending into the codecs of a sharding codec."""
+    from zarr.codecs.sharding import ShardingCodec
+
+    for codec in codecs:
+        if isinstance(codec, CastValue):
+            codec._check_fill_value(spec)
+        elif isinstance(codec, ShardingCodec):
+            _check_codecs(codec.codecs, spec)
+        spec = codec.resolve_metadata(spec)

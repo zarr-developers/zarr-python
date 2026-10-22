@@ -41,6 +41,7 @@ from zarr.core.dtype.common import check_dtype_spec_v3
 from zarr.core.json_parse import parse_field
 from zarr.core.metadata.common import parse_attributes
 from zarr.core.metadata.repair import (
+    Reading,
     mark_repaired,
     repair_array_document,
 )
@@ -723,6 +724,24 @@ class ArrayV3Metadata(Metadata):
             extra_fields=allowed_extra_fields,
             storage_transformers=_data_typed.get("storage_transformers", ()),  # type: ignore[arg-type]
         )
+        # Imported here: `zarr.codecs` imports the chunk pipeline, which imports this module.
+        from zarr.codecs.cast_value import _check_fill_value_round_trip
+
+        try:
+            _check_fill_value_round_trip(metadata)
+        except ValueError as e:
+            readings.append(
+                Reading(
+                    moves_chunks=False,
+                    warning=(
+                        f"{e} Partly written chunks of this array store the encoded fill "
+                        "value, so their unwritten elements read back as the decoded value, "
+                        "not the fill value. Other implementations may refuse to open the "
+                        "array. To fix it, copy the data to a new array with a fill value "
+                        "the codec preserves."
+                    ),
+                )
+            )
         return mark_repaired(metadata, data, readings, path)
 
     def to_dict(self) -> dict[str, JSON]:
