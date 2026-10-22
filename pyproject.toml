@@ -122,7 +122,7 @@ test = [
     "pytest-benchmark==5.3.0",
     "pytest-codspeed==5.0.3",
     "tomlkit==0.15.1",
-    "uv==0.12.21",
+    "uv==0.13.4",
 ]
 remote-tests = [
     {include-group = "test"},
