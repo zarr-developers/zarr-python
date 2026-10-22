@@ -194,7 +194,10 @@ class TestFileRoots:
             )
 
     def test_authority_is_case_insensitive(self, tmp_path: Path) -> None:
-        zarr.open_group(URLPipeline.from_url(f"file://LOCALHOST{tmp_path.as_posix()}"), mode="w")
+        # spell the path URL-style: on Windows C:/... gains a leading slash
+        posix = tmp_path.as_posix()
+        url_path = posix if posix.startswith("/") else f"/{posix}"
+        zarr.open_group(URLPipeline.from_url(f"file://LOCALHOST{url_path}"), mode="w")
         assert (tmp_path / "zarr.json").exists()
 
 
@@ -241,7 +244,7 @@ class TestRootSchemeCase:
 
         store_path = await make_store_path(URLPipeline.from_url("HTTPS://example.com/d"))
         assert isinstance(store_path.store, FsspecStore)
-        assert "https" in store_path.store.fs.protocol
+        assert store_path.store.path == "https://example.com/d"
 
 
 class TestRegisterURLAdapter:
