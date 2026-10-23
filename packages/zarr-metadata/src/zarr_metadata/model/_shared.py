@@ -65,20 +65,6 @@ def check_literal(
     return ()
 
 
-def other_members_problems(
-    doc: Mapping[object, object],
-    standard_keys: frozenset[str],
-    *,
-    additional_reserved_keys: frozenset[str] = frozenset(),
-) -> tuple[ValidationProblem, ...]:
-    """Check that every key is a string and every member outside `standard_keys` is a JSON value.
-
-    Use this for a document that allows other members: v3 extension
-    fields, and the members that readers of a v2 array ignore.
-    """
-    return other_members(doc, standard_keys, additional_reserved_keys=additional_reserved_keys)[1]
-
-
 def other_members(
     doc: Mapping[object, object],
     standard_keys: frozenset[str],
@@ -86,7 +72,7 @@ def other_members(
     additional_reserved_keys: frozenset[str] = frozenset(),
     at: Loc = (),
 ) -> tuple[dict[str, JSONValue], tuple[ValidationProblem, ...]]:
-    """Each member outside `standard_keys`, refined to JSON, and every problem that `other_members_problems` finds. A member that is not JSON is left out of the result."""
+    """Each member outside `standard_keys`, refined to JSON, and every problem found in them. A member that is not JSON is left out of the result."""
     members: dict[str, JSONValue] = {}
     problems: list[ValidationProblem] = []
     reserved_keys = standard_keys | additional_reserved_keys

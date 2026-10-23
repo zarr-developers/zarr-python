@@ -19,13 +19,6 @@ ZarrV2Base64FillValue = str | None
 """A fill value that the v2 spec encodes as base64, for a fixed-length byte string, void, or a structured type (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L191-L193), or null."""
 
 
-def base64_fill_value_rules(
-    configuration: object, nested: Nested, value: ZarrV2Base64FillValue
-) -> Iterator[ValidationProblem]:
-    """Check that a fill value that is not null is a string of standard-alphabet base64."""
-    yield from sized_base64_rules(value, None, exact=True)
-
-
 def sized_base64_rules(
     value: ZarrV2Base64FillValue, size: int | None, *, exact: bool
 ) -> Iterator[ValidationProblem]:
@@ -98,6 +91,5 @@ __all__ = [
     "STR_V2",
     "VOID_V2",
     "ZarrV2Base64FillValue",
-    "base64_fill_value_rules",
     "sized_base64_rules",
 ]

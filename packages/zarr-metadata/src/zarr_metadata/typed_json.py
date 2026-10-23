@@ -22,8 +22,8 @@ how its module writes annotations:
   so. Otherwise the `total` setting of the class that declared the key
   decides. The runtime's `__required_keys__` cannot see a qualifier
   written as a string (and `from __future__ import annotations` makes
-  every annotation a string). `typeddict_keys` reads the evaluated
-  annotations, so it can see the qualifier.
+  every annotation a string). `check` reads the evaluated annotations,
+  so it can see the qualifier.
 - A key the TypedDict does not declare is handled according to `closed`
   or `extra_items`, or, when the class sets neither, according to its
   bases. In a closed TypedDict the key is reported as `unknown_key` and
