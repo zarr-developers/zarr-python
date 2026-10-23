@@ -1,3 +1,20 @@
+"""Types, models and validators for Zarr v2 and v3 metadata documents.
+
+This namespace is a convenience: it re-exports the names most code needs,
+with Zarr v3 first. Each name also has one home module, where its
+documentation lives:
+
+- `zarr_metadata.v3` and `zarr_metadata.v2`: the JSON types of each
+  document, extension and data type;
+- `zarr_metadata.model`: the document models and their readers;
+- `zarr_metadata.definition`: definitions, scopes and the field reader
+  that both formats share;
+- `zarr_metadata.problems`: the problems every reader reports;
+- `zarr_metadata.typed_json`: `check`, the type checker for JSON;
+- `zarr_metadata.json_schema`: JSON Schema output;
+- `zarr_metadata.pydantic`: the optional pydantic field types.
+"""
+
 from importlib.metadata import version
 
 from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON

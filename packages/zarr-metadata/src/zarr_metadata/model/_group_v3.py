@@ -1,4 +1,10 @@
-"""The Zarr v3 group, its consolidated metadata, and the reader of a `zarr.json` of either node type."""
+"""The Zarr v3 group, its consolidated metadata, and the reader of a `zarr.json` of either node type.
+
+These three are one module because they are mutually recursive: a group
+document holds its consolidated metadata, consolidated metadata holds the
+documents of arrays and groups, and each of those is read as a node of
+either type. Split into modules, they would import each other.
+"""
 
 from __future__ import annotations
 
