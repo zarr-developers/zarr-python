@@ -12,11 +12,11 @@ pip install zarr-metadata
 
 ## Who needs this
 
-This library might be useful to you if your software interacts with Zarr metadata documents.
+This library supports software that interacts with Zarr metadata documents.
 
 ## What this is
 
-This library is *not* a full Zarr implementation. Instead, it's a collection of data structures and routines that
+This is *not* a full Zarr implementation. It's a collection of data structures and routines that
 closely model the content of the Zarr specifications, such as:
 
 - **Typed JSON shapes** ([`zarr_metadata.v2`](api/v2.md) and
@@ -38,43 +38,49 @@ closely model the content of the Zarr specifications, such as:
 
 ## What this is for
 
-The public `TypedDict` definitions describe the static JSON shape of Zarr
-metadata. For strict, loc-aware validation of JSON loaded from disk, use the
-model parser:
+- **Static Type Checking** The public `TypedDict` definitions describe the static JSON shape of Zarr
+  metadata.
 
-```python
-import json
-from zarr_metadata.model import ZarrV3ArrayMetadata
+- **Dynamic JSON validation** For strict, loc-aware validation of JSON loaded from disk, use the
+  model parser:
 
-with open("zarr.json", "rb") as f:
-    raw = json.load(f)
+  ```python
+  import json
+  from zarr_metadata.model import ZarrV3ArrayMetadata
 
-metadata = ZarrV3ArrayMetadata.from_json(raw)
-```
+  with open("zarr.json", "rb") as f:
+      raw = json.load(f)
 
-The optional Pydantic integration delegates raw input to the same strict
-parser and returns the same normalized model class:
+  metadata = ZarrV3ArrayMetadata.from_json(raw)
+  ```
 
-```python
-from pydantic import TypeAdapter
-import zarr_metadata.pydantic as zmp
+  The optional Pydantic integration delegates raw input to the same strict
+  parser and returns the same normalized model class:
 
-adapter: TypeAdapter[zmp.ZarrV3ArrayMetadata] = TypeAdapter(zmp.ZarrV3ArrayMetadata)
-metadata = adapter.validate_python(raw)
-encoded = metadata.to_key_value()["zarr.json"]
-```
+  ```python
+  from pydantic import TypeAdapter
+  import zarr_metadata.pydantic as zmp
 
-A bare `TypeAdapter` over a public document `TypedDict` is a coercive shape
-adapter, not a Zarr conformance validator; it may coerce values or discard
-members that the strict model parser rejects.
+  adapter: TypeAdapter[zmp.ZarrV3ArrayMetadata] = TypeAdapter(zmp.ZarrV3ArrayMetadata)
+  metadata = adapter.validate_python(raw)
+  encoded = metadata.to_key_value()["zarr.json"]
+  ```
+
+  Note that a bare `TypeAdapter` over a public `TypedDict` is a **coercive** shape
+  adapter, not a Zarr conformance validator; it may coerce values or discard
+  members that the strict model parser rejects. This is better suited for handling input provided
+  from Python objects (e.g., user-authored dics) than JSON.
 
 ## Validation boundary
 
 The model validators enforce the declared document structure and a small set
-of context-free consistency rules, including fixed format literals, finite
-JSON numbers outside `attributes`, non-negative dimensions, and one
-`dimension_names` entry per array dimension. In a v3 document they also read
-each extension point -- the data type, chunk grid, chunk key encoding, each
+of context-free consistency rules, e.g.:
+- fixed format literals,
+- finite JSON numbers outside `attributes`
+- non-negative dimensions
+- one `dimension_names` entry per array dimension.
+
+In a v3 document validation also checks each extension point -- data type, chunk grid, chunk key encoding, each
 codec and each storage transformer -- through the definition that claims its
 name in a scope, `CORE_AND_EXTENSIONS` unless a `context` is passed: a
 configuration its definition refuses is refused, and a key it does not
