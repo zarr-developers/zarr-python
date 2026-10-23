@@ -1,4 +1,9 @@
-"""The data types that zarr-python 2.x writes, with one definition per NumPy family."""
+"""The data types that zarr-python 2.x writes, with one definition per NumPy family.
+
+Each family's definition is in its submodule (`fixed_width`, `object`,
+`scalar`, `struct`, `time`). This module holds `V2_DATA_TYPES`, the tuple
+of every definition.
+"""
 
 from typing import Any, Final
 
@@ -26,17 +31,5 @@ V2_DATA_TYPES: Final[tuple[ZarrV2DataTypeDefinition[Any], ...]] = (
 """Every v2 data type, by family."""
 
 __all__ = [
-    "BOOL_V2",
-    "BYTES_V2",
-    "COMPLEX_V2",
-    "DATETIME64_V2",
-    "FLOAT_V2",
-    "INT_V2",
-    "OBJECT_V2",
-    "STRUCT_V2",
-    "STR_V2",
-    "TIMEDELTA64_V2",
-    "UINT_V2",
     "V2_DATA_TYPES",
-    "VOID_V2",
 ]

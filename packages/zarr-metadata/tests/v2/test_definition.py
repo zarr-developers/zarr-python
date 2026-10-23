@@ -11,10 +11,10 @@ from zarr_metadata.definition import (
     Context,
     UnclaimedField,
 )
+from zarr_metadata.v2.codec import V2_CODECS
+from zarr_metadata.v2.data_type import V2_DATA_TYPES
 from zarr_metadata.v2.definition import (
     CORE_V2,
-    V2_CODECS,
-    V2_DATA_TYPES,
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
     resolve_codec_v2,

@@ -61,8 +61,6 @@ def resolve_codec_v2(
 
 __all__ = [
     "CORE_V2",
-    "V2_CODECS",
-    "V2_DATA_TYPES",
     "ZarrV2CodecDefinition",
     "ZarrV2Context",
     "ZarrV2DataTypeDefinition",
