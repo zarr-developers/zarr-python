@@ -38,6 +38,7 @@ from zarr_metadata.definition._definition import (
     fields_of,
     fill_value_problems,
     held,
+    resolve,
     resolve_refined,
     spelled_canonically,
 )
@@ -69,7 +70,6 @@ from zarr_metadata.v2.definition import (
     CORE_V2,
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
-    resolve_dtype_v2,
 )
 
 if TYPE_CHECKING:
@@ -762,7 +762,7 @@ class ZarrV2ArrayMetadata(Keyed):
             if lengths is not None:
                 given["chunks"] = lengths
         if "dtype" in given and "fill_value" not in given:
-            dtype, _ = resolve_dtype_v2(given["dtype"], context)
+            dtype, _ = resolve(given["dtype"], ZarrV2DataTypeDefinition, scoped(context, CORE_V2))
             if len(fill_value_problems(dtype, 0)) != 0:
                 given["fill_value"] = None
         merged = {key: value for key, value in {**document, **given}.items() if value is not UNSET}

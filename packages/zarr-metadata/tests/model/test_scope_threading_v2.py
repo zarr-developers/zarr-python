@@ -13,8 +13,6 @@ from zarr_metadata.model import ZarrV2ArrayMetadata
 from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v2.definition import (
     CORE_V2,
-    resolve_codec_v2,
-    resolve_dtype_v2,
 )
 from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
 
@@ -108,15 +106,11 @@ ENTRY_POINTS: dict[str, Callable[..., object]] = {
     "read_repaired_consolidated_metadata_v2": (
         lambda context: zm.read_repaired_consolidated_metadata_v2(CONSOLIDATED, context=context)
     ),
-    "resolve_dtype_v2": lambda context: resolve_dtype_v2("<u1", context=context),
-    "resolve_codec_v2": lambda context: resolve_codec_v2(BAD["compressor"], context=context),
 }
 """Each v2 entry point, reading a document that contains the refused compressor wherever that document type allows one."""
 
 REFUSES_BAD = frozenset(
-    name
-    for name in ENTRY_POINTS
-    if "Group" not in name and name != "resolve_dtype_v2" and "group" not in name
+    name for name in ENTRY_POINTS if "Group" not in name and "group" not in name
 )
 """The entry points whose document contains the refused compressor. The other entry points accept their document in every scope."""
 

@@ -10,6 +10,7 @@ from zarr_metadata.definition import (
     AcceptedField,
     Context,
     UnclaimedField,
+    resolve,
 )
 from zarr_metadata.v2.codec import CODECS_V2
 from zarr_metadata.v2.data_type import DATA_TYPES_V2
@@ -17,8 +18,6 @@ from zarr_metadata.v2.definition import (
     CORE_V2,
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
-    resolve_codec_v2,
-    resolve_dtype_v2,
 )
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
@@ -41,14 +40,20 @@ def test_core_v2_files_every_v2_definition_apart_from_v3() -> None:
     assert pickle.loads(pickle.dumps(CORE_V2)) == CORE_V2
 
 
-def test_the_v2_readers_read_one_field_in_core_v2_by_default() -> None:
-    """`resolve_dtype_v2` and `resolve_codec_v2` read one field in `CORE_V2` when no scope is given, and in the scope given otherwise, prefixing every problem with `loc`."""
-    dtype, problems = resolve_dtype_v2("<f4")
+def test_resolve_reads_one_v2_field_in_a_v2_scope() -> None:
+    """`resolve` reads a v2 dtype or codec with its kind in a v2 scope, prefixing every problem with `loc`, as it reads a v3 field."""
+    dtype, problems = resolve("<f4", ZarrV2DataTypeDefinition, CORE_V2)
     assert isinstance(dtype, AcceptedField)
     assert problems == ()
-    codec, problems = resolve_codec_v2({"id": "zlib", "level": 1}, loc=("compressor",))
+    codec, problems = resolve(
+        {"id": "zlib", "level": 1}, ZarrV2CodecDefinition, CORE_V2, ("compressor",)
+    )
     assert isinstance(codec, AcceptedField)
     assert problems == ()
-    _, problems = resolve_codec_v2({"id": "zlib", "level": 10}, loc=("compressor",))
+    _, problems = resolve(
+        {"id": "zlib", "level": 10}, ZarrV2CodecDefinition, CORE_V2, ("compressor",)
+    )
     assert [p.loc for p in problems] == [("compressor", "level")]
-    assert isinstance(resolve_codec_v2({"id": "zlib"}, Context.of())[0], UnclaimedField)
+    assert isinstance(
+        resolve({"id": "zlib"}, ZarrV2CodecDefinition, Context.of())[0], UnclaimedField
+    )
