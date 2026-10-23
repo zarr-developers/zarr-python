@@ -9,6 +9,7 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata._numpy import (
+    NUMPY_TIME_UNITS,
     NumpyTimeScaleFactor,
     NumpyTimeTicks,
     numpy_time_fill_value_canonical,
@@ -33,10 +34,6 @@ class ZarrV2TimeConfiguration(TypedDict, closed=True):
     scale_factor: NotRequired[ReadOnly[NumpyTimeScaleFactor]]
 
 
-UNITS: Final = ("Y", "M", "W", "D", "h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as")
-"""The units that NumPy accepts for a datetime64 or timedelta64 (https://numpy.org/doc/stable/reference/arrays.datetime.html#datetime-units)."""
-
-
 def _rules(configuration: ZarrV2TimeConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
     """Check for eight bytes with a byte order, and for a unit, which the v2 spec requires (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L147-L150)."""
     size = configuration["itemsize"]
@@ -58,10 +55,10 @@ def _rules(configuration: ZarrV2TimeConfiguration, nested: Nested) -> Iterator[V
             "missing_key",
         )
         return
-    if configuration["unit"] not in UNITS:
+    if configuration["unit"] not in NUMPY_TIME_UNITS:
         yield ValidationProblem(
             ("unit",),
-            f"expected a NumPy time unit -- {', '.join(UNITS)} -- got {configuration['unit']!r}",
+            f"expected a NumPy time unit -- {', '.join(NUMPY_TIME_UNITS)} -- got {configuration['unit']!r}",
             "invalid_value",
         )
 
@@ -111,7 +108,6 @@ TIMEDELTA64_V2: Final = ZarrV2DataTypeDefinition(
 __all__ = [
     "DATETIME64_V2",
     "TIMEDELTA64_V2",
-    "UNITS",
     "ZarrV2TimeConfiguration",
     "ZarrV2TimeFillValue",
 ]

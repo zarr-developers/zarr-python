@@ -9,6 +9,24 @@ from typing import Annotated, Final, NewType
 
 from annotated_types import Interval
 
+NUMPY_TIME_UNITS: Final = (
+    "Y",
+    "M",
+    "W",
+    "D",
+    "h",
+    "m",
+    "s",
+    "ms",
+    "us",
+    "μs",
+    "ns",
+    "ps",
+    "fs",
+    "as",
+)
+"""The units NumPy accepts for a datetime64 or timedelta64 (https://numpy.org/doc/stable/reference/arrays.datetime.html#datetime-units). The v3 types also accept `"generic"`."""
+
 NUMPY_TIME_MAX_SCALE_FACTOR: Final = 2**31 - 1
 """The largest `scale_factor` that numpy stores, because the field is a signed int32."""
 
@@ -60,6 +78,7 @@ def base64_bytes(value: str) -> Base64Bytes:
 __all__ = [
     "NOT_A_TIME_TICKS",
     "NUMPY_TIME_MAX_SCALE_FACTOR",
+    "NUMPY_TIME_UNITS",
     "Base64Bytes",
     "NumpyTimeScaleFactor",
     "NumpyTimeTicks",

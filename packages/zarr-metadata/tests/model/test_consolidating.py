@@ -9,7 +9,7 @@ from typing import Any, cast, get_type_hints
 import pytest
 
 from zarr_metadata._json import JSON_DEPTH
-from zarr_metadata.definition import Context
+from zarr_metadata.definition import Context, EmptyConfiguration
 from zarr_metadata.definition._scope import claims_of
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
@@ -24,7 +24,6 @@ from zarr_metadata.model import (
     validate_group_metadata_v3,
 )
 from zarr_metadata.problems import MetadataValidationError
-from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
@@ -42,7 +41,9 @@ ZSTD = {"name": "zstd", "configuration": {"level": 3, "checksum": False}}
 LOOSE_ZSTD = {"name": "zstd", "configuration": {"level": 30}}
 WITH_ZSTD = {**ARRAY, "codecs": (*ARRAY["codecs"], ZSTD)}
 WITH_LOOSE_ZSTD = {**ARRAY, "codecs": (*ARRAY["codecs"], LOOSE_ZSTD)}
-MY_BYTES = CodecDefinition(name="bytes", configuration=Empty, kind="array_bytes", size="static")
+MY_BYTES = CodecDefinition(
+    name="bytes", configuration=EmptyConfiguration, kind="array_bytes", size="static"
+)
 PRIVATE = CORE.extended_with(MY_BYTES)
 INLINE: dict[str, Any] = {"kind": "inline", "must_understand": False}
 
@@ -132,7 +133,7 @@ def test_error_a_model_that_conflicts_with_the_scope_is_refused_at_its_path() ->
     assert problem.kind == "invalid_value"
     assert problem.message == (
         "expected a document read in the group's scope, got a model that reads the codec "
-        "'bytes' by CodecDefinition(name='bytes') of Empty, which the group's scope reads by "
+        "'bytes' by CodecDefinition(name='bytes') of EmptyConfiguration, which the group's scope reads by "
         "CodecDefinition(name='bytes') of BytesCodecConfiguration"
     )
 

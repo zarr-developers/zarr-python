@@ -47,7 +47,6 @@ from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v3 import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
-from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC, GzipCodecConfiguration
 from zarr_metadata.v3.data_type.int8 import INT8_DATA_TYPE
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
@@ -277,7 +276,7 @@ def test_a_reading_says_the_name_the_field_was_written_with(
     assert resolve(field, kind, CORE_AND_EXTENSIONS)[0].name == name
 
 
-KINDLESS: Final = Definition(name="acme.kindless", configuration=Empty)
+KINDLESS: Final = Definition(name="acme.kindless", configuration=EmptyConfiguration)
 """A definition with no kind, which no scope can file."""
 
 
@@ -1228,23 +1227,27 @@ def test_error_a_fill_value_with_a_constraint_its_type_cannot_take() -> None:
 
 def test_error_a_definition_name_is_a_string() -> None:
     with pytest.raises(TypeError, match="a definition's name is a string"):
-        CodecDefinition(name=5, configuration=Empty, kind="bytes_bytes", size="dynamic")  # pyright: ignore[reportArgumentType]
+        CodecDefinition(
+            name=5, configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
+        )  # pyright: ignore[reportArgumentType]
 
 
 def test_error_a_codec_kind_is_one_of_three() -> None:
     with pytest.raises(TypeError, match="kind is one of"):
-        CodecDefinition(name="acme.k", configuration=Empty, kind="bytes_to_array", size="dynamic")  # pyright: ignore[reportArgumentType]
+        CodecDefinition(
+            name="acme.k", configuration=EmptyConfiguration, kind="bytes_to_array", size="dynamic"
+        )  # pyright: ignore[reportArgumentType]
 
 
 def test_error_a_data_type_is_named_as_raw_bits_of_one_size_are_written() -> None:
     # `r16` is read as `r*`, so a definition filed under `r16` would never read anything.
     with pytest.raises(TypeError, match="to read raw bits your own way, define 'r\\*'"):
-        DataTypeDefinition(name="r16", configuration=Empty)
+        DataTypeDefinition(name="r16", configuration=EmptyConfiguration)
 
 
 def test_error_a_data_type_fill_value_no_checker_reads() -> None:
     with pytest.raises(TypeError, match="'acme.set': fill_value: "):
-        DataTypeDefinition(name="acme.set", configuration=Empty, fill_value=set[int])
+        DataTypeDefinition(name="acme.set", configuration=EmptyConfiguration, fill_value=set[int])
 
 
 def test_error_a_data_type_fill_value_holding_a_metadata_field() -> None:
@@ -1253,7 +1256,7 @@ def test_error_a_data_type_fill_value_holding_a_metadata_field() -> None:
         TypeError, match="'acme.f': fill_value: ZarrV3CodecField holds a metadata field"
     ):
         DataTypeDefinition(
-            name="acme.f", configuration=Empty, fill_value=tuple[ZarrV3CodecField, ...]
+            name="acme.f", configuration=EmptyConfiguration, fill_value=tuple[ZarrV3CodecField, ...]
         )
 
 
@@ -1277,7 +1280,7 @@ def test_error_a_function_member_that_is_not_a_function(
     # Each member that the definition's annotations declare as a `Callable`.
     codec = {"kind": "array_array", "size": "static"} if kind is CodecDefinition else {}
     with pytest.raises(TypeError, match=f"'acme.t': {member} is a function, got 'none'"):
-        kind(name="acme.t", configuration=Empty, **codec, **{member: "none"})  # pyright: ignore[reportArgumentType]
+        kind(name="acme.t", configuration=EmptyConfiguration, **codec, **{member: "none"})  # pyright: ignore[reportArgumentType]
 
 
 @pytest.mark.parametrize("kind", [Definition, AcmeCodecDefinition])
@@ -1289,7 +1292,7 @@ def test_error_a_field_is_read_as_a_kind_of_metadata(kind: type[Definition[Any]]
 
 def test_error_a_scope_refuses_a_definition_of_no_kind() -> None:
     with pytest.raises(TypeError, match="a definition of no kind"):
-        Context.of(Definition(name="acme.kindless", configuration=Empty))
+        Context.of(Definition(name="acme.kindless", configuration=EmptyConfiguration))
 
 
 @pytest.mark.parametrize(

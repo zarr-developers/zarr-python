@@ -14,6 +14,7 @@ import pytest
 from typing_extensions import TypedDict
 
 from zarr_metadata.definition import (
+    EmptyConfiguration,
     Nested,
     ResolvedField,
     resolve,
@@ -25,7 +26,6 @@ from zarr_metadata.model import (
 from zarr_metadata.v3._pipeline import (
     read_pipeline,
 )
-from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
     Chunk,
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from zarr_metadata.v3.definition import Stage
 
 
-def _tiled(configuration: Empty, nested: Nested, chunk: Chunk) -> Chunk:
+def _tiled(configuration: EmptyConfiguration, nested: Nested, chunk: Chunk) -> Chunk:
     """Each chunk twice as long along every axis, of the same data type."""
     if chunk.lengths is None:
         return Chunk(None, chunk.data_type)
@@ -51,12 +51,16 @@ def _tiled(configuration: Empty, nested: Nested, chunk: Chunk) -> Chunk:
 
 
 ACME_TILE = CodecDefinition(
-    name="acme.tile", configuration=Empty, kind="array_array", size="static", transition=_tiled
+    name="acme.tile",
+    configuration=EmptyConfiguration,
+    kind="array_array",
+    size="static",
+    transition=_tiled,
 )
 """An array -> array codec that declares its output chunk."""
 
 ACME_SHUFFLE = CodecDefinition(
-    name="acme.shuffle", configuration=Empty, kind="array_array", size="static"
+    name="acme.shuffle", configuration=EmptyConfiguration, kind="array_array", size="static"
 )
 """An array -> array codec that does not declare its output chunk."""
 
@@ -344,7 +348,7 @@ def test_error_a_scale_or_offset_that_is_not_a_value_of_the_data_type_it_is_hand
 def test_error_a_transition_that_gives_something_else() -> None:
     lying = CodecDefinition(
         name="acme.lying",
-        configuration=Empty,
+        configuration=EmptyConfiguration,
         kind="array_array",
         size="static",
         transition=lambda configuration, nested, chunk: "a chunk",  # pyright: ignore[reportArgumentType]
@@ -355,12 +359,12 @@ def test_error_a_transition_that_gives_something_else() -> None:
 
 
 def test_error_a_transition_that_raises_says_whose_it_is() -> None:
-    def transition(configuration: Empty, nested: Nested, chunk: Chunk) -> Chunk:
+    def transition(configuration: EmptyConfiguration, nested: Nested, chunk: Chunk) -> Chunk:
         raise KeyError("axis")
 
     raising = CodecDefinition(
         name="acme.raising",
-        configuration=Empty,
+        configuration=EmptyConfiguration,
         kind="array_array",
         size="static",
         transition=transition,
@@ -386,12 +390,12 @@ def test_error_a_transition_that_builds_a_chunk_of_something_else(
     lengths: object, data_type: object, match: str
 ) -> None:
     # A chunk checks its own contents, so the bug is in the transition.
-    def transition(configuration: Empty, nested: Nested, chunk: Chunk) -> Chunk:
+    def transition(configuration: EmptyConfiguration, nested: Nested, chunk: Chunk) -> Chunk:
         return Chunk(lengths, data_type)  # pyright: ignore[reportArgumentType]
 
     odd = CodecDefinition(
         name="acme.odd",
-        configuration=Empty,
+        configuration=EmptyConfiguration,
         kind="array_array",
         size="static",
         transition=transition,
@@ -418,7 +422,9 @@ def test_error_a_codec_hook_nothing_would_ask(kind: str, member: str) -> None:
     # codec outputs a chunk, so these hooks would never be called.
     hook = {member: lambda configuration, nested, chunk: ()}
     with pytest.raises(TypeError, match=f"'acme.x': {member}, "):
-        CodecDefinition(name="acme.x", configuration=Empty, kind=kind, size="static", **hook)  # pyright: ignore[reportArgumentType]
+        CodecDefinition(
+            name="acme.x", configuration=EmptyConfiguration, kind=kind, size="static", **hook
+        )  # pyright: ignore[reportArgumentType]
 
 
 def test_an_array_document_s_codecs_are_each_judged_against_the_chunk_they_are_handed() -> None:

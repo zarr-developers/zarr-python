@@ -13,10 +13,10 @@ from typing import TYPE_CHECKING
 import pytest
 
 from zarr_metadata.definition import (
+    EmptyConfiguration,
     Nested,
     resolve,
 )
-from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
     DataTypeDefinition,
@@ -81,7 +81,7 @@ def test_every_data_type_says_how_its_values_are_stored(
 
 
 def test_a_data_type_that_says_nothing_of_its_storage_leaves_it_unknown() -> None:
-    quiet = DataTypeDefinition(name="acme.quiet", configuration=Empty)
+    quiet = DataTypeDefinition(name="acme.quiet", configuration=EmptyConfiguration)
     resolved, _ = resolve(
         "acme.quiet", DataTypeDefinition, CORE_AND_EXTENSIONS.extended_with(quiet)
     )
@@ -91,7 +91,7 @@ def test_a_data_type_that_says_nothing_of_its_storage_leaves_it_unknown() -> Non
 def test_error_a_storage_that_gives_something_else() -> None:
     lying = DataTypeDefinition(
         name="acme.lying",
-        configuration=Empty,
+        configuration=EmptyConfiguration,
         storage=lambda configuration, nested: "two bytes",  # pyright: ignore[reportArgumentType]
     )
     resolved, _ = resolve(
@@ -102,10 +102,12 @@ def test_error_a_storage_that_gives_something_else() -> None:
 
 
 def test_error_a_storage_that_raises_says_whose_it_is() -> None:
-    def storage(configuration: Empty, nested: Nested) -> StorageClass:
+    def storage(configuration: EmptyConfiguration, nested: Nested) -> StorageClass:
         raise KeyError("bits")
 
-    raising = DataTypeDefinition(name="acme.raising", configuration=Empty, storage=storage)
+    raising = DataTypeDefinition(
+        name="acme.raising", configuration=EmptyConfiguration, storage=storage
+    )
     resolved, _ = resolve(
         "acme.raising", DataTypeDefinition, CORE_AND_EXTENSIONS.extended_with(raising)
     )

@@ -161,7 +161,7 @@ This procedure yields one of two values:
 
 `zarr-metadata` does not run each stage as a separate function. Instead, a single read of the document collects the problems from every stage, so a caller gets the full list of problems at once.
 
-The **registry** from the resolve-and-validate stage is called a **scope** in this library. It is a [`Context`](api/v3/definition.md) object, and every reader takes a `context` argument. The default scope is `CORE_AND_EXTENSIONS`, which holds the data types, codecs, chunk grids, etc. defined in the Zarr V3 spec and in [zarr-extensions](https://github.com/zarr-developers/zarr-extensions/). `CORE` holds only the definitions from the Zarr V3 spec.
+The **registry** from the resolve-and-validate stage is called a **scope** in this library. It is a [`Context`](api/definition.md) object, and every reader takes a `context` argument. The default scope is `CORE_AND_EXTENSIONS`, which holds the data types, codecs, chunk grids, etc. defined in the Zarr V3 spec and in [zarr-extensions](https://github.com/zarr-developers/zarr-extensions/). `CORE` holds only the definitions from the Zarr V3 spec.
 
 `read_array_metadata_v3` reads a JSON document and returns a "reading". `reading.problems` is the list of problems, and `reading.metadata` is the validated model, or `None` if there are problems. Each problem has a `loc`, which is its position in the document as a tuple, a `kind`, like `missing_key` or `invalid_value`, and a human-readable `message`:
 
@@ -207,4 +207,4 @@ reading = read_array_metadata_v3(raw, context=CORE_AND_EXTENSIONS.extended_with(
 
 Here `MY_CODEC` is the definition of the codec that was unknown.
 
-[^1]: The one exception is the `r*` data type, which is identified by a templated string with no `configuration` object. This mixes the identifier with the configuration in the same JSON value, which is not good design. So this library normalizes `r*` into the same form as all the other metadata objects: it reads `"r16"` as the name `r*` with the configuration `{"bits": 16}`.
+[^1]: The one exception is the `r*` data type, which is identified by a templated string with no `configuration` object. This mixes the identifier with the configuration in the same JSON value, which is not good design. So this library normalizes `r*` into the same form as all the other metadata objects: the field `"r16"` keeps its name, and is read by the `r*` definition with the configuration `{"bits": 16}`.

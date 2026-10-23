@@ -5,8 +5,8 @@ Each codec defined by the spec or by zarr-extensions has its own submodule
 `sharding_indexed`, `transpose`, `zstd`). Import a codec's types and its
 definition from its submodule: `<X>CodecMetadata`, the canonical type for
 the codec's permitted JSON shapes (object form plus, where the spec allows,
-a bare-string short-hand form), `<X>CodecObject`, `<X>CodecConfiguration`,
-and `<X>_CODEC`.
+a bare-string short-hand form), `<X>CodecObject`, `<X>_CODEC`, and, for a
+codec that has a configuration, `<X>CodecConfiguration`.
 
 For the JSON of any codec entry (one of the entries in array metadata's
 `codecs`), import `ZarrV3MetadataFieldJSON` from `zarr_metadata.v3`. A

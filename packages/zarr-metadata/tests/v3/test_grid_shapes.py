@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from zarr_metadata.definition import resolve
+from zarr_metadata.definition import EmptyConfiguration, resolve
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
     validate_array_metadata_v3,
@@ -21,7 +21,6 @@ from zarr_metadata.model import (
 from zarr_metadata.v3._definition import (
     chunk_grid_lengths,
 )
-from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
     ChunkGridDefinition,
@@ -103,7 +102,7 @@ def test_error_rectilinear_chunks_that_do_not_cover_their_dimension(spec: JSONVa
 
 
 def test_a_grid_that_says_nothing_of_the_shape_fits_every_one_its_lengths_unknown() -> None:
-    lenient = ChunkGridDefinition(name="acme.grid", configuration=Empty)
+    lenient = ChunkGridDefinition(name="acme.grid", configuration=EmptyConfiguration)
     scope = CORE_AND_EXTENSIONS.extended_with(lenient)
     resolved, _ = resolve("acme.grid", ChunkGridDefinition, scope)
     assert chunk_grid_lengths(resolved, (3, 4)) == ((None, None), ())
@@ -112,7 +111,9 @@ def test_a_grid_that_says_nothing_of_the_shape_fits_every_one_its_lengths_unknow
 def test_error_a_grid_whose_chunk_lengths_have_another_number_of_axes() -> None:
     # This is a bug in the definition, not in the field, so it raises.
     flat = ChunkGridDefinition(
-        name="acme.grid", configuration=Empty, chunk_lengths=lambda c, n, s: (frozenset({1}),)
+        name="acme.grid",
+        configuration=EmptyConfiguration,
+        chunk_lengths=lambda c, n, s: (frozenset({1}),),
     )
     scope = CORE_AND_EXTENSIONS.extended_with(flat)
     resolved, _ = resolve("acme.grid", ChunkGridDefinition, scope)
@@ -151,7 +152,7 @@ def test_error_a_grid_whose_chunk_lengths_give_something_else_or_raise(
     # A bug in the definition raises, and a raised error names the definition.
     odd = ChunkGridDefinition(
         name="acme.grid",
-        configuration=Empty,
+        configuration=EmptyConfiguration,
         chunk_lengths=chunk_lengths,  # pyright: ignore[reportArgumentType]
     )
     resolved, _ = resolve("acme.grid", ChunkGridDefinition, CORE_AND_EXTENSIONS.extended_with(odd))

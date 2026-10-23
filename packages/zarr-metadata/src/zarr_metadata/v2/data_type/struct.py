@@ -11,7 +11,8 @@ from typing_extensions import ReadOnly, TypedDict
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.definition._definition import AcceptedField
 from zarr_metadata.v2._definition import STRUCT_NAME, ZarrV2DataTypeDefinition, ZarrV2DataTypeField
-from zarr_metadata.v2.data_type.fixed_width import ZarrV2Base64FillValue, sized_base64_rules
+from zarr_metadata.v2.data_type._rules import sized_base64_rules
+from zarr_metadata.v2.data_type.fixed_width import ZarrV2Base64FillValue
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -57,10 +58,10 @@ def _fill_value_rules(
     configuration: ZarrV2StructConfiguration, nested: Nested, value: ZarrV2Base64FillValue
 ) -> Iterator[ValidationProblem]:
     """Check that the fill value is base64 of exactly one record, when the size of every field is known."""
-    yield from sized_base64_rules(value, record_size(configuration, nested), exact=True)
+    yield from sized_base64_rules(value, _record_size(configuration, nested), exact=True)
 
 
-def record_size(configuration: ZarrV2StructConfiguration, nested: Nested) -> int | None:
+def _record_size(configuration: ZarrV2StructConfiguration, nested: Nested) -> int | None:
     """Return the number of bytes that one record of `configuration` takes. Each field takes its item size times the product of its subarray shape, and a nested struct takes the size of its own record. Return None when the size of a field is not known (as for `|O`) or its dtype was not read."""
     total = 0
     for index, record in enumerate(configuration["fields"]):
@@ -78,7 +79,7 @@ def record_size(configuration: ZarrV2StructConfiguration, nested: Nested) -> int
 def _item_size(field: AcceptedField[Any]) -> int | None:
     """Return the number of bytes that one item of the dtype read as `field` takes, or None when that is not known."""
     if field.name == STRUCT_NAME or "fields" in field.configuration:
-        return record_size(cast("ZarrV2StructConfiguration", field.configuration), field.nested)
+        return _record_size(cast("ZarrV2StructConfiguration", field.configuration), field.nested)
     size = field.configuration.get("itemsize")
     return size if isinstance(size, int) and not isinstance(size, bool) else None
 

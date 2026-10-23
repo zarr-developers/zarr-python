@@ -15,6 +15,7 @@ from zarr_metadata.definition import (
     Context,
     Definition,
     Disagreements,
+    EmptyConfiguration,
     RefusedField,
     ResolvedField,
     ScopeConflictError,
@@ -23,7 +24,7 @@ from zarr_metadata.definition import (
 from zarr_metadata.definition._definition import fields_of
 from zarr_metadata.definition._scope import claims_of, kind_name, refines
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC
-from zarr_metadata.v3.codec.crc32c import CRC32C_CODEC, Empty
+from zarr_metadata.v3.codec.crc32c import CRC32C_CODEC
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.codec.sharding_indexed import SHARDING_INDEXED_CODEC
 from zarr_metadata.v3.codec.zstd import ZSTD_CODEC
@@ -48,7 +49,9 @@ SHARD = {
     },
 }
 
-MY_GZIP = CodecDefinition(name="gzip", configuration=Empty, kind="bytes_bytes", size="dynamic")
+MY_GZIP = CodecDefinition(
+    name="gzip", configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
+)
 """A private definition of the name `gzip`: a second definition under the same name, which takes no configuration.
 
 Definitions compare by their contents, so a definition rebuilt from the
@@ -423,7 +426,9 @@ def test_a_gain_is_judged_by_what_the_definition_reads_not_by_spelling() -> None
     assert refines(read, unread)
 
 
-OTHER_GZIP = CodecDefinition(name="gzip", configuration=Empty, kind="bytes_bytes", size="static")
+OTHER_GZIP = CodecDefinition(
+    name="gzip", configuration=EmptyConfiguration, kind="bytes_bytes", size="static"
+)
 """A second definition under the core gzip's name, which makes a join conflict."""
 
 
@@ -455,17 +460,17 @@ def test_a_conflict_names_the_field_as_the_document_writes_it_and_tells_the_defi
         ZarrV3ArrayMetadata.create_default(shape=(2,), data_type="r16", fill_value=[0, 0]).to_json()
     )
     model = ZarrV3ArrayMetadata(document, CORE_AND_EXTENSIONS)
-    other = dataclasses.replace(RAW_BYTES_DATA_TYPE, configuration=Empty)
+    other = dataclasses.replace(RAW_BYTES_DATA_TYPE, configuration=EmptyConfiguration)
     with pytest.raises(ScopeConflictError) as raised:
         model.refined_in(CORE_AND_EXTENSIONS.extended_with(other))
     message = str(raised.value)
     assert message.startswith("data type 'r16'")
     assert "RawBytesConfiguration" in message
-    assert "Empty" in message
+    assert "EmptyConfiguration" in message
     with pytest.raises(ScopeConflictError) as joined:
         Context.joined(Context.of(GZIP_CODEC), Context.of(OTHER_GZIP))
     assert str(joined.value).count("gzip") >= 2
-    assert "Empty" in str(joined.value)
+    assert "EmptyConfiguration" in str(joined.value)
 
 
 def test_error_a_scope_built_from_tables_keeps_the_invariants_of() -> None:

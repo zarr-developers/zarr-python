@@ -6,6 +6,7 @@ The encodings both types share with the v2 time dtypes are in
 
 from typing import Final, Literal
 
+from zarr_metadata._numpy import NUMPY_TIME_UNITS
 from zarr_metadata.v3._definition import multi_byte
 
 NumpyTimeUnit = Literal[
@@ -13,23 +14,7 @@ NumpyTimeUnit = Literal[
 ]
 """The time unit codes of the numpy time types, `numpy.datetime64` and `numpy.timedelta64`."""
 
-NUMPY_TIME_UNIT: Final = (
-    "Y",
-    "M",
-    "W",
-    "D",
-    "h",
-    "m",
-    "s",
-    "ms",
-    "us",
-    "μs",
-    "ns",
-    "ps",
-    "fs",
-    "as",
-    "generic",
-)
+NUMPY_TIME_UNIT: Final = (*NUMPY_TIME_UNITS, "generic")
 """Runtime tuple of the permitted `numpy.timedelta64`/`numpy.datetime64` unit strings."""
 
 numpy_time_storage: Final = multi_byte

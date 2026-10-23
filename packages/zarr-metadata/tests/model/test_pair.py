@@ -15,6 +15,7 @@ from zarr_metadata._json import refine_json
 from zarr_metadata.definition import (
     AcceptedField,
     Context,
+    EmptyConfiguration,
     Nested,
     ScopeConflictError,
     UnclaimedField,
@@ -30,7 +31,6 @@ from zarr_metadata.model import (
 )
 from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC
-from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.codec.zstd import ZSTD_CODEC
 from zarr_metadata.v3.definition import (
     CORE,
@@ -51,7 +51,9 @@ ARRAY: dict[str, Any] = {
     "chunk_key_encoding": {"name": "default"},
     "codecs": ["bytes"],
 }
-MY_BYTES = CodecDefinition(name="bytes", configuration=Empty, kind="array_bytes", size="static")
+MY_BYTES = CodecDefinition(
+    name="bytes", configuration=EmptyConfiguration, kind="array_bytes", size="static"
+)
 """A private `bytes` definition: a different meaning under the core name, with no configuration."""
 PRIVATE = CORE.extended_with(MY_BYTES)
 SPELLED_OUT: dict[str, Any] = {
@@ -170,7 +172,7 @@ def test_error_a_model_whose_scope_does_not_pickle_says_so() -> None:
     """A scope that holds a definition with a local function cannot be pickled. Pickling the model raises the same error as pickling the `Context`."""
     local = CodecDefinition(
         name="acme.c",
-        configuration=Empty,
+        configuration=EmptyConfiguration,
         kind="bytes_bytes",
         size="dynamic",
         rules=lambda configuration, nested: iter(()),

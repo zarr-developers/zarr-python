@@ -2,46 +2,20 @@
 
 from __future__ import annotations
 
-import base64
 from typing import TYPE_CHECKING, Final
 
-from zarr_metadata._json import ValidationProblem, shown
-from zarr_metadata._numpy import base64_bytes
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
-from zarr_metadata.v2.data_type.scalar import ZarrV2ScalarConfiguration, orderless_at, sized
+from zarr_metadata.v2.data_type._rules import orderless_at, sized, sized_base64_rules
+from zarr_metadata.v2.data_type.scalar import ZarrV2ScalarConfiguration
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from zarr_metadata._json import ValidationProblem
     from zarr_metadata.definition._definition import Nested
 
 ZarrV2Base64FillValue = str | None
 """A fill value that the v2 spec encodes as base64, for a fixed-length byte string, void, or a structured type (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L191-L193), or null."""
-
-
-def sized_base64_rules(
-    value: ZarrV2Base64FillValue, size: int | None, *, exact: bool
-) -> Iterator[ValidationProblem]:
-    """Check that a fill value that is not null is standard-alphabet base64 of exactly `size` bytes, or of at most `size` bytes when `exact` is False. Any size passes when `size` is None, which happens only when the item size is unknown."""
-    if value is None:
-        return
-    try:
-        base64_bytes(value)
-    except ValueError:
-        yield ValidationProblem(
-            (), f"expected standard-alphabet base64, got {shown(value)}", "invalid_value"
-        )
-        return
-    if size is None:
-        return
-    held = base64.b64decode(value)
-    if (len(held) != size) if exact else (len(held) > size):
-        bound = "" if exact else "at most "
-        yield ValidationProblem(
-            (),
-            f"expected base64 of {bound}{size} bytes, the item's size, got {len(held)} bytes",
-            "invalid_value",
-        )
 
 
 def _void_fill_value_rules(
@@ -91,5 +65,4 @@ __all__ = [
     "STR_V2",
     "VOID_V2",
     "ZarrV2Base64FillValue",
-    "sized_base64_rules",
 ]

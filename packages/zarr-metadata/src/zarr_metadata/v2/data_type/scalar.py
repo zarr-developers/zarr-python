@@ -12,6 +12,7 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
+from zarr_metadata.v2.data_type._rules import orderless_at, sized
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -27,66 +28,6 @@ class ZarrV2ScalarConfiguration(TypedDict, closed=True):
 
     byteorder: ReadOnly[ZarrV2ByteOrder]
     itemsize: ReadOnly[Annotated[int, Ge(0)]]
-
-
-@dataclass(frozen=True, slots=True)
-class _Sized:
-    """The rules of a family whose types are `sizes` bytes wide. This is a value rather than a closure, so a scope that holds it can be pickled."""
-
-    sizes: tuple[int, ...] | None
-    orderless: frozenset[int] | None
-
-    def __call__(
-        self, configuration: ZarrV2ScalarConfiguration, nested: Nested
-    ) -> Iterator[ValidationProblem]:
-        size = configuration["itemsize"]
-        if self.sizes is not None and size not in self.sizes:
-            yield ValidationProblem(
-                ("itemsize",),
-                f"expected a size of {', '.join(map(str, self.sizes))} bytes, got {size}",
-                "invalid_value",
-            )
-            return
-        if (
-            configuration["byteorder"] == "|"
-            and self.orderless is not None
-            and size not in self.orderless
-        ):
-            yield ValidationProblem(
-                ("byteorder",),
-                f"expected a byte order '<' or '>' for a type of {size} bytes, got '|'",
-                "invalid_value",
-            )
-
-
-def sized(sizes: tuple[int, ...] | None, orderless: frozenset[int] | None) -> _Sized:
-    """Return the rules of a family whose types are `sizes` bytes wide. If `sizes` is None, any width is allowed.
-
-    `orderless` is the set of sizes at which the type has no byte order,
-    which NumPy writes as `|`. This is one byte for an integer, every size
-    for bytes and void, and no size for a float. None means every size.
-    At any other size, the typestr must state which end comes first, `<`
-    or `>`.
-    """
-    return _Sized(sizes, orderless)
-
-
-@dataclass(frozen=True, slots=True)
-class _OrderlessAt:
-    """The canonical spelling for a family whose types have no byte order at `sizes` bytes."""
-
-    sizes: frozenset[int] | None
-
-    def __call__(self, configuration: ZarrV2ScalarConfiguration) -> ZarrV2ScalarConfiguration:
-        orderless = self.sizes is None or configuration["itemsize"] in self.sizes
-        if orderless and configuration["byteorder"] != "|":
-            return cast("ZarrV2ScalarConfiguration", {**configuration, "byteorder": "|"})
-        return configuration
-
-
-def orderless_at(sizes: frozenset[int] | None) -> _OrderlessAt:
-    """Return the canonical spelling for a family whose types have no byte order at `sizes` bytes. At those sizes the byte order is `|`, as NumPy writes it. None means every size."""
-    return _OrderlessAt(sizes)
 
 
 _ONE_BYTE: Final = frozenset({1})
@@ -230,6 +171,4 @@ __all__ = [
     "ZarrV2FloatFillValue",
     "ZarrV2FloatSpecial",
     "ZarrV2ScalarConfiguration",
-    "orderless_at",
-    "sized",
 ]

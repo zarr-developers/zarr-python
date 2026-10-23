@@ -99,7 +99,7 @@ from zarr_metadata.definition._context import (
     scoped,
 )
 from zarr_metadata.v2.definition import CORE_V2
-from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
 
 if TYPE_CHECKING:
     from collections.abc import Callable
