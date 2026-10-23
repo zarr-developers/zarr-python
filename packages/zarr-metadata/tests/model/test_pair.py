@@ -486,7 +486,7 @@ def test_the_held_field_machinery_is_gone() -> None:
     """A v3 model is built only by reading its document. So nothing in the package accepts fields that were already read, or re-reads a model in an empty scope. `NO_SCOPE`, `overlapping` and `held` are removed."""
     import inspect
 
-    import zarr_metadata.model._validation as validation
+    import zarr_metadata.model._array_v3 as validation
 
     assert not hasattr(validation, "NO_SCOPE")
     assert not hasattr(validation, "overlapping")

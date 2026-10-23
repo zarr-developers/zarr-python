@@ -38,11 +38,8 @@ from zarr_metadata.definition._context import (
     ZarrV3Context,
     scoped,
 )
-from zarr_metadata.model._group import (
-    ZarrV2ConsolidatedMetadata,
-    ZarrV3NodeMetadataReading,
-    read_node_metadata_v3,
-)
+from zarr_metadata.model._group_v2 import ZarrV2ConsolidatedMetadata
+from zarr_metadata.model._group_v3 import ZarrV3NodeMetadataReading, read_node_metadata_v3
 from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS

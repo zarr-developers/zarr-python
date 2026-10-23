@@ -30,12 +30,21 @@ from zarr_metadata.model import (
     UNSET,
     is_array_metadata_v3,
 )
-from zarr_metadata.model._array import ZarrV3ArrayMetadata, ZarrV3ArrayMetadataUpdate
-from zarr_metadata.model._group import (
-    GroupMembersV3,
+from zarr_metadata.model._array_v3 import (
+    ZarrV3ArrayMetadata,
+    ZarrV3ArrayMetadataReading,
+    ZarrV3ArrayMetadataUpdate,
+)
+from zarr_metadata.model._group_v2 import (
     ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
     ZarrV2GroupMetadataUpdate,
+    is_group_metadata_v2,
+    parse_group_metadata_v2,
+    validate_group_metadata_v2,
+)
+from zarr_metadata.model._group_v3 import (
+    GroupMembersV3,
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
     ZarrV3GroupMetadataReading,
@@ -49,12 +58,6 @@ from zarr_metadata.model._group import (
     read_node_metadata_v3,
     validate_group_metadata_v3,
     validate_node_metadata_v3,
-)
-from zarr_metadata.model._validation import (
-    ZarrV3ArrayMetadataReading,
-    is_group_metadata_v2,
-    parse_group_metadata_v2,
-    validate_group_metadata_v2,
 )
 from zarr_metadata.v2.group import (
     ZarrV2GroupMetadataJSON,
@@ -1472,7 +1475,7 @@ def test_the_group_guard_asks_tuples_of_the_documents_the_group_lists() -> None:
 
 def test_error_a_model_is_built_only_of_members_a_read_found_nothing_wrong_with() -> None:
     """The members of a group read with a problem hold no document. Building a model from them raises `TypeError` instead of producing an empty model."""
-    from zarr_metadata.model._group import _document_of
+    from zarr_metadata.model._group_v3 import _document_of
 
     with pytest.raises(TypeError, match="nothing wrong with"):
         _document_of(GroupMembersV3(None, {}, UNSET, None))

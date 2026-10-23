@@ -42,19 +42,34 @@ from zarr_metadata._json import (
     ValidationProblem,
 )
 from zarr_metadata._sentinel import UNSET
-from zarr_metadata.model._array import (
+from zarr_metadata.model._array_v2 import (
     ZarrV2ArrayMetadata,
+    ZarrV2ArrayMetadataReading,
     ZarrV2ArrayMetadataUpdate,
-    ZarrV3ArrayMetadata,
-    ZarrV3ArrayMetadataUpdate,
+    is_array_metadata_v2,
+    parse_array_metadata_v2,
     read_array_metadata_v2,
-    read_array_metadata_v3,
+    validate_array_metadata_v2,
 )
-from zarr_metadata.model._group import (
+from zarr_metadata.model._array_v3 import (
+    ZarrV3ArrayMetadata,
+    ZarrV3ArrayMetadataReading,
+    ZarrV3ArrayMetadataUpdate,
+    is_array_metadata_v3,
+    parse_array_metadata_v3,
+    read_array_metadata_v3,
+    validate_array_metadata_v3,
+)
+from zarr_metadata.model._group_v2 import (
     ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
     ZarrV2GroupMetadataUpdate,
     ZarrV2NodeMetadata,
+    is_group_metadata_v2,
+    parse_group_metadata_v2,
+    validate_group_metadata_v2,
+)
+from zarr_metadata.model._group_v3 import (
     ZarrV3ConsolidatedMetadata,
     ZarrV3ConsolidatedMetadataInput,
     ZarrV3GroupMetadata,
@@ -83,19 +98,6 @@ from zarr_metadata.model._repair import (
     read_repaired_node_metadata_v3,
     repair_consolidated_metadata_v2,
     repair_node_metadata_v3,
-)
-from zarr_metadata.model._validation import (
-    ZarrV2ArrayMetadataReading,
-    ZarrV3ArrayMetadataReading,
-    is_array_metadata_v2,
-    is_array_metadata_v3,
-    is_group_metadata_v2,
-    parse_array_metadata_v2,
-    parse_array_metadata_v3,
-    parse_group_metadata_v2,
-    validate_array_metadata_v2,
-    validate_array_metadata_v3,
-    validate_group_metadata_v2,
 )
 
 # Store keys are facts about the on-disk specs, so they are defined in the

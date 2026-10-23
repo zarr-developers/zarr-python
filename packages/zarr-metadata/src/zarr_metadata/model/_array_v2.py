@@ -1,0 +1,771 @@
+"""The Zarr v2 array: its reader, its reading, and its model."""
+
+from __future__ import annotations
+
+import dataclasses
+from collections.abc import Mapping
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
+
+from typing_extensions import TypedDict, Unpack
+
+from zarr_metadata._common import JSONValue
+from zarr_metadata._json import (
+    MetadataValidationError,
+    ValidationProblem,
+    arrays_to_tuples,
+    copied,
+    frozen,
+    is_array,
+    is_object,
+    is_tuple,
+    json_text,
+    not_an_object,
+    outside_of,
+    refine_json,
+    with_input,
+    within,
+)
+from zarr_metadata._json import is_canonical_json as _is_canonical_json
+from zarr_metadata._sentinel import UNSET
+from zarr_metadata.definition._context import Context, ZarrV2Context, scoped
+from zarr_metadata.definition._definition import (
+    AcceptedField,
+    ResolvedField,
+    UnclaimedField,
+    field_key,
+    fields_of,
+    fill_value_problems,
+    held,
+    resolve_refined,
+    spelled_canonically,
+)
+from zarr_metadata.definition._scope import Claims, ScopeConflictError, claims_of
+from zarr_metadata.definition._scope import refines as refines_field
+from zarr_metadata.model._keyed import Keyed
+from zarr_metadata.model._shared import (
+    StoreKey,
+    attributes_of,
+    check_literal,
+    dimension_lengths,
+    dump_store_json,
+    load_store_json,
+    located_conflicts,
+    missing_keys,
+    other_members,
+    reading_of,
+)
+from zarr_metadata.v2.array import (
+    ZARR_V2_ARRAY_METADATA_STORE_KEY,
+    ZarrV2ArrayDimensionSeparator,
+    ZarrV2ArrayMetadataJSON,
+    ZarrV2ArrayOrder,
+    ZarrV2DataTypeMetadata,
+)
+from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
+from zarr_metadata.v2.codec import ZarrV2CodecMetadata
+from zarr_metadata.v2.definition import (
+    CORE_V2,
+    ZarrV2CodecDefinition,
+    ZarrV2DataTypeDefinition,
+    resolve_dtype_v2,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from zarr_metadata._typed_json import Loc
+    from zarr_metadata.v2.array import ZarrV2ArrayMetadataStoreKey
+    from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
+
+
+ARRAY_METADATA_REQUIRED_KEYS_V2: Final[frozenset[str]] = frozenset(
+    ZarrV2ArrayMetadataJSON.__required_keys__
+)
+
+
+ARRAY_METADATA_OPTIONAL_KEYS_V2: Final[frozenset[str]] = frozenset(
+    ZarrV2ArrayMetadataJSON.__optional_keys__
+)
+
+
+ARRAY_METADATA_STANDARD_KEYS_V2: Final[frozenset[str]] = (
+    ARRAY_METADATA_REQUIRED_KEYS_V2 | ARRAY_METADATA_OPTIONAL_KEYS_V2
+)
+
+
+def _is_canonical_dtype_v2(value: object) -> bool:
+    """Whether a validated v2 dtype uses the tuple-backed public representation."""
+    if isinstance(value, str):
+        return True
+    if not is_tuple(value):
+        return False
+    for record in value:
+        if not is_tuple(record):
+            return False
+        fields = record
+        if not _is_canonical_dtype_v2(fields[1]):
+            return False
+        if len(fields) == 3 and not isinstance(fields[2], tuple):
+            return False
+    return True
+
+
+def _is_canonical_array_metadata_v2(value: object) -> bool:
+    """Whether a validated v2 array document matches `ZarrV2ArrayMetadataJSON` at runtime."""
+    if not is_object(value) or not isinstance(value, dict):
+        return False
+    doc = value
+    if not isinstance(doc["shape"], tuple) or not isinstance(doc["chunks"], tuple):
+        return False
+    if not _is_canonical_dtype_v2(doc["dtype"]):
+        return False
+    compressor = doc["compressor"]
+    if compressor is not None and not isinstance(compressor, dict):
+        return False
+    filters = doc["filters"]
+    return filters is None or (
+        is_tuple(filters) and all(isinstance(item, dict) for item in filters)
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ArrayMembersV2:
+    """The members other than fields of a v2 array document that a read found no problems with, refined as the model holds them."""
+
+    shape: tuple[int, ...]
+    chunks: tuple[int, ...]
+    fill_value: JSONValue
+    order: ZarrV2ArrayOrder
+    dimension_separator: ZarrV2ArrayDimensionSeparator
+    attributes: dict[str, JSONValue] | UNSET
+    extra_fields: dict[str, JSONValue]
+    document: dict[str, JSONValue]
+    """The refined document that the model holds: each member as the read refined it, in the order the document writes them."""
+
+
+@dataclass(frozen=True, slots=True)
+class ZarrV2ArrayMetadataReading:
+    """A v2 array document as a scope read it, whatever it holds: its dtype, compressor and filters, every problem, and the model when there are no problems.
+
+    A field the document does not hold is `UNSET`; a `compressor` or
+    `filters` written as `null` is None.
+    """
+
+    dtype: ResolvedField[ZarrV2DataTypeDefinition[Any]] | UNSET = UNSET
+    """The dtype, as the scope read it."""
+    compressor: ResolvedField[ZarrV2CodecDefinition[Any]] | UNSET | None = UNSET
+    """The compressor, as the scope read it; None when written as `null`."""
+    filters: tuple[ResolvedField[ZarrV2CodecDefinition[Any]], ...] | UNSET | None = UNSET
+    """The filters, each as the scope read it; None when written as `null`."""
+    problems: tuple[ValidationProblem, ...] = ()
+    """Every reason the document is not valid."""
+    metadata: ZarrV2ArrayMetadata | None = None
+    """The document's model, which holds these fields, when there is no problem; None otherwise."""
+
+    def __reduce__(self) -> str | tuple[object, ...]:
+        # Same as the v3 reading: pickle through the model, when there is one.
+        if self.metadata is not None:
+            return (reading_of, (self.metadata,))
+        return object.__reduce__(self)
+
+    def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
+        """Each field in the document, as the scope read it, with its location: the dtype, followed by a struct's record types, then the compressor, then each filter at its index."""
+        if self.dtype is not UNSET:
+            yield from fields_of(self.dtype, ("dtype",))
+        if self.compressor is not UNSET and self.compressor is not None:
+            yield from fields_of(self.compressor, ("compressor",))
+        if self.filters is not UNSET and self.filters is not None:
+            for index, entry in enumerate(self.filters):
+                yield from fields_of(entry, ("filters", index))
+
+
+def read_array_v2(
+    value: object, context: Context, *, at: Loc = ()
+) -> tuple[ZarrV2ArrayMetadataReading, ArrayMembersV2 | None]:
+    """Read `value`, a v2 array document, once in `context`. Return the reading, and the other members when there are no problems.
+
+    `dtype`, `compressor` and `filters` are read in `context`. A dtype or
+    codec that the scope refuses is a problem. One that the scope does
+    not claim is not a problem. `fill_value` is checked against the
+    dtype the scope read. `compressor` and `filters` are required keys
+    that may be `None`. `at` is the location of this document within the
+    input document, and prefixes every problem.
+    """
+    if not is_object(value):
+        return ZarrV2ArrayMetadataReading(problems=within(not_an_object(value), at)), None
+    doc = value
+    # Unlike the group document ("Other keys MUST NOT be present",
+    # https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313), the v2 array document is open: other keys "SHOULD NOT be
+    # present within the metadata object and SHOULD be ignored by
+    # implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), so a member outside
+    # ARRAY_METADATA_STANDARD_KEYS_V2 is not a problem just for being there.
+    # Ignored does not mean unchecked: as in v3, the member must be JSON,
+    # and its key must be a string.
+    problems: list[ValidationProblem] = list(missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc))
+    extra_fields, found = other_members(doc, ARRAY_METADATA_STANDARD_KEYS_V2)
+    problems.extend(found)
+    problems.extend(check_literal(doc, "zarr_format", 2))
+    shape, shape_problems = dimension_lengths(doc, "shape")
+    chunks, chunks_problems = dimension_lengths(doc, "chunks")
+    problems.extend(shape_problems)
+    problems.extend(chunks_problems)
+    if shape is not None and chunks is not None and len(shape) != len(chunks):
+        problems.append(
+            ValidationProblem(
+                ("chunks",),
+                "expected the same number of dimensions as shape",
+                "invalid_value",
+            )
+        )
+    # Each member is refined once, here, and the refined value is kept.
+    # The document the model holds is built from these values, so nothing
+    # is walked twice.
+    refined: dict[str, JSONValue] = {
+        **extra_fields,
+        "zarr_format": 2,
+        "shape": shape,
+        "chunks": chunks,
+    }
+    dtype: ResolvedField[ZarrV2DataTypeDefinition[Any]] | UNSET = UNSET
+    if "dtype" in doc:
+        # A typestr is read by its family's definition, and a list of field
+        # records as a struct.
+        refined["dtype"], found = refine_json(doc["dtype"], ("dtype",))
+        dtype, found = resolve_refined(
+            doc["dtype"], refined["dtype"], found, ZarrV2DataTypeDefinition, context, ("dtype",)
+        )
+        problems.extend(found)
+    if "order" in doc:
+        # Checked after refinement, so a value that only compares equal to
+        # "C" is refused, like every other value outside the set.
+        order, found = refine_json(doc["order"], ("order",))
+        refined["order"] = order
+        if len(found) != 0 or order not in ("C", "F"):
+            problems.append(outside_of(("order",), doc["order"], ("C", "F")))
+    compressor: ResolvedField[ZarrV2CodecDefinition[Any]] | UNSET | None = UNSET
+    if "compressor" in doc:
+        compressor = None
+        refined["compressor"] = None
+        if doc["compressor"] is not None:
+            refined["compressor"], found = refine_json(doc["compressor"], ("compressor",))
+            compressor, found = resolve_refined(
+                doc["compressor"],
+                refined["compressor"],
+                found,
+                ZarrV2CodecDefinition,
+                context,
+                ("compressor",),
+            )
+            problems.extend(found)
+    filters: tuple[ResolvedField[ZarrV2CodecDefinition[Any]], ...] | UNSET | None = UNSET
+    if "filters" in doc:
+        filters = None
+        refined["filters"] = None
+        entries = doc["filters"]
+        if entries is not None:
+            if not is_array(entries):
+                problems.append(
+                    ValidationProblem(
+                        ("filters",),
+                        "expected null or an array of codec configurations",
+                        "invalid_type",
+                    )
+                )
+            else:
+                # "A list of JSON objects providing codec configurations, or
+                # null" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79): an empty list is a list.
+                read: list[ResolvedField[ZarrV2CodecDefinition[Any]]] = []
+                items: list[JSONValue] = []
+                for index, item in enumerate(entries):
+                    refined_item, found = refine_json(item, ("filters", index))
+                    items.append(refined_item)
+                    entry, found = resolve_refined(
+                        item,
+                        refined_item,
+                        found,
+                        ZarrV2CodecDefinition,
+                        context,
+                        ("filters", index),
+                    )
+                    read.append(entry)
+                    problems.extend(found)
+                filters = tuple(read)
+                refined["filters"] = tuple(items)
+    if "dimension_separator" in doc:
+        separator, found = refine_json(doc["dimension_separator"], ("dimension_separator",))
+        refined["dimension_separator"] = separator
+        if len(found) != 0 or separator not in (".", "/"):
+            problems.append(
+                outside_of(("dimension_separator",), doc["dimension_separator"], (".", "/"))
+            )
+    fill_value: JSONValue = None
+    if "fill_value" in doc:
+        # The fill value must be JSON. It is checked against the dtype the
+        # scope read, if any. If nothing in scope claims the dtype, the
+        # fill value is not checked.
+        fill_value, found = refine_json(doc["fill_value"], ("fill_value",))
+        refined["fill_value"] = fill_value
+        problems.extend(found)
+        if len(found) == 0 and dtype is not UNSET:
+            problems.extend(fill_value_problems(dtype, fill_value, ("fill_value",)))
+    attributes: dict[str, JSONValue] | UNSET | None = UNSET
+    if "attributes" in doc:
+        attributes, found = attributes_of(doc["attributes"])
+        refined["attributes"] = attributes
+        problems.extend(found)
+    reading = ZarrV2ArrayMetadataReading(
+        dtype=dtype,
+        compressor=compressor,
+        filters=filters,
+        problems=within(with_input(problems, doc), at),
+    )
+    if len(problems) != 0 or shape is None or chunks is None or attributes is None:
+        return reading, None
+    members = ArrayMembersV2(
+        shape=shape,
+        chunks=chunks,
+        fill_value=fill_value,
+        order=cast("ZarrV2ArrayOrder", refined["order"]),
+        dimension_separator=cast(
+            "ZarrV2ArrayDimensionSeparator", refined.get("dimension_separator", ".")
+        ),
+        attributes=attributes,
+        extra_fields=extra_fields,
+        document={key: refined[key] for key in cast("Mapping[str, object]", doc)},
+    )
+    return reading, members
+
+
+def validate_array_metadata_v2(
+    value: object, *, context: ZarrV2Context | None = None
+) -> tuple[ValidationProblem, ...]:
+    """Return every reason `value` is not a valid v2 array document, read in `context` (`CORE_V2` when none is given).
+
+    `dtype`, `compressor` and `filters` are read in the scope. A dtype or
+    codec that the scope refuses is a problem. One that the scope does
+    not claim is not a problem. `fill_value` is checked against the
+    dtype the scope read.
+    """
+    return read_array_v2(value, scoped(context, CORE_V2))[0].problems
+
+
+def is_array_metadata_v2(
+    value: object, *, context: ZarrV2Context | None = None
+) -> TypeGuard[ZarrV2ArrayMetadataJSON]:
+    """Whether `value` is a valid v2 array metadata document, read in `context` (`CORE_V2` when none is given)."""
+    return (
+        _is_canonical_json(value, finite=False)
+        and not validate_array_metadata_v2(value, context=context)
+        and _is_canonical_array_metadata_v2(value)
+    )
+
+
+def parse_array_metadata_v2(
+    value: object, *, context: ZarrV2Context | None = None
+) -> ZarrV2ArrayMetadataJSON:
+    """Return `value` as `ZarrV2ArrayMetadataJSON`, read in `context` (`CORE_V2` when none is given), or raise `MetadataValidationError` with every problem."""
+    problems = validate_array_metadata_v2(value, context=context)
+    if len(problems) != 0:
+        raise MetadataValidationError(problems)
+    return cast("ZarrV2ArrayMetadataJSON", arrays_to_tuples(value))
+
+
+def read_array_metadata_v2(
+    value: object, *, context: ZarrV2Context | None = None
+) -> ZarrV2ArrayMetadataReading:
+    """Read `value`, a v2 array document, in `context` (`CORE_V2` when none is given), whatever it holds.
+
+    The result holds everything the read finds: the dtype, the compressor
+    and each filter as the scope read them (an `AcceptedField` read by
+    the definition that claims the typestr or id, an `UnclaimedField`, or
+    a `RefusedField`), every problem `validate_array_metadata_v2` finds,
+    and, when there are no problems, the document's model.
+    """
+    scope = scoped(context, CORE_V2)
+    reading, members = read_array_v2(value, scope)
+    if members is None:
+        return reading
+    model = ZarrV2ArrayMetadata._of(members.document, scope, reading, members)  # pyright: ignore[reportPrivateUsage]
+    return model.reading
+
+
+class ZarrV2ArrayMetadataUpdate(TypedDict, total=False, extra_items=JSONValue | UNSET):
+    """The members `ZarrV2ArrayMetadata.update` replaces: each in the form a document writes it, or `UNSET` to remove a member that a document may omit.
+
+    The members a document may omit are `attributes` (meaning no
+    `.zattrs`), `dimension_separator` (read as `"."`), and any member the
+    spec does not define.
+    """
+
+    shape: tuple[int, ...]
+    dtype: ZarrV2DataTypeMetadata
+    chunks: tuple[int, ...]
+    fill_value: JSONValue
+    order: ZarrV2ArrayOrder
+    compressor: ZarrV2CodecMetadata | None
+    filters: tuple[ZarrV2CodecMetadata, ...] | None
+    dimension_separator: ZarrV2ArrayDimensionSeparator | UNSET
+    attributes: Mapping[str, JSONValue] | UNSET
+
+
+class ZarrV2ArrayMetadata(Keyed):
+    """A v2 array document, and the scope it was read in.
+
+    Like the v3 models, this model is a pair. `to_json` returns the merged
+    document (the `.zarray` members, plus `attributes` when a `.zattrs`
+    holds them) as written, refined. A `.zarray` that omits
+    `dimension_separator` means `"."` by the v2 convention
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L81-L86):
+    the `dimension_separator` property returns `"."`, and the model compares
+    equal to one whose document writes `"."`, but `to_json` writes the
+    document without the key. `dtype`, `compressor` and
+    each filter are views of the reading: an `AcceptedField` read by the
+    definition in scope that claims the typestr or id, or an
+    `UnclaimedField`. `attributes` is `UNSET` when no `.zattrs` exists,
+    which is distinct from an empty one. A member the spec does not
+    define is kept in `extra_fields`. A model is only built by reading:
+    the constructor reads `document` in `context` and raises
+    `MetadataValidationError` with every problem, so no model is invalid.
+    Two models are equal when their documents mean the same thing in
+    their scopes, as the model key defines. `update` reads new members
+    in the model's own scope. `with_context` and `refined_in` read the
+    document in another scope. A model pickles as its pair.
+    """
+
+    __slots__ = ("_claims", "_context", "_document", "_members", "_reading", "_shown")
+
+    zarr_format: Final = 2
+
+    @property
+    def claims(self) -> Claims:
+        """The claims the reading recorded for each typestr and codec id the document writes, keyed by kind and the name the scope files it under. Computed on first access."""
+        try:
+            return self._claims
+        except AttributeError:
+            self._claims = MappingProxyType(claims_of(self._reading.fields()))
+            return self._claims
+
+    def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
+        scope = scoped(context, CORE_V2)
+        reading, members = read_array_v2(document, scope)
+        if members is None:
+            raise MetadataValidationError(reading.problems)
+        self._adopt(members.document, scope, reading, members)
+
+    @classmethod
+    def _of(
+        cls,
+        document: dict[str, JSONValue],
+        context: Context,
+        reading: ZarrV2ArrayMetadataReading,
+        members: ArrayMembersV2,
+    ) -> ZarrV2ArrayMetadata:
+        """Build a model of a document that a read found no problems with, holding that reading, without reading it again. The readers in this package build models through this method; pyright reports these calls as private use."""
+        model = object.__new__(cls)
+        model._adopt(document, context, reading, members)
+        return model
+
+    def _adopt(
+        self,
+        document: dict[str, JSONValue],
+        context: Context,
+        reading: ZarrV2ArrayMetadataReading,
+        members: ArrayMembersV2,
+    ) -> None:
+        self._document = document
+        self._context = context
+        self._reading = dataclasses.replace(reading, metadata=self)
+        self._members = members
+        # The members the model exposes, read-only at every level.
+        self._shown = (
+            frozen(members.fill_value),
+            UNSET if members.attributes is UNSET else frozen(members.attributes),
+            frozen(members.extra_fields),
+        )
+
+    # --- the pair ---------------------------------------------------------
+
+    @property
+    def context(self) -> Context:
+        """The scope the document was read in. `update` reads new members in this scope."""
+        return self._context
+
+    @property
+    def reading(self) -> ZarrV2ArrayMetadataReading:
+        """The document as the scope read it: the dtype, the compressor, and each filter."""
+        return self._reading
+
+    def to_json(self) -> ZarrV2ArrayMetadataJSON:
+        """The merged document as written, refined. The result shares no objects with the model.
+
+        `attributes` is included when set, even empty. This is not the
+        on-disk `.zarray`, which excludes them: `to_key_value` splits the
+        document as a store holds it
+        (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L323-L330).
+        """
+        return cast("ZarrV2ArrayMetadataJSON", copied(self._document))
+
+    def to_key_value(
+        self, *, indent: int | str | None = None
+    ) -> Mapping[ZarrV2ArrayMetadataStoreKey | ZarrV2AttributesStoreKey, bytes]:
+        """The document as a store holds it: `.zarray` without the attributes, and `.zattrs` with the attributes when they are set, even if empty."""
+        zarray = {key: value for key, value in self._document.items() if key != "attributes"}
+        out: dict[ZarrV2ArrayMetadataStoreKey | ZarrV2AttributesStoreKey, bytes] = {
+            ZARR_V2_ARRAY_METADATA_STORE_KEY: dump_store_json(zarray, indent=indent)
+        }
+        if "attributes" in self._document:
+            out[ZARR_V2_ATTRIBUTES_STORE_KEY] = dump_store_json(
+                self._document["attributes"], indent=indent
+            )
+        return out
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self._document!r}, context={self._context!r})"
+
+    def _key_of(self) -> tuple[object, ...]:
+        """The key `==` and `hash` compare for a v2 array model: what its document means.
+
+        The key holds each field's `field_key`, and the fill value as JSON
+        text, in its canonical spelling when a definition in scope read the
+        dtype. Every other member is included as it is, with JSON members
+        as text. `attributes` is `UNSET` when there is no `.zattrs`.
+        """
+        members = self._members
+        return (
+            members.shape,
+            members.chunks,
+            members.order,
+            members.dimension_separator,
+            self._fill_value_key(),
+            field_key(self.dtype),
+            None if self.compressor is None else field_key(self.compressor),
+            None if self.filters is None else tuple(field_key(entry) for entry in self.filters),
+            UNSET if members.attributes is UNSET else json_text(members.attributes),
+            json_text(members.extra_fields),
+        )
+
+    def _plain_key(
+        self, dtype: AcceptedField[ZarrV2DataTypeDefinition[Any]] | UnclaimedField
+    ) -> tuple[object, ...]:
+        """The members other than fields that `refines` compares. The fill value is in the spelling of `dtype`, the dtype of the more informed side."""
+        members = self._members
+        return (
+            members.shape,
+            members.chunks,
+            members.order,
+            members.dimension_separator,
+            json_text(spelled_canonically(dtype, members.fill_value)),
+            UNSET if members.attributes is UNSET else json_text(members.attributes),
+            json_text(members.extra_fields),
+        )
+
+    def _fill_value_key(self) -> str:
+        """The fill value as `==` compares it, as JSON text: in its canonical spelling when a definition in scope read the dtype, and as written otherwise."""
+        fill_value = self._members.fill_value
+        if isinstance(self.dtype, AcceptedField):
+            return json_text(spelled_canonically(self.dtype, fill_value))
+        return json_text(fill_value)
+
+    def __reduce__(self) -> tuple[type[ZarrV2ArrayMetadata], tuple[object, Context]]:
+        return type(self), (self._document, self._context)
+
+    # --- typed views ------------------------------------------------------
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        """The array's shape."""
+        return self._members.shape
+
+    @property
+    def chunks(self) -> tuple[int, ...]:
+        """The shape of each chunk."""
+        return self._members.chunks
+
+    @property
+    def fill_value(self) -> JSONValue:
+        """The fill value as written, refined; read-only at every level."""
+        return self._shown[0]
+
+    @property
+    def order(self) -> ZarrV2ArrayOrder:
+        """The in-chunk layout, `"C"` or `"F"`."""
+        return self._members.order
+
+    @property
+    def dimension_separator(self) -> ZarrV2ArrayDimensionSeparator:
+        """The separator between chunk indices in a chunk key: `"."` when the document writes none."""
+        return self._members.dimension_separator
+
+    @property
+    def attributes(self) -> Mapping[str, JSONValue] | UNSET:
+        """The user attributes a `.zattrs` holds, read-only at every level; `UNSET` when there is no `.zattrs`."""
+        return self._shown[1]
+
+    @property
+    def extra_fields(self) -> Mapping[str, JSONValue]:
+        """Every member the spec does not define, as written, read-only at every level."""
+        return self._shown[2]
+
+    @property
+    def dtype(self) -> AcceptedField[ZarrV2DataTypeDefinition[Any]] | UnclaimedField:
+        """The dtype as the scope read it: read by its family's definition, or unclaimed."""
+        return held(self._reading.dtype)
+
+    @property
+    def compressor(self) -> AcceptedField[ZarrV2CodecDefinition[Any]] | UnclaimedField | None:
+        """The compressor as the scope read it; None when written as `null`."""
+        compressor = self._reading.compressor
+        return None if compressor is None else held(compressor)
+
+    @property
+    def filters(
+        self,
+    ) -> tuple[AcceptedField[ZarrV2CodecDefinition[Any]] | UnclaimedField, ...] | None:
+        """The filters, each as the scope read it; None when written as `null`."""
+        filters = self._reading.filters
+        if filters is None:
+            return None
+        if filters is UNSET:
+            msg = "expected filters a read found nothing wrong with, got UNSET"
+            raise TypeError(msg)
+        return tuple(held(entry) for entry in filters)
+
+    # --- changing ---------------------------------------------------------
+
+    def update(self, **members: Unpack[ZarrV2ArrayMetadataUpdate]) -> ZarrV2ArrayMetadata:
+        """Return this model with `members` (as JSON) replacing the document's members, read in this model's own scope. A member set to `UNSET` is removed.
+
+        Raises `MetadataValidationError` when the resulting document has a
+        problem. So members that depend on each other must be passed
+        together, for example a `dtype` with a fill value of that dtype.
+        """
+        document: dict[str, object] = {**self._document, **members}
+        for key, value in members.items():
+            if value is UNSET:
+                del document[key]
+        return type(self)(document, context=self._context)
+
+    def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2ArrayMetadata:
+        """Return this document read in `context`, whatever that changes: a gain, a loss, or a conflict.
+
+        Raises `MetadataValidationError` when the document has a problem
+        in `context`. The existing reading is reused when `context` reads
+        every claim identically.
+        """
+        scope = scoped(context, CORE_V2)
+        if scope.disagreements(self.claims).agrees:
+            return self._of(self._document, scope, self._reading, self._members)
+        return type(self)(self._document, context=scope)
+
+    def refined_in(self, context: ZarrV2Context | None = None) -> ZarrV2ArrayMetadata:
+        """Return this document read in `context`. `context` may claim names this scope left unclaimed, but must not contradict any claim.
+
+        Raises `ScopeConflictError` when `context` reads a typestr or id
+        with a different definition, or with no definition, where this
+        scope read it with one. The error names each one and its location
+        in the document. Raises `MetadataValidationError` when a definition
+        that `context` claims rejects what was written.
+        """
+        scope = scoped(context, CORE_V2)
+        found = scope.disagreements(self.claims)
+        if len(found.conflicts) != 0:
+            raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
+        return self.with_context(scope)
+
+    def refines(self, other: ZarrV2ArrayMetadata) -> bool:
+        """Whether this model holds everything `other` holds. Each field must refine its counterpart. A `null` compressor or `null` filters refine only a `null`. Every other member must be the same, with the fill value compared in the spelling of the more informed dtype. If that dtype rejects the other model's fill value, this is not a refinement."""
+        if type(other) is not type(self):
+            return False
+        if (self.compressor is None) != (other.compressor is None):
+            return False
+        if (self.filters is None) != (other.filters is None):
+            return False
+        mine = () if self.filters is None else self.filters
+        theirs = () if other.filters is None else other.filters
+        if len(mine) != len(theirs):
+            return False
+        pairs = [(self.dtype, other.dtype), *zip(mine, theirs, strict=True)]
+        if self.compressor is not None and other.compressor is not None:
+            pairs.append((self.compressor, other.compressor))
+        if not all(refines_field(one, another) for one, another in pairs):
+            return False
+        if len(fill_value_problems(self.dtype, other._members.fill_value)) != 0:
+            return False
+        return self._plain_key(self.dtype) == other._plain_key(self.dtype)
+
+    # --- constructors -----------------------------------------------------
+
+    @classmethod
+    def create_default(
+        cls, *, context: ZarrV2Context | None = None, **overrides: Unpack[ZarrV2ArrayMetadataUpdate]
+    ) -> ZarrV2ArrayMetadata:
+        """Return a scalar `|u1` array, with any document members in `overrides` applied, read in `context`.
+
+        Raises `MetadataValidationError` when the resulting document has a
+        problem. Overriding `shape` without `chunks` sets `chunks` equal to
+        `shape`, so one chunk covers the array. Overriding `chunks` without
+        `shape` keeps the scalar default shape, which chunks of another
+        rank do not fit. A dtype given without a fill value gets a fill
+        value of `0` when its family accepts `0`, and `null` otherwise.
+        Every family accepts `null`.
+        """
+        document: dict[str, object] = {
+            "zarr_format": 2,
+            "shape": (),
+            "chunks": (),
+            "dtype": "|u1",
+            "fill_value": 0,
+            "order": "C",
+            "compressor": None,
+            "filters": None,
+            "dimension_separator": ".",
+        }
+        given: dict[str, object] = dict(overrides)
+        if "shape" in given and "chunks" not in given:
+            lengths, _ = dimension_lengths(given, "shape")
+            if lengths is not None:
+                given["chunks"] = lengths
+        if "dtype" in given and "fill_value" not in given:
+            dtype, _ = resolve_dtype_v2(given["dtype"], context)
+            if len(fill_value_problems(dtype, 0)) != 0:
+                given["fill_value"] = None
+        merged = {key: value for key, value in {**document, **given}.items() if value is not UNSET}
+        return cls(merged, context=context)
+
+    @classmethod
+    def from_json(
+        cls, data: object, *, context: ZarrV2Context | None = None
+    ) -> ZarrV2ArrayMetadata:
+        """Return the model of `data`, a v2 array document with its attributes under `attributes`, read in `context`.
+
+        Raises `MetadataValidationError` with every problem the read finds.
+        `read_array_metadata_v2` returns the reading this model is built
+        from, and the problems of a document that has any.
+        """
+        return cls(data, context=context)
+
+    @classmethod
+    def from_key_value(
+        cls, mapping: Mapping[StoreKey, bytes], *, context: ZarrV2Context | None = None
+    ) -> ZarrV2ArrayMetadata:
+        """Return the model of the array at `.zarray` in `mapping`, with the attributes at `.zattrs` when that key exists, read in `context`.
+
+        Raises `MetadataValidationError` when `.zarray` is missing, bytes
+        are not JSON, `.zarray` holds `attributes`, or the document is not
+        valid.
+        """
+        zarray_raw = load_store_json(mapping, ZARR_V2_ARRAY_METADATA_STORE_KEY)
+        if not is_object(zarray_raw):
+            return cls(zarray_raw, context=context)
+        zarray = zarray_raw
+        if "attributes" in zarray:
+            refused = ValidationProblem(
+                ("attributes",), "unexpected document member", "invalid_value"
+            )
+            raise MetadataValidationError(with_input((refused,), zarray))
+        if ZARR_V2_ATTRIBUTES_STORE_KEY in mapping:
+            zattrs = load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY)
+            return cls({**zarray, "attributes": zattrs}, context=context)
+        return cls(zarray, context=context)

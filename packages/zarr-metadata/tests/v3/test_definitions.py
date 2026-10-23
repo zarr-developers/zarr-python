@@ -42,7 +42,7 @@ from zarr_metadata.model import (
     validate_array_metadata_v3,
     validate_metadata_field_v3,
 )
-from zarr_metadata.model._array import ZarrV3ArrayMetadata
+from zarr_metadata.model._array_v3 import ZarrV3ArrayMetadata
 from zarr_metadata.typed_json import (
     check,
 )

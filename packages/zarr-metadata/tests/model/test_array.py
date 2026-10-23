@@ -52,7 +52,7 @@ from zarr_metadata.model import (
     validate_array_metadata_v3,
     validate_metadata_field_v3,
 )
-from zarr_metadata.model._validation import (
+from zarr_metadata.model._array_v3 import (
     ARRAY_METADATA_OPTIONAL_KEYS_V3,
     ARRAY_METADATA_REQUIRED_KEYS_V3,
     ARRAY_METADATA_STANDARD_KEYS_V3,
