@@ -207,8 +207,16 @@ def _documents(context: Context) -> SchemaLeaf:
 
 
 def _array(context: Context, schemas: Schemas) -> JSONSchema:
-    """An array document: its TypedDict, plus a constraint on its fill value for each data type in scope, which applies when the document names that data type."""
+    """An array document: its TypedDict, at least one codec, and a constraint on its fill value for each data type in scope, which applies when the document names that data type.
+
+    The TypedDict cannot declare a minimum length, so the schema adds it:
+    a pipeline needs its array -> bytes codec, and the validator rejects an
+    empty `codecs`.
+    """
     schema = schemas.object_of(ZarrV3ArrayMetadataJSON)
+    properties = cast("dict[str, JSONValue]", schema.get("properties", {}))
+    codecs = cast("dict[str, JSONValue]", properties["codecs"])
+    schema = {**schema, "properties": {**properties, "codecs": {**codecs, "minItems": 1}}}
     held: list[JSONValue] = []
     for definition in context.definitions():
         if not isinstance(definition, DataTypeDefinition):

@@ -1,4 +1,14 @@
-"""Private input types used only to generate accurate Pydantic JSON schemas."""
+"""Private input types used only to generate accurate Pydantic JSON schemas.
+
+These repeat the document TypedDicts in a stricter form: extension names
+match the spec's pattern, `must_understand` is `true` at an extension
+point, and `codecs` is not empty. They exist because pydantic builds a
+schema from Python types and cannot embed a JSON Schema that has its own
+`$defs`, such as the ones `zarr_metadata.json_schema` writes; the v3
+document schemas are recursive, so they cannot be inlined either.
+`test_the_pydantic_schema_agrees_with_the_package_schema` checks that the
+two schemas accept the same documents.
+"""
 
 from __future__ import annotations
 

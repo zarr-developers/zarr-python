@@ -8,7 +8,8 @@ parallel hierarchy), so values interoperate freely with non-pydantic code.
 import json
 import math
 import warnings
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -17,7 +18,8 @@ from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
 import zarr_metadata.pydantic as zmp
 from zarr_metadata._common import JSONValue
-from zarr_metadata.definition import AcceptedField
+from zarr_metadata.definition import AcceptedField, Context
+from zarr_metadata.json_schema import json_schema, node_metadata_json_schema_v3
 from zarr_metadata.model import (
     ZarrV2ArrayMetadata,
     ZarrV2ConsolidatedMetadata,
@@ -27,6 +29,8 @@ from zarr_metadata.model import (
     ZarrV3GroupMetadata,
 )
 from zarr_metadata.problems import ValidationProblem
+from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
+from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import CORE
 
@@ -494,3 +498,44 @@ def test_each_format_reads_in_its_own_context_key() -> None:
     assert bare.context is small
     assert isinstance(bare.compressor, UnclaimedField)
     assert zmp.CONTEXT_KEY_V2 == "zarr_metadata_context_v2"
+
+
+_TESTS = Path(__file__).parent.parent
+_NODE_SCHEMA_V3 = node_metadata_json_schema_v3(context=Context.of())
+_SCHEMA_PAIRS: dict[str, tuple[object, Mapping[str, Any], str]] = {
+    "v3-array": (zmp.ZarrV3ArrayMetadataField, _NODE_SCHEMA_V3, "v3/array"),
+    "v3-group": (zmp.ZarrV3GroupMetadataField, _NODE_SCHEMA_V3, "v3/group"),
+    "v2-array": (zmp.ZarrV2ArrayMetadataField, json_schema(ZarrV2ArrayMetadataJSON), "v2/array"),
+    "v2-group": (zmp.ZarrV2GroupMetadataField, json_schema(ZarrV2GroupMetadataJSON), "v2/group"),
+}
+
+
+def _variants(document: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    """The document, and copies of it that break one rule each."""
+    yield document
+    for key in ("data_type", "chunk_grid", "chunk_key_encoding"):
+        if isinstance(document.get(key), dict):
+            yield {**document, key: {**document[key], "name": "Not A Name"}}
+            yield {**document, key: {**document[key], "must_understand": False}}
+    if "codecs" in document:
+        yield {**document, "codecs": []}
+    for key in ("shape", "chunks"):
+        if key in document:
+            yield {**document, key: [-1] * len(document[key])}
+    yield {**document, "zarr_format": 7}
+
+
+@pytest.mark.parametrize(
+    ("field_type", "schema", "corpus"), list(_SCHEMA_PAIRS.values()), ids=list(_SCHEMA_PAIRS)
+)
+def test_the_pydantic_schema_agrees_with_the_package_schema(
+    field_type: object, schema: Mapping[str, Any], corpus: str
+) -> None:
+    """Pydantic needs its own copies of the document types to write a JSON Schema, because it cannot embed a schema with its own `$defs`. Each fixture document, and each copy of it that breaks one rule, is accepted by the pydantic field type's schema exactly when `zarr_metadata.json_schema` accepts it, so the copies cannot drift."""
+    ours = Draft202012Validator(schema)
+    theirs = Draft202012Validator(TypeAdapter(field_type).json_schema())
+    documents = sorted((_TESTS / corpus).glob("*.json"))
+    assert documents != []
+    for path in documents:
+        for document in _variants(json.loads(path.read_text())):
+            assert theirs.is_valid(document) == ours.is_valid(document), (path.name, document)

@@ -1,8 +1,9 @@
 """Zarr v2 array metadata types."""
 
 from collections.abc import Mapping
-from typing import Final, Literal, NotRequired
+from typing import Annotated, Final, Literal, NotRequired
 
+from annotated_types import Ge
 from typing_extensions import TypeAliasType, TypedDict
 
 from zarr_metadata._common import JSONValue
@@ -67,8 +68,8 @@ class ZarrV2ZArrayJSON(TypedDict):
     """
 
     zarr_format: Literal[2]
-    shape: tuple[int, ...]
-    chunks: tuple[int, ...]
+    shape: tuple[Annotated[int, Ge(0)], ...]
+    chunks: tuple[Annotated[int, Ge(0)], ...]
     dtype: ZarrV2DataTypeMetadata
     compressor: ZarrV2CodecMetadata | None
     fill_value: JSONValue
@@ -97,8 +98,8 @@ class ZarrV2ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
     """
 
     zarr_format: Literal[2]
-    shape: tuple[int, ...]
-    chunks: tuple[int, ...]
+    shape: tuple[Annotated[int, Ge(0)], ...]
+    chunks: tuple[Annotated[int, Ge(0)], ...]
     dtype: ZarrV2DataTypeMetadata
     compressor: ZarrV2CodecMetadata | None
     fill_value: JSONValue
@@ -140,8 +141,8 @@ class ZarrV2ArrayMetadataJSONPartial(TypedDict, total=False, extra_items=JSONVal
     """
 
     zarr_format: Literal[2]
-    shape: tuple[int, ...]
-    chunks: tuple[int, ...]
+    shape: tuple[Annotated[int, Ge(0)], ...]
+    chunks: tuple[Annotated[int, Ge(0)], ...]
     dtype: ZarrV2DataTypeMetadata
     compressor: ZarrV2CodecMetadata | None
     fill_value: JSONValue
