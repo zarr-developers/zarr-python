@@ -2292,13 +2292,21 @@ def test_v3_create_default_zero_length_dimensions() -> None:
 def test_v2_absent_dimension_separator_means_dot() -> None:
     """A .zarray that omits dimension_separator uses the v2 convention default
     '.', not '/': chunk keys of real-world default-separator v2 arrays look
-    like '0.0'. The model normalizes the absent key to an explicit '.' — a
-    semantics-preserving spelling normalization."""
-    doc = dict(ZarrV2ArrayMetadata.create_default().to_json())
+    like '0.0'. The model reports '.' and compares equal to a document that
+    writes '.', but `to_json` and `to_key_value` write the document as it was
+    read, without the key. `update` with `UNSET` removes the key."""
+    explicit = ZarrV2ArrayMetadata.create_default()
+    doc = dict(explicit.to_json())
     del doc["dimension_separator"]
     model = ZarrV2ArrayMetadata.from_json(doc)
     assert model.dimension_separator == "."
-    assert model.to_json().get("dimension_separator") == "."
+    assert "dimension_separator" not in model.to_json()
+    assert b"dimension_separator" not in model.to_key_value()[".zarray"]
+    assert model == explicit
+    assert hash(model) == hash(explicit)
+    removed = explicit.update(dimension_separator=UNSET)
+    assert "dimension_separator" not in removed.to_json()
+    assert removed.dimension_separator == "."
 
 
 def test_v2_from_key_value_without_separator_means_dot() -> None:

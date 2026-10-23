@@ -895,14 +895,6 @@ def read_array_v2(
     return reading, members
 
 
-def array_document_v2(members: ArrayMembersV2) -> dict[str, JSONValue]:
-    """The document a v2 array model holds: the refined document, with `dimension_separator` set to `.` when the document omits it."""
-    document = members.document
-    if "dimension_separator" not in document:
-        return {**document, "dimension_separator": "."}
-    return document
-
-
 def validate_array_metadata_v2(
     value: object, *, context: ZarrV2Context | None = None
 ) -> tuple[ValidationProblem, ...]:

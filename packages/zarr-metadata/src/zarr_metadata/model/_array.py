@@ -29,7 +29,6 @@ from zarr_metadata.model._validation import (
     StoreKey,
     ZarrV2ArrayMetadataReading,
     ZarrV3ArrayMetadataReading,
-    array_document_v2,
     dimension_lengths,
     dump_store_json,
     load_store_json,
@@ -531,7 +530,7 @@ def read_array_metadata_v2(
     reading, members = read_array_v2(value, scope)
     if members is None:
         return reading
-    model = ZarrV2ArrayMetadata._of(array_document_v2(members), scope, reading, members)  # pyright: ignore[reportPrivateUsage]
+    model = ZarrV2ArrayMetadata._of(members.document, scope, reading, members)  # pyright: ignore[reportPrivateUsage]
     return model.reading
 
 
@@ -559,10 +558,12 @@ class ZarrV2ArrayMetadata(Keyed):
 
     Like the v3 models, this model is a pair. `to_json` returns the merged
     document (the `.zarray` members, plus `attributes` when a `.zattrs`
-    holds them) as written, refined, with one value filled in: a `.zarray`
-    that omits `dimension_separator` means `"."` by the v2 convention
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L81-L86),
-    and the model stores and writes that value. `dtype`, `compressor` and
+    holds them) as written, refined. A `.zarray` that omits
+    `dimension_separator` means `"."` by the v2 convention
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L81-L86):
+    the `dimension_separator` property returns `"."`, and the model compares
+    equal to one whose document writes `"."`, but `to_json` writes the
+    document without the key. `dtype`, `compressor` and
     each filter are views of the reading: an `AcceptedField` read by the
     definition in scope that claims the typestr or id, or an
     `UnclaimedField`. `attributes` is `UNSET` when no `.zattrs` exists,
@@ -594,7 +595,7 @@ class ZarrV2ArrayMetadata(Keyed):
         reading, members = read_array_v2(document, scope)
         if members is None:
             raise MetadataValidationError(reading.problems)
-        self._adopt(array_document_v2(members), scope, reading, members)
+        self._adopt(members.document, scope, reading, members)
 
     @classmethod
     def _of(

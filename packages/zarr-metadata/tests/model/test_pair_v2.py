@@ -56,14 +56,14 @@ def _document(changes: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_a_model_is_its_document_read_in_its_scope() -> None:
-    """The constructor reads the document in the given scope (`CORE_V2` by default). `to_json` returns the refined document (arrays as tuples, `dimension_separator` added when missing), which shares nothing with the model. `context` is the scope, and the reading holds the model."""
+    """The constructor reads the document in the given scope (`CORE_V2` by default). `to_json` returns the refined document (arrays as tuples), which shares nothing with the model. A missing `dimension_separator` stays missing. `context` is the scope, and the reading holds the model."""
     model = ZarrV2ArrayMetadata(ARRAY)
     assert model.context is CORE_V2
     document = model.to_json()
     assert document["shape"] == (4,)
     assert document.get("attributes") == {"a": (1, 2)}
     without = {k: v for k, v in ARRAY.items() if k != "dimension_separator"}
-    assert ZarrV2ArrayMetadata(without).to_json().get("dimension_separator") == "."
+    assert "dimension_separator" not in ZarrV2ArrayMetadata(without).to_json()
     assert model.reading.metadata is model
     assert read_array_metadata_v2(ARRAY).metadata == model
     assert ZarrV2ArrayMetadata(ARRAY, SMALL).context is SMALL

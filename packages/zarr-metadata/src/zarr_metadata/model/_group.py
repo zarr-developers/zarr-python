@@ -50,7 +50,6 @@ from zarr_metadata.model._validation import (
     ArrayMembersV3,
     StoreKey,
     ZarrV3ArrayMetadataReading,
-    array_document_v2,
     attributes_of,
     check_literal,
     dump_store_json,
@@ -1837,7 +1836,7 @@ def _read_node_v2(
         reading, members = read_array_v2(merged, context)
         if members is None:
             return None, located(reading.problems)
-        return ZarrV2ArrayMetadata._of(array_document_v2(members), context, reading, members), []  # pyright: ignore[reportPrivateUsage]
+        return ZarrV2ArrayMetadata._of(members.document, context, reading, members), []  # pyright: ignore[reportPrivateUsage]
     found = validate_group_metadata_v2(merged, context=context)
     if len(found) != 0:
         return None, located(found)
