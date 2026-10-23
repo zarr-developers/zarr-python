@@ -1,18 +1,19 @@
-"""The kinds of field a Zarr v2 array document holds: a dtype, and a codec in `compressor` or `filters`.
+"""The kinds of field in a Zarr v2 array document: a dtype, and a codec in `compressor` or `filters`.
 
-A v2 dtype is written as NumPy writes a typestr -- a byte order, a type
-code and a size, `<f4`
-(https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L127-L150)
--- or as an array of field records for a structured type
+A v2 dtype is written as a NumPy typestr, which is a byte order, a type
+code and a size, such as `<f4`
+(https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L127-L150).
+A structured type is written as an array of field records
 (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L152-L174).
-The definition of a type is filed under its family, `float`, and the
-name carries the rest: `<f4` reads as `float` with
-`{"byteorder": "<", "itemsize": 4}`, as a v3 `r16` reads as `r*` with
-`{"bits": 16}`. A records array reads as `struct`, its records the
-configuration, each record's type a nested field.
+The definition of a type is filed under its family, such as `float`, and
+the name carries the rest as configuration. For example, `<f4` reads as
+`float` with `{"byteorder": "<", "itemsize": 4}`, in the same way that a
+v3 `r16` reads as `r*` with `{"bits": 16}`. A records array reads as
+`struct`. The records are its configuration, and the type of each record
+is a nested field.
 
-A v2 codec is a numcodecs configuration: an object whose `id` names
-the codec and whose other members are its parameters
+A v2 codec is a numcodecs configuration: an object whose `id` member
+names the codec and whose other members are its parameters
 (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79).
 """
 
@@ -36,10 +37,10 @@ if TYPE_CHECKING:
     from zarr_metadata.v3._definition import Problems
 
 ZarrV2DataTypeField = TypeAliasType("ZarrV2DataTypeField", ZarrV2DataTypeMetadata)
-"""A member holding a v2 dtype: a document's `dtype`, or a struct record's type; read in the scope what holds it is read in."""
+"""A member that holds a v2 dtype: a document's `dtype`, or the type of a struct record. It is read in the same scope as its container."""
 
 STRUCT_NAME: Final = "struct"
-"""The name a records array reads as, which no typestr spells."""
+"""The name that a records array reads as. No typestr has this spelling."""
 
 FAMILIES: Final[Mapping[str, str]] = {
     "b": "bool",
@@ -54,26 +55,26 @@ FAMILIES: Final[Mapping[str, str]] = {
     "U": "str",
     "V": "void",
 }
-"""Each type code the v2 spec lists, and the family its definition is filed under."""
+"""Each type code that the v2 spec lists, mapped to the family its definition is filed under."""
 
-# ASCII digits only: `\d` matches every Unicode digit, which NumPy does not read.
+# ASCII digits only: `\d` matches every Unicode digit, but NumPy does not read them.
 TYPESTR_PATTERN: Final = re.compile(r"([<>|])([A-Za-z])([0-9]*)(?:\[([0-9]*)([A-Za-z\u03bc]+)\])?")
-"""A typestr: a byte order, a type code, a size in bytes if any, and a bracketed time unit with its multiplier if any."""
+"""A typestr: a byte order, a type code, an optional size in bytes, and an optional bracketed time unit with its multiplier."""
 
 
 def parse_typestr(name: str) -> tuple[str, dict[str, JSONValue]] | None:
-    """`name` split into its type code and what it carries; None when it is no typestr.
+    """Split `name` into its type code and the values it carries. Return None if `name` is not a typestr.
 
-    What is carried is the byte order; the item size, which only `|O`
-    leaves out; and, when a unit is bracketed, the unit
-    and its multiplier, 1 when none is written.
+    The carried values are the byte order, the item size (only `|O`
+    omits it), and, when a unit is in brackets, the unit and its
+    multiplier. The multiplier is 1 when none is written.
     """
     match = TYPESTR_PATTERN.fullmatch(name)
     if match is None:
         return None
     byteorder, code, size, factor, unit = match.groups()
     if size == "" and code != "O":
-        # "An integer specifying the number of bytes": only `|O` writes none.
+        # "An integer specifying the number of bytes": only `|O` omits it.
         return None
     carried: dict[str, JSONValue] = {"byteorder": byteorder}
     if size != "":
@@ -85,13 +86,13 @@ def parse_typestr(name: str) -> tuple[str, dict[str, JSONValue]] | None:
 
 
 def typestr_problem(name: str, at: Loc) -> ValidationProblem | None:
-    """The problem `name`, at `at`, is when it is no typestr; None when it is one, or is `struct`."""
+    """Return the problem at `at` if `name` is not a typestr. Return None if it is a typestr or `struct`."""
     if name == STRUCT_NAME:
         return None
     if TYPESTR_PATTERN.fullmatch(name) is not None:
         if parse_typestr(name) is not None:
             return None
-        # "An integer specifying the number of bytes": a listed code without one.
+        # "An integer specifying the number of bytes": a listed code without a size.
         return ValidationProblem(
             at,
             f"expected a size in bytes after the type code, '<f4', got {shown(name)}",
@@ -107,13 +108,14 @@ def typestr_problem(name: str, at: Loc) -> ValidationProblem | None:
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
-    """A v2 data type: one family of NumPy types, and the fill value an array of it takes.
+    """A v2 data type: one family of NumPy types, and the fill value an array of that family takes.
 
-    Filed under the family -- `float` -- and read for every typestr of
-    the family, whose byte order, size and unit are its configuration;
-    the rules say which of those the family takes. `struct` is read for
-    an array of field records, its configuration `{"fields": records}`,
-    so a problem in a record is located under `fields`: at
+    The definition is filed under the family, such as `float`, and is
+    read for every typestr of the family. The byte order, size and unit
+    of the typestr are its configuration. The rules state which of those
+    the family accepts. `struct` is read for an array of field records,
+    with the configuration `{"fields": records}`. A problem in a record
+    is therefore located under `fields`, for example at
     `("dtype", "fields", 0, 1)` for the type of the first record.
     """
 
@@ -126,7 +128,7 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
                 f"{self.name!r} is how a document writes one type of a family, which reads as "
                 "the family; define the family"
             )
-        # Named, not a bare `super()`: a dataclass with slots is rebuilt.
+        # Use the explicit form, not a bare `super()`, because a dataclass with slots is rebuilt.
         return super(ZarrV2DataTypeDefinition, self)._refusal()
 
     @classmethod
@@ -201,10 +203,11 @@ class ZarrV2DataTypeDefinition(WithFillValue[C], kind=True, format=2):
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class ZarrV2CodecDefinition(Definition[C], kind=True, format=2):
-    """A v2 codec: a numcodecs id, and the TypedDict its parameters are.
+    """A v2 codec: a numcodecs id, and the TypedDict that describes its parameters.
 
-    A document writes `{"id": name, **parameters}`; the definition's
-    configuration is the parameters, read at the field itself.
+    A document writes `{"id": name, **parameters}`. The configuration of
+    the definition is the parameters, read at the location of the field
+    itself.
     """
 
     label: ClassVar[str] = "v2 codec"

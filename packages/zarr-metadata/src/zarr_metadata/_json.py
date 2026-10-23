@@ -1,10 +1,10 @@
-"""JSON values, and the problems found with them: where reading starts, below every layer.
+"""JSON values and the problems found in them. This is the lowest layer of the reader.
 
-`refine_json` is the one walk that normalizes and judges a value, and
-`refine_user_data` the same walk over user data, where a non-finite number
-is the float it is.
-`ValidationProblem` and `MetadataValidationError` are what every
-layer reports with: the checker, the definitions and the model alike.
+`refine_json` is the single walk that both normalizes and checks a value.
+`refine_user_data` is the same walk over user data, where a non-finite
+number is kept as a float.
+Every layer (the checker, the definitions and the model) reports with
+`ValidationProblem` and `MetadataValidationError`.
 """
 
 from __future__ import annotations
@@ -29,42 +29,42 @@ ProblemKind = Literal["missing_key", "invalid_type", "invalid_value", "invalid_j
 - `invalid_value`: a value has an acceptable type but an invalid content
   (e.g. `zarr_format: 2` in a v3 document, `order: "Q"`).
 - `invalid_json`: bytes that do not decode as JSON.
-- `unknown_key`: a key an object's type does not declare, where the type
-  says it is closed, as a closed TypedDict does. Whether a Zarr
-  configuration is closed is rarely said (zarr-developers/zarr-specs#270
-  has been open since 2023), and many readers refuse such a key. It gets
-  a kind of its own so that a caller who tolerates it can tell it from a
-  wrong value, and so that it never masks the other findings about the
-  same object.
+- `unknown_key`: a key that an object's type does not declare, where the
+  type is closed (as a closed TypedDict is). Zarr configurations rarely
+  state whether they are closed (zarr-developers/zarr-specs#270 has been
+  open since 2023), and many readers reject such a key. It has its own
+  kind so that a caller who tolerates it can distinguish it from a wrong
+  value, and so that it never hides other problems in the same object.
 """
 
 
 PROBLEM_KINDS: Final[tuple[ProblemKind, ...]] = get_args(ProblemKind)
-"""The kinds a problem is one of, as `ValidationProblem` checks its own."""
+"""The valid problem kinds. `ValidationProblem` checks its `kind` against these."""
 
 
 JSON_DEPTH: Final = 256
-"""How many levels of nesting a reader walks.
+"""The maximum number of nesting levels a reader walks.
 
-A value nested deeper is a problem at the level past the last, so no
-document, however deep, takes a reader past what the interpreter allows:
-every value the package reads is refined first, and refining stops here.
-Every reader, writer and comparison takes one frame for each level, and
-`copy.deepcopy`, and `pickle` before Python 3.12, two: so a document at
-the cap takes about half of the interpreter's default limit, a thousand
-frames, and the rest is the caller's.
+A value nested deeper is a problem at the first level past the limit.
+This means no document, however deep, makes a reader exceed the
+interpreter's recursion limit: the package refines every value before
+reading it, and refining stops at this depth. Every reader, writer and
+comparison uses one stack frame per level, and `copy.deepcopy` (and
+`pickle` before Python 3.12) uses two. A document at the limit therefore
+uses about half of the interpreter's default limit of a thousand frames,
+and the rest is left for the caller.
 """
 
 _PAST_THE_LEVELS: Final = f"nested deeper than the {JSON_DEPTH} levels a reader walks"
-"""The message of the problem a container past the levels a reader walks is."""
+"""The message for a container nested past `JSON_DEPTH`."""
 
 
 class _Ctx(Mapping[str, JSONValue]):
-    """What a problem holds as its `ctx`: a copy of its own, arrays as tuples, checked to be JSON when it was made, which nothing edits after.
+    """The type of a problem's `ctx`: a private copy, with arrays as tuples, checked to be JSON when created and never modified after.
 
-    Its own type, so a problem built of another's `ctx` -- as `replace`
-    builds one -- knows it was checked, and skips the check; a mapping of
-    any other type is checked and copied.
+    It is a separate type so that a problem built from another problem's
+    `ctx` (as `replace` builds one) can tell the value was already checked
+    and skip the check. A mapping of any other type is checked and copied.
     """
 
     __slots__ = ("_held",)
@@ -92,42 +92,41 @@ _NO_CTX: Final[Mapping[str, JSONValue]] = _Ctx({})
 
 
 def _no_ctx() -> Mapping[str, JSONValue]:
-    """What a problem that says nothing more than its type was expected holds as its `ctx`: nothing."""
+    """The empty `ctx`, for a problem that states no more than the expected type."""
     return _NO_CTX
 
 
 @dataclass(frozen=True, slots=True)
 class ValidationProblem:
-    """A single problem found in a value: where it is, what is wrong, what kind of wrong, and the data the message is made of.
+    """A single problem found in a value: its location, what is wrong, the kind of problem, and the data used in the message.
 
-    `loc` is the path from the root of what was judged to the offending
-    value, e.g. `("codecs", 0, "name")` in a document, and an empty `loc`
-    refers to that root.
-    `kind` classifies the failure mode for programmatic dispatch; `message`
+    `loc` is the path from the root of the checked value to the bad value,
+    e.g. `("codecs", 0, "name")` in a document. An empty `loc` refers to
+    the root.
+    `kind` classifies the failure for programmatic dispatch; `message`
     is the human-readable description.
 
-    `input` and `ctx` are what the message says, as data, as pydantic's
-    `ErrorDetails` and zod's issues carry theirs. `input` is the JSON found
-    at `loc` -- `12`, for a gzip `level` of 12 -- and `UNSET` where nothing
-    is there, as zod has it for a key that is missing (pydantic gives the
-    object missing it), or where what is there is not JSON, which the
-    message shows. It is the object the caller handed in, as pydantic's
-    is, not a copy: a caller that changes its document afterwards changes
-    what `input` shows. `ctx` is what was expected, where that is more
-    than a type:
+    `input` and `ctx` hold the data in the message, in the same way that
+    pydantic's `ErrorDetails` and zod's issues do. `input` is the JSON
+    found at `loc`, e.g. `12` for a gzip `level` of 12. It is `UNSET` when
+    nothing is there (zod does the same for a missing key; pydantic gives
+    the object that lacks the key), or when the value there is not JSON,
+    in which case the message shows it. `input` is the object the caller
+    passed in, not a copy, as in pydantic: if the caller later changes its
+    document, `input` shows the change. `ctx` holds what was expected,
+    when that is more than a type:
 
-    - `gt`, `ge`, `lt` and `le`: the bounds the value's type carries, as
-      pydantic names them -- `{"ge": 0, "le": 9}` for a gzip `level`,
-      whose type is `Annotated[int, Interval(ge=0, le=9)]` -- or a rule
-      says.
-    - `expected`: the values of a closed set, as zod's `values` holds
-      them, in the order the message lists them -- a `Literal`'s,
-      `node_type`'s, `zarr_format`'s.
+    - `gt`, `ge`, `lt` and `le`: the bounds from the value's type or from
+      a rule, with the names pydantic uses. For example `{"ge": 0, "le": 9}`
+      for a gzip `level`, whose type is `Annotated[int, Interval(ge=0, le=9)]`.
+    - `expected`: the values of a closed set, like zod's `values`, in the
+      order the message lists them. For example the values of a `Literal`,
+      of `node_type`, or of `zarr_format`.
 
-    Neither takes part in equality or the repr: a problem is the same
-    problem when it is found at the same place and says the same thing.
-    Every function that returns or raises problems fills `input` from the
-    value its caller handed it, so a rule says only where a problem is.
+    Neither field takes part in equality or the repr: two problems are
+    equal when they have the same location, message and kind. Every
+    function that returns or raises problems fills `input` from the value
+    its caller passed, so a rule only needs to give the location.
     """
 
     loc: tuple[str | int, ...]
@@ -141,9 +140,9 @@ class ValidationProblem:
     )
 
     def __post_init__(self) -> None:
-        # The runtime half of the annotations: a rule written without a type
-        # checker, as an extension's may be, fails where it builds a problem
-        # rather than reporting one at a location that is not one.
+        # Enforce the annotations at runtime. A rule written without a type
+        # checker (an extension's rule may be) then fails where it builds
+        # the problem, instead of reporting a problem at an invalid location.
         loc = cast("object", self.loc)
         if not isinstance(loc, tuple) or not all(
             isinstance(part, str) or (isinstance(part, int) and not isinstance(part, bool))
@@ -161,8 +160,8 @@ class ValidationProblem:
             raise TypeError(msg)
         ctx = cast("object", self.ctx)
         if isinstance(ctx, _Ctx):
-            # A problem's own, checked when it was made: what `replace`
-            # hands a copy.
+            # Another problem's `ctx`, already checked when that problem was
+            # created. `replace` passes it to the copy.
             return
         if (
             not isinstance(ctx, Mapping)
@@ -171,9 +170,9 @@ class ValidationProblem:
         ):
             msg = f"a ValidationProblem's ctx is an object of JSON values, got {ctx!r}"
             raise TypeError(msg)
-        # Held as a view of a copy of its own at every level, arrays as
-        # tuples, so a raised error, a finished report, cannot be edited
-        # through it, nor through what was handed in.
+        # Store a view of a private deep copy, with arrays as tuples. Then
+        # neither this view nor the caller's original mapping can modify a
+        # raised error, which is a finished report.
         held = cast(
             "dict[str, JSONValue]",
             copied(cast("JSONValue", arrays_to_tuples(dict(cast("Mapping[str, object]", ctx))))),
@@ -187,8 +186,8 @@ class ValidationProblem:
     def __reduce__(
         self,
     ) -> tuple[Callable[..., ValidationProblem], tuple[object, ...]]:
-        # Pickled and copied as its constructor called again: the view
-        # `ctx` is held as does not pickle, and the dict it views does.
+        # Pickle and copy by calling the constructor again. The view that
+        # holds `ctx` does not pickle, but the dict it wraps does.
         return (_problem, (self.loc, self.message, self.kind, self.input, dict(self.ctx)))
 
 
@@ -199,12 +198,12 @@ def _problem(
     found: JSONValue | UNSET,
     ctx: Mapping[str, JSONValue],
 ) -> ValidationProblem:
-    """A problem built again from what `ValidationProblem.__reduce__` gives."""
+    """Rebuild a problem from the values `ValidationProblem.__reduce__` returns."""
     return ValidationProblem(loc, message, kind, input=found, ctx=ctx)
 
 
 class MetadataValidationError(ValueError):
-    """Raised when a value fails validation, by the entry points that raise rather than report.
+    """Raised when a value fails validation, by the entry points that raise instead of returning problems.
 
     Carries every problem found (not just the first) in `.problems`, as an
     immutable tuple: a raised error is a finished report, and a caller
@@ -216,9 +215,9 @@ class MetadataValidationError(ValueError):
     def __init__(self, problems: Sequence[ValidationProblem]) -> None:
         self.problems = tuple(problems)
         for entry in cast("tuple[object, ...]", self.problems):
-            # The runtime half of the annotation: a caller that is not
-            # type-checked, and hands over anything else, fails here
-            # rather than far away, where a `loc` is read off it.
+            # Enforce the annotation at runtime. A caller that is not
+            # type-checked and passes something else fails here, instead of
+            # later, at the code that reads a `loc` from it.
             if not isinstance(entry, ValidationProblem):
                 msg = (
                     "MetadataValidationError takes ValidationProblem values, "
@@ -232,9 +231,10 @@ class MetadataValidationError(ValueError):
     ) -> tuple[
         type[MetadataValidationError], tuple[tuple[ValidationProblem, ...]], dict[str, object]
     ]:
-        # An exception pickles and copies as its class called with its
-        # `args`, which here are the message; it is built from its problems,
-        # and the rest of its state -- its notes among it -- follows.
+        # By default an exception pickles and copies by calling its class
+        # with its `args`, which here hold the message. This one is rebuilt
+        # from its problems instead, and the rest of its state (including
+        # its notes) is restored after.
         return (type(self), (self.problems,), self.__dict__)
 
 
@@ -246,7 +246,7 @@ def prefixed(
 
 
 def value_at(value: object, loc: tuple[str | int, ...]) -> object:
-    """What `value` holds at `loc`, each key naming a member of an object and each index an element of an array; `UNSET` where it holds nothing."""
+    """The value inside `value` at `loc`, where each key names an object member and each index an array element; `UNSET` if nothing is there."""
     for part in loc:
         if isinstance(part, str) and is_object(value):
             members = value
@@ -263,16 +263,17 @@ def value_at(value: object, loc: tuple[str | int, ...]) -> object:
 def with_input(
     problems: Sequence[ValidationProblem], value: object, loc: tuple[str | int, ...] = ()
 ) -> tuple[ValidationProblem, ...]:
-    """`problems`, found in `value`, which sits at `loc`: each given, as its `input`, the JSON `value` holds at its own `loc`.
+    """Set each problem's `input` to the JSON in `value` at the problem's `loc`. `value` itself sits at `loc`.
 
-    What every function that judges a value does with what it found, so a
-    rule says only where a problem is, and the problem carries what is
-    there. The function a caller called is the last to do it, so a
-    problem's `input` is what the value the caller handed in holds, not a
-    copy some reader inside it made. A problem whose `loc` names nothing
-    in `value` -- a key that is missing -- or names what is not JSON
-    keeps what it holds, `UNSET` unless a reader inside found JSON there:
-    no problem holds what might not pickle, or copy.
+    Every function that checks a value calls this on the problems it found.
+    This way a rule only gives the location of a problem, and the problem
+    carries the value found there. The function the caller called is the
+    last to apply it, so a problem's `input` comes from the value the
+    caller passed in, not from a copy made by an inner reader. If a
+    problem's `loc` points to nothing in `value` (a missing key), or to
+    something that is not JSON, the problem keeps its current `input`:
+    `UNSET`, unless an inner reader found JSON there. This ensures no
+    problem holds a value that might not pickle or copy.
     """
     if len(problems) == 0:
         return ()
@@ -287,39 +288,40 @@ def with_input(
 
 
 def _holdable(value: object) -> bool:
-    """Whether a problem can hold `value` as its input: JSON, nested no deeper than a reader walks.
+    """Whether a problem can hold `value` as its input: JSON, nested no deeper than `JSON_DEPTH`.
 
-    What a validator did not walk -- a member it only reports -- may be
-    deeper than that; such a value is held as nothing, as
-    `is_canonical_json` says.
+    A value the validator did not walk (a member it only reports) may be
+    nested deeper than that. Such a value is not stored, because
+    `is_canonical_json` rejects it.
     """
     return is_canonical_json(value, finite=False)
 
 
 def not_an_object(value: object) -> tuple[ValidationProblem, ...]:
-    """What is wrong with a document that is not an object: the one problem, at its root."""
+    """The single problem, at the root, for a document that is not an object."""
     return with_input((ValidationProblem((), "expected an object", "invalid_type"),), value)
 
 
 def validate_json(value: object, loc: tuple[str | int, ...] = ()) -> tuple[ValidationProblem, ...]:
-    """Return every reason `value`, which sits at `loc`, is not JSON, each where it sits: a float that is not finite, a key that is not a string, a value of no JSON type, a level of nesting past `JSON_DEPTH`, counted from the document's root, which `loc` is below."""
+    """Return every reason that `value`, located at `loc`, is not JSON, each at its own location: a non-finite float, a non-string key, a value of no JSON type, or nesting deeper than `JSON_DEPTH`, counted from the document root above `loc`."""
     return with_input(refine_json(value, loc)[1], value, loc)
 
 
 def is_object(value: object) -> TypeGuard[Mapping[object, object]]:
-    """Whether `value` is a JSON object as Python holds one: a mapping, of any keys.
+    """Whether `value` is a JSON object as Python represents one: a mapping with any keys.
 
-    What `isinstance(value, Mapping)` says, narrowed to a mapping of
-    `object`, which the bare check leaves unknown to a type checker.
+    The same test as `isinstance(value, Mapping)`, but it narrows the type
+    to a mapping of `object`. The bare check leaves the key and value types
+    unknown to a type checker.
     """
     return type(value) is dict or isinstance(value, Mapping)
 
 
 def refined_object(value: object) -> dict[str, JSONValue]:
-    """`value`, an object a read found nothing wrong with, refined as user data: the document a model holds.
+    """Refine `value`, an object that a read found no problems in, as user data. The result is the document a model holds.
 
-    `TypeError` when it is not an object, which a read that found no
-    problem rules out.
+    Raises `TypeError` if `value` is not an object. This cannot happen
+    after a read that found no problems.
     """
     refined, _ = refine_user_data(value)
     if not isinstance(refined, dict):
@@ -329,7 +331,7 @@ def refined_object(value: object) -> dict[str, JSONValue]:
 
 
 def object_at(document: Mapping[str, JSONValue], key: str) -> dict[str, JSONValue]:
-    """The object `document`, refined, holds at `key`, which a read found there; `TypeError` when something else is, which that read rules out."""
+    """The object at `key` in the refined `document`, where a read found one; `TypeError` if the value is not an object, which that read rules out."""
     value = document[key]
     if not isinstance(value, dict):
         msg = f"expected an object at {key!r}, got {shown(value)}"
@@ -338,14 +340,14 @@ def object_at(document: Mapping[str, JSONValue], key: str) -> dict[str, JSONValu
 
 
 def is_json_object(value: object) -> TypeGuard[Mapping[str, object]]:
-    """Whether `value` is a JSON object with the keys JSON gives one: a mapping whose keys are all strings."""
+    """Whether `value` is a JSON object with string keys, as JSON requires: a mapping whose keys are all strings."""
     return isinstance(value, Mapping) and all(
         isinstance(key, str) for key in cast("Mapping[object, object]", value)
     )
 
 
 def is_list_or_tuple(value: object) -> TypeGuard[list[object] | tuple[object, ...]]:
-    """Whether `value` is a list or a tuple: the two containers canonical JSON holds an array in."""
+    """Whether `value` is a list or a tuple: the two containers canonical JSON uses for an array."""
     return isinstance(value, (list, tuple))
 
 
@@ -355,7 +357,7 @@ def is_tuple(value: object) -> TypeGuard[tuple[object, ...]]:
 
 
 def is_array(value: object) -> TypeGuard[Sequence[object]]:
-    """Whether `value` is a JSON array as Python holds one: a sequence that is not text or bytes."""
+    """Whether `value` is a JSON array as Python represents one: a sequence that is not text or bytes."""
     return isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
 
 
@@ -364,11 +366,12 @@ def refine_json(
 ) -> tuple[JSONValue | None, tuple[ValidationProblem, ...]]:
     """`value` as JSON with arrays as tuples, or None with every reason it is not JSON.
 
-    One walk normalizes and judges: a mapping becomes a `dict` with
-    string keys, a sequence a tuple, and a float must be finite. A value
-    that is not JSON is None, with the problems located at the leaves
-    that are not. JSON's `null` is None too, with no problem, so whether
-    `value` is JSON is whether there are problems.
+    A single walk both normalizes and checks: a mapping becomes a `dict`
+    with string keys, a sequence becomes a tuple, and a float must be
+    finite. For a value that is not JSON, the result is None, with the
+    problems located at the leaves that are not JSON. JSON's `null` is
+    also None, but with no problems, so `value` is JSON exactly when there
+    are no problems.
     """
     return _refine(value, loc, finite=True)
 
@@ -376,15 +379,16 @@ def refine_json(
 def refine_user_data(
     value: object, loc: tuple[str | int, ...] = ()
 ) -> tuple[JSONValue | None, tuple[ValidationProblem, ...]]:
-    """User data refined as `refine_json` refines JSON, a non-finite number being the float it is.
+    """Refine user data the same way `refine_json` refines JSON, but keep a non-finite number as a float.
 
-    A node's attributes are user data. The spec asks only that each be a
-    JSON value and interprets none, and zarr-python writes them with the
-    defaults of Python's `json` module, so an attribute can hold `NaN`,
-    `Infinity` or `-Infinity` -- xarray's `_FillValue`, a CF
-    `missing_value` -- which RFC 8259 lacks. Wherever the spec interprets
-    a value it spells those numbers as strings, so a validator walks what
-    it interprets with `refine_json`, and only user data with this.
+    A node's attributes are user data. The spec only requires each to be a
+    JSON value, and does not interpret any of them. zarr-python writes them
+    with the defaults of Python's `json` module, so an attribute can hold
+    `NaN`, `Infinity` or `-Infinity` (for example xarray's `_FillValue` or
+    a CF `missing_value`), which RFC 8259 does not allow. Wherever the spec
+    interprets a value, it writes those numbers as strings. So a validator
+    uses `refine_json` for values the spec interprets, and this function
+    only for user data.
     """
     return _refine(value, loc, finite=False)
 
@@ -393,15 +397,15 @@ _Refined = tuple[JSONValue | None, tuple[ValidationProblem, ...]]
 
 
 def nested_past_the_levels(value: object, loc: tuple[str | int, ...]) -> ValidationProblem | None:
-    """The problem `value` is when it is a container -- an object or an array -- at `loc`, past the levels a reader walks, `JSON_DEPTH` of them; None for a scalar, or within them.
+    """The problem for `value` if it is a container (an object or an array) at `loc` deeper than `JSON_DEPTH`; None for a scalar, or for a container within the limit.
 
-    `_refine` judges each container it reaches by this rule, as
-    `_past_the_levels` states it for a value known to be one, and a reader
-    of each container it walks without refining -- a document's members,
-    the consolidated metadata it descends into -- asks this, so a chain of
-    documents is bounded as any other nesting is, and every container is
-    judged where it sits, as `refine_json` of the whole document would
-    judge it.
+    `_refine` applies this rule to each container it reaches, through
+    `_past_the_levels`, which handles a value known to be a container. A
+    reader also calls this for each container it walks without refining
+    (a document's members, or the consolidated metadata it descends into).
+    This bounds a chain of documents in the same way as any other nesting,
+    and checks every container at its location, with the same result as
+    `refine_json` of the whole document.
     """
     if len(loc) < JSON_DEPTH or isinstance(value, (str, int, float, bool)) or value is None:
         return None
@@ -411,17 +415,18 @@ def nested_past_the_levels(value: object, loc: tuple[str | int, ...]) -> Validat
 
 
 def _past_the_levels(loc: tuple[str | int, ...]) -> ValidationProblem:
-    """The problem a container at `loc`, past the levels a reader walks, is: what `nested_past_the_levels` finds, for a value known to be a container."""
+    """The problem for a container at `loc` deeper than `JSON_DEPTH`: what `nested_past_the_levels` returns for a value known to be a container."""
     return ValidationProblem(loc, _PAST_THE_LEVELS, "invalid_value")
 
 
 def within(
     problems: Sequence[ValidationProblem], at: tuple[str | int, ...]
 ) -> tuple[ValidationProblem, ...]:
-    """`problems`, found in a value that sits at `at`, located from that value: the reverse of `prefixed`, for a reader that counts the levels it walks from the document handed in, but reports where a problem sits in the one it reads.
+    """Make the locations of `problems`, found in a value at `at`, relative to that value. This is the reverse of `prefixed`. It is for a reader that counts nesting levels from the document it was given, but reports locations within the document it reads.
 
-    A problem not below `at` is a `TypeError`: a reader that located one
-    from the wrong root would otherwise report it in the wrong place.
+    A problem that is not below `at` raises `TypeError`. Otherwise a reader
+    that located a problem from the wrong root would report it in the
+    wrong place.
     """
     if len(problems) == 0:
         return ()
@@ -433,10 +438,11 @@ def within(
 
 
 def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refined:
-    """`refine_json`, a non-finite number being JSON unless `finite`."""
-    # The types `json.loads` builds, told apart by type alone: what nearly
-    # every value is, so the subclass checks below are reached by the rest
-    # -- a `StrEnum` member, an `IntEnum` member, a mapping proxy.
+    """`refine_json`, but a non-finite number counts as JSON unless `finite` is true."""
+    # Check the exact types `json.loads` builds first, by type alone. Nearly
+    # every value is one of these, so only the remaining values reach the
+    # subclass checks below (a `StrEnum` member, an `IntEnum` member, a
+    # mapping proxy).
     if type(value) is str or type(value) is bool or value is None:
         return value, ()
     if type(value) is int:
@@ -462,7 +468,7 @@ def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refi
         if isinstance(value, bool):
             return value, ()
         if isinstance(value, str):
-            # A subclass -- a `StrEnum` member -- as the string JSON writes for it.
+            # A subclass (such as a `StrEnum` member) becomes the string JSON writes for it.
             return str.__str__(value), ()
         if isinstance(value, int):
             return int(value), ()
@@ -475,13 +481,13 @@ def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refi
                     "invalid_type",
                 ),
             )
-    # A container: judged where it sits, by the rule `nested_past_the_levels`
-    # states, which `_refine` reaches only for a container.
+    # The value is a container. Check its depth at its location with the
+    # rule from `nested_past_the_levels`; only containers reach this point.
     if len(loc) >= JSON_DEPTH:
         return None, (_past_the_levels(loc),)
     if mapping:
-        # Walked here rather than through `_refine_members`, so that each
-        # level of nesting costs one frame, `JSON_DEPTH` of them at most.
+        # Walk the members here rather than in `_refine_members`, so that
+        # each level of nesting costs one frame, `JSON_DEPTH` at most.
         members: dict[str, JSONValue] = {}
         found_in_members: list[ValidationProblem] = []
         for key, item in cast("Mapping[object, object]", value).items():
@@ -508,12 +514,12 @@ def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refi
 
 
 def _not_finite(value: float, loc: tuple[str | int, ...]) -> ValidationProblem:
-    """The problem a non-finite number at `loc` is, where JSON holds no such number."""
+    """The problem for a non-finite number at `loc`, since JSON has no such numbers."""
     return ValidationProblem(loc, f"non-finite float {value!r} is not JSON", "invalid_value")
 
 
 def _too_many_digits(value: int) -> str:
-    """What is wrong with an integer the interpreter will not write: its size."""
+    """The message for an integer the interpreter will not convert to text, stating its size."""
     return (
         f"an integer of {value.bit_length()} bits has more digits than JSON text holds "
         "here, as sys.get_int_max_str_digits bounds it"
@@ -521,7 +527,7 @@ def _too_many_digits(value: int) -> str:
 
 
 def _writable(value: int) -> bool:
-    """Whether the interpreter converts `value` to text: what `json.dumps` and `repr` do, which `sys.set_int_max_str_digits` bounds; an integer past the bound could never be written back."""
+    """Whether the interpreter can convert `value` to text, as `json.dumps` and `repr` do. `sys.set_int_max_str_digits` limits this, and an integer past the limit could never be written back."""
     if value.bit_length() <= 64:
         return True
     try:
@@ -532,17 +538,18 @@ def _writable(value: int) -> bool:
 
 
 def json_text(value: JSONValue) -> str:
-    """`value` as the JSON text `json.dumps` writes for it, an object's keys sorted: what `==` compares of a JSON value the package does not interpret.
+    """`value` as the JSON text `json.dumps` writes for it, with object keys sorted. `==` compares this text for a JSON value the package does not interpret.
 
-    Not Python's `==` on the value, which takes `true` for `1`, `-0.0` for
-    `0.0` and `NaN` for no value at all, but what a document writes: two
-    values written alike are one value to every reader.
+    This is not Python's `==` on the value, which treats `true` as equal
+    to `1`, `-0.0` as equal to `0.0`, and `NaN` as unequal to everything.
+    It compares what a document contains: two values written the same way
+    are the same value to every reader.
     """
     return _TEXT_ENCODER.encode(value)
 
 
 def _as_object(value: object) -> dict[object, object]:
-    """A read-only view of an object, as `json.dumps` is handed one, written as the object; anything else is the `TypeError` `json.dumps` raises."""
+    """Convert a mapping that `json.dumps` does not handle (such as a read-only view) to a dict, so it is written as an object. Anything else raises the `TypeError` that `json.dumps` raises."""
     if is_object(value):
         return dict(value)
     msg = f"{value!r} is not JSON"
@@ -550,17 +557,17 @@ def _as_object(value: object) -> dict[object, object]:
 
 
 _TEXT_ENCODER: Final = json.JSONEncoder(sort_keys=True, ensure_ascii=False, default=_as_object)
-"""The encoder `json_text` writes with: what `json.dumps` builds for those arguments on every call, built once."""
+"""The encoder `json_text` uses. `json.dumps` builds the same encoder on every call; this one is built once."""
 
 
 def shown(value: object) -> str:
-    """`value` as a problem's message shows it: as the JSON a document writes, `null` and `[1, 2]`, or by its repr when it is not JSON; what the interpreter will not write, an integer of too many digits or a value nested too deep, by saying so."""
+    """`value` as a problem's message shows it: as JSON (`null`, `[1, 2]`), or as its repr when it is not JSON. A value the interpreter will not write (an integer with too many digits, or a value nested too deep) is described instead."""
     if isinstance(value, int) and not isinstance(value, bool) and not _writable(value):
         return f"an integer of {value.bit_length()} bits"
     refined, problems = _refine(value, (), finite=False)
     if any(problem.message == _PAST_THE_LEVELS for problem in problems):
-        # Nested past the levels a reader walks: said so, not left to the
-        # repr, which overflows at a depth the interpreter and platform set.
+        # Nested deeper than `JSON_DEPTH`. Say so instead of using the repr,
+        # which overflows at a depth set by the interpreter and platform.
         return "a value nested too deep to show"
     if len(problems) != 0:
         # Not JSON.
@@ -568,16 +575,16 @@ def shown(value: object) -> str:
     try:
         return json.dumps(refined, ensure_ascii=False)
     except ValueError:
-        # An integer of more digits than the interpreter converts to text:
-        # the value itself, by its size, or one a container holds, which
-        # is then what Python will not write either.
+        # An integer with more digits than the interpreter converts to text.
+        # If it is the value itself, show its size. If a container holds it,
+        # Python cannot write the container either.
         if isinstance(value, int):
             return f"an integer of {value.bit_length()} bits"
         return shown_by_python(value)
 
 
 def shown_key(key: object) -> str:
-    """A key that is not a string, as a message shows it: as Python shows it, since no JSON object holds such a key to write; an integer of more digits than the interpreter writes, by its size."""
+    """A non-string key as a message shows it: as Python shows it, since JSON has no such key to write. An integer with more digits than the interpreter writes is shown by its size."""
     if isinstance(key, int) and not isinstance(key, bool):
         try:
             return repr(key)
@@ -587,7 +594,7 @@ def shown_key(key: object) -> str:
 
 
 def shown_by_python(value: object) -> str:
-    """`value` as Python shows it, for what is not JSON a reader walks; what the interpreter will not write -- holding an integer of more digits than it writes -- said so."""
+    """`value` as Python shows it (its repr), for a non-JSON value a reader finds. If the interpreter cannot write it (because it holds an integer with too many digits), the result says so."""
     try:
         return repr(value)
     except ValueError:
@@ -601,7 +608,7 @@ def choices(allowed: Sequence[object]) -> str:
 
 
 def listed(allowed: Sequence[object]) -> tuple[object, ...]:
-    """A closed set of values, each once, in the order a message lists them: by the JSON each is written as."""
+    """A closed set of values without duplicates, in the order a message lists them: sorted by their JSON text."""
     written = {shown(value): value for value in allowed}
     return tuple(written[json_text] for json_text in sorted(written))
 
@@ -609,11 +616,11 @@ def listed(allowed: Sequence[object]) -> tuple[object, ...]:
 def outside_of(
     loc: tuple[str | int, ...], value: object, allowed: Sequence[object]
 ) -> ValidationProblem:
-    """The problem with `value`, found at `loc`, outside the closed set `allowed`.
+    """The problem for `value`, found at `loc`, when it is not in the closed set `allowed`.
 
-    Its message lists the set, its kind says whether the value is of the
-    wrong JSON type or of the right one with the wrong value, and its
-    `ctx` holds the set, as `expected`.
+    The message lists the set. The kind tells whether the value has the
+    wrong JSON type, or the right type and the wrong value. The `ctx`
+    holds the set under `expected`.
     """
     message = f"expected {choices(allowed)}, got {shown(value)}"
     expected = cast("tuple[JSONValue, ...]", listed(allowed))
@@ -638,25 +645,26 @@ def json_type(value: object) -> str:
 
 
 def refused_kind(value: object, allowed: Sequence[object]) -> ProblemKind:
-    """What is wrong with `value`, outside a closed set: its type, when none of the set is of its JSON type, else its value."""
+    """The kind of problem for `value` outside a closed set: `invalid_type` when no member of the set has its JSON type, else `invalid_value`."""
     same_type = json_type(value) in {json_type(entry) for entry in allowed}
     return "invalid_value" if same_type else "invalid_type"
 
 
 def is_canonical_json(value: object, *, finite: bool = True) -> TypeGuard[JSONValue]:
-    """Whether `value` already uses the concrete containers in `JSONValue`, nested no deeper than a reader walks.
+    """Whether `value` already uses the concrete containers in `JSONValue`, nested no deeper than `JSON_DEPTH`.
 
-    A non-finite number counts only when `finite` is false, as a document's
-    guard passes it: where one may be is the document's validator's to say.
-    One frame per level of nesting, `JSON_DEPTH` of them at most, as
-    `refine_json` takes: a container past them is no JSON a reader walks,
-    so it is none to this either, and the walk stops there.
+    A non-finite number counts only when `finite` is false, which is how a
+    document's guard calls this function: the document's validator decides
+    where such a number is allowed. The walk uses one frame per level of
+    nesting, `JSON_DEPTH` at most, as `refine_json` does. A reader does not
+    accept a container deeper than that as JSON, so this function does not
+    either, and the walk stops there.
     """
     return _is_canonical(value, 0, finite=finite)
 
 
 def _is_canonical(value: object, depth: int, *, finite: bool) -> bool:
-    """`is_canonical_json` of `value`, which sits `depth` levels down."""
+    """`is_canonical_json` of `value`, which is `depth` levels deep."""
     if isinstance(value, float):
         return not finite or math.isfinite(value)
     if isinstance(value, (str, int, bool)) or value is None:
@@ -694,10 +702,10 @@ def frozen(value: Mapping[str, JSONValue]) -> Mapping[str, JSONValue]: ...
 @overload
 def frozen(value: JSONValue) -> JSONValue: ...
 def frozen(value: JSONValue) -> JSONValue:
-    """`value` as a read-only view at every level: each object a mapping proxy, each array a tuple, so nothing handed out can be changed in place.
+    """`value` as a read-only view at every level: each object a mapping proxy, each array a tuple, so the result cannot be changed in place.
 
-    Shares the scalars with `value`, and copies nothing else than the
-    containers a view needs. What a model shows of its document.
+    The result shares the scalars with `value`, and copies only the
+    containers the view needs. A model uses this to expose its document.
     """
     cls = type(value)
     if cls in _SCALARS:
@@ -722,14 +730,14 @@ def frozen(value: JSONValue) -> JSONValue:
 
 
 _SCALARS: Final[frozenset[type]] = frozenset({str, int, float, bool, type(None)})
-"""The types a JSON scalar is held as, which a read-only view shares as they are."""
+"""The Python types of JSON scalars. A read-only view shares these values without copying."""
 
 
 def copied(value: JSONValue) -> JSONValue:
-    """`value` in containers of its own, sharing nothing with it: each object a new `dict`, each array a new one of its type.
+    """A deep copy of `value` that shares no containers with it: each object a new `dict`, each array a new array of the same type.
 
-    One frame for each level of nesting, as `refine_json` reads, so a
-    value refined is copied however deep it is.
+    The copy uses one frame for each level of nesting, as `refine_json`
+    does, so any refined value can be copied, however deep it is.
     """
     if isinstance(value, Mapping):
         members: dict[str, JSONValue] = {}
@@ -737,8 +745,8 @@ def copied(value: JSONValue) -> JSONValue:
             members[key] = copied(item)
         return members
     if isinstance(value, (tuple, list)):
-        # A loop, not a comprehension, which is a frame of its own before
-        # Python 3.12: one frame for each level.
+        # Use `map`, not a comprehension. Before Python 3.12 a comprehension
+        # uses its own frame; this keeps it to one frame per level.
         entries = list(map(copied, value))
         return entries if isinstance(value, list) else tuple(entries)
     return value
@@ -748,8 +756,9 @@ def arrays_to_tuples(obj: object) -> object:
     """Recursively materialize mappings and convert array-like values to tuples."""
     if is_array(obj):
         sequence = obj
-        # Loops, not comprehensions, which are a frame of their own before
-        # Python 3.12: one frame for each level, as `copied` takes.
+        # Use `map` and loops, not comprehensions. Before Python 3.12 a
+        # comprehension uses its own frame; this keeps it to one frame per
+        # level, as in `copied`.
         converted_sequence = tuple(map(arrays_to_tuples, sequence))
         if isinstance(obj, tuple) and all(
             converted is original

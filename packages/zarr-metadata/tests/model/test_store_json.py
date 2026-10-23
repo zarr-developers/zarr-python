@@ -1,10 +1,10 @@
-"""Where a non-finite number may be: in a node's attributes, as user data.
+"""Tests for where a non-finite number is allowed: in a node's attributes, as user data.
 
 zarr-python writes attributes with the defaults of Python's `json` module,
 so an attribute may hold `NaN`, `Infinity` or `-Infinity`. The model reads
 such a store, validates it, and writes it back the same way. Wherever the
-spec interprets a value, a non-finite number is refused when read, and a
-document the reader would refuse makes no model, so it is not written.
+spec interprets a value, a non-finite number is refused when read. A
+document that the reader would refuse produces no model, so it is not written.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 
 class _Written(Protocol):
-    """What a model writes: store keys, each with the bytes it holds."""
+    """The output of a model write: store keys, each with its bytes."""
 
     def items(self) -> Iterable[tuple[str, bytes]]: ...
 
@@ -56,7 +56,7 @@ ATTRIBUTES: dict[str, object] = {
 
 
 def _held(attributes: object) -> tuple[bool, bool, bool]:
-    """Whether each non-finite number in `ATTRIBUTES` is still there, arrays as tuples."""
+    """Report whether each non-finite number in `ATTRIBUTES` is still present, with arrays as tuples."""
     assert isinstance(attributes, Mapping)
     fill = attributes["_FillValue"]
     cf = attributes["cf"]
@@ -120,9 +120,9 @@ def _consolidated_node_attributes(store: Mapping[str, bytes]) -> object:
     return consolidated.metadata["a"].attributes
 
 
-# Each case: the store, its reader, the attributes read from a store, and
-# the guard the model's document passes. Declared, so that each reader and
-# lambda is checked against its model.
+# Each case: the store, its reader, a function that reads the attributes
+# from a store, and the guard that the model's document passes. The type is
+# declared so that each reader and lambda is type-checked against its model.
 _Case = tuple[
     Callable[[], Mapping[str, bytes]],
     Callable[[Mapping[str, bytes]], _Stored],
@@ -189,8 +189,8 @@ def test_attributes_holding_non_finite_numbers_round_trip_through_the_store(
 
 
 def test_a_sequence_is_written_as_an_array() -> None:
-    # The writer writes the document the reader's validation passed, arrays
-    # normalized as the reader normalizes them.
+    # The writer writes the document that passed the reader's validation,
+    # with arrays normalized the same way the reader normalizes them.
     model = ZarrV3GroupMetadata.create_default(attributes={"r": range(3)})  # pyright: ignore[reportArgumentType]
     written = json.loads(model.to_key_value()["zarr.json"])
     assert written["attributes"] == {"r": [0, 1, 2]}
@@ -198,7 +198,7 @@ def test_a_sequence_is_written_as_an_array() -> None:
 
 _V2_ARRAY: dict[str, object] = dict(ZarrV2ArrayMetadata.create_default().to_json())
 
-# Each case: a reader, a store it refuses, and where the non-finite number is.
+# Each case: a reader, a store it refuses, and the location of the non-finite number.
 _Refused = tuple[
     Callable[[Mapping[str, bytes]], object], Mapping[str, bytes], tuple[str | int, ...]
 ]
@@ -241,8 +241,8 @@ _REFUSED: dict[str, _Refused] = {
         ),
         ("consolidated_metadata", "metadata", "a", "fill_value"),
     ),
-    # Only a v3 group holds node documents inline; in an array, a member of
-    # that name is an extension the spec does not declare.
+    # Only a v3 group holds node documents inline. In an array, a member with
+    # that name is an extension that the spec does not declare.
     "consolidated-in-an-array": (
         ZarrV3ArrayMetadata.from_key_value,
         _stored(
@@ -257,14 +257,14 @@ _REFUSED: dict[str, _Refused] = {
         ),
         ("consolidated_metadata", "metadata", "a", "attributes", "x"),
     ),
-    # A v2 array's attributes live in `.zattrs`; its `.zarray` is RFC 8259
-    # throughout -- which is where zarr-python 3.0 once wrote a bare `NaN`.
+    # A v2 array's attributes live in `.zattrs`. Its `.zarray` must be RFC 8259
+    # JSON throughout, and zarr-python 3.0 once wrote a bare `NaN` there.
     "zarray": (
         ZarrV2ArrayMetadata.from_key_value,
         _stored(".zarray", {**_V2_ARRAY, "fill_value": math.nan}),
         ("fill_value",),
     ),
-    # Each `.zmetadata` entry is the document its key names.
+    # Each `.zmetadata` entry is validated as the document type its key names.
     "zmetadata-entry": (
         ZarrV2ConsolidatedMetadata.from_key_value,
         _stored(
@@ -285,8 +285,8 @@ def test_error_a_non_finite_number_outside_attributes_is_located_when_read(
     store: Mapping[str, bytes],
     loc: tuple[str | int, ...],
 ) -> None:
-    # Python's decoder reads a bare `NaN` as a float; where the spec
-    # interprets a value, the document's validator says where it is.
+    # Python's decoder reads a bare `NaN` as a float. Where the spec
+    # interprets a value, the document's validator reports its location.
     with pytest.raises(MetadataValidationError) as raised:
         read(store)
     assert [(problem.loc, problem.kind) for problem in raised.value.problems] == [
@@ -321,18 +321,18 @@ def test_error_a_non_finite_number_outside_attributes_is_located_when_read(
 def test_error_a_document_the_reader_refuses_is_not_written(
     build: Callable[[], _Stored], problems: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
-    # A model comes from a read of its document, so one the reader refuses
-    # makes no model to write. Written, a non-string key became a string, a
-    # value that is not JSON raised `TypeError`, and the last was refused
-    # only when read again.
+    # A model is built by reading its document, so a document that the reader
+    # refuses produces no model to write. When such documents were written, a
+    # non-string key became a string, a value that is not JSON raised
+    # `TypeError`, and the last case was refused only when read again.
     with pytest.raises(MetadataValidationError) as raised:
         build()
     assert [(problem.loc, problem.kind) for problem in raised.value.problems] == problems
 
 
 def test_error_store_bytes_nested_deeper_than_python_reads_are_invalid_json() -> None:
-    # `json.loads` gives up on a hundred thousand `[` with a `RecursionError`,
-    # which is an ingestion failure like any other.
+    # `json.loads` raises `RecursionError` on a hundred thousand `[`. This is
+    # reported as an ingestion failure like any other.
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV3ArrayMetadata.from_key_value({"zarr.json": b"[" * 100_000})
     assert [(p.loc, p.kind) for p in raised.value.problems] == [(("zarr.json",), "invalid_json")]

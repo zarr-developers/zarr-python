@@ -23,13 +23,14 @@ RegularChunkGridName = Literal["regular"]
 class RegularChunkGridConfiguration(TypedDict, closed=True):
     """Configuration for the regular chunk grid.
 
-    Every chunk length is at least 1, along a dimension of length 0 too:
+    Every chunk length is at least 1, even along a dimension of length 0:
     "Chunk sizes must be greater than zero"
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L40).
     The core spec's "The chunk shape elements are non-zero when the
     corresponding dimensions of the arrays have non-zero length"
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L284-L285)
-    says less of an empty dimension, and allows nothing the grid does not.
+    says less about an empty dimension, and it does not allow anything
+    that the grid spec forbids.
     """
 
     chunk_shape: tuple[Annotated[int, Ge(1)], ...]
@@ -56,7 +57,7 @@ valid; the short-hand-name form is not permitted by the spec for this grid.
 def _shape_rules(
     configuration: RegularChunkGridConfiguration, nested: Nested, shape: tuple[int, ...]
 ) -> Iterator[ValidationProblem]:
-    """A chunk length for each of the array's dimensions.
+    """Check that there is one chunk length for each of the array's dimensions.
 
     "The dimensionality of the grid is the same as the dimensionality of
     the array"
@@ -74,12 +75,12 @@ def _shape_rules(
 def _chunk_lengths(
     configuration: RegularChunkGridConfiguration, nested: Nested, shape: tuple[int, ...]
 ) -> Lengths:
-    """One length along each axis: every chunk has the grid's `chunk_shape`.
+    """Return one length along each axis, because every chunk has the grid's `chunk_shape`.
 
     "each chunk is a hyperrectangle of the same shape"
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L28-L29),
-    a chunk at the array's edge too, where "the grid will overhang the
-    edge of the array space"
+    including a chunk at the array's edge, where "the grid will overhang
+    the edge of the array space"
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/chunk-grids/regular-grid/index.rst#L43-L46).
     """
     return tuple(frozenset({length}) for length in configuration["chunk_shape"])

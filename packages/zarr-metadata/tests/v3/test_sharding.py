@@ -1,8 +1,9 @@
-"""Sharding, read: the shard it is handed, and the two pipelines it holds.
+"""Reading the sharding codec: the shard it receives, and the two pipelines it holds.
 
-`sharding_indexed` divides the chunk it is handed into inner chunks, which
-its inner codecs are handed, and indexes them in a shard index, which its
-index codecs are handed; each pipeline is read as the array's is.
+`sharding_indexed` divides the chunk it receives into inner chunks, which
+its inner codecs receive. It indexes them in a shard index, which its
+index codecs receive. Each pipeline is read in the same way as the
+array's pipeline.
 """
 
 from __future__ import annotations
@@ -75,7 +76,7 @@ def _transpose(*order: int) -> JSONValue:
 def _read(
     codecs: list[JSONValue], chunk: Chunk
 ) -> tuple[tuple[Stage, ...], tuple[ValidationProblem, ...]]:
-    """The stages, and every problem: each codec's own, where it sits, then the pipeline's."""
+    """The stages, and every problem: first each codec's own problems at its location, then the pipeline's."""
     read = [
         resolve(codec, CodecDefinition, CORE_AND_EXTENSIONS, (index,))
         for index, codec in enumerate(codecs)
@@ -89,7 +90,7 @@ def _problems(codecs: list[JSONValue], chunk: Chunk) -> list[tuple[Where, str]]:
 
 
 def _handed(stages: tuple[Stage, ...], at: Where = ()) -> dict[Where, Chunk | None]:
-    """What each codec of each pipeline the codecs hold is handed, by where it sits."""
+    """The chunk each codec receives, for every pipeline held by the codecs, keyed by the codec's location."""
     found: dict[Where, Chunk | None] = {}
     for index, stage in enumerate(stages):
         for member, held in stage.inner.items():
@@ -111,8 +112,8 @@ def _handed(stages: tuple[Stage, ...], at: Where = ()) -> dict[Where, Chunk | No
                 (0, "index_codecs", 1): None,
             },
         ),
-        # The shard is the chunk it is handed: transposed, 4 by 6 divides
-        # into inner chunks of 4 by 3 though 6 by 4 would not.
+        # The shard is the chunk the codec receives. After the transpose, 4 by
+        # 6 divides into inner chunks of 4 by 3, though 6 by 4 would not.
         (
             [_transpose(1, 0), _shard([4, 3])],
             _chunk({6}, {4}),
@@ -122,8 +123,8 @@ def _handed(stages: tuple[Stage, ...], at: Where = ()) -> dict[Where, Chunk | No
                 (1, "index_codecs", 1): None,
             },
         ),
-        # A rectilinear grid's shards differ; so do their counts of inner
-        # chunks.
+        # A rectilinear grid's shards differ in size, and so do their counts
+        # of inner chunks.
         (
             [_shard([4])],
             _chunk({8, 4}),
@@ -133,8 +134,8 @@ def _handed(stages: tuple[Stage, ...], at: Where = ()) -> dict[Where, Chunk | No
                 (0, "index_codecs", 1): None,
             },
         ),
-        # Handed a chunk nothing is known of, a shard still has the inner
-        # chunks it declares, and an index of uint64.
+        # When it receives a chunk with unknown properties, a shard still has
+        # the inner chunks it declares, and an index of uint64.
         (
             [_shard([4])],
             Chunk(),
@@ -168,9 +169,10 @@ def test_every_shard_hands_its_inner_codecs_its_inner_chunks_and_its_index_codec
 
 
 def test_error_a_shard_whose_inner_chunks_have_another_number_of_axes() -> None:
-    # One problem: which of the two is wrong is not known, so what the
-    # pipelines are handed is not either, and they are judged against
-    # nothing -- these transposes fit once `chunk_shape` has two lengths.
+    # One problem. It is not known which of the two is wrong, so the chunks
+    # the pipelines receive are also unknown, and the pipelines are not
+    # checked against them. These transposes would fit if `chunk_shape` had
+    # two lengths.
     shard = _shard([4], codecs=[_transpose(1, 0), LITTLE], index=[_transpose(2, 1, 0), LITTLE])
     assert _problems([shard], _chunk({8}, {8})) == [
         ((0, "configuration", "chunk_shape"), "invalid_value")
@@ -182,9 +184,9 @@ def test_error_a_shard_whose_inner_chunks_have_another_number_of_axes() -> None:
     [
         ([_shard([4, 4])], _chunk({8}, {6}), 1),
         ([_shard([4])], _chunk({8, 6}), 0),
-        # Divided along its axes as it is handed them: transposed, a shard
-        # of 6 by 2 does not divide into inner chunks of 2 by 3, though 2
-        # by 6 would.
+        # The shard is divided along its axes in the order it receives them.
+        # After the transpose, a shard of 6 by 2 does not divide into inner
+        # chunks of 2 by 3, though a shard of 2 by 6 would.
         ([_transpose(1, 0), _shard([2, 3])], _chunk({2}, {6}), 1),
     ],
 )
@@ -200,7 +202,7 @@ def test_error_an_inner_chunk_length_that_does_not_divide_the_shard(
 @pytest.mark.parametrize(
     ("shard", "found"),
     [
-        # Each pipeline is read as the array's is, where it sits.
+        # Each pipeline is read as the array's pipeline is, at its own location.
         (_shard([4, 4], codecs=[]), [((0, "configuration", "codecs"), "invalid_value")]),
         (
             _shard([4, 4], codecs=["crc32c", LITTLE]),
@@ -210,8 +212,8 @@ def test_error_an_inner_chunk_length_that_does_not_divide_the_shard(
             _shard([4, 4], codecs=["bytes"]),
             [((0, "configuration", "codecs", 0, "configuration", "endian"), "missing_key")],
         ),
-        # The index is of uint64, whose values take several bytes, and has
-        # an axis more than the shard.
+        # The index has data type uint64, whose values take several bytes, and
+        # has one more axis than the shard.
         (
             _shard([4, 4], index=["bytes"]),
             [((0, "configuration", "index_codecs", 0, "configuration", "endian"), "missing_key")],

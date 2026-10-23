@@ -1,4 +1,4 @@
-"""The public door to v2 definitions: the scope zarr-python 2.x reads in, and one field read in it."""
+"""The public entry point for v2 definitions: the scope that zarr-python 2.x reads in, and reading one field in it."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from zarr_metadata.v3.definition import (
 
 
 def test_core_v2_files_every_v2_definition_apart_from_v3() -> None:
-    """`CORE_V2` files the 12 data types and 21 codecs by their v2 kinds, and is a scope of format 2: a v2 `gzip` and a v3 `gzip` are two definitions of two kinds, and no scope files both, since `Context.joined` refuses two formats."""
+    """`CORE_V2` files the 12 data types and 21 codecs by their v2 kinds, and is a scope of format 2: a v2 `gzip` and a v3 `gzip` are two definitions of two different kinds. No scope can file both, because `Context.joined` rejects scopes of two formats."""
     assert set(CORE_V2.definitions()) == {*V2_DATA_TYPES, *V2_CODECS}
     assert CORE_V2.format == 2
     assert CORE_V2.claimant(ZarrV2CodecDefinition, "gzip") is not GZIP_CODEC

@@ -1,4 +1,4 @@
-"""One metadata field, read against its definition: checked, judged, and read in a scope."""
+"""Reading one metadata field against its definition: type-checked, checked by rules, and read in a scope."""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ if TYPE_CHECKING:
 
 
 class AcmeStackConfiguration(TypedDict, closed=True):
-    """A third party's container: a codec holding a pipeline of codecs."""
+    """A third-party container: a codec that holds a pipeline of codecs."""
 
     codecs: tuple[ZarrV3CodecField, ...]
 
@@ -74,15 +74,15 @@ class AcmeStackConfiguration(TypedDict, closed=True):
 def acme_stack_rules(
     configuration: AcmeStackConfiguration, nested: Nested
 ) -> Iterator[ValidationProblem]:
-    # A rule may read a nested field's name: it is asked only of a
-    # configuration whose nested envelopes are sound.
+    # A rule may read a nested field's name, because rules run only on a
+    # configuration whose nested envelopes are valid.
     for index, codec in enumerate(configuration["codecs"]):
         if (codec if isinstance(codec, str) else codec["name"]) == "acme.stack":
             yield ValidationProblem(
                 ("codecs", index), "a stack does not hold itself", "invalid_value"
             )
-        # And what the scope read of it: a codec of another kind is refused,
-        # one nothing in scope claims left be.
+        # The rule also uses what the scope read: a codec of another kind is
+        # refused, and a codec that nothing in scope claims is not checked.
         inner = nested.get(("codecs", index))
         definition = inner.definition if isinstance(inner, (AcceptedField, RefusedField)) else None
         if isinstance(definition, CodecDefinition) and definition.kind != "bytes_bytes":
@@ -101,7 +101,7 @@ ACME_STACK = CodecDefinition(
 
 
 class AcmeLevelConfiguration(TypedDict, closed=True):
-    """Under postponed annotations, as in this module, `NotRequired` is written as a string."""
+    """With postponed annotations, as in this module, `NotRequired` is written as a string."""
 
     level: NotRequired[int]
 
@@ -111,7 +111,7 @@ class AcmeTotalConfiguration(TypedDict, total=False, closed=True):
 
 
 class AcmeTreeConfiguration(TypedDict, closed=True):
-    """A configuration that holds itself, as JSON can to any depth."""
+    """A recursive configuration, nested to any depth, as JSON can be."""
 
     label: str
     children: tuple[AcmeTreeConfiguration, ...]
@@ -134,7 +134,7 @@ class AcmeFallbackConfiguration(TypedDict, closed=True):
 
 
 class AcmeRoutesConfiguration(TypedDict, extra_items=ZarrV3CodecField):
-    """Every key a route, holding the codec that takes it."""
+    """Every key is a route, and holds the codec for that route."""
 
 
 ACME_BOUNDS: Final = {"level": (0, 9), "window": (9, 15)}
@@ -148,7 +148,7 @@ class AcmeBoundedConfiguration(TypedDict, closed=True):
 def acme_bounded_rules(
     configuration: AcmeBoundedConfiguration, nested: Nested
 ) -> Iterator[ValidationProblem]:
-    # Every key it meets is one its TypedDict declares.
+    # Every key the rule sees is declared by its TypedDict.
     for key, value in cast("Mapping[str, int]", configuration).items():
         low, high = ACME_BOUNDS[key]
         if not low <= value <= high:
@@ -213,7 +213,7 @@ SCOPE = CORE_AND_EXTENSIONS.extended_with(
 
 
 INT8: Final = AcceptedField(json="int8", name="int8", definition=INT8_DATA_TYPE, configuration={})
-"""An `int8` field as a scope reads it: by its definition, holding nothing inside."""
+"""An `int8` field as a scope reads it: read by its definition, with no nested fields."""
 
 
 def _locs(problems: tuple[ValidationProblem, ...]) -> list[tuple[tuple[str | int, ...], str]]:
@@ -225,7 +225,7 @@ def test_core_is_a_subset_of_core_and_extensions() -> None:
 
 
 def test_a_read_field_keeps_the_fields_it_read_inside() -> None:
-    # By where each sits in the configuration, as the scope read it.
+    # Keyed by location in the configuration, as the scope read them.
     shard = {
         "name": "sharding_indexed",
         "configuration": {
@@ -245,9 +245,9 @@ def test_a_read_field_keeps_the_fields_it_read_inside() -> None:
     resolved, _ = resolve(cast_value, CodecDefinition, CORE_AND_EXTENSIONS)
     assert isinstance(resolved, AcceptedField)
     assert resolved.nested[("data_type",)] == INT8
-    # A field holding none has nothing inside, and one nothing in scope
-    # claims holds no field at all; one its check or rules refuse keeps
-    # what it read.
+    # A field with no nested fields has nothing inside. A field that nothing
+    # in scope claims holds no fields at all. A field refused by its check
+    # or rules keeps the nested fields it read.
     assert resolve("int8", DataTypeDefinition, CORE)[0] == INT8
     unclaimed = {"name": "acme.cast", "configuration": {"data_type": "int8"}}
     assert isinstance(resolve(unclaimed, CodecDefinition, CORE_AND_EXTENSIONS)[0], UnclaimedField)
@@ -262,7 +262,7 @@ def test_a_read_field_keeps_the_fields_it_read_inside() -> None:
     [
         ("int8", DataTypeDefinition, "int8"),
         ({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, "gzip"),
-        # Raw bits: the name written, not the one its definition is filed under.
+        # Raw bits: the name as written, not the name its definition is filed under.
         ("r16", DataTypeDefinition, "r16"),
         ({"name": "acme.codec"}, CodecDefinition, "acme.codec"),
         ({"configuration": {}}, CodecDefinition, None),
@@ -277,21 +277,21 @@ def test_a_reading_says_the_name_the_field_was_written_with(
 
 
 KINDLESS: Final = Definition(name="acme.kindless", configuration=Empty)
-"""A definition of no kind, which no scope files."""
+"""A definition with no kind, which no scope can file."""
 
 
 @pytest.mark.parametrize(
     ("built", "read_as"),
     [
         (INT8, DataTypeDefinition),
-        # A name read by the definition filed under another, as raw bits are.
+        # A name read by a definition filed under a different name, as raw bits are.
         (
             AcceptedField(
                 json="r16", name="r16", definition=RAW_BYTES_DATA_TYPE, configuration={"bits": 16}
             ),
             DataTypeDefinition,
         ),
-        # Type arguments dropped, as `resolve` drops them.
+        # Type arguments are dropped, as `resolve` drops them.
         (
             UnclaimedField(json="acme.t", name="acme.t", read_as=DataTypeDefinition[Any]),
             DataTypeDefinition,
@@ -305,7 +305,7 @@ KINDLESS: Final = Definition(name="acme.kindless", configuration=Empty)
             ),
             DataTypeDefinition,
         ),
-        # Not a field, so named nothing and claimed by nothing.
+        # Not a field, so it has no name and nothing claims it.
         (RefusedField(json=5, name=None, read_as=CodecDefinition), CodecDefinition),
     ],
     ids=["read", "raw-bits", "unclaimed", "refused", "refused-nameless"],
@@ -375,8 +375,8 @@ def test_error_a_field_nothing_claims_built_by_hand_without_a_name() -> None:
 @pytest.mark.parametrize(
     ("field", "kind", "written"),
     [
-        # A data type with nothing to configure by its bare name, however
-        # it was written; every other field an object.
+        # A data type with nothing to configure is written as its bare name,
+        # however it was written; every other field is written as an object.
         ("int8", DataTypeDefinition, "int8"),
         (
             {"name": "int8", "configuration": {}, "must_understand": True},
@@ -390,7 +390,7 @@ def test_error_a_field_nothing_claims_built_by_hand_without_a_name() -> None:
             ChunkGridDefinition,
             {"name": "regular", "configuration": {"chunk_shape": (2, 3)}},
         ),
-        # Each field a configuration holds written the same way.
+        # Each field held in a configuration is written the same way.
         (
             {
                 "name": "sharding_indexed",
@@ -415,7 +415,8 @@ def test_error_a_field_nothing_claims_built_by_hand_without_a_name() -> None:
             CodecDefinition,
             {"name": "cast_value", "configuration": {"data_type": "int8"}},
         ),
-        # One nothing in scope claims inside it too; one refused as written.
+        # Inside it, an unclaimed field is written the same way, and a
+        # refused field is written as it was.
         (
             {
                 "name": "acme.stack",
@@ -437,10 +438,10 @@ def test_error_a_field_nothing_claims_built_by_hand_without_a_name() -> None:
                 },
             },
         ),
-        # A name that carries its configuration is written alone.
+        # A name that carries its configuration is written on its own.
         ("r16", DataTypeDefinition, "r16"),
         ({"name": "r16", "configuration": {}}, DataTypeDefinition, "r16"),
-        # Nothing in scope claims it: its configuration as written.
+        # Nothing in scope claims it, so its configuration is kept as written.
         ("zfpy", CodecDefinition, {"name": "zfpy"}),
         (
             {"name": "zfpy", "configuration": {"x": [1]}},
@@ -502,8 +503,8 @@ def test_a_field_is_written_as_every_reader_takes_it(
             {"chunk_shape": (2, 3)},
             [],
         ),
-        # An unknown key is survivable: reported, left out of the
-        # configuration, and the field still read.
+        # An unknown key is not fatal: it is reported and left out of the
+        # configuration, and the field is still read.
         (
             {"name": "gzip", "configuration": {"level": 5, "extra": 1}},
             CodecDefinition,
@@ -511,7 +512,7 @@ def test_a_field_is_written_as_every_reader_takes_it(
             {"level": 5},
             [(("configuration", "extra"), "unknown_key")],
         ),
-        # Nothing the rules could meet but what the TypedDict declares.
+        # The rules see only keys that the TypedDict declares.
         (
             {"name": "acme.bounded", "configuration": {"level": 5, "windw": 10}},
             CodecDefinition,
@@ -523,7 +524,7 @@ def test_a_field_is_written_as_every_reader_takes_it(
         # annotations, and every key of a `total=False` TypedDict.
         ("acme.level", CodecDefinition, AcceptedField, {}, []),
         ("acme.total", CodecDefinition, AcceptedField, {}, []),
-        # A kind with type arguments is that kind.
+        # A kind with type arguments is the same kind.
         (
             {"name": "gzip", "configuration": {"level": 5}},
             CodecDefinition[Any],
@@ -541,8 +542,8 @@ def test_a_field_is_written_as_every_reader_takes_it(
             {"label": "a", "children": ({"label": "b", "children": ()},)},
             [],
         ),
-        # Only the union branch that read has its nested fields read: here
-        # `codec` is plain JSON, not a gzip missing its configuration.
+        # Only the union branch that matched has its nested fields read. Here
+        # `codec` is plain JSON, not a gzip with a missing configuration.
         (
             {
                 "name": "acme.fallback",
@@ -553,8 +554,8 @@ def test_a_field_is_written_as_every_reader_takes_it(
             {"fallback": {"codec": {"name": "gzip"}, "note": "x"}},
             [],
         ),
-        # `extra_items` of a field alias: every other key holds a codec,
-        # held as a document writes it.
+        # `extra_items` is a field alias: every other key holds a codec,
+        # stored as a document writes it.
         (
             {"name": "acme.routes", "configuration": {"fast": "crc32c"}},
             CodecDefinition,
@@ -562,10 +563,10 @@ def test_a_field_is_written_as_every_reader_takes_it(
             {"fast": {"name": "crc32c"}},
             [],
         ),
-        # Nothing in scope claims it: left unjudged, not refused.
+        # Nothing in scope claims it, so it is not checked and not refused.
         ({"name": "zfpy", "configuration": {"x": 1}}, CodecDefinition, UnclaimedField, None, []),
-        # A nested field is read in the same scope, and held as a document
-        # writes it; one out of scope is left be.
+        # A nested field is read in the same scope and stored as a document
+        # writes it. A nested field that is out of scope is not checked.
         (
             {"name": "acme.stack", "configuration": {"codecs": ["crc32c", "zfpy"]}},
             CodecDefinition,
@@ -634,7 +635,7 @@ def test_error_a_required_configuration_is_missing() -> None:
 
 
 def test_error_the_configuration_is_not_an_object() -> None:
-    # RefusedField, and still claimed by the definition its name names.
+    # The result is a RefusedField, still claimed by the definition its name refers to.
     resolved, found = resolve({"name": "gzip", "configuration": 5}, CodecDefinition, SCOPE)
     assert resolved == RefusedField(
         json={"name": "gzip", "configuration": 5},
@@ -646,8 +647,8 @@ def test_error_the_configuration_is_not_an_object() -> None:
 
 
 def test_error_must_understand_false_is_refused() -> None:
-    # The envelope's problem, reported with the field; the configuration
-    # was read, so a later layer can still judge the codec.
+    # The envelope's problem is reported with the field. The configuration
+    # was read, so a later layer can still check the codec.
     resolved, found = resolve({"name": "crc32c", "must_understand": False}, CodecDefinition, SCOPE)
     assert isinstance(resolved, AcceptedField)
     assert _locs(found) == [(("must_understand",), "invalid_value")]
@@ -666,8 +667,8 @@ def test_error_must_understand_false_is_refused() -> None:
 def test_error_must_understand_false_is_refused_wherever_the_model_refuses_it(
     member: str, kind: type[Definition[Any]]
 ) -> None:
-    # One reading of the spec, applied by two readers: a field read here,
-    # and the model's validator. If either changes alone, this fails.
+    # One interpretation of the spec, applied by two readers: reading a field
+    # here, and the model's validator. If only one of them changes, this fails.
     field: dict[str, JSONValue] = {"name": "acme.example", "must_understand": False}
     listed = member in ("codecs", "storage_transformers")
     document: dict[str, object] = dict(ZarrV3ArrayMetadata.create_default().to_json())
@@ -717,7 +718,7 @@ def test_error_a_rule_that_raises_says_whose_it_is() -> None:
 
 
 def test_error_a_rule_that_returns_none_says_whose_it_is() -> None:
-    # A plain function that forgot to yield: nothing to iterate.
+    # A plain function that forgot to yield returns nothing to iterate.
     def rules(configuration: GzipCodecConfiguration, nested: Nested) -> None:
         return None
 
@@ -733,9 +734,9 @@ def test_error_a_rule_that_returns_none_says_whose_it_is() -> None:
 
 
 def test_error_null_is_not_a_field() -> None:
-    # JSON's null is JSON: refined, it is None with no problem, which is
-    # not a verdict. Read as a field or checked as a configuration, it is
-    # a value of the wrong type.
+    # JSON null is valid JSON. Refining it gives `None` with no problem,
+    # which is not a usable result. Read as a field or checked as a
+    # configuration, it is a value of the wrong type.
     resolved, found = resolve(None, CodecDefinition, SCOPE)
     assert (resolved, _locs(found)) == (
         RefusedField(json=None, name=None, read_as=CodecDefinition),
@@ -746,8 +747,8 @@ def test_error_null_is_not_a_field() -> None:
 
 
 def test_error_a_value_that_is_not_json() -> None:
-    # Held as `UNSET`, not JSON, which no document holds; its name still
-    # says what claims it.
+    # The JSON is stored as `UNSET`, because no document can hold a value
+    # that is not JSON. Its name still identifies the definition that claims it.
     resolved, found = resolve(
         {"name": "gzip", "configuration": {"level": math.nan}}, CodecDefinition, SCOPE
     )
@@ -772,8 +773,8 @@ def test_error_a_regular_grid_extent_is_negative() -> None:
 
 
 def test_error_a_nested_field_is_judged_where_it_sits() -> None:
-    # Its problem is its own: the field holding it is read, as a document
-    # holding it would be.
+    # The problem belongs to the nested field. The field that holds it is
+    # still read, as a document holding it would be.
     field = {
         "name": "acme.stack",
         "configuration": {"codecs": ["crc32c", {"name": "gzip", "configuration": {"level": 12}}]},
@@ -798,16 +799,16 @@ def test_error_a_nested_field_in_extra_items_is_judged_where_it_sits() -> None:
 
 
 def test_error_a_nested_envelope_s_problem_is_its_own_and_the_rules_are_asked() -> None:
-    # A `must_understand` of false inside, as in a document, is reported
-    # where it sits, and the stack is read.
+    # A nested `must_understand` of false is reported at its location, as
+    # in a document, and the stack is still read.
     unread = {"name": "crc32c", "must_understand": False}
     resolved, found = resolve(
         {"name": "acme.stack", "configuration": {"codecs": [unread]}}, CodecDefinition, SCOPE
     )
     assert isinstance(resolved, AcceptedField)
     assert _locs(found) == [(("configuration", "codecs", 0, "must_understand"), "invalid_value")]
-    # Its rules are asked all the same: one refuses the array -> bytes
-    # codec it holds, which is the stack's own problem.
+    # The stack's rules still run. One rule refuses the array -> bytes
+    # codec it holds, which is a problem of the stack itself.
     resolved, found = resolve(
         {"name": "acme.stack", "configuration": {"codecs": [unread, "bytes"]}},
         CodecDefinition,
@@ -821,8 +822,9 @@ def test_error_a_nested_envelope_s_problem_is_its_own_and_the_rules_are_asked() 
 
 
 def test_error_a_container_rule_is_not_asked_of_a_malformed_nested_field() -> None:
-    # The stack's rule reads each nested field's name; one with no name is
-    # reported where it sits, and the rule is not asked, as `read_configuration` would not.
+    # The stack's rule reads each nested field's name. A nested field with no
+    # name is reported at its location, and the rule does not run, as it
+    # would not in `read_configuration`.
     field = {"name": "acme.stack", "configuration": {"codecs": [{"configuration": {}}]}}
     resolved, found = resolve(field, CodecDefinition, SCOPE)
     assert isinstance(resolved, RefusedField)
@@ -831,8 +833,9 @@ def test_error_a_container_rule_is_not_asked_of_a_malformed_nested_field() -> No
 
 
 def test_error_a_rule_about_the_whole_configuration_lands_on_it() -> None:
-    # A rule reports relative to the configuration: an empty location is
-    # the configuration, judged alone or read in a field.
+    # A rule reports locations relative to the configuration. An empty
+    # location is the configuration, whether it is checked alone or read in
+    # a field.
     _, judged = ACME_PAIRED.read_configuration({"first": 1})
     _, read = resolve(
         {"name": "acme.paired", "configuration": {"first": 1}}, CodecDefinition, SCOPE
@@ -843,8 +846,8 @@ def test_error_a_rule_about_the_whole_configuration_lands_on_it() -> None:
 
 def test_error_a_rule_reads_the_fields_the_configuration_holds_as_the_scope_read_them() -> None:
     # `bytes` is an array -> bytes codec, which the stack's rule refuses
-    # from what the scope read; `read_configuration` reads in no scope, so its rule sees
-    # nothing read.
+    # based on what the scope read. `read_configuration` reads in no scope,
+    # so its rule sees no nested readings.
     field = {"name": "acme.stack", "configuration": {"codecs": ["crc32c", "bytes"]}}
     resolved, found = resolve(field, CodecDefinition, SCOPE)
     assert isinstance(resolved, RefusedField)
@@ -861,19 +864,20 @@ def test_error_a_nested_member_is_not_a_field() -> None:
 
 
 def test_check_needs_nothing_but_the_value_and_a_typeddict() -> None:
-    # The first step: JSON against a TypedDict. A nested field is an
-    # envelope here, so no scope is needed and no name is judged.
+    # The first step checks JSON against a TypedDict. A nested field is only
+    # an envelope here, so no scope is needed and no name is checked.
     assert check({"level": 5}, GzipCodecConfiguration) == ({"level": 5}, ())
     stack, problems = check({"codecs": ["gzip", {"name": "anything"}]}, AcmeStackConfiguration)
     assert (stack, problems) == ({"codecs": ("gzip", {"name": "anything"})}, ())
-    # The check and the reading agree on which union branch a value is.
+    # The check and the reading agree on which union branch a value matches.
     fallback = {"fallback": {"codec": {"name": "gzip"}, "note": "x"}}
     assert check(fallback, AcmeFallbackConfiguration) == (fallback, ())
 
 
 def test_check_reads_a_whole_array_document() -> None:
-    # A null in `dimension_names`, a top-level key the document does not
-    # declare, typed by its `extra_items`, and a dimension of length 0.
+    # A null in `dimension_names`, a top-level key that the document type
+    # does not declare (typed by its `extra_items`), and a dimension of
+    # length 0.
     document = {
         **ZarrV3ArrayMetadata.create_default(shape=(0, 4)).to_json(),
         "dimension_names": [None, "x"],
@@ -917,16 +921,17 @@ def test_error_check_judges_a_nested_envelope() -> None:
 def test_read_configuration_leaves_out_a_member_a_nested_field_s_envelope_does_not_declare() -> (
     None
 ):
-    # Reported as an unknown key and left out, as the checker leaves out a
-    # key a closed TypedDict does not declare: the configuration comes back.
+    # The member is reported as an unknown key and left out, as the checker
+    # leaves out a key that a closed TypedDict does not declare. The
+    # configuration is still returned.
     typed, problems = ACME_STACK.read_configuration({"codecs": [{"name": "crc32c", "x": 1}]})
     assert typed == {"codecs": ({"name": "crc32c"},)}
     assert _locs(problems) == [(("codecs", 0, "x"), "unknown_key")]
 
 
 def test_error_read_configuration_refuses_a_nested_field_that_need_not_be_understood() -> None:
-    # A `must_understand` of false is no unknown key: the configuration
-    # does not come back.
+    # A `must_understand` of false is not an unknown key, so the
+    # configuration is not returned.
     typed, problems = ACME_STACK.read_configuration(
         {"codecs": [{"name": "crc32c", "must_understand": False}]}
     )
@@ -935,8 +940,8 @@ def test_error_read_configuration_refuses_a_nested_field_that_need_not_be_unders
 
 
 def test_read_configuration_is_the_check_and_then_the_rules() -> None:
-    # A caller holding one configuration: the rules are asked only of a
-    # configuration that type-checked, so they never meet a wrong type.
+    # For a caller with one configuration, the rules run only on a
+    # configuration that passed the type check, so they never see a wrong type.
     assert GZIP_CODEC.read_configuration({"level": 5}) == ({"level": 5}, ())
     refused, problems = GZIP_CODEC.read_configuration({"level": 12})
     assert (refused, _locs(problems)) == (None, [(("level",), "invalid_value")])
@@ -963,12 +968,12 @@ def test_a_scope_takes_a_name_over() -> None:
 
 
 def test_a_scope_is_shown_by_how_many_definitions_it_holds() -> None:
-    # Short, as a validator's default argument is shown by `help`.
+    # Kept short, because `help` shows it as a validator's default argument.
     assert repr(CORE) == f"Context(<{len(CORE.definitions())} definitions>)"
 
 
 def test_a_scope_pickles_as_its_definitions_and_copies_as_itself() -> None:
-    # A model holds the scope it was read in, and goes to another process with it.
+    # A model holds the scope it was read in, and takes it along to another process.
     again = pickle.loads(pickle.dumps(CORE_AND_EXTENSIONS))
     assert again.definitions() == CORE_AND_EXTENSIONS.definitions()
     assert copy.copy(CORE) is CORE
@@ -1018,8 +1023,8 @@ NOSHUFFLE: Final = {"cname": "lz4", "clevel": 5, "shuffle": "noshuffle", "blocks
         ),
         ("int8", "uint8", DataTypeDefinition, False),
         # The spec's equivalences, which each definition's `canonical`
-        # folds: a member at its default, a run-length encoding, leading
-        # zeros in a size.
+        # normalizes: a member at its default, a run-length encoding, and
+        # leading zeros in a size.
         (
             {"name": "blosc", "configuration": {**NOSHUFFLE}},
             {"name": "blosc", "configuration": {**NOSHUFFLE, "typesize": 4}},
@@ -1106,7 +1111,7 @@ NOSHUFFLE: Final = {"cname": "lz4", "clevel": 5, "shuffle": "noshuffle", "blocks
 def test_two_fields_are_equal_when_they_read_the_same(
     one: JSONValue, other: JSONValue, kind: type[Definition[Any]], equal: bool
 ) -> None:
-    """However each was spelled: equal fields have one simplest spelling and one hash, though each is written as read."""
+    """However each field was spelled, equal fields have the same simplest spelling and the same hash, though each is written back as it was read."""
     first, _ = resolve(one, kind, CORE_AND_EXTENSIONS)
     second, _ = resolve(other, kind, CORE_AND_EXTENSIONS)
     assert isinstance(first, (AcceptedField, UnclaimedField))
@@ -1125,7 +1130,7 @@ def test_a_field_copied_or_pickled_is_read_by_a_definition_equal_to_its_own() ->
 
 
 def test_a_definition_is_shown_by_its_kind_and_name() -> None:
-    # Short, as a reading that holds it shows it.
+    # Kept short, because a reading that holds the definition shows it this way.
     assert repr(GZIP_CODEC) == "CodecDefinition(name='gzip')"
     assert repr(INT8_DATA_TYPE) == "DataTypeDefinition(name='int8')"
 
@@ -1152,7 +1157,7 @@ class AcmeUnresolvedConfiguration(TypedDict, closed=True):
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class AcmeCodecDefinition(CodecDefinition[Any]):
-    """A reader's own kind of codec, under which no scope files anything."""
+    """A reader's own codec subclass, under which no scope files anything."""
 
 
 def test_error_a_definition_configuration_is_a_typeddict() -> None:
@@ -1168,13 +1173,13 @@ def test_error_a_definition_member_is_a_shape_json_takes() -> None:
 
 
 def test_error_a_configuration_says_what_its_other_keys_are() -> None:
-    # Open by default, it would take a misspelled key without a word.
+    # An open TypedDict would accept a misspelled key without reporting it.
     with pytest.raises(TypeError, match="Loose says nothing of the keys it does not declare"):
         CodecDefinition(name="acme.loose", configuration=Loose, kind="bytes_bytes", size="dynamic")
 
 
 def test_error_a_member_typed_as_plain_field_json_is_refused() -> None:
-    # It checks as JSON, and its name would never be related to a definition.
+    # It would be checked only as JSON, and its name would never be matched to a definition.
     with pytest.raises(TypeError, match="annotate it with the field alias of its kind"):
         CodecDefinition(
             name="acme.plain",
@@ -1185,7 +1190,7 @@ def test_error_a_member_typed_as_plain_field_json_is_refused() -> None:
 
 
 def test_error_a_configuration_whose_annotations_do_not_resolve() -> None:
-    # Named down to the TypedDict that holds the annotation.
+    # The error names the TypedDict that holds the annotation.
     with pytest.raises(TypeError, match="AcmeDecimal: name 'Decimal' is not defined"):
         CodecDefinition(
             name="acme.unresolved",
@@ -1200,7 +1205,7 @@ class AcmeUncheckedConfiguration(TypedDict, closed=True):
 
 
 def test_error_a_configuration_with_a_constraint_the_checker_does_not_read() -> None:
-    # A bound the checker did not hold a value to would say what is not so.
+    # A constraint the checker did not enforce would promise something that is not checked.
     with pytest.raises(
         TypeError,
         match=r"AcmeUncheckedConfiguration.digits: Predicate\(str.isdigit\) is not a constraint",
@@ -1231,7 +1236,7 @@ def test_error_a_codec_kind_is_one_of_three() -> None:
 
 
 def test_error_a_data_type_is_named_as_raw_bits_of_one_size_are_written() -> None:
-    # `r16` reads as `r*`, so a definition filed under it would read nothing.
+    # `r16` is read as `r*`, so a definition filed under `r16` would never read anything.
     with pytest.raises(TypeError, match="to read raw bits your own way, define 'r\\*'"):
         DataTypeDefinition(name="r16", configuration=Empty)
 
@@ -1242,7 +1247,7 @@ def test_error_a_data_type_fill_value_no_checker_reads() -> None:
 
 
 def test_error_a_data_type_fill_value_holding_a_metadata_field() -> None:
-    # A value of the data type, which no scope reads as a field.
+    # A fill value is a value of the data type, which no scope reads as a field.
     with pytest.raises(
         TypeError, match="'acme.f': fill_value: ZarrV3CodecField holds a metadata field"
     ):
@@ -1268,7 +1273,7 @@ def test_error_a_data_type_fill_value_holding_a_metadata_field() -> None:
 def test_error_a_function_member_that_is_not_a_function(
     kind: type[Definition[Any]], member: str
 ) -> None:
-    # Each member a definition's annotations declare a `Callable`.
+    # Each member that the definition's annotations declare as a `Callable`.
     codec = {"kind": "array_array", "size": "static"} if kind is CodecDefinition else {}
     with pytest.raises(TypeError, match=f"'acme.t': {member} is a function, got 'none'"):
         kind(name="acme.t", configuration=Empty, **codec, **{member: "none"})  # pyright: ignore[reportArgumentType]
@@ -1276,7 +1281,7 @@ def test_error_a_function_member_that_is_not_a_function(
 
 @pytest.mark.parametrize("kind", [Definition, AcmeCodecDefinition])
 def test_error_a_field_is_read_as_a_kind_of_metadata(kind: type[Definition[Any]]) -> None:
-    # Nothing is filed under either, so the field would go unjudged.
+    # Nothing is filed under either kind, so the field would never be checked.
     with pytest.raises(TypeError, match="is not a kind of metadata"):
         resolve({"name": "gzip", "configuration": {"level": 99}}, kind, SCOPE)
 
@@ -1302,8 +1307,8 @@ def test_error_a_scope_refuses_a_definition_of_no_kind() -> None:
         ("a: b", False),
         ("urn:acme:codec\n", False),
         ("urn:acme:ü", False),
-        # Whitespace to Python's `re` but not ECMA-262, and the other way
-        # round: neither a URI character, so both dialects refuse them.
+        # Whitespace in Python's `re` but not in ECMA-262, and the reverse.
+        # Neither is a URI character, so both dialects reject them.
         ("urn:a\x1c", False),
         ("urn:a﻿", False),
         ("", False),
@@ -1319,7 +1324,7 @@ def test_error_a_scope_refuses_a_definition_of_no_kind() -> None:
     ],
 )
 def test_an_extension_is_named_as_the_spec_names_one(name: str, valid: bool) -> None:
-    """The spec's regex `^[a-z][a-z0-9-_.]+$`, or a URI, which earlier versions of the spec required; anything else is refused before any definition is asked, by the field validator as by the reader."""
+    """An extension name matches the spec's regex `^[a-z][a-z0-9-_.]+$`, or is a URI, which earlier versions of the spec required. Any other name is refused before any definition is consulted, by the field validator and by the reader alike."""
     for field, at in ((name, ()), ({"name": name}, ("name",))):
         resolved, problems = resolve(field, CodecDefinition, CORE)
         if valid:
@@ -1336,9 +1341,9 @@ def test_an_extension_is_named_as_the_spec_names_one(name: str, valid: bool) -> 
 
 
 def test_error_a_bad_name_is_a_problem_when_the_field_is_not_json_too() -> None:
-    # Refused before a definition is asked on either path: a field whose
-    # configuration is not JSON reports its name as the JSON path does,
-    # and no definition is asked to claim it.
+    # On both paths the name is refused before any definition is consulted.
+    # A field whose configuration is not JSON reports its name problem as
+    # the JSON path does, and no definition is asked to claim it.
     field = {"name": "Acme", "configuration": {"x": float("nan")}}
     resolved, problems = resolve(field, CodecDefinition, CORE)
     assert isinstance(resolved, RefusedField)
@@ -1351,7 +1356,7 @@ def test_error_a_bad_name_is_a_problem_when_the_field_is_not_json_too() -> None:
 
 @pytest.mark.parametrize("name", ["Acme", "acme/x", "", "x"])
 def test_error_a_definition_is_named_as_the_spec_names_an_extension(name: str) -> None:
-    # No document could name it, so nothing would ever read with it.
+    # No document could use this name, so the definition would never read anything.
     with pytest.raises(TypeError, match="so no document names it"):
         CodecDefinition(
             name=name, configuration=EmptyConfiguration, kind="bytes_bytes", size="dynamic"
@@ -1373,16 +1378,17 @@ def test_error_a_field_without_a_name_is_missing_one() -> None:
 
 @pytest.mark.parametrize("digits", [101, 4301])
 def test_raw_bits_of_more_than_a_hundred_digits_are_no_size_but_a_name(digits: int) -> None:
-    # `int` refuses to convert more than 4,300 digits, and no size has a
-    # hundred: such a name is an extension's, which nothing in scope claims.
+    # `int` refuses to convert more than 4,300 digits, and no real size has a
+    # hundred digits. Such a name is an extension name, which nothing in
+    # scope claims.
     resolved, problems = resolve("r" + "1" * digits, DataTypeDefinition, CORE_AND_EXTENSIONS)
     assert type(resolved) is UnclaimedField
     assert problems == ()
 
 
 def test_error_a_rule_that_writes_to_the_configuration_fails_there() -> None:
-    # A definition's functions are handed a read-only view of the field's
-    # own configuration, so no field holds what a function wrote.
+    # A definition's functions receive a read-only view of the field's own
+    # configuration, so a function cannot change what a field holds.
     def writes(
         configuration: GzipCodecConfiguration, nested: Nested
     ) -> Iterator[ValidationProblem]:
@@ -1396,8 +1402,9 @@ def test_error_a_rule_that_writes_to_the_configuration_fails_there() -> None:
 
 
 def test_error_a_function_that_writes_to_the_configuration_fails_on_every_path() -> None:
-    # `read_configuration` hands the rules the same view `resolve` does, and `==` and
-    # `hash` hand `canonical` one, as `canonical_of` does.
+    # `read_configuration` passes the rules the same read-only view that
+    # `resolve` does, and `==` and `hash` pass one to `canonical`, as
+    # `canonical_of` does.
     def writes(
         configuration: GzipCodecConfiguration, nested: Nested
     ) -> Iterator[ValidationProblem]:
@@ -1429,7 +1436,7 @@ def test_error_a_canonical_that_raises_says_which_definition_raised_it() -> None
 
 
 def test_error_a_field_s_configuration_and_nested_fields_are_read_only() -> None:
-    """What a field hands out -- its `json`, `configuration` and `nested` fields -- is read-only at every level, so a field cannot be put in a state its key, `==` and `refines` disagree about."""
+    """A field's `json`, `configuration` and `nested` attributes are read-only at every level. So a field cannot be changed into a state where its key, `==` and `refines` disagree."""
     whole = {**SHARD, "index_codecs": [LE, {"name": "crc32c"}]}
     shard, _ = resolve({"name": "sharding_indexed", "configuration": whole}, CodecDefinition, CORE)
     assert isinstance(shard, AcceptedField)
@@ -1461,7 +1468,7 @@ def test_error_a_field_s_configuration_and_nested_fields_are_read_only() -> None
 
 
 def test_a_field_holding_fields_is_copied_and_pickled_whole() -> None:
-    """A field pickles and deep-copies with the fields it holds, equal to itself, whether accepted, refused or left unclaimed."""
+    """A field pickles and deep-copies together with the fields it holds, and stays equal to itself, whether it is accepted, refused or unclaimed."""
     whole = {**SHARD, "index_codecs": [LE, {"name": "crc32c"}]}
     fields = [
         resolve({"name": "sharding_indexed", "configuration": whole}, CodecDefinition, CORE)[0],
@@ -1503,7 +1510,7 @@ def test_a_field_holding_fields_is_copied_and_pickled_whole() -> None:
     ],
 )
 def test_a_field_its_caller_refined_reads_as_resolve_reads_it(field: object) -> None:
-    """`resolve_refined` is `resolve` for a caller that refined the field already: the same field, the same problems, located the same, with the same `input`."""
+    """`resolve_refined` is `resolve` for a caller that has already refined the field. It gives the same field and the same problems, at the same locations, with the same `input`."""
     refined, problems = refine_json(field, ("codecs", 0))
     assert problems == ()
     expected = resolve(field, CodecDefinition, CORE, ("codecs", 0))
@@ -1515,7 +1522,7 @@ def test_a_field_its_caller_refined_reads_as_resolve_reads_it(field: object) -> 
 
 
 def test_error_a_field_its_caller_found_not_to_be_json_is_refused_unread() -> None:
-    """What `refine_json` found wrong is the field's problems, and the field is refused as not JSON, its name still saying what claims it, as `resolve` refuses one."""
+    """The problems `refine_json` found become the field's problems. The field is refused as not JSON, and its name still identifies the definition that claims it, as with `resolve`."""
     field = {"name": "gzip", "configuration": {"level": {1, 2}}}
     refined, problems = refine_json(field, ("codecs", 0))
     assert refined is None

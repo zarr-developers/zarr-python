@@ -24,7 +24,7 @@ BOOL_DATA_TYPE: Final = DataTypeDefinition(
     fill_value=BoolFillValue,
     storage=single_byte,
 )
-"""The `bool` data type: a bare name, with nothing to configure."""
+"""The `bool` data type. It is written as a bare name and has no configuration."""
 
 
 __all__ = [

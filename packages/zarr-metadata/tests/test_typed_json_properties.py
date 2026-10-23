@@ -1,21 +1,23 @@
-"""The checker against a reference, over TypedDicts and JSON values drawn at random.
+"""Compare the checker with a reference, over TypedDicts and JSON values drawn at random.
 
-A spec is drawn first: a small description of a type in the checker's
-vocabulary -- scalars, `Literal`s, arrays, unions, `Mapping[str, V]`,
-`NewType`s and aliases, and TypedDicts with up to two bases, each class
-with its own `total`, its keys' qualifiers written in any order, and
-what it says of other keys, some holding themselves. It is written out
-as source text and built from that twice: with each class's annotations
-evaluated, and left as the strings `from __future__ import annotations`
-leaves. Beside it stands `conforms`, a predicate over JSON worked out
-from the spec alone by the typing spec's rules, not the checker's.
+Each test first draws a spec: a small description of a type in the
+checker's vocabulary. A spec can use scalars, `Literal`s, arrays, unions,
+`Mapping[str, V]`, `NewType`s and aliases, and TypedDicts with up to two
+bases. Each class has its own `total`, its keys' qualifiers in any
+order, and its own setting for other keys. Some classes contain
+themselves. The spec is written out as source text and built from that
+source twice: once with each class's annotations evaluated, and once with
+them left as the strings that `from __future__ import annotations`
+leaves. The reference is `conforms`, a predicate over JSON derived from
+the spec alone by the typing spec's rules, not by the checker's rules.
 
-Values are JSON, their depth capped: drawn from the spec, so they
-conform; drawn at large, so most do not; or drawn from the spec and
-changed in one place, so they nearly do. On every one the checker has to
-agree with the reference, and the two builds with each other; so does
-the JSON Schema written of the type, but for JSON Schema's own reading of
-a number with no fraction, `1.0`, as the integer it equals.
+Values are JSON with a capped depth. Some are drawn from the spec, so
+they conform. Some are drawn from all JSON, so most do not conform. Some
+are drawn from the spec and changed in one place, so they almost
+conform. For every value, the checker must agree with the reference, and
+the two builds must agree with each other. The JSON Schema generated for
+the type must agree too, except that JSON Schema reads a number with no
+fraction, such as `1.0`, as the integer it equals.
 """
 
 from __future__ import annotations
@@ -82,7 +84,7 @@ class Named:
 
 @dataclass(frozen=True)
 class Itself:
-    """The TypedDict a member sits in: a class that holds itself."""
+    """The TypedDict that contains the member: a class that contains itself."""
 
 
 @dataclass(frozen=True)
@@ -91,7 +93,7 @@ class ExtraItems:
 
 
 Says: TypeAlias = Literal["unsaid", "closed", "open"] | ExtraItems
-"""What a class says of the keys it does not declare: nothing, `closed=True`, `closed=False`, or `extra_items=`."""
+"""How a class treats the keys it does not declare: not stated, `closed=True`, `closed=False`, or `extra_items=`."""
 
 
 @dataclass(frozen=True)
@@ -104,7 +106,7 @@ class Member:
 
 @dataclass(frozen=True)
 class Layer:
-    """One class in a TypedDict's ancestry: its own keys and keywords, and how its module writes it."""
+    """One class in a TypedDict's ancestry: its own keys and keywords, and how its module writes its annotations."""
 
     total: bool
     members: tuple[Member, ...]
@@ -112,7 +114,7 @@ class Layer:
     postponed: bool = False
     """In a mixed build, whether the class's annotations are left as strings."""
     quoted: bool = False
-    """Evaluated, whether the class writes the name of another class inside an annotation as a string."""
+    """When annotations are evaluated, whether the class writes the name of another class as a string inside an annotation."""
 
 
 @dataclass(frozen=True)
@@ -129,8 +131,8 @@ Spec: TypeAlias = Leaf | OneOf | ArrayOf | Fixed | AnyOf | MappingOf | Named | I
 def members_of(spec: Object) -> dict[str, tuple[Spec, bool]]:
     """Each key the TypedDict declares, its spec, and whether it is required, by the typing spec.
 
-    A `Required` or `NotRequired` qualifier says; otherwise the `total` of
-    the class that declared the key does.
+    A `Required` or `NotRequired` qualifier decides; otherwise the `total`
+    of the class that declared the key decides.
     """
     found: dict[str, tuple[Spec, bool]] = {}
     for layer in spec.layers:
@@ -148,7 +150,7 @@ def _required(member: Member, total: bool) -> bool:
 
 
 def says_of(spec: Object) -> Says:
-    """What the TypedDict says of other keys: the nearest class that says anything, as the spec has it."""
+    """How the TypedDict treats other keys: the setting of the nearest class that states one, as the typing spec defines it."""
     said: Says = "unsaid"
     for layer in spec.layers:
         if layer.says != "unsaid":
@@ -157,7 +159,7 @@ def says_of(spec: Object) -> Says:
 
 
 def conforms(value: object, spec: Spec, itself: Object | None = None) -> bool:
-    """Whether JSON `value` is a value of `spec`: the reference, worked out from the spec alone."""
+    """Whether JSON `value` is a value of `spec`. This is the reference, derived from the spec alone."""
     if isinstance(spec, Leaf):
         return {
             "int": type(value) is int,
@@ -237,14 +239,14 @@ _LEAF_TEXT: dict[str, str] = {
 }
 
 Mode: TypeAlias = Literal["evaluated", "postponed", "mixed"]
-"""How a build writes its classes' annotations: all evaluated, all strings, or as each class says."""
+"""How a build writes its classes' annotations: all evaluated, all strings, or as each class chooses."""
 
 _ONE_MODULE_FOR_STDLIB = sys.version_info < (3, 12)
-"""`typing.TypedDict` records a class's bases from 3.12; before, a subclass reads its keys in one module."""
+"""`typing.TypedDict` records a class's bases from 3.12 on. Before 3.12, a subclass reads all its keys in one module."""
 
 
 def _module() -> types.ModuleType:
-    """A fresh module, registered where a string annotation is resolved, knowing only the prelude."""
+    """A new module that holds only the prelude, registered in `sys.modules` so string annotations resolve in it."""
     module = types.ModuleType(f"tests._typed_json_properties_{next(_serial)}")
     module.__dict__.update(_PRELUDE)
     sys.modules[module.__name__] = module
@@ -257,11 +259,11 @@ def _evaluated(text: str, home: types.ModuleType) -> object:
 
 @dataclass(frozen=True)
 class Build:
-    """A spec built as source, each class in a module of its own, the names it uses imported there."""
+    """A spec built from source text, with each class in its own module and the names it uses imported there."""
 
     mode: Mode
     source: list[str] = field(default_factory=list)
-    """What was built, as it would be written: for a failing example's notes."""
+    """The source text of what was built, for the notes of a failing example."""
 
     def annotation(self, spec: Spec) -> object:
         home = _module()
@@ -272,7 +274,7 @@ class Build:
         return repr(name) if quoted else name
 
     def text(self, spec: Spec, itself: str | None, home: types.ModuleType, *, quoted: bool) -> str:
-        """`spec` written in `home`, a name inside another annotation quoted when `quoted`."""
+        """The source text of `spec` in module `home`. A name inside another annotation is quoted when `quoted` is true."""
         if isinstance(spec, Leaf):
             return _LEAF_TEXT[spec.name]
         if isinstance(spec, OneOf):
@@ -311,7 +313,7 @@ class Build:
         return text
 
     def typeddict(self, spec: Object) -> tuple[str, object]:
-        """The TypedDict `spec` is, a class per layer, each in its module: its name, and it."""
+        """Build the TypedDict described by `spec`, one class per layer, each in its own module. Return its name and the class."""
         names = [f"T{next(_serial)}" for _ in spec.layers]
         shared = _module() if spec.stdlib and _ONE_MODULE_FOR_STDLIB else None
         base: object = typing.TypedDict if spec.stdlib else TypedDict
@@ -394,8 +396,8 @@ def _objects(draw: st.DrawFn, inner: st.SearchStrategy[Spec]) -> Object:
     declared: dict[str, tuple[Member, bool]] = {}
     for index in range(count):
         # A subclass of a closed TypedDict, or of one with extra items, is
-        # kept to what the typing spec allows it: to say the same, or
-        # nothing, and to add no key.
+        # limited to what the typing spec allows: it may repeat the same
+        # setting or state none, and it may not add a key.
         restricted = said == "closed" or isinstance(said, ExtraItems)
         choices: list[Says] = ["unsaid", said] if restricted else ["unsaid", "closed", "open"]
         if not restricted and draw(st.booleans()):
@@ -416,9 +418,10 @@ def _objects(draw: st.DrawFn, inner: st.SearchStrategy[Spec]) -> Object:
         declared.update({member.key: (member, _required(member, total)) for member in members})
         said = says if says != "unsaid" else said
     speaks = any(layer.says != "unsaid" for layer in layers)
-    # `typing.TypedDict` from 3.13 refuses a read-only key redeclaring one it
-    # thinks mutable, and cannot see `ReadOnly` in a postponed base: it would
-    # not build what the spec allows, so it declares no key twice here.
+    # From 3.13, `typing.TypedDict` rejects a read-only key that redeclares a
+    # key it thinks is mutable, and it cannot see `ReadOnly` in a postponed
+    # base. So it would not build some classes the spec allows, and no key is
+    # declared twice when it is used.
     redeclares = sum(len(layer.members) for layer in layers) > len(
         {member.key for layer in layers for member in layer.members}
     )
@@ -430,10 +433,10 @@ def _objects(draw: st.DrawFn, inner: st.SearchStrategy[Spec]) -> Object:
 def _redeclared(
     draw: st.DrawFn, declared: dict[str, tuple[Member, bool]], total: bool
 ) -> list[Member]:
-    """None, or one read-only key a base declared, narrowed as the typing spec lets a subclass.
+    """No key, or one read-only key declared by a base, narrowed as the typing spec allows a subclass to.
 
-    Its type may narrow -- a union to some of its branches -- and a key
-    that was not required may become required, never the other way.
+    Its type may narrow (a union to some of its branches), and a key that
+    was not required may become required. The reverse is not allowed.
     """
     candidates = sorted(
         key for key, (member, _) in declared.items() if "ReadOnly" in member.wrappers
@@ -480,7 +483,7 @@ def json_values(depth: int) -> st.SearchStrategy[object]:
 
 
 def conforming(spec: Spec, depth: int, itself: Object | None = None) -> st.SearchStrategy[object]:
-    """JSON values of `spec`, arrays and objects of any key nested no deeper than `depth`."""
+    """JSON values of `spec`, with arrays and objects of any key nested no deeper than `depth`."""
     if isinstance(spec, Leaf):
         return {
             "int": st.integers(),
@@ -546,7 +549,7 @@ def _positions(value: object, path: Loc = ()) -> list[Loc]:
 
 
 def _changed(value: object, path: Loc, change: object) -> object:
-    """`value` with what sits at `path` replaced by `change`, or removed if `change` is `_GONE`."""
+    """`value` with the item at `path` replaced by `change`, or removed if `change` is `_GONE`."""
     if len(path) == 0:
         return change
     step, rest = path[0], path[1:]
@@ -610,7 +613,7 @@ def _is_place(value: object, loc: Loc) -> bool:
 
 
 def _same_json(left: object, right: object) -> bool:
-    """Equal as JSON: an array is an array, list or tuple."""
+    """Whether two values are equal as JSON, where a list and a tuple are both arrays."""
     if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
         return len(left) == len(right) and all(map(_same_json, left, right))
     if isinstance(left, dict) and isinstance(right, dict):
@@ -625,7 +628,7 @@ def _same_json(left: object, right: object) -> bool:
 _MODES: tuple[Mode, ...] = ("evaluated", "postponed", "mixed")
 
 _DEPTH = 3
-"""The operational cap: how deep a spec nests, and how deep a value of it."""
+"""The depth limit for both a spec and a value drawn from it."""
 
 _EXAMPLES = settings(max_examples=300, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 
@@ -641,11 +644,11 @@ def _read(annotation: object, value: object) -> Parsed:
 @_EXAMPLES
 @given(st.data())
 def test_the_checker_agrees_with_the_reference(data: st.DataObject) -> None:
-    # No problem exactly when the value is one of the type; the value that
-    # comes back is the one read, as JSON; every problem is located at a
-    # place in the value, or, for a missing key, in the object that lacks
-    # it; and when every problem is a key a closed TypedDict does not
-    # declare, what comes back is a value of the type.
+    # The checker reports no problem exactly when the value is of the type.
+    # The returned value equals the input as JSON. Every problem is located
+    # at a place in the value, or, for a missing key, at the object that
+    # lacks it. When every problem is a key that a closed TypedDict does not
+    # declare, the returned value is of the type.
     spec = data.draw(specs(_DEPTH), label="spec")
     build = Build(data.draw(st.sampled_from(_MODES), label="mode"))
     annotation = build.annotation(spec)
@@ -669,7 +672,7 @@ def test_the_checker_agrees_with_the_reference(data: st.DataObject) -> None:
 
 
 def _as_json_schema_reads(value: object) -> object:
-    """`value` as JSON Schema reads it: a number with no fraction is an integer, `1.0` the `1` it equals."""
+    """`value` as JSON Schema reads it: a number with no fraction is an integer, so `1.0` is `1`."""
     if isinstance(value, float) and value.is_integer():
         return int(value)
     if isinstance(value, list):
@@ -683,9 +686,9 @@ def _as_json_schema_reads(value: object) -> object:
 @_EXAMPLES
 @given(st.data())
 def test_the_json_schema_agrees_with_the_reference(data: st.DataObject) -> None:
-    # The schema of a type accepts exactly the values of it, as the checker
-    # does, but that JSON Schema takes `1.0` for the integer it equals, which
-    # the checker does not.
+    # The schema of a type accepts exactly the values of the type, as the
+    # checker does. The one difference is that JSON Schema reads `1.0` as
+    # the integer it equals, and the checker does not.
     spec = data.draw(specs(_DEPTH), label="spec")
     build = Build(data.draw(st.sampled_from(_MODES), label="mode"))
     annotation = build.annotation(spec)
@@ -703,9 +706,9 @@ def test_the_json_schema_agrees_with_the_reference(data: st.DataObject) -> None:
 @_EXAMPLES
 @given(st.data())
 def test_a_postponed_typeddict_reads_as_an_evaluated_one(data: st.DataObject) -> None:
-    # The same classes, their annotations evaluated or left as strings, as
-    # `from __future__ import annotations` leaves them: read alike, down to
-    # each problem's message.
+    # The same classes, with annotations evaluated or left as the strings
+    # that `from __future__ import annotations` leaves, give the same
+    # result, including each problem's message.
     spec = data.draw(specs(_DEPTH), label="spec")
     evaluated = Build("evaluated")
     written = Build(data.draw(st.sampled_from(("postponed", "mixed")), label="mode"))
@@ -719,9 +722,10 @@ def test_a_postponed_typeddict_reads_as_an_evaluated_one(data: st.DataObject) ->
 @_EXAMPLES
 @given(st.data())
 def test_typeddict_keys_follow_the_typing_spec(data: st.DataObject) -> None:
-    # Which keys are required, per class `total` under each key's own
-    # qualifiers, and what other keys may hold, inherited when a class
-    # says nothing: as the spec reads the declaration, evaluated or not.
+    # Which keys are required, from each class's `total` and each key's own
+    # qualifiers, and what other keys may hold, inherited when a class does
+    # not state it. The result follows the typing spec, whether the
+    # annotations are evaluated or not.
     spec = data.draw(_objects(specs(_DEPTH - 1)), label="spec")
     members = members_of(spec)
     said = says_of(spec)
@@ -743,8 +747,8 @@ def test_typeddict_keys_follow_the_typing_spec(data: st.DataObject) -> None:
 def test_a_key_a_closed_typeddict_does_not_declare_is_reported_and_left_out(
     data: st.DataObject,
 ) -> None:
-    # The value still reads, as the value it was before the key was added;
-    # the key is the one problem, where it sits.
+    # The value is still read, and equals the value before the key was
+    # added. The key is the only problem, located at the key.
     spec = data.draw(
         _objects(specs(_DEPTH - 1)).filter(lambda drawn: says_of(drawn) == "closed"), label="spec"
     )
@@ -763,7 +767,7 @@ def test_a_key_a_closed_typeddict_does_not_declare_is_reported_and_left_out(
 
 
 def _nests_a_name(spec: Spec, *, nested: bool = False) -> bool:
-    """Whether `spec` names another class or alias inside an annotation, where a quoted name loses its module."""
+    """Whether `spec` names another class or alias inside an annotation, where a quoted name loses track of its module."""
     if isinstance(spec, (Named, Object)):
         return nested
     if isinstance(spec, ArrayOf):
@@ -778,7 +782,7 @@ def _nests_a_name(spec: Spec, *, nested: bool = False) -> bool:
 
 
 def _hides_a_qualifier(spec: Object) -> bool:
-    """Whether a postponed class writes a qualifier its `total` contradicts, which the runtime then misses."""
+    """Whether a postponed class writes a qualifier that contradicts its `total`, which the runtime then does not see."""
     return any(
         layer.postponed
         and any(
@@ -819,8 +823,8 @@ _REACHES = {
 
 @pytest.mark.parametrize("reach", sorted(_REACHES))
 def test_the_strategy_reaches(reach: str) -> None:
-    # Each case the properties are meant to cover, drawn at least once in a
-    # modest search: an edit to the strategy cannot quietly lose one.
+    # Each case the properties are meant to cover must be drawn at least once
+    # in a small search, so an edit to the strategy cannot silently lose one.
     find(
         _objects(specs(_DEPTH - 1)),
         _REACHES[reach],

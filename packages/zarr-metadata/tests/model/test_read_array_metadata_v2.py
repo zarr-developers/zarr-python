@@ -1,4 +1,4 @@
-"""A v2 array document read once: each field as the scope read it, every problem, and the model."""
+"""Tests for reading a v2 array document once. A reading holds each field as the scope read it, every problem, and the model."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ def test_a_reading_holds_each_field_as_the_scope_read_it(
     filters: object,
     locs: list[Loc],
 ) -> None:
-    """`read_array_metadata_v2` reads the document once in the scope given (`CORE_V2` by default): `dtype`, `compressor` and `filters` are each `AcceptedField`, `UnclaimedField` or None as written, `fields()` walks them in document order with a struct's record types after it, and a document with no problem has none."""
+    """`read_array_metadata_v2` reads the document once in the given scope (`CORE_V2` by default). Each of `dtype`, `compressor` and `filters` is an `AcceptedField`, an `UnclaimedField`, or None, depending on what the document contains. `fields()` returns them in document order, with a struct's record types after the struct. A valid document produces no problems."""
     reading = read_array_metadata_v2({**BASE, **changes}, context=context)
     assert reading.problems == ()
     assert type(reading.dtype) is dtype
@@ -105,7 +105,7 @@ def test_a_reading_holds_each_field_as_the_scope_read_it(
 def test_error_a_reading_reports_what_the_validator_reports(
     value: object, problems: list[tuple[Loc, str]]
 ) -> None:
-    """A reading of a document with a problem holds every problem `validate_array_metadata_v2` finds, a `RefusedField` field where one was refused, and no model."""
+    """Reading an invalid document reports every problem that `validate_array_metadata_v2` finds. A refused field is held as a `RefusedField`, and the reading has no model."""
     reading = read_array_metadata_v2(value)
     assert [(p.loc, p.kind) for p in reading.problems] == problems
     assert reading.metadata is None
@@ -115,7 +115,7 @@ def test_error_a_reading_reports_what_the_validator_reports(
 
 
 def test_the_v2_readers_read_in_the_scope_given() -> None:
-    """`validate_array_metadata_v2`, `is_array_metadata_v2` and `parse_array_metadata_v2` take a scope: in one that does not claim `|u1`, the default document still validates (an unclaimed dtype is left unjudged), and in one where a private `zlib` takes no level, a written level is a problem."""
+    """`validate_array_metadata_v2`, `is_array_metadata_v2` and `parse_array_metadata_v2` take a scope. In a scope that does not claim `|u1`, the default document still validates, because an unclaimed dtype is not checked. In a scope where a private `zlib` definition takes no level, a `level` in the document is a problem."""
     assert validate_array_metadata_v2(BASE, context=PRIVATE) == ()
     assert is_array_metadata_v2(BASE, context=PRIVATE)
     assert parse_array_metadata_v2(BASE, context=PRIVATE)["dtype"] == "|u1"
@@ -146,7 +146,7 @@ class _EqualTo:
 def test_error_a_v2_member_that_only_compares_equal_to_an_allowed_value_is_refused(
     key: str, value: object
 ) -> None:
-    """`order` and `dimension_separator` are judged as refined: a value that is no string, and only compares equal to one the set allows, is outside the set, of the wrong type, and never a model's."""
+    """`order` and `dimension_separator` are checked after refinement. A value that is not a string, but compares equal to an allowed string, is outside the allowed set. It is reported as the wrong type, and no model accepts it."""
     document = {**BASE, key: value}
     problems = validate_array_metadata_v2(document)
     assert [(found.loc, found.kind) for found in problems] == [((key,), "invalid_type")]

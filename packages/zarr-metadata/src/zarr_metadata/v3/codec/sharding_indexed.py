@@ -45,9 +45,10 @@ class ShardingIndexedCodecConfiguration(TypedDict, closed=True):
     `codecs` is the codec pipeline applied to each inner chunk; exactly
     one array-to-bytes codec is required.
 
-    `index_codecs` is the codec pipeline applied to the shard index, of
-    codecs of static size only: a reader finds the index by a size it knows
-    before reading it, so a compressor there is refused.
+    `index_codecs` is the codec pipeline applied to the shard index. It may
+    contain only codecs of static size, because a reader locates the index
+    by a size that it knows before reading it. A compressor in this
+    pipeline is therefore rejected.
       https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L147-L155
 
     `index_location` defaults to `"end"` per the spec.
@@ -83,15 +84,16 @@ form is not permitted by the spec for this codec.
 def _chunk_rules(
     configuration: ShardingIndexedCodecConfiguration, nested: Nested, chunk: Chunk
 ) -> Iterator[ValidationProblem]:
-    """An inner chunk length for each axis of the shard it is handed, dividing each length the shards take along it.
+    """Check that `chunk_shape` has one inner chunk length per axis of the input shard, and that each length divides every shard length along its axis.
 
     "The length of the chunk_shape array must match the number of
     dimensions of the shard shape to which this sharding codec is applied,
     and the inner chunk shape along each dimension must evenly divide the
     size of the shard shape"
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L131-L135).
-    The shard is the chunk the codec is handed, after any codec before it:
-    a transposed shard is divided along its transposed axes.
+    The shard is the chunk that the codec receives, after any earlier
+    codecs have been applied. For example, a transposed shard is divided
+    along its transposed axes.
     """
     chunk_shape = configuration["chunk_shape"]
     lengths = chunk.lengths
@@ -122,28 +124,29 @@ _UINT64: Final = AcceptedField(
     definition=UINT64_DATA_TYPE,
     configuration={},
 )
-"""The data type of a shard index, which the spec fixes whatever the scope holds."""
+"""The data type of a shard index. The spec fixes it, regardless of what the scope holds."""
 
 
 def _pipelines(
     configuration: ShardingIndexedCodecConfiguration, nested: Nested, chunk: Chunk
 ) -> Mapping[str, Chunk]:
-    """The inner codecs are handed the inner chunks; the index codecs, the shard index.
+    """Return the input chunk of each nested pipeline: the inner codecs receive the inner chunks, and the index codecs receive the shard index.
 
-    An inner chunk is "a chunk within the shard", of the shape
-    `chunk_shape` gives, and so of the shard's data type
+    An inner chunk is "a chunk within the shard". Its shape is
+    `chunk_shape`, and its data type is the data type of the shard
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L168-L170).
     The index is "an array with 64-bit unsigned integers with a shape that
     matches the chunks per shard tuple with an appended dimension of size
     2"
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L186-L187),
-    chunks per shard being "the element-wise division of the shard shape by
-    the inner chunk shape"
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L173-L174):
-    unknown along an axis whose shard lengths are unknown, or that the
-    inner chunk length does not divide. Handed a shard of another number
-    of axes than `chunk_shape` has, it hands both pipelines chunks of
-    lengths nothing is known of: which of the two is wrong is not known.
+    where chunks per shard is "the element-wise division of the shard shape
+    by the inner chunk shape"
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L173-L174).
+    The number of chunks per shard is unknown along an axis if the shard
+    lengths there are unknown, or if the inner chunk length does not
+    divide them. If the input shard has a different number of axes than
+    `chunk_shape`, both pipelines receive chunks with unknown lengths,
+    because it is not known which of the two is wrong.
     """
     chunk_shape = configuration["chunk_shape"]
     lengths = chunk.lengths
@@ -155,7 +158,7 @@ def _pipelines(
 
 
 def _per_shard(chunk_shape: tuple[int, ...], lengths: Lengths | None) -> Lengths:
-    """Along each axis, how many inner chunks a shard holds; None where that is unknown."""
+    """Return the number of inner chunks a shard holds along each axis. An entry is None where that number is unknown."""
     if lengths is None:
         return (None,) * len(chunk_shape)
     return tuple(
@@ -169,11 +172,11 @@ def _per_shard(chunk_shape: tuple[int, ...], lengths: Lengths | None) -> Lengths
 def _canonical(
     configuration: ShardingIndexedCodecConfiguration,
 ) -> ShardingIndexedCodecConfiguration:
-    """Without an `index_location` of `end`, which is what an absent one means.
+    """Remove an `index_location` of `end`, because an absent `index_location` means the same thing.
 
     "If the parameter is not present, the value defaults to `end`"
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/codecs/sharding-indexed/index.rst#L157-L161),
-    so the two spellings are one codec.
+    so the two spellings describe the same codec.
     """
     if configuration.get("index_location") != "end":
         return configuration
@@ -194,9 +197,10 @@ SHARDING_INDEXED_CODEC: Final = CodecDefinition(
 )
 """The `sharding_indexed` codec.
 
-Its two pipelines are nested fields, each codec in them read in the
-scope the shard is read in, and each read as a pipeline: the inner codecs
-handed the inner chunks, the index codecs the shard index.
+Its two pipelines are nested fields. Each codec in them is read in the
+same scope as the shard, and each pipeline is read as a pipeline: the
+inner codecs receive the inner chunks, and the index codecs receive the
+shard index.
 """
 
 

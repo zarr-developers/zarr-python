@@ -196,8 +196,8 @@ def test_a_member_a_closed_object_does_not_declare_is_an_unknown_key(
     problems: Callable[[], list[tuple[tuple[str | int, ...], str]]],
     expected: list[tuple[tuple[str | int, ...], str]],
 ) -> None:
-    # Wherever it sits, so a reader that tolerates what another writer
-    # added -- NCZarr's `_nczarr_*` keys -- filters by kind.
+    # This holds at any location, so a reader that tolerates keys another
+    # writer added (such as NCZarr's `_nczarr_*` keys) can filter by kind.
     assert problems() == expected
 
 
@@ -208,7 +208,7 @@ def test_a_member_a_closed_object_does_not_declare_is_an_unknown_key(
 )
 def test_v2_group_document_types_are_closed(document_type: type) -> None:
     """`.zgroup` "Other keys MUST NOT be present": the validator refuses them, and
-    the types say so."""
+    the types are closed to match."""
     assert getattr(document_type, "__closed__", None) is True
 
 
@@ -274,7 +274,7 @@ def test_group_v3_update() -> None:
 
 
 def test_a_v2_group_nested_as_deep_as_a_reader_walks_is_read_and_written() -> None:
-    """The v2 group copied with `copy.deepcopy`, two frames a level, and overflowed on documents its validator accepts."""
+    """Previously, the v2 group was copied with `copy.deepcopy`, which uses two stack frames per level, and it overflowed on documents that its validator accepts."""
     attributes: dict[str, object] = {}
     for _ in range(JSON_DEPTH - 2):
         attributes = {"x": attributes}
@@ -292,7 +292,7 @@ def test_a_v2_group_nested_as_deep_as_a_reader_walks_is_read_and_written() -> No
 
 
 def _chain_of_groups(documents: int) -> dict[str, object]:
-    """A group holding, in its consolidated metadata, a group holding a group..., `documents` of them below the root, each listing only the next: a document sits three levels below the one holding it."""
+    """Return a group whose consolidated metadata holds a group, which holds a group, and so on, with `documents` groups below the root. Each group lists only the next one. Each document is three levels below the document that holds it."""
     document: dict[str, object] = {"zarr_format": 3, "node_type": "group"}
     for _ in range(documents):
         document = {
@@ -308,7 +308,7 @@ def _chain_of_groups(documents: int) -> dict[str, object]:
 
 
 def test_a_chain_of_consolidated_groups_is_bounded_by_the_levels_a_reader_walks() -> None:
-    """Each document is read from where it sits in the one handed in, so a chain is bounded as any nesting is: the reader took three frames a document, unbounded, and a 20 KB chain overflowed."""
+    """Each document is read from its location in the input document, so a chain is bounded like any other nesting. Previously the reader used three stack frames per document with no bound, and a 20 KB chain overflowed."""
     depth = f"nested deeper than the {JSON_DEPTH} levels a reader walks"
     deepest = (JSON_DEPTH - 1) // 3
     problems = validate_group_metadata_v3(_chain_of_groups(deepest))
@@ -328,7 +328,7 @@ def test_a_chain_of_consolidated_groups_is_bounded_by_the_levels_a_reader_walks(
 
 
 def test_a_consolidated_document_is_read_from_where_it_sits() -> None:
-    """Its levels are counted from the root of the document handed in, so what `read_node_metadata_v3` admits alone can sit too deep inside; its own reading locates the problem in it."""
+    """A consolidated document's levels are counted from the root of the input document. So a document that `read_node_metadata_v3` accepts on its own can be too deep when nested. The nested document's own reading locates the problem inside it."""
     depth = f"nested deeper than the {JSON_DEPTH} levels a reader walks"
 
     def nested(levels: int) -> dict[str, object]:
@@ -337,8 +337,8 @@ def test_a_consolidated_document_is_read_from_where_it_sits() -> None:
             value = {"x": value}
         return value
 
-    # A document sits three levels down, its attribute, or a member of an
-    # extra field, two more.
+    # A document is three levels down. Its attribute, or a member of an
+    # extra field, is two more levels down.
     group = {
         "zarr_format": 3,
         "node_type": "group",
@@ -381,7 +381,7 @@ def test_a_consolidated_document_is_read_from_where_it_sits() -> None:
 
 
 def test_a_document_a_level_before_the_cap_holds_its_scalars_and_nothing_else() -> None:
-    """Each container member sits past the cap, and is judged where it sits before it is walked, as `refine_json` of the whole would judge it; the scalars are read."""
+    """Each container member is past the cap. It is checked at its location before it is walked, as `refine_json` of the whole document would check it. The scalars are read."""
     depth = f"nested deeper than the {JSON_DEPTH} levels a reader walks"
 
     def a_level_before_the_cap(document: dict[str, object]) -> dict[str, object]:
@@ -431,9 +431,9 @@ def test_a_listing_key_too_long_to_write_is_shown_by_its_size(
 
 
 def test_a_group_reads_the_documents_it_holds_from_where_they_sit() -> None:
-    """A child valid alone, nested to the last level a reader walks, sits three levels deeper as a document a group holds: the group's read refuses it at the cap, as the validator does, and so does the consolidated member read on its own, from where it sits under the group's key."""
-    # The innermost object sits at the last level a reader walks, alone;
-    # three deeper as a document a group holds.
+    """A child that is valid on its own, nested to the last level a reader walks, is three levels deeper when a group holds it as a document. The group's read refuses it at the cap, as the validator does. The consolidated member, read on its own, also refuses it, counting from its location under the group's key."""
+    # On its own, the innermost object is at the last level a reader walks.
+    # As a document held by a group, it is three levels deeper.
     nested: dict[str, object] = {}
     for _ in range(JSON_DEPTH - 3):
         nested = {"x": nested}
@@ -455,7 +455,7 @@ def test_a_group_reads_the_documents_it_holds_from_where_they_sit() -> None:
 
 
 def test_a_v2_consolidated_document_is_read_to_the_levels_a_reader_walks() -> None:
-    """An entry past the cap is the depth problem, not `RecursionError`: the document was normalized whole, a frame a level without bound, before any entry was refined."""
+    """An entry past the cap is reported as the depth problem, not as `RecursionError`. Previously, the whole document was normalized first, using one stack frame per level with no bound, before any entry was refined."""
 
     def nested(levels: int) -> dict[str, object]:
         value: dict[str, object] = {}
@@ -463,7 +463,7 @@ def test_a_v2_consolidated_document_is_read_to_the_levels_a_reader_walks() -> No
             value = {"x": value}
         return value
 
-    # An entry sits two levels down; its innermost object at the last
+    # An entry is two levels down, and its innermost object is at the last
     # level a reader walks.
     document = {"zarr_consolidated_format": 1, "metadata": {"a/.zattrs": nested(JSON_DEPTH - 3)}}
     model = ZarrV2ConsolidatedMetadata.from_json(document)
@@ -551,7 +551,7 @@ def test_group_partial_keys_match_settable_model_fields() -> None:
 
 
 def test_update_takes_every_member_of_the_document_it_may_change() -> None:
-    """Each v3 model's `update` takes each member of its document but `zarr_format` and `node_type`, which it cannot change; a group's declares `consolidated_metadata` too, a member the document leaves to its extra items, since `update` takes node models there."""
+    """Each v3 model's `update` takes every member of its document except `zarr_format` and `node_type`, which it cannot change. A group's `update` also declares `consolidated_metadata`, which the document type leaves to its extra items, because `update` accepts node models there."""
     fixed = {"zarr_format", "node_type"}
     for update, partial, declared in (
         (ZarrV3ArrayMetadataUpdate, ZarrV3ArrayMetadataJSONPartial, set[str]()),
@@ -584,7 +584,7 @@ def test_consolidated_v3_roundtrip() -> None:
 
 
 def test_error_consolidated_v3_must_understand_is_not_a_member_to_set() -> None:
-    """`must_understand` is `False` by declaration, as `kind` is `"inline"`: not a member the constructor takes."""
+    """`must_understand` is always `False`, as `kind` is always `"inline"`, so the constructor does not take it as an argument."""
     with pytest.raises(TypeError, match="must_understand"):
         cast("Any", ZarrV3ConsolidatedMetadata)(must_understand=True, metadata={})
 
@@ -617,7 +617,7 @@ LITTLE: ZarrV3NamedConfigJSON = {"name": "bytes", "configuration": {"endian": "l
 GZIP_99 = {"name": "gzip", "configuration": {"level": 99}}
 
 A: tuple[str, ...] = ("consolidated_metadata", "metadata", "a")
-"""Where the document at path `a` in a group's consolidated metadata sits in the group's."""
+"""The location, in the group document, of the document at path `a` in the group's consolidated metadata."""
 
 
 def _array(**members: object) -> dict[str, object]:
@@ -646,7 +646,7 @@ ACME_X = CodecDefinition(
 
 
 def test_group_update_keeps_the_documents_it_holds() -> None:
-    """Read in no scope again: one read in a scope the call's does not claim keeps each field as it was read."""
+    """`update` does not read the consolidated documents again: a child read in an extended scope keeps each field as it was read, and the group keeps its scope."""
     scope = CORE_AND_EXTENSIONS.extended_with(ACME_X)
     child = ZarrV3ArrayMetadata.create_default(
         context=scope, shape=(4,), codecs=(LITTLE, {"name": "acme.x"})
@@ -662,7 +662,7 @@ def test_group_update_keeps_the_documents_it_holds() -> None:
 
 
 def test_group_update_reads_the_documents_it_is_given_in_its_scope() -> None:
-    """And `UNSET` leaves them out. `zstd` is an extension, which `CORE` leaves unclaimed."""
+    """`update` reads the documents it is given in the group's scope, and `UNSET` removes them. `zstd` is an extension, so `CORE` leaves it unclaimed."""
     zstd = {"name": "zstd", "configuration": {"level": 3, "checksum": False}}
     member = cast("Any", _inline(a=_array(codecs=[LITTLE, zstd])))
     updated = ZarrV3GroupMetadata.create_default(context=CORE).update(consolidated_metadata=member)
@@ -675,7 +675,7 @@ def test_group_update_reads_the_documents_it_is_given_in_its_scope() -> None:
 
 
 def _fields_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:
-    """Where a default array's fields sit, under `at`."""
+    """Return the locations of a default array's fields, under `at`."""
     points = ("data_type", "chunk_grid", "chunk_key_encoding")
     return [*((*at, point) for point in points), (*at, "codecs", 0)]
 
@@ -689,14 +689,15 @@ def _fields_of_an_array(*at: str | int) -> list[tuple[str | int, ...]]:
             ["a", "g"],
             _fields_of_an_array(*A),
         ),
-        # Every node below the group, each below a group, at its path.
+        # Every node below the group, including one below another group, at its path.
         (
             _group(consolidated_metadata=_inline(g=_group(), **{"g/b": _array()})),
             ["g", "g/b"],
             _fields_of_an_array("consolidated_metadata", "metadata", "g/b"),
         ),
-        # A group's consolidated metadata in a group's, listing what the group
-        # lists too: each field located from the root of the outer document.
+        # A group's consolidated metadata inside another group's, listing a node
+        # the outer group also lists. Each field is located from the root of
+        # the outer document.
         (
             _group(
                 consolidated_metadata=_inline(
@@ -729,7 +730,7 @@ def test_a_group_reads_each_document_its_consolidated_metadata_holds(
     model = reading.metadata
     assert model is not None
     assert model == ZarrV3GroupMetadata.from_json(document)
-    # It holds the model each document's own reading built.
+    # The model holds the model that each document's own reading built.
     consolidated = model.consolidated_metadata
     held = {} if consolidated is UNSET else consolidated.metadata
     assert all(held[path] is reading.consolidated[path].metadata for path in paths)
@@ -751,8 +752,8 @@ def test_a_group_reads_each_document_its_consolidated_metadata_holds(
 def test_error_a_document_in_consolidated_metadata_is_at_a_node_s_path_below_the_group(
     path: str, fault: str
 ) -> None:
-    # Its node names, joined by "/", as the reference implementation keeps
-    # it: the group's own path, "/", and it make the node's.
+    # A path is node names joined by "/", as the reference implementation
+    # stores it. The group's own path, "/", and this path make the node's path.
     document = _group(consolidated_metadata=_inline(**{path: _group()}))
     message = f"expected the path of a node below the group, got {json.dumps(path)}, which {fault}"
     assert validate_group_metadata_v3(document) == (
@@ -764,7 +765,7 @@ def test_error_a_document_in_consolidated_metadata_is_at_a_node_s_path_below_the
     ("documents", "path"),
     [
         ({"a": _array(), "a/b": _group()}, "a/b"),
-        # However many groups are missing between them: none would help.
+        # No number of missing groups between them would make this valid.
         ({"a": _array(), "a/b/c": _array()}, "a/b/c"),
     ],
     ids=["child", "descendant"],
@@ -772,7 +773,7 @@ def test_error_a_document_in_consolidated_metadata_is_at_a_node_s_path_below_the
 def test_error_no_document_in_consolidated_metadata_is_below_an_array(
     documents: dict[str, object], path: str
 ) -> None:
-    # "Group nodes may have children but array nodes may not." A message
+    # "Group nodes may have children but array nodes may not." The message
     # names each node by its path in the hierarchy below the group.
     document = _group(consolidated_metadata=_inline(**documents))
     message = f'expected a node below a group, got "/{path}", below the array "/a"'
@@ -782,8 +783,8 @@ def test_error_no_document_in_consolidated_metadata_is_below_an_array(
 
 
 def test_a_document_of_no_node_type_is_taken_as_a_group_s() -> None:
-    # Its own problem is reported where it sits, and the nodes below it are
-    # not refused for it.
+    # The document's own problem is reported at its location, and the nodes
+    # below it are not refused because of it.
     document = _group(
         consolidated_metadata=_inline(a={"zarr_format": 3, "node_type": "x"}, **{"a/b": _array()})
     )
@@ -793,8 +794,8 @@ def test_a_document_of_no_node_type_is_taken_as_a_group_s() -> None:
 
 
 def test_error_consolidated_metadata_holds_the_group_holding_each_document() -> None:
-    # The nearest group missing above a node, once, counting those above it
-    # up to the group holding the documents.
+    # The nearest missing group above a node is reported once, with a count
+    # of the missing groups above it, up to the group that holds the documents.
     document = _group(consolidated_metadata=_inline(**{"a/b/c": _array(), "a/b/d": _array()}))
     assert [(p.loc, p.message, p.kind) for p in validate_group_metadata_v3(document)] == [
         (
@@ -814,16 +815,16 @@ def test_error_a_consolidated_metadata_key_that_is_not_a_string() -> None:
 
 
 NESTED = ("consolidated_metadata", "metadata", "g", "consolidated_metadata", "metadata")
-"""Where the own listing of the group at `g` sits in the outer document."""
+"""The location, in the outer document, of the own listing of the group at `g`."""
 
 
 @pytest.mark.parametrize(
     ("listed", "flat", "expected"),
     [
-        # What a listed group lists itself is what the group lists, too.
+        # What a listed group lists itself is also listed by the outer group.
         ({"b": _array()}, {"g/b": _array()}, []),
-        # A node the listed group lists alone would be dropped by the
-        # reference reader, which keeps the flat listing.
+        # The reference reader keeps the flat listing, so it would drop a
+        # node that only the listed group lists.
         (
             {"b": _array()},
             {},
@@ -835,7 +836,7 @@ NESTED = ("consolidated_metadata", "metadata", "g", "consolidated_metadata", "me
                 )
             ],
         ),
-        # Nor may the two listings disagree on what a node is.
+        # The two listings also must not disagree on a node's type.
         (
             {"b": _array()},
             {"g/b": _group()},
@@ -847,8 +848,8 @@ NESTED = ("consolidated_metadata", "metadata", "g", "consolidated_metadata", "me
                 )
             ],
         ),
-        # A deeper listing is the listed group's own to judge, when its
-        # document is read: its problem is that document's, at its place.
+        # A deeper listing is checked by the listed group itself, when its
+        # document is read. The problem belongs to that document, at its location.
         (
             {"h": _group(consolidated_metadata=_inline(x=_array()))},
             {"g/h": _group()},
@@ -873,7 +874,7 @@ def test_a_listed_group_s_own_listing_lists_what_the_group_lists(
     )
     problems = validate_group_metadata_v3(document)
     assert [(p.loc, p.message, p.kind) for p in problems] == expected
-    # The consolidated member read on its own refuses what the group's read
+    # The consolidated member, read on its own, refuses what the group's read
     # reports: a listed group whose own listing is wrong is refused.
     listing = {"g": _group(consolidated_metadata=_inline(**listed)), **flat}
     deeper = [(loc, message, kind) for loc, message, kind in expected if len(loc) > len(NESTED) + 1]
@@ -920,22 +921,23 @@ def test_error_a_group_document_that_is_not_an_object_reads_as_nothing() -> None
 @pytest.mark.parametrize(
     ("document", "problems", "models", "refused"),
     [
-        # The group's own member: each document it holds still has its model.
+        # A problem in the group's own member: each held document still has its model.
         (
             _group(attributes=5, consolidated_metadata=_inline(a=_array())),
             [(("attributes",), "invalid_type")],
             {"a": True},
             [],
         ),
-        # A document it holds: that one has none, and its sibling has one;
-        # the field refused is found where it sits, like every field.
+        # A problem in a held document: that document has no model, and its
+        # sibling has one. The refused field is found at its location, like
+        # every field.
         (
             _group(consolidated_metadata=_inline(a=_array(codecs=[LITTLE, GZIP_99]), b=_array())),
             [((*A, "codecs", 1, "configuration", "level"), "invalid_value")],
             {"a": False, "b": True},
             [(*A, "codecs", 1)],
         ),
-        # One of no node type is read as none, and nothing else of it is.
+        # A document with no node type is read as no node, and nothing else in it is read.
         (
             _group(consolidated_metadata=_inline(a={"zarr_format": 3})),
             [((*A, "node_type"), "missing_key")],
@@ -978,7 +980,7 @@ def test_a_node_is_read_as_the_node_its_node_type_says(
     reading: type[ZarrV3ArrayMetadataReading | ZarrV3GroupMetadataReading],
     problems: list[tuple[tuple[str | int, ...], str]],
 ) -> None:
-    """As that node's own read reads it, and its model only when it has no problem."""
+    """The node is read the same way its own read would read it, and it has a model only when it has no problem."""
     read = read_node_metadata_v3(document)
     assert type(read) is reading
     assert [(p.loc, p.kind) for p in read.problems] == problems
@@ -992,7 +994,7 @@ def test_a_node_is_read_as_the_node_its_node_type_says(
     ids=["another-kind", "a-number", "null"],
 )
 def test_error_a_node_type_the_spec_does_not_define(node_type: object, kind: str) -> None:
-    """Nothing else of the document is read but its `zarr_format`, which is 3 here, so nothing else is judged."""
+    """Only the document's `zarr_format` (3 here) is read, so nothing else is checked."""
     read = read_node_metadata_v3({**_array(), "node_type": node_type, "shape": "not a shape"})
     assert isinstance(read, ZarrV3UnknownNodeMetadataReading)
     assert [(p.loc, p.kind) for p in read.problems] == [(("node_type",), kind)]
@@ -1011,7 +1013,7 @@ def test_error_a_document_without_a_node_type() -> None:
     ("document", "problems"),
     [
         # zarr-python 2's draft of v3 (zarr-python#2982): a root `zarr.json`
-        # naming its format by URL, and no node type.
+        # that names its format by URL and has no node type.
         (
             {
                 "zarr_format": "https://purl.org/zarr/spec/protocol/core/3.0",
@@ -1059,7 +1061,7 @@ def test_error_a_node_that_is_not_an_object() -> None:
 def test_a_node_is_built_as_the_model_its_node_type_says(
     model: ZarrV3ArrayMetadata | ZarrV3GroupMetadata,
 ) -> None:
-    """From its JSON and from a store's bytes alike, as the model's own class builds it."""
+    """A node is built from its JSON and from a store's bytes the same way the model's own class builds it."""
     built = node_metadata_from_key_value_v3(model.to_key_value())
     assert type(built) is type(model)
     assert built == model
@@ -1086,7 +1088,7 @@ def test_error_a_node_built_from_a_document_of_no_node_type() -> None:
 
 
 def test_error_a_node_built_from_a_document_with_a_problem() -> None:
-    """The problems of the node its `node_type` says it is."""
+    """The error holds the problems of the node type that `node_type` names."""
     with pytest.raises(MetadataValidationError) as raised:
         node_metadata_from_json_v3(_array(fill_value=300))
     assert [(p.loc, p.kind) for p in raised.value.problems] == [(("fill_value",), "invalid_value")]
@@ -1297,8 +1299,9 @@ def test_v2_consolidated_rejects_unknown_document_member() -> None:
 
 @pytest.mark.parametrize("key", [1, None], ids=["int", "none"])
 def test_v2_consolidated_rejects_non_string_document_key(key: object) -> None:
-    """A non-string key is a problem at the document: not a member at a
-    location that reads as an index, nor a `TypeError`."""
+    """A non-string key is reported as a problem at the document root. It is not
+    reported as a member at a location that looks like an index, and it does
+    not raise `TypeError`."""
     doc = {"zarr_consolidated_format": 1, "metadata": {}, key: "x"}
 
     with pytest.raises(MetadataValidationError) as exc_info:
@@ -1324,7 +1327,7 @@ def test_group_must_understand_fields_partition() -> None:
 
 
 def test_error_a_null_consolidated_metadata_is_a_value_the_document_wrote() -> None:
-    """zarr-python 3.0 and 3.1 wrote `consolidated_metadata: null`; the spec says an object, and the package models nothing else as right: a reader of those stores strips the key first."""
+    """zarr-python 3.0 and 3.1 wrote `consolidated_metadata: null`. The spec requires an object, and the package treats nothing else as valid. A reader of those stores must remove the key first."""
     null_doc = {"zarr_format": 3, "node_type": "group", "consolidated_metadata": None}
     assert [(p.loc, p.kind) for p in validate_group_metadata_v3(null_doc)] == [
         (("consolidated_metadata",), "invalid_type")
@@ -1402,8 +1405,8 @@ def test_from_json_shares_no_mutable_state_with_its_input(
     | ZarrV2ConsolidatedMetadata,
 ) -> None:
     """Mutating the document a model was read from leaves the model unchanged."""
-    # Arrays as tuples: the reader has nothing to rebuild, so only a copy
-    # keeps the model apart from its input.
+    # With arrays already as tuples, the reader has nothing to rebuild, so
+    # only a copy keeps the model separate from its input.
     document = arrays_to_tuples(model.to_json())
     read = type(model).from_json(document)
     baseline = copy.deepcopy(read.to_json())
@@ -1419,7 +1422,7 @@ def test_a_group_writes_no_empty_attributes() -> None:
 
 
 def test_error_a_listed_group_s_own_listing_holds_the_documents_the_group_lists() -> None:
-    """One node, one document: a group listed in consolidated metadata may list a node the group lists too, but with the document the group holds at the joined key, as it is read; a document that reads otherwise is a problem at the nested entry, in the validator, the group model and the models given as entries alike."""
+    """Each node has one document. A group listed in consolidated metadata may list a node that the outer group also lists, but only with the same document (as read) that the outer group holds at the joined key. A document that reads differently is a problem at the nested entry. The validator, the group model, and models given as entries all report it the same way."""
     same = _array(shape=(4,), attributes={"a": 1})
     other = _array(shape=(9,), attributes={"a": 1})
     agreed = _group(
@@ -1448,7 +1451,7 @@ def test_error_a_listed_group_s_own_listing_holds_the_documents_the_group_lists(
 
 
 def test_the_group_guard_asks_tuples_of_the_documents_the_group_lists() -> None:
-    """`is_group_metadata_v3` says no to a group whose consolidated metadata holds an array document written with lists, as `is_array_metadata_v3` says no to that document: a guard narrows to the TypedDict, whose arrays are tuples, at every level."""
+    """`is_group_metadata_v3` returns False for a group whose consolidated metadata holds an array document written with lists, as `is_array_metadata_v3` returns False for that document. A guard narrows to the TypedDict, whose arrays are tuples at every level."""
     array = _array()
     listed = dict(array)
     listed["shape"] = list(array["shape"])  # pyright: ignore[reportArgumentType]
@@ -1466,7 +1469,7 @@ def test_the_group_guard_asks_tuples_of_the_documents_the_group_lists() -> None:
 
 
 def test_error_a_model_is_built_only_of_members_a_read_found_nothing_wrong_with() -> None:
-    """The members of a group read with a problem hold no document; a model built of them is a `TypeError`, not a model of nothing."""
+    """The members of a group read with a problem hold no document. Building a model from them raises `TypeError` instead of producing an empty model."""
     from zarr_metadata.model._group import _document_of
 
     with pytest.raises(TypeError, match="nothing wrong with"):
@@ -1474,7 +1477,7 @@ def test_error_a_model_is_built_only_of_members_a_read_found_nothing_wrong_with(
 
 
 def test_error_the_unset_sentinel_at_consolidated_metadata_is_not_an_absent_member() -> None:
-    """`UNSET` is what a reader gives for a key a document does not hold; written at `consolidated_metadata`, it is a value that is no object, as any other such value is, and never written back as null."""
+    """A reader returns `UNSET` for a key that a document does not hold. If `UNSET` is written as the value of `consolidated_metadata`, it is treated like any other value that is not an object, and it is never written back as null."""
     document = {
         "zarr_format": 3,
         "node_type": "group",
@@ -1489,7 +1492,7 @@ def test_error_the_unset_sentinel_at_consolidated_metadata_is_not_an_absent_memb
 
 
 def test_a_consolidated_model_given_as_the_member_keeps_the_order_its_document_writes() -> None:
-    """A `ZarrV3ConsolidatedMetadata` given as the member is read as its document, in its document's order, so the group writes it as the member wrote it."""
+    """A `ZarrV3ConsolidatedMetadata` given as the member is read as its document, in the document's key order, so the group writes it the same way the member wrote it."""
     array = ZarrV3ArrayMetadata.create_default(shape=(2,))
     member = ZarrV3ConsolidatedMetadata(
         {"metadata": {"a": array.to_json()}, "kind": "inline", "must_understand": False}

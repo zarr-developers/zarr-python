@@ -1,4 +1,4 @@
-"""Each benchmark case reads: the script does not rot as the package changes."""
+"""Check that each benchmark case runs, so the script keeps working as the package changes."""
 
 from __future__ import annotations
 

@@ -1,30 +1,32 @@
-"""One metadata field, read against its definition.
+"""Reading one metadata field against its definition.
 
-Three steps, each feeding the next and needing more than the one before:
+There are three steps. Each step feeds the next and needs more input than
+the step before:
 
 1. The type check needs the value and a TypedDict. `check` runs the
-   checker compiled from the TypedDict's annotations over the JSON:
-   its shape, member by member, every problem located, and a value of
-   the TypedDict back -- a key it does not declare is reported and left
-   out. A member holding another metadata field -- a shard's codecs, a
-   cast's data type -- is annotated with a field alias, `ZarrV3CodecField`,
-   and checked as an envelope: a name, or a named configuration. Which
-   definition the name denotes is a scope's question, so the check
-   needs none.
-2. The rules need the definition: plain functions over the checked
-   TypedDict, for everything finer than a type -- a bound, members read
-   together. `Definition.read_configuration` is the check and then the rules, for a
-   caller holding one configuration.
-3. The reading needs a scope. `resolve` relates the field's name to a
-   definition through a `Context`, judges the configuration, and reads
-   each nested field the check found, in the same scope.
+   checker compiled from the TypedDict's annotations over the JSON. It
+   checks the shape member by member, locates every problem, and returns
+   a value of the TypedDict. A key the TypedDict does not declare is
+   reported and left out. A member that holds another metadata field (a
+   shard's codecs, a cast's data type) is annotated with a field alias
+   such as `ZarrV3CodecField`, and is checked as an envelope: a name, or
+   a named configuration. Which definition the name refers to is a
+   question for a scope, so the check does not need one.
+2. The rules need the definition. They are plain functions over the
+   checked TypedDict, for constraints that a type cannot express (a
+   bound, or members that depend on each other).
+   `Definition.read_configuration` runs the check and then the rules, for
+   a caller that has one configuration.
+3. The reading needs a scope. `resolve` maps the field's name to a
+   definition through a `Context`, checks the configuration, and reads
+   each nested field found by the check, in the same scope.
 
 A definition is a value, not a class to subclass. It holds the name the
-metadata carries, the TypedDict that is the one declaration of the
-configuration's JSON, and its rules, and it checks itself when it is
-built. What kind of metadata it defines is its type -- `CodecDefinition`,
-`ChunkGridDefinition` -- which is how a scope files it. Nothing happens
-at class creation.
+metadata uses, the TypedDict that is the single declaration of the
+configuration's JSON, and its rules. It checks itself when it is built.
+The kind of metadata it defines is its type (`CodecDefinition`,
+`ChunkGridDefinition`), and a scope files it by that type. Nothing
+happens at class creation.
 """
 
 from __future__ import annotations
@@ -99,11 +101,12 @@ if TYPE_CHECKING:
     from zarr_metadata.v3._registry import Context
 
 C = TypeVar("C", default=Mapping[str, JSONValue])
-"""A configuration: the TypedDict a definition declares its JSON as.
+"""A configuration: the TypedDict that a definition uses to declare its JSON.
 
-Any configuration is a `Mapping[str, JSONValue]`, which is what a kind
-written without one stands for: `resolve(field, CodecDefinition, scope)`
-reads as `CodecDefinition[Mapping[str, JSONValue]]`, nothing unknown.
+Any configuration is a `Mapping[str, JSONValue]`. That is the default when
+a kind is written without a type argument:
+`resolve(field, CodecDefinition, scope)` is typed as
+`CodecDefinition[Mapping[str, JSONValue]]`, with no unknown types.
 """
 
 T = TypeVar("T")
@@ -115,199 +118,204 @@ Problems: TypeAlias = tuple[ValidationProblem, ...]
 
 
 def no_rules(*_: object) -> Iterator[ValidationProblem]:
-    """The rules of a definition with none, of any kind: everything well typed is allowed."""
+    """The rules of a definition (of any kind) that has no rules. Every well-typed configuration is allowed."""
     yield from ()
 
 
 def unchanged(configuration: T) -> T:
-    """The canonical form of a configuration with no simpler spelling: itself."""
+    """The canonical form of a configuration that has no simpler spelling: the configuration itself."""
     return configuration
 
 
 def fill_value_as_written(configuration: object, nested: object, value: T) -> T:
-    """The canonical spelling of a fill value of a data type that spells each of its values one way: the fill value as written."""
+    """The canonical spelling of a fill value for a data type that has only one spelling per value: the fill value as written."""
     return value
 
 
 def unknown_lengths(configuration: object, nested: object, shape: tuple[int, ...]) -> Lengths:
-    """The chunk lengths of a grid that says nothing of them: unknown, along each axis of the array."""
+    """The chunk lengths of a grid that does not declare them: unknown along each axis of the array."""
     return (None,) * len(shape)
 
 
 def unknown_chunk(*_: object) -> Chunk:
-    """What an array -> array codec that says nothing of it hands on: a chunk nothing is known of."""
+    """The output of an array -> array codec that does not declare its output: a chunk with nothing known about it."""
     return Chunk()
 
 
 def no_pipelines(*_: object) -> Mapping[str, Chunk]:
-    """The pipelines of a codec that holds none: none."""
+    """The pipelines of a codec that contains none: an empty mapping."""
     return {}
 
 
 StorageClass = Literal["single_byte", "multi_byte", "variable_length"]
-"""How a data type's values are stored: in single bytes, in several bytes at a time, or each in as many as it needs.
+"""How a data type's values are stored: in single bytes, in several bytes at a time, or each value in as many bytes as it needs.
 
-A number of several bytes is stored in a byte order, which the `bytes`
-codec's `endian` says. A value made of single bytes -- a `uint8`, or a
-struct of `int8` fields -- has no byte order, and a value whose size
-varies takes a codec of its own.
+A multi-byte number is stored in a byte order, which the `bytes` codec's
+`endian` sets. A value made of single bytes (a `uint8`, or a struct of
+`int8` fields) has no byte order. A value whose size varies needs its
+own codec.
 """
 
 STORAGE_CLASSES: Final[tuple[StorageClass, ...]] = get_args(StorageClass)
-"""The storage classes, as `storage_of` checks what a definition gives against them."""
+"""The storage classes. `storage_of` checks a definition's result against these."""
 
 
 def single_byte(*_: object) -> StorageClass:
-    """The storage of a data type made of single bytes, which no byte order applies to: `uint8`."""
+    """The storage of a data type made of single bytes, where byte order does not apply, such as `uint8`."""
     return "single_byte"
 
 
 def multi_byte(*_: object) -> StorageClass:
-    """The storage of a data type holding numbers of several bytes, which a byte order applies to: `int16`."""
+    """The storage of a data type with multi-byte numbers, where byte order applies, such as `int16`."""
     return "multi_byte"
 
 
 def variable_length(*_: object) -> StorageClass:
-    """The storage of a data type whose values vary in size: `string`."""
+    """The storage of a data type whose values vary in size, such as `string`."""
     return "variable_length"
 
 
 def unknown_storage(*_: object) -> None:
-    """The storage of a data type that says nothing of it: unknown."""
+    """The storage of a data type that does not declare it: unknown."""
 
 
 class EmptyConfiguration(TypedDict, closed=True):
-    """The configuration of a definition with nothing to configure: its field is written with its name alone."""
+    """The configuration of a definition with nothing to configure. Its field is written with its name only."""
 
 
 _FIELD_KINDS: Final[dict[TypeAliasType, type[Definition[Any]]]] = {}
-"""Each field alias, and the kind a member annotated with it is read as; filed by each kind as its class is built."""
+"""Maps each field alias to the kind that a member annotated with it is read as. Each kind adds its aliases when its class is built."""
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Definition(Generic[C]):
-    """One extension's metadata, as JSON: its name, the TypedDict its configuration is, its rules.
+    """One extension's metadata as JSON: its name, its configuration TypedDict, and its rules.
 
-    `configuration` is the TypedDict, and so the one declaration of the
-    JSON: the checker is compiled from it, the static type of a checked
-    configuration is it, and a document's author writes to it. It reads
-    as the typing spec defines it -- `total`, `Required`, `NotRequired`,
-    `closed` and `extra_items` mean what they mean to a type checker --
-    and it says what a key it does not declare is: with `closed=True`, a
-    problem, reported and left out; with `extra_items=`, a key of that
-    type; with `closed=False`, anything. `rules` yields what the spec
-    disallows in a configuration of that type, as it finds each; it is
-    handed only a configuration that has passed the check, holding what
-    the TypedDict admits and nothing else, each member within the bounds
-    its type carries, and the fields it holds as the scope read them -- a
-    struct's field types -- which is nothing when no scope read it.
-    `read_configuration` is the two, for a caller holding JSON.
+    `configuration` is the TypedDict, and so it is the single declaration
+    of the JSON. The checker is compiled from it, it is the static type of
+    a checked configuration, and a document's author writes to it. It is
+    interpreted as the typing spec defines a TypedDict: `total`,
+    `Required`, `NotRequired`, `closed` and `extra_items` mean what they
+    mean to a type checker. It also declares how keys it does not declare
+    are handled. With `closed=True`, such a key is a problem, reported and
+    left out. With `extra_items=`, such a key must have that type. With
+    `closed=False`, anything is allowed. `rules` yields each violation of
+    the spec it finds in a configuration of that type. It receives only a
+    configuration that has passed the check: it contains only what the
+    TypedDict admits, each member is within the bounds its type declares,
+    and the nested fields are passed as the scope read them (for example, a
+    struct's field types). The nested fields are empty when no scope read
+    the configuration. `read_configuration` runs both steps, for a caller
+    that has JSON.
 
-    Each function is handed the configuration as a read-only view, no
-    `dict`: `copy.deepcopy` and `json.dumps` refuse it, and a function that
-    folds a spelling builds a new mapping, `{**configuration}` without the
-    member, rather than editing what it was handed.
+    Each function receives the configuration as a read-only view, not a
+    `dict`. `copy.deepcopy` and `json.dumps` reject this view. A function
+    that simplifies a spelling must build a new mapping, such as
+    `{**configuration}` without the member, instead of editing its input.
 
     `canonical` is where two spellings of the configuration that mean the
-    same thing are made one.
+    same thing are reduced to one.
 
-    Built by hand, a definition refuses what it could not read with: a
-    `configuration` that is not a TypedDict, says nothing of the keys it
-    does not declare, or has a member no checker reads, which is named;
-    and a `name` or rules that are not what they say.
+    A definition built by hand rejects inputs it could not read with: a
+    `configuration` that is not a TypedDict, that does not declare how
+    undeclared keys are handled, or that has a member no checker reads
+    (the error names the member); and a `name` or rules of the wrong type.
     """
 
     _is_kind: ClassVar[bool] = False
-    """Whether this class is a kind, what a scope files definitions by: set by `class Kind(Definition, kind=True, format=3)`.
+    """Whether this class is a kind, which is what a scope files definitions by. Set by `class Kind(Definition, kind=True, format=3)`.
 
-    Read from a class's own namespace, never inherited: a subclass of a
-    kind is a definition of that kind, and declares no `kind`.
+    Read from the class's own namespace and never inherited: a subclass of
+    a kind is a definition of that kind, and does not declare `kind`.
     """
     _format: ClassVar[Literal[2, 3] | None] = None
-    """The Zarr format whose documents hold fields of this kind, declared with the kind and inherited by its definitions: what a scope reads documents of."""
+    """The Zarr format of the documents that contain fields of this kind. It is declared with the kind and inherited by its definitions, and it sets the format a scope reads."""
     label: ClassVar[str] = "definition"
-    """The kind as a message names it: "codec"."""
+    """The name of the kind in error messages, for example "codec"."""
     field_aliases: ClassVar[tuple[TypeAliasType, ...]] = ()
-    """The field aliases a configuration member holding a field of this kind is annotated with: `ZarrV3CodecField` and `ZarrV3StaticCodecField` for a codec."""
+    """The field aliases used to annotate a configuration member that holds a field of this kind. For a codec: `ZarrV3CodecField` and `ZarrV3StaticCodecField`."""
 
     name: str
-    """The name the metadata carries, which a scope files the definition under."""
+    """The name the metadata uses. A scope files the definition under this name."""
     configuration: type[C]
-    """The TypedDict the configuration is."""
+    """The configuration TypedDict."""
     rules: Callable[[C, Nested], Iterable[ValidationProblem]] = no_rules
-    """What the spec disallows in a well-typed configuration and the fields it holds, located in it."""
+    """The spec violations in a well-typed configuration and its nested fields, located in the configuration."""
     canonical: Callable[[C], C] = unchanged
     """A well-typed, allowed configuration in its simplest equivalent spelling.
 
-    Only the definition's own members: a nested field is put in its own
-    canonical form by `canonicalize`, which knows where each one sits.
+    This handles only the definition's own members. `canonicalize` puts
+    each nested field in its own canonical form, because it knows the
+    location of each one.
     """
 
     @classmethod
     def name_problem(cls, name: str, at: Loc) -> ValidationProblem | None:
-        """The problem `name`, at `at`, is when no document of the format writes it for a field of this kind; None when one may: for Zarr v3, when the spec gives an extension such a name."""
+        """The problem to report at `at` when no document of the format may use `name` for a field of this kind; None when it may. For Zarr v3, a name may be used when it is a valid extension name under the spec."""
         return name_problem(name, at)
 
     @classmethod
     def well_named(cls, name: str) -> bool:
-        """Whether a document of the format may write `name` for a field of this kind, as `name_problem` says."""
+        """Whether a document of the format may use `name` for a field of this kind, as decided by `name_problem`."""
         return cls.name_problem(name, ()) is None
 
     @classmethod
     def filed_under(cls, name: str) -> tuple[str | None, dict[str, JSONValue] | None]:
-        """How a name a document writes reads: the name its definition is filed under, and the configuration the name carries.
+        """Interpret a name used in a document: return the name its definition is filed under, and the configuration encoded in the name.
 
-        A name is filed as itself and carries nothing, `(name, None)`. A
-        kind whose names carry configuration says otherwise: a v3 data
-        type `r16` is filed under `r*` with `{"bits": 16}`. A name no
-        document writes, which only files a definition, is `(None, None)`.
+        By default a name is filed as itself and encodes nothing:
+        `(name, None)`. A kind whose names encode configuration overrides
+        this. For example, the v3 data type `r16` is filed under `r*` with
+        `{"bits": 16}`. A name that no document uses, and that exists only
+        to file a definition, returns `(None, None)`.
         """
         return name, None
 
     def carrying_name(self, configuration: Mapping[str, JSONValue]) -> str | None:
-        """The name that carries `configuration` for this definition, the inverse of `filed_under`: `r16` for `r*` with `{"bits": 16}`; None when its names carry nothing."""
+        """The name that encodes `configuration` for this definition. This is the inverse of `filed_under`: `r16` for `r*` with `{"bits": 16}`. None when this definition's names encode nothing."""
         return None
 
     @classmethod
     def named_configuration(
         cls, value: object
     ) -> tuple[str | None, Mapping[str, object] | None, Problems]:
-        """`value`, a field as a document of the format writes it, split into `(name, configuration, problems)`, as the module's `named_configuration` splits a v3 field."""
+        """Split `value` (a field as a document of the format writes it) into `(name, configuration, problems)`, as the module-level `named_configuration` does for a v3 field."""
         return named_configuration(value)
 
     @classmethod
     def envelope_problems(cls, value: object) -> Problems:
-        """Every reason `value` is not a field's envelope as the format writes one for this kind, what the configuration holds left unjudged."""
+        """Every reason `value` is not a valid envelope for a field of this kind in this format. The contents of the configuration are not checked."""
         return envelope_problems(value, allow_must_understand_false=False)
 
     @classmethod
     def envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:
-        """A field of `name` and `configuration` as a document of the format writes it, in the fewest words every reader takes: for v3, an object."""
+        """A field with `name` and `configuration`, as a document of the format writes it, in the shortest form every reader accepts. For v3 this is an object."""
         if len(configuration) != 0:
             return {"name": name, "configuration": configuration}
         return {"name": name}
 
     @classmethod
     def configuration_loc(cls, loc: Loc) -> Loc:
-        """Where the configuration of a field at `loc` sits: under `configuration` for v3; at the field for a format that writes the parameters beside the name."""
+        """The location of the configuration of a field at `loc`: under `configuration` for v3, or at the field itself for a format that writes the parameters next to the name."""
         return (*loc, "configuration")
 
     @classmethod
     def name_loc(cls, loc: Loc) -> Loc:
-        """Where the name of a field at `loc`, written as an object, sits: under `name` for v3."""
+        """The location of the name of a field at `loc` that is written as an object: under `name` for v3."""
         return (*loc, "name")
 
     def __init_subclass__(
         cls, *, kind: bool = False, format: Literal[2, 3] | None = None, **kwargs: object
     ) -> None:
-        """Files a subclass: `kind=True` declares a kind, of the Zarr `format` whose documents hold its fields, as `typing.Protocol` and SQLAlchemy's `__abstract__` mark a class and not its subclasses."""
-        # Named, not `super()`: a dataclass with slots is rebuilt, and the
-        # cell a bare `super()` reads names the class that was thrown away.
+        """Register a subclass. `kind=True` declares a kind, with the Zarr `format` of the documents that contain its fields. This marks the class but not its subclasses, as `typing.Protocol` and SQLAlchemy's `__abstract__` do."""
+        # Use the explicit form, not bare `super()`. A dataclass with slots
+        # is rebuilt, and the cell that bare `super()` reads refers to the
+        # discarded class.
         super(Definition, cls).__init_subclass__(**kwargs)
-        # A dataclass with slots is built twice, the second time without
-        # the class keywords but with the first class's namespace, and the
-        # class built last is the one a document is read with: the mark is
-        # kept in the namespace, and the aliases are filed last.
+        # A dataclass with slots is built twice. The second build has no
+        # class keywords but reuses the first class's namespace, and the
+        # last class built is the one used to read documents. So the mark is
+        # kept in the namespace, and the aliases are registered last.
         if kind:
             if format not in (2, 3):
                 msg = (
@@ -334,39 +342,42 @@ class Definition(Generic[C]):
             raise TypeError(msg) from error
 
     def __repr__(self) -> str:
-        # Short, as a reading that holds definitions shows them: in full, a
-        # definition's repr is each function it holds, at its address.
+        # Keep this short, because readings that contain definitions show
+        # them. A full repr would show every function the definition holds,
+        # with its address.
         return f"{type(self).__name__}(name={self.name!r})"
 
     def _refusal(self) -> str | None:
-        """What is wrong with the members a kind adds; None when nothing is, or it adds none."""
+        """A description of what is wrong with the members a kind adds; None if nothing is wrong, or if the kind adds no members."""
         return None
 
     @property
     def requires_configuration(self) -> bool:
-        """Whether a document must write a configuration: whether the TypedDict has a required key."""
+        """Whether a document must include a configuration, meaning the TypedDict has a required key."""
         return len(typeddict_keys(self.configuration).required) != 0
 
     def _check_configuration(self, value: object, loc: Loc = ()) -> tuple[C | None, Problems]:
-        """`value` type-checked as this definition's configuration, each nested field's envelope judged.
+        """Type-check `value` as this definition's configuration, and check the envelope of each nested field.
 
-        `zarr_metadata.typed_json.check` is the type check alone; this also
-        judges the envelope of each metadata field a member holds.
+        `zarr_metadata.typed_json.check` does only the type check. This
+        method also checks the envelope of each metadata field that a
+        member holds.
         """
         configuration, problems = _configuration_checked(value, self.configuration, loc)
         return configuration, with_input(problems, value, loc)
 
     def read_configuration(self, value: object, loc: Loc = ()) -> tuple[C | None, Problems]:
-        """`value` type-checked, then judged by the rules: the configuration if it holds, and every problem.
+        """Type-check `value`, then check it with the rules. Return the configuration if it is valid, and every problem.
 
-        The rules are asked only of a configuration that type-checked,
-        its bounds kept, and whose nested fields are well formed, holding
-        what its TypedDict admits and nothing else, so a caller holding
-        JSON never reaches a rule with a member of the wrong type, out of
-        its bounds, or one the type says cannot be there. No scope reads the fields it holds, so the rules see
-        none of them read, and a rule about one -- a struct's field of a
-        type whose values vary in size -- finds nothing to judge: `resolve`
-        reads the field in a scope, and asks every rule.
+        The rules run only on a configuration that passed the type check,
+        including its bounds, and whose nested fields are well formed. Such
+        a configuration contains only what its TypedDict admits. So a rule
+        never receives a member of the wrong type, a member out of bounds,
+        or a member the type does not allow. No scope reads the nested
+        fields here, so the rules see none of them as read. A rule about a
+        nested field (for example, a struct field whose type has values of
+        varying size) finds nothing to check. `resolve` reads the field in a
+        scope and runs every rule.
         """
         configuration, problems = self._check_configuration(value, loc)
         if configuration is None:
@@ -379,7 +390,7 @@ class Definition(Generic[C]):
 
 
 def _malformed(definition: Definition[Any]) -> str | None:
-    """What makes a hand-built definition unusable before its configuration is read; None if nothing does."""
+    """A description of what makes a hand-built definition unusable, checked before its configuration is examined; None if it is usable."""
     name = cast("object", definition.name)
     if not isinstance(name, str):
         return f"a definition's name is a string, got {name!r}"
@@ -400,7 +411,7 @@ def _malformed(definition: Definition[Any]) -> str | None:
 
 @functools.cache
 def _function_members(kind: type[Definition[Any]]) -> tuple[str, ...]:
-    """The members `kind` declares as functions: each one its annotation says is a `Callable`."""
+    """The members `kind` declares as functions: each member whose annotation is a `Callable`."""
     return tuple(
         member
         for member, annotation in get_type_hints(kind).items()
@@ -409,64 +420,67 @@ def _function_members(kind: type[Definition[Any]]) -> tuple[str, ...]:
 
 
 RAW_BYTES_NAME: Final = "r*"
-"""The name raw bits are filed under: `r*`, as the specification's table of data types writes them.
+"""The name raw bits are filed under: `r*`, as written in the specification's table of data types.
 
-A document writes `r` and the size in bits -- `r8`, `r16` -- so raw bits
-are the one data type whose name carries its configuration. `filed_under`
-reads such a name as `r*` with the size as its configuration; `r*` itself
-is the table's notation, never a name a document writes
+A document writes `r` followed by the size in bits (`r8`, `r16`), so raw
+bits are the only data type whose name encodes its configuration.
+`filed_under` reads such a name as `r*` with the size as its
+configuration. `r*` itself is the table's notation, and no document uses
+it as a name
 (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/data-types/index.rst#L46-L47).
 """
 
 RAW_BYTES_NAME_PATTERN: Final = re.compile(r"r([0-9]{1,100})")
-"""A name that writes raw bits: `r` and a size in bits of up to a hundred digits, matched whole, whether or not the size is allowed.
+"""A raw bits name: `r` followed by a size in bits of up to a hundred digits, matched against the whole name, whether or not the size is allowed.
 
-ASCII digits only: `\\d` would also match every other Unicode decimal, so
-`r\uff11\uff16` would be read as sixteen bits, and a third-party name
-spelled that way would be taken for raw bits. A size the spec does not
-allow -- `r0`, `r12` -- is still raw bits, so it is reported as a bad
-size rather than passed as an unknown extension. A hundred digits is
-more than any size: `r` and more digits than that is a name, as the spec
-allows one, which nothing in scope claims.
+Only ASCII digits match. `\\d` would also match every other Unicode
+decimal digit, so `r\uff11\uff16` would be read as sixteen bits, and a
+third-party name spelled that way would be mistaken for raw bits. A size
+the spec does not allow (`r0`, `r12`) is still raw bits, so it is
+reported as a bad size instead of being treated as an unknown extension.
+A hundred digits is more than any real size. `r` followed by more digits
+than that is an ordinary name, which the spec allows, and which nothing
+in scope claims.
 """
 
 
 def filed_under(
     kind: type[Definition[Any]], name: str
 ) -> tuple[str | None, dict[str, JSONValue] | None]:
-    """How a name a document writes reads: the name its definition is filed under, and the configuration the name carries.
+    """Interpret a name used in a document: return the name its definition is filed under, and the configuration encoded in the name.
 
-    A name is filed as itself and carries nothing, but for raw bits: the
-    data type `r16` is filed under `r*` and carries `{"bits": 16}`. `r*`
-    itself is filed under nothing, `(None, None)`, since no document
-    writes it.
+    A name is filed as itself and encodes nothing, except for raw bits:
+    the data type `r16` is filed under `r*` and encodes `{"bits": 16}`.
+    `r*` itself is filed under nothing, `(None, None)`, because no document
+    uses it.
     """
     return kind.filed_under(name)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class WithFillValue(Definition[C]):
-    """A definition of a type whose arrays take a fill value: the JSON shape of one, what the rules disallow in one, and its canonical spelling.
+    """A definition of a type whose arrays have a fill value: the fill value's JSON shape, the rules for it, and its canonical spelling.
 
-    Not a kind: each format's data type kind derives from it, so
-    `fill_value_problems` judges a fill value of either.
+    This is not a kind. The data type kind of each format derives from it,
+    so `fill_value_problems` can check a fill value for either format.
 
-    `fill_value` is the JSON shape of a fill value, as an annotation the
-    checker reads as it reads a configuration's members, its range among
-    it. `fill_value_rules` is what the spec disallows in a fill value of
-    that shape that the type cannot say; it is handed the configuration,
-    the fields it holds as the scope read them, and the typed fill value.
-    `fill_value_canonical` spells a fill value that has no problem in the
-    one spelling its value has, so two fill values are one value of the
-    type exactly when their canonical spellings are written alike.
+    `fill_value` is the JSON shape of a fill value, as an annotation. The
+    checker reads it the same way it reads a configuration's members,
+    including any range. `fill_value_rules` yields the spec violations in
+    a fill value of that shape that the type cannot express. It receives
+    the configuration, the nested fields as the scope read them, and the
+    typed fill value. `fill_value_canonical` writes a fill value without
+    problems in the single canonical spelling of its value. So two fill
+    values are the same value of the type exactly when their canonical
+    spellings are written the same way.
     """
 
     fill_value: object = JSONValue
-    """The JSON shape of a fill value, as an annotation: `Int8FillValue`."""
+    """The JSON shape of a fill value, as an annotation, such as `Int8FillValue`."""
     fill_value_rules: Callable[[C, Nested, Any], Iterable[ValidationProblem]] = no_rules
-    """What the spec disallows in a fill value of that shape, located in it."""
+    """The spec violations in a fill value of that shape, located in the fill value."""
     fill_value_canonical: Callable[[C, Nested, Any], JSONValue] = fill_value_as_written
-    """A fill value that has no problem, in the one spelling its value has."""
+    """A fill value without problems, in the single canonical spelling of its value."""
 
     def _refusal(self) -> str | None:
         try:
@@ -478,35 +492,38 @@ class WithFillValue(Definition[C]):
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
-    """A data type, and the fill value an array of it takes.
+    """A data type, and the fill value of an array with that data type.
 
-    `fill_value` is the JSON shape of a fill value -- `Int8FillValue`, an
-    annotation the checker reads as it reads a configuration's members,
-    its range among it -- and `fill_value_rules` is what the spec
-    disallows in a fill value of that shape that the type cannot say: a
-    hex string of another width.
-    The rules are handed the configuration, the fields it holds as the
-    scope read them (a struct's field types), and the typed fill value. A
-    data type that says nothing of its fill value takes any JSON.
+    `fill_value` is the JSON shape of a fill value, such as
+    `Int8FillValue`. It is an annotation that the checker reads the same
+    way it reads a configuration's members, including any range.
+    `fill_value_rules` yields the spec violations in a fill value of that
+    shape that the type cannot express, such as a hex string of the wrong
+    width.
+    The rules receive the configuration, the nested fields as the scope
+    read them (a struct's field types), and the typed fill value. A data
+    type that does not declare its fill value accepts any JSON.
 
-    `fill_value_canonical` spells a fill value that has no problem --
-    well typed, and allowed by the rules -- in the one spelling its value
-    has, so two fill values are one value of the type exactly when their
-    canonical spellings are written alike: `"NaN"` and `"0x7fc00000"` are
-    one `float32`, and `0.0` and `-0.0` two. It is handed what the rules
-    are handed. A data type that says nothing of it spells each of its
-    values one way: as written.
+    `fill_value_canonical` writes a fill value without problems (well
+    typed and allowed by the rules) in the single canonical spelling of
+    its value. So two fill values are the same value of the type exactly
+    when their canonical spellings are written the same way: `"NaN"` and
+    `"0x7fc00000"` are the same `float32`, but `0.0` and `-0.0` are two
+    different values. It receives the same arguments as the rules. A data
+    type that does not declare it has one spelling per value: the value as
+    written.
 
-    `storage` says how its values are stored -- in single bytes, in
-    several bytes at a time, or each in as many as it needs -- which is
-    what the `bytes` codec asks of the data type it is handed: an
-    `endian`, for numbers of several bytes. A struct's is its fields', so
-    it is handed the fields the configuration holds as the scope read
-    them. A data type that says nothing of it leaves it unknown.
+    `storage` declares how the values are stored: in single bytes, in
+    several bytes at a time, or each value in as many bytes as it needs.
+    The `bytes` codec uses this to decide whether the data type it
+    receives needs an `endian` (it does for multi-byte numbers). A
+    struct's storage depends on its fields, so `storage` receives the
+    nested fields as the scope read them. A data type that does not
+    declare it leaves its storage unknown.
 
-    One named as a document writes raw bits of one size -- `r16` -- is
-    refused: that name reads as `r*`, so nothing would ever read it with
-    this definition.
+    A data type named the way a document writes raw bits of one size (such
+    as `r16`) is rejected. That name is read as `r*`, so this definition
+    would never be used.
     """
 
     label: ClassVar[str] = "data type"
@@ -528,14 +545,14 @@ class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
 
     @classmethod
     def envelope_json(cls, name: str, configuration: Mapping[str, JSONValue]) -> JSONValue:
-        # A data type with nothing to configure is its bare name, as core
-        # data types have been written since Zarr v3.0.
+        # A data type with nothing to configure is written as its bare name,
+        # which is how core data types have been written since Zarr v3.0.
         if len(configuration) != 0:
             return {"name": name, "configuration": configuration}
         return name
 
     storage: Callable[[C, Nested], StorageClass | None] = unknown_storage
-    """How its values are stored, given the configuration and the fields it holds; None when unknown."""
+    """How the values are stored, given the configuration and the nested fields; None when unknown."""
 
     def _refusal(self) -> str | None:
         if RAW_BYTES_NAME_PATTERN.fullmatch(self.name) is not None:
@@ -543,42 +560,43 @@ class DataTypeDefinition(WithFillValue[C], kind=True, format=3):
                 f"{self.name!r} is how a document writes raw bits of one size, which read as "
                 f"{RAW_BYTES_NAME!r}; to read raw bits your own way, define {RAW_BYTES_NAME!r}"
             )
-        # Named, not a bare `super()`: a dataclass with slots is rebuilt.
+        # Use the explicit form, not bare `super()`, because a dataclass
+        # with slots is rebuilt.
         return super(DataTypeDefinition, self)._refusal()
 
 
 @functools.cache
 def _fill_value_parser(annotation: object) -> Parser:
-    """The checker for a fill value's JSON shape, compiled once; `TypeError` naming what no checker reads, or a metadata field in it."""
+    """The checker for a fill value's JSON shape, compiled once. Raises `TypeError` naming any part that no checker reads, or any metadata field in it."""
     return parser(annotation, _no_field)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class ChunkGridDefinition(Definition[C], kind=True, format=3):
-    """A chunk grid, and the arrays it fits.
+    """A chunk grid, and the array shapes it fits.
 
-    `shape_rules` is what the spec disallows in a grid of this
-    configuration over an array of a given shape: a dimension with no
-    chunk length, chunks that fall short of one. It is handed the
-    configuration, the fields it holds as the scope read them, and the
-    shape, and locates its problems in the configuration. A grid that
-    says nothing of the shape fits every one.
+    `shape_rules` yields the spec violations in a grid with this
+    configuration over an array of a given shape, such as a dimension with
+    no chunk length, or chunks that do not cover the dimension. It receives
+    the configuration, the nested fields as the scope read them, and the
+    shape, and it locates its problems in the configuration. A grid that
+    does not declare shape rules fits every shape.
 
-    `chunk_lengths` is what the first codec of the array's pipeline is
-    handed: the lengths the grid's chunks take along each axis of an
-    array of a shape it fits -- one for each axis of a regular grid, every
-    length a rectilinear grid lists. It is asked only of a grid its shape
-    rules accept. A grid that says nothing of it leaves the lengths along
-    every axis unknown.
+    `chunk_lengths` determines what the first codec of the array's
+    pipeline receives: the lengths of the grid's chunks along each axis of
+    an array whose shape the grid fits. A regular grid has one length per
+    axis, and a rectilinear grid has every length it lists. It is called
+    only for a grid that its shape rules accept. A grid that does not
+    declare it leaves the lengths along every axis unknown.
     """
 
     label: ClassVar[str] = "chunk grid"
     field_aliases: ClassVar[tuple[TypeAliasType, ...]] = (ZarrV3ChunkGridField,)
 
     shape_rules: Callable[[C, Nested, tuple[int, ...]], Iterable[ValidationProblem]] = no_rules
-    """What the spec disallows in this grid over an array of a shape, located in the configuration."""
+    """The spec violations in this grid over an array of a given shape, located in the configuration."""
     chunk_lengths: Callable[[C, Nested, tuple[int, ...]], Lengths] = unknown_lengths
-    """The lengths its chunks take along each axis of an array of a shape it fits, None where unknown."""
+    """The lengths of the chunks along each axis of an array whose shape the grid fits; None where unknown."""
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
@@ -590,13 +608,14 @@ class ChunkKeyEncodingDefinition(Definition[C], kind=True, format=3):
 
 
 CodecKind = Literal["array_array", "array_bytes", "bytes_bytes"]
-"""What a codec does to what it is handed: the three positions a pipeline orders."""
+"""What a codec converts its input to: the three positions a pipeline puts in order."""
 
 CodecSize = Literal["static", "dynamic"]
-"""Whether the size of what a codec gives out is fixed by the size of what it is handed.
+"""Whether the size of a codec's output is determined by the size of its input.
 
-`static`: it is -- `bytes` writes each element in its width, `crc32c` adds
-four bytes. `dynamic`: it depends on the values -- every compressor.
+`static`: it is. For example, `bytes` writes each element at its width,
+and `crc32c` adds four bytes. `dynamic`: the size depends on the values,
+as for every compressor.
 """
 
 _UNASKED: Final[Mapping[CodecKind, tuple[str, ...]]] = {
@@ -604,39 +623,43 @@ _UNASKED: Final[Mapping[CodecKind, tuple[str, ...]]] = {
     "array_bytes": ("transition",),
     "bytes_bytes": ("chunk_rules", "transition", "pipelines"),
 }
-"""The functions no codec of a kind is asked: a bytes -> bytes codec is handed bytes, and only an array -> array codec hands on a chunk."""
+"""The functions that are never called for a codec of each kind. A bytes -> bytes codec receives bytes, and only an array -> array codec passes on a chunk."""
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class CodecDefinition(Definition[C], kind=True, format=3):
-    """A codec: what it does to what it is handed, and whether the size of what it gives out is static.
+    """A codec: what it converts its input to, and whether the size of its output is static.
 
-    A codec handed an array -- array -> array, array -> bytes -- says what
-    the spec disallows in it handed a `Chunk`: `chunk_rules`, handed the
-    configuration, the fields it holds as the scope read them, and the
-    chunk, and locating its problems in the configuration -- a `bytes`
-    codec without `endian`, handed a multi-byte data type. An array ->
-    array codec also says what it hands on: `transition`, the chunk the
-    next codec is handed, given the one it is handed -- `transpose`
-    permutes the axes, `cast_value` changes the data type. The two are the
-    spec's pair: a codec computes what it gives from the shape and data
-    type it is handed, and "If the decoded_representation_type is not
-    supported, this algorithm must fail with an error"
+    A codec that receives an array (array -> array, array -> bytes)
+    declares the spec violations for a given input `Chunk` with
+    `chunk_rules`. It receives the configuration, the nested fields as the
+    scope read them, and the chunk, and it locates its problems in the
+    configuration. For example, a `bytes` codec without `endian` that
+    receives a multi-byte data type is a problem. An array -> array codec
+    also declares its output with `transition`: given its input chunk, it
+    returns the chunk the next codec receives. For example, `transpose`
+    permutes the axes, and `cast_value` changes the data type. These two
+    functions correspond to the spec: a codec computes its output from the
+    shape and data type of its input, and "If the
+    decoded_representation_type is not supported, this algorithm must
+    fail with an error"
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L987-L994).
-    The transition is asked of every chunk the codec is handed, whatever
-    its chunk rules found, so it gives only what holds either way: a
-    `transpose` whose `order` has another number of axes hands on lengths
-    nothing is known of. A codec that says nothing of what it hands on
-    hands the next a chunk nothing is known of.
+    The transition is called for every input chunk, whatever the chunk
+    rules found, so it must return only what is true in either case. For
+    example, a `transpose` whose `order` has the wrong number of axes
+    passes on unknown lengths. A codec that does not declare its output
+    passes the next codec a chunk with nothing known about it.
 
-    A codec that holds pipelines of its own says what each is handed:
-    `pipelines`, by the member of its configuration that holds each, the
-    chunk its first codec is handed, given the chunk the codec is handed
-    -- a shard's inner codecs are handed its inner chunks, and its index
-    codecs the shard index. Like the transition, it is asked whatever the
-    chunk rules found, and gives only what holds either way. A function
-    no codec of its kind is asked -- the chunk rules of a bytes -> bytes
-    codec, which is handed bytes -- is refused.
+    A codec that contains its own pipelines declares what each one
+    receives with `pipelines`. Given the codec's input chunk, it returns
+    the chunk that the first codec of each pipeline receives, keyed by the
+    configuration member that holds the pipeline. For example, a shard's
+    inner codecs receive its inner chunks, and its index codecs receive
+    the shard index. Like the transition, it is called whatever the chunk
+    rules found, and must return only what is true in either case. A
+    function that is never called for a codec of its kind is rejected,
+    such as the chunk rules of a bytes -> bytes codec, which receives
+    bytes.
     """
 
     label: ClassVar[str] = "codec"
@@ -645,11 +668,11 @@ class CodecDefinition(Definition[C], kind=True, format=3):
     kind: CodecKind
     size: CodecSize
     chunk_rules: Callable[[C, Nested, Chunk], Iterable[ValidationProblem]] = no_rules
-    """What the spec disallows in this codec handed a chunk, located in the configuration."""
+    """The spec violations for this codec with a given input chunk, located in the configuration."""
     transition: Callable[[C, Nested, Chunk], Chunk] = unknown_chunk
-    """The chunk the next codec is handed, given the one this array -> array codec is handed."""
+    """The chunk the next codec receives, given the chunk this array -> array codec receives."""
     pipelines: Callable[[C, Nested, Chunk], Mapping[str, Chunk]] = no_pipelines
-    """The pipelines it holds, by the member of its configuration that holds each, and the chunk each is handed."""
+    """The chunk each contained pipeline receives, keyed by the configuration member that holds the pipeline."""
 
     def _refusal(self) -> str | None:
         kind: object = self.kind
@@ -680,22 +703,22 @@ KINDS: Final[tuple[type[Definition[Any]], ...]] = (
     CodecDefinition,
     StorageTransformerDefinition,
 )
-"""The kinds of metadata a document holds, each filed apart in a scope."""
+"""The kinds of metadata in a document. A scope files each kind separately."""
 
 
 def kind_of(definition: Definition[Any]) -> type[Definition[Any]] | None:
-    """The kind `definition` is: the nearest class in its MRO declared with `kind=True`; None for a definition of no kind, which no scope files."""
+    """The kind of `definition`: the nearest class in its MRO declared with `kind=True`. None for a definition with no kind, which no scope can file."""
     return _kind_of_class(type(definition))
 
 
 @functools.lru_cache(maxsize=256)
 def _kind_of_class(cls: type[object]) -> type[Definition[Any]] | None:
-    """`kind_of` a definition of class `cls`: a walk of its MRO, once per class; bounded, so a class built per call is not kept for good."""
+    """`kind_of` for a definition of class `cls`. It walks the MRO once per class. The cache is bounded, so a class created on each call is not kept forever."""
     return next((base for base in cls.__mro__ if _declares_kind(base)), None)
 
 
 def format_of(kind: type[Definition[Any]]) -> Literal[2, 3]:
-    """The Zarr format whose documents hold fields of `kind`, as the kind declared it; `TypeError` for a class that is no kind."""
+    """The Zarr format of the documents that contain fields of `kind`, as declared by the kind. Raises `TypeError` for a class that is not a kind."""
     found = as_kind(kind)._format  # pyright: ignore[reportPrivateUsage]
     if found is None:  # a kind cannot be declared without one
         msg = f"{kind!r} declares no format"
@@ -704,13 +727,13 @@ def format_of(kind: type[Definition[Any]]) -> Literal[2, 3]:
 
 
 def _declares_kind(cls: type[object]) -> TypeGuard[type[Definition[Any]]]:
-    """Whether `cls` itself was declared `kind=True`: the mark is read from its own namespace, which a subclass does not share."""
+    """Whether `cls` itself was declared with `kind=True`. The mark is read from the class's own namespace, which a subclass does not share."""
     return vars(cls).get("_is_kind") is True and issubclass(cls, Definition)
 
 
 @functools.lru_cache(maxsize=256)
 def _kind_named(kind: object) -> type[Definition[Any]] | None:
-    """The kind `kind` names, type arguments dropped, or None: what `as_kind` answers, once per way a kind is named -- `CodecDefinition`, `CodecDefinition[Any]` -- since a class is a kind by its declaration; bounded, so a class built per call is not kept for good."""
+    """The kind that `kind` refers to, with type arguments removed, or None. This is the cached lookup behind `as_kind`, run once per form of a kind (`CodecDefinition`, `CodecDefinition[Any]`), since a class is a kind by its declaration. The cache is bounded, so a class created on each call is not kept forever."""
     origin = get_origin(kind) or kind
     if isinstance(origin, type) and _declares_kind(origin):
         return origin
@@ -718,17 +741,18 @@ def _kind_named(kind: object) -> type[Definition[Any]] | None:
 
 
 def as_kind(kind: object) -> type[Definition[Any]]:
-    """The kind of metadata `kind` names, type arguments dropped; `TypeError` if it names none.
+    """The kind of metadata that `kind` refers to, with type arguments removed. Raises `TypeError` if it refers to no kind.
 
-    A scope files definitions by kind, so a field is read as a kind --
-    `CodecDefinition`, or `CodecDefinition[Any]` -- and never as the base
-    `Definition` or a class that declares no kind, under which nothing is
-    filed: a field read as one would go unjudged.
+    A scope files definitions by kind, so a field is read as a kind
+    (`CodecDefinition`, or `CodecDefinition[Any]`). It is never read as
+    the base `Definition` or as a class that declares no kind, because
+    nothing is filed under those, and a field read as one would never be
+    checked.
     """
     try:
         found = _kind_named(kind)
     except TypeError:
-        # Not hashable, which no kind is.
+        # The value is not hashable. No kind is unhashable.
         found = None
     if found is not None:
         return found
@@ -745,14 +769,14 @@ _STATIC_SIZE: Final[frozenset[TypeAliasType]] = frozenset({ZarrV3StaticCodecFiel
 
 
 def field_kind(annotation: object) -> type[Definition[Any]] | None:
-    """The kind of metadata field a member annotated `annotation` holds -- `CodecDefinition` for `ZarrV3CodecField` -- or None when it holds none."""
+    """The kind of metadata field held by a member annotated with `annotation` (`CodecDefinition` for `ZarrV3CodecField`), or None if the member holds no field."""
     if not is_alias(annotation):
         return None
     return _FIELD_KINDS.get(annotation)
 
 
 class Scope(Protocol):
-    """What reading a field asks of a scope: its format, and which definition of a kind claims a name. A `Context` is one; so is anything else that answers the two."""
+    """What reading a field needs from a scope: its format, and which definition of a kind claims a name. A `Context` satisfies this protocol, and so does any other object that provides these two."""
 
     @property
     def format(self) -> Literal[2, 3] | None: ...
@@ -762,27 +786,27 @@ class Scope(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class _NestedField:
-    """A metadata field the check met inside a configuration: where it sits, its kind, its JSON.
+    """A metadata field that the check found inside a configuration: its location, its kind, and its JSON.
 
-    What the checker hands back where a field alias is, in place of the
-    JSON: `_checked` collects each one and puts its JSON back. Carried in
-    the value rather than recorded on the side, so a branch of a union
-    that did not match leaves none behind.
+    The checker returns this in place of the JSON wherever a field alias
+    appears. `_checked` collects each one and puts its JSON back. It is
+    carried in the value instead of being recorded separately, so a union
+    branch that did not match leaves nothing behind.
     """
 
     loc: Loc
     kind: type[Definition[Any]]
     json: JSONValue
     static: bool
-    """Whether the member holding it takes a codec of static size only."""
+    """Whether the member that holds it accepts only codecs of static size."""
 
 
 def _field(annotation: object) -> Parser | None:
-    """The checker's one shape of this module's own: a member holding a metadata field.
+    """The one checker shape that this module defines: a member that holds a metadata field.
 
-    Checked as a bare name or an object, and handed on: the envelope is
-    judged, and the name related to a definition, by whoever reads the
-    field -- `check` without a scope, `resolve` in one.
+    The value is checked only as a bare name or an object, and passed on.
+    Whoever reads the field (`check` without a scope, `resolve` with one)
+    checks the envelope and maps the name to a definition.
     """
     kind = field_kind(annotation)
     if kind is None:
@@ -790,21 +814,22 @@ def _field(annotation: object) -> Parser | None:
     static = annotation in _STATIC_SIZE
 
     def parse(value: object, loc: Loc) -> Parsed:
-        # Refined JSON, which the checker only knows as `object`; what is
-        # not a field at all, the kind's envelope says.
+        # The value is refined JSON, which the checker types only as
+        # `object`. If it is not a field at all, the kind's envelope check
+        # reports that.
         return _NestedField(loc, kind, cast("JSONValue", value), static), ()
 
     return parse
 
 
 def _vetting(annotation: object) -> Parser | None:
-    """`_field`, refusing what a definition's configuration cannot hold and still be read.
+    """`_field`, but rejecting annotations that a definition's configuration cannot contain and still be read.
 
-    A member typed with the envelope's own TypedDict --
-    `ZarrV3MetadataFieldJSON` -- checks as plain JSON: its name would never
-    be related to a definition, nor its configuration judged. And a
-    TypedDict that says nothing of the keys it does not declare is open,
-    so a key it does not declare would never be reported.
+    A member typed with the envelope's own TypedDict
+    (`ZarrV3MetadataFieldJSON`) is checked as plain JSON, so its name would
+    never be mapped to a definition and its configuration would never be
+    checked. A TypedDict that does not declare how undeclared keys are
+    handled is open, so an undeclared key would never be reported.
     """
     if annotation is ZarrV3NamedConfigJSON:
         msg = (
@@ -829,7 +854,7 @@ def _vetting(annotation: object) -> Parser | None:
 
 
 def _no_field(annotation: object) -> Parser | None:
-    """A leaf refusing a field alias: a fill value is a value of its data type, and holds no metadata field."""
+    """A leaf checker that rejects a field alias. A fill value is a value of its data type and never contains a metadata field."""
     if is_alias(annotation) and field_kind(annotation) is not None:
         name = annotation.__name__
         msg = f"{name} holds a metadata field, and a fill value is a value of its data type"
@@ -839,7 +864,7 @@ def _no_field(annotation: object) -> Parser | None:
 
 @functools.cache
 def _vet(configuration: type) -> None:
-    """Refuse a configuration no definition could read with, saying what is wrong with it."""
+    """Reject a configuration that no definition could read with, and say what is wrong with it."""
     if not is_typeddict(configuration):
         msg = (
             f"configuration is {configuration!r}; give the TypedDict the configuration's JSON takes"
@@ -853,34 +878,36 @@ def _vet(configuration: type) -> None:
 
 
 def kind_field(kind: type[Definition[Any]]) -> object:
-    """The field alias a member holding any field of `kind` is annotated with: the first the kind declares that does not narrow the field, `ZarrV3CodecField` rather than `ZarrV3StaticCodecField`."""
+    """The field alias for a member that holds any field of `kind`: the first alias the kind declares that does not restrict the field. For example, `ZarrV3CodecField` instead of `ZarrV3StaticCodecField`."""
     return next(alias for alias in kind.field_aliases if alias not in _STATIC_SIZE)
 
 
 _RAW_BYTES_SCHEMA_PATTERN: Final = f"^{RAW_BYTES_NAME_PATTERN.pattern}(?![\\s\\S])"
-"""`RAW_BYTES_NAME_PATTERN`, matched whole, as a JSON Schema writes a pattern.
+"""`RAW_BYTES_NAME_PATTERN`, matched against the whole name, as a JSON Schema pattern.
 
-Held to the end of the name by a lookahead for no character at all: a
-`$` there would also match before a final newline in a validator that
-matches patterns as Python does, so `"r16\\n"`, which names nothing,
-would read as raw bits.
+A lookahead for "no character at all" anchors the match to the end of
+the name. A `$` would also match before a final newline in a validator
+that matches patterns the way Python does, so `"r16\\n"`, which is not a
+valid name, would be read as raw bits.
 """
 
 
 def field_json_schema(kind: type[Definition[Any]], context: Context) -> JSONSchema:
-    """The JSON Schema of one metadata field read as `kind` in `context`: what `resolve` reads, but for the rules.
+    """The JSON Schema of one metadata field read as `kind` in `context`: everything `resolve` checks, except the rules.
 
-    A field one of the definitions in scope reads -- its name, its
-    configuration as the TypedDict says, a `must_understand` of `true`
-    if any, and its bare name when it needs no configuration -- or a
-    name none of them claims, with any configuration: what keeps the
-    format open. A field a configuration holds is written the same way,
-    in the same scope, and a member taking codecs of static size only
-    takes those. JSON Schema draft 2020-12, as `json_schema` writes one;
-    the fields it holds, and the configuration of each definition, are in
-    `$defs`, under the name of the field alias or TypedDict. What only a
-    rule says -- a blosc `typesize` against its `shuffle` -- is not in it,
-    so a field it accepts may still have a problem.
+    The schema accepts a field that one of the definitions in scope reads
+    (its name, its configuration as the TypedDict declares it, an optional
+    `must_understand` of `true`, and its bare name when it needs no
+    configuration). It also accepts a name that no definition claims, with
+    any configuration, which is what keeps the format open. A field inside
+    a configuration is written the same way, in the same scope, and a
+    member that accepts only codecs of static size accepts only those. The
+    output is JSON Schema draft 2020-12, as `json_schema` writes it. The
+    nested fields and the configuration of each definition are in
+    `$defs`, under the name of the field alias or TypedDict. Constraints
+    that only a rule enforces (a blosc `typesize` checked against its
+    `shuffle`) are not in the schema, so a field it accepts may still have
+    a problem.
     """
     asked = as_kind(kind)
     if not any(issubclass(asked, known) for known in KINDS):
@@ -894,7 +921,7 @@ def field_json_schema(kind: type[Definition[Any]], context: Context) -> JSONSche
 
 
 def field_schemas(context: Context) -> SchemaLeaf:
-    """The schema leaf that writes each field alias as a field of its kind, as `context` reads one: `field_json_schema`'s."""
+    """The schema leaf that `field_json_schema` uses. It writes each field alias as a field of its kind, as `context` reads it."""
 
     def leaf(annotation: object, schemas: Schemas) -> JSONSchema | None:
         kind = field_kind(annotation)
@@ -912,7 +939,7 @@ def field_schemas(context: Context) -> SchemaLeaf:
 def _field_schema(
     kind: type[Definition[Any]], static: bool, context: Context, schemas: Schemas
 ) -> JSONSchema:
-    """A field of `kind` as `context` reads it: one a definition in scope reads, or one none of them claims."""
+    """The schema of a field of `kind` as `context` reads it: a field that a definition in scope reads, or a field that none of them claims."""
     table = context.tables.get(kind, {})
     branches: list[JSONValue] = []
     for definition in table.values():
@@ -924,17 +951,17 @@ def _field_schema(
 
 
 def written_name(definition: Definition[Any]) -> JSONSchema:
-    """The JSON Schema of each name a document writes for `definition`: its name, or `r` and a size for raw bits."""
+    """The JSON Schema of the names a document may use for `definition`: its name, or `r` followed by a size for raw bits."""
     if isinstance(definition, DataTypeDefinition) and definition.name == RAW_BYTES_NAME:
         return {"type": "string", "pattern": _RAW_BYTES_SCHEMA_PATTERN}
     return {"const": definition.name}
 
 
 def _read_by(definition: Definition[Any], schemas: Schemas) -> list[JSONValue]:
-    """The fields `definition` reads: an object of its name and configuration, and its bare name when it needs no configuration.
+    """The schemas of the fields `definition` reads: an object with its name and configuration, and its bare name when it needs no configuration.
 
-    Raw bits' name carries their configuration, so what is written beside
-    it holds nothing.
+    The raw bits name encodes the configuration, so the configuration
+    written next to it must be empty.
     """
     carried = isinstance(definition, DataTypeDefinition) and definition.name == RAW_BYTES_NAME
     name = written_name(definition)
@@ -955,7 +982,7 @@ def _read_by(definition: Definition[Any], schemas: Schemas) -> list[JSONValue]:
 
 
 def _unclaimed(table: Mapping[str, Definition[Any]]) -> list[JSONValue]:
-    """The fields no definition in `table` claims: a name none of them is written with, bare or with any configuration."""
+    """The schemas of the fields that no definition in `table` claims: a name that none of them uses, either bare or with any configuration."""
     claimed: list[JSONValue] = [written_name(definition) for definition in table.values()]
     name: JSONSchema = {"type": "string", "pattern": EXTENSION_NAME_SCHEMA_PATTERN}
     if len(claimed) != 0:
@@ -975,7 +1002,7 @@ def _unclaimed(table: Mapping[str, Definition[Any]]) -> list[JSONValue]:
 
 @dataclass(frozen=True, slots=True)
 class _Checker:
-    """A TypedDict's checker, compiled once, and whether a value of it can hold a nested field."""
+    """A TypedDict's checker, compiled once, and whether a value of the TypedDict can contain a nested field."""
 
     parse: Parser
     nests: bool
@@ -983,7 +1010,7 @@ class _Checker:
 
 @functools.cache
 def _checker(shape: type) -> _Checker:
-    """The checker for a TypedDict, compiled once; `TypeError` naming what no checker reads."""
+    """The checker for a TypedDict, compiled once. Raises `TypeError` naming any part that no checker reads."""
     met: list[object] = []
 
     def leaf(annotation: object) -> Parser | None:
@@ -998,7 +1025,7 @@ def _checker(shape: type) -> _Checker:
 def _checked(
     shape: type, value: object, loc: Loc
 ) -> tuple[object, Problems, tuple[_NestedField, ...]]:
-    """`value` checked as `shape`: the typed value, every problem, and the fields nested in it, in order, each put back as it was written."""
+    """Check `value` as `shape`. Return the typed value (with each nested field restored as written), every problem, and the nested fields in order."""
     typed, found, nested = _typed(shape, value, loc)
     return _put_back(typed, _as_written, nested), found, nested
 
@@ -1006,7 +1033,7 @@ def _checked(
 def _typed(
     shape: type, value: object, loc: Loc
 ) -> tuple[object, Problems, tuple[_NestedField, ...]]:
-    """`value` checked as `shape`, each nested field still where the checker met it: the typed value, every problem, and those fields, in order."""
+    """Check `value` as `shape`, leaving each nested field where the checker found it. Return the typed value, every problem, and the nested fields in order."""
     checker = _checker(shape)
     typed, found = checker.parse(value, loc)
     if not checker.nests:
@@ -1017,7 +1044,7 @@ def _typed(
 
 
 def _collect(value: object, nested: list[_NestedField]) -> None:
-    """Each nested field the checker handed back in `value`, in order."""
+    """Append to `nested` each nested field that the checker returned inside `value`, in order."""
     if isinstance(value, _NestedField):
         nested.append(value)
     elif is_tuple(value):
@@ -1029,12 +1056,12 @@ def _collect(value: object, nested: list[_NestedField]) -> None:
 
 
 def _as_written(field: _NestedField) -> JSONValue:
-    """A nested field put back as it was written."""
+    """A nested field restored as it was written."""
     return field.json
 
 
 def _declared(field: _NestedField) -> JSONValue:
-    """A nested field put back as it was written, but for the members its envelope does not declare, which are reported and left out, as the checker leaves out a key a closed TypedDict does not declare."""
+    """A nested field restored as it was written, except for envelope members that are not declared. Those are reported and left out, in the same way the checker leaves out a key that a closed TypedDict does not declare."""
     if not isinstance(field.json, Mapping):
         return field.json
     envelope = cast("Mapping[str, JSONValue]", field.json)
@@ -1044,14 +1071,14 @@ def _declared(field: _NestedField) -> JSONValue:
 def _put_back(
     value: object, put: Callable[[_NestedField], JSONValue], nested: Sequence[_NestedField]
 ) -> object:
-    """`value` with each of `nested`, the fields the checker handed back in it, put back as `put` gives it: `value` itself when there are none."""
+    """Replace each of `nested` (the fields the checker returned inside `value`) with the result of `put`. Return `value` unchanged when there are none."""
     if len(nested) == 0:
         return value
     return _putting_back(value, put)
 
 
 def _putting_back(value: object, put: Callable[[_NestedField], JSONValue]) -> object:
-    """`_put_back` of a value that holds nested fields: a walk."""
+    """`_put_back` for a value that contains nested fields: a recursive walk."""
     if isinstance(value, _NestedField):
         return put(value)
     if is_tuple(value):
@@ -1062,26 +1089,26 @@ def _putting_back(value: object, put: Callable[[_NestedField], JSONValue]) -> ob
 
 
 def _usable(problems: Sequence[ValidationProblem]) -> bool:
-    """Whether a value with these problems still reads: an unknown key is survivable, nothing else is."""
+    """Whether a value with these problems can still be read. An unknown key is allowed. Any other problem is not."""
     return all(found.kind == "unknown_key" for found in problems)
 
 
 def read_only(configuration: C) -> C:
-    """`configuration` as a definition's functions are handed it: a read-only view of the field's own, so a function that assigns a member fails there.
+    """`configuration` in the form a definition's functions receive it: a read-only view of the field's own configuration, so a function that assigns a member fails.
 
-    The view is of the members: what a member holds, an object among a
-    struct's `fields` say, is the field's own, and a function that writes
-    into one writes into the field.
+    Only the top-level members are read-only. The value a member holds
+    (for example, an object in a struct's `fields`) is the field's own
+    object, and a function that writes into it changes the field.
     """
     return cast("C", MappingProxyType(cast("Mapping[str, JSONValue]", configuration)))
 
 
 def asked(definition: Definition[Any], what: str, ask: Callable[[], T], at: Loc | None = None) -> T:
-    """What `ask`, a call of `definition`'s `what`, gives.
+    """Return the result of `ask`, which calls the function `what` of `definition`.
 
-    A definition's functions are the extension author's code: an error one
-    raises says which definition's function raised it, and where it was
-    reading, when that is known.
+    A definition's functions are the extension author's code. If one
+    raises an error, a note is added that says which definition's
+    function raised it and, when known, where the reader was reading.
     """
     try:
         return ask()
@@ -1091,7 +1118,7 @@ def asked(definition: Definition[Any], what: str, ask: Callable[[], T], at: Loc 
 
 
 def _raised_by(definition: Definition[Any], what: str, at: Loc | None) -> str:
-    """The note an error raised by `definition`'s `what` carries: which definition's function raised it, and where it was reading, when that is known."""
+    """The note added to an error raised by the function `what` of `definition`: which definition's function raised it and, when known, where the reader was reading."""
     where = "" if at is None else f", reading {at!r}"
     return f"raised by the {what} of {definition.name!r}{where}"
 
@@ -1099,11 +1126,11 @@ def _raised_by(definition: Definition[Any], what: str, at: Loc | None) -> str:
 def ruled(
     definition: Definition[Any], ask: Callable[[], Iterable[ValidationProblem]], at: Loc
 ) -> Problems:
-    """What `ask`, a call of `definition`'s rules, finds, located under `at`.
+    """The problems found by `ask`, which calls `definition`'s rules, located under `at`.
 
-    Rules are the extension author's code. What they yield is checked to be
-    what they declare, and an error one raises says which definition's rules
-    raised it, and where they were reading.
+    Rules are the extension author's code. Their output is checked to have
+    the declared type. If they raise an error, a note is added that says
+    which definition's rules raised it and where they were reading.
     """
     try:
         found = tuple(cast("Iterable[object]", ask()))
@@ -1120,7 +1147,7 @@ def ruled(
 
 
 def _located(prefix: Loc, problems: Iterable[ValidationProblem]) -> Problems:
-    """`problems`, each located under `prefix`; a kind's `envelope_problems` may give them lazily."""
+    """`problems`, each located under `prefix`. The input may be lazy, because a kind's `envelope_problems` may return an iterator."""
     found = tuple(problems)
     if len(found) == 0:
         return ()
@@ -1128,22 +1155,22 @@ def _located(prefix: Loc, problems: Iterable[ValidationProblem]) -> Problems:
 
 
 def _envelope(field: _NestedField) -> Problems:
-    """What is wrong with a nested field's envelope, at the field."""
+    """The problems with a nested field's envelope, located at the field."""
     return _located(field.loc, field.kind.envelope_problems(field.json))
 
 
 def _configuration_checked(
     value: object, shape: type[T], loc: Loc = ()
 ) -> tuple[T | None, Problems]:
-    """`value` checked as `shape`, as `typed_json.check` checks it, and each nested field's envelope judged.
+    """Check `value` as `shape`, as `typed_json.check` does, and check the envelope of each nested field.
 
-    The step a definition's `read_configuration` starts from. A member typed with a
-    field alias holds a metadata field, whose envelope is judged as a
-    document's is: a `must_understand` of `false` is a problem of the
-    configuration, and the value does not come back; a stray member is an
-    unknown key, reported and left out, and the value still comes back,
-    as the checker reports and leaves out a key a closed TypedDict does
-    not declare.
+    A definition's `read_configuration` starts with this step. A member
+    typed with a field alias holds a metadata field, and its envelope is
+    checked the same way as in a document. A `must_understand` of `false`
+    is a problem of the configuration, and no value is returned. An extra
+    member is an unknown key: it is reported and left out, and the value is
+    still returned. This matches how the checker reports and leaves out a
+    key that a closed TypedDict does not declare.
     """
     refined, problems = refine_json(value, loc)
     if len(problems) != 0:
@@ -1160,11 +1187,11 @@ def named_configuration(
 ) -> tuple[str | None, Mapping[str, object] | None, Problems]:
     """Split a metadata field into `(name, configuration, problems)`.
 
-    A bare name, or an object carrying one. A `None` name means the value
-    is not a metadata field at all; a `None` configuration means the bare
-    spelling was used, or the key was left out. A configuration that is
-    present and not an object is the one problem reported, at
-    `("configuration",)`.
+    A field is a bare name, or an object that contains a name. A `None`
+    name means the value is not a metadata field at all. A `None`
+    configuration means the bare spelling was used, or the key was left
+    out. The only problem reported is a configuration that is present but
+    not an object, at `("configuration",)`.
     """
     if isinstance(value, str):
         return value, None, ()
@@ -1187,47 +1214,48 @@ def named_configuration(
 
 
 def _nothing_nested() -> Nested:
-    """What a field that holds no field it read holds inside: nothing."""
+    """The nested fields of a field that contains no read fields: an empty mapping."""
     return {}
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class AcceptedField(Generic[D]):
-    """A field a definition in scope read: the name it is written with, the definition, and the configuration it allowed.
+    """A field that a definition in scope read: the name it is written with, the definition, and the configuration the definition allowed.
 
-    A problem with the envelope around it -- a stray member, a
-    `must_understand` of `false` -- is reported with the field and leaves
-    it read; so is a problem of a field its configuration holds, which is
-    that field's own, as `nested` says. Two fields are equal when they
-    read the same, however each was spelled, as `field_key` compares
-    them: `"bytes"` and `{"name": "bytes"}` are one field, and so are a
-    blosc with and without the `typesize` that `noshuffle` ignores, which
-    the definition's `canonical` folds. Equal fields hash alike.
+    A problem with the envelope (an extra member, a `must_understand` of
+    `false`) is reported with the field, and the field is still read. The
+    same applies to a problem in a nested field, which belongs to that
+    nested field, as `nested` shows. Two fields are equal when they read
+    the same, however each was spelled, as compared by `field_key`. For
+    example, `"bytes"` and `{"name": "bytes"}` are one field. So are a
+    blosc with and without the `typesize` that `noshuffle` ignores, because
+    the definition's `canonical` removes it. Equal fields have equal
+    hashes.
     """
 
     json: JSONValue
-    """The field as written, refined: arrays as tuples; it takes no part in equality."""
+    """The field as written, refined (arrays as tuples). It is not used for equality."""
     name: str
-    """The name it is written with: `"r16"`, though its definition is filed under `r*`."""
+    """The name the field is written with, for example `"r16"`, even though its definition is filed under `r*`."""
     definition: D
-    """The definition that read it."""
+    """The definition that read the field."""
     configuration: Mapping[str, JSONValue]
-    """The configuration, type-checked and allowed by the rules; for raw bits, what the name carries.
+    """The configuration, type-checked and allowed by the rules. For raw bits, this is the configuration encoded in the name.
 
-    Each field it holds is written as a document writes it, as that
-    field's `to_json` writes it, so the configuration says what was read
-    however it was spelled: a shard's `"crc32c"` and `{"name": "crc32c"}`
-    are one index codec.
+    Each nested field is written as that field's `to_json` writes it, so
+    the configuration shows what was read, however it was spelled. For
+    example, a shard's `"crc32c"` and `{"name": "crc32c"}` are the same
+    index codec.
     """
     nested: Nested = dataclasses.field(default_factory=_nothing_nested)
-    """The fields the configuration holds, each as the scope read it, by where it sits in the configuration.
+    """The fields in the configuration, each as the scope read it, keyed by location in the configuration.
 
-    A struct's field types at `("fields", 0, "data_type")`, a shard's
-    codecs at `("codecs", 0)`: what a definition's functions consult about
-    the fields inside its own.
+    For example, a struct's field types are at `("fields", 0, "data_type")`
+    and a shard's codecs are at `("codecs", 0)`. A definition's functions
+    use this to inspect the fields inside its own configuration.
     """
     read_as: type[Definition[Any]] = dataclasses.field(init=False, repr=False)
-    """The kind of metadata it was read as: its definition's."""
+    """The kind of metadata the field was read as: the kind of its definition."""
 
     def __eq__(self, other: object) -> bool:
         if not is_field(other):
@@ -1238,8 +1266,9 @@ class AcceptedField(Generic[D]):
         return hash(field_key(self))
 
     def __post_init__(self) -> None:
-        # The runtime half of the annotations: a field read by hand, as an
-        # extension's may be, fails here rather than where a function trusts it.
+        # Check the annotations at runtime. A field built by hand (an
+        # extension may do this) fails here, not later in a function that
+        # trusts it.
         definition = cast("object", self.definition)
         kind = kind_of(cast("Definition[Any]", definition))
         refusal = (
@@ -1250,14 +1279,15 @@ class AcceptedField(Generic[D]):
         if refusal is not None:
             raise TypeError(refusal)
         object.__setattr__(self, "read_as", kind)
-        # What the field hands out is read-only at every level, so a field
-        # cannot be put in a state its key, `==` and `refines` disagree about.
+        # Everything the field returns is read-only at every level, so a
+        # field cannot reach a state where its key, `==` and `refines`
+        # disagree.
         object.__setattr__(self, "json", frozen(self.json))
         object.__setattr__(self, "configuration", frozen(self.configuration))
         object.__setattr__(self, "nested", MappingProxyType(dict(self.nested)))
 
     def __reduce__(self) -> tuple[Callable[..., AcceptedField[Any]], tuple[object, ...]]:
-        # Read-only views do not pickle: the field pickles as what it was built from.
+        # Read-only views cannot be pickled, so pickle the field from its constructor arguments.
         return _accepted_field, (
             copied(self.json),
             self.name,
@@ -1267,15 +1297,15 @@ class AcceptedField(Generic[D]):
         )
 
     def to_json(self) -> JSONValue:
-        """The field as a document writes it, for every reader: its configuration as read, sharing nothing with the field.
+        """The field as a document writes it, in a form every reader accepts. The configuration is as read, and the result shares no objects with the field.
 
-        The envelope takes the fewest words every reader takes: a data type
-        with nothing to configure is its bare name, as core data types have
-        been written since Zarr v3.0; any other field is an object,
-        `{"name": ...}`, since a Zarr v3.0 reader takes no bare name in
-        `codecs`
+        The envelope uses the shortest form every reader accepts. A data
+        type with nothing to configure is written as its bare name, as core
+        data types have been written since Zarr v3.0. Any other field is an
+        object, `{"name": ...}`, because a Zarr v3.0 reader does not accept a
+        bare name in `codecs`
         (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L585-L592).
-        A name that carries its configuration, as raw bits' does, is
+        A name that encodes its configuration, as the raw bits name does, is
         written alone.
         """
         return copied(written_json(self))
@@ -1283,21 +1313,22 @@ class AcceptedField(Generic[D]):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class UnclaimedField:
-    """A field nothing in scope claims: an extension the scope leaves unjudged, which is what keeps the format open.
+    """A field that nothing in scope claims: an extension that the scope does not check. Accepting such fields is what keeps the format open.
 
-    Equal to another when it is written with the same name and
-    configuration, however each was spelled: nothing in scope interprets
-    its configuration, so it compares as JSON text, as `field_key` says.
+    It is equal to another unclaimed field when both are written with the
+    same name and configuration, however each was spelled. Nothing in
+    scope interprets the configuration, so it is compared as JSON text, as
+    `field_key` defines.
     """
 
     json: JSONValue
-    """The field as written, refined: arrays as tuples; it takes no part in equality."""
+    """The field as written, refined (arrays as tuples). It is not used for equality."""
     name: str
-    """The name nothing in scope claims."""
+    """The name that nothing in scope claims."""
     read_as: type[Definition[Any]]
-    """The kind of metadata it was read as: what a definition that claimed it would be."""
+    """The kind of metadata the field was read as: the kind a claiming definition would have."""
     configuration: Mapping[str, JSONValue] = dataclasses.field(init=False)
-    """The configuration as written, which nothing judged; empty when none is written."""
+    """The configuration as written, not checked; empty when no configuration is written."""
 
     def __eq__(self, other: object) -> bool:
         if not is_field(other):
@@ -1308,8 +1339,8 @@ class UnclaimedField:
         return hash(field_key(self))
 
     def __post_init__(self) -> None:
-        # The runtime half of the annotations; `read_as` with its type
-        # arguments dropped, as `resolve` drops them.
+        # Check the annotations at runtime. Remove type arguments from
+        # `read_as`, as `resolve` does.
         object.__setattr__(self, "read_as", as_kind(self.read_as))
         name = cast("object", self.name)
         if not isinstance(name, str) or not self.read_as.well_named(name):
@@ -1326,38 +1357,38 @@ class UnclaimedField:
         )
 
     def __reduce__(self) -> tuple[Callable[..., UnclaimedField], tuple[object, ...]]:
-        # Read-only views do not pickle: the field pickles as what it was built from.
+        # Read-only views cannot be pickled, so pickle the field from its constructor arguments.
         return _unclaimed_field, (copied(self.json), self.name, self.read_as)
 
     @property
     def definition(self) -> None:
-        """The definition that read it: none did."""
+        """The definition that read the field. Always None, because no definition read it."""
         return None
 
     @property
     def nested(self) -> Nested:
-        """The fields its configuration holds as the scope read them: none, since nothing read its configuration."""
+        """The nested fields as the scope read them. Always empty, because nothing read the configuration."""
         return _nothing_nested()
 
     def to_json(self) -> JSONValue:
-        """The field as a document writes it, sharing nothing with the field: its configuration as written, in the envelope every reader takes, as `AcceptedField.to_json` writes one."""
+        """The field as a document writes it, sharing no objects with the field. The configuration is as written, in the envelope form every reader accepts, as `AcceptedField.to_json` writes it."""
         return copied(written_json(self))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class RefusedField(Generic[D]):
-    """A field that could not be read -- not a field at all, not JSON, or refused by the definition that claims its name -- as its problems say."""
+    """A field that could not be read: it is not a field at all, not JSON, or rejected by the definition that claims its name. Its problems explain why."""
 
     json: JSONValue | UNSET
-    """The field as written, refined: arrays as tuples; `UNSET` when it is not JSON, which no document holds."""
+    """The field as written, refined (arrays as tuples). `UNSET` when it is not JSON, which no document can contain."""
     name: str | None
-    """The name it is written with; None when it names none."""
+    """The name the field is written with; None when it has no name."""
     read_as: type[Definition[Any]]
-    """The kind of metadata it was read as."""
+    """The kind of metadata the field was read as."""
     definition: D | None = None
-    """The definition that claims its name and refused it; None when nothing in scope claims it, or it names none."""
+    """The definition that claims the name and rejected the field; None when nothing in scope claims it, or when the field has no name."""
     nested: Nested = dataclasses.field(default_factory=_nothing_nested)
-    """The fields its configuration holds, each as the scope read it; empty when its configuration was not checked against its TypedDict."""
+    """The nested fields, each as the scope read it; empty when the configuration was not checked against its TypedDict."""
 
     def __eq__(self, other: object) -> bool:
         if not is_field(other):
@@ -1368,8 +1399,8 @@ class RefusedField(Generic[D]):
         return hash(field_key(self))
 
     def __post_init__(self) -> None:
-        # The runtime half of the annotations; `read_as` with its type
-        # arguments dropped, as `resolve` drops them.
+        # Check the annotations at runtime. Remove type arguments from
+        # `read_as`, as `resolve` does.
         kind = as_kind(self.read_as)
         object.__setattr__(self, "read_as", kind)
         definition = cast("object", self.definition)
@@ -1381,7 +1412,7 @@ class RefusedField(Generic[D]):
         object.__setattr__(self, "nested", MappingProxyType(dict(self.nested)))
 
     def __reduce__(self) -> tuple[Callable[..., RefusedField[Any]], tuple[object, ...]]:
-        # Read-only views do not pickle: the field pickles as what it was built from.
+        # Read-only views cannot be pickled, so pickle the field from its constructor arguments.
         return _refused_field, (
             UNSET if self.json is UNSET else copied(self.json),
             self.name,
@@ -1394,7 +1425,7 @@ class RefusedField(Generic[D]):
 ResolvedField = TypeAliasType(
     "ResolvedField", "AcceptedField[D] | UnclaimedField | RefusedField[D]", type_params=(D,)
 )
-"""One metadata field as a scope read it: read by the definition that claims its name, claimed by nothing, or refused."""
+"""One metadata field as a scope read it: accepted by the definition that claims its name, unclaimed, or refused."""
 
 
 def _accepted_field(
@@ -1404,14 +1435,14 @@ def _accepted_field(
     configuration: Mapping[str, JSONValue],
     nested: Nested,
 ) -> AcceptedField[Any]:
-    """An accepted field built again from what it pickled as."""
+    """Rebuild an accepted field from its pickled arguments."""
     return AcceptedField(
         json=json, name=name, definition=definition, configuration=configuration, nested=nested
     )
 
 
 def _unclaimed_field(json: JSONValue, name: str, read_as: type[Definition[Any]]) -> UnclaimedField:
-    """An unclaimed field built again from what it pickled as."""
+    """Rebuild an unclaimed field from its pickled arguments."""
     return UnclaimedField(json=json, name=name, read_as=read_as)
 
 
@@ -1422,16 +1453,16 @@ def _refused_field(
     definition: Definition[Any] | None,
     nested: Nested,
 ) -> RefusedField[Any]:
-    """A refused field built again from what it pickled as."""
+    """Rebuild a refused field from its pickled arguments."""
     return RefusedField(json=json, name=name, read_as=read_as, definition=definition, nested=nested)
 
 
 _FIELDS: Final = (AcceptedField, UnclaimedField, RefusedField)
-"""The three things a scope makes of a field."""
+"""The three possible results of reading a field in a scope."""
 
 
 def _misread(definition: object, kind: type[Definition[Any]], name: object) -> str | None:
-    """What is wrong with `definition` as the one that read a field named `name` as a `kind`; None when nothing is."""
+    """A description of why `definition` cannot be the definition that read a field named `name` as a `kind`; None when it can."""
     if not isinstance(definition, kind):
         return f"a field read as a {kind.__name__} is read by one, got {definition!r}"
     filed = cast("Definition[Any]", definition).name
@@ -1441,23 +1472,24 @@ def _misread(definition: object, kind: type[Definition[Any]], name: object) -> s
 
 
 def field_key(field: ResolvedField[Any]) -> tuple[object, ...]:
-    """What `==` and `hash` compare of a field: what it means, not how it was spelled.
+    """The key that `==` and `hash` compare for a field. It represents what the field means, not how it was spelled.
 
-    A field read compares by the definition that read it, its
-    configuration in the canonical spelling the definition gives it -- what
-    `canonical_of` spells -- as JSON text, and the fields it holds, each by
-    its own key. A field nothing claims compares by its name and its
-    configuration as written, as JSON text: nothing interprets it. A field
-    refused compares by what was written, and by what refused it. So two
-    fields are one when what a reader understands of them reads the same,
-    and what none interprets is written alike.
+    An accepted field is compared by the definition that read it, by its
+    configuration in the definition's canonical spelling (as
+    `canonical_of` writes it) as JSON text, and by the key of each nested
+    field. An unclaimed field is compared by its name and its
+    configuration as written, as JSON text, because nothing interprets it.
+    A refused field is compared by what was written and by the definition
+    that rejected it. So two fields are equal when the parts a reader
+    understands read the same, and the parts no reader interprets are
+    written the same way.
     """
     if isinstance(field, AcceptedField):
         definition = cast("Definition[Any]", field.definition)
         configuration: JSONValue = dict(field.configuration)
-        # A field it holds is compared by its own key, so its place holds
-        # nothing before the definition's `canonical` sees the rest, as
-        # `_canonical_field` orders it: `canonical` folds only the
+        # Each nested field is compared by its own key, so its location is
+        # cleared before the definition's `canonical` sees the rest, in the
+        # same order as `_canonical_field`. `canonical` simplifies only the
         # definition's own members.
         for loc in field.nested:
             configuration = _replaced(configuration, loc, None)
@@ -1481,20 +1513,20 @@ def field_key(field: ResolvedField[Any]) -> tuple[object, ...]:
 
 
 def own_key(field: AcceptedField[Any]) -> tuple[object, ...]:
-    """What `field_key` compares of a read field without the fields it holds: the definition and the canonical spelling of its own members."""
+    """The part of `field_key` for an accepted field that excludes nested fields: the definition and the canonical spelling of its own members."""
     return field_key(field)[:3]
 
 
 def _nested_key(nested: Nested) -> tuple[tuple[Loc, tuple[object, ...]], ...]:
-    """The fields a configuration holds, each by its key, where it sits."""
+    """The key of each nested field, paired with its location."""
     return tuple((loc, field_key(inner)) for loc, inner in nested.items())
 
 
 def document_json(field: ResolvedField[Any]) -> JSONValue | UNSET:
-    """A field as a document writes it, holding the field's own values: as `to_json` writes it, or as it was written when it was refused, `UNSET` for one that was not JSON.
+    """A field as a document writes it, using the field's own values: as `to_json` writes it, or as originally written for a refused field. `UNSET` for a refused field that was not JSON.
 
-    What a writer serializes, which changes nothing, so it copies nothing;
-    `to_json` is this, copied.
+    A writer serializes this without changing it, so it is not copied.
+    `to_json` is a copy of this.
     """
     if isinstance(field, RefusedField):
         return field.json
@@ -1502,7 +1534,7 @@ def document_json(field: ResolvedField[Any]) -> JSONValue | UNSET:
 
 
 def written_json(field: AcceptedField[Any] | UnclaimedField) -> JSONValue:
-    """A field a scope read or left unclaimed, as a document writes it: `document_json` of one that is JSON."""
+    """A field that a scope accepted or left unclaimed, as a document writes it. This is `document_json` for a field that is JSON."""
     kind = field.read_as
     if isinstance(field, AcceptedField) and kind.filed_under(field.name)[1] is not None:
         return kind.envelope_json(field.name, {})
@@ -1510,29 +1542,29 @@ def written_json(field: AcceptedField[Any] | UnclaimedField) -> JSONValue:
 
 
 Nested: TypeAlias = Mapping[Loc, ResolvedField[Any]]
-"""The fields a configuration holds, each as the scope read it, by where it sits in the configuration."""
+"""The fields in a configuration, each as the scope read it, keyed by location in the configuration."""
 
 
 Lengths: TypeAlias = tuple[frozenset[int] | None, ...]
-"""Per axis, every length chunks take along it -- a set, since a rectilinear grid's differ -- or None where unknown."""
+"""For each axis, every chunk length along that axis (a set, because a rectilinear grid's lengths differ), or None where unknown."""
 
 
 @dataclass(frozen=True, slots=True)
 class Chunk:
-    """What a codec is handed: chunks of some lengths along each axis, of a data type.
+    """The input a codec receives: chunks with given lengths along each axis, and a data type.
 
-    What nothing says is None: the lengths along an axis the grid does not
-    say, and every part of the chunk handed on by a codec that says nothing
-    of what it hands on. A data type field the scope did not read is held
-    as written, and says nothing of the values either. A codec's chunk
-    rules judge what is known and leave the rest, so a chunk nothing is
-    known of, `Chunk()`, is refused nothing.
+    Unknown parts are None. This includes the lengths along an axis that
+    the grid does not declare, and every part of the chunk output by a
+    codec that does not declare its output. A data type field that the
+    scope did not read is kept as written, and it also says nothing about
+    the values. A codec's chunk rules check only what is known, so a chunk
+    with nothing known about it, `Chunk()`, never causes a problem.
     """
 
     lengths: Lengths | None = None
-    """Per axis, the lengths the chunks take along it; None when not even the number of axes is known."""
+    """For each axis, the chunk lengths along it; None when even the number of axes is unknown."""
     data_type: ResolvedField[DataTypeDefinition[Any]] | None = None
-    """The data type field of the values, as a scope read it; None when no field says what they are: a document naming none, which its reading holds as `UNSET`, hands the pipeline a chunk of no known type."""
+    """The data type field of the values, as a scope read it. None when no field declares the data type: a document with no data type (its reading holds `UNSET`) passes the pipeline a chunk of unknown type."""
 
     def __post_init__(self) -> None:
         lengths = cast("object", self.lengths)
@@ -1551,12 +1583,12 @@ class Chunk:
 
 
 def is_field(value: object) -> TypeGuard[ResolvedField[Any]]:
-    """Whether `value` is a field a scope read: `AcceptedField`, `UnclaimedField` or `RefusedField`."""
+    """Whether `value` is a field that a scope read: `AcceptedField`, `UnclaimedField` or `RefusedField`."""
     return isinstance(value, _FIELDS)
 
 
 def held(field: ResolvedField[D] | UNSET) -> AcceptedField[D] | UnclaimedField:
-    """`field`, one a read found nothing wrong with: `AcceptedField` or `UnclaimedField`; `TypeError` for one refused or never read, which such a read rules out."""
+    """Return `field`, which must come from a read that found no problems, as `AcceptedField` or `UnclaimedField`. Raises `TypeError` for a refused field or one never read, which such a read cannot produce."""
     if isinstance(field, (AcceptedField, UnclaimedField)):
         return field
     msg = f"expected a field a read found nothing wrong with, got {field!r}"
@@ -1564,12 +1596,12 @@ def held(field: ResolvedField[D] | UNSET) -> AcceptedField[D] | UnclaimedField:
 
 
 def _is_data_type_field(value: object) -> bool:
-    """Whether `value` is a field a scope read as a data type."""
+    """Whether `value` is a field that a scope read as a data type."""
     return is_field(value) and value.read_as is DataTypeDefinition
 
 
 def _is_lengths(value: object) -> TypeGuard[Lengths]:
-    """Whether `value` is chunk lengths: per axis, a frozenset of integers, or None."""
+    """Whether `value` is valid chunk lengths: for each axis, a frozenset of integers or None."""
     if not is_tuple(value):
         return False
     for axis in value:
@@ -1586,12 +1618,13 @@ def _is_lengths(value: object) -> TypeGuard[Lengths]:
 def fields_of(
     resolved: ResolvedField[Any], loc: Loc = ()
 ) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
-    """`resolved`, a field a scope read, where it sits, then each field it holds and theirs in turn, each where it sits.
+    """Yield `resolved` (a field a scope read) with its location, then each nested field recursively, each with its location.
 
-    `loc` is where `resolved` sits; a field it holds sits in its
-    configuration, at the kind's `configuration_loc` and its place, as `resolve`
-    locates its problems. What each holds is its `nested`: a field whose
-    configuration was not checked holds none.
+    `loc` is the location of `resolved`. A nested field is located inside
+    the configuration, at the kind's `configuration_loc` followed by the
+    field's place, the same way `resolve` locates problems. Each field's
+    nested fields are its `nested`. A field whose configuration was not
+    checked has none.
     """
     yield loc, resolved
     for place, inner in resolved.nested.items():
@@ -1601,20 +1634,21 @@ def fields_of(
 def with_problems(
     fields: Iterable[tuple[Loc, ResolvedField[Any]]], problems: Sequence[ValidationProblem]
 ) -> Iterator[tuple[Loc, ResolvedField[Any], Problems]]:
-    """Each of `fields`, with where it sits, and the problems among `problems` located in it, in the fields it holds too.
+    """Yield each of `fields` with its location and the problems in `problems` located inside it, including inside its nested fields.
 
-    `fields` and `problems` are one read's: a reading's `fields()` and
-    `problems`, or `fields_of` a field and the problems `resolve` gave
-    with it. A field's problems are those it was read with, and those the
-    document found with it where it stands -- its place in the pipeline,
-    the chunk it is handed, the array's shape -- so a field with none is
-    valid there, and `canonical_of` spells it. A function of the problems,
-    as zod's `treeifyError` is of the issues, grouping them at every
-    depth: a problem with a shard's inner codec is the inner codec's, and
-    the shard's. Each field comes before the fields it holds, as
-    `fields_of` gives them, so the last field whose problems hold a
-    problem is the innermost field holding it. A problem in no field --
-    with the fill value, with the shape -- is in none's.
+    `fields` and `problems` must come from the same read: a reading's
+    `fields()` and `problems`, or `fields_of` a field and the problems that
+    `resolve` returned with it. A field's problems include those found when
+    it was read, and those the document found with it in its position (its
+    place in the pipeline, the chunk it receives, the array's shape). So a
+    field with no problems is valid in that position, and `canonical_of`
+    can write it. This groups the problems at every depth, as zod's
+    `treeifyError` groups issues: a problem with a shard's inner codec
+    belongs to the inner codec and to the shard. Each field comes before
+    its nested fields, in the order of `fields_of`, so the last field that
+    lists a problem is the innermost field containing it. A problem
+    outside every field (with the fill value or the shape) is not listed
+    under any field.
     """
     located = list(fields)
     held: dict[Loc, list[ValidationProblem]] = {loc: [] for loc, _ in located}
@@ -1628,12 +1662,13 @@ def with_problems(
 
 
 def configuration_of(resolved: ResolvedField[Any], definition: Definition[C]) -> C | None:
-    """The configuration `resolved` holds, typed as `definition` declares it, if `definition` read it.
+    """The configuration of `resolved`, typed as `definition` declares it, if `definition` read it.
 
-    `AcceptedField` holds a configuration as the mapping every one is; asked with
-    the definition that read the field -- or one equal to it, as a
-    pickled field's is -- this is the same mapping, as its TypedDict. None
-    when another definition read it, or none did.
+    `AcceptedField` stores its configuration as a plain mapping. When
+    called with the definition that read the field, or one equal to it
+    (as with a pickled field), this returns the same mapping typed as the
+    TypedDict. Returns None when another definition read the field, or no
+    definition did.
     """
     if not isinstance(resolved, AcceptedField) or resolved.definition != definition:
         return None
@@ -1641,17 +1676,18 @@ def configuration_of(resolved: ResolvedField[Any], definition: Definition[C]) ->
 
 
 def fill_value_problems(data_type: ResolvedField[F], value: object, loc: Loc = ()) -> Problems:
-    """What is wrong with `value` as a fill value of `data_type`, a data type field a scope read.
+    """The problems with `value` as a fill value of `data_type` (a data type field a scope read).
 
-    `value` is refined to JSON first: not JSON is the first verdict,
-    whatever the data type. It is then checked against the JSON shape the
-    data type's definition declares, and judged by its fill value rules, as
-    `read_configuration` reads a configuration: a key the shape does not declare is
-    reported and left out, and the rules still judge the rest. The rules
-    see the fields the configuration holds as the scope read them: a
-    struct judges each field's fill value by that field's own type. A data
-    type the scope did not read, out of scope or invalid, leaves a JSON fill
-    value unjudged. `loc` prefixes every problem.
+    `value` is refined to JSON first. If it is not JSON, that is reported
+    first, whatever the data type. It is then checked against the JSON
+    shape that the data type's definition declares, and by the fill value
+    rules, in the same way `read_configuration` reads a configuration: a
+    key the shape does not declare is reported and left out, and the rules
+    still check the rest. The rules see the nested fields of the
+    configuration as the scope read them, so a struct checks each field's
+    fill value against that field's own type. If the scope did not read
+    the data type (it is out of scope or invalid), a JSON fill value is not
+    checked. `loc` prefixes every problem.
     """
     refined, problems = refine_json(value, loc)
     if len(problems) != 0 or not isinstance(data_type, AcceptedField):
@@ -1669,16 +1705,18 @@ def fill_value_problems(data_type: ResolvedField[F], value: object, loc: Loc = (
 
 
 def canonical_fill_value(data_type: ResolvedField[F], value: object) -> JSONValue | UNSET:
-    """`value`, a fill value of `data_type`, a data type field a scope read, in the one spelling its value has; `UNSET` when it has a problem.
+    """`value` (a fill value of `data_type`, a data type field a scope read) in the single canonical spelling of its value; `UNSET` when it has a problem.
 
-    As the data type's `fill_value_canonical` spells it, so two fill
-    values of a data type are one value exactly when their canonical
-    spellings are written alike -- the same JSON, as `json.dumps` writes
-    it, which `==` is not: it takes `-0.0` for `0.0`. A fill value
-    `fill_value_problems` finds a problem with has no canonical spelling,
-    as `canonical_of` gives a field with a problem none: `UNSET`, since
-    `None` is the JSON `null`, a fill value of a data type the scope did
-    not read, which spells a fill value as written.
+    The spelling comes from the data type's `fill_value_canonical`. Two
+    fill values of a data type are the same value exactly when their
+    canonical spellings are written the same way: the same JSON as
+    `json.dumps` writes it. `==` is not the same test, because it treats
+    `-0.0` as equal to `0.0`. A fill value with a problem found by
+    `fill_value_problems` has no canonical spelling, just as `canonical_of`
+    returns none for a field with a problem. The result is `UNSET` and not
+    `None`, because `None` is the JSON `null`, which is a valid fill value
+    for a data type the scope did not read (such a data type keeps a fill
+    value as written).
     """
     if len(fill_value_problems(data_type, value)) != 0:
         return UNSET
@@ -1687,11 +1725,11 @@ def canonical_fill_value(data_type: ResolvedField[F], value: object) -> JSONValu
 
 
 def spelled_canonically(data_type: ResolvedField[F], value: JSONValue) -> JSONValue:
-    """`value`, a fill value of `data_type` with no problem, in its canonical spelling, as `canonical_fill_value` gives it, without judging it again.
+    """`value` (a fill value of `data_type` with no problems) in its canonical spelling, as `canonical_fill_value` returns it, without checking it again.
 
-    Its `fill_value_canonical` is the extension author's code: what it
-    gives is checked to be JSON, and an error it raises says which data
-    type's canonical spelling raised it.
+    The data type's `fill_value_canonical` is the extension author's code.
+    Its result is checked to be JSON. If it raises an error, a note is
+    added that says which data type's canonical spelling raised it.
     """
     if not isinstance(data_type, AcceptedField):
         return value
@@ -1715,11 +1753,12 @@ def spelled_canonically(data_type: ResolvedField[F], value: JSONValue) -> JSONVa
 
 
 def storage_of(data_type: ResolvedField[DataTypeDefinition[Any]]) -> StorageClass | None:
-    """How the values of `data_type`, a data type field a scope read, are stored; None when unknown.
+    """How the values of `data_type` (a data type field a scope read) are stored; None when unknown.
 
-    Unknown when the scope did not read it, or its definition does not
-    say. Its `storage` is the extension author's code: what it gives is
-    checked to be a storage class, and an error it raises says which data
+    The storage is unknown when the scope did not read the data type, or
+    its definition does not declare storage. The definition's `storage` is
+    the extension author's code. Its result is checked to be a storage
+    class. If it raises an error, a note is added that says which data
     type's storage raised it.
     """
     if not isinstance(data_type, AcceptedField):
@@ -1742,20 +1781,21 @@ def storage_of(data_type: ResolvedField[DataTypeDefinition[Any]]) -> StorageClas
 def chunk_grid_lengths(
     chunk_grid: ResolvedField[ChunkGridDefinition[Any]], shape: tuple[int, ...], loc: Loc = ()
 ) -> tuple[Lengths, Problems]:
-    """The lengths the chunks of `chunk_grid`, a chunk grid field a scope read, take along each axis of an array of `shape`, and what is wrong with the grid over it.
+    """The chunk lengths of `chunk_grid` (a chunk grid field a scope read) along each axis of an array of `shape`, and the problems with the grid for that shape.
 
     A chunk has an extent "for each dimension of the array"
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L277-L281),
-    so the lengths have an entry for each dimension of `shape`, None where
-    nothing says them. The grid's shape rules judge it first, and locate
-    their problems in the configuration, under `loc`, where the field
-    sits: a regular grid with a chunk length for each of two dimensions,
-    over an array of three. Only a grid that fits the shape says its
-    lengths; a grid the scope did not read, out of scope or invalid, is
-    left unjudged and says none. What a grid's `chunk_lengths` gives is
-    checked: lengths of another type are a `TypeError`, and of another
-    number of axes than `shape` has a `ValueError`, each a fault in the
-    definition, not the field.
+    so the lengths have an entry for each dimension of `shape`, with None
+    where they are unknown. The grid's shape rules check it first, and
+    locate their problems in the configuration, under `loc` (the location
+    of the field). For example, a regular grid with chunk lengths for two
+    dimensions over an array with three dimensions is a problem. Only a
+    grid that fits the shape returns its lengths. A grid that the scope
+    did not read (it is out of scope or invalid) is not checked and
+    returns no lengths. The result of a grid's `chunk_lengths` is checked:
+    lengths of the wrong type raise `TypeError`, and lengths with a
+    different number of axes than `shape` raise `ValueError`. Both
+    indicate a bug in the definition, not in the field.
     """
     unknown: Lengths = (None,) * len(shape)
     if not isinstance(chunk_grid, AcceptedField):
@@ -1795,23 +1835,24 @@ def chunk_grid_lengths(
 def resolve(
     data: object, kind: type[D], context: Scope, loc: Loc = ()
 ) -> tuple[ResolvedField[D], Problems]:
-    """`data`, one metadata field, read as a `kind` in `context`: what the scope made of it, and every problem.
+    """Read `data` (one metadata field) as a `kind` in `context`. Return the result of the reading, and every problem.
 
-    All three steps for one field. `data` is refined to JSON and its
-    envelope judged -- an extra member, a `configuration` that is not an
-    object, a `must_understand` that is not a boolean or is `false`, each
-    a problem. The name is related to a definition in `context`; the
-    configuration is checked against its TypedDict and judged by its
-    rules; each nested field the check met is read the same way, in the
-    same scope, and what is wrong with one is its own, reported where it
-    sits, as with a document's fields. What comes back is `AcceptedField` by the
-    definition that claims the name; `UnclaimedField` when nothing in scope
-    claims it, an unmodelled extension left unjudged, which is what keeps
-    the format open; or `RefusedField`, with the problems that say why. `loc`
-    prefixes every problem. `kind` is one of the five kinds --
-    `CodecDefinition`, `DataTypeDefinition`, `ChunkGridDefinition`,
-    `ChunkKeyEncodingDefinition`, `StorageTransformerDefinition` -- with
-    or without type arguments; anything else is a `TypeError`.
+    This runs all three steps for one field. `data` is refined to JSON and
+    its envelope is checked. An extra member, a `configuration` that is not
+    an object, and a `must_understand` that is not a boolean or is `false`
+    are each a problem. The name is mapped to a definition in `context`.
+    The configuration is checked against its TypedDict and by its rules.
+    Each nested field found by the check is read the same way, in the same
+    scope. A problem in a nested field belongs to that field and is
+    reported at its location, as with a document's fields. The result is
+    an `AcceptedField` read by the definition that claims the name; an
+    `UnclaimedField` when nothing in scope claims the name (an extension
+    with no model, not checked, which is what keeps the format open); or a
+    `RefusedField`, with the problems that explain why. `loc` prefixes
+    every problem. `kind` must be one of the five kinds
+    (`CodecDefinition`, `DataTypeDefinition`, `ChunkGridDefinition`,
+    `ChunkKeyEncodingDefinition`, `StorageTransformerDefinition`), with or
+    without type arguments. Anything else raises `TypeError`.
     """
     refined, problems = refine_json(data, loc)
     return resolve_refined(data, refined, problems, kind, context, loc)
@@ -1825,12 +1866,12 @@ def resolve_refined(
     context: Scope,
     loc: Loc = (),
 ) -> tuple[ResolvedField[D], Problems]:
-    """`resolve` of `data`, which the caller refined already: `refined` and `problems` are what `refine_json(data, loc)` gave.
+    """`resolve` for `data` that the caller has already refined. `refined` and `problems` are the result of `refine_json(data, loc)`.
 
-    For a reader that refines a document's members once and keeps what it
-    refined -- the document a model holds is built of it -- rather than
-    refining each field again here. `problems` says whether `data` is
-    JSON: when it holds any, `refined` is not read.
+    This is for a reader that refines a document's members once and keeps
+    the result (the document a model holds is built from it), instead of
+    refining each field again here. `problems` shows whether `data` is
+    JSON. If it contains any problems, `refined` is not used.
     """
     asked = as_kind(kind)
     scope_format = context.format
@@ -1841,9 +1882,10 @@ def resolve_refined(
         )
         raise TypeError(msg)
     if len(problems) != 0:
-        # Not JSON, so not read; its name, if it has one, still says what
-        # claims it, and one the spec does not give an extension is a
-        # problem here as on the other path, asked of no definition.
+        # The value is not JSON, so it is not read. If it has a name, the
+        # name still determines which definition claims it. A name that is
+        # not a valid extension name under the spec is a problem here, as on
+        # the other path, and no definition is looked up for it.
         name = asked.named_configuration(data)[0]
         bad = None if name is None else asked.name_problem(name, asked.name_loc(loc))
         claimant = None if name is None or bad is not None else context.claimant(asked, name)
@@ -1857,12 +1899,12 @@ def resolve_refined(
 def _resolve_field(
     data: JSONValue, kind: type[Definition[Any]], context: Scope, loc: Loc
 ) -> tuple[ResolvedField[Definition[Any]], Problems]:
-    """A refined field with its envelope judged, then read.
+    """Check the envelope of a refined field, then read the field.
 
-    What the scope made of it is what became of the configuration. A
-    stray member or a `must_understand` of `false` says nothing about it,
-    so it is reported beside the field that was read, which later layers
-    can still judge.
+    The result of the reading depends only on the configuration. An extra
+    member or a `must_understand` of `false` does not affect the
+    configuration, so it is reported alongside the field that was read,
+    and later layers can still check that field.
     """
     envelope = _located(loc, kind.envelope_problems(data))
     resolved, found = _read(data, kind, context, loc)
@@ -1876,13 +1918,14 @@ def _read(
     if name is None:
         return RefusedField(json=data, name=None, read_as=kind), ()
     if not kind.well_named(name):
-        # The envelope rule every reader runs first reports it; no
-        # definition is asked to claim it.
+        # The envelope check that every reader runs first reports this. No
+        # definition is looked up for the name.
         return RefusedField(json=data, name=name, read_as=kind), ()
     definition = context.claimant(kind, name)
     if len(malformed) != 0:
-        # A configuration that is not an object, which the envelope's
-        # problems say; the name still says what claims the field.
+        # The configuration is not an object, which the envelope problems
+        # report. The name still determines which definition claims the
+        # field.
         return RefusedField(json=data, name=name, read_as=kind, definition=definition), ()
     if definition is None:
         return UnclaimedField(json=data, name=name, read_as=kind), ()
@@ -1894,11 +1937,11 @@ def _read(
         missing = problem(at, f"{name!r} requires a configuration", "missing_key")
         return RefusedField(json=data, name=name, read_as=kind, definition=definition), missing
     typed, found, nested = _typed(definition.configuration, {} if given is None else given, at)
-    # The fields it holds are read first, each a frame deeper than this
-    # one, so the rules see them as the scope read them; each is put back
-    # as a document writes it, so the configuration says what was read
-    # however each was spelled. Their problems are reported after the
-    # rules'.
+    # Read the nested fields first, each one stack frame deeper, so the
+    # rules see them as the scope read them. Each is put back as a document
+    # writes it, so the configuration shows what was read, however each was
+    # spelled. Their problems are reported after the problems from the
+    # rules.
     within: dict[Loc, ResolvedField[Any]] = {}
     written: dict[Loc, JSONValue] = {}
     inside: list[ValidationProblem] = []
@@ -1906,14 +1949,15 @@ def _read(
         inside.extend(_envelope(field))
         inner, found_inside = _read(field.json, field.kind, context, field.loc)
         within[field.loc[len(at) :]] = inner
-        # Refined JSON came in, so what was read of it is JSON, or a field
-        # refused for what it holds, never for not being JSON.
+        # The input was refined JSON, so the result is JSON, or a field
+        # refused for its contents, never for not being JSON.
         written[field.loc] = cast("JSONValue", document_json(inner))
         inside.extend(found_inside)
         inside.extend(_sized(field, inner))
-    # The rules may read a field the configuration holds by its name, so
-    # they are asked only when each one is named; any other problem with
-    # one is its own, reported where it sits, as a document's fields are.
+    # The rules may look up a nested field by its name, so they run only
+    # when every nested field has a name. Any other problem with a nested
+    # field belongs to that field and is reported at its location, as with
+    # a document's fields.
     sound = _usable(found) and all(_named(field) for field in nested)
     configuration = (
         cast(
@@ -1940,7 +1984,7 @@ def _read(
 
 
 def _named(field: _NestedField) -> bool:
-    """Whether a field a configuration holds is named, with an object for its configuration if it has one."""
+    """Whether a nested field has a name, and its configuration (if any) is an object."""
     name, _, malformed = field.kind.named_configuration(field.json)
     return name is not None and len(malformed) == 0
 
@@ -1954,12 +1998,12 @@ def _read_carried(
     carried: Mapping[str, JSONValue],
     loc: Loc,
 ) -> tuple[ResolvedField[Definition[Any]], Problems]:
-    """A field whose name carries its configuration -- raw bits, `r16` -- read by the definition its name is filed under.
+    """Read a field whose name encodes its configuration (raw bits, such as `r16`) with the definition its name is filed under.
 
-    The document wrote a name, so what is wrong with what the name carries
-    -- a size that is not a positive multiple of 8 -- is a problem of the
-    field. A configuration written beside the name holds nothing, so each
-    member of one is a key nothing declares.
+    The document wrote a name, so a problem with the configuration encoded
+    in the name (such as a size that is not a positive multiple of 8) is a
+    problem of the field. A configuration written next to the name must be
+    empty, so each member in it is an undeclared key.
     """
     _, beside, _ = _checked(
         EmptyConfiguration,
@@ -1967,16 +2011,17 @@ def _read_carried(
         kind.configuration_loc(loc),
     )
     configuration, judged = definition.read_configuration(carried)
-    # What is wrong with what the name carries is the field's: found at
-    # the field, where the name is what is there, and what was expected
-    # of a member of the configuration is not expected of it.
+    # A problem with the configuration encoded in the name belongs to the
+    # field. It is located at the field, where the name is, and the
+    # `input` and `ctx` that described a configuration member do not apply
+    # to the name, so they are cleared.
     problems = (
         *beside,
         *(dataclasses.replace(found, loc=loc, input=UNSET, ctx={}) for found in judged),
     )
-    # A name is one word: what it carries that the definition does not
-    # declare cannot be left out, as a stray key beside the name can, so
-    # anything wrong with what the name carries refuses the field.
+    # A name is a single token. An undeclared part of the encoded
+    # configuration cannot be left out, as an extra key next to the name
+    # can, so any problem with the encoded configuration refuses the field.
     if configuration is None or not _usable(beside) or len(judged) != 0:
         refused = RefusedField(json=data, name=name, read_as=kind, definition=definition)
         return refused, problems
@@ -1986,10 +2031,10 @@ def _read_carried(
 
 
 def _sized(field: _NestedField, inner: ResolvedField[Any]) -> Problems:
-    """A codec of dynamic size in a member that takes codecs of static size, as a problem at the field.
+    """Report a codec of dynamic size in a member that accepts only codecs of static size, as a problem at the field.
 
-    A name nothing in scope claims is left unjudged, its size unknown, as
-    everything else about it is.
+    A name that nothing in scope claims is not checked. Its size is
+    unknown, like everything else about it.
     """
     definition = inner.definition
     if not field.static or not isinstance(definition, CodecDefinition):
@@ -2007,27 +2052,28 @@ def _sized(field: _NestedField, inner: ResolvedField[Any]) -> Problems:
 def canonicalize(
     data: object, kind: type[D], context: Scope, loc: Loc = ()
 ) -> tuple[JSONValue | None, Problems]:
-    """`data`, one metadata field, in its simplest equivalent spelling, and every problem.
+    """`data` (one metadata field) in its simplest equivalent spelling, and every problem.
 
-    Only a field without problems has one. A simplest spelling says what
-    the author wrote in fewer words, and a key the TypedDict does not
-    declare, a stray envelope member or a `must_understand` of `false` is
-    something the author wrote that it would erase, so a field with any
-    problem comes back None, with its problems. Otherwise each nested
-    field goes in its own simplest spelling, and then the definition's
-    `canonical` has the rest -- judged again, so a `canonical` that gives
-    a configuration that does not hold is a `ValueError`, a fault in the
-    definition rather than the field. The envelope takes the fewest
-    words every reader takes: a data type with nothing to configure is its
-    bare name, as core data types have been written since Zarr v3.0; any
-    other field is an object, `{"name": ...}`, since a Zarr v3.0 reader
-    takes no short-hand name in `codecs`
-    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L585-L592);
-    and there is no `must_understand`, since `true` is what absence means.
-    A name nothing in scope claims keeps the configuration it was written
-    with, since what it simplifies to is its own definition's call. A
-    field a scope has read already is spelled so by `canonical_of`,
-    given its problems.
+    Only a field without problems has a simplest spelling. A simplest
+    spelling expresses what the author wrote in fewer words. A key the
+    TypedDict does not declare, an extra envelope member, or a
+    `must_understand` of `false` is something the author wrote that the
+    simplest spelling would erase. So a field with any problem returns
+    None, with its problems. Otherwise each nested field is written in its
+    own simplest spelling, and then the definition's `canonical` handles
+    the rest. Its result is checked again, so a `canonical` that returns
+    an invalid configuration raises `ValueError`, which indicates a bug in
+    the definition, not in the field. The envelope uses the shortest form
+    every reader accepts. A data type with nothing to configure is written
+    as its bare name, as core data types have been written since Zarr
+    v3.0. Any other field is an object, `{"name": ...}`, because a Zarr
+    v3.0 reader does not accept a short-hand name in `codecs`
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L585-L592).
+    There is no `must_understand`, because leaving it out means `true`.
+    A name that nothing in scope claims keeps the configuration it was
+    written with, because only its own definition could decide how to
+    simplify it. For a field that a scope has already read, use
+    `canonical_of` with its problems.
     """
     resolved, problems = resolve(data, kind, context, loc)
     return canonical_of(resolved, problems), problems
@@ -2036,14 +2082,15 @@ def canonicalize(
 def canonical_of(
     resolved: ResolvedField[Any], problems: Sequence[ValidationProblem]
 ) -> JSONValue | None:
-    """`resolved`, a field a scope read, in its simplest equivalent spelling, as `canonicalize` spells one; None when it has a problem.
+    """`resolved` (a field a scope read) in its simplest equivalent spelling, as `canonicalize` writes it; None when it has a problem.
 
-    `problems` are the field's, as `resolve` gives them, or
-    `with_problems` gives each field of a reading. Only a field with none
-    has a simplest spelling: a simpler spelling of one with a problem
-    would erase what its author wrote -- a key its TypedDict does not
-    declare -- or spell what does not hold. What is spelled is what the
-    scope read, without reading the field again.
+    `problems` are the field's problems, as returned by `resolve`, or as
+    `with_problems` returns them for each field of a reading. Only a field
+    with no problems has a simplest spelling. A simpler spelling of a
+    field with a problem would erase what its author wrote (such as a key
+    its TypedDict does not declare), or would write something invalid.
+    The result is built from what the scope read, without reading the
+    field again.
     """
     if len(problems) != 0:
         return None
@@ -2051,7 +2098,7 @@ def canonical_of(
 
 
 def _simplest(field: ResolvedField[Any]) -> JSONValue | None:
-    """A field in its simplest spelling; None when it, or a field it holds, was refused, which has none."""
+    """A field in its simplest spelling; None when the field or one of its nested fields was refused, because a refused field has no simplest spelling."""
     if isinstance(field, AcceptedField):
         return _canonical_field(field)
     if isinstance(field, UnclaimedField):
@@ -2060,7 +2107,7 @@ def _simplest(field: ResolvedField[Any]) -> JSONValue | None:
 
 
 def _canonical_field(resolved: AcceptedField[Any]) -> JSONValue | None:
-    """A field that read, in its simplest equivalent spelling: the fields it holds first, then its own members; None when one it holds was refused."""
+    """An accepted field in its simplest equivalent spelling: nested fields first, then its own members. None when a nested field was refused."""
     definition, name = resolved.definition, resolved.name
     configuration: JSONValue = dict(resolved.configuration)
     for loc, inner in resolved.nested.items():
@@ -2068,8 +2115,9 @@ def _canonical_field(resolved: AcceptedField[Any]) -> JSONValue | None:
         if simplest is None:
             return None
         configuration = _replaced(configuration, loc, simplest)
-    # The view every function of a definition is handed; what `canonical`
-    # gives, the view itself when nothing is folded, is taken as a dict.
+    # Every function of a definition receives this read-only view. The
+    # result of `canonical` (the view itself when nothing is simplified) is
+    # converted to a dict.
     view = read_only(cast("Mapping[str, JSONValue]", configuration))
     simplified = asked(
         definition,
@@ -2090,7 +2138,7 @@ def _canonical_field(resolved: AcceptedField[Any]) -> JSONValue | None:
 
 
 def _replaced(value: JSONValue, path: Loc, new: JSONValue) -> JSONValue:
-    """`value` with what sits at `path` replaced by `new`; `path` comes from a check of `value`."""
+    """`value` with the item at `path` replaced by `new`. `path` must come from a check of `value`."""
     if len(path) == 0:
         return new
     step, rest = path[0], path[1:]

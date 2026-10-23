@@ -1,4 +1,4 @@
-"""The v2 scalar families: `bool`, `int`, `uint`, `float` and `complex`, filed by family and read for every typestr of the family."""
+"""The v2 scalar families: `bool`, `int`, `uint`, `float` and `complex`. Each definition is filed under its family and is read for every typestr of the family."""
 
 from __future__ import annotations
 
@@ -19,11 +19,11 @@ if TYPE_CHECKING:
     from zarr_metadata.v3._definition import Nested
 
 ZarrV2ByteOrder = Literal["<", ">", "|"]
-"""The byte orders a typestr writes: little-endian, big-endian, and not relevant."""
+"""The byte orders that a typestr writes: little-endian, big-endian, and not relevant."""
 
 
 class ZarrV2ScalarConfiguration(TypedDict, closed=True):
-    """What a scalar typestr carries: its byte order and its size in bytes, `{"byteorder": "<", "itemsize": 4}` for `<f4`."""
+    """The configuration that a scalar typestr carries: its byte order and its size in bytes, such as `{"byteorder": "<", "itemsize": 4}` for `<f4`."""
 
     byteorder: ReadOnly[ZarrV2ByteOrder]
     itemsize: ReadOnly[Annotated[int, Ge(0)]]
@@ -31,7 +31,7 @@ class ZarrV2ScalarConfiguration(TypedDict, closed=True):
 
 @dataclass(frozen=True, slots=True)
 class _Sized:
-    """The rules of a family whose types are `sizes` bytes wide: a value rather than a closure, so a scope holding it pickles."""
+    """The rules of a family whose types are `sizes` bytes wide. This is a value rather than a closure, so a scope that holds it can be pickled."""
 
     sizes: tuple[int, ...] | None
     orderless: frozenset[int] | None
@@ -60,19 +60,20 @@ class _Sized:
 
 
 def sized(sizes: tuple[int, ...] | None, orderless: frozenset[int] | None) -> _Sized:
-    """The rules of a family whose types are `sizes` bytes wide, any width when None.
+    """Return the rules of a family whose types are `sizes` bytes wide. If `sizes` is None, any width is allowed.
 
-    `orderless` is the sizes at which the type has no byte order, which
-    NumPy writes as `|`: one byte for an integer, every size for bytes
-    and void, none for a float; None is every size. At any other size
-    the typestr says which end comes first, `<` or `>`.
+    `orderless` is the set of sizes at which the type has no byte order,
+    which NumPy writes as `|`. This is one byte for an integer, every size
+    for bytes and void, and no size for a float. None means every size.
+    At any other size, the typestr must state which end comes first, `<`
+    or `>`.
     """
     return _Sized(sizes, orderless)
 
 
 @dataclass(frozen=True, slots=True)
 class _OrderlessAt:
-    """The canonical spelling of a family whose types of `sizes` bytes have no byte order."""
+    """The canonical spelling for a family whose types have no byte order at `sizes` bytes."""
 
     sizes: frozenset[int] | None
 
@@ -84,7 +85,7 @@ class _OrderlessAt:
 
 
 def orderless_at(sizes: frozenset[int] | None) -> _OrderlessAt:
-    """The canonical spelling of a family whose types of `sizes` bytes have no byte order: `|`, as NumPy writes it; None is every size."""
+    """Return the canonical spelling for a family whose types have no byte order at `sizes` bytes. At those sizes the byte order is `|`, as NumPy writes it. None means every size."""
     return _OrderlessAt(sizes)
 
 
@@ -114,7 +115,7 @@ class _InRange:
 
 
 ZarrV2FloatSpecial = Literal["NaN", "Infinity", "-Infinity"]
-"""The non-finite values the v2 spec spells by name (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L178-L190)."""
+"""The non-finite values that the v2 spec spells by name (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L178-L190)."""
 
 ZarrV2FloatFillValue = float | int | ZarrV2FloatSpecial | None
 """A v2 float fill value: a number, a named non-finite value, or null."""
@@ -129,20 +130,20 @@ ZarrV2ComplexFillValue = tuple[ZarrV2ComplexComponent, ZarrV2ComplexComponent] |
 def _float_canonical(
     configuration: ZarrV2ScalarConfiguration, nested: Nested, value: ZarrV2FloatFillValue
 ) -> ZarrV2FloatFillValue:
-    """An integer written for a float is the float, `0` and `0.0` one value, and a number past the largest float of the dtype's width is the infinity of its sign, as the v3 float types read one and NumPy stores it."""
+    """Return the canonical spelling of a float fill value. An integer written for a float becomes the float, so `0` and `0.0` are one value. A number past the largest float of the dtype's width becomes the infinity of its sign. This matches how the v3 float types read a number and how NumPy stores it."""
     return _held_in(value, configuration["itemsize"])
 
 
 def _held_in(value: ZarrV2FloatFillValue, itemsize: int) -> ZarrV2FloatFillValue:
-    """`value` as a float of `itemsize` bytes holds it: itself as a float, or the infinity of its sign past the largest such float; a width no float has keeps the value."""
+    """Return `value` as a float of `itemsize` bytes holds it: the value as a float, or the infinity of its sign if it is past the largest such float. If no float has that width, the value is kept."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return value
     try:
         held = float(value)
         narrowed = held
         if itemsize in _FLOAT_CODES:
-            # `struct` refuses a float16 past the largest, and packs a
-            # float32 past the largest as an infinity.
+            # `struct` raises for a float16 past the largest value, and packs
+            # a float32 past the largest value as an infinity.
             code = _FLOAT_CODES[itemsize]
             (narrowed,) = struct.unpack(code, struct.pack(code, held))
     except OverflowError:
@@ -153,13 +154,13 @@ def _held_in(value: ZarrV2FloatFillValue, itemsize: int) -> ZarrV2FloatFillValue
 
 
 _FLOAT_CODES: Final[Mapping[int, str]] = {2: "e", 4: "f", 8: "d"}
-"""The `struct` code of the float each size in bytes is: what refuses a value past the largest."""
+"""The `struct` code for the float of each size in bytes. Packing with it detects a value past the largest float."""
 
 
 def _complex_canonical(
     configuration: ZarrV2ScalarConfiguration, nested: Nested, value: ZarrV2ComplexFillValue
 ) -> ZarrV2ComplexFillValue:
-    """Each component in the float's canonical spelling."""
+    """Return each component in the canonical spelling of its float type."""
     if value is None:
         return None
     real, imag = value
@@ -187,7 +188,7 @@ INT_V2: Final = ZarrV2DataTypeDefinition(
     fill_value=int | None,
     fill_value_rules=_InRange(True),
 )
-"""`i1` to `i8`: signed integers, the fill value in the type's range."""
+"""`i1` to `i8`: signed integers. The fill value must be in the type's range."""
 
 UINT_V2: Final = ZarrV2DataTypeDefinition(
     name="uint",
@@ -197,7 +198,7 @@ UINT_V2: Final = ZarrV2DataTypeDefinition(
     fill_value=int | None,
     fill_value_rules=_InRange(False),
 )
-"""`u1` to `u8`: unsigned integers, the fill value in the type's range."""
+"""`u1` to `u8`: unsigned integers. The fill value must be in the type's range."""
 
 FLOAT_V2: Final = ZarrV2DataTypeDefinition(
     name="float",
@@ -206,7 +207,7 @@ FLOAT_V2: Final = ZarrV2DataTypeDefinition(
     fill_value=ZarrV2FloatFillValue,
     fill_value_canonical=_float_canonical,
 )
-"""`f2`, `f4`, `f8`: IEEE 754 floats; the fill value a number or a named non-finite value."""
+"""`f2`, `f4`, `f8`: IEEE 754 floats. The fill value is a number or a named non-finite value."""
 
 COMPLEX_V2: Final = ZarrV2DataTypeDefinition(
     name="complex",
@@ -215,7 +216,7 @@ COMPLEX_V2: Final = ZarrV2DataTypeDefinition(
     fill_value=ZarrV2ComplexFillValue,
     fill_value_canonical=_complex_canonical,
 )
-"""`c8`, `c16`: complex floats; the fill value `[real, imag]`."""
+"""`c8`, `c16`: complex floats. The fill value is `[real, imag]`."""
 
 __all__ = [
     "BOOL_V2",

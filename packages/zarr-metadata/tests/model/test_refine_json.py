@@ -1,4 +1,4 @@
-"""A value refined to JSON, or the reasons it is not."""
+"""Tests for refining a value to JSON, or reporting why it is not JSON."""
 
 from __future__ import annotations
 
@@ -36,13 +36,13 @@ if TYPE_CHECKING:
     ids=["int", "float", "bool", "str", "null", "nested-lists", "tuple", "object", "any-mapping"],
 )
 def test_json_is_refined_to_tuples_and_dicts(value: object, refined: object) -> None:
-    # One walk normalizes and judges.
+    # A single walk both normalizes and validates.
     assert refine_json(value) == (refined, ())
 
 
 def test_user_data_holds_non_finite_numbers() -> None:
-    # User data is JSON as Python's `json` module reads and writes it: the
-    # walk is `refine_json`'s, and a non-finite number is the float it is.
+    # User data is JSON as Python's `json` module reads and writes it. The
+    # walk is the same as in `refine_json`, and a non-finite number stays a float.
     assert refine_user_data({"range": [-math.inf, math.inf]}) == (
         {"range": (-math.inf, math.inf)},
         (),
@@ -53,11 +53,11 @@ def test_user_data_holds_non_finite_numbers() -> None:
     assert math.isnan(refined)
 
 
-# User data is refused, as JSON is, wherever it is not JSON.
+# User data, like JSON, is refused at any position where it is not JSON.
 @pytest.mark.parametrize("refine", [refine_json, refine_user_data], ids=["json", "user-data"])
 @pytest.mark.parametrize(
     ("value", "loc"),
-    # `bytes` is a sequence of integers, and still not a JSON array.
+    # `bytes` is a sequence of integers, but it is not a JSON array.
     [({"a": object()}, ("a",)), (b"bytes", ())],
     ids=["object", "bytes"],
 )
@@ -94,7 +94,7 @@ def test_error_every_leaf_that_is_not_json_is_reported() -> None:
 
 
 def test_a_value_nested_hundreds_deep_is_read() -> None:
-    # One frame per level of nesting, up to `JSON_DEPTH` of them.
+    # The walk uses one frame per level of nesting, up to `JSON_DEPTH` levels.
     deep: dict[str, object] = {}
     for _ in range(JSON_DEPTH - 1):
         deep = {"k": deep}
@@ -104,8 +104,9 @@ def test_a_value_nested_hundreds_deep_is_read() -> None:
 
 
 def test_error_a_value_nested_deeper_than_a_reader_walks() -> None:
-    # The level past the last is the problem, wherever it sits, so no
-    # document takes a reader past what the interpreter allows.
+    # The first level past the limit is reported as the problem, at any
+    # position. This keeps any document from pushing a reader past the
+    # interpreter's recursion limit.
     deep: dict[str, object] = {}
     for _ in range(JSON_DEPTH + 40):
         deep = {"k": deep}
@@ -118,7 +119,7 @@ def test_error_a_value_nested_deeper_than_a_reader_walks() -> None:
 
 
 def _nested(depth: int, innermost: object) -> list[object]:
-    """`innermost` inside `depth` arrays, each holding the next: `innermost` sits `depth` levels down."""
+    """Wrap `innermost` in `depth` nested arrays, so `innermost` is `depth` levels down."""
     value: object = innermost
     for _ in range(depth):
         value = [value]
@@ -151,13 +152,14 @@ def _nested(depth: int, innermost: object) -> list[object]:
     ],
 )
 def test_a_value_is_shown_as_the_json_a_document_writes(value: object, text: str) -> None:
-    """A problem's message shows a value as its JSON, by its repr when it is not JSON, and says so when it nests past the levels a reader walks: a container there, not a non-JSON value sitting on the last level, which is shown."""
+    """A problem's message shows a value as JSON, or as its repr when it is not JSON. When a container is nested past the levels a reader walks, the message says so instead. A non-JSON value on the last level is still shown."""
     assert shown(value) == text
 
 
 def test_bytes_past_the_levels_a_reader_walks_are_not_json_rather_than_nested() -> None:
-    # `bytes` is a sequence to Python and no container to JSON, wherever
-    # it sits: past the cap it is still what it is, not nesting.
+    # `bytes` is a sequence to Python but not a container to JSON, at any
+    # position. Past the depth cap it is still reported as a non-JSON value,
+    # not as nesting.
     deep: list[object] = [b""]
     for _ in range(JSON_DEPTH - 1):
         deep = [deep]
@@ -170,7 +172,7 @@ def test_bytes_past_the_levels_a_reader_walks_are_not_json_rather_than_nested() 
 def test_error_an_integer_of_more_digits_than_json_text_holds_is_a_problem(
     interpreter_writes_4300_digits: None,
 ) -> None:
-    """An integer the interpreter will not convert to text, as `sys.get_int_max_str_digits` bounds one, is an `invalid_value` problem where it sits, so no reader raises on it: the document could not be written back, and `validate_*` and `read_*` agree."""
+    """An integer with more digits than `sys.get_int_max_str_digits` allows cannot be converted to text. It is reported as an `invalid_value` problem at its location, so no reader raises on it. The document could not be written back. `validate_*` and `read_*` report the same problems."""
     from zarr_metadata.model import (
         ZarrV3ArrayMetadata,
         read_array_metadata_v3,
@@ -191,7 +193,7 @@ def test_error_an_integer_of_more_digits_than_json_text_holds_is_a_problem(
 
 
 def test_a_str_or_int_subclass_is_refined_to_the_json_type_it_is() -> None:
-    """A `StrEnum` member, an `IntEnum` member, or any `str`, `int` or `float` subclass, is refined to the plain value JSON writes for it, so a `Literal` and a tag read it as the value, while `bool` stays apart from `int`."""
+    """A `StrEnum` member, an `IntEnum` member, or any `str`, `int` or `float` subclass is refined to the plain value that JSON writes for it. A `Literal` or a tag then reads it as that value. `bool` stays separate from `int`."""
     import enum
 
     from zarr_metadata.model import ZarrV3GroupMetadata
@@ -220,7 +222,7 @@ def test_a_str_or_int_subclass_is_refined_to_the_json_type_it_is() -> None:
 
 
 def test_a_mapping_or_sequence_of_another_type_is_refined_as_a_dict_or_list_is() -> None:
-    """A mapping proxy, a `UserDict`, a subclass of `dict` or `list`, a tuple: refined to the JSON the dict or list it holds refines to, and judged the same, each problem where it sits."""
+    """A mapping proxy, a `UserDict`, a subclass of `dict` or `list`, or a tuple is refined to the same JSON as the equivalent dict or list. It is validated the same way, with each problem at its location."""
 
     class Listed(list[object]):
         pass

@@ -1,4 +1,4 @@
-"""Zarr v2 codecs: the configuration shape, and one definition per numcodecs id this package models.
+"""Zarr v2 codecs: the configuration shape, and one definition per numcodecs id that this package models.
 
 In v2, compressors and filters are numcodecs configuration dicts: a required
 `id` field naming the codec, plus codec-specific parameters.
@@ -52,7 +52,7 @@ V2_CODECS: Final[tuple[ZarrV2CodecDefinition[Any], ...]] = (
     ADLER32_V2,
     FLETCHER32_V2,
 )
-"""Every codec numcodecs 0.16 configures that this package models."""
+"""Every codec that numcodecs 0.16 configures and that this package models."""
 
 __all__ = [
     "ADLER32_V2",

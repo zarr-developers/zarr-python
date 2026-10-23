@@ -1,4 +1,4 @@
-"""A group's consolidated metadata built from node models: each accepted when it reads the same in the group's scope, or gains there; refused when it conflicts or would lose."""
+"""Tests for building a group's consolidated metadata from node models. A model is accepted when it reads the same in the group's scope, or gains information there. It is refused when it conflicts or would lose information."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ ARRAY: dict[str, Any] = {
     **ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json(),
     "codecs": ("bytes",),
 }
-"""A `uint8` array whose `bytes` takes no configuration, so a private `bytes` of none reads it too."""
+"""A `uint8` array whose `bytes` codec has no configuration, so a private `bytes` definition with no configuration also reads it."""
 ZSTD = {"name": "zstd", "configuration": {"level": 3, "checksum": False}}
 LOOSE_ZSTD = {"name": "zstd", "configuration": {"level": 30}}
 WITH_ZSTD = {**ARRAY, "codecs": (*ARRAY["codecs"], ZSTD)}
@@ -88,7 +88,7 @@ def test_a_model_is_accepted_as_a_consolidated_entry_when_it_refines_into_the_sc
     beside: dict[str, Any],
     gained: bool,
 ) -> None:
-    """A node model given where consolidated metadata lists a document -- at the top, or inside a document listed there -- is accepted when the group's scope reads every claim of it identically -- its reading is kept, not read again -- or claims what the model's scope left unclaimed, when its document is read again there; the group then holds it in its own scope, equal to the group built of the documents, and writes plain JSON. A listed group's own listing is listed flat beside it, as the convention asks."""
+    """A node model can be given wherever consolidated metadata lists a document: at the top level, or inside a document listed there. The model is accepted in two cases. If the group's scope reads every claim of the model identically, the model's reading is kept and not read again. If the group's scope claims something that the model's scope left unclaimed, the model's document is read again in the group's scope. In both cases the group holds the model in its own scope, equals the group built from the documents, and writes plain JSON. A listed group's own listing is listed flat next to it, as the convention asks."""
     group = _group(scope, a=child, **beside)
     held = group.consolidated_metadata
     assert isinstance(held, ZarrV3ConsolidatedMetadata)
@@ -107,7 +107,7 @@ def test_a_model_is_accepted_as_a_consolidated_entry_when_it_refines_into_the_sc
 
 
 def _documents(value: object) -> object:
-    """`value` with every node model in it replaced by its document, however deep."""
+    """Return `value` with every node model in it, at any depth, replaced by its document."""
     if isinstance(value, (ZarrV3ArrayMetadata, ZarrV3GroupMetadata)):
         return value.to_json()
     if isinstance(value, dict):
@@ -116,7 +116,7 @@ def _documents(value: object) -> object:
 
 
 def test_documents_as_written_and_pickle() -> None:
-    """A group built of models writes each child's document as the child wrote it, and pickles as any group does."""
+    """A group built from models writes each child's document as the child wrote it, and pickles like any other group."""
     child = ZarrV3ArrayMetadata({**ARRAY, "data_type": {"name": "uint8"}})
     group = _group(None, a=child)
     written = cast("Any", group.to_json()["consolidated_metadata"])
@@ -125,7 +125,7 @@ def test_documents_as_written_and_pickle() -> None:
 
 
 def test_error_a_model_that_conflicts_with_the_scope_is_refused_at_its_path() -> None:
-    """A model read with a private `bytes`, given to a group whose scope reads the core `bytes`, is a conflict: a problem at the entry's path, naming the kind and the name, and telling the two definitions apart, not a silent re-read."""
+    """A model read with a private `bytes`, given to a group whose scope reads the core `bytes`, is a conflict. The problem is at the entry's path, names the kind and the name, and tells the two definitions apart. The model is not silently read again."""
     child = ZarrV3ArrayMetadata(ARRAY, context=PRIVATE)
     with pytest.raises(MetadataValidationError) as raised:
         _group(CORE_AND_EXTENSIONS, a=child)
@@ -140,7 +140,7 @@ def test_error_a_model_that_conflicts_with_the_scope_is_refused_at_its_path() ->
 
 
 def test_error_a_model_that_would_lose_a_meaning_is_refused_at_its_path() -> None:
-    """A model read where `zstd` is claimed, given to a group whose scope leaves it unclaimed, would lose what it reads: refused as a conflict is."""
+    """A model read in a scope that claims `zstd`, given to a group whose scope leaves `zstd` unclaimed, would lose information. It is refused, the same way a conflict is."""
     child = ZarrV3ArrayMetadata(WITH_ZSTD, context=CORE_AND_EXTENSIONS)
     with pytest.raises(MetadataValidationError) as raised:
         _group(CORE, a=child)
@@ -150,7 +150,7 @@ def test_error_a_model_that_would_lose_a_meaning_is_refused_at_its_path() -> Non
 
 
 def test_error_a_gain_that_surfaces_a_problem_is_reported_at_the_problem() -> None:
-    """A model whose scope left `zstd` unclaimed, given to a group whose scope claims it, is read again there: a level that definition refuses is a problem where it sits."""
+    """A model whose scope left `zstd` unclaimed, given to a group whose scope claims it, is read again in the group's scope. A level that the `zstd` definition refuses is reported as a problem at its location."""
     child = ZarrV3ArrayMetadata(WITH_LOOSE_ZSTD, context=CORE)
     with pytest.raises(MetadataValidationError) as raised:
         _group(CORE_AND_EXTENSIONS, a=child)
@@ -160,7 +160,7 @@ def test_error_a_gain_that_surfaces_a_problem_is_reported_at_the_problem() -> No
 
 
 def test_readers_see_models_as_the_constructor_does() -> None:
-    """`read_group_metadata_v3` and `validate_group_metadata_v3` given a document holding models read them as the constructor does: the reading holds the adopted model, and the validator reports a conflict."""
+    """Given a document that holds models, `read_group_metadata_v3` and `validate_group_metadata_v3` read them the same way the constructor does. The reading holds the adopted model, and the validator reports a conflict."""
     fine = {**INLINE, "metadata": {"a": ZarrV3ArrayMetadata(ARRAY)}}
     document = {"zarr_format": 3, "node_type": "group", "consolidated_metadata": fine}
     reading = read_group_metadata_v3(document)
@@ -170,7 +170,7 @@ def test_readers_see_models_as_the_constructor_does() -> None:
 
 
 def test_error_the_validator_reports_a_conflicting_model_as_the_constructor_does() -> None:
-    """`validate_group_metadata_v3` given a document holding a model the scope conflicts with reports the conflict at the entry's path, as the constructor refuses it."""
+    """Given a document that holds a model which conflicts with the scope, `validate_group_metadata_v3` reports the conflict at the entry's path, as the constructor refuses it."""
     clashing = {
         "zarr_format": 3,
         "node_type": "group",
@@ -185,7 +185,7 @@ def test_error_the_validator_reports_a_conflicting_model_as_the_constructor_does
 
 
 def test_consolidated_metadata_given_whole_is_taken_as_its_models() -> None:
-    """A `ZarrV3ConsolidatedMetadata` given as the member is its models at their paths: `update(consolidated_metadata=other.consolidated_metadata)` carries them over."""
+    """A `ZarrV3ConsolidatedMetadata` given as the member is treated as its models at their paths. So `update(consolidated_metadata=other.consolidated_metadata)` copies them over."""
     source = _group(CORE_AND_EXTENSIONS, a=ZarrV3ArrayMetadata(ARRAY))
     target = ZarrV3GroupMetadata.create_default(attributes={"t": 1}).update(
         consolidated_metadata=source.consolidated_metadata
@@ -195,7 +195,7 @@ def test_consolidated_metadata_given_whole_is_taken_as_its_models() -> None:
 
 
 def test_children_of_different_scopes_consolidate_in_their_join() -> None:
-    """Children read in different scopes are consolidated in `Context.joined` of them: each refines into the join, and the group reads in it."""
+    """Children read in different scopes are consolidated in the scope `Context.joined` builds from their scopes. Each child refines into the joined scope, and the group reads in it."""
     a = ZarrV3ArrayMetadata(ARRAY, context=CORE)
     b = ZarrV3ArrayMetadata(WITH_ZSTD, context=CORE_AND_EXTENSIONS)
     scope = Context.joined(a.context, b.context)
@@ -208,7 +208,7 @@ def test_children_of_different_scopes_consolidate_in_their_join() -> None:
 
 
 def test_update_keeps_a_models_scope_apart_from_the_groups() -> None:
-    """A model given to `update` keeps nothing of its own scope in the group: the group's `context` is the group's, and the child's is the group's too."""
+    """A model given to `update` does not bring its own scope into the group. The group's `context` stays the group's own, and the child's `context` becomes the group's too."""
     group = ZarrV3GroupMetadata.create_default(context=CORE)
     updated = group.update(
         consolidated_metadata={
@@ -224,7 +224,7 @@ def test_update_keeps_a_models_scope_apart_from_the_groups() -> None:
 
 
 def test_parse_gives_json_for_a_document_holding_models() -> None:
-    """`parse_group_metadata_v3` of a document holding models gives JSON, each model as its document, which the guard then says yes to: the trio agree."""
+    """`parse_group_metadata_v3` of a document that holds models returns JSON, with each model replaced by its document. The guard then accepts that JSON, so the three entry points agree."""
     document = {
         "zarr_format": 3,
         "node_type": "group",
@@ -237,7 +237,7 @@ def test_parse_gives_json_for_a_document_holding_models() -> None:
 
 
 def test_error_a_refused_model_entrys_reading_is_of_the_groups_scope() -> None:
-    """A group model refused as an entry is read again in the group's scope for its reading, so the group's reading holds no field, and no model, of another scope: `claims_of` its fields finds one scope."""
+    """A group model refused as an entry is read again in the group's scope to build its reading. So the group's reading holds no field and no model from another scope: `claims_of` on its fields finds one scope."""
     child = ZarrV3GroupMetadata(
         _group(CORE_AND_EXTENSIONS, x=ZarrV3ArrayMetadata(WITH_ZSTD)).to_json(),
         context=CORE_AND_EXTENSIONS,
@@ -261,7 +261,7 @@ def test_error_a_refused_model_entrys_reading_is_of_the_groups_scope() -> None:
 
 
 def test_error_a_model_listed_too_deep_is_refused_where_it_sits() -> None:
-    """A model valid on its own, nested to the last level a reader walks, sits past the cap as a listed document: refused there, as its document would be, by the validator, the constructor and the reader alike."""
+    """A model that is valid on its own, with attributes nested to the last level a reader walks, goes past the depth cap when listed as a document in consolidated metadata. The validator, the constructor and the reader all refuse it there, as they would refuse its document."""
     deep: list[object] = []
     for _ in range(JSON_DEPTH - 3):
         deep = [deep]
@@ -281,7 +281,7 @@ def test_error_a_model_listed_too_deep_is_refused_where_it_sits() -> None:
 
 
 def test_error_a_data_type_conflict_names_the_kind_and_the_written_name() -> None:
-    """A conflict over a data type names the kind in words and the name as the document writes it -- `r16`, filed under `r*` -- and says the two definitions differ when they print alike."""
+    """A conflict over a data type names the kind in words and the name as the document writes it (`r16`, which the `r*` definition claims). When the two definitions print the same, the message says that they differ."""
     strict = dataclasses.replace(
         RAW_BYTES_DATA_TYPE, fill_value_rules=lambda configuration, nested, value: iter(())
     )
@@ -301,7 +301,7 @@ def test_error_a_data_type_conflict_names_the_kind_and_the_written_name() -> Non
 
 
 def test_error_a_conflict_between_definitions_alike_says_they_differ() -> None:
-    """Two definitions of one name that read the same TypedDict, differing in their rules, are told apart in the message by saying so, since nothing else shows it."""
+    """Two definitions of the same name that read the same TypedDict but have different rules are distinguished in the message by stating that they differ, since nothing else shows the difference."""
     strict = dataclasses.replace(GZIP_CODEC, rules=lambda configuration, nested: iter(()))
     child = ZarrV3ArrayMetadata(
         {**ARRAY, "codecs": ("bytes", {"name": "gzip", "configuration": {"level": 1}})},
@@ -318,7 +318,7 @@ def test_error_a_conflict_between_definitions_alike_says_they_differ() -> None:
 
 
 def test_the_input_types_are_types_a_signature_can_hold() -> None:
-    """`ZarrV3NodeMetadataInput` and `ZarrV3ConsolidatedMetadataInput` resolve as annotations at run time, as a caller's `get_type_hints` reads them: types, not strings."""
+    """`ZarrV3NodeMetadataInput` and `ZarrV3ConsolidatedMetadataInput` resolve to types, not strings, when a caller's `get_type_hints` reads them as annotations at run time."""
 
     def take(entry: ZarrV3NodeMetadataInput, member: ZarrV3ConsolidatedMetadataInput) -> None:
         pass
@@ -329,7 +329,7 @@ def test_the_input_types_are_types_a_signature_can_hold() -> None:
 
 
 def test_error_a_conflict_is_reported_before_what_the_re_read_finds() -> None:
-    """A model read with the core `bytes` and an `endian`, given to a group whose private `bytes` takes none, is refused for the conflict first, and for the key that `bytes` does not take after it: the cause before its symptom."""
+    """A model read with the core `bytes` and an `endian`, given to a group whose private `bytes` takes no configuration, is refused first for the conflict and then for the `endian` key that the private `bytes` does not accept. The cause is reported before its symptom."""
     child = ZarrV3ArrayMetadata(
         {**ARRAY, "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},)}
     )

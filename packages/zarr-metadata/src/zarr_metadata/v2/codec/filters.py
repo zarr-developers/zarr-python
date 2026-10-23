@@ -1,7 +1,7 @@
-"""The v2 filters numcodecs 0.16 configures: `shuffle`, `delta`, `fixedscaleoffset`, `quantize`, `bitround`, `astype` and `packbits`.
+"""The v2 filters that numcodecs 0.16 configures: `shuffle`, `delta`, `fixedscaleoffset`, `quantize`, `bitround`, `astype` and `packbits`.
 
-A dtype parameter is a NumPy typestr, as numcodecs writes one; a
-parameter numcodecs defaults is optional.
+A dtype parameter is a NumPy typestr, as numcodecs writes it. A
+parameter that numcodecs gives a default is optional.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ class ZarrV2ShuffleParameters(TypedDict, closed=True):
 
 
 class ZarrV2DeltaParameters(TypedDict, closed=True):
-    """`numcodecs.Delta(dtype, astype=None)`: `astype` is `dtype` when left out."""
+    """`numcodecs.Delta(dtype, astype=None)`. When `astype` is omitted, it equals `dtype`."""
 
     dtype: ReadOnly[str]
     astype: NotRequired[ReadOnly[str]]
@@ -86,7 +86,7 @@ ASTYPE_V2: Final = ZarrV2CodecDefinition(
 )
 """`numcodecs.AsType`."""
 PACKBITS_V2: Final = ZarrV2CodecDefinition(name="packbits", configuration=EmptyConfiguration)
-"""`numcodecs.PackBits`: nothing to configure."""
+"""`numcodecs.PackBits`. It has no configuration."""
 
 __all__ = [
     "ASTYPE_V2",

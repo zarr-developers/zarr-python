@@ -1,15 +1,15 @@
-"""What every model compares and hashes by: a key computed once, the first time the model is compared, of everything the model shows."""
+"""The key every model uses for comparison and hashing. The key covers everything the model shows, and is computed once, the first time the model is compared."""
 
 
 class Keyed:
-    """A model whose `==` and `hash` compare a key computed once of what its document means.
+    """A model whose `==` and `hash` compare a cached key that describes what its document means.
 
-    Each model computes its own key in `_key_of`; `_model_key` computes it
-    the first time it is asked for -- by `==`, `hash`, or a model holding
-    this one -- and keeps it, so a model that is only read pays nothing
-    for it. Two models are equal when they are of one class and their keys
-    are, so a model of another class, or anything else, is never equal to
-    one.
+    Each model computes its own key in `_key_of`. `_model_key` computes
+    the key the first time something asks for it (`==`, `hash`, or a
+    model that holds this one) and caches it. A model that is only read
+    never pays for the key. Two models are equal when they have the same
+    class and equal keys. A model of another class, or any other object,
+    is never equal to a model.
     """
 
     __slots__ = ("_key",)
@@ -17,12 +17,12 @@ class Keyed:
     _key: tuple[object, ...]
 
     def _key_of(self) -> tuple[object, ...]:
-        """What `==` and `hash` compare of this model: each model's own."""
+        """The key `==` and `hash` compare for this model. Each model class defines its own."""
         raise NotImplementedError
 
     @property
     def _model_key(self) -> tuple[object, ...]:
-        """The key, computed the first time it is asked for and kept."""
+        """The key. It is computed on first access and cached."""
         try:
             return self._key
         except AttributeError:

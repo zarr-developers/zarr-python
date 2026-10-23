@@ -1,16 +1,17 @@
 """Repairing v3 metadata that a known writer bug made invalid.
 
 The readers are strict: a document the spec does not allow has problems,
-whoever wrote it. Some writers have written documents the spec does not
-allow, in ways that say plainly what they meant. Repairing one is a step
-of its own, before a strict read, which a caller asks for by name:
-`read_repaired_node_metadata_v3` rather than `read_node_metadata_v3`.
+no matter who wrote it. Some writers have written documents the spec does
+not allow, but where the intended meaning is clear. Repair is a separate
+step that runs before a strict read, and a caller must request it by
+name: `read_repaired_node_metadata_v3` instead of `read_node_metadata_v3`.
 
-What is repaired is a closed set, each member of it a writer's bug: the
-shape of the JSON it wrote is a TypedDict, which a document must have for
-the repair to apply, and the repair makes it correct JSON. Anything else
--- a missing `data_type`, a chunk length of 0 along a dimension that is
-not empty -- is left as it is, for the strict read to report.
+The set of repairs is closed, and each repair targets one writer bug. A
+TypedDict describes the shape of the JSON the buggy writer produced. A
+document must match that TypedDict for the repair to apply, and the
+repair turns it into correct JSON. Anything else (a missing `data_type`,
+a chunk length of 0 along a dimension that is not empty) is left as it
+is, and the strict read reports it.
 """
 
 from __future__ import annotations
@@ -45,19 +46,19 @@ from zarr_metadata.v3.consolidated import ZARR_V3_CONSOLIDATED_METADATA_KEY
 RepairKind: TypeAlias = Literal[
     "zero_chunk_length", "null_consolidated_metadata", "consolidated_metadata_in_zgroup_entry"
 ]
-"""Each writer bug a repair undoes, by name."""
+"""The name of each writer bug that a repair undoes."""
 
 
 @dataclass(frozen=True, slots=True)
 class Repair:
-    """One change a repair made to a document: where, which bug it undid, and what it did."""
+    """One change a repair made to a document: its location, the bug it undid, and what it changed."""
 
     loc: Loc
-    """Where the change is, in the document: the value changed, or the key removed."""
+    """The location of the change in the document: the value that changed, or the key that was removed."""
     kind: RepairKind
     """The writer bug the change undoes."""
     message: str
-    """What was written, by which writer, and what it became."""
+    """What was written, which writer wrote it, and what it was changed to."""
 
 
 _Length = Annotated[int, Ge(0)]
@@ -81,9 +82,9 @@ class ZarrV3ZeroChunkArrayMetadataJSON(TypedDict):
 
     zarr-python 3.0 and 3.1 wrote a chunk length of 0 along a dimension of
     length 0, which the regular grid refuses: "Chunk sizes must be greater
-    than zero". A chunk along an empty dimension holds nothing whatever its
-    length, so the repair writes 1 there, as zarr-python has since
-    (https://github.com/zarr-developers/zarr-python/pull/4328).
+    than zero". A chunk along an empty dimension holds nothing, whatever
+    its length, so the repair writes 1 there. zarr-python has also written
+    1 since https://github.com/zarr-developers/zarr-python/pull/4328.
     """
 
     node_type: Literal["array"]
@@ -95,9 +96,9 @@ class ZarrV3NullConsolidatedGroupMetadataJSON(TypedDict):
     """The members of a group document the `null_consolidated_metadata` repair reads.
 
     zarr-python 3.0 and 3.1 wrote `"consolidated_metadata": null` on a group
-    they had not consolidated, which the convention does not allow: the member is
-    an object, or absent. The repair removes it, which is what the writer
-    meant.
+    they had not consolidated. The convention does not allow this: the member
+    is an object, or absent. The repair removes the member, which is what the
+    writer meant.
     """
 
     node_type: Literal["group"]
@@ -105,21 +106,21 @@ class ZarrV3NullConsolidatedGroupMetadataJSON(TypedDict):
 
 
 def repair_node_metadata_v3(value: object) -> tuple[object, tuple[Repair, ...]]:
-    """`value`, a v3 `zarr.json`, with each known writer bug in it undone, and what was changed.
+    """Undo each known writer bug in `value`, a v3 `zarr.json`, and return the result with the list of changes.
 
-    Each document consolidated metadata holds is repaired too. What no
-    repair applies to is left as it is, and `value` is not changed: a
-    repaired document is a new one, sharing what it did not change with
-    `value`. Repairing a document with none of the bugs gives it back,
-    and no repairs.
+    Each document in the consolidated metadata is repaired too. Content
+    that no repair applies to is left as it is. `value` is not modified:
+    a repaired document is a new object, which shares its unchanged parts
+    with `value`. A document with none of the bugs is returned as it is,
+    with no repairs.
     """
     return _repaired(value, ())
 
 
 def _repaired(value: object, at: Loc) -> tuple[object, tuple[Repair, ...]]:
     if not is_json_object(value) or len(at) >= JSON_DEPTH:
-        # Not a document, or past the levels a reader walks, which the
-        # strict read reports.
+        # Not a document, or nested deeper than a reader walks. The strict
+        # read reports both.
         return value, ()
     original = value
     repairs: list[Repair] = []
@@ -130,7 +131,7 @@ def _repaired(value: object, at: Loc) -> tuple[object, tuple[Repair, ...]]:
 
 
 def _members(document: Mapping[str, object], keys: tuple[str, ...]) -> dict[str, object]:
-    """The members of `document` a repair reads: only those, so the rest is not walked."""
+    """Only the members of `document` that a repair reads, so the rest is not walked."""
     return {key: document[key] for key in keys if key in document}
 
 
@@ -146,8 +147,8 @@ def _zero_chunk_length(
     chunk_shape = array["chunk_grid"]["configuration"]["chunk_shape"]
     zeros = [axis for axis, length in enumerate(chunk_shape) if length == 0]
     if len(zeros) == 0 or len(chunk_shape) != len(shape) or any(shape[a] != 0 for a in zeros):
-        # Nothing to repair, or a 0 that is no writer's bug: the strict
-        # read reports it.
+        # Nothing to repair, or a 0 that is not a known writer bug. The
+        # strict read reports the latter.
         return document
     repairs.extend(
         Repair(
@@ -189,7 +190,7 @@ def _null_consolidated_metadata(
 def _consolidated(
     document: Mapping[str, object], at: Loc, repairs: list[Repair]
 ) -> Mapping[str, object]:
-    """`document` with each document its consolidated metadata holds repaired, where it holds any."""
+    """`document` with each document in its consolidated metadata repaired, if it has any."""
     member = document.get(ZARR_V3_CONSOLIDATED_METADATA_KEY)
     if not is_object(member):
         return document
@@ -216,20 +217,20 @@ class ZarrV3RepairedNodeMetadataReading:
     """A v3 `zarr.json` read after its known writer bugs were undone: the strict reading of the repaired document, and the repairs."""
 
     reading: ZarrV3NodeMetadataReading
-    """The repaired document, as `read_node_metadata_v3` reads it: its problems are the repaired document's, and its model when there are none."""
+    """The repaired document, as `read_node_metadata_v3` reads it. The problems are those of the repaired document. The model is present when there are no problems."""
     repairs: tuple[Repair, ...]
-    """What was changed to make the document that was read."""
+    """The changes that produced the document that was read."""
 
 
 def read_repaired_node_metadata_v3(
     value: object, *, context: ZarrV3Context | None = None
 ) -> ZarrV3RepairedNodeMetadataReading:
-    """`value`, a v3 `zarr.json`, read in `context` as `read_node_metadata_v3` reads it, once `repair_node_metadata_v3` has undone each known writer bug in it.
+    """Read `value`, a v3 `zarr.json`, in `context` as `read_node_metadata_v3` does, after `repair_node_metadata_v3` has undone each known writer bug in it.
 
-    For a reader of stores other writers made, which asks for repairs by
-    calling this rather than `read_node_metadata_v3`. Whatever no repair
-    applies to is read as it is, and reported as `read_node_metadata_v3`
-    reports it.
+    Use this to read stores that other writers made. A caller requests
+    repairs by calling this function instead of `read_node_metadata_v3`.
+    Content that no repair applies to is read as it is, and reported the
+    same way `read_node_metadata_v3` reports it.
     """
     scope = scoped(context, CORE_AND_EXTENSIONS)
     repaired, repairs = repair_node_metadata_v3(value)
@@ -239,20 +240,21 @@ def read_repaired_node_metadata_v3(
 
 
 class ZarrV2ZGroupWithConsolidatedMetadataJSON(TypedDict):
-    """A `.zgroup` entry of a `.zmetadata` as zarr-python 3.x writes one below the root: with a `consolidated_metadata` member, which a v2 group document does not take."""
+    """A `.zgroup` entry of a `.zmetadata`, below the root, as zarr-python 3.x writes it: with a `consolidated_metadata` member, which a v2 group document does not allow."""
 
     zarr_format: Literal[2]
     consolidated_metadata: Mapping[str, JSONValue]
 
 
 def repair_consolidated_metadata_v2(value: object) -> tuple[object, tuple[Repair, ...]]:
-    """`value`, a v2 `.zmetadata`, with each known writer bug in it undone, and what was changed.
+    """Undo each known writer bug in `value`, a v2 `.zmetadata`, and return the result with the list of changes.
 
     zarr-python 3.x writes a `consolidated_metadata` member into each
-    `.zgroup` entry below the root, which is removed; the root's is left,
-    since no writer puts one there. What no repair
-    applies to is left as it is, and `value` is not changed; a document
-    with none of the bugs is given back, and no repairs.
+    `.zgroup` entry below the root. This function removes it. The root's
+    entry is left alone, since no writer puts the member there. Content
+    that no repair applies to is left as it is, and `value` is not
+    modified. A document with none of the bugs is returned as it is, with
+    no repairs.
     """
     if not is_json_object(value):
         return value, ()
@@ -275,7 +277,7 @@ def repair_consolidated_metadata_v2(value: object) -> tuple[object, tuple[Repair
 
 
 def _without_consolidated_metadata(entry: object, at: Loc, repairs: list[Repair]) -> object:
-    """`entry`, a `.zgroup` entry, without the member zarr-python 3.x writes into it, when it is one such."""
+    """`entry`, a `.zgroup` entry, without the member zarr-python 3.x writes into it, if the entry has that member."""
     if not is_json_object(entry):
         return entry
     group = entry
@@ -301,24 +303,25 @@ def _without_consolidated_metadata(entry: object, at: Loc, repairs: list[Repair]
 
 @dataclass(frozen=True, slots=True)
 class ZarrV2RepairedConsolidatedMetadataReading:
-    """A v2 `.zmetadata` read after its known writer bugs were undone: the repaired document's problems, its model when there are none, and the repairs."""
+    """A v2 `.zmetadata` read after its known writer bugs were undone: the repaired document's problems, its model when there are no problems, and the repairs."""
 
     problems: tuple[ValidationProblem, ...]
     """Every problem of the repaired document."""
     metadata: ZarrV2ConsolidatedMetadata | None
     """The repaired document's model, when it has no problem; None otherwise."""
     repairs: tuple[Repair, ...]
-    """What was changed to make the document that was read."""
+    """The changes that produced the document that was read."""
 
 
 def read_repaired_consolidated_metadata_v2(
     value: object, *, context: ZarrV2Context | None = None
 ) -> ZarrV2RepairedConsolidatedMetadataReading:
-    """`value`, a v2 `.zmetadata`, read in `context` as `ZarrV2ConsolidatedMetadata` reads it, once `repair_consolidated_metadata_v2` has undone each known writer bug in it.
+    """Read `value`, a v2 `.zmetadata`, in `context` as `ZarrV2ConsolidatedMetadata` does, after `repair_consolidated_metadata_v2` has undone each known writer bug in it.
 
-    For a reader of stores other writers made, which asks for repairs by
-    calling this rather than the strict model. Whatever no repair applies
-    to is read as it is, and reported as the strict read reports it.
+    Use this to read stores that other writers made. A caller requests
+    repairs by calling this function instead of the strict model. Content
+    that no repair applies to is read as it is, and reported the same way
+    the strict read reports it.
     """
     scope = scoped(context, CORE_V2)
     repaired, repairs = repair_consolidated_metadata_v2(value)

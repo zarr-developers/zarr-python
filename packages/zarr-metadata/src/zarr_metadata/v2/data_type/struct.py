@@ -1,4 +1,4 @@
-"""The v2 `struct` type: an array of field records, each record's type a field of its own."""
+"""The v2 `struct` type: an array of field records. The type of each record is a field of its own."""
 
 from __future__ import annotations
 
@@ -18,23 +18,24 @@ if TYPE_CHECKING:
 
     from zarr_metadata.v3._definition import Nested
 
-# The longer record first: a record that fits neither is reported by the
-# first branch, and a shape that is wrong is deeper than a length that is.
+# List the longer record first. A record that matches neither form is
+# reported against the first branch, and a wrong shape is a deeper
+# problem than a wrong length.
 ZarrV2StructRecord = (
     tuple[str, ZarrV2DataTypeField, tuple[Annotated[int, Ge(0)], ...]]
     | tuple[str, ZarrV2DataTypeField]
 )
-"""A field record: `[name, dtype]` or `[name, dtype, shape]`, the dtype a nested field (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L152-L174)."""
+"""A field record: `[name, dtype]` or `[name, dtype, shape]`. The dtype is a nested field (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L152-L174)."""
 
 
 class ZarrV2StructConfiguration(TypedDict, closed=True):
-    """The records of a structured dtype, which the document writes as the dtype itself."""
+    """The records of a structured dtype. The document writes the records as the dtype itself."""
 
     fields: ReadOnly[tuple[ZarrV2StructRecord, ...]]
 
 
 def _rules(configuration: ZarrV2StructConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
-    """At least one record, the names distinct; `""` is NumPy's name for the padding of an aligned struct, which zarr-python 2.x writes, and may repeat."""
+    """Check that there is at least one record and that the names are distinct. The name `""` may repeat: NumPy uses it for the padding of an aligned struct, and zarr-python 2.x writes it."""
     fields = configuration["fields"]
     if len(fields) == 0:
         yield ValidationProblem(("fields",), "expected at least one field record", "invalid_value")
@@ -55,12 +56,12 @@ def _rules(configuration: ZarrV2StructConfiguration, nested: Nested) -> Iterator
 def _fill_value_rules(
     configuration: ZarrV2StructConfiguration, nested: Nested, value: ZarrV2Base64FillValue
 ) -> Iterator[ValidationProblem]:
-    """Base64 of exactly one record, when every field's size is known."""
+    """Check that the fill value is base64 of exactly one record, when the size of every field is known."""
     yield from sized_base64_rules(value, record_size(configuration, nested), exact=True)
 
 
 def record_size(configuration: ZarrV2StructConfiguration, nested: Nested) -> int | None:
-    """The bytes one record of `configuration` takes: each field's item size times the product of its subarray shape, a nested struct's its own record; None when a field's size is not known, as `|O`'s is not, or its dtype was not read."""
+    """Return the number of bytes that one record of `configuration` takes. Each field takes its item size times the product of its subarray shape, and a nested struct takes the size of its own record. Return None when the size of a field is not known (as for `|O`) or its dtype was not read."""
     total = 0
     for index, record in enumerate(configuration["fields"]):
         field = nested.get(("fields", index, 1))
@@ -75,7 +76,7 @@ def record_size(configuration: ZarrV2StructConfiguration, nested: Nested) -> int
 
 
 def _item_size(field: AcceptedField[Any]) -> int | None:
-    """The bytes one item of the dtype `field` read takes; None when not known."""
+    """Return the number of bytes that one item of the dtype read as `field` takes, or None when that is not known."""
     if field.name == STRUCT_NAME or "fields" in field.configuration:
         return record_size(cast("ZarrV2StructConfiguration", field.configuration), field.nested)
     size = field.configuration.get("itemsize")
@@ -89,6 +90,6 @@ STRUCT_V2: Final = ZarrV2DataTypeDefinition(
     fill_value=ZarrV2Base64FillValue,
     fill_value_rules=_fill_value_rules,
 )
-"""A structured type: an array of field records; the fill value base64 of one record (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L191-L193)."""
+"""A structured type: an array of field records. The fill value is base64 of one record (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L191-L193)."""
 
 __all__ = ["STRUCT_V2", "ZarrV2StructConfiguration", "ZarrV2StructRecord"]

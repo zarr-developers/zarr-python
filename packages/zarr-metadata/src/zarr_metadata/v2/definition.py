@@ -1,22 +1,26 @@
-"""Zarr v2 fields read against their definitions: the public door.
+"""Read Zarr v2 fields against their definitions. This is the public module for v2 reading.
 
 A v2 array document has two kinds of field: its `dtype`, and the codecs
 in `compressor` and `filters`. Zarr v2 has no extension registry, but it
-has a scope all the same: the data types zarr-python 2.x writes, one
-definition per NumPy family, and the codecs numcodecs 0.16 configures,
-one per id this package models. `CORE_V2` is that scope. Read one field
-in it with `resolve_dtype_v2` or `resolve_codec_v2`, which give `AcceptedField`,
-`UnclaimedField` or `RefusedField` as `zarr_metadata.v3.definition.resolve` does
-for a v3 field; the scope algebra -- `Context.of`, `extended_with`,
-`joined`, `claimant` -- is the same `Context`, of format 2: a v2 reader
-refuses a v3 scope with `TypeError`, and `ZarrV2Context` is its type.
+still has a scope: the data types that zarr-python 2.x writes (one
+definition per NumPy family), and the codecs that numcodecs 0.16
+configures (one per id that this package models). `CORE_V2` is that
+scope. To read one field in it, call `resolve_dtype_v2` or
+`resolve_codec_v2`. They return `AcceptedField`, `UnclaimedField` or
+`RefusedField`, as `zarr_metadata.v3.definition.resolve` does for a v3
+field. The scope operations (`Context.of`, `extended_with`, `joined`,
+`claimant`) use the same `Context` class, with format 2. A v2 reader
+rejects a v3 scope with `TypeError`. `ZarrV2Context` is the type of a v2
+scope.
 
-A dtype reads as its family, the typestr's byte order, size and unit its
-configuration: `<f4` is `float` with `{"byteorder": "<", "itemsize": 4}`,
-and its simplest spelling is the typestr again. A records array reads
-as `struct`, each record's type a nested field. A codec reads by its id,
-its other members the parameters. A typestr of a type code the spec does
-not list, or a codec id the package does not model, is `UnclaimedField`.
+A dtype reads as its family, and the byte order, size and unit of the
+typestr are its configuration. For example, `<f4` is `float` with
+`{"byteorder": "<", "itemsize": 4}`, and its simplest spelling is the
+typestr again. A records array reads as `struct`, and the type of each
+record is a nested field. A codec is read by its id, and its other
+members are its parameters. A typestr with a type code that the spec
+does not list, or a codec id that the package does not model, reads as
+an `UnclaimedField`.
 """
 
 from __future__ import annotations
@@ -53,20 +57,20 @@ if TYPE_CHECKING:
     from zarr_metadata.v3._definition import Problems
 
 CORE_V2: Final[ZarrV2Context] = Context.of(*V2_DATA_TYPES, *V2_CODECS)
-"""The data types zarr-python 2.x writes and the codecs numcodecs 0.16 configures."""
+"""The data types that zarr-python 2.x writes and the codecs that numcodecs 0.16 configures."""
 
 
 def resolve_dtype_v2(
     value: object, context: ZarrV2Context | None = None, loc: Loc = ()
 ) -> tuple[ResolvedField[ZarrV2DataTypeDefinition[Any]], Problems]:
-    """`value`, a v2 `dtype`, read in `context`, `CORE_V2` when none is given: what the scope made of it, and every problem, each prefixed with `loc`."""
+    """Read `value`, a v2 `dtype`, in `context` (`CORE_V2` when none is given). Return what the scope made of it, and every problem, each prefixed with `loc`."""
     return resolve(value, ZarrV2DataTypeDefinition, scoped(context, CORE_V2), loc)
 
 
 def resolve_codec_v2(
     value: object, context: ZarrV2Context | None = None, loc: Loc = ()
 ) -> tuple[ResolvedField[ZarrV2CodecDefinition[Any]], Problems]:
-    """`value`, a v2 `compressor` or one of its `filters`, read in `context`, `CORE_V2` when none is given: what the scope made of it, and every problem, each prefixed with `loc`."""
+    """Read `value`, a v2 `compressor` or one of its `filters`, in `context` (`CORE_V2` when none is given). Return what the scope made of it, and every problem, each prefixed with `loc`."""
     return resolve(value, ZarrV2CodecDefinition, scoped(context, CORE_V2), loc)
 
 

@@ -26,7 +26,7 @@ UINT32_DATA_TYPE: Final = DataTypeDefinition(
     fill_value=Uint32FillValue,
     storage=multi_byte,
 )
-"""The `uint32` data type: a bare name, with nothing to configure; its fill value an integer in its range."""
+"""The `uint32` data type. It is written as a bare name and has no configuration. Its fill value is an integer in its range."""
 
 
 __all__ = [

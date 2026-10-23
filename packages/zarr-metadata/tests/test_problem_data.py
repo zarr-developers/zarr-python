@@ -1,10 +1,10 @@
-"""What a problem carries besides its message: what was found, and what was expected.
+"""The data a problem carries besides its message: what was found, and what was expected.
 
-As pydantic's errors and zod's issues do, a problem carries its message's
-data: `input`, what the value handed in holds at the problem's `loc`, and
-`ctx`, what was expected there, where that is more than a type -- a
-type's bounds, a closed set's values. Every reader fills `input`, so a
-rule says only where a problem is.
+Like pydantic's errors and zod's issues, a problem carries the data behind
+its message. `input` is the part of the input value at the problem's
+`loc`. `ctx` is what was expected there, when that is more than a type:
+for example, a type's bounds or the values of a closed set. Every reader
+fills in `input`, so a rule only needs to say where a problem is.
 """
 
 from __future__ import annotations
@@ -78,15 +78,15 @@ def test_a_problem_carries_what_was_found_and_what_was_expected(
     written = dict(ctx)
     problem = ValidationProblem(("level",), "bad level", "invalid_value", input=found, ctx=written)
     assert problem.input is found
-    # Held as a read-only view of a copy, arrays as tuples.
+    # `ctx` is stored as a read-only view of a copy, with arrays as tuples.
     assert dict(problem.ctx) == arrays_to_tuples(ctx)
-    # What it says, and where, is the problem; what it carries is detail.
+    # The message and location define the problem; the data it carries is detail.
     bare = ValidationProblem(("level",), "bad level", "invalid_value")
     assert problem == bare
     assert hash(problem) == hash(bare)
     assert repr(problem) == repr(bare)
     assert str(problem) == "level: bad level"
-    # A raised error is a finished report.
+    # A problem is a finished report: changes to the dict passed as `ctx` do not reach it.
     written["more"] = 1
     assert dict(problem.ctx) == arrays_to_tuples(ctx)
     with pytest.raises(TypeError):
@@ -104,8 +104,8 @@ def test_error_a_problem_refuses_a_ctx_that_is_not_an_object_of_json_values(ctx:
 
 
 def test_an_error_about_what_is_not_json_pickles() -> None:
-    # A problem holds no input that is not JSON, which might not pickle,
-    # so the error it is raised in crosses to another process as it is.
+    # A problem holds no input that is not JSON, because such input might
+    # not pickle. So the error that holds it can be sent to another process.
     value = {"shape": [lambda: 4]}
     problems = validate_json(value)
     assert [(problem.loc, problem.input) for problem in problems] == [(("shape", 0), UNSET)]
@@ -130,7 +130,7 @@ def test_a_problem_pickles_and_copies_with_what_it_carries() -> None:
 
 
 def _deep(levels: int) -> list[object]:
-    """An array nested `levels` deep, deeper than the interpreter walks."""
+    """An array nested `levels` deep, deeper than the interpreter can recurse."""
     value: list[object] = []
     for _ in range(levels):
         value = [value]
@@ -206,7 +206,7 @@ BAD_ARRAY: dict[str, object] = {
     "dimension_names": ["x"],
     "attributes": {},
 }
-"""An array document as `json.loads` gives one, arrays as lists, with a problem in each part a reader reads."""
+"""An array document as `json.loads` returns it, with arrays as lists, and with a problem in each part that a reader reads."""
 
 BAD_ARRAY_LOCS = {
     ("chunk_grid", "configuration", "chunk_shape"),
@@ -297,10 +297,11 @@ READERS: list[tuple[Callable[[object], Sequence[ValidationProblem]], object]] = 
 def test_every_problem_a_reader_finds_holds_what_the_value_handed_in_holds_there(
     read: Callable[[object], Sequence[ValidationProblem]], value: object
 ) -> None:
-    # The value itself, not a copy a reader made on the way: the problems
-    # of a field, a pipeline, a chunk grid over the shape, and a document
-    # a group holds alike. A missing key holds none, and nor does what is
-    # not JSON, such as a store's bytes.
+    # Each problem holds part of the input value itself, not of a copy the
+    # reader made along the way. This holds for problems in a field, a
+    # pipeline, a chunk grid checked against the shape, and a document held
+    # by a group. A missing key holds no input, and neither does a value
+    # that is not JSON, such as a store's bytes.
     problems = read(value)
     assert len(problems) != 0
     for problem in problems:
@@ -317,9 +318,10 @@ class WideBits(TypedDict, closed=True):
 
 
 def test_a_problem_with_what_a_name_carries_is_the_field_s() -> None:
-    # `r24` carries `{"bits": 24}`, which this reader's own raw bits refuse:
-    # the problem is found at the field, where the name is what is there,
-    # and what was expected of `bits` is not expected of the name.
+    # `r24` carries `{"bits": 24}`, which this scope's raw-bits definition
+    # refuses. The problem is located at the field, because the name is what
+    # the document wrote there. The bound on `bits` is not a bound on the
+    # name, so the problem's `ctx` is empty.
     scope = CORE_AND_EXTENSIONS.extended_with(DataTypeDefinition(name="r*", configuration=WideBits))
     _, problems = resolve("r24", DataTypeDefinition, scope, ("data_type",))
     assert [(p.loc, p.input, dict(p.ctx)) for p in problems] == [(("data_type",), "r24", {})]
@@ -362,14 +364,15 @@ class Ordered(TypedDict, closed=True):
 def test_a_value_outside_a_closed_set_is_told_the_set(
     problems: Sequence[ValidationProblem], loc: tuple[str | int, ...], expected: tuple[object, ...]
 ) -> None:
-    # In the order the message lists them, as JSON writes them.
+    # The values are listed in the same order as in the message, written as JSON.
     (problem,) = [problem for problem in problems if problem.loc == loc]
     assert dict(problem.ctx) == {"expected": expected}
 
 
 def test_error_a_ctx_of_another_mapping_type_is_checked() -> None:
-    # Only a problem's own `ctx`, checked when it was made, is taken as
-    # checked: any other mapping is, whatever its type.
+    # Only a `ctx` taken from another problem, which was checked when that
+    # problem was made, is trusted. Any other mapping is checked, whatever
+    # its type.
     with pytest.raises(TypeError, match="ctx is an object of JSON values"):
         ValidationProblem(
             (), "m", "invalid_value", ctx=cast("Any", MappingProxyType({"x": object()}))
@@ -381,7 +384,7 @@ def test_error_a_ctx_of_another_mapping_type_is_checked() -> None:
 
 
 def test_a_problem_at_the_first_element_holds_it() -> None:
-    # Checked against the literal, not `value_at`, which the reader uses.
+    # Compared with the literal value, not with `value_at`, which the reader uses.
     (problem,) = with_input([ValidationProblem(("a", 0), "bad", "invalid_value")], {"a": [7]})
     assert problem.input == 7
     assert value_at([5, 6], (0,)) == 5
@@ -391,8 +394,8 @@ def test_a_problem_at_the_first_element_holds_it() -> None:
 
 
 def test_a_problem_s_ctx_is_its_own_at_every_level() -> None:
-    # Copied when the problem is made, at every level, so nothing the
-    # caller does to what it handed in reaches the problem.
+    # `ctx` is copied at every level when the problem is made, so later
+    # changes the caller makes to the value it passed in do not reach it.
     inner: dict[str, int] = {"a": 1}
     problem = ValidationProblem((), "m", "invalid_value", ctx={"nested": inner})
     inner["a"] = 2
@@ -400,8 +403,9 @@ def test_a_problem_s_ctx_is_its_own_at_every_level() -> None:
 
 
 def test_error_a_problem_not_below_where_a_reader_counts_from_is_refused() -> None:
-    # `within` relocates a problem from the document handed in to the one
-    # read; one located from another root would land in the wrong place.
+    # `within` moves a problem's location from the document passed in to
+    # the document that was read. A problem located from a different root
+    # would end up in the wrong place, so it is rejected.
     problem = ValidationProblem(("a", "b"), "m", "invalid_value")
     assert within((problem,), ("a",))[0].loc == ("b",)
     with pytest.raises(TypeError, match="does not sit below"):

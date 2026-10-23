@@ -54,18 +54,18 @@ A JSON array of N/8 integers in `[0, 255]` (one per byte).
 
 
 class RawBytesConfiguration(TypedDict, closed=True):
-    """What a raw-bytes name carries: its size in bits, `{"bits": 16}` for `r16`.
+    """The configuration that a raw-bytes name carries: its size in bits, such as `{"bits": 16}` for `r16`.
 
     A document writes the name, never this object. The definition of `r*`
-    reads a name into it, and the simplest spelling writes it back as the
-    name.
+    reads a name into this object, and the simplest spelling writes it
+    back as the name.
     """
 
     bits: int
 
 
 def _rules(configuration: RawBytesConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
-    """ "raw bits, variable size given by *, limited to be a multiple of 8" -- and zero bits is not a type."""
+    """Check the size: "raw bits, variable size given by *, limited to be a multiple of 8". Zero bits is not a valid type."""
     bits = configuration["bits"]
     if bits == 0 or bits % 8 != 0:
         yield ValidationProblem(
@@ -78,9 +78,9 @@ def _rules(configuration: RawBytesConfiguration, nested: Nested) -> Iterator[Val
 def _fill_value_rules(
     configuration: RawBytesConfiguration, nested: Nested, value: RawBytesFillValue
 ) -> Iterator[ValidationProblem]:
-    """One byte value for each 8 of the size.
+    """Check that the fill value has one byte value for each 8 bits of the size.
 
-    The spec's text says `N` values for `r<N>`, but `N` counts bits
+    The spec text says `N` values for `r<N>`, but `N` counts bits
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L897-L900),
     and one value is one byte.
     """
@@ -92,10 +92,10 @@ def _fill_value_rules(
 
 
 def _storage(configuration: RawBytesConfiguration, nested: Nested) -> StorageClass | None:
-    """One byte, for `r8`; unknown for wider raw bits, of whose byte order the spec says nothing yet.
+    """Return single-byte storage for `r8`. Return None (unknown) for wider raw bits, because the spec does not yet say anything about their byte order.
 
     "r8, r16, and r24 should be understood as fall-back types of
-    respectively 1, 2, and 3 byte length", and of byte order the spec
+    respectively 1, 2, and 3 byte length". About byte order, the spec
     says only that it looks for "more feedback and prototypes of code
     using the r*, raw bits, for various endianness"
     (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L897-L908).
@@ -111,12 +111,12 @@ RAW_BYTES_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_rules=_fill_value_rules,
     storage=_storage,
 )
-"""Raw bits, `r*`: one data type, whose name carries its size.
+"""Raw bits, `r*`: a single data type whose name carries its size.
 
-`r16` reads as `r*` with `{"bits": 16}`, and a size that is not a
-positive multiple of 8 is a problem of the field that names it. The
-simplest spelling writes the size back into the name, in decimal: `r008`
-is `r8`.
+`r16` reads as `r*` with `{"bits": 16}`. A size that is not a positive
+multiple of 8 is a problem of the field that names it. The simplest
+spelling writes the size back into the name in decimal, so `r008`
+becomes `r8`.
 """
 
 

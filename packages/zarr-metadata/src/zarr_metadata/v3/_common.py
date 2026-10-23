@@ -1,10 +1,11 @@
-"""The v3 metadata field: its JSON, the aliases a member holding one is annotated with, and the validators that judge one on its own.
+"""The v3 metadata field: its JSON type, the type aliases for members that hold a field, and the validators that check a single field.
 
-Private, and below both readers of a field: the model, which judges the
-fields of a document, and the definitions, which read a field's
-configuration. Public consumers import `ZarrV3MetadataFieldJSON` from
-`zarr_metadata.v3`, the aliases from `zarr_metadata.v3.definition`, and
-the validators from `zarr_metadata.model`.
+This module is private. It sits below both code paths that read a field:
+the model, which checks the fields of a document, and the definitions,
+which read a field's configuration. Public consumers import
+`ZarrV3MetadataFieldJSON` from `zarr_metadata.v3`, the aliases from
+`zarr_metadata.v3.definition`, and the validators from
+`zarr_metadata.model`.
 """
 
 import functools
@@ -37,26 +38,27 @@ codec.
 """
 
 
-# A member holding a metadata field is annotated with the alias of its
-# kind, which a scope reads it as. Each alias is the JSON a field is, so to
-# a type checker, and to `check`, it is `ZarrV3MetadataFieldJSON`.
+# A member that holds a metadata field is annotated with the alias for its
+# kind. A scope uses that alias to decide which kind to read the field as.
+# Each alias is defined as the field's JSON type, so a type checker and
+# `check` both see it as `ZarrV3MetadataFieldJSON`.
 
 ZarrV3DataTypeField = TypeAliasType("ZarrV3DataTypeField", ZarrV3MetadataFieldJSON)
-"""A member holding a data type: a document's `data_type`, or a struct field's; read in the scope what holds it is read in."""
+"""A member that holds a data type: a document's `data_type`, or a struct field's data type. It is read in the same scope as the object that contains it."""
 ZarrV3ChunkGridField = TypeAliasType("ZarrV3ChunkGridField", ZarrV3MetadataFieldJSON)
-"""A member holding a chunk grid: a document's `chunk_grid`."""
+"""A member that holds a chunk grid: a document's `chunk_grid`."""
 ZarrV3ChunkKeyEncodingField = TypeAliasType("ZarrV3ChunkKeyEncodingField", ZarrV3MetadataFieldJSON)
-"""A member holding a chunk key encoding: a document's `chunk_key_encoding`."""
+"""A member that holds a chunk key encoding: a document's `chunk_key_encoding`."""
 ZarrV3CodecField = TypeAliasType("ZarrV3CodecField", ZarrV3MetadataFieldJSON)
-"""A member holding a codec: a document's `codecs` is `tuple[ZarrV3CodecField, ...]`, and so is a shard's."""
+"""A member that holds a codec. A document's `codecs` is `tuple[ZarrV3CodecField, ...]`, and so is a shard's."""
 ZarrV3StaticCodecField = TypeAliasType("ZarrV3StaticCodecField", ZarrV3MetadataFieldJSON)
-"""A member holding a codec of static size: a shard's `index_codecs` is one,
-since a reader finds the index by a size it knows before reading it.
+"""A member that holds a codec with a static encoded size. A shard's `index_codecs` uses
+this, because a reader locates the index from a size it knows before reading it.
 """
 ZarrV3StorageTransformerField = TypeAliasType(
     "ZarrV3StorageTransformerField", ZarrV3MetadataFieldJSON
 )
-"""A member holding a storage transformer: a document's `storage_transformers` is `tuple[ZarrV3StorageTransformerField, ...]`."""
+"""A member that holds a storage transformer. A document's `storage_transformers` is `tuple[ZarrV3StorageTransformerField, ...]`."""
 
 
 def validate_metadata_field_v3(
@@ -64,39 +66,41 @@ def validate_metadata_field_v3(
 ) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not a v3 metadata field.
 
-    A metadata field is a bare name, or an envelope around a configuration
-    whose members are JSON: an object of a `name` as the spec names an
-    extension, a `configuration` that is an object of string keys, a
-    boolean `must_understand`, and nothing else.
+    A metadata field is either a bare name or an envelope around a
+    configuration whose members are JSON. The envelope is an object with a
+    `name` that is a valid extension name under the spec, a `configuration`
+    that is an object with string keys, a boolean `must_understand`, and no
+    other keys.
     """
     envelope = envelope_problems(value, allow_must_understand_false=allow_must_understand_false)
     return with_input((*envelope, *_configuration_json_problems(value)), value)
 
 
 ENVELOPE_KEYS: frozenset[str] = frozenset({"name", "configuration", "must_understand"})
-"""The members a metadata field's envelope declares: a key beside them is an unknown key."""
+"""The keys a metadata field's envelope declares. Any other key is an unknown key."""
 
 
 _EXTENSION_NAME: Final = re.compile(r"[a-z][a-z0-9_.-]+")
-"""A registered extension name: the spec's `^[a-z][a-z0-9-_.]+$`, its hyphen last so no engine reads it as a range."""
+"""A registered extension name: the spec's `^[a-z][a-z0-9-_.]+$`, with the hyphen moved last so no regex engine reads it as a range."""
 
 _URI: Final = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+")
-"""A URI, as far as a name is judged: RFC 3986's scheme, its colon, and one or more of the characters a URI is written in -- its unreserved and reserved sets, and the `%` of percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2) -- the names earlier versions of the spec required.
+"""A URI, to the extent this module checks names. It matches an RFC 3986 scheme, a colon, and one or more characters from the URI unreserved and reserved sets plus the `%` of percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2). Earlier versions of the spec required names of this form.
 
-The characters are listed rather than written `\\S`, which Python's `re`
-and ECMA-262, the dialect a JSON Schema `pattern` is read in, disagree
-on: `\\x1c`-`\\x1f` and `\\x85` are whitespace to one and `\\ufeff` to the
-other, so a name this reader refused, a validator of the schema would
-accept, or the other way round.
+The characters are listed explicitly instead of written as `\\S`.
+Python's `re` and ECMA-262 (the regex dialect of a JSON Schema
+`pattern`) disagree on what `\\S` matches: `\\x1c`-`\\x1f` and `\\x85` are
+whitespace in one, and `\\ufeff` is whitespace in the other. With `\\S`, a
+schema validator could accept a name that this reader rejects, or the
+reverse.
 """
 
 EXTENSION_NAME_SCHEMA_PATTERN: Final = rf"^({_EXTENSION_NAME.pattern}|{_URI.pattern})(?![\s\S])"
-r"""What `well_named` accepts, as a JSON Schema `pattern`: the two patterns it matches whole, `(?![\s\S])` where `$` would take a final newline, as `_RAW_BYTES_SCHEMA_PATTERN` has it."""
+r"""The names `well_named` accepts, as a JSON Schema `pattern`. It matches either pattern against the whole string. It uses `(?![\s\S])` instead of `$`, because `$` also matches before a final newline. `_RAW_BYTES_SCHEMA_PATTERN` does the same."""
 
 
 @functools.lru_cache(maxsize=4096)
 def well_named(name: str) -> bool:
-    """Whether `name` is an extension name as the spec names one; remembered per name, since a document names few and a reader meets each many times.
+    """Whether `name` is a valid extension name under the spec. Results are cached per name, because a document uses few names and a reader checks each one many times.
 
     A registered name "MUST start with one lower case letter a-z and then
     be followed by only lower case letters a-z, numerals 0-9, underscores,
@@ -110,7 +114,7 @@ def well_named(name: str) -> bool:
 
 
 def name_problem(name: str, at: tuple[str | int, ...]) -> ValidationProblem | None:
-    """The problem `name`, at `at`, is when the spec gives no extension such a name; None when it does, as `well_named` says."""
+    """The problem to report at `at` when `name` is not a valid extension name under the spec; None when it is valid, as decided by `well_named`."""
     if well_named(name):
         return None
     message = (
@@ -123,13 +127,13 @@ def name_problem(name: str, at: tuple[str | int, ...]) -> ValidationProblem | No
 def envelope_problems(
     value: object, *, allow_must_understand_false: bool
 ) -> tuple[ValidationProblem, ...]:
-    """Every reason `value` is not a v3 metadata field's envelope, what its configuration holds left unjudged.
+    """Every reason `value` is not a valid v3 metadata field envelope. The contents of the configuration are not checked.
 
-    The envelope is what sits around the configuration: a `name` as the
-    spec names an extension, a `configuration` that is an object of string
-    keys, a boolean `must_understand`, and nothing else. `resolve` asks
-    this of a field it has refined to JSON already, so a configuration is
-    walked once.
+    The envelope is the part around the configuration: a `name` that is a
+    valid extension name under the spec, a `configuration` that is an
+    object with string keys, a boolean `must_understand`, and no other
+    keys. `resolve` calls this on a field it has already narrowed to JSON,
+    so the configuration is walked only once.
     """
     if isinstance(value, str):
         bad = name_problem(value, ())
@@ -187,7 +191,7 @@ def envelope_problems(
 
 
 def _configuration_json_problems(value: object) -> tuple[ValidationProblem, ...]:
-    """Each member of `value`'s configuration that is not JSON, located; nothing where no object of string keys is there to walk."""
+    """A located problem for each member of `value`'s configuration that is not JSON. Returns nothing if there is no configuration object with string keys to walk."""
     if not is_object(value):
         return ()
     configuration = value.get("configuration")
@@ -205,7 +209,7 @@ def _configuration_json_problems(value: object) -> tuple[ValidationProblem, ...]
 
 
 def is_metadata_field_v3(value: object) -> TypeGuard[ZarrV3MetadataFieldJSON]:
-    """Whether `value` is a v3 metadata field: a bare name as the spec names an extension, or a named config."""
+    """Whether `value` is a v3 metadata field: a bare name that is a valid extension name under the spec, or a named config."""
     if isinstance(value, str):
         return well_named(value)
     if not is_object(value) or not isinstance(value, dict):

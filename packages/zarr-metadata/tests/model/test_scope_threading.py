@@ -1,4 +1,4 @@
-"""Every entry point reads in the scope it is given, and in `CORE_AND_EXTENSIONS` when given none."""
+"""Tests that every entry point reads in the scope it is given, and in `CORE_AND_EXTENSIONS` when given none."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ BAD: dict[str, Any] = {
     **BASE,
     "codecs": (*BASE["codecs"], {"name": "gzip", "configuration": {"level": 12}}),
 }
-"""An array the default scope refuses -- a gzip level of 12 -- and an empty scope leaves unjudged."""
+"""An array that the default scope refuses (a gzip level of 12) and that an empty scope does not check."""
 GROUP: dict[str, Any] = {
     "zarr_format": 3,
     "node_type": "group",
@@ -36,7 +36,7 @@ STORE_G = {"zarr.json": json.dumps(GROUP).encode()}
 
 
 def _accepts(read: Callable[..., object]) -> Callable[[Context | None], bool]:
-    """Whether `read`, given `context`, finds nothing wrong: True for a model, a reading with a model, an empty problem tuple, or a guard saying yes."""
+    """Return whether `read`, given `context`, finds nothing wrong. Success is a model, a reading with a model, an empty problem tuple, or a guard that returns True."""
 
     def accepted(context: Context | None) -> bool:
         try:
@@ -115,7 +115,7 @@ ENTRY_POINTS: dict[str, Callable[..., object]] = {
 
 @pytest.mark.parametrize("read", ENTRY_POINTS.values(), ids=ENTRY_POINTS.keys())
 def test_every_entry_point_reads_in_the_scope_it_is_given(read: Callable[..., object]) -> None:
-    """Each entry point refuses a gzip level of 12 in the default scope, which `None` names too, and accepts it in a scope that leaves gzip unclaimed: the scope it is given is the scope it reads in."""
+    """Each entry point refuses a gzip level of 12 in the default scope (also selected by `None`), and accepts it in a scope that leaves gzip unclaimed. This shows that each entry point reads in the scope it is given."""
     accepted = _accepts(read)
     assert accepted(EMPTY) is True
     assert accepted(CORE_AND_EXTENSIONS) is False
@@ -132,7 +132,7 @@ def test_the_json_schema_is_written_in_the_scope_it_is_given() -> None:
 def test_error_every_entry_point_refuses_a_scope_of_another_format(
     read: Callable[..., object],
 ) -> None:
-    """A v3 entry point given a v2 scope raises `TypeError`: a scope reads documents of one format, and a v2 scope claims nothing a v3 document writes."""
+    """A v3 entry point given a v2 scope raises `TypeError`. A scope reads documents of one format, and a v2 scope claims nothing that a v3 document contains."""
     from zarr_metadata.v2.definition import CORE_V2
 
     with pytest.raises(TypeError, match="format"):

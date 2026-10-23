@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class _DtypeParameter:
-    """The rule `dtype_parameter` gives: a value rather than a closure, so a scope holding it pickles."""
+    """The rule that `dtype_parameter` returns. It is a value rather than a closure, so a scope that holds it can be pickled."""
 
     keys: tuple[str, ...]
     float_only: bool
@@ -40,9 +40,9 @@ class _DtypeParameter:
 
 
 def dtype_parameter(*keys: str, float_only: bool = False) -> _DtypeParameter:
-    """The rule that each of `keys`, when written, is a typestr: numcodecs writes `np.dtype(x).str` there, and a struct is no element type.
+    """Return a rule that checks that each of `keys`, when present, is a typestr. numcodecs writes `np.dtype(x).str` there, and a struct cannot be an element type.
 
-    With `float_only`, each must name a float, as `quantize` requires.
+    With `float_only`, each value must name a float type, as `quantize` requires.
     """
     return _DtypeParameter(keys, float_only)
 

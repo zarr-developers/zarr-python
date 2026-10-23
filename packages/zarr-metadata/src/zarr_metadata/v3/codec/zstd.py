@@ -58,11 +58,11 @@ form is not permitted by the spec for this codec.
 
 
 def _canonical(configuration: ZstdCodecConfiguration) -> ZstdCodecConfiguration:
-    """Without a `checksum` of `false`, which is what an absent one means.
+    """Remove a `checksum` of `false`, because an absent `checksum` means the same thing.
 
     The spec says of `checksum` that it "should be omitted if false"
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/zstd/README.md?plain=1#L17-L19),
-    so the two spellings are one codec.
+    so the two spellings describe the same codec.
     """
     if configuration.get("checksum") is not False:
         return configuration

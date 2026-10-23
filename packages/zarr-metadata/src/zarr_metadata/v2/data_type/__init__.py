@@ -1,4 +1,4 @@
-"""The data types zarr-python 2.x writes, one definition per NumPy family."""
+"""The data types that zarr-python 2.x writes, with one definition per NumPy family."""
 
 from typing import Any, Final
 

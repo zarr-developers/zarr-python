@@ -1,4 +1,4 @@
-"""The JSON shape of a v2 codec, in a module of its own so the array document and the codec definitions can both import it."""
+"""The JSON shape of a v2 codec. It is in its own module so that both the array document and the codec definitions can import it."""
 
 from typing_extensions import TypedDict
 

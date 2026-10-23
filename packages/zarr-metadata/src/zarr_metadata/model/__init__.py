@@ -1,37 +1,39 @@
 """In-memory models for Zarr metadata documents.
 
-A model is a metadata document, as written and refined, and the scope it
-was read in; what it hands out is read-only. Validators check a document's JSON
-structure and, in a v3 document, read each extension point (codecs, chunk
-grids, data types, ...) through the definition that claims its name in a
-scope, `CORE_AND_EXTENSIONS` unless a `context` is passed, and judge the
-fill value against the data type it names, the chunk grid against the
-shape, and the codecs as a pipeline, each against the chunk it is
-handed. Each document concept gets a `validate_*` function returning
-every problem found (a tuple of `ValidationProblem`, each with a
-machine-readable `kind`), an `is_*` type guard, and a `parse_*` function
-that narrows or raises `MetadataValidationError`; a v3 array or group
-document also gets `read_array_metadata_v3`, `read_group_metadata_v3` or
-`read_array_metadata_v2`,
-one read that returns what it read, the problems, and the model when
-there are none. A store another writer made, holding a known writer
-bug, is read by `read_repaired_node_metadata_v3`, which undoes each one
-with `repair_node_metadata_v3` before the strict read and says what it
-changed. `node_metadata_json_schema_v3` writes what the v3
-validators read as a JSON Schema, but for the rules. Model `from_json` /
-`from_key_value` constructors raise
-`MetadataValidationError` for every ingestion failure, including missing
-store keys and undecodable bytes, and the v3 ones take the same
-`context`. A v3 model is its document and the scope it was read in:
+A model holds a metadata document (as written, then refined) and the
+scope the document was read in. Everything a model returns is read-only.
+Validators check a document's JSON structure. In a v3 document they
+also read each extension point (codecs, chunk grids, data types, ...)
+through the definition that claims its name in a scope. The scope is
+`CORE_AND_EXTENSIONS` unless a `context` is passed. The validators check
+the fill value against the data type the document names, the chunk grid
+against the shape, and the codecs as a pipeline, each codec against the
+chunk it receives. Each document concept gets a `validate_*` function
+that returns every problem found (a tuple of `ValidationProblem`, each
+with a machine-readable `kind`), an `is_*` type guard, and a `parse_*`
+function that narrows the value or raises `MetadataValidationError`. A
+v3 array or group document and a v2 array document also get
+`read_array_metadata_v3`, `read_group_metadata_v3` or
+`read_array_metadata_v2`. Each of these does one read and returns what
+it read, the problems, and the model when there are no problems. To read
+a store that another writer made with a known writer bug, use
+`read_repaired_node_metadata_v3`. It undoes each bug with
+`repair_node_metadata_v3` before the strict read, and reports what it
+changed. `node_metadata_json_schema_v3` returns a JSON Schema of what
+the v3 validators read, except for the rules. The model constructors
+`from_json` and `from_key_value` raise `MetadataValidationError` for
+every ingestion failure, including missing store keys and undecodable
+bytes. The v3 constructors take the same `context`. A v3 model is its
+document plus the scope it was read in.
 `ZarrV3ArrayMetadata(document, context=None)` reads the document in the
-scope and raises `MetadataValidationError` with every problem, so no
-model is built invalid; `to_json` writes the document as written;
-`update` reads new members in the model's own scope; `with_context` and
-`refined_in` read the document in another; `to_key_value` writes a model
-as it is. A group's `consolidated_metadata` takes node models as entries,
-each accepted when its claims refine into the group's scope and refused
-at its path otherwise. Every reader takes `context=None` for the default
-scope.
+scope and raises `MetadataValidationError` with every problem, so an
+invalid model is never built. `to_json` returns the document as written.
+`update` reads new members in the model's own scope. `with_context` and
+`refined_in` read the document in another scope. `to_key_value` writes
+the model as it is. A group's `consolidated_metadata` accepts node
+models as entries. An entry is accepted when its claims refine into the
+group's scope, and refused with a problem at its path otherwise. Every
+reader takes `context=None` for the default scope.
 """
 
 from zarr_metadata._json import (

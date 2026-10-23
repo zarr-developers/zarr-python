@@ -1,4 +1,4 @@
-"""The v2 variable-length filters numcodecs 0.16 configures: `vlen-utf8`, `vlen-bytes` and `vlen-array`."""
+"""The v2 variable-length filters that numcodecs 0.16 configures: `vlen-utf8`, `vlen-bytes` and `vlen-array`."""
 
 from __future__ import annotations
 
@@ -18,9 +18,9 @@ class ZarrV2VLenArrayParameters(TypedDict, closed=True):
 
 
 VLEN_UTF8_V2: Final = ZarrV2CodecDefinition(name="vlen-utf8", configuration=EmptyConfiguration)
-"""`numcodecs.VLenUTF8`: nothing to configure."""
+"""`numcodecs.VLenUTF8`. It has no configuration."""
 VLEN_BYTES_V2: Final = ZarrV2CodecDefinition(name="vlen-bytes", configuration=EmptyConfiguration)
-"""`numcodecs.VLenBytes`: nothing to configure."""
+"""`numcodecs.VLenBytes`. It has no configuration."""
 VLEN_ARRAY_V2: Final = ZarrV2CodecDefinition(
     name="vlen-array", configuration=ZarrV2VLenArrayParameters, rules=dtype_parameter("dtype")
 )

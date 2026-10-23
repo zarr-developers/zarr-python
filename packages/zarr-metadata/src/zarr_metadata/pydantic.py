@@ -9,14 +9,20 @@ freely with non-pydantic code (equality, isinstance, nesting). Validation
 delegates to the library: a raw document routes through `from_json` (the
 single source of truth for validation and normalization, so pydantic's
 field-level coercion can never bypass it). A field type reads the fields
-of its document in the scope pydantic's validation context holds, as
-pydantic hands any validator its context: the context itself, when it is
-a `Context`, which every field type of its format then reads in, the
-other format's refusing it with `TypeError`; or, when it is a
-mapping, its `"zarr_metadata_context"` item for the v3 field types and
-its `"zarr_metadata_context_v2"` item for the v2 ones, so a model holding
-both kinds of field names each format's scope; a format whose scope is
-not given reads in its own, `CORE_AND_EXTENSIONS` or `CORE_V2`:
+of its document in the scope given by pydantic's validation context
+(pydantic passes this context to every validator). The scope is chosen
+as follows:
+
+- If the context is a `Context`, every field type of that format reads
+  in it. A field type of the other format raises `TypeError`.
+- If the context is a mapping, the v3 field types read in its
+  `"zarr_metadata_context"` item and the v2 field types read in its
+  `"zarr_metadata_context_v2"` item. This lets a model with fields of
+  both formats give a scope for each format.
+- If no scope is given for a format, its field types read in the default
+  scope for that format, `CORE_AND_EXTENSIONS` or `CORE_V2`.
+
+For example:
 
     TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(document, context=SCOPE)
     ArrayManifest.model_validate(data, context={"zarr_metadata_context": SCOPE})
@@ -24,25 +30,28 @@ not given reads in its own, `CORE_AND_EXTENSIONS` or `CORE_V2`:
 
 An existing model instance passes through unchanged, as pydantic's does, and
 serialization emits the canonical document via `to_json`. A failed parse
-surfaces as a pydantic `ValidationError` with one line error per problem,
-as pydantic reports its own: its `type` the problem's `kind`, at the
-problem's `loc` under the field's, with the `input` found there and the
-problem's `ctx` (a message holding a ctx placeholder rides in the ctx as
-`message`, as `_line_error` says). Annotate a field with these types, not the core classes,
-which pydantic cannot build a schema for.
+raises a pydantic `ValidationError` with one line error per problem, in
+the same format pydantic uses for its own errors. Each line error has the
+problem's `kind` as its `type`, the problem's `loc` under the field's
+`loc`, the `input` found there, and the problem's `ctx`. If the message
+contains a ctx placeholder, the message is passed in the ctx as
+`message`; see `_line_error`. Annotate a field with these types, not the
+core classes, because pydantic cannot build a schema for the core classes.
 
 A node's attributes may hold `NaN`, `Infinity` or `-Infinity`, which the
 models read and write as zarr-python does. Pydantic writes JSON by its own
-rules, and by default writes such a number as `null`. A `BaseModel` holding
-one of these fields keeps it with `ser_json_inf_nan="constants"` in its
-`model_config`; a `TypeAdapter` over a field type takes no `config`, so
-write its value with the model's `to_key_value` instead.
+rules, and by default writes such a number as `null`. To keep these
+numbers, a `BaseModel` with one of these fields needs
+`ser_json_inf_nan="constants"` in its `model_config`. A `TypeAdapter`
+over a field type takes no `config`, so write its value with the model's
+`to_key_value` instead.
 
-Pydantic's own JSON paths bound nesting below the 256 levels the readers
-walk: `validate_json` refuses a document nested about 200 levels deep,
-and `dump_json` one nested about 255, each with its own error. A document
-that deep goes through `validate_python` on parsed JSON, and is written
-with the model's `to_key_value`.
+Pydantic's own JSON code paths limit nesting to less than the 256 levels
+the readers support: `validate_json` rejects a document nested about 200
+levels deep, and `dump_json` rejects one nested about 255 levels deep,
+each with its own error. For a document that deep, call
+`validate_python` on the parsed JSON, and write it with the model's
+`to_key_value`.
 
 Usage:
 
@@ -94,11 +103,12 @@ _M = TypeVar("_M")
 
 
 def _as_pydantic_raises(cls: type[_M], value: object, read: Callable[[], _M]) -> _M:
-    """What `read` gives of `value`, or the `MetadataValidationError` it raises as a `pydantic_core.ValidationError`: one line error per problem, its type the problem's kind, at the problem's loc, with its input and ctx.
+    """Return the result of `read` for `value`, or convert the `MetadataValidationError` it raises into a `pydantic_core.ValidationError`: one line error per problem, with the problem's kind as its type, at the problem's loc, with its input and ctx.
 
-    A missing key's problem reports the object missing it, as pydantic's
-    own `missing` error does; one that holds nothing else, what it found
-    not being JSON a reader walks, reports what sits at its loc.
+    For a missing key, the line error reports the object that lacks the
+    key, as pydantic's own `missing` error does. For a problem with no
+    `input` (because the value found was not JSON a reader can walk), the
+    line error reports the value at the problem's loc.
     """
     try:
         return read()
@@ -108,15 +118,17 @@ def _as_pydantic_raises(cls: type[_M], value: object, read: Callable[[], _M]) ->
 
 
 def _line_error(problem: ValidationProblem, value: object) -> InitErrorDetails:
-    """`problem` as one of a `ValidationError`'s line errors: its type the problem's kind, at its loc, with its input and ctx, and its message as `msg`.
+    """Convert `problem` to a `ValidationError` line error: the problem's kind as its type, at its loc, with its input and ctx, and its message as `msg`.
 
-    pydantic renders a message as a template of its ctx, each `{key}` the
-    ctx holds replaced, one key at a time in the ctx's order, with no way
-    to escape one. A message that holds one -- a document value written
-    `{expected}`, shown in it -- is handed whole as the ctx's `message`,
-    last, where what it carries is scanned for no key after it, and the
-    template is that placeholder, so `msg` is the problem's message
-    whatever it holds; a ctx member of that name yields to it.
+    pydantic treats a message as a template over its ctx. It replaces each
+    `{key}` that the ctx holds, one key at a time in ctx order, and has no
+    way to escape a placeholder. A problem message can contain such a
+    placeholder, for example when it shows a document value written as
+    `{expected}`. In that case the whole message is put in the ctx as
+    `message`, as the last item, so no later key is substituted into it,
+    and the template becomes `{message}`. This way `msg` is always the
+    problem's message, whatever it contains. An existing ctx item named
+    `message` is replaced.
     """
     template, ctx = problem.message, dict(problem.ctx)
     if any(f"{{{key}}}" in template for key in ctx):
@@ -130,7 +142,7 @@ def _line_error(problem: ValidationProblem, value: object) -> InitErrorDetails:
 
 
 def _input_of(problem: ValidationProblem, value: object) -> object:
-    """What a line error reports as its input: what the problem found; for a key that is missing, what `value` holds at the loc above, as pydantic's own `missing` reports the object; for what the problem could not hold, not being JSON a reader walks, what sits at its loc; and `value` itself where that is nothing either."""
+    """The input a line error reports. This is the problem's `input` if it has one. For a missing key, it is the value in `value` at the parent loc, as pydantic's own `missing` error reports the object. For a problem whose value was not JSON a reader can walk (so the problem could not hold it), it is the value at the problem's loc. If nothing is found there either, it is `value` itself."""
     if problem.input is not UNSET:
         return problem.input
     if problem.kind == "missing_key":
@@ -141,9 +153,9 @@ def _input_of(problem: ValidationProblem, value: object) -> object:
 
 
 CONTEXT_KEY: Final = "zarr_metadata_context"
-"""The key of a mapping validation context under which the scope the v3 field types read in sits."""
+"""The key in a mapping validation context that holds the scope for the v3 field types."""
 CONTEXT_KEY_V2: Final = "zarr_metadata_context_v2"
-"""The key of a mapping validation context under which the scope the v2 field types read in sits."""
+"""The key in a mapping validation context that holds the scope for the v2 field types."""
 
 
 _Read_co = TypeVar("_Read_co", covariant=True)
@@ -156,7 +168,7 @@ class _Reads(Protocol[_Read_co]):
 def _read_in_scope(
     cls: type[_M], read: _Reads[_M], default: Context[Any], key: str
 ) -> Callable[[object, ValidationInfo], _M]:
-    """A validator that passes instances of `cls` through and reads anything else in the scope the validation context holds under `key`, `default` when it holds none."""
+    """A validator that returns instances of `cls` unchanged, and reads any other value in the scope stored in the validation context under `key`, or in `default` if there is none."""
 
     def coerce(value: object, info: ValidationInfo) -> _M:
         if isinstance(value, cls):
@@ -169,11 +181,11 @@ def _read_in_scope(
 
 
 def _scope(context: object, default: Context[Any], key: str) -> Context[Any]:
-    """The scope a validation context holds for one format: itself, a `Context`, the scope of every field type of its format; its `key` item, the format's own; or, holding none, `default`, the format's core scope.
+    """The scope a validation context gives for one format. If the context is a `Context`, it is the scope for every field type of its format. If it is a mapping with a `key` item, that item is the scope for this format. Otherwise the scope is `default`, the format's core scope.
 
-    A bare `Context` of the other format is a `TypeError`, as it is at
-    every reader: a model holding fields of both formats names each
-    format's scope by its key.
+    A bare `Context` of the other format raises `TypeError`, as it does in
+    every reader. A model with fields of both formats must give each
+    format's scope under its own key.
     """
     if is_scope(context):
         return scoped(context, default)

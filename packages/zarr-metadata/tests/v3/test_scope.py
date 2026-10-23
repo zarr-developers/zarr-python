@@ -53,11 +53,11 @@ SHARD = {
 }
 
 MY_GZIP = CodecDefinition(name="gzip", configuration=Empty, kind="bytes_bytes", size="dynamic")
-"""A private reading of the name `gzip`: another definition under one name, which takes no configuration.
+"""A private definition of the name `gzip`: a second definition under the same name, which takes no configuration.
 
-Definitions compare by what they hold, so one rebuilt from the core
-TypedDict with the core rules would be the core definition; this one
-reads `gzip` otherwise.
+Definitions compare by their contents, so a definition rebuilt from the
+core TypedDict and the core rules would equal the core definition. This
+one reads `gzip` differently.
 """
 
 
@@ -79,19 +79,19 @@ def _read(data: object, kind: type[Definition[Any]], scope: Context) -> Resolved
 def test_a_scope_is_equal_to_another_by_the_definitions_it_files(
     left: Context, right: Context, equal: bool
 ) -> None:
-    """Two scopes are one when they file the same definitions under the same names, however they were built; equal scopes hash alike."""
+    """Two scopes are equal when they file the same definitions under the same names, however they were built. Equal scopes have equal hashes."""
     assert (left == right) is equal
     if equal:
         assert hash(left) == hash(right)
 
 
 def test_a_scope_is_a_set_member() -> None:
-    """A scope hashes, so it can key a dict or sit in a set, which it could not when its tables were mapping proxies."""
+    """A scope is hashable, so it can be a dict key or a set member. It was not hashable when its tables were mapping proxies."""
     assert len({CORE, CORE_AND_EXTENSIONS, pickle.loads(pickle.dumps(CORE))}) == 2
 
 
 def test_error_a_scope_conflict_says_each_disagreement() -> None:
-    """A scope conflict lists each `(kind, name)` with what was claimed and what was found, and where, so a caller can see every disagreement at once."""
+    """A scope conflict lists each `(kind, name)` with the claimed definition, the found definition, and the location, so a caller can see every disagreement at once."""
     error = ScopeConflictError(
         (
             Conflict((CodecDefinition, "bytes"), BYTES_CODEC, None, ("codecs", 0)),
@@ -135,12 +135,12 @@ def test_error_a_scope_conflict_says_each_disagreement() -> None:
 def test_claims_of_says_what_a_reading_claimed_of_each_name(
     field: ResolvedField[Any], claims: dict[object, object]
 ) -> None:
-    """A reading's claims name the definition that read each name the field and the fields it holds write, keyed as the scope files it -- raw bits under `r*` -- and None where nothing claimed one; a field refused by a definition still claims it, and one that names nothing claims nothing."""
+    """A reading's claims map each name written by the field, and by the fields it holds, to the definition that read it. Each name is keyed as the scope files it (raw bits under `r*`), with None where nothing claimed the name. A field refused by a definition still claims that definition. A field with no name claims nothing."""
     assert claims_of(fields_of(field)) == claims
 
 
 def test_error_claims_of_refuses_one_name_read_two_ways() -> None:
-    """Fields read in two scopes that give one name two definitions have no single set of claims: a `ScopeConflictError` naming the key."""
+    """Fields read in two scopes that give one name two different definitions have no single set of claims. `claims_of` raises a `ScopeConflictError` that names the key."""
     fields = [
         *fields_of(_read("gzip", CodecDefinition, CORE), ("codecs", 0)),
         *fields_of(_read("gzip", CodecDefinition, Context.of(MY_GZIP)), ("codecs", 1)),
@@ -161,7 +161,7 @@ ZSTD_FIELD = {"name": "zstd", "configuration": {"level": 3}}
 BLOSC = {"cname": "zstd", "shuffle": "noshuffle", "blocksize": 0}
 BLOSC_LEVEL_ONE = {"name": "blosc", "configuration": {**BLOSC, "clevel": 1}}
 BLOSC_LEVEL_TRUE = {"name": "blosc", "configuration": {**BLOSC, "clevel": True}}
-"""Two documents Python's `==` takes for one, which `json_text` tells apart."""
+"""Two documents that Python's `==` treats as equal, but that `json_text` tells apart."""
 SHARD_HOLDING_REFUSED = {
     "name": "sharding_indexed",
     "configuration": {
@@ -170,7 +170,7 @@ SHARD_HOLDING_REFUSED = {
         "index_codecs": [{"name": "bytes", "configuration": {"endian": "little"}}, "crc32c"],
     },
 }
-"""A shard read, holding a gzip its definition refuses."""
+"""A shard that is read, holding a gzip that its definition refuses."""
 NESTED_ZSTD = {
     "name": "sharding_indexed",
     "configuration": {
@@ -261,7 +261,7 @@ NESTED_ZSTD = {
 def test_refines_orders_readings_by_information(
     field: ResolvedField[Any], other: ResolvedField[Any], expected: bool
 ) -> None:
-    """`field` refines `other` when it reads the same where both read and gains where `other` left a name unclaimed -- in the fields it holds too; a loss, a conflict, a refused field, or two unclaimed fields written differently do not."""
+    """`field` refines `other` when it reads the same where both read, and gains where `other` left a name unclaimed, including in the fields it holds. A loss, a conflict, a refused field, or two unclaimed fields written differently do not refine."""
     assert refines(field, other) is expected
 
 
@@ -283,7 +283,7 @@ READINGS = [_read(document, CodecDefinition, scope) for document in DOCUMENTS fo
 def test_refines_is_a_partial_order_whose_bottom_is_equality(
     a: ResolvedField[Any], b: ResolvedField[Any], c: ResolvedField[Any]
 ) -> None:
-    """Over readings of documents in several scopes and spellings, `refines` is reflexive and transitive, two fields that refine each other are equal, and equal fields refine the same fields."""
+    """Over readings of documents in several scopes and spellings, `refines` is reflexive and transitive. Two fields that refine each other are equal, and equal fields are refined by the same fields."""
     assert refines(a, a)
     if refines(a, b) and refines(b, c):
         assert refines(a, c)
@@ -325,7 +325,7 @@ def test_disagreements_says_where_a_scope_reads_claims_otherwise(
     gains: tuple[Any, ...],
     conflicts: tuple[Conflict, ...],
 ) -> None:
-    """A scope agrees with claims it reads identically, gains where it claims what the claims left unclaimed, and conflicts where it reads a name by another definition or by none."""
+    """A scope agrees with claims that it reads the same way. It gains where it claims a name the claims left unclaimed. It conflicts where it reads a name with another definition or with none."""
     found = scope.disagreements(claims)
     assert isinstance(found, Disagreements)
     assert (found.gains, found.conflicts) == (gains, conflicts)
@@ -347,12 +347,12 @@ def test_disagreements_says_where_a_scope_reads_claims_otherwise(
     ids=["subset", "disjoint", "none", "same", "same-name-two-kinds"],
 )
 def test_joined_is_the_least_scope_above_each(scopes: tuple[Context, ...], joined: Context) -> None:
-    """The join of scopes files every definition any of them files, once; one kind's name is not another's."""
+    """The join of scopes files every definition that any of them files, once. The same name in two kinds counts as two names."""
     assert Context.joined(*scopes) == joined
 
 
 def test_error_joined_refuses_one_name_filed_two_ways() -> None:
-    """Scopes that file different definitions under one name have no join: a `ScopeConflictError` naming the key and both definitions."""
+    """Scopes that file different definitions under one name have no join. `Context.joined` raises a `ScopeConflictError` that names the key and both definitions."""
     with pytest.raises(ScopeConflictError) as raised:
         Context.joined(CORE, Context.of(MY_GZIP))
     (conflict,) = raised.value.conflicts
@@ -364,7 +364,7 @@ def test_error_joined_refuses_one_name_filed_two_ways() -> None:
 
 
 def test_claims_is_a_type_a_signature_can_hold() -> None:
-    """`Claims` resolves as an annotation at run time, as a caller's `get_type_hints` reads one: it is a type, not a string."""
+    """`Claims` resolves as an annotation at run time, when a caller's `get_type_hints` reads it: it is a type, not a string."""
 
     def read(claims: Claims) -> None:
         pass
@@ -384,13 +384,13 @@ def test_claims_is_a_type_a_signature_can_hold() -> None:
     ids=["codec", "data-type", "chunk-grid", "chunk-key-encoding", "storage-transformer"],
 )
 def test_a_kind_is_named_in_words(kind: type[Definition[Any]], said: str) -> None:
-    """`kind_name` names each kind of definition as a message does: `ChunkKeyEncodingDefinition` is "chunk key encoding"."""
+    """`kind_name` names each kind of definition in the words a message uses: `ChunkKeyEncodingDefinition` is "chunk key encoding"."""
     assert kind_name(kind) == said
     assert said in str(Conflict((kind, "x"), None, None))
 
 
 def test_a_gain_is_judged_by_what_the_definition_reads_not_by_spelling() -> None:
-    """An accepted field refines an unclaimed one when its definition, reading what the unclaimed field wrote, reads the accepted field: two spellings of one configuration are one gain, so `refines` is transitive through `==`, and a spelling the definition reads otherwise is no gain."""
+    """An accepted field refines an unclaimed one when its definition, reading the JSON of the unclaimed field, produces the accepted field. Two spellings of one configuration count as the same gain, so `refines` is transitive through `==`. A spelling that the definition reads as something else is not a gain."""
     from zarr_metadata.v3.definition import CORE, ChunkKeyEncodingDefinition, Context, resolve
 
     nothing = Context.of()
@@ -421,11 +421,11 @@ def test_a_gain_is_judged_by_what_the_definition_reads_not_by_spelling() -> None
 
 
 OTHER_GZIP = CodecDefinition(name="gzip", configuration=Empty, kind="bytes_bytes", size="static")
-"""A second definition under the core gzip's name: what a join conflicts on."""
+"""A second definition under the core gzip's name, which makes a join conflict."""
 
 
 def test_a_scope_conflict_error_pickles_and_copies_with_its_conflicts() -> None:
-    """`ScopeConflictError` pickles and copies as it was raised: the same conflicts, the same message, as `MetadataValidationError` does, so a conflict reported in another process reads the same here."""
+    """`ScopeConflictError` keeps its conflicts and message through pickling and copying, as `MetadataValidationError` does. So a conflict reported in another process reads the same here."""
     import copy
 
     with pytest.raises(ScopeConflictError) as raised:
@@ -442,7 +442,7 @@ def test_a_scope_conflict_error_pickles_and_copies_with_its_conflicts() -> None:
 def test_a_conflict_names_the_field_as_the_document_writes_it_and_tells_the_definitions_apart() -> (
     None
 ):
-    """A conflict found in a document says the name the document writes, `r16`, not the name its definition is filed under, `r*`, and tells two definitions of one name apart by the configuration each declares, as the consolidated entries' messages do."""
+    """A conflict found in a document reports the name the document writes, `r16`, not the name its definition is filed under, `r*`. It tells two definitions of one name apart by the configuration each declares, as the messages for consolidated entries do."""
     import dataclasses
 
     from zarr_metadata.model import ZarrV3ArrayMetadata
@@ -466,7 +466,7 @@ def test_a_conflict_names_the_field_as_the_document_writes_it_and_tells_the_defi
 
 
 def test_error_a_scope_built_from_tables_keeps_the_invariants_of() -> None:
-    """`Context(tables)`, the constructor, refuses what `Context.of` refuses: a key that is no kind, and kinds of two formats, so no scope is built that `of` could not build."""
+    """The constructor `Context(tables)` rejects what `Context.of` rejects: a key that is not a kind, and kinds of two formats. So the constructor cannot build a scope that `of` could not build."""
     from types import MappingProxyType
 
     from zarr_metadata.v2.data_type.scalar import UINT_V2

@@ -53,7 +53,7 @@ Either a JSON array of integers in `[0, 255]` (one per byte), or a
 def _fill_value_rules(
     configuration: EmptyConfiguration, nested: Nested, value: BytesFillValue
 ) -> Iterator[ValidationProblem]:
-    """A string of standard-alphabet base64, when it is not byte values."""
+    """Check that a string fill value is standard-alphabet base64. A fill value written as byte values is not checked here."""
     if not isinstance(value, str):
         return
     try:
@@ -67,12 +67,12 @@ def _fill_value_rules(
 def _fill_value_canonical(
     configuration: EmptyConfiguration, nested: Nested, value: BytesFillValue
 ) -> str:
-    """The bytes, however written, as the base64 that encodes them.
+    """Return the bytes as the base64 string that encodes them, however they were written.
 
     The string "is more compact"
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/bytes/README.md?plain=1#L11),
-    and encoding the bytes again spells them one way: `"QR=="` decodes to
-    the one byte `"QQ=="` does.
+    and encoding the bytes again gives a single spelling: `"QR=="` decodes
+    to the same byte as `"QQ=="`.
     """
     data = base64.b64decode(value) if isinstance(value, str) else bytes(value)
     return base64.b64encode(data).decode("ascii")
@@ -86,11 +86,11 @@ BYTES_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_canonical=_fill_value_canonical,
     storage=variable_length,
 )
-"""The `bytes` data type: a bare name, with nothing to configure.
+"""The `bytes` data type. It is written as a bare name and has no configuration.
 
 Its values are "variable-length byte strings"
 (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/bytes/README.md?plain=1#L3),
-each stored in as many bytes as it needs.
+and each value is stored in as many bytes as it needs.
 """
 
 

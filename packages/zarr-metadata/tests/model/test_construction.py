@@ -1,10 +1,11 @@
 """A model checks itself when it is built, as pydantic's `__init__` does.
 
-A v3 model is built only by reading its document, and changed only by
-`update`, which reads the document it makes: a document with a problem is
-refused, with every problem, so no model is ever invalid. A v2 model, a
-dataclass still, is refused at a `dataclasses.replace` into an invalid
-one. `to_key_value` writes a model as it is, reading nothing.
+A v3 model is built only by reading its document. It is changed only by
+`update`, which reads the new document. A document with a problem is
+refused, with every problem reported, so no model is ever invalid. A v2
+model is still a dataclass, and a `dataclasses.replace` that would make it
+invalid is refused. `to_key_value` writes a model as it is, without
+reading anything.
 """
 
 from __future__ import annotations
@@ -67,7 +68,7 @@ V2_CONSOLIDATED = ZarrV2ConsolidatedMetadata.from_json(
 
 
 def _rebuilt(model: object, changes: dict[str, object]) -> Any:  # noqa: ANN401 - the tests give the model as object
-    """`model`, a v2 model, built again of its document with `changes` in place of members, in its own scope: what `update` does, for the consolidated model too."""
+    """Rebuild the v2 model `model` from its document, with `changes` replacing members, in the model's own scope. This is what `update` does, and it also works for the consolidated model."""
     held = cast("Any", model)
     return type(held)({**held.to_json(), **changes}, context=held.context)
 
@@ -81,7 +82,7 @@ _INLINE: dict[str, Any] = {"kind": "inline", "must_understand": False}
     ids=["array", "group", "consolidated"],
 )
 def test_a_v3_model_is_built_of_its_document_in_its_scope(model: object) -> None:
-    """A v3 model is its document read in its scope: built again of the two, it is the same model."""
+    """A v3 model is its document read in its scope. Rebuilding it from its document and scope gives the same model."""
     held = cast("Any", model)
     assert type(held)(held.to_json(), context=held.context) == model
 
@@ -96,7 +97,7 @@ def test_a_v3_model_is_built_of_its_document_in_its_scope(model: object) -> None
     ids=["v2-array", "v2-group", "v2-consolidated"],
 )
 def test_a_v2_model_is_built_as_a_read_builds_it(model: object) -> None:
-    """A v2 model is built of its document in its scope, as a read builds it: the constructor given the model's own document and scope builds an equal model."""
+    """A v2 model is built from its document in its scope, the same way a read builds it. The constructor, given the model's own document and scope, builds an equal model."""
     held = cast("Any", model)
     assert type(held)(held.to_json(), context=held.context) == model
 
@@ -113,7 +114,7 @@ def test_a_v2_model_is_built_as_a_read_builds_it(model: object) -> None:
 def test_a_v3_model_holds_its_members_as_a_read_refines_them(
     model: object, changes: dict[str, object]
 ) -> None:
-    """Arrays as tuples and objects as dicts, as the read holds them, so a model updated with other containers is the model a read builds, and round-trips through its store."""
+    """A model holds arrays as tuples and objects as dicts, as a read holds them. So a model updated with other container types equals the model a read builds, and it round-trips through its store."""
     changed = cast("Any", model).update(**changes)
     assert changed == model
     assert type(changed).from_key_value(changed.to_key_value()) == changed
@@ -130,7 +131,7 @@ def test_a_v3_model_holds_its_members_as_a_read_refines_them(
 def test_a_v2_model_holds_its_members_as_a_read_refines_them(
     model: object, changes: dict[str, object]
 ) -> None:
-    """Arrays as tuples and objects as dicts, as the read holds them, so a v2 model built again with other containers is the model a read builds."""
+    """A v2 model holds arrays as tuples and objects as dicts, as a read holds them. So a v2 model rebuilt with other container types equals the model a read builds."""
     changed = _rebuilt(model, changes)
     assert changed == model
     assert type(changed).from_key_value(changed.to_key_value()) == changed
@@ -144,7 +145,7 @@ def test_a_v2_model_holds_its_members_as_a_read_refines_them(
 def test_a_v3_model_shares_no_container_with_what_it_was_built_of(
     model: object, member: str
 ) -> None:
-    """A model holds copies of the containers `update` is given: changing them afterwards changes nothing it holds."""
+    """A model holds copies of the containers passed to `update`. Changing those containers afterwards does not change the model."""
     held: dict[str, object] = {"must_understand": False, "z": {"y": 1}}
     built = cast("Any", model).update(**{member: held})
     held["w"] = math.nan
@@ -169,7 +170,7 @@ def test_a_v3_model_shares_no_container_with_what_it_was_built_of(
 def test_a_v2_model_shares_no_container_with_what_it_was_built_of(
     model: object, member: str
 ) -> None:
-    """A v2 model holds copies of the containers it is built of."""
+    """A v2 model holds copies of the containers it is built from."""
     held: dict[str, object] = {"acme.x": {"must_understand": False}}
     built = _rebuilt(model, {member: held})
     held["acme.y"] = math.nan
@@ -179,7 +180,7 @@ def test_a_v2_model_shares_no_container_with_what_it_was_built_of(
 
 
 def test_a_model_is_read_when_built_and_written_as_it_is() -> None:
-    """A model is read once, when it is built; `to_key_value` reads nothing; `update` reads the document it makes; a group reads the documents it holds once, as part of its own read."""
+    """A model is read once, when it is built. `to_key_value` reads nothing. `update` reads the new document. A group reads the documents it holds once, as part of its own read."""
     values: list[object] = []
 
     def counted(
@@ -209,7 +210,7 @@ def test_a_model_is_read_when_built_and_written_as_it_is() -> None:
     [
         (ARRAY, {"fill_value": math.nan}, [(("fill_value",), "invalid_value")]),
         (ARRAY, {"dimension_names": ("x", "y")}, [(("dimension_names",), "invalid_value")]),
-        # Every problem: the grid and the names are each for one dimension.
+        # Both problems are reported: the grid and the names each cover one dimension.
         (
             ARRAY,
             {"shape": (4, 4)},
@@ -219,7 +220,7 @@ def test_a_model_is_read_when_built_and_written_as_it_is() -> None:
             ],
         ),
         (ARRAY, {"attributes": {1: "a"}}, [(("attributes",), "invalid_type")]),
-        # Empty or not, a value that is no object is judged as one.
+        # A value that is not an object is reported as the wrong type, even when empty.
         (ARRAY, {"attributes": []}, [(("attributes",), "invalid_type")]),
         (ARRAY, {"attributes": None}, [(("attributes",), "invalid_type")]),
         (GROUP, {"attributes": {1: "a"}}, [(("attributes",), "invalid_type")]),
@@ -241,14 +242,14 @@ def test_a_model_is_read_when_built_and_written_as_it_is() -> None:
 def test_error_a_v3_model_updated_into_an_invalid_one_is_refused_at_the_change(
     model: object, changes: dict[str, object], problems: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
-    """`update` reads the document it makes, so a change that makes an invalid one is refused with every problem: no model is invalid, however it came to be."""
+    """`update` reads the new document, so a change that makes the document invalid is refused, with every problem reported. No model is invalid, however it was made."""
     with pytest.raises(MetadataValidationError) as raised:
         cast("Any", model).update(**changes)
     assert [(found.loc, found.kind) for found in raised.value.problems] == problems
 
 
 def test_error_consolidated_metadata_of_documents_at_bad_paths_is_refused() -> None:
-    """The consolidated member read on its own refuses documents at paths no node has, and reports a group missing above one, as the group's read does."""
+    """The consolidated member, read on its own, refuses documents at paths that no node can have. It also reports a missing parent group, as the group's read does."""
     documents = {
         "x": ARRAY.to_json(),
         "x/a": ARRAY.to_json(),
@@ -286,7 +287,7 @@ def test_error_consolidated_metadata_of_documents_at_bad_paths_is_refused() -> N
 def test_error_a_v2_model_changed_by_hand_into_an_invalid_one_is_refused_at_the_change(
     model: object, changes: dict[str, object], problems: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
-    """As a read reads its document: no v2 model is invalid, however it came to be."""
+    """The constructor reads the document the same way a read does, so no v2 model is invalid, however it was made."""
     with pytest.raises(MetadataValidationError) as raised:
         _rebuilt(model, changes)
     assert [(found.loc, found.kind) for found in raised.value.problems] == problems
@@ -294,7 +295,8 @@ def test_error_a_v2_model_changed_by_hand_into_an_invalid_one_is_refused_at_the_
 
 def test_error_v2_create_default_refuses_chunks_its_default_shape_does_not_take() -> None:
     # Overriding chunks without shape keeps the scalar default shape (), as
-    # the v3 model keeps its default shape, and refuses a grid it does not fit.
+    # the v3 model keeps its default shape. A chunk grid that does not fit
+    # that shape is refused.
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV2ArrayMetadata.create_default(chunks=(10, 10))
     assert [(found.loc, found.kind) for found in raised.value.problems] == [
@@ -303,7 +305,7 @@ def test_error_v2_create_default_refuses_chunks_its_default_shape_does_not_take(
 
 
 def test_error_consolidated_metadata_paths_are_strings() -> None:
-    """A `metadata` member keyed by what is no string is a problem of the member, as the read reports it, not a `TypeError`."""
+    """A `metadata` member with a key that is not a string is reported as a problem of the member, as the read reports it, and does not raise `TypeError`."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV3ConsolidatedMetadata({**_INLINE, "metadata": {1: ARRAY.to_json()}})
     assert [(found.loc, found.kind) for found in raised.value.problems] == [
@@ -312,7 +314,7 @@ def test_error_consolidated_metadata_paths_are_strings() -> None:
 
 
 def test_a_model_s_key_is_computed_when_it_is_first_compared() -> None:
-    """`==` and `hash` compare a key of what the document means, computed the first time either is asked for and kept: a model that is only read never asks a definition for its `canonical` spelling."""
+    """`==` and `hash` use a key that represents what the document means. The key is computed the first time either is called, then cached. A model that is only read never calls a definition's `canonical` spelling."""
     asked: list[int] = []
 
     def counting(configuration: GzipCodecConfiguration) -> GzipCodecConfiguration:
@@ -342,7 +344,7 @@ def test_a_model_s_key_is_computed_when_it_is_first_compared() -> None:
 
 
 def test_error_a_canonical_that_raises_is_raised_when_the_model_is_first_compared() -> None:
-    """A definition's `canonical` is the extension author's code, first asked when a model is first compared: the model builds, and `hash` raises what `canonical` raised, with the note naming the definition."""
+    """A definition's `canonical` is code written by the extension author, and it is first called when a model is first compared. The model builds, and `hash` raises the error that `canonical` raised, with a note naming the definition."""
 
     def refuses(configuration: GzipCodecConfiguration) -> GzipCodecConfiguration:
         raise ValueError("no")

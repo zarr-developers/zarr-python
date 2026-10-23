@@ -1,12 +1,13 @@
-"""The algebra of scopes: what a reading claims of each name, the order one reading refines another in, and where two scopes disagree.
+"""Operations on scopes: which definition a reading records for each name, how one reading refines another, and where two scopes disagree.
 
-A model is a document read in a scope. What the document means depends
-only on what the scope said of the names it writes -- its *claims* --
-not on everything the scope holds. Two readings of one document are
-ordered by information: a name nothing claimed, read by a definition,
-gains meaning and loses none; a name read by one definition and then
-another is a conflict. `Context.disagreements` and `Context.joined` are
-built on these.
+A model is a document read in a scope. The meaning of the document
+depends only on what the scope returned for the names the document uses
+(its *claims*), not on everything the scope contains. Two readings of one
+document are ordered by how much they know. If a name was unclaimed and a
+definition later reads it, the name gains meaning and loses none. If one
+definition reads a name and then a different definition reads it, that is
+a conflict. `Context.disagreements` and `Context.joined` are built on
+these operations.
 """
 
 from __future__ import annotations
@@ -36,22 +37,22 @@ if TYPE_CHECKING:
     from zarr_metadata.v3._definition import D, ResolvedField
 
 ClaimKey: TypeAlias = tuple[type[Definition[Any]], str]
-"""A kind and the name a definition is filed under: what a scope answers `claimant` for."""
+"""A kind and the name a definition is filed under. A scope's `claimant` looks up definitions by this key."""
 
 Claims: TypeAlias = Mapping[ClaimKey, Definition[Any] | None]
-"""What a reading claims of each name a document writes: the definition that read it, or None where nothing claimed it."""
+"""The claims a reading records for each name a document uses: the definition that read the name, or None if the name was unclaimed."""
 
 
 @dataclass(frozen=True, slots=True)
 class Conflict:
-    """One place two readings of a name disagree: the key, what one claimed, what the other found, and where in a document when known."""
+    """One place where two readings of a name disagree: the key, the definition one reading claimed, the definition the other found, and the location in the document when known."""
 
     key: ClaimKey
     claimed: Definition[Any] | None
     found: Definition[Any] | None
     loc: Loc | None = None
     written: str | None = None
-    """The name the document writes where the conflict was found, `r16` for a key of `r*`; None when no document is at hand."""
+    """The name the document uses at the conflict location, for example `r16` for a key of `r*`; None when no document is available."""
 
     def __str__(self) -> str:
         kind, filed = self.key
@@ -64,22 +65,22 @@ class Conflict:
 
 
 def definition_said(definition: Definition[Any] | None) -> str:
-    """A definition as a message tells it from another of the same name: by the TypedDict its configuration is; "no definition" for None."""
+    """Describe a definition for an error message. The description includes the configuration TypedDict, which distinguishes it from other definitions with the same name. Returns "no definition" for None."""
     if definition is None:
         return "no definition"
     return f"{definition!r} of {definition.configuration.__qualname__}"
 
 
 def kind_name(kind: type[Definition[Any]]) -> str:
-    """A kind of definition as a message names it: its label, "codec" for `CodecDefinition`."""
+    """The name of a definition kind for an error message: its label, for example "codec" for `CodecDefinition`."""
     return kind.label
 
 
 class ScopeConflictError(ValueError):
-    """Raised where two scopes, or a scope and a reading, give one name two meanings, or one would lose a meaning the other has.
+    """Raised when two scopes, or a scope and a reading, give one name two different meanings, or when one would lose a meaning the other has.
 
-    Carries every conflict in `.conflicts`, as `MetadataValidationError`
-    carries every problem.
+    Every conflict is stored in `.conflicts`, in the same way that
+    `MetadataValidationError` stores every problem.
     """
 
     def __init__(self, conflicts: Sequence[Conflict]) -> None:
@@ -89,14 +90,14 @@ class ScopeConflictError(ValueError):
     def __reduce__(
         self,
     ) -> tuple[type[ScopeConflictError], tuple[tuple[Conflict, ...]], dict[str, object]]:
-        # Pickled and copied as it was raised, its notes and attributes kept:
-        # an exception's default reduce calls the constructor with its
-        # message, not its conflicts.
+        # Pickle and copy the exception as it was raised, keeping its notes
+        # and attributes. The default exception reduce calls the constructor
+        # with the message, not the conflicts.
         return type(self), (self.conflicts,), dict(self.__dict__)
 
 
 def claim_key(field: ResolvedField[Any]) -> ClaimKey | None:
-    """The key `field` is claimed under: its kind and the name its definition is filed under, `r*` for `r16`; None for a field that names nothing."""
+    """The key `field` is claimed under: its kind and the name its definition is filed under (for example `r*` for `r16`). Returns None for a field with no name."""
     if field.name is None:
         return None
     filed, _ = filed_under(field.read_as, field.name)
@@ -106,11 +107,12 @@ def claim_key(field: ResolvedField[Any]) -> ClaimKey | None:
 def claims_of(
     fields: Iterable[tuple[Loc, ResolvedField[Any]]],
 ) -> dict[ClaimKey, Definition[Any] | None]:
-    """What `fields`, each with where it sits, claim of each name: the definition that read it, None where nothing claimed it.
+    """The claims that `fields` (each paired with its location) record for each name: the definition that read the name, or None if the name was unclaimed.
 
-    `fields` are one reading's, as `fields_of` or a reading's `fields()`
-    gives them. A name claimed two ways among them is a
-    `ScopeConflictError`: no one scope read them.
+    `fields` must come from one reading, as returned by `fields_of` or a
+    reading's `fields()`. If two fields claim the same name with different
+    definitions, this raises `ScopeConflictError`, because no single scope
+    could have read them both.
     """
     claims: dict[ClaimKey, Definition[Any] | None] = {}
     conflicts: list[Conflict] = []
@@ -129,16 +131,18 @@ def claims_of(
 
 
 def refines(field: ResolvedField[Any], other: ResolvedField[Any]) -> bool:
-    """Whether `field` holds everything `other` holds: reads the same where both read, and reads what `other` left unclaimed.
+    """Whether `field` contains everything `other` contains: it reads the same where both read, and it may also read what `other` left unclaimed.
 
-    The order one reading of a document refines another in. A name nothing
-    claimed, read by a definition, is a gain when what the unclaimed field
-    wrote, read by that definition and those of the fields the read field
-    holds, is the read field: two spellings of one configuration are one
-    gain, as they are one field to `==`, so the order is transitive
-    through equality. The reverse is a loss; one name read by two
-    definitions is a conflict; a refused field refines itself alone. Two
-    fields that refine each other are equal.
+    This is the order in which one reading of a document refines another.
+    Suppose `other` is unclaimed and `field` is accepted. This counts as a
+    gain when re-reading the unclaimed field's JSON, with `field`'s
+    definition and the definitions of the fields nested in `field`,
+    produces `field`. Two spellings of one configuration count as one gain,
+    because `==` treats them as one field, so the order is transitive
+    through equality. The reverse direction (accepted to unclaimed) is a
+    loss. One name read by two different definitions is a conflict. A
+    refused field refines only itself. Two fields that refine each other
+    are equal.
     """
     if isinstance(field, RefusedField) or isinstance(other, RefusedField):
         return field == other
@@ -156,14 +160,14 @@ def refines(field: ResolvedField[Any], other: ResolvedField[Any]) -> bool:
 
 
 def _gained(field: AcceptedField[Any], other: UnclaimedField) -> bool:
-    """Whether `other`, read in the scope `field`'s own claims make, is `field`: what a gain is."""
+    """Whether reading `other` in the scope formed by `field`'s own claims produces `field`. This is the test for a gain."""
     again, _ = resolve(other.json, field.read_as, _Claimed.of(field))
     return again == field
 
 
 @dataclass(frozen=True, slots=True)
 class _Claimed:
-    """The scope a field's own claims make: its definition and those of the fields it holds, by kind and filed name; what a gain re-reads in."""
+    """The scope formed by a field's own claims: its definition and the definitions of its nested fields, keyed by kind and filed name. `_gained` re-reads a field in this scope."""
 
     filed: Mapping[ClaimKey, Definition[Any]]
     format: Literal[2, 3] | None
@@ -177,7 +181,7 @@ class _Claimed:
         )
 
     def claimant(self, kind: type[D], name: str) -> D | None:
-        """The definition of `kind` among the claims that reads `name`; None if none does, as `Context.claimant` answers."""
+        """The definition of `kind` among the claims that reads `name`, or None if there is none. This matches `Context.claimant`."""
         asked = as_kind(kind)
         filed, _ = filed_under(asked, name)
         if filed is None:
@@ -187,7 +191,7 @@ class _Claimed:
 
 @dataclass(frozen=True, slots=True)
 class Disagreements:
-    """Where a scope reads a reading's claims otherwise: the names it would gain a meaning for, and those it conflicts with, a lost meaning among them."""
+    """The places where a scope reads a reading's claims differently: the names that would gain a meaning, and the names that conflict (including names that would lose a meaning)."""
 
     gains: tuple[ClaimKey, ...]
     conflicts: tuple[Conflict, ...]
@@ -201,7 +205,7 @@ class Disagreements:
 def disagreements_of(
     claimant: Callable[[type[Definition[Any]], str], Definition[Any] | None], claims: Claims
 ) -> Disagreements:
-    """`Disagreements` between what `claimant`, asked by kind and filed name as a scope's tables answer, gives for each key and what `claims` records."""
+    """The `Disagreements` between `claimant` and `claims`. For each key, compare the definition `claimant` returns (looked up by kind and filed name, like a scope's tables) with the definition `claims` records."""
     gains: list[ClaimKey] = []
     conflicts: list[Conflict] = []
     for key, claimed in claims.items():

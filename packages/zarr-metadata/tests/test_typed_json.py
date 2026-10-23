@@ -1,8 +1,9 @@
-"""The checker: parsers compiled from annotations for the shapes JSON takes.
+"""The checker: parsers compiled from annotations for the shapes that JSON values take.
 
-Tested on its own, with no metadata field in sight. A leaf stands in for
-whatever a caller adds -- the definition layer adds the shape of a member
-holding another metadata field -- and `no_leaf` adds nothing.
+These tests use the checker on its own, without any metadata field. A
+leaf stands in for whatever a caller adds (the definition layer adds the
+shape of a member that holds another metadata field), and `no_leaf` adds
+nothing.
 """
 
 from __future__ import annotations
@@ -188,8 +189,8 @@ def _found(parsed: Parsed) -> list[tuple[Loc, str]]:
 def test_a_value_of_the_shape_reads_as_itself(
     annotation: object, value: object, parsed: object
 ) -> None:
-    # The shapes JSON takes and no others, each compiled once from its
-    # annotation; an array comes back as a tuple, the rest as it came.
+    # The shapes JSON values take, and no others, each compiled once from its
+    # annotation. An array is returned as a tuple; other values unchanged.
     assert _read(annotation, value) == (parsed, ())
 
 
@@ -296,9 +297,10 @@ def test_error_a_value_of_another_shape_is_located(
 def test_an_object_reads_as_what_its_typeddict_admits(
     annotation: object, value: object, parsed: dict[str, object], found: list[tuple[Loc, str]]
 ) -> None:
-    # A new dict of the keys the type admits, in the order they came: a
-    # closed TypedDict reports a key it does not declare and leaves it
-    # out, `extra_items` types every other key, an open one keeps them.
+    # The result is a new dict of the keys the type allows, in input order.
+    # A closed TypedDict reports a key it does not declare and leaves it
+    # out. `extra_items` gives the type of every other key. An open
+    # TypedDict keeps other keys.
     result = _read(annotation, value)
     assert result[0] == parsed
     assert list(cast_dict(result[0])) == list(parsed)
@@ -338,11 +340,11 @@ def _declared(
     monkeypatch: pytest.MonkeyPatch,
     typeddicts: str = "typing_extensions",
 ) -> types.ModuleType:
-    """The module `source` defines, written with or without `from __future__ import annotations`.
+    """The module defined by `source`, written with or without `from __future__ import annotations`.
 
-    Registered in `sys.modules`, because a string annotation is resolved
-    in the module its class was defined in. `typeddicts` is the module the
-    `TypedDict` it declares with comes from.
+    The module is registered in `sys.modules`, because a string annotation
+    is resolved in the module where its class was defined. `typeddicts` is
+    the module that provides the `TypedDict` used in the declaration.
     """
     name = f"tests._typeddicts_{next(_modules)}"
     module = types.ModuleType(name)
@@ -623,7 +625,7 @@ _DECLARATIONS = [
 
 
 def _under_both_typeddicts(declarations: list[ParameterSet]) -> list[ParameterSet]:
-    """Each declaration with `typing_extensions.TypedDict`, and with `typing.TypedDict` where it can say it."""
+    """Each declaration using `typing_extensions.TypedDict`, and also using `typing.TypedDict` where it can express the declaration."""
     both: list[ParameterSet] = []
     for declaration in declarations:
         source = cast("str", declaration.values[0])
@@ -648,12 +650,12 @@ def test_typeddict_keys_follow_the_typing_spec(
     postponed: bool,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Written as strings, as `from __future__ import annotations` writes
-    # every annotation, a qualifier is invisible to `__required_keys__`,
-    # as it is to `typing.TypedDict` on 3.11 under `ReadOnly` or
-    # `Annotated`; read off the evaluated annotations it is not, so every
-    # spelling of a declaration reads alike. Openness is inherited, which
-    # the runtime does not record.
+    # When annotations are strings, as `from __future__ import annotations`
+    # writes every annotation, `__required_keys__` does not see a qualifier.
+    # Neither does `typing.TypedDict` on 3.11 under `ReadOnly` or
+    # `Annotated`. The evaluated annotations do show it, so every spelling
+    # of a declaration is read the same way. Openness is inherited, but the
+    # runtime does not record that.
     module = _declared(source, postponed=postponed, monkeypatch=monkeypatch, typeddicts=typeddicts)
     keys = typeddict_keys(module.T)
     assert set(keys.members) == members
@@ -680,8 +682,8 @@ def test_a_key_reads_where_its_class_was_written(
     base_postponed: bool, child_postponed: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The subclass's module never imports `_Hidden`, and the runtime ties a
-    # string to its module only at the top of an annotation; each key still
-    # reads in the module of the class that declared it.
+    # string to its module only at the top level of an annotation. Each key
+    # is still resolved in the module of the class that declared it.
     base = _declared(_WRITTEN_WHERE, postponed=base_postponed, monkeypatch=monkeypatch)
     child = _declared(
         f"from {base.__name__} import Base\nclass T(Base):\n    own: int\n    kept: ReadOnly[int]\n",
@@ -733,8 +735,9 @@ def test_a_typeddict_may_name_a_class_written_after_it(
 def test_a_name_reads_as_the_module_that_wrote_it_means_it(
     base_source: str, postponed: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The subclass's module means something else by `Foo`; the keys still
-    # read as their base wrote them, at the top of an annotation or inside.
+    # In the subclass's module, `Foo` means something else. The keys are
+    # still read as the base class declared them, at the top level of an
+    # annotation or nested inside it.
     base = _declared(base_source, postponed=postponed, monkeypatch=monkeypatch)
     child = _declared(
         f"from {base.__name__} import Base\nFoo = str\nclass T(Base):\n    pass\n",
@@ -750,7 +753,7 @@ def test_a_name_reads_as_the_module_that_wrote_it_means_it(
 
 
 def test_error_a_key_both_required_and_not_required(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The spec allows one; the runtime and other checkers disagree on which wins.
+    # The spec allows only one; the runtime and other checkers disagree on which wins.
     module = _declared(
         "class T(TypedDict):\n    a: Required[NotRequired[int]]\n",
         postponed=True,
@@ -763,7 +766,7 @@ def test_error_a_key_both_required_and_not_required(monkeypatch: pytest.MonkeyPa
 def test_error_a_typeddict_whose_runtime_keys_are_not_its_annotations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Were they to disagree, a key would stop being required unnoticed.
+    # If the two disagreed, a key could stop being required without notice.
     module = _declared(
         "class T(TypedDict):\n    a: int\n", postponed=False, monkeypatch=monkeypatch
     )
@@ -795,8 +798,8 @@ def test_error_a_typeddict_whose_bases_disagree_on_other_keys(
 def test_error_a_typeddict_whose_annotations_do_not_resolve(
     name: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Named by the TypedDict that holds the annotation, at any depth: a
-    # parser compiled around it cannot be.
+    # The error names the TypedDict that holds the annotation, at any depth,
+    # not an outer TypedDict whose parser would contain it.
     module = _declared(
         """
             class T(TypedDict):
@@ -814,7 +817,8 @@ def test_error_a_typeddict_whose_annotations_do_not_resolve(
 def test_error_a_key_that_does_not_resolve_where_it_was_written_names_its_class(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Asked through a subclass elsewhere, the class that wrote it is named.
+    # When asked through a subclass in another module, the error names the
+    # class that declared the key.
     base = _declared(
         "class Base(TypedDict):\n    items: tuple['Missing', ...]\n",
         postponed=False,
@@ -830,7 +834,7 @@ def test_error_a_key_that_does_not_resolve_where_it_was_written_names_its_class(
 
 
 def test_error_a_typeddict_written_in_a_function_resolves_only_in_its_module() -> None:
-    # This module postpones annotations, and `Local` is no name of it.
+    # This module postpones annotations, and `Local` is not a module-level name here.
     class Local(TypedDict, closed=True):
         x: int
 
@@ -868,8 +872,8 @@ def test_a_type_statement_alias_may_hold_itself(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_a_leaf_is_asked_first_at_every_depth() -> None:
-    # The one hook: a caller's own shapes, consulted before the built-in
-    # ones, inside an array or an object as at the top.
+    # The only hook: a caller's own shapes, checked before the built-in ones,
+    # inside an array or an object as well as at the top level.
     class Marker:
         pass
 
@@ -929,14 +933,14 @@ def test_a_shape_is_described_as_a_message_would_name_it() -> None:
     assert describe(int | None) == "an integer or null"
     assert describe(Blosc | Gzip) == "an object"
     assert describe(float | int | None) == "a number or null"
-    # An array's elements are named as many.
+    # An array's elements are named in the plural.
     assert describe(tuple[int, ...]) == "an array of integers"
     assert describe(tuple[int | None, ...]) == "an array of integers or nulls"
     assert describe(tuple[tuple[str, ...], ...]) == "an array of arrays of strings"
     assert describe(tuple[Literal["C", "F"], ...]) == 'an array of values in ["C", "F"]'
     assert describe(int | tuple[int, ...]) == "an integer or an array of integers"
-    # A broader shape takes in a narrower one: the hex string a float32
-    # is spelled as, the strings of its non-finite values.
+    # A broader shape includes a narrower one: "a string" covers the hex
+    # string spelling of a float32 and the strings of its non-finite values.
     assert describe(Float32FillValue) == "a number or a string"
     assert describe(Literal["C", "F"] | None) == 'one of ["C", "F"] or null'
     assert describe(Width) == "an integer"
@@ -1010,20 +1014,20 @@ class Noted(TypedDict, extra_items=Annotated[object, "any JSON"]):
 def test_a_value_is_held_to_the_bounds_its_type_carries(
     annotation: object, value: object, found: list[tuple[Loc, str, dict[str, JSONValue]]]
 ) -> None:
-    # annotated-types' bounds, as pydantic reads them: one problem for a
-    # value out of any, saying what the type admits, its bounds in the
-    # problem's `ctx`; and asked only of a value of the type. A bound is
-    # the number it equals, whichever of the equal ones Python's
-    # `Annotated` cache hands back.
+    # annotated-types bounds, read as pydantic reads them. A value outside
+    # any bound gives one problem that says what the type allows, with the
+    # bounds in the problem's `ctx`. Bounds are checked only for a value of
+    # the type. A bound is compared as the number it equals, whichever of
+    # the equal values Python's `Annotated` cache returns.
     _, problems = _read(annotation, value)
     assert [(problem.loc, problem.message, dict(problem.ctx)) for problem in problems] == found
     assert all(problem.kind == "invalid_value" for problem in problems if problem.ctx)
 
 
 def test_a_key_s_type_keeps_the_metadata_its_annotation_carries() -> None:
-    # Qualifiers peeled, wherever they sit among the `Annotated` layers,
-    # and the metadata kept, an inner layer's first, as `Annotated`
-    # flattens nested layers; a note on `object` leaves the type open.
+    # Qualifiers are removed wherever they sit among the `Annotated` layers.
+    # The metadata is kept, inner layer first, as `Annotated` flattens
+    # nested layers. A note on `object` leaves the type open.
     keys = typeddict_keys(Bounded)
     assert keys.members["level"] == (Digit, True)
     assert keys.members["shape"] == (tuple[Annotated[int, Ge(1)], ...], False)
@@ -1057,7 +1061,7 @@ def test_error_a_bound_on_the_values_an_open_typeddict_takes() -> None:
 
 @dataclasses.dataclass(frozen=True)
 class Later(BaseMetadata):
-    """A constraint a later annotated-types might add."""
+    """A constraint that a later release of annotated-types might add."""
 
 
 @pytest.mark.parametrize(
@@ -1084,8 +1088,8 @@ class Later(BaseMetadata):
     ],
 )
 def test_error_a_constraint_the_checker_does_not_read(constraint: object) -> None:
-    # A type the checker did not hold its values to would say what is not
-    # so, as a type pydantic reads and the checker does not would disagree.
+    # If the checker ignored a constraint, the type would promise something
+    # that is not checked, and pydantic and the checker would disagree.
     with pytest.raises(TypeError, match="is not a constraint the checker reads"):
         parser(Annotated[str, constraint], no_leaf)
 
@@ -1100,7 +1104,7 @@ def test_error_a_constraint_the_checker_does_not_read(constraint: object) -> Non
     ids=["narrowing-an-alias", "gt-and-ge", "interval-and-lt"],
 )
 def test_error_a_second_bound_from_one_side(annotation: object) -> None:
-    # Pydantic reads the last one said; say one.
+    # Pydantic uses the last bound given; write only one.
     with pytest.raises(TypeError, match="is a second bound from (below|above)"):
         parser(annotation, no_leaf)
 
@@ -1145,8 +1149,8 @@ class Holds(TypedDict, closed=True):
 def test_check_gives_a_value_of_the_typeddict(
     value: dict[str, object], shape: type, found: list[tuple[Loc, str]]
 ) -> None:
-    # Any TypedDict the package declares, and any other: a value of it,
-    # arrays as tuples, holding what it admits and nothing else.
+    # For any TypedDict, from the package or not, the result is a value of
+    # it, with arrays as tuples, holding only what the TypedDict allows.
     typed, problems = check(value, shape)
     assert [(problem.loc, problem.kind) for problem in problems] == found
     assert typed is not None
@@ -1160,7 +1164,7 @@ def test_error_check_is_asked_of_a_typeddict() -> None:
 
 
 def test_error_check_names_what_no_parser_reads() -> None:
-    # Down to the TypedDict that holds it, at any depth.
+    # The error names the path down to the TypedDict that holds it, at any depth.
     with pytest.raises(TypeError, match=r"Holds.unreadable: Unreadable: members is not a shape"):
         check({}, Holds)
 
@@ -1185,15 +1189,15 @@ def test_error_check_names_what_no_parser_reads() -> None:
 def test_error_check_locates_a_value_that_is_not_json(
     value: dict[object, object], loc: Loc, kind: str
 ) -> None:
-    # Refused before any TypedDict is asked: what `check` compares is JSON.
+    # Rejected before any TypedDict is checked: `check` compares only JSON values.
     typed, problems = check(value, Options)
     assert typed is None
     assert [(problem.loc, problem.kind) for problem in problems] == [(loc, kind)]
 
 
 def test_error_check_refuses_null() -> None:
-    # JSON's null is JSON, and not an object: refined, it is None with no
-    # problem, which is not a verdict.
+    # JSON null is valid JSON but not an object. Refining it gives `None`
+    # with no problem, which would not be a usable result.
     typed, problems = check(None, Options)
     assert typed is None
     assert [(problem.loc, problem.kind) for problem in problems] == [((), "invalid_type")]
@@ -1206,7 +1210,7 @@ def test_error_check_refuses_a_value_of_another_type() -> None:
 
 
 def _declared_typeddicts() -> list[type]:
-    """Every TypedDict a public module of the package's JSON types exports."""
+    """Every TypedDict exported by a public module of the package's JSON types."""
     found: dict[type, None] = {}
     for package in (zarr_metadata.v2, zarr_metadata.v3):
         modules = [package.__name__] + [
@@ -1227,13 +1231,13 @@ def _declared_typeddicts() -> list[type]:
     "typeddict", _declared_typeddicts(), ids=lambda typeddict: typeddict.__name__
 )
 def test_every_typeddict_the_package_declares_compiles(typeddict: type) -> None:
-    # A declaration no parser reads would be a document type `check` could
-    # not be asked about.
+    # A declaration that no parser can read would be a document type that
+    # `check` cannot check.
     assert parser_for(typeddict, no_leaf) is not None
 
 
 def test_a_union_of_a_string_and_another_shape_names_both() -> None:
-    # "a string" takes in only the Literals of strings, not every other branch.
+    # "a string" absorbs only the string Literals, not the other branches.
     assert describe(str | int) == "a string or an integer"
     assert describe(str | None) == "a string or null"
     (problem,) = parser(str | int, no_leaf)(None, ())[1]

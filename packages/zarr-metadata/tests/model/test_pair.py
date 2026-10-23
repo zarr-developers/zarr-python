@@ -1,4 +1,4 @@
-"""A v3 model is a document and the scope it was read in: the pair, and what follows from it."""
+"""Tests that a v3 model is a document plus the scope it was read in, and for the behavior that follows from that."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ ARRAY: dict[str, Any] = {
     "codecs": ["bytes"],
 }
 MY_BYTES = CodecDefinition(name="bytes", configuration=Empty, kind="array_bytes", size="static")
-"""A private `bytes`: another meaning under the core name, which takes no configuration."""
+"""A private `bytes` definition: a different meaning under the core name, with no configuration."""
 PRIVATE = CORE.extended_with(MY_BYTES)
 SPELLED_OUT: dict[str, Any] = {
     **ARRAY,
@@ -70,7 +70,7 @@ SPELLED_OUT: dict[str, Any] = {
 def test_a_model_is_its_document_read_in_its_scope(
     document: dict[str, Any], context: Context | None, expected_context: Context
 ) -> None:
-    """A model built from a document holds that document, as written and refined, and the scope it was read in, `CORE_AND_EXTENSIONS` when none is given."""
+    """A model built from a document holds that document, as written and refined, and the scope it was read in. The scope is `CORE_AND_EXTENSIONS` when none is given."""
     model = ZarrV3ArrayMetadata(document, context=context)
     assert model.context == expected_context
     assert model.to_json() == refine_json(document)[0]
@@ -89,12 +89,12 @@ def test_a_model_is_its_document_read_in_its_scope(
 def test_to_json_keeps_the_spelling_the_document_was_written_in(
     document: dict[str, Any], key: str, written: object
 ) -> None:
-    """`to_json` writes each field as the document wrote it, not as a reader would respell it: the model is the document."""
+    """`to_json` writes each field as the document wrote it, not in a reader's preferred spelling, because the model is the document."""
     assert ZarrV3ArrayMetadata(document).to_json()[key] == written
 
 
 def test_properties_are_what_the_reading_holds() -> None:
-    """The typed members -- fields as the scope read them, shape, fill value, attributes -- are views of the reading, read-only."""
+    """The typed members (fields as the scope read them, shape, fill value, attributes) are read-only views of the reading."""
     model = ZarrV3ArrayMetadata({**ARRAY, "attributes": {"a": [1]}, "acme": 1})
     assert isinstance(model.data_type, AcceptedField)
     assert isinstance(model.codecs[0], AcceptedField)
@@ -113,7 +113,7 @@ def test_properties_are_what_the_reading_holds() -> None:
 
 
 def test_a_reading_without_problems_builds_the_model_without_reading_again() -> None:
-    """`read_array_metadata_v3` hands its reading to the model it builds, so the model's `reading` is that reading, not a second one."""
+    """`read_array_metadata_v3` passes its reading to the model it builds, so the model's `reading` is that same reading, not a second one."""
     reading = read_array_metadata_v3(ARRAY)
     assert reading.metadata is not None
     assert reading.metadata.reading.pipeline is reading.pipeline
@@ -143,7 +143,7 @@ def test_error_a_document_with_a_problem_is_refused_at_construction() -> None:
 def test_models_are_equal_by_what_their_documents_mean(
     left: ZarrV3ArrayMetadata, right: ZarrV3ArrayMetadata, equal: bool
 ) -> None:
-    """Two models are equal when every field reads the same by the same definition and the rest is the same JSON: spelling and unused definitions do not matter, a private definition under a core name does, and so does a name read against one left unclaimed."""
+    """Two models are equal when every field reads the same with the same definition and the rest is the same JSON. Spelling and unused definitions do not matter. A private definition under a core name does matter, and so does a name that one model reads and the other leaves unclaimed."""
     assert (left == right) is equal
     if equal:
         assert hash(left) == hash(right)
@@ -153,7 +153,7 @@ def test_models_are_equal_by_what_their_documents_mean(
     "context", [None, CORE, PRIVATE, Context.of()], ids=["default", "core", "private", "empty"]
 )
 def test_a_model_round_trips_through_its_document_in_its_scope(context: Context | None) -> None:
-    """`from_json(m.to_json(), context=m.context) == m`: the document and the scope determine the model, and pickle carries both."""
+    """`from_json(m.to_json(), context=m.context) == m`. The document and the scope determine the model, and pickle preserves both."""
     model = ZarrV3ArrayMetadata(ARRAY, context=context)
     assert ZarrV3ArrayMetadata(model.to_json(), context=model.context) == model
     loaded = pickle.loads(pickle.dumps(model))
@@ -163,7 +163,7 @@ def test_a_model_round_trips_through_its_document_in_its_scope(context: Context 
 
 
 def test_error_a_model_whose_scope_does_not_pickle_says_so() -> None:
-    """A scope holding a definition with a local function does not pickle, and the model raises the error pickling a `Context` raises."""
+    """A scope that holds a definition with a local function cannot be pickled. Pickling the model raises the same error as pickling the `Context`."""
     local = CodecDefinition(
         name="acme.c",
         configuration=Empty,
@@ -240,14 +240,14 @@ SHARDED: dict[str, Any] = {
 def test_update_reads_new_members_in_the_models_own_scope(
     model: ZarrV3ArrayMetadata, members: dict[str, Any], expected: ZarrV3ArrayMetadata
 ) -> None:
-    """`update` puts JSON members in place of the document's, `UNSET` removing one, and reads the result in the model's own scope, so a model read privately stays private."""
+    """`update` replaces the document's members with the given JSON members, removes a member given as `UNSET`, and reads the result in the model's own scope. So a model read in a private scope stays in that scope."""
     updated = model.update(**members)
     assert updated == expected
     assert updated.context == model.context
 
 
 def test_error_update_refuses_a_document_with_a_problem() -> None:
-    """`update` raises `MetadataValidationError` when the members make an invalid document, as the constructor does: two dimension names for one dimension."""
+    """`update` raises `MetadataValidationError` when the members make an invalid document, as the constructor does. Here the invalid document has two dimension names for one dimension."""
     with pytest.raises(MetadataValidationError):
         ZarrV3ArrayMetadata(ARRAY).update(dimension_names=("x", "y"))
 
@@ -265,14 +265,14 @@ def test_error_update_refuses_a_document_with_a_problem() -> None:
 def test_refined_in_moves_a_model_up_the_order(
     model: ZarrV3ArrayMetadata, context: Context, gained: bool
 ) -> None:
-    """`refined_in` reads the document in a scope that claims what this one left unclaimed and contradicts nothing; the result refines the model, keeps its document, and is the model itself when the scope reads nothing otherwise."""
+    """`refined_in` reads the document in a scope that claims what the current scope left unclaimed and contradicts nothing. The result refines the model and keeps its document. When the new scope reads nothing differently, the result equals the original model."""
     refined = model.refined_in(context)
     assert refined.context == context
     assert refined.to_json() == model.to_json()
     assert refined.refines(model)
     assert (refined == model) is not gained
     if not gained:
-        # Not read again: the reading's pipeline is the one read.
+        # Not read again: the reading's pipeline is the original one.
         assert refined.reading.pipeline is model.reading.pipeline
 
 
@@ -287,14 +287,14 @@ def test_refined_in_moves_a_model_up_the_order(
 def test_error_refined_in_refuses_a_conflict_or_a_loss(
     model: ZarrV3ArrayMetadata, context: Context
 ) -> None:
-    """`refined_in` raises `ScopeConflictError` naming each name the scope reads by another definition, or by none."""
+    """`refined_in` raises `ScopeConflictError` that names each name the new scope reads with another definition, or with no definition."""
     with pytest.raises(ScopeConflictError) as raised:
         model.refined_in(context)
     assert "bytes" in [conflict.key[1] for conflict in raised.value.conflicts]
 
 
 def test_with_context_reads_the_document_in_any_scope() -> None:
-    """`with_context` reads the same document in another scope, whatever that changes: a private `bytes` is read as such, and a scope that claims nothing leaves every name unclaimed."""
+    """`with_context` reads the same document in another scope, whatever that changes. A private `bytes` is read with the private definition, and a scope that claims nothing leaves every name unclaimed."""
     model = ZarrV3ArrayMetadata(ARRAY)
     private = model.with_context(PRIVATE)
     assert private.context == PRIVATE
@@ -304,7 +304,7 @@ def test_with_context_reads_the_document_in_any_scope() -> None:
 
 
 def test_error_with_context_refuses_a_document_the_scope_reads_with_a_problem() -> None:
-    """`with_context` raises `MetadataValidationError` when the document has a problem in the new scope: a gzip `level` the core definition refuses."""
+    """`with_context` raises `MetadataValidationError` when the document has a problem in the new scope. Here the problem is a gzip `level` that the core definition refuses."""
     loose = ZarrV3ArrayMetadata(
         {**ARRAY, "codecs": ["bytes", {"name": "gzip", "configuration": {"level": 12}}]},
         context=Context.of(),
@@ -351,7 +351,7 @@ def test_error_with_context_refuses_a_document_the_scope_reads_with_a_problem() 
 def test_refines_orders_models_by_information(
     upper: ZarrV3ArrayMetadata, lower: ZarrV3ArrayMetadata, expected: bool
 ) -> None:
-    """A model refines another when every field refines its counterpart -- the fields a field holds too, so a shard gained is a gain -- and every other member is the same, the fill value compared as the more informed data type spells it; a fill value that definition refuses is no refinement, and no error."""
+    """A model refines another when every field refines its counterpart, and every other member is the same. Fields held inside a field count too, so gaining a shard's inner fields is a gain. The fill value is compared as the more informed data type spells it. A fill value that this data type's definition refuses is not a refinement, and does not raise an error."""
     assert upper.refines(lower) is expected
 
 
@@ -378,7 +378,7 @@ CONSOLIDATED: dict[str, Any] = {
 
 
 def test_a_group_is_its_document_and_scope_and_its_nested_models_share_them() -> None:
-    """A group model is the pair, and each document its consolidated metadata holds is a model of the same scope, built from the group's one read, writing its document as written."""
+    """A group model is a document plus a scope. Each document in its consolidated metadata becomes a model in the same scope. These models are built from the group's single read, and each writes its document as written."""
     group = ZarrV3GroupMetadata(CONSOLIDATED, context=CORE)
     held = group.consolidated_metadata
     assert isinstance(held, ZarrV3ConsolidatedMetadata)
@@ -391,7 +391,7 @@ def test_a_group_is_its_document_and_scope_and_its_nested_models_share_them() ->
 
 
 def test_a_group_reads_each_nested_field_once() -> None:
-    """Building a group with consolidated metadata asks a definition's rules once per nested field: the models are built from the read, not read again."""
+    """Building a group with consolidated metadata calls a definition's rules once per nested field. The models are built from the read, not read again."""
     calls: list[int] = []
 
     def counted(configuration: object, nested: Nested) -> Iterator[ValidationProblem]:
@@ -419,7 +419,7 @@ def test_a_group_reads_each_nested_field_once() -> None:
 def test_groups_are_equal_by_what_their_documents_mean(
     left: ZarrV3GroupMetadata, right: ZarrV3GroupMetadata, equal: bool
 ) -> None:
-    """A group compares by its attributes, extra fields and each nested model's meaning; equal groups hash alike."""
+    """Groups are compared by their attributes, extra fields and the meaning of each nested model. Equal groups have equal hashes."""
     assert (left == right) is equal
     if equal:
         assert hash(left) == hash(right)
@@ -427,14 +427,14 @@ def test_groups_are_equal_by_what_their_documents_mean(
 
 @pytest.mark.parametrize("document", [GROUP, CONSOLIDATED], ids=["group", "consolidated"])
 def test_a_group_round_trips_through_its_document_in_its_scope(document: dict[str, Any]) -> None:
-    """`from_json(g.to_json(), context=g.context) == g`, and pickle carries the pair."""
+    """`from_json(g.to_json(), context=g.context) == g`, and pickle preserves both the document and the scope."""
     group = ZarrV3GroupMetadata(document, context=CORE)
     assert ZarrV3GroupMetadata(group.to_json(), context=group.context) == group
     assert pickle.loads(pickle.dumps(group)) == group
 
 
 def test_group_update_with_context_and_refined_in_behave_as_the_arrays_do() -> None:
-    """`update` reads in the group's scope and keeps its consolidated metadata unless given; `refined_in` moves every nested model up the order; `with_context` reads all of it in another scope."""
+    """`update` reads in the group's scope and keeps the consolidated metadata unless a new one is given. `refined_in` moves every nested model up the order. `with_context` reads the whole group in another scope."""
     group = ZarrV3GroupMetadata(CONSOLIDATED, context=Context.of())
     assert group.update(attributes={"g": 2}).consolidated_metadata == group.consolidated_metadata
     refined = group.refined_in(CORE)
@@ -455,7 +455,7 @@ def test_group_update_with_context_and_refined_in_behave_as_the_arrays_do() -> N
 
 
 def test_consolidated_metadata_reads_on_its_own() -> None:
-    """`ZarrV3ConsolidatedMetadata(member, context)` reads the member as a group's read reads it, each document a model of that scope."""
+    """`ZarrV3ConsolidatedMetadata(member, context)` reads the member the same way a group's read does, with each document as a model in that scope."""
     member = CONSOLIDATED["consolidated_metadata"]
     held = ZarrV3ConsolidatedMetadata(member, context=CORE)
     assert held == ZarrV3GroupMetadata(CONSOLIDATED, context=CORE).consolidated_metadata
@@ -464,7 +464,7 @@ def test_consolidated_metadata_reads_on_its_own() -> None:
 
 
 def test_error_a_group_with_a_nested_problem_is_refused_at_the_nested_path() -> None:
-    """A nested document's problem is the group's, located under `consolidated_metadata.metadata.<path>`."""
+    """A problem in a nested document is reported as the group's problem, located under `consolidated_metadata.metadata.<path>`."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV3GroupMetadata(
             {
@@ -479,7 +479,7 @@ def test_error_a_group_with_a_nested_problem_is_refused_at_the_nested_path() -> 
 
 
 def test_the_held_field_machinery_is_gone() -> None:
-    """A v3 model is built only by reading its document, so nothing in the package takes fields read already, or re-reads a model in an empty scope: `NO_SCOPE`, `overlapping` and `held` are gone."""
+    """A v3 model is built only by reading its document. So nothing in the package accepts fields that were already read, or re-reads a model in an empty scope. `NO_SCOPE`, `overlapping` and `held` are removed."""
     import inspect
 
     import zarr_metadata.model._validation as validation
@@ -490,7 +490,7 @@ def test_the_held_field_machinery_is_gone() -> None:
 
 
 def test_error_refined_in_refuses_a_gain_that_surfaces_a_problem() -> None:
-    """A scope that claims a name this one left unclaimed may refuse what was written under it: `refined_in` raises `MetadataValidationError`, the document having a problem in that scope."""
+    """A scope that claims a name the current scope left unclaimed may refuse what was written under that name. Then `refined_in` raises `MetadataValidationError`, because the document has a problem in that scope."""
     loose = ZarrV3ArrayMetadata({**ARRAY, "fill_value": "banana"}, context=Context.of())
     with pytest.raises(MetadataValidationError) as raised:
         loose.refined_in(CORE)
@@ -498,7 +498,7 @@ def test_error_refined_in_refuses_a_gain_that_surfaces_a_problem() -> None:
 
 
 def test_a_scope_conflict_says_where_each_conflict_sits() -> None:
-    """`refined_in` names each conflict with where the field sits in the document, as a problem is located: a loss of `bytes` at `codecs.0`, in the shard too."""
+    """`refined_in` reports each conflict with the field's location in the document, the same way a problem is located. For example, a loss of `bytes` is reported at `codecs.0`, including inside the shard."""
     model = ZarrV3ArrayMetadata(SHARDED, context=CORE)
     with pytest.raises(ScopeConflictError) as raised:
         model.refined_in(Context.of())
@@ -524,7 +524,7 @@ def test_a_scope_conflict_says_where_each_conflict_sits() -> None:
 def test_a_models_reading_holds_the_model_and_with_context_moves_the_whole_tree(
     build: Callable[[], ZarrV3GroupMetadata | None],
 ) -> None:
-    """However a group was built, its reading holds it, each nested reading holds the nested model, and `with_context` into a scope that reads every claim identically moves every nested model, the nested ones' too, to the new scope without reading again."""
+    """However a group was built, its reading holds it, and each nested reading holds the nested model. `with_context` into a scope that reads every claim identically moves every nested model, at every depth, to the new scope without reading again."""
     group = build()
     assert group is not None
     assert group.reading.metadata is group
@@ -557,7 +557,7 @@ def test_a_models_reading_holds_the_model_and_with_context_moves_the_whole_tree(
 
 
 def test_consolidated_metadata_refines_nothing_of_another_type() -> None:
-    """`refines` of consolidated metadata says False of what is not consolidated metadata, as the array's and group's do, rather than raising."""
+    """`refines` on consolidated metadata returns False for an object that is not consolidated metadata, as it does for arrays and groups, rather than raising."""
     held = ZarrV3GroupMetadata(CONSOLIDATED).consolidated_metadata
     assert isinstance(held, ZarrV3ConsolidatedMetadata)
     assert held.refines(cast("Any", ZarrV3GroupMetadata(GROUP))) is False
@@ -591,7 +591,7 @@ def test_consolidated_metadata_refines_nothing_of_another_type() -> None:
 def test_a_models_views_cannot_be_changed_in_place(
     document: dict[str, Any], change: Callable[[ZarrV3ArrayMetadata], None]
 ) -> None:
-    """What a model shows -- attributes, extra fields, a fill value -- is read-only at every level, so a model cannot be put in a state its document, its key and `refines` disagree about."""
+    """What a model exposes (attributes, extra fields, a fill value) is read-only at every level. So a model cannot reach a state where its document, its comparison key and `refines` disagree."""
     model = ZarrV3ArrayMetadata(document)
     same = ZarrV3ArrayMetadata(document)
     with pytest.raises(TypeError):
@@ -626,7 +626,7 @@ def test_a_models_views_cannot_be_changed_in_place(
 def test_a_reading_holds_a_model_of_each_nested_document_without_a_problem(
     problem: dict[str, Any],
 ) -> None:
-    """A group document with a problem still holds, in its reading, a model of each document its consolidated metadata holds that has no problem, whatever the problem elsewhere is: one a reader walks past, or one it refuses."""
+    """The reading of a group document with a problem still holds a model of each document in its consolidated metadata that has no problem. This is true for any problem elsewhere, whether the reader continues past it or refuses it."""
     member = {"kind": "inline", "must_understand": False, "metadata": {"a": ARRAY}}
     document = {**GROUP, "consolidated_metadata": member, **problem}
     reading = read_group_metadata_v3(document)
@@ -638,7 +638,7 @@ def test_a_reading_holds_a_model_of_each_nested_document_without_a_problem(
 
 
 def test_a_scope_conflict_inside_consolidated_metadata_is_located_there() -> None:
-    """A group's `refined_in` locates a conflict in a document its consolidated metadata holds under that document's path, in a listing a listed group holds too."""
+    """A group's `refined_in` locates a conflict in a document of its consolidated metadata under that document's path. This also applies to the listing of a listed group."""
     group = ZarrV3GroupMetadata(CONSOLIDATED, context=CORE)
     with pytest.raises(ScopeConflictError) as raised:
         group.refined_in(Context.of())
@@ -657,7 +657,7 @@ def test_a_scope_conflict_inside_consolidated_metadata_is_located_there() -> Non
 
 
 def test_a_models_reading_cannot_be_changed_in_place() -> None:
-    """What a model's reading holds of the documents its consolidated metadata holds is read-only, so nothing planted there is taken up by `with_context`."""
+    """The part of a model's reading that holds the consolidated metadata documents is read-only, so `with_context` cannot pick up anything inserted there."""
     group = ZarrV3GroupMetadata(CONSOLIDATED)
     planted = ZarrV3ArrayMetadata({**ARRAY, "shape": [9]}).reading
     with pytest.raises(TypeError):
@@ -674,7 +674,7 @@ def test_a_models_reading_cannot_be_changed_in_place() -> None:
 def test_a_reading_holds_a_model_of_each_healthy_document_in_a_listed_groups_own_listing(
     fault: dict[str, Any],
 ) -> None:
-    """A listed group with a problem of its own -- one the reader refuses, or one it walks past -- still holds, in its reading, a model of each document in its own listing that has no problem, as the top group does."""
+    """A listed group with a problem of its own (one the reader refuses, or one it continues past) still holds in its reading a model of each document in its own listing that has no problem, as the top group does."""
     inline = {"kind": "inline", "must_understand": False}
     listed = {
         **GROUP,
@@ -703,14 +703,14 @@ def test_a_reading_holds_a_model_of_each_healthy_document_in_a_listed_groups_own
 
 @pytest.mark.parametrize("document", [GROUP, CONSOLIDATED], ids=["group", "consolidated"])
 def test_a_group_reading_pickles_and_copies(document: dict[str, Any]) -> None:
-    """A group's reading pickles and deep-copies, with the documents its consolidated metadata holds and the model it built, and compares equal afterwards, as an array's does."""
+    """A group's reading pickles and deep-copies, together with its consolidated metadata documents and the model it built, and compares equal afterwards, as an array's reading does."""
     reading = read_group_metadata_v3(document)
     for again in (pickle.loads(pickle.dumps(reading)), copy.deepcopy(reading)):
         assert again == reading
         assert again.metadata == reading.metadata
         assert set(again.consolidated) == set(reading.consolidated)
-        # One model per document still: the reading comes back through
-        # the model it holds, which reads once.
+        # There is still one model per document: the reading is restored
+        # through the model it holds, which reads once.
         assert again.metadata is not None
         assert again.metadata.reading is again
         for path, nested in again.consolidated.items():
@@ -720,7 +720,7 @@ def test_a_group_reading_pickles_and_copies(document: dict[str, Any]) -> None:
 
 
 def test_an_array_reading_pickles_through_its_model() -> None:
-    """An array's reading that holds a model pickles and deep-copies as that model does, and comes back as the model's own reading."""
+    """An array's reading that holds a model pickles and deep-copies the same way that model does, and is restored as the model's own reading."""
     reading = read_array_metadata_v3(ARRAY)
     for again in (pickle.loads(pickle.dumps(reading)), copy.deepcopy(reading)):
         assert again == reading
@@ -729,7 +729,7 @@ def test_an_array_reading_pickles_through_its_model() -> None:
 
 
 def test_error_a_models_fields_cannot_be_changed_in_place() -> None:
-    """The fields a model hands out -- a codec's configuration, the fields a shard holds -- are read-only, so `codecs ==` and `refines` cannot drift from `==`."""
+    """The fields a model returns (a codec's configuration, the fields a shard holds) are read-only, so `codecs ==` and `refines` cannot become inconsistent with `==`."""
     model = ZarrV3ArrayMetadata(ARRAY)
     same = ZarrV3ArrayMetadata(ARRAY)
     codec = model.codecs[0]

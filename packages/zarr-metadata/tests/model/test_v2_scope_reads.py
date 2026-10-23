@@ -1,4 +1,4 @@
-"""The v2 array validator reads its dtype, codecs and fill value in the v2 scope."""
+"""Tests that the v2 array validator reads its dtype, codecs and fill value in the v2 scope."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ BASE: dict[str, Any] = dict(ZarrV2ArrayMetadata.create_default().to_json())
     ],
 )
 def test_a_v2_document_the_scope_reads_has_no_problem(changes: dict[str, Any]) -> None:
-    """A dtype the scope reads with a fill value its family takes, a compressor and filters the scope reads or leaves unclaimed, and a null fill value, each validate with no problem."""
+    """Each of these validates with no problem: a dtype that the scope reads with a fill value that its family allows, a compressor or filters that the scope reads or leaves unclaimed, and a null fill value."""
     assert validate_array_metadata_v2({**BASE, **changes}) == ()
 
 
@@ -85,13 +85,13 @@ def test_a_v2_document_the_scope_reads_has_no_problem(changes: dict[str, Any]) -
 def test_error_what_the_scope_refuses_is_a_problem_of_the_document(
     changes: dict[str, Any], at: Loc, kind: str
 ) -> None:
-    """A dtype, fill value, compressor or filter the scope refuses is one problem of the document, at the field or the parameter that is wrong; before, the string content of a dtype and the parameters of a codec went unjudged."""
+    """A dtype, fill value, compressor or filter that the scope refuses produces one problem in the document, at the wrong field or parameter. Previously, the string content of a dtype and the parameters of a codec were not checked."""
     problems = validate_array_metadata_v2({**BASE, **changes})
     assert [(p.loc, p.kind) for p in problems] == [(at, kind)]
 
 
 def test_create_default_keeps_zero_where_the_family_takes_it() -> None:
-    """`create_default` given a dtype and no fill value keeps `0` when the family takes it, and takes `null` otherwise; a fill value given is kept."""
+    """When `create_default` is given a dtype and no fill value, it uses `0` if the dtype family allows it and `null` otherwise. A given fill value is kept."""
     assert ZarrV2ArrayMetadata.create_default(dtype="|b1").fill_value is None
     assert ZarrV2ArrayMetadata.create_default(dtype="<f8").fill_value == 0
     assert ZarrV2ArrayMetadata.create_default(dtype="<i4").fill_value == 0
@@ -101,6 +101,6 @@ def test_create_default_keeps_zero_where_the_family_takes_it() -> None:
 
 
 def test_a_v2_model_refuses_a_dtype_the_scope_refuses() -> None:
-    """`ZarrV2ArrayMetadata` checks itself when built, so a dtype the scope refuses raises as any other problem does."""
+    """`ZarrV2ArrayMetadata` validates itself when built, so a dtype that the scope refuses raises like any other problem."""
     with pytest.raises(MetadataValidationError, match="typestr"):
         ZarrV2ArrayMetadata.create_default(dtype="float32")

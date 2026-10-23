@@ -1,10 +1,11 @@
 """The model's v3 validators read each extension point through its definition.
 
-A document's structure is the model's own judgment; what a codec, data
-type, chunk grid or chunk key encoding holds in its configuration is its
-definition's, found in a scope (`CORE_AND_EXTENSIONS` unless a caller
-passes another) and reported at the field's place in the document. A
-name nothing in the scope claims is left unjudged.
+The model checks a document's structure itself. The configuration of a
+codec, data type, chunk grid or chunk key encoding is checked by its
+definition. The definition is found in a scope (`CORE_AND_EXTENSIONS`
+unless a caller passes another), and problems are reported at the field's
+location in the document. A name that no definition in the scope claims
+is not checked.
 """
 
 from __future__ import annotations
@@ -36,13 +37,13 @@ BYTES = {"name": "bytes", "configuration": {"endian": "little"}}
 
 
 def _document(**fields: object) -> dict[str, Any]:
-    """A default v3 array document with `fields` in it, arrays as tuples as a reader's are."""
+    """Return a default v3 array document with `fields` added, with arrays as tuples as a reader holds them."""
     document = {**ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json(), **fields}
     return cast("dict[str, Any]", arrays_to_tuples(document))
 
 
 class LenientGzipConfiguration(TypedDict, closed=True):
-    """A gzip configuration whose `level` is any integer: the bound is the type's, so taking any is a type of its own."""
+    """A gzip configuration whose `level` is any integer. The bound on `level` is part of the configuration type, so accepting any level needs a separate type."""
 
     level: int
 
@@ -53,7 +54,7 @@ LENIENT_GZIP = CodecDefinition(
     kind="bytes_bytes",
     size="dynamic",
 )
-"""A reader's own gzip, which takes any level: a scope can grow, and substitute."""
+"""A reader's own gzip definition, which accepts any level. A scope can be extended, and an extension can replace a definition."""
 
 
 @pytest.mark.parametrize(
@@ -87,9 +88,10 @@ LENIENT_GZIP = CodecDefinition(
 def test_a_document_reads_through_the_definitions_in_its_scope(
     document: dict[str, Any], context: Context
 ) -> None:
-    # What the scope holds judges; what it does not is left to the reader.
-    # The model reads in the same scope as the validators, and what it
-    # writes reads back in that scope as the same model.
+    # Definitions in the scope check their fields. Fields with no definition
+    # in the scope are left to the reader. The model reads in the same scope
+    # as the validators, and its output reads back in that scope as the same
+    # model.
     assert validate_array_metadata_v3(document, context=context) == ()
     assert is_array_metadata_v3(document, context=context)
     assert parse_array_metadata_v3(document, context=context) is not None
@@ -147,8 +149,8 @@ def test_a_document_reads_through_the_definitions_in_its_scope(
 def test_error_a_configuration_its_definition_refuses(
     fields: dict[str, Any], loc: tuple[str | int, ...], kind: str
 ) -> None:
-    # Located at the field's place in the document; the document is
-    # refused by every judging entry point, and by the model reading it.
+    # The problem is located at the field's position in the document. Every
+    # validating entry point refuses the document, and so does the model.
     document = _document(**fields)
     assert [(problem.loc, problem.kind) for problem in validate_array_metadata_v3(document)] == [
         (loc, kind)
@@ -193,8 +195,9 @@ def test_an_array_in_a_group_s_consolidated_metadata_reads_in_the_group_s_scope(
 
 
 def test_error_an_envelope_is_judged_once() -> None:
-    # `resolve` judges the envelope and reads the configuration: one
-    # report, and the configuration still judged.
+    # `resolve` checks the envelope and reads the configuration. The
+    # envelope problem is reported once, and the configuration is still
+    # checked.
     document = _document(
         codecs=[BYTES, {"name": "gzip", "configuration": {"level": 5}, "must_understand": False}]
     )
@@ -204,8 +207,8 @@ def test_error_an_envelope_is_judged_once() -> None:
 
 
 def test_error_a_field_that_is_not_json_is_not_read() -> None:
-    # Not JSON is the first verdict: the NaN is reported, and the
-    # configuration beside it is not read.
+    # The JSON check runs first. The NaN is reported, and the configuration
+    # next to it is not read.
     document = _document(
         codecs=[
             BYTES,

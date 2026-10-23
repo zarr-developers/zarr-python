@@ -1,4 +1,4 @@
-"""The JSON Schema of a v3 `zarr.json`, as a scope reads one."""
+"""The JSON Schema of a v3 `zarr.json`, as a scope reads it."""
 
 from __future__ import annotations
 
@@ -20,30 +20,33 @@ if TYPE_CHECKING:
 
 
 def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSONSchema:
-    """The JSON Schema of a v3 `zarr.json` read in `context`: an array document or a group document, as `validate_node_metadata_v3` reads one, but for the rules.
+    """The JSON Schema of a v3 `zarr.json` read in `context`: an array document or a group document, as `validate_node_metadata_v3` reads it, except for the rules.
 
-    For an editor that validates a `zarr.json` as it is written, or a
-    validator in another language. JSON Schema draft 2020-12, as
-    `json_schema` writes one. Each extension point is a field as a scope
-    reads one in `context`: one a definition in scope reads, with the
-    configuration its definition declares, or a name none of them claims. The fill value is the JSON shape
-    the data type's definition declares for one -- an `int8`'s an integer
-    in [-128, 127] -- when the document names a data type in scope. A
-    group's `consolidated_metadata` holds array and group documents, by
-    path; a `null` one, which zarr-python 3.0 and 3.1 wrote, is refused, as
-    the validator refuses it. Each document is in `$defs` under the name of its
-    TypedDict: `ZarrV3ArrayMetadataJSON` is an array's alone.
+    Use it in an editor that validates a `zarr.json` while it is
+    written, or in a validator written in another language. The schema
+    is JSON Schema draft 2020-12, in the form `json_schema` writes. Each
+    extension point is a field as the scope `context` reads it: either a
+    name that a definition in scope claims, with the configuration that
+    definition declares, or a name that no definition claims. When the
+    document names a data type in scope, the fill value must have the
+    JSON shape that the data type's definition declares (for `int8`, an
+    integer in [-128, 127]). A group's `consolidated_metadata` holds
+    array and group documents, by path. A `null` value, which
+    zarr-python 3.0 and 3.1 wrote, is refused, because the validator
+    refuses it too. Each document is in `$defs` under the name of its
+    TypedDict. `ZarrV3ArrayMetadataJSON` describes only an array.
 
-    A JSON Schema says what each member is, and what the rules say of
-    members read together is not in it: one dimension name per dimension
-    of the shape, a chunk grid that fits the shape, codecs in the order a
-    pipeline takes them, each against the chunk it is handed, the
-    hierarchy the documents of consolidated metadata make below their
-    group, and what a definition's `rules` say. So a document it accepts may still have a
-    problem, and a JSON document `validate_node_metadata_v3` finds none
-    with, it accepts. A validator reads JSON as a parser gives it, arrays
-    as lists: a model's `to_json` writes tuples, which a Python validator
-    does not take for arrays.
+    A JSON Schema describes each member on its own. It does not contain
+    the rules that relate members to each other: one dimension name per
+    dimension of the shape, a chunk grid that fits the shape, codecs in
+    pipeline order with each codec checked against the chunk it
+    receives, the hierarchy that the consolidated documents form below
+    their group, and the checks in a definition's `rules`. So a document
+    the schema accepts may still have a problem. Every JSON document
+    that `validate_node_metadata_v3` finds no problem with is accepted
+    by the schema. A validator reads JSON as a parser returns it, with
+    arrays as lists. A model's `to_json` returns tuples, and a Python
+    validator does not accept tuples as arrays.
     """
     scope = scoped(context, CORE_AND_EXTENSIONS)
     schemas = Schemas(_documents(scope))
@@ -53,7 +56,7 @@ def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSO
 
 
 def _documents(context: Context) -> SchemaLeaf:
-    """The schema leaf of the documents read in `context`: an array's fill value held to its data type, and a group's consolidated metadata; each field as `context` reads one."""
+    """The schema leaf for documents read in `context`: an array's fill value constrained by its data type, a group's consolidated metadata, and each field as `context` reads it."""
     fields = field_schemas(context)
 
     def leaf(annotation: object, schemas: Schemas) -> JSONSchema | None:
@@ -69,7 +72,7 @@ def _documents(context: Context) -> SchemaLeaf:
 
 
 def _array(context: Context, schemas: Schemas) -> JSONSchema:
-    """An array document: its TypedDict, and its fill value held to the data type it names, for each data type in scope."""
+    """An array document: its TypedDict, plus a constraint on its fill value for each data type in scope, which applies when the document names that data type."""
     schema = schemas.object_of(ZarrV3ArrayMetadataJSON)
     held: list[JSONValue] = []
     for definition in context.definitions():
@@ -77,7 +80,7 @@ def _array(context: Context, schemas: Schemas) -> JSONSchema:
             continue
         fill_value = schemas.of(definition.fill_value)
         if len(fill_value) == 0:
-            continue  # a data type that says nothing of its fill value takes any JSON
+            continue  # a data type that declares no fill value shape accepts any JSON
         name = written_name(definition)
         named: JSONSchema = {
             "anyOf": [name, {"type": "object", "properties": {"name": name}, "required": ["name"]}]
@@ -91,7 +94,7 @@ def _array(context: Context, schemas: Schemas) -> JSONSchema:
 
 
 def _group(schemas: Schemas) -> JSONSchema:
-    """A group document: its TypedDict, and the consolidated metadata the model reads."""
+    """A group document: its TypedDict, plus the consolidated metadata member that the model reads."""
     schema = schemas.object_of(ZarrV3GroupMetadataJSON)
     properties = cast("dict[str, JSONValue]", schema.get("properties", {}))
     consolidated: JSONSchema = schemas.of(ZarrV3ConsolidatedMetadataJSON)

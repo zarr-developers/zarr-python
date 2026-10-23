@@ -29,9 +29,10 @@ class ZarrV3ArrayMetadataJSON(TypedDict, extra_items=ZarrV3ExtensionField):
     Zarr v3 array metadata document (the `zarr.json` content for an array).
 
     Extra keys may contain arbitrary JSON values. Each extension point is
-    annotated with the field alias of its kind -- `data_type` a
-    `ZarrV3DataTypeField`, each of `codecs` a `ZarrV3CodecField` -- which is the JSON
-    a metadata field is, and says what a scope reads it as.
+    annotated with the field alias of its kind. For example, `data_type` is
+    a `ZarrV3DataTypeField`, and each entry of `codecs` is a
+    `ZarrV3CodecField`. The alias describes the JSON of the metadata field,
+    and it tells a scope which kind to read the field as.
 
     See https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html#array-metadata
     """

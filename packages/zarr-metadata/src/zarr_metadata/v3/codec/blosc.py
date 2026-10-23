@@ -70,12 +70,13 @@ another member is required.
 
 
 def _rules(configuration: BloscCodecConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
-    """`typesize` against `shuffle`.
+    """Check `typesize` against `shuffle`.
 
-    Under `noshuffle` the spec says of `typesize` that "the value is
-    ignored", and the canonical form drops it; under either shuffle it is
-    required, and positive. Whether it is required is not the type's to
-    say, so neither is its bound.
+    For `noshuffle`, the spec says of `typesize` that "the value is
+    ignored", and the canonical form drops it. For either other shuffle,
+    `typesize` is required and must be positive. The type cannot express
+    whether `typesize` is required, so it does not express the bound
+    either. These rules check both.
     """
     shuffle = configuration["shuffle"]
     if shuffle != BLOSC_NO_SHUFFLE:
@@ -94,10 +95,10 @@ def _rules(configuration: BloscCodecConfiguration, nested: Nested) -> Iterator[V
 
 
 def _canonical(configuration: BloscCodecConfiguration) -> BloscCodecConfiguration:
-    """Without a `typesize` that `noshuffle` renders meaningless.
+    """Remove `typesize` when `shuffle` is `noshuffle`, because it has no meaning there.
 
     The spec says of that case that "the value is ignored", so two
-    configurations differing only there describe the same codec.
+    configurations that differ only in `typesize` describe the same codec.
     """
     if configuration["shuffle"] != BLOSC_NO_SHUFFLE or "typesize" not in configuration:
         return configuration

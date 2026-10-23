@@ -1,4 +1,4 @@
-"""Every v2 entry point reads in the scope it is given, `CORE_V2` when given none, and refuses a scope of another format."""
+"""Tests that every v2 entry point reads in the scope it is given, uses `CORE_V2` when given none, and refuses a scope of another format."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 EMPTY = Context.of()
 BASE: dict[str, Any] = dict(ZarrV2ArrayMetadata.create_default(shape=(4,), chunks=(2,)).to_json())
 BAD: dict[str, Any] = {**BASE, "compressor": {"id": "gzip", "level": "x"}}
-"""An array the v2 scope refuses -- a gzip level that is no integer -- and an empty scope leaves unjudged."""
+"""An array that the v2 scope refuses (a gzip level that is not an integer) and that an empty scope does not check."""
 GROUP: dict[str, Any] = {"zarr_format": 2}
 CONSOLIDATED: dict[str, Any] = {
     "zarr_consolidated_format": 1,
@@ -30,7 +30,7 @@ STORE_C = {".zmetadata": json.dumps(CONSOLIDATED).encode()}
 
 
 def _accepts(read: Callable[..., object]) -> Callable[[Context | None], bool]:
-    """Whether `read`, given `context`, finds nothing wrong: True for a model, a reading with a model, an empty problem tuple, a guard saying yes, or a field read or left unclaimed."""
+    """Return whether `read`, given `context`, finds nothing wrong. Success is a model, a reading with a model, an empty problem tuple, a guard that returns True, or a field that was read or left unclaimed."""
 
     def accepted(context: Context | None) -> bool:
         try:
@@ -105,19 +105,19 @@ ENTRY_POINTS: dict[str, Callable[..., object]] = {
     "resolve_dtype_v2": lambda context: resolve_dtype_v2("<u1", context=context),
     "resolve_codec_v2": lambda context: resolve_codec_v2(BAD["compressor"], context=context),
 }
-"""Each v2 entry point, reading a document that holds the refused compressor where it can hold one."""
+"""Each v2 entry point, reading a document that contains the refused compressor wherever that document type allows one."""
 
 REFUSES_BAD = frozenset(
     name
     for name in ENTRY_POINTS
     if "Group" not in name and name != "resolve_dtype_v2" and "group" not in name
 )
-"""The entry points whose document holds the refused compressor: the rest accept their document in every scope."""
+"""The entry points whose document contains the refused compressor. The other entry points accept their document in every scope."""
 
 
 @pytest.mark.parametrize("name", ENTRY_POINTS.keys())
 def test_every_v2_entry_point_reads_in_the_scope_it_is_given(name: str) -> None:
-    """Each v2 entry point accepts its document in an empty scope, and refuses the gzip level that is no integer in `CORE_V2`, which `None` names too, when the document holds it: the scope it is given is the scope it reads in."""
+    """Each v2 entry point accepts its document in an empty scope. In `CORE_V2` (also selected by `None`), it refuses the non-integer gzip level when the document contains it. This shows that each entry point reads in the scope it is given."""
     accepted = _accepts(ENTRY_POINTS[name])
     assert accepted(EMPTY) is True
     assert accepted(CORE_V2) is (name not in REFUSES_BAD)
@@ -126,6 +126,6 @@ def test_every_v2_entry_point_reads_in_the_scope_it_is_given(name: str) -> None:
 
 @pytest.mark.parametrize("name", ENTRY_POINTS.keys())
 def test_error_every_v2_entry_point_refuses_a_scope_of_another_format(name: str) -> None:
-    """A v2 entry point given a v3 scope raises `TypeError`: a scope reads documents of one format, and a v3 scope claims nothing a v2 document writes."""
+    """A v2 entry point given a v3 scope raises `TypeError`. A scope reads documents of one format, and a v3 scope claims nothing that a v2 document contains."""
     with pytest.raises(TypeError, match="format"):
         ENTRY_POINTS[name](context=CORE_AND_EXTENSIONS)

@@ -1,9 +1,10 @@
-"""A v3 array document, read: each field as a scope read it, and its codecs as a pipeline.
+"""Tests for reading a v3 array document: each field as a scope read it, and its codecs as a pipeline.
 
-`read_array_metadata_v3` returns everything one read of a document finds:
-each field with where it sits, the kind it was read as and what the scope
-made of it, the chunks the codecs are handed, each codec with the chunk it
-is handed, every problem, and the document's model when there is none.
+`read_array_metadata_v3` returns everything that one read of a document
+finds: each field with its location, the kind it was read as, and the
+scope's result for it; the chunk the codecs receive; each codec with the
+chunk it receives; every problem; and the document's model when there are
+no problems.
 """
 
 from __future__ import annotations
@@ -54,11 +55,11 @@ POINTS: list[tuple[Loc, type[Definition[Any]], type]] = [
     (("chunk_grid",), ChunkGridDefinition, AcceptedField),
     (("chunk_key_encoding",), ChunkKeyEncodingDefinition, AcceptedField),
 ]
-"""A default document's single extension points, each read where it sits."""
+"""The single-valued extension points of a default document, each read at its location."""
 
 
 def _document(shape: tuple[int, ...] = (4,), **fields: object) -> dict[str, Any]:
-    """A default v3 array document of `shape` with `fields` in it, arrays as tuples as a reader's are."""
+    """Return a default v3 array document of `shape` with `fields` added, with arrays as tuples as a reader holds them."""
     document = {**ZarrV3ArrayMetadata.create_default(shape=shape).to_json(), **fields}
     return cast("dict[str, Any]", arrays_to_tuples(document))
 
@@ -81,7 +82,7 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
     ("document", "context", "fields", "handed"),
     [
         (_document(), CORE_AND_EXTENSIONS, [*POINTS, _codec(("codecs", 0))], [(frozenset({4}),)]),
-        # Each codec is handed the chunk the one before it hands on.
+        # Each codec receives the chunk that the previous codec outputs.
         (
             _document(
                 (4, 6), codecs=[{"name": "transpose", "configuration": {"order": [1, 0]}}, "bytes"]
@@ -90,9 +91,9 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
             [*POINTS, _codec(("codecs", 0)), _codec(("codecs", 1))],
             [(frozenset({4}), frozenset({6})), (frozenset({6}), frozenset({4}))],
         ),
-        # The fields a shard holds come after it, where they sit in its
-        # configuration; read in the core spec's scope, an extension inside
-        # it is out of scope where it sits.
+        # The fields a shard holds come after it, at their locations in its
+        # configuration. In the core spec's scope, an extension inside the
+        # shard is unclaimed at its location.
         (
             _document(
                 (16, 16),
@@ -110,7 +111,7 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
             ],
             [(frozenset({8}), frozenset({8}))],
         ),
-        # A shard within a shard: each field, then the fields it holds.
+        # A shard within a shard: each field comes first, then the fields it holds.
         (
             _document(
                 (16, 16),
@@ -130,7 +131,7 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
             ],
             [(frozenset({8}), frozenset({8}))],
         ),
-        # A shard its check refuses keeps the fields it read inside it.
+        # A shard that its check refuses still keeps the fields it read inside it.
         (
             _document(
                 (16, 16),
@@ -147,8 +148,8 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
             ],
             [(frozenset({8}), frozenset({8}))],
         ),
-        # A struct's field types are data types, whether or not anything
-        # in scope claims them.
+        # A struct's field types are read as data types, whether or not a
+        # definition in the scope claims them.
         (
             _document(
                 data_type={
@@ -181,9 +182,9 @@ def _shard(chunk_shape: list[int], codecs: list[object] | None = None, **more: o
             ],
             [(frozenset({4}),)],
         ),
-        # A field its definition refuses, or nothing claims, is read as
-        # the kind it sits in; a grid nothing claims says no lengths, and
-        # a codec after the array -> bytes codec is handed bytes.
+        # A field that its definition refuses, or that nothing claims, is
+        # read as the kind of its position. An unclaimed chunk grid gives no
+        # lengths, and a codec after the array -> bytes codec receives bytes.
         (
             _document(
                 chunk_grid={"name": "acme.grid", "configuration": {}},
@@ -231,11 +232,11 @@ def test_a_document_reads_as_each_field_where_it_sits_and_its_codecs_as_a_pipeli
     handed: list[Lengths | None],
 ) -> None:
     reading = read_array_metadata_v3(document, context=context)
-    # A model only of a document with no problem.
+    # A model exists only for a document with no problem.
     assert (reading.metadata is None) is (reading.problems != ())
     assert [(loc, field.read_as, type(field)) for loc, field in reading.fields()] == fields
-    # The chunk's vocabulary for what nothing says is None, the reading's
-    # for a key the document lacks is `UNSET`.
+    # The chunk uses None for a property that nothing declares. The reading
+    # uses `UNSET` for a key that the document lacks.
     if reading.data_type is UNSET:
         assert reading.chunk.data_type is None
     else:
@@ -255,7 +256,7 @@ _WITH_PROBLEMS = _document(
         {"name": "transpose", "configuration": {"order": [1, 0]}},
     ],
 )
-"""An array document with a problem in each place a field can have one, and one in no field."""
+"""An array document with a problem in each place where a field can have one, plus one problem outside any field."""
 
 
 def _array_fields(
@@ -305,7 +306,7 @@ _EACH_FIELD_S = {
     ("codecs", 1): [],
     ("codecs", 2): [("codecs", 2)],
 }
-"""Each field of `_WITH_PROBLEMS`, and where each of its problems is."""
+"""Each field of `_WITH_PROBLEMS`, with the location of each of its problems."""
 _IN_A_GROUP = ("consolidated_metadata", "metadata", "a")
 
 
@@ -333,18 +334,19 @@ def test_each_field_comes_with_the_problems_located_in_it(
     ],
     expected: dict[Loc, list[Loc]],
 ) -> None:
-    # Those it was read with and those the document found with it where
-    # it stands -- a transpose out of the pipeline's order, at its own
-    # place, and the chunk grid over the shape -- the fields it holds
-    # too: a shard with a bad inner codec has that problem as well. A
-    # problem in no field -- the fill value -- is in none's.
+    # Each field gets the problems found while reading it, plus the problems
+    # the document check found at its location: a transpose out of the
+    # pipeline's order, at its own position, and a chunk grid that does not
+    # match the shape. A field also gets the problems of the fields it
+    # holds, so a shard with a bad inner codec has that problem too. A
+    # problem outside any field (the fill value) belongs to no field.
     assert {
         loc: [p.loc for p in problems] for loc, _, problems in fields(_WITH_PROBLEMS)
     } == expected
 
 
 def test_a_document_with_no_problem_reads_as_its_model_holding_the_fields_read() -> None:
-    # The fields the read made, not a second reading of them.
+    # The model holds the fields the read produced, not a second reading of them.
     document = _document(codecs=[{"name": "transpose", "configuration": {"order": [0]}}, LITTLE])
     reading = read_array_metadata_v3(document)
     model = reading.metadata

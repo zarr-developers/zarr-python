@@ -1,4 +1,4 @@
-"""The v2 time families, `datetime64` (`M`) and `timedelta64` (`m`): eight bytes, in a unit the typestr brackets."""
+"""The v2 time families, `datetime64` (`M`) and `timedelta64` (`m`): eight bytes, in a unit that the typestr gives in brackets."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 
 class ZarrV2TimeConfiguration(TypedDict, closed=True):
-    """What a time typestr carries: `<M8[10ns]` is `{"byteorder": "<", "itemsize": 8, "unit": "ns", "scale_factor": 10}`."""
+    """The configuration that a time typestr carries. For example, `<M8[10ns]` is `{"byteorder": "<", "itemsize": 8, "unit": "ns", "scale_factor": 10}`."""
 
     byteorder: ReadOnly[ZarrV2ByteOrder]
     itemsize: ReadOnly[Annotated[int, Ge(0)]]
@@ -34,11 +34,11 @@ class ZarrV2TimeConfiguration(TypedDict, closed=True):
 
 
 UNITS: Final = ("Y", "M", "W", "D", "h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as")
-"""The units NumPy gives a datetime64 or timedelta64 (https://numpy.org/doc/stable/reference/arrays.datetime.html#datetime-units)."""
+"""The units that NumPy accepts for a datetime64 or timedelta64 (https://numpy.org/doc/stable/reference/arrays.datetime.html#datetime-units)."""
 
 
 def _rules(configuration: ZarrV2TimeConfiguration, nested: Nested) -> Iterator[ValidationProblem]:
-    """Eight bytes, in an order; and a unit, which the v2 spec requires (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L147-L150)."""
+    """Check for eight bytes with a byte order, and for a unit, which the v2 spec requires (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L147-L150)."""
     size = configuration["itemsize"]
     if size != 8:
         yield ValidationProblem(
@@ -67,7 +67,7 @@ def _rules(configuration: ZarrV2TimeConfiguration, nested: Nested) -> Iterator[V
 
 
 def _canonical(configuration: ZarrV2TimeConfiguration) -> ZarrV2TimeConfiguration:
-    """`μs` is written `us`, as NumPy writes it."""
+    """Write `μs` as `us`, as NumPy writes it."""
     if configuration.get("unit") == "μs":
         return cast("ZarrV2TimeConfiguration", {**configuration, "unit": "us"})
     return configuration
@@ -80,7 +80,7 @@ ZarrV2TimeFillValue = NumpyTimeTicks | Literal["NaT"] | None
 def _fill_value_canonical(
     configuration: ZarrV2TimeConfiguration, nested: Nested, value: ZarrV2TimeFillValue
 ) -> ZarrV2TimeFillValue:
-    """`NaT` for not-a-time however it is written; any other value as written."""
+    """Return `NaT` for not-a-time however it is written, and any other value as written."""
     if value is None:
         return None
     return cast(
@@ -96,7 +96,7 @@ DATETIME64_V2: Final = ZarrV2DataTypeDefinition(
     fill_value=ZarrV2TimeFillValue,
     fill_value_canonical=_fill_value_canonical,
 )
-"""`<M8[unit]`: a moment, as ticks of the unit since the epoch."""
+"""`<M8[unit]`: a point in time, as ticks of the unit since the epoch."""
 
 TIMEDELTA64_V2: Final = ZarrV2DataTypeDefinition(
     name="timedelta64",

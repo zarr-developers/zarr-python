@@ -1,4 +1,4 @@
-"""A v2 model is its document and the scope it was read in, as the v3 models are."""
+"""Tests that a v2 model is its document plus the scope it was read in, as the v3 models are."""
 
 from __future__ import annotations
 
@@ -51,12 +51,12 @@ PRIVATE = CORE_V2.extended_with(BARE_ZLIB)
 
 
 def _document(changes: dict[str, Any]) -> dict[str, Any]:
-    """`ARRAY` with `changes`, a member given as `UNSET` left out."""
+    """Return `ARRAY` with `changes` applied, leaving out any member given as `UNSET`."""
     return {key: value for key, value in {**ARRAY, **changes}.items() if value is not UNSET}
 
 
 def test_a_model_is_its_document_read_in_its_scope() -> None:
-    """The constructor reads the document in the scope given, `CORE_V2` by default; `to_json` is the document refined (arrays as tuples, `dimension_separator` put in when missing), sharing nothing with the model; `context` is the scope; the reading holds the model."""
+    """The constructor reads the document in the given scope (`CORE_V2` by default). `to_json` returns the refined document (arrays as tuples, `dimension_separator` added when missing), which shares nothing with the model. `context` is the scope, and the reading holds the model."""
     model = ZarrV2ArrayMetadata(ARRAY)
     assert model.context is CORE_V2
     document = model.to_json()
@@ -70,7 +70,7 @@ def test_a_model_is_its_document_read_in_its_scope() -> None:
 
 
 def test_properties_are_what_the_reading_holds() -> None:
-    """`dtype`, `compressor` and `filters` are the fields as the scope read them, None where `null` is written; `shape`, `chunks`, `fill_value`, `order`, `dimension_separator`, `attributes` and `extra_fields` are the members as the read refined them, read-only; `claims` is keyed as the scope files them."""
+    """`dtype`, `compressor` and `filters` are the fields as the scope read them, or None where the document has `null`. `shape`, `chunks`, `fill_value`, `order`, `dimension_separator`, `attributes` and `extra_fields` are the members as the read refined them, and they are read-only. `claims` is keyed the same way the scope files its definitions."""
     model = ZarrV2ArrayMetadata({**ARRAY, "filters": [{"id": "x"}], "extra": [1]})
     assert isinstance(model.dtype, AcceptedField)
     assert model.dtype.definition is FLOAT_V2
@@ -123,7 +123,7 @@ def test_properties_are_what_the_reading_holds() -> None:
 def test_models_are_equal_by_what_their_documents_mean(
     left: dict[str, Any], right: dict[str, Any], same: bool
 ) -> None:
-    """Two models are one array when their documents mean the same in their scopes: a typestr spelled two ways or a fill value an integer or a float is one, a byte order or a `.zattrs` present or not is two; equal models hash alike."""
+    """Two models are equal when their documents mean the same in their scopes. A typestr with two spellings, or a fill value written as an integer or a float, gives equal models. A different byte order, or a `.zattrs` present in one and absent in the other, gives different models. Equal models have equal hashes."""
     one, other = ZarrV2ArrayMetadata(_document(left)), ZarrV2ArrayMetadata(_document(right))
     assert (one == other) is same
     if same:
@@ -131,7 +131,7 @@ def test_models_are_equal_by_what_their_documents_mean(
 
 
 def test_a_model_read_in_two_scopes_that_read_it_alike_is_one_model() -> None:
-    """Equality is by interpretation: the same document read by a private `zlib` with no parameters and by the core one are two models, and read in two scopes that file the same `zlib` are one."""
+    """Equality depends on interpretation. The same document read with a private `zlib` that takes no parameters and with the core `zlib` gives two different models. Read in two scopes that hold the same `zlib`, it gives equal models."""
     document = {**ARRAY, "compressor": {"id": "zlib"}}
     assert ZarrV2ArrayMetadata(document) != ZarrV2ArrayMetadata(document, PRIVATE)
     same = Context.of(*CORE_V2.definitions())
@@ -140,7 +140,7 @@ def test_a_model_read_in_two_scopes_that_read_it_alike_is_one_model() -> None:
 
 @pytest.mark.parametrize("context", [None, SMALL, PRIVATE], ids=["core", "small", "private"])
 def test_a_model_round_trips_through_its_document_pickle_and_copy(context: Context | None) -> None:
-    """`from_json(m.to_json(), context=m.context)`, `from_key_value(m.to_key_value())`, `pickle` and `copy.deepcopy` give an equal model in the same scope, and a pickled reading comes back as its model's own reading."""
+    """`from_json(m.to_json(), context=m.context)`, `from_key_value(m.to_key_value())`, `pickle` and `copy.deepcopy` each give an equal model in the same scope. A pickled reading unpickles as its model's own reading."""
     model = ZarrV2ArrayMetadata(ARRAY, context)
     assert ZarrV2ArrayMetadata.from_json(model.to_json(), context=model.context) == model
     restored = ZarrV2ArrayMetadata.from_key_value(model.to_key_value(), context=model.context)
@@ -167,7 +167,7 @@ def test_a_model_round_trips_through_its_document_pickle_and_copy(context: Conte
 def test_update_reads_new_members_in_the_models_own_scope(
     changes: dict[str, Any], expect: dict[str, Any]
 ) -> None:
-    """`update` puts JSON members in place of the document's, leaves out one given as `UNSET`, and reads the result in the model's own scope; the model is unchanged."""
+    """`update` replaces the document's members with the given JSON members, leaves out any member given as `UNSET`, and reads the result in the model's own scope. The original model is unchanged."""
     model = ZarrV2ArrayMetadata({**ARRAY, "extra": 0}, PRIVATE)
     changed = model.update(**changes)
     assert changed.context is PRIVATE
@@ -190,14 +190,14 @@ def test_update_reads_new_members_in_the_models_own_scope(
     ids=["dtype", "rank", "fill-no-longer-fits"],
 )
 def test_error_update_refuses_a_document_with_a_problem(changes: dict[str, Any], at: Loc) -> None:
-    """A change that makes a document with a problem is refused at the change, with the problem where it is: a dtype the family's fill value no longer fits is reported at the fill value."""
+    """A change that produces a document with a problem is refused when the change is made, and the problem is reported at its location. For example, a dtype change that makes the fill value invalid is reported at the fill value."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV2ArrayMetadata(ARRAY).update(**changes)
     assert raised.value.problems[0].loc == at
 
 
 def test_with_context_and_refined_in_read_the_document_in_another_scope() -> None:
-    """`with_context` reads the document in any scope (a loss is allowed), `refined_in` only up the order: a scope that claims what this one left unclaimed is a gain, one that reads a name by another definition or by none is a `ScopeConflictError` naming where the name sits, and a gain that surfaces a problem is a `MetadataValidationError`."""
+    """`with_context` reads the document in any scope, and losing information is allowed. `refined_in` only moves up the order. A scope that claims what the current scope left unclaimed is a gain. A scope that reads a name with another definition, or with no definition, raises a `ScopeConflictError` that gives the name's location. A gain that reveals a problem raises a `MetadataValidationError`."""
     unclaimed = ZarrV2ArrayMetadata({**ARRAY, "compressor": {"id": "zlib"}}, SMALL)
     assert isinstance(unclaimed.compressor, UnclaimedField)
     gained = unclaimed.refined_in(PRIVATE)
@@ -220,7 +220,7 @@ def test_with_context_and_refined_in_read_the_document_in_another_scope() -> Non
 
 
 def test_refines_orders_models_by_information() -> None:
-    """`refines` holds when each field refines its counterpart and every other member is the same, the fill value as the more informed dtype spells it; a fill value that dtype refuses is no refinement; a value of another type refines nothing."""
+    """`refines` is true when each field refines its counterpart and every other member is the same, with the fill value compared as the more informed dtype spells it. A fill value that this dtype refuses is not a refinement. A value of another type refines nothing."""
     core = ZarrV2ArrayMetadata(ARRAY)
     assert core.refines(ZarrV2ArrayMetadata({**ARRAY, "fill_value": 0.0}))
     assert not core.refines(ZarrV2ArrayMetadata({**ARRAY, "shape": [8], "chunks": [2]}))
@@ -237,7 +237,7 @@ def test_error_a_document_with_a_problem_is_refused_at_construction() -> None:
 
 
 def test_the_dataclass_machinery_is_gone() -> None:
-    """A v2 model is built only from a document: `dataclasses.replace` and `dataclasses.fields` do not apply, and the old `...Partial` names are gone."""
+    """A v2 model is built only from a document. `dataclasses.replace` and `dataclasses.fields` do not apply, and the old `...Partial` names are removed."""
     import zarr_metadata
 
     assert not dataclasses.is_dataclass(ZarrV2ArrayMetadata)
@@ -260,7 +260,7 @@ GROUP: dict[str, Any] = {"zarr_format": 2, "attributes": {"g": [1]}}
 def test_a_group_is_its_document_read_in_its_scope(
     document: dict[str, Any], attributes: object
 ) -> None:
-    """A v2 group model is its document and scope: `attributes` as the read refined them, `UNSET` when no `.zattrs` exists; it round-trips through its document, its store keys, pickle and copy, in any scope."""
+    """A v2 group model is its document plus its scope. `attributes` holds the attributes as the read refined them, or `UNSET` when no `.zattrs` exists. The model round-trips through its document, its store keys, pickle and copy, in any scope."""
     model = ZarrV2GroupMetadata(document, SMALL)
     assert model.context is SMALL
     assert model.attributes == attributes
@@ -272,7 +272,7 @@ def test_a_group_is_its_document_read_in_its_scope(
 
 
 def test_a_group_updates_moves_scope_and_refines_as_the_arrays_do() -> None:
-    """`update` reads the new attributes in the model's own scope and `UNSET` leaves them out; `with_context` and `refined_in` read the document in another scope and conflict with nothing, since a group holds no field; two groups are one when their attributes are written alike, and `refines` is that equality."""
+    """`update` reads the new attributes in the model's own scope, and `UNSET` removes them. `with_context` and `refined_in` read the document in another scope and never conflict, since a group holds no field. Two groups are equal when their attributes are written the same way, and `refines` is that equality."""
     model = ZarrV2GroupMetadata(GROUP)
     assert model.update(attributes={"h": 2}).attributes == {"h": 2}
     assert model.update(attributes=UNSET).attributes is UNSET
@@ -314,7 +314,7 @@ def _consolidated(**entries: object) -> dict[str, Any]:
 
 
 def test_consolidated_metadata_holds_its_entries_verbatim_and_each_node_as_a_model() -> None:
-    """`metadata` is the flat file-keyed map as written, refined, read-only; `nodes` is each `.zarray`/`.zgroup` entry merged with its sibling `.zattrs` as a model of the consolidated scope, keyed by node path (`""` for the root); a `.zattrs` with no sibling is kept and makes no node; the whole round-trips through its document, store keys, pickle and copy."""
+    """`metadata` is the flat map keyed by file, as written and refined, and it is read-only. `nodes` holds each `.zarray` or `.zgroup` entry merged with its sibling `.zattrs`, as a model in the consolidated scope, keyed by node path (`""` for the root). A `.zattrs` with no sibling is kept but makes no node. The whole model round-trips through its document, store keys, pickle and copy."""
     model = ZarrV2ConsolidatedMetadata(CONSOLIDATED, PRIVATE)
     assert model.context is PRIVATE
     assert model.metadata["a/.zattrs"] == {"a": (1, 2)}
@@ -334,7 +334,7 @@ def test_consolidated_metadata_holds_its_entries_verbatim_and_each_node_as_a_mod
 
 
 def test_consolidated_metadata_is_equal_by_its_nodes_and_moves_scope_with_them() -> None:
-    """Two consolidated documents are one when each node means the same and the other entries are written alike; `with_context`/`refined_in` read every node in the new scope, a conflict located at the node's entry; `refines` holds when each node refines its counterpart."""
+    """Two consolidated documents are equal when each node means the same and the other entries are written the same way. `with_context` and `refined_in` read every node in the new scope, and a conflict is located at the node's entry. `refines` is true when each node refines its counterpart."""
     spelled = _consolidated(**{"a/.zarray": {**ZARRAY, "fill_value": 0.0}})
     assert ZarrV2ConsolidatedMetadata(CONSOLIDATED) == ZarrV2ConsolidatedMetadata(spelled)
     other = _consolidated(**{"orphan/.zattrs": {"o": 2}})
@@ -367,14 +367,14 @@ def test_consolidated_metadata_is_equal_by_its_nodes_and_moves_scope_with_them()
 def test_error_a_node_entry_with_a_problem_is_refused_at_the_entry(
     entries: dict[str, Any], at: Loc
 ) -> None:
-    """A `.zarray` or `.zgroup` entry is read as the document it is, in the consolidated scope; its problems sit under the entry, a `.zattrs`'s under its own entry; a path that is both an array and a group is a problem at the `.zgroup`."""
+    """A `.zarray` or `.zgroup` entry is read as its document type, in the consolidated scope. Its problems are located under the entry, and a `.zattrs` entry's problems under its own entry. A path that is both an array and a group is a problem at the `.zgroup`."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV2ConsolidatedMetadata({"zarr_consolidated_format": 1, "metadata": entries})
     assert raised.value.problems[0].loc == at
 
 
 def test_error_two_entries_for_one_node_file_are_refused() -> None:
-    """Two keys that name one file of one node -- `.zarray` and `/.zarray` -- are a problem at the second, since one would otherwise go unread; and a conflict is located at the key the document writes."""
+    """Two keys that name the same file of the same node (`.zarray` and `/.zarray`) are a problem at the second key, since one of them would otherwise not be read. A conflict is located at the key as the document writes it."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV2ConsolidatedMetadata(
             {"zarr_consolidated_format": 1, "metadata": {".zarray": ZARRAY, "/.zarray": ZARRAY}}
@@ -391,14 +391,14 @@ def test_error_two_entries_for_one_node_file_are_refused() -> None:
 
 
 def test_the_node_type_is_exported() -> None:
-    """`ZarrV2NodeMetadata`, the type of each node `nodes` holds, is exported beside the models, as `ZarrV3NodeMetadata` is."""
+    """`ZarrV2NodeMetadata`, the type of each node in `nodes`, is exported alongside the models, as `ZarrV3NodeMetadata` is."""
     from zarr_metadata import model
 
     assert "ZarrV2NodeMetadata" in model.__all__
 
 
 def test_error_a_second_key_for_a_node_file_hides_no_other_problem() -> None:
-    """A second key naming one file of one node is one problem among the document's: every node is still read, and each node's problems reported, so a user sees everything at once; a leading or repeated `/` does not make a second node."""
+    """A second key that names the same file of the same node is one problem among the document's problems. Every node is still read and each node's problems are reported, so a user sees everything at once. A leading or repeated `/` does not make a second node."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV2ConsolidatedMetadata(
             {
@@ -432,7 +432,7 @@ def test_error_a_second_key_for_a_node_file_hides_no_other_problem() -> None:
 
 
 def test_error_a_key_with_a_dot_segment_is_no_node_s_path() -> None:
-    """A `.zmetadata` key whose path has a `.` or `..` segment names no node, as a leading or repeated `/` does not: it is a problem at the key, and not a second node beside the one it would name."""
+    """A `.zmetadata` key whose path has a `.` or `..` segment names no node, unlike a key with a leading or repeated `/`. It is a problem at the key, and it does not make a second node next to the one it would name."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV2ConsolidatedMetadata(
             {
@@ -466,7 +466,7 @@ def test_error_a_key_with_a_dot_segment_is_no_node_s_path() -> None:
 def test_error_the_nodes_of_a_zmetadata_make_a_hierarchy(
     entries: dict[str, Any], at: str, kind: str
 ) -> None:
-    """The nodes a `.zmetadata` holds make a hierarchy, as a v3 group's consolidated metadata does: a node below an array is a problem at its entry, and a group missing above a node a `missing_key` at the entry the group would have."""
+    """The nodes in a `.zmetadata` form a hierarchy, as a v3 group's consolidated metadata does. A node below an array is a problem at its entry. A missing parent group is a `missing_key` problem at the entry that the group would have."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV2ConsolidatedMetadata({"zarr_consolidated_format": 1, "metadata": entries})
     assert [(p.loc, p.kind) for p in raised.value.problems] == [(("metadata", at), kind)]

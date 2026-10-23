@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def interpreter_writes_4300_digits() -> Iterator[None]:
-    """The interpreter's default limit on writing an integer, pinned: an environment may lift it (`PYTHONINTMAXSTRDIGITS=0`), and a test of what happens past it needs it."""
+    """Pin the interpreter's default limit on converting an integer to text. An environment may lift the limit (`PYTHONINTMAXSTRDIGITS=0`), and tests of integers past the limit need it in place."""
     limit = sys.get_int_max_str_digits()
     sys.set_int_max_str_digits(4300)
     try:

@@ -38,9 +38,9 @@ class ZarrV2GroupMetadataJSON(TypedDict, closed=True):
     or write the real on-disk files should use `ZarrV2ZGroupJSON` (strict
     `.zgroup`) plus `ZarrV2ZAttrsJSON` directly.
 
-    Closed: `.zgroup` holds no other keys ("Other keys MUST NOT be present",
+    The type is closed: `.zgroup` holds no other keys ("Other keys MUST NOT be present",
     https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313),
-    and `attributes` is the one member folded in.
+    and `attributes` is the only member folded in.
 
     See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
     """

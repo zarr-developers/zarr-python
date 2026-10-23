@@ -1,4 +1,4 @@
-"""Kinds of definition: the class declared with `kind=True`, open to kinds of another format."""
+"""Kinds of definition: a class declared with `kind=True`. The mechanism also supports kinds of other Zarr formats."""
 
 from __future__ import annotations
 
@@ -41,14 +41,14 @@ C = TypeVar("C")
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class MyCodec(CodecDefinition[Any]):
-    """A codec definition with a member of its own: still a codec."""
+    """A codec definition with an extra member of its own. It is still a codec."""
 
     note: str = ""
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class Tag(Definition[C], kind=True, format=3):
-    """A kind of its own, filed apart from every v3 kind."""
+    """A separate kind, filed apart from every v3 kind."""
 
     label: ClassVar[str] = "tag"
 
@@ -59,7 +59,7 @@ class NoKind(Definition[Any]):
 
 
 def test_a_subclass_of_a_kind_is_a_definition_of_that_kind() -> None:
-    """A definition built as a subclass of `CodecDefinition` is filed, read and named as a codec: the kind is the nearest class in the MRO declared with `kind=True`, not the class of the definition."""
+    """A definition built as a subclass of `CodecDefinition` is filed, read and named as a codec: the kind is the nearest class in the MRO declared with `kind=True`, not the class of the definition itself."""
     mine = MyCodec(name="mine", configuration=EmptyConfiguration, kind="bytes_bytes", size="static")
     assert kind_of(mine) is CodecDefinition
     scope = Context.of(mine)
@@ -68,7 +68,7 @@ def test_a_subclass_of_a_kind_is_a_definition_of_that_kind() -> None:
 
 
 def test_a_kind_of_its_own_is_filed_apart() -> None:
-    """A class declared with `kind=True` is a kind: `as_kind` accepts it with or without type arguments, a scope files its definitions apart from every other kind's, scopes compare by what each files, and messages name the kind by its label."""
+    """A class declared with `kind=True` is a kind. `as_kind` accepts it with or without type arguments. A scope files its definitions apart from every other kind's definitions. Scopes compare equal by the definitions they file. Messages name the kind by its label."""
     tag = Tag(name="tag1", configuration=EmptyConfiguration)
     scope = Context.of(tag, GZIP_CODEC)
     assert as_kind(Tag) is Tag
@@ -81,7 +81,7 @@ def test_a_kind_of_its_own_is_filed_apart() -> None:
 
 
 def test_error_a_class_that_declares_no_kind_is_of_none() -> None:
-    """A `Definition` subclass declared without `kind=True` is of no kind: `kind_of` is None, `Context.of` refuses a definition of it, and `as_kind` refuses the class."""
+    """A `Definition` subclass declared without `kind=True` has no kind: `kind_of` returns None, `Context.of` rejects a definition of that class, and `as_kind` rejects the class."""
     none = NoKind(name="nokind", configuration=EmptyConfiguration)
     assert kind_of(none) is None
     with pytest.raises(TypeError, match="a definition of no kind"):
@@ -99,7 +99,7 @@ Loc = tuple[str | int, ...]
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class Flat(Definition[C], kind=True, format=3):
-    """A kind whose format writes the parameters beside the name: `{"id": name, **parameters}`."""
+    """A kind whose format writes the parameters next to the name: `{"id": name, **parameters}`."""
 
     label: ClassVar[str] = "flat"
 
@@ -157,7 +157,7 @@ FLAT_SCOPE = Context.of(FLAT)
 def test_a_kind_reads_the_envelope_its_format_writes(
     field: object, kind: type, problems: list[tuple[Loc, str]], written: object
 ) -> None:
-    """`resolve` reads a field as its kind's classmethods say the format writes one: the name and parameters are split as the kind splits them, problems sit where the kind puts the configuration, and a field read or unclaimed is written back in the kind's envelope."""
+    """`resolve` reads a field in the format that the kind's classmethods describe. The kind splits the name from the parameters. Problems are located where the kind puts the configuration. An accepted or unclaimed field is written back in the kind's envelope."""
     resolved, found = resolve(field, Flat, FLAT_SCOPE, ("c",))
     assert type(resolved) is kind
     assert [(problem.loc, problem.kind) for problem in found] == problems
@@ -179,7 +179,7 @@ TYPED = Typed(name="typed", configuration=EmptyConfiguration, fill_value=Count)
 
 
 def test_a_fill_value_is_judged_by_any_kind_with_one() -> None:
-    """`fill_value_problems` and `canonical_fill_value` judge a fill value by the definition's `fill_value` members whatever kind it is, since the members live on `WithFillValue`, which every data type kind derives from."""
+    """`fill_value_problems` and `canonical_fill_value` check a fill value with the definition's `fill_value` members, whatever the definition's kind. This works because the members are defined on `WithFillValue`, which every data type kind derives from."""
     resolved, _ = resolve("typed", Typed, Context.of(TYPED))
     assert fill_value_problems(resolved, 3) == ()
     assert fill_value_problems(resolved, None) == ()
@@ -190,7 +190,7 @@ def test_a_fill_value_is_judged_by_any_kind_with_one() -> None:
 
 
 def test_error_the_json_schema_writer_writes_v3_fields_only() -> None:
-    """`field_json_schema` writes the v3 envelope, so a kind of another format is refused with a `TypeError` naming the limit rather than a wrong schema."""
+    """`field_json_schema` writes only the v3 envelope. For a kind of another format, it raises a `TypeError` that names this limit instead of writing a wrong schema."""
     from zarr_metadata.v2.definition import CORE_V2, ZarrV2DataTypeDefinition
 
     with pytest.raises(TypeError, match="Zarr v3"):
@@ -200,7 +200,7 @@ def test_error_the_json_schema_writer_writes_v3_fields_only() -> None:
 
 
 def test_a_v3_value_that_is_no_field_is_shown_in_the_message() -> None:
-    """A nested value that is not a metadata field at all is reported with the value shown, as it was before the kind's envelope judged it."""
+    """A nested value that is not a metadata field at all is reported with the value in the message, as it was before the kind's envelope checked it."""
     _, problems = resolve(
         {"name": "sharding_indexed", "configuration": {"chunk_shape": [1], "codecs": [3]}},
         CodecDefinition,
@@ -212,7 +212,7 @@ def test_a_v3_value_that_is_no_field_is_shown_in_the_message() -> None:
 
 
 def test_error_a_kind_declares_its_format() -> None:
-    """A kind says which Zarr format its fields belong to, `format=2` or `format=3`, in the class header beside `kind=True`: a kind declared without one, or with a format that is neither, is a `TypeError` at class creation."""
+    """A kind declares which Zarr format its fields belong to, `format=2` or `format=3`, in the class header next to `kind=True`. Declaring a kind without a format, or with any other format, raises `TypeError` at class creation."""
     with pytest.raises(TypeError, match="format"):
         type("NoFormat", (Definition,), {}, kind=True)
     with pytest.raises(TypeError, match="format"):
@@ -225,7 +225,7 @@ TAG = Tag(name="tag", configuration=EmptyConfiguration)
 
 
 def test_a_scope_has_the_format_of_the_kinds_it_files() -> None:
-    """A scope's `format` is the one format of every kind it files: 3 for `CORE`, 2 for `CORE_V2`, and None for a scope that files nothing, which reads in either format."""
+    """A scope's `format` is the format shared by every kind it files: 3 for `CORE`, 2 for `CORE_V2`, and None for a scope that files nothing, which can read in either format."""
     from zarr_metadata.v2.definition import CORE_V2
     from zarr_metadata.v3.definition import CORE
 
@@ -250,7 +250,7 @@ def test_error_a_scope_files_one_format() -> None:
 
 
 def test_error_a_field_is_read_in_a_scope_of_its_format() -> None:
-    """`resolve` refuses a scope of another format than the kind's with `TypeError`, and reads in a scope of no format, which claims nothing."""
+    """`resolve` raises `TypeError` for a scope whose format differs from the kind's. It reads in a scope with no format, which claims nothing."""
     from zarr_metadata.v2.definition import CORE_V2, ZarrV2DataTypeDefinition
     from zarr_metadata.v3.definition import CORE
 
@@ -263,7 +263,7 @@ def test_error_a_field_is_read_in_a_scope_of_its_format() -> None:
 
 
 def test_error_what_nothing_hashes_is_not_a_kind() -> None:
-    """A field is read as a kind, a class: a list or a dict given for one is refused as any other non-kind is, not with the `TypeError` hashing it raises."""
+    """A kind must be a class. A list or a dict passed as a kind is rejected with the same error as any other non-kind, not with the `TypeError` that hashing it would raise."""
     with pytest.raises(TypeError, match="is not a kind of metadata"):
         as_kind(["codec"])
     with pytest.raises(TypeError, match="is not a kind of metadata"):
@@ -271,7 +271,7 @@ def test_error_what_nothing_hashes_is_not_a_kind() -> None:
 
 
 class _LazyEnvelope(CodecDefinition[Any], kind=True, format=3):
-    """A kind whose envelope rule yields its problems rather than returning a tuple of them."""
+    """A kind whose envelope rule yields its problems instead of returning a tuple of them."""
 
     label: ClassVar[str] = "lazy codec"
 
@@ -281,7 +281,7 @@ class _LazyEnvelope(CodecDefinition[Any], kind=True, format=3):
 
 
 def test_a_kind_may_yield_its_envelope_problems() -> None:
-    """`envelope_problems` is a kind's to write; one that yields its problems is read as one that returns them, with and without a problem to yield."""
+    """A kind's author writes `envelope_problems`. One that yields its problems works the same as one that returns them, both with and without a problem to yield."""
     lazy = _LazyEnvelope(
         name="gzip",
         configuration=GZIP_CODEC.configuration,

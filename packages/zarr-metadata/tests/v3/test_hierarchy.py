@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 @pytest.mark.parametrize(
     ("value", "message"),
     [
-        # The root's name, and names of any code points but the reserved.
+        # The root's name, and names of any code points except the reserved ones.
         ("", None),
         ("a", None),
         ("FOO", None),
@@ -50,7 +50,7 @@ if TYPE_CHECKING:
         ("..", 'expected a node name, got "..", which is periods alone'),
         ("__a", 'expected a node name, got "__a", which starts with the reserved "__"'),
         ("zarr.json", 'expected a node name, got "zarr.json", which is the reserved "zarr.json"'),
-        # Every reason a name is not one, in one problem.
+        # Every reason the string is not a name, reported in one problem.
         (
             "__/",
             'expected a node name, got "__/", which holds "/" and starts with the reserved "__"',
@@ -102,8 +102,8 @@ def test_node_names(value: str, message: str | None) -> None:
                 'the reserved "zarr.json"'
             ),
         ),
-        # Every reason a path is not one, in one problem: the first name that
-        # is not a node name is said, and the rest counted.
+        # Every reason the string is not a path, reported in one problem. The
+        # message names the first name that is not a node name and counts the rest.
         (
             "/./__a/",
             (
@@ -169,12 +169,12 @@ def test_error_a_node_name_or_path_is_a_string(
     "nodes",
     [
         # No nodes, a root alone, and a tree of groups whose leaves are
-        # arrays; the root may be an array, which is then the hierarchy.
+        # arrays. The root may be an array, which is then the whole hierarchy.
         {},
         {"/": "group"},
         {"/": "array"},
         {"/": "group", "/a": "array", "/g": "group", "/g/b": "array", "/g/h": "group"},
-        # A node of no type known is taken as a group.
+        # A node of unknown type is treated as a group.
         {"/": "group", "/x": None, "/x/a": "array"},
     ],
     ids=["empty", "root-group", "root-array", "tree", "unknown-type"],
@@ -198,9 +198,9 @@ def test_error_a_hierarchy_holds_its_nodes_at_node_paths() -> None:
     ("nodes", "path"),
     [
         ({"/": "group", "/a": "array", "/a/b": "group"}, "/a/b"),
-        # However many groups are missing between them: none would help.
+        # However many groups are missing between them, adding them would not help.
         ({"/": "group", "/a": "array", "/a/b/c": "array"}, "/a/b/c"),
-        # The root is an array: the hierarchy is that array alone.
+        # The root is an array, so the hierarchy is only that array.
         ({"/": "array", "/a": "group"}, "/a"),
     ],
     ids=["child", "descendant", "below-the-root"],
@@ -214,8 +214,8 @@ def test_error_no_node_is_below_an_array(
 
 
 def test_error_a_hierarchy_holds_the_group_holding_each_node() -> None:
-    # The nearest group missing above a node, once, counting those above it:
-    # the root's among them.
+    # The nearest missing group above a node is reported once, with a count
+    # of the missing groups above it, including the root.
     assert hierarchy_problems({"/a/b/c": "array", "/a/b/d": "array"}) == (
         ValidationProblem(
             ("/a/b",), 'missing the group holding "/a/b/c", and 2 groups above it', "missing_key"
@@ -228,7 +228,7 @@ def test_error_a_hierarchy_holds_the_group_holding_each_node() -> None:
 
 def test_problems_stay_proportional_to_the_path() -> None:
     # One problem per value, however many names are wrong and however many
-    # groups are missing, so a hostile path costs what it weighs.
+    # groups are missing, so a hostile path costs time in proportion to its size.
     path = "/" * 10_000
     problems = validate_node_path_v3(path)
     assert len(problems) == 1
@@ -243,16 +243,16 @@ def test_problems_stay_proportional_to_the_path() -> None:
 
 
 def test_a_hierarchy_is_walked_in_time_proportional_to_its_paths() -> None:
-    # Each path split once and walked name by name: a key of a million
-    # characters, and thousands of keys under one long missing prefix,
-    # each cost what they weigh, where walking up by ancestor strings
-    # costs the square.
+    # Each path is split once and walked name by name. A key of a million
+    # characters, and thousands of keys under one long missing prefix, each
+    # cost time in proportion to their size. Walking up by ancestor strings
+    # would cost quadratic time.
     started = time.perf_counter()
     long = "/a" * 500_000
     assert len(hierarchy_problems({long: "array"})) == 1
     prefix = "/a" * 5_000
     many = {f"{prefix}/{index}": "array" for index in range(2_000)}
     assert len(hierarchy_problems(cast("dict[str, Literal['array', 'group'] | None]", many))) == 1
-    # Seconds for work that takes a few on a laptop and tens on a slow CI
-    # runner; walking up by ancestor strings would take minutes.
+    # This work takes a few seconds on a laptop and tens of seconds on a slow
+    # CI runner; walking up by ancestor strings would take minutes.
     assert time.perf_counter() - started < 60

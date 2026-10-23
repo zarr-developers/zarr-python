@@ -77,7 +77,7 @@ FLOAT64_DATA_TYPE: Final = DataTypeDefinition(
     fill_value_canonical=float_fill_value_canonical(64),
     storage=multi_byte,
 )
-"""The `float64` data type: a bare name, with nothing to configure; its fill value a number, a named value or a hex string."""
+"""The `float64` data type. It is written as a bare name and has no configuration. Its fill value is a number, a named value or a hex string."""
 
 
 __all__ = [

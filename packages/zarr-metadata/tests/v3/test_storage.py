@@ -1,8 +1,9 @@
-"""How a data type's values are stored: in single bytes, in several bytes at a time, or each in as many as it needs.
+"""How a data type's values are stored: in single bytes, in several bytes each, or each in as many bytes as it needs.
 
-Each data type's definition says, and `storage_of` asks it of a data type
-field a scope read; the `bytes` codec asks it of the data type it is
-handed, and a struct of each field's.
+Each data type's definition declares its storage. `storage_of` returns
+the storage of a data type field that a scope read. The `bytes` codec
+asks for the storage of the data type it receives, and a struct asks for
+the storage of each of its fields.
 """
 
 from __future__ import annotations
@@ -49,19 +50,19 @@ DATETIME: JSONValue = {
         (DATETIME, "multi_byte"),
         ("string", "variable_length"),
         ("bytes", "variable_length"),
-        # Of raw bits wider than a byte, the spec does not say whether a
+        # For raw bits wider than a byte, the spec does not say whether a
         # byte order applies.
         ("r16", None),
-        # A struct's values are its fields', packed together.
+        # A struct's values are its fields' values, packed together.
         (_struct("int8", "uint8"), "single_byte"),
         (_struct("int8", "float32"), "multi_byte"),
         (_struct("int8", _struct("uint8", "int16")), "multi_byte"),
-        # A field of unknown storage leaves the struct's unknown, unless
-        # another field settles it.
+        # A field with unknown storage makes the struct's storage unknown,
+        # unless another field decides it.
         (_struct("int8", "r16"), None),
         (_struct("float32", "r16"), "multi_byte"),
         (_struct("int8", "acme.decimal"), None),
-        # A data type nothing in scope claims, or one that is not read.
+        # A data type that nothing in scope claims, or one that is not read.
         ("acme.decimal", None),
         ({"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 0}}, None),
     ],

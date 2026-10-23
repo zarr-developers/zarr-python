@@ -20,11 +20,12 @@ from zarr_metadata.v3._common import EXTENSION_NAME_SCHEMA_PATTERN
 
 NonNegativeInt = Annotated[int, Field(ge=0)]
 ExtensionName = Annotated[str, Field(pattern=re.compile(EXTENSION_NAME_SCHEMA_PATTERN))]
-"""A name as the spec names an extension, the pattern `well_named` accepts, so the schema pydantic generates refuses what the reader refuses.
+"""An extension name as the spec defines it: the pattern `well_named` accepts. With it, the schema pydantic generates rejects the same names the reader rejects.
 
-Compiled, so pydantic reads it with Python's `re`, which has the look-ahead
-the pattern ends in where its own engine has none, and writes it into the
-schema as it is.
+The pattern is compiled so that pydantic matches it with Python's `re`.
+The pattern ends in a look-ahead, which `re` supports and pydantic's own
+regex engine does not. pydantic writes the pattern into the schema
+unchanged.
 """
 
 

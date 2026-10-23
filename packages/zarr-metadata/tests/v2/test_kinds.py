@@ -1,4 +1,4 @@
-"""The two kinds of a v2 array document's fields: a dtype as NumPy spells one, and a numcodecs configuration."""
+"""The two kinds of field in a v2 array document: a dtype in NumPy's spelling, and a numcodecs configuration."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ Loc = tuple[str | int, ...]
 def test_a_typestr_parses_into_its_code_and_what_it_carries(
     name: str, code: str, carried: dict[str, Any]
 ) -> None:
-    """A NumPy typestr splits into its type code and what the name carries: the byte order, the item size when written, and a time unit with its multiplier when bracketed."""
+    """A NumPy typestr splits into its type code and the values the name carries: the byte order, the item size if one is written, and a time unit with its multiplier if one is given in brackets."""
     assert parse_typestr(name) == (code, carried)
 
 
@@ -79,7 +79,7 @@ def test_error_a_string_that_is_no_typestr_parses_to_none(name: str) -> None:
 def test_a_v2_dtype_name_is_filed_under_its_family(
     name: str, filed: str | None, carried: dict[str, Any] | None
 ) -> None:
-    """A typestr is filed under its family and carries its byte order, size and unit; `struct` is filed as itself; a typestr of a type code the spec does not list is filed under itself, so a scope leaves it unclaimed; a family name is filed by nothing, since no document writes it."""
+    """A typestr is filed under its family and carries its byte order, size and unit. `struct` is filed under itself. A typestr whose type code the spec does not list is filed under itself, so a scope leaves it unclaimed. A family name is not filed under anything, because no document writes it."""
     assert ZarrV2DataTypeDefinition.filed_under(name) == (filed, carried)
 
 
@@ -101,7 +101,7 @@ def test_a_v2_dtype_name_is_filed_under_its_family(
 def test_a_v2_dtype_is_a_string_or_records(
     value: object, name: str | None, configuration: object
 ) -> None:
-    """A dtype field is a string, which is its name, or an array of field records, which is a `struct` whose configuration is the records; anything else names nothing."""
+    """A dtype field is either a string, which is its name, or an array of field records, which is a `struct` whose configuration is the records. Any other value has no name."""
     assert ZarrV2DataTypeDefinition.named_configuration(value) == (name, configuration, ())
 
 
@@ -119,7 +119,7 @@ def test_a_v2_dtype_is_a_string_or_records(
 def test_a_v2_dtype_envelope_is_a_typestr_or_records(
     value: object, problems: list[tuple[Loc, str]]
 ) -> None:
-    """The envelope of a dtype field holds when it is a typestr or an array of records; a string that is neither is reported as an invalid value, naming the typestr form, and anything else as an invalid type."""
+    """The envelope of a dtype field is valid when it is a typestr or an array of records. A string that is neither is reported as an invalid value, and the message names the typestr form. Any other value is reported as an invalid type."""
     found = ZarrV2DataTypeDefinition.envelope_problems(value)
     assert [(p.loc, p.kind) for p in found] == problems
     if value == "float32":
@@ -127,7 +127,7 @@ def test_a_v2_dtype_envelope_is_a_typestr_or_records(
 
 
 def test_a_v2_dtype_writes_back_as_a_string_or_records() -> None:
-    """`envelope_json` writes a dtype as the string that carries it, and a struct as its records; its name and configuration both sit at the field."""
+    """`envelope_json` writes a dtype as its string, and a struct as its records. Both the name and the configuration are located at the field."""
     assert ZarrV2DataTypeDefinition.envelope_json("<f4", {}) == "<f4"
     records = (("x", "<f4"),)
     assert ZarrV2DataTypeDefinition.envelope_json("struct", {"fields": records}) == records
@@ -153,13 +153,13 @@ def test_a_v2_codec_is_an_object_with_a_string_id(
     configuration: dict[str, Any] | None,
     problems: list[tuple[Loc, str]],
 ) -> None:
-    """A codec field is an object whose `id` names it and whose other members are its parameters; one without a string `id`, or not an object, names nothing, and the envelope says why."""
+    """A codec field is an object. Its `id` is its name and its other members are its parameters. A value that is not an object, or has no string `id`, has no name, and the envelope problems say why."""
     assert ZarrV2CodecDefinition.named_configuration(value) == (name, configuration, ())
     assert [(p.loc, p.kind) for p in ZarrV2CodecDefinition.envelope_problems(value)] == problems
 
 
 def test_a_v2_codec_writes_back_with_its_id_beside_its_parameters() -> None:
-    """`envelope_json` writes a codec as `{"id": name, **parameters}`: its parameters at the field and its name under `id`."""
+    """`envelope_json` writes a codec as `{"id": name, **parameters}`. The parameters are located at the field and the name is located under `id`."""
     assert ZarrV2CodecDefinition.envelope_json("zlib", {"level": 1}) == {"id": "zlib", "level": 1}
     assert ZarrV2CodecDefinition.configuration_loc(("compressor",)) == ("compressor",)
     assert ZarrV2CodecDefinition.name_loc(("compressor",)) == ("compressor", "id")
@@ -167,7 +167,7 @@ def test_a_v2_codec_writes_back_with_its_id_beside_its_parameters() -> None:
 
 
 def test_error_a_v2_definition_is_named_as_its_format_names_one() -> None:
-    """A v2 codec definition with an empty id, and a v2 data type definition named by a typestr a document would write rather than a family, are refused when built."""
+    """Building a v2 codec definition with an empty id raises an error. So does building a v2 data type definition named by a typestr that a document would write, instead of by a family name."""
     with pytest.raises(TypeError, match="so no document names it"):
         ZarrV2CodecDefinition(name="", configuration=EmptyConfiguration)
     with pytest.raises(TypeError, match="is how a document writes"):

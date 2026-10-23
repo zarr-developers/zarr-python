@@ -1,4 +1,4 @@
-"""Every v2 codec, read as its numcodecs configuration."""
+"""Reading each v2 codec from its numcodecs configuration."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from zarr_metadata.v3.definition import (
 SCOPE = Context.of(*V2_CODECS)
 Loc = tuple[str | int, ...]
 
-# numcodecs 0.16.5 `get_config()` of a default instance, where one exists.
+# The output of numcodecs 0.16.5 `get_config()` for a default instance, where one exists.
 EXAMPLES: dict[str, tuple[dict[str, Any], ...]] = {
     # -1 is zlib's default-level constant, which numcodecs writes as given.
     "zlib": ({"id": "zlib", "level": 1}, {"id": "zlib"}, {"id": "zlib", "level": -1}),
@@ -58,7 +58,7 @@ CASES = [(name, field) for name, fields in EXAMPLES.items() for field in fields]
 
 
 def test_every_codec_has_an_example() -> None:
-    """Every definition in `V2_CODECS` is exercised below."""
+    """Every definition in `V2_CODECS` has an example below."""
     assert {definition.name for definition in V2_CODECS} == set(EXAMPLES)
 
 
@@ -68,7 +68,7 @@ def test_every_codec_has_an_example() -> None:
 def test_every_example_reads_and_is_written_back_as_it_was(
     name: str, field: ZarrV2CodecMetadata
 ) -> None:
-    """A numcodecs configuration reads by the definition its id names, with no problem, and is written back as it was: the id beside the parameters, which have one spelling."""
+    """A numcodecs configuration is read by the definition its `id` names, with no problem, and is written back unchanged: the `id` next to the parameters. Each parameter has only one spelling, so the canonical form is the same."""
     resolved, problems = resolve(field, ZarrV2CodecDefinition, SCOPE)
     assert isinstance(resolved, AcceptedField)
     assert resolved.definition.name == name
@@ -82,7 +82,7 @@ def test_every_example_reads_and_is_written_back_as_it_was(
     [{"id": "categorize", "labels": ["a"]}, {"id": "pickle"}, {"id": "n5_wrapper", "inner": 1}],
 )
 def test_an_id_the_package_does_not_model_is_unclaimed(field: dict[str, Any]) -> None:
-    """A codec id nothing in scope claims reads as `UnclaimedField`, its parameters kept and unjudged, as a v3 extension nothing claims is."""
+    """A codec id that no definition in scope claims is read as `UnclaimedField`. Its parameters are kept and not checked, as for an unclaimed v3 extension."""
     resolved, problems = resolve(field, ZarrV2CodecDefinition, SCOPE)
     assert isinstance(resolved, UnclaimedField)
     assert problems == ()
@@ -121,7 +121,7 @@ def test_an_id_the_package_does_not_model_is_unclaimed(field: dict[str, Any]) ->
 def test_error_a_parameter_outside_what_numcodecs_takes_is_a_problem(
     field: dict[str, Any], at: Loc, kind: str
 ) -> None:
-    """A parameter out of its range, of the wrong type, missing when numcodecs has no default, a dtype parameter that is no typestr, or a key no codec declares is reported at the parameter, beside the field."""
+    """Each of these is reported at the parameter's location inside the field: a parameter out of its range, a parameter of the wrong type, a parameter that is missing when numcodecs has no default for it, a dtype parameter that is not a typestr, and a key that no codec declares."""
     resolved, problems = resolve(field, ZarrV2CodecDefinition, SCOPE, ("c",))
     assert [(p.loc, p.kind) for p in problems] == [(at, kind)]
     assert isinstance(resolved, AcceptedField if kind == "unknown_key" else RefusedField)

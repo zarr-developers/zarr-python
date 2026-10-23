@@ -267,11 +267,13 @@ _EXTENSION_ROLES = (
     "FillValue",
     "Configuration",
     "Component",
-    # What one kind of extension's metadata is, as JSON: `CodecDefinition`,
-    # the value holding a codec's name, configuration TypedDict and rules.
+    # The definition of one kind of extension metadata as JSON: for example,
+    # `CodecDefinition`, which holds a codec's name, configuration TypedDict
+    # and rules.
     "Definition",
-    # A configuration member holding a metadata field of that kind:
-    # `ZarrV3CodecField`, read in the scope its field is read in.
+    # A configuration member that holds a metadata field of that kind: for
+    # example, `ZarrV3CodecField`, read in the same scope as the field that
+    # contains it.
     "Field",
 )
 _EXTENSION_NAME = re.compile(r"^(?:[A-Z][a-z0-9]*)+?(?:" + "|".join(_EXTENSION_ROLES) + r")$")
@@ -286,8 +288,8 @@ _STANDALONE_VOCAB = frozenset(
         "BloscCName",
         "BloscShuffle",
         "Chunk",
-        # The algebra of scopes: what a reading claims, and where two
-        # scopes disagree.
+        # The algebra of scopes: the claims a reading makes, and the places
+        # where two scopes disagree.
         "ClaimKey",
         "Claims",
         "Conflict",
@@ -302,8 +304,9 @@ _STANDALONE_VOCAB = frozenset(
         "Nested",
         "NodeName",
         "NodePath",
-        # What a scope made of a field: `AcceptedField` by the definition that claims
-        # its name, `UnclaimedField`, or `RefusedField`; `ResolvedField` is the three.
+        # The result of reading a field in a scope: `AcceptedField` (read by the
+        # definition that claims its name), `UnclaimedField`, or `RefusedField`.
+        # `ResolvedField` is the union of the three.
         "AcceptedField",
         "RefusedField",
         "ResolvedField",
@@ -324,8 +327,8 @@ _STANDALONE_VOCAB = frozenset(
         "NumpyTimedelta64",
         "ProblemKind",
         "RectilinearDimSpec",
-        # What a repair of a writer's bug changed, as `ValidationProblem` and
-        # `ProblemKind` are what a read found.
+        # What a repair of a writer's bug changed, in the same way that
+        # `ValidationProblem` and `ProblemKind` describe what a read found.
         "Repair",
         "RepairKind",
         "ScalarMap",

@@ -1,63 +1,67 @@
-"""Metadata fields read against their definitions: the public door.
+"""Reading metadata fields against their definitions: the public entry point.
 
-Every Zarr v3 extension point -- codecs, data types, chunk grids, chunk
-key encodings, storage transformers -- is a metadata field: a name, and
-a configuration whose JSON the extension defines. A **definition** says
-what that JSON is and what is allowed in it. It is a value, not a class
-to subclass:
+Every Zarr v3 extension point (codecs, data types, chunk grids, chunk
+key encodings, storage transformers) is a metadata field: a name, and
+a configuration whose JSON the extension defines. A **definition**
+declares what that JSON is and what it may contain. A definition is a
+value, not a class to subclass. It has:
 
-- `name`, the name the metadata carries;
-- `configuration`, the TypedDict the configuration's JSON is, which is
-  the one declaration of it: the type checker is compiled from it, and a
-  checked configuration has it as its static type. It reads as the
-  typing spec defines a TypedDict -- `total`, `Required`, `NotRequired`,
-  `closed` and `extra_items` mean what they mean to a type checker,
-  whether or not its module postpones annotations -- and a member's type
-  carries its bounds, as pydantic reads them: a gzip `level` is
+- `name`, the name the metadata uses;
+- `configuration`, the TypedDict for the configuration's JSON. This is
+  the single declaration of the JSON: the type checker is compiled from
+  it, and a checked configuration has it as its static type. It is
+  interpreted as the typing spec defines a TypedDict: `total`,
+  `Required`, `NotRequired`, `closed` and `extra_items` mean what they
+  mean to a type checker, whether or not its module postpones
+  annotations. A member's type carries its bounds, in the same way
+  pydantic reads them: a gzip `level` is
   `Annotated[int, Interval(ge=0, le=9)]`;
-- `rules`, a function over that TypedDict yielding what the spec
-  disallows that a type cannot say -- members read together -- located
-  in the configuration.
+- `rules`, a function over that TypedDict that yields the spec
+  violations a type cannot express (such as constraints between
+  members), located in the configuration.
 
-What kind of metadata a definition defines is its type: `CodecDefinition`
-(with the codec's `kind`, and its `size`: whether the size of what it gives
-out is fixed by the size of what it is handed, `"static"`, or depends on
-the values, `"dynamic"`), `DataTypeDefinition`, `ChunkGridDefinition`,
+The kind of metadata a definition defines is its type: `CodecDefinition`
+(with the codec's `kind`, and its `size`: `"static"` if the output size
+is determined by the input size, or `"dynamic"` if it depends on the
+values), `DataTypeDefinition`, `ChunkGridDefinition`,
 `ChunkKeyEncodingDefinition`, `StorageTransformerDefinition`.
 
-**Reading JSON.** Three steps, each feeding the next, and each usable on
-its own by a caller that holds nothing but JSON:
+**Reading JSON.** There are three steps. Each feeds the next, and each
+can be used on its own by a caller that has only JSON:
 
 1. `check(value, SomeTypedDict)`, from `zarr_metadata.typed_json`,
-   type-checks JSON against a TypedDict and needs nothing else:
-   a value of the TypedDict or None, and every problem, each located. The
-   value holds what the TypedDict admits and nothing else. A member typed
-   with a field alias is checked as the JSON a metadata field is.
-2. `definition.read_configuration(configuration)` is the configuration as
-   that definition reads it: type-checked, each nested field's envelope judged -- a stray member, a `must_understand` of `false` --
-   and then the rules, for one configuration:
-   `GZIP_CODEC.read_configuration({"level": 12})`.
+   type-checks JSON against a TypedDict and needs nothing else. It
+   returns a value of the TypedDict or None, and every problem, each
+   with a location. The value contains only what the TypedDict admits. A
+   member typed with a field alias is checked as metadata field JSON.
+2. `definition.read_configuration(configuration)` returns the
+   configuration as that definition reads it. It type-checks the
+   configuration, checks the envelope of each nested field (an extra
+   member, a `must_understand` of `false`), and then runs the rules, for
+   one configuration: `GZIP_CODEC.read_configuration({"level": 12})`.
 3. `resolve(field, CodecDefinition, CORE_AND_EXTENSIONS)` reads a whole
-   field in a scope: its envelope judged, its name related to a
-   definition, its configuration judged, and each nested field read the
-   same way. It returns what the scope made of the field, and every
-   problem: `AcceptedField` by the definition that claims its name, with the
-   configuration it checked and allowed and the fields it holds, each
-   read the same way; `UnclaimedField`, a name nothing in scope claims, left
-   unjudged, which is what keeps the format open; or `RefusedField`, whose
-   problems say why. Each has the field's JSON, the `name` it is
-   written with, the kind it was read as, `read_as`, the `definition`
-   that claims its name -- None for `UnclaimedField` -- and the fields it
-   holds as the scope read them, `nested`. The two a model holds, `AcceptedField`
-   and `UnclaimedField`, have a `configuration` and `to_json()`, the field as
-   a document writes it; two of them are equal when they read the same,
-   however each was spelled. `ResolvedField` is the three, for `match`. A
-   field is read as one of the five kinds, with or without type
-   arguments;
-   `resolve(field, Definition, scope)` is a `TypeError`, since nothing
-   is filed under it. A whole v3 array document is read by
-   `read_array_metadata_v3`, in `zarr_metadata.model`, whose reading
-   gives each field with where it sits in the document.
+   field in a scope. It checks the envelope, maps the name to a
+   definition, checks the configuration, and reads each nested field the
+   same way. It returns the result of the reading and every problem. The
+   result is one of three types. `AcceptedField` is a field read by the
+   definition that claims its name, with the configuration it checked
+   and allowed, and its nested fields, each read the same way.
+   `UnclaimedField` is a name that nothing in scope claims. It is not
+   checked, which is what keeps the format open. `RefusedField` is a
+   field with problems that explain why it was rejected. Each type has the
+   field's JSON, the `name` it is written with, the kind it was read as
+   (`read_as`), the `definition` that claims its name (None for
+   `UnclaimedField`), and its nested fields as the scope read them
+   (`nested`). The two types a model can hold, `AcceptedField` and
+   `UnclaimedField`, have a `configuration` and `to_json()`, which
+   returns the field as a document writes it. Two of them are equal when
+   they read the same, however each was spelled. `ResolvedField` is the
+   union of the three, for use with `match`. A field is read as one of
+   the five kinds, with or without type arguments.
+   `resolve(field, Definition, scope)` raises `TypeError`, because
+   nothing is filed under `Definition`. A whole v3 array document is
+   read by `read_array_metadata_v3`, in `zarr_metadata.model`. Its
+   reading returns each field with its location in the document.
 
     from zarr_metadata.v3.codec.gzip import GZIP_CODEC
     from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, CodecDefinition, resolve
@@ -77,31 +81,34 @@ its own by a caller that holds nothing but JSON:
 Problems are values, not exceptions: `ValidationProblem(loc, message,
 kind)`, with `kind` one of `invalid_type`, `invalid_value`,
 `missing_key`, `unknown_key` and `invalid_json`. A field with an
-unknown key is still read -- the key reported, the configuration judged
-without it -- so a consumer that tolerates one filters by kind and uses
-what was read; the field is valid only when there is no problem at all.
-Each problem carries what its message says as data, as pydantic's errors
-and zod's issues do: `input`, what was found at `loc` -- the `12` above --
-and `ctx`, what was expected, where that is more than a type: the bounds
+unknown key is still read: the key is reported, and the configuration
+is checked without it. So a consumer that tolerates unknown keys can
+filter problems by kind and use the result. The field is valid only
+when there are no problems at all. Each problem stores the content of
+its message as data, as pydantic's errors and zod's issues do: `input`
+is the value found at `loc` (the `12` above), and `ctx` is what was
+expected, when that is more than a type: the bounds
 `{"ge": 0, "le": 9}`, or the values of a closed set.
 
-**Writing an extension.** A TypedDict, which says what the
-configuration's JSON is, bounds and all; a function for the rules a type
-cannot say; and a definition; then a scope that holds it. The TypedDict
-is a `typing_extensions.TypedDict`: `closed` and `extra_items` are PEP
-728's, which `typing.TypedDict` does not take on the versions this
-package supports. The rules are handed the configuration and the fields
-it holds as the scope read them: a field that is read keeps what it read
-inside it as `AcceptedField.nested`, a `Nested` mapping by where each sits, so a
-struct's rules reach its field types. `read_configuration`, which reads in no scope,
-hands them none. A rule's message shows a value as the package's own
-messages do, as JSON, with `shown`: `null`, `[1, 2]`, `"C"`. A rule
-reports where a problem is; what is found there is the problem's
-`input` without the rule saying so. Define each function at a module's
-top level: a model holds the definitions that read its fields, so it
-pickles, and compares equal once loaded, only when they do -- a lambda
-or a closure does not pickle, and a `functools.partial` pickles but
-compares unequal to itself loaded.
+**Writing an extension.** Write a TypedDict that declares the
+configuration's JSON, including bounds; a function for the rules a type
+cannot express; and a definition. Then build a scope that contains the
+definition. The TypedDict must be a `typing_extensions.TypedDict`,
+because `closed` and `extra_items` come from PEP 728, and
+`typing.TypedDict` does not accept them on the Python versions this
+package supports. The rules receive the configuration and its nested
+fields as the scope read them. A field that is read stores its nested
+fields as `AcceptedField.nested`, a `Nested` mapping keyed by location,
+so a struct's rules can access its field types. `read_configuration`
+reads in no scope, so it passes no nested fields. A rule's message
+should show a value as JSON, as the package's own messages do, with
+`shown`: `null`, `[1, 2]`, `"C"`. A rule reports the location of a
+problem. The value at that location becomes the problem's `input`
+automatically. Define each function at module top level. A model holds
+the definitions that read its fields, so the model can be pickled, and
+compares equal after loading, only if its definitions can. A lambda or
+a closure cannot be pickled, and a `functools.partial` can be pickled
+but does not compare equal to its loaded copy.
 
     from collections.abc import Iterator
     from typing import Annotated, NotRequired
@@ -141,176 +148,193 @@ compares unequal to itself loaded.
     )
     SCOPE = CORE_AND_EXTENSIONS.extended_with(ACME_LZ4)
 
-A scope reads whole documents as well as fields:
+A scope reads whole documents as well as fields.
 `validate_array_metadata_v3(document, context=SCOPE)`, from
 `zarr_metadata.model`, reads each extension point of a v3 array document
 through the definitions in `SCOPE`, and so do the model's `from_json` and
-`from_key_value`: a fill value is judged against the data type it names,
-by that data type's definition, the chunk grid against the shape, by
-the grid's definition, and the codecs as a pipeline, each by its
-definition against the chunk it is handed.
+`from_key_value`. The fill value is checked against the data type it
+names, by that data type's definition. The chunk grid is checked against
+the shape, by the grid's definition. The codecs are checked as a
+pipeline, each by its definition against the chunk it receives.
 
-The TypedDict says what a key it does not declare is: with
-`closed=True`, a problem, as above; with `extra_items=`, a key holding
-that type; with `closed=False`, anything at all. One that says none of
-these is open by default, and would take a misspelled key without a
-word, so a definition refuses it. Its members are the shapes JSON takes:
-`int`, `float`, `bool`, `str`, `None`, `JSONValue`, a `Literal`,
-`tuple[T, ...]` and `tuple[T1, T2]`, a union, a TypedDict,
-`Mapping[str, V]`, a `NewType` and a type alias. A number's type may
-carry bounds, as annotated-types spells them and pydantic reads them --
-`Gt`, `Ge`, `Lt`, `Le` and `Interval`, one from each side -- at any
-depth: `tuple[Annotated[int, Ge(1)], ...]` bounds each element. A value
-out of them is a problem, `invalid_value`, whose message says what the
-type admits, "expected an integer >= 1, got 0", and whose `ctx` holds
-the bounds. The rules are asked only of a configuration within its
-bounds, so a rule relies on them, as pydantic's after-validators and
-zod's refinements do: until a value out of bounds is fixed, it is the
-one problem reported of the configuration. `Annotated` may also carry a
-note, a string or a `Doc`. Any other metadata -- a `MinLen`, a
-`Predicate`, pydantic's `Field` -- is refused when the definition is
-built, since a type the checker does not hold its values to would say
-what is not so.
+The TypedDict declares how keys it does not declare are handled. With
+`closed=True`, such a key is a problem, as above. With `extra_items=`,
+such a key must hold that type. With `closed=False`, anything is
+allowed. A TypedDict that declares none of these is open by default and
+would accept a misspelled key silently, so a definition rejects it. Its
+members must be JSON shapes: `int`, `float`, `bool`, `str`, `None`,
+`JSONValue`, a `Literal`, `tuple[T, ...]` and `tuple[T1, T2]`, a union,
+a TypedDict, `Mapping[str, V]`, a `NewType` and a type alias. A number's
+type may carry bounds, written with annotated-types and read the way
+pydantic reads them: `Gt`, `Ge`, `Lt`, `Le` and `Interval`, at most one
+from each side, at any depth. For example,
+`tuple[Annotated[int, Ge(1)], ...]` bounds each element. A value out of
+bounds is an `invalid_value` problem. Its message says what the type
+admits ("expected an integer >= 1, got 0"), and its `ctx` holds the
+bounds. The rules run only on a configuration within its bounds, so a
+rule can rely on them, as pydantic's after-validators and zod's
+refinements do. Until a value out of bounds is fixed, it is the only
+problem reported for the configuration. `Annotated` may also carry a
+note, as a string or a `Doc`. Any other metadata (a `MinLen`, a
+`Predicate`, pydantic's `Field`) is rejected when the definition is
+built, because a type whose constraint the checker does not enforce
+would give false information.
 
-A member holding another metadata field is annotated with the field alias
-of its kind -- a shard's `codecs: tuple[ZarrV3CodecField, ...]` -- and read in
-the scope its field is read in. What is wrong with the field it holds is
-that field's own, reported where it sits: the field holding it is still
-read, as a document holding it would be. A member that takes codecs of
-static size only is annotated `ZarrV3StaticCodecField` -- a shard's
-`index_codecs`, since a reader finds the index by a size it knows before
-reading it -- and a codec of dynamic size there is a problem at its
-place, where the field is read in a scope; a name nothing claims is left
-unjudged, its size unknown with the rest of it. `ZarrV3MetadataFieldJSON`
-is the same JSON, but checks as JSON and nothing more, so a definition
-refuses a member typed with it. An extension with nothing to configure
-takes `EmptyConfiguration`, and is written with its name alone.
+A member that holds another metadata field is annotated with the field
+alias of its kind (a shard's `codecs: tuple[ZarrV3CodecField, ...]`) and
+is read in the same scope as its parent field. A problem with the nested
+field belongs to that field and is reported at its location. The parent
+field is still read, as a document containing the nested field would be.
+A member that accepts only codecs of static size is annotated
+`ZarrV3StaticCodecField`. A shard's `index_codecs` uses this, because a
+reader locates the index from a size it knows before reading it. A codec
+of dynamic size in such a member is a problem at its location, when the
+field is read in a scope. A name that nothing claims is not checked, and
+its size is unknown, like everything else about it.
+`ZarrV3MetadataFieldJSON` describes the same JSON, but it is checked
+only as JSON, so a definition rejects a member typed with it. An
+extension with nothing to configure uses `EmptyConfiguration`, and is
+written with its name only.
 
-A data type also says what its fill value is: `fill_value`, the JSON
-shape of one as an annotation the checker reads -- `Int8FillValue`,
-whose type carries the range -- and `fill_value_rules`, a function
-yielding what the spec disallows in a fill value of that shape that the
-type cannot say: a hex string of another width, a number of byte values
-the size does not take. The rules are handed the configuration, the fields it holds as the
-scope read them, and the typed fill value, so a struct judges each
-field's fill value by that field's own type.
-`fill_value_problems(data_type, value)` judges a fill value against a data
-type field the scope read; one nothing in scope claims leaves it unjudged.
-A data type that says nothing of its fill value takes any JSON.
-A fill value may be spelled more ways than one -- `"NaN"` and
-`"0x7fc00000"` are one `float32` -- so a data type says which spelling
-is its value's own: `fill_value_canonical`, handed what the rules are
-handed and a fill value they allow. Two fill values are one value of the
-type exactly when their canonical spellings are written alike: the same
-JSON, as `json.dumps` writes it, which `==` is not -- it takes `-0.0`,
-a `float32` of its own, for `0.0`. `canonical_fill_value(data_type,
-value)` spells one, and gives `UNSET` for a fill value with a problem; a
-data type that says nothing of it spells each value as written.
+A data type also declares its fill value. `fill_value` is the JSON
+shape of a fill value, as an annotation the checker reads (for example
+`Int8FillValue`, whose type carries the range). `fill_value_rules` is a
+function that yields the spec violations in a fill value of that shape
+that the type cannot express, such as a hex string of the wrong width,
+or a number of byte values that does not match the size. The rules
+receive the configuration, the nested fields as the scope read them,
+and the typed fill value, so a struct checks each field's fill value
+against that field's own type.
+`fill_value_problems(data_type, value)` checks a fill value against a
+data type field the scope read. If nothing in scope claims the data
+type, the fill value is not checked. A data type that does not declare
+its fill value accepts any JSON.
+A fill value can have more than one spelling (`"NaN"` and `"0x7fc00000"`
+are the same `float32`), so a data type declares the canonical spelling
+of each value with `fill_value_canonical`. It receives the same
+arguments as the rules, plus a fill value the rules allow. Two fill
+values are the same value of the type exactly when their canonical
+spellings are written the same way: the same JSON, as `json.dumps`
+writes it. `==` is not the same test, because it treats `-0.0` (a
+distinct `float32`) as equal to `0.0`.
+`canonical_fill_value(data_type, value)` returns the canonical spelling,
+or `UNSET` for a fill value with a problem. A data type that does not
+declare `fill_value_canonical` keeps each value as written.
 
-A data type says how its values are stored, too: `storage`, a function
-of its configuration and the fields it holds, giving a `StorageClass` --
-in single bytes, in several bytes at a time, or each in as many as it
-needs. A struct's is its fields'. `storage_of(data_type)` asks it of a
-data type field the scope read: the `bytes` codec takes an `endian` for
-numbers of several bytes, and a struct refuses a field whose values vary
-in size. A data type that says nothing of it leaves it unknown.
+A data type also declares how its values are stored. `storage` is a
+function of the configuration and the nested fields that returns a
+`StorageClass`: single bytes, several bytes at a time, or each value in
+as many bytes as it needs. A struct's storage depends on its fields.
+`storage_of(data_type)` calls it for a data type field the scope read.
+The `bytes` codec requires an `endian` for multi-byte numbers, and a
+struct rejects a field whose values vary in size. A data type that does
+not declare storage leaves it unknown.
 
-A chunk grid says which arrays it fits: `shape_rules`, a function
-yielding what the spec disallows in a grid of its configuration over an
-array of a given shape -- a dimension with no chunk length, chunks that
-fall short of one -- located in the configuration. A grid that says
-nothing of the shape fits every one. It also says the lengths its chunks
-take along each axis of an array it fits, `chunk_lengths`: a set per
-axis, since a rectilinear grid's chunks differ. A reading holds both of
-the grid it read: an entry for each dimension of the shape, None where
-nothing says the lengths.
+A chunk grid declares which array shapes it fits with `shape_rules`, a
+function that yields the spec violations in a grid with its
+configuration over an array of a given shape (a dimension with no chunk
+length, or chunks that do not cover the dimension), located in the
+configuration. A grid that does not declare shape rules fits every
+shape. It also declares the lengths of its chunks along each axis of an
+array it fits, with `chunk_lengths`: a set per axis, because a
+rectilinear grid's chunks differ in length. A reading stores both
+results for the grid it read: an entry for each dimension of the shape,
+with None where the lengths are unknown.
 
-A codec is judged against what it is handed. The array hands its first
-codec a `Chunk`: the lengths of its grid's chunks along each of the
-array's dimensions, and its data type field, with None for what nothing
-says. A codec handed an array says what the spec disallows in it handed
-a chunk: `chunk_rules`, located in its configuration -- a `transpose`
-whose `order` has another number of axes. An array -> array codec says
-what it hands the next, whatever its chunk rules found: `transition` --
-`transpose` permutes the axes. A reading reads the codec fields as a
-pipeline: their order -- array -> array codecs, one array -> bytes codec,
-bytes -> bytes codecs -- and then each against the chunk it is handed,
-giving each codec's `Stage` with that chunk. A codec that holds pipelines of its own says what each is
-handed: `pipelines`, by the member of its configuration that holds each
--- a shard's inner codecs its inner chunks, its index codecs the shard
-index -- and each is read the same way, its stages kept as the codec's
-`Stage.inner`.
-Nothing is guessed: the codec after one the scope did not read, or after
-one that says nothing of what it hands on, is handed a chunk nothing is
-known of, `Chunk()`, which is refused nothing; a codec after that hands
-on only what it says of its own accord.
+A codec is checked against its input. The array passes its first codec
+a `Chunk`: the lengths of the grid's chunks along each of the array's
+dimensions, and the array's data type field, with None for unknown
+parts. A codec that receives an array declares the spec violations for
+a given chunk with `chunk_rules`, located in its configuration (for
+example, a `transpose` whose `order` has the wrong number of axes). An
+array -> array codec declares what it passes to the next codec with
+`transition`, whatever its chunk rules found. For example, `transpose`
+permutes the axes. A reading reads the codec fields as a pipeline. It
+checks their order (array -> array codecs, one array -> bytes codec,
+bytes -> bytes codecs), then checks each codec against the chunk it
+receives, and records a `Stage` for each codec with that chunk. A codec
+that contains its own pipelines declares what each one receives with
+`pipelines`, keyed by the configuration member that holds each
+pipeline. For example, a shard's inner codecs receive its inner chunks,
+and its index codecs receive the shard index. Each pipeline is read the
+same way, and its stages are stored as the codec's `Stage.inner`.
+The reader does not guess. After a codec the scope did not read, or
+after a codec that does not declare its output, the next codec receives
+a chunk with nothing known about it, `Chunk()`, which never causes a
+problem. A later codec can still declare its own output.
 
-Raw bits are the one data type whose name carries its configuration: a
-document writes `r` and the size in bits, and `r16` reads as `r*`, as the
-specification's table writes raw bits, with `{"bits": 16}`. A reader that
-reads raw bits its own way defines `r*`; a data type named `r16` is
-refused, since that name reads as `r*`. `r*` itself is notation, and a
-document that writes it names nothing in any scope.
+Raw bits are the only data type whose name encodes its configuration. A
+document writes `r` followed by the size in bits, and `r16` is read as
+`r*` (the notation in the specification's table of data types) with
+`{"bits": 16}`. A reader that wants to read raw bits its own way defines
+`r*`. A data type named `r16` is rejected, because that name is read as
+`r*`. `r*` itself is notation, and a document that uses it as a name
+refers to nothing in any scope.
 
 **The simplest spelling.** A field without problems has a simplest
-equivalent spelling, which is what two fields are compared by: each nested
-field in its own simplest spelling, then the definition's `canonical` --
-blosc drops a `typesize` that `noshuffle` ignores, a rectilinear grid
-run-length encodes its chunk shapes -- and the envelope in the fewest
-words every reader takes: a data type with nothing to configure is its
-bare name, any other field an object, `{"name": ...}`, as a Zarr v3.0
-reader takes no short-hand name in `codecs`; raw bits write their size
-back into the name, in decimal, so `r008` is `r8`. A field with any
-problem, an unknown key included, has none: a simpler spelling of it
-would erase what its author wrote. What `canonical` gives is judged
-again: one that does not hold is a `ValueError`, a fault in the
-definition. `canonical_fill_value` spells a fill value the same way, as
-the data type that read it spells one.
+equivalent spelling, and fields are compared by it. Each nested field is
+written in its own simplest spelling, then the definition's `canonical`
+is applied (blosc drops a `typesize` that `noshuffle` ignores, and a
+rectilinear grid run-length encodes its chunk shapes). The envelope
+uses the shortest form every reader accepts: a data type with nothing to
+configure is its bare name, and any other field is an object,
+`{"name": ...}`, because a Zarr v3.0 reader does not accept a short-hand
+name in `codecs`. Raw bits write their size back into the name, in
+decimal, so `r008` becomes `r8`. A field with any problem, including an
+unknown key, has no simplest spelling, because a simpler spelling would
+erase what its author wrote. The result of `canonical` is checked again,
+and an invalid result raises `ValueError`, which indicates a bug in the
+definition. `canonical_fill_value` writes a fill value in the same way,
+using the data type that read it.
 
 **JSON Schema.** `node_metadata_json_schema_v3`, in `zarr_metadata.model`,
-writes a whole `zarr.json` as a JSON Schema, draft 2020-12, for a
-validator in another language or an editor, its fields as the scope
-reads them: each definition's field --
-its name, its configuration as its TypedDict says, bounds and all, a
-`must_understand` of `true`, and its bare name when it needs no
-configuration -- and a name nothing in scope claims, with any
-configuration. A field a configuration holds is written in the same
-scope, and a member taking codecs of static size only takes those. The
-rules are not in it, so a field it accepts may still have a problem;
-one `resolve` reads without a problem, it accepts, as JSON: arrays as
-lists, as a parser gives them. Each configuration
-TypedDict, and each field alias, is written once, in `$defs`, under its
-name; the fill value is held to its data type's.
+writes a whole `zarr.json` as a JSON Schema (draft 2020-12), for a
+validator in another language or for an editor. Its fields are written
+as the scope reads them. For each definition, the schema accepts its
+field (its name, its configuration as its TypedDict declares it,
+including bounds, a `must_understand` of `true`, and its bare name when
+it needs no configuration). It also accepts a name that nothing in scope
+claims, with any configuration. A nested field is written in the same
+scope, and a member that accepts only codecs of static size accepts
+only those. The rules are not in the schema, so a field it accepts may
+still have a problem. Any field that `resolve` reads without a problem
+is accepted by the schema, as JSON (arrays as lists, as a parser
+returns them). Each configuration TypedDict and each field alias is
+written once, in `$defs`, under its name. The fill value must match its
+data type's fill value schema.
 
-**Scopes as values.** A scope reads documents of one Zarr format, the
-`format` every kind it files declares -- `ZarrV3Context` is the type of
-a v3 scope, `ZarrV2Context` of a v2 one -- and a reader refuses a scope
-of the other format with `TypeError`, while a scope that files nothing
-is of no format and reads in either. Two scopes are equal when they file
-the same definitions, and equal scopes hash alike. `Context.joined(*scopes)` is
-the least scope above each, or a `ScopeConflictError` naming each name
-filed two ways; `extended_with` remains the way to take a name over on
-purpose. A model's `refined_in` moves it to a scope that claims more and
-contradicts nothing, and `refines` orders two models by information: a
-name nothing claimed, read by a definition, is a gain; the reverse a
-loss; one name read by two definitions a conflict.
+**Scopes as values.** A scope reads documents of one Zarr format: the
+`format` declared by every kind it files. `ZarrV3Context` is the type
+of a v3 scope, and `ZarrV2Context` is the type of a v2 scope. A reader
+rejects a scope of the other format with `TypeError`. A scope that files
+nothing has no format and can be used by either reader. Two scopes are
+equal when they file the same definitions, and equal scopes have equal
+hashes. `Context.joined(*scopes)` returns the smallest scope that
+contains each of them, or raises a `ScopeConflictError` naming each name
+filed with two different definitions. To replace a definition on
+purpose, use `extended_with`. A model's `refined_in` moves it to a scope
+that claims more names and contradicts nothing. `refines` orders two
+models by how much they know. A name that was unclaimed and is now read
+by a definition is a gain. The reverse is a loss. One name read by two
+different definitions is a conflict.
 
-A definition checks itself when it is built, and each of these is a
-`TypeError` saying what is wrong: a `configuration` that is not a
-TypedDict, says nothing of the keys it does not declare, or has a member
-no checker reads, named down to the TypedDict that holds it; a `name`
-that is not a string; a member declared as a function -- `rules`,
-`canonical`, `fill_value_rules`, `storage`, `shape_rules`,
-`chunk_lengths`, `chunk_rules`, `transition`, `pipelines` -- that is not
-one; a data type's `fill_value` no checker reads, or one holding a
-metadata field, which a value of the data type never is; a codec `kind`
-that is not one of the three, or a `size` that is not `"static"` or
-`"dynamic"`; a function no codec of its kind is asked -- chunk rules or
-pipelines of a bytes -> bytes codec, which is handed bytes, or a
-`transition` of a codec that hands on bytes; a data type named as raw
-bits of one size are written. A scope refuses a definition of no kind,
-and a kind is declared with its format, `class Tag(Definition[C],
-kind=True, format=3)`. Nothing else happens at class creation.
+A definition checks itself when it is built. Each of these raises a
+`TypeError` that says what is wrong: a `configuration` that is not a
+TypedDict, that does not declare how undeclared keys are handled, or
+that has a member no checker reads (the error names the TypedDict that
+contains it); a `name` that is not a string; a member declared as a
+function (`rules`, `canonical`, `fill_value_rules`, `storage`,
+`shape_rules`, `chunk_lengths`, `chunk_rules`, `transition`,
+`pipelines`) that is not a function; a data type's `fill_value` that no
+checker reads, or that contains a metadata field, which a value of the
+data type never does; a codec `kind` that is not one of the three, or a
+`size` that is not `"static"` or `"dynamic"`; a function that is never
+called for a codec of its kind (chunk rules or pipelines of a
+bytes -> bytes codec, which receives bytes, or a `transition` of a codec
+that outputs bytes); a data type named the way raw bits of one size are
+written. A scope rejects a definition of no kind, and a kind is
+declared with its format, `class Tag(Definition[C], kind=True,
+format=3)`. Nothing else happens at class creation.
 """
 
 from zarr_metadata._common import JSONValue

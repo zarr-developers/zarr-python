@@ -15,8 +15,8 @@ from state: pickling and copying work by *reference* (typing_extensions >=
 4.16 implements `Sentinel.__reduce__` as a lookup of the sentinel's name on
 its defining module), so `pickle.loads(pickle.dumps(UNSET)) is UNSET` holds
 across process boundaries, and models holding `UNSET` pickle and deep-copy
-freely. Earlier typing_extensions releases refused to pickle sentinels
-outright — hence the `>=4.16` floor in this package's dependencies.
+freely. Earlier typing_extensions releases could not pickle sentinels at
+all, which is why this package requires `>=4.16`.
 
 Checker support (PEP 661 is Final; stdlib `sentinel` arrives in Python
 3.15): ty types this spelling exactly, including `is`/`is not` narrowing.

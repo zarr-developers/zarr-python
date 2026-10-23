@@ -89,7 +89,7 @@ class ZarrV2ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
     real `.zarray` file should split / merge `attributes` accordingly,
     or use `ZarrV2ZArrayJSON` (strict on-disk) plus `ZarrV2ZAttrsJSON` directly.
 
-    Open: other keys "SHOULD NOT be present ... and SHOULD be ignored by
+    The type is open: other keys "SHOULD NOT be present ... and SHOULD be ignored by
     implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), and each
     other member is a JSON value.
 

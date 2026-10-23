@@ -1,4 +1,4 @@
-"""Every v2 data type, read as its family: which typestrs it takes, and which fill values."""
+"""Reading each v2 data type by its family: which typestrs and which fill values each family accepts."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ def _read(value: object) -> tuple[type, list[tuple[Loc, str]]]:
         ("<m8[D]", "timedelta64", "<m8[D]"),
         ([["x", "<f4"], ["y", "<i4", [2]]], "struct", (("x", "<f4"), ("y", "<i4", (2,)))),
         ([["r", "|u1"], ["s", [["t", "<f4"]]]], "struct", (("r", "|u1"), ("s", (("t", "<f4"),)))),
-        # NumPy names the padding of an aligned struct "", and zarr 2.x writes it.
+        # NumPy names the padding fields of an aligned struct "", and zarr 2.x writes them.
         (
             [["a", "|i1"], ["", "|V3"], ["b", "<i4"], ["", "|V3"]],
             "struct",
@@ -74,7 +74,7 @@ def _read(value: object) -> tuple[type, list[tuple[Loc, str]]]:
     ],
 )
 def test_every_family_reads_its_typestrs(value: object, family: str, canonical: object) -> None:
-    """Each typestr of a family reads by the family's definition, and its simplest spelling is the typestr NumPy writes: `|` for a type of one byte or no byte order, `us` for a microsecond unit; a records array reads as `struct`, each record's type read too."""
+    """Each typestr of a family is read by the family's definition. Its canonical spelling is the typestr NumPy writes: `|` for a type of one byte or with no byte order, and `us` for a microsecond unit. A records array is read as `struct`, and the type of each record is read too."""
     resolved, problems = resolve(value, ZarrV2DataTypeDefinition, SCOPE)
     assert isinstance(resolved, AcceptedField)
     assert resolved.definition.name == family
@@ -84,7 +84,7 @@ def test_every_family_reads_its_typestrs(value: object, family: str, canonical: 
 
 @pytest.mark.parametrize("value", ["<e2", "<T16", "|a1"])
 def test_a_type_code_the_spec_does_not_list_is_unclaimed(value: str) -> None:
-    """A typestr whose type code the v2 spec does not list is filed under itself, which nothing in scope claims: read as `UnclaimedField`, with no problem, and written back as it was."""
+    """A typestr whose type code is not listed in the v2 spec is filed under its own name, which no definition in scope claims. It is read as `UnclaimedField` with no problem, and written back unchanged."""
     resolved, problems = resolve(value, ZarrV2DataTypeDefinition, SCOPE)
     assert isinstance(resolved, UnclaimedField)
     assert problems == ()
@@ -143,7 +143,7 @@ def test_a_type_code_the_spec_does_not_list_is_unclaimed(value: str) -> None:
     ],
 )
 def test_error_a_typestr_the_family_does_not_take_is_a_problem(value: object, at: Loc) -> None:
-    """A typestr of a size, byte order or unit its family does not take is refused, the problem at the field; a struct's problems sit under `fields`, at the record and its position, and a record's type that is refused is reported there while the struct still reads."""
+    """A typestr with a size, byte order or unit that its family does not accept is refused, and the problem is located at the field. A struct's problems are located under `fields`, at the record and the position inside it. If a record's type is refused, the problem is reported there and the struct is still read."""
     kind, problems = _read(value)
     assert kind is RefusedField or "fields" in at
     assert next(loc for loc, _ in problems) == at
@@ -176,7 +176,7 @@ def test_error_a_typestr_the_family_does_not_take_is_a_problem(value: object, at
 def test_every_family_takes_its_fill_values(
     dtype: object, value: object, canonical: object
 ) -> None:
-    """Each family takes the fill values the v2 spec gives it, and `null` always: booleans, integers in the type's range, numbers or the named non-finite strings for floats and each complex component, base64 for bytes, void and struct, a string for str, any JSON for object, ticks or `NaT` for times. The canonical spelling makes an integer written for a float a float, and `NaT` of its ticks."""
+    """Each family accepts the fill values the v2 spec allows for it, and always accepts `null`: booleans; integers in the type's range; numbers or the named non-finite strings for floats and for each complex component; base64 for bytes, void and struct; a string for str; any JSON for object; and ticks or `NaT` for times. The canonical spelling turns an integer written for a float into a float, and turns the ticks value of `NaT` into `"NaT"`."""
     resolved, _ = resolve(dtype, ZarrV2DataTypeDefinition, SCOPE)
     assert fill_value_problems(resolved, value) == ()
     assert canonical_fill_value(resolved, value) == canonical
@@ -204,7 +204,7 @@ def test_every_family_takes_its_fill_values(
 def test_error_a_fill_value_the_family_does_not_take_is_a_problem(
     dtype: object, value: object, at: Loc
 ) -> None:
-    """A fill value outside the shape or range its family takes is reported, at the value or at the component that is wrong: a v2 float takes no hex string, and a struct's fill value is base64 of the record, not an object of fields."""
+    """A fill value outside the shape or range its family accepts is reported, at the value or at the wrong component. A v2 float does not accept a hex string, and a struct's fill value is the base64 of the record, not an object of fields."""
     resolved, _ = resolve(dtype, ZarrV2DataTypeDefinition, SCOPE)
     problems = fill_value_problems(resolved, value, ("fill_value",))
     assert len(problems) != 0
@@ -212,7 +212,7 @@ def test_error_a_fill_value_the_family_does_not_take_is_a_problem(
 
 
 def test_every_family_has_an_example() -> None:
-    """Every definition in `V2_DATA_TYPES` is exercised above, so none is filed untested."""
+    """Every definition in `V2_DATA_TYPES` has an example above, so no definition goes untested."""
     names = {definition.name for definition in V2_DATA_TYPES}
     assert names == {
         "bool",
@@ -241,7 +241,7 @@ def test_a_struct_record_type_sits_where_the_document_writes_it() -> None:
 
 
 def test_a_float_fill_value_past_the_largest_of_its_width_reads_as_an_infinity() -> None:
-    """A number written for a float fill value that no float of the dtype's width holds -- `<f4` past float32, `<f2` past float16, as an integer or a float -- is the infinity of its sign, as the v3 float types read one and as NumPy stores it, for a float and for each component of a complex: `read_array_metadata_v2` reads it, and the model equals one written `"Infinity"`."""
+    """A float fill value that is too large for a float of the dtype's width (`<f4` past float32, `<f2` past float16, written as an integer or a float) becomes the infinity of the same sign. This matches how the v3 float types read it and how NumPy stores it. It applies to a float and to each component of a complex. `read_array_metadata_v2` reads it without problems, and the model equals one written with `"Infinity"`."""
     from zarr_metadata.model import ZarrV2ArrayMetadata, read_array_metadata_v2
 
     cases: list[tuple[str, JSONValue, JSONValue]] = [
@@ -291,7 +291,7 @@ def test_a_float_fill_value_past_the_largest_of_its_width_reads_as_an_infinity()
 def test_a_base64_fill_value_is_as_long_as_its_item(
     dtype: JSONValue, fill_value: str, accepted: bool
 ) -> None:
-    """A void or struct fill value decodes to exactly the item's size -- a record's the sum of its fields', each times the product of its subarray shape, nested structs included -- and a byte string's to at most it, as NumPy pads a shorter one; a record holding a field of no fixed size, `|O`, is left unjudged. zarr-python 3 fails to open an array whose fill value is of another size."""
+    """A void or struct fill value must decode to exactly the item size. A record's size is the sum of its fields' sizes, each multiplied by the product of its subarray shape, including nested structs. A byte string's fill value must decode to at most the item size, because NumPy pads a shorter one. A record with a field of no fixed size (`|O`) is not checked. zarr-python 3 fails to open an array whose fill value has a different size."""
     from zarr_metadata.model import ZarrV2ArrayMetadata, validate_array_metadata_v2
 
     document = {

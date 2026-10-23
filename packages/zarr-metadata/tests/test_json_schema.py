@@ -1,9 +1,10 @@
-"""JSON Schemas of what the package reads: a TypedDict, a field in a scope, a `zarr.json`.
+"""JSON Schemas for what the package reads: a TypedDict, a field in a scope, and a `zarr.json`.
 
-A schema is held to the reader it is written from: what the reader finds
-nothing wrong with, the schema accepts, and what the type says -- a
-bound, a key a closed TypedDict does not declare, a name a scope claims
--- the schema says too. What only a rule says, the schema does not.
+Each schema is tested against the reader it is generated from. The schema
+accepts every value the reader finds no problem with. The schema also
+expresses what the type declares: a bound, a key that a closed TypedDict
+does not declare, a name that a scope claims. The schema does not express
+constraints that only a rule checks.
 """
 
 from __future__ import annotations
@@ -50,8 +51,8 @@ from zarr_metadata.v3.definition import (
 
 DIALECT = "https://json-schema.org/draft/2020-12/schema"
 
-# Built at run time, where a type checker reads each special form's
-# arguments as it would in an annotation.
+# Special forms called at run time. They are typed loosely because a type
+# checker would check their arguments as it does in an annotation.
 _annotated: Any = Annotated
 _new_type: Callable[[str, object], object] = cast("Any", NewType)
 _alias_type: Callable[[str, object], object] = cast("Any", TypeAliasType)
@@ -83,23 +84,23 @@ class Node(TypedDict, closed=True):
 
 
 def _closed(name: str, annotations: dict[str, object]) -> type:
-    """A closed TypedDict of these required keys, made here, so its annotations resolve in this module."""
+    """A closed TypedDict with these required keys, created here so its annotations resolve in this module."""
     base: object = TypedDict
     namespace = {"__annotations__": annotations, "__module__": __name__}
     return types.new_class(name, (base,), {"closed": True}, lambda body: body.update(namespace))
 
 
 def _holding(annotation: object) -> type:
-    """A closed TypedDict of one required key, `value`, holding `annotation`."""
+    """A closed TypedDict with one required key, `value`, of type `annotation`."""
     return _closed("Holder", {"value": annotation})
 
 
-# Another class of the name `Inner`, which the schema tells from the first.
+# A second class named `Inner`. The schema must tell it apart from the first.
 Both = _closed("Both", {"first": Inner, "second": _closed("Inner", {"y": str})})
 
 
 def _held(member: dict[str, Any], defs: dict[str, Any] | None = None) -> dict[str, Any]:
-    """The schema of `_holding` an annotation whose schema is `member`."""
+    """The schema of `_holding(annotation)`, where `member` is the schema of `annotation`."""
     schema: dict[str, Any] = {
         "$schema": DIALECT,
         "type": "object",
@@ -125,7 +126,7 @@ SHAPES: list[tuple[str, type, dict[str, Any]]] = [
     ("null", _holding(None), _held({"type": "null"})),
     ("json", _holding(JSONValue), _held({})),
     ("one-value", _holding(Literal["a"]), _held({"const": "a"})),
-    # Sorted as the checker sorts them, so the order written does not show.
+    # Sorted in the checker's order, so the order in the source does not matter.
     ("values", _holding(Literal["b", "a", 1]), _held({"enum": ["a", "b", 1]})),
     ("array", _holding(tuple[int, ...]), _held({"type": "array", "items": {"type": "integer"}})),
     ("array-of-json", _holding(tuple[JSONValue, ...]), _held({"type": "array"})),
@@ -169,10 +170,10 @@ SHAPES: list[tuple[str, type, dict[str, Any]]] = [
         _holding(Annotated[int, Ge(0), Doc("a count")]),
         _held({"type": "integer", "description": "a count", "minimum": 0}),
     ),
-    # A note that is no `Doc` says nothing a schema writes.
+    # Metadata that is not a `Doc` adds nothing to the schema.
     ("note", _holding(Annotated[str, "a note"]), _held({"type": "string"})),
-    # A value is held to its type's bounds and to its `NewType`'s: of two
-    # of one keyword, the stricter.
+    # A value must meet its type's bounds and its `NewType`'s bounds. When
+    # both set the same keyword, the stricter bound is kept.
     (
         "bounds-on-a-bounded-newtype",
         _holding(_annotated[Count, Ge(-5), Lt(9)]),
@@ -228,7 +229,7 @@ SHAPES: list[tuple[str, type, dict[str, Any]]] = [
             "required": ["x"],
         },
     ),
-    # A TypedDict that holds itself is referred to, not written in place.
+    # A recursive TypedDict is referred to with `$ref`, not written inline.
     (
         "holding-itself",
         Node,
@@ -308,9 +309,9 @@ def test_json_schema_refuses_what_check_cannot_read() -> None:
 
 
 def test_error_a_schema_that_fails_to_write_leaves_nothing_behind() -> None:
-    # Reserved before it is written, so that it can refer to itself, and
-    # given up when the writing fails, so that nothing refers to an empty
-    # schema, which takes anything.
+    # A schema is reserved before it is written, so that it can refer to
+    # itself. The reservation is dropped when writing fails, so that nothing
+    # refers to an empty schema, which would accept anything.
     schemas = Schemas()
     unread = _closed("Unread", {"value": bytes})
     with pytest.raises(TypeError, match="is not a shape JSON takes"):
@@ -318,8 +319,9 @@ def test_error_a_schema_that_fails_to_write_leaves_nothing_behind() -> None:
     assert schemas.document({}) == {"$schema": DIALECT}
     with pytest.raises(TypeError, match="is not a shape JSON takes"):
         schemas.of(unread)
-    # Nor is what it wrote of a shape it holds before it failed, nor a use
-    # it counted: a later root of that shape, used once, is written in place.
+    # The schema it wrote for a nested shape before it failed is also
+    # dropped, and so are the uses it counted. A later root of that shape,
+    # used once, is written inline.
     held = _closed("Held", {"x": int})
     with pytest.raises(TypeError, match="is not a shape JSON takes"):
         schemas.of(_closed("Partly", {"held": held, "value": bytes}))
@@ -358,9 +360,9 @@ def _integral_as_int(value: object) -> object:
 def test_bounds_in_layers_are_written_as_check_holds_a_value_to_them(
     base: type, layers: list[tuple[str, object, object]], values: list[object]
 ) -> None:
-    # A number's bounds, on it, on a `NewType` of it, on an alias of it,
-    # layer on layer: the schema accepts what `check` does, a number with no
-    # fraction read as the integer it equals.
+    # Bounds on a number, on a `NewType` of it, or on an alias of it, in
+    # several layers. The schema accepts what `check` accepts, where a number
+    # with no fraction is read as the integer it equals.
     annotation: object = base
     for index, (how, low, high) in enumerate(layers):
         sides = [cast("tuple[str, int]", side) for side in (low, high) if side is not None]
@@ -376,7 +378,7 @@ def test_bounds_in_layers_are_written_as_check_holds_a_value_to_them(
     try:
         schema = json_schema(holder)
     except TypeError:
-        # A second bound from one side, which neither reads.
+        # A second bound on the same side, which neither `json_schema` nor `check` supports.
         event("refused")
         with pytest.raises(TypeError):
             check({}, holder)
@@ -430,7 +432,7 @@ def _at(value: object, path: tuple[str | int, ...]) -> object:
 
 
 def _put(value: object, path: tuple[str | int, ...], new: object) -> object:
-    """`value` with what sits at `path` replaced by `new`, or removed when `new` is `_GONE`."""
+    """`value` with the item at `path` replaced by `new`, or removed when `new` is `_GONE`."""
     if len(path) == 0:
         return new
     step, rest = path[0], path[1:]
@@ -448,7 +450,7 @@ def _put(value: object, path: tuple[str | int, ...], new: object) -> object:
 
 @st.composite
 def _changed(draw: st.DrawFn, value: object) -> object:
-    """`value` changed in one or two places: something replaced, dropped or added, a string with a character more, or a field renamed."""
+    """`value` changed in one or two places: an item replaced, dropped or added, a string extended by one character, or a field renamed."""
     for _ in range(draw(st.integers(1, 2))):
         path = draw(st.sampled_from(_places(value)))
         here = _at(value, path)
@@ -474,7 +476,7 @@ def _changed(draw: st.DrawFn, value: object) -> object:
 _SCOPES = (CORE, CORE_AND_EXTENSIONS, Context.of())
 _FIELD_BASES: tuple[tuple[str, object], ...] = (
     *CASES,
-    # Names nothing claims, whose configuration nothing judges.
+    # Names that nothing claims, so nothing checks their configuration.
     ("codecs:acme.x", {"name": "acme.x", "configuration": {"x": [1]}}),
     ("data_type:acme.t", {"name": "acme.t", "configuration": {"bits": 8}}),
     ("chunk_grid:acme.g", {"name": "acme.g", "configuration": {"chunk_shape": [0]}}),
@@ -495,7 +497,7 @@ _INDEXED = {"chunk_shape": [2], "codecs": ["bytes"]}
 
 # Each field, the kind and scope it is read in, whether the schema accepts
 # it, and whether the scope reads it without a problem. Where the two
-# differ, a rule found what the schema cannot say.
+# differ, a rule found a problem that the schema cannot express.
 FIELDS: list[tuple[str, object, type[Definition[Any]], Context, bool, bool]] = [
     ("object", {"name": "gzip", "configuration": {"level": 5}}, CodecDefinition, CORE, True, True),
     (
@@ -557,7 +559,7 @@ FIELDS: list[tuple[str, object, type[Definition[Any]], Context, bool, bool]] = [
         False,
         False,
     ),
-    # Nothing in an empty scope claims gzip, so nothing judges it.
+    # Nothing in an empty scope claims gzip, so nothing checks it.
     (
         "out-of-scope",
         {"name": "gzip", "configuration": {"level": 12}},
@@ -630,7 +632,7 @@ FIELDS: list[tuple[str, object, type[Definition[Any]], Context, bool, bool]] = [
     ),
     ("raw-bits", "r16", DataTypeDefinition, CORE, True, True),
     ("raw-bits-object", {"name": "r16", "configuration": {}}, DataTypeDefinition, CORE, True, True),
-    # What a raw-bits name carries is not written beside it.
+    # The values a raw-bits name carries are not also written in a configuration.
     (
         "raw-bits-configured",
         {"name": "r16", "configuration": {"bits": 16}},
@@ -640,12 +642,12 @@ FIELDS: list[tuple[str, object, type[Definition[Any]], Context, bool, bool]] = [
         False,
     ),
     ("raw-bits-of-a-size-the-spec-refuses", "r12", DataTypeDefinition, CORE, True, False),
-    # `r*` is the table's notation, and no name at all: `*` is no character
-    # of one.
+    # `r*` is the notation of the spec's table, not a name: `*` is not
+    # allowed in a name.
     ("raw-bits-notation", "r*", DataTypeDefinition, CORE, False, False),
-    # Matched to the end of the name, as the package matches it, so a
-    # validator that matches as Python does takes no final newline for it;
-    # nor is it a name at all, a newline being no character of one.
+    # The pattern is matched to the end of the name, as the package matches
+    # it, so a validator that matches as Python does must not accept a final
+    # newline. It is also not a name, because a newline is not allowed in one.
     (
         "raw-bits-and-a-newline",
         {"name": "r16\n", "configuration": {"x": 1}},
@@ -720,8 +722,8 @@ def test_every_example_field_is_one_its_schema_accepts(key: str, field: object) 
 @_PROPERTY
 @given(st.data())
 def test_a_field_read_without_a_problem_is_one_its_schema_accepts(data: st.DataObject) -> None:
-    # Each example changed in one place, in one of three scopes: whatever
-    # the scope still reads without a problem, the schema accepts.
+    # Each example is changed in one place and read in one of three scopes.
+    # If the scope still reads it without a problem, the schema accepts it.
     key, example = data.draw(st.sampled_from(_FIELD_BASES), label="example")
     kind = KINDS[key.split(":")[0]]
     scope = data.draw(st.sampled_from(range(len(_SCOPES))), label="scope")
@@ -765,7 +767,7 @@ def _consolidated(**metadata: object) -> dict[str, Any]:
 
 
 # Each document, whether the schema accepts it, and whether
-# `validate_node_metadata_v3` finds nothing wrong with it.
+# `validate_node_metadata_v3` finds no problem with it.
 DOCUMENTS: list[tuple[str, dict[str, Any], bool, bool]] = [
     ("array", ARRAY, True, True),
     ("group", {**GROUP, "attributes": {"a": [1, None]}}, True, True),
@@ -773,7 +775,7 @@ DOCUMENTS: list[tuple[str, dict[str, Any], bool, bool]] = [
     ("fill-value-of-the-wrong-type", {**ARRAY, "fill_value": "0"}, False, False),
     ("float-fill-value", {**FLOATS, "fill_value": "NaN"}, True, True),
     ("hex-fill-value", {**FLOATS, "fill_value": "0x7fc00000"}, True, True),
-    # A string that is no float's is a rule's to find.
+    # A string that is not a float value is found by a rule, not the schema.
     ("fill-value-a-rule-refuses", {**FLOATS, "fill_value": "nan"}, True, False),
     ("unclaimed-data-type", {**ARRAY, "data_type": "acme.int7", "fill_value": "any"}, True, True),
     (
@@ -810,7 +812,7 @@ DOCUMENTS: list[tuple[str, dict[str, Any], bool, bool]] = [
         False,
     ),
     ("an-extension-field", {**ARRAY, "acme": {"must_understand": False}}, True, True),
-    # What members read together say is the rules'.
+    # Constraints across several members are checked by the rules, not the schema.
     ("names-for-another-rank", {**ARRAY, "dimension_names": ["x"]}, True, False),
     (
         "codecs-out-of-order",
@@ -886,8 +888,8 @@ def _node_validator(scope: int) -> Draft202012Validator:
 @_PROPERTY
 @given(st.data())
 def test_a_document_read_without_a_problem_is_one_its_schema_accepts(data: st.DataObject) -> None:
-    # Each document changed in one place, in one of three scopes: whatever
-    # `validate_node_metadata_v3` finds nothing wrong with, the schema accepts.
+    # Each document is changed in one place and read in one of three scopes.
+    # If `validate_node_metadata_v3` finds no problem, the schema accepts it.
     base = data.draw(st.sampled_from(_BASES), label="base")
     scope = data.draw(st.sampled_from(range(len(_SCOPES))), label="scope")
     document = data.draw(_changed(json.loads(json.dumps(base))), label="document")
@@ -945,16 +947,16 @@ def test_every_schema_is_a_json_schema_written_the_same_each_time(scope: Context
 def test_the_stricter_of_two_bounds_of_one_keyword_is_kept(
     inner: object, outer: object, expected: dict[str, object]
 ) -> None:
-    # A bounded NewType bounded again: each keyword keeps the bound that
-    # admits less, whichever layer carries it.
-    # `NewType` takes no `Annotated` for pyright; it does at runtime.
+    # A bounded NewType with another bound on top: for each keyword, the
+    # stricter bound is kept, whichever layer it is on.
+    # pyright does not allow `Annotated` in `NewType`; the runtime does.
     Bounded = cast("Callable[[str, object], type]", NewType)("Bounded", _annotated[int, inner])
     assert json_schema(_holding(_annotated[Bounded, outer])) == _held(expected)
 
 
 def test_a_stray_member_beside_an_unclaimed_name_is_refused_by_the_schema() -> None:
-    # As the reader refuses it: the envelope of a name nothing claims holds
-    # nothing but the name and its configuration.
+    # The schema rejects it, as the reader does: the envelope of an
+    # unclaimed name holds only the name and its configuration.
     field = {"name": "zfpy", "version": 2}
     assert [(p.loc, p.kind) for p in resolve(field, CodecDefinition, CORE)[1]] == [
         (("version",), "unknown_key")
@@ -992,8 +994,8 @@ def test_a_stray_member_beside_an_unclaimed_name_is_refused_by_the_schema() -> N
     ],
 )
 def test_the_schema_names_an_extension_as_the_reader_does(name: str) -> None:
-    # The spec's regex, or a URI: what `well_named` accepts, the schema's
-    # `pattern` accepts, and what it refuses, the schema refuses.
+    # A name matches the spec's regex or is a URI. The schema's `pattern`
+    # accepts exactly the names that `well_named` accepts.
     field = {"name": name}
     _, problems = resolve(field, CodecDefinition, CORE)
     accepted = len(problems) == 0

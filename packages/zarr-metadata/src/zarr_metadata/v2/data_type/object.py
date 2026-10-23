@@ -1,4 +1,4 @@
-"""The v2 `object` family, `|O`: Python objects, whose fill value is any JSON."""
+"""The v2 `object` family, `|O`: Python objects. The fill value may be any JSON value."""
 
 from __future__ import annotations
 
@@ -13,19 +13,19 @@ from zarr_metadata.v2.data_type.scalar import (
 
 
 class ZarrV2ObjectConfiguration(TypedDict, closed=True):
-    """What `|O` carries: a byte order, which the type ignores."""
+    """The configuration that `|O` carries: a byte order, which the type ignores."""
 
     byteorder: ReadOnly[ZarrV2ByteOrder]
 
 
 def _canonical(configuration: ZarrV2ObjectConfiguration) -> ZarrV2ObjectConfiguration:
-    """No byte order, `|`, as NumPy writes it."""
+    """Set the byte order to `|` (no byte order), as NumPy writes it."""
     return cast("ZarrV2ObjectConfiguration", {**configuration, "byteorder": "|"})
 
 
 OBJECT_V2: Final = ZarrV2DataTypeDefinition(
     name="object", configuration=ZarrV2ObjectConfiguration, canonical=_canonical
 )
-"""`|O`: Python objects, each encoded by a filter; the fill value any JSON."""
+"""`|O`: Python objects, each encoded by a filter. The fill value may be any JSON value."""
 
 __all__ = ["OBJECT_V2", "ZarrV2ObjectConfiguration"]

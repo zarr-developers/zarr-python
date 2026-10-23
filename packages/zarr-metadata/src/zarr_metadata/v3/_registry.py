@@ -1,17 +1,18 @@
 """Which definitions are in scope while a document is read.
 
-The only registry the package needs. Reading a field means deciding which
-definition its name denotes, and that decision is the *scope* the field
-is read in, not a property of the definitions. A scope is a value, built
-from definitions: each is filed under its kind, which is its type, and
-its name, which it carries.
+This is the only registry the package needs. Reading a field means
+deciding which definition its name refers to. That decision depends on
+the *scope* the field is read in, not on the definitions themselves. A
+scope is a value built from definitions. Each definition is filed under
+its kind (its type) and its name (an attribute of the definition).
 
-Two scopes, because "is this valid?" has two useful answers. `CORE` is
-what the Zarr v3 specification itself defines, so a document read in it
-uses nothing an implementation could refuse for being optional.
-`CORE_AND_EXTENSIONS` adds what `zarr-extensions` registers and this
-package defines. A name in neither is not refused -- that is what keeps
-the format open -- it is read as `UnclaimedField` and left unjudged.
+The package provides two scopes, because "is this valid?" has two useful
+answers. `CORE` contains what the Zarr v3 specification itself defines,
+so a document read in it uses nothing that an implementation could reject
+as optional. `CORE_AND_EXTENSIONS` adds the extensions that
+`zarr-extensions` registers and this package defines. A name in neither
+scope is not rejected, because that is what keeps the format open.
+Instead it is read as an `UnclaimedField` and not checked.
 """
 
 from __future__ import annotations
@@ -66,32 +67,33 @@ if TYPE_CHECKING:
     from zarr_metadata.v3._scope import Claims, Disagreements
 
 Tables = Mapping[type[Definition[Any]], Mapping[str, Definition[Any]]]
-"""By kind, then by the name each definition is filed under."""
+"""Definitions keyed by kind, then by the name each definition is filed under."""
 
 F = TypeVar("F", bound=Literal[2, 3], default=Any)
-"""The Zarr format a scope reads documents of: 2 or 3, and any when a scope is built from definitions rather than from a format's own."""
+"""The Zarr format of the documents a scope reads: 2 or 3. It is `Any` when a scope is built from arbitrary definitions instead of from a format's own scope."""
 
 
 @dataclass(frozen=True, slots=True, eq=False)
 class Context(Generic[F]):
-    """The definitions in scope while metadata is read, of one Zarr format.
+    """The definitions in scope while metadata of one Zarr format is read.
 
-    A value with no reading of its own: `resolve` reads a field in it,
-    and `claimant` is the one question it answers, which definition a
-    name belongs to. Built from definitions with `Context.of`, extended
-    with more by `extended_with`; two scopes are equal when they file the
-    same definitions, and equal scopes hash alike. Every kind a scope
-    files declares one format, which is the scope's: a v3 reader refuses
-    a v2 scope, and the other way round, while a scope that files nothing
-    is of no format and reads in either, claiming nothing.
+    A scope is a value and does no reading itself. `resolve` reads a field
+    in a scope. The only question a scope answers is `claimant`: which
+    definition a name belongs to. Build a scope from definitions with
+    `Context.of`, and add more with `extended_with`. Two scopes are equal
+    when they file the same definitions, and equal scopes have equal
+    hashes. Every kind a scope files declares one format, and that is the
+    scope's format. A v3 reader rejects a v2 scope, and the reverse. A
+    scope that files nothing has no format, can be used by either reader,
+    and claims nothing.
     """
 
     tables: Tables
     _format: Literal[2, 3] | None = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        # What `of` builds, the constructor refuses to build otherwise: each
-        # key a kind, and every kind of one format, which is the scope's.
+        # The constructor enforces what `of` guarantees: each key is a kind,
+        # and every kind has the same format, which is the scope's format.
         formats = sorted({format_of(kind) for kind in self.tables})
         if len(formats) > 1:
             msg = (
@@ -108,11 +110,12 @@ class Context(Generic[F]):
 
     @classmethod
     def of(cls, *definitions: Definition[Any]) -> Context[Any]:
-        """A scope of exactly these definitions; a later one takes a name over from an earlier.
+        """A scope of exactly these definitions. If two definitions share a kind and name, the later one replaces the earlier one.
 
-        `TypeError` for a definition of no kind, which no position in a
-        document could hold, and for definitions of kinds of two formats,
-        which no document holds together.
+        Raises `TypeError` for a definition of no kind, because no position
+        in a document could hold it. Also raises `TypeError` for definitions
+        whose kinds belong to two formats, because no document can contain
+        both.
         """
         tables: dict[type[Definition[Any]], dict[str, Definition[Any]]] = {}
         for definition in definitions:
@@ -133,32 +136,34 @@ class Context(Generic[F]):
     def extended_with(self, *definitions: Definition[Any]) -> Context[F]:
         """This scope, plus definitions of your own.
 
-        A name already filed under the same kind is taken over by what is
-        passed here, which is how a reader substitutes its own reading of a
-        codec the package already defines -- or of raw bits, by defining
-        `r*`.
+        A definition passed here replaces any definition already filed
+        under the same kind and name. This is how a reader substitutes its
+        own reading of a codec the package already defines, or of raw bits
+        (by defining `r*`).
         """
         return Context.of(*self.definitions(), *definitions)
 
     def definitions(self) -> tuple[Definition[Any], ...]:
-        """Every definition in scope, kind by kind."""
+        """Every definition in scope, grouped by kind."""
         return tuple(entry for table in self.tables.values() for entry in table.values())
 
     def __repr__(self) -> str:
-        # Short, as a default argument shows it: in full, a scope's repr is
-        # every definition's, and `help` of a validator runs to pages.
+        # Keep this short, because it appears in signatures as a default
+        # argument. A full repr would list every definition, and `help` on a
+        # validator would run to pages.
         return f"Context(<{len(self.definitions())} definitions>)"
 
     def __reduce__(self) -> tuple[Callable[..., Context], tuple[Definition[Any], ...]]:
-        # A scope is its definitions, so it pickles as them, and goes to
-        # another process with the documents it is to read there.
+        # A scope is defined by its definitions, so pickle it as them. This
+        # lets a scope go to another process along with the documents it
+        # will read there.
         return (Context.of, self.definitions())
 
     def __copy__(self) -> Context:
         return self
 
     def __deepcopy__(self, memo: dict[int, object]) -> Context:
-        # A scope never changes, so a copy of it is itself.
+        # A scope is immutable, so a copy can be the same object.
         return self
 
     def __eq__(self, other: object) -> bool:
@@ -170,7 +175,7 @@ class Context(Generic[F]):
         return hash(self._filed())
 
     def _filed(self) -> frozenset[tuple[type[Definition[Any]], str, Definition[Any]]]:
-        """Every definition in scope with the kind and name it is filed under: what two scopes are compared by."""
+        """Every definition in scope with the kind and name it is filed under. Scopes are compared by this set."""
         return frozenset(
             (kind, name, definition)
             for kind, table in self.tables.items()
@@ -178,21 +183,21 @@ class Context(Generic[F]):
         )
 
     def disagreements(self, claims: Claims) -> Disagreements:
-        """Where this scope reads `claims`, a reading's, otherwise: what it would gain, and what it conflicts with, as `Disagreements` says.
+        """The places where this scope reads `claims` (a reading's claims) differently: the names it would gain and the names it conflicts with, as described by `Disagreements`.
 
-        A claim is keyed by the name its definition is filed under -- raw
-        bits under `r*` -- so it is looked up as filed, not as a document
-        writes it.
+        A claim is keyed by the name its definition is filed under (raw
+        bits under `r*`), so it is looked up by the filed name, not by the
+        name a document uses.
         """
         return disagreements_of(lambda kind, name: self.tables.get(kind, {}).get(name), claims)
 
     @classmethod
     def joined(cls, *contexts: Context[F]) -> Context[F]:
-        """The least scope that files everything each of `contexts` files: their join.
+        """The smallest scope that files everything each of `contexts` files (their join).
 
-        `ScopeConflictError` when two of them file different definitions
-        under one name of one kind; `extended_with` is for taking a name
-        over on purpose.
+        Raises `ScopeConflictError` when two of them file different
+        definitions under the same kind and name. To replace a definition
+        on purpose, use `extended_with`.
         """
         filed: dict[tuple[type[Definition[Any]], str], Definition[Any]] = {}
         conflicts: list[Conflict] = []
@@ -209,10 +214,11 @@ class Context(Generic[F]):
         return cls.of(*filed.values())
 
     def claimant(self, kind: type[D], name: str) -> D | None:
-        """The definition of `kind` in scope that reads `name`, a name a document writes; None if none does.
+        """The definition of `kind` in scope that reads `name` (a name as a document uses it), or None if there is none.
 
-        The one filed under the name `filed_under` reads it as: itself, but
-        for raw bits, `r16` read by the definition of `r*`.
+        This is the definition filed under the name that `filed_under`
+        maps `name` to. That is `name` itself, except for raw bits, where
+        `r16` is read by the definition of `r*`.
         """
         asked = as_kind(kind)
         filed, _ = filed_under(asked, name)
@@ -222,18 +228,18 @@ class Context(Generic[F]):
 
 
 ZarrV3Context: TypeAlias = Context[Literal[3]]
-"""A scope that reads Zarr v3 documents: what every v3 reader takes."""
+"""A scope that reads Zarr v3 documents. Every v3 reader takes this type."""
 ZarrV2Context: TypeAlias = Context[Literal[2]]
-"""A scope that reads Zarr v2 documents: what every v2 reader takes."""
+"""A scope that reads Zarr v2 documents. Every v2 reader takes this type."""
 
 
 def is_scope(value: object) -> TypeGuard[Context[Any]]:
-    """Whether `value` is a scope, of whatever format."""
+    """Whether `value` is a scope, of any format."""
     return isinstance(value, Context)
 
 
 def scoped(context: Context[F] | None, default: Context[F]) -> Context[F]:
-    """The scope a reader of `default`'s format reads in: `context`, or `default` when none is given; `TypeError` for a scope of the other format."""
+    """The scope for a reader of `default`'s format: `context`, or `default` when `context` is None. Raises `TypeError` for a scope of the other format."""
     if context is None:
         return default
     if context.format is not None and context.format != default.format:
@@ -284,13 +290,13 @@ _EXTENSIONS: Final[tuple[Definition[Any], ...]] = (
     STRUCT_DATA_TYPE,
     RECTILINEAR_CHUNK_GRID,
 )
-"""What `zarr-extensions` registers and this package defines."""
+"""The extensions that `zarr-extensions` registers and this package defines."""
 
 CORE: Final[ZarrV3Context] = Context.of(*_CORE)
-"""Only what the Zarr v3 specification defines."""
+"""A scope with only what the Zarr v3 specification defines."""
 
 CORE_AND_EXTENSIONS: Final[ZarrV3Context] = Context.of(*_CORE, *_EXTENSIONS)
-"""What the specification defines, plus what `zarr-extensions` registers."""
+"""A scope with what the specification defines, plus what `zarr-extensions` registers."""
 
 __all__ = [
     "CORE",

@@ -1,7 +1,8 @@
-"""How long reading a metadata document takes, on documents as zarr-python writes them.
+"""Time how long it takes to read a metadata document written by zarr-python.
 
-Three documents, each as `zarr==3.4.1` wrote it and round-tripped through
-`json.dumps`/`json.loads`, so each holds what a store would hand a reader:
+There are three documents. Each was written by `zarr==3.4.1` and
+round-tripped through `json.dumps`/`json.loads`, so each holds what a
+reader would receive from a store:
 
 - a v3 array, `zarr.create_array(store, shape=(100, 100), chunks=(10, 10),
   dtype="f8", zarr_format=3)`;
@@ -13,10 +14,11 @@ Run from the package directory:
 
     PYTHONHASHSEED=0 uv run --group test python -m tests.benchmarks.read_documents
 
-Each case is timed with `timeit`, the best of ten repeats, as a mean per
-read in microseconds. `--profile` prints a cProfile of the v3 array
-read instead, by cumulative time. `test_read_documents.py` runs each
-case once, so the script keeps working as the package changes.
+Each case is timed with `timeit`. The script reports the best of ten
+repeats, as the mean time per read in microseconds. `--profile` instead
+prints a cProfile of the v3 array read, sorted by cumulative time.
+`test_read_documents.py` runs each case once, so the script keeps
+working as the package changes.
 """
 
 from __future__ import annotations
@@ -122,7 +124,7 @@ def main() -> None:
         pstats.Stats(profiler).sort_stats("cumulative").print_stats(45)
         return
     for name, read, number in CASES:
-        read()  # compile the checkers and warm every cache, as a process reading many documents has
+        read()  # compile the checkers and warm every cache, as after reading many documents
         best = min(timeit.repeat(read, number=number, repeat=arguments.repeat))
         print(f"{name}: {best / number * 1e6:.1f} us")
 

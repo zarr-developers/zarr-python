@@ -33,9 +33,10 @@ class ScaleOffsetCodecConfiguration(TypedDict, closed=True):
 
     Both fields are optional. A missing `offset` is the additive identity
     (e.g. 0 for numeric types); a missing `scale` is the multiplicative
-    identity (e.g. 1). Each scalar is a fill value of the data type the
-    codec is handed: an integer for an integer type, and for a float type
-    a number, `"NaN"`, `"Infinity"`, `"-Infinity"` or a hex string.
+    identity (e.g. 1). Each scalar is encoded as a fill value of the input
+    data type of the codec: an integer for an integer type, and for a
+    float type a number, `"NaN"`, `"Infinity"`, `"-Infinity"` or a hex
+    string.
     """
 
     offset: NotRequired[JSONValue]
@@ -68,12 +69,12 @@ form is permitted in addition to the object form.
 def _rules(
     configuration: ScaleOffsetCodecConfiguration, nested: Nested
 ) -> Iterator[ValidationProblem]:
-    """Neither scalar is null.
+    """Check that neither scalar is null.
 
-    The registry says each is "JSON-encoded per the input array's
-    fill-value rules", and no data type admits `null` as a fill value.
-    Which scalar it must be needs the data type the codec is handed: a
-    chunk rule.
+    The registry says each scalar is "JSON-encoded per the input array's
+    fill-value rules", and no data type accepts `null` as a fill value.
+    Checking which scalars are valid requires the input data type of the
+    codec, so a chunk rule does that.
     """
     if "offset" in configuration and configuration["offset"] is None:
         yield ValidationProblem(("offset",), "expected a scalar, got null", "invalid_value")
@@ -84,7 +85,7 @@ def _rules(
 def _chunk_rules(
     configuration: ScaleOffsetCodecConfiguration, nested: Nested, chunk: Chunk
 ) -> Iterator[ValidationProblem]:
-    """It is handed a data type with arithmetic, and `offset` and `scale` are values of it.
+    """Check that the input data type supports arithmetic, and that `offset` and `scale` are values of that type.
 
     The codec "is only defined for data types where multiplication,
     division, addition, and subtraction are well-defined"
@@ -92,7 +93,7 @@ def _chunk_rules(
     and each of `offset` and `scale` "MUST be encoded to JSON using the
     Zarr V3 fill value encoding for the input array's data type"
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md?plain=1#L39-L43).
-    A null is the rules' to refuse.
+    The rules, not the chunk rules, reject a null.
     """
     source = chunk.data_type
     if not isinstance(source, AcceptedField):
@@ -113,12 +114,12 @@ def _chunk_rules(
 def _transition(
     configuration: ScaleOffsetCodecConfiguration, nested: Nested, chunk: Chunk
 ) -> Chunk:
-    """The chunk as it is handed: the values change, not their shape or data type.
+    """Return the input chunk unchanged: the values change, but their shape and data type do not.
 
     Its arithmetic is "performed using the arithmetic semantics of the
     input array's data type"
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md?plain=1#L47),
-    and a narrower data type is a codec after it to make
+    and a later codec must produce any narrower data type
     (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/codecs/scale_offset/README.md?plain=1#L153).
     """
     return chunk

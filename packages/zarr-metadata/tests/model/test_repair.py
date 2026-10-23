@@ -1,4 +1,4 @@
-"""Repairing v3 metadata a known writer bug made invalid, before a strict read."""
+"""Tests for repairing v3 metadata that a known writer bug made invalid, before a strict read."""
 
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ NULL_CONSOLIDATED = {**GROUP, "consolidated_metadata": None}
                 ),
             ],
         ),
-        # No writer's bug: left for the strict read to judge.
+        # Not a known writer bug: left for the strict read to check.
         (ARRAY, ARRAY, []),
         ({**ARRAY, "chunk_grid": _grid(3, 0)}, {**ARRAY, "chunk_grid": _grid(3, 0)}, []),
         ({**ARRAY, "chunk_grid": _grid(0)}, {**ARRAY, "chunk_grid": _grid(0)}, []),
@@ -97,7 +97,7 @@ NULL_CONSOLIDATED = {**GROUP, "consolidated_metadata": None}
 def test_repair_undoes_each_known_writer_bug(
     value: object, repaired: object, repairs: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
-    """Each known writer bug in a document, its consolidated documents' too, is undone and said where; anything else is left as it is, for the strict read to report, and the document handed in is not changed."""
+    """Each known writer bug in a document, including in its consolidated documents, is undone, and each repair reports its location. Anything else is left unchanged for the strict read to report. The input document is not modified."""
     before = copy.deepcopy(value)
     document, made = repair_node_metadata_v3(value)
     assert document == repaired
@@ -117,7 +117,7 @@ def test_repair_undoes_each_known_writer_bug(
     ids=["zero-chunk", "null-consolidated", "valid"],
 )
 def test_read_repaired_reads_what_the_strict_read_refuses(value: object, model: object) -> None:
-    """A document a writer bug made invalid is refused by `read_node_metadata_v3` and read by `read_repaired_node_metadata_v3`, as the strict read reads the repaired document; a valid one reads the same either way."""
+    """A document made invalid by a writer bug is refused by `read_node_metadata_v3`. `read_repaired_node_metadata_v3` reads it, with the same result as a strict read of the repaired document. A valid document reads the same either way."""
     repaired = read_repaired_node_metadata_v3(value)
     assert repaired.reading.problems == ()
     assert repaired.reading.metadata == model
@@ -125,7 +125,7 @@ def test_read_repaired_reads_what_the_strict_read_refuses(value: object, model: 
 
 
 def test_read_repaired_reports_what_no_repair_applies_to() -> None:
-    """A problem no repair undoes is reported as the strict read reports it, beside the repairs that were made."""
+    """A problem that no repair fixes is reported the same way the strict read reports it, alongside the repairs that were made."""
     value = {key: item for key, item in ZERO_CHUNK.items() if key != "data_type"}
     repaired = read_repaired_node_metadata_v3(value)
     assert [repair.kind for repair in repaired.repairs] == ["zero_chunk_length"]
@@ -197,7 +197,7 @@ ZMETADATA_CLEAN: dict[str, Any] = {
 def test_repair_v2_undoes_the_consolidated_metadata_zarr_3_writes_into_a_zgroup_entry(
     value: object, repaired: object, repairs: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
-    """zarr-python 3.x writes a `consolidated_metadata` member into each non-root `.zgroup` entry of a `.zmetadata`, which the v2 group document does not take; `repair_consolidated_metadata_v2` removes it and says where; anything else is left as it is, and the document handed in is not changed."""
+    """zarr-python 3.x writes a `consolidated_metadata` member into each non-root `.zgroup` entry of a `.zmetadata`, but the v2 group document does not allow that member. `repair_consolidated_metadata_v2` removes it and reports its location. Anything else is left unchanged, and the input document is not modified."""
     before = copy.deepcopy(value)
     document, made = repair_consolidated_metadata_v2(value)
     assert document == repaired
@@ -208,7 +208,7 @@ def test_repair_v2_undoes_the_consolidated_metadata_zarr_3_writes_into_a_zgroup_
 
 
 def test_read_repaired_consolidated_v2_reads_what_the_strict_read_refuses() -> None:
-    """The strict `ZarrV2ConsolidatedMetadata` refuses the zarr-python 3.x `.zmetadata` at the entry's member; `read_repaired_consolidated_metadata_v2` reads the repaired document, holds its model, and lists the repairs."""
+    """The strict `ZarrV2ConsolidatedMetadata` refuses the `.zmetadata` that zarr-python 3.x writes, reporting the problem at the entry's member. `read_repaired_consolidated_metadata_v2` reads the repaired document, holds its model, and lists the repairs."""
     with pytest.raises(MetadataValidationError) as raised:
         ZarrV2ConsolidatedMetadata(ZMETADATA_FROM_ZARR3)
     assert [p.loc for p in raised.value.problems] == [

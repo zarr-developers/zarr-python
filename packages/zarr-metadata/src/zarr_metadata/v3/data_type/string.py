@@ -24,11 +24,11 @@ STRING_DATA_TYPE: Final = DataTypeDefinition(
     fill_value=StringFillValue,
     storage=variable_length,
 )
-"""The `string` data type: a bare name, with nothing to configure.
+"""The `string` data type. It is written as a bare name and has no configuration.
 
 Its values are "variable-length UTF8 strings"
 (https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902f6d3de3eaef0e0febae6/data-types/string/README.md?plain=1#L3),
-each stored in as many bytes as it needs.
+and each value is stored in as many bytes as it needs.
 """
 
 
