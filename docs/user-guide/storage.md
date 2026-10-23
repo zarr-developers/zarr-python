@@ -116,8 +116,8 @@ later sub-URL names an *adapter* that reinterprets everything to its left (e.g.
 [custom URL pipeline adapters](extending.md#custom-url-pipeline-adapters).
 
 Parse a pipeline with [`URLPipeline.from_url`][zarr.storage.URLPipeline.from_url] and
-pass it to any function that accepts a `StoreLike`. This is the only way a string is
-read as a pipeline: a plain string store specification keeps its existing meaning, so a
+pass it to any function that accepts a `StoreLike`. At present, this is the only way a string is
+read as a pipeline: a plain string store specification currently maintains its existing meaning, so a
 local path containing `|` still names a directory.
 
 ```python exec="true" session="storage" source="above" result="ansi"
@@ -132,8 +132,7 @@ A trailing `zarr2:` or `zarr3:` *format segment* selects the zarr format,
 and its body (`zarr3:path/to/node`) is the node path; `zarr:` gives a node path and
 detects the format. A conflicting `zarr_format` argument raises `ValueError`, including
 the default `zarr_format=3` of `zarr.create_array`, `Group.open`, `Group.from_store` and
-`Array.open`; pass the matching format, or use
-`zarr.open_group` / `zarr.open_array`, which follow the pipeline.
+`Array.open`.
 
 The root sub-URL must carry a scheme, so a local path is spelled as an absolute `file:`
 URL (`file:/data/x.zarr`, with at most a `localhost` authority). Every `memory:` root
@@ -147,6 +146,9 @@ Windows. No percent-escape is decoded anywhere in a pipeline. Other roots, such 
 see them. When a pipeline may come from an untrusted source, keep credentials out of
 `storage_options` unless you trust every installed adapter, and don't accept `memory:`
 roots in a process that serves several users: the in-memory store is process-wide.
+
+For complex store configurations, explicit store creation, as described below, may be
+required.
 
 ## Explicit Store Creation
 

@@ -521,7 +521,7 @@ def get_chunk_key_encoding_class(key: str) -> type[ChunkKeyEncoding]:
     return _chunk_key_encoding_registry[key]
 
 
-# An RFC 3986 URL scheme (ASCII only), e.g. "s3" or "earthmover.myscheme".
+# An RFC 3986 URL scheme (ASCII only), e.g. "s3" or "foo.myscheme".
 # Use with fullmatch.
 _URL_SCHEME_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9+.\-]*")
 
