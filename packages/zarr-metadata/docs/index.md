@@ -254,10 +254,9 @@ extension point is described as a field as its scope reads it: a claimed
 configuration follows its definition's TypedDict, including bounds, and a
 name that nothing in the scope claims may have any configuration. The fill
 value must be a valid fill value for the data type the document names.
-`field_json_schema(kind, context)`, in `zarr_metadata.v3.definition`,
-writes the schema of one field, and `json_schema`, in
-`zarr_metadata.typed_json`, writes the schema of any TypedDict as `check`
-reads it. A schema describes each member on its own, not the rules that
+`field_json_schema(kind, context)` writes the schema of one field, and
+`json_schema` writes the schema of any TypedDict as `check` reads it. All
+three are in `zarr_metadata.json_schema`. A schema describes each member on its own, not the rules that
 relate members to each other, so a document the schema accepts may still
 have a problem. Every JSON document the validators accept, the schema also
 accepts. A schema validator reads JSON as a parser produces it, with
@@ -266,7 +265,7 @@ validator does not accept as arrays.
 
 ```python
 import json
-from zarr_metadata.model import node_metadata_json_schema_v3
+from zarr_metadata.json_schema import node_metadata_json_schema_v3
 
 with open("zarr.schema.json", "w") as f:
     json.dump(node_metadata_json_schema_v3(), f, indent=2)

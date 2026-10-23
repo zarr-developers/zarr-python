@@ -6,16 +6,16 @@ title: API reference
 
 The package is organized to mirror the structure of the Zarr specifications:
 
+- [`zarr_metadata.json_schema`](json_schema.md) — JSON Schema output for
+  any `TypedDict`, one v3 field, or a whole v3 `zarr.json`
 - [`zarr_metadata.model`](model.md) — document models (each one a
   document and the scope it was read in), readers, validators,
-  loc-aware parsers, a `zarr.json`'s JSON Schema, and the `UNSET`
-  sentinel
+  loc-aware parsers, and the `UNSET` sentinel
 - [`zarr_metadata.pydantic`](pydantic.md) — optional Pydantic field types
   over the models
 - [`zarr_metadata.typed_json`](typed_json.md) — `check`, which type-checks
   a JSON value against any of the package's `TypedDict`s, read as the
-  typing spec defines them, with every problem located, and
-  `json_schema`, which writes what `check` reads as a JSON Schema
+  typing spec defines them, with every problem located
 - [`zarr_metadata.v2`](v2.md) — `TypedDict` shapes for Zarr v2 documents
   (`.zarray`, `.zgroup`, `.zattrs`, `.zmetadata`), and
   `zarr_metadata.v2.definition`: the v2 dtypes and numcodecs codecs as

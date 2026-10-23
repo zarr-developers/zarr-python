@@ -84,21 +84,8 @@ document writes `r` followed by the size in bits, and `r16` is read as
 `r*`. `r*` itself is notation, and a document that uses it as a name
 refers to nothing in any scope.
 
-**JSON Schema.** `node_metadata_json_schema_v3`, in `zarr_metadata.model`,
-writes a whole `zarr.json` as a JSON Schema (draft 2020-12), for a
-validator in another language or for an editor. Its fields are written
-as the scope reads them. For each definition, the schema accepts its
-field (its name, its configuration as its TypedDict declares it,
-including bounds, a `must_understand` of `true`, and its bare name when
-it needs no configuration). It also accepts a name that nothing in scope
-claims, with any configuration. A nested field is written in the same
-scope, and a member that accepts only codecs of static size accepts
-only those. The rules are not in the schema, so a field it accepts may
-still have a problem. Any field that `resolve` reads without a problem
-is accepted by the schema, as JSON (arrays as lists, as a parser
-returns them). Each configuration TypedDict and each field alias is
-written once, in `$defs`, under its name. The fill value must match its
-data type's fill value schema.
+**JSON Schema.** `zarr_metadata.json_schema` writes a v3 field, or a whole
+`zarr.json`, as a JSON Schema.
 """
 
 from zarr_metadata.definition._context import ZarrV3Context
@@ -122,7 +109,6 @@ from zarr_metadata.v3._definition import (
     Lengths,
     StorageClass,
     StorageTransformerDefinition,
-    field_json_schema,
     storage_of,
 )
 from zarr_metadata.v3._pipeline import Stage
@@ -148,6 +134,5 @@ __all__ = [
     "ZarrV3DataTypeField",
     "ZarrV3StaticCodecField",
     "ZarrV3StorageTransformerField",
-    "field_json_schema",
     "storage_of",
 ]

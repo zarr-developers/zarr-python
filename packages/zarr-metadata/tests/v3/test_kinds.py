@@ -28,10 +28,8 @@ from zarr_metadata.definition._definition import (
     kind_of,
 )
 from zarr_metadata.definition._scope import kind_name
-from zarr_metadata.v3._definition import (
-    DataTypeDefinition,
-    field_json_schema,
-)
+from zarr_metadata.json_schema import field_json_schema
+from zarr_metadata.v3._definition import DataTypeDefinition
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import CodecDefinition
 

@@ -9,6 +9,7 @@ import pytest
 
 import zarr_metadata.model as zm
 from zarr_metadata.definition import Context
+from zarr_metadata.json_schema import node_metadata_json_schema_v3
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
 )
@@ -122,8 +123,8 @@ def test_every_entry_point_reads_in_the_scope_it_is_given(read: Callable[..., ob
 
 def test_the_json_schema_is_written_in_the_scope_it_is_given() -> None:
     """`node_metadata_json_schema_v3` takes `None` for the default scope, and writes a different schema for an empty one."""
-    assert zm.node_metadata_json_schema_v3(context=None) == zm.node_metadata_json_schema_v3()
-    assert zm.node_metadata_json_schema_v3(context=EMPTY) != zm.node_metadata_json_schema_v3()
+    assert node_metadata_json_schema_v3(context=None) == node_metadata_json_schema_v3()
+    assert node_metadata_json_schema_v3(context=EMPTY) != node_metadata_json_schema_v3()
 
 
 @pytest.mark.parametrize("read", ENTRY_POINTS.values(), ids=ENTRY_POINTS.keys())

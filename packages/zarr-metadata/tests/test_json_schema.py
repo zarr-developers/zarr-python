@@ -29,17 +29,13 @@ from zarr_metadata.definition import (
     Definition,
     resolve,
 )
-from zarr_metadata.model import (
-    node_metadata_json_schema_v3,
-    validate_node_metadata_v3,
-)
-from zarr_metadata.typed_json import (
-    check,
-    json_schema,
-)
-from zarr_metadata.v3._definition import (
+from zarr_metadata.json_schema import (
     field_json_schema,
+    json_schema,
+    node_metadata_json_schema_v3,
 )
+from zarr_metadata.model import validate_node_metadata_v3
+from zarr_metadata.typed_json import check
 from zarr_metadata.v3.codec.gzip import GzipCodecConfiguration
 from zarr_metadata.v3.definition import (
     CORE,

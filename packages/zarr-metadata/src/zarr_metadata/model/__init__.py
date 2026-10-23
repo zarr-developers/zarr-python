@@ -19,8 +19,8 @@ it read, the problems, and the model when there are no problems. To read
 a store that another writer made with a known writer bug, use
 `read_repaired_node_metadata_v3`. It undoes each bug with
 `repair_node_metadata_v3` before the strict read, and reports what it
-changed. `node_metadata_json_schema_v3` returns a JSON Schema of what
-the v3 validators read, except for the rules. The model constructors
+changed. `zarr_metadata.json_schema` writes a JSON Schema of what the v3
+validators read, except for the rules. The model constructors
 `from_json` and `from_key_value` raise `MetadataValidationError` for
 every ingestion failure, including missing store keys and undecodable
 bytes. The v3 constructors take the same `context`. A v3 model is its
@@ -88,7 +88,6 @@ from zarr_metadata.model._group_v3 import (
     validate_group_metadata_v3,
     validate_node_metadata_v3,
 )
-from zarr_metadata.model._json_schema import node_metadata_json_schema_v3
 from zarr_metadata.model._repair import (
     Repair,
     RepairKind,
@@ -192,7 +191,6 @@ __all__ = [
     "is_node_path_v3",
     "node_metadata_from_json_v3",
     "node_metadata_from_key_value_v3",
-    "node_metadata_json_schema_v3",
     "parse_array_metadata_v2",
     "parse_array_metadata_v3",
     "parse_group_metadata_v2",

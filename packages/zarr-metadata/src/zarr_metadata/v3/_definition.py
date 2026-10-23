@@ -29,25 +29,21 @@ from typing import (
 from typing_extensions import TypeAliasType
 
 from zarr_metadata._json import ValidationProblem, is_tuple, with_input
-from zarr_metadata._typed_json import JSONSchema, Loc, SchemaLeaf, Schemas, is_alias, problem
+from zarr_metadata._typed_json import Loc, problem
 from zarr_metadata.definition._definition import (
     AcceptedField,
     C,
     Definition,
-    EmptyConfiguration,
     Nested,
     Problems,
     ResolvedField,
     WithFillValue,
-    as_kind,
     asked,
-    field_kind,
     is_field,
     no_rules,
     read_only,
     ruled,
 )
-from zarr_metadata.definition._envelope import EXTENSION_NAME_SCHEMA_PATTERN
 from zarr_metadata.v3._common import (
     ZarrV3ChunkGridField,
     ZarrV3ChunkKeyEncodingField,
@@ -59,7 +55,6 @@ from zarr_metadata.v3._common import (
 
 if TYPE_CHECKING:
     from zarr_metadata._common import JSONValue
-    from zarr_metadata.definition._context import Context
 
 
 def unknown_lengths(configuration: object, nested: object, shape: tuple[int, ...]) -> Lengths:
@@ -334,7 +329,7 @@ class CodecDefinition(Definition[C], kind=True, format=3):
         cls, alias: TypeAliasType, definition: Definition[Any], loc: Loc
     ) -> Problems:
         """A codec of dynamic size in a member annotated with `ZarrV3StaticCodecField`, which admits only codecs of static size, is a problem at the field."""
-        if alias not in _STATIC_SIZE:
+        if alias not in STATIC_SIZE_ALIASES:
             return ()
         if cast("CodecDefinition[Any]", definition).size == "static":
             return ()
@@ -364,131 +359,8 @@ KINDS: Final[tuple[type[Definition[Any]], ...]] = (
 """The kinds of metadata in a document. A scope files each kind separately."""
 
 
-_STATIC_SIZE: Final[frozenset[TypeAliasType]] = frozenset({ZarrV3StaticCodecField})
+STATIC_SIZE_ALIASES: Final[frozenset[TypeAliasType]] = frozenset({ZarrV3StaticCodecField})
 """The field aliases whose codec must be of static size."""
-
-
-def kind_field(kind: type[Definition[Any]]) -> object:
-    """The field alias for a member that holds any field of `kind`: the first alias the kind declares that does not restrict the field. For example, `ZarrV3CodecField` instead of `ZarrV3StaticCodecField`."""
-    return next(alias for alias in kind.field_aliases if alias not in _STATIC_SIZE)
-
-
-_RAW_BYTES_SCHEMA_PATTERN: Final = f"^{RAW_BYTES_NAME_PATTERN.pattern}(?![\\s\\S])"
-"""`RAW_BYTES_NAME_PATTERN`, matched against the whole name, as a JSON Schema pattern.
-
-A lookahead for "no character at all" anchors the match to the end of
-the name. A `$` would also match before a final newline in a validator
-that matches patterns the way Python does, so `"r16\\n"`, which is not a
-valid name, would be read as raw bits.
-"""
-
-
-def field_json_schema(kind: type[Definition[Any]], context: Context) -> JSONSchema:
-    """The JSON Schema of one metadata field read as `kind` in `context`: everything `resolve` checks, except the rules.
-
-    The schema accepts a field that one of the definitions in scope reads
-    (its name, its configuration as the TypedDict declares it, an optional
-    `must_understand` of `true`, and its bare name when it needs no
-    configuration). It also accepts a name that no definition claims, with
-    any configuration, which is what keeps the format open. A field inside
-    a configuration is written the same way, in the same scope, and a
-    member that accepts only codecs of static size accepts only those. The
-    output is JSON Schema draft 2020-12, as `json_schema` writes it. The
-    nested fields and the configuration of each definition are in
-    `$defs`, under the name of the field alias or TypedDict. Constraints
-    that only a rule enforces (a blosc `typesize` checked against its
-    `shuffle`) are not in the schema, so a field it accepts may still have
-    a problem.
-    """
-    asked = as_kind(kind)
-    if not any(issubclass(asked, known) for known in KINDS):
-        msg = (
-            f"{asked.__name__} is a kind of another format; the JSON Schema writer writes "
-            "Zarr v3 fields only"
-        )
-        raise TypeError(msg)
-    schemas = Schemas(field_schemas(context))
-    return schemas.document(schemas.of(kind_field(asked)))
-
-
-def field_schemas(context: Context) -> SchemaLeaf:
-    """The schema leaf that `field_json_schema` uses. It writes each field alias as a field of its kind, as `context` reads it."""
-
-    def leaf(annotation: object, schemas: Schemas) -> JSONSchema | None:
-        kind = field_kind(annotation)
-        if kind is None or not is_alias(annotation):
-            return None
-        alias = annotation
-        static = annotation in _STATIC_SIZE
-        return schemas.defined(
-            alias, alias.__name__, lambda: _field_schema(kind, static, context, schemas)
-        )
-
-    return leaf
-
-
-def _field_schema(
-    kind: type[Definition[Any]], static: bool, context: Context, schemas: Schemas
-) -> JSONSchema:
-    """The schema of a field of `kind` as `context` reads it: a field that a definition in scope reads, or a field that none of them claims."""
-    table = context.tables.get(kind, {})
-    branches: list[JSONValue] = []
-    for definition in table.values():
-        if static and cast("CodecDefinition[Any]", definition).size != "static":
-            continue
-        branches.extend(_read_by(definition, schemas))
-    branches.extend(_unclaimed(table))
-    return {"anyOf": branches}
-
-
-def written_name(definition: Definition[Any]) -> JSONSchema:
-    """The JSON Schema of the names a document may use for `definition`: its name, or `r` followed by a size for raw bits."""
-    if isinstance(definition, DataTypeDefinition) and definition.name == RAW_BYTES_NAME:
-        return {"type": "string", "pattern": _RAW_BYTES_SCHEMA_PATTERN}
-    return {"const": definition.name}
-
-
-def _read_by(definition: Definition[Any], schemas: Schemas) -> list[JSONValue]:
-    """The schemas of the fields `definition` reads: an object with its name and configuration, and its bare name when it needs no configuration.
-
-    The raw bits name encodes the configuration, so the configuration
-    written next to it must be empty.
-    """
-    carried = isinstance(definition, DataTypeDefinition) and definition.name == RAW_BYTES_NAME
-    name = written_name(definition)
-    bare = carried or not definition.requires_configuration
-    envelope: JSONSchema = {
-        "type": "object",
-        "properties": {
-            "name": name,
-            "configuration": schemas.of(
-                EmptyConfiguration if carried else definition.configuration
-            ),
-            "must_understand": {"const": True},
-        },
-        "required": ["name"] if bare else ["name", "configuration"],
-        "additionalProperties": False,
-    }
-    return [name, envelope] if bare else [envelope]
-
-
-def _unclaimed(table: Mapping[str, Definition[Any]]) -> list[JSONValue]:
-    """The schemas of the fields that no definition in `table` claims: a name that none of them uses, either bare or with any configuration."""
-    claimed: list[JSONValue] = [written_name(definition) for definition in table.values()]
-    name: JSONSchema = {"type": "string", "pattern": EXTENSION_NAME_SCHEMA_PATTERN}
-    if len(claimed) != 0:
-        name["not"] = {"anyOf": claimed}
-    envelope: JSONSchema = {
-        "type": "object",
-        "properties": {
-            "name": name,
-            "configuration": {"type": "object"},
-            "must_understand": {"const": True},
-        },
-        "required": ["name"],
-        "additionalProperties": False,
-    }
-    return [name, envelope]
 
 
 Lengths: TypeAlias = tuple[frozenset[int] | None, ...]
@@ -632,6 +504,7 @@ __all__ = [
     "KINDS",
     "RAW_BYTES_NAME",
     "RAW_BYTES_NAME_PATTERN",
+    "STATIC_SIZE_ALIASES",
     "Chunk",
     "ChunkGridDefinition",
     "ChunkKeyEncodingDefinition",
@@ -643,8 +516,6 @@ __all__ = [
     "StorageClass",
     "StorageTransformerDefinition",
     "chunk_grid_lengths",
-    "field_json_schema",
-    "field_schemas",
     "multi_byte",
     "no_pipelines",
     "single_byte",
@@ -653,5 +524,4 @@ __all__ = [
     "unknown_lengths",
     "unknown_storage",
     "variable_length",
-    "written_name",
 ]
