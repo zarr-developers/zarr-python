@@ -268,7 +268,7 @@ extension point is described as a field as its scope reads it: a claimed
 configuration follows its definition's TypedDict, including bounds, and a
 name that nothing in the scope claims may have any configuration. The fill
 value must be a valid fill value for the data type the document names.
-`field_json_schema_v3(kind, context=None)` writes the schema of one field, and
+`field_json_schema_v3(kind, *, context=None)` writes the schema of one field, and
 `json_schema` writes the schema of any TypedDict as `check` reads it. All
 three are in `zarr_metadata.json_schema`. A schema describes each member on its own, not the rules that
 relate members to each other, so a document the schema accepts may still

@@ -10,6 +10,8 @@ title: v3
 
 ::: zarr_metadata.v3.ZarrV3NamedConfigJSON
 
+::: zarr_metadata.v3.ZarrV3ExtensionField
+
 ::: zarr_metadata.v3.NodeName
 
 ::: zarr_metadata.v3.NodePath
