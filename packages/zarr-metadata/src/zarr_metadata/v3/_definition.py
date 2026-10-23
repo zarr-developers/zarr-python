@@ -304,6 +304,18 @@ class Definition(Generic[C]):
         """The location of the name of a field at `loc` that is written as an object: under `name` for v3."""
         return (*loc, "name")
 
+    @classmethod
+    def alias_problems(
+        cls, alias: TypeAliasType, definition: Definition[Any], loc: Loc
+    ) -> Problems:
+        """The problems with using `definition` in a member annotated with `alias`, one of this kind's `field_aliases`. Empty by default.
+
+        A kind with an alias that admits only some of its definitions
+        overrides this. For example, `ZarrV3StaticCodecField` admits only
+        codecs of static size.
+        """
+        return ()
+
     def __init_subclass__(
         cls, *, kind: bool = False, format: Literal[2, 3] | None = None, **kwargs: object
     ) -> None:
@@ -687,6 +699,22 @@ class CodecDefinition(Definition[C], kind=True, format=3):
                 return f"{self.name!r}: {member}, which no codec of kind {kind!r} is asked"
         return None
 
+    @classmethod
+    def alias_problems(
+        cls, alias: TypeAliasType, definition: Definition[Any], loc: Loc
+    ) -> Problems:
+        """A codec of dynamic size in a member annotated with `ZarrV3StaticCodecField`, which admits only codecs of static size, is a problem at the field."""
+        if alias not in _STATIC_SIZE:
+            return ()
+        if cast("CodecDefinition[Any]", definition).size == "static":
+            return ()
+        return problem(
+            loc,
+            f"{definition.name!r} is a codec of dynamic size, and only codecs of static size "
+            "may be used here",
+            "invalid_value",
+        )
+
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class StorageTransformerDefinition(Definition[C], kind=True, format=3):
@@ -756,10 +784,9 @@ def as_kind(kind: object) -> type[Definition[Any]]:
         found = None
     if found is not None:
         return found
-    names = ", ".join(known.__name__ for known in KINDS)
     msg = (
-        f"{kind!r} is not a kind of metadata; read a field as one of {names}, or as a "
-        "subclass of Definition declared with kind=True and its format"
+        f"{kind!r} is not a kind of metadata; read a field as a kind, such as a format's "
+        "CodecDefinition, or a subclass of Definition declared with kind=True and its format"
     )
     raise TypeError(msg)
 
@@ -797,7 +824,7 @@ class _NestedField:
     loc: Loc
     kind: type[Definition[Any]]
     json: JSONValue
-    static: bool
+    alias: TypeAliasType
     """Whether the member that holds it accepts only codecs of static size."""
 
 
@@ -809,15 +836,15 @@ def _field(annotation: object) -> Parser | None:
     checks the envelope and maps the name to a definition.
     """
     kind = field_kind(annotation)
-    if kind is None:
+    if kind is None or not is_alias(annotation):
         return None
-    static = annotation in _STATIC_SIZE
+    alias = annotation
 
     def parse(value: object, loc: Loc) -> Parsed:
         # The value is refined JSON, which the checker types only as
         # `object`. If it is not a field at all, the kind's envelope check
         # reports that.
-        return _NestedField(loc, kind, cast("JSONValue", value), static), ()
+        return _NestedField(loc, kind, cast("JSONValue", value), alias), ()
 
     return parse
 
@@ -2033,22 +2060,15 @@ def _read_carried(
 
 
 def _sized(field: _NestedField, inner: ResolvedField[Any]) -> Problems:
-    """Report a codec of dynamic size in a member that accepts only codecs of static size, as a problem at the field.
+    """The problems with the definition that read `inner` in the member that holds `field`, as the kind of `field` reports them for its alias.
 
-    A name that nothing in scope claims is not checked. Its size is
-    unknown, like everything else about it.
+    A name that nothing in scope claims is not checked. Nothing is known
+    about it.
     """
     definition = inner.definition
-    if not field.static or not isinstance(definition, CodecDefinition):
+    if definition is None:
         return ()
-    if definition.size == "static":
-        return ()
-    return problem(
-        field.loc,
-        f"{inner.name!r} is a codec of dynamic size, and only codecs of static size may be used "
-        "here",
-        "invalid_value",
-    )
+    return field.kind.alias_problems(field.alias, definition, field.loc)
 
 
 def canonicalize(
