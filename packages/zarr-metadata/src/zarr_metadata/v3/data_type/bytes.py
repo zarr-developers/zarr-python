@@ -5,11 +5,11 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 """
 
 import base64
-import re
 from collections.abc import Iterator
-from typing import Final, Literal, NewType
+from typing import Final, Literal
 
 from zarr_metadata._json import ValidationProblem, shown
+from zarr_metadata._numpy import Base64Bytes, base64_bytes
 from zarr_metadata.definition._definition import (
     EmptyConfiguration,
     Nested,
@@ -25,24 +25,6 @@ BYTES_DATA_TYPE_NAME: Final = "bytes"
 
 BytesDataTypeName = Literal["bytes"]
 """Literal type of the `data_type` field for `bytes`."""
-
-Base64Bytes = NewType("Base64Bytes", str)
-"""A standard-alphabet base64-encoded byte sequence."""
-
-_BASE64_RE: Final = re.compile(r"^[A-Za-z0-9+/]*={0,2}$")
-
-
-def base64_bytes(value: str) -> Base64Bytes:
-    """Validate `value` as a Base64Bytes and brand it.
-
-    Raises ValueError if `value` is not standard-alphabet base64
-    (length must be a multiple of 4 once padded; only `A-Z`, `a-z`,
-    `0-9`, `+`, `/`, and trailing `=` padding are permitted).
-    """
-    if len(value) % 4 != 0 or not _BASE64_RE.fullmatch(value):
-        raise ValueError(f"Expected standard-alphabet base64, got {value!r}")
-    return Base64Bytes(value)
-
 
 BytesFillValue = tuple[ByteValue, ...] | Base64Bytes
 """Permitted JSON shape of the `fill_value` field for `bytes`.

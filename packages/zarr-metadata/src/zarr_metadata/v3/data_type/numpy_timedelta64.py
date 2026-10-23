@@ -8,13 +8,13 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import ReadOnly, TypedDict
 
-from zarr_metadata.v3._definition import DataTypeDefinition
-from zarr_metadata.v3.data_type._numpy_time import (
+from zarr_metadata._numpy import (
     NumpyTimeScaleFactor,
     NumpyTimeTicks,
     numpy_time_fill_value_canonical,
-    numpy_time_storage,
 )
+from zarr_metadata.v3._definition import DataTypeDefinition
+from zarr_metadata.v3.data_type._numpy_time import numpy_time_storage
 
 NUMPY_TIMEDELTA64_DATA_TYPE_NAME: Final = "numpy.timedelta64"
 """The `name` field value of the `numpy.timedelta64` data type."""

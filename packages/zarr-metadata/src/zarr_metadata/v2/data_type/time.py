@@ -8,14 +8,14 @@ from annotated_types import Ge
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
-from zarr_metadata.v2.data_type.scalar import (
-    ZarrV2ByteOrder,
-)
-from zarr_metadata.v3.data_type._numpy_time import (
+from zarr_metadata._numpy import (
     NumpyTimeScaleFactor,
     NumpyTimeTicks,
     numpy_time_fill_value_canonical,
+)
+from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
+from zarr_metadata.v2.data_type.scalar import (
+    ZarrV2ByteOrder,
 )
 
 if TYPE_CHECKING:

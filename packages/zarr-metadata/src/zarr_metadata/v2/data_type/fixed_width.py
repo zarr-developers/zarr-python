@@ -6,9 +6,9 @@ import base64
 from typing import TYPE_CHECKING, Final
 
 from zarr_metadata._json import ValidationProblem, shown
+from zarr_metadata._numpy import base64_bytes
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
 from zarr_metadata.v2.data_type.scalar import ZarrV2ScalarConfiguration, orderless_at, sized
-from zarr_metadata.v3.data_type.bytes import base64_bytes
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
