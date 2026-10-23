@@ -31,7 +31,7 @@ from zarr_metadata.definition._definition import (
     Definition,
     WithFillValue,
 )
-from zarr_metadata.v2.array import ZarrV2DataTypeMetadata
+from zarr_metadata.v2._field_json import ZarrV2DataTypeMetadata
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

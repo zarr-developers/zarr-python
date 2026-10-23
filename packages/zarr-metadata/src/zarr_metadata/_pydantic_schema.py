@@ -21,9 +21,7 @@ from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata.definition._envelope import EXTENSION_NAME_SCHEMA_PATTERN
-from zarr_metadata.v2.array import (  # resolved by Pydantic at runtime
-    ZarrV2DataTypeMetadata,
-)
+from zarr_metadata.v2._field_json import ZarrV2DataTypeMetadata
 from zarr_metadata.v2.codec import (  # resolved by Pydantic at runtime
     ZarrV2CodecMetadata,
 )

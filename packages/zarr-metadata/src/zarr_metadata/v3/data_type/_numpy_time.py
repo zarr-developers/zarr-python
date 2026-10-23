@@ -1,12 +1,36 @@
-"""How the two numpy time types store their values, defined once so that neither type module imports it from the other.
+"""The time units of the two numpy time types and how they store their values, defined once so that neither type module imports them from the other.
 
 The encodings both types share with the v2 time dtypes are in
 `zarr_metadata._numpy`.
 """
 
-from typing import Final
+from typing import Final, Literal
 
 from zarr_metadata.v3._definition import multi_byte
+
+NumpyTimeUnit = Literal[
+    "Y", "M", "W", "D", "h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as", "generic"
+]
+"""The time unit codes of the numpy time types, `numpy.datetime64` and `numpy.timedelta64`."""
+
+NUMPY_TIME_UNIT: Final = (
+    "Y",
+    "M",
+    "W",
+    "D",
+    "h",
+    "m",
+    "s",
+    "ms",
+    "us",
+    "μs",
+    "ns",
+    "ps",
+    "fs",
+    "as",
+    "generic",
+)
+"""Runtime tuple of the permitted `numpy.timedelta64`/`numpy.datetime64` unit strings."""
 
 numpy_time_storage: Final = multi_byte
 """The storage of the numpy time types: signed 64-bit integers, in the byte order that the codecs specify.
@@ -21,4 +45,4 @@ The `numpy.timedelta64` spec says the same.
 """
 
 
-__all__ = ["numpy_time_storage"]
+__all__ = ["NUMPY_TIME_UNIT", "NumpyTimeUnit", "numpy_time_storage"]

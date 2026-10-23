@@ -11,11 +11,14 @@ from typing_extensions import ReadOnly, TypedDict
 from zarr_metadata._numpy import (
     NumpyTimeScaleFactor,
     NumpyTimeTicks,
-    NumpyTimeUnit,
     numpy_time_fill_value_canonical,
 )
 from zarr_metadata.v3._definition import DataTypeDefinition
-from zarr_metadata.v3.data_type._numpy_time import numpy_time_storage
+from zarr_metadata.v3.data_type._numpy_time import (
+    NUMPY_TIME_UNIT,
+    NumpyTimeUnit,
+    numpy_time_storage,
+)
 
 NUMPY_DATETIME64_DATA_TYPE_NAME: Final = "numpy.datetime64"
 """The `name` field value of the `numpy.datetime64` data type."""
@@ -68,6 +71,7 @@ NUMPY_DATETIME64_DATA_TYPE: Final = DataTypeDefinition(
 __all__ = [
     "NUMPY_DATETIME64_DATA_TYPE",
     "NUMPY_DATETIME64_DATA_TYPE_NAME",
+    "NUMPY_TIME_UNIT",
     "NumpyDatetime64",
     "NumpyDatetime64Configuration",
     "NumpyDatetime64DataTypeName",

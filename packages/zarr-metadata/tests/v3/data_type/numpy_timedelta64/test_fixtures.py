@@ -9,12 +9,8 @@ from typing import get_args
 import pytest
 from pydantic import TypeAdapter
 
-from zarr_metadata.v3.data_type.numpy_datetime64 import NumpyTimeUnit
-from zarr_metadata.v3.data_type.numpy_timedelta64 import (
-    NUMPY_TIME_UNIT,
-    NumpyTimedelta64,
-    NumpyTimedelta64FillValue,
-)
+from zarr_metadata.v3.data_type.numpy_datetime64 import NUMPY_TIME_UNIT, NumpyTimeUnit
+from zarr_metadata.v3.data_type.numpy_timedelta64 import NumpyTimedelta64, NumpyTimedelta64FillValue
 
 DIR = Path(__file__).parent
 FILL_VALUES: dict[str, object] = json.loads((DIR / "fill_values.json").read_text())

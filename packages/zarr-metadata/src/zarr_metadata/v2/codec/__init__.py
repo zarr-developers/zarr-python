@@ -10,8 +10,8 @@ configuration shape and `V2_CODECS`, the tuple of every definition.
 
 from typing import Any, Final
 
-from zarr_metadata.v2._codec_json import ZarrV2CodecMetadata
 from zarr_metadata.v2._definition import ZarrV2CodecDefinition
+from zarr_metadata.v2._field_json import ZarrV2CodecMetadata
 from zarr_metadata.v2.codec.checksum import ADLER32_V2, CRC32_V2, CRC32C_V2, FLETCHER32_V2
 from zarr_metadata.v2.codec.compression import (
     BLOSC_V2,

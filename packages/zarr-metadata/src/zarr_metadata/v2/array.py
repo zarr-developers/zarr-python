@@ -4,33 +4,10 @@ from collections.abc import Mapping
 from typing import Annotated, Final, Literal, NotRequired
 
 from annotated_types import Ge
-from typing_extensions import TypeAliasType, TypedDict
+from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.v2._codec_json import ZarrV2CodecMetadata
-
-ZarrV2DataTypeMetadata = TypeAliasType(
-    "ZarrV2DataTypeMetadata",
-    str
-    | tuple[
-        tuple[str, "ZarrV2DataTypeMetadata"]
-        | tuple[str, "ZarrV2DataTypeMetadata", tuple[int, ...]],
-        ...,
-    ],
-)
-"""The v2 dtype representation.
-
-Either a numpy-style dtype string (e.g. `"<f8"`, `"|S10"`) or a tuple of
-field records describing a structured dtype. Each field record is either
-a 2-tuple `(name, datatype)` or a 3-tuple `(name, datatype, shape)`
-(the 3-tuple form indicates a subarray field). A field datatype may itself
-be another structured dtype.
-
-Endianness is encoded in the prefix character of the dtype string;
-parsing it out is a caller concern, not part of this type.
-
-See https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html#data-type-encoding
-"""
+from zarr_metadata.v2._field_json import ZarrV2CodecMetadata, ZarrV2DataTypeMetadata
 
 ZarrV2ArrayOrder = Literal["C", "F"]
 """Literal type of permitted values for the `order` field of v2 array metadata.
@@ -172,6 +149,5 @@ __all__ = [
     "ZarrV2ArrayMetadataJSONPartial",
     "ZarrV2ArrayMetadataStoreKey",
     "ZarrV2ArrayOrder",
-    "ZarrV2DataTypeMetadata",
     "ZarrV2ZArrayJSON",
 ]

@@ -1,13 +1,15 @@
 """The data types that zarr-python 2.x writes, with one definition per NumPy family.
 
 Each family's definition is in its submodule (`fixed_width`, `object`,
-`scalar`, `struct`, `time`). This module holds `V2_DATA_TYPES`, the tuple
-of every definition.
+`scalar`, `struct`, `time`). This module holds the dtype's JSON shape,
+`ZarrV2DataTypeMetadata`, and `V2_DATA_TYPES`, the tuple of every
+definition.
 """
 
 from typing import Any, Final
 
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
+from zarr_metadata.v2._field_json import ZarrV2DataTypeMetadata
 from zarr_metadata.v2.data_type.fixed_width import BYTES_V2, STR_V2, VOID_V2
 from zarr_metadata.v2.data_type.object import OBJECT_V2
 from zarr_metadata.v2.data_type.scalar import BOOL_V2, COMPLEX_V2, FLOAT_V2, INT_V2, UINT_V2
@@ -32,4 +34,5 @@ V2_DATA_TYPES: Final[tuple[ZarrV2DataTypeDefinition[Any], ...]] = (
 
 __all__ = [
     "V2_DATA_TYPES",
+    "ZarrV2DataTypeMetadata",
 ]

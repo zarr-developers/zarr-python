@@ -26,7 +26,6 @@ from zarr_metadata.v2.array import (
     ZarrV2ArrayMetadataJSONPartial,
     ZarrV2ArrayMetadataStoreKey,
     ZarrV2ArrayOrder,
-    ZarrV2DataTypeMetadata,
     ZarrV2ZArrayJSON,
 )
 from zarr_metadata.v2.attributes import (
@@ -40,6 +39,7 @@ from zarr_metadata.v2.consolidated import (
     ZarrV2ConsolidatedMetadataJSON,
     ZarrV2ConsolidatedMetadataStoreKey,
 )
+from zarr_metadata.v2.data_type import ZarrV2DataTypeMetadata
 from zarr_metadata.v2.group import (
     ZARR_V2_GROUP_METADATA_STORE_KEY,
     ZarrV2GroupMetadataJSON,
@@ -185,12 +185,12 @@ from zarr_metadata.v3.data_type.int64 import (
 )
 from zarr_metadata.v3.data_type.numpy_datetime64 import (
     NUMPY_DATETIME64_DATA_TYPE_NAME,
+    NUMPY_TIME_UNIT,
     NumpyDatetime64DataTypeName,
     NumpyDatetime64FillValue,
     NumpyTimeUnit,
 )
 from zarr_metadata.v3.data_type.numpy_timedelta64 import (
-    NUMPY_TIME_UNIT,
     NUMPY_TIMEDELTA64_DATA_TYPE_NAME,
     NumpyTimedelta64DataTypeName,
     NumpyTimedelta64FillValue,

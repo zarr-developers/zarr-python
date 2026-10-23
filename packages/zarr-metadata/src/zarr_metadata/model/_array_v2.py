@@ -56,12 +56,12 @@ from zarr_metadata.model._shared import (
     other_members,
     reading_of,
 )
+from zarr_metadata.v2._field_json import ZarrV2DataTypeMetadata
 from zarr_metadata.v2.array import (
     ZARR_V2_ARRAY_METADATA_STORE_KEY,
     ZarrV2ArrayDimensionSeparator,
     ZarrV2ArrayMetadataJSON,
     ZarrV2ArrayOrder,
-    ZarrV2DataTypeMetadata,
 )
 from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
 from zarr_metadata.v2.codec import ZarrV2CodecMetadata

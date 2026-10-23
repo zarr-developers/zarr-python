@@ -68,7 +68,8 @@ from zarr_metadata.model import (
 from zarr_metadata.typed_json import (
     check,
 )
-from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON, ZarrV2DataTypeMetadata
+from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
+from zarr_metadata.v2.data_type import ZarrV2DataTypeMetadata
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.data_type.float32 import Float32FillValue
 
