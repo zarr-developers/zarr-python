@@ -372,6 +372,40 @@ def parse_array_metadata_v2(
     return cast("ZarrV2ArrayMetadataJSON", arrays_to_tuples(value))
 
 
+def node_document_v2(
+    mapping: Mapping[StoreKey, bytes], key: str, beside_attributes: ValidationProblem
+) -> tuple[object, tuple[ValidationProblem, ...]]:
+    """The merged v2 document of the node whose file is `key` in `mapping`: the file's JSON, with the attributes at `.zattrs` when that key exists.
+
+    Returns the document and no problems, or None and the problems of
+    reading the files: a missing `key`, bytes that are not JSON, or a file
+    that holds `attributes` itself (reported as `beside_attributes`, since
+    attributes belong in `.zattrs`). A file that is not an object is
+    returned as it is, for the document's reader to report.
+    """
+    try:
+        document = load_store_json(mapping, key)
+    except MetadataValidationError as error:
+        return None, error.problems
+    if not is_object(document):
+        return document, ()
+    if "attributes" in document:
+        return None, with_input((beside_attributes,), document)
+    if ZARR_V2_ATTRIBUTES_STORE_KEY not in cast("Mapping[str, bytes]", mapping):
+        return document, ()
+    try:
+        attributes = load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY)
+    except MetadataValidationError as error:
+        return None, error.problems
+    return {**document, "attributes": attributes}, ()
+
+
+ARRAY_FILE_ATTRIBUTES: Final = ValidationProblem(
+    ("attributes",), "unexpected document member", "invalid_value"
+)
+"""The problem of a `.zarray` that holds `attributes`, which belong in `.zattrs`."""
+
+
 def read_array_metadata_v2(
     value: object, *, context: ZarrV2Context | None = None
 ) -> ZarrV2ArrayMetadataReading:
@@ -756,16 +790,9 @@ class ZarrV2ArrayMetadata(Keyed):
         are not JSON, `.zarray` holds `attributes`, or the document is not
         valid.
         """
-        zarray_raw = load_store_json(mapping, ZARR_V2_ARRAY_METADATA_STORE_KEY)
-        if not is_object(zarray_raw):
-            return cls(zarray_raw, context=context)
-        zarray = zarray_raw
-        if "attributes" in zarray:
-            refused = ValidationProblem(
-                ("attributes",), "unexpected document member", "invalid_value"
-            )
-            raise MetadataValidationError(with_input((refused,), zarray))
-        if ZARR_V2_ATTRIBUTES_STORE_KEY in mapping:
-            zattrs = load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY)
-            return cls({**zarray, "attributes": zattrs}, context=context)
-        return cls(zarray, context=context)
+        document, problems = node_document_v2(
+            mapping, ZARR_V2_ARRAY_METADATA_STORE_KEY, ARRAY_FILE_ATTRIBUTES
+        )
+        if len(problems) != 0:
+            raise MetadataValidationError(problems)
+        return cls(document, context=context)

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, TypeAlias, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Final, TypeAlias, TypeGuard, cast
 
-from typing_extensions import TypedDict, Unpack
+from typing_extensions import TypeAliasType, TypedDict, Unpack
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata._hierarchy import NodeType, tree_problems
@@ -32,7 +33,14 @@ from zarr_metadata._json import is_canonical_json as _is_canonical_json
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition._context import Context, ZarrV2Context, scoped
 from zarr_metadata.definition._scope import Claims, Conflict, ScopeConflictError
-from zarr_metadata.model._array_v2 import ZarrV2ArrayMetadata, read_array_v2
+from zarr_metadata.model._array_v2 import (
+    ARRAY_FILE_ATTRIBUTES,
+    ZarrV2ArrayMetadata,
+    ZarrV2ArrayMetadataReading,
+    node_document_v2,
+    read_array_metadata_v2,
+    read_array_v2,
+)
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
     StoreKey,
@@ -41,6 +49,7 @@ from zarr_metadata.model._shared import (
     load_store_json,
     located_conflicts,
     missing_keys,
+    reading_of,
     unexpected_keys,
     validate_attributes,
 )
@@ -51,6 +60,10 @@ from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY, ZarrV2GroupMetadataJSON
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from zarr_metadata._typed_json import Loc
+    from zarr_metadata.definition._definition import ResolvedField
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
     from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataStoreKey
     from zarr_metadata.v2.group import ZarrV2GroupMetadataStoreKey
@@ -110,6 +123,133 @@ def parse_group_metadata_v2(
     if len(problems) != 0:
         raise MetadataValidationError(problems)
     return cast(ZarrV2GroupMetadataJSON, arrays_to_tuples(value))
+
+
+_GROUP_FILE_ATTRIBUTES: Final = ValidationProblem(
+    ("attributes",), "unexpected key 'attributes'", "unknown_key"
+)
+"""The problem of a `.zgroup` that holds `attributes`, which `.zgroup` does not declare: a group's attributes belong in `.zattrs`."""
+
+
+@dataclass(frozen=True, slots=True)
+class ZarrV2GroupMetadataReading:
+    """A v2 group document as a scope read it: every problem, and the model when there are no problems. A group has no fields for a scope to read."""
+
+    problems: tuple[ValidationProblem, ...] = ()
+    """Every reason the document is not valid."""
+    metadata: ZarrV2GroupMetadata | None = None
+    """The document's model when there is no problem; None otherwise."""
+
+    def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
+        """Its fields as read: none, since a group has no fields."""
+        return iter(())
+
+    def __reduce__(self) -> str | tuple[object, ...]:
+        # Same as the other readings: pickle through the model, when there is one.
+        if self.metadata is not None:
+            return (reading_of, (self.metadata,))
+        return object.__reduce__(self)
+
+
+def read_group_metadata_v2(
+    value: object, *, context: ZarrV2Context | None = None
+) -> ZarrV2GroupMetadataReading:
+    """Read `value`, a v2 group document in the merged form (`.zgroup` plus `attributes` from `.zattrs`), in `context` (`CORE_V2` when none is given), whatever it holds: every problem `validate_group_metadata_v2` finds, and the model when there are none."""
+    scope = scoped(context, CORE_V2)
+    problems = validate_group_metadata_v2(value, context=scope)
+    if len(problems) != 0:
+        return ZarrV2GroupMetadataReading(problems=problems)
+    return ZarrV2GroupMetadata(value, context=scope).reading
+
+
+@dataclass(frozen=True, slots=True)
+class ZarrV2UnknownNodeMetadataReading:
+    """A store that holds no v2 node: neither a `.zarray` nor a `.zgroup`, or both. The problems say which."""
+
+    problems: tuple[ValidationProblem, ...]
+    """Why the store holds no node."""
+
+    @property
+    def metadata(self) -> None:
+        """Its model: always None, since there is no node to model."""
+        return None
+
+    def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
+        """Its fields as read: none, since no document is read."""
+        return iter(())
+
+
+ZarrV2NodeMetadataReading = TypeAliasType(
+    "ZarrV2NodeMetadataReading",
+    "ZarrV2ArrayMetadataReading | ZarrV2GroupMetadataReading | ZarrV2UnknownNodeMetadataReading",
+)
+"""A v2 node as `read_node_metadata_v2` reads it from a store: as the array or group its files declare, or as neither."""
+
+
+def read_node_metadata_v2(
+    mapping: Mapping[StoreKey, bytes], *, context: ZarrV2Context | None = None
+) -> ZarrV2NodeMetadataReading:
+    """Read the v2 node whose files are in `mapping`, in `context` (`CORE_V2` when none is given), as the node type its files declare.
+
+    A v2 document does not name its node type; the file does. A
+    `.zarray` makes the node an array, read as `read_array_metadata_v2`
+    reads it, and a `.zgroup` makes it a group, read as
+    `read_group_metadata_v2` reads it, with the attributes at `.zattrs`
+    in either case. A store with neither file, or with both, gives a
+    `ZarrV2UnknownNodeMetadataReading` with the problem. A file that
+    cannot be read (bytes that are not JSON, or `attributes` written in
+    the node file) gives the reading of its node type with the problem
+    and no model. This is the v2 counterpart of `read_node_metadata_v3`,
+    which reads one `zarr.json` and its `node_type`.
+    """
+    scope = scoped(context, CORE_V2)
+    files = cast("Mapping[str, bytes]", mapping)
+    is_array = ZARR_V2_ARRAY_METADATA_STORE_KEY in files
+    is_group = ZARR_V2_GROUP_METADATA_STORE_KEY in files
+    if is_array and is_group:
+        both = ValidationProblem(
+            (ZARR_V2_GROUP_METADATA_STORE_KEY,),
+            f"a node is an array or a group, not both: a {ZARR_V2_ARRAY_METADATA_STORE_KEY} is beside it",
+            "invalid_value",
+        )
+        return ZarrV2UnknownNodeMetadataReading((both,))
+    if is_array:
+        document, problems = node_document_v2(
+            mapping, ZARR_V2_ARRAY_METADATA_STORE_KEY, ARRAY_FILE_ATTRIBUTES
+        )
+        if len(problems) != 0:
+            return ZarrV2ArrayMetadataReading(problems=problems)
+        return read_array_metadata_v2(document, context=scope)
+    if is_group:
+        document, problems = node_document_v2(
+            mapping, ZARR_V2_GROUP_METADATA_STORE_KEY, _GROUP_FILE_ATTRIBUTES
+        )
+        if len(problems) != 0:
+            return ZarrV2GroupMetadataReading(problems=problems)
+        return read_group_metadata_v2(document, context=scope)
+    neither = ValidationProblem(
+        (),
+        f"expected a {ZARR_V2_ARRAY_METADATA_STORE_KEY} or a {ZARR_V2_GROUP_METADATA_STORE_KEY}",
+        "missing_key",
+    )
+    return ZarrV2UnknownNodeMetadataReading((neither,))
+
+
+def node_metadata_from_key_value_v2(
+    mapping: Mapping[StoreKey, bytes], *, context: ZarrV2Context | None = None
+) -> ZarrV2NodeMetadata:
+    """Return the model of the v2 node whose files are in `mapping`, read in `context` as `read_node_metadata_v2` reads it. Raises `MetadataValidationError` with every problem the read finds."""
+    reading = read_node_metadata_v2(mapping, context=context)
+    if reading.metadata is None:
+        raise MetadataValidationError(reading.problems)
+    return reading.metadata
+
+
+def validate_node_metadata_v2(
+    mapping: Mapping[StoreKey, bytes], *, context: ZarrV2Context | None = None
+) -> tuple[ValidationProblem, ...]:
+    """Return every reason the files in `mapping` are not a valid v2 node, as `read_node_metadata_v2` reads them."""
+    return read_node_metadata_v2(mapping, context=context).problems
 
 
 class ZarrV2GroupMetadataUpdate(TypedDict, total=False):
@@ -182,6 +322,11 @@ class ZarrV2GroupMetadata(Keyed):
         self._context = context
         self._attributes = attributes
         self._shown = UNSET if attributes is UNSET else frozen(attributes)
+
+    @property
+    def reading(self) -> ZarrV2GroupMetadataReading:
+        """The document as the scope read it: no problems, and this model."""
+        return ZarrV2GroupMetadataReading(metadata=self)
 
     @property
     def context(self) -> Context:
@@ -274,20 +419,12 @@ class ZarrV2GroupMetadata(Keyed):
         are not JSON, `.zgroup` holds `attributes`, or the document is not
         valid.
         """
-        zgroup_raw = load_store_json(mapping, ZARR_V2_GROUP_METADATA_STORE_KEY)
-        if not is_object(zgroup_raw):
-            return cls(zgroup_raw, context=context)
-        zgroup = zgroup_raw
-        if "attributes" in zgroup:
-            # `.zgroup` does not declare this key: a group's attributes belong in `.zattrs`.
-            refused = ValidationProblem(
-                ("attributes",), "unexpected key 'attributes'", "unknown_key"
-            )
-            raise MetadataValidationError(with_input((refused,), zgroup))
-        if ZARR_V2_ATTRIBUTES_STORE_KEY in mapping:
-            zattrs = load_store_json(mapping, ZARR_V2_ATTRIBUTES_STORE_KEY)
-            return cls({**zgroup, "attributes": zattrs}, context=context)
-        return cls(zgroup, context=context)
+        document, problems = node_document_v2(
+            mapping, ZARR_V2_GROUP_METADATA_STORE_KEY, _GROUP_FILE_ATTRIBUTES
+        )
+        if len(problems) != 0:
+            raise MetadataValidationError(problems)
+        return cls(document, context=context)
 
 
 ZarrV2NodeMetadata: TypeAlias = "ZarrV2ArrayMetadata | ZarrV2GroupMetadata"

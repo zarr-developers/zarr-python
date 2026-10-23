@@ -11,11 +11,14 @@ against the shape, and the codecs as a pipeline, each codec against the
 chunk it receives. Each document concept gets a `validate_*` function
 that returns every problem found (a tuple of `ValidationProblem`, each
 with a machine-readable `kind`), an `is_*` type guard, and a `parse_*`
-function that narrows the value or raises `MetadataValidationError`. A
-v3 array or group document and a v2 array document also get
-`read_array_metadata_v3`, `read_group_metadata_v3` or
-`read_array_metadata_v2`. Each of these does one read and returns what
-it read, the problems, and the model when there are no problems. To read
+function that narrows the value or raises `MetadataValidationError`.
+Array and group documents of both formats also get a reader
+(`read_array_metadata_v3`, `read_group_metadata_v3`,
+`read_array_metadata_v2`, `read_group_metadata_v2`). Each does one read
+and returns what it read, the problems, and the model when there are no
+problems. A node of either type is read by `read_node_metadata_v3`, from
+a `zarr.json` and its `node_type`, or by `read_node_metadata_v2`, from
+the `.zarray` or `.zgroup` file a store holds. To read
 a store that another writer made with a known writer bug, use
 `read_repaired_node_metadata_v3`. It undoes each bug with
 `repair_node_metadata_v3` before the strict read, and reports what it
@@ -58,11 +61,18 @@ from zarr_metadata.model._array_v3 import (
 from zarr_metadata.model._group_v2 import (
     ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
+    ZarrV2GroupMetadataReading,
     ZarrV2GroupMetadataUpdate,
     ZarrV2NodeMetadata,
+    ZarrV2NodeMetadataReading,
+    ZarrV2UnknownNodeMetadataReading,
     is_group_metadata_v2,
+    node_metadata_from_key_value_v2,
     parse_group_metadata_v2,
+    read_group_metadata_v2,
+    read_node_metadata_v2,
     validate_group_metadata_v2,
+    validate_node_metadata_v2,
 )
 from zarr_metadata.model._group_v3 import (
     ZarrV3ConsolidatedMetadata,
@@ -116,9 +126,12 @@ __all__ = [
     "ZarrV2ArrayMetadataUpdate",
     "ZarrV2ConsolidatedMetadata",
     "ZarrV2GroupMetadata",
+    "ZarrV2GroupMetadataReading",
     "ZarrV2GroupMetadataUpdate",
     "ZarrV2NodeMetadata",
+    "ZarrV2NodeMetadataReading",
     "ZarrV2RepairedConsolidatedMetadataReading",
+    "ZarrV2UnknownNodeMetadataReading",
     "ZarrV3ArrayMetadata",
     "ZarrV3ArrayMetadataReading",
     "ZarrV3ArrayMetadataUpdate",
@@ -140,6 +153,7 @@ __all__ = [
     "is_node_name_v3",
     "is_node_path_v3",
     "node_metadata_from_json_v3",
+    "node_metadata_from_key_value_v2",
     "node_metadata_from_key_value_v3",
     "parse_array_metadata_v2",
     "parse_array_metadata_v3",
@@ -150,7 +164,9 @@ __all__ = [
     "parse_node_path_v3",
     "read_array_metadata_v2",
     "read_array_metadata_v3",
+    "read_group_metadata_v2",
     "read_group_metadata_v3",
+    "read_node_metadata_v2",
     "read_node_metadata_v3",
     "read_repaired_consolidated_metadata_v2",
     "read_repaired_node_metadata_v3",
@@ -161,6 +177,7 @@ __all__ = [
     "validate_group_metadata_v2",
     "validate_group_metadata_v3",
     "validate_metadata_field_v3",
+    "validate_node_metadata_v2",
     "validate_node_metadata_v3",
     "validate_node_name_v3",
     "validate_node_path_v3",
