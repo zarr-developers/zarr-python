@@ -33,6 +33,7 @@ from zarr_metadata.model import (
     UNSET,
     ZarrV2ArrayMetadata,
     ZarrV2ArrayMetadataUpdate,
+    ZarrV2GroupMetadata,
     ZarrV3ArrayMetadata,
     ZarrV3GroupMetadata,
     is_array_metadata_v2,
@@ -377,6 +378,46 @@ def test_v3_create_default_applies_overrides() -> None:
     assert m.attributes == {"a": 1}
     # un-overridden fields keep their defaults
     assert m.data_type.to_json() == "uint8"
+
+
+@pytest.mark.parametrize(
+    ("model", "members"),
+    [
+        (ZarrV3ArrayMetadata, {"attributes": {"a": 1}, "fill_value": 3}),
+        (ZarrV3ArrayMetadata, {"dimension_names": UNSET, "attributes": UNSET}),
+        (ZarrV3GroupMetadata, {"attributes": {"a": 1}}),
+        (
+            ZarrV3GroupMetadata,
+            {
+                "consolidated_metadata": {
+                    "kind": "inline",
+                    "must_understand": False,
+                    "metadata": {"x": ZarrV3ArrayMetadata.create_default()},
+                }
+            },
+        ),
+        (ZarrV2ArrayMetadata, {"fill_value": 3, "attributes": {"k": "v"}}),
+        (ZarrV2ArrayMetadata, {"dimension_separator": UNSET}),
+        (ZarrV2GroupMetadata, {"attributes": {"k": "v"}}),
+        (ZarrV2GroupMetadata, {"attributes": UNSET}),
+    ],
+    ids=[
+        "v3-array",
+        "v3-array-unset",
+        "v3-group",
+        "v3-group-consolidated-models",
+        "v2-array",
+        "v2-array-unset",
+        "v2-group",
+        "v2-group-unset",
+    ],
+)
+def test_create_default_takes_the_members_update_takes(
+    model: object, members: dict[str, Any]
+) -> None:
+    """Every model's `create_default` takes the same keyword members as its `update`, including `UNSET` to drop a member and, for a v3 group, node models in `consolidated_metadata`. Applying them at creation gives the same model as applying them afterwards."""
+    kind = cast("Any", model)
+    assert kind.create_default(**members) == kind.create_default().update(**members)
 
 
 def test_v2_create_default_is_valid_empty_array() -> None:

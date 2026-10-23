@@ -85,7 +85,7 @@ if TYPE_CHECKING:
     from zarr_metadata.definition._definition import ResolvedField
     from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
     from zarr_metadata.v3.consolidated import ZarrV3ConsolidatedMetadataJSON
-    from zarr_metadata.v3.group import ZarrV3GroupMetadataJSONPartial, ZarrV3GroupMetadataStoreKey
+    from zarr_metadata.v3.group import ZarrV3GroupMetadataStoreKey
 
 
 # The standard top-level keys of a v3 group metadata document. Anything outside
@@ -379,10 +379,11 @@ class ZarrV3GroupMetadata(Keyed):
         cls,
         *,
         context: ZarrV3Context | None = None,
-        **members: Unpack[ZarrV3GroupMetadataJSONPartial],
+        **overrides: Unpack[ZarrV3GroupMetadataUpdate],
     ) -> ZarrV3GroupMetadata:
-        """Return a group with no attributes, with any document members in `members` applied, read in `context`. Raises `MetadataValidationError` when the resulting document has a problem."""
-        return cls({"zarr_format": 3, "node_type": "group", **members}, context=context)
+        """Return a group with no attributes, with any document members in `overrides` applied, read in `context`. `overrides` takes what `update` takes, including `UNSET` to drop a member and node models in `consolidated_metadata`. Raises `MetadataValidationError` when the resulting document has a problem."""
+        given = {key: value for key, value in overrides.items() if value is not UNSET}
+        return cls({"zarr_format": 3, "node_type": "group", **given}, context=context)
 
     @classmethod
     def from_json(

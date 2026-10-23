@@ -81,7 +81,7 @@ if TYPE_CHECKING:
 
     from zarr_metadata._typed_json import Loc
     from zarr_metadata.v3._definition import CodecDefinition
-    from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSONPartial, ZarrV3ArrayMetadataStoreKey
+    from zarr_metadata.v3.array import ZarrV3ArrayMetadataStoreKey
 
 
 # The standard top-level keys of a v3 array metadata document. Anything outside
@@ -743,9 +743,9 @@ class ZarrV3ArrayMetadata(Keyed):
         cls,
         *,
         context: ZarrV3Context | None = None,
-        **overrides: Unpack[ZarrV3ArrayMetadataJSONPartial],
+        **overrides: Unpack[ZarrV3ArrayMetadataUpdate],
     ) -> ZarrV3ArrayMetadata:
-        """Return a scalar `uint8` array, with any document members in `overrides` applied, read in `context`.
+        """Return a scalar `uint8` array, with any document members in `overrides` applied, read in `context`. `overrides` takes what `update` takes, including `UNSET` to drop a member.
 
         Raises `MetadataValidationError` when the resulting document has a
         problem. So members that depend on each other must be passed
@@ -774,7 +774,10 @@ class ZarrV3ArrayMetadata(Keyed):
             "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
             "chunk_key_encoding": {"name": "default"},
         }
-        return cls({**document, **overrides}, context=context)
+        merged = {
+            key: value for key, value in {**document, **overrides}.items() if value is not UNSET
+        }
+        return cls(merged, context=context)
 
     @classmethod
     def from_json(
