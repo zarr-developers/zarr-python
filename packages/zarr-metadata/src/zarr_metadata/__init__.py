@@ -17,7 +17,6 @@ documentation lives:
 
 from importlib.metadata import version
 
-from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
 from zarr_metadata.model import (
     UNSET,
     ZarrV2ArrayMetadata,
@@ -34,6 +33,7 @@ from zarr_metadata.model import (
     ZarrV3NodeMetadataInput,
 )
 from zarr_metadata.problems import MetadataValidationError, ProblemKind, ValidationProblem
+from zarr_metadata.typed_json import JSONValue
 from zarr_metadata.v2.array import (
     ZARR_V2_ARRAY_DIMENSION_SEPARATOR,
     ZARR_V2_ARRAY_METADATA_STORE_KEY,
@@ -64,7 +64,7 @@ from zarr_metadata.v2.group import (
     ZarrV2GroupMetadataStoreKey,
     ZarrV2ZGroupJSON,
 )
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+from zarr_metadata.v3 import ZarrV3MetadataFieldJSON, ZarrV3NamedConfigJSON
 from zarr_metadata.v3.array import (
     ZARR_V3_ARRAY_METADATA_STORE_KEY,
     ZarrV3ArrayMetadataJSON,

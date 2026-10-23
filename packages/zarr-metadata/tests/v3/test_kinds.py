@@ -24,7 +24,7 @@ from zarr_metadata.definition import (
 )
 from zarr_metadata.definition._definition import as_kind, kind_of
 from zarr_metadata.definition._scope import kind_name
-from zarr_metadata.json_schema import field_json_schema
+from zarr_metadata.json_schema import field_json_schema_v3
 from zarr_metadata.problems import ValidationProblem
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import CodecDefinition, DataTypeDefinition
@@ -186,13 +186,15 @@ def test_a_fill_value_is_judged_by_any_kind_with_one() -> None:
 
 
 def test_error_the_json_schema_writer_writes_v3_fields_only() -> None:
-    """`field_json_schema` writes only the v3 envelope. For a kind of another format, it raises a `TypeError` that names this limit instead of writing a wrong schema."""
+    """`field_json_schema_v3` writes only the v3 envelope. For a kind of another format, it raises a `TypeError` that names this limit instead of writing a wrong schema."""
     from zarr_metadata.v2.definition import CORE_V2, ZarrV2DataTypeDefinition
 
     with pytest.raises(TypeError, match="Zarr v3"):
-        field_json_schema(ZarrV2DataTypeDefinition, CORE_V2)
+        field_json_schema_v3(ZarrV2DataTypeDefinition, context=CORE_V2)
     with pytest.raises(TypeError, match="Zarr v3"):
-        field_json_schema(Tag, Context.of(Tag(name="tag1", configuration=EmptyConfiguration)))
+        field_json_schema_v3(
+            Tag, context=Context.of(Tag(name="tag1", configuration=EmptyConfiguration))
+        )
 
 
 def test_a_v3_value_that_is_no_field_is_shown_in_the_message() -> None:

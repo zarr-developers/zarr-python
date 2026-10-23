@@ -2,7 +2,7 @@
 
 Each family's definition is in its submodule (`fixed_width`, `object`,
 `scalar`, `struct`, `time`). This module holds the dtype's JSON shape,
-`ZarrV2DataTypeMetadata`, and `V2_DATA_TYPES`, the tuple of every
+`ZarrV2DataTypeMetadata`, and `DATA_TYPES_V2`, the tuple of every
 definition.
 """
 
@@ -16,7 +16,7 @@ from zarr_metadata.v2.data_type.scalar import BOOL_V2, COMPLEX_V2, FLOAT_V2, INT
 from zarr_metadata.v2.data_type.struct import STRUCT_V2
 from zarr_metadata.v2.data_type.time import DATETIME64_V2, TIMEDELTA64_V2
 
-V2_DATA_TYPES: Final[tuple[ZarrV2DataTypeDefinition[Any], ...]] = (
+DATA_TYPES_V2: Final[tuple[ZarrV2DataTypeDefinition[Any], ...]] = (
     BOOL_V2,
     INT_V2,
     UINT_V2,
@@ -33,6 +33,6 @@ V2_DATA_TYPES: Final[tuple[ZarrV2DataTypeDefinition[Any], ...]] = (
 """Every v2 data type, by family."""
 
 __all__ = [
-    "V2_DATA_TYPES",
+    "DATA_TYPES_V2",
     "ZarrV2DataTypeMetadata",
 ]

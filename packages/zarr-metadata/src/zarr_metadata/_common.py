@@ -1,9 +1,12 @@
 """
-Top-level cross-version primitives for Zarr metadata.
+JSON types that the shared reading code needs.
 
-Version-specific types live under `zarr_metadata.v2` and `zarr_metadata.v3`.
-Codec and dtype spec types live under `zarr_metadata.v3.codec` and
-`zarr_metadata.v3.data_type`.
+`JSONValue` is the type of any JSON value. `ZarrV3NamedConfigJSON` is the
+`{name, configuration, must_understand}` envelope of a v3 field. It is v3's,
+but it lives here because the shared field reader in
+`zarr_metadata.definition` uses the envelope as its default. Public homes:
+`zarr_metadata.typed_json` for `JSONValue`, `zarr_metadata.v3` for the
+envelope.
 """
 
 from collections.abc import Mapping

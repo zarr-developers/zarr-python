@@ -88,18 +88,18 @@ if TYPE_CHECKING:
 # The standard top-level keys of a v3 array metadata document. Anything outside
 # this set is an extension field. Built from the TypedDict's required/optional
 # key sets (which resolve inherited keys, unlike `__annotations__`).
-ARRAY_METADATA_REQUIRED_KEYS_V3: Final[frozenset[str]] = frozenset(
+_ARRAY_METADATA_REQUIRED_KEYS_V3: Final[frozenset[str]] = frozenset(
     ZarrV3ArrayMetadataJSON.__required_keys__
 )
 
 
-ARRAY_METADATA_OPTIONAL_KEYS_V3: Final[frozenset[str]] = frozenset(
+_ARRAY_METADATA_OPTIONAL_KEYS_V3: Final[frozenset[str]] = frozenset(
     ZarrV3ArrayMetadataJSON.__optional_keys__
 )
 
 
-ARRAY_METADATA_STANDARD_KEYS_V3: Final[frozenset[str]] = (
-    ARRAY_METADATA_REQUIRED_KEYS_V3 | ARRAY_METADATA_OPTIONAL_KEYS_V3
+_ARRAY_METADATA_STANDARD_KEYS_V3: Final[frozenset[str]] = (
+    _ARRAY_METADATA_REQUIRED_KEYS_V3 | _ARRAY_METADATA_OPTIONAL_KEYS_V3
 )
 
 
@@ -249,11 +249,11 @@ def read_array_v3(
     if not is_object(value):
         return ZarrV3ArrayMetadataReading(problems=not_an_object(value)), None
     doc = value
-    problems: list[ValidationProblem] = list(missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V3, doc))
+    problems: list[ValidationProblem] = list(missing_keys(_ARRAY_METADATA_REQUIRED_KEYS_V3, doc))
     past = members_past_the_levels(doc, at)
     problems.extend(past.values())
     whole, doc = doc, {key: item for key, item in doc.items() if key not in past}
-    extra_fields, found = other_members(doc, ARRAY_METADATA_STANDARD_KEYS_V3, at=at)
+    extra_fields, found = other_members(doc, _ARRAY_METADATA_STANDARD_KEYS_V3, at=at)
     problems.extend(found)
     problems.extend(check_literal(doc, "zarr_format", 3))
     problems.extend(check_literal(doc, "node_type", "array"))

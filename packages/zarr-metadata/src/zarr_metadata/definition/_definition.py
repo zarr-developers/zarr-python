@@ -101,6 +101,7 @@ F = TypeVar("F", bound="WithFillValue[Any]")
 
 
 Problems: TypeAlias = tuple[ValidationProblem, ...]
+"""Every problem a reader found, in the order it found them."""
 
 
 def no_rules(*_: object) -> Iterator[ValidationProblem]:

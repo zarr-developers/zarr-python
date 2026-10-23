@@ -46,8 +46,10 @@ valid name, would be read as raw bits.
 """
 
 
-def field_json_schema(kind: type[Definition[Any]], context: Context) -> JSONSchema:
-    """The JSON Schema of one metadata field read as `kind` in `context`: everything `resolve` checks, except the rules.
+def field_json_schema_v3(
+    kind: type[Definition[Any]], *, context: ZarrV3Context | None = None
+) -> JSONSchema:
+    """The JSON Schema of one metadata field read as `kind` in `context` (`CORE_AND_EXTENSIONS` when none is given): everything `resolve` checks, except the rules. A scope of another format raises `TypeError`, as it does for every v3 reader.
 
     The schema accepts a field that one of the definitions in scope reads
     (its name, its configuration as the TypedDict declares it, an optional
@@ -70,12 +72,12 @@ def field_json_schema(kind: type[Definition[Any]], context: Context) -> JSONSche
             "Zarr v3 fields only"
         )
         raise TypeError(msg)
-    schemas = Schemas(field_schemas(context))
+    schemas = Schemas(field_schemas(scoped(context, CORE_AND_EXTENSIONS)))
     return schemas.document(schemas.of(kind_field(asked)))
 
 
 def field_schemas(context: Context) -> SchemaLeaf:
-    """The schema leaf that `field_json_schema` uses. It writes each field alias as a field of its kind, as `context` reads it."""
+    """The schema leaf that `field_json_schema_v3` uses. It writes each field alias as a field of its kind, as `context` reads it."""
 
     def leaf(annotation: object, schemas: Schemas) -> JSONSchema | None:
         kind = field_kind(annotation)
@@ -245,7 +247,7 @@ def _group(schemas: Schemas) -> JSONSchema:
 
 
 __all__ = [
-    "field_json_schema",
+    "field_json_schema_v3",
     "field_schemas",
     "node_metadata_json_schema_v3",
     "written_name",

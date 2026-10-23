@@ -294,7 +294,11 @@ _STANDALONE_VOCAB = frozenset(
         "Claims",
         "Conflict",
         "Disagreements",
+        "Scope",
         "ScopeConflictError",
+        "Tables",
+        # A reader's problems, as the signatures of every reader name them.
+        "Problems",
         "CodecKind",
         "CodecSize",
         "Context",

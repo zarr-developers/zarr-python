@@ -15,10 +15,10 @@ from zarr_metadata.definition import (
     canonical_of,
     resolve,
 )
-from zarr_metadata.v2.codec import V2_CODECS, ZarrV2CodecMetadata
+from zarr_metadata.v2.codec import CODECS_V2, ZarrV2CodecMetadata
 from zarr_metadata.v2.definition import ZarrV2CodecDefinition
 
-SCOPE = Context.of(*V2_CODECS)
+SCOPE = Context.of(*CODECS_V2)
 Loc = tuple[str | int, ...]
 
 # The output of numcodecs 0.16.5 `get_config()` for a default instance, where one exists.
@@ -56,8 +56,8 @@ CASES = [(name, field) for name, fields in EXAMPLES.items() for field in fields]
 
 
 def test_every_codec_has_an_example() -> None:
-    """Every definition in `V2_CODECS` has an example below."""
-    assert {definition.name for definition in V2_CODECS} == set(EXAMPLES)
+    """Every definition in `CODECS_V2` has an example below."""
+    assert {definition.name for definition in CODECS_V2} == set(EXAMPLES)
 
 
 @pytest.mark.parametrize(

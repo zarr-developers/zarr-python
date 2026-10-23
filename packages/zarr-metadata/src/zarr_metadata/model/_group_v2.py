@@ -56,18 +56,18 @@ if TYPE_CHECKING:
     from zarr_metadata.v2.group import ZarrV2GroupMetadataStoreKey
 
 
-GROUP_METADATA_REQUIRED_KEYS_V2: Final[frozenset[str]] = frozenset(
+_GROUP_METADATA_REQUIRED_KEYS_V2: Final[frozenset[str]] = frozenset(
     ZarrV2GroupMetadataJSON.__required_keys__
 )
 
 
-GROUP_METADATA_OPTIONAL_KEYS_V2: Final[frozenset[str]] = frozenset(
+_GROUP_METADATA_OPTIONAL_KEYS_V2: Final[frozenset[str]] = frozenset(
     ZarrV2GroupMetadataJSON.__optional_keys__
 )
 
 
-GROUP_METADATA_STANDARD_KEYS_V2: Final[frozenset[str]] = (
-    GROUP_METADATA_REQUIRED_KEYS_V2 | GROUP_METADATA_OPTIONAL_KEYS_V2
+_GROUP_METADATA_STANDARD_KEYS_V2: Final[frozenset[str]] = (
+    _GROUP_METADATA_REQUIRED_KEYS_V2 | _GROUP_METADATA_OPTIONAL_KEYS_V2
 )
 
 
@@ -85,8 +85,8 @@ def validate_group_metadata_v2(
     if not is_object(value):
         return not_an_object(value)
     doc = value
-    problems: list[ValidationProblem] = list(missing_keys(GROUP_METADATA_REQUIRED_KEYS_V2, doc))
-    problems.extend(unexpected_keys(GROUP_METADATA_STANDARD_KEYS_V2, doc))
+    problems: list[ValidationProblem] = list(missing_keys(_GROUP_METADATA_REQUIRED_KEYS_V2, doc))
+    problems.extend(unexpected_keys(_GROUP_METADATA_STANDARD_KEYS_V2, doc))
     problems.extend(check_literal(doc, "zarr_format", 2))
     if "attributes" in doc:
         problems.extend(validate_attributes(doc["attributes"]))

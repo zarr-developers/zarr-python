@@ -34,14 +34,14 @@ from zarr_metadata.v2._definition import (
     ZarrV2DataTypeDefinition,
     ZarrV2DataTypeField,
 )
-from zarr_metadata.v2.codec import V2_CODECS
-from zarr_metadata.v2.data_type import V2_DATA_TYPES
+from zarr_metadata.v2.codec import CODECS_V2
+from zarr_metadata.v2.data_type import DATA_TYPES_V2
 
 if TYPE_CHECKING:
     from zarr_metadata._typed_json import Loc
     from zarr_metadata.definition._definition import Problems, ResolvedField
 
-CORE_V2: Final[ZarrV2Context] = Context.of(*V2_DATA_TYPES, *V2_CODECS)
+CORE_V2: Final[ZarrV2Context] = Context.of(*DATA_TYPES_V2, *CODECS_V2)
 """The data types that zarr-python 2.x writes and the codecs that numcodecs 0.16 configures."""
 
 

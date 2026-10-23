@@ -29,12 +29,13 @@ from zarr_metadata.definition import (
     resolve,
 )
 from zarr_metadata.json_schema import (
-    field_json_schema,
+    field_json_schema_v3,
     json_schema,
     node_metadata_json_schema_v3,
 )
 from zarr_metadata.model import validate_node_metadata_v3
 from zarr_metadata.typed_json import JSONValue, check
+from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v3.codec.gzip import GzipCodecConfiguration
 from zarr_metadata.v3.definition import (
     CORE,
@@ -483,7 +484,7 @@ _FIELD_SCHEMAS: dict[tuple[type[Definition[Any]], int], Draft202012Validator] = 
 
 def _field_validator(kind: type[Definition[Any]], scope: int) -> Draft202012Validator:
     if (kind, scope) not in _FIELD_SCHEMAS:
-        schema = field_json_schema(kind, _SCOPES[scope])
+        schema = field_json_schema_v3(kind, context=_SCOPES[scope])
         _FIELD_SCHEMAS[(kind, scope)] = Draft202012Validator(schema)
     return _FIELD_SCHEMAS[(kind, scope)]
 
@@ -702,7 +703,7 @@ FIELDS: list[tuple[str, object, type[Definition[Any]], Context, bool, bool]] = [
 def test_field_json_schema_says_what_the_scope_reads(
     field: object, kind: type[Definition[Any]], scope: Context, accepted: bool, clean: bool
 ) -> None:
-    schema = field_json_schema(kind, scope)
+    schema = field_json_schema_v3(kind, context=scope)
     Draft202012Validator.check_schema(schema)
     assert Draft202012Validator(schema).is_valid(cast("Any", field)) == accepted
     assert (resolve(field, kind, scope)[1] == ()) == clean
@@ -712,7 +713,7 @@ def test_field_json_schema_says_what_the_scope_reads(
     ("key", "field"), CASES, ids=[f"{key}:{index}" for index, (key, _) in enumerate(CASES)]
 )
 def test_every_example_field_is_one_its_schema_accepts(key: str, field: object) -> None:
-    schema = field_json_schema(KINDS[key.split(":")[0]], CORE_AND_EXTENSIONS)
+    schema = field_json_schema_v3(KINDS[key.split(":")[0]], context=CORE_AND_EXTENSIONS)
     assert Draft202012Validator(schema).is_valid(cast("Any", field))
 
 
@@ -731,9 +732,15 @@ def test_a_field_read_without_a_problem_is_one_its_schema_accepts(data: st.DataO
         assert _field_validator(kind, scope).is_valid(cast("Any", field))
 
 
+def test_error_field_json_schema_v3_refuses_a_scope_of_another_format() -> None:
+    """A v2 scope cannot read a v3 field, so `field_json_schema_v3` raises `TypeError` for one, as every v3 reader does."""
+    with pytest.raises(TypeError, match="v3 document is read in a scope of that format"):
+        field_json_schema_v3(CodecDefinition, context=CORE_V2)
+
+
 def test_field_json_schema_refuses_what_is_not_a_kind() -> None:
     with pytest.raises(TypeError, match="is not a kind of metadata"):
-        field_json_schema(Definition, CORE)
+        field_json_schema_v3(Definition, context=CORE)
 
 
 # --- a zarr.json ------------------------------------------------------------
@@ -915,7 +922,7 @@ def test_every_schema_is_a_json_schema_written_the_same_each_time(scope: Context
         ChunkKeyEncodingDefinition,
         StorageTransformerDefinition,
     ):
-        Draft202012Validator.check_schema(field_json_schema(kind, scope))
+        Draft202012Validator.check_schema(field_json_schema_v3(kind, context=scope))
 
 
 @pytest.mark.parametrize(
@@ -958,7 +965,9 @@ def test_a_stray_member_beside_an_unclaimed_name_is_refused_by_the_schema() -> N
     assert [(p.loc, p.kind) for p in resolve(field, CodecDefinition, CORE)[1]] == [
         (("version",), "unknown_key")
     ]
-    assert not Draft202012Validator(field_json_schema(CodecDefinition, CORE)).is_valid(field)
+    assert not Draft202012Validator(field_json_schema_v3(CodecDefinition, context=CORE)).is_valid(
+        field
+    )
 
 
 @pytest.mark.parametrize(
@@ -997,7 +1006,8 @@ def test_the_schema_names_an_extension_as_the_reader_does(name: str) -> None:
     _, problems = resolve(field, CodecDefinition, CORE)
     accepted = len(problems) == 0
     assert (
-        Draft202012Validator(field_json_schema(CodecDefinition, CORE)).is_valid(field) is accepted
+        Draft202012Validator(field_json_schema_v3(CodecDefinition, context=CORE)).is_valid(field)
+        is accepted
     )
     assert accepted is (
         name

@@ -80,18 +80,18 @@ if TYPE_CHECKING:
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
 
 
-ARRAY_METADATA_REQUIRED_KEYS_V2: Final[frozenset[str]] = frozenset(
+_ARRAY_METADATA_REQUIRED_KEYS_V2: Final[frozenset[str]] = frozenset(
     ZarrV2ArrayMetadataJSON.__required_keys__
 )
 
 
-ARRAY_METADATA_OPTIONAL_KEYS_V2: Final[frozenset[str]] = frozenset(
+_ARRAY_METADATA_OPTIONAL_KEYS_V2: Final[frozenset[str]] = frozenset(
     ZarrV2ArrayMetadataJSON.__optional_keys__
 )
 
 
-ARRAY_METADATA_STANDARD_KEYS_V2: Final[frozenset[str]] = (
-    ARRAY_METADATA_REQUIRED_KEYS_V2 | ARRAY_METADATA_OPTIONAL_KEYS_V2
+_ARRAY_METADATA_STANDARD_KEYS_V2: Final[frozenset[str]] = (
+    _ARRAY_METADATA_REQUIRED_KEYS_V2 | _ARRAY_METADATA_OPTIONAL_KEYS_V2
 )
 
 
@@ -200,11 +200,11 @@ def read_array_v2(
     # https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313), the v2 array document is open: other keys "SHOULD NOT be
     # present within the metadata object and SHOULD be ignored by
     # implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), so a member outside
-    # ARRAY_METADATA_STANDARD_KEYS_V2 is not a problem just for being there.
+    # _ARRAY_METADATA_STANDARD_KEYS_V2 is not a problem just for being there.
     # Ignored does not mean unchecked: as in v3, the member must be JSON,
     # and its key must be a string.
-    problems: list[ValidationProblem] = list(missing_keys(ARRAY_METADATA_REQUIRED_KEYS_V2, doc))
-    extra_fields, found = other_members(doc, ARRAY_METADATA_STANDARD_KEYS_V2)
+    problems: list[ValidationProblem] = list(missing_keys(_ARRAY_METADATA_REQUIRED_KEYS_V2, doc))
+    extra_fields, found = other_members(doc, _ARRAY_METADATA_STANDARD_KEYS_V2)
     problems.extend(found)
     problems.extend(check_literal(doc, "zarr_format", 2))
     shape, shape_problems = dimension_lengths(doc, "shape")

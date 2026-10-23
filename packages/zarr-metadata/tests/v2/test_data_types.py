@@ -17,13 +17,13 @@ from zarr_metadata.definition import (
     resolve,
 )
 from zarr_metadata.definition._definition import fields_of
-from zarr_metadata.v2.data_type import V2_DATA_TYPES
+from zarr_metadata.v2.data_type import DATA_TYPES_V2
 from zarr_metadata.v2.definition import ZarrV2DataTypeDefinition
 
 if TYPE_CHECKING:
     from zarr_metadata import JSONValue
 
-SCOPE = Context.of(*V2_DATA_TYPES)
+SCOPE = Context.of(*DATA_TYPES_V2)
 
 Loc = tuple[str | int, ...]
 
@@ -210,8 +210,8 @@ def test_error_a_fill_value_the_family_does_not_take_is_a_problem(
 
 
 def test_every_family_has_an_example() -> None:
-    """Every definition in `V2_DATA_TYPES` has an example above, so no definition goes untested."""
-    names = {definition.name for definition in V2_DATA_TYPES}
+    """Every definition in `DATA_TYPES_V2` has an example above, so no definition goes untested."""
+    names = {definition.name for definition in DATA_TYPES_V2}
     assert names == {
         "bool",
         "int",

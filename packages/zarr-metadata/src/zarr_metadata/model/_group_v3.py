@@ -89,18 +89,18 @@ if TYPE_CHECKING:
 
 # The standard top-level keys of a v3 group metadata document. Anything outside
 # this set is an extension field.
-GROUP_METADATA_REQUIRED_KEYS_V3: Final[frozenset[str]] = frozenset(
+_GROUP_METADATA_REQUIRED_KEYS_V3: Final[frozenset[str]] = frozenset(
     ZarrV3GroupMetadataJSON.__required_keys__
 )
 
 
-GROUP_METADATA_OPTIONAL_KEYS_V3: Final[frozenset[str]] = frozenset(
+_GROUP_METADATA_OPTIONAL_KEYS_V3: Final[frozenset[str]] = frozenset(
     ZarrV3GroupMetadataJSON.__optional_keys__
 )
 
 
-GROUP_METADATA_STANDARD_KEYS_V3: Final[frozenset[str]] = (
-    GROUP_METADATA_REQUIRED_KEYS_V3 | GROUP_METADATA_OPTIONAL_KEYS_V3
+_GROUP_METADATA_STANDARD_KEYS_V3: Final[frozenset[str]] = (
+    _GROUP_METADATA_REQUIRED_KEYS_V3 | _GROUP_METADATA_OPTIONAL_KEYS_V3
 )
 
 
@@ -757,13 +757,13 @@ def read_group_v3(
     if not is_object(value):
         return ZarrV3GroupMetadataReading(problems=not_an_object(value)), None
     doc = value
-    found: list[ValidationProblem] = list(missing_keys(GROUP_METADATA_REQUIRED_KEYS_V3, doc))
+    found: list[ValidationProblem] = list(missing_keys(_GROUP_METADATA_REQUIRED_KEYS_V3, doc))
     past = members_past_the_levels(doc, at)
     found.extend(past.values())
     whole, doc = doc, {key: item for key, item in doc.items() if key not in past}
     extra_fields, others = other_members(
         doc,
-        GROUP_METADATA_STANDARD_KEYS_V3,
+        _GROUP_METADATA_STANDARD_KEYS_V3,
         additional_reserved_keys=frozenset({ZARR_V3_CONSOLIDATED_METADATA_KEY}),
         at=at,
     )

@@ -23,7 +23,7 @@ while `check` requires `1`:
     #  'properties': {'level': {'type': 'integer', 'minimum': 0, 'maximum': 9}},
     #  'required': ['level'], 'additionalProperties': False}
 
-**One v3 field.** `field_json_schema(kind, context)` writes one field
+**One v3 field.** `field_json_schema_v3(kind, context=None)` writes one field
 read as `kind` in the scope `context`: a field that a definition in
 scope reads, or a name that no definition claims, with any
 configuration.
@@ -46,11 +46,11 @@ data type's fill value schema.
 """
 
 from zarr_metadata._typed_json import JSONSchema, json_schema
-from zarr_metadata.v3._json_schema import field_json_schema, node_metadata_json_schema_v3
+from zarr_metadata.v3._json_schema import field_json_schema_v3, node_metadata_json_schema_v3
 
 __all__ = [
     "JSONSchema",
-    "field_json_schema",
+    "field_json_schema_v3",
     "json_schema",
     "node_metadata_json_schema_v3",
 ]

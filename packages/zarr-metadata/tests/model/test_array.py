@@ -48,9 +48,9 @@ from zarr_metadata.model import (
     validate_metadata_field_v3,
 )
 from zarr_metadata.model._array_v3 import (
-    ARRAY_METADATA_OPTIONAL_KEYS_V3,
-    ARRAY_METADATA_REQUIRED_KEYS_V3,
-    ARRAY_METADATA_STANDARD_KEYS_V3,
+    _ARRAY_METADATA_OPTIONAL_KEYS_V3,
+    _ARRAY_METADATA_REQUIRED_KEYS_V3,
+    _ARRAY_METADATA_STANDARD_KEYS_V3,
 )
 from zarr_metadata.problems import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSONPartial
@@ -338,8 +338,8 @@ def test_v3_to_key_value_is_valid_json_under_zarr_json() -> None:
 def test_standard_keys_is_union_of_required_and_optional() -> None:
     """The standard-key set is the union of the required and optional key sets."""
     assert (
-        ARRAY_METADATA_STANDARD_KEYS_V3
-        == ARRAY_METADATA_REQUIRED_KEYS_V3 | ARRAY_METADATA_OPTIONAL_KEYS_V3
+        _ARRAY_METADATA_STANDARD_KEYS_V3
+        == _ARRAY_METADATA_REQUIRED_KEYS_V3 | _ARRAY_METADATA_OPTIONAL_KEYS_V3
     )
 
 
@@ -350,8 +350,8 @@ def test_standard_keys_contains_known_fields_and_excludes_extensions() -> None:
         "node_type",
         "shape",
         "codecs",
-    } <= ARRAY_METADATA_STANDARD_KEYS_V3
-    assert "my_ext" not in ARRAY_METADATA_STANDARD_KEYS_V3
+    } <= _ARRAY_METADATA_STANDARD_KEYS_V3
+    assert "my_ext" not in _ARRAY_METADATA_STANDARD_KEYS_V3
 
 
 # --- create_default --------------------------------------------------------

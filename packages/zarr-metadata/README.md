@@ -35,6 +35,18 @@ closely model the content of the Zarr specifications, such as:
   (de)serialization. A document
   produced by `to_json` shares no mutable state with the model that produced
   it.
+- **Definitions and scopes** ([`zarr_metadata.definition`](https://zarr-metadata.readthedocs.io/en/latest/api/definition/),
+  with each format's kinds in `zarr_metadata.v3.definition` and
+  `zarr_metadata.v2.definition`): each extension's configuration as a
+  `TypedDict` with its rules, and the scope that decides which definitions
+  read a document.
+- **JSON type checking** ([`zarr_metadata.typed_json`](https://zarr-metadata.readthedocs.io/en/latest/api/typed_json/)):
+  `check` checks a JSON value against any `TypedDict` and reports every
+  problem with its location.
+- **Problems** ([`zarr_metadata.problems`](https://zarr-metadata.readthedocs.io/en/latest/api/problems/)): the problem
+  values every reader returns, and the error that carries them.
+- **JSON Schema** ([`zarr_metadata.json_schema`](https://zarr-metadata.readthedocs.io/en/latest/api/json_schema/)): the
+  JSON Schema of a `TypedDict`, a v3 field, or a whole `zarr.json`.
 - **Optional Pydantic integration** ([`zarr_metadata.pydantic`](https://zarr-metadata.readthedocs.io/en/latest/api/pydantic/),
   requires Pydantic 2.13 or newer): each model as a Pydantic field type that
   validates raw documents through the same strict parser.
@@ -256,7 +268,7 @@ extension point is described as a field as its scope reads it: a claimed
 configuration follows its definition's TypedDict, including bounds, and a
 name that nothing in the scope claims may have any configuration. The fill
 value must be a valid fill value for the data type the document names.
-`field_json_schema(kind, context)` writes the schema of one field, and
+`field_json_schema_v3(kind, context=None)` writes the schema of one field, and
 `json_schema` writes the schema of any TypedDict as `check` reads it. All
 three are in `zarr_metadata.json_schema`. A schema describes each member on its own, not the rules that
 relate members to each other, so a document the schema accepts may still

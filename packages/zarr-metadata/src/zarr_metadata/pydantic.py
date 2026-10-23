@@ -29,13 +29,13 @@ For example:
     Mixed.model_validate(data, context={"zarr_metadata_context": V3, "zarr_metadata_context_v2": V2})
 
 An existing model instance passes through unchanged, as pydantic's does, and
-serialization emits the canonical document via `to_json`. A failed parse
+serialization emits the document as it was written, via `to_json`. A failed parse
 raises a pydantic `ValidationError` with one line error per problem, in
 the same format pydantic uses for its own errors. Each line error has the
 problem's `kind` as its `type`, the problem's `loc` under the field's
 `loc`, the `input` found there, and the problem's `ctx`. If the message
 contains a ctx placeholder, the message is passed in the ctx as
-`message`; see `_line_error`. Annotate a field with these types, not the
+`message`. Annotate a field with these types, not the
 core classes, because pydantic cannot build a schema for the core classes.
 
 A node's attributes may hold `NaN`, `Infinity` or `-Infinity`, which the

@@ -104,7 +104,7 @@ fields as `AcceptedField.nested`, a `Nested` mapping keyed by location,
 so a struct's rules can access its field types. `read_configuration`
 reads in no scope, so it passes no nested fields. A rule's message
 should show a value as JSON, as the package's own messages do, with
-`shown`: `null`, `[1, 2]`, `"C"`. A rule reports the location of a
+`zarr_metadata.problems.shown`: `null`, `[1, 2]`, `"C"`. A rule reports the location of a
 problem. The value at that location becomes the problem's `input`
 automatically. Define each function at module top level. A model holds
 the definitions that read its fields, so the model can be pickled, and
@@ -245,7 +245,7 @@ declared with its format, `class Tag(Definition[C], kind=True,
 format=3)`. Nothing else happens at class creation.
 """
 
-from zarr_metadata.definition._context import Context
+from zarr_metadata.definition._context import Context, Tables
 from zarr_metadata.definition._definition import (
     AcceptedField,
     Definition,
@@ -253,6 +253,7 @@ from zarr_metadata.definition._definition import (
     Nested,
     RefusedField,
     ResolvedField,
+    Scope,
     UnclaimedField,
     WithFillValue,
     canonical_fill_value,
@@ -281,7 +282,9 @@ __all__ = [
     "Nested",
     "RefusedField",
     "ResolvedField",
+    "Scope",
     "ScopeConflictError",
+    "Tables",
     "UnclaimedField",
     "WithFillValue",
     "canonical_fill_value",
