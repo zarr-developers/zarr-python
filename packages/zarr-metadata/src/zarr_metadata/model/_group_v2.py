@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Final, TypeAlias, TypeGuard, cast
 from typing_extensions import TypedDict, Unpack
 
 from zarr_metadata._common import JSONValue
+from zarr_metadata._hierarchy import NodeType, tree_problems
 from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
@@ -48,7 +49,6 @@ from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
 from zarr_metadata.v2.consolidated import ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY
 from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY, ZarrV2GroupMetadataJSON
-from zarr_metadata.v3._hierarchy import NodeType, hierarchy_problems
 
 if TYPE_CHECKING:
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
@@ -570,7 +570,7 @@ def _read_consolidated_v2(
 
 
 def _hierarchy_problems_v2(by_path: Mapping[str, Mapping[str, str]]) -> list[ValidationProblem]:
-    """Why the nodes in a `.zmetadata` do not form a valid hierarchy, as `hierarchy_problems` checks it. A node below an array is reported at its own entry. A missing group above a node is reported at the entry that group would have. An orphan `.zattrs` is not a node."""
+    """Why the nodes in a `.zmetadata` do not form a valid hierarchy, as `tree_problems` checks it; the paths are already checked against the v2 rules. A node below an array is reported at its own entry. A missing group above a node is reported at the entry that group would have. An orphan `.zattrs` is not a node."""
     # The root is a group unless an entry says otherwise: a `.zmetadata`
     # does not have to list its own `.zgroup`.
     nodes: dict[str, NodeType] = {"/": "group"}
@@ -580,7 +580,7 @@ def _hierarchy_problems_v2(by_path: Mapping[str, Mapping[str, str]]) -> list[Val
         elif ZARR_V2_GROUP_METADATA_STORE_KEY in names:
             nodes[f"/{path}"] = "group"
     problems: list[ValidationProblem] = []
-    for found in hierarchy_problems(nodes):
+    for found in tree_problems(nodes):
         at = found.loc[0]
         path = at[1:] if isinstance(at, str) else ""
         names = by_path.get(path, {})

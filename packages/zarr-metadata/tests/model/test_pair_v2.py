@@ -431,6 +431,18 @@ def test_error_a_second_key_for_a_node_file_hides_no_other_problem() -> None:
     )
 
 
+@pytest.mark.parametrize("name", ["__private", "zarr.json"])
+def test_a_v2_node_may_have_a_name_that_only_v3_reserves(name: str) -> None:
+    """Zarr v2 reserves no node names. A `.zmetadata` node named `__private` or `zarr.json`, which v3 reserves, is a valid v2 node."""
+    model = ZarrV2ConsolidatedMetadata(
+        {
+            "zarr_consolidated_format": 1,
+            "metadata": {".zgroup": {"zarr_format": 2}, f"{name}/.zarray": ZARRAY},
+        }
+    )
+    assert set(model.nodes) == {"", name}
+
+
 def test_error_a_key_with_a_dot_segment_is_no_node_s_path() -> None:
     """A `.zmetadata` key whose path has a `.` or `..` segment names no node, unlike a key with a leading or repeated `/`. It is a problem at the key, and it does not make a second node next to the one it would name."""
     with pytest.raises(MetadataValidationError) as raised:
