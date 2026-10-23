@@ -11,6 +11,7 @@ from typing_extensions import ReadOnly, TypedDict
 from zarr_metadata._numpy import (
     NumpyTimeScaleFactor,
     NumpyTimeTicks,
+    NumpyTimeUnit,
     numpy_time_fill_value_canonical,
 )
 from zarr_metadata.v3._definition import DataTypeDefinition
@@ -21,11 +22,6 @@ NUMPY_TIMEDELTA64_DATA_TYPE_NAME: Final = "numpy.timedelta64"
 
 NumpyTimedelta64DataTypeName = Literal["numpy.timedelta64"]
 """Literal type of the `name` field of the `numpy.timedelta64` data type."""
-
-NumpyTimeUnit = Literal[
-    "Y", "M", "W", "D", "h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as", "generic"
-]
-"""Time unit codes used by numpy.timedelta64."""
 
 NUMPY_TIME_UNIT: Final = (
     "Y",
@@ -92,7 +88,6 @@ __all__ = [
     "NUMPY_TIMEDELTA64_DATA_TYPE",
     "NUMPY_TIMEDELTA64_DATA_TYPE_NAME",
     "NUMPY_TIME_UNIT",
-    "NumpyTimeUnit",
     "NumpyTimedelta64",
     "NumpyTimedelta64Configuration",
     "NumpyTimedelta64DataTypeName",

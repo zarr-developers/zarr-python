@@ -66,7 +66,7 @@ from zarr_metadata.v3.definition import (
 
 if TYPE_CHECKING:
     from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
-    from zarr_metadata.v2 import ZarrV2CodecMetadata
+    from zarr_metadata.v2.codec import ZarrV2CodecMetadata
 
 # --- public exports --------------------------------------------------------
 
@@ -105,27 +105,28 @@ STORE_KEY_PAIRS = [
 ]
 
 
-def test_store_key_pairs_exported_from_package() -> None:
-    """Each store-key constant is exported together with its Literal type
-    alias, and the pair cannot drift apart."""
-    import zarr_metadata.model as m
+def test_store_key_pairs_agree() -> None:
+    """Each store-key constant's Literal type alias holds exactly that constant, so the pair cannot drift apart."""
+    import importlib
 
-    for const_name, alias_name, _ in STORE_KEY_PAIRS:
-        assert const_name in m.__all__
-        assert alias_name in m.__all__
-        assert (getattr(m, const_name),) == get_args(getattr(m, alias_name))
+    for const_name, alias_name, module_name in STORE_KEY_PAIRS:
+        module = importlib.import_module(module_name)
+        assert (getattr(module, const_name),) == get_args(getattr(module, alias_name))
 
 
 def test_store_keys_are_defined_in_their_spec_modules() -> None:
-    """Store keys are facts about the on-disk specs, so each is defined in the
-    `v2`/`v3` module describing that document — not in the model layer, which
-    only re-exports them."""
+    """Store keys are facts about the on-disk specs, so each is exported only by the `v2`/`v3` module describing that document, not by the model layer."""
     import importlib
+
+    import zarr_metadata.model
 
     for const_name, alias_name, module_name in STORE_KEY_PAIRS:
         module = importlib.import_module(module_name)
         for name in (const_name, alias_name):
             assert name in module.__all__, f"{name} should be exported by {module_name}"
+            assert name not in zarr_metadata.model.__all__, (
+                f"{name} should not be exported by the model"
+            )
 
 
 def test_v3_consolidated_key_is_not_a_store_key() -> None:
@@ -133,12 +134,15 @@ def test_v3_consolidated_key_is_not_a_store_key() -> None:
     `zarr.json`, not persisted under its own store key. It therefore has no
     paired `Literal` alias, unlike every true store key — which is why it is
     excluded from `STORE_KEY_PAIRS` rather than merely forgotten."""
-    import zarr_metadata.model as m
+    import importlib
 
-    assert "ZARR_V3_CONSOLIDATED_METADATA_KEY" in m.__all__
-    assert not hasattr(m, "ZarrV3ConsolidatedMetadataKey")
-    assert m.ZARR_V3_CONSOLIDATED_METADATA_KEY not in {
-        getattr(m, const_name) for const_name, _, _ in STORE_KEY_PAIRS
+    from zarr_metadata.v3 import consolidated
+
+    assert "ZARR_V3_CONSOLIDATED_METADATA_KEY" in consolidated.__all__
+    assert not hasattr(consolidated, "ZarrV3ConsolidatedMetadataKey")
+    assert consolidated.ZARR_V3_CONSOLIDATED_METADATA_KEY not in {
+        getattr(importlib.import_module(module_name), const_name)
+        for const_name, _, module_name in STORE_KEY_PAIRS
     }
 
 
@@ -147,9 +151,10 @@ def test_v3_node_store_keys_agree() -> None:
     the document's `node_type`. The array and group constants are separately
     typed but must name the same file; adjacency used to make that obvious, and
     they now live in different modules."""
-    import zarr_metadata.model as m
+    from zarr_metadata.v3.array import ZARR_V3_ARRAY_METADATA_STORE_KEY
+    from zarr_metadata.v3.group import ZARR_V3_GROUP_METADATA_STORE_KEY
 
-    assert m.ZARR_V3_ARRAY_METADATA_STORE_KEY == m.ZARR_V3_GROUP_METADATA_STORE_KEY
+    assert ZARR_V3_ARRAY_METADATA_STORE_KEY == ZARR_V3_GROUP_METADATA_STORE_KEY
 
 
 def test_validation_diagnostics_exported_from_package() -> None:

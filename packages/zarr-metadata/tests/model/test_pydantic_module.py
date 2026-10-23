@@ -45,18 +45,18 @@ V2_CONSOLIDATED_DOC = {
 }
 
 FIELD_CASES = [
-    pytest.param(zmp.ZarrV3ArrayMetadata, ZarrV3ArrayMetadata, V3_ARRAY_DOC, id="array-v3"),
-    pytest.param(zmp.ZarrV2ArrayMetadata, ZarrV2ArrayMetadata, V2_ARRAY_DOC, id="array-v2"),
-    pytest.param(zmp.ZarrV3GroupMetadata, ZarrV3GroupMetadata, V3_GROUP_DOC, id="group-v3"),
-    pytest.param(zmp.ZarrV2GroupMetadata, ZarrV2GroupMetadata, V2_GROUP_DOC, id="group-v2"),
+    pytest.param(zmp.ZarrV3ArrayMetadataField, ZarrV3ArrayMetadata, V3_ARRAY_DOC, id="array-v3"),
+    pytest.param(zmp.ZarrV2ArrayMetadataField, ZarrV2ArrayMetadata, V2_ARRAY_DOC, id="array-v2"),
+    pytest.param(zmp.ZarrV3GroupMetadataField, ZarrV3GroupMetadata, V3_GROUP_DOC, id="group-v3"),
+    pytest.param(zmp.ZarrV2GroupMetadataField, ZarrV2GroupMetadata, V2_GROUP_DOC, id="group-v2"),
     pytest.param(
-        zmp.ZarrV3ConsolidatedMetadata,
+        zmp.ZarrV3ConsolidatedMetadataField,
         ZarrV3ConsolidatedMetadata,
         V3_CONSOLIDATED_DOC,
         id="consolidated-v3",
     ),
     pytest.param(
-        zmp.ZarrV2ConsolidatedMetadata,
+        zmp.ZarrV2ConsolidatedMetadataField,
         ZarrV2ConsolidatedMetadata,
         V2_CONSOLIDATED_DOC,
         id="consolidated-v2",
@@ -84,7 +84,7 @@ def test_core_instances_interoperate() -> None:
     the core classes rather than pydantic-aware subclasses."""
 
     class Manifest(BaseModel):
-        metadata: zmp.ZarrV3ArrayMetadata
+        metadata: zmp.ZarrV3ArrayMetadataField
 
     core = ZarrV3ArrayMetadata.from_json(V3_ARRAY_DOC)
     manifest = Manifest(metadata=core)
@@ -95,7 +95,7 @@ def test_validation_error_carries_problems() -> None:
     """A defective document fails with the library's loc-annotated messages."""
 
     class Manifest(BaseModel):
-        metadata: zmp.ZarrV3ArrayMetadata
+        metadata: zmp.ZarrV3ArrayMetadataField
 
     doc = dict(V3_ARRAY_DOC)
     del doc["chunk_key_encoding"]
@@ -115,7 +115,7 @@ def test_json_schema_generation() -> None:
     """model_json_schema works, describing the document form each field accepts."""
 
     class Manifest(BaseModel):
-        metadata: zmp.ZarrV3ArrayMetadata
+        metadata: zmp.ZarrV3ArrayMetadataField
 
     schema = Manifest.model_json_schema()
     metadata_schema = schema["$defs"]["ZarrV3ArrayMetadataJSON"]
@@ -140,12 +140,12 @@ def test_json_schema_generation() -> None:
 def test_json_schema_generation_emits_no_warnings() -> None:
     """Consumers can generate every public integration schema without warning filters."""
     field_types = (
-        zmp.ZarrV3ArrayMetadata,
-        zmp.ZarrV2ArrayMetadata,
-        zmp.ZarrV3GroupMetadata,
-        zmp.ZarrV2GroupMetadata,
-        zmp.ZarrV3ConsolidatedMetadata,
-        zmp.ZarrV2ConsolidatedMetadata,
+        zmp.ZarrV3ArrayMetadataField,
+        zmp.ZarrV2ArrayMetadataField,
+        zmp.ZarrV3GroupMetadataField,
+        zmp.ZarrV2GroupMetadataField,
+        zmp.ZarrV3ConsolidatedMetadataField,
+        zmp.ZarrV2ConsolidatedMetadataField,
     )
 
     with warnings.catch_warnings():
@@ -159,7 +159,7 @@ def test_v2_recursive_structured_dtype_is_in_pydantic_schema() -> None:
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
     doc["dtype"] = [["outer", [["inner", "<i4"]]]]
     doc["fill_value"] = None
-    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
+    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadataField)
 
     assert adapter.validate_python(doc).dtype.to_json() == (("outer", (("inner", "<i4"),)),)
     assert Draft202012Validator(adapter.json_schema()).is_valid(doc)
@@ -179,14 +179,14 @@ def test_v3_array_schema_rejects_empty_codecs() -> None:
     doc = json.loads(json.dumps(V3_ARRAY_DOC))
     doc["codecs"] = []
 
-    _assert_runtime_and_schema_reject(zmp.ZarrV3ArrayMetadata, doc)
+    _assert_runtime_and_schema_reject(zmp.ZarrV3ArrayMetadataField, doc)
 
 
 def test_array_schemas_reject_negative_dimensions() -> None:
     """Both array schemas mirror the runtime non-negative dimension rule."""
     for field_type, source in (
-        (zmp.ZarrV3ArrayMetadata, V3_ARRAY_DOC),
-        (zmp.ZarrV2ArrayMetadata, V2_ARRAY_DOC),
+        (zmp.ZarrV3ArrayMetadataField, V3_ARRAY_DOC),
+        (zmp.ZarrV2ArrayMetadataField, V2_ARRAY_DOC),
     ):
         doc = json.loads(json.dumps(source))
         doc["shape"] = [-1]
@@ -197,7 +197,7 @@ def test_v2_array_schema_allows_empty_filters() -> None:
     """The v2 schema, like the runtime, accepts an empty list, because the spec says "a list ... or null" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L76-L79)."""
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
     doc["filters"] = []
-    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
+    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadataField)
 
     assert adapter.validate_python(doc).filters == ()
     assert Draft202012Validator(adapter.json_schema()).is_valid(doc)
@@ -212,7 +212,7 @@ def test_v3_array_schema_rejects_false_at_every_extension_point(field: str) -> N
     entry = {"name": "example", "must_understand": False}
     doc[field] = [entry] if field in ("codecs", "storage_transformers") else entry
 
-    _assert_runtime_and_schema_reject(zmp.ZarrV3ArrayMetadata, doc)
+    _assert_runtime_and_schema_reject(zmp.ZarrV3ArrayMetadataField, doc)
 
 
 def test_metadata_field_schema_rejects_unknown_members() -> None:
@@ -220,14 +220,14 @@ def test_metadata_field_schema_rejects_unknown_members() -> None:
     doc = json.loads(json.dumps(V3_ARRAY_DOC))
     doc["codecs"] = [{"name": "bytes", "unexpected": 1}]
 
-    _assert_runtime_and_schema_reject(zmp.ZarrV3ArrayMetadata, doc)
+    _assert_runtime_and_schema_reject(zmp.ZarrV3ArrayMetadataField, doc)
 
 
 @pytest.mark.parametrize(
     ("field_type", "source"),
     [
-        (zmp.ZarrV2GroupMetadata, V2_GROUP_DOC),
-        (zmp.ZarrV2ConsolidatedMetadata, V2_CONSOLIDATED_DOC),
+        (zmp.ZarrV2GroupMetadataField, V2_GROUP_DOC),
+        (zmp.ZarrV2ConsolidatedMetadataField, V2_CONSOLIDATED_DOC),
     ],
 )
 def test_v2_schema_rejects_unknown_document_members(
@@ -244,7 +244,7 @@ def test_v2_array_schema_allows_unknown_document_members() -> None:
     """The v2 array document is open ("SHOULD be ignored", https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92) in both runtime and schema validation. An unknown member is kept as written."""
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
     doc["unexpected"] = 1
-    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
+    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadataField)
 
     assert adapter.validate_python(doc).to_json()["unexpected"] == 1
     assert Draft202012Validator(adapter.json_schema()).is_valid(doc)
@@ -254,7 +254,7 @@ def test_v3_array_schema_allows_unknown_extension_fields() -> None:
     """Schema constraints do not close the v3 top-level extension namespace."""
     doc = json.loads(json.dumps(V3_ARRAY_DOC))
     doc["vendor_extension"] = {"anything": [1, 2]}
-    adapter = TypeAdapter(zmp.ZarrV3ArrayMetadata)
+    adapter = TypeAdapter(zmp.ZarrV3ArrayMetadataField)
 
     assert adapter.validate_python(doc).extra_fields == {"vendor_extension": {"anything": (1, 2)}}
     assert Draft202012Validator(adapter.json_schema()).is_valid(doc)
@@ -264,7 +264,7 @@ def test_json_roundtrip() -> None:
     """model_dump_json output re-validates to an equal pydantic model."""
 
     class Manifest(BaseModel):
-        metadata: zmp.ZarrV3ArrayMetadata
+        metadata: zmp.ZarrV3ArrayMetadataField
 
     manifest = Manifest.model_validate({"metadata": V3_ARRAY_DOC})
     assert Manifest.model_validate_json(manifest.model_dump_json()) == manifest
@@ -286,7 +286,7 @@ def test_a_non_finite_attribute_is_kept_by_constants_serialization() -> None:
 
     class Manifest(BaseModel):
         model_config = ConfigDict(ser_json_inf_nan="constants")
-        metadata: zmp.ZarrV3GroupMetadata
+        metadata: zmp.ZarrV3GroupMetadataField
 
     document = b'{"metadata": {"zarr_format": 3, "node_type": "group", "attributes": {"x": NaN}}}'
     written = Manifest.model_validate_json(document).model_dump_json()
@@ -317,13 +317,13 @@ def test_a_v3_field_type_reads_in_the_scope_the_validation_context_holds(
     context: object, read: bool
 ) -> None:
     """The field type reads in the scope from the validation context, which pydantic passes to every validator. `zstd` is an extension, so `CORE` leaves it unclaimed."""
-    model = TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(_WITH_ZSTD, context=context)
+    model = TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(_WITH_ZSTD, context=context)
     assert isinstance(model.codecs[1], AcceptedField) is read
 
 
 def test_error_a_validation_context_holds_a_scope_that_is_not_one() -> None:
     with pytest.raises(TypeError, match=zmp.CONTEXT_KEY):
-        TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(
+        TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(
             _WITH_ZSTD, context={zmp.CONTEXT_KEY: "CORE"}
         )
 
@@ -334,7 +334,7 @@ def test_each_problem_is_a_line_error_of_pydantic_s() -> None:
     # loc under the field's loc, with the input found there and the expected
     # values. A message that contains JSON is kept unchanged.
     class Manifest(BaseModel):
-        metadata: zmp.ZarrV3ArrayMetadata
+        metadata: zmp.ZarrV3ArrayMetadataField
 
     doc = {
         **V3_ARRAY_DOC,
@@ -362,7 +362,7 @@ def test_a_message_holding_a_ctx_placeholder_is_reported_as_it_is() -> None:
     # ctx instead.
     doc = {**V3_ARRAY_DOC, "zarr_format": "{expected}"}
     with pytest.raises(ValidationError) as raised:
-        TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(doc)
+        TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(doc)
     (error,) = raised.value.errors()
     assert (error["type"], error["loc"], error["msg"]) == (
         "invalid_type",
@@ -402,7 +402,7 @@ def test_a_line_error_for_what_a_problem_could_not_hold_reports_what_sits_there(
         "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}, smuggled],
     }
     with pytest.raises(ValidationError) as raised:
-        TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(doc)
+        TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(doc)
     (error,) = raised.value.errors()
     assert (error["type"], error["loc"]) == ("invalid_type", ("codecs", 1))
     assert error["input"] is smuggled
@@ -410,11 +410,11 @@ def test_a_line_error_for_what_a_problem_could_not_hold_reports_what_sits_there(
 
 def test_the_pydantic_schema_refuses_a_null_consolidated_metadata_as_the_reader_does() -> None:
     # The schema and the reader give the same result for `null` here: both refuse it.
-    schema = TypeAdapter(zmp.ZarrV3GroupMetadata).json_schema()
+    schema = TypeAdapter(zmp.ZarrV3GroupMetadataField).json_schema()
     document = {"zarr_format": 3, "node_type": "group", "consolidated_metadata": None}
     assert not Draft202012Validator(schema).is_valid(document)
     with pytest.raises(ValidationError):
-        TypeAdapter(zmp.ZarrV3GroupMetadata).validate_python(document)
+        TypeAdapter(zmp.ZarrV3GroupMetadataField).validate_python(document)
 
 
 def test_a_line_error_for_a_document_past_the_cap_renders() -> None:
@@ -425,7 +425,9 @@ def test_a_line_error_for_a_document_past_the_cap_renders() -> None:
     for _ in range(2_000):
         deep = {"a": deep}
     with pytest.raises(ValidationError) as raised:
-        TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python({**V3_ARRAY_DOC, "attributes": deep})
+        TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(
+            {**V3_ARRAY_DOC, "attributes": deep}
+        )
     (error,) = raised.value.errors()
     assert (error["type"], len(error["loc"])) == ("invalid_value", 256)
     assert "nested deeper" in str(raised.value)
@@ -435,14 +437,14 @@ def test_a_line_error_for_a_document_past_the_cap_renders() -> None:
 @pytest.mark.parametrize("field", ["Foo/bar", "", "r*", {"name": "Int8"}])
 def test_the_pydantic_schema_names_an_extension_as_the_reader_does(field: object) -> None:
     # The schema that pydantic generates checks a name the same way the reader does.
-    schema = TypeAdapter(zmp.ZarrV3ArrayMetadata).json_schema()
+    schema = TypeAdapter(zmp.ZarrV3ArrayMetadataField).json_schema()
     # Use arrays as lists, as JSON parses them, because `jsonschema` does not accept a tuple.
     document: dict[str, Any] = json.loads(json.dumps(V3_ARRAY_DOC))
     assert Draft202012Validator(schema).is_valid(document)
     named: dict[str, Any] = {**document, "data_type": field}
     assert not Draft202012Validator(schema).is_valid(named)
     with pytest.raises(ValidationError):
-        TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(named)
+        TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(named)
 
 
 def test_v2_field_types_read_in_the_validation_contexts_scope() -> None:
@@ -454,7 +456,7 @@ def test_v2_field_types_read_in_the_validation_contexts_scope() -> None:
     from zarr_metadata.v2.data_type.scalar import UINT_V2
     from zarr_metadata.v2.definition import CORE_V2
 
-    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
+    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadataField)
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
     assert adapter.validate_python(doc).context is CORE_V2
     small = Context.of(UINT_V2)
@@ -463,7 +465,7 @@ def test_v2_field_types_read_in_the_validation_contexts_scope() -> None:
     assert isinstance(read.compressor, UnclaimedField)
     held = adapter.validate_python(doc, context={"zarr_metadata_context_v2": small})
     assert held.context is small
-    group = TypeAdapter(zmp.ZarrV2GroupMetadata).validate_python(V2_GROUP_DOC, context=small)
+    group = TypeAdapter(zmp.ZarrV2GroupMetadataField).validate_python(V2_GROUP_DOC, context=small)
     assert group.context is small
 
 
@@ -477,7 +479,7 @@ def test_each_format_reads_in_its_own_context_key() -> None:
     from zarr_metadata.v2.definition import CORE_V2
     from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
 
-    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadata)
+    adapter = TypeAdapter(zmp.ZarrV2ArrayMetadataField)
     doc = json.loads(json.dumps(V2_ARRAY_DOC))
     small = Context.of(UINT_V2)
     v3_only = adapter.validate_python(doc, context={"zarr_metadata_context": CORE_AND_EXTENSIONS})

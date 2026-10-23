@@ -47,14 +47,14 @@ class ZarrV2LzmaParameters(TypedDict, closed=True):
     filters: NotRequired[ReadOnly[tuple[JSONValue, ...] | None]]
 
 
-BloscCName = Literal["blosclz", "lz4", "lz4hc", "snappy", "zlib", "zstd"]
+ZarrV2BloscCName = Literal["blosclz", "lz4", "lz4hc", "snappy", "zlib", "zstd"]
 """The compressors inside Blosc."""
 
 
 class ZarrV2BloscParameters(TypedDict, closed=True):
     """`numcodecs.Blosc(cname='lz4', clevel=5, shuffle=1, blocksize=0, typesize=None)`. For `shuffle`, -1 is automatic, 0 is none, 1 is byte shuffle, and 2 is bit shuffle."""
 
-    cname: NotRequired[ReadOnly[BloscCName]]
+    cname: NotRequired[ReadOnly[ZarrV2BloscCName]]
     clevel: NotRequired[ReadOnly[Annotated[int, Interval(ge=0, le=9)]]]
     shuffle: NotRequired[ReadOnly[Literal[-1, 0, 1, 2]]]
     blocksize: NotRequired[ReadOnly[Annotated[int, Ge(0)]]]
@@ -97,7 +97,7 @@ __all__ = [
     "LZMA_V2",
     "ZLIB_V2",
     "ZSTD_V2",
-    "BloscCName",
+    "ZarrV2BloscCName",
     "ZarrV2BloscParameters",
     "ZarrV2Bz2Parameters",
     "ZarrV2CompressionLevel",

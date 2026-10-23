@@ -506,7 +506,7 @@ def _value_tied_constants() -> set[str]:
 # `Literal` in the same module has identical members. Pairing is by value, so a
 # tie carries no signal about which name the constant should take. These are
 # checked by eye; the count below fails if the tied set grows silently.
-KNOWN_VALUE_TIES = 9
+KNOWN_VALUE_TIES = 7
 
 
 def test_constant_names_derive_from_their_type_names() -> None:
@@ -539,3 +539,20 @@ def test_value_tied_constants_are_a_known_set() -> None:
         f"these are unchecked by the derivation rule and must be named by hand:\n"
         + "\n".join(sorted(tied))
     )
+
+
+def test_every_name_has_one_public_home() -> None:
+    """Each public name is exported by exactly one public submodule. The top-level `zarr_metadata` namespace may also export it, as a convenience alias of the same object."""
+    homes: dict[str, list[str]] = {}
+    for module_name in sorted(_iter_module_names() - {"zarr_metadata"}):
+        for name in getattr(importlib.import_module(module_name), "__all__", ()):
+            homes.setdefault(name, []).append(module_name)
+    duplicated = {name: modules for name, modules in homes.items() if len(modules) > 1}
+    assert duplicated == {}
+    aliases = [
+        name
+        for name in zm.__all__
+        if name in homes
+        and getattr(zm, name) is not getattr(importlib.import_module(homes[name][0]), name)
+    ]
+    assert aliases == [], "a top-level name must be the same object as the name in its home module"

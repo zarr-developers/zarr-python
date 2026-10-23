@@ -62,7 +62,7 @@ closely model the content of the Zarr specifications, such as:
   from pydantic import TypeAdapter
   import zarr_metadata.pydantic as zmp
 
-  adapter: TypeAdapter[zmp.ZarrV3ArrayMetadata] = TypeAdapter(zmp.ZarrV3ArrayMetadata)
+  adapter: TypeAdapter[zmp.ZarrV3ArrayMetadataField] = TypeAdapter(zmp.ZarrV3ArrayMetadataField)
   metadata = adapter.validate_python(raw)
   encoded = metadata.to_key_value()["zarr.json"]
   ```

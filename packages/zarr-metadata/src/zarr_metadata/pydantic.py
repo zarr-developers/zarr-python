@@ -24,7 +24,7 @@ as follows:
 
 For example:
 
-    TypeAdapter(zmp.ZarrV3ArrayMetadata).validate_python(document, context=SCOPE)
+    TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(document, context=SCOPE)
     ArrayManifest.model_validate(data, context={"zarr_metadata_context": SCOPE})
     Mixed.model_validate(data, context={"zarr_metadata_context": V3, "zarr_metadata_context_v2": V2})
 
@@ -59,7 +59,7 @@ Usage:
 
     class ArrayManifest(BaseModel):
         path: str
-        metadata: zmp.ZarrV3ArrayMetadata
+        metadata: zmp.ZarrV3ArrayMetadataField
 
 Static type checkers see each field type as its core model class, so
 `manifest.metadata` is a `zarr_metadata.model.ZarrV3ArrayMetadata`.
@@ -203,7 +203,7 @@ def _scope(context: object, default: Context[Any], key: str) -> Context[Any]:
     return scope
 
 
-ZarrV3ArrayMetadata = Annotated[
+ZarrV3ArrayMetadataField = Annotated[
     InstanceOf[_model.ZarrV3ArrayMetadata],
     BeforeValidator(
         _read_in_scope(
@@ -218,7 +218,7 @@ ZarrV3ArrayMetadata = Annotated[
 ]
 """Field type for a v3 array metadata document (`zarr.json` content)."""
 
-ZarrV2ArrayMetadata = Annotated[
+ZarrV2ArrayMetadataField = Annotated[
     InstanceOf[_model.ZarrV2ArrayMetadata],
     BeforeValidator(
         _read_in_scope(
@@ -233,7 +233,7 @@ ZarrV2ArrayMetadata = Annotated[
 ]
 """Field type for a v2 array metadata document (merged `.zarray` + `.zattrs` form)."""
 
-ZarrV3GroupMetadata = Annotated[
+ZarrV3GroupMetadataField = Annotated[
     InstanceOf[_model.ZarrV3GroupMetadata],
     BeforeValidator(
         _read_in_scope(
@@ -248,7 +248,7 @@ ZarrV3GroupMetadata = Annotated[
 ]
 """Field type for a v3 group metadata document (`zarr.json` content)."""
 
-ZarrV2GroupMetadata = Annotated[
+ZarrV2GroupMetadataField = Annotated[
     InstanceOf[_model.ZarrV2GroupMetadata],
     BeforeValidator(
         _read_in_scope(
@@ -263,7 +263,7 @@ ZarrV2GroupMetadata = Annotated[
 ]
 """Field type for a v2 group metadata document (merged `.zgroup` + `.zattrs` form)."""
 
-ZarrV3ConsolidatedMetadata = Annotated[
+ZarrV3ConsolidatedMetadataField = Annotated[
     InstanceOf[_model.ZarrV3ConsolidatedMetadata],
     BeforeValidator(
         _read_in_scope(
@@ -281,7 +281,7 @@ ZarrV3ConsolidatedMetadata = Annotated[
 ]
 """Field type for v3 inline consolidated metadata."""
 
-ZarrV2ConsolidatedMetadata = Annotated[
+ZarrV2ConsolidatedMetadataField = Annotated[
     InstanceOf[_model.ZarrV2ConsolidatedMetadata],
     BeforeValidator(
         _read_in_scope(
@@ -302,10 +302,10 @@ ZarrV2ConsolidatedMetadata = Annotated[
 __all__ = [
     "CONTEXT_KEY",
     "CONTEXT_KEY_V2",
-    "ZarrV2ArrayMetadata",
-    "ZarrV2ConsolidatedMetadata",
-    "ZarrV2GroupMetadata",
-    "ZarrV3ArrayMetadata",
-    "ZarrV3ConsolidatedMetadata",
-    "ZarrV3GroupMetadata",
+    "ZarrV2ArrayMetadataField",
+    "ZarrV2ConsolidatedMetadataField",
+    "ZarrV2GroupMetadataField",
+    "ZarrV3ArrayMetadataField",
+    "ZarrV3ConsolidatedMetadataField",
+    "ZarrV3GroupMetadataField",
 ]

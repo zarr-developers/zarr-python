@@ -9,11 +9,11 @@ from typing import get_args
 import pytest
 from pydantic import TypeAdapter
 
+from zarr_metadata.v3.data_type.numpy_datetime64 import NumpyTimeUnit
 from zarr_metadata.v3.data_type.numpy_timedelta64 import (
     NUMPY_TIME_UNIT,
     NumpyTimedelta64,
     NumpyTimedelta64FillValue,
-    NumpyTimeUnit,
 )
 
 DIR = Path(__file__).parent

@@ -102,22 +102,6 @@ from zarr_metadata.model._repair import (
 # Store keys are facts about the on-disk specs, so they are defined in the
 # `v2`/`v3` modules that describe those documents. They are re-exported here
 # because the model layer is where consumers reach for them.
-from zarr_metadata.v2.array import (
-    ZARR_V2_ARRAY_METADATA_STORE_KEY,
-    ZarrV2ArrayMetadataStoreKey,
-)
-from zarr_metadata.v2.attributes import (
-    ZARR_V2_ATTRIBUTES_STORE_KEY,
-    ZarrV2AttributesStoreKey,
-)
-from zarr_metadata.v2.consolidated import (
-    ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY,
-    ZarrV2ConsolidatedMetadataStoreKey,
-)
-from zarr_metadata.v2.group import (
-    ZARR_V2_GROUP_METADATA_STORE_KEY,
-    ZarrV2GroupMetadataStoreKey,
-)
 from zarr_metadata.v3._common import (
     is_metadata_field_v3,
     parse_metadata_field_v3,
@@ -131,25 +115,9 @@ from zarr_metadata.v3._hierarchy import (
     validate_node_name_v3,
     validate_node_path_v3,
 )
-from zarr_metadata.v3.array import (
-    ZARR_V3_ARRAY_METADATA_STORE_KEY,
-    ZarrV3ArrayMetadataStoreKey,
-)
-from zarr_metadata.v3.consolidated import ZARR_V3_CONSOLIDATED_METADATA_KEY
-from zarr_metadata.v3.group import (
-    ZARR_V3_GROUP_METADATA_STORE_KEY,
-    ZarrV3GroupMetadataStoreKey,
-)
 
 __all__ = [
     "UNSET",
-    "ZARR_V2_ARRAY_METADATA_STORE_KEY",
-    "ZARR_V2_ATTRIBUTES_STORE_KEY",
-    "ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY",
-    "ZARR_V2_GROUP_METADATA_STORE_KEY",
-    "ZARR_V3_ARRAY_METADATA_STORE_KEY",
-    "ZARR_V3_CONSOLIDATED_METADATA_KEY",
-    "ZARR_V3_GROUP_METADATA_STORE_KEY",
     "MetadataValidationError",
     "ProblemKind",
     "Repair",
@@ -157,25 +125,19 @@ __all__ = [
     "ValidationProblem",
     "ZarrV2ArrayMetadata",
     "ZarrV2ArrayMetadataReading",
-    "ZarrV2ArrayMetadataStoreKey",
     "ZarrV2ArrayMetadataUpdate",
-    "ZarrV2AttributesStoreKey",
     "ZarrV2ConsolidatedMetadata",
-    "ZarrV2ConsolidatedMetadataStoreKey",
     "ZarrV2GroupMetadata",
-    "ZarrV2GroupMetadataStoreKey",
     "ZarrV2GroupMetadataUpdate",
     "ZarrV2NodeMetadata",
     "ZarrV2RepairedConsolidatedMetadataReading",
     "ZarrV3ArrayMetadata",
     "ZarrV3ArrayMetadataReading",
-    "ZarrV3ArrayMetadataStoreKey",
     "ZarrV3ArrayMetadataUpdate",
     "ZarrV3ConsolidatedMetadata",
     "ZarrV3ConsolidatedMetadataInput",
     "ZarrV3GroupMetadata",
     "ZarrV3GroupMetadataReading",
-    "ZarrV3GroupMetadataStoreKey",
     "ZarrV3GroupMetadataUpdate",
     "ZarrV3NodeMetadata",
     "ZarrV3NodeMetadataInput",

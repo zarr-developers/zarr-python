@@ -82,7 +82,6 @@ evaluates its inherited annotations in its own module.
 """
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata._json import ProblemKind, ValidationProblem
 from zarr_metadata._typed_json import (
     Loc,
     check,
@@ -91,7 +90,5 @@ from zarr_metadata._typed_json import (
 __all__ = [
     "JSONValue",
     "Loc",
-    "ProblemKind",
-    "ValidationProblem",
     "check",
 ]

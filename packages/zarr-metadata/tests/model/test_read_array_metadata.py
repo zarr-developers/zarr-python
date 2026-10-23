@@ -47,10 +47,8 @@ from zarr_metadata.v3.definition import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-    from zarr_metadata.definition import (
-        Loc,
-        ResolvedField,
-    )
+    from zarr_metadata.definition import ResolvedField
+    from zarr_metadata.typed_json import Loc
     from zarr_metadata.v3.definition import Lengths
 
 LITTLE = {"name": "bytes", "configuration": {"endian": "little"}}

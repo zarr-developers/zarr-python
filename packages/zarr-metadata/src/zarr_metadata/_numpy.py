@@ -5,9 +5,14 @@ values the same way, so each encoding is defined once here.
 """
 
 import re
-from typing import Annotated, Final, NewType
+from typing import Annotated, Final, Literal, NewType
 
 from annotated_types import Interval
+
+NumpyTimeUnit = Literal[
+    "Y", "M", "W", "D", "h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as", "generic"
+]
+"""The time unit codes of the numpy time types, `numpy.datetime64` and `numpy.timedelta64`."""
 
 NUMPY_TIME_MAX_SCALE_FACTOR: Final = 2**31 - 1
 """The largest `scale_factor` that numpy stores, because the field is a signed int32."""
@@ -63,6 +68,7 @@ __all__ = [
     "Base64Bytes",
     "NumpyTimeScaleFactor",
     "NumpyTimeTicks",
+    "NumpyTimeUnit",
     "base64_bytes",
     "numpy_time_fill_value_canonical",
 ]

@@ -245,7 +245,6 @@ declared with its format, `class Tag(Definition[C], kind=True,
 format=3)`. Nothing else happens at class creation.
 """
 
-from zarr_metadata._typed_json import Loc
 from zarr_metadata.definition._context import Context
 from zarr_metadata.definition._definition import (
     AcceptedField,
@@ -279,7 +278,6 @@ __all__ = [
     "Definition",
     "Disagreements",
     "EmptyConfiguration",
-    "Loc",
     "Nested",
     "RefusedField",
     "ResolvedField",
