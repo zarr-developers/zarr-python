@@ -486,7 +486,7 @@ def _refine(value: object, loc: tuple[str | int, ...], *, finite: bool) -> _Refi
     if len(loc) >= JSON_DEPTH:
         return None, (_past_the_levels(loc),)
     if mapping:
-        # Walk the members here rather than in `_refine_members`, so that
+        # Walk the members here rather than in a separate function, so that
         # each level of nesting costs one frame, `JSON_DEPTH` at most.
         members: dict[str, JSONValue] = {}
         found_in_members: list[ValidationProblem] = []
@@ -753,7 +753,10 @@ def copied(value: JSONValue) -> JSONValue:
 
 
 def arrays_to_tuples(obj: object) -> object:
-    """Recursively materialize mappings and convert array-like values to tuples."""
+    """Recursively convert array-like values to tuples and mappings to dicts.
+
+    A tuple or dict whose contents need no conversion is returned as is, not copied.
+    """
     if is_array(obj):
         sequence = obj
         # Use `map` and loops, not comprehensions. Before Python 3.12 a

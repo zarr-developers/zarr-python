@@ -130,10 +130,10 @@ class ZarrV2ArrayMetadataJSONPartial(TypedDict, total=False, extra_items=JSONVal
     `tests/test_partial_equivalence.py` passes without special-casing those
     fields (PEP 655 explicitly permits `NotRequired` inside `total=False`).
 
-    Note: v2 array metadata has no `extra_items` setting: the v2 spec has no
-    extension-field concept, and other `.zarray` keys "SHOULD be ignored by
-    implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), so nothing beyond the spec-defined
-    fields is modeled.
+    Like `ZarrV2ArrayMetadataJSON`, this type is open (`extra_items=JSONValue`):
+    other `.zarray` keys "SHOULD NOT be present ... and SHOULD be ignored by
+    implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), so they are allowed, and each one is a
+    JSON value.
 
     Drift between this type and `ZarrV2ArrayMetadataJSON` is prevented by
     `tests/test_partial_equivalence.py`.

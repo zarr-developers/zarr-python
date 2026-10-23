@@ -1096,9 +1096,11 @@ def _usable(problems: Sequence[ValidationProblem]) -> bool:
 def read_only(configuration: C) -> C:
     """`configuration` in the form a definition's functions receive it: a read-only view of the field's own configuration, so a function that assigns a member fails.
 
-    Only the top-level members are read-only. The value a member holds
-    (for example, an object in a struct's `fields`) is the field's own
-    object, and a function that writes into it changes the field.
+    This function makes only the top-level members read-only. The value a
+    member holds (for example, an object in a struct's `fields`) is passed
+    as is. While a configuration is being read, that value can be mutable,
+    and a function that writes into it changes the configuration. An
+    accepted field's configuration is already read-only at every level.
     """
     return cast("C", MappingProxyType(cast("Mapping[str, JSONValue]", configuration)))
 

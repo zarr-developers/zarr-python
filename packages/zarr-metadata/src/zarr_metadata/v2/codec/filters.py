@@ -39,7 +39,7 @@ class ZarrV2FixedScaleOffsetParameters(TypedDict, closed=True):
 
 
 class ZarrV2QuantizeParameters(TypedDict, closed=True):
-    """`numcodecs.Quantize(digits, dtype, astype=None)`: `dtype` names a float."""
+    """`numcodecs.Quantize(digits, dtype, astype=None)`: `dtype`, and `astype` when present, name a float."""
 
     digits: ReadOnly[Annotated[int, Ge(0)]]
     dtype: ReadOnly[str]

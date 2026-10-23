@@ -448,7 +448,7 @@ def test_the_pydantic_schema_names_an_extension_as_the_reader_does(field: object
 
 
 def test_v2_field_types_read_in_the_validation_contexts_scope() -> None:
-    """The v2 field types read a document in the scope that the validation context holds. The context is either a `Context` itself or holds one in its `zarr_metadata_context` item. When it holds none, they read in `CORE_V2`. The v3 field types work the same way."""
+    """The v2 field types read a document in the scope that the validation context holds. The context is either a `Context` itself or holds one in its `zarr_metadata_context_v2` item. When it holds none, they read in `CORE_V2`. The v3 field types work the same way."""
     from zarr_metadata.v2.data_type.scalar import UINT_V2
     from zarr_metadata.v2.definition import CORE_V2, Context, UnclaimedField
 

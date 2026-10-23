@@ -1319,7 +1319,7 @@ class ZarrV2GroupMetadata(Keyed):
     scope conflicts with the reading. A model is only built by reading:
     the constructor raises `MetadataValidationError` with every problem.
     Two groups are equal when their attributes are written the same way,
-    as `group_key_v2` defines.
+    as `_key_of` defines.
     """
 
     __slots__ = ("_attributes", "_context", "_document", "_shown")

@@ -168,7 +168,7 @@ def test_a_kind_reads_the_envelope_its_format_writes(
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)
 class Typed(WithFillValue[C], kind=True, format=3):
-    """A kind of another format whose definitions take a fill value."""
+    """A test kind, other than the data type kind, whose definitions take a fill value."""
 
     label: ClassVar[str] = "typed"
 

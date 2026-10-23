@@ -329,11 +329,10 @@ def _is_canonical_array_metadata_v2(value: object) -> bool:
 def validate_attributes(value: object) -> tuple[ValidationProblem, ...]:
     """Validate an `attributes` value: a mapping with string keys.
 
-    Returns a problem at `("attributes",)` if it is not, else `[]`. Shared by the
-    v2 and v3 validators. Unlike the other `validate_*` functions (which
-    return value-relative locs for the caller to `_prefix`), this emits the
-    already-parent-relative `("attributes",)` loc, since it is only ever called
-    with a document's `attributes` value.
+    Returns a problem at `("attributes",)` if it is not, else `()`. Shared by the
+    v2 and v3 validators. The loc is relative to the document, not to the
+    value, since this function is only called with a document's `attributes`
+    value.
     """
     return attributes_of(value)[1]
 
