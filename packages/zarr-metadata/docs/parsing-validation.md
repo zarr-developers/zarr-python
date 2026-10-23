@@ -163,7 +163,7 @@ This procedure yields one of two values:
 
 The **registry** from the resolve-and-validate stage is called a **scope** in this library. It is a [`Context`](api/definition.md) object, and every reader takes a `context` argument. The default scope is `CORE_AND_EXTENSIONS`, which holds the data types, codecs, chunk grids, etc. defined in the Zarr V3 spec and in [zarr-extensions](https://github.com/zarr-developers/zarr-extensions/). `CORE` holds only the definitions from the Zarr V3 spec.
 
-`read_array_metadata_v3` reads a JSON document and returns a "reading". `reading.problems` is the list of problems, and `reading.metadata` is the validated model, or `None` if there are problems. Each problem has a `loc`, which is its position in the document as a tuple, a `kind`, like `missing_key` or `invalid_value`, and a human-readable `message`:
+`read_array_metadata_v3` reads a JSON document and returns a "reading". `reading.problems` is a tuple of the problems, and `reading.metadata` is the validated model, or `None` if there are problems. Each problem has a `loc`, which is its position in the document as a tuple, a `kind`, like `missing_key` or `invalid_value`, and a human-readable `message`:
 
 ```python
 from zarr_metadata.model import read_array_metadata_v3

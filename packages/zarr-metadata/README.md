@@ -256,10 +256,8 @@ configuration of a field that nothing in the scope claims, and every
 member of a v2 document) are compared as JSON text. JSON text
 distinguishes `true` from `1` and `-0.0` from `0.0`, and treats `NaN` as
 equal to itself. Equal models have equal hashes, but may write different
-documents, because `to_json` writes each document as it was given. A v3
-model holds nothing that can be changed in place. A v2 model's hash is
-computed from what its containers held when it was hashed, so do not
-change a v2 model in place while it is in a set or used as a dict key.
+documents, because `to_json` writes each document as it was given. A
+model holds nothing that can be changed in place.
 
 `node_metadata_json_schema_v3` writes the rules the validators apply as a
 JSON Schema (draft 2020-12). Use it in an editor that checks a `zarr.json`
