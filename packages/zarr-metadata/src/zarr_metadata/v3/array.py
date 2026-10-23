@@ -1,7 +1,7 @@
 """Zarr v3 array metadata types."""
 
 from collections.abc import Mapping
-from typing import Annotated, Final, Literal, NotRequired, TypeAlias
+from typing import Annotated, Final, Literal, NotRequired
 
 from annotated_types import Ge
 from typing_extensions import TypedDict
@@ -12,16 +12,9 @@ from zarr_metadata.v3._common import (
     ZarrV3ChunkKeyEncodingField,
     ZarrV3CodecField,
     ZarrV3DataTypeField,
+    ZarrV3ExtensionField,
     ZarrV3StorageTransformerField,
 )
-
-ZarrV3ExtensionField: TypeAlias = JSONValue
-"""The JSON value of an unknown top-level v3 metadata field.
-
-An object carrying the literal member `must_understand: false` may be ignored.
-Every other JSON shape implicitly requires understanding; recognition itself
-belongs to the reader rather than this structural type.
-"""
 
 
 class ZarrV3ArrayMetadataJSON(TypedDict, extra_items=ZarrV3ExtensionField):
@@ -102,5 +95,4 @@ __all__ = [
     "ZarrV3ArrayMetadataJSON",
     "ZarrV3ArrayMetadataJSONPartial",
     "ZarrV3ArrayMetadataStoreKey",
-    "ZarrV3ExtensionField",
 ]

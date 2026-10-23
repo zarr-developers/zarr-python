@@ -64,13 +64,12 @@ from zarr_metadata.v2.group import (
     ZarrV2GroupMetadataStoreKey,
     ZarrV2ZGroupJSON,
 )
-from zarr_metadata.v3 import ZarrV3MetadataFieldJSON, ZarrV3NamedConfigJSON
+from zarr_metadata.v3 import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON, ZarrV3NamedConfigJSON
 from zarr_metadata.v3.array import (
     ZARR_V3_ARRAY_METADATA_STORE_KEY,
     ZarrV3ArrayMetadataJSON,
     ZarrV3ArrayMetadataJSONPartial,
     ZarrV3ArrayMetadataStoreKey,
-    ZarrV3ExtensionField,
 )
 from zarr_metadata.v3.chunk_grid.rectilinear import (
     RECTILINEAR_CHUNK_GRID_NAME,

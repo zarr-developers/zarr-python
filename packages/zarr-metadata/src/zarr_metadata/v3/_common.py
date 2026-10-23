@@ -12,7 +12,7 @@ from typing import TypeAlias, TypeGuard, cast
 
 from typing_extensions import TypeAliasType
 
-from zarr_metadata._common import ZarrV3NamedConfigJSON
+from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
 from zarr_metadata._json import (
     MetadataValidationError,
     ValidationProblem,
@@ -26,6 +26,14 @@ from zarr_metadata.definition._envelope import (
     envelope_problems,
     well_named,
 )
+
+ZarrV3ExtensionField: TypeAlias = JSONValue
+"""The JSON value of an unknown top-level v3 metadata field.
+
+An object carrying the literal member `must_understand: false` may be ignored.
+Every other JSON shape implicitly requires understanding; recognition itself
+belongs to the reader rather than this structural type.
+"""
 
 ZarrV3MetadataFieldJSON: TypeAlias = str | ZarrV3NamedConfigJSON
 """The JSON shape of any v3 metadata extension-point entry: either a bare
@@ -98,6 +106,7 @@ __all__ = [
     "ZarrV3ChunkKeyEncodingField",
     "ZarrV3CodecField",
     "ZarrV3DataTypeField",
+    "ZarrV3ExtensionField",
     "ZarrV3MetadataFieldJSON",
     "ZarrV3StaticCodecField",
     "ZarrV3StorageTransformerField",

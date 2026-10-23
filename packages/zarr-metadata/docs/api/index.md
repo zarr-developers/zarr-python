@@ -12,7 +12,8 @@ The package is organized to mirror the structure of the Zarr specifications:
   document and the scope it was read in), readers, validators,
   loc-aware parsers, and the `UNSET` sentinel
 - [`zarr_metadata.problems`](problems.md) — `ValidationProblem`,
-  `ProblemKind` and `MetadataValidationError`, which every reader reports
+  `ProblemKind`, `Problems` and `MetadataValidationError`, which every
+  reader reports, and `shown`, which formats a value for a message
 - [`zarr_metadata.pydantic`](pydantic.md) — optional Pydantic field types
   over the models
 - [`zarr_metadata.typed_json`](typed_json.md) — `check`, which type-checks

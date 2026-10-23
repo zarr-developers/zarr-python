@@ -71,9 +71,9 @@ from zarr_metadata.model._shared import (
     reading_of,
     unexpected_keys,
 )
+from zarr_metadata.v3._common import ZarrV3ExtensionField
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3._hierarchy import hierarchy_problems, path_faults, said
-from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON, ZarrV3ExtensionField
 from zarr_metadata.v3.consolidated import ZARR_V3_CONSOLIDATED_METADATA_KEY
 from zarr_metadata.v3.group import ZARR_V3_GROUP_METADATA_STORE_KEY, ZarrV3GroupMetadataJSON
 
@@ -83,6 +83,7 @@ if TYPE_CHECKING:
     from zarr_metadata._hierarchy import NodeType
     from zarr_metadata._typed_json import Loc
     from zarr_metadata.definition._definition import ResolvedField
+    from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
     from zarr_metadata.v3.consolidated import ZarrV3ConsolidatedMetadataJSON
     from zarr_metadata.v3.group import ZarrV3GroupMetadataJSONPartial, ZarrV3GroupMetadataStoreKey
 

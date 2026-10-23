@@ -15,7 +15,7 @@ import math
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Final, Literal, TypeGuard, cast, get_args, overload
+from typing import Final, Literal, TypeAlias, TypeGuard, cast, get_args, overload
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata._sentinel import UNSET
@@ -189,6 +189,10 @@ class ValidationProblem:
         # Pickle and copy by calling the constructor again. The view that
         # holds `ctx` does not pickle, but the dict it wraps does.
         return (_problem, (self.loc, self.message, self.kind, self.input, dict(self.ctx)))
+
+
+Problems: TypeAlias = tuple[ValidationProblem, ...]
+"""Every problem a reader found, in the order it found them."""
 
 
 def _problem(
@@ -783,6 +787,7 @@ def arrays_to_tuples(obj: object) -> object:
 __all__ = [
     "MetadataValidationError",
     "ProblemKind",
+    "Problems",
     "ValidationProblem",
     "arrays_to_tuples",
     "choices",

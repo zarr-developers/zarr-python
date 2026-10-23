@@ -32,8 +32,8 @@ classifiers = [
 ]
 keywords = ["zarr"]
 dependencies = [
-    # The constraints a TypedDict's members carry -- `Ge`, `Interval`,
-    # `MinLen` -- which the checker enforces, in the vocabulary pydantic
+    # The bounds a TypedDict's members carry -- `Gt`, `Ge`, `Lt`, `Le`,
+    # `Interval` -- which the checker enforces, in the vocabulary pydantic
     # and Hypothesis read as well.
     "annotated-types>=0.6",
     # >=4.16: first release where `Sentinel` pickles by reference

@@ -13,8 +13,13 @@ messages do: as JSON (`null`, `[1, 2]`, `"C"`). An extension's rules use it
 so their messages read like the package's.
 """
 
-from zarr_metadata._json import MetadataValidationError, ProblemKind, ValidationProblem, shown
-from zarr_metadata.definition._definition import Problems
+from zarr_metadata._json import (
+    MetadataValidationError,
+    ProblemKind,
+    Problems,
+    ValidationProblem,
+    shown,
+)
 
 __all__ = [
     "MetadataValidationError",

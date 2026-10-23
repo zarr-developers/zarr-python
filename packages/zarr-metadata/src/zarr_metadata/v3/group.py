@@ -9,7 +9,7 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
-from zarr_metadata.v3.array import ZarrV3ExtensionField
+from zarr_metadata.v3._common import ZarrV3ExtensionField
 
 
 class ZarrV3GroupMetadataJSON(TypedDict, extra_items=ZarrV3ExtensionField):

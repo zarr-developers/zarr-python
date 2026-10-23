@@ -37,8 +37,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from zarr_metadata._common import JSONValue
+    from zarr_metadata._json import Problems
     from zarr_metadata._typed_json import Loc
-    from zarr_metadata.definition._definition import Problems
 
 ZarrV2DataTypeField = TypeAliasType("ZarrV2DataTypeField", ZarrV2DataTypeMetadata)
 """A member that holds a v2 dtype: a document's `dtype`, or the type of a struct record. It is read in the same scope as its container."""

@@ -59,7 +59,7 @@ from zarr_metadata.model._shared import (
     other_members,
     reading_of,
 )
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+from zarr_metadata.v3._common import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3._definition import (
     Chunk,
@@ -74,7 +74,6 @@ from zarr_metadata.v3._pipeline import Stage, read_pipeline
 from zarr_metadata.v3.array import (
     ZARR_V3_ARRAY_METADATA_STORE_KEY,
     ZarrV3ArrayMetadataJSON,
-    ZarrV3ExtensionField,
 )
 
 if TYPE_CHECKING:

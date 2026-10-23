@@ -9,12 +9,13 @@ types. Each document type is in the submodule for its node: `array`,
 """
 
 from zarr_metadata._common import ZarrV3NamedConfigJSON
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+from zarr_metadata.v3._common import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON
 from zarr_metadata.v3._hierarchy import NodeName, NodePath
 
 __all__ = [
     "NodeName",
     "NodePath",
+    "ZarrV3ExtensionField",
     "ZarrV3MetadataFieldJSON",
     "ZarrV3NamedConfigJSON",
 ]

@@ -55,6 +55,7 @@ from typing_extensions import TypeAliasType, TypedDict, TypeVar, is_typeddict
 
 from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
 from zarr_metadata._json import (
+    Problems,
     ValidationProblem,
     copied,
     frozen,
@@ -98,10 +99,6 @@ D = TypeVar("D", bound="Definition[Any]")
 
 
 F = TypeVar("F", bound="WithFillValue[Any]")
-
-
-Problems: TypeAlias = tuple[ValidationProblem, ...]
-"""Every problem a reader found, in the order it found them."""
 
 
 def no_rules(*_: object) -> Iterator[ValidationProblem]:
