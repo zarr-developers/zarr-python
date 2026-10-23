@@ -1,143 +1,171 @@
 # zarr-metadata
 
-Python types, models, and validators for Zarr v2 and v3 metadata.
-
 Documentation: <https://zarr-metadata.readthedocs.io/>
+
+Basic tools for modelling Zarr metadata, with minimal dependencies.
+
+`zarr-metadata` is developed in the
+[zarr-python repository](https://github.com/zarr-developers/zarr-python/tree/main/packages/zarr-metadata)
+and released independently of `zarr` itself. Install it with:
+
+```
+pip install zarr-metadata
+```
+
+## Who needs this
+
+This library supports software that interacts with Zarr metadata documents.
 
 ## What this is
 
-Two layers and an optional integration:
+This is *not* a full Zarr implementation. It's a collection of data structures and routines that
+closely model the content of the Zarr specifications, such as:
 
-- **Typed JSON shapes**: `TypedDict` definitions and `Literal` aliases for the
-  JSON documents specified by the [Zarr v2](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html)
-  and [Zarr v3](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html)
-  specifications, plus types for [`zarr-extensions`](https://github.com/zarr-developers/zarr-extensions/)
-  and a few widely-used-but-unspecified entities (e.g. consolidated metadata).
-- **Document models** (`zarr_metadata.model`): each model is a metadata
-  document and the scope it was read in, with validators, loc-aware
-  readers, and store-key (de)serialization. A document produced by `to_json`
-  shares no mutable state with the model that produced it.
-- **Optional Pydantic integration** (`zarr_metadata.pydantic`, requires
-  Pydantic 2.13 or newer): each model as a Pydantic field type that validates
-  raw documents through the same strict parser.
+- **Typed JSON shapes** ([`zarr_metadata.v2`](https://zarr-metadata.readthedocs.io/en/latest/api/v2/) and
+  [`zarr_metadata.v3`](https://zarr-metadata.readthedocs.io/en/latest/api/v3/)): `TypedDict` definitions and
+  `Literal` aliases for the JSON documents specified by the
+  [Zarr v2](https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html) and
+  [Zarr v3](https://zarr-specs.readthedocs.io/en/latest/v3/core/index.html)
+  specifications, plus types for
+  [zarr-extensions](https://github.com/zarr-developers/zarr-extensions/) and a
+  few widely-used-but-unspecified entities (e.g. consolidated metadata).
+- **Document models** ([`zarr_metadata.model`](https://zarr-metadata.readthedocs.io/en/latest/api/model/)): immutable
+  models of whole metadata documents, each one a document and the scope
+  it was read in, with validators, loc-aware parsers, and store-key
+  (de)serialization. A document
+  produced by `to_json` shares no mutable state with the model that produced
+  it.
+- **Optional Pydantic integration** ([`zarr_metadata.pydantic`](https://zarr-metadata.readthedocs.io/en/latest/api/pydantic/),
+  requires Pydantic 2.13 or newer): each model as a Pydantic field type that
+  validates raw documents through the same strict parser.
 
 ## What this is for
 
-The public `TypedDict` definitions describe the static JSON shape of Zarr
-metadata. For strict, loc-aware validation of JSON loaded from disk, use the
-model parser:
+- **Static Type Checking** The public `TypedDict` definitions describe the static JSON shape of Zarr
+  metadata.
 
-```python
-import json
-from zarr_metadata.model import ZarrV3ArrayMetadata
+- **Dynamic JSON validation** For strict, loc-aware validation of JSON loaded from disk, use the
+  model parser:
 
-with open("zarr.json", "rb") as f:
-    raw = json.load(f)
+  ```python
+  import json
+  from zarr_metadata.model import ZarrV3ArrayMetadata
 
-metadata = ZarrV3ArrayMetadata.from_json(raw)
-```
+  with open("zarr.json", "rb") as f:
+      raw = json.load(f)
 
-The optional Pydantic integration delegates raw input to the same strict
-parser and returns the same normalized model class:
+  metadata = ZarrV3ArrayMetadata.from_json(raw)
+  ```
 
-```python
-from pydantic import TypeAdapter
-import zarr_metadata.pydantic as zmp
+  The optional Pydantic integration delegates raw input to the same strict
+  parser and returns the same normalized model class:
 
-adapter: TypeAdapter[zmp.ZarrV3ArrayMetadata] = TypeAdapter(zmp.ZarrV3ArrayMetadata)
-metadata = adapter.validate_python(raw)
-encoded = metadata.to_key_value()["zarr.json"]
-```
+  ```python
+  from pydantic import TypeAdapter
+  import zarr_metadata.pydantic as zmp
 
-A bare `TypeAdapter` over a public document `TypedDict` is a coercive shape
-adapter, not a Zarr conformance validator; it may coerce values or discard
-members that the strict model parser rejects.
+  adapter: TypeAdapter[zmp.ZarrV3ArrayMetadataField] = TypeAdapter(zmp.ZarrV3ArrayMetadataField)
+  metadata = adapter.validate_python(raw)
+  encoded = metadata.to_key_value()["zarr.json"]
+  ```
 
-## Dependencies
-
-The core of this package depends on `typing-extensions` and
-`annotated-types` only. It does not depend on a validation framework,
-and it will not: a dependency on pydantic, or any other framework with
-its own release cadence and compiled parts, would pin that framework for
-every consumer of zarr-metadata and collide with the pins consumers
-already carry. Instead the package reads a `TypedDict` as the typing spec
-defines it with its own checker (`zarr_metadata.typed_json.check`), and
-spells bounds in the `annotated-types` vocabulary, which pydantic reads
-too. `zarr_metadata.pydantic` is an optional integration over the models;
-nothing in the core imports it.
+  Note that a bare `TypeAdapter` over a public `TypedDict` is a **coercive** shape
+  adapter, not a Zarr conformance validator; it may coerce values or discard
+  members that the strict model parser rejects. This is better suited for handling input provided
+  from Python objects (e.g., user-authored dicts) than JSON.
 
 ## Validation boundary
 
 The model validators enforce the declared document structure and a small set
-of context-free consistency rules, including fixed format literals, finite
-JSON numbers outside `attributes`, non-negative dimensions, and one
-`dimension_names` entry per array dimension. In a v3 document they also read
-each extension point -- the data type, chunk grid, chunk key encoding, each
-codec and each storage transformer -- through the definition that claims its
-name in a scope, `CORE_AND_EXTENSIONS` unless a `context` is passed: a
-configuration its definition refuses is refused, and a key it does not
-declare is reported as `unknown_key`. A name nothing in the scope claims is
-left unjudged, and whether to support it is the consumer's decision. A v3
-fill value is judged against the data type it names, by that data type's
-definition, the chunk grid against the shape, by the grid's definition,
-and the codecs as a pipeline: in order, each judged by its definition
-against the chunk it is handed, a shard's inner and index codecs too.
-The validators do no arithmetic on values: whether a fill value survives
-a `cast_value` round trip is not judged.
+of context-free consistency rules, e.g.:
+- fixed format literals,
+- finite JSON numbers outside `attributes`
+- non-negative dimensions
+- one `dimension_names` entry per array dimension.
 
-Two choices the specs' words leave open, or settle two ways:
+In a v3 document, validation also checks each extension point: the data
+type, the chunk grid, the chunk key encoding, each codec, and each storage
+transformer. Each one is checked by the definition that claims its name in
+a scope. The scope is `CORE_AND_EXTENSIONS` unless a `context` is passed.
+If the definition rejects a configuration, the validator rejects it too,
+and a configuration key the definition does not declare is reported as
+`unknown_key`. If no definition in the scope claims a name, the validator
+does not check that extension point, and the consumer decides whether to
+support it.
+
+Some checks relate one part of a v3 document to another:
+
+- The fill value is checked against the data type the document names, by
+  that data type's definition.
+- The chunk grid is checked against the shape, by the grid's definition.
+- The codecs are checked as a pipeline. In order, each codec's definition
+  checks the codec against the chunk it receives. This includes a shard's
+  inner codecs and index codecs.
+
+The validators do no arithmetic on values. For example, they do not check
+whether a fill value survives a `cast_value` round trip.
+
+Some choices that the spec text leaves open, or answers in two ways:
 
 - **`attributes` may hold `NaN`, `Infinity` and `-Infinity`.** The spec
-  interprets no attribute, and zarr-python and xarray write those numbers
-  there (a CF `_FillValue`, say). The models read them, and `to_key_value`
-  writes them back as those bare tokens, which a strict JSON parser
-  refuses. `check`, from `zarr_metadata.typed_json`, refuses a non-finite
-  number wherever it is, attributes included.
-- **A reader walks 256 levels of nesting.** A value nested deeper is an
-  `invalid_value` at the level past the last, wherever it sits. Every
-  reader, writer and comparison takes one frame for each level, and
-  `copy.deepcopy`, and `pickle` before Python 3.12, two: a document at
-  the cap takes about half of the interpreter's default limit, and the
-  rest is the caller's.
-- **`consolidated_metadata: null` is a problem.** zarr-python 3.0 and 3.1
-  wrote it on a group they had not consolidated; the spec says an object,
-  and the package models nothing else as right.
-  `read_repaired_node_metadata_v3` removes it before reading.
-- **An extension is named as the spec names one**, `^[a-z][a-z0-9-_.]+$`,
-  or by a URI, which earlier versions of the spec required; any other
-  name is refused before a definition is asked, so `""` and `"foo/bar"`
-  are not unknown extensions but problems.
-- **`must_understand: false` is refused at every extension point**, codecs
-  and storage transformers too, though the core spec names only the data
-  type, chunk grid and chunk key encoding: a reader that skips a codec
-  reads wrong bytes as surely as one that skips a data type reads wrong
-  values. It keeps its meaning on an unknown top-level member, which a
-  reader can skip.
+  does not interpret attributes, and zarr-python and xarray write these
+  numbers there (for example, a CF `_FillValue`). The models read them,
+  and `to_key_value` writes them back as bare tokens, which a strict JSON
+  parser rejects. `check`, from `zarr_metadata.typed_json`, rejects a
+  non-finite number anywhere, including in attributes.
+- **A reader walks at most 256 levels of nesting.** A value nested deeper
+  is an `invalid_value` problem at the first level past the limit,
+  wherever it is. Every reader, writer and comparison uses one stack
+  frame per level, and `copy.deepcopy` (and `pickle` before Python 3.12)
+  uses two. A document at the limit therefore uses about half of the
+  interpreter's default recursion limit, and the rest is left for the
+  caller.
+- **`consolidated_metadata: null` is a problem.** A zarr-python 3.0.x bug
+  wrote it. The spec requires an object, and the package accepts only an
+  object. A reader of those stores removes the key before reading.
+- **An extension name must follow the spec's naming rule**,
+  `^[a-z][a-z0-9-_.]+$`, or be a URI, which earlier versions of the spec
+  required. Any other name is rejected before any definition is
+  consulted, so `""` and `"foo/bar"` are problems, not unknown extensions.
+- **`must_understand: false` is rejected at every extension point**,
+  including codecs and storage transformers, although the core spec names
+  only the data type, chunk grid and chunk key encoding. A reader that
+  skips a codec reads wrong bytes, just as a reader that skips a data type
+  reads wrong values. On an unknown top-level member, `must_understand`
+  keeps its meaning: a reader can skip that member.
 
-A regular grid's chunk lengths are at least 1, along a dimension of
-length 0 too: "Chunk sizes must be greater than zero", the regular grid
-spec says. The core spec's "non-zero when the corresponding dimensions
-of the arrays have non-zero length" says less, and allows nothing more,
-so a document with a 0 there, as zarr-python 3.0 and 3.1 wrote for an
-empty dimension, is refused.
+A regular grid's chunk lengths must be at least 1, even along a dimension
+of length 0. The regular grid spec says "Chunk sizes must be greater than
+zero". The core spec's wording, "non-zero when the corresponding dimensions
+of the arrays have non-zero length", requires less, but does not explicitly
+allow anything more. So a document with a chunk length of 0, which
+zarr-python 3.0 and 3.1 wrote for an empty dimension, is rejected.
 
-`read_array_metadata_v3` reads a document once and returns everything
-the read found: each field as the scope read it -- `AcceptedField` by the
-definition that claims its name, `UnclaimedField` when none does, or
-`RefusedField` -- with where it sits and the kind it was read as, each codec
-with the chunk it is handed, every problem, and the model when there is
-none; `from_json` is that model, or the problems raised. A consumer's
-own policy is a walk over the fields, with nothing read twice:
-`with_problems` gives each with its problems, those located in it and in
-the fields it holds, as zod's `flattenError` groups issues, and
-`canonical_of` spells a field with none in the fewest words, without
-reading it again. Which fields go beyond the core spec, say -- a field
-that names nothing is a problem already -- and how each is spelled most
-simply:
+`read_array_metadata_v3` reads a document once and returns everything the
+read found:
+
+- each field as the scope read it: an `AcceptedField` when a definition
+  claims its name, an `UnclaimedField` when none does, or a
+  `RefusedField`, together with the field's location and the kind it was
+  read as;
+- each codec, with the chunk it receives;
+- every problem;
+- the model, when there are no problems.
+
+`from_json` returns that model, or raises the problems. A consumer can
+apply its own policy by walking the fields, without reading anything
+twice. `with_problems` pairs each field with its problems: those located
+in the field and in the fields it contains. This matches how zod's
+`flattenError` groups issues. `canonical_of` returns the simplest
+spelling of a field that has no problems, without reading it again. For
+example, the code below finds the fields that go beyond the core spec (a
+field with no name is already a problem), and the simplest spelling of
+each field:
 
 ```python
 from zarr_metadata.model import read_array_metadata_v3
-from zarr_metadata.v3.definition import CORE, canonical_of, with_problems
+from zarr_metadata.definition import canonical_of, with_problems
+from zarr_metadata.v3.definition import CORE
 
 reading = read_array_metadata_v3(raw)
 beyond_core = [
@@ -152,96 +180,98 @@ simplest = {
 metadata = reading.metadata  # None when reading.problems is not empty
 ```
 
-`read_group_metadata_v3` reads a group the same way, and each document
-its consolidated metadata holds once. `read_node_metadata_v3` reads a
-`zarr.json` of either kind as the node its `node_type` says it is, as
-a discriminated union reads its tag: a document that says neither reads
-as `ZarrV3UnknownNodeMetadataReading`, with the problems, and nothing else of it
-is read but its `zarr_format`, so a document of another format says it
-is not v3. `node_metadata_from_json_v3` and `node_metadata_from_key_value_v3`
-build the model of either kind, as the models' own `from_json` and
-`from_key_value` build one.
+`read_group_metadata_v3` reads a group the same way, and reads each
+document in its consolidated metadata once. `read_node_metadata_v3` reads
+a `zarr.json` of either kind as the node type its `node_type` names, the
+same way a discriminated union uses its tag. A document whose `node_type`
+is neither reads as `ZarrV3UnknownNodeMetadataReading`, with the problems.
+Only its `zarr_format` is read, so a document of another format is
+reported as not v3. `node_metadata_from_json_v3` and
+`node_metadata_from_key_value_v3` build the model of either kind, the same
+way the models' own `from_json` and `from_key_value` build one.
 
-Consolidated metadata holds the hierarchy below its group, the group its
-root: the document of the node at `/a/b` sits at the key `a/b`, and the
-documents and the group make a tree in which only groups hold nodes and
-each node's parent is held. `NodeName` and `NodePath`, in
-`zarr_metadata.v3`, are the strings the spec's rules for node names and
-paths hold of, modeled on zarrs' types of those names, and
-`validate_node_name_v3`, `is_node_name_v3` and `parse_node_name_v3`, and
-their `node_path` twins, judge a string by them.
+Consolidated metadata holds the hierarchy below its group, with the group
+as the root. The document of the node at `/a/b` is stored under the key
+`a/b`. The documents and the group must form a tree: only groups have
+child nodes, and the parent of every node is present. `NodeName` and
+`NodePath`, in `zarr_metadata.v3`, are the types of strings that satisfy
+the spec's rules for node names and paths. They are modeled on the zarrs
+types with the same names. `validate_node_name_v3`, `is_node_name_v3` and
+`parse_node_name_v3`, and the matching `node_path` functions, check a
+string against those rules.
 
-A member the spec does not define is not a field; the model's
-`must_understand_fields` names those a reader must understand.
+A top-level member that the spec does not define is not a field. The
+model's `must_understand_fields` lists the members that a reader must
+understand.
 
-A v3 model is its document and the scope it was read in:
+A v3 model consists of its document and the scope it was read in.
 `ZarrV3ArrayMetadata(document, context=None)` reads the document in the
-scope, `CORE_AND_EXTENSIONS` when none is given, and raises
-`MetadataValidationError` with every problem, so no model is built
-invalid; `to_json` writes the document as it was written, and
-`to_key_value` writes it as it is. Every typed member is a view of that
-read: each field as the scope read it, an `AcceptedField` or an `UnclaimedField`, and
-`shape`, `attributes` and the rest as the read refined them, read-only
-at every level: a list given for an array as a tuple, an object as a
-read-only mapping; `to_json` gives plain containers. A model is changed
-by `update`, which puts
-JSON members in place of the document's and reads the result in the
-model's own scope, so no scope is passed back in; `with_context` reads
-the document in another scope, and `refined_in` only in one that claims
-what this one left unclaimed and contradicts nothing, raising
-`ScopeConflictError` otherwise. The documents a group's
-`consolidated_metadata` holds are models of the group's scope, built from
-the group's one read; it takes node models as entries too, each accepted
-when its claims refine into the group's scope and refused at its path
-otherwise, and `Context.joined` is the scope to consolidate children of
-several scopes in. Every reader takes `context=None` for the default
-scope, `CORE_AND_EXTENSIONS`.
+scope (`CORE_AND_EXTENSIONS` when none is given) and raises
+`MetadataValidationError` with every problem, so an invalid model is never
+built. `to_json` returns the document as it was written, and
+`to_key_value` writes that same document to store bytes.
 
-Two models are equal when they mean the same document, however each is
-spelled. What the package interprets -- each field, and the fill value
-against its data type -- compares by its canonical spelling, as
-`canonical_of` and `canonical_fill_value` give it: `"NaN"` and
-`"0x7fc00000"` are one `float32` fill value, `0.0` and `-0.0` two, and a
-blosc with and without the `typesize` that `noshuffle` ignores one
-codec, and a v2 `dtype` by its family and size, `<b1` and `|b1` one
-dtype. What it does not interpret -- attributes, extra fields, and the
-configuration of a field nothing in scope claims -- compares as JSON
-text, which tells `true` from `1` and `-0.0` from `0.0`, and takes `NaN`
-for itself. Equal models hash alike, and may write two documents:
-`to_json` writes each as it was given. A model holds nothing that can be
-changed in place: what it hands out is read-only at every level.
+Every typed member is a view of that read: each field as the scope read
+it (an `AcceptedField` or an `UnclaimedField`), and `shape`, `attributes`
+and the other members as the read refined them. These views are read-only
+at every level: a list in the document is shown as a tuple, and an object
+as a read-only mapping. `to_json` returns plain containers.
 
-`node_metadata_json_schema_v3` writes what the validators read as a
-JSON Schema, draft 2020-12, for an editor that checks a `zarr.json` as it
-is written, or a validator in another language. Each extension point is
-a field as its scope reads it: a configuration as its definition's
-TypedDict says, bounds and all, and a name nothing in the scope claims
-with any configuration. The fill value is what the data type it names
-takes. `field_json_schema(kind, context)`, in
-`zarr_metadata.v3.definition`, writes one field's schema, and
-`json_schema`, in `zarr_metadata.typed_json`, any TypedDict's, as `check`
-reads it. A schema says what each member is, and not what the rules say
-of members together, so a document it accepts may still have a problem;
-a JSON document the validators accept, it accepts. A validator reads
-JSON as a parser gives it, arrays as lists: a model's `to_json` writes
-tuples, which a Python validator does not take for arrays.
+To change a model, call `update`. It replaces members of the document with
+the given JSON members and reads the result in the model's own scope, so
+you do not pass the scope again. `with_context` reads the document in
+another scope. `refined_in` also reads the document in another scope, but
+only one that claims what this scope left unclaimed and contradicts
+nothing; otherwise it raises `ScopeConflictError`.
+
+The documents in a group's `consolidated_metadata` are models in the
+group's scope, built from the group's single read. `consolidated_metadata`
+also accepts node models as entries. Such an entry is accepted when its
+claims refine into the group's scope, and refused at its path otherwise.
+`Context.joined` returns a scope in which to consolidate children that
+were read in several scopes. Every reader takes `context=None` for the
+default scope, `CORE_AND_EXTENSIONS`.
+
+Two models are equal when they represent the same document, even if each
+is spelled differently. Values the package interprets (each field, and the
+fill value against its data type) are compared by their canonical
+spelling, as returned by `canonical_of` and `canonical_fill_value`. For
+example, `"NaN"` and `"0x7fc00000"` are the same `float32` fill value,
+`0.0` and `-0.0` are two different fill values, and a blosc codec with and
+without a `typesize` (which `noshuffle` ignores) is the same codec. Values
+the package does not interpret (attributes, extra fields, the
+configuration of a field that nothing in the scope claims, and every
+member of a v2 document) are compared as JSON text. JSON text
+distinguishes `true` from `1` and `-0.0` from `0.0`, and treats `NaN` as
+equal to itself. Equal models have equal hashes, but may write different
+documents, because `to_json` writes each document as it was given. A v3
+model holds nothing that can be changed in place. A v2 model's hash is
+computed from what its containers held when it was hashed, so do not
+change a v2 model in place while it is in a set or used as a dict key.
+
+`node_metadata_json_schema_v3` writes the rules the validators apply as a
+JSON Schema (draft 2020-12). Use it in an editor that checks a `zarr.json`
+while you write it, or with a validator in another language. Each
+extension point is described as a field as its scope reads it: a claimed
+configuration follows its definition's TypedDict, including bounds, and a
+name that nothing in the scope claims may have any configuration. The fill
+value must be a valid fill value for the data type the document names.
+`field_json_schema(kind, context)` writes the schema of one field, and
+`json_schema` writes the schema of any TypedDict as `check` reads it. All
+three are in `zarr_metadata.json_schema`. A schema describes each member on its own, not the rules that
+relate members to each other, so a document the schema accepts may still
+have a problem. Every JSON document the validators accept, the schema also
+accepts. A schema validator reads JSON as a parser produces it, with
+arrays as lists. A model's `to_json` returns tuples, which a Python
+validator does not accept as arrays.
 
 ```python
 import json
-from zarr_metadata.model import node_metadata_json_schema_v3
+from zarr_metadata.json_schema import node_metadata_json_schema_v3
 
 with open("zarr.schema.json", "w") as f:
     json.dump(node_metadata_json_schema_v3(), f, indent=2)
 ```
-
-The Pydantic integration's field types have JSON Schemas of their own,
-for a model that holds them: an extension point there is a name and any
-configuration, read in no scope, and v2 documents have one too. For a
-`zarr.json`, use `node_metadata_json_schema_v3`. Neither replaces the
-validators: JSON Schema takes a number such as `1.0` for an integer,
-where the models require an `int`, and says nothing of what members read
-together say, such as `dimension_names` against `shape` or v2 `chunks`
-against `shape`. Run the model parser after schema validation.
 
 ## Scope
 
@@ -257,51 +287,8 @@ store I/O. The models begin and end at the metadata documents themselves —
 `from_key_value` / `to_key_value` map documents to store keys and bytes,
 and everything past that belongs to consumer libraries.
 
-## Developing
+## Reference
 
-Package-scoped development commands live in the [`justfile`](./justfile)
-(requires [just](https://github.com/casey/just)):
-
-```
-just test        # run the test suite (extra args go to pytest)
-just lint        # ruff, same invocation as CI
-just typecheck   # pyright, pinned to the version CI uses
-just docs-check  # strict build of the docs site
-just check       # all of the above
-just docs-serve  # serve the docs site locally
-```
-
-Run them from this directory, or from anywhere in the repository as
-`just packages/zarr-metadata/<recipe>`.
-
-## Releasing
-
-The package version is derived from git tags by `hatch-vcs`. Tags must
-match the pattern `zarr_metadata-v<version>` (e.g. `zarr_metadata-v0.2.0`)
-so they do not collide with the main `zarr-python` release tags.
-
-To cut a release:
-
-1. Create and push a tag of the form `zarr_metadata-v<version>` on the
-   commit you want to publish, e.g.:
-   ```
-   git tag zarr_metadata-v0.2.0 <commit>
-   git push origin zarr_metadata-v0.2.0
-   ```
-2. Pushing the tag fires the `zarr-metadata release` workflow, which
-   builds the wheel/sdist (version resolved from the tag), runs an
-   install smoke test, and publishes to PyPI via OIDC trusted publishing.
-
-We intentionally do *not* create a GitHub Release for `zarr-metadata`
-versions — GitHub Releases live at the repo level, and a zarr-metadata
-release would surface in the zarr-python repo's Releases UI as if it
-were a zarr-python release.
-
-To dry-run a build against TestPyPI, dispatch the workflow manually
-(`Actions` → `zarr-metadata release` → `Run workflow`). Manual dispatches
-build from the current commit; with no recent tag the version will look
-like `0.1.devN`, which is fine for TestPyPI.
-
-## License
-
-[MIT](./LICENSE.txt)
+- [API reference](https://zarr-metadata.readthedocs.io/en/latest/api/)
+- [Release notes](https://zarr-metadata.readthedocs.io/en/latest/release-notes/)
+- [License (MIT)](https://github.com/zarr-developers/zarr-python/blob/main/packages/zarr-metadata/LICENSE.txt)
