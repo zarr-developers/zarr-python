@@ -8,18 +8,24 @@ the storage of each of its fields.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
+from zarr_metadata.definition import (
+    Nested,
+    resolve,
+)
 from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
     DataTypeDefinition,
-    JSONValue,
-    Nested,
     StorageClass,
-    resolve,
     storage_of,
 )
+
+if TYPE_CHECKING:
+    from zarr_metadata import JSONValue
 
 
 def _struct(*field_types: JSONValue) -> JSONValue:

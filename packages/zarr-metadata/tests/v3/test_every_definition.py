@@ -13,8 +13,17 @@ from typing import Any
 
 import pytest
 
+from zarr_metadata import ValidationProblem
 from zarr_metadata._json import value_at
-from zarr_metadata.v3._definition import (
+from zarr_metadata.definition import (
+    AcceptedField,
+    Context,
+    Definition,
+    RefusedField,
+    fill_value_problems,
+    resolve,
+)
+from zarr_metadata.definition._definition import (
     canonical_of,
     canonicalize,
     configuration_of,
@@ -24,17 +33,10 @@ from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE, RawBytesConfigur
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
-    AcceptedField,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
-    Context,
     DataTypeDefinition,
-    Definition,
-    RefusedField,
-    ValidationProblem,
-    fill_value_problems,
-    resolve,
 )
 
 KINDS: dict[str, type[Definition[Any]]] = {

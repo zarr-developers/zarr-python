@@ -16,8 +16,27 @@ import pytest
 from annotated_types import Ge, Predicate
 from typing_extensions import TypedDict
 
+from zarr_metadata import (
+    JSONValue,
+    ValidationProblem,
+)
 from zarr_metadata._json import refine_json
 from zarr_metadata._sentinel import UNSET
+from zarr_metadata.definition import (
+    AcceptedField,
+    Context,
+    Definition,
+    EmptyConfiguration,
+    Nested,
+    RefusedField,
+    UnclaimedField,
+    resolve,
+)
+from zarr_metadata.definition._definition import (
+    canonical_of,
+    configuration_of,
+    resolve_refined,
+)
 from zarr_metadata.model import (
     is_metadata_field_v3,
     validate_array_metadata_v3,
@@ -29,11 +48,6 @@ from zarr_metadata.typed_json import (
 )
 from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
-from zarr_metadata.v3._definition import (
-    canonical_of,
-    configuration_of,
-    resolve_refined,
-)
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
 from zarr_metadata.v3.codec.crc32c import Empty
@@ -43,22 +57,12 @@ from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
-    AcceptedField,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
-    Context,
     DataTypeDefinition,
-    Definition,
-    EmptyConfiguration,
-    JSONValue,
-    Nested,
-    RefusedField,
     StorageTransformerDefinition,
-    UnclaimedField,
-    ValidationProblem,
     ZarrV3CodecField,
-    resolve,
 )
 
 if TYPE_CHECKING:

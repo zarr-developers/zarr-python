@@ -192,7 +192,7 @@ If you only want the model, `ZarrV3ArrayMetadata.from_json(raw)` returns it, or 
 A field with an unknown name is called **unclaimed**, because no definition in the scope claims that name. It is not reported as a problem: it is read as an `UnclaimedField`, and the checks that depend on it are skipped, as described above. So an empty `reading.problems` does not mean that every field is known. A program that decodes chunks should also check that no field is unclaimed:
 
 ```python
-from zarr_metadata.v3.definition import UnclaimedField
+from zarr_metadata.definition import UnclaimedField
 
 unclaimed = [loc for loc, field in reading.fields() if isinstance(field, UnclaimedField)]
 ```

@@ -6,7 +6,11 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 
 from typing import Final, Literal
 
-from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration, multi_byte
+from zarr_metadata.definition._definition import EmptyConfiguration
+from zarr_metadata.v3._definition import (
+    DataTypeDefinition,
+    multi_byte,
+)
 from zarr_metadata.v3.data_type._float import (
     complex_fill_value_canonical,
     complex_fill_value_rules,

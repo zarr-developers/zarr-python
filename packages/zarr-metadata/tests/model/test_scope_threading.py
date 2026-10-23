@@ -8,13 +8,11 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 import zarr_metadata.model as zm
+from zarr_metadata.definition import Context
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
 )
-from zarr_metadata.v3.definition import (
-    CORE_AND_EXTENSIONS,
-    Context,
-)
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
 
 if TYPE_CHECKING:
     from collections.abc import Callable

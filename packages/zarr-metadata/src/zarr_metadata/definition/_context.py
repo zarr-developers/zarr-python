@@ -5,14 +5,6 @@ deciding which definition its name refers to. That decision depends on
 the *scope* the field is read in, not on the definitions themselves. A
 scope is a value built from definitions. Each definition is filed under
 its kind (its type) and its name (an attribute of the definition).
-
-The package provides two scopes, because "is this valid?" has two useful
-answers. `CORE` contains what the Zarr v3 specification itself defines,
-so a document read in it uses nothing that an implementation could reject
-as optional. `CORE_AND_EXTENSIONS` adds the extensions that
-`zarr-extensions` registers and this package defines. A name in neither
-scope is not rejected, because that is what keeps the format open.
-Instead it is read as an `UnclaimedField` and not checked.
 """
 
 from __future__ import annotations
@@ -20,51 +12,24 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, Generic, Literal, TypeAlias, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypeAlias, TypeGuard, cast
 
 from typing_extensions import TypeVar
 
-from zarr_metadata.v3._definition import Definition, as_kind, filed_under, format_of, kind_of
-from zarr_metadata.v3._scope import Conflict, ScopeConflictError, disagreements_of
-from zarr_metadata.v3.chunk_grid.rectilinear import RECTILINEAR_CHUNK_GRID
-from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
-from zarr_metadata.v3.chunk_key_encoding.default import DEFAULT_CHUNK_KEY_ENCODING
-from zarr_metadata.v3.chunk_key_encoding.v2 import V2_CHUNK_KEY_ENCODING
-from zarr_metadata.v3.codec.blosc import BLOSC_CODEC
-from zarr_metadata.v3.codec.bytes import BYTES_CODEC
-from zarr_metadata.v3.codec.cast_value import CAST_VALUE_CODEC
-from zarr_metadata.v3.codec.crc32c import CRC32C_CODEC
-from zarr_metadata.v3.codec.gzip import GZIP_CODEC
-from zarr_metadata.v3.codec.scale_offset import SCALE_OFFSET_CODEC
-from zarr_metadata.v3.codec.sharding_indexed import SHARDING_INDEXED_CODEC
-from zarr_metadata.v3.codec.transpose import TRANSPOSE_CODEC
-from zarr_metadata.v3.codec.zstd import ZSTD_CODEC
-from zarr_metadata.v3.data_type.bool import BOOL_DATA_TYPE
-from zarr_metadata.v3.data_type.bytes import BYTES_DATA_TYPE
-from zarr_metadata.v3.data_type.complex64 import COMPLEX64_DATA_TYPE
-from zarr_metadata.v3.data_type.complex128 import COMPLEX128_DATA_TYPE
-from zarr_metadata.v3.data_type.float16 import FLOAT16_DATA_TYPE
-from zarr_metadata.v3.data_type.float32 import FLOAT32_DATA_TYPE
-from zarr_metadata.v3.data_type.float64 import FLOAT64_DATA_TYPE
-from zarr_metadata.v3.data_type.int8 import INT8_DATA_TYPE
-from zarr_metadata.v3.data_type.int16 import INT16_DATA_TYPE
-from zarr_metadata.v3.data_type.int32 import INT32_DATA_TYPE
-from zarr_metadata.v3.data_type.int64 import INT64_DATA_TYPE
-from zarr_metadata.v3.data_type.numpy_datetime64 import NUMPY_DATETIME64_DATA_TYPE
-from zarr_metadata.v3.data_type.numpy_timedelta64 import NUMPY_TIMEDELTA64_DATA_TYPE
-from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
-from zarr_metadata.v3.data_type.string import STRING_DATA_TYPE
-from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
-from zarr_metadata.v3.data_type.uint8 import UINT8_DATA_TYPE
-from zarr_metadata.v3.data_type.uint16 import UINT16_DATA_TYPE
-from zarr_metadata.v3.data_type.uint32 import UINT32_DATA_TYPE
-from zarr_metadata.v3.data_type.uint64 import UINT64_DATA_TYPE
+from zarr_metadata.definition._definition import (
+    Definition,
+    as_kind,
+    filed_under,
+    format_of,
+    kind_of,
+)
+from zarr_metadata.definition._scope import Conflict, ScopeConflictError, disagreements_of
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from zarr_metadata.v3._definition import D
-    from zarr_metadata.v3._scope import Claims, Disagreements
+    from zarr_metadata.definition._definition import D
+    from zarr_metadata.definition._scope import Claims, Disagreements
 
 Tables = Mapping[type[Definition[Any]], Mapping[str, Definition[Any]]]
 """Definitions keyed by kind, then by the name each definition is filed under."""
@@ -251,56 +216,7 @@ def scoped(context: Context[F] | None, default: Context[F]) -> Context[F]:
     return context
 
 
-_CORE: Final[tuple[Definition[Any], ...]] = (
-    BLOSC_CODEC,
-    BYTES_CODEC,
-    CRC32C_CODEC,
-    GZIP_CODEC,
-    SHARDING_INDEXED_CODEC,
-    TRANSPOSE_CODEC,
-    BOOL_DATA_TYPE,
-    INT8_DATA_TYPE,
-    INT16_DATA_TYPE,
-    INT32_DATA_TYPE,
-    INT64_DATA_TYPE,
-    UINT8_DATA_TYPE,
-    UINT16_DATA_TYPE,
-    UINT32_DATA_TYPE,
-    UINT64_DATA_TYPE,
-    FLOAT16_DATA_TYPE,
-    FLOAT32_DATA_TYPE,
-    FLOAT64_DATA_TYPE,
-    COMPLEX64_DATA_TYPE,
-    COMPLEX128_DATA_TYPE,
-    RAW_BYTES_DATA_TYPE,
-    REGULAR_CHUNK_GRID,
-    DEFAULT_CHUNK_KEY_ENCODING,
-    V2_CHUNK_KEY_ENCODING,
-)
-"""What the Zarr v3 specification itself defines."""
-
-_EXTENSIONS: Final[tuple[Definition[Any], ...]] = (
-    CAST_VALUE_CODEC,
-    SCALE_OFFSET_CODEC,
-    ZSTD_CODEC,
-    BYTES_DATA_TYPE,
-    STRING_DATA_TYPE,
-    NUMPY_DATETIME64_DATA_TYPE,
-    NUMPY_TIMEDELTA64_DATA_TYPE,
-    STRUCT_DATA_TYPE,
-    RECTILINEAR_CHUNK_GRID,
-)
-"""The extensions that `zarr-extensions` registers and this package defines."""
-
-CORE: Final[ZarrV3Context] = Context.of(*_CORE)
-"""A scope with only what the Zarr v3 specification defines."""
-
-CORE_AND_EXTENSIONS: Final[ZarrV3Context] = Context.of(*_CORE, *_EXTENSIONS)
-"""A scope with what the specification defines, plus what `zarr-extensions` registers."""
-
 __all__ = [
-    "CORE",
-    "CORE_AND_EXTENSIONS",
     "Context",
     "Tables",
     "ZarrV2Context",

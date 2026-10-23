@@ -16,7 +16,7 @@ from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
-    from zarr_metadata.v3._definition import Nested
+    from zarr_metadata.definition._definition import Nested
 
 ZarrV2ByteOrder = Literal["<", ">", "|"]
 """The byte orders that a typestr writes: little-endian, big-endian, and not relevant."""

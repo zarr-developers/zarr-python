@@ -9,8 +9,11 @@ v3 array validators check a document's `chunk_grid` against its `shape`.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
+from zarr_metadata.definition import resolve
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
     validate_array_metadata_v3,
@@ -22,9 +25,10 @@ from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
     ChunkGridDefinition,
-    JSONValue,
-    resolve,
 )
+
+if TYPE_CHECKING:
+    from zarr_metadata import JSONValue
 
 
 def _regular(*lengths: int) -> JSONValue:

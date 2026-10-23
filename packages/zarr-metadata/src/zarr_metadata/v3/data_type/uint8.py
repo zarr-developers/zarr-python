@@ -8,7 +8,11 @@ from typing import Annotated, Final, Literal
 
 from annotated_types import Interval
 
-from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration, single_byte
+from zarr_metadata.definition._definition import EmptyConfiguration
+from zarr_metadata.v3._definition import (
+    DataTypeDefinition,
+    single_byte,
+)
 
 UINT8_DATA_TYPE_NAME: Final = "uint8"
 """The `data_type` value for the `uint8` type."""

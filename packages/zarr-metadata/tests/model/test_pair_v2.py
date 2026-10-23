@@ -10,6 +10,13 @@ from typing import Any, cast
 import pytest
 
 from zarr_metadata._sentinel import UNSET
+from zarr_metadata.definition import (
+    AcceptedField,
+    Context,
+    EmptyConfiguration,
+    ScopeConflictError,
+    UnclaimedField,
+)
 from zarr_metadata.model import (
     MetadataValidationError,
     ZarrV2ArrayMetadata,
@@ -21,15 +28,8 @@ from zarr_metadata.v2.codec.compression import ZLIB_V2
 from zarr_metadata.v2.data_type.scalar import FLOAT_V2, UINT_V2
 from zarr_metadata.v2.definition import (
     CORE_V2,
-    AcceptedField,
-    Context,
-    ScopeConflictError,
-    UnclaimedField,
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
-)
-from zarr_metadata.v3.definition import (
-    EmptyConfiguration,
 )
 
 Loc = tuple[str | int, ...]

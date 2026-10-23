@@ -13,7 +13,7 @@ from zarr_metadata.v3.data_type.bytes import base64_bytes
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from zarr_metadata.v3._definition import Nested
+    from zarr_metadata.definition._definition import Nested
 
 ZarrV2Base64FillValue = str | None
 """A fill value that the v2 spec encodes as base64, for a fixed-length byte string, void, or a structured type (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L191-L193), or null."""

@@ -6,13 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
-from zarr_metadata.v2.data_type import V2_DATA_TYPES
-from zarr_metadata.v3._definition import (
-    canonical_of,
-    fields_of,
-)
-from zarr_metadata.v3.definition import (
+from zarr_metadata.definition import (
     AcceptedField,
     Context,
     RefusedField,
@@ -21,6 +15,12 @@ from zarr_metadata.v3.definition import (
     fill_value_problems,
     resolve,
 )
+from zarr_metadata.definition._definition import (
+    canonical_of,
+    fields_of,
+)
+from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
+from zarr_metadata.v2.data_type import V2_DATA_TYPES
 
 if TYPE_CHECKING:
     from zarr_metadata import JSONValue

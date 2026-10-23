@@ -7,7 +7,7 @@ definition per NumPy family), and the codecs that numcodecs 0.16
 configures (one per id that this package models). `CORE_V2` is that
 scope. To read one field in it, call `resolve_dtype_v2` or
 `resolve_codec_v2`. They return `AcceptedField`, `UnclaimedField` or
-`RefusedField`, as `zarr_metadata.v3.definition.resolve` does for a v3
+`RefusedField`, as `zarr_metadata.definition.resolve` does for a v3
 field. The scope operations (`Context.of`, `extended_with`, `joined`,
 `claimant`) use the same `Context` class, with format 2. A v2 reader
 rejects a v3 scope with `TypeError`. `ZarrV2Context` is the type of a v2
@@ -27,6 +27,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Final
 
+from zarr_metadata.definition._context import Context, ZarrV2Context, scoped
+from zarr_metadata.definition._definition import resolve
 from zarr_metadata.v2._definition import (
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
@@ -34,27 +36,10 @@ from zarr_metadata.v2._definition import (
 )
 from zarr_metadata.v2.codec import V2_CODECS
 from zarr_metadata.v2.data_type import V2_DATA_TYPES
-from zarr_metadata.v3._definition import (
-    AcceptedField,
-    RefusedField,
-    ResolvedField,
-    UnclaimedField,
-    canonical_fill_value,
-    fill_value_problems,
-    resolve,
-)
-from zarr_metadata.v3._registry import Context, ZarrV2Context, scoped
-from zarr_metadata.v3._scope import (
-    ClaimKey,
-    Claims,
-    Conflict,
-    Disagreements,
-    ScopeConflictError,
-)
 
 if TYPE_CHECKING:
     from zarr_metadata._typed_json import Loc
-    from zarr_metadata.v3._definition import Problems
+    from zarr_metadata.definition._definition import Problems, ResolvedField
 
 CORE_V2: Final[ZarrV2Context] = Context.of(*V2_DATA_TYPES, *V2_CODECS)
 """The data types that zarr-python 2.x writes and the codecs that numcodecs 0.16 configures."""
@@ -78,22 +63,10 @@ __all__ = [
     "CORE_V2",
     "V2_CODECS",
     "V2_DATA_TYPES",
-    "AcceptedField",
-    "ClaimKey",
-    "Claims",
-    "Conflict",
-    "Context",
-    "Disagreements",
-    "RefusedField",
-    "ResolvedField",
-    "ScopeConflictError",
-    "UnclaimedField",
     "ZarrV2CodecDefinition",
     "ZarrV2Context",
     "ZarrV2DataTypeDefinition",
     "ZarrV2DataTypeField",
-    "canonical_fill_value",
-    "fill_value_problems",
     "resolve_codec_v2",
     "resolve_dtype_v2",
 ]

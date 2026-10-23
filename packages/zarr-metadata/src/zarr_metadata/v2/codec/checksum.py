@@ -6,8 +6,8 @@ from typing import Final, Literal, NotRequired
 
 from typing_extensions import ReadOnly, TypedDict
 
+from zarr_metadata.definition._definition import EmptyConfiguration
 from zarr_metadata.v2._definition import ZarrV2CodecDefinition
-from zarr_metadata.v3._definition import EmptyConfiguration
 
 
 class ZarrV2Checksum32Parameters(TypedDict, closed=True):

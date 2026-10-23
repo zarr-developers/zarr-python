@@ -23,11 +23,13 @@ The package is organized to mirror the structure of the Zarr specifications:
   documents, with subpackages for [chunk grids](v3/chunk_grid.md),
   [chunk key encodings](v3/chunk_key_encoding.md), [codecs](v3/codec.md),
   and [data types](v3/data_type.md)
-- [`zarr_metadata.v3.definition`](v3/definition.md) — each extension's
-  metadata as a definition: the TypedDict its configuration is, and the
-  rules on it; judge a configuration, read a whole field in a scope, and
-  the scopes, `CORE` and `CORE_AND_EXTENSIONS`, fields are read in. Its
-  module docstring is the guide
+- [`zarr_metadata.definition`](definition.md) — what both formats share
+  for reading a field: `Definition`, `resolve`, the three results of a
+  reading (`AcceptedField`, `UnclaimedField`, `RefusedField`), and the
+  scope type `Context`. Its module docstring is the guide
+- [`zarr_metadata.v3.definition`](v3/definition.md) — the five v3 kinds
+  of metadata (`CodecDefinition`, `DataTypeDefinition`, ...), the codec
+  pipeline types, and the v3 scopes `CORE` and `CORE_AND_EXTENSIONS`
 
 The document types, models, and spec vocabulary — including the store keys —
 are re-exported at the top level, so
@@ -40,7 +42,7 @@ imported from [`zarr_metadata.model`](model.md) directly.
 
 A few cross-cutting aliases are exported from the top-level
 `zarr_metadata` namespace (`JSONValue` from `zarr_metadata.typed_json`
-and `zarr_metadata.v3.definition` too):
+too):
 
 ::: zarr_metadata.JSONValue
 

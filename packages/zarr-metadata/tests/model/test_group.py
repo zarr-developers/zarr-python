@@ -19,6 +19,13 @@ from zarr_metadata._json import (
     arrays_to_tuples,
     json_text,
 )
+from zarr_metadata.definition import (
+    EmptyConfiguration,
+    Nested,
+    RefusedField,
+    UnclaimedField,
+    resolve,
+)
 from zarr_metadata.model import (
     UNSET,
     is_array_metadata_v3,
@@ -60,11 +67,6 @@ from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
     CodecDefinition,
-    EmptyConfiguration,
-    Nested,
-    RefusedField,
-    UnclaimedField,
-    resolve,
 )
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSONPartial
 

@@ -9,6 +9,8 @@ from typing import Any, cast, get_type_hints
 import pytest
 
 from zarr_metadata._json import JSON_DEPTH
+from zarr_metadata.definition import Context
+from zarr_metadata.definition._scope import claims_of
 from zarr_metadata.model import (
     MetadataValidationError,
     ZarrV3ArrayMetadata,
@@ -22,9 +24,6 @@ from zarr_metadata.model import (
     read_group_metadata_v3,
     validate_group_metadata_v3,
 )
-from zarr_metadata.v3._scope import (
-    claims_of,
-)
 from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE
@@ -32,7 +31,6 @@ from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
     CodecDefinition,
-    Context,
 )
 
 ARRAY: dict[str, Any] = {

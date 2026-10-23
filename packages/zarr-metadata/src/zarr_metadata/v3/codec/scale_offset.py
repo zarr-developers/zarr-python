@@ -11,12 +11,14 @@ from typing_extensions import TypedDict
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem, shown
-from zarr_metadata.v3._definition import (
+from zarr_metadata.definition._definition import (
     AcceptedField,
-    Chunk,
-    CodecDefinition,
     Nested,
     fill_value_problems,
+)
+from zarr_metadata.v3._definition import (
+    Chunk,
+    CodecDefinition,
 )
 from zarr_metadata.v3.codec._arithmetic import NOT_NUMBERS
 

@@ -18,8 +18,20 @@ from hypothesis import given
 from hypothesis import strategies as st
 from typing_extensions import TypedDict
 
+from zarr_metadata import (
+    JSONValue,
+    ValidationProblem,
+)
 from zarr_metadata._json import JSON_DEPTH, value_at
 from zarr_metadata._sentinel import UNSET
+from zarr_metadata.definition import (
+    AcceptedField,
+    EmptyConfiguration,
+    Nested,
+    canonical_fill_value,
+    fill_value_problems,
+    resolve,
+)
 from zarr_metadata.model import (
     validate_array_metadata_v3,
     validate_group_metadata_v3,
@@ -29,15 +41,7 @@ from zarr_metadata.v3.data_type._float import FloatWidth, complex_fill_value_rul
 from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
 from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
-    AcceptedField,
     DataTypeDefinition,
-    EmptyConfiguration,
-    JSONValue,
-    Nested,
-    ValidationProblem,
-    canonical_fill_value,
-    fill_value_problems,
-    resolve,
 )
 
 if TYPE_CHECKING:

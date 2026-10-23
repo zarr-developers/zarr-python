@@ -9,10 +9,17 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from zarr_metadata.v3._definition import (
-    fields_of,
+from zarr_metadata.definition import (
+    Conflict,
+    Context,
+    Definition,
+    RefusedField,
+    ResolvedField,
+    ScopeConflictError,
+    resolve,
 )
-from zarr_metadata.v3._scope import (
+from zarr_metadata.definition._definition import fields_of
+from zarr_metadata.definition._scope import (
     Claims,
     Disagreements,
     claims_of,
@@ -32,15 +39,8 @@ from zarr_metadata.v3.definition import (
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
-    Conflict,
-    Context,
     DataTypeDefinition,
-    Definition,
-    RefusedField,
-    ResolvedField,
-    ScopeConflictError,
     StorageTransformerDefinition,
-    resolve,
 )
 
 SHARD = {
@@ -391,7 +391,14 @@ def test_a_kind_is_named_in_words(kind: type[Definition[Any]], said: str) -> Non
 
 def test_a_gain_is_judged_by_what_the_definition_reads_not_by_spelling() -> None:
     """An accepted field refines an unclaimed one when its definition, reading the JSON of the unclaimed field, produces the accepted field. Two spellings of one configuration count as the same gain, so `refines` is transitive through `==`. A spelling that the definition reads as something else is not a gain."""
-    from zarr_metadata.v3.definition import CORE, ChunkKeyEncodingDefinition, Context, resolve
+    from zarr_metadata.definition import (
+        Context,
+        resolve,
+    )
+    from zarr_metadata.v3.definition import (
+        CORE,
+        ChunkKeyEncodingDefinition,
+    )
 
     nothing = Context.of()
     spelled_out, _ = resolve(

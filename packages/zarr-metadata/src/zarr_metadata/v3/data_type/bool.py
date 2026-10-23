@@ -6,7 +6,11 @@ See https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html
 
 from typing import Final, Literal
 
-from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration, single_byte
+from zarr_metadata.definition._definition import EmptyConfiguration
+from zarr_metadata.v3._definition import (
+    DataTypeDefinition,
+    single_byte,
+)
 
 BOOL_DATA_TYPE_NAME: Final = "bool"
 """The `data_type` value for the `bool` type."""

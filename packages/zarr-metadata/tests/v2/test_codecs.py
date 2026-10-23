@@ -7,18 +7,16 @@ from typing import Any
 
 import pytest
 
-from zarr_metadata.v2._definition import ZarrV2CodecDefinition
-from zarr_metadata.v2.codec import V2_CODECS, ZarrV2CodecMetadata
-from zarr_metadata.v3._definition import (
-    canonical_of,
-)
-from zarr_metadata.v3.definition import (
+from zarr_metadata.definition import (
     AcceptedField,
     Context,
     RefusedField,
     UnclaimedField,
     resolve,
 )
+from zarr_metadata.definition._definition import canonical_of
+from zarr_metadata.v2._definition import ZarrV2CodecDefinition
+from zarr_metadata.v2.codec import V2_CODECS, ZarrV2CodecMetadata
 
 SCOPE = Context.of(*V2_CODECS)
 Loc = tuple[str | int, ...]

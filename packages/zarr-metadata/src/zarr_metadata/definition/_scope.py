@@ -16,7 +16,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
 
-from zarr_metadata.v3._definition import (
+from zarr_metadata.definition._definition import (
     AcceptedField,
     Definition,
     RefusedField,
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
 
     from zarr_metadata._typed_json import Loc
-    from zarr_metadata.v3._definition import D, ResolvedField
+    from zarr_metadata.definition._definition import D, ResolvedField
 
 ClaimKey: TypeAlias = tuple[type[Definition[Any]], str]
 """A kind and the name a definition is filed under. A scope's `claimant` looks up definitions by this key."""

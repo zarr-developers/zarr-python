@@ -12,6 +12,11 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from zarr_metadata import JSONValue
+from zarr_metadata.definition import (
+    ResolvedField,
+    resolve,
+)
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
     validate_array_metadata_v3,
@@ -24,13 +29,11 @@ from zarr_metadata.v3.definition import (
     Chunk,
     CodecDefinition,
     DataTypeDefinition,
-    JSONValue,
-    ResolvedField,
-    resolve,
 )
 
 if TYPE_CHECKING:
-    from zarr_metadata.v3.definition import Stage, ValidationProblem
+    from zarr_metadata import ValidationProblem
+    from zarr_metadata.v3.definition import Stage
 
 Where = tuple[str | int, ...]
 

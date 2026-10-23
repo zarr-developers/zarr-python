@@ -161,7 +161,8 @@ each field:
 
 ```python
 from zarr_metadata.model import read_array_metadata_v3
-from zarr_metadata.v3.definition import CORE, canonical_of, with_problems
+from zarr_metadata.definition import canonical_of, with_problems
+from zarr_metadata.v3.definition import CORE
 
 reading = read_array_metadata_v3(raw)
 beyond_core = [

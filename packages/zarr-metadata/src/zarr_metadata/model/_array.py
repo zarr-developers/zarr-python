@@ -22,6 +22,28 @@ from zarr_metadata._json import (
     with_input,
 )
 from zarr_metadata._sentinel import UNSET
+from zarr_metadata.definition._context import (
+    Context,
+    ZarrV2Context,
+    ZarrV3Context,
+    scoped,
+)
+from zarr_metadata.definition._definition import (
+    AcceptedField,
+    UnclaimedField,
+    field_key,
+    fill_value_problems,
+    held,
+    spelled_canonically,
+)
+from zarr_metadata.definition._scope import (
+    Claims,
+    Conflict,
+    ScopeConflictError,
+    claim_key,
+    claims_of,
+)
+from zarr_metadata.definition._scope import refines as refines_field
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._validation import (
     ArrayMembersV2,
@@ -45,38 +67,24 @@ from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
 from zarr_metadata.v2.codec import ZarrV2CodecMetadata
 from zarr_metadata.v2.definition import CORE_V2, resolve_dtype_v2
 from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
-from zarr_metadata.v3._definition import (
-    AcceptedField,
-    ChunkGridDefinition,
-    ChunkKeyEncodingDefinition,
-    CodecDefinition,
-    DataTypeDefinition,
-    StorageTransformerDefinition,
-    UnclaimedField,
-    field_key,
-    fill_value_problems,
-    held,
-    spelled_canonically,
-)
-from zarr_metadata.v3._registry import (
-    CORE_AND_EXTENSIONS,
-    Context,
-    ZarrV2Context,
-    ZarrV3Context,
-    scoped,
-)
-from zarr_metadata.v3._scope import Claims, Conflict, ScopeConflictError, claim_key, claims_of
-from zarr_metadata.v3._scope import refines as refines_field
+from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3.array import ZARR_V3_ARRAY_METADATA_STORE_KEY, ZarrV3ExtensionField
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
     from zarr_metadata._typed_json import Loc
+    from zarr_metadata.definition._definition import ResolvedField
     from zarr_metadata.v2._definition import ZarrV2CodecDefinition, ZarrV2DataTypeDefinition
     from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON, ZarrV2ArrayMetadataStoreKey
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
-    from zarr_metadata.v3._definition import ResolvedField
+    from zarr_metadata.v3._definition import (
+        ChunkGridDefinition,
+        ChunkKeyEncodingDefinition,
+        CodecDefinition,
+        DataTypeDefinition,
+        StorageTransformerDefinition,
+    )
     from zarr_metadata.v3.array import (
         ZarrV3ArrayMetadataJSON,
         ZarrV3ArrayMetadataJSONPartial,

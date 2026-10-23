@@ -35,6 +35,20 @@ from zarr_metadata._json import (
 )
 from zarr_metadata._json import prefixed as _prefix
 from zarr_metadata._sentinel import UNSET
+from zarr_metadata.definition._context import (
+    Context,
+    ZarrV2Context,
+    ZarrV3Context,
+    scoped,
+)
+from zarr_metadata.definition._scope import (
+    Claims,
+    Conflict,
+    ScopeConflictError,
+    claims_of,
+    definition_said,
+    kind_name,
+)
 from zarr_metadata.model._array import (
     ZarrV2ArrayMetadata,
     ZarrV3ArrayMetadata,
@@ -69,22 +83,8 @@ from zarr_metadata.v2.attributes import ZARR_V2_ATTRIBUTES_STORE_KEY
 from zarr_metadata.v2.consolidated import ZARR_V2_CONSOLIDATED_METADATA_STORE_KEY
 from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY
+from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3._hierarchy import NodeType, hierarchy_problems, path_faults, said
-from zarr_metadata.v3._registry import (
-    CORE_AND_EXTENSIONS,
-    Context,
-    ZarrV2Context,
-    ZarrV3Context,
-    scoped,
-)
-from zarr_metadata.v3._scope import (
-    Claims,
-    Conflict,
-    ScopeConflictError,
-    claims_of,
-    definition_said,
-    kind_name,
-)
 from zarr_metadata.v3.array import ZarrV3ExtensionField
 from zarr_metadata.v3.consolidated import ZARR_V3_CONSOLIDATED_METADATA_KEY
 from zarr_metadata.v3.group import ZARR_V3_GROUP_METADATA_STORE_KEY, ZarrV3GroupMetadataJSON
@@ -93,10 +93,10 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from zarr_metadata._typed_json import Loc
+    from zarr_metadata.definition._definition import ResolvedField
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
     from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataStoreKey
     from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON, ZarrV2GroupMetadataStoreKey
-    from zarr_metadata.v3._definition import ResolvedField
     from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
     from zarr_metadata.v3.consolidated import ZarrV3ConsolidatedMetadataJSON
     from zarr_metadata.v3.group import ZarrV3GroupMetadataJSONPartial, ZarrV3GroupMetadataStoreKey

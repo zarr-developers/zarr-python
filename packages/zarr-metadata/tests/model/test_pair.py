@@ -7,11 +7,18 @@ import dataclasses
 import operator
 import pickle
 from collections.abc import Callable, Iterator, Mapping
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
 from zarr_metadata._json import refine_json
+from zarr_metadata.definition import (
+    AcceptedField,
+    Context,
+    Nested,
+    ScopeConflictError,
+    UnclaimedField,
+)
 from zarr_metadata.model import (
     UNSET,
     MetadataValidationError,
@@ -28,14 +35,11 @@ from zarr_metadata.v3.codec.zstd import ZSTD_CODEC
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
-    AcceptedField,
     CodecDefinition,
-    Context,
-    Nested,
-    ScopeConflictError,
-    UnclaimedField,
-    ValidationProblem,
 )
+
+if TYPE_CHECKING:
+    from zarr_metadata import ValidationProblem
 
 ARRAY: dict[str, Any] = {
     "zarr_format": 3,

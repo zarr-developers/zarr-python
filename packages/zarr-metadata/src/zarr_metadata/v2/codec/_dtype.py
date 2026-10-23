@@ -11,7 +11,7 @@ from zarr_metadata.v2._definition import parse_typestr, typestr_problem
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
-    from zarr_metadata.v3._definition import Nested
+    from zarr_metadata.definition._definition import Nested
 
 
 @dataclass(frozen=True, slots=True)

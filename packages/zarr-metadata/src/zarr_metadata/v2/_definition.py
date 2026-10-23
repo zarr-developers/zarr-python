@@ -26,15 +26,19 @@ from typing import TYPE_CHECKING, ClassVar, Final, cast
 from typing_extensions import TypeAliasType
 
 from zarr_metadata._json import ValidationProblem, is_object, shown
+from zarr_metadata.definition._definition import (
+    C,
+    Definition,
+    WithFillValue,
+)
 from zarr_metadata.v2.array import ZarrV2DataTypeMetadata
-from zarr_metadata.v3._definition import C, Definition, WithFillValue
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from zarr_metadata._common import JSONValue
     from zarr_metadata._typed_json import Loc
-    from zarr_metadata.v3._definition import Problems
+    from zarr_metadata.definition._definition import Problems
 
 ZarrV2DataTypeField = TypeAliasType("ZarrV2DataTypeField", ZarrV2DataTypeMetadata)
 """A member that holds a v2 dtype: a document's `dtype`, or the type of a struct record. It is read in the same scope as its container."""

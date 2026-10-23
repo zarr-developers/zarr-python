@@ -34,22 +34,27 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, TypeGuard, cast
 
 from zarr_metadata._json import ValidationProblem, is_object, is_tuple, with_input
-from zarr_metadata.v3._definition import (
+from zarr_metadata.definition._definition import (
     AcceptedField,
-    Chunk,
-    CodecDefinition,
-    CodecKind,
     ResolvedField,
     asked,
     read_only,
     ruled,
+)
+from zarr_metadata.v3._definition import (
+    Chunk,
+    CodecDefinition,
+    CodecKind,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
 
     from zarr_metadata._typed_json import Loc
-    from zarr_metadata.v3._definition import Nested, Problems
+    from zarr_metadata.definition._definition import (
+        Nested,
+        Problems,
+    )
 
 
 def _no_stages() -> Mapping[str, tuple[Stage, ...]]:

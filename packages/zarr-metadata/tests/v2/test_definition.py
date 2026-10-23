@@ -6,13 +6,15 @@ import pickle
 
 import pytest
 
+from zarr_metadata.definition import (
+    AcceptedField,
+    Context,
+    UnclaimedField,
+)
 from zarr_metadata.v2.definition import (
     CORE_V2,
     V2_CODECS,
     V2_DATA_TYPES,
-    AcceptedField,
-    Context,
-    UnclaimedField,
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
     resolve_codec_v2,

@@ -14,6 +14,18 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from zarr_metadata._json import arrays_to_tuples
+from zarr_metadata.definition import (
+    AcceptedField,
+    Context,
+    Definition,
+    RefusedField,
+    UnclaimedField,
+    resolve,
+)
+from zarr_metadata.definition._definition import (
+    fields_of,
+    with_problems,
+)
 from zarr_metadata.model import (
     UNSET,
     ValidationProblem,
@@ -22,30 +34,24 @@ from zarr_metadata.model import (
     read_array_metadata_v3,
     read_group_metadata_v3,
 )
-from zarr_metadata.v3._definition import (
-    fields_of,
-    with_problems,
-)
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
-    AcceptedField,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
-    Context,
     DataTypeDefinition,
-    Definition,
-    RefusedField,
     StorageTransformerDefinition,
-    UnclaimedField,
-    resolve,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-    from zarr_metadata.v3.definition import Lengths, Loc, ResolvedField
+    from zarr_metadata.definition import (
+        Loc,
+        ResolvedField,
+    )
+    from zarr_metadata.v3.definition import Lengths
 
 LITTLE = {"name": "bytes", "configuration": {"endian": "little"}}
 ZSTD = {"name": "zstd", "configuration": {"level": 1}}

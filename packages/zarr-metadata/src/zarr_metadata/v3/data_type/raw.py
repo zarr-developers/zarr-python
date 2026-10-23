@@ -14,11 +14,11 @@ from typing import Final, NewType
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
+from zarr_metadata.definition._definition import Nested
 from zarr_metadata.v3._definition import (
     RAW_BYTES_NAME,
     RAW_BYTES_NAME_PATTERN,
     DataTypeDefinition,
-    Nested,
     StorageClass,
 )
 from zarr_metadata.v3.data_type._byte import ByteValue

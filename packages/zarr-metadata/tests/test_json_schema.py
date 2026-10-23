@@ -24,6 +24,11 @@ from typing_extensions import Doc, TypeAliasType, TypedDict
 from tests.v3.test_every_definition import CASES, KINDS
 from zarr_metadata._common import JSONValue
 from zarr_metadata._typed_json import Schemas
+from zarr_metadata.definition import (
+    Context,
+    Definition,
+    resolve,
+)
 from zarr_metadata.model import (
     node_metadata_json_schema_v3,
     validate_node_metadata_v3,
@@ -42,11 +47,8 @@ from zarr_metadata.v3.definition import (
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     CodecDefinition,
-    Context,
     DataTypeDefinition,
-    Definition,
     StorageTransformerDefinition,
-    resolve,
 )
 
 DIALECT = "https://json-schema.org/draft/2020-12/schema"

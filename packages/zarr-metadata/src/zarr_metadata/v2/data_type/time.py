@@ -21,7 +21,7 @@ from zarr_metadata.v3.data_type._numpy_time import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from zarr_metadata.v3._definition import Nested
+    from zarr_metadata.definition._definition import Nested
 
 
 class ZarrV2TimeConfiguration(TypedDict, closed=True):

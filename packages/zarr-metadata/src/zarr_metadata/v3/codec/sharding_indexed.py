@@ -11,14 +11,18 @@ from annotated_types import Ge
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import (
+from zarr_metadata.definition._definition import (
     AcceptedField,
+    Nested,
+)
+from zarr_metadata.v3._common import (
+    ZarrV3CodecField,
+    ZarrV3StaticCodecField,
+)
+from zarr_metadata.v3._definition import (
     Chunk,
     CodecDefinition,
     Lengths,
-    Nested,
-    ZarrV3CodecField,
-    ZarrV3StaticCodecField,
 )
 from zarr_metadata.v3.data_type.uint64 import UINT64_DATA_TYPE, UINT64_DATA_TYPE_NAME
 

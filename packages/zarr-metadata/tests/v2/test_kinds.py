@@ -6,13 +6,11 @@ from typing import Any
 
 import pytest
 
+from zarr_metadata.definition import EmptyConfiguration
 from zarr_metadata.v2._definition import (
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
     parse_typestr,
-)
-from zarr_metadata.v3.definition import (
-    EmptyConfiguration,
 )
 
 Loc = tuple[str | int, ...]

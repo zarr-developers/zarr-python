@@ -22,6 +22,16 @@ from zarr_metadata._json import (
     prefixed,
     validate_json,
 )
+from zarr_metadata.definition import (
+    AcceptedField,
+    UnclaimedField,
+)
+from zarr_metadata.definition._definition import (
+    canonical_of,
+    configuration_of,
+    fields_of,
+    with_problems,
+)
 from zarr_metadata.model import (
     UNSET,
     MetadataValidationError,
@@ -47,19 +57,11 @@ from zarr_metadata.model._validation import (
     ARRAY_METADATA_REQUIRED_KEYS_V3,
     ARRAY_METADATA_STANDARD_KEYS_V3,
 )
-from zarr_metadata.v3._definition import (
-    canonical_of,
-    configuration_of,
-    fields_of,
-    with_problems,
-)
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSONPartial
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
-    AcceptedField,
-    UnclaimedField,
 )
 
 if TYPE_CHECKING:

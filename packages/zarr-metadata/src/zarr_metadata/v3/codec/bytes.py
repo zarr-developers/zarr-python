@@ -10,10 +10,10 @@ from typing import Final, Literal, NotRequired
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem, shown
+from zarr_metadata.definition._definition import Nested
 from zarr_metadata.v3._definition import (
     Chunk,
     CodecDefinition,
-    Nested,
     storage_of,
 )
 

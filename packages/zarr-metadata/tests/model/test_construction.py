@@ -36,7 +36,7 @@ from zarr_metadata.v3.definition import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from zarr_metadata.v3.definition import Nested
+    from zarr_metadata.definition import Nested
 
 ARRAY = ZarrV3ArrayMetadata.create_default(
     shape=(4,),

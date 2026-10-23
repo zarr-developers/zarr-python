@@ -5,8 +5,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from zarr_metadata._typed_json import Schemas
+from zarr_metadata.definition._context import (
+    Context,
+    ZarrV3Context,
+    scoped,
+)
+from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3._definition import DataTypeDefinition, field_schemas, written_name
-from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, Context, ZarrV3Context, scoped
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.consolidated import (
     ZARR_V3_CONSOLIDATED_METADATA_KEY,

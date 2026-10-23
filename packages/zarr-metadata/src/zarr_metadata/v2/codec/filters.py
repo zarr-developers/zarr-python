@@ -11,9 +11,9 @@ from typing import Annotated, Final, NotRequired
 from annotated_types import Ge
 from typing_extensions import ReadOnly, TypedDict
 
+from zarr_metadata.definition._definition import EmptyConfiguration
 from zarr_metadata.v2._definition import ZarrV2CodecDefinition
 from zarr_metadata.v2.codec._dtype import dtype_parameter
-from zarr_metadata.v3._definition import EmptyConfiguration
 
 
 class ZarrV2ShuffleParameters(TypedDict, closed=True):

@@ -11,18 +11,8 @@ from annotated_types import Ge
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import (
-    DataTypeDefinition,
-    WithFillValue,
-    as_kind,
-    field_json_schema,
-    kind_of,
-)
-from zarr_metadata.v3._scope import kind_name
-from zarr_metadata.v3.codec.gzip import GZIP_CODEC
-from zarr_metadata.v3.definition import (
+from zarr_metadata.definition import (
     AcceptedField,
-    CodecDefinition,
     Context,
     Definition,
     EmptyConfiguration,
@@ -32,6 +22,18 @@ from zarr_metadata.v3.definition import (
     fill_value_problems,
     resolve,
 )
+from zarr_metadata.definition._definition import (
+    WithFillValue,
+    as_kind,
+    kind_of,
+)
+from zarr_metadata.definition._scope import kind_name
+from zarr_metadata.v3._definition import (
+    DataTypeDefinition,
+    field_json_schema,
+)
+from zarr_metadata.v3.codec.gzip import GZIP_CODEC
+from zarr_metadata.v3.definition import CodecDefinition
 
 if TYPE_CHECKING:
     from zarr_metadata._common import JSONValue

@@ -20,7 +20,10 @@ from typing import Any, Final, Literal, get_args
 
 from zarr_metadata._common import JSONValue
 from zarr_metadata._json import ValidationProblem, choices, shown
-from zarr_metadata.v3._definition import EmptyConfiguration, Nested
+from zarr_metadata.definition._definition import (
+    EmptyConfiguration,
+    Nested,
+)
 
 FloatSpecialFillValue = Literal["NaN", "Infinity", "-Infinity"]
 """The named non-finite fill values every IEEE 754 floating-point type takes."""

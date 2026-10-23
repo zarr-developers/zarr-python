@@ -6,7 +6,11 @@ See https://github.com/zarr-developers/zarr-extensions/blob/4da7b37a84f76e660902
 
 from typing import Final, Literal
 
-from zarr_metadata.v3._definition import DataTypeDefinition, EmptyConfiguration, variable_length
+from zarr_metadata.definition._definition import EmptyConfiguration
+from zarr_metadata.v3._definition import (
+    DataTypeDefinition,
+    variable_length,
+)
 
 STRING_DATA_TYPE_NAME: Final = "string"
 """The `data_type` value for the `string` type."""

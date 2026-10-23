@@ -46,6 +46,7 @@ from annotated_types import (
 )
 from typing_extensions import Doc, ReadOnly, TypeAliasType, TypedDict, is_typeddict
 
+import zarr_metadata.definition
 import zarr_metadata.v2
 import zarr_metadata.v3
 from zarr_metadata._common import JSONValue
@@ -1210,9 +1211,9 @@ def test_error_check_refuses_a_value_of_another_type() -> None:
 
 
 def _declared_typeddicts() -> list[type]:
-    """Every TypedDict exported by a public module of the package's JSON types."""
+    """Every TypedDict exported by a public module of the package's JSON types or of its definitions."""
     found: dict[type, None] = {}
-    for package in (zarr_metadata.v2, zarr_metadata.v3):
+    for package in (zarr_metadata.definition, zarr_metadata.v2, zarr_metadata.v3):
         modules = [package.__name__] + [
             info.name
             for info in pkgutil.walk_packages(package.__path__, prefix=f"{package.__name__}.")

@@ -11,7 +11,11 @@ from annotated_types import Ge
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import ChunkGridDefinition, Lengths, Nested
+from zarr_metadata.definition._definition import Nested
+from zarr_metadata.v3._definition import (
+    ChunkGridDefinition,
+    Lengths,
+)
 
 RECTILINEAR_CHUNK_GRID_NAME: Final = "rectilinear"
 """The `name` field value of the rectilinear chunk grid."""

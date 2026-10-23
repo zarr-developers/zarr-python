@@ -11,7 +11,7 @@ is not checked.
 from __future__ import annotations
 
 import math
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from typing_extensions import TypedDict
@@ -30,8 +30,10 @@ from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
     CodecDefinition,
-    Context,
 )
+
+if TYPE_CHECKING:
+    from zarr_metadata.definition import Context
 
 BYTES = {"name": "bytes", "configuration": {"endian": "little"}}
 

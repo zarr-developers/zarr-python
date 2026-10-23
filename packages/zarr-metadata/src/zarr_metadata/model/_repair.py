@@ -33,6 +33,11 @@ from zarr_metadata._json import (
     is_object,
 )
 from zarr_metadata._typed_json import Loc, check
+from zarr_metadata.definition._context import (
+    ZarrV2Context,
+    ZarrV3Context,
+    scoped,
+)
 from zarr_metadata.model._group import (
     ZarrV2ConsolidatedMetadata,
     ZarrV3NodeMetadataReading,
@@ -40,7 +45,7 @@ from zarr_metadata.model._group import (
 )
 from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY
-from zarr_metadata.v3._registry import CORE_AND_EXTENSIONS, ZarrV2Context, ZarrV3Context, scoped
+from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3.consolidated import ZARR_V3_CONSOLIDATED_METADATA_KEY
 
 RepairKind: TypeAlias = Literal[

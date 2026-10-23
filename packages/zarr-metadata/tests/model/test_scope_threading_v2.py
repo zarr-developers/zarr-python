@@ -8,8 +8,13 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 import zarr_metadata.model as zm
+from zarr_metadata.definition import Context
 from zarr_metadata.model import ZarrV2ArrayMetadata
-from zarr_metadata.v2.definition import CORE_V2, Context, resolve_codec_v2, resolve_dtype_v2
+from zarr_metadata.v2.definition import (
+    CORE_V2,
+    resolve_codec_v2,
+    resolve_dtype_v2,
+)
 from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
 
 if TYPE_CHECKING:

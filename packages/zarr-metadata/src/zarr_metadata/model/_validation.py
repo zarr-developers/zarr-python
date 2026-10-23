@@ -59,6 +59,20 @@ from zarr_metadata._json import (
 from zarr_metadata._json import is_canonical_json as _is_canonical_json
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata._typed_json import typeddict_keys
+from zarr_metadata.definition._context import (
+    Context,
+    ZarrV2Context,
+    ZarrV3Context,
+    scoped,
+)
+from zarr_metadata.definition._definition import (
+    Definition,
+    ResolvedField,
+    field_kind,
+    fields_of,
+    fill_value_problems,
+    resolve_refined,
+)
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
 from zarr_metadata.v2.definition import (
     CORE_V2,
@@ -66,29 +80,17 @@ from zarr_metadata.v2.definition import (
     ZarrV2DataTypeDefinition,
 )
 from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
+from zarr_metadata.v3._core import CORE_AND_EXTENSIONS
 from zarr_metadata.v3._definition import (
     Chunk,
     ChunkGridDefinition,
     ChunkKeyEncodingDefinition,
     DataTypeDefinition,
-    Definition,
     Lengths,
-    ResolvedField,
     StorageTransformerDefinition,
     chunk_grid_lengths,
-    field_kind,
-    fields_of,
-    fill_value_problems,
-    resolve_refined,
 )
 from zarr_metadata.v3._pipeline import Stage, read_pipeline
-from zarr_metadata.v3._registry import (
-    CORE_AND_EXTENSIONS,
-    Context,
-    ZarrV2Context,
-    ZarrV3Context,
-    scoped,
-)
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 

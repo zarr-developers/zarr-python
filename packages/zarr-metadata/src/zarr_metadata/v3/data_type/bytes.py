@@ -10,10 +10,12 @@ from collections.abc import Iterator
 from typing import Final, Literal, NewType
 
 from zarr_metadata._json import ValidationProblem, shown
-from zarr_metadata.v3._definition import (
-    DataTypeDefinition,
+from zarr_metadata.definition._definition import (
     EmptyConfiguration,
     Nested,
+)
+from zarr_metadata.v3._definition import (
+    DataTypeDefinition,
     variable_length,
 )
 from zarr_metadata.v3.data_type._byte import ByteValue

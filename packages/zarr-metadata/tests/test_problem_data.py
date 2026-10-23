@@ -29,6 +29,10 @@ from zarr_metadata._json import (
     within,
 )
 from zarr_metadata._sentinel import UNSET
+from zarr_metadata.definition import (
+    fill_value_problems,
+    resolve,
+)
 from zarr_metadata.model import (
     MetadataValidationError,
     ValidationProblem,
@@ -53,8 +57,6 @@ from zarr_metadata.v3.definition import (
     CORE_AND_EXTENSIONS,
     CodecDefinition,
     DataTypeDefinition,
-    fill_value_problems,
-    resolve,
 )
 
 if TYPE_CHECKING:

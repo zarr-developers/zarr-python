@@ -13,6 +13,11 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from typing_extensions import TypedDict
 
+from zarr_metadata.definition import (
+    Nested,
+    ResolvedField,
+    resolve,
+)
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
     validate_array_metadata_v3,
@@ -26,16 +31,13 @@ from zarr_metadata.v3.definition import (
     Chunk,
     CodecDefinition,
     DataTypeDefinition,
-    JSONValue,
-    Nested,
-    ResolvedField,
     ZarrV3CodecField,
     ZarrV3DataTypeField,
-    resolve,
 )
 
 if TYPE_CHECKING:
-    from zarr_metadata.v3.definition import Stage, ValidationProblem
+    from zarr_metadata import JSONValue, ValidationProblem
+    from zarr_metadata.v3.definition import Stage
 
 
 def _tiled(configuration: Empty, nested: Nested, chunk: Chunk) -> Chunk:

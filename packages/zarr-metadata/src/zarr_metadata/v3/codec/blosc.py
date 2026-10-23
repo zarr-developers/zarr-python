@@ -11,7 +11,8 @@ from annotated_types import Ge, Interval
 from typing_extensions import TypedDict
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.v3._definition import CodecDefinition, Nested
+from zarr_metadata.definition._definition import Nested
+from zarr_metadata.v3._definition import CodecDefinition
 
 BLOSC_CODEC_NAME: Final = "blosc"
 """The `name` field value of the `blosc` codec."""

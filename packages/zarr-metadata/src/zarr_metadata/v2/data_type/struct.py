@@ -9,14 +9,14 @@ from annotated_types import Ge
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._json import ValidationProblem
+from zarr_metadata.definition._definition import AcceptedField
 from zarr_metadata.v2._definition import STRUCT_NAME, ZarrV2DataTypeDefinition, ZarrV2DataTypeField
 from zarr_metadata.v2.data_type.fixed_width import ZarrV2Base64FillValue, sized_base64_rules
-from zarr_metadata.v3._definition import AcceptedField
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from zarr_metadata.v3._definition import Nested
+    from zarr_metadata.definition._definition import Nested
 
 # List the longer record first. A record that matches neither form is
 # reported against the first branch, and a wrong shape is a deeper
