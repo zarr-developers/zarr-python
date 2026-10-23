@@ -27,9 +27,10 @@ closely model the content of the Zarr specifications, such as:
   specifications, plus types for
   [zarr-extensions](https://github.com/zarr-developers/zarr-extensions/) and a
   few widely-used-but-unspecified entities (e.g. consolidated metadata).
-- **Document models** ([`zarr_metadata.model`](api/model.md)): canonical
-  frozen-dataclass models of whole metadata documents, with
-  validators, loc-aware parsers, and store-key (de)serialization. A document
+- **Document models** ([`zarr_metadata.model`](api/model.md)): immutable
+  models of whole metadata documents, each one a document and the scope
+  it was read in, with validators, loc-aware parsers, and store-key
+  (de)serialization. A document
   produced by `to_json` shares no mutable state with the model that produced
   it.
 - **Optional Pydantic integration** ([`zarr_metadata.pydantic`](api/pydantic.md),
