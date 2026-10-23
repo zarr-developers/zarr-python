@@ -3602,15 +3602,11 @@ async def _iter_members(
     for fetched_node_coro in asyncio.as_completed(node_tasks):
         try:
             fetched_node = await fetched_node_coro
-        except KeyError as e:
+        except KeyError:
             # keyerror is raised when `key` names an object (in the object storage sense),
             # as opposed to a prefix, in the store under the prefix associated with this group
             # in which case `key` cannot be the name of a sub-array or sub-group.
-            warnings.warn(
-                f"Object at {e.args[0]} is not recognized as a component of a Zarr hierarchy.",
-                ZarrUserWarning,
-                stacklevel=1,
-            )
+            # Such objects (e.g. temporary files from an in-progress write) are skipped silently.
             continue
         match fetched_node:
             case AsyncArray() | AsyncGroup():
