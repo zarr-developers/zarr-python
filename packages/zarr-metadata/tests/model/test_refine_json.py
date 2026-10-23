@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from zarr_metadata._common import JSONValue
-    from zarr_metadata.model import ValidationProblem
+    from zarr_metadata.problems import ValidationProblem
 
     _Refiner = Callable[[object], tuple[JSONValue | None, tuple[ValidationProblem, ...]]]
 

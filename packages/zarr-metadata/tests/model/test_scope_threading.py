@@ -13,6 +13,7 @@ from zarr_metadata.json_schema import node_metadata_json_schema_v3
 from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
 )
+from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
 
 if TYPE_CHECKING:
@@ -40,7 +41,7 @@ def _accepts(read: Callable[..., object]) -> Callable[[Context | None], bool]:
     def accepted(context: Context | None) -> bool:
         try:
             found = read(context=context)
-        except zm.MetadataValidationError:
+        except MetadataValidationError:
             return False
         if isinstance(found, tuple):
             return len(found) == 0

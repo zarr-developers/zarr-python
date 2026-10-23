@@ -12,7 +12,6 @@ from zarr_metadata._json import JSON_DEPTH
 from zarr_metadata.definition import Context
 from zarr_metadata.definition._scope import claims_of
 from zarr_metadata.model import (
-    MetadataValidationError,
     ZarrV3ArrayMetadata,
     ZarrV3ConsolidatedMetadata,
     ZarrV3ConsolidatedMetadataInput,
@@ -24,6 +23,7 @@ from zarr_metadata.model import (
     read_group_metadata_v3,
     validate_group_metadata_v3,
 )
+from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.data_type.raw import RAW_BYTES_DATA_TYPE

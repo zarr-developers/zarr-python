@@ -10,6 +10,7 @@ import pytest
 import zarr_metadata.model as zm
 from zarr_metadata.definition import Context
 from zarr_metadata.model import ZarrV2ArrayMetadata
+from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v2.definition import (
     CORE_V2,
     resolve_codec_v2,
@@ -40,7 +41,7 @@ def _accepts(read: Callable[..., object]) -> Callable[[Context | None], bool]:
     def accepted(context: Context | None) -> bool:
         try:
             found = read(context=context)
-        except zm.MetadataValidationError:
+        except MetadataValidationError:
             return False
         if isinstance(found, tuple) and len(found) == 2 and isinstance(found[1], tuple):
             return len(found[1]) == 0  # a resolved field and its problems

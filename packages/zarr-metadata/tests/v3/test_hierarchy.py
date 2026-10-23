@@ -16,8 +16,6 @@ from typing import TYPE_CHECKING, Literal, cast
 import pytest
 
 from zarr_metadata.model import (
-    MetadataValidationError,
-    ValidationProblem,
     is_node_name_v3,
     is_node_path_v3,
     parse_node_name_v3,
@@ -25,6 +23,7 @@ from zarr_metadata.model import (
     validate_node_name_v3,
     validate_node_path_v3,
 )
+from zarr_metadata.problems import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3._hierarchy import hierarchy_problems
 
 if TYPE_CHECKING:

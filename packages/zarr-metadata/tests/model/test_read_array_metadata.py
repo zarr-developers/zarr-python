@@ -28,12 +28,12 @@ from zarr_metadata.definition._definition import (
 )
 from zarr_metadata.model import (
     UNSET,
-    ValidationProblem,
     ZarrV3ArrayMetadata,
     ZarrV3ArrayMetadataReading,
     read_array_metadata_v3,
     read_group_metadata_v3,
 )
+from zarr_metadata.problems import ValidationProblem
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,

@@ -6,11 +6,8 @@ from typing import Any
 
 import pytest
 
-from zarr_metadata.model import (
-    MetadataValidationError,
-    ZarrV2ArrayMetadata,
-    validate_array_metadata_v2,
-)
+from zarr_metadata.model import ZarrV2ArrayMetadata, validate_array_metadata_v2
+from zarr_metadata.problems import MetadataValidationError
 
 Loc = tuple[str | int, ...]
 BASE: dict[str, Any] = dict(ZarrV2ArrayMetadata.create_default().to_json())

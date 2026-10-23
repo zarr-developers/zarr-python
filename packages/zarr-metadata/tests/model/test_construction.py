@@ -18,8 +18,6 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from zarr_metadata.model import (
-    MetadataValidationError,
-    ValidationProblem,
     ZarrV2ArrayMetadata,
     ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
@@ -27,6 +25,7 @@ from zarr_metadata.model import (
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
 )
+from zarr_metadata.problems import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC, GzipCodecConfiguration
 from zarr_metadata.v3.data_type.int8 import INT8_DATA_TYPE
 from zarr_metadata.v3.definition import (

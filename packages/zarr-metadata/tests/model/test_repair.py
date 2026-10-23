@@ -8,7 +8,6 @@ from typing import Any
 import pytest
 
 from zarr_metadata.model import (
-    MetadataValidationError,
     ZarrV2ConsolidatedMetadata,
     ZarrV3ArrayMetadata,
     ZarrV3GroupMetadata,
@@ -18,6 +17,7 @@ from zarr_metadata.model import (
     repair_consolidated_metadata_v2,
     repair_node_metadata_v3,
 )
+from zarr_metadata.problems import MetadataValidationError
 
 ARRAY: dict[str, Any] = dict(ZarrV3ArrayMetadata.create_default(shape=(0, 3)).to_json())
 GROUP: dict[str, Any] = {"zarr_format": 3, "node_type": "group"}

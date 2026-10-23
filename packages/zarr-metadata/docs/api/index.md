@@ -11,6 +11,8 @@ The package is organized to mirror the structure of the Zarr specifications:
 - [`zarr_metadata.model`](model.md) — document models (each one a
   document and the scope it was read in), readers, validators,
   loc-aware parsers, and the `UNSET` sentinel
+- [`zarr_metadata.problems`](problems.md) — `ValidationProblem`,
+  `ProblemKind` and `MetadataValidationError`, which every reader reports
 - [`zarr_metadata.pydantic`](pydantic.md) — optional Pydantic field types
   over the models
 - [`zarr_metadata.typed_json`](typed_json.md) — `check`, which type-checks
@@ -36,8 +38,9 @@ The document types, models, and spec vocabulary — including the store keys —
 are re-exported at the top level, so
 `from zarr_metadata import ZarrV3ArrayMetadataJSON` and
 `from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON` are equivalent.
-The model layer's validators, parsers, type guards, and metadata key sets are
-imported from [`zarr_metadata.model`](model.md) directly.
+The model layer's validators, parsers and type guards are imported from
+[`zarr_metadata.model`](model.md) directly, and the problem types every
+reader reports from [`zarr_metadata.problems`](problems.md).
 
 ## Common types
 

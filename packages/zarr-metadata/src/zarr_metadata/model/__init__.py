@@ -36,11 +36,6 @@ group's scope, and refused with a problem at its path otherwise. Every
 reader takes `context=None` for the default scope.
 """
 
-from zarr_metadata._json import (
-    MetadataValidationError,
-    ProblemKind,
-    ValidationProblem,
-)
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.model._array_v2 import (
     ZarrV2ArrayMetadata,
@@ -98,10 +93,6 @@ from zarr_metadata.model._repair import (
     repair_consolidated_metadata_v2,
     repair_node_metadata_v3,
 )
-
-# Store keys are facts about the on-disk specs, so they are defined in the
-# `v2`/`v3` modules that describe those documents. They are re-exported here
-# because the model layer is where consumers reach for them.
 from zarr_metadata.v3._common import (
     is_metadata_field_v3,
     parse_metadata_field_v3,
@@ -118,11 +109,8 @@ from zarr_metadata.v3._hierarchy import (
 
 __all__ = [
     "UNSET",
-    "MetadataValidationError",
-    "ProblemKind",
     "Repair",
     "RepairKind",
-    "ValidationProblem",
     "ZarrV2ArrayMetadata",
     "ZarrV2ArrayMetadataReading",
     "ZarrV2ArrayMetadataUpdate",

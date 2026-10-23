@@ -18,7 +18,6 @@ from typing_extensions import TypedDict
 
 from zarr_metadata._json import arrays_to_tuples
 from zarr_metadata.model import (
-    MetadataValidationError,
     ZarrV3ArrayMetadata,
     ZarrV3GroupMetadata,
     is_array_metadata_v3,
@@ -26,6 +25,7 @@ from zarr_metadata.model import (
     validate_array_metadata_v3,
     validate_group_metadata_v3,
 )
+from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,

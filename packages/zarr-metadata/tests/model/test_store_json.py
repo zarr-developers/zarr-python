@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, Protocol
 import pytest
 
 from zarr_metadata.model import (
-    MetadataValidationError,
     ZarrV2ArrayMetadata,
     ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
@@ -29,6 +28,7 @@ from zarr_metadata.model import (
     is_group_metadata_v2,
     is_group_metadata_v3,
 )
+from zarr_metadata.problems import MetadataValidationError
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

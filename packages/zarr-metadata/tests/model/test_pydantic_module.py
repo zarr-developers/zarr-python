@@ -19,7 +19,6 @@ import zarr_metadata.pydantic as zmp
 from zarr_metadata._common import JSONValue
 from zarr_metadata.definition import AcceptedField
 from zarr_metadata.model import (
-    ValidationProblem,
     ZarrV2ArrayMetadata,
     ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
@@ -27,6 +26,7 @@ from zarr_metadata.model import (
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
 )
+from zarr_metadata.problems import ValidationProblem
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import CORE
 

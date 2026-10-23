@@ -549,6 +549,8 @@ def test_every_name_has_one_public_home() -> None:
             homes.setdefault(name, []).append(module_name)
     duplicated = {name: modules for name, modules in homes.items() if len(modules) > 1}
     assert duplicated == {}
+    homeless = [name for name in zm.__all__ if name not in homes and name != "__version__"]
+    assert homeless == [], "a top-level name must also be exported by its home submodule"
     aliases = [
         name
         for name in zm.__all__

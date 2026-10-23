@@ -18,12 +18,12 @@ from zarr_metadata.definition import (
     UnclaimedField,
 )
 from zarr_metadata.model import (
-    MetadataValidationError,
     ZarrV2ArrayMetadata,
     ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
     read_array_metadata_v2,
 )
+from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v2.codec.compression import ZLIB_V2
 from zarr_metadata.v2.data_type.scalar import FLOAT_V2, UINT_V2
 from zarr_metadata.v2.definition import (

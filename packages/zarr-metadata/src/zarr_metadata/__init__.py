@@ -3,9 +3,6 @@ from importlib.metadata import version
 from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
 from zarr_metadata.model import (
     UNSET,
-    MetadataValidationError,
-    ProblemKind,
-    ValidationProblem,
     ZarrV2ArrayMetadata,
     ZarrV2ArrayMetadataUpdate,
     ZarrV2ConsolidatedMetadata,
@@ -19,6 +16,7 @@ from zarr_metadata.model import (
     ZarrV3GroupMetadataUpdate,
     ZarrV3NodeMetadataInput,
 )
+from zarr_metadata.problems import MetadataValidationError, ProblemKind, ValidationProblem
 from zarr_metadata.v2.array import (
     ZARR_V2_ARRAY_DIMENSION_SEPARATOR,
     ZARR_V2_ARRAY_METADATA_STORE_KEY,

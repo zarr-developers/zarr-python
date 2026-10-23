@@ -21,7 +21,6 @@ from zarr_metadata.definition import (
 )
 from zarr_metadata.model import (
     UNSET,
-    MetadataValidationError,
     ZarrV3ArrayMetadata,
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
@@ -29,6 +28,7 @@ from zarr_metadata.model import (
     read_array_metadata_v3,
     read_group_metadata_v3,
 )
+from zarr_metadata.problems import MetadataValidationError
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC
 from zarr_metadata.v3.codec.crc32c import Empty
 from zarr_metadata.v3.codec.zstd import ZSTD_CODEC

@@ -34,8 +34,6 @@ from zarr_metadata.definition._definition import (
 )
 from zarr_metadata.model import (
     UNSET,
-    MetadataValidationError,
-    ValidationProblem,
     ZarrV2ArrayMetadata,
     ZarrV2ArrayMetadataUpdate,
     ZarrV3ArrayMetadata,
@@ -57,6 +55,7 @@ from zarr_metadata.model._array_v3 import (
     ARRAY_METADATA_REQUIRED_KEYS_V3,
     ARRAY_METADATA_STANDARD_KEYS_V3,
 )
+from zarr_metadata.problems import MetadataValidationError, ValidationProblem
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSONPartial
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
@@ -158,12 +157,14 @@ def test_v3_node_store_keys_agree() -> None:
 
 
 def test_validation_diagnostics_exported_from_package() -> None:
-    """The validation-diagnostic types and validators are exported from the package."""
+    """The validators are exported from the model, and the problem types from `zarr_metadata.problems`."""
     import zarr_metadata.model
+    import zarr_metadata.problems
 
+    for name in ("ValidationProblem", "MetadataValidationError", "ProblemKind"):
+        assert name in zarr_metadata.problems.__all__
+        assert name not in zarr_metadata.model.__all__
     for name in (
-        "ValidationProblem",
-        "MetadataValidationError",
         "validate_metadata_field_v3",
         "validate_array_metadata_v3",
         "validate_array_metadata_v2",

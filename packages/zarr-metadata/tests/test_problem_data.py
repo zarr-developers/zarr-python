@@ -34,8 +34,6 @@ from zarr_metadata.definition import (
     resolve,
 )
 from zarr_metadata.model import (
-    MetadataValidationError,
-    ValidationProblem,
     ZarrV2ConsolidatedMetadata,
     ZarrV3ArrayMetadata,
     parse_array_metadata_v3,
@@ -49,6 +47,7 @@ from zarr_metadata.model import (
     validate_node_name_v3,
     validate_node_path_v3,
 )
+from zarr_metadata.problems import MetadataValidationError, ValidationProblem
 from zarr_metadata.typed_json import (
     check,
 )
