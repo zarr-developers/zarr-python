@@ -13,7 +13,6 @@ site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr-metadata.readthedocs.io
 nav:
   - index.md
   - Parsing / Validation: parsing-validation.md
-  - Scope: scope.md
   - API Reference:
       - api/index.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.definition</code>': api/definition.md
