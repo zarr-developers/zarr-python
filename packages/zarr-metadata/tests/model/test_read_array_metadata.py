@@ -21,11 +21,9 @@ from zarr_metadata.definition import (
     RefusedField,
     UnclaimedField,
     resolve,
-)
-from zarr_metadata.definition._definition import (
-    fields_of,
     with_problems,
 )
+from zarr_metadata.definition._definition import fields_of
 from zarr_metadata.model import (
     UNSET,
     ZarrV3ArrayMetadata,

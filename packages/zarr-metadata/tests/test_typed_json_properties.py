@@ -38,8 +38,8 @@ from hypothesis import strategies as st
 from jsonschema import Draft202012Validator
 from typing_extensions import ReadOnly, TypeAliasType, TypedDict
 
-from zarr_metadata._common import JSONValue
-from zarr_metadata._typed_json import Loc, Parsed, Schemas, no_leaf, parser, typeddict_keys
+from zarr_metadata._typed_json import Parsed, Schemas, no_leaf, parser, typeddict_keys
+from zarr_metadata.typed_json import JSONValue, Loc
 
 # --- specs -----------------------------------------------------------------
 

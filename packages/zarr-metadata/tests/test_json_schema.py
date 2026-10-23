@@ -22,7 +22,6 @@ from jsonschema import Draft202012Validator
 from typing_extensions import Doc, TypeAliasType, TypedDict
 
 from tests.v3.test_every_definition import CASES, KINDS
-from zarr_metadata._common import JSONValue
 from zarr_metadata._typed_json import Schemas
 from zarr_metadata.definition import (
     Context,
@@ -35,7 +34,7 @@ from zarr_metadata.json_schema import (
     node_metadata_json_schema_v3,
 )
 from zarr_metadata.model import validate_node_metadata_v3
-from zarr_metadata.typed_json import check
+from zarr_metadata.typed_json import JSONValue, check
 from zarr_metadata.v3.codec.gzip import GzipCodecConfiguration
 from zarr_metadata.v3.definition import (
     CORE,

@@ -14,8 +14,8 @@ from zarr_metadata._json import JSON_DEPTH, refine_json, refine_user_data, shown
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from zarr_metadata._common import JSONValue
     from zarr_metadata.problems import ValidationProblem
+    from zarr_metadata.typed_json import JSONValue
 
     _Refiner = Callable[[object], tuple[JSONValue | None, tuple[ValidationProblem, ...]]]
 

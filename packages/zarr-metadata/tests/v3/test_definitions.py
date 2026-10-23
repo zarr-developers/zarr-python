@@ -21,7 +21,6 @@ from zarr_metadata import (
     ValidationProblem,
 )
 from zarr_metadata._json import refine_json
-from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition import (
     AcceptedField,
     Context,
@@ -30,24 +29,22 @@ from zarr_metadata.definition import (
     Nested,
     RefusedField,
     UnclaimedField,
+    canonical_of,
     resolve,
 )
-from zarr_metadata.definition._definition import (
-    canonical_of,
-    configuration_of,
-    resolve_refined,
-)
+from zarr_metadata.definition._definition import configuration_of, resolve_refined
 from zarr_metadata.model import (
+    UNSET,
+    ZarrV3ArrayMetadata,
     is_metadata_field_v3,
     validate_array_metadata_v3,
     validate_metadata_field_v3,
 )
-from zarr_metadata.model._array_v3 import ZarrV3ArrayMetadata
 from zarr_metadata.typed_json import (
     check,
 )
 from zarr_metadata.v2.definition import CORE_V2
-from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+from zarr_metadata.v3 import ZarrV3MetadataFieldJSON
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.chunk_grid.regular import REGULAR_CHUNK_GRID
 from zarr_metadata.v3.codec.crc32c import Empty

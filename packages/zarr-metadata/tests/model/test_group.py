@@ -6,19 +6,12 @@ import json
 import pickle
 from collections import UserDict
 from collections.abc import Callable, Iterator
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
 from tests.model._cases import mutate_nested_containers
-from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
-from zarr_metadata._json import (
-    JSON_DEPTH,
-    MetadataValidationError,
-    ValidationProblem,
-    arrays_to_tuples,
-    json_text,
-)
+from zarr_metadata._json import JSON_DEPTH, arrays_to_tuples, json_text
 from zarr_metadata.definition import (
     EmptyConfiguration,
     Nested,
@@ -28,42 +21,38 @@ from zarr_metadata.definition import (
 )
 from zarr_metadata.model import (
     UNSET,
-    is_array_metadata_v3,
-)
-from zarr_metadata.model._array_v3 import (
-    ZarrV3ArrayMetadata,
-    ZarrV3ArrayMetadataReading,
-    ZarrV3ArrayMetadataUpdate,
-)
-from zarr_metadata.model._group_v2 import (
     ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
     ZarrV2GroupMetadataUpdate,
-    is_group_metadata_v2,
-    parse_group_metadata_v2,
-    validate_group_metadata_v2,
-)
-from zarr_metadata.model._group_v3 import (
-    GroupMembersV3,
+    ZarrV3ArrayMetadata,
+    ZarrV3ArrayMetadataReading,
+    ZarrV3ArrayMetadataUpdate,
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
     ZarrV3GroupMetadataReading,
     ZarrV3GroupMetadataUpdate,
     ZarrV3UnknownNodeMetadataReading,
+    is_array_metadata_v3,
+    is_group_metadata_v2,
     is_group_metadata_v3,
     node_metadata_from_json_v3,
     node_metadata_from_key_value_v3,
+    parse_group_metadata_v2,
     parse_group_metadata_v3,
     read_group_metadata_v3,
     read_node_metadata_v3,
+    validate_group_metadata_v2,
     validate_group_metadata_v3,
     validate_node_metadata_v3,
 )
+from zarr_metadata.model._group_v3 import GroupMembersV3
+from zarr_metadata.problems import MetadataValidationError, ValidationProblem
 from zarr_metadata.v2.group import (
     ZarrV2GroupMetadataJSON,
     ZarrV2GroupMetadataJSONPartial,
     ZarrV2ZGroupJSON,
 )
+from zarr_metadata.v3 import ZarrV3NamedConfigJSON
 from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSONPartial
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC, GzipCodecConfiguration
 from zarr_metadata.v3.definition import (
@@ -72,6 +61,9 @@ from zarr_metadata.v3.definition import (
     CodecDefinition,
 )
 from zarr_metadata.v3.group import ZarrV3GroupMetadataJSONPartial
+
+if TYPE_CHECKING:
+    from zarr_metadata.typed_json import JSONValue
 
 _INLINE_ENVELOPE: dict[str, Any] = {"kind": "inline", "must_understand": False}
 

@@ -28,12 +28,12 @@ from zarr_metadata._json import (
     with_input,
     within,
 )
-from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition import (
     fill_value_problems,
     resolve,
 )
 from zarr_metadata.model import (
+    UNSET,
     ZarrV2ConsolidatedMetadata,
     ZarrV3ArrayMetadata,
     parse_array_metadata_v3,
@@ -61,7 +61,7 @@ from zarr_metadata.v3.definition import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from zarr_metadata._common import JSONValue
+    from zarr_metadata.typed_json import JSONValue
 
 
 @pytest.mark.parametrize(

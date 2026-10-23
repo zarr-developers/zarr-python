@@ -10,22 +10,18 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from zarr_metadata.definition import (
+    Claims,
     Conflict,
     Context,
     Definition,
+    Disagreements,
     RefusedField,
     ResolvedField,
     ScopeConflictError,
     resolve,
 )
 from zarr_metadata.definition._definition import fields_of
-from zarr_metadata.definition._scope import (
-    Claims,
-    Disagreements,
-    claims_of,
-    kind_name,
-    refines,
-)
+from zarr_metadata.definition._scope import claims_of, kind_name, refines
 from zarr_metadata.v3.codec.bytes import BYTES_CODEC
 from zarr_metadata.v3.codec.crc32c import CRC32C_CODEC, Empty
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC

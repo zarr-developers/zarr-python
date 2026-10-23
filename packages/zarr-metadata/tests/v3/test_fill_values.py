@@ -23,7 +23,6 @@ from zarr_metadata import (
     ValidationProblem,
 )
 from zarr_metadata._json import JSON_DEPTH, value_at
-from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition import (
     AcceptedField,
     EmptyConfiguration,
@@ -33,10 +32,11 @@ from zarr_metadata.definition import (
     resolve,
 )
 from zarr_metadata.model import (
+    UNSET,
+    ZarrV3ArrayMetadata,
     validate_array_metadata_v3,
     validate_group_metadata_v3,
 )
-from zarr_metadata.model._array_v3 import ZarrV3ArrayMetadata
 from zarr_metadata.v3.data_type._float import FloatWidth, complex_fill_value_rules, float_bits
 from zarr_metadata.v3.data_type.struct import STRUCT_DATA_TYPE
 from zarr_metadata.v3.definition import (

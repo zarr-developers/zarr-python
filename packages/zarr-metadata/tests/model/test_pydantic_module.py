@@ -17,7 +17,6 @@ from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
 import zarr_metadata.pydantic as zmp
-from zarr_metadata._common import JSONValue
 from zarr_metadata.definition import AcceptedField, Context
 from zarr_metadata.json_schema import json_schema, node_metadata_json_schema_v3
 from zarr_metadata.model import (
@@ -29,6 +28,7 @@ from zarr_metadata.model import (
     ZarrV3GroupMetadata,
 )
 from zarr_metadata.problems import ValidationProblem
+from zarr_metadata.typed_json import JSONValue
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
 from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC

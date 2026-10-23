@@ -12,15 +12,13 @@ from zarr_metadata.definition import (
     RefusedField,
     UnclaimedField,
     canonical_fill_value,
+    canonical_of,
     fill_value_problems,
     resolve,
 )
-from zarr_metadata.definition._definition import (
-    canonical_of,
-    fields_of,
-)
-from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
+from zarr_metadata.definition._definition import fields_of
 from zarr_metadata.v2.data_type import V2_DATA_TYPES
+from zarr_metadata.v2.definition import ZarrV2DataTypeDefinition
 
 if TYPE_CHECKING:
     from zarr_metadata import JSONValue

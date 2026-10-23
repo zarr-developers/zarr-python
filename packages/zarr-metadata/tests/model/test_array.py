@@ -25,13 +25,10 @@ from zarr_metadata._json import (
 from zarr_metadata.definition import (
     AcceptedField,
     UnclaimedField,
-)
-from zarr_metadata.definition._definition import (
     canonical_of,
-    configuration_of,
-    fields_of,
     with_problems,
 )
+from zarr_metadata.definition._definition import configuration_of, fields_of
 from zarr_metadata.model import (
     UNSET,
     ZarrV2ArrayMetadata,
@@ -64,8 +61,9 @@ from zarr_metadata.v3.definition import (
 )
 
 if TYPE_CHECKING:
-    from zarr_metadata._common import JSONValue, ZarrV3NamedConfigJSON
+    from zarr_metadata.typed_json import JSONValue
     from zarr_metadata.v2.codec import ZarrV2CodecMetadata
+    from zarr_metadata.v3 import ZarrV3NamedConfigJSON
 
 # --- public exports --------------------------------------------------------
 

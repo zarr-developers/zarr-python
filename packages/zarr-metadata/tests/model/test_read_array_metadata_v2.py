@@ -6,7 +6,6 @@ from typing import Any
 
 import pytest
 
-from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition import (
     AcceptedField,
     Context,
@@ -15,6 +14,7 @@ from zarr_metadata.definition import (
     UnclaimedField,
 )
 from zarr_metadata.model import (
+    UNSET,
     ZarrV2ArrayMetadata,
     is_array_metadata_v2,
     parse_array_metadata_v2,

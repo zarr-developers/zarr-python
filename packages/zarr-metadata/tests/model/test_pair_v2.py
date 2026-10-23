@@ -9,7 +9,6 @@ from typing import Any, cast
 
 import pytest
 
-from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition import (
     AcceptedField,
     Context,
@@ -18,6 +17,7 @@ from zarr_metadata.definition import (
     UnclaimedField,
 )
 from zarr_metadata.model import (
+    UNSET,
     ZarrV2ArrayMetadata,
     ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,

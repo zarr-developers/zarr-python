@@ -10,7 +10,6 @@ import pytest
 from annotated_types import Ge
 from typing_extensions import TypedDict
 
-from zarr_metadata._json import ValidationProblem
 from zarr_metadata.definition import (
     AcceptedField,
     Context,
@@ -18,23 +17,20 @@ from zarr_metadata.definition import (
     EmptyConfiguration,
     RefusedField,
     UnclaimedField,
+    WithFillValue,
     canonical_fill_value,
     fill_value_problems,
     resolve,
 )
-from zarr_metadata.definition._definition import (
-    WithFillValue,
-    as_kind,
-    kind_of,
-)
+from zarr_metadata.definition._definition import as_kind, kind_of
 from zarr_metadata.definition._scope import kind_name
 from zarr_metadata.json_schema import field_json_schema
-from zarr_metadata.v3._definition import DataTypeDefinition
+from zarr_metadata.problems import ValidationProblem
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
-from zarr_metadata.v3.definition import CodecDefinition
+from zarr_metadata.v3.definition import CodecDefinition, DataTypeDefinition
 
 if TYPE_CHECKING:
-    from zarr_metadata._common import JSONValue
+    from zarr_metadata.typed_json import JSONValue
 
 C = TypeVar("C")
 

@@ -49,9 +49,7 @@ from typing_extensions import Doc, ReadOnly, TypeAliasType, TypedDict, is_typedd
 import zarr_metadata.definition
 import zarr_metadata.v2
 import zarr_metadata.v3
-from zarr_metadata._common import JSONValue
 from zarr_metadata._typed_json import (
-    Loc,
     Parsed,
     Parser,
     describe,
@@ -66,6 +64,8 @@ from zarr_metadata.model import (
     ZarrV3ArrayMetadata,
 )
 from zarr_metadata.typed_json import (
+    JSONValue,
+    Loc,
     check,
 )
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON

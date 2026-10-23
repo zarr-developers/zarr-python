@@ -7,11 +7,8 @@ from typing import Any
 import pytest
 
 from zarr_metadata.definition import EmptyConfiguration
-from zarr_metadata.v2._definition import (
-    ZarrV2CodecDefinition,
-    ZarrV2DataTypeDefinition,
-    parse_typestr,
-)
+from zarr_metadata.v2._definition import parse_typestr
+from zarr_metadata.v2.definition import ZarrV2CodecDefinition, ZarrV2DataTypeDefinition
 
 Loc = tuple[str | int, ...]
 
