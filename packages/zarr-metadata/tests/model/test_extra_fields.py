@@ -9,7 +9,7 @@ from typing import Annotated, Any, Literal, NewType, NotRequired
 import pytest
 from annotated_types import Ge
 from jsonschema import Draft202012Validator
-from typing_extensions import TypedDict
+from typing_extensions import TypeAliasType, TypedDict
 
 from zarr_metadata.definition import AcceptedField, UnclaimedField, canonical_of, resolve
 from zarr_metadata.json_schema import field_json_schema_v3
@@ -248,6 +248,23 @@ class _NewTypeOfBool(TypedDict, closed=True):
 
 class _NewTypeOfBoolOnly(TypedDict, closed=True):
     must_understand: NotRequired[_Waiver]
+
+
+# `_Missing` is not defined on purpose: the alias cannot be resolved.
+_UndefinedWaiver = TypeAliasType("_UndefinedWaiver", "_Missing | bool")  # noqa: F821  # pyright: ignore[reportUndefinedVariable]
+
+
+class _WaiverOfAnUndefinedAlias(TypedDict, closed=True):
+    must_understand: NotRequired[_UndefinedWaiver]
+
+
+def test_error_an_extra_field_waiver_typed_by_an_alias_that_does_not_resolve() -> None:
+    """An alias that names what is not defined is refused when the definition is built, with a `TypeError` that names the definition, the TypedDict and the member, as for any other member the checker cannot read."""
+    with pytest.raises(
+        TypeError,
+        match=r"'acme.x': _WaiverOfAnUndefinedAlias.must_understand: _UndefinedWaiver: name '_Missing'",
+    ):
+        ArrayExtraFieldDefinition(name="acme.x", configuration=_WaiverOfAnUndefinedAlias)
 
 
 @pytest.mark.parametrize(

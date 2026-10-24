@@ -411,7 +411,16 @@ class ExtraFieldDefinition(Definition[C]):
         finite = cast("object", self.finite)
         if not isinstance(finite, bool):
             return f"{self.name!r}: finite is a boolean, got {finite!r}"
-        if is_typeddict(self.configuration) and not _takes_the_waiver(self.configuration):
+        if not is_typeddict(self.configuration):
+            return None
+        try:
+            takes = _takes_the_waiver(self.configuration)
+        except TypeError as error:
+            # Name the member, as the checker names a member it cannot read.
+            keys = typeddict_keys(self.configuration)
+            member = "must_understand" if "must_understand" in keys.members else "extra_items"
+            return f"{self.name!r}: {self.configuration.__name__}.{member}: {error}"
+        if not takes:
             return (
                 f"{self.name!r}: expected a configuration that takes must_understand as a "
                 "boolean that may be false, which the spec lets every extension member carry; "

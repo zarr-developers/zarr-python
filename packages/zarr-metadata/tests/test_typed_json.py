@@ -11,6 +11,7 @@ from __future__ import annotations
 import dataclasses
 import importlib
 import itertools
+import json
 import math
 import pkgutil
 import sys
@@ -867,6 +868,16 @@ def test_error_an_annotation_outside_the_shapes_has_no_parser(annotation: object
 
 
 @pytest.mark.skipif(sys.version_info < (3, 12), reason="the `type` statement is 3.12 syntax")
+def test_error_a_type_statement_alias_that_names_what_is_not_defined(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A `type` statement evaluates its value when it is read. A name in it that is not defined is a `TypeError` naming the alias, as for an alias made with `TypeAliasType`, not a `NameError`."""
+    module = _declared("type Flag = Missing | bool\n", postponed=False, monkeypatch=monkeypatch)
+    with pytest.raises(TypeError, match="Flag: name 'Missing' is not defined"):
+        parser(module.Flag, no_leaf)
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="the `type` statement is 3.12 syntax")
 def test_a_type_statement_alias_may_hold_itself(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _declared(
         "type Nested = int | tuple[Nested, ...]\n", postponed=False, monkeypatch=monkeypatch
@@ -1333,7 +1344,10 @@ def test_error_a_value_outside_every_literal_of_a_union_names_the_whole_union(
     """A value whose shape only `Literal` branches of a union have, and that none of them holds, is reported against the whole union, as a value of no branch's shape is, also when a `Literal` is behind a type alias. The kind is the one the `Literal` reports: a wrong value when its JSON type matches an entry, and a wrong type otherwise. When only `Literal` branches tried the value, the `ctx` holds every value the `Literal` branches allow under `expected`, in the order the message names them, as one `Literal`'s problem does. A value of a shape no branch has is not refused by a closed set of values, so its problem has no `expected`."""
     (problem,) = parser(annotation, no_leaf)(value, ())[1]
     assert (problem.message, problem.kind) == (message, kind)
-    assert problem.ctx == ({} if expected is None else {"expected": expected})
+    # Compare as JSON, since `0 == False` in Python.
+    assert json.dumps(dict(problem.ctx)) == json.dumps(
+        {} if expected is None else {"expected": expected}
+    )
 
 
 class _Three(TypedDict, closed=True):
