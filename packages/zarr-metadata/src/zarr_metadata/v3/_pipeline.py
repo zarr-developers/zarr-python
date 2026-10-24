@@ -104,7 +104,7 @@ _SPOKEN: Final[Mapping[CodecKind, str]] = {
 def read_pipeline(
     codecs: Sequence[ResolvedField[CodecDefinition[Any]]], chunk: Chunk, loc: Loc = ()
 ) -> tuple[tuple[Stage, ...], Problems]:
-    """Read `codecs` (codec fields read by a scope) as a pipeline that receives `chunk`. Return each codec with the chunk it receives, and the problems found.
+    """Read `codecs` (codec fields read by a context) as a pipeline that receives `chunk`. Return each codec with the chunk it receives, and the problems found.
 
     First the order is checked: array -> array codecs, then one
     array -> bytes codec, then bytes -> bytes codecs. Then each codec is

@@ -59,7 +59,7 @@ can be used on its own by a caller that has only JSON:
    they read the same, however each was spelled. `ResolvedField` is the
    union of the three, for use with `match`. A field is read as one of
    the five kinds, with or without type arguments.
-   `resolve(field, Definition, scope)` raises `TypeError`, because
+   `resolve(field, Definition, context)` raises `TypeError`, because
    nothing is filed under `Definition`. A whole v3 array document is
    read by `read_array_metadata_v3`, in `zarr_metadata.model`. Its
    reading returns each field with its location in the document.
@@ -145,7 +145,7 @@ but does not compare equal to its loaded copy.
         size="dynamic",
         rules=acme_lz4_rules,
     )
-    SCOPE = CORE_AND_EXTENSIONS.extended_with(ACME_LZ4)
+    CONTEXT = CORE_AND_EXTENSIONS.extended_with(ACME_LZ4)
 
 The TypedDict declares how keys it does not declare are handled. With
 `closed=True`, such a key is a problem, as above. With `extra_items=`,

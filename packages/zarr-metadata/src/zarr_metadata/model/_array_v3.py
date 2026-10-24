@@ -411,18 +411,18 @@ def validate_array_metadata_v3(
     `must_understand_fields`. The result equals the `problems` of
     `read_array_metadata_v3`, which also holds what was read to find them.
     """
-    scope = scoped(context, CORE_AND_EXTENSIONS)
-    return read_array_v3(value, scope)[0].problems
+    context = scoped(context, CORE_AND_EXTENSIONS)
+    return read_array_v3(value, context)[0].problems
 
 
 def is_array_metadata_v3(
     value: object, *, context: ZarrV3Context | None = None
 ) -> TypeGuard[ZarrV3ArrayMetadataJSON]:
     """Whether `value` is a v3 array document, written with tuples, that `validate_array_metadata_v3` finds no problems with."""
-    scope = scoped(context, CORE_AND_EXTENSIONS)
+    context = scoped(context, CORE_AND_EXTENSIONS)
     return (
         _is_canonical_json(value, finite=False)
-        and not validate_array_metadata_v3(value, context=scope)
+        and not validate_array_metadata_v3(value, context=context)
         and is_canonical_array_metadata_v3(value)
     )
 
@@ -431,8 +431,8 @@ def parse_array_metadata_v3(
     value: object, *, context: ZarrV3Context | None = None
 ) -> ZarrV3ArrayMetadataJSON:
     """Return `value` as `ZarrV3ArrayMetadataJSON`, or raise `MetadataValidationError`."""
-    scope = scoped(context, CORE_AND_EXTENSIONS)
-    problems = validate_array_metadata_v3(value, context=scope)
+    context = scoped(context, CORE_AND_EXTENSIONS)
+    problems = validate_array_metadata_v3(value, context=context)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
     return cast("ZarrV3ArrayMetadataJSON", arrays_to_tuples(value))
@@ -513,11 +513,11 @@ class ZarrV3ArrayMetadata(Keyed):
             return self._claims
 
     def __init__(self, document: object, context: ZarrV3Context | None = None) -> None:
-        scope = scoped(context, CORE_AND_EXTENSIONS)
-        reading, members = read_array_v3(document, scope)
+        context = scoped(context, CORE_AND_EXTENSIONS)
+        reading, members = read_array_v3(document, context)
         if members is None:
             raise MetadataValidationError(reading.problems)
-        self._adopt(members.document, scope, reading, members)
+        self._adopt(members.document, context, reading, members)
 
     @classmethod
     def _of(
@@ -692,10 +692,10 @@ class ZarrV3ArrayMetadata(Keyed):
         in `context`. The existing reading is reused when `context` reads
         every claim identically.
         """
-        scope = scoped(context, CORE_AND_EXTENSIONS)
-        if scope.disagreements(self.claims).agrees:
-            return self._of(self._document, scope, self._reading, self._members)
-        return type(self)(self._document, context=scope)
+        context = scoped(context, CORE_AND_EXTENSIONS)
+        if context.disagreements(self.claims).agrees:
+            return self._of(self._document, context, self._reading, self._members)
+        return type(self)(self._document, context=context)
 
     def refined_in(self, context: ZarrV3Context | None = None) -> ZarrV3ArrayMetadata:
         """Return this document read in `context`. `context` may claim names this scope left unclaimed, but must not contradict any claim.
@@ -709,11 +709,11 @@ class ZarrV3ArrayMetadata(Keyed):
         gain can expose a problem. `with_context` reads the document in
         any scope.
         """
-        scope = scoped(context, CORE_AND_EXTENSIONS)
-        found = scope.disagreements(self.claims)
+        context = scoped(context, CORE_AND_EXTENSIONS)
+        found = context.disagreements(self.claims)
         if len(found.conflicts) != 0:
             raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
-        return self.with_context(scope)
+        return self.with_context(context)
 
     def refines(self, other: ZarrV3ArrayMetadata) -> bool:
         """Whether this model holds everything `other` holds. Each field must refine its counterpart, in the order `refines` defines for fields (including the fields nested in each field). Every other member must be the same, with the fill value compared in the spelling of the more informed data type. If that data type rejects the other model's fill value, this is not a refinement."""
@@ -848,9 +848,9 @@ def read_array_metadata_v3(
     spec's fields), iterate over the reading's `fields()`. A value that
     is not an object has no fields.
     """
-    scope = scoped(context, CORE_AND_EXTENSIONS)
-    reading, members = read_array_v3(value, scope)
+    context = scoped(context, CORE_AND_EXTENSIONS)
+    reading, members = read_array_v3(value, context)
     if members is None:
         return reading
-    model = ZarrV3ArrayMetadata._of(members.document, scope, reading, members)  # pyright: ignore[reportPrivateUsage]
+    model = ZarrV3ArrayMetadata._of(members.document, context, reading, members)  # pyright: ignore[reportPrivateUsage]
     return model.reading

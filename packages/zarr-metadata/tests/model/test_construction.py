@@ -189,15 +189,15 @@ def test_a_model_is_read_when_built_and_written_as_it_is() -> None:
         yield from ()
 
     counting = dataclasses.replace(INT8_DATA_TYPE, fill_value_rules=counted)
-    scope = CORE_AND_EXTENSIONS.extended_with(counting)
-    model = ZarrV3ArrayMetadata.create_default(context=scope, data_type="int8", fill_value=3)
+    context = CORE_AND_EXTENSIONS.extended_with(counting)
+    model = ZarrV3ArrayMetadata.create_default(context=context, data_type="int8", fill_value=3)
     assert values == [3]
     model.to_key_value()
     assert values == [3]
     changed = model.update(fill_value=4)
     assert values == [3, 4]
     group = ZarrV3GroupMetadata.create_default(
-        context=scope, consolidated_metadata={**_INLINE, "metadata": {"a": changed.to_json()}}
+        context=context, consolidated_metadata={**_INLINE, "metadata": {"a": changed.to_json()}}
     )
     assert values == [3, 4, 4]
     group.to_key_value()
@@ -320,7 +320,7 @@ def test_a_model_s_key_is_computed_when_it_is_first_compared() -> None:
         asked.append(1)
         return configuration
 
-    scope = CORE_AND_EXTENSIONS.extended_with(dataclasses.replace(GZIP_CODEC, canonical=counting))
+    context = CORE_AND_EXTENSIONS.extended_with(dataclasses.replace(GZIP_CODEC, canonical=counting))
     document = {
         "zarr_format": 3,
         "node_type": "array",
@@ -331,14 +331,14 @@ def test_a_model_s_key_is_computed_when_it_is_first_compared() -> None:
         "fill_value": 0,
         "codecs": [{"name": "bytes"}, {"name": "gzip", "configuration": {"level": 1}}],
     }
-    model = ZarrV3ArrayMetadata(document, scope)
+    model = ZarrV3ArrayMetadata(document, context)
     assert model.to_json()["codecs"][1] == {"name": "gzip", "configuration": {"level": 1}}
     assert asked == []
-    other = ZarrV3ArrayMetadata(document, scope)
+    other = ZarrV3ArrayMetadata(document, context)
     assert model == other
     assert len(asked) == 2
     assert hash(model) == hash(other)
-    assert model != ZarrV3ArrayMetadata({**document, "fill_value": 1}, scope)
+    assert model != ZarrV3ArrayMetadata({**document, "fill_value": 1}, context)
     assert len(asked) == 3
 
 
@@ -348,7 +348,7 @@ def test_error_a_canonical_that_raises_is_raised_when_the_model_is_first_compare
     def refuses(configuration: GzipCodecConfiguration) -> GzipCodecConfiguration:
         raise ValueError("no")
 
-    scope = CORE_AND_EXTENSIONS.extended_with(dataclasses.replace(GZIP_CODEC, canonical=refuses))
+    context = CORE_AND_EXTENSIONS.extended_with(dataclasses.replace(GZIP_CODEC, canonical=refuses))
     document = {
         "zarr_format": 3,
         "node_type": "array",
@@ -359,7 +359,7 @@ def test_error_a_canonical_that_raises_is_raised_when_the_model_is_first_compare
         "fill_value": 0,
         "codecs": [{"name": "bytes"}, {"name": "gzip", "configuration": {"level": 1}}],
     }
-    model = ZarrV3ArrayMetadata(document, scope)
+    model = ZarrV3ArrayMetadata(document, context)
     assert model.to_json()["codecs"][1] == {"name": "gzip", "configuration": {"level": 1}}
     with pytest.raises(ValueError, match="no") as raised:
         hash(model)

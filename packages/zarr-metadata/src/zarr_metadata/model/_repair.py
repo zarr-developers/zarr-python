@@ -234,10 +234,10 @@ def read_repaired_node_metadata_v3(
     Content that no repair applies to is read as it is, and reported the
     same way `read_node_metadata_v3` reports it.
     """
-    scope = scoped(context, CORE_AND_EXTENSIONS)
+    context = scoped(context, CORE_AND_EXTENSIONS)
     repaired, repairs = repair_node_metadata_v3(value)
     return ZarrV3RepairedNodeMetadataReading(
-        read_node_metadata_v3(repaired, context=scope), repairs
+        read_node_metadata_v3(repaired, context=context), repairs
     )
 
 
@@ -325,10 +325,10 @@ def read_repaired_consolidated_metadata_v2(
     that no repair applies to is read as it is, and reported the same way
     the strict read reports it.
     """
-    scope = scoped(context, CORE_V2)
+    context = scoped(context, CORE_V2)
     repaired, repairs = repair_consolidated_metadata_v2(value)
     try:
-        model: ZarrV2ConsolidatedMetadata | None = ZarrV2ConsolidatedMetadata(repaired, scope)
+        model: ZarrV2ConsolidatedMetadata | None = ZarrV2ConsolidatedMetadata(repaired, context)
     except MetadataValidationError as error:
         return ZarrV2RepairedConsolidatedMetadataReading(error.problems, None, repairs)
     return ZarrV2RepairedConsolidatedMetadataReading((), model, repairs)

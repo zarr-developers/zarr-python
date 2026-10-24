@@ -23,13 +23,13 @@ from zarr_metadata.v2.definition import ZarrV2DataTypeDefinition
 if TYPE_CHECKING:
     from zarr_metadata import JSONValue
 
-SCOPE = Context.of(*DATA_TYPES_V2)
+CONTEXT = Context.of(*DATA_TYPES_V2)
 
 Loc = tuple[str | int, ...]
 
 
 def _read(value: object) -> tuple[type, list[tuple[Loc, str]]]:
-    resolved, problems = resolve(value, ZarrV2DataTypeDefinition, SCOPE, ("dtype",))
+    resolved, problems = resolve(value, ZarrV2DataTypeDefinition, CONTEXT, ("dtype",))
     return type(resolved), [(p.loc, p.kind) for p in problems]
 
 
@@ -73,7 +73,7 @@ def _read(value: object) -> tuple[type, list[tuple[Loc, str]]]:
 )
 def test_every_family_reads_its_typestrs(value: object, family: str, canonical: object) -> None:
     """Each typestr of a family is read by the family's definition. Its canonical spelling is the typestr NumPy writes: `|` for a type of one byte or with no byte order, and `us` for a microsecond unit. A records array is read as `struct`, and the type of each record is read too."""
-    resolved, problems = resolve(value, ZarrV2DataTypeDefinition, SCOPE)
+    resolved, problems = resolve(value, ZarrV2DataTypeDefinition, CONTEXT)
     assert isinstance(resolved, AcceptedField)
     assert resolved.definition.name == family
     assert problems == ()
@@ -83,7 +83,7 @@ def test_every_family_reads_its_typestrs(value: object, family: str, canonical: 
 @pytest.mark.parametrize("value", ["<e2", "<T16", "|a1"])
 def test_a_type_code_the_spec_does_not_list_is_unclaimed(value: str) -> None:
     """A typestr whose type code is not listed in the v2 spec is filed under its own name, which no definition in scope claims. It is read as `UnclaimedField` with no problem, and written back unchanged."""
-    resolved, problems = resolve(value, ZarrV2DataTypeDefinition, SCOPE)
+    resolved, problems = resolve(value, ZarrV2DataTypeDefinition, CONTEXT)
     assert isinstance(resolved, UnclaimedField)
     assert problems == ()
     assert resolved.to_json() == value
@@ -175,7 +175,7 @@ def test_every_family_takes_its_fill_values(
     dtype: object, value: object, canonical: object
 ) -> None:
     """Each family accepts the fill values the v2 spec allows for it, and always accepts `null`: booleans; integers in the type's range; numbers or the named non-finite strings for floats and for each complex component; base64 for bytes, void and struct; a string for str; any JSON for object; and ticks or `NaT` for times. The canonical spelling turns an integer written for a float into a float, and turns the ticks value of `NaT` into `"NaT"`."""
-    resolved, _ = resolve(dtype, ZarrV2DataTypeDefinition, SCOPE)
+    resolved, _ = resolve(dtype, ZarrV2DataTypeDefinition, CONTEXT)
     assert fill_value_problems(resolved, value) == ()
     assert canonical_fill_value(resolved, value) == canonical
 
@@ -203,7 +203,7 @@ def test_error_a_fill_value_the_family_does_not_take_is_a_problem(
     dtype: object, value: object, at: Loc
 ) -> None:
     """A fill value outside the shape or range its family accepts is reported, at the value or at the wrong component. A v2 float does not accept a hex string, and a struct's fill value is the base64 of the record, not an object of fields."""
-    resolved, _ = resolve(dtype, ZarrV2DataTypeDefinition, SCOPE)
+    resolved, _ = resolve(dtype, ZarrV2DataTypeDefinition, CONTEXT)
     problems = fill_value_problems(resolved, value, ("fill_value",))
     assert len(problems) != 0
     assert problems[0].loc == ("fill_value", *at)
@@ -230,7 +230,9 @@ def test_every_family_has_an_example() -> None:
 
 def test_a_struct_record_type_sits_where_the_document_writes_it() -> None:
     """`fields_of` places a record's type under the struct's own configuration location, `("dtype", "fields", 0, 1)`, not under a `configuration` key a v2 document does not have."""
-    resolved, _ = resolve([["a", "<i0"], ["b", "<f4"]], ZarrV2DataTypeDefinition, SCOPE, ("dtype",))
+    resolved, _ = resolve(
+        [["a", "<i0"], ["b", "<f4"]], ZarrV2DataTypeDefinition, CONTEXT, ("dtype",)
+    )
     assert [loc for loc, _ in fields_of(resolved, ("dtype",))] == [
         ("dtype",),
         ("dtype", "fields", 0, 1),

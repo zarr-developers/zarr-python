@@ -155,11 +155,11 @@ def read_group_metadata_v2(
     value: object, *, context: ZarrV2Context | None = None
 ) -> ZarrV2GroupMetadataReading:
     """Read `value`, a v2 group document in the merged form (`.zgroup` plus `attributes` from `.zattrs`), in `context` (`CORE_V2` when none is given), whatever it holds: every problem `validate_group_metadata_v2` finds, and the model when there are none."""
-    scope = scoped(context, CORE_V2)
-    problems = validate_group_metadata_v2(value, context=scope)
+    context = scoped(context, CORE_V2)
+    problems = validate_group_metadata_v2(value, context=context)
     if len(problems) != 0:
         return ZarrV2GroupMetadataReading(problems=problems)
-    return ZarrV2GroupMetadata(value, context=scope).reading
+    return ZarrV2GroupMetadata(value, context=context).reading
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,7 +202,7 @@ def read_node_metadata_v2(
     and no model. This is the v2 counterpart of `read_node_metadata_v3`,
     which reads one `zarr.json` and its `node_type`.
     """
-    scope = scoped(context, CORE_V2)
+    context = scoped(context, CORE_V2)
     files = cast("Mapping[str, bytes]", mapping)
     is_array = ZARR_V2_ARRAY_METADATA_STORE_KEY in files
     is_group = ZARR_V2_GROUP_METADATA_STORE_KEY in files
@@ -219,14 +219,14 @@ def read_node_metadata_v2(
         )
         if len(problems) != 0:
             return ZarrV2ArrayMetadataReading(problems=problems)
-        return read_array_metadata_v2(document, context=scope)
+        return read_array_metadata_v2(document, context=context)
     if is_group:
         document, problems = node_document_v2(
             mapping, ZARR_V2_GROUP_METADATA_STORE_KEY, _GROUP_FILE_ATTRIBUTES
         )
         if len(problems) != 0:
             return ZarrV2GroupMetadataReading(problems=problems)
-        return read_group_metadata_v2(document, context=scope)
+        return read_group_metadata_v2(document, context=context)
     neither = ValidationProblem(
         (),
         f"expected a {ZARR_V2_ARRAY_METADATA_STORE_KEY} or a {ZARR_V2_GROUP_METADATA_STORE_KEY}",
@@ -288,8 +288,8 @@ class ZarrV2GroupMetadata(Keyed):
         return MappingProxyType({})
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
-        scope = scoped(context, CORE_V2)
-        problems = validate_group_metadata_v2(document, context=scope)
+        context = scoped(context, CORE_V2)
+        problems = validate_group_metadata_v2(document, context=context)
         if len(problems) != 0:
             raise MetadataValidationError(problems)
         # Refine once. The attributes the model holds are taken from the
@@ -298,7 +298,7 @@ class ZarrV2GroupMetadata(Keyed):
         attributes: dict[str, JSONValue] | UNSET = (
             object_at(refined, "attributes") if "attributes" in refined else UNSET
         )
-        self._adopt(refined, scope, attributes)
+        self._adopt(refined, context, attributes)
 
     @classmethod
     def _of(
@@ -383,8 +383,8 @@ class ZarrV2GroupMetadata(Keyed):
 
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2GroupMetadata:
         """Return this document read in `context`: the same group, holding that scope."""
-        scope = scoped(context, CORE_V2)
-        return self._of(self._document, scope, self._attributes)
+        context = scoped(context, CORE_V2)
+        return self._of(self._document, context, self._attributes)
 
     def refined_in(self, context: ZarrV2Context | None = None) -> ZarrV2GroupMetadata:
         """Return this document read in `context`. A group has no fields, so no scope conflicts with its reading, and this is the same as `with_context`."""
@@ -458,11 +458,11 @@ class ZarrV2ConsolidatedMetadata(Keyed):
     zarr_consolidated_format: Final = 1
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
-        scope = scoped(context, CORE_V2)
-        entries, nodes, problems = _read_consolidated_v2(document, scope)
+        context = scoped(context, CORE_V2)
+        entries, nodes, problems = _read_consolidated_v2(document, context)
         if len(problems) != 0:
             raise MetadataValidationError(problems)
-        self._adopt({"zarr_consolidated_format": 1, "metadata": entries}, scope, nodes)
+        self._adopt({"zarr_consolidated_format": 1, "metadata": entries}, context, nodes)
 
     @classmethod
     def _of(
@@ -533,8 +533,8 @@ class ZarrV2ConsolidatedMetadata(Keyed):
 
     def with_context(self, context: ZarrV2Context | None = None) -> ZarrV2ConsolidatedMetadata:
         """Return this document with every node read in `context`, whatever that changes. Raises `MetadataValidationError` when a node has a problem in `context`."""
-        scope = scoped(context, CORE_V2)
-        return type(self)(self._document, context=scope)
+        context = scoped(context, CORE_V2)
+        return type(self)(self._document, context=context)
 
     def refined_in(self, context: ZarrV2Context | None = None) -> ZarrV2ConsolidatedMetadata:
         """Return this document with every node read in `context`. `context` may claim names this scope left unclaimed, but must not contradict any claim.
@@ -543,14 +543,14 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         node's entry. Raises `MetadataValidationError` when a gain exposes
         a problem.
         """
-        scope = scoped(context, CORE_V2)
+        context = scoped(context, CORE_V2)
         conflicts: list[Conflict] = []
         entries = object_at(self._document, "metadata")
         by_path, _ = _entries_by_path(entries)
         for path, node in self._nodes.items():
             if not isinstance(node, ZarrV2ArrayMetadata):
                 continue
-            found = scope.disagreements(node.claims)
+            found = context.disagreements(node.claims)
             key = by_path[path][ZARR_V2_ARRAY_METADATA_STORE_KEY]
             conflicts.extend(
                 dataclasses.replace(
@@ -561,7 +561,7 @@ class ZarrV2ConsolidatedMetadata(Keyed):
             )
         if len(conflicts) != 0:
             raise ScopeConflictError(conflicts)
-        return self.with_context(scope)
+        return self.with_context(context)
 
     def refines(self, other: ZarrV2ConsolidatedMetadata) -> bool:
         """Whether every node this holds refines the node `other` holds at the same path, both hold the same paths, and the other entries are written the same way. False when `other` is not v2 consolidated metadata."""

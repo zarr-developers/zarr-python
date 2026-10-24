@@ -60,8 +60,8 @@ one reads `gzip` differently.
 """
 
 
-def _read(data: object, kind: type[Definition[Any]], scope: Context) -> ResolvedField[Any]:
-    return resolve(data, kind, scope)[0]
+def _read(data: object, kind: type[Definition[Any]], context: Context) -> ResolvedField[Any]:
+    return resolve(data, kind, context)[0]
 
 
 @pytest.mark.parametrize(
@@ -274,8 +274,10 @@ DOCUMENTS = [
     BLOSC_LEVEL_ONE,
     SHARD_HOLDING_REFUSED,
 ]
-SCOPES = [Context.of(), CORE, CORE_AND_EXTENSIONS]
-READINGS = [_read(document, CodecDefinition, scope) for document in DOCUMENTS for scope in SCOPES]
+CONTEXTS = [Context.of(), CORE, CORE_AND_EXTENSIONS]
+READINGS = [
+    _read(document, CodecDefinition, context) for document in DOCUMENTS for context in CONTEXTS
+]
 
 
 @given(st.sampled_from(READINGS), st.sampled_from(READINGS), st.sampled_from(READINGS))
@@ -292,7 +294,7 @@ def test_refines_is_a_partial_order_whose_bottom_is_equality(
 
 
 @pytest.mark.parametrize(
-    ("scope", "claims", "gains", "conflicts"),
+    ("context", "claims", "gains", "conflicts"),
     [
         (CORE, {(CodecDefinition, "gzip"): GZIP_CODEC}, (), ()),
         (
@@ -319,20 +321,20 @@ def test_refines_is_a_partial_order_whose_bottom_is_equality(
     ids=["agrees", "gain", "loss", "conflict", "unclaimed-both", "raw-bits"],
 )
 def test_disagreements_says_where_a_scope_reads_claims_otherwise(
-    scope: Context,
+    context: Context,
     claims: dict[Any, Any],
     gains: tuple[Any, ...],
     conflicts: tuple[Conflict, ...],
 ) -> None:
     """A scope agrees with claims that it reads the same way. It gains where it claims a name the claims left unclaimed. It conflicts where it reads a name with another definition or with none."""
-    found = scope.disagreements(claims)
+    found = context.disagreements(claims)
     assert isinstance(found, Disagreements)
     assert (found.gains, found.conflicts) == (gains, conflicts)
     assert found.agrees is (len(gains) == 0 and len(conflicts) == 0)
 
 
 @pytest.mark.parametrize(
-    ("scopes", "joined"),
+    ("contexts", "joined"),
     [
         ((CORE, CORE_AND_EXTENSIONS), CORE_AND_EXTENSIONS),
         ((Context.of(GZIP_CODEC), Context.of(ZSTD_CODEC)), Context.of(GZIP_CODEC, ZSTD_CODEC)),
@@ -345,9 +347,11 @@ def test_disagreements_says_where_a_scope_reads_claims_otherwise(
     ],
     ids=["subset", "disjoint", "none", "same", "same-name-two-kinds"],
 )
-def test_joined_is_the_least_scope_above_each(scopes: tuple[Context, ...], joined: Context) -> None:
+def test_joined_is_the_least_scope_above_each(
+    contexts: tuple[Context, ...], joined: Context
+) -> None:
     """The join of scopes files every definition that any of them files, once. The same name in two kinds counts as two names."""
-    assert Context.joined(*scopes) == joined
+    assert Context.joined(*contexts) == joined
 
 
 def test_error_joined_refuses_one_name_filed_two_ways() -> None:

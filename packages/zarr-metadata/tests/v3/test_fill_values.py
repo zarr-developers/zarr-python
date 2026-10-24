@@ -297,8 +297,8 @@ def test_error_an_array_document_s_fill_value_its_data_type_refuses() -> None:
 
 def test_error_a_key_the_fill_value_shape_does_not_declare_hides_no_rule() -> None:
     # The extra key is reported and hidden from the rules, which still check the other keys.
-    scope = CORE_AND_EXTENSIONS.extended_with(ACME_POINT)
-    resolved, _ = resolve("acme.point", DataTypeDefinition, scope)
+    context = CORE_AND_EXTENSIONS.extended_with(ACME_POINT)
+    resolved, _ = resolve("acme.point", DataTypeDefinition, context)
     found = fill_value_problems(resolved, {"x": 99, "extra": 1})
     assert [(problem.loc, problem.kind) for problem in found] == [
         (("extra",), "unknown_key"),
@@ -468,10 +468,10 @@ def test_error_a_canonical_spelling_that_raises_says_which_data_type_raised_it()
     def refuses(configuration: EmptyConfiguration, nested: Nested, value: object) -> JSONValue:
         raise ValueError("no")
 
-    scope = CORE_AND_EXTENSIONS.extended_with(
+    context = CORE_AND_EXTENSIONS.extended_with(
         dataclasses.replace(ACME_POINT, fill_value_canonical=refuses)
     )
-    resolved, _ = resolve("acme.point", DataTypeDefinition, scope)
+    resolved, _ = resolve("acme.point", DataTypeDefinition, context)
     with pytest.raises(ValueError, match="no") as raised:
         canonical_fill_value(resolved, {"x": 1})
     assert raised.value.__notes__ == ["raised by the fill_value_canonical of 'acme.point'"]
@@ -481,10 +481,10 @@ def test_error_a_canonical_spelling_that_is_not_json_is_refused() -> None:
     def not_json(configuration: EmptyConfiguration, nested: Nested, value: object) -> JSONValue:
         return cast("JSONValue", {1, 2})
 
-    scope = CORE_AND_EXTENSIONS.extended_with(
+    context = CORE_AND_EXTENSIONS.extended_with(
         dataclasses.replace(ACME_POINT, fill_value_canonical=not_json)
     )
-    resolved, _ = resolve("acme.point", DataTypeDefinition, scope)
+    resolved, _ = resolve("acme.point", DataTypeDefinition, context)
     with pytest.raises(TypeError, match="'acme.point': its fill_value_canonical gives JSON"):
         canonical_fill_value(resolved, {"x": 1})
 

@@ -186,11 +186,11 @@ class ZarrV3GroupMetadata(Keyed):
             return self._claims
 
     def __init__(self, document: object, context: ZarrV3Context | None = None) -> None:
-        scope = scoped(context, CORE_AND_EXTENSIONS)
-        reading, members = read_group_v3(document, scope)
+        context = scoped(context, CORE_AND_EXTENSIONS)
+        reading, members = read_group_v3(document, context)
         if members is None or len(reading.problems) != 0:
             raise MetadataValidationError(reading.problems)
-        self._adopt(_document_of(members), scope, reading, members)
+        self._adopt(_document_of(members), context, reading, members)
 
     @classmethod
     def _of(
@@ -337,10 +337,10 @@ class ZarrV3GroupMetadata(Keyed):
 
     def with_context(self, context: ZarrV3Context | None = None) -> ZarrV3GroupMetadata:
         """Return this document read in `context`, whatever that changes. Raises `MetadataValidationError` when the document has a problem in `context`. The existing reading is reused when `context` reads every claim identically."""
-        scope = scoped(context, CORE_AND_EXTENSIONS)
-        if scope.disagreements(self.claims).agrees:
-            return self._of(self._document, scope, self._reading, self._members)
-        return type(self)(self._document, context=scope)
+        context = scoped(context, CORE_AND_EXTENSIONS)
+        if context.disagreements(self.claims).agrees:
+            return self._of(self._document, context, self._reading, self._members)
+        return type(self)(self._document, context=context)
 
     def refined_in(self, context: ZarrV3Context | None = None) -> ZarrV3GroupMetadata:
         """Return this document read in `context`. `context` may claim names this scope left unclaimed, but must not contradict any claim.
@@ -352,11 +352,11 @@ class ZarrV3GroupMetadata(Keyed):
         definition that `context` claims rejects what was written under
         its name.
         """
-        scope = scoped(context, CORE_AND_EXTENSIONS)
-        found = scope.disagreements(self.claims)
+        context = scoped(context, CORE_AND_EXTENSIONS)
+        found = context.disagreements(self.claims)
         if len(found.conflicts) != 0:
             raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
-        return self.with_context(scope)
+        return self.with_context(context)
 
     def refines(self, other: ZarrV3GroupMetadata) -> bool:
         """Whether this model holds everything `other` holds: the same attributes and extra fields, and consolidated metadata in which every document refines its counterpart."""
@@ -434,15 +434,15 @@ class ZarrV3ConsolidatedMetadata(Keyed):
     must_understand: Final = False
 
     def __init__(self, member: object, context: ZarrV3Context | None = None) -> None:
-        scope = scoped(context, CORE_AND_EXTENSIONS)
+        context = scoped(context, CORE_AND_EXTENSIONS)
         # The member is always under a group's key, even when read on its
         # own, so nesting depth is counted from there, as in the group.
         readings, members, document, problems = _read_consolidated_v3(
-            member, scope, (ZARR_V3_CONSOLIDATED_METADATA_KEY,)
+            member, context, (ZARR_V3_CONSOLIDATED_METADATA_KEY,)
         )
         if len(problems) != 0 or document is None:
             raise MetadataValidationError(problems)
-        self._adopt(document, scope, _nested_models(scope, readings, members))
+        self._adopt(document, context, _nested_models(context, readings, members))
 
     @classmethod
     def _of(
@@ -606,12 +606,12 @@ def read_node_metadata_v3(
     read `node_type` from unvalidated JSON, and a document in another
     format is reported as not v3.
     """
-    scope = scoped(context, CORE_AND_EXTENSIONS)
+    context = scoped(context, CORE_AND_EXTENSIONS)
     node_type, problems = _node_type(value)
     if node_type == "array":
-        return read_array_metadata_v3(value, context=scope)
+        return read_array_metadata_v3(value, context=context)
     if node_type == "group":
-        return read_group_metadata_v3(value, context=scope)
+        return read_group_metadata_v3(value, context=context)
     return ZarrV3UnknownNodeMetadataReading(problems)
 
 
@@ -632,8 +632,8 @@ def node_metadata_from_json_v3(
     `MetadataValidationError` with every problem `read_node_metadata_v3`
     finds, including a `node_type` that is neither array nor group.
     """
-    scope = scoped(context, CORE_AND_EXTENSIONS)
-    reading = read_node_metadata_v3(data, context=scope)
+    context = scoped(context, CORE_AND_EXTENSIONS)
+    reading = read_node_metadata_v3(data, context=context)
     if reading.metadata is None:
         raise MetadataValidationError(reading.problems)
     return reading.metadata
@@ -647,18 +647,18 @@ def node_metadata_from_key_value_v3(
     Raises `MetadataValidationError` when the key is missing, its bytes
     are not JSON, or the document is not a valid array or group.
     """
-    scope = scoped(context, CORE_AND_EXTENSIONS)
+    context = scoped(context, CORE_AND_EXTENSIONS)
     # Array documents and group documents are both stored at `zarr.json`.
     document = load_store_json(mapping, ZARR_V3_GROUP_METADATA_STORE_KEY)
-    return node_metadata_from_json_v3(document, context=scope)
+    return node_metadata_from_json_v3(document, context=context)
 
 
 def validate_node_metadata_v3(
     value: object, *, context: ZarrV3Context | None = None
 ) -> tuple[ValidationProblem, ...]:
     """Return every reason `value` is not a valid v3 `zarr.json`: the problems `validate_array_metadata_v3` or `validate_group_metadata_v3` finds for the node type its `node_type` declares, or why it declares neither."""
-    scope = scoped(context, CORE_AND_EXTENSIONS)
-    return _read_node_v3(value, scope)[0].problems
+    context = scoped(context, CORE_AND_EXTENSIONS)
+    return _read_node_v3(value, context)[0].problems
 
 
 def _read_node_v3(
@@ -736,11 +736,11 @@ def read_group_metadata_v3(
     and their readings hold the same models. A value that is not an
     object holds nothing.
     """
-    scope = scoped(context, CORE_AND_EXTENSIONS)
-    reading, members = read_group_v3(value, scope)
+    context = scoped(context, CORE_AND_EXTENSIONS)
+    reading, members = read_group_v3(value, context)
     if members is None:
         return reading
-    return _with_models(reading, members, value, scope)
+    return _with_models(reading, members, value, context)
 
 
 def read_group_v3(
@@ -1257,19 +1257,19 @@ def validate_group_metadata_v3(
     `read_group_metadata_v3`, which also holds what was read to find
     them.
     """
-    scope = scoped(context, CORE_AND_EXTENSIONS)
-    return read_group_v3(value, scope)[0].problems
+    context = scoped(context, CORE_AND_EXTENSIONS)
+    return read_group_v3(value, context)[0].problems
 
 
 def is_group_metadata_v3(
     value: object, *, context: ZarrV3Context | None = None
 ) -> TypeGuard[ZarrV3GroupMetadataJSON]:
     """Whether `value` is a v3 group document, written with tuples, that `validate_group_metadata_v3` finds no problems with."""
-    scope = scoped(context, CORE_AND_EXTENSIONS)
+    context = scoped(context, CORE_AND_EXTENSIONS)
     return (
         is_canonical_json(value, finite=False)
         and _is_canonical_group_metadata_v3(value)
-        and not validate_group_metadata_v3(value, context=scope)
+        and not validate_group_metadata_v3(value, context=context)
     )
 
 
@@ -1298,8 +1298,8 @@ def parse_group_metadata_v3(
     value: object, *, context: ZarrV3Context | None = None
 ) -> ZarrV3GroupMetadataJSON:
     """Return `value` narrowed to `ZarrV3GroupMetadataJSON`, or raise `MetadataValidationError`."""
-    scope = scoped(context, CORE_AND_EXTENSIONS)
-    problems = validate_group_metadata_v3(value, context=scope)
+    context = scoped(context, CORE_AND_EXTENSIONS)
+    problems = validate_group_metadata_v3(value, context=context)
     if len(problems) != 0:
         raise MetadataValidationError(problems)
     return cast("ZarrV3GroupMetadataJSON", arrays_to_tuples(documents_for(value)))

@@ -200,7 +200,7 @@ ACME_PAIRED = CodecDefinition(
     rules=acme_paired_rules,
 )
 
-SCOPE = CORE_AND_EXTENSIONS.extended_with(
+CONTEXT = CORE_AND_EXTENSIONS.extended_with(
     ACME_STACK,
     ACME_LEVEL,
     ACME_TOTAL,
@@ -469,7 +469,7 @@ def test_error_a_field_nothing_claims_built_by_hand_without_a_name() -> None:
 def test_a_field_is_written_as_every_reader_takes_it(
     field: JSONValue, kind: type[Definition[Any]], written: JSONValue
 ) -> None:
-    resolved, _ = resolve(field, kind, SCOPE)
+    resolved, _ = resolve(field, kind, CONTEXT)
     assert isinstance(resolved, (AcceptedField, UnclaimedField))
     assert resolved.to_json() == written
 
@@ -603,7 +603,7 @@ def test_a_field_is_read_in_scope(
     configuration: dict[str, object] | None,
     problems: list[tuple[tuple[str | int, ...], str]],
 ) -> None:
-    resolved, found = resolve(field, kind, SCOPE)
+    resolved, found = resolve(field, kind, CONTEXT)
     assert type(resolved) is variant
     assert (
         resolved.configuration if isinstance(resolved, AcceptedField) else None
@@ -613,7 +613,7 @@ def test_a_field_is_read_in_scope(
 
 def test_error_a_rule_refuses_a_value() -> None:
     resolved, found = resolve(
-        {"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, SCOPE
+        {"name": "gzip", "configuration": {"level": 12}}, CodecDefinition, CONTEXT
     )
     assert isinstance(resolved, RefusedField)
     assert resolved.definition is GZIP_CODEC
@@ -622,21 +622,21 @@ def test_error_a_rule_refuses_a_value() -> None:
 
 def test_error_a_member_of_the_wrong_type_is_not_asked_of_the_rules() -> None:
     resolved, found = resolve(
-        {"name": "gzip", "configuration": {"level": "5"}}, CodecDefinition, SCOPE
+        {"name": "gzip", "configuration": {"level": "5"}}, CodecDefinition, CONTEXT
     )
     assert isinstance(resolved, RefusedField)
     assert _locs(found) == [(("configuration", "level"), "invalid_type")]
 
 
 def test_error_a_required_configuration_is_missing() -> None:
-    resolved, found = resolve("gzip", CodecDefinition, SCOPE)
+    resolved, found = resolve("gzip", CodecDefinition, CONTEXT)
     assert isinstance(resolved, RefusedField)
     assert _locs(found) == [(("configuration",), "missing_key")]
 
 
 def test_error_the_configuration_is_not_an_object() -> None:
     # The result is a RefusedField, still claimed by the definition its name refers to.
-    resolved, found = resolve({"name": "gzip", "configuration": 5}, CodecDefinition, SCOPE)
+    resolved, found = resolve({"name": "gzip", "configuration": 5}, CodecDefinition, CONTEXT)
     assert resolved == RefusedField(
         json={"name": "gzip", "configuration": 5},
         name="gzip",
@@ -649,7 +649,9 @@ def test_error_the_configuration_is_not_an_object() -> None:
 def test_error_must_understand_false_is_refused() -> None:
     # The envelope's problem is reported with the field. The configuration
     # was read, so a later layer can still check the codec.
-    resolved, found = resolve({"name": "crc32c", "must_understand": False}, CodecDefinition, SCOPE)
+    resolved, found = resolve(
+        {"name": "crc32c", "must_understand": False}, CodecDefinition, CONTEXT
+    )
     assert isinstance(resolved, AcceptedField)
     assert _locs(found) == [(("must_understand",), "invalid_value")]
 
@@ -737,7 +739,7 @@ def test_error_null_is_not_a_field() -> None:
     # JSON null is valid JSON. Refining it gives `None` with no problem,
     # which is not a usable result. Read as a field or checked as a
     # configuration, it is a value of the wrong type.
-    resolved, found = resolve(None, CodecDefinition, SCOPE)
+    resolved, found = resolve(None, CodecDefinition, CONTEXT)
     assert (resolved, _locs(found)) == (
         RefusedField(json=None, name=None, read_as=CodecDefinition),
         [((), "invalid_type")],
@@ -750,7 +752,7 @@ def test_error_a_value_that_is_not_json() -> None:
     # The JSON is stored as `UNSET`, because no document can hold a value
     # that is not JSON. Its name still identifies the definition that claims it.
     resolved, found = resolve(
-        {"name": "gzip", "configuration": {"level": math.nan}}, CodecDefinition, SCOPE
+        {"name": "gzip", "configuration": {"level": math.nan}}, CodecDefinition, CONTEXT
     )
     assert resolved == RefusedField(
         json=UNSET, name="gzip", read_as=CodecDefinition, definition=GZIP_CODEC
@@ -759,14 +761,14 @@ def test_error_a_value_that_is_not_json() -> None:
 
 
 def test_error_a_value_that_is_not_a_field() -> None:
-    resolved, found = resolve(5, CodecDefinition, SCOPE)
+    resolved, found = resolve(5, CodecDefinition, CONTEXT)
     assert resolved == RefusedField(json=5, name=None, read_as=CodecDefinition)
     assert len(found) == 1
 
 
 def test_error_a_regular_grid_extent_is_negative() -> None:
     resolved, found = resolve(
-        {"name": "regular", "configuration": {"chunk_shape": [2, -1]}}, ChunkGridDefinition, SCOPE
+        {"name": "regular", "configuration": {"chunk_shape": [2, -1]}}, ChunkGridDefinition, CONTEXT
     )
     assert isinstance(resolved, RefusedField)
     assert _locs(found) == [(("configuration", "chunk_shape", 1), "invalid_value")]
@@ -779,7 +781,7 @@ def test_error_a_nested_field_is_judged_where_it_sits() -> None:
         "name": "acme.stack",
         "configuration": {"codecs": ["crc32c", {"name": "gzip", "configuration": {"level": 12}}]},
     }
-    resolved, found = resolve(field, CodecDefinition, SCOPE)
+    resolved, found = resolve(field, CodecDefinition, CONTEXT)
     assert isinstance(resolved, AcceptedField)
     assert isinstance(resolved.nested[("codecs", 1)], RefusedField)
     assert _locs(found) == [
@@ -792,7 +794,7 @@ def test_error_a_nested_field_in_extra_items_is_judged_where_it_sits() -> None:
         "name": "acme.routes",
         "configuration": {"slow": {"name": "gzip", "configuration": {"level": 12}}},
     }
-    resolved, found = resolve(field, CodecDefinition, SCOPE)
+    resolved, found = resolve(field, CodecDefinition, CONTEXT)
     assert isinstance(resolved, AcceptedField)
     assert isinstance(resolved.nested[("slow",)], RefusedField)
     assert _locs(found) == [(("configuration", "slow", "configuration", "level"), "invalid_value")]
@@ -803,7 +805,7 @@ def test_error_a_nested_envelope_s_problem_is_its_own_and_the_rules_are_asked() 
     # in a document, and the stack is still read.
     unread = {"name": "crc32c", "must_understand": False}
     resolved, found = resolve(
-        {"name": "acme.stack", "configuration": {"codecs": [unread]}}, CodecDefinition, SCOPE
+        {"name": "acme.stack", "configuration": {"codecs": [unread]}}, CodecDefinition, CONTEXT
     )
     assert isinstance(resolved, AcceptedField)
     assert _locs(found) == [(("configuration", "codecs", 0, "must_understand"), "invalid_value")]
@@ -812,7 +814,7 @@ def test_error_a_nested_envelope_s_problem_is_its_own_and_the_rules_are_asked() 
     resolved, found = resolve(
         {"name": "acme.stack", "configuration": {"codecs": [unread, "bytes"]}},
         CodecDefinition,
-        SCOPE,
+        CONTEXT,
     )
     assert isinstance(resolved, RefusedField)
     assert _locs(found) == [
@@ -826,7 +828,7 @@ def test_error_a_container_rule_is_not_asked_of_a_malformed_nested_field() -> No
     # name is reported at its location, and the rule does not run, as it
     # would not in `read_configuration`.
     field = {"name": "acme.stack", "configuration": {"codecs": [{"configuration": {}}]}}
-    resolved, found = resolve(field, CodecDefinition, SCOPE)
+    resolved, found = resolve(field, CodecDefinition, CONTEXT)
     assert isinstance(resolved, RefusedField)
     assert _locs(found) == [(("configuration", "codecs", 0, "name"), "missing_key")]
     assert ACME_STACK.read_configuration(field["configuration"])[0] is None
@@ -838,7 +840,7 @@ def test_error_a_rule_about_the_whole_configuration_lands_on_it() -> None:
     # a field.
     _, judged = ACME_PAIRED.read_configuration({"first": 1})
     _, read = resolve(
-        {"name": "acme.paired", "configuration": {"first": 1}}, CodecDefinition, SCOPE
+        {"name": "acme.paired", "configuration": {"first": 1}}, CodecDefinition, CONTEXT
     )
     assert _locs(judged) == [((), "invalid_value")]
     assert _locs(read) == [(("configuration",), "invalid_value")]
@@ -849,7 +851,7 @@ def test_error_a_rule_reads_the_fields_the_configuration_holds_as_the_scope_read
     # based on what the scope read. `read_configuration` reads in no scope,
     # so its rule sees no nested readings.
     field = {"name": "acme.stack", "configuration": {"codecs": ["crc32c", "bytes"]}}
-    resolved, found = resolve(field, CodecDefinition, SCOPE)
+    resolved, found = resolve(field, CodecDefinition, CONTEXT)
     assert isinstance(resolved, RefusedField)
     assert _locs(found) == [(("configuration", "codecs", 1), "invalid_value")]
     assert ACME_STACK.read_configuration(field["configuration"])[1] == ()
@@ -857,7 +859,7 @@ def test_error_a_rule_reads_the_fields_the_configuration_holds_as_the_scope_read
 
 def test_error_a_nested_member_is_not_a_field() -> None:
     resolved, found = resolve(
-        {"name": "acme.stack", "configuration": {"codecs": [5]}}, CodecDefinition, SCOPE
+        {"name": "acme.stack", "configuration": {"codecs": [5]}}, CodecDefinition, CONTEXT
     )
     assert isinstance(resolved, RefusedField)
     assert _locs(found) == [(("configuration", "codecs", 0), "invalid_type")]
@@ -899,7 +901,7 @@ def test_error_check_holds_an_array_document_s_shape_to_its_bound() -> None:
 
 
 def test_configuration_of_types_what_its_definition_read() -> None:
-    resolved, _ = resolve({"name": "gzip", "configuration": {"level": 5}}, CodecDefinition, SCOPE)
+    resolved, _ = resolve({"name": "gzip", "configuration": {"level": 5}}, CodecDefinition, CONTEXT)
     assert configuration_of(resolved, GZIP_CODEC) == {"level": 5}
     assert configuration_of(resolved, ACME_LEVEL) is None
 
@@ -961,10 +963,10 @@ def test_a_scope_takes_a_name_over() -> None:
             else []
         ),
     )
-    scope = CORE_AND_EXTENSIONS.extended_with(strict)
-    _, found = resolve({"name": "gzip", "configuration": {"level": 0}}, CodecDefinition, scope)
+    context = CORE_AND_EXTENSIONS.extended_with(strict)
+    _, found = resolve({"name": "gzip", "configuration": {"level": 0}}, CodecDefinition, context)
     assert _locs(found) == [(("configuration", "level"), "invalid_value")]
-    assert scope.claimant(ChunkGridDefinition, "regular") is REGULAR_CHUNK_GRID
+    assert context.claimant(ChunkGridDefinition, "regular") is REGULAR_CHUNK_GRID
 
 
 def test_a_scope_is_shown_by_how_many_definitions_it_holds() -> None:
@@ -1287,7 +1289,7 @@ def test_error_a_function_member_that_is_not_a_function(
 def test_error_a_field_is_read_as_a_kind_of_metadata(kind: type[Definition[Any]]) -> None:
     # Nothing is filed under either kind, so the field would never be checked.
     with pytest.raises(TypeError, match="is not a kind of metadata"):
-        resolve({"name": "gzip", "configuration": {"level": 99}}, kind, SCOPE)
+        resolve({"name": "gzip", "configuration": {"level": 99}}, kind, CONTEXT)
 
 
 def test_error_a_scope_refuses_a_definition_of_no_kind() -> None:
@@ -1399,9 +1401,9 @@ def test_error_a_rule_that_writes_to_the_configuration_fails_there() -> None:
         cast("dict[str, object]", configuration)["level"] = -1
         yield from ()
 
-    scope = CORE.extended_with(dataclasses.replace(GZIP_CODEC, rules=writes))
+    context = CORE.extended_with(dataclasses.replace(GZIP_CODEC, rules=writes))
     with pytest.raises(TypeError, match="does not support item assignment") as raised:
-        resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, scope)
+        resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, context)
     assert raised.value.__notes__ == ["raised by the rules of 'gzip', reading ('configuration',)"]
 
 
@@ -1422,8 +1424,8 @@ def test_error_a_function_that_writes_to_the_configuration_fails_on_every_path()
         cast("dict[str, object]", configuration)["level"] = 0
         return configuration
 
-    scope = CORE.extended_with(dataclasses.replace(GZIP_CODEC, canonical=folds_in_place))
-    read, _ = resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, scope)
+    context = CORE.extended_with(dataclasses.replace(GZIP_CODEC, canonical=folds_in_place))
+    read, _ = resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, context)
     with pytest.raises(TypeError, match="does not support item assignment"):
         hash(read)
 
@@ -1432,8 +1434,8 @@ def test_error_a_canonical_that_raises_says_which_definition_raised_it() -> None
     def refuses(configuration: GzipCodecConfiguration) -> GzipCodecConfiguration:
         raise ValueError("no")
 
-    scope = CORE.extended_with(dataclasses.replace(GZIP_CODEC, canonical=refuses))
-    read, _ = resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, scope)
+    context = CORE.extended_with(dataclasses.replace(GZIP_CODEC, canonical=refuses))
+    read, _ = resolve({"name": "gzip", "configuration": {"level": 1}}, CodecDefinition, context)
     with pytest.raises(ValueError, match="no") as raised:
         canonical_of(read, ())
     assert raised.value.__notes__ == ["raised by the canonical of 'gzip'"]

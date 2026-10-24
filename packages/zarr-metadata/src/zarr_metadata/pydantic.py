@@ -24,8 +24,8 @@ as follows:
 
 For example:
 
-    TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(document, context=SCOPE)
-    ArrayManifest.model_validate(data, context={"zarr_metadata_context": SCOPE})
+    TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(document, context=CONTEXT)
+    ArrayManifest.model_validate(data, context={"zarr_metadata_context": CONTEXT})
     Mixed.model_validate(data, context={"zarr_metadata_context": V3, "zarr_metadata_context_v2": V2})
 
 An existing model instance passes through unchanged, as pydantic's does, and
@@ -95,7 +95,7 @@ from zarr_metadata._pydantic_schema import (
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata.definition._context import (
     Context,
-    is_scope,
+    is_context,
     scoped,
 )
 from zarr_metadata.v2.definition import CORE_V2
@@ -170,43 +170,43 @@ class _Reads(Protocol[_Read_co]):
     def __call__(self, data: object, /, *, context: Context) -> _Read_co: ...
 
 
-def _read_in_scope(
+def _read_in_context(
     cls: type[_M], read: _Reads[_M], default: Context[Any], key: str
 ) -> Callable[[object, ValidationInfo], _M]:
-    """A validator that returns instances of `cls` unchanged, and reads any other value in the scope stored in the validation context under `key`, or in `default` if there is none."""
+    """A validator that returns instances of `cls` unchanged, and reads any other value in the `Context` stored in the validation context under `key`, or in `default` if there is none."""
 
     def coerce(value: object, info: ValidationInfo) -> _M:
         if isinstance(value, cls):
             return value
         return _as_pydantic_raises(
-            cls, value, lambda: read(value, context=_scope(info.context, default, key))
+            cls, value, lambda: read(value, context=_context_of(info.context, default, key))
         )
 
     return coerce
 
 
-def _scope(context: object, default: Context[Any], key: str) -> Context[Any]:
-    """The scope a validation context gives for one format. If the context is a `Context`, it is the scope for every field type of its format. If it is a mapping with a `key` item, that item is the scope for this format. Otherwise the scope is `default`, the format's core scope.
+def _context_of(validation_context: object, default: Context[Any], key: str) -> Context[Any]:
+    """The `Context` a pydantic validation context gives for one format. If the validation context is a `Context`, it is the context for every field type of its format. If it is a mapping with a `key` item, that item is the context for this format. Otherwise the context is `default`, the format's core context.
 
     A bare `Context` of the other format raises `TypeError`, as it does in
     every reader. A model with fields of both formats must give each
-    format's scope under its own key.
+    format's context under its own key.
     """
-    if is_scope(context):
-        return scoped(context, default)
-    if not is_object(context) or key not in context:
+    if is_context(validation_context):
+        return scoped(validation_context, default)
+    if not is_object(validation_context) or key not in validation_context:
         return default
-    scope = context[key]
-    if not is_scope(scope):
-        msg = f"{key}: the scope to read in is a Context, got {scope!r}"
+    context = validation_context[key]
+    if not is_context(context):
+        msg = f"{key}: the context to read in is a Context, got {context!r}"
         raise TypeError(msg)
-    return scope
+    return context
 
 
 ZarrV3ArrayMetadataField = Annotated[
     InstanceOf[_model.ZarrV3ArrayMetadata],
     BeforeValidator(
-        _read_in_scope(
+        _read_in_context(
             _model.ZarrV3ArrayMetadata,
             _model.ZarrV3ArrayMetadata.from_json,
             CORE_AND_EXTENSIONS,
@@ -221,7 +221,7 @@ ZarrV3ArrayMetadataField = Annotated[
 ZarrV2ArrayMetadataField = Annotated[
     InstanceOf[_model.ZarrV2ArrayMetadata],
     BeforeValidator(
-        _read_in_scope(
+        _read_in_context(
             _model.ZarrV2ArrayMetadata,
             _model.ZarrV2ArrayMetadata.from_json,
             CORE_V2,
@@ -236,7 +236,7 @@ ZarrV2ArrayMetadataField = Annotated[
 ZarrV3GroupMetadataField = Annotated[
     InstanceOf[_model.ZarrV3GroupMetadata],
     BeforeValidator(
-        _read_in_scope(
+        _read_in_context(
             _model.ZarrV3GroupMetadata,
             _model.ZarrV3GroupMetadata.from_json,
             CORE_AND_EXTENSIONS,
@@ -251,7 +251,7 @@ ZarrV3GroupMetadataField = Annotated[
 ZarrV2GroupMetadataField = Annotated[
     InstanceOf[_model.ZarrV2GroupMetadata],
     BeforeValidator(
-        _read_in_scope(
+        _read_in_context(
             _model.ZarrV2GroupMetadata,
             _model.ZarrV2GroupMetadata.from_json,
             CORE_V2,
@@ -266,7 +266,7 @@ ZarrV2GroupMetadataField = Annotated[
 ZarrV3ConsolidatedMetadataField = Annotated[
     InstanceOf[_model.ZarrV3ConsolidatedMetadata],
     BeforeValidator(
-        _read_in_scope(
+        _read_in_context(
             _model.ZarrV3ConsolidatedMetadata,
             _model.ZarrV3ConsolidatedMetadata.from_json,
             CORE_AND_EXTENSIONS,
@@ -284,7 +284,7 @@ ZarrV3ConsolidatedMetadataField = Annotated[
 ZarrV2ConsolidatedMetadataField = Annotated[
     InstanceOf[_model.ZarrV2ConsolidatedMetadata],
     BeforeValidator(
-        _read_in_scope(
+        _read_in_context(
             _model.ZarrV2ConsolidatedMetadata,
             _model.ZarrV2ConsolidatedMetadata.from_json,
             CORE_V2,

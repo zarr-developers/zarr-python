@@ -471,7 +471,7 @@ def _changed(draw: st.DrawFn, value: object) -> object:
     return value
 
 
-_SCOPES = (CORE, CORE_AND_EXTENSIONS, Context.of())
+_CONTEXTS = (CORE, CORE_AND_EXTENSIONS, Context.of())
 _FIELD_BASES: tuple[tuple[str, object], ...] = (
     *CASES,
     # Names that nothing claims, so nothing checks their configuration.
@@ -482,11 +482,11 @@ _FIELD_BASES: tuple[tuple[str, object], ...] = (
 _FIELD_SCHEMAS: dict[tuple[type[Definition[Any]], int], Draft202012Validator] = {}
 
 
-def _field_validator(kind: type[Definition[Any]], scope: int) -> Draft202012Validator:
-    if (kind, scope) not in _FIELD_SCHEMAS:
-        schema = field_json_schema_v3(kind, context=_SCOPES[scope])
-        _FIELD_SCHEMAS[(kind, scope)] = Draft202012Validator(schema)
-    return _FIELD_SCHEMAS[(kind, scope)]
+def _field_validator(kind: type[Definition[Any]], context: int) -> Draft202012Validator:
+    if (kind, context) not in _FIELD_SCHEMAS:
+        schema = field_json_schema_v3(kind, context=_CONTEXTS[context])
+        _FIELD_SCHEMAS[(kind, context)] = Draft202012Validator(schema)
+    return _FIELD_SCHEMAS[(kind, context)]
 
 
 # --- a field in a scope -----------------------------------------------------
@@ -696,17 +696,17 @@ FIELDS: list[tuple[str, object, type[Definition[Any]], Context, bool, bool]] = [
 
 
 @pytest.mark.parametrize(
-    ("field", "kind", "scope", "accepted", "clean"),
+    ("field", "kind", "context", "accepted", "clean"),
     [case[1:] for case in FIELDS],
     ids=[case[0] for case in FIELDS],
 )
 def test_field_json_schema_says_what_the_scope_reads(
-    field: object, kind: type[Definition[Any]], scope: Context, accepted: bool, clean: bool
+    field: object, kind: type[Definition[Any]], context: Context, accepted: bool, clean: bool
 ) -> None:
-    schema = field_json_schema_v3(kind, context=scope)
+    schema = field_json_schema_v3(kind, context=context)
     Draft202012Validator.check_schema(schema)
     assert Draft202012Validator(schema).is_valid(cast("Any", field)) == accepted
-    assert (resolve(field, kind, scope)[1] == ()) == clean
+    assert (resolve(field, kind, context)[1] == ()) == clean
 
 
 @pytest.mark.parametrize(
@@ -724,12 +724,12 @@ def test_a_field_read_without_a_problem_is_one_its_schema_accepts(data: st.DataO
     # If the scope still reads it without a problem, the schema accepts it.
     key, example = data.draw(st.sampled_from(_FIELD_BASES), label="example")
     kind = KINDS[key.split(":")[0]]
-    scope = data.draw(st.sampled_from(range(len(_SCOPES))), label="scope")
+    context = data.draw(st.sampled_from(range(len(_CONTEXTS))), label="context")
     field = data.draw(_changed(json.loads(json.dumps(example))), label="field")
-    read = resolve(field, kind, _SCOPES[scope])[1] == ()
+    read = resolve(field, kind, _CONTEXTS[context])[1] == ()
     event("read without a problem" if read else "a problem")
     if read:
-        assert _field_validator(kind, scope).is_valid(cast("Any", field))
+        assert _field_validator(kind, context).is_valid(cast("Any", field))
 
 
 def test_error_field_json_schema_v3_refuses_a_scope_of_another_format() -> None:
@@ -881,12 +881,12 @@ _BASES: tuple[dict[str, Any], ...] = (
 _NODE_SCHEMAS: dict[int, Draft202012Validator] = {}
 
 
-def _node_validator(scope: int) -> Draft202012Validator:
-    if scope not in _NODE_SCHEMAS:
-        _NODE_SCHEMAS[scope] = Draft202012Validator(
-            node_metadata_json_schema_v3(context=_SCOPES[scope])
+def _node_validator(context: int) -> Draft202012Validator:
+    if context not in _NODE_SCHEMAS:
+        _NODE_SCHEMAS[context] = Draft202012Validator(
+            node_metadata_json_schema_v3(context=_CONTEXTS[context])
         )
-    return _NODE_SCHEMAS[scope]
+    return _NODE_SCHEMAS[context]
 
 
 @_PROPERTY
@@ -895,24 +895,24 @@ def test_a_document_read_without_a_problem_is_one_its_schema_accepts(data: st.Da
     # Each document is changed in one place and read in one of three scopes.
     # If `validate_node_metadata_v3` finds no problem, the schema accepts it.
     base = data.draw(st.sampled_from(_BASES), label="base")
-    scope = data.draw(st.sampled_from(range(len(_SCOPES))), label="scope")
+    context = data.draw(st.sampled_from(range(len(_CONTEXTS))), label="context")
     document = data.draw(_changed(json.loads(json.dumps(base))), label="document")
-    read = validate_node_metadata_v3(document, context=_SCOPES[scope]) == ()
+    read = validate_node_metadata_v3(document, context=_CONTEXTS[context]) == ()
     event("read without a problem" if read else "a problem")
     if read:
-        assert _node_validator(scope).is_valid(cast("Any", document))
+        assert _node_validator(context).is_valid(cast("Any", document))
 
 
 @pytest.mark.parametrize(
-    "scope",
+    "context",
     [CORE, CORE_AND_EXTENSIONS, Context.of()],
     ids=["core", "core-and-extensions", "empty"],
 )
-def test_every_schema_is_a_json_schema_written_the_same_each_time(scope: Context) -> None:
-    schema = node_metadata_json_schema_v3(context=scope)
+def test_every_schema_is_a_json_schema_written_the_same_each_time(context: Context) -> None:
+    schema = node_metadata_json_schema_v3(context=context)
     Draft202012Validator.check_schema(schema)
     assert json.loads(json.dumps(schema)) == schema
-    assert schema == node_metadata_json_schema_v3(context=scope)
+    assert schema == node_metadata_json_schema_v3(context=context)
     defs = cast("dict[str, JSONValue]", schema["$defs"])
     assert {"ZarrV3ArrayMetadataJSON", "ZarrV3GroupMetadataJSON"} <= defs.keys()
     for kind in (
@@ -922,7 +922,7 @@ def test_every_schema_is_a_json_schema_written_the_same_each_time(scope: Context
         ChunkKeyEncodingDefinition,
         StorageTransformerDefinition,
     ):
-        Draft202012Validator.check_schema(field_json_schema_v3(kind, context=scope))
+        Draft202012Validator.check_schema(field_json_schema_v3(kind, context=context))
 
 
 @pytest.mark.parametrize(

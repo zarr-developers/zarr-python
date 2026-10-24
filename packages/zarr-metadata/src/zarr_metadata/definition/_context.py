@@ -198,7 +198,7 @@ ZarrV2Context: TypeAlias = Context[Literal[2]]
 """A scope that reads Zarr v2 documents. Every v2 reader takes this type."""
 
 
-def is_scope(value: object) -> TypeGuard[Context[Any]]:
+def is_context(value: object) -> TypeGuard[Context[Any]]:
     """Whether `value` is a scope, of any format."""
     return isinstance(value, Context)
 
@@ -221,6 +221,6 @@ __all__ = [
     "Tables",
     "ZarrV2Context",
     "ZarrV3Context",
-    "is_scope",
+    "is_context",
     "scoped",
 ]

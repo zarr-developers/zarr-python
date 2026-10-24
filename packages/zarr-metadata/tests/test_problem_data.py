@@ -323,8 +323,10 @@ def test_a_problem_with_what_a_name_carries_is_the_field_s() -> None:
     # refuses. The problem is located at the field, because the name is what
     # the document wrote there. The bound on `bits` is not a bound on the
     # name, so the problem's `ctx` is empty.
-    scope = CORE_AND_EXTENSIONS.extended_with(DataTypeDefinition(name="r*", configuration=WideBits))
-    _, problems = resolve("r24", DataTypeDefinition, scope, ("data_type",))
+    context = CORE_AND_EXTENSIONS.extended_with(
+        DataTypeDefinition(name="r*", configuration=WideBits)
+    )
+    _, problems = resolve("r24", DataTypeDefinition, context, ("data_type",))
     assert [(p.loc, p.input, dict(p.ctx)) for p in problems] == [(("data_type",), "r24", {})]
     assert problems[0].message == "expected an integer <= 16, got 24"
 

@@ -64,9 +64,9 @@ ACME_SHUFFLE = CodecDefinition(
 )
 """An array -> array codec that does not declare its output chunk."""
 
-SCOPE = CORE_AND_EXTENSIONS.extended_with(ACME_TILE, ACME_SHUFFLE)
+CONTEXT = CORE_AND_EXTENSIONS.extended_with(ACME_TILE, ACME_SHUFFLE)
 
-UINT8 = resolve("uint8", DataTypeDefinition, SCOPE)[0]
+UINT8 = resolve("uint8", DataTypeDefinition, CONTEXT)[0]
 
 CHUNK = Chunk((frozenset({4}), frozenset({2})), UINT8)
 """Chunks of 4 by 2 `uint8` values."""
@@ -90,7 +90,7 @@ def _scale(**members: JSONValue) -> JSONValue:
 
 def _of(data_type: JSONValue) -> Chunk:
     """Chunks of 4 by 2 values of `data_type`."""
-    return Chunk(CHUNK.lengths, resolve(data_type, DataTypeDefinition, SCOPE)[0])
+    return Chunk(CHUNK.lengths, resolve(data_type, DataTypeDefinition, CONTEXT)[0])
 
 
 def _struct(*field_types: JSONValue) -> JSONValue:
@@ -104,7 +104,9 @@ def _read(
     codecs: list[JSONValue], chunk: Chunk
 ) -> tuple[tuple[Stage, ...], tuple[ValidationProblem, ...]]:
     """The stages, and every problem: first each codec's own problems at its location, then the pipeline's."""
-    read = [resolve(codec, CodecDefinition, SCOPE, (index,)) for index, codec in enumerate(codecs)]
+    read = [
+        resolve(codec, CodecDefinition, CONTEXT, (index,)) for index, codec in enumerate(codecs)
+    ]
     stages, found = read_pipeline([resolved for resolved, _ in read], chunk)
     return stages, (*(problem for _, own in read for problem in own), *found)
 
@@ -353,7 +355,7 @@ def test_error_a_transition_that_gives_something_else() -> None:
         size="static",
         transition=lambda configuration, nested, chunk: "a chunk",  # pyright: ignore[reportArgumentType]
     )
-    codec = resolve("acme.lying", CodecDefinition, SCOPE.extended_with(lying))[0]
+    codec = resolve("acme.lying", CodecDefinition, CONTEXT.extended_with(lying))[0]
     with pytest.raises(TypeError, match="'acme.lying': its transition gives a Chunk"):
         read_pipeline([codec], CHUNK)
 
@@ -369,7 +371,7 @@ def test_error_a_transition_that_raises_says_whose_it_is() -> None:
         size="static",
         transition=transition,
     )
-    codec = resolve("acme.raising", CodecDefinition, SCOPE.extended_with(raising))[0]
+    codec = resolve("acme.raising", CodecDefinition, CONTEXT.extended_with(raising))[0]
     with pytest.raises(KeyError) as raised:
         read_pipeline([codec], CHUNK, ("codecs",))
     assert raised.value.__notes__ == [
@@ -383,7 +385,7 @@ def test_error_a_transition_that_raises_says_whose_it_is() -> None:
         ((4, 2), None, "a chunk's lengths are"),
         (None, "float32", "a chunk's data type is"),
         # A field read as a codec, though nothing claims it.
-        (None, resolve("acme.t", CodecDefinition, SCOPE)[0], "a chunk's data type is"),
+        (None, resolve("acme.t", CodecDefinition, CONTEXT)[0], "a chunk's data type is"),
     ],
 )
 def test_error_a_transition_that_builds_a_chunk_of_something_else(
@@ -400,7 +402,7 @@ def test_error_a_transition_that_builds_a_chunk_of_something_else(
         size="static",
         transition=transition,
     )
-    codec = resolve("acme.odd", CodecDefinition, SCOPE.extended_with(odd))[0]
+    codec = resolve("acme.odd", CodecDefinition, CONTEXT.extended_with(odd))[0]
     with pytest.raises(TypeError, match=match) as raised:
         read_pipeline([codec], CHUNK, ("codecs",))
     assert raised.value.__notes__ == [
@@ -477,7 +479,7 @@ def _holder(
         pipelines=pipelines,  # pyright: ignore[reportArgumentType]
     )
     field = {"name": "acme.holder", "configuration": {"codecs": [LITTLE], "types": types}}
-    return resolve(field, CodecDefinition, SCOPE.extended_with(holder))[0]
+    return resolve(field, CodecDefinition, CONTEXT.extended_with(holder))[0]
 
 
 @pytest.mark.parametrize("given", ["a chunk", {"codecs": "a chunk"}, {("codecs",): Chunk()}])

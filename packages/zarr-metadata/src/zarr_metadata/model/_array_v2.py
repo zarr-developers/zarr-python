@@ -417,11 +417,11 @@ def read_array_metadata_v2(
     a `RefusedField`), every problem `validate_array_metadata_v2` finds,
     and, when there are no problems, the document's model.
     """
-    scope = scoped(context, CORE_V2)
-    reading, members = read_array_v2(value, scope)
+    context = scoped(context, CORE_V2)
+    reading, members = read_array_v2(value, context)
     if members is None:
         return reading
-    model = ZarrV2ArrayMetadata._of(members.document, scope, reading, members)  # pyright: ignore[reportPrivateUsage]
+    model = ZarrV2ArrayMetadata._of(members.document, context, reading, members)  # pyright: ignore[reportPrivateUsage]
     return model.reading
 
 
@@ -482,11 +482,11 @@ class ZarrV2ArrayMetadata(Keyed):
             return self._claims
 
     def __init__(self, document: object, context: ZarrV2Context | None = None) -> None:
-        scope = scoped(context, CORE_V2)
-        reading, members = read_array_v2(document, scope)
+        context = scoped(context, CORE_V2)
+        reading, members = read_array_v2(document, context)
         if members is None:
             raise MetadataValidationError(reading.problems)
-        self._adopt(members.document, scope, reading, members)
+        self._adopt(members.document, context, reading, members)
 
     @classmethod
     def _of(
@@ -688,10 +688,10 @@ class ZarrV2ArrayMetadata(Keyed):
         in `context`. The existing reading is reused when `context` reads
         every claim identically.
         """
-        scope = scoped(context, CORE_V2)
-        if scope.disagreements(self.claims).agrees:
-            return self._of(self._document, scope, self._reading, self._members)
-        return type(self)(self._document, context=scope)
+        context = scoped(context, CORE_V2)
+        if context.disagreements(self.claims).agrees:
+            return self._of(self._document, context, self._reading, self._members)
+        return type(self)(self._document, context=context)
 
     def refined_in(self, context: ZarrV2Context | None = None) -> ZarrV2ArrayMetadata:
         """Return this document read in `context`. `context` may claim names this scope left unclaimed, but must not contradict any claim.
@@ -702,11 +702,11 @@ class ZarrV2ArrayMetadata(Keyed):
         in the document. Raises `MetadataValidationError` when a definition
         that `context` claims rejects what was written.
         """
-        scope = scoped(context, CORE_V2)
-        found = scope.disagreements(self.claims)
+        context = scoped(context, CORE_V2)
+        found = context.disagreements(self.claims)
         if len(found.conflicts) != 0:
             raise ScopeConflictError(located_conflicts(self._reading.fields(), found.conflicts))
-        return self.with_context(scope)
+        return self.with_context(context)
 
     def refines(self, other: ZarrV2ArrayMetadata) -> bool:
         """Whether this model holds everything `other` holds. Each field must refine its counterpart. A `null` compressor or `null` filters refine only a `null`. Every other member must be the same, with the fill value compared in the spelling of the more informed dtype. If that dtype rejects the other model's fill value, this is not a refinement."""

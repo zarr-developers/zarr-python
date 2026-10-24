@@ -48,13 +48,13 @@ PRIVATE = CORE.extended_with(MY_BYTES)
 INLINE: dict[str, Any] = {"kind": "inline", "must_understand": False}
 
 
-def _group(scope: Context | None = None, **entries: object) -> ZarrV3GroupMetadata:
+def _group(context: Context | None = None, **entries: object) -> ZarrV3GroupMetadata:
     member: Any = {**INLINE, "metadata": entries}
-    return ZarrV3GroupMetadata.create_default(context=scope, consolidated_metadata=member)
+    return ZarrV3GroupMetadata.create_default(context=context, consolidated_metadata=member)
 
 
 @pytest.mark.parametrize(
-    ("scope", "child", "beside", "gained"),
+    ("context", "child", "beside", "gained"),
     [
         (CORE_AND_EXTENSIONS, ZarrV3ArrayMetadata(ARRAY), {}, False),
         (CORE_AND_EXTENSIONS, ZarrV3ArrayMetadata(ARRAY, context=CORE), {}, False),
@@ -82,26 +82,26 @@ def _group(scope: Context | None = None, **entries: object) -> ZarrV3GroupMetada
     ids=["same-scope", "unused-definitions", "gain", "nested-models", "model-in-a-document"],
 )
 def test_a_model_is_accepted_as_a_consolidated_entry_when_it_refines_into_the_scope(
-    scope: Context,
+    context: Context,
     child: ZarrV3ArrayMetadata | ZarrV3GroupMetadata | dict[str, Any],
     beside: dict[str, Any],
     gained: bool,
 ) -> None:
     """A node model can be given wherever consolidated metadata lists a document: at the top level, or inside a document listed there. The model is accepted in two cases. If the group's scope reads every claim of the model identically, the model's reading is kept and not read again. If the group's scope claims something that the model's scope left unclaimed, the model's document is read again in the group's scope. In both cases the group holds the model in its own scope, equals the group built from the documents, and writes plain JSON. A listed group's own listing is listed flat next to it, as the convention asks."""
-    group = _group(scope, a=child, **beside)
+    group = _group(context, a=child, **beside)
     held = group.consolidated_metadata
     assert isinstance(held, ZarrV3ConsolidatedMetadata)
     node = held.metadata["a"]
     assert node.context is group.context
     if isinstance(child, dict):
-        child = ZarrV3GroupMetadata(_documents(child), context=scope)
+        child = ZarrV3GroupMetadata(_documents(child), context=context)
     assert cast("Any", node).refines(child)
     assert (node == child) is not gained
     if not gained and isinstance(child, ZarrV3ArrayMetadata):
         assert isinstance(node, ZarrV3ArrayMetadata)
         assert node.reading.pipeline is child.reading.pipeline
     written = {path: _documents(entry) for path, entry in beside.items()}
-    assert group == _group(scope, a=child.to_json(), **written)
+    assert group == _group(context, a=child.to_json(), **written)
     assert is_group_metadata_v3(group.to_json())
 
 
@@ -197,8 +197,8 @@ def test_children_of_different_scopes_consolidate_in_their_join() -> None:
     """Children read in different scopes are consolidated in the scope `Context.joined` builds from their scopes. Each child refines into the joined scope, and the group reads in it."""
     a = ZarrV3ArrayMetadata(ARRAY, context=CORE)
     b = ZarrV3ArrayMetadata(WITH_ZSTD, context=CORE_AND_EXTENSIONS)
-    scope = Context.joined(a.context, b.context)
-    group = _group(scope, a=a, b=b)
+    context = Context.joined(a.context, b.context)
+    group = _group(context, a=a, b=b)
     assert group.context == CORE_AND_EXTENSIONS
     held = group.consolidated_metadata
     assert isinstance(held, ZarrV3ConsolidatedMetadata)

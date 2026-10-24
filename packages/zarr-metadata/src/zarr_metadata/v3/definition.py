@@ -10,9 +10,9 @@ definition is, how a field is read, and the scope type `Context` are in
 `CORE_AND_EXTENSIONS` are the v3 scopes this package provides.
 
 A scope reads whole documents as well as fields.
-`validate_array_metadata_v3(document, context=SCOPE)`, from
+`validate_array_metadata_v3(document, context=CONTEXT)`, from
 `zarr_metadata.model`, reads each extension point of a v3 array document
-through the definitions in `SCOPE`, and so do the model's `from_json` and
+through the definitions in `CONTEXT`, and so do the model's `from_json` and
 `from_key_value`. The fill value is checked against the data type it
 names, by that data type's definition. The chunk grid is checked against
 the shape, by the grid's definition. The codecs are checked as a

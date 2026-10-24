@@ -644,17 +644,17 @@ ACME_X = CodecDefinition(
 
 def test_group_update_keeps_the_documents_it_holds() -> None:
     """`update` does not read the consolidated documents again: a child read in an extended scope keeps each field as it was read, and the group keeps its scope."""
-    scope = CORE_AND_EXTENSIONS.extended_with(ACME_X)
+    context = CORE_AND_EXTENSIONS.extended_with(ACME_X)
     child = ZarrV3ArrayMetadata.create_default(
-        context=scope, shape=(4,), codecs=(LITTLE, {"name": "acme.x"})
+        context=context, shape=(4,), codecs=(LITTLE, {"name": "acme.x"})
     )
     group = ZarrV3GroupMetadata.create_default(
-        context=scope,
+        context=context,
         consolidated_metadata={**_INLINE_ENVELOPE, "metadata": {"a": child.to_json()}},
     )
     updated = group.update(attributes={"k": 1})
     assert updated.attributes == {"k": 1}
-    assert updated.context == scope
+    assert updated.context == context
     assert updated.consolidated_metadata == group.consolidated_metadata
 
 
@@ -901,12 +901,12 @@ def test_each_document_its_consolidated_metadata_holds_is_read_once() -> None:
         reads.append(configuration)
         yield from ()
 
-    scope = CORE_AND_EXTENSIONS.extended_with(dataclasses.replace(GZIP_CODEC, rules=counted))
+    context = CORE_AND_EXTENSIONS.extended_with(dataclasses.replace(GZIP_CODEC, rules=counted))
     array = _array(codecs=[LITTLE, {"name": "gzip", "configuration": {"level": 5}}])
     group = _group(consolidated_metadata=_inline(a=array))
-    assert read_group_metadata_v3(group, context=scope).problems == ()
+    assert read_group_metadata_v3(group, context=context).problems == ()
     assert reads == [{"level": 5}]
-    ZarrV3GroupMetadata.from_json(group, context=scope)
+    ZarrV3GroupMetadata.from_json(group, context=context)
     assert len(reads) == 2
 
 

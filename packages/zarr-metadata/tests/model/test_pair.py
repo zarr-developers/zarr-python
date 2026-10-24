@@ -404,8 +404,8 @@ def test_a_group_reads_each_nested_field_once() -> None:
         calls.append(1)
         return iter(())
 
-    scope = CORE.extended_with(dataclasses.replace(BYTES_CODEC, rules=counted))
-    ZarrV3GroupMetadata(CONSOLIDATED, context=scope)
+    context = CORE.extended_with(dataclasses.replace(BYTES_CODEC, rules=counted))
+    ZarrV3GroupMetadata(CONSOLIDATED, context=context)
     assert len(calls) == 3  # `a`, `b/c`, and `c` in `b`'s own listing, each one bytes codec
 
 
@@ -539,26 +539,26 @@ def test_a_models_reading_holds_the_model_and_with_context_moves_the_whole_tree(
     for path, node in nested.metadata.items():
         assert group.reading.consolidated[path].metadata is node
         assert node.reading.metadata is node
-    scope = CORE.extended_with(ZSTD_CODEC)
-    moved = group.with_context(scope)
+    context = CORE.extended_with(ZSTD_CODEC)
+    moved = group.with_context(context)
     assert moved.reading is not group.reading
     held = moved.consolidated_metadata
     assert isinstance(held, ZarrV3ConsolidatedMetadata)
-    assert held.context is scope
+    assert held.context is context
     before = nested.metadata["a"]
     after = held.metadata["a"]
     assert isinstance(before, ZarrV3ArrayMetadata)
     assert isinstance(after, ZarrV3ArrayMetadata)
     assert after.reading.pipeline is before.reading.pipeline  # not read again
     for node in held.metadata.values():
-        assert node.context is scope
+        assert node.context is context
         assert node.reading.metadata is node
     inner = held.metadata["b"]
     assert isinstance(inner, ZarrV3GroupMetadata)
     innermost = inner.consolidated_metadata
     assert isinstance(innermost, ZarrV3ConsolidatedMetadata)
-    assert innermost.context is scope
-    assert innermost.metadata["c"].context is scope
+    assert innermost.context is context
+    assert innermost.metadata["c"].context is context
     assert innermost.metadata["c"].reading.metadata is innermost.metadata["c"]
 
 

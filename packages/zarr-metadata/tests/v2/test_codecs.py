@@ -18,7 +18,7 @@ from zarr_metadata.definition import (
 from zarr_metadata.v2.codec import CODECS_V2, ZarrV2CodecMetadata
 from zarr_metadata.v2.definition import ZarrV2CodecDefinition
 
-SCOPE = Context.of(*CODECS_V2)
+CONTEXT = Context.of(*CODECS_V2)
 Loc = tuple[str | int, ...]
 
 # The output of numcodecs 0.16.5 `get_config()` for a default instance, where one exists.
@@ -67,7 +67,7 @@ def test_every_example_reads_and_is_written_back_as_it_was(
     name: str, field: ZarrV2CodecMetadata
 ) -> None:
     """A numcodecs configuration is read by the definition its `id` names, with no problem, and is written back unchanged: the `id` next to the parameters. Each parameter has only one spelling, so the canonical form is the same."""
-    resolved, problems = resolve(field, ZarrV2CodecDefinition, SCOPE)
+    resolved, problems = resolve(field, ZarrV2CodecDefinition, CONTEXT)
     assert isinstance(resolved, AcceptedField)
     assert resolved.definition.name == name
     assert problems == ()
@@ -81,7 +81,7 @@ def test_every_example_reads_and_is_written_back_as_it_was(
 )
 def test_an_id_the_package_does_not_model_is_unclaimed(field: dict[str, Any]) -> None:
     """A codec id that no definition in scope claims is read as `UnclaimedField`. Its parameters are kept and not checked, as for an unclaimed v3 extension."""
-    resolved, problems = resolve(field, ZarrV2CodecDefinition, SCOPE)
+    resolved, problems = resolve(field, ZarrV2CodecDefinition, CONTEXT)
     assert isinstance(resolved, UnclaimedField)
     assert problems == ()
     assert json.dumps(resolved.to_json()) == json.dumps(field)
@@ -120,6 +120,6 @@ def test_error_a_parameter_outside_what_numcodecs_takes_is_a_problem(
     field: dict[str, Any], at: Loc, kind: str
 ) -> None:
     """Each of these is reported at the parameter's location inside the field: a parameter out of its range, a parameter of the wrong type, a parameter that is missing when numcodecs has no default for it, a dtype parameter that is not a typestr, and a key that no codec declares."""
-    resolved, problems = resolve(field, ZarrV2CodecDefinition, SCOPE, ("c",))
+    resolved, problems = resolve(field, ZarrV2CodecDefinition, CONTEXT, ("c",))
     assert [(p.loc, p.kind) for p in problems] == [(at, kind)]
     assert isinstance(resolved, AcceptedField if kind == "unknown_key" else RefusedField)

@@ -158,8 +158,8 @@ def _problems(key: str, field: object) -> list[tuple[tuple[str | int, ...], str]
 def test_a_scope_s_definitions_pickle() -> None:
     # This lets a scope be sent to another process and rebuilt there.
     definitions = pickle.loads(pickle.dumps(CORE_AND_EXTENSIONS.definitions()))
-    scope = Context.of(*definitions)
-    resolved, _ = resolve("complex64", DataTypeDefinition, scope)
+    context = Context.of(*definitions)
+    resolved, _ = resolve("complex64", DataTypeDefinition, context)
     assert [(p.loc, p.kind) for p in fill_value_problems(resolved, [1, "x"])] == [
         ((1,), "invalid_value")
     ]
@@ -348,13 +348,13 @@ def test_a_reader_reads_raw_bits_its_own_way_by_defining_r_star() -> None:
     # name. If the package's own definition is filed again after it, the
     # package's definition reads them again.
     mine = DataTypeDefinition(name="r*", configuration=RawBytesConfiguration)
-    scope = CORE_AND_EXTENSIONS.extended_with(mine)
-    resolved, problems = resolve("r12", DataTypeDefinition, scope)
+    context = CORE_AND_EXTENSIONS.extended_with(mine)
+    resolved, problems = resolve("r12", DataTypeDefinition, context)
     assert problems == ()
     assert isinstance(resolved, AcceptedField)
     assert resolved.definition is mine
     # The package's own definition does not accept 12 bits, and refuses them.
-    again, _ = resolve("r12", DataTypeDefinition, scope.extended_with(RAW_BYTES_DATA_TYPE))
+    again, _ = resolve("r12", DataTypeDefinition, context.extended_with(RAW_BYTES_DATA_TYPE))
     assert isinstance(again, RefusedField)
     assert again.definition is RAW_BYTES_DATA_TYPE
 

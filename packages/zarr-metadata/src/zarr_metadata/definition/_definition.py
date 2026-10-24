@@ -87,7 +87,7 @@ C = TypeVar("C", default=Mapping[str, JSONValue])
 
 Any configuration is a `Mapping[str, JSONValue]`. That is the default when
 a kind is written without a type argument:
-`resolve(field, CodecDefinition, scope)` is typed as
+`resolve(field, CodecDefinition, context)` is typed as
 `CodecDefinition[Mapping[str, JSONValue]]`, with no unknown types.
 """
 

@@ -185,8 +185,8 @@ def node_metadata_json_schema_v3(*, context: ZarrV3Context | None = None) -> JSO
     arrays as lists. A model's `to_json` returns tuples, and a Python
     validator does not accept tuples as arrays.
     """
-    scope = scoped(context, CORE_AND_EXTENSIONS)
-    schemas = Schemas(_documents(scope))
+    context = scoped(context, CORE_AND_EXTENSIONS)
+    schemas = Schemas(_documents(context))
     array = schemas.of(ZarrV3ArrayMetadataJSON)
     group = schemas.of(ZarrV3GroupMetadataJSON)
     return schemas.document({"anyOf": [array, group]})

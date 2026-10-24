@@ -58,20 +58,20 @@ def test_a_subclass_of_a_kind_is_a_definition_of_that_kind() -> None:
     """A definition built as a subclass of `CodecDefinition` is filed, read and named as a codec: the kind is the nearest class in the MRO declared with `kind=True`, not the class of the definition itself."""
     mine = MyCodec(name="mine", configuration=EmptyConfiguration, kind="bytes_bytes", size="static")
     assert kind_of(mine) is CodecDefinition
-    scope = Context.of(mine)
-    assert scope.claimant(CodecDefinition, "mine") is mine
-    assert isinstance(resolve({"name": "mine"}, CodecDefinition, scope)[0], AcceptedField)
+    context = Context.of(mine)
+    assert context.claimant(CodecDefinition, "mine") is mine
+    assert isinstance(resolve({"name": "mine"}, CodecDefinition, context)[0], AcceptedField)
 
 
 def test_a_kind_of_its_own_is_filed_apart() -> None:
     """A class declared with `kind=True` is a kind. `as_kind` accepts it with or without type arguments. A scope files its definitions apart from every other kind's definitions. Scopes compare equal by the definitions they file. Messages name the kind by its label."""
     tag = Tag(name="tag1", configuration=EmptyConfiguration)
-    scope = Context.of(tag, GZIP_CODEC)
+    context = Context.of(tag, GZIP_CODEC)
     assert as_kind(Tag) is Tag
     assert as_kind(Tag[Any]) is Tag
-    assert scope.claimant(Tag, "tag1") is tag
-    assert scope.claimant(CodecDefinition, "tag1") is None
-    assert scope == Context.of(GZIP_CODEC, tag)
+    assert context.claimant(Tag, "tag1") is tag
+    assert context.claimant(CodecDefinition, "tag1") is None
+    assert context == Context.of(GZIP_CODEC, tag)
     assert kind_name(Tag) == "tag"
     assert kind_name(CodecDefinition) == "codec"
 
@@ -286,12 +286,14 @@ def test_a_kind_may_yield_its_envelope_problems() -> None:
         kind=GZIP_CODEC.kind,
         size=GZIP_CODEC.size,
     )
-    scope = Context.of(lazy)
-    read, problems = resolve({"name": "gzip", "configuration": {"level": 1}}, _LazyEnvelope, scope)
+    context = Context.of(lazy)
+    read, problems = resolve(
+        {"name": "gzip", "configuration": {"level": 1}}, _LazyEnvelope, context
+    )
     assert isinstance(read, AcceptedField)
     assert problems == ()
     refused, problems = resolve(
-        {"name": "gzip", "configuration": 5}, _LazyEnvelope, scope, ("codecs", 0)
+        {"name": "gzip", "configuration": 5}, _LazyEnvelope, context, ("codecs", 0)
     )
     assert isinstance(refused, RefusedField)
     assert [(found.loc, found.kind) for found in problems] == [
