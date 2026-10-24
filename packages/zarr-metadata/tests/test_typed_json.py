@@ -20,6 +20,7 @@ from collections.abc import Mapping
 from typing import (
     TYPE_CHECKING,
     Annotated,
+    Final,
     Generic,
     Literal,
     NewType,
@@ -1211,8 +1212,12 @@ def test_error_check_refuses_a_value_of_another_type() -> None:
     assert [(problem.loc, problem.kind) for problem in problems] == [(("level",), "invalid_type")]
 
 
+_NOT_DOCUMENTS: Final = frozenset({"ZarrV3ContextSlots", "ZarrV2ContextSlots"})
+"""TypedDicts that describe no document: the keyword arguments of a scope class, which hold definitions, not JSON."""
+
+
 def _declared_typeddicts() -> list[type]:
-    """Every TypedDict exported by a public module of the package's JSON types or of its definitions."""
+    """Every TypedDict that describes a document, exported by a public module of the package's JSON types or of its definitions."""
     found: dict[type, None] = {}
     for package in (zarr_metadata.definition, zarr_metadata.v2, zarr_metadata.v3):
         modules = [package.__name__] + [
@@ -1224,7 +1229,11 @@ def _declared_typeddicts() -> list[type]:
             module = importlib.import_module(name)
             for exported in getattr(module, "__all__", ()):
                 value = getattr(module, exported)
-                if isinstance(value, type) and is_typeddict(value):
+                if (
+                    isinstance(value, type)
+                    and is_typeddict(value)
+                    and exported not in _NOT_DOCUMENTS
+                ):
                     found[value] = None
     return list(found)
 

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
-from zarr_metadata.definition._context import Slots
+from typing_extensions import TypedDict, Unpack
+
+from zarr_metadata.definition._context import Slots, slot_kinds
 from zarr_metadata.v3._definition import (
     ArrayExtraFieldDefinition,
     ChunkGridDefinition,
@@ -17,72 +19,67 @@ from zarr_metadata.v3._definition import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Mapping
 
     from zarr_metadata.definition._definition import D, Definition
     from zarr_metadata.definition._scope import Claims, Disagreements
+
+
+class ZarrV3ContextSlots(TypedDict, total=False, closed=True):
+    """The definitions in each slot of a v3 scope, as `ZarrV3Context` and its `extended_with` take them.
+
+    This is where a v3 scope's slots are declared: each key is a slot,
+    and its value the definitions of the kind that slot holds.
+    `ZarrV3Context.kinds` is read from these annotations, so a type
+    checker checks every slot a caller names, and every definition given
+    in it.
+    """
+
+    data_types: Iterable[DataTypeDefinition[Any]]
+    """Data types, read from `data_type`."""
+    chunk_grids: Iterable[ChunkGridDefinition[Any]]
+    """Chunk grids, read from `chunk_grid`."""
+    chunk_key_encodings: Iterable[ChunkKeyEncodingDefinition[Any]]
+    """Chunk key encodings, read from `chunk_key_encoding`."""
+    codecs: Iterable[CodecDefinition[Any]]
+    """Codecs, read from `codecs` and from the codecs a codec holds."""
+    storage_transformers: Iterable[StorageTransformerDefinition[Any]]
+    """Storage transformers, read from `storage_transformers`."""
+    array_extra_fields: Iterable[ArrayExtraFieldDefinition[Any]]
+    """Members of an array document that the spec does not define, by key."""
+    group_extra_fields: Iterable[GroupExtraFieldDefinition[Any]]
+    """Members of a group document that the spec does not define, by key."""
 
 
 class ZarrV3Context:
     """A scope that reads Zarr v3 documents. Every v3 reader takes one.
 
     It implements `Context`, and has one slot for each kind of field a v3
-    document holds. The slots for the spec's extension points are named
-    like the document member that holds such fields: `data_types`,
-    `chunk_grids`, `chunk_key_encodings`, `codecs` and
-    `storage_transformers`. `array_extra_fields` and `group_extra_fields`
-    hold the definitions of members the spec does not define, by key. The
-    constructor takes an iterable of definitions for each slot, and each
-    slot is a read-only mapping from the name each definition is filed
-    under (`r*` for raw bits) to the definition. A definition of another
-    kind than its slot holds raises `TypeError`, and two different
-    definitions under one name in a slot raise `ScopeConflictError`. To
-    replace a definition, use `extended_with`. `ZarrV3Context()` is the
-    scope that claims nothing. Two scopes are equal when they file the same
-    definitions in each slot, and equal scopes have equal hashes.
+    document holds, as `ZarrV3ContextSlots` declares them. The slots for
+    the spec's extension points are named like the document member that
+    holds such fields: `data_types`, `chunk_grids`, `chunk_key_encodings`,
+    `codecs` and `storage_transformers`. `array_extra_fields` and
+    `group_extra_fields` hold the definitions of members the spec does not
+    define, by key. The constructor takes an iterable of definitions for
+    each slot, and each slot is a read-only mapping from the name each
+    definition is filed under (`r*` for raw bits) to the definition. A
+    definition of another kind than its slot holds raises `TypeError`, and
+    two different definitions under one name in a slot raise
+    `ScopeConflictError`. To replace a definition, use `extended_with`.
+    `ZarrV3Context()` is the scope that claims nothing. Two scopes are
+    equal when they file the same definitions in each slot, and equal
+    scopes have equal hashes.
     """
 
     __slots__ = ("_slots",)
 
-    kinds: ClassVar[Mapping[str, type[Definition[Any]]]] = MappingProxyType(
-        {
-            "data_types": DataTypeDefinition,
-            "chunk_grids": ChunkGridDefinition,
-            "chunk_key_encodings": ChunkKeyEncodingDefinition,
-            "codecs": CodecDefinition,
-            "storage_transformers": StorageTransformerDefinition,
-            "array_extra_fields": ArrayExtraFieldDefinition,
-            "group_extra_fields": GroupExtraFieldDefinition,
-        }
-    )
-    """The kind of definition each slot holds, by slot."""
+    kinds: ClassVar[Mapping[str, type[Definition[Any]]]] = slot_kinds(ZarrV3ContextSlots)
+    """The kind of definition each slot holds, by slot, as `ZarrV3ContextSlots` declares them."""
 
     _slots: Slots
 
-    def __init__(
-        self,
-        *,
-        data_types: Iterable[DataTypeDefinition[Any]] = (),
-        chunk_grids: Iterable[ChunkGridDefinition[Any]] = (),
-        chunk_key_encodings: Iterable[ChunkKeyEncodingDefinition[Any]] = (),
-        codecs: Iterable[CodecDefinition[Any]] = (),
-        storage_transformers: Iterable[StorageTransformerDefinition[Any]] = (),
-        array_extra_fields: Iterable[ArrayExtraFieldDefinition[Any]] = (),
-        group_extra_fields: Iterable[GroupExtraFieldDefinition[Any]] = (),
-    ) -> None:
-        self._slots = Slots.of(
-            self.kinds,
-            {
-                "data_types": data_types,
-                "chunk_grids": chunk_grids,
-                "chunk_key_encodings": chunk_key_encodings,
-                "codecs": codecs,
-                "storage_transformers": storage_transformers,
-                "array_extra_fields": array_extra_fields,
-                "group_extra_fields": group_extra_fields,
-            },
-            3,
-        )
+    def __init__(self, **slots: Unpack[ZarrV3ContextSlots]) -> None:
+        self._slots = Slots.of(self.kinds, slots, 3)
 
     @classmethod
     def _of(cls, slots: Slots) -> ZarrV3Context:
@@ -104,47 +101,37 @@ class ZarrV3Context:
     @property
     def data_types(self) -> Mapping[str, DataTypeDefinition[Any]]:
         """The data type definitions in scope, by the name each is filed under (`r*` for raw bits)."""
-        return cast("Mapping[str, DataTypeDefinition[Any]]", self._slots.tables["data_types"])
+        return self.definitions_of(DataTypeDefinition)
 
     @property
     def chunk_grids(self) -> Mapping[str, ChunkGridDefinition[Any]]:
         """The chunk grid definitions in scope, by name."""
-        return cast("Mapping[str, ChunkGridDefinition[Any]]", self._slots.tables["chunk_grids"])
+        return self.definitions_of(ChunkGridDefinition)
 
     @property
     def chunk_key_encodings(self) -> Mapping[str, ChunkKeyEncodingDefinition[Any]]:
         """The chunk key encoding definitions in scope, by name."""
-        return cast(
-            "Mapping[str, ChunkKeyEncodingDefinition[Any]]",
-            self._slots.tables["chunk_key_encodings"],
-        )
+        return self.definitions_of(ChunkKeyEncodingDefinition)
 
     @property
     def codecs(self) -> Mapping[str, CodecDefinition[Any]]:
         """The codec definitions in scope, by name."""
-        return cast("Mapping[str, CodecDefinition[Any]]", self._slots.tables["codecs"])
+        return self.definitions_of(CodecDefinition)
 
     @property
     def storage_transformers(self) -> Mapping[str, StorageTransformerDefinition[Any]]:
         """The storage transformer definitions in scope, by name."""
-        return cast(
-            "Mapping[str, StorageTransformerDefinition[Any]]",
-            self._slots.tables["storage_transformers"],
-        )
+        return self.definitions_of(StorageTransformerDefinition)
 
     @property
     def array_extra_fields(self) -> Mapping[str, ArrayExtraFieldDefinition[Any]]:
         """The definitions of members of an array document that the spec does not define, by key."""
-        return cast(
-            "Mapping[str, ArrayExtraFieldDefinition[Any]]", self._slots.tables["array_extra_fields"]
-        )
+        return self.definitions_of(ArrayExtraFieldDefinition)
 
     @property
     def group_extra_fields(self) -> Mapping[str, GroupExtraFieldDefinition[Any]]:
         """The definitions of members of a group document that the spec does not define, by key."""
-        return cast(
-            "Mapping[str, GroupExtraFieldDefinition[Any]]", self._slots.tables["group_extra_fields"]
-        )
+        return self.definitions_of(GroupExtraFieldDefinition)
 
     def definitions_of(self, kind: type[D]) -> Mapping[str, D]:
         """The definitions of `kind` in scope, by the name each is filed under: the slot that holds `kind`. Empty for a kind that no slot holds, such as a kind of the other format."""
@@ -163,37 +150,14 @@ class ZarrV3Context:
         """The places where this scope reads `claims` (a reading's claims) differently: the names it would gain and the names it conflicts with, as described by `Disagreements`. A claim is keyed by the name its definition is filed under, so it is looked up by that name."""
         return self._slots.disagreements(claims)
 
-    def extended_with(
-        self,
-        *,
-        data_types: Iterable[DataTypeDefinition[Any]] = (),
-        chunk_grids: Iterable[ChunkGridDefinition[Any]] = (),
-        chunk_key_encodings: Iterable[ChunkKeyEncodingDefinition[Any]] = (),
-        codecs: Iterable[CodecDefinition[Any]] = (),
-        storage_transformers: Iterable[StorageTransformerDefinition[Any]] = (),
-        array_extra_fields: Iterable[ArrayExtraFieldDefinition[Any]] = (),
-        group_extra_fields: Iterable[GroupExtraFieldDefinition[Any]] = (),
-    ) -> ZarrV3Context:
+    def extended_with(self, **slots: Unpack[ZarrV3ContextSlots]) -> ZarrV3Context:
         """This scope, plus definitions of your own, each in its slot.
 
         A definition given here replaces any definition already filed in
         its slot under the same name. This is how a reader substitutes its
         own reading of a definition the package already defines.
         """
-        return self._of(
-            self._slots.extended(
-                {
-                    "data_types": data_types,
-                    "chunk_grids": chunk_grids,
-                    "chunk_key_encodings": chunk_key_encodings,
-                    "codecs": codecs,
-                    "storage_transformers": storage_transformers,
-                    "array_extra_fields": array_extra_fields,
-                    "group_extra_fields": group_extra_fields,
-                },
-                3,
-            )
-        )
+        return self._of(self._slots.extended(slots, 3))
 
     @classmethod
     def joined(cls, *contexts: ZarrV3Context) -> ZarrV3Context:
@@ -234,4 +198,4 @@ class ZarrV3Context:
         return hash((ZarrV3Context, self._slots))
 
 
-__all__ = ["ZarrV3Context"]
+__all__ = ["ZarrV3Context", "ZarrV3ContextSlots"]

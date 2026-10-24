@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Final
 
-from zarr_metadata.v2._context import ZarrV2Context
+from zarr_metadata.v2._context import ZarrV2Context, ZarrV2ContextSlots
 from zarr_metadata.v2._definition import (
     ZarrV2CodecDefinition,
     ZarrV2DataTypeDefinition,
@@ -45,6 +45,7 @@ __all__ = [
     "CORE_V2",
     "ZarrV2CodecDefinition",
     "ZarrV2Context",
+    "ZarrV2ContextSlots",
     "ZarrV2DataTypeDefinition",
     "ZarrV2DataTypeField",
 ]

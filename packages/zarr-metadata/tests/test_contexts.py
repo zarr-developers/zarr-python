@@ -8,12 +8,14 @@ import pickle
 from typing import Any
 
 import pytest
+from typing_extensions import TypedDict
 
 from zarr_metadata.definition import Context, ScopeConflictError, UnclaimedField, resolve
+from zarr_metadata.definition._context import slot_kinds
 from zarr_metadata.v2 import CORE_V2, GZIP_V2, ZarrV2Context
-from zarr_metadata.v2.definition import ZarrV2CodecDefinition
+from zarr_metadata.v2.definition import ZarrV2CodecDefinition, ZarrV2ContextSlots
 from zarr_metadata.v3 import CORE, GZIP_CODEC, ZarrV3Context
-from zarr_metadata.v3.definition import CodecDefinition
+from zarr_metadata.v3.definition import CodecDefinition, ZarrV3ContextSlots
 
 
 def _other(definition: Any) -> Any:  # noqa: ANN401 - a definition of either format
@@ -83,3 +85,23 @@ def test_error_a_slot_refuses_a_definition_of_the_other_format(
     other = GZIP_V2 if zarr_format == 3 else GZIP_CODEC
     with pytest.raises(TypeError, match="codecs holds"):
         cls(codecs=[other])
+
+
+@pytest.mark.parametrize("cls", [ZarrV3Context, ZarrV2Context], ids=["v3", "v2"])
+def test_each_declared_slot_has_a_view(cls: Any) -> None:  # noqa: ANN401 - either scope class
+    """Each scope class reads its slots from its `...Slots` TypedDict, so the slots are declared once. Each slot has a view of the same name, which is the slot that holds its kind: a type checker cannot match a view's name to a declared slot, so this test does."""
+    slots_type = ZarrV3ContextSlots if cls is ZarrV3Context else ZarrV2ContextSlots
+    assert list(cls.kinds) == list(slots_type.__annotations__)
+    scope = CORE if cls is ZarrV3Context else CORE_V2
+    for slot, kind in cls.kinds.items():
+        assert getattr(scope, slot) == scope.definitions_of(kind)
+
+
+def test_error_a_slot_is_declared_as_an_iterable_of_a_kind() -> None:
+    """`slot_kinds` reads a slot's kind from its annotation, `Iterable[K]`. Any other annotation raises `TypeError` when the scope class is defined, so a wrong declaration cannot pass unnoticed."""
+
+    class Wrong(TypedDict, total=False):
+        codecs: list[CodecDefinition[Any]]
+
+    with pytest.raises(TypeError, match=r"Wrong\.codecs: a slot is annotated Iterable\[K\]"):
+        slot_kinds(Wrong)

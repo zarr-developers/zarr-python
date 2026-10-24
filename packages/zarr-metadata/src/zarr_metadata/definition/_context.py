@@ -12,9 +12,10 @@ format has, and leaves the filing, lookups, equality and pickling to it.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, cast, get_args, get_origin, get_type_hints
 
 from typing_extensions import TypeVar
 
@@ -34,7 +35,7 @@ from zarr_metadata.definition._scope import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Mapping, Sequence
 
     from zarr_metadata.definition._definition import D
     from zarr_metadata.definition._scope import Claims, Disagreements
@@ -172,6 +173,22 @@ class Slots:
         return self._hash
 
 
+def slot_kinds(slots: type) -> Mapping[str, type[Definition[Any]]]:
+    """The kind each slot of a scope holds, read from `slots`: the TypedDict a scope's constructor takes, whose keys are the slots, each annotated `Iterable[K]` for a kind `K`. A scope class derives its slots from it, so they are declared once.
+
+    Raises `TypeError` for a member that is not an iterable of a kind,
+    when the scope class is defined.
+    """
+    kinds: dict[str, type[Definition[Any]]] = {}
+    for slot, annotation in get_type_hints(slots).items():
+        arguments = get_args(annotation)
+        if get_origin(annotation) is not Iterable or len(arguments) != 1:
+            msg = f"{slots.__name__}.{slot}: a slot is annotated Iterable[K] for a kind K, got {annotation!r}"
+            raise TypeError(msg)
+        kinds[slot] = as_kind(arguments[0])
+    return MappingProxyType(kinds)
+
+
 def _misfiled(slot: str, kind: type[Definition[Any]], value: object) -> str | None:
     """Why `value` does not belong in `slot`, which holds definitions of `kind`; None when it does. `value` is checked as a value of any type, for a caller without a type checker."""
     found = kind_of(value)
@@ -202,4 +219,5 @@ def scoped(context: Context | None, default: C) -> C:
 __all__ = [
     "Slots",
     "scoped",
+    "slot_kinds",
 ]

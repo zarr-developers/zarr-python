@@ -101,7 +101,7 @@ from zarr_metadata.v3._common import (
     ZarrV3StaticCodecField,
     ZarrV3StorageTransformerField,
 )
-from zarr_metadata.v3._context import ZarrV3Context
+from zarr_metadata.v3._context import ZarrV3Context, ZarrV3ContextSlots
 from zarr_metadata.v3._core import CORE, CORE_AND_EXTENSIONS
 from zarr_metadata.v3._definition import (
     ArrayExtraFieldDefinition,
@@ -142,6 +142,7 @@ __all__ = [
     "ZarrV3ChunkKeyEncodingField",
     "ZarrV3CodecField",
     "ZarrV3Context",
+    "ZarrV3ContextSlots",
     "ZarrV3DataTypeField",
     "ZarrV3StaticCodecField",
     "ZarrV3StorageTransformerField",
