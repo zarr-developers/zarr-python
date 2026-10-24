@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from zarr_metadata.model import (
+    UNSET,
     ZarrV2ArrayMetadata,
     ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
@@ -41,7 +42,7 @@ ARRAY = ZarrV3ArrayMetadata.create_default(
     shape=(4,),
     attributes={"a": [1, None]},
     dimension_names=("x",),
-    acme={"must_understand": False},
+    extra_fields={"acme": {"must_understand": False}},
 )
 GROUP = ZarrV3GroupMetadata.from_json(
     {
@@ -147,7 +148,8 @@ def test_a_v3_model_shares_no_container_with_what_it_was_built_of(
 ) -> None:
     """A model holds copies of the containers passed to `update`. Changing those containers afterwards does not change the model."""
     held: dict[str, object] = {"must_understand": False, "z": {"y": 1}}
-    built = cast("Any", model).update(**{member: held})
+    changes = {"attributes": held} if member == "attributes" else {"extra_fields": {member: held}}
+    built = cast("Any", model).update(**changes)
     held["w"] = math.nan
     cast("dict[str, object]", held["z"])["y"] = math.nan
     expected = {"must_understand": False, "z": {"y": 1}}
@@ -226,7 +228,7 @@ def test_a_model_is_read_when_built_and_written_as_it_is() -> None:
         (ARRAY, {"attributes": None}, [(("attributes",), "invalid_type")]),
         (GROUP, {"attributes": {1: "a"}}, [(("attributes",), "invalid_type")]),
         (GROUP, {"attributes": ()}, [(("attributes",), "invalid_type")]),
-        (GROUP, {"acme": {1: "a"}}, [(("acme",), "invalid_type")]),
+        (GROUP, {"extra_fields": {"acme": {1: "a"}}}, [(("acme",), "invalid_type")]),
     ],
     ids=[
         "fill-value-not-json",
@@ -247,6 +249,52 @@ def test_error_a_v3_model_updated_into_an_invalid_one_is_refused_at_the_change(
     with pytest.raises(MetadataValidationError) as raised:
         cast("Any", model).update(**changes)
     assert [(found.loc, found.kind) for found in raised.value.problems] == problems
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [ZarrV3ArrayMetadata, ZarrV3GroupMetadata, ZarrV2ArrayMetadata],
+    ids=["v3-array", "v3-group", "v2-array"],
+)
+def test_members_the_spec_does_not_define_are_set_and_removed_through_extra_fields(
+    kind: Any,  # noqa: ANN401 - a model class
+) -> None:
+    """`create_default` and `update` take the members the spec does not define in `extra_fields`. Each member given there is set, each given as `UNSET` is removed, and the other members are kept."""
+    added = kind.create_default(
+        extra_fields={"acme.flag": 1, "acme.other": {"must_understand": False}}
+    )
+    assert added.to_json()["acme.flag"] == 1
+    removed = added.update(extra_fields={"acme.flag": UNSET})
+    assert "acme.flag" not in removed.to_json()
+    assert removed.to_json()["acme.other"] == {"must_understand": False}
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [ZarrV3ArrayMetadata, ZarrV3GroupMetadata, ZarrV2ArrayMetadata, ZarrV2GroupMetadata],
+    ids=["v3-array", "v3-group", "v2-array", "v2-group"],
+)
+def test_error_a_member_update_does_not_take_is_refused(kind: Any) -> None:  # noqa: ANN401 - a model class
+    """A misspelled member is a `TypeError` from `create_default` and from `update`. It is never written as a member the spec does not define, which a reader that must understand every member would refuse."""
+    with pytest.raises(TypeError, match="'attribute'"):
+        kind.create_default(attribute={})
+    with pytest.raises(TypeError, match="'attribute'"):
+        kind.create_default().update(attribute={})
+
+
+@pytest.mark.parametrize(
+    ("kind", "member"),
+    [
+        (ZarrV3ArrayMetadata, "shape"),
+        (ZarrV3GroupMetadata, "node_type"),
+        (ZarrV2ArrayMetadata, "dtype"),
+    ],
+    ids=["v3-array", "v3-group", "v2-array"],
+)
+def test_error_extra_fields_refuses_a_member_the_spec_defines(kind: Any, member: str) -> None:  # noqa: ANN401 - a model class
+    """`extra_fields` holds only the members the spec does not define. A member the spec defines is given by its own name, so giving it in `extra_fields` is a `TypeError`."""
+    with pytest.raises(TypeError, match=repr(member)):
+        kind.create_default(extra_fields={member: 1})
 
 
 def test_error_consolidated_metadata_of_documents_at_bad_paths_is_refused() -> None:

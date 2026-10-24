@@ -18,6 +18,7 @@ from zarr_metadata._json import (
     with_input,
     within,
 )
+from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.definition._scope import Conflict, claim_key
 
 if TYPE_CHECKING:
@@ -89,6 +90,41 @@ def other_members(
         if len(found) == 0:
             members[key] = refined
     return members, tuple(problems)
+
+
+def member_changes(
+    members: Mapping[str, object], update: type, spec_members: frozenset[str]
+) -> dict[str, object]:
+    """The document members that `members`, given to a model's `update` or `create_default`, set: each member that `update` (the model's update TypedDict) declares, and each member in its `extra_fields`. A value of `UNSET` removes its member.
+
+    Raises `TypeError` for a member that `update` does not declare, and for
+    a member of `extra_fields` that the spec defines (one of
+    `spec_members`). So a misspelled member is never written as a member
+    the spec does not define, which a reader that must understand every
+    such member would refuse.
+    """
+    declared = typeddict_keys(update).members
+    unknown = [key for key in members if key not in declared]
+    if len(unknown) != 0:
+        names = ", ".join(map(repr, unknown))
+        msg = (
+            f"unknown member {names}: give each member the spec defines by its name, and any "
+            "other member in extra_fields"
+            if "extra_fields" in declared
+            else f"unknown member {names}"
+        )
+        raise TypeError(msg)
+    changes = {key: value for key, value in members.items() if key != "extra_fields"}
+    extra = members.get("extra_fields", {})
+    if not is_object(extra):
+        msg = f"extra_fields maps members to their values, got {extra!r}"
+        raise TypeError(msg)
+    for key, value in extra.items():
+        if not isinstance(key, str) or key in spec_members:
+            msg = f"extra_fields holds members the spec does not define, got {key!r}"
+            raise TypeError(msg)
+        changes[key] = value
+    return changes
 
 
 def _is_int_sequence(value: object) -> TypeGuard[Sequence[int]]:

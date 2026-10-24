@@ -539,11 +539,15 @@ def test_group_partial_keys_match_settable_model_fields() -> None:
 
 
 def test_update_takes_every_member_of_the_document_it_may_change() -> None:
-    """Each v3 model's `update` takes every member of its document except `zarr_format` and `node_type`, which it cannot change. A group's `update` also declares `consolidated_metadata`, which the document type leaves to its extra items, because `update` accepts node models there."""
+    """Each v3 model's `update` takes every member of its document except `zarr_format` and `node_type`, which it cannot change, and `extra_fields`, which holds the members the spec does not define. A group's `update` also declares `consolidated_metadata`, which the document type leaves to its extra items, because `update` accepts node models there."""
     fixed = {"zarr_format", "node_type"}
     for update, partial, declared in (
-        (ZarrV3ArrayMetadataUpdate, ZarrV3ArrayMetadataJSONPartial, set[str]()),
-        (ZarrV3GroupMetadataUpdate, ZarrV3GroupMetadataJSONPartial, {"consolidated_metadata"}),
+        (ZarrV3ArrayMetadataUpdate, ZarrV3ArrayMetadataJSONPartial, {"extra_fields"}),
+        (
+            ZarrV3GroupMetadataUpdate,
+            ZarrV3GroupMetadataJSONPartial,
+            {"consolidated_metadata", "extra_fields"},
+        ),
     ):
         assert set(update.__annotations__) == (set(partial.__annotations__) - fixed) | declared
 
@@ -1271,7 +1275,7 @@ def test_group_must_understand_fields_partition() -> None:
     https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1571-L1573
     """
     model = ZarrV3GroupMetadata.create_default(
-        waived={"name": "w", "must_understand": False}, implicit={"name": "i"}
+        extra_fields={"waived": {"name": "w", "must_understand": False}, "implicit": {"name": "i"}}
     )
     assert set(model.must_understand_fields) == {"implicit"}
 
@@ -1303,7 +1307,7 @@ TO_JSON_NO_ALIASING_PARAMS = [
                     "grp": ZarrV3GroupMetadata.create_default(attributes={"x": {"y": 1}}).to_json(),
                 },
             },
-            ext={"must_understand": False, "cfg": {"x": [1]}},
+            extra_fields={"ext": {"must_understand": False, "cfg": {"x": [1]}}},
         ),
         id="v3-group",
     ),

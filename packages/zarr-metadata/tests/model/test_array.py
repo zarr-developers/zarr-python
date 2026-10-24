@@ -318,7 +318,7 @@ def _written_extra_fields(model: ZarrV3ArrayMetadata) -> dict[str, object]:
 
 def test_v3_extra_fields_merged() -> None:
     """V3 to_json merges extra_fields into the top-level document."""
-    model = ZarrV3ArrayMetadata.create_default(my_ext={"must_understand": False})
+    model = ZarrV3ArrayMetadata.create_default(extra_fields={"my_ext": {"must_understand": False}})
     assert _written_extra_fields(model) == {"my_ext": {"must_understand": False}}
     assert model.to_json()["my_ext"] == {"must_understand": False}
 
@@ -481,7 +481,7 @@ def test_update_no_args_returns_equal_model(
 def test_update_can_add_an_extension_member() -> None:
     """update can add a member the spec does not define, which the model holds in extra_fields."""
     base = ZarrV3ArrayMetadata.create_default()
-    updated = base.update(my_ext={"must_understand": False})
+    updated = base.update(extra_fields={"my_ext": {"must_understand": False}})
     assert _written_extra_fields(updated) == {"my_ext": {"must_understand": False}}
 
 
@@ -504,12 +504,15 @@ def test_update_reads_every_member_in_the_models_own_scope() -> None:
 def test_update_leaves_out_a_member_given_as_unset() -> None:
     """`update` removes each member that a document may omit when it is given as `UNSET`: `dimension_names`, `attributes`, and a member the spec does not define."""
     base = ZarrV3ArrayMetadata.create_default(
-        shape=(2,), dimension_names=("x",), attributes={"a": 1}, my_ext={"must_understand": False}
+        shape=(2,),
+        dimension_names=("x",),
+        attributes={"a": 1},
+        extra_fields={"my_ext": {"must_understand": False}},
     )
     for updated, member in (
         (base.update(dimension_names=UNSET), "dimension_names"),
         (base.update(attributes=UNSET), "attributes"),
-        (base.update(my_ext=UNSET), "my_ext"),
+        (base.update(extra_fields={"my_ext": UNSET}), "my_ext"),
     ):
         written = updated.to_json()
         assert member not in written
@@ -711,9 +714,9 @@ def test_a_model_pickles_and_copies_with_its_definitions() -> None:
 def test_update_replaces_a_member_rather_than_merging_into_it() -> None:
     """update replaces each member it is given whole, and keeps the others."""
     base = ZarrV3ArrayMetadata.create_default(
-        a={"must_understand": False, "x": 1}, b={"must_understand": False}
+        extra_fields={"a": {"must_understand": False, "x": 1}, "b": {"must_understand": False}}
     )
-    updated = base.update(a={"must_understand": False})
+    updated = base.update(extra_fields={"a": {"must_understand": False}})
     assert _written_extra_fields(updated) == {
         "a": {"must_understand": False},
         "b": {"must_understand": False},
@@ -735,6 +738,7 @@ def test_v2_partial_keys_match_settable_model_fields() -> None:
         "filters",
         "dimension_separator",
         "attributes",
+        "extra_fields",
     }
 
 
@@ -814,7 +818,9 @@ def test_v3_from_json_defaults_for_omitted_optionals() -> None:
 
 def test_v3_from_json_routes_unknown_keys_to_extra_fields() -> None:
     """V3 from_json routes unknown top-level keys into extra_fields. No definition in the default scope claims `my_ext`, so it is an `UnclaimedField`, written as the document wrote it."""
-    doc = ZarrV3ArrayMetadata.create_default(my_ext={"must_understand": False}).to_json()
+    doc = ZarrV3ArrayMetadata.create_default(
+        extra_fields={"my_ext": {"must_understand": False}}
+    ).to_json()
     model = ZarrV3ArrayMetadata.from_json(doc)
     assert isinstance(model.extra_fields["my_ext"], UnclaimedField)
     assert _written_extra_fields(model) == {"my_ext": {"must_understand": False}}
@@ -882,7 +888,7 @@ ROUNDTRIP_MODEL_JSON_PARAMS = [
             attributes={"a": 1},
             dimension_names=("x",),
             storage_transformers=({"name": "acme.t"},),
-            ext={"must_understand": False},
+            extra_fields={"ext": {"must_understand": False}},
         ),
         id="v3-full",
     ),
@@ -949,7 +955,7 @@ TO_JSON_NO_ALIASING_PARAMS = [
             # A name that nothing in the scope claims, so reading it checks
             # only the document structure, and its configuration can nest.
             codecs=({"name": "acme.nested", "configuration": {"opts": {"level": 1}}},),
-            ext={"must_understand": False, "cfg": {"x": [1]}},
+            extra_fields={"ext": {"must_understand": False, "cfg": {"x": [1]}}},
         ),
         id="v3",
     ),
@@ -1358,7 +1364,11 @@ V3_DOC_CASES: list[Expect[Callable[[], object], frozenset[tuple[str | int, ...]]
         id="valid-with-attributes-and-dim-names",
     ),
     Expect(
-        lambda: _build_v3(my_ext={"must_understand": False}),
+        lambda: dict(
+            ZarrV3ArrayMetadata.create_default(
+                extra_fields={"my_ext": {"must_understand": False}}
+            ).to_json()
+        ),
         frozenset(),
         id="valid-with-extra-fields",
     ),
@@ -2250,10 +2260,12 @@ def test_must_understand_fields_partition() -> None:
     https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v3/core/index.rst#L1575-L1578
     """
     model = ZarrV3ArrayMetadata.create_default(
-        ext_a={"name": "a", "must_understand": False},
-        ext_b={"name": "b"},
-        ext_c={"name": "c", "must_understand": True},
-        ext_d=123,
+        extra_fields={
+            "ext_a": {"name": "a", "must_understand": False},
+            "ext_b": {"name": "b"},
+            "ext_c": {"name": "c", "must_understand": True},
+            "ext_d": 123,
+        },
     )
     assert set(model.must_understand_fields) == {"ext_b", "ext_c", "ext_d"}
     recognized = {"ext_b"}
@@ -2262,7 +2274,9 @@ def test_must_understand_fields_partition() -> None:
 
 def test_must_understand_fields_empty_when_all_waived() -> None:
     """must_understand_fields is empty when every extra field is explicitly waived."""
-    model = ZarrV3ArrayMetadata.create_default(ext_a={"name": "a", "must_understand": False})
+    model = ZarrV3ArrayMetadata.create_default(
+        extra_fields={"ext_a": {"name": "a", "must_understand": False}}
+    )
     assert model.must_understand_fields == {}
 
 

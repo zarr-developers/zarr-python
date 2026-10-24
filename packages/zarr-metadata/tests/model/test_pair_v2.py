@@ -155,30 +155,29 @@ def test_a_model_round_trips_through_its_document_pickle_and_copy(
 
 
 @pytest.mark.parametrize(
-    ("changes", "expect"),
+    ("changes", "expect", "absent"),
     [
-        ({"shape": [8], "chunks": [4]}, {"shape": (8,), "chunks": (4,)}),
-        ({"dtype": "<i4", "fill_value": 3}, {"dtype": "<i4", "fill_value": 3}),
-        ({"attributes": UNSET}, {}),
-        ({"compressor": None}, {"compressor": None}),
-        ({"extra": 1}, {"extra": 1}),
-        ({"extra": UNSET}, {}),
+        ({"shape": [8], "chunks": [4]}, {"shape": (8,), "chunks": (4,)}, ()),
+        ({"dtype": "<i4", "fill_value": 3}, {"dtype": "<i4", "fill_value": 3}, ()),
+        ({"attributes": UNSET}, {}, ("attributes",)),
+        ({"compressor": None}, {"compressor": None}, ()),
+        ({"extra_fields": {"extra": 1}}, {"extra": 1}, ()),
+        ({"extra_fields": {"extra": UNSET}}, {}, ("extra",)),
     ],
     ids=["shape", "dtype", "unset-attributes", "null-compressor", "extra", "unset-extra"],
 )
 def test_update_reads_new_members_in_the_models_own_scope(
-    changes: dict[str, Any], expect: dict[str, Any]
+    changes: dict[str, Any], expect: dict[str, Any], absent: tuple[str, ...]
 ) -> None:
-    """`update` replaces the document's members with the given JSON members, leaves out any member given as `UNSET`, and reads the result in the model's own scope. The original model is unchanged."""
+    """`update` replaces the document's members with the given JSON members, takes a member the spec does not define in `extra_fields`, leaves out any member given as `UNSET`, and reads the result in the model's own scope. The original model is unchanged."""
     model = ZarrV2ArrayMetadata({**ARRAY, "extra": 0}, PRIVATE)
     changed = model.update(**changes)
     assert changed.context is PRIVATE
     document = changed.to_json()
     for key, value in expect.items():
         assert document[key] == value
-    for key, value in changes.items():
-        if value is UNSET:
-            assert key not in document
+    for key in absent:
+        assert key not in document
     assert model.to_json()["extra"] == 0
 
 

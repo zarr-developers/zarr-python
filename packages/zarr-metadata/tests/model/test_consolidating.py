@@ -185,6 +185,33 @@ def test_a_group_writes_the_consolidated_metadata_it_is_given_in_its_own_scope()
     assert again == held
 
 
+def test_error_a_group_refuses_consolidated_metadata_that_conflicts_with_its_scope() -> None:
+    """A `ZarrV3ConsolidatedMetadata` read in another scope is read again in the group's scope before the group writes it, as a listing of node models is. A model read with a private `bytes` conflicts with the core `bytes` the group reads, so `update` and `create_default` refuse it at the child's path."""
+    held = _consolidated(PRIVATE, a=ZarrV3ArrayMetadata(ARRAY, context=PRIVATE))
+    group = ZarrV3GroupMetadata.create_default(context=CORE_AND_EXTENSIONS)
+    for write in (
+        lambda: group.update(consolidated_metadata=held),
+        lambda: ZarrV3GroupMetadata.create_default(
+            context=CORE_AND_EXTENSIONS, consolidated_metadata=held
+        ),
+    ):
+        with pytest.raises(MetadataValidationError) as raised:
+            write()
+        assert [problem.loc for problem in raised.value.problems] == [
+            ("consolidated_metadata", "metadata", "a", "codecs", 0)
+        ]
+
+
+def test_error_a_group_refuses_consolidated_metadata_that_would_lose_a_meaning() -> None:
+    """A listing read in a scope that claims `zstd`, given to a group whose scope leaves `zstd` unclaimed, would lose information when the group's scope reads it, so the group refuses it at the child's path."""
+    held = _consolidated(CORE_AND_EXTENSIONS, a=ZarrV3ArrayMetadata(WITH_ZSTD))
+    with pytest.raises(MetadataValidationError) as raised:
+        ZarrV3GroupMetadata.create_default(context=CORE).update(consolidated_metadata=held)
+    assert [problem.loc for problem in raised.value.problems] == [
+        ("consolidated_metadata", "metadata", "a", "codecs", 1)
+    ]
+
+
 def test_children_of_different_scopes_consolidate_in_their_join() -> None:
     """Children read in different scopes are consolidated in the scope `ZarrV3Context.joined` builds from their scopes. Each child refines into the joined scope, and the consolidated metadata reads in it."""
     a = ZarrV3ArrayMetadata(ARRAY, context=CORE)

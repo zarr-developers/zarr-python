@@ -29,6 +29,7 @@ from zarr_metadata._json import (
 )
 from zarr_metadata._json import is_canonical_json as _is_canonical_json
 from zarr_metadata._sentinel import UNSET
+from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.definition._context import scoped
 from zarr_metadata.definition._definition import (
     AcceptedField,
@@ -53,6 +54,7 @@ from zarr_metadata.model._shared import (
     dump_store_json,
     load_store_json,
     located_conflicts,
+    member_changes,
     missing_keys,
     other_members,
     reading_of,
@@ -449,12 +451,15 @@ def read_array_metadata_v2(
     return model.reading
 
 
-class ZarrV2ArrayMetadataUpdate(TypedDict, total=False, extra_items=JSONValue | UNSET):
+class ZarrV2ArrayMetadataUpdate(TypedDict, total=False, closed=True):
     """The members `ZarrV2ArrayMetadata.update` replaces: each in the form a document writes it, or `UNSET` to remove a member that a document may omit.
 
     The members a document may omit are `attributes` (meaning no
     `.zattrs`), `dimension_separator` (read as `"."`), and any member the
-    spec does not define.
+    spec does not define. Those go in `extra_fields`, by key: each one
+    given is set, or removed when given as `UNSET`, and the others are
+    kept. A member is given by its own name only when the spec defines it,
+    so a misspelled name is refused.
     """
 
     shape: tuple[int, ...]
@@ -466,6 +471,13 @@ class ZarrV2ArrayMetadataUpdate(TypedDict, total=False, extra_items=JSONValue | 
     filters: tuple[ZarrV2CodecMetadata, ...] | None
     dimension_separator: ZarrV2ArrayDimensionSeparator | UNSET
     attributes: Mapping[str, JSONValue] | UNSET
+    extra_fields: Mapping[str, JSONValue | UNSET]
+
+
+_ARRAY_SPEC_MEMBERS_V2: Final[frozenset[str]] = frozenset(
+    {"zarr_format", *typeddict_keys(ZarrV2ArrayMetadataUpdate).members} - {"extra_fields"}
+)
+"""The members the spec defines in a v2 array document, as the model merges it: these are never given in `extra_fields`."""
 
 
 class ZarrV2ArrayMetadata(Keyed):
@@ -699,8 +711,9 @@ class ZarrV2ArrayMetadata(Keyed):
         problem. So members that depend on each other must be passed
         together, for example a `dtype` with a fill value of that dtype.
         """
-        document: dict[str, object] = {**self._document, **members}
-        for key, value in members.items():
+        changes = member_changes(members, ZarrV2ArrayMetadataUpdate, _ARRAY_SPEC_MEMBERS_V2)
+        document: dict[str, object] = {**self._document, **changes}
+        for key, value in changes.items():
             if value is UNSET:
                 del document[key]
         return type(self)(document, context=self._context)
@@ -780,7 +793,7 @@ class ZarrV2ArrayMetadata(Keyed):
             "filters": None,
             "dimension_separator": ".",
         }
-        given: dict[str, object] = dict(overrides)
+        given = member_changes(overrides, ZarrV2ArrayMetadataUpdate, _ARRAY_SPEC_MEMBERS_V2)
         if "shape" in given and "chunks" not in given:
             lengths, _ = dimension_lengths(given, "shape")
             if lengths is not None:

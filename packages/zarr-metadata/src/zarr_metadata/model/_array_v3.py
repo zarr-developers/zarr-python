@@ -56,6 +56,7 @@ from zarr_metadata.model._shared import (
     dump_store_json,
     load_store_json,
     located_conflicts,
+    member_changes,
     missing_keys,
     reading_of,
 )
@@ -519,11 +520,14 @@ def _waived(value: ZarrV3ExtensionField) -> bool:
     return isinstance(value, Mapping) and value.get("must_understand") is False
 
 
-class ZarrV3ArrayMetadataUpdate(TypedDict, total=False, extra_items=ZarrV3ExtensionField | UNSET):
+class ZarrV3ArrayMetadataUpdate(TypedDict, total=False, closed=True):
     """The members `ZarrV3ArrayMetadata.update` replaces: each in the form a document writes it, or `UNSET` to remove a member that a document may omit.
 
     The members a document may omit are `dimension_names`, `attributes`,
-    `storage_transformers`, and any member the spec does not define.
+    `storage_transformers`, and any member the spec does not define. Those
+    go in `extra_fields`, by key: each one given is set, or removed when
+    given as `UNSET`, and the others are kept. A member is given by its own
+    name only when the spec defines it, so a misspelled name is refused.
     """
 
     shape: tuple[int, ...]
@@ -535,6 +539,7 @@ class ZarrV3ArrayMetadataUpdate(TypedDict, total=False, extra_items=ZarrV3Extens
     attributes: Mapping[str, JSONValue] | UNSET
     storage_transformers: tuple[ZarrV3MetadataFieldJSON, ...] | UNSET
     dimension_names: tuple[str | None, ...] | UNSET
+    extra_fields: Mapping[str, ZarrV3ExtensionField | UNSET]
 
 
 class ZarrV3ArrayMetadata(Keyed):
@@ -737,14 +742,18 @@ class ZarrV3ArrayMetadata(Keyed):
     # --- changing ---------------------------------------------------------
 
     def update(self, **members: Unpack[ZarrV3ArrayMetadataUpdate]) -> ZarrV3ArrayMetadata:
-        """Return this model with `members` (as JSON) replacing the document's members, read in this model's own scope. A member set to `UNSET` is removed.
+        """Return this model with `members` (as JSON) replacing the document's members, read in this model's own scope. A member set to `UNSET` is removed. A member the spec does not define is given in `extra_fields`.
 
-        Raises `MetadataValidationError` when the resulting document has a
+        Raises `TypeError` for a member the update does not take. Raises
+        `MetadataValidationError` when the resulting document has a
         problem. So members that depend on each other must be passed
         together, for example a `shape` with a grid that fits it.
         """
-        document: dict[str, object] = {**self._document, **members}
-        for key, value in members.items():
+        changes = member_changes(
+            members, ZarrV3ArrayMetadataUpdate, ArrayExtraFieldDefinition.spec_members
+        )
+        document: dict[str, object] = {**self._document, **changes}
+        for key, value in changes.items():
             if value is UNSET:
                 del document[key]
         return type(self)(document, context=self._context)
@@ -827,7 +836,10 @@ class ZarrV3ArrayMetadata(Keyed):
         """
         # The grid is derived only from a valid shape. An invalid shape
         # derives no grid, and the read reports it.
-        lengths, _ = dimension_lengths(overrides, "shape")
+        changes = member_changes(
+            overrides, ZarrV3ArrayMetadataUpdate, ArrayExtraFieldDefinition.spec_members
+        )
+        lengths, _ = dimension_lengths(changes, "shape")
         document: dict[str, object] = {
             "zarr_format": 3,
             "node_type": "array",
@@ -842,7 +854,7 @@ class ZarrV3ArrayMetadata(Keyed):
             "chunk_key_encoding": {"name": "default"},
         }
         merged = {
-            key: value for key, value in {**document, **overrides}.items() if value is not UNSET
+            key: value for key, value in {**document, **changes}.items() if value is not UNSET
         }
         return cls(merged, context=context)
 

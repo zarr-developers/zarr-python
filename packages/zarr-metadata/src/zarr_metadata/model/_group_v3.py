@@ -30,6 +30,7 @@ from zarr_metadata._json import (
     nested_past_the_levels,
     not_an_object,
     outside_of,
+    prefixed,
     refine_user_data,
     shown,
     shown_key,
@@ -70,6 +71,7 @@ from zarr_metadata.model._shared import (
     dump_store_json,
     load_store_json,
     located_conflicts,
+    member_changes,
     missing_keys,
     reading_of,
     unexpected_keys,
@@ -132,15 +134,19 @@ class ZarrV3ConsolidatedMetadataInput(TypedDict, closed=True):
     metadata: Mapping[str, ZarrV3NodeMetadataInput]
 
 
-class ZarrV3GroupMetadataUpdate(TypedDict, total=False, extra_items=ZarrV3ExtensionField | UNSET):
+class ZarrV3GroupMetadataUpdate(TypedDict, total=False, closed=True):
     """The members `ZarrV3GroupMetadata.update` replaces: each in the form a document writes it, or `UNSET` to remove it.
 
     `consolidated_metadata` is typed as the reference implementation
     writes it, or as any JSON object, such as another group's
     `consolidated_metadata`, since a group checks only its envelope. It
-    can also be a `ZarrV3ConsolidatedMetadata`, whose document is written.
-    A group does not read the documents its consolidated metadata lists,
-    so build that model to check them before they are written.
+    can also be a `ZarrV3ConsolidatedMetadata`: its models are read in the
+    group's scope, as a listing of node models is read, and its document
+    is written. A group does not read the documents its consolidated
+    metadata lists, so build that model to check them before they are
+    written. Any other member the spec does not define goes in
+    `extra_fields`, by key: each one given is set, or removed when given as
+    `UNSET`, and the others are kept.
     """
 
     attributes: Mapping[str, JSONValue] | UNSET
@@ -150,6 +156,7 @@ class ZarrV3GroupMetadataUpdate(TypedDict, total=False, extra_items=ZarrV3Extens
         | ZarrV3ConsolidatedMetadata
         | UNSET
     )
+    extra_fields: Mapping[str, ZarrV3ExtensionField | UNSET]
 
 
 class ZarrV3GroupMetadata(Keyed):
@@ -308,14 +315,19 @@ class ZarrV3GroupMetadata(Keyed):
     # --- changing ---------------------------------------------------------
 
     def update(self, **members: Unpack[ZarrV3GroupMetadataUpdate]) -> ZarrV3GroupMetadata:
-        """Return this model with `members` (as JSON) replacing the document's members, read in this model's own scope. A member set to `UNSET` is removed.
+        """Return this model with `members` (as JSON) replacing the document's members, read in this model's own scope. A member set to `UNSET` is removed. A member the spec does not define is given in `extra_fields`.
 
         A `ZarrV3ConsolidatedMetadata` given as `consolidated_metadata` is
-        written as its document. Raises `MetadataValidationError` when the
-        resulting document has a problem.
+        read in this model's scope and written as its document. Raises
+        `TypeError` for a member the update does not take, and
+        `MetadataValidationError` when the resulting document has a
+        problem, such as a listed model that conflicts with this scope.
         """
-        document: dict[str, object] = {**self._document, **_written(members)}
-        for key, value in members.items():
+        changes = member_changes(
+            members, ZarrV3GroupMetadataUpdate, GroupExtraFieldDefinition.spec_members
+        )
+        document: dict[str, object] = {**self._document, **_written(changes, self._context)}
+        for key, value in changes.items():
             if value is UNSET:
                 del document[key]
         return type(self)(document, context=self._context)
@@ -362,8 +374,13 @@ class ZarrV3GroupMetadata(Keyed):
         **overrides: Unpack[ZarrV3GroupMetadataUpdate],
     ) -> ZarrV3GroupMetadata:
         """Return a group with no attributes, with any document members in `overrides` applied, read in `context`. `overrides` takes what `update` takes, including `UNSET` to drop a member and a `ZarrV3ConsolidatedMetadata` as `consolidated_metadata`. Raises `MetadataValidationError` when the resulting document has a problem."""
-        given = {key: value for key, value in overrides.items() if value is not UNSET}
-        return cls({"zarr_format": 3, "node_type": "group", **_written(given)}, context=context)
+        context = scoped(context, CORE_AND_EXTENSIONS)
+        changes = member_changes(
+            overrides, ZarrV3GroupMetadataUpdate, GroupExtraFieldDefinition.spec_members
+        )
+        given = {key: value for key, value in changes.items() if value is not UNSET}
+        document = {"zarr_format": 3, "node_type": "group", **_written(given, context)}
+        return cls(document, context=context)
 
     @classmethod
     def from_json(
@@ -392,11 +409,27 @@ class ZarrV3GroupMetadata(Keyed):
         return cls(load_store_json(mapping, ZARR_V3_GROUP_METADATA_STORE_KEY), context=context)
 
 
-def _written(members: Mapping[str, object]) -> dict[str, object]:
-    """`members`, the members given to `update` or `create_default`, with a `ZarrV3ConsolidatedMetadata` given as `consolidated_metadata` replaced by its document."""
+def _written(members: Mapping[str, object], context: ZarrV3Context) -> dict[str, object]:
+    """`members`, the members given to `update` or `create_default` of a group read in `context`, with a `ZarrV3ConsolidatedMetadata` given as `consolidated_metadata` replaced by its document.
+
+    The models the consolidated metadata lists are read in `context` first,
+    as a listing of node models is read: a gain is read again, and a
+    conflict or a loss is a problem at the child's path. So the group never
+    writes a listing that its own scope reads differently. Raises
+    `MetadataValidationError` with those problems, located in the group.
+    """
     given = members.get(ZARR_V3_CONSOLIDATED_METADATA_KEY)
     if not isinstance(given, ZarrV3ConsolidatedMetadata):
         return dict(members)
+    if given.context != context:
+        try:
+            given = ZarrV3ConsolidatedMetadata(
+                {**given.to_json(), "metadata": dict(given.metadata)}, context=context
+            )
+        except MetadataValidationError as error:
+            raise MetadataValidationError(
+                prefixed(ZARR_V3_CONSOLIDATED_METADATA_KEY, error.problems)
+            ) from error
     return {**members, ZARR_V3_CONSOLIDATED_METADATA_KEY: given.to_json()}
 
 

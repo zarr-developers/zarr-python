@@ -49,6 +49,7 @@ from zarr_metadata.model._shared import (
     dump_store_json,
     load_store_json,
     located_conflicts,
+    member_changes,
     missing_keys,
     reading_of,
     unexpected_keys,
@@ -384,8 +385,9 @@ class ZarrV2GroupMetadata(Keyed):
 
     def update(self, **members: Unpack[ZarrV2GroupMetadataUpdate]) -> ZarrV2GroupMetadata:
         """Return this model with `attributes` replacing the document's attributes, read in this model's own scope. `UNSET` removes them. Raises `MetadataValidationError` when the resulting document has a problem."""
-        document: dict[str, object] = {**self._document, **members}
-        for key, value in members.items():
+        changes = member_changes(members, ZarrV2GroupMetadataUpdate, frozenset())
+        document: dict[str, object] = {**self._document, **changes}
+        for key, value in changes.items():
             if value is UNSET:
                 del document[key]
         return type(self)(document, context=self._context)
@@ -408,7 +410,8 @@ class ZarrV2GroupMetadata(Keyed):
         cls, *, context: ZarrV2Context | None = None, **overrides: Unpack[ZarrV2GroupMetadataUpdate]
     ) -> ZarrV2GroupMetadata:
         """Return a group with no `.zattrs`, with `overrides` applied, read in `context`. Raises `MetadataValidationError` when the resulting document has a problem."""
-        given = {key: value for key, value in overrides.items() if value is not UNSET}
+        changes = member_changes(overrides, ZarrV2GroupMetadataUpdate, frozenset())
+        given = {key: value for key, value in changes.items() if value is not UNSET}
         return cls({"zarr_format": 2, **given}, context=context)
 
     @classmethod
