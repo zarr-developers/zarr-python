@@ -150,7 +150,14 @@ Some choices that the spec text leaves open, or answers in two ways:
 - **A v2 datetime or timedelta dtype must have a unit**, as in `<M8[ns]`,
   because the v2 spec requires the unit in brackets. zarr-python 3 writes
   `<M8` or `<m8` for a NumPy `datetime64` or `timedelta64` with no unit,
-  and the package refuses those dtypes.
+  and the package refuses those dtypes. A codec's dtype parameter, such as
+  the `dtype` of a `delta` filter, may leave out the unit, because
+  numcodecs writes it that way and runs it.
+- **A v2 codec's dtype parameter is checked against the core v2 data
+  types**, whatever scope the array is read in, because numcodecs reads
+  the parameter with NumPy. So a scope that widens a data type, for
+  example to read `<f16`, does not widen what a codec's dtype parameter
+  may be.
 
 A regular grid's chunk lengths must be at least 1, even along a dimension
 of length 0. The regular grid spec says "Chunk sizes must be greater than
@@ -158,6 +165,32 @@ zero". The core spec's wording, "non-zero when the corresponding dimensions
 of the arrays have non-zero length", requires less, but does not explicitly
 allow anything more. So a document with a chunk length of 0, which
 zarr-python 3.0 and 3.1 wrote for an empty dimension, is rejected.
+
+The readers are strict, so a document that a known writer bug made
+invalid has problems. The repair readers in `zarr_metadata.model`
+(`read_repaired_node_metadata_v3`, `read_repaired_node_metadata_v2` and
+`read_repaired_consolidated_metadata_v2`) undo these bugs first, then
+read the result strictly, and return each change they made as a `Repair`:
+
+- A chunk length of 0 along an empty dimension, which zarr-python 3.0
+  and 3.1 wrote, is written as 1.
+- `consolidated_metadata: null` on a v3 group, which zarr-python 3.0 and
+  3.1 wrote, is removed.
+- The `consolidated_metadata` member that zarr-python 3 writes into each
+  `.zgroup` entry of a `.zmetadata` below the root is removed.
+- A non-finite v2 fill value that zarr-python 3.0.0 to 3.0.6 wrote as a
+  bare `NaN`, `Infinity` or `-Infinity` is written as the string the v2
+  spec uses, such as `"NaN"`.
+
+The repair readers do not undo these known writer bugs, so a document
+with one of them is refused:
+
+- zarr-python 3.0.7 to 3.0.10 wrote the fill value of an `S` or `V`
+  array in a `.zmetadata` entry as a JSON array of byte values. The
+  array's own `.zarray` file holds the base64 string that the package
+  reads.
+- zarr-python 3.0.7 and 3.0.8 wrote the fill value of a v2 datetime
+  array as an ISO 8601 string, not as a count of ticks.
 
 `read_array_metadata_v3` reads a document once and returns everything the
 read found:
@@ -290,7 +323,8 @@ example, `"NaN"` and `"0x7fc00000"` are the same `float32` fill value,
 `0.0` and `-0.0` are two different fill values, and a blosc codec with and
 without a `typesize` (which `noshuffle` ignores) is the same codec. A v2
 document's dtype, codecs and fill value are compared the same way: `<b1`
-and `|b1` are one dtype, and a v2 codec that leaves out a parameter is
+and `|b1` are one dtype, in `dtype` and in a codec's dtype parameter
+alike, and a v2 codec that leaves out a parameter is
 the same as one that writes the numcodecs default, so
 `{"id": "zstd", "level": 0}` equals
 `{"id": "zstd", "level": 0, "checksum": false}`. Values the package does
