@@ -144,16 +144,14 @@ def member_changes(
 
 
 def unclaimed_fields_of(
-    fields: Iterable[tuple[Loc, ResolvedField[Any]]], must_understand: Mapping[str, object]
+    fields: Iterable[tuple[Loc, ResolvedField[Any]]], waived: Iterable[str]
 ) -> dict[Loc, UnclaimedField]:
-    """Each of `fields` (a reading's fields, at every depth) that nothing in scope claims, by its location, except an extra member whose key is not in `must_understand`, which says `"must_understand": false`."""
+    """Each of `fields` (a reading's fields, at every depth) that nothing in scope claims, by its location, except one inside an extra member whose key is in `waived`: a member that says `"must_understand": false`, which a reader may ignore whole, whether or not a definition claims it."""
+    ignored = frozenset(waived)
     return {
         loc: field
         for loc, field in fields
-        if isinstance(field, UnclaimedField)
-        and not (
-            issubclass(field.read_as, ExtraFieldDefinition) and field.name not in must_understand
-        )
+        if isinstance(field, UnclaimedField) and not (len(loc) != 0 and loc[0] in ignored)
     }
 
 

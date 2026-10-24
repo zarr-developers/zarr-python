@@ -60,6 +60,7 @@ from zarr_metadata.model._array_v3 import (
     read_array_metadata_v3,
     read_array_v3,
     read_extra_fields_v3,
+    waived_members,
 )
 from zarr_metadata.model._keyed import Keyed
 from zarr_metadata.model._shared import (
@@ -178,8 +179,8 @@ class ZarrV3GroupMetadata(Keyed):
 
     __slots__ = ("_claims", "_context", "_document", "_members", "_reading", "_shown")
 
-    zarr_format: Final = 3
-    node_type: Final = "group"
+    zarr_format: Final[Literal[3]] = 3  # noqa: PYI064 - a bare Final does not narrow a union of models
+    node_type: Final[Literal["group"]] = "group"  # noqa: PYI064 - as above
 
     @property
     def claims(self) -> Claims:
@@ -321,7 +322,7 @@ class ZarrV3GroupMetadata(Keyed):
         located inside the shard's configuration. The model only reports
         these fields; refusing to open is up to the reader.
         """
-        return unclaimed_fields_of(self._reading.fields(), self.must_understand_fields)
+        return unclaimed_fields_of(self._reading.fields(), waived_members(self._shown[1]))
 
     def consolidated(self) -> ZarrV3ConsolidatedMetadata | None:
         """The documents this group's `consolidated_metadata` lists, read in this group's own scope; None when the group writes no such member.
@@ -376,7 +377,11 @@ class ZarrV3GroupMetadata(Keyed):
         Raises `ScopeConflictError` when `context` reads an extra field with
         a different definition, or with no definition, naming each one and
         its key. Raises `MetadataValidationError` when a definition that
-        `context` claims rejects what was written under its name.
+        `context` claims rejects what was written under its name. The group
+        does not read the documents its `consolidated_metadata` lists, so
+        this does not check them: `consolidated()` on the result reads them
+        in `context`, and `ZarrV3ConsolidatedMetadata.refined_in` checks
+        that they read the same there.
         """
         context = scoped(context, CORE_AND_EXTENSIONS)
         found = context.disagreements(self.claims)

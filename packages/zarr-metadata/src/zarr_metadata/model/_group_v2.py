@@ -6,7 +6,7 @@ import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, cast
 
 from typing_extensions import TypeAliasType, TypedDict, Unpack
 
@@ -264,8 +264,8 @@ class ZarrV2GroupMetadata(Keyed):
     _document: dict[str, JSONValue]
     _shown: Mapping[str, JSONValue]
 
-    zarr_format: Final = 2
-    node_type: Final = "group"
+    zarr_format: Final[Literal[2]] = 2  # noqa: PYI064 - a bare Final does not narrow a union of models
+    node_type: Final[Literal["group"]] = "group"  # noqa: PYI064 - as above
 
     @property
     def claims(self) -> Claims:

@@ -6,7 +6,7 @@ import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, cast, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Final, Literal, cast, get_args, get_origin
 
 from typing_extensions import TypedDict, Unpack
 
@@ -438,6 +438,11 @@ def must_understand_subset(
     }
 
 
+def waived_members(values: Mapping[str, ZarrV3ExtensionField]) -> list[str]:
+    """The keys of the extra fields in `values` (by key, as written) that say `"must_understand": false`, which a reader may ignore."""
+    return [key for key, value in values.items() if _waived(value)]
+
+
 def _waived(value: ZarrV3ExtensionField) -> bool:
     """Whether `value`, an extra field as written, is an object that says `"must_understand": false`."""
     return isinstance(value, Mapping) and value.get("must_understand") is False
@@ -490,8 +495,8 @@ class ZarrV3ArrayMetadata(Keyed):
 
     __slots__ = ("_claims", "_context", "_document", "_members", "_reading", "_shown")
 
-    zarr_format: Final = 3
-    node_type: Final = "array"
+    zarr_format: Final[Literal[3]] = 3  # noqa: PYI064 - a bare Final does not narrow a union of models
+    node_type: Final[Literal["array"]] = "array"  # noqa: PYI064 - as above
 
     @property
     def claims(self) -> Claims:
@@ -633,7 +638,7 @@ class ZarrV3ArrayMetadata(Keyed):
         located inside the shard's configuration. The model only reports
         these fields; refusing to open is up to the reader.
         """
-        return unclaimed_fields_of(self._reading.fields(), self.must_understand_fields)
+        return unclaimed_fields_of(self._reading.fields(), waived_members(self._shown[2]))
 
     @property
     def must_understand_fields(self) -> dict[str, ZarrV3ExtensionField]:

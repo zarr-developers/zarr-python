@@ -6,7 +6,7 @@ import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, cast
 
 from typing_extensions import TypedDict, Unpack
 
@@ -466,8 +466,8 @@ class ZarrV2ArrayMetadata(Keyed):
 
     __slots__ = ("_claims", "_context", "_document", "_members", "_reading", "_shown")
 
-    zarr_format: Final = 2
-    node_type: Final = "array"
+    zarr_format: Final[Literal[2]] = 2  # noqa: PYI064 - a bare Final does not narrow a union of models
+    node_type: Final[Literal["array"]] = "array"  # noqa: PYI064 - as above
 
     @property
     def claims(self) -> Claims:
@@ -639,7 +639,7 @@ class ZarrV2ArrayMetadata(Keyed):
         scope is what the reader understands. The model only reports these
         fields; refusing to open is up to the reader.
         """
-        return unclaimed_fields_of(self._reading.fields(), {})
+        return unclaimed_fields_of(self._reading.fields(), ())
 
     @property
     def attributes(self) -> Mapping[str, JSONValue]:
