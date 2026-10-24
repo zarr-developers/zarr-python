@@ -7,7 +7,18 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from typing_extensions import TypedDict, Unpack
 
-from zarr_metadata.definition._context import Slots, slot_kinds
+from zarr_metadata.definition._context import (
+    Tables,
+    claimant_in,
+    definitions_in,
+    disagreements_in,
+    extended,
+    filed,
+    joined_tables,
+    slot_contents,
+    slot_kinds,
+    tables_key,
+)
 from zarr_metadata.v2._definition import ZarrV2CodecDefinition, ZarrV2DataTypeDefinition
 
 if TYPE_CHECKING:
@@ -49,27 +60,27 @@ class ZarrV2Context:
     scopes have equal hashes.
     """
 
-    __slots__ = ("_slots",)
+    __slots__ = ("_tables",)
 
     kinds: ClassVar[Mapping[str, type[Definition[Any]]]] = slot_kinds(ZarrV2ContextSlots)
     """The kind of definition each slot holds, by slot, as `ZarrV2ContextSlots` declares them."""
 
-    _slots: Slots
+    _tables: Tables
 
     def __init__(self, **slots: Unpack[ZarrV2ContextSlots]) -> None:
-        self._slots = Slots.of(self.kinds, slots, 2)
+        self._tables = filed(self.kinds, slots, 2)
 
     @classmethod
-    def _of(cls, slots: Slots) -> ZarrV2Context:
-        """A scope that files `slots`, which were filed for this class's slots."""
+    def _of(cls, tables: Tables) -> ZarrV2Context:
+        """A scope of `tables`, which were filed for this class's slots."""
         context = object.__new__(cls)
-        context._slots = slots
+        context._tables = tables
         return context
 
     @classmethod
     def _restored(cls, contents: Mapping[str, Iterable[Definition[Any]]]) -> ZarrV2Context:
         """A scope rebuilt from the definitions in each slot, as `__reduce__` gives them."""
-        return cls._of(Slots.of(cls.kinds, contents, 2))
+        return cls._of(filed(cls.kinds, contents, 2))
 
     @property
     def zarr_format(self) -> Literal[2]:
@@ -88,7 +99,7 @@ class ZarrV2Context:
 
     def definitions_of(self, kind: type[D]) -> Mapping[str, D]:
         """The definitions of `kind` in scope, by the name each is filed under: the slot that holds `kind`. Empty for a kind that no slot holds, such as a kind of the other format."""
-        return self._slots.definitions_of(kind)
+        return definitions_in(self._tables, kind)
 
     def claimant(self, kind: type[D], name: str) -> D | None:
         """The definition of `kind` in scope that reads `name` (a name as a document uses it), or None if there is none.
@@ -97,11 +108,11 @@ class ZarrV2Context:
         maps `name` to. That is `name` itself, except for raw bits, where
         `r16` is read by the definition of `r*`.
         """
-        return self._slots.claimant(kind, name)
+        return claimant_in(self._tables, kind, name)
 
     def disagreements(self, claims: Claims) -> Disagreements:
         """The places where this scope reads `claims` (a reading's claims) differently: the names it would gain and the names it conflicts with, as described by `Disagreements`. A claim is keyed by the name its definition is filed under, so it is looked up by that name."""
-        return self._slots.disagreements(claims)
+        return disagreements_in(self._tables, claims)
 
     def extended_with(self, **slots: Unpack[ZarrV2ContextSlots]) -> ZarrV2Context:
         """This scope, plus definitions of your own, each in its slot.
@@ -110,7 +121,7 @@ class ZarrV2Context:
         its slot under the same name. This is how a reader substitutes its
         own reading of a definition the package already defines.
         """
-        return self._of(self._slots.extended(slots, 2))
+        return self._of(extended(self._tables, self.kinds, slots, 2))
 
     @classmethod
     def joined(cls, *contexts: ZarrV2Context) -> ZarrV2Context:
@@ -121,19 +132,20 @@ class ZarrV2Context:
         purpose, use `extended_with`. Raises `TypeError` for a scope of
         another format.
         """
-        return cls._of(Slots.joined(cls.kinds, [context._slots for context in contexts], 2))
+        return cls._of(joined_tables(cls.kinds, [context._tables for context in contexts], 2))
 
     def __repr__(self) -> str:
         # Keep this short, because it appears in signatures as a default
         # argument. A full repr would list every definition, and `help` on a
         # validator would run to pages.
-        return f"ZarrV2Context(<{len(self._slots)} definitions>)"
+        count = sum(len(table) for table in self._tables.values())
+        return f"ZarrV2Context(<{count} definitions>)"
 
     def __reduce__(self) -> tuple[object, tuple[dict[str, tuple[Definition[Any], ...]]]]:
         # A scope is defined by the definitions in its slots, so pickle it as
         # them. This lets a scope go to another process along with the
         # documents it will read there.
-        return (type(self)._restored, (self._slots.contents(),))
+        return (type(self)._restored, (slot_contents(self._tables, self.kinds),))
 
     def __copy__(self) -> ZarrV2Context:
         return self
@@ -145,10 +157,10 @@ class ZarrV2Context:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ZarrV2Context):
             return NotImplemented
-        return self._slots == other._slots
+        return self._tables == other._tables
 
     def __hash__(self) -> int:
-        return hash((ZarrV2Context, self._slots))
+        return hash((ZarrV2Context, tables_key(self._tables)))
 
 
 __all__ = ["ZarrV2Context", "ZarrV2ContextSlots"]
