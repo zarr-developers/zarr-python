@@ -93,13 +93,82 @@ def test_every_codec_has_an_example() -> None:
 def test_every_example_reads_and_is_written_back_as_it_was(
     name: str, field: ZarrV2CodecMetadata
 ) -> None:
-    """A numcodecs configuration is read by the definition its `id` names, with no problem, and is written back unchanged: the `id` next to the parameters. Each parameter has only one spelling, so the canonical form is the same."""
+    """A numcodecs configuration is read by the definition its `id` names, with no problem, and is written back unchanged: the `id` next to the parameters. Its canonical form reads as the same codec."""
     resolved, problems = resolve(field, ZarrV2CodecDefinition, CONTEXT)
     assert isinstance(resolved, AcceptedField)
     assert resolved.definition.name == name
     assert problems == ()
     assert resolved.to_json() == field
-    assert canonical_of(resolved, problems) == field
+    assert resolve(canonical_of(resolved, problems), ZarrV2CodecDefinition, CONTEXT)[0] == resolved
+
+
+BLOSC_DEFAULTS: dict[str, Any] = {
+    "id": "blosc",
+    "cname": "lz4",
+    "clevel": 5,
+    "shuffle": 1,
+    "blocksize": 0,
+}
+CHECKSUM_DEFAULTS: dict[str, Any] = {"location": "start"}
+
+
+@pytest.mark.parametrize(
+    ("field", "canonical"),
+    [
+        ({"id": "zlib"}, {"id": "zlib", "level": 1}),
+        ({"id": "gzip"}, {"id": "gzip", "level": 1}),
+        ({"id": "gzip", "level": 9}, {"id": "gzip", "level": 9}),
+        ({"id": "bz2"}, {"id": "bz2", "level": 1}),
+        (
+            {"id": "lzma"},
+            {"id": "lzma", "format": 1, "check": -1, "preset": None, "filters": None},
+        ),
+        ({"id": "blosc"}, BLOSC_DEFAULTS),
+        ({"id": "blosc", "shuffle": True}, BLOSC_DEFAULTS),
+        ({"id": "blosc", "shuffle": False}, {**BLOSC_DEFAULTS, "shuffle": 0}),
+        ({"id": "blosc", "typesize": None}, BLOSC_DEFAULTS),
+        ({"id": "blosc", "typesize": 4}, {**BLOSC_DEFAULTS, "typesize": 4}),
+        ({"id": "zstd"}, {"id": "zstd", "level": 0, "checksum": False}),
+        ({"id": "zstd", "level": 0}, {"id": "zstd", "level": 0, "checksum": False}),
+        ({"id": "lz4"}, {"id": "lz4", "acceleration": 1}),
+        ({"id": "shuffle"}, {"id": "shuffle", "elementsize": 4}),
+        ({"id": "delta", "dtype": "<i4"}, {"id": "delta", "dtype": "<i4", "astype": "<i4"}),
+        (
+            {"id": "delta", "dtype": "<i4", "astype": None},
+            {"id": "delta", "dtype": "<i4", "astype": "<i4"},
+        ),
+        (
+            {"id": "fixedscaleoffset", "offset": 0, "scale": 1, "dtype": "<f8"},
+            {"id": "fixedscaleoffset", "offset": 0, "scale": 1, "dtype": "<f8", "astype": "<f8"},
+        ),
+        (
+            {"id": "quantize", "digits": 2, "dtype": "<f4", "astype": None},
+            {"id": "quantize", "digits": 2, "dtype": "<f4", "astype": "<f4"},
+        ),
+        ({"id": "crc32"}, {"id": "crc32", **CHECKSUM_DEFAULTS}),
+        ({"id": "crc32", "location": None}, {"id": "crc32", **CHECKSUM_DEFAULTS}),
+        ({"id": "crc32c"}, {"id": "crc32c", **CHECKSUM_DEFAULTS}),
+        ({"id": "adler32"}, {"id": "adler32", **CHECKSUM_DEFAULTS}),
+        ({"id": "bitround", "keepbits": 5}, {"id": "bitround", "keepbits": 5}),
+        ({"id": "fletcher32"}, {"id": "fletcher32"}),
+    ],
+)
+def test_a_parameter_left_to_its_numcodecs_default_is_filled_in(
+    field: dict[str, Any], canonical: dict[str, Any]
+) -> None:
+    """The canonical form of a codec fills in each parameter that numcodecs gives a default, where the configuration omits it or writes null, as `get_config()` writes it. A blosc `shuffle` of `true` or `false` is 1 or 0, which numcodecs reads it as, and an `astype` left out is the `dtype`. So a configuration and its filled-in form are one codec: they compare equal, with equal hashes. A codec with no defaults is unchanged."""
+    resolved, problems = resolve(field, ZarrV2CodecDefinition, CONTEXT)
+    filled, _ = resolve(canonical, ZarrV2CodecDefinition, CONTEXT)
+    assert canonical_of(resolved, problems) == canonical
+    assert resolved == filled
+    assert hash(resolved) == hash(filled)
+
+
+def test_a_parameter_set_away_from_its_default_is_another_codec() -> None:
+    """A parameter written with another value than its numcodecs default gives another codec."""
+    resolved, _ = resolve({"id": "zstd", "level": 3}, ZarrV2CodecDefinition, CONTEXT)
+    default, _ = resolve({"id": "zstd"}, ZarrV2CodecDefinition, CONTEXT)
+    assert resolved != default
 
 
 @pytest.mark.parametrize(

@@ -101,8 +101,16 @@ def test_properties_are_what_the_reading_holds() -> None:
             {"compressor": {"level": 1, "id": "zlib"}},
             True,
         ),
+        (
+            {"compressor": {"id": "zstd", "level": 0}},
+            {"compressor": {"id": "zstd", "level": 0, "checksum": False}},
+            True,
+        ),
+        ({"filters": [{"id": "crc32"}]}, {"filters": [{"id": "crc32", "location": "start"}]}, True),
         ({"fill_value": 0.0}, {"fill_value": -0.0}, False),
         ({"dtype": "<f4"}, {"dtype": ">f4"}, False),
+        ({"compressor": {"id": "zstd", "level": 0}}, {"compressor": {"id": "zstd"}}, True),
+        ({"compressor": {"id": "zstd", "level": 1}}, {"compressor": {"id": "zstd"}}, False),
         ({"attributes": {"a": [1, 2]}}, {"attributes": {"a": [2, 1]}}, False),
         ({"attributes": UNSET}, {"attributes": {}}, False),
         ({"extra": 1}, {}, False),
@@ -113,8 +121,12 @@ def test_properties_are_what_the_reading_holds() -> None:
         "nan",
         "spelling",
         "key-order",
+        "numcodecs-default",
+        "numcodecs-default-filter",
         "signed-zero",
         "byte-order",
+        "numcodecs-default-omitted",
+        "codec-parameter",
         "attributes",
         "zattrs-presence",
         "extra",
@@ -123,7 +135,7 @@ def test_properties_are_what_the_reading_holds() -> None:
 def test_models_are_equal_by_what_their_documents_mean(
     left: dict[str, Any], right: dict[str, Any], same: bool
 ) -> None:
-    """Two models are equal when their documents mean the same in their scopes. A typestr with two spellings, or a fill value written as an integer or a float, gives equal models. A different byte order, or a `.zattrs` present in one and absent in the other, gives different models. Equal models have equal hashes."""
+    """Two models are equal when their documents mean the same in their scopes. A typestr with two spellings, a fill value written as an integer or a float, or a codec parameter written or left to its numcodecs default, gives equal models. A different byte order, a codec parameter away from its default, or a `.zattrs` present in one and absent in the other, gives different models. Equal models have equal hashes."""
     one, other = ZarrV2ArrayMetadata(_document(left)), ZarrV2ArrayMetadata(_document(right))
     assert (one == other) is same
     if same:
@@ -224,6 +236,9 @@ def test_refines_orders_models_by_information() -> None:
     """`refines` is true when each field refines its counterpart and every other member is the same, with the fill value compared as the more informed dtype spells it. A fill value that this dtype refuses is not a refinement. A value of another type refines nothing."""
     core = ZarrV2ArrayMetadata(ARRAY)
     assert core.refines(ZarrV2ArrayMetadata({**ARRAY, "fill_value": 0.0}))
+    filled = ZarrV2ArrayMetadata({**ARRAY, "compressor": {"id": "zlib", "level": 1}})
+    assert core.refines(filled)
+    assert filled.refines(core)
     assert not core.refines(ZarrV2ArrayMetadata({**ARRAY, "shape": [8], "chunks": [2]}))
     small = ZarrV2ArrayMetadata({**ARRAY, "dtype": "<e2", "fill_value": "garbage"}, SMALL)
     assert not ZarrV2ArrayMetadata({**ARRAY, "fill_value": 1}).refines(small)

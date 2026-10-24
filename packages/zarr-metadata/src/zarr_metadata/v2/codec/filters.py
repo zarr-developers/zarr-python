@@ -1,7 +1,8 @@
 """The v2 filters that numcodecs 0.16 configures: `shuffle`, `delta`, `fixedscaleoffset`, `quantize`, `bitround`, `astype` and `packbits`.
 
 A dtype parameter is a NumPy typestr, as numcodecs writes it. A
-parameter that numcodecs gives a default is optional.
+parameter that numcodecs gives a default is optional, and the canonical
+form of each codec fills it in, as `get_config()` writes it.
 """
 
 from __future__ import annotations
@@ -64,22 +65,54 @@ class ZarrV2AsTypeParameters(TypedDict, closed=True):
     decode_dtype: ReadOnly[str]
 
 
-SHUFFLE_V2: Final = ZarrV2CodecDefinition(name="shuffle", configuration=ZarrV2ShuffleParameters)
+def _shuffle_canonical(configuration: ZarrV2ShuffleParameters) -> ZarrV2ShuffleParameters:
+    """Fill in the default `elementsize`, 4, as numcodecs writes it."""
+    return {"elementsize": 4, **configuration}
+
+
+def _delta_canonical(configuration: ZarrV2DeltaParameters) -> ZarrV2DeltaParameters:
+    """Fill in an `astype` that is omitted or null with the `dtype`, as numcodecs writes it."""
+    astype = configuration.get("astype")
+    return {**configuration, "astype": configuration["dtype"] if astype is None else astype}
+
+
+def _fixedscaleoffset_canonical(
+    configuration: ZarrV2FixedScaleOffsetParameters,
+) -> ZarrV2FixedScaleOffsetParameters:
+    """Fill in an `astype` that is omitted or null with the `dtype`, as numcodecs writes it."""
+    astype = configuration.get("astype")
+    return {**configuration, "astype": configuration["dtype"] if astype is None else astype}
+
+
+def _quantize_canonical(configuration: ZarrV2QuantizeParameters) -> ZarrV2QuantizeParameters:
+    """Fill in an `astype` that is omitted or null with the `dtype`, as numcodecs writes it."""
+    astype = configuration.get("astype")
+    return {**configuration, "astype": configuration["dtype"] if astype is None else astype}
+
+
+SHUFFLE_V2: Final = ZarrV2CodecDefinition(
+    name="shuffle", configuration=ZarrV2ShuffleParameters, canonical=_shuffle_canonical
+)
 """`numcodecs.Shuffle`."""
 DELTA_V2: Final = ZarrV2CodecDefinition(
-    name="delta", configuration=ZarrV2DeltaParameters, rules=dtype_parameter("dtype", "astype")
+    name="delta",
+    configuration=ZarrV2DeltaParameters,
+    rules=dtype_parameter("dtype", "astype"),
+    canonical=_delta_canonical,
 )
 """`numcodecs.Delta`."""
 FIXEDSCALEOFFSET_V2: Final = ZarrV2CodecDefinition(
     name="fixedscaleoffset",
     configuration=ZarrV2FixedScaleOffsetParameters,
     rules=dtype_parameter("dtype", "astype"),
+    canonical=_fixedscaleoffset_canonical,
 )
 """`numcodecs.FixedScaleOffset`."""
 QUANTIZE_V2: Final = ZarrV2CodecDefinition(
     name="quantize",
     configuration=ZarrV2QuantizeParameters,
     rules=dtype_parameter("dtype", "astype", float_only=True),
+    canonical=_quantize_canonical,
 )
 """`numcodecs.Quantize`."""
 BITROUND_V2: Final = ZarrV2CodecDefinition(name="bitround", configuration=ZarrV2BitRoundParameters)

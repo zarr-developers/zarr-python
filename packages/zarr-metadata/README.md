@@ -283,10 +283,14 @@ fill value against its data type) are compared by their canonical
 spelling, as returned by `canonical_of` and `canonical_fill_value`. For
 example, `"NaN"` and `"0x7fc00000"` are the same `float32` fill value,
 `0.0` and `-0.0` are two different fill values, and a blosc codec with and
-without a `typesize` (which `noshuffle` ignores) is the same codec. Values
-the package does not interpret (attributes, extra fields, the
-configuration of a field that nothing in the scope claims, and every
-member of a v2 document) are compared as JSON text. JSON text
+without a `typesize` (which `noshuffle` ignores) is the same codec. A v2
+document's dtype, codecs and fill value are compared the same way: `<b1`
+and `|b1` are one dtype, and a v2 codec that leaves out a parameter is
+the same as one that writes the numcodecs default, so
+`{"id": "zstd", "level": 0}` equals
+`{"id": "zstd", "level": 0, "checksum": false}`. Values the package does
+not interpret (attributes, extra fields, and the configuration of a field
+that nothing in the scope claims) are compared as JSON text. JSON text
 distinguishes `true` from `1` and `-0.0` from `0.0`, and treats `NaN` as
 equal to itself. Equal models have equal hashes, but may write different
 documents, because `to_json` writes each document as it was given. A
