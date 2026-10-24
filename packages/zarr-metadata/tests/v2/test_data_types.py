@@ -154,6 +154,15 @@ def test_error_a_str_typestr_without_a_byte_order_states_its_size_in_bytes() -> 
     ]
 
 
+@pytest.mark.parametrize(("value", "example"), [("<M8", "'<M8[ns]'"), ("<m8", "'<m8[ns]'")])
+def test_error_a_time_typestr_without_a_unit_is_refused_with_an_example_of_its_own_family(
+    value: str, example: str
+) -> None:
+    """`<M8` and `<m8` are refused as a dtype, because the v2 spec requires a unit. The message gives an example with a unit of the same family: a datetime for `M`, a timedelta for `m`."""
+    _, problems = resolve(value, ZarrV2DataTypeDefinition, CONTEXT)
+    assert [(p.kind, example in p.message) for p in problems] == [("missing_key", True)]
+
+
 @pytest.mark.parametrize(
     ("dtype", "value", "canonical"),
     [

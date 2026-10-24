@@ -1,13 +1,13 @@
-"""Rules that several v2 dtype families share: the sizes and byte orders a family allows, and a base64 fill value of the item's size."""
+"""Rules that several v2 dtype families share: the sizes and byte orders a family allows, the unit of a time type, and a base64 fill value of the item's size."""
 
 from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from zarr_metadata._json import ValidationProblem, shown
-from zarr_metadata._numpy import base64_bytes
+from zarr_metadata._numpy import NUMPY_TIME_UNITS, base64_bytes
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from zarr_metadata.definition._definition import Nested
     from zarr_metadata.v2.data_type.fixed_width import ZarrV2Base64FillValue
     from zarr_metadata.v2.data_type.scalar import ZarrV2ScalarConfiguration
+    from zarr_metadata.v2.data_type.time import ZarrV2TimeConfiguration
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +82,57 @@ def orderless_at(sizes: frozenset[int] | None) -> _OrderlessAt:
     return _OrderlessAt(sizes)
 
 
+@dataclass(frozen=True, slots=True)
+class _TimeRules:
+    """The rules that `time_rules` returns. This is a value rather than a closure, so a scope that holds it can be pickled."""
+
+    code: Literal["M", "m"]
+    unit_required: bool
+
+    def __call__(
+        self, configuration: ZarrV2TimeConfiguration, nested: Nested
+    ) -> Iterator[ValidationProblem]:
+        size = configuration["itemsize"]
+        if size != 8:
+            yield ValidationProblem(
+                ("itemsize",), f"expected a size of 8 bytes, got {size}", "invalid_value"
+            )
+            return
+        if configuration["byteorder"] == "|":
+            yield ValidationProblem(
+                ("byteorder",),
+                "expected a byte order '<' or '>' for a type of 8 bytes, got '|'",
+                "invalid_value",
+            )
+        if "unit" not in configuration:
+            if self.unit_required:
+                yield ValidationProblem(
+                    ("unit",),
+                    f"expected a time unit in brackets, '<{self.code}8[ns]': the v2 spec "
+                    "requires one",
+                    "missing_key",
+                )
+            return
+        if configuration["unit"] not in NUMPY_TIME_UNITS:
+            yield ValidationProblem(
+                ("unit",),
+                f"expected a NumPy time unit -- {', '.join(NUMPY_TIME_UNITS)} -- got {configuration['unit']!r}",
+                "invalid_value",
+            )
+
+
+def time_rules(code: Literal["M", "m"], *, unit_required: bool = True) -> _TimeRules:
+    """Return the rules of the time family whose type code is `code`: eight bytes with a byte order, and a NumPy time unit in brackets.
+
+    The v2 spec requires the unit of an array's dtype
+    (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L147-L150).
+    With `unit_required` False, the unit may be left out, as in `<M8`.
+    numcodecs writes a codec's dtype parameter that way for a NumPy time
+    type without a unit.
+    """
+    return _TimeRules(code, unit_required)
+
+
 def sized_base64_rules(
     value: ZarrV2Base64FillValue, size: int | None, *, exact: bool
 ) -> Iterator[ValidationProblem]:
@@ -106,4 +158,4 @@ def sized_base64_rules(
         )
 
 
-__all__ = ["orderless_at", "sized", "sized_base64_rules"]
+__all__ = ["orderless_at", "sized", "sized_base64_rules", "time_rules"]

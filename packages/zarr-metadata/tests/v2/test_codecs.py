@@ -53,6 +53,8 @@ EXAMPLES: dict[str, tuple[dict[str, Any], ...]] = {
         {"id": "delta", "dtype": "<f4", "astype": None},
         {"id": "delta", "dtype": "|b1", "astype": "|b1"},
         {"id": "delta", "dtype": "<M8[ns]", "astype": "<M8[ns]"},
+        # numcodecs writes a time type without a unit as `np.dtype("m8").str` gives it.
+        {"id": "delta", "dtype": "<m8", "astype": "<m8"},
     ),
     "fixedscaleoffset": (
         {"id": "fixedscaleoffset", "scale": 10, "offset": 0, "dtype": "<f8", "astype": "<f8"},
@@ -65,7 +67,10 @@ EXAMPLES: dict[str, tuple[dict[str, Any], ...]] = {
         {"id": "quantize", "digits": 2, "dtype": "<f4", "astype": None},
     ),
     "bitround": ({"id": "bitround", "keepbits": 5},),
-    "astype": ({"id": "astype", "encode_dtype": "<i2", "decode_dtype": "<f4"},),
+    "astype": (
+        {"id": "astype", "encode_dtype": "<i2", "decode_dtype": "<f4"},
+        {"id": "astype", "encode_dtype": "<M8", "decode_dtype": ">M8"},
+    ),
     "packbits": ({"id": "packbits"},),
     "vlen-utf8": ({"id": "vlen-utf8"},),
     "vlen-bytes": ({"id": "vlen-bytes"},),
@@ -204,9 +209,9 @@ def test_an_id_the_package_does_not_model_is_unclaimed(field: dict[str, Any]) ->
         ({"id": "delta", "dtype": "<f4", "astype": "|f4"}, ("c", "astype"), "invalid_value"),
         ({"id": "vlen-array", "dtype": "<i16"}, ("c", "dtype"), "invalid_value"),
         (
-            {"id": "astype", "encode_dtype": "<M8", "decode_dtype": "<f8"},
+            {"id": "astype", "encode_dtype": "|M8", "decode_dtype": "<f8"},
             ("c", "encode_dtype"),
-            "missing_key",
+            "invalid_value",
         ),
         (
             {"id": "astype", "encode_dtype": "<i2", "decode_dtype": "f4"},
