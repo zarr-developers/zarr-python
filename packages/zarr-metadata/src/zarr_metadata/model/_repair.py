@@ -120,6 +120,21 @@ class ZarrV3NullConsolidatedGroupMetadataJSON(TypedDict):
     consolidated_metadata: None
 
 
+class ZarrV3NonFiniteFillValueArrayMetadataJSON(TypedDict):
+    """The members of an array document the v3 `non_finite_fill_value` repair reads.
+
+    zarr-python 3.0.0 to 3.0.6 wrote the fill value of a float64 array, in
+    the documents a group's consolidated metadata lists, as a bare `NaN`,
+    `Infinity` or `-Infinity`, which is not JSON. The spec writes these as
+    the strings `"NaN"`, `"Infinity"` and `"-Infinity"`. The repair writes
+    each such fill value, or complex fill value component, of a float or
+    complex data type by its name.
+    """
+
+    node_type: Literal["array"]
+    data_type: Literal["float16", "float32", "float64", "complex64", "complex128"]
+
+
 def repair_node_metadata_v3(value: object) -> tuple[object, tuple[Repair, ...]]:
     """Undo each known writer bug in `value`, a v3 `zarr.json`, and return the result with the list of changes.
 
@@ -141,9 +156,45 @@ def _repaired(value: object, at: Loc) -> tuple[object, tuple[Repair, ...]]:
     original = value
     repairs: list[Repair] = []
     document = _zero_chunk_length(original, at, repairs)
+    document = _non_finite_fill_value_v3(document, at, repairs)
     document = _null_consolidated_metadata(document, at, repairs)
     document = _consolidated(document, at, repairs)
     return (original if len(repairs) == 0 else dict(document)), tuple(repairs)
+
+
+def _non_finite_fill_value_v3(
+    document: Mapping[str, object], at: Loc, repairs: list[Repair]
+) -> Mapping[str, object]:
+    """`document` with a non-finite fill value of a float data type, or complex fill value component, written by its name."""
+    array, problems = check(
+        _members(document, ("node_type", "data_type")), ZarrV3NonFiniteFillValueArrayMetadataJSON
+    )
+    if array is None or len(problems) != 0 or "fill_value" not in document:
+        return document
+    fill_value = document["fill_value"]
+    if array["data_type"].startswith("float"):
+        name = _non_finite_name(fill_value)
+        if name is None:
+            return document
+        repairs.append(_non_finite_repair((*at, "fill_value"), name, "a fill value"))
+        return {**document, "fill_value": name}
+    if not is_list_or_tuple(fill_value) or len(fill_value) != 2:
+        return document
+    names = [_non_finite_name(component) for component in fill_value]
+    repairs.extend(
+        _non_finite_repair((*at, "fill_value", index), name, "a fill value component")
+        for index, name in enumerate(names)
+        if name is not None
+    )
+    if all(name is None for name in names):
+        return document
+    return {
+        **document,
+        "fill_value": tuple(
+            component if name is None else name
+            for component, name in zip(fill_value, names, strict=True)
+        ),
+    }
 
 
 def _members(document: Mapping[str, object], keys: tuple[str, ...]) -> dict[str, object]:

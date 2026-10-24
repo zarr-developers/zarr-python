@@ -254,7 +254,10 @@ as a read-only mapping. `to_json` returns plain containers.
 
 To change a model, call `update`. It replaces members of the document with
 the given JSON members and reads the result in the model's own scope, so
-you do not pass the scope again. `with_context` reads the document in
+you do not pass the scope again. A member the spec defines is given by its
+name, and any other member in `extra_fields`, a mapping from its key to its
+value, or to `UNSET` to remove it. A name `update` does not take raises
+`TypeError`, so a misspelled member is never written. `with_context` reads the document in
 another scope. `refined_in` also reads the document in another scope, but
 only one that claims what this scope left unclaimed and contradicts
 nothing; otherwise it raises `ScopeConflictError`.

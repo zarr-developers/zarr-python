@@ -15,10 +15,14 @@ from zarr_metadata.definition import Context, ScopeConflictError, UnclaimedField
 from zarr_metadata.definition._context import slot_kinds
 from zarr_metadata.model import ZarrV3ArrayMetadata, read_array_metadata_v3
 from zarr_metadata.v2 import CORE_V2, GZIP_V2, ZarrV2Context
-from zarr_metadata.v2.definition import ZarrV2CodecDefinition, ZarrV2ContextSlots
+from zarr_metadata.v2.definition import (
+    ZarrV2CodecDefinition,
+    ZarrV2ContextSlots,
+    ZarrV2DataTypeDefinition,
+)
 from zarr_metadata.v3 import CORE, GZIP_CODEC, ZarrV3Context
 from zarr_metadata.v3._context import is_v3_kind
-from zarr_metadata.v3.definition import CodecDefinition, ZarrV3ContextSlots
+from zarr_metadata.v3.definition import CodecDefinition, DataTypeDefinition, ZarrV3ContextSlots
 
 
 def _other(definition: Any) -> Any:  # noqa: ANN401 - a definition of either format
@@ -107,6 +111,24 @@ def test_error_a_scope_refuses_a_kind_of_the_other_format(
         core.definitions_of(other)
     with pytest.raises(TypeError, match="kinds of its format"):
         core.claimant(other, "gzip")
+    other_data_type = ZarrV2DataTypeDefinition if zarr_format == 3 else DataTypeDefinition
+    with pytest.raises(TypeError, match="kinds of its format"):
+        core.claimant(other_data_type, "r*")
+
+
+@pytest.mark.parametrize(("cls", "core", "kind", "gzip", "zarr_format"), FORMATS)
+def test_error_disagreements_refuses_claims_of_the_other_format(
+    cls: Any,  # noqa: ANN401 - either scope class
+    core: Any,  # noqa: ANN401 - either core scope
+    kind: Any,  # noqa: ANN401 - either codec kind
+    gzip: Any,  # noqa: ANN401 - either gzip definition
+    zarr_format: int,
+) -> None:
+    """The claims of a model of one format are never read in a scope of the other: `disagreements` raises `TypeError`, rather than reporting every claim as lost."""
+    other = CORE_V2 if zarr_format == 3 else CORE
+    claims = {(type(gzip), "gzip"): gzip}
+    with pytest.raises(TypeError, match="kinds of its format"):
+        other.disagreements(claims)
 
 
 class _LooksLikeAScope:
@@ -118,10 +140,29 @@ class _LooksLikeAScope:
         return None
 
 
+class _BrokenScope:
+    """A value whose `zarr_format` raises."""
+
+    @property
+    def zarr_format(self) -> int:
+        raise RuntimeError
+
+
+class _BooleanFormat:
+    """A value whose `zarr_format` is a boolean, which no format is."""
+
+    zarr_format = True
+
+
 @pytest.mark.parametrize(
     ("given", "named"),
-    [("nope", "got 'nope'"), (_LooksLikeAScope(), "got a _LooksLikeAScope, a v3 scope")],
-    ids=["not-a-scope", "a-look-alike"],
+    [
+        ("nope", "got 'nope'"),
+        (_LooksLikeAScope(), "got a _LooksLikeAScope, a v3 scope"),
+        (_BrokenScope(), "got <"),
+        (_BooleanFormat(), "got <"),
+    ],
+    ids=["not-a-scope", "a-look-alike", "a-broken-format", "a-boolean-format"],
 )
 def test_error_a_reader_refuses_what_is_not_a_scope_of_its_format(
     given: object, named: str

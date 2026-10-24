@@ -41,6 +41,9 @@ def _consolidated(**metadata: object) -> dict[str, Any]:
 
 ZERO_CHUNK = {**ARRAY, "chunk_grid": _grid(0, 3)}
 NULL_CONSOLIDATED = {**GROUP, "consolidated_metadata": None}
+FLOAT64: dict[str, Any] = {**ARRAY, "data_type": "float64", "fill_value": 0.0}
+COMPLEX128: dict[str, Any] = {**ARRAY, "data_type": "complex128", "fill_value": (0.0, 0.0)}
+NAN_INT: dict[str, Any] = {**ARRAY, "fill_value": math.nan}
 
 
 @pytest.mark.parametrize(
@@ -75,8 +78,29 @@ NULL_CONSOLIDATED = {**GROUP, "consolidated_metadata": None}
                 ),
             ],
         ),
+        (
+            {**FLOAT64, "fill_value": math.nan},
+            {**FLOAT64, "fill_value": "NaN"},
+            [(("fill_value",), "non_finite_fill_value")],
+        ),
+        (
+            {**COMPLEX128, "fill_value": (math.inf, 0.0)},
+            {**COMPLEX128, "fill_value": ("Infinity", 0.0)},
+            [(("fill_value", 0), "non_finite_fill_value")],
+        ),
+        (
+            _consolidated(b={**FLOAT64, "fill_value": -math.inf}),
+            _consolidated(b={**FLOAT64, "fill_value": "-Infinity"}),
+            [
+                (
+                    ("consolidated_metadata", "metadata", "b", "fill_value"),
+                    "non_finite_fill_value",
+                )
+            ],
+        ),
         # Not a known writer bug: left for the strict read to check.
         (ARRAY, ARRAY, []),
+        (NAN_INT, NAN_INT, []),
         ({**ARRAY, "chunk_grid": _grid(3, 0)}, {**ARRAY, "chunk_grid": _grid(3, 0)}, []),
         ({**ARRAY, "chunk_grid": _grid(0)}, {**ARRAY, "chunk_grid": _grid(0)}, []),
         (
@@ -93,7 +117,11 @@ NULL_CONSOLIDATED = {**GROUP, "consolidated_metadata": None}
         "zero-chunks",
         "null-consolidated",
         "inside-consolidated",
+        "non-finite-float-fill",
+        "non-finite-complex-fill",
+        "non-finite-fill-inside-consolidated",
         "valid",
+        "non-finite-fill-of-an-integer-type",
         "zero-chunk-on-a-full-dimension",
         "zero-chunk-of-another-rank",
         "zero-chunk-without-a-data-type",
@@ -104,7 +132,7 @@ NULL_CONSOLIDATED = {**GROUP, "consolidated_metadata": None}
 def test_repair_undoes_each_known_writer_bug(
     value: object, repaired: object, repairs: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
-    """Each known writer bug in a document, including in its consolidated documents, is undone, and each repair reports its location. Anything else is left unchanged for the strict read to report. The input document is not modified."""
+    """Each known writer bug in a document, including in its consolidated documents, is undone, and each repair reports its location: a zero chunk length along an empty dimension, a null `consolidated_metadata`, and a float or complex fill value that zarr-python 3.0.0 to 3.0.6 wrote as a bare `NaN` or infinity in a listing. Anything else is left unchanged for the strict read to report. The input document is not modified."""
     before = copy.deepcopy(value)
     document, made = repair_node_metadata_v3(value)
     assert document == repaired

@@ -42,9 +42,6 @@ if TYPE_CHECKING:
 Tables: TypeAlias = Mapping[type[Definition[Any]], Mapping[str, Definition[Any]]]
 """A scope's definitions: one table for each kind its format has, keyed by the name each definition is filed under. A table holds definitions of one kind only."""
 
-_NOTHING: Mapping[str, Definition[Any]] = MappingProxyType({})
-
-
 K = TypeVar("K", bound=Definition[Any])
 
 
@@ -160,15 +157,14 @@ def definitions_in(tables: Tables, kind: type[D]) -> Mapping[str, D]:
 
 def claimant_in(tables: Tables, kind: type[D], name: str) -> D | None:
     """The definition of `kind` in `tables` that reads `name` (a name as a document uses it), or None: the one filed under the name `filed_under` maps `name` to."""
+    table = definitions_in(tables, kind)
     filed_name, _ = filed_under(as_kind(kind), name)
-    if filed_name is None:
-        return None
-    return definitions_in(tables, kind).get(filed_name)
+    return None if filed_name is None else table.get(filed_name)
 
 
 def disagreements_in(tables: Tables, claims: Claims) -> Disagreements:
-    """Where `tables` read `claims` differently, looking each claim up by its kind and the name its definition is filed under."""
-    return disagreements_of(lambda kind, name: tables.get(kind, _NOTHING).get(name), claims)
+    """Where `tables` read `claims` differently, looking each claim up by its kind and the name its definition is filed under. Raises `TypeError` for a claim of the other format's kind, as `definitions_in` does."""
+    return disagreements_of(lambda kind, name: definitions_in(tables, kind).get(name), claims)
 
 
 def slot_contents(
@@ -225,8 +221,11 @@ def scoped(context: object, default: C) -> C:
 
 def described(context: object) -> str:
     """`context`, a value given as a scope, as an error message names it: its class and the format it reads, or its repr when it reads none."""
-    zarr_format = getattr(context, "zarr_format", None)
-    if isinstance(zarr_format, int):
+    try:
+        zarr_format = getattr(context, "zarr_format", None)
+    except Exception:  # noqa: BLE001 - any value may be given, and the message must still be built
+        zarr_format = None
+    if type(zarr_format) is int:
         return f"a {type(context).__name__}, a v{zarr_format} scope"
     return repr(context)
 

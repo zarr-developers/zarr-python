@@ -1243,15 +1243,15 @@ def with_problems(
 def configuration_of(resolved: ResolvedField[Any], definition: Definition[C]) -> C | None:
     """The configuration of `resolved`, typed as `definition` declares it, if `definition` read it.
 
-    `AcceptedField` stores its configuration as a plain mapping. When
+    `AcceptedField` stores its configuration as a read-only mapping. When
     called with the definition that read the field, or one equal to it
-    (as with a pickled field), this returns the same mapping typed as the
-    TypedDict. Returns None when another definition read the field, or no
-    definition did.
+    (as with a pickled field), this returns a copy of it, a plain `dict`
+    typed as the TypedDict, which shares nothing with the field. Returns
+    None when another definition read the field, or no definition did.
     """
     if not isinstance(resolved, AcceptedField) or resolved.definition != definition:
         return None
-    return cast("C", resolved.configuration)
+    return cast("C", copied(resolved.configuration))
 
 
 def fill_value_problems(data_type: ResolvedField[F], value: object, loc: Loc = ()) -> Problems:
@@ -1353,6 +1353,9 @@ def resolve(
     without type arguments, and `context` a scope of that format. Anything
     else raises `TypeError`.
     """
+    if not callable(getattr(context, "claimant", None)):
+        msg = f"a field is read in a scope, such as CORE_AND_EXTENSIONS, got {context!r}"
+        raise TypeError(msg)
     asked = as_kind(kind)
     name = asked.named_configuration(data)[0]
     definition = (

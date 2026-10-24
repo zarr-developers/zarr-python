@@ -945,7 +945,15 @@ def test_error_check_holds_an_array_document_s_shape_to_its_bound() -> None:
 def test_configuration_of_types_what_its_definition_read() -> None:
     resolved, _ = resolve({"name": "gzip", "configuration": {"level": 5}}, CodecDefinition, CONTEXT)
     assert configuration_of(resolved, GZIP_CODEC) == {"level": 5}
+    assert type(configuration_of(resolved, GZIP_CODEC)) is dict
     assert configuration_of(resolved, ACME_LEVEL) is None
+
+
+@pytest.mark.parametrize("context", [None, "CORE"], ids=["none", "a-string"])
+def test_error_resolve_refuses_what_is_not_a_scope(context: object) -> None:
+    """`resolve` reads a field in a scope, which it takes with no default. `None`, which a model reader would take, or any other value that is not a scope raises `TypeError` naming it, rather than failing part way."""
+    with pytest.raises(TypeError, match="a field is read in a scope"):
+        resolve({"name": "bytes"}, CodecDefinition, context)  # pyright: ignore[reportArgumentType]
 
 
 def test_error_check_locates_what_is_not_the_typeddict() -> None:

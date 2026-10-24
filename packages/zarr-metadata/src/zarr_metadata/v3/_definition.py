@@ -403,8 +403,9 @@ class ExtraFieldDefinition(Definition[C]):
             return f"{self.name!r}: finite is a boolean, got {finite!r}"
         if is_typeddict(self.configuration) and not _takes_the_waiver(self.configuration):
             return (
-                f"{self.name!r}: the configuration takes must_understand as a boolean that may "
-                "be false, which the spec lets every extension member carry"
+                f"{self.name!r}: expected a configuration that takes must_understand as a "
+                "boolean that may be false, which the spec lets every extension member carry; "
+                f"{self.configuration.__name__} does not"
             )
         return None
 
