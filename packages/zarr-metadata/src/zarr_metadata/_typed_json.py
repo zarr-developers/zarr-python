@@ -639,7 +639,12 @@ Tag: TypeAlias = tuple[str, Mapping[tuple[type, object], int]]
 """A key that every branch requires as a `Literal`, and the branch that each of its values selects."""
 
 
-def any_of(branches: Sequence[Branch], description: str, tag: Tag | None = None) -> Parser:
+def any_of(
+    branches: Sequence[Branch],
+    description: str,
+    tag: Tag | None = None,
+    literals: frozenset[int] = frozenset(),
+) -> Parser:
     """A member whose type is a union of shapes, parsed by the matching branch.
 
     The parser tries only the branches whose top-level shape matches the
@@ -653,6 +658,10 @@ def any_of(branches: Sequence[Branch], description: str, tag: Tag | None = None)
     that reports no problem (among TypedDicts, the one that declares the
     most of the value's keys). If every branch reports problems, the
     parser returns the result of the branch with the fewest problems.
+    `literals` holds the index of each branch that is a `Literal`. When
+    only such branches tried the value, and it is none of their values,
+    it is reported once with the expected shapes, since naming one
+    `Literal` would leave out the other branches.
     """
 
     def parse(value: object, loc: Loc) -> Parsed:
@@ -673,6 +682,10 @@ def any_of(branches: Sequence[Branch], description: str, tag: Tag | None = None)
                 clean.append((-len(keys & present), index, result))
         if len(clean) != 0:
             return min(clean, key=lambda found: found[:2])[2]
+        if len(failed) != 0 and all(index in literals for _, index, _ in failed):
+            # A `Literal` reports one problem, of the kind its own check decided.
+            kind = min(failed, key=lambda found: found[:2])[2][1][0].kind
+            return value, problem(loc, f"expected {description}, got {shown(value)}", kind)
         if len(failed) != 0:
             return min(failed, key=lambda found: found[:2])[2]
         return value, problem(loc, f"expected {description}, got {shown(value)}")
@@ -927,7 +940,12 @@ def _union(inner: object, leaf: Leaf, building: _Building) -> Parser | None:
             else None
         )
         branches.append((shape_of(branch), member, keys))
-    return any_of(branches, describe(inner), _tag(arguments))
+    literals = frozenset(
+        index
+        for index, branch in enumerate(arguments)
+        if get_origin(strip_annotation(branch)[0]) is Literal
+    )
+    return any_of(branches, describe(inner), _tag(arguments), literals)
 
 
 def _tag(arguments: Sequence[object]) -> Tag | None:

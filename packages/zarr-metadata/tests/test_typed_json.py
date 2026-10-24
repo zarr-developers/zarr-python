@@ -1255,6 +1255,38 @@ def test_a_union_of_a_string_and_another_shape_names_both() -> None:
     assert problem.message == "expected a string or an integer, got null"
 
 
+@pytest.mark.parametrize(
+    ("annotation", "value", "message", "kind"),
+    [
+        (
+            float | Literal["NaN"] | None,
+            "abc",
+            'expected a number or "NaN" or null, got "abc"',
+            "invalid_value",
+        ),
+        (
+            Literal[-1, 0, 1, 2] | bool,
+            3,
+            "expected one of [-1, 0, 1, 2] or a boolean, got 3",
+            "invalid_value",
+        ),
+        (
+            Literal[1, "a"] | None,
+            True,
+            'expected one of ["a", 1] or null, got true',
+            "invalid_type",
+        ),
+    ],
+    ids=["string-outside-the-literal", "number-outside-the-literal", "mixed-literal"],
+)
+def test_error_a_value_outside_every_literal_of_a_union_names_the_whole_union(
+    annotation: object, value: object, message: str, kind: str
+) -> None:
+    """A value whose shape only `Literal` branches of a union have, and that none of them holds, is reported against the whole union, as a value of no branch's shape is. The kind is the one the `Literal` reports: a wrong value when its JSON type matches an entry, and a wrong type otherwise."""
+    (problem,) = parser(annotation, no_leaf)(value, ())[1]
+    assert (problem.message, problem.kind) == (message, kind)
+
+
 class _Three(TypedDict, closed=True):
     x: Annotated[Required[Annotated[ReadOnly[Annotated[int, "inner"]], "middle"]], "outer"]
 

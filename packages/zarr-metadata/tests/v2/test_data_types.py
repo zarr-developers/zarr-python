@@ -216,6 +216,16 @@ def test_error_a_fill_value_the_family_does_not_take_is_a_problem(
     assert problems[0].loc == ("fill_value", *at)
 
 
+def test_error_a_float_fill_value_string_that_is_not_a_named_value_names_every_choice() -> None:
+    """A string fill value for a float dtype that is not a named non-finite value is refused with a message that names every fill value a float takes, numbers and null included, as for a value of another JSON type."""
+    resolved, _ = resolve("<f4", ZarrV2DataTypeDefinition, CONTEXT)
+    expected = 'expected a number or one of ["-Infinity", "Infinity", "NaN"] or null, got '
+    (string,) = fill_value_problems(resolved, "abc")
+    (array,) = fill_value_problems(resolved, [1])
+    assert string.message == f'{expected}"abc"'
+    assert array.message == f"{expected}[1]"
+
+
 def test_every_family_has_an_example() -> None:
     """Every definition in `DATA_TYPES_V2` has an example above, so no definition goes untested."""
     names = {definition.name for definition in DATA_TYPES_V2}
