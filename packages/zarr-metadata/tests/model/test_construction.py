@@ -325,6 +325,11 @@ def test_error_extra_fields_takes_values_as_json() -> None:
     member = GROUP.extra_fields["consolidated_metadata"]
     with pytest.raises(TypeError, match=r"to_json\(\)\['consolidated_metadata'\]"):
         GROUP.update(consolidated_metadata=member)  # pyright: ignore[reportArgumentType]
+    # The advice follows the field's kind, not the key it was given under.
+    with pytest.raises(TypeError, match=r"to_json\(\)\['foo'\]"):
+        ARRAY.update(extra_fields={"bar": source.extra_fields["foo"]})  # pyright: ignore[reportArgumentType]
+    with pytest.raises(TypeError, match=r"to_json\(\)$"):
+        ARRAY.update(extra_fields={"bytes": ARRAY.codecs[0]})  # pyright: ignore[reportArgumentType]
 
 
 def test_error_extra_fields_refuses_a_member_update_takes_by_name() -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Annotated, Any, Literal, NotRequired
+from typing import Annotated, Any, Literal, NewType, NotRequired
 
 import pytest
 from annotated_types import Ge
@@ -239,17 +239,38 @@ class _OnlyFalse(TypedDict, closed=True):
     must_understand: NotRequired[Literal[False]]
 
 
-@pytest.mark.parametrize("configuration", [_ExtraBooleans, _OnlyFalse, AcmeTilingConfiguration])
+_Waiver = NewType("_Waiver", bool)
+
+
+class _NewTypeOfBool(TypedDict, closed=True):
+    must_understand: NotRequired[_Waiver | Literal[False] | None]
+
+
+class _NewTypeOfBoolOnly(TypedDict, closed=True):
+    must_understand: NotRequired[_Waiver]
+
+
+@pytest.mark.parametrize(
+    "configuration", [_ExtraBooleans, _OnlyFalse, _NewTypeOfBoolOnly, AcmeTilingConfiguration]
+)
 def test_an_extra_field_configuration_takes_the_waiver(configuration: Any) -> None:  # noqa: ANN401 - a TypedDict
-    """A configuration takes the spec's `"must_understand": false` when the type it gives the key admits `false` and only booleans: a declared `bool` or `Literal[False]`, or other keys typed `bool`."""
+    """A configuration takes the spec's `"must_understand": false` when the type it gives the key admits `false` and only booleans: a declared `bool`, `Literal[False]` or `NewType` of `bool`, or other keys typed `bool`."""
     definition = ArrayExtraFieldDefinition(name="acme.ok", configuration=configuration)
     assert definition.configuration is configuration
 
 
 @pytest.mark.parametrize(
     "configuration",
-    [_Bare, _OnlyTrue, _AnyInt, _Open, _FalseOrNo, _BoolOrArray],
-    ids=["undeclared", "only-true", "any-int", "open", "false-or-a-string", "bool-or-an-array"],
+    [_Bare, _OnlyTrue, _AnyInt, _Open, _FalseOrNo, _BoolOrArray, _NewTypeOfBool],
+    ids=[
+        "undeclared",
+        "only-true",
+        "any-int",
+        "open",
+        "false-or-a-string",
+        "bool-or-an-array",
+        "a-new-type-or-null",
+    ],
 )
 def test_error_an_extra_field_configuration_that_refuses_the_waiver(configuration: Any) -> None:  # noqa: ANN401 - a TypedDict
     """The spec lets every extension member carry `"must_understand": false`, so the configuration of an extra field takes it: the type it gives `must_understand` admits `false`, and only booleans. A definition whose configuration refuses the waiver, or takes values that are not booleans, is refused when it is built, rather than misreading the documents that carry it."""

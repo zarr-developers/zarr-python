@@ -21,6 +21,7 @@ from zarr_metadata._json import (
 from zarr_metadata._typed_json import typeddict_keys
 from zarr_metadata.definition._definition import RefusedField, is_field
 from zarr_metadata.definition._scope import Conflict, claim_key
+from zarr_metadata.v3._definition import ExtraFieldDefinition
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -149,9 +150,9 @@ def _refuse_fields(key: str, value: object) -> None:
             continue
         if isinstance(item, RefusedField):
             advice = "a refused field has no JSON to write; give the member as JSON"
-        elif item.name == key:
+        elif issubclass(item.read_as, ExtraFieldDefinition):
             # An extra field is read as the member alone, `{key: value}`.
-            advice = f"give the member's value, field.to_json()[{key!r}]"
+            advice = f"give the member's value, field.to_json()[{item.name!r}]"
         else:
             advice = "give the field as JSON, field.to_json()"
         msg = f"{key}: a member is given as a document writes it, got a field; {advice}"

@@ -962,10 +962,53 @@ class _BooleanFormatScope(_ClaimsWithNoFormat):
     zarr_format = True
 
 
+class _ClassWithAFormat:
+    """A class, not an instance, that declares a format."""
+
+    zarr_format = 3
+
+
+class _RaisingClaimant:
+    """A value whose `claimant` raises when it is looked up, and whose repr raises."""
+
+    zarr_format = 3
+
+    @property
+    def claimant(self) -> object:
+        raise RuntimeError
+
+    def __repr__(self) -> str:
+        raise RuntimeError
+
+
+class _HugeFormat(_ClaimsWithNoFormat):
+    """A value whose `zarr_format` is an integer too long to write."""
+
+    zarr_format = 10**5000
+
+
 @pytest.mark.parametrize(
     "context",
-    [None, "CORE", ZarrV3Context, _ClaimsWithNoFormat(), _BooleanFormatScope()],
-    ids=["none", "a-string", "the-scope-class", "no-format", "a-boolean-format"],
+    [
+        None,
+        "CORE",
+        ZarrV3Context,
+        _ClaimsWithNoFormat(),
+        _BooleanFormatScope(),
+        _ClassWithAFormat,
+        _RaisingClaimant(),
+        _HugeFormat(),
+    ],
+    ids=[
+        "none",
+        "a-string",
+        "the-scope-class",
+        "no-format",
+        "a-boolean-format",
+        "a-class-with-a-format",
+        "a-raising-claimant-and-repr",
+        "a-huge-format",
+    ],
 )
 def test_error_resolve_refuses_what_is_not_a_scope(context: object) -> None:
     """`resolve` reads a field in a scope, which it takes with no default. `None`, which a model reader would take, or any other value that is not a scope raises `TypeError` naming it, rather than failing part way."""
@@ -1279,7 +1322,10 @@ def test_error_a_configuration_with_a_constraint_the_checker_does_not_read() -> 
     # A constraint the checker did not enforce would promise something that is not checked.
     with pytest.raises(
         TypeError,
-        match=r"AcmeUncheckedConfiguration.digits: Predicate\(str.isdigit\) is not a constraint",
+        match=(
+            r"AcmeUncheckedConfiguration.digits: Predicate\(str.isdigit\) is not a constraint"
+            r".*; check it in the definition's `rules`"
+        ),
     ):
         CodecDefinition(
             name="acme.unchecked",

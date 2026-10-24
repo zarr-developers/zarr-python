@@ -69,6 +69,7 @@ from zarr_metadata._json import (
 )
 from zarr_metadata._sentinel import UNSET
 from zarr_metadata._typed_json import (
+    UNREAD_CONSTRAINT,
     Loc,
     Parsed,
     Parser,
@@ -625,7 +626,10 @@ def _vet(configuration: type, zarr_format: int | None) -> None:
     vetting(configuration)
     unread = unread_in(configuration, vetting)
     if unread is not None:
-        raise TypeError(unread)
+        # A constraint the checker does not read is one a rule checks.
+        advice = "; check it in the definition's `rules`" if UNREAD_CONSTRAINT in unread else ""
+        msg = f"{unread}{advice}"
+        raise TypeError(msg)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1365,25 +1369,31 @@ def resolve(
 
 
 def _is_scope(value: object) -> bool:
-    """Whether `value` has what `resolve` needs of a `Context`: an integer `zarr_format`, and a `claimant` it can call. A class does not, though it may declare both."""
+    """Whether `value` has what `resolve` needs of a `Context`: a `zarr_format` of 2 or 3, and a `claimant` it can call. A class does not, though it may declare both."""
     if isinstance(value, type):
         return False
     try:
         zarr_format = getattr(value, "zarr_format", None)
+        claimant = getattr(value, "claimant", None)
     except Exception:  # noqa: BLE001 - any value may be given, and only its shape is asked
         return False
-    return type(zarr_format) is int and callable(getattr(value, "claimant", None))
+    return type(zarr_format) is int and zarr_format in (2, 3) and callable(claimant)
 
 
 def described(context: object) -> str:
-    """`context`, a value given as a scope, as an error message names it: its class and the format it reads, or its repr when it reads none."""
-    try:
-        zarr_format = getattr(context, "zarr_format", None)
-    except Exception:  # noqa: BLE001 - any value may be given, and the message must still be built
-        zarr_format = None
-    if type(zarr_format) is int:
+    """`context`, a value given as a scope, as an error message names it: its class and the format it reads, or its repr when it reads none, or its class when even that fails."""
+    zarr_format: object = None
+    if not isinstance(context, type):
+        try:
+            zarr_format = getattr(context, "zarr_format", None)
+        except Exception:  # noqa: BLE001 - any value may be given, and the message must still be built
+            zarr_format = None
+    if type(zarr_format) is int and zarr_format in (2, 3):
         return f"a {type(context).__name__}, a v{zarr_format} scope"
-    return repr(context)
+    try:
+        return repr(context)
+    except Exception:  # noqa: BLE001 - as above
+        return f"a {type(context).__name__}"
 
 
 def resolve_refined(

@@ -97,6 +97,9 @@ Loc: TypeAlias = tuple[str | int, ...]
 Parsed: TypeAlias = tuple[object, tuple[ValidationProblem, ...]]
 """The result of a parser: the typed value, and every problem found with it."""
 
+UNREAD_CONSTRAINT: Final = "is not a constraint the checker reads"
+"""What the checker says of `Annotated` metadata it does not read, such as `MultipleOf`."""
+
 Parser: TypeAlias = Callable[[object, Loc], Parsed]
 """Checks one value at `loc` against one annotation. Compiled once, run many times."""
 
@@ -664,11 +667,11 @@ def any_of(
     only such branches tried the value, and it is none of their values,
     it is reported once with the expected shapes, since naming one
     `Literal` would leave out the other branches. `allowed` holds the
-    values of every `Literal` branch. A value reported against the whole
-    union carries them under `expected` in the problem's `ctx`, as a
+    values of every `Literal` branch, in the order the message names
+    them. Such a problem carries them under `expected` in its `ctx`, as a
     single `Literal`'s problem does.
     """
-    ctx: dict[str, JSONValue] = {} if len(allowed) == 0 else {"expected": listed(allowed)}
+    ctx: dict[str, JSONValue] = {"expected": allowed}
 
     def parse(value: object, loc: Loc) -> Parsed:
         present = _keys_of(value)
@@ -695,7 +698,7 @@ def any_of(
             return value, (ValidationProblem(loc, message, kind, ctx=ctx),)
         if len(failed) != 0:
             return min(failed, key=lambda found: found[:2])[2]
-        return value, (ValidationProblem(loc, message, "invalid_type", ctx=ctx),)
+        return value, problem(loc, message)
 
     return parse
 
@@ -844,7 +847,7 @@ def constraints_of(metadata: Sequence[object]) -> dict[str, int | float]:
             continue
         name = next((name for kind, name in _BOUNDS if isinstance(item, kind)), None)
         if name is None:
-            msg = f"{item!r} is not a constraint the checker reads, which are Gt, Ge, Lt and Le"
+            msg = f"{item!r} {UNREAD_CONSTRAINT}, which are Gt, Ge, Lt and Le"
             raise TypeError(msg)
         side = _FROM_BELOW if name in _FROM_BELOW else _FROM_ABOVE
         if not side.isdisjoint(said):
@@ -950,8 +953,14 @@ def _union(inner: object, leaf: Leaf, building: _Building) -> Parser | None:
     literals = frozenset(
         index for index, branch in enumerate(arguments) if get_origin(_unaliased(branch)) is Literal
     )
+    # Each `Literal` names its values in the order `listed` gives, and the
+    # union names its branches in order.
     allowed: tuple[JSONValue, ...] = tuple(
-        value for index in sorted(literals) for value in get_args(_unaliased(arguments[index]))
+        dict.fromkeys(
+            value
+            for index in sorted(literals)
+            for value in listed(get_args(_unaliased(arguments[index])))
+        )
     )
     return any_of(branches, describe(inner), _tag(arguments), literals, allowed)
 

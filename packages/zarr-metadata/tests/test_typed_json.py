@@ -1297,12 +1297,13 @@ _PQ = TypeAliasType("_PQ", Literal["p", "q"])
             ("p", "q", 3),
         ),
         (
-            _PQ | Literal[3],
-            None,
-            'expected one of ["p", "q"] or 3, got null',
-            "invalid_type",
-            ("p", "q", 3),
+            Literal[3] | _PQ,
+            4,
+            'expected 3 or one of ["p", "q"], got 4',
+            "invalid_value",
+            (3, "p", "q"),
         ),
+        (_PQ | Literal[3], None, 'expected one of ["p", "q"] or 3, got null', "invalid_type", None),
     ],
     ids=[
         "string-outside-the-literal",
@@ -1310,16 +1311,21 @@ _PQ = TypeAliasType("_PQ", Literal["p", "q"])
         "mixed-literal",
         "literal-behind-an-alias",
         "literals-of-two-types",
+        "literals-in-the-order-the-message-names-them",
         "a-shape-no-literal-has",
     ],
 )
 def test_error_a_value_outside_every_literal_of_a_union_names_the_whole_union(
-    annotation: object, value: object, message: str, kind: str, expected: tuple[object, ...]
+    annotation: object,
+    value: object,
+    message: str,
+    kind: str,
+    expected: tuple[object, ...] | None,
 ) -> None:
-    """A value whose shape only `Literal` branches of a union have, and that none of them holds, is reported against the whole union, as a value of no branch's shape is, also when a `Literal` is behind a type alias. The kind is the one the `Literal` reports: a wrong value when its JSON type matches an entry, and a wrong type otherwise. The `ctx` holds every value the `Literal` branches allow under `expected`, as one `Literal`'s problem does, including the branches whose JSON type the value does not have."""
+    """A value whose shape only `Literal` branches of a union have, and that none of them holds, is reported against the whole union, as a value of no branch's shape is, also when a `Literal` is behind a type alias. The kind is the one the `Literal` reports: a wrong value when its JSON type matches an entry, and a wrong type otherwise. When only `Literal` branches tried the value, the `ctx` holds every value the `Literal` branches allow under `expected`, in the order the message names them, as one `Literal`'s problem does. A value of a shape no branch has is not refused by a closed set of values, so its problem has no `expected`."""
     (problem,) = parser(annotation, no_leaf)(value, ())[1]
     assert (problem.message, problem.kind) == (message, kind)
-    assert problem.ctx == {"expected": expected}
+    assert problem.ctx == ({} if expected is None else {"expected": expected})
 
 
 class _Three(TypedDict, closed=True):
