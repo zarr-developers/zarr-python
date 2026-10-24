@@ -12,9 +12,13 @@ site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr-metadata.readthedocs.io
 
 nav:
   - index.md
+  - Parsing / Validation: parsing-validation.md
   - API Reference:
       - api/index.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.definition</code>': api/definition.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.json_schema</code>': api/json_schema.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.model</code>': api/model.md
+      - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.problems</code>': api/problems.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.pydantic</code>': api/pydantic.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.typed_json</code>': api/typed_json.md
       - '<code class="doc-symbol doc-symbol-toc doc-symbol-module"></code> <code>zarr_metadata.v2</code>': api/v2.md

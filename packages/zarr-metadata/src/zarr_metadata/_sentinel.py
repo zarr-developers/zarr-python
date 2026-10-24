@@ -4,7 +4,9 @@ The models observe one invariant: `None` in a model always corresponds to a
 JSON `null` in the document (a v2 `compressor`/`filters` value, an unnamed
 dimension inside `dimension_names`), and `UNSET` always means the document
 key is absent. The two are never interchangeable, so a model value can never
-leak into a document as a spelling the writer did not intend.
+leak into a document as a spelling the writer did not intend. A problem's
+`input` keeps the same invariant: it is `UNSET` where nothing was found at
+the problem's `loc`, and `None` where a `null` was.
 
 Check with identity: `if model.dimension_names is UNSET: ...`.
 
@@ -13,8 +15,8 @@ from state: pickling and copying work by *reference* (typing_extensions >=
 4.16 implements `Sentinel.__reduce__` as a lookup of the sentinel's name on
 its defining module), so `pickle.loads(pickle.dumps(UNSET)) is UNSET` holds
 across process boundaries, and models holding `UNSET` pickle and deep-copy
-freely. Earlier typing_extensions releases refused to pickle sentinels
-outright — hence the `>=4.16` floor in this package's dependencies.
+freely. Earlier typing_extensions releases could not pickle sentinels at
+all, which is why this package requires `>=4.16`.
 
 Checker support (PEP 661 is Final; stdlib `sentinel` arrives in Python
 3.15): ty types this spelling exactly, including `is`/`is not` narrowing.

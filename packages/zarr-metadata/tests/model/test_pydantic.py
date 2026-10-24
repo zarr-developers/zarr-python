@@ -42,7 +42,9 @@ from pydantic import (
 )
 
 from zarr_metadata import JSONValue
-from zarr_metadata.model import ZarrV3ArrayMetadata, ZarrV3NamedConfig
+from zarr_metadata.model import (
+    ZarrV3ArrayMetadata,
+)
 
 # --- the integration (this is the example) -----------------------------------
 
@@ -155,9 +157,9 @@ def test_native_dataclass_introspection_is_not_supported() -> None:
     are the only supported integrations. If this test ever fails because
     pydantic learned to handle sentinels, revisit whether the introspection
     path needs its divergences documented again."""
-    from zarr_metadata._common import JSONValue
     from zarr_metadata.model import UNSET
-    from zarr_metadata.v3._common import ZarrV3MetadataFieldJSON
+    from zarr_metadata.typed_json import JSONValue
+    from zarr_metadata.v3 import ZarrV3MetadataFieldJSON
     from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON, ZarrV3ExtensionField
 
     def build_and_use() -> None:
@@ -169,8 +171,6 @@ def test_native_dataclass_introspection_is_not_supported() -> None:
                 "ZarrV3ExtensionField": ZarrV3ExtensionField,
                 "ZarrV3MetadataFieldJSON": ZarrV3MetadataFieldJSON,
                 "ZarrV3ArrayMetadataJSON": ZarrV3ArrayMetadataJSON,
-                "ZarrV3NamedConfig": ZarrV3NamedConfig,
-                "ZarrV3MetadataField": ZarrV3NamedConfig,
                 "UNSET": UNSET,
             },
         )
