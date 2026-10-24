@@ -425,7 +425,8 @@ def test_v2_create_default_is_valid_empty_array() -> None:
     assert m.fill_value == 0
     assert m.compressor is None
     assert m.filters is None
-    assert m.attributes is UNSET
+    assert m.attributes == {}
+    assert "attributes" not in m.to_json()
     assert validate_array_metadata_v2(m.to_json()) == ()
     assert ZarrV2ArrayMetadata.from_json(m.to_json()) == m
 
@@ -1089,15 +1090,17 @@ def test_v2_from_json_reconstructs_fields() -> None:
     assert model.attributes == {"a": 1}
 
 
-def test_v2_from_json_attributes_absent_is_unset() -> None:
-    """V2 from_json reads an absent attributes key as UNSET, distinct from an
-    explicit empty mapping."""
+def test_v2_from_json_attributes_absent_is_empty() -> None:
+    """V2 from_json reads an absent attributes key as empty attributes. The
+    document still differs from one with an explicit empty mapping."""
     absent = ZarrV2ArrayMetadata.from_json(ZarrV2ArrayMetadata.create_default().to_json())
     explicit = ZarrV2ArrayMetadata.from_json(
         ZarrV2ArrayMetadata.create_default(attributes={}).to_json()
     )
-    assert absent.attributes is UNSET
+    assert absent.attributes == {}
+    assert "attributes" not in absent.to_json()
     assert explicit.attributes == {}
+    assert explicit.to_json().get("attributes") == {}
     assert absent != explicit
 
 
@@ -1140,8 +1143,8 @@ def test_v2_from_key_value_keeps_zarray_extra_members() -> None:
 
 def test_v2_zattrs_presence_round_trips() -> None:
     """The .zattrs file's presence is part of the store: an absent file reads
-    as UNSET and emits no .zattrs; an explicit empty file reads as {} and
-    emits .zattrs — the two stores stay distinct through a round-trip."""
+    as empty attributes and emits no .zattrs; an explicit empty file reads as
+    {} and emits .zattrs — the two stores stay distinct through a round-trip."""
     explicit_kv = dict(ZarrV2ArrayMetadata.create_default(attributes={}).to_key_value())
     assert ".zattrs" in explicit_kv
     absent_kv = dict(explicit_kv)
@@ -1149,7 +1152,7 @@ def test_v2_zattrs_presence_round_trips() -> None:
 
     absent = ZarrV2ArrayMetadata.from_key_value(absent_kv)
     explicit = ZarrV2ArrayMetadata.from_key_value(explicit_kv)
-    assert absent.attributes is UNSET
+    assert absent.attributes == {}
     assert explicit.attributes == {}
     assert ".zattrs" not in absent.to_key_value()
     assert ".zattrs" in explicit.to_key_value()

@@ -503,9 +503,11 @@ class ZarrV2ArrayMetadata(Keyed):
     document without the key. `dtype`, `compressor` and
     each filter are views of the reading: an `AcceptedField` read by the
     definition in scope that claims the typestr or id, or an
-    `UnclaimedField`. `attributes` is `UNSET` when no `.zattrs` exists,
-    which is distinct from an empty one. A member the spec does not
-    define is kept in `extra_fields`. A model is only built by reading:
+    `UnclaimedField`. `attributes` is empty when no `.zattrs` exists, as
+    in a v3 model. The document still tells the two apart: `to_json` and
+    `to_key_value` write `attributes` and `.zattrs` only when a `.zattrs`
+    exists, even an empty one. A member the spec does not define is kept
+    in `extra_fields`. A model is only built by reading:
     the constructor reads `document` in `context` and raises
     `MetadataValidationError` with every problem, so no model is invalid.
     Two models are equal when their documents mean the same thing in
@@ -562,7 +564,7 @@ class ZarrV2ArrayMetadata(Keyed):
         # The members the model exposes, read-only at every level.
         self._shown = (
             frozen(members.fill_value),
-            UNSET if members.attributes is UNSET else frozen(members.attributes),
+            frozen({} if members.attributes is UNSET else members.attributes),
             frozen(members.extra_fields),
         )
 
@@ -691,8 +693,8 @@ class ZarrV2ArrayMetadata(Keyed):
         return unclaimed_fields_of(self._reading.fields(), {})
 
     @property
-    def attributes(self) -> Mapping[str, JSONValue] | UNSET:
-        """The user attributes a `.zattrs` holds, read-only at every level; `UNSET` when there is no `.zattrs`."""
+    def attributes(self) -> Mapping[str, JSONValue]:
+        """The user attributes a `.zattrs` holds, read-only at every level; empty when there is no `.zattrs`."""
         return self._shown[1]
 
     @property

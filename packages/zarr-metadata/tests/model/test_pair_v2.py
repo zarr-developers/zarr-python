@@ -6,6 +6,7 @@ import copy
 import dataclasses
 import json
 import pickle
+from collections.abc import Mapping
 from typing import Any, cast, get_args
 
 import pytest
@@ -89,7 +90,10 @@ def test_properties_are_what_the_reading_holds() -> None:
     with pytest.raises(TypeError):
         cast("dict[str, object]", model.attributes)["b"] = 1
     assert ZarrV2ArrayMetadata({**ARRAY, "compressor": None}).compressor is None
-    assert ZarrV2ArrayMetadata(_document({"attributes": UNSET})).attributes is UNSET
+    without = ZarrV2ArrayMetadata(_document({"attributes": UNSET}))
+    assert without.attributes == {}
+    assert isinstance(without.attributes, Mapping)
+    assert "attributes" not in without.to_json()
 
 
 @pytest.mark.parametrize(
@@ -271,7 +275,7 @@ GROUP: dict[str, Any] = {"zarr_format": 2, "attributes": {"g": [1]}}
     ("document", "attributes"),
     [
         (GROUP, {"g": (1,)}),
-        ({"zarr_format": 2}, UNSET),
+        ({"zarr_format": 2}, {}),
         ({"zarr_format": 2, "attributes": {}}, {}),
     ],
     ids=["attributes", "no-zattrs", "empty-zattrs"],
@@ -279,7 +283,7 @@ GROUP: dict[str, Any] = {"zarr_format": 2, "attributes": {"g": [1]}}
 def test_a_group_is_its_document_read_in_its_scope(
     document: dict[str, Any], attributes: object
 ) -> None:
-    """A v2 group model is its document plus its scope. `attributes` holds the attributes as the read refined them, or `UNSET` when no `.zattrs` exists. `zarr_format` and `node_type` are 2 and `"group"`, as a v3 group model has 3 and `"group"`. The model round-trips through its document, its store keys, pickle and copy, in any scope."""
+    """A v2 group model is its document plus its scope. `attributes` holds the attributes as the read refined them, and is empty when no `.zattrs` exists, as a v3 model's `attributes` is empty when the document writes none. `zarr_format` and `node_type` are 2 and `"group"`, as a v3 group model has 3 and `"group"`. The model round-trips through its document, its store keys, pickle and copy, in any scope."""
     model = ZarrV2GroupMetadata(document, SMALL)
     assert model.context is SMALL
     assert (model.zarr_format, model.node_type) == (2, "group")
@@ -295,7 +299,9 @@ def test_a_group_updates_moves_scope_and_refines_as_the_arrays_do() -> None:
     """`update` reads the new attributes in the model's own scope, and `UNSET` removes them. `with_context` and `refined_in` read the document in another scope and never conflict, since a group holds no field. Two groups are equal when their attributes are written the same way, and `refines` is that equality."""
     model = ZarrV2GroupMetadata(GROUP)
     assert model.update(attributes={"h": 2}).attributes == {"h": 2}
-    assert model.update(attributes=UNSET).attributes is UNSET
+    removed = model.update(attributes=UNSET)
+    assert removed.attributes == {}
+    assert ".zattrs" not in removed.to_key_value()
     assert model.refined_in(SMALL).context is SMALL
     assert model.with_context(PRIVATE) == model
     assert model == ZarrV2GroupMetadata({"zarr_format": 2, "attributes": {"g": (1,)}})
@@ -342,7 +348,7 @@ def test_consolidated_metadata_holds_its_entries_verbatim_and_each_node_as_a_mod
     assert model.nodes["a"] == ZarrV2ArrayMetadata(ARRAY, PRIVATE)
     root = ZarrV2GroupMetadata({"zarr_format": 2, "attributes": {"root": True}}, PRIVATE)
     assert model.nodes[""] == root
-    assert model.nodes["b"].attributes is UNSET
+    assert model.nodes["b"].attributes == {}
     entries = cast("dict[str, Any]", model.to_json()["metadata"])
     assert entries["orphan/.zattrs"] == {"o": 1}
     assert ZarrV2ConsolidatedMetadata.from_key_value(model.to_key_value(), context=PRIVATE) == model

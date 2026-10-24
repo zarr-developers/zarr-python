@@ -282,8 +282,10 @@ class ZarrV2GroupMetadata(Keyed):
 
     Like the v3 models, this model is a pair. `to_json` returns the
     merged document (`.zgroup`, plus `attributes` when a `.zattrs` holds
-    them) as written, refined. `attributes` is `UNSET` when no `.zattrs`
-    exists, which is distinct from an empty one. A group has no fields
+    them) as written, refined. `attributes` is empty when no `.zattrs`
+    exists, as in a v3 model. The document still tells the two apart:
+    `to_json` and `to_key_value` write `attributes` and `.zattrs` only when
+    a `.zattrs` exists, even an empty one. A group has no fields
     for a scope to read, so the scope is held only for consistency with
     the other models: `update` reads new attributes in it, and no other
     scope conflicts with the reading. A model is only built by reading:
@@ -297,7 +299,7 @@ class ZarrV2GroupMetadata(Keyed):
     _attributes: dict[str, JSONValue] | UNSET
     _context: ZarrV2Context
     _document: dict[str, JSONValue]
-    _shown: Mapping[str, JSONValue] | UNSET
+    _shown: Mapping[str, JSONValue]
 
     zarr_format: Final = 2
     node_type: Final = "group"
@@ -341,7 +343,7 @@ class ZarrV2GroupMetadata(Keyed):
         self._document = document
         self._context = context
         self._attributes = attributes
-        self._shown = UNSET if attributes is UNSET else frozen(attributes)
+        self._shown = frozen({} if attributes is UNSET else attributes)
 
     @property
     def reading(self) -> ZarrV2GroupMetadataReading:
@@ -359,8 +361,8 @@ class ZarrV2GroupMetadata(Keyed):
         return {}
 
     @property
-    def attributes(self) -> Mapping[str, JSONValue] | UNSET:
-        """The user attributes a `.zattrs` holds, read-only at every level; `UNSET` when there is no `.zattrs`."""
+    def attributes(self) -> Mapping[str, JSONValue]:
+        """The user attributes a `.zattrs` holds, read-only at every level; empty when there is no `.zattrs`."""
         return self._shown
 
     def to_json(self) -> ZarrV2GroupMetadataJSON:

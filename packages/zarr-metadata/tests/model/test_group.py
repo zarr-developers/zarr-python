@@ -488,11 +488,11 @@ def test_v2_group_from_key_value_rejects_zgroup_extra_members(extra_key: str) ->
 
 
 def test_group_v2_zattrs_presence_round_trips() -> None:
-    """A v2 group with no .zattrs file parses with UNSET attributes and emits
-    no .zattrs; an explicit empty .zattrs stays a file — the stores remain
+    """A v2 group with no .zattrs file has empty attributes and emits no
+    .zattrs; an explicit empty .zattrs stays a file — the stores remain
     distinct through a round-trip."""
     absent = ZarrV2GroupMetadata.from_key_value({".zgroup": b'{"zarr_format": 2}'})
-    assert absent.attributes is UNSET
+    assert absent.attributes == {}
     assert ".zattrs" not in absent.to_key_value()
     explicit = ZarrV2GroupMetadata.from_key_value(
         {".zgroup": b'{"zarr_format": 2}', ".zattrs": b"{}"}
