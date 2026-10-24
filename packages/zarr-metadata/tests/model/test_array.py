@@ -39,6 +39,7 @@ from zarr_metadata.model import (
     ZarrV2GroupMetadata,
     ZarrV3ArrayMetadata,
     ZarrV3ArrayMetadataReading,
+    ZarrV3ArrayMetadataUpdate,
     ZarrV3ConsolidatedMetadata,
     ZarrV3GroupMetadata,
     is_node_name_v3,
@@ -49,7 +50,7 @@ from zarr_metadata.model import (
     read_group_metadata_v3,
 )
 from zarr_metadata.problems import MetadataValidationError, ValidationProblem
-from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON, ZarrV3ArrayMetadataJSONPartial
+from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
 from zarr_metadata.v3.definition import (
     CORE,
@@ -538,7 +539,7 @@ def test_update_leaves_out_a_member_given_as_unset() -> None:
     ],
 )
 def test_a_model_is_what_its_document_says_not_how_it_is_spelled(
-    members: ZarrV3ArrayMetadataJSONPartial,
+    members: ZarrV3ArrayMetadataUpdate,
 ) -> None:
     """A model read back from its own document equals itself, and it equals the model read from any other spelling of the same document."""
     model = ZarrV3ArrayMetadata.create_default(**members)
@@ -1292,7 +1293,7 @@ def test_resolve_reports_the_problems_of_a_metadata_field(
 # invalid cases (a subset check, so accumulation of OTHER problems is allowed).
 
 
-def _build_v3(**overrides: Unpack[ZarrV3ArrayMetadataJSONPartial]) -> dict[str, object]:
+def _build_v3(**overrides: Unpack[ZarrV3ArrayMetadataUpdate]) -> dict[str, object]:
     return dict(ZarrV3ArrayMetadata.create_default(**overrides).to_json())
 
 
@@ -1821,7 +1822,7 @@ def test_from_key_value_rejects_non_standard_json_constant() -> None:
     ],
 )
 def test_error_create_default_refuses_a_document_with_a_problem(
-    members: ZarrV3ArrayMetadataJSONPartial, problems: list[tuple[tuple[str | int, ...], str]]
+    members: ZarrV3ArrayMetadataUpdate, problems: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
     """A model is built by a read, so a document that the read refuses produces no model, and nothing is written."""
     with pytest.raises(MetadataValidationError) as raised:
@@ -1839,7 +1840,7 @@ def test_error_create_default_refuses_a_document_with_a_problem(
     ids=["fill-value-out-of-range", "shape-without-its-grid"],
 )
 def test_error_update_refuses_a_document_with_a_problem(
-    members: ZarrV3ArrayMetadataJSONPartial, problems: list[tuple[tuple[str | int, ...], str]]
+    members: ZarrV3ArrayMetadataUpdate, problems: list[tuple[tuple[str | int, ...], str]]
 ) -> None:
     base = ZarrV3ArrayMetadata.create_default(shape=(4,))
     with pytest.raises(MetadataValidationError) as raised:

@@ -49,37 +49,6 @@ class ZarrV2GroupMetadataJSON(TypedDict, closed=True):
     attributes: NotRequired[Mapping[str, JSONValue]]
 
 
-class ZarrV2GroupMetadataJSONPartial(TypedDict, total=False, closed=True):
-    """
-    Partial form of `ZarrV2GroupMetadataJSON`: every field is `NotRequired`.
-
-    Field annotations mirror `ZarrV2GroupMetadataJSON` exactly. The only difference is
-    `total=False`, which makes every key optional at the type level.
-
-    Use this when typing dicts that intentionally hold a subset of a complete
-    v2 group metadata document — e.g. test fixtures that override only a few
-    fields of a base template, or callers that build a fragment to be merged
-    into a complete document elsewhere. Provided for symmetry with the other
-    `*Partial` types; the practical effect is that `zarr_format` becomes optional.
-
-    The `NotRequired[...]` wrapper on `attributes` is intentional: keeping it
-    preserves byte-identical `__annotations__` with `ZarrV2GroupMetadataJSON` so the
-    `==` check in `tests/test_partial_equivalence.py` passes without
-    special-casing that field (PEP 655 explicitly permits `NotRequired` inside
-    `total=False`).
-
-    Note: v2 group metadata is closed (the v2 spec has no extension-field
-    concept, and `.zgroup` forbids other keys outright:
-    https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L313), and so is this partial.
-
-    Drift between this type and `ZarrV2GroupMetadataJSON` is prevented by
-    `tests/test_partial_equivalence.py`.
-    """
-
-    zarr_format: Literal[2]
-    attributes: NotRequired[Mapping[str, JSONValue]]
-
-
 ZarrV2GroupMetadataStoreKey = Literal[".zgroup"]
 """Literal type of the store key holding a v2 group's metadata document."""
 
@@ -90,7 +59,6 @@ ZARR_V2_GROUP_METADATA_STORE_KEY: Final[ZarrV2GroupMetadataStoreKey] = ".zgroup"
 __all__ = [
     "ZARR_V2_GROUP_METADATA_STORE_KEY",
     "ZarrV2GroupMetadataJSON",
-    "ZarrV2GroupMetadataJSONPartial",
     "ZarrV2GroupMetadataStoreKey",
     "ZarrV2ZGroupJSON",
 ]

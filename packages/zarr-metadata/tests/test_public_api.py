@@ -29,19 +29,15 @@ def _group_rank(s: str) -> int:
 EXPECTED = [
     # Category A — metadata-document types
     "ZarrV2ArrayMetadataJSON",
-    "ZarrV2ArrayMetadataJSONPartial",
     "ZarrV2ZArrayJSON",
     "ZarrV2GroupMetadataJSON",
-    "ZarrV2GroupMetadataJSONPartial",
     "ZarrV2ZGroupJSON",
     "ZarrV2ConsolidatedMetadataJSON",
     "ZarrV2ZAttrsJSON",
     "ZarrV2CodecMetadata",
     "ZarrV3ArrayMetadataJSON",
-    "ZarrV3ArrayMetadataJSONPartial",
     "ZarrV3ExtensionField",
     "ZarrV3GroupMetadataJSON",
-    "ZarrV3GroupMetadataJSONPartial",
     "ZarrV3ConsolidatedMetadataJSON",
     "ZarrV3ConsolidatedMetadataEnvelopeJSON",
     "ZarrV3NamedConfigJSON",
@@ -246,7 +242,7 @@ def test_all_is_grouped_and_unique() -> None:
 
 # Core document/model names: the format version comes first (`ZarrV2` /
 # `ZarrV3`), then the CamelCase entity, then an optional role suffix
-# (`JSON`, `JSONPartial`, `Partial`, `Reading`, `StoreKey`) — validated loosely here
+# (`JSON`, `Update`, `Reading`, `StoreKey`) — validated loosely here
 # because `JSON` decomposes into single-letter words under any strict
 # word-splitting regex.
 _CORE_NAME = re.compile(r"^ZarrV[23](?:[A-Z][a-z0-9]*)+$")
@@ -424,10 +420,10 @@ def constant_name_for(type_name: str) -> str:
     word boundary in the spec vocabulary these names model.
 
     Consecutive capitals do not split, so acronym-adjacent names derive badly:
-    `ZarrV2ZArrayJSON` -> `ZARR_V2ZARRAY_JSON` and `...JSONPartial` ->
-    `...JSONPARTIAL`. Every such name in the package today is a `TypedDict` or
-    `TypeAliasType` that backs no constant, so none reaches this function — but
-    a future `Literal` spelled that way would silently be held to a bad name.
+    `ZarrV2ZArrayJSON` -> `ZARR_V2ZARRAY_JSON`. Every such name in the package
+    today is a `TypedDict` or `TypeAliasType` that backs no constant, so none
+    reaches this function — but a future `Literal` spelled that way would
+    silently be held to a bad name.
     Splitting acronyms correctly needs a vocabulary, not a regex, so the rule
     stays syntactic and this stays a known limit.
     """

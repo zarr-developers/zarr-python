@@ -43,18 +43,17 @@ from zarr_metadata.model._group_v3 import GroupMembersV3
 from zarr_metadata.problems import MetadataValidationError, ValidationProblem
 from zarr_metadata.v2.group import (
     ZarrV2GroupMetadataJSON,
-    ZarrV2GroupMetadataJSONPartial,
     ZarrV2ZGroupJSON,
 )
 from zarr_metadata.v3 import ZarrV3NamedConfigJSON
-from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSONPartial
+from zarr_metadata.v3.array import ZarrV3ArrayMetadataJSON
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC, GzipCodecConfiguration
 from zarr_metadata.v3.definition import (
     CORE,
     CORE_AND_EXTENSIONS,
     CodecDefinition,
 )
-from zarr_metadata.v3.group import ZarrV3GroupMetadataJSONPartial
+from zarr_metadata.v3.group import ZarrV3GroupMetadataJSON
 
 if TYPE_CHECKING:
     from zarr_metadata.typed_json import JSONValue
@@ -198,7 +197,7 @@ def test_a_member_a_closed_object_does_not_declare_is_an_unknown_key(
 
 @pytest.mark.parametrize(
     "document_type",
-    [ZarrV2ZGroupJSON, ZarrV2GroupMetadataJSON, ZarrV2GroupMetadataJSONPartial],
+    [ZarrV2ZGroupJSON, ZarrV2GroupMetadataJSON],
     ids=lambda document_type: document_type.__name__,
 )
 def test_v2_group_document_types_are_closed(document_type: type) -> None:
@@ -522,14 +521,14 @@ def test_group_v2_missing_required_key() -> None:
         ZarrV2GroupMetadata.from_json({})
 
 
-# --- Partial TypedDict drift guards -----------------------------------------
+# --- Update TypedDict drift guards ------------------------------------------
 
 
-def test_group_partial_keys_match_settable_model_fields() -> None:
-    """The v2 group partial TypedDict lists exactly the settable model fields.
+def test_group_update_keys_match_settable_model_fields() -> None:
+    """The v2 group `Update` TypedDict lists exactly the settable model fields.
 
     Guards against drift: adding/removing a settable field on the model
-    without updating its `*Partial` TypedDict fails here.
+    without updating its `Update` TypedDict fails here.
     """
     assert set(ZarrV2GroupMetadataUpdate.__annotations__) == {"attributes"}
 
@@ -537,15 +536,15 @@ def test_group_partial_keys_match_settable_model_fields() -> None:
 def test_update_takes_every_member_of_the_document_it_may_change() -> None:
     """Each v3 model's `update` takes every member of its document except `zarr_format` and `node_type`, which it cannot change, and `extra_fields`, which holds the members the spec does not define. A group's `update` also declares `consolidated_metadata`, which the document type leaves to its extra items, because `update` accepts node models there."""
     fixed = {"zarr_format", "node_type"}
-    for update, partial, declared in (
-        (ZarrV3ArrayMetadataUpdate, ZarrV3ArrayMetadataJSONPartial, {"extra_fields"}),
+    for update, document, declared in (
+        (ZarrV3ArrayMetadataUpdate, ZarrV3ArrayMetadataJSON, {"extra_fields"}),
         (
             ZarrV3GroupMetadataUpdate,
-            ZarrV3GroupMetadataJSONPartial,
+            ZarrV3GroupMetadataJSON,
             {"consolidated_metadata", "extra_fields"},
         ),
     ):
-        assert set(update.__annotations__) == (set(partial.__annotations__) - fixed) | declared
+        assert set(update.__annotations__) == (set(document.__annotations__) - fixed) | declared
 
 
 # --- ZarrV3ConsolidatedMetadata --------------------------------------------

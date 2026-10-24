@@ -90,49 +90,6 @@ class ZarrV2ArrayMetadataJSON(TypedDict, extra_items=JSONValue):
     """
 
 
-class ZarrV2ArrayMetadataJSONPartial(TypedDict, total=False, extra_items=JSONValue):
-    """
-    Partial form of `ZarrV2ArrayMetadataJSON`: every field is `NotRequired`.
-
-    Field annotations mirror `ZarrV2ArrayMetadataJSON` exactly. The only difference is
-    `total=False`, which makes every key optional at the type level.
-
-    Use this when typing dicts that intentionally hold a subset of a complete
-    v2 array metadata document — e.g. test fixtures that override only a few
-    fields of a base template, or callers that build a fragment to be merged
-    into a complete document elsewhere.
-
-    The `NotRequired[...]` wrappers on `dimension_separator` and `attributes`
-    are intentional: keeping them preserves byte-identical `__annotations__`
-    with `ZarrV2ArrayMetadataJSON` so the `==` check in
-    `tests/test_partial_equivalence.py` passes without special-casing those
-    fields (PEP 655 explicitly permits `NotRequired` inside `total=False`).
-
-    Like `ZarrV2ArrayMetadataJSON`, this type is open (`extra_items=JSONValue`):
-    other `.zarray` keys "SHOULD NOT be present ... and SHOULD be ignored by
-    implementations" (https://github.com/zarr-developers/zarr-specs/blob/fc7dd9c9beb5a50b87f9b08b00bf50fc0048482f/docs/v2/v2.0.rst#L91-L92), so they are allowed, and each one is a
-    JSON value.
-
-    Drift between this type and `ZarrV2ArrayMetadataJSON` is prevented by
-    `tests/test_partial_equivalence.py`.
-    """
-
-    zarr_format: Literal[2]
-    shape: tuple[Annotated[int, Ge(0)], ...]
-    chunks: tuple[Annotated[int, Ge(0)], ...]
-    dtype: ZarrV2DataTypeMetadata
-    compressor: ZarrV2CodecMetadata | None
-    fill_value: JSONValue
-    order: ZarrV2ArrayOrder
-    filters: tuple[ZarrV2CodecMetadata, ...] | None
-    dimension_separator: NotRequired[ZarrV2ArrayDimensionSeparator]
-    attributes: NotRequired[Mapping[str, JSONValue]]
-    """User attributes from the sibling `.zattrs` file (not part of `.zarray`).
-
-    See the class docstring for the rationale behind the merged representation.
-    """
-
-
 ZarrV2ArrayMetadataStoreKey = Literal[".zarray"]
 """Literal type of the store key holding a v2 array's metadata document."""
 
@@ -146,7 +103,6 @@ __all__ = [
     "ZARR_V2_ARRAY_ORDER",
     "ZarrV2ArrayDimensionSeparator",
     "ZarrV2ArrayMetadataJSON",
-    "ZarrV2ArrayMetadataJSONPartial",
     "ZarrV2ArrayMetadataStoreKey",
     "ZarrV2ArrayOrder",
     "ZarrV2ZArrayJSON",

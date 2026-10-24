@@ -40,7 +40,6 @@ from zarr_metadata.v2.array import (
     ZARR_V2_ARRAY_ORDER,
     ZarrV2ArrayDimensionSeparator,
     ZarrV2ArrayMetadataJSON,
-    ZarrV2ArrayMetadataJSONPartial,
     ZarrV2ArrayMetadataStoreKey,
     ZarrV2ArrayOrder,
     ZarrV2ZArrayJSON,
@@ -60,7 +59,6 @@ from zarr_metadata.v2.data_type import ZarrV2DataTypeMetadata
 from zarr_metadata.v2.group import (
     ZARR_V2_GROUP_METADATA_STORE_KEY,
     ZarrV2GroupMetadataJSON,
-    ZarrV2GroupMetadataJSONPartial,
     ZarrV2GroupMetadataStoreKey,
     ZarrV2ZGroupJSON,
 )
@@ -68,7 +66,6 @@ from zarr_metadata.v3 import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON, Zarr
 from zarr_metadata.v3.array import (
     ZARR_V3_ARRAY_METADATA_STORE_KEY,
     ZarrV3ArrayMetadataJSON,
-    ZarrV3ArrayMetadataJSONPartial,
     ZarrV3ArrayMetadataStoreKey,
 )
 from zarr_metadata.v3.chunk_grid.rectilinear import (
@@ -246,7 +243,6 @@ from zarr_metadata.v3.data_type.uint64 import (
 from zarr_metadata.v3.group import (
     ZARR_V3_GROUP_METADATA_STORE_KEY,
     ZarrV3GroupMetadataJSON,
-    ZarrV3GroupMetadataJSONPartial,
     ZarrV3GroupMetadataStoreKey,
 )
 
@@ -385,7 +381,6 @@ __all__ = [
     "ZarrV2ArrayDimensionSeparator",
     "ZarrV2ArrayMetadata",
     "ZarrV2ArrayMetadataJSON",
-    "ZarrV2ArrayMetadataJSONPartial",
     "ZarrV2ArrayMetadataStoreKey",
     "ZarrV2ArrayMetadataUpdate",
     "ZarrV2ArrayOrder",
@@ -397,7 +392,6 @@ __all__ = [
     "ZarrV2DataTypeMetadata",
     "ZarrV2GroupMetadata",
     "ZarrV2GroupMetadataJSON",
-    "ZarrV2GroupMetadataJSONPartial",
     "ZarrV2GroupMetadataStoreKey",
     "ZarrV2GroupMetadataUpdate",
     "ZarrV2ZArrayJSON",
@@ -405,7 +399,6 @@ __all__ = [
     "ZarrV2ZGroupJSON",
     "ZarrV3ArrayMetadata",
     "ZarrV3ArrayMetadataJSON",
-    "ZarrV3ArrayMetadataJSONPartial",
     "ZarrV3ArrayMetadataStoreKey",
     "ZarrV3ArrayMetadataUpdate",
     "ZarrV3ConsolidatedMetadata",
@@ -415,7 +408,6 @@ __all__ = [
     "ZarrV3ExtensionField",
     "ZarrV3GroupMetadata",
     "ZarrV3GroupMetadataJSON",
-    "ZarrV3GroupMetadataJSONPartial",
     "ZarrV3GroupMetadataStoreKey",
     "ZarrV3GroupMetadataUpdate",
     "ZarrV3MetadataFieldJSON",
