@@ -431,6 +431,50 @@ ZarrV2NodeMetadata: TypeAlias = "ZarrV2ArrayMetadata | ZarrV2GroupMetadata"
 """The model of one node in a v2 `.zmetadata` document: an array or a group."""
 
 
+@dataclass(frozen=True, slots=True)
+class ZarrV2ConsolidatedMetadataReading:
+    """A v2 `.zmetadata` document as a scope read it: every problem, and the model when there are no problems."""
+
+    problems: tuple[ValidationProblem, ...] = ()
+    """Every reason the document is not valid."""
+    metadata: ZarrV2ConsolidatedMetadata | None = None
+    """The document's model when there is no problem; None otherwise."""
+
+    def fields(self) -> Iterator[tuple[Loc, ResolvedField[Any]]]:
+        """Each field of each array node, as read, located in the `.zmetadata`: under the node's `.zarray` entry. Nothing when there is no model, and nothing for a group, which has no fields."""
+        if self.metadata is None:
+            return
+        for path, node in self.metadata.nodes.items():
+            if isinstance(node, ZarrV2ArrayMetadata):
+                key = (
+                    ZARR_V2_ARRAY_METADATA_STORE_KEY
+                    if path == ""
+                    else f"{path}/{ZARR_V2_ARRAY_METADATA_STORE_KEY}"
+                )
+                for loc, field in node.reading.fields():
+                    yield ("metadata", key, *loc), field
+
+    def __reduce__(self) -> str | tuple[object, ...]:
+        # Same as the other readings: pickle through the model, when there is one.
+        if self.metadata is not None:
+            return (reading_of, (self.metadata,))
+        return object.__reduce__(self)
+
+
+def read_consolidated_metadata_v2(
+    value: object, *, context: ZarrV2Context | None = None
+) -> ZarrV2ConsolidatedMetadataReading:
+    """Read `value`, a v2 `.zmetadata` document, in `context` (`CORE_V2` when none is given), whatever it holds: every problem the read finds, and the model when there are none. This is the form of `ZarrV2ConsolidatedMetadata(value, context)` that returns problems instead of raising them."""
+    context = scoped(context, CORE_V2)
+    entries, nodes, problems = _read_consolidated_v2(value, context)
+    if len(problems) != 0:
+        return ZarrV2ConsolidatedMetadataReading(problems=problems)
+    model = ZarrV2ConsolidatedMetadata._of(  # pyright: ignore[reportPrivateUsage]
+        {"zarr_consolidated_format": 1, "metadata": entries}, context, nodes
+    )
+    return model.reading
+
+
 class ZarrV2ConsolidatedMetadata(Keyed):
     """A v2 `.zmetadata` document, and the scope its nodes were read in.
 
@@ -480,6 +524,11 @@ class ZarrV2ConsolidatedMetadata(Keyed):
         self._context = context
         self._nodes = nodes
         self._shown = frozen(object_at(document, "metadata"))
+
+    @property
+    def reading(self) -> ZarrV2ConsolidatedMetadataReading:
+        """The document as the scope read it: no problems, and this model."""
+        return ZarrV2ConsolidatedMetadataReading(metadata=self)
 
     @property
     def context(self) -> Context:

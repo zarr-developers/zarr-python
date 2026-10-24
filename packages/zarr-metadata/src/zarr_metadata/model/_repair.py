@@ -27,7 +27,6 @@ from zarr_metadata._common import (
 )
 from zarr_metadata._json import (
     JSON_DEPTH,
-    MetadataValidationError,
     ValidationProblem,
     is_json_object,
     is_object,
@@ -38,7 +37,10 @@ from zarr_metadata.definition._context import (
     ZarrV3Context,
     scoped,
 )
-from zarr_metadata.model._group_v2 import ZarrV2ConsolidatedMetadata
+from zarr_metadata.model._group_v2 import (
+    ZarrV2ConsolidatedMetadata,
+    read_consolidated_metadata_v2,
+)
 from zarr_metadata.model._group_v3 import ZarrV3NodeMetadataReading, read_node_metadata_v3
 from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v2.group import ZARR_V2_GROUP_METADATA_STORE_KEY
@@ -327,11 +329,8 @@ def read_repaired_consolidated_metadata_v2(
     """
     context = scoped(context, CORE_V2)
     repaired, repairs = repair_consolidated_metadata_v2(value)
-    try:
-        model: ZarrV2ConsolidatedMetadata | None = ZarrV2ConsolidatedMetadata(repaired, context)
-    except MetadataValidationError as error:
-        return ZarrV2RepairedConsolidatedMetadataReading(error.problems, None, repairs)
-    return ZarrV2RepairedConsolidatedMetadataReading((), model, repairs)
+    reading = read_consolidated_metadata_v2(repaired, context=context)
+    return ZarrV2RepairedConsolidatedMetadataReading(reading.problems, reading.metadata, repairs)
 
 
 __all__ = [

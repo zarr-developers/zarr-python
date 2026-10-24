@@ -1,4 +1,4 @@
-"""The v2 group reader and the v2 node reader, which reads a node's files from a store."""
+"""The v2 readers that return problems instead of raising: the group reader, the consolidated-metadata reader, and the node reader, which reads a node's files from a store."""
 
 from __future__ import annotations
 
@@ -10,10 +10,12 @@ import pytest
 from zarr_metadata.model import (
     ZarrV2ArrayMetadata,
     ZarrV2ArrayMetadataReading,
+    ZarrV2ConsolidatedMetadata,
     ZarrV2GroupMetadata,
     ZarrV2GroupMetadataReading,
     ZarrV2UnknownNodeMetadataReading,
     node_metadata_from_key_value_v2,
+    read_consolidated_metadata_v2,
     read_group_metadata_v2,
     read_node_metadata_v2,
     validate_node_metadata_v2,
@@ -117,3 +119,38 @@ def test_error_a_v2_node_with_a_bad_document_reports_its_problems() -> None:
     assert type(reading) is ZarrV2ArrayMetadataReading
     assert [(p.loc, p.kind) for p in reading.problems] == [(("shape",), "invalid_value")]
     assert validate_node_metadata_v2(_store(_zarray={**ZARRAY, "shape": [-1]})) == reading.problems
+
+
+CONSOLIDATED: dict[str, Any] = {
+    "zarr_consolidated_format": 1,
+    "metadata": {
+        ".zgroup": {"zarr_format": 2},
+        "a/.zarray": ZARRAY,
+        "a/.zattrs": {"x": 1},
+    },
+}
+
+
+def test_read_consolidated_metadata_v2_reads_a_zmetadata() -> None:
+    """`read_consolidated_metadata_v2` returns a reading with no problems whose model equals the one the constructor builds, and the model's `reading` is that reading. `fields()` gives each node's fields located in the `.zmetadata`."""
+    reading = read_consolidated_metadata_v2(CONSOLIDATED)
+    assert reading.problems == ()
+    assert reading.metadata == ZarrV2ConsolidatedMetadata(CONSOLIDATED)
+    assert reading.metadata is not None
+    assert reading.metadata.reading == reading
+    assert [loc for loc, _ in reading.fields()] == [("metadata", "a/.zarray", "dtype")]
+
+
+def test_error_read_consolidated_metadata_v2_reports_problems_instead_of_raising() -> None:
+    """A `.zmetadata` with a problem gives a reading with every problem and no model, where the constructor raises."""
+    bad = {
+        **CONSOLIDATED,
+        "metadata": {**CONSOLIDATED["metadata"], "a/.zarray": {**ZARRAY, "shape": [-1]}},
+    }
+    reading = read_consolidated_metadata_v2(bad)
+    assert [(p.loc, p.kind) for p in reading.problems] == [
+        (("metadata", "a/.zarray", "shape"), "invalid_value")
+    ]
+    assert reading.metadata is None
+    with pytest.raises(MetadataValidationError):
+        ZarrV2ConsolidatedMetadata(bad)

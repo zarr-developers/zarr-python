@@ -12,11 +12,12 @@ chunk it receives. Each document concept gets a `validate_*` function
 that returns every problem found (a tuple of `ValidationProblem`, each
 with a machine-readable `kind`), an `is_*` type guard, and a `parse_*`
 function that narrows the value or raises `MetadataValidationError`.
-Array and group documents of both formats also get a reader
-(`read_array_metadata_v3`, `read_group_metadata_v3`,
-`read_array_metadata_v2`, `read_group_metadata_v2`). Each does one read
-and returns what it read, the problems, and the model when there are no
-problems. A node of either type is read by `read_node_metadata_v3`, from
+Every document type also gets a reader (`read_array_metadata_v3`,
+`read_group_metadata_v3`, `read_array_metadata_v2`,
+`read_group_metadata_v2`, `read_consolidated_metadata_v2`). Each does
+one read and returns what it read, the problems, and the model when there
+are no problems. It is the form of the model's constructor that returns
+problems as values instead of raising them. A node of either type is read by `read_node_metadata_v3`, from
 a `zarr.json` and its `node_type`, or by `read_node_metadata_v2`, from
 the `.zarray` or `.zgroup` file a store holds. To read
 a store that another writer made with a known writer bug, use
@@ -60,6 +61,7 @@ from zarr_metadata.model._array_v3 import (
 )
 from zarr_metadata.model._group_v2 import (
     ZarrV2ConsolidatedMetadata,
+    ZarrV2ConsolidatedMetadataReading,
     ZarrV2GroupMetadata,
     ZarrV2GroupMetadataReading,
     ZarrV2GroupMetadataUpdate,
@@ -69,6 +71,7 @@ from zarr_metadata.model._group_v2 import (
     is_group_metadata_v2,
     node_metadata_from_key_value_v2,
     parse_group_metadata_v2,
+    read_consolidated_metadata_v2,
     read_group_metadata_v2,
     read_node_metadata_v2,
     validate_group_metadata_v2,
@@ -125,6 +128,7 @@ __all__ = [
     "ZarrV2ArrayMetadataReading",
     "ZarrV2ArrayMetadataUpdate",
     "ZarrV2ConsolidatedMetadata",
+    "ZarrV2ConsolidatedMetadataReading",
     "ZarrV2GroupMetadata",
     "ZarrV2GroupMetadataReading",
     "ZarrV2GroupMetadataUpdate",
@@ -164,6 +168,7 @@ __all__ = [
     "parse_node_path_v3",
     "read_array_metadata_v2",
     "read_array_metadata_v3",
+    "read_consolidated_metadata_v2",
     "read_group_metadata_v2",
     "read_group_metadata_v3",
     "read_node_metadata_v2",
