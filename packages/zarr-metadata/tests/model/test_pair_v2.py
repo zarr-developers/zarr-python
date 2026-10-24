@@ -72,7 +72,7 @@ def test_a_model_is_its_document_read_in_its_scope() -> None:
 
 
 def test_properties_are_what_the_reading_holds() -> None:
-    """`dtype`, `compressor` and `filters` are the fields as the scope read them, or None where the document has `null`. `shape`, `chunks`, `fill_value`, `order`, `dimension_separator`, `attributes` and `extra_fields` are the members as the read refined them, and they are read-only. `claims` is keyed the same way the scope files its definitions."""
+    """`dtype`, `compressor` and `filters` are the fields as the scope read them, or None where the document has `null`. `shape`, `chunks`, `fill_value`, `order`, `dimension_separator`, `attributes` and `extra_fields` are the members as the read refined them, and they are read-only. `zarr_format` and `node_type` are 2 and `"array"`, as a v3 array model has 3 and `"array"`. `claims` is keyed the same way the scope files its definitions."""
     model = ZarrV2ArrayMetadata({**ARRAY, "filters": [{"id": "x"}], "extra": [1]})
     assert isinstance(model.dtype, AcceptedField)
     assert model.dtype.definition is FLOAT_DATA_TYPE_V2
@@ -84,6 +84,7 @@ def test_properties_are_what_the_reading_holds() -> None:
     assert members == ((4,), (2,), 0, "C", ".")
     assert model.attributes == {"a": (1, 2)}
     assert model.extra_fields == {"extra": (1,)}
+    assert (model.zarr_format, model.node_type) == (2, "array")
     assert (ZarrV2DataTypeDefinition, "float") in model.claims
     with pytest.raises(TypeError):
         cast("dict[str, object]", model.attributes)["b"] = 1
@@ -278,9 +279,10 @@ GROUP: dict[str, Any] = {"zarr_format": 2, "attributes": {"g": [1]}}
 def test_a_group_is_its_document_read_in_its_scope(
     document: dict[str, Any], attributes: object
 ) -> None:
-    """A v2 group model is its document plus its scope. `attributes` holds the attributes as the read refined them, or `UNSET` when no `.zattrs` exists. The model round-trips through its document, its store keys, pickle and copy, in any scope."""
+    """A v2 group model is its document plus its scope. `attributes` holds the attributes as the read refined them, or `UNSET` when no `.zattrs` exists. `zarr_format` and `node_type` are 2 and `"group"`, as a v3 group model has 3 and `"group"`. The model round-trips through its document, its store keys, pickle and copy, in any scope."""
     model = ZarrV2GroupMetadata(document, SMALL)
     assert model.context is SMALL
+    assert (model.zarr_format, model.node_type) == (2, "group")
     assert model.attributes == attributes
     assert model.to_json() == ZarrV2GroupMetadata.from_json(document).to_json()
     assert ZarrV2GroupMetadata.from_key_value(model.to_key_value(), context=SMALL) == model

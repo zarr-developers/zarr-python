@@ -517,6 +517,7 @@ class ZarrV2ArrayMetadata(Keyed):
     __slots__ = ("_claims", "_context", "_document", "_members", "_reading", "_shown")
 
     zarr_format: Final = 2
+    node_type: Final = "array"
 
     @property
     def claims(self) -> Claims:

@@ -300,6 +300,7 @@ class ZarrV2GroupMetadata(Keyed):
     _shown: Mapping[str, JSONValue] | UNSET
 
     zarr_format: Final = 2
+    node_type: Final = "group"
 
     @property
     def claims(self) -> Claims:
