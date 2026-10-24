@@ -107,7 +107,14 @@ def _lzma_canonical(configuration: ZarrV2LzmaParameters) -> ZarrV2LzmaParameters
 
 
 def _blosc_canonical(configuration: ZarrV2BloscParameters) -> ZarrV2BloscParameters:
-    """Fill in the defaults, as numcodecs writes them, and write a `shuffle` of `true` or `false` as 1 or 0, which numcodecs reads it as. A null `typesize` is the default, which numcodecs does not write."""
+    """Fill in the defaults, as numcodecs writes them, and write a `shuffle` of `true` or `false` as 1 or 0, which numcodecs reads it as.
+
+    numcodecs 0.16 reads `typesize` but never writes it. A null `typesize`
+    is the default, and is dropped. Under `shuffle` 0 nothing is shuffled,
+    so `typesize` is dropped there too, as the v3 blosc codec drops it
+    under `noshuffle`. Under any other `shuffle`, it sets the element size
+    that Blosc shuffles by, and is kept.
+    """
     shuffle = configuration.get("shuffle", 1)
     filled: ZarrV2BloscParameters = {
         "cname": configuration.get("cname", "lz4"),
@@ -116,7 +123,7 @@ def _blosc_canonical(configuration: ZarrV2BloscParameters) -> ZarrV2BloscParamet
         "blocksize": configuration.get("blocksize", 0),
     }
     typesize = configuration.get("typesize")
-    if typesize is None:
+    if typesize is None or filled["shuffle"] == 0:
         return filled
     return {**filled, "typesize": typesize}
 

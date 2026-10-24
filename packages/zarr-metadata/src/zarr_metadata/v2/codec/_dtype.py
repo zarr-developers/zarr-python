@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Final
 
 from zarr_metadata._json import ValidationProblem
-from zarr_metadata.definition._definition import resolve
+from zarr_metadata.definition._definition import canonicalize, resolve
 from zarr_metadata.v2._context import ZarrV2Context
 from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition, parse_typestr
 from zarr_metadata.v2.data_type import DATA_TYPES_V2
@@ -71,4 +71,10 @@ def dtype_parameter(*keys: str, float_only: bool = False) -> _DtypeParameter:
     return _DtypeParameter(keys, float_only)
 
 
-__all__ = ["dtype_parameter"]
+def canonical_typestr(written: str) -> str:
+    """Return `written`, a dtype parameter that `dtype_parameter` accepts, in the canonical spelling of its data type, which is how an array's dtype compares. This is how NumPy writes it: `<i1` is `|i1`, and `<M8[μs]` is `<M8[us]`."""
+    canonical, _ = canonicalize(written, ZarrV2DataTypeDefinition, _DATA_TYPES)
+    return canonical if isinstance(canonical, str) else written
+
+
+__all__ = ["canonical_typestr", "dtype_parameter"]

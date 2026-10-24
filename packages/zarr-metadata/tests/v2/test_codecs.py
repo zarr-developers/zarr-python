@@ -133,6 +133,12 @@ CHECKSUM_DEFAULTS: dict[str, Any] = {"location": "start"}
         ({"id": "blosc", "shuffle": False}, {**BLOSC_DEFAULTS, "shuffle": 0}),
         ({"id": "blosc", "typesize": None}, BLOSC_DEFAULTS),
         ({"id": "blosc", "typesize": 4}, {**BLOSC_DEFAULTS, "typesize": 4}),
+        ({"id": "blosc", "shuffle": 0, "typesize": 4}, {**BLOSC_DEFAULTS, "shuffle": 0}),
+        ({"id": "blosc", "shuffle": False, "typesize": 4}, {**BLOSC_DEFAULTS, "shuffle": 0}),
+        (
+            {"id": "blosc", "shuffle": 2, "typesize": 4},
+            {**BLOSC_DEFAULTS, "shuffle": 2, "typesize": 4},
+        ),
         ({"id": "zstd"}, {"id": "zstd", "level": 0, "checksum": False}),
         ({"id": "zstd", "level": 0}, {"id": "zstd", "level": 0, "checksum": False}),
         ({"id": "lz4"}, {"id": "lz4", "acceleration": 1}),
@@ -142,9 +148,39 @@ CHECKSUM_DEFAULTS: dict[str, Any] = {"location": "start"}
             {"id": "delta", "dtype": "<i4", "astype": None},
             {"id": "delta", "dtype": "<i4", "astype": "<i4"},
         ),
+        ({"id": "delta", "dtype": "<i1"}, {"id": "delta", "dtype": "|i1", "astype": "|i1"}),
+        (
+            {"id": "delta", "dtype": "|i1", "astype": "<u1"},
+            {"id": "delta", "dtype": "|i1", "astype": "|u1"},
+        ),
+        (
+            {"id": "delta", "dtype": "<M8[μs]"},
+            {"id": "delta", "dtype": "<M8[us]", "astype": "<M8[us]"},
+        ),
+        (
+            {"id": "astype", "encode_dtype": "<u1", "decode_dtype": "<b1"},
+            {"id": "astype", "encode_dtype": "|u1", "decode_dtype": "|b1"},
+        ),
+        ({"id": "vlen-array", "dtype": "<i1"}, {"id": "vlen-array", "dtype": "|i1"}),
         (
             {"id": "fixedscaleoffset", "offset": 0, "scale": 1, "dtype": "<f8"},
-            {"id": "fixedscaleoffset", "offset": 0, "scale": 1, "dtype": "<f8", "astype": "<f8"},
+            {
+                "id": "fixedscaleoffset",
+                "offset": 0.0,
+                "scale": 1.0,
+                "dtype": "<f8",
+                "astype": "<f8",
+            },
+        ),
+        (
+            {"id": "fixedscaleoffset", "offset": 2, "scale": 10, "dtype": "<f8", "astype": "<u1"},
+            {
+                "id": "fixedscaleoffset",
+                "offset": 2.0,
+                "scale": 10.0,
+                "dtype": "<f8",
+                "astype": "|u1",
+            },
         ),
         (
             {"id": "quantize", "digits": 2, "dtype": "<f4", "astype": None},
@@ -158,10 +194,10 @@ CHECKSUM_DEFAULTS: dict[str, Any] = {"location": "start"}
         ({"id": "fletcher32"}, {"id": "fletcher32"}),
     ],
 )
-def test_a_parameter_left_to_its_numcodecs_default_is_filled_in(
+def test_the_canonical_form_fills_in_defaults_and_writes_each_value_one_way(
     field: dict[str, Any], canonical: dict[str, Any]
 ) -> None:
-    """The canonical form of a codec fills in each parameter that numcodecs gives a default, where the configuration omits it or writes null, as `get_config()` writes it. A blosc `shuffle` of `true` or `false` is 1 or 0, which numcodecs reads it as, and an `astype` left out is the `dtype`. So a configuration and its filled-in form are one codec: they compare equal, with equal hashes. A codec with no defaults is unchanged."""
+    """The canonical form of a codec fills in each parameter that numcodecs gives a default, where the configuration omits it or writes null, as `get_config()` writes it. A blosc `shuffle` of `true` or `false` is 1 or 0, which numcodecs reads it as, and an `astype` left out is the `dtype`. It writes each value that numcodecs reads alike in one way: a dtype parameter as NumPy spells it (`<i1` is `|i1`, `μs` is `us`), as an array's dtype compares; a fixedscaleoffset `offset` and `scale` as floats; and a blosc `typesize` is dropped under `shuffle` 0, where nothing is shuffled. So a configuration and its canonical form are one codec: they compare equal, with equal hashes. A codec with nothing to fill in or respell is unchanged."""
     resolved, problems = resolve(field, ZarrV2CodecDefinition, CONTEXT)
     filled, _ = resolve(canonical, ZarrV2CodecDefinition, CONTEXT)
     assert canonical_of(resolved, problems) == canonical

@@ -2,7 +2,9 @@
 
 A dtype parameter is a NumPy typestr, as numcodecs writes it. A
 parameter that numcodecs gives a default is optional, and the canonical
-form of each codec fills it in, as `get_config()` writes it.
+form of each codec fills it in, as `get_config()` writes it. The
+canonical form writes each dtype parameter as NumPy spells it, as an
+array's dtype compares, so `<i1` and `|i1` are one parameter.
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata.definition._definition import EmptyConfiguration
 from zarr_metadata.v2._definition import ZarrV2CodecDefinition
-from zarr_metadata.v2.codec._dtype import dtype_parameter
+from zarr_metadata.v2.codec._dtype import canonical_typestr, dtype_parameter
 
 
 class ZarrV2ShuffleParameters(TypedDict, closed=True):
@@ -70,24 +72,53 @@ def _shuffle_canonical(configuration: ZarrV2ShuffleParameters) -> ZarrV2ShuffleP
     return {"elementsize": 4, **configuration}
 
 
+def _typestrs(dtype: str, astype: str | None) -> tuple[str, str]:
+    """`dtype` and `astype` as NumPy spells them, with an `astype` that is omitted or null filled in with the `dtype`, as numcodecs writes them."""
+    canonical = canonical_typestr(dtype)
+    return canonical, canonical if astype is None else canonical_typestr(astype)
+
+
 def _delta_canonical(configuration: ZarrV2DeltaParameters) -> ZarrV2DeltaParameters:
-    """Fill in an `astype` that is omitted or null with the `dtype`, as numcodecs writes it."""
-    astype = configuration.get("astype")
-    return {**configuration, "astype": configuration["dtype"] if astype is None else astype}
+    """Fill in an `astype` that is omitted or null with the `dtype`, and write each dtype as NumPy spells it, as numcodecs writes them."""
+    dtype, astype = _typestrs(configuration["dtype"], configuration.get("astype"))
+    return {**configuration, "dtype": dtype, "astype": astype}
+
+
+def _as_float(value: float) -> float:
+    """`value` as a float, which numcodecs computes with. An integer too large for a float is kept as written."""
+    try:
+        return float(value)
+    except OverflowError:
+        return value
 
 
 def _fixedscaleoffset_canonical(
     configuration: ZarrV2FixedScaleOffsetParameters,
 ) -> ZarrV2FixedScaleOffsetParameters:
-    """Fill in an `astype` that is omitted or null with the `dtype`, as numcodecs writes it."""
-    astype = configuration.get("astype")
-    return {**configuration, "astype": configuration["dtype"] if astype is None else astype}
+    """Fill in an `astype` that is omitted or null with the `dtype`, and write each dtype as NumPy spells it, as numcodecs writes them. Write `offset` and `scale` as floats, so a `scale` of 10 and of 10.0 are one parameter."""
+    dtype, astype = _typestrs(configuration["dtype"], configuration.get("astype"))
+    return {
+        **configuration,
+        "offset": _as_float(configuration["offset"]),
+        "scale": _as_float(configuration["scale"]),
+        "dtype": dtype,
+        "astype": astype,
+    }
 
 
 def _quantize_canonical(configuration: ZarrV2QuantizeParameters) -> ZarrV2QuantizeParameters:
-    """Fill in an `astype` that is omitted or null with the `dtype`, as numcodecs writes it."""
-    astype = configuration.get("astype")
-    return {**configuration, "astype": configuration["dtype"] if astype is None else astype}
+    """Fill in an `astype` that is omitted or null with the `dtype`, and write each dtype as NumPy spells it, as numcodecs writes them."""
+    dtype, astype = _typestrs(configuration["dtype"], configuration.get("astype"))
+    return {**configuration, "dtype": dtype, "astype": astype}
+
+
+def _astype_canonical(configuration: ZarrV2AsTypeParameters) -> ZarrV2AsTypeParameters:
+    """Write each dtype as NumPy spells it, as numcodecs writes them."""
+    return {
+        **configuration,
+        "encode_dtype": canonical_typestr(configuration["encode_dtype"]),
+        "decode_dtype": canonical_typestr(configuration["decode_dtype"]),
+    }
 
 
 SHUFFLE_V2: Final = ZarrV2CodecDefinition(
@@ -121,6 +152,7 @@ ASTYPE_V2: Final = ZarrV2CodecDefinition(
     name="astype",
     configuration=ZarrV2AsTypeParameters,
     rules=dtype_parameter("encode_dtype", "decode_dtype"),
+    canonical=_astype_canonical,
 )
 """`numcodecs.AsType`."""
 PACKBITS_V2: Final = ZarrV2CodecDefinition(name="packbits", configuration=EmptyConfiguration)

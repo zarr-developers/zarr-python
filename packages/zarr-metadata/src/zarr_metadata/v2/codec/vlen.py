@@ -8,7 +8,7 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata.definition._definition import EmptyConfiguration
 from zarr_metadata.v2._definition import ZarrV2CodecDefinition
-from zarr_metadata.v2.codec._dtype import dtype_parameter
+from zarr_metadata.v2.codec._dtype import canonical_typestr, dtype_parameter
 
 
 class ZarrV2VLenArrayParameters(TypedDict, closed=True):
@@ -17,12 +17,20 @@ class ZarrV2VLenArrayParameters(TypedDict, closed=True):
     dtype: ReadOnly[str]
 
 
+def _vlen_array_canonical(configuration: ZarrV2VLenArrayParameters) -> ZarrV2VLenArrayParameters:
+    """Write the `dtype` as NumPy spells it, as numcodecs writes it."""
+    return {**configuration, "dtype": canonical_typestr(configuration["dtype"])}
+
+
 VLEN_UTF8_V2: Final = ZarrV2CodecDefinition(name="vlen-utf8", configuration=EmptyConfiguration)
 """`numcodecs.VLenUTF8`. It has no configuration."""
 VLEN_BYTES_V2: Final = ZarrV2CodecDefinition(name="vlen-bytes", configuration=EmptyConfiguration)
 """`numcodecs.VLenBytes`. It has no configuration."""
 VLEN_ARRAY_V2: Final = ZarrV2CodecDefinition(
-    name="vlen-array", configuration=ZarrV2VLenArrayParameters, rules=dtype_parameter("dtype")
+    name="vlen-array",
+    configuration=ZarrV2VLenArrayParameters,
+    rules=dtype_parameter("dtype"),
+    canonical=_vlen_array_canonical,
 )
 """`numcodecs.VLenArray`."""
 
