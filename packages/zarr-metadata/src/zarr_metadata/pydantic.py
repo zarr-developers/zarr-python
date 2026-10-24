@@ -22,14 +22,21 @@ as follows:
 - If no scope is given for a format, its field types read in the default
   scope for that format, `CORE_AND_EXTENSIONS` or `CORE_V2`.
 
+A mapping key that starts like these keys but is not one of them raises
+`TypeError`, so a misspelled key is not read as no scope. To fix a field's
+scope whatever the validation context holds, annotate the model class
+with `InScope`: `Annotated[ZarrV3ArrayMetadata, InScope(CONTEXT)]`.
+
 For example:
 
     TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(document, context=CONTEXT)
     ArrayManifest.model_validate(data, context={"zarr_metadata_context": CONTEXT})
     Mixed.model_validate(data, context={"zarr_metadata_context": V3, "zarr_metadata_context_v2": V2})
 
-An existing model instance passes through unchanged, as pydantic's does, and
-serialization emits the document as it was written, via `to_json`. A failed parse
+An existing model instance passes through unchanged when no scope is
+given. When one is, the instance is read again in it with `refined_in`, so
+an instance that scope reads differently is refused. Serialization emits
+the document as it was written, via `to_json`. A failed parse
 raises a pydantic `ValidationError` with one line error per problem, in
 the same format pydantic uses for its own errors. Each line error has the
 problem's `kind` as its `type`, the problem's `loc` under the field's
@@ -67,9 +74,12 @@ Static type checkers see each field type as its core model class, so
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
     Annotated,
+    Any,
     Final,
     LiteralString,
     Protocol,
@@ -78,8 +88,20 @@ from typing import (
     cast,
 )
 
-from pydantic import BeforeValidator, InstanceOf, PlainSerializer, ValidationInfo
-from pydantic_core import InitErrorDetails, PydanticCustomError, ValidationError
+from pydantic import (
+    BeforeValidator,
+    GetCoreSchemaHandler,
+    InstanceOf,
+    PlainSerializer,
+    ValidationInfo,
+)
+from pydantic_core import (
+    CoreSchema,
+    InitErrorDetails,
+    PydanticCustomError,
+    ValidationError,
+    core_schema,
+)
 
 from zarr_metadata import model as _model
 from zarr_metadata._json import MetadataValidationError, ValidationProblem, is_object, value_at
@@ -108,7 +130,7 @@ from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context
 from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, ZarrV3Context
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
 _M = TypeVar("_M")
 
@@ -181,16 +203,29 @@ class _Reads(Protocol[_Read_co, _Context_contra]):
 
 
 def _read_in_context(
-    cls: type[_M], read: _Reads[_M, _C], default: _C, key: str
+    cls: type[_M], read: _Reads[_M, _C], refine: Callable[[_M, _C], _M], default: _C, key: str
 ) -> Callable[[object, ValidationInfo], _M]:
-    """A validator that returns instances of `cls` unchanged, and reads any other value in the `Context` stored in the validation context under `key`, or in `default` if there is none."""
+    """A validator that reads a value in the `Context` stored in the validation context under `key`, or in `default` if there is none. An instance of `cls` is read again in a scope the validation context gives, with `refine` (its `refined_in`), and passes through unchanged when none is given."""
 
     def coerce(value: object, info: ValidationInfo) -> _M:
+        given = _context_of(info.context, default, key)
         if isinstance(value, cls):
-            return value
-        return _as_pydantic_raises(
-            cls, value, lambda: read(value, context=_context_of(info.context, default, key))
-        )
+            return value if given is None else refine(value, given)
+        context = default if given is None else given
+        return _as_pydantic_raises(cls, value, lambda: read(value, context=context))
+
+    return coerce
+
+
+def _read_in(
+    cls: type[_M], read: _Reads[_M, _C], refine: Callable[[_M, _C], _M], context: _C
+) -> Callable[[object], _M]:
+    """A validator that reads a value in `context`, and an instance of `cls` again in `context`, with `refine` (its `refined_in`)."""
+
+    def coerce(value: object) -> _M:
+        if isinstance(value, cls):
+            return refine(value, context)
+        return _as_pydantic_raises(cls, value, lambda: read(value, context=context))
 
     return coerce
 
@@ -200,17 +235,34 @@ def _is_context(value: object) -> TypeGuard[ZarrV3Context | ZarrV2Context]:
     return isinstance(value, (ZarrV3Context, ZarrV2Context))
 
 
-def _context_of(validation_context: object, default: _C, key: str) -> _C:
-    """The `Context` a pydantic validation context gives for one format. If the validation context is a `Context`, it is the context for every field type of its format. If it is a mapping with a `key` item, that item is the context for this format. Otherwise the context is `default`, the format's core context.
+def _context_of(validation_context: object, default: _C, key: str) -> _C | None:
+    """The `Context` a pydantic validation context gives for one format, of `default`'s class. If the validation context is a `Context`, it is the context for every field type of its format. If it is a mapping with a `key` item, that item is the context for this format. Otherwise it gives none.
 
     A bare `Context` of the other format raises `TypeError`, as it does in
     every reader. A model with fields of both formats must give each
-    format's context under its own key.
+    format's context under its own key. A mapping key that starts like
+    this module's keys but is not one of them raises `TypeError` too, so a
+    misspelled key is not read as no scope at all.
     """
     if _is_context(validation_context):
         return scoped(validation_context, default)
-    if not is_object(validation_context) or key not in validation_context:
-        return default
+    if not is_object(validation_context):
+        return None
+    unknown = [
+        name
+        for name in validation_context
+        if isinstance(name, str)
+        and name.startswith("zarr_metadata")
+        and name not in (CONTEXT_KEY, CONTEXT_KEY_V2)
+    ]
+    if len(unknown) != 0:
+        msg = (
+            f"the validation context gives a scope under {CONTEXT_KEY!r} or "
+            f"{CONTEXT_KEY_V2!r}, got {', '.join(map(repr, unknown))}"
+        )
+        raise TypeError(msg)
+    if key not in validation_context:
+        return None
     context = validation_context[key]
     if not _is_context(context):
         msg = (
@@ -226,6 +278,7 @@ ZarrV3ArrayMetadataField = Annotated[
         _read_in_context(
             _model.ZarrV3ArrayMetadata,
             _model.ZarrV3ArrayMetadata.from_json,
+            _model.ZarrV3ArrayMetadata.refined_in,
             CORE_AND_EXTENSIONS,
             CONTEXT_KEY,
         ),
@@ -241,6 +294,7 @@ ZarrV2ArrayMetadataField = Annotated[
         _read_in_context(
             _model.ZarrV2ArrayMetadata,
             _model.ZarrV2ArrayMetadata.from_json,
+            _model.ZarrV2ArrayMetadata.refined_in,
             CORE_V2,
             CONTEXT_KEY_V2,
         ),
@@ -256,6 +310,7 @@ ZarrV3GroupMetadataField = Annotated[
         _read_in_context(
             _model.ZarrV3GroupMetadata,
             _model.ZarrV3GroupMetadata.from_json,
+            _model.ZarrV3GroupMetadata.refined_in,
             CORE_AND_EXTENSIONS,
             CONTEXT_KEY,
         ),
@@ -271,6 +326,7 @@ ZarrV2GroupMetadataField = Annotated[
         _read_in_context(
             _model.ZarrV2GroupMetadata,
             _model.ZarrV2GroupMetadata.from_json,
+            _model.ZarrV2GroupMetadata.refined_in,
             CORE_V2,
             CONTEXT_KEY_V2,
         ),
@@ -286,6 +342,7 @@ ZarrV3ConsolidatedMetadataField = Annotated[
         _read_in_context(
             _model.ZarrV3ConsolidatedMetadata,
             _model.ZarrV3ConsolidatedMetadata.from_json,
+            _model.ZarrV3ConsolidatedMetadata.refined_in,
             CORE_AND_EXTENSIONS,
             CONTEXT_KEY,
         ),
@@ -304,6 +361,7 @@ ZarrV2ConsolidatedMetadataField = Annotated[
         _read_in_context(
             _model.ZarrV2ConsolidatedMetadata,
             _model.ZarrV2ConsolidatedMetadata.from_json,
+            _model.ZarrV2ConsolidatedMetadata.refined_in,
             CORE_V2,
             CONTEXT_KEY_V2,
         ),
@@ -316,9 +374,64 @@ ZarrV2ConsolidatedMetadataField = Annotated[
 ]
 """Field type for a v2 `.zmetadata` document."""
 
+_FIELD_PARTS: Final[Mapping[type[Any], tuple[ZarrV3Context | ZarrV2Context, object]]] = (
+    MappingProxyType(
+        {
+            _model.ZarrV3ArrayMetadata: (CORE_AND_EXTENSIONS, _ZarrV3ArrayMetadataSchema),
+            _model.ZarrV2ArrayMetadata: (CORE_V2, _ZarrV2ArrayMetadataSchema),
+            _model.ZarrV3GroupMetadata: (CORE_AND_EXTENSIONS, _ZarrV3GroupMetadataSchema),
+            _model.ZarrV2GroupMetadata: (CORE_V2, _ZarrV2GroupMetadataSchema),
+            _model.ZarrV3ConsolidatedMetadata: (
+                CORE_AND_EXTENSIONS,
+                _ZarrV3ConsolidatedMetadataSchema,
+            ),
+            _model.ZarrV2ConsolidatedMetadata: (CORE_V2, _ZarrV2ConsolidatedMetadataSchema),
+        }
+    )
+)
+"""For each model class, the default scope of its format and the pydantic schema of its document."""
+
+
+@dataclass(frozen=True, slots=True)
+class InScope:
+    """A field type's scope, fixed: `Annotated[ZarrV3ArrayMetadata, InScope(CONTEXT)]` is a field of that model class read in `CONTEXT`, whatever the validation context holds.
+
+    A document is read in `context`, and a model instance is read again
+    in it with `refined_in`, so an instance that `context` reads
+    differently is refused rather than passed through in its own scope.
+    The field writes the document as written, and a type checker sees the
+    model class. A scope of the other format raises `TypeError` when
+    pydantic builds the schema.
+    """
+
+    context: ZarrV3Context | ZarrV2Context
+
+    def __get_pydantic_core_schema__(
+        self,
+        source: Any,  # noqa: ANN401 - pydantic passes the annotated class
+        handler: GetCoreSchemaHandler,
+    ) -> CoreSchema:
+        parts = _FIELD_PARTS.get(source)
+        if parts is None:
+            msg = f"InScope annotates a model class of zarr_metadata.model, got {source!r}"
+            raise TypeError(msg)
+        default, schema = parts
+        cls: type[Any] = source
+        document = handler.generate_schema(schema)
+        return core_schema.no_info_before_validator_function(
+            _read_in(cls, cls.from_json, cls.refined_in, scoped(self.context, default)),
+            core_schema.is_instance_schema(cls),
+            json_schema_input_schema=document,
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                cls.to_json, return_schema=document
+            ),
+        )
+
+
 __all__ = [
     "CONTEXT_KEY",
     "CONTEXT_KEY_V2",
+    "InScope",
     "ZarrV2ArrayMetadataField",
     "ZarrV2ConsolidatedMetadataField",
     "ZarrV2GroupMetadataField",

@@ -58,6 +58,7 @@ from zarr_metadata.model._shared import (
     missing_keys,
     other_members,
     reading_of,
+    unclaimed_fields_of,
 )
 
 # A runtime import: `get_type_hints` resolves the public signatures, the guards among them.
@@ -676,6 +677,17 @@ class ZarrV2ArrayMetadata(Keyed):
     def dimension_separator(self) -> ZarrV2ArrayDimensionSeparator:
         """The separator between chunk indices in a chunk key: `"."` when the document writes none."""
         return self._members.dimension_separator
+
+    @property
+    def unclaimed_fields(self) -> dict[Loc, UnclaimedField]:
+        """Every field nothing in scope claims, its dtype or a codec, by its location in the document.
+
+        This answers whether a reader can open the array: a reader cannot
+        decode data with a dtype or a codec it does not understand, and the
+        scope is what the reader understands. The model only reports these
+        fields; refusing to open is up to the reader.
+        """
+        return unclaimed_fields_of(self._reading.fields(), {})
 
     @property
     def attributes(self) -> Mapping[str, JSONValue] | UNSET:

@@ -10,14 +10,14 @@ import math
 import warnings
 from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import pytest
 from jsonschema import Draft202012Validator
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
 import zarr_metadata.pydantic as zmp
-from zarr_metadata.definition import AcceptedField
+from zarr_metadata.definition import AcceptedField, UnclaimedField
 from zarr_metadata.json_schema import json_schema, node_metadata_json_schema_v3
 from zarr_metadata.model import (
     ZarrV2ArrayMetadata,
@@ -30,9 +30,10 @@ from zarr_metadata.model import (
 from zarr_metadata.problems import ValidationProblem
 from zarr_metadata.typed_json import JSONValue
 from zarr_metadata.v2.array import ZarrV2ArrayMetadataJSON
+from zarr_metadata.v2.definition import CORE_V2
 from zarr_metadata.v2.group import ZarrV2GroupMetadataJSON
 from zarr_metadata.v3.codec.gzip import GZIP_CODEC
-from zarr_metadata.v3.definition import CORE, ZarrV3Context
+from zarr_metadata.v3.definition import CORE, CORE_AND_EXTENSIONS, ZarrV3Context
 
 V3_ARRAY_DOC = dict(ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json())
 V2_ARRAY_DOC = dict(ZarrV2ArrayMetadata.create_default(shape=(4,), chunks=(2,)).to_json())
@@ -324,6 +325,52 @@ def test_a_v3_field_type_reads_in_the_scope_the_validation_context_holds(
     """The field type reads in the scope from the validation context, which pydantic passes to every validator. `zstd` is an extension, so `CORE` leaves it unclaimed."""
     model = TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(_WITH_ZSTD, context=context)
     assert isinstance(model.codecs[1], AcceptedField) is read
+
+
+class _Bound(BaseModel):
+    """A model whose field is read in `CORE`, whatever the validation context holds."""
+
+    metadata: Annotated[ZarrV3ArrayMetadata, zmp.InScope(CORE)]
+
+
+def test_a_field_bound_to_a_scope_reads_in_that_scope() -> None:
+    """`Annotated[ZarrV3ArrayMetadata, InScope(CORE)]` reads a document in `CORE`, whatever the validation context holds, and reads an instance again in `CORE`: an instance read in `CORE` with `zstd` unclaimed stays as it is. The field writes the document as written, and a type checker sees the model class."""
+    for context in (None, CORE_AND_EXTENSIONS, {zmp.CONTEXT_KEY: CORE_AND_EXTENSIONS}):
+        read = _Bound.model_validate({"metadata": _WITH_ZSTD}, context=context).metadata
+        assert read.context == CORE
+        assert isinstance(read.codecs[1], UnclaimedField)
+    held = ZarrV3ArrayMetadata(_WITH_ZSTD, context=CORE)
+    assert _Bound(metadata=held).metadata == held
+    assert _Bound(metadata=held).model_dump()["metadata"] == held.to_json()
+
+
+def test_error_a_field_bound_to_a_scope_refuses_an_instance_it_reads_differently() -> None:
+    """An instance read where `zstd` is claimed would lose that meaning in `CORE`, so a field bound to `CORE` refuses it with a `ValidationError`, rather than passing it through in its own scope."""
+    with pytest.raises(ValidationError):
+        _Bound(metadata=ZarrV3ArrayMetadata(_WITH_ZSTD, context=CORE_AND_EXTENSIONS))
+
+
+def test_error_a_field_bound_to_a_scope_of_the_other_format() -> None:
+    """A field of a v3 model bound to a v2 scope is refused when pydantic builds its schema, as every v3 reader refuses a v2 scope."""
+    with pytest.raises(TypeError, match="v3 document is read in a scope of that format"):
+        TypeAdapter(Annotated[ZarrV3ArrayMetadata, zmp.InScope(CORE_V2)])
+
+
+def test_error_a_scope_given_to_validation_reads_an_instance_in_it() -> None:
+    """A scope given in the validation context reads an instance again in that scope, as a bound field does, so an instance that would lose a meaning there is refused. With no scope given, an instance passes through unchanged."""
+    adapter = TypeAdapter(zmp.ZarrV3ArrayMetadataField)
+    instance = ZarrV3ArrayMetadata(_WITH_ZSTD, context=CORE_AND_EXTENSIONS)
+    assert adapter.validate_python(instance) is instance
+    with pytest.raises(ValidationError):
+        adapter.validate_python(instance, context=CORE)
+
+
+def test_error_a_validation_context_names_a_key_of_this_package_it_does_not_have() -> None:
+    """A mapping validation context with a key that starts like this package's keys, but is not one of them, is a `TypeError`, so a misspelled key is not read as no scope at all."""
+    with pytest.raises(TypeError, match="zarr_metadata_contxt"):
+        TypeAdapter(zmp.ZarrV3ArrayMetadataField).validate_python(
+            _WITH_ZSTD, context={"zarr_metadata_contxt": CORE}
+        )
 
 
 def test_error_a_validation_context_holds_a_scope_that_is_not_one() -> None:

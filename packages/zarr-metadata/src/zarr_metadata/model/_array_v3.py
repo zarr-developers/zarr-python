@@ -59,6 +59,7 @@ from zarr_metadata.model._shared import (
     member_changes,
     missing_keys,
     reading_of,
+    unclaimed_fields_of,
 )
 from zarr_metadata.v3._common import ZarrV3ExtensionField, ZarrV3MetadataFieldJSON
 
@@ -699,6 +700,18 @@ class ZarrV3ArrayMetadata(Keyed):
     ) -> Mapping[str, AcceptedField[ArrayExtraFieldDefinition[Any]] | UnclaimedField]:
         """Each member the spec does not define, by key, as the scope read it: an `AcceptedField` when a definition in scope claims the key, and an `UnclaimedField` otherwise."""
         return self._shown[3]
+
+    @property
+    def unclaimed_fields(self) -> dict[Loc, UnclaimedField]:
+        """Every field nothing in scope claims, at any depth, by its location in the document, except an extra member that says `"must_understand": false`.
+
+        This answers whether a reader can open the array: the spec requires
+        a reader to refuse a node with a field it does not understand, and
+        the scope is what the reader understands. A codec inside a shard is
+        located inside the shard's configuration. The model only reports
+        these fields; refusing to open is up to the reader.
+        """
+        return unclaimed_fields_of(self._reading.fields(), self.must_understand_fields)
 
     @property
     def must_understand_fields(self) -> dict[str, ZarrV3ExtensionField]:

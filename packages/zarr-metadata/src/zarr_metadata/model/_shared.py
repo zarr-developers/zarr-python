@@ -19,7 +19,7 @@ from zarr_metadata._json import (
     within,
 )
 from zarr_metadata._typed_json import typeddict_keys
-from zarr_metadata.definition._definition import RefusedField, is_field
+from zarr_metadata.definition._definition import RefusedField, UnclaimedField, is_field
 from zarr_metadata.definition._scope import Conflict, claim_key
 from zarr_metadata.v3._definition import ExtraFieldDefinition
 
@@ -141,6 +141,20 @@ def member_changes(
         _refuse_fields(key, value)
         changes[key] = value
     return changes
+
+
+def unclaimed_fields_of(
+    fields: Iterable[tuple[Loc, ResolvedField[Any]]], must_understand: Mapping[str, object]
+) -> dict[Loc, UnclaimedField]:
+    """Each of `fields` (a reading's fields, at every depth) that nothing in scope claims, by its location, except an extra member whose key is not in `must_understand`, which says `"must_understand": false`."""
+    return {
+        loc: field
+        for loc, field in fields
+        if isinstance(field, UnclaimedField)
+        and not (
+            issubclass(field.read_as, ExtraFieldDefinition) and field.name not in must_understand
+        )
+    }
 
 
 def _refuse_fields(key: str, value: object) -> None:

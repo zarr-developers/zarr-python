@@ -83,6 +83,10 @@ closely model the content of the Zarr specifications, such as:
   encoded = metadata.to_key_value()["zarr.json"]
   ```
 
+  A field annotated `Annotated[ZarrV3ArrayMetadata, zmp.InScope(CONTEXT)]`
+  is read in `CONTEXT`, whatever the validation context holds, and a model
+  instance given to it is read again in `CONTEXT`.
+
   Note that a bare `TypeAdapter` over a public `TypedDict` is a **coercive** shape
   adapter, not a Zarr conformance validator; it may coerce values or discard
   members that the strict model parser rejects. This is better suited for handling input provided
@@ -325,14 +329,20 @@ is spelled differently. Values the package interprets (each field, and the
 fill value against its data type) are compared by their canonical
 spelling, as returned by `canonical_of` and `canonical_fill_value`. For
 example, `"NaN"` and `"0x7fc00000"` are the same `float32` fill value,
-`0.0` and `-0.0` are two different fill values, and a blosc codec with and
-without a `typesize` (which `noshuffle` ignores) is the same codec. A v2
+`0.0` and `-0.0` are two different fill values, and a v3 blosc codec
+under `noshuffle`, which ignores `typesize`, is the same codec with or
+without one. A v2
 document's dtype, codecs and fill value are compared the same way: `<b1`
 and `|b1` are one dtype, in `dtype` and in a codec's dtype parameter
 alike, and a v2 codec that leaves out a parameter is
 the same as one that writes the numcodecs default, so
 `{"id": "zstd", "level": 0}` equals
-`{"id": "zstd", "level": 0, "checksum": false}`. Values the package does
+`{"id": "zstd", "level": 0, "checksum": false}`. A v2 blosc `typesize`
+is kept whatever the `shuffle`, unlike in v3: v2 codecs are defined by
+numcodecs, which writes it into each chunk's header, so two v2 blosc
+codecs that differ only in it encode different bytes, though they decode
+the same data. The v3 spec defines its blosc codec, and says `noshuffle`
+ignores `typesize`. Values the package does
 not interpret (attributes, extra fields, and the configuration of a field
 that nothing in the scope claims) are compared as JSON text. JSON text
 distinguishes `true` from `1` and `-0.0` from `0.0`, and treats `NaN` as

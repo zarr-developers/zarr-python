@@ -68,7 +68,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from zarr_metadata._typed_json import Loc
-    from zarr_metadata.definition._definition import ResolvedField
+    from zarr_metadata.definition._definition import ResolvedField, UnclaimedField
     from zarr_metadata.v2.attributes import ZarrV2AttributesStoreKey
     from zarr_metadata.v2.consolidated import ZarrV2ConsolidatedMetadataStoreKey
     from zarr_metadata.v2.group import ZarrV2GroupMetadataStoreKey
@@ -351,6 +351,11 @@ class ZarrV2GroupMetadata(Keyed):
     def context(self) -> ZarrV2Context:
         """The scope the document was read in. `update` reads new attributes in this scope."""
         return self._context
+
+    @property
+    def unclaimed_fields(self) -> dict[Loc, UnclaimedField]:
+        """Every field nothing in scope claims. A v2 group holds no fields, so this is always empty; it is here so a reader can ask any node the same question."""
+        return {}
 
     @property
     def attributes(self) -> Mapping[str, JSONValue] | UNSET:

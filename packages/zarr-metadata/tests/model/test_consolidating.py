@@ -229,6 +229,27 @@ def test_a_listed_group_s_listing_is_read_only_where_the_scope_claims_it(
     assert [problem.loc for problem in reading.problems if problem.kind == "unknown_key"] == found
 
 
+def test_a_group_reads_its_listing_in_its_own_scope() -> None:
+    """`consolidated()` reads the documents a group's `consolidated_metadata` lists in the group's own scope, so a child reads as the group's reader would read it, and returns None for a group that lists none."""
+    group = ZarrV3GroupMetadata(_group_document(a=WITH_ZSTD), context=CORE)
+    listing = group.consolidated()
+    assert listing is not None
+    assert listing.context == CORE
+    assert listing.metadata["a"].context == CORE
+    assert listing == ZarrV3ConsolidatedMetadata(group.consolidated_metadata, context=CORE)
+    assert ZarrV3GroupMetadata.create_default().consolidated() is None
+
+
+def test_error_a_group_s_listing_with_a_problem_is_located_in_the_group() -> None:
+    """A group opens whatever its listing holds, but `consolidated()` reads every listed document, and raises their problems located in the group's document, under `consolidated_metadata`."""
+    group = ZarrV3GroupMetadata(_group_document(a=WITH_LOOSE_ZSTD))
+    with pytest.raises(MetadataValidationError) as raised:
+        group.consolidated()
+    assert [problem.loc for problem in raised.value.problems] == [
+        ("consolidated_metadata", "metadata", "a", "codecs", 1, "configuration", "level")
+    ]
+
+
 def test_children_of_different_scopes_consolidate_in_their_join() -> None:
     """Children read in different scopes are consolidated in the scope `ZarrV3Context.joined` builds from their scopes. Each child refines into the joined scope, and the consolidated metadata reads in it."""
     a = ZarrV3ArrayMetadata(ARRAY, context=CORE)

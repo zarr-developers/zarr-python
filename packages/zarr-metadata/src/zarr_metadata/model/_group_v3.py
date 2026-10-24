@@ -74,6 +74,7 @@ from zarr_metadata.model._shared import (
     member_changes,
     missing_keys,
     reading_of,
+    unclaimed_fields_of,
     unexpected_keys,
 )
 from zarr_metadata.v3._common import ZarrV3ExtensionField
@@ -311,6 +312,36 @@ class ZarrV3GroupMetadata(Keyed):
         refusing to open is up to the reader.
         """
         return must_understand_subset(self.extra_fields, self._shown[1])
+
+    @property
+    def unclaimed_fields(self) -> dict[Loc, UnclaimedField]:
+        """Every field nothing in scope claims, at any depth, by its location in the document, except an extra member that says `"must_understand": false`.
+
+        This answers whether a reader can open the group: the spec requires
+        a reader to refuse a node with a field it does not understand, and
+        the scope is what the reader understands. A codec inside a shard is
+        located inside the shard's configuration. The model only reports
+        these fields; refusing to open is up to the reader.
+        """
+        return unclaimed_fields_of(self._reading.fields(), self.must_understand_fields)
+
+    def consolidated(self) -> ZarrV3ConsolidatedMetadata | None:
+        """The documents this group's `consolidated_metadata` lists, read in this group's own scope; None when the group lists none.
+
+        A group opens without reading them, so a document with a problem
+        fails only here. Raises `MetadataValidationError` with every problem
+        in them, located in this group's document, under
+        `consolidated_metadata`.
+        """
+        member = self.consolidated_metadata
+        if member is UNSET:
+            return None
+        try:
+            return ZarrV3ConsolidatedMetadata(member, context=self._context)
+        except MetadataValidationError as error:
+            raise MetadataValidationError(
+                prefixed(ZARR_V3_CONSOLIDATED_METADATA_KEY, error.problems)
+            ) from error
 
     # --- changing ---------------------------------------------------------
 

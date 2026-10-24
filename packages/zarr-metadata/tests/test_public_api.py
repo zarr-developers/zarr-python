@@ -330,6 +330,8 @@ _STANDALONE_VOCAB = frozenset(
         "JSONSchema",
         "JSONValue",
         "UserJSONValue",
+        # A pydantic field's scope, fixed: `Annotated[Model, InScope(CONTEXT)]`.
+        "InScope",
         "MetadataValidationError",
         "NumpyDatetime64",
         "NumpyTimeUnit",
