@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
-from zarr_metadata.v2._definition import ZarrV2DataTypeDefinition
+from zarr_metadata.v2._definition import CODE_POINT_BYTES, ZarrV2DataTypeDefinition
 from zarr_metadata.v2.data_type._rules import orderless_at, sized, sized_base64_rules
 from zarr_metadata.v2.data_type.scalar import ZarrV2ScalarConfiguration
 
@@ -45,7 +45,7 @@ BYTES_V2: Final = ZarrV2DataTypeDefinition(
 STR_V2: Final = ZarrV2DataTypeDefinition(
     name="str",
     configuration=ZarrV2ScalarConfiguration,
-    rules=sized(None, frozenset()),
+    rules=sized(None, frozenset(), unit=CODE_POINT_BYTES),
     fill_value=str | None,
 )
 """`<U<n>`: strings of `n` code points. Each code point takes four bytes, in the written byte order. The fill value is a string."""

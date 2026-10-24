@@ -10,7 +10,12 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr_metadata._json import ValidationProblem
 from zarr_metadata.definition._definition import AcceptedField
-from zarr_metadata.v2._definition import STRUCT_NAME, ZarrV2DataTypeDefinition, ZarrV2DataTypeField
+from zarr_metadata.v2._definition import (
+    STRUCT_NAME,
+    ZarrV2DataTypeDefinition,
+    ZarrV2DataTypeField,
+    item_bytes,
+)
 from zarr_metadata.v2.data_type._rules import sized_base64_rules
 from zarr_metadata.v2.data_type.fixed_width import ZarrV2Base64FillValue
 
@@ -62,7 +67,7 @@ def _fill_value_rules(
 
 
 def _record_size(configuration: ZarrV2StructConfiguration, nested: Nested) -> int | None:
-    """Return the number of bytes that one record of `configuration` takes. Each field takes its item size times the product of its subarray shape, and a nested struct takes the size of its own record. Return None when the size of a field is not known (as for `|O`) or its dtype was not read."""
+    """Return the number of bytes that one record of `configuration` takes. Each field takes its item size in bytes times the product of its subarray shape, and a nested struct takes the size of its own record. Return None when the size of a field is not known (as for `|O`) or its dtype was not read."""
     total = 0
     for index, record in enumerate(configuration["fields"]):
         field = nested.get(("fields", index, 1))
@@ -77,11 +82,10 @@ def _record_size(configuration: ZarrV2StructConfiguration, nested: Nested) -> in
 
 
 def _item_size(field: AcceptedField[Any]) -> int | None:
-    """Return the number of bytes that one item of the dtype read as `field` takes, or None when that is not known."""
+    """Return the number of bytes that one item of the dtype read as `field` takes, or None when that is not known. A typestr gives the size of its type, which for `U` counts code points of four bytes each."""
     if field.name == STRUCT_NAME or "fields" in field.configuration:
         return _record_size(cast("ZarrV2StructConfiguration", field.configuration), field.nested)
-    size = field.configuration.get("itemsize")
-    return size if isinstance(size, int) and not isinstance(size, bool) else None
+    return item_bytes(field.name)
 
 
 STRUCT_V2: Final = ZarrV2DataTypeDefinition(

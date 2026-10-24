@@ -146,6 +146,14 @@ def test_error_a_typestr_the_family_does_not_take_is_a_problem(value: object, at
     assert next(loc for loc, _ in problems) == at
 
 
+def test_error_a_str_typestr_without_a_byte_order_states_its_size_in_bytes() -> None:
+    """`|U1` is refused, because a `U` type always has a byte order. The size in a `U` typestr counts code points, so the message gives the type's size in bytes, four per code point."""
+    _, problems = resolve("|U1", ZarrV2DataTypeDefinition, CONTEXT)
+    assert [p.message for p in problems] == [
+        "expected a byte order '<' or '>' for a type of 4 bytes, got '|'"
+    ]
+
+
 @pytest.mark.parametrize(
     ("dtype", "value", "canonical"),
     [
@@ -273,6 +281,13 @@ def test_a_float_fill_value_past_the_largest_of_its_width_reads_as_an_infinity()
         ([["a", "<i4", [2]], ["b", "<M8[ns]"]], "AAAAAAAAAAAAAAAA", False),
         ([["a", [["x", "<i2"], ["y", "<i2"]]], ["b", "|V1"]], "AAAAAAA=", True),
         ([["a", "|O"]], "AA==", True),
+        # As zarr-python 2.18 writes `('1', True)`: three code points of four bytes, and a bool.
+        ([["s", "<U3"], ["v", "|b1"]], "MQAAAAAAAAAAAAAAAQ==", True),
+        ([["s", "<U3"], ["v", "|b1"]], "AAAAAA==", False),
+        ([["s", ">U2"]], "AAAAMQAAAAA=", True),
+        ([["a", [["s", "<U2"]]], ["b", "|u1"]], "AAAAAAAAAAAA", True),
+        ([["a", [["s", "<U2"]]], ["b", "|u1"]], "AAAA", False),
+        ([["s", "<U1", [3]]], "AAAAAAAAAAAAAAAA", True),
     ],
     ids=[
         "void",
@@ -285,12 +300,18 @@ def test_a_float_fill_value_past_the_largest_of_its_width_reads_as_an_infinity()
         "subarray-short",
         "nested-struct",
         "object-field-unknown",
+        "str-field",
+        "str-field-counted-in-code-points",
+        "big-endian-str-field",
+        "nested-str-field",
+        "nested-str-field-counted-in-code-points",
+        "str-subarray",
     ],
 )
 def test_a_base64_fill_value_is_as_long_as_its_item(
     dtype: JSONValue, fill_value: str, accepted: bool
 ) -> None:
-    """A void or struct fill value must decode to exactly the item size. A record's size is the sum of its fields' sizes, each multiplied by the product of its subarray shape, including nested structs. A byte string's fill value must decode to at most the item size, because NumPy pads a shorter one. A record with a field of no fixed size (`|O`) is not checked. zarr-python 3 fails to open an array whose fill value has a different size."""
+    """A void or struct fill value must decode to exactly the item size. A record's size is the sum of its fields' sizes, each multiplied by the product of its subarray shape, including nested structs. A `U` field's size counts code points, of four bytes each. A byte string's fill value must decode to at most the item size, because NumPy pads a shorter one. A record with a field of no fixed size (`|O`) is not checked. zarr-python 3 fails to open an array whose fill value has a different size."""
     from zarr_metadata.model import ZarrV2ArrayMetadata, validate_array_metadata_v2
 
     document = {

@@ -23,6 +23,7 @@ class _Sized:
 
     sizes: tuple[int, ...] | None
     orderless: frozenset[int] | None
+    unit: int
 
     def __call__(
         self, configuration: ZarrV2ScalarConfiguration, nested: Nested
@@ -42,21 +43,24 @@ class _Sized:
         ):
             yield ValidationProblem(
                 ("byteorder",),
-                f"expected a byte order '<' or '>' for a type of {size} bytes, got '|'",
+                f"expected a byte order '<' or '>' for a type of {size * self.unit} bytes, got '|'",
                 "invalid_value",
             )
 
 
-def sized(sizes: tuple[int, ...] | None, orderless: frozenset[int] | None) -> _Sized:
+def sized(
+    sizes: tuple[int, ...] | None, orderless: frozenset[int] | None, *, unit: int = 1
+) -> _Sized:
     """Return the rules of a family whose types are `sizes` bytes wide. If `sizes` is None, any width is allowed.
 
     `orderless` is the set of sizes at which the type has no byte order,
     which NumPy writes as `|`. This is one byte for an integer, every size
     for bytes and void, and no size for a float. None means every size.
     At any other size, the typestr must state which end comes first, `<`
-    or `>`.
+    or `>`. `unit` is the number of bytes that one unit of the size takes:
+    one, or four for `U`, whose size counts code points.
     """
-    return _Sized(sizes, orderless)
+    return _Sized(sizes, orderless, unit)
 
 
 @dataclass(frozen=True, slots=True)

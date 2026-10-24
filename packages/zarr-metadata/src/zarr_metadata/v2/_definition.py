@@ -89,6 +89,22 @@ def parse_typestr(name: str) -> tuple[str, dict[str, JSONValue]] | None:
     return code, carried
 
 
+CODE_POINT_BYTES: Final = 4
+"""The bytes that one code point of a `U` type takes. The size in a `U` typestr counts code points, as NumPy writes it, so `<U3` is 12 bytes. The v2 spec says the size counts bytes for every type code, but zarr-python writes the typestr NumPy gives."""
+
+
+def item_bytes(name: str) -> int | None:
+    """The number of bytes that one item of the typestr `name` takes: its size, or four bytes per code point for `U`. None when `name` is not a typestr with a size, such as `|O`."""
+    parsed = parse_typestr(name)
+    if parsed is None:
+        return None
+    code, carried = parsed
+    size = carried.get("itemsize")
+    if not isinstance(size, int):
+        return None
+    return size * CODE_POINT_BYTES if code == "U" else size
+
+
 def typestr_problem(name: str, at: Loc) -> ValidationProblem | None:
     """Return the problem at `at` if `name` is not a typestr. Return None if it is a typestr or `struct`."""
     if name == STRUCT_NAME:
@@ -273,12 +289,14 @@ class ZarrV2CodecDefinition(Definition[C], kind=True, format=2):
 
 
 __all__ = [
+    "CODE_POINT_BYTES",
     "FAMILIES",
     "STRUCT_NAME",
     "TYPESTR_PATTERN",
     "ZarrV2CodecDefinition",
     "ZarrV2DataTypeDefinition",
     "ZarrV2DataTypeField",
+    "item_bytes",
     "parse_typestr",
     "typestr_problem",
 ]
