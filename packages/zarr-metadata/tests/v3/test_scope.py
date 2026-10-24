@@ -12,7 +12,6 @@ from hypothesis import strategies as st
 from zarr_metadata.definition import (
     Claims,
     Conflict,
-    Context,
     Definition,
     Disagreements,
     EmptyConfiguration,
@@ -522,11 +521,3 @@ def test_error_a_slot_refuses_two_definitions_under_one_name() -> None:
         GZIP_CODEC,
         OTHER_GZIP,
     )
-
-
-def test_error_the_shared_base_builds_no_scope() -> None:
-    """`Context` is what the scopes of both formats share. It builds no scope itself, because a scope reads one format, and its `joined` of no scopes raises for the same reason."""
-    with pytest.raises(TypeError, match="one Zarr format"):
-        Context({})
-    with pytest.raises(TypeError, match="ZarrV3Context or ZarrV2Context"):
-        Context.joined()

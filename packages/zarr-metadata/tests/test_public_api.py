@@ -8,7 +8,9 @@ from typing import Literal, get_args, get_origin
 import pytest
 
 import zarr_metadata as zm
-from zarr_metadata.definition import Context, Definition
+from zarr_metadata.definition import Definition
+from zarr_metadata.v2.definition import ZarrV2Context
+from zarr_metadata.v3.definition import ZarrV3Context
 
 
 def _group_rank(s: str) -> int:
@@ -298,7 +300,6 @@ _STANDALONE_VOCAB = frozenset(
         "Claims",
         "Conflict",
         "Disagreements",
-        "Scope",
         "ScopeConflictError",
         # A reader's problems, as the signatures of every reader name them.
         "Problems",
@@ -553,10 +554,14 @@ _FRONT_DOORS = ("zarr_metadata.v2", "zarr_metadata.v3")
 """The module of each format that also exports every definition and scope of that format, and the format's scope class."""
 
 
+_SCOPE_CLASSES = (ZarrV2Context, ZarrV3Context)
+"""The class of the scope of each format."""
+
+
 def _builds_scopes(value: object) -> bool:
     """Whether a front door may alias `value`: a definition, a scope, or a scope class."""
-    return isinstance(value, (Definition, Context)) or (
-        isinstance(value, type) and issubclass(value, Context)
+    return isinstance(value, (Definition, *_SCOPE_CLASSES)) or any(
+        value is scope for scope in _SCOPE_CLASSES
     )
 
 

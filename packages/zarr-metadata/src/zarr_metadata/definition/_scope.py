@@ -6,7 +6,7 @@ depends only on what the scope returned for the names the document uses
 document are ordered by how much they know. If a name was unclaimed and a
 definition later reads it, the name gains meaning and loses none. If one
 definition reads a name and then a different definition reads it, that is
-a conflict. `Context.disagreements` and `Context.joined` are built on
+a conflict. A scope's `disagreements` and `joined` are built on
 these operations.
 """
 
@@ -181,7 +181,7 @@ class _Claimed:
         )
 
     def claimant(self, kind: type[D], name: str) -> D | None:
-        """The definition of `kind` among the claims that reads `name`, or None if there is none. This matches `Context.claimant`."""
+        """The definition of `kind` among the claims that reads `name`, or None if there is none. This matches a scope's `claimant`."""
         asked = as_kind(kind)
         filed, _ = filed_under(asked, name)
         if filed is None:

@@ -67,7 +67,16 @@ Static type checkers see each field type as its core model class, so
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Final, LiteralString, Protocol, TypeVar, cast
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Final,
+    LiteralString,
+    Protocol,
+    TypeGuard,
+    TypeVar,
+    cast,
+)
 
 from pydantic import BeforeValidator, InstanceOf, PlainSerializer, ValidationInfo
 from pydantic_core import InitErrorDetails, PydanticCustomError, ValidationError
@@ -93,13 +102,10 @@ from zarr_metadata._pydantic_schema import (
     ZarrV3GroupMetadataJSON as _ZarrV3GroupMetadataSchema,
 )
 from zarr_metadata._sentinel import UNSET
-from zarr_metadata.definition._context import (
-    Context,
-    is_context,
-    scoped,
-)
-from zarr_metadata.v2.definition import CORE_V2
-from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS
+from zarr_metadata.definition._context import scoped
+from zarr_metadata.definition._definition import Context
+from zarr_metadata.v2.definition import CORE_V2, ZarrV2Context
+from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, ZarrV3Context
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -189,6 +195,11 @@ def _read_in_context(
     return coerce
 
 
+def _is_context(value: object) -> TypeGuard[ZarrV3Context | ZarrV2Context]:
+    """Whether `value` is a scope of either format."""
+    return isinstance(value, (ZarrV3Context, ZarrV2Context))
+
+
 def _context_of(validation_context: object, default: _C, key: str) -> _C:
     """The `Context` a pydantic validation context gives for one format. If the validation context is a `Context`, it is the context for every field type of its format. If it is a mapping with a `key` item, that item is the context for this format. Otherwise the context is `default`, the format's core context.
 
@@ -196,13 +207,15 @@ def _context_of(validation_context: object, default: _C, key: str) -> _C:
     every reader. A model with fields of both formats must give each
     format's context under its own key.
     """
-    if is_context(validation_context):
+    if _is_context(validation_context):
         return scoped(validation_context, default)
     if not is_object(validation_context) or key not in validation_context:
         return default
     context = validation_context[key]
-    if not is_context(context):
-        msg = f"{key}: the context to read in is a Context, got {context!r}"
+    if not _is_context(context):
+        msg = (
+            f"{key}: the context to read in is a ZarrV3Context or a ZarrV2Context, got {context!r}"
+        )
         raise TypeError(msg)
     return scoped(context, default)
 

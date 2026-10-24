@@ -505,8 +505,15 @@ def field_kind(annotation: object) -> type[Definition[Any]] | None:
     return _FIELD_KINDS.get(annotation)
 
 
-class Scope(Protocol):
-    """What reading a field needs from a scope: its format, and which definition of a kind claims a name. A `Context` satisfies this protocol, and so does any other object that provides these two."""
+class Context(Protocol):
+    """A scope: the definitions in scope while metadata of one Zarr format is read.
+
+    This is what reading a field needs from a scope: the Zarr format of the
+    documents it reads, and which definition of a kind claims a name.
+    `ZarrV3Context` and `ZarrV2Context` implement it, each with one slot
+    per kind of field its format has, and so does any other object that
+    provides these two. `resolve` reads a field in any `Context`.
+    """
 
     @property
     def zarr_format(self) -> Literal[2, 3]: ...
@@ -1310,7 +1317,7 @@ def spelled_canonically(data_type: ResolvedField[F], value: JSONValue) -> JSONVa
 
 
 def resolve(
-    data: object, kind: type[D], context: Scope, loc: Loc = ()
+    data: object, kind: type[D], context: Context, loc: Loc = ()
 ) -> tuple[ResolvedField[D], Problems]:
     """Read `data` (one metadata field) as a `kind` in `context`. Return the result of the reading, and every problem.
 
@@ -1345,7 +1352,7 @@ def resolve_refined(
     refined: JSONValue | None,
     problems: Problems,
     kind: type[D],
-    context: Scope,
+    context: Context,
     loc: Loc = (),
 ) -> tuple[ResolvedField[D], Problems]:
     """`resolve` for `data` that the caller has already refined. `refined` and `problems` are the result of `refine_json(data, loc)`.
@@ -1379,7 +1386,7 @@ def resolve_refined(
 
 
 def _resolve_field(
-    data: JSONValue, kind: type[Definition[Any]], context: Scope, loc: Loc
+    data: JSONValue, kind: type[Definition[Any]], context: Context, loc: Loc
 ) -> tuple[ResolvedField[Definition[Any]], Problems]:
     """Check the envelope of a refined field, then read the field.
 
@@ -1394,7 +1401,7 @@ def _resolve_field(
 
 
 def _read(
-    data: JSONValue, kind: type[Definition[Any]], context: Scope, loc: Loc
+    data: JSONValue, kind: type[Definition[Any]], context: Context, loc: Loc
 ) -> tuple[ResolvedField[Definition[Any]], Problems]:
     name, given, malformed = kind.named_configuration(data)
     if name is None:
@@ -1525,7 +1532,7 @@ def _sized(field: _NestedField, inner: ResolvedField[Any]) -> Problems:
 
 
 def canonicalize(
-    data: object, kind: type[D], context: Scope, loc: Loc = ()
+    data: object, kind: type[D], context: Context, loc: Loc = ()
 ) -> tuple[JSONValue | None, Problems]:
     """`data` (one metadata field) in its simplest equivalent spelling, and every problem.
 
@@ -1628,13 +1635,13 @@ def _replaced(value: JSONValue, path: Loc, new: JSONValue) -> JSONValue:
 __all__ = [
     "AcceptedField",
     "C",
+    "Context",
     "Definition",
     "EmptyConfiguration",
     "Nested",
     "Problems",
     "RefusedField",
     "ResolvedField",
-    "Scope",
     "UnclaimedField",
     "WithFillValue",
     "as_kind",

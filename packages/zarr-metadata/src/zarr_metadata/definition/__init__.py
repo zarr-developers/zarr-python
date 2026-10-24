@@ -25,7 +25,7 @@ in `zarr_metadata.v3.definition`, and the v2 kinds are in
 `zarr_metadata.v2.definition`. This module holds what both formats share:
 `Definition` and `WithFillValue`, which the kinds derive from; `resolve`,
 which reads a field in a scope; the three results of a reading; and
-`Context`, the scope.
+`Context`, the protocol of a scope.
 
 **Reading JSON.** There are three steps. Each feeds the next, and each
 can be used on its own by a caller that has only JSON:
@@ -213,8 +213,11 @@ using the data type that read it.
 
 **Scopes as values.** A scope reads documents of one Zarr format.
 `ZarrV3Context`, in `zarr_metadata.v3.definition`, and `ZarrV2Context`,
-in `zarr_metadata.v2.definition`, are the scopes of each format, and
-`Context` is what they share. A scope has one slot for each kind of
+in `zarr_metadata.v2.definition`, are the scopes of each format. They
+are separate classes, and `Context` is the protocol both implement: the
+Zarr format a scope reads, and `claimant`, which says which definition
+of a kind reads a name. That is all `resolve` needs, so any object that
+provides these two can be a scope. A scope has one slot for each kind of
 field its format has, named like the document member that holds such
 fields: `ZarrV3Context(codecs=[...], data_types=[...])` builds one, and
 `context.codecs["gzip"]` reads one slot. A type checker rejects a
@@ -248,15 +251,14 @@ that outputs bytes); a data type named the way raw bits of one size are
 written. Nothing else happens at class creation.
 """
 
-from zarr_metadata.definition._context import Context
 from zarr_metadata.definition._definition import (
     AcceptedField,
+    Context,
     Definition,
     EmptyConfiguration,
     Nested,
     RefusedField,
     ResolvedField,
-    Scope,
     UnclaimedField,
     WithFillValue,
     canonical_fill_value,
@@ -285,7 +287,6 @@ __all__ = [
     "Nested",
     "RefusedField",
     "ResolvedField",
-    "Scope",
     "ScopeConflictError",
     "UnclaimedField",
     "WithFillValue",
