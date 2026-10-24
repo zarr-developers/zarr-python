@@ -146,6 +146,47 @@ def test_error_a_node_file_that_holds_attributes_is_refused_alike_in_a_store_and
     assert "belong in .zattrs" in from_files[0].message
 
 
+@pytest.mark.parametrize(
+    ("name", "document", "found"),
+    [
+        (
+            ".zarray",
+            {**ZARRAY, "dtype": "bogus", "order": "Q"},
+            [
+                (("attributes",), "invalid_value"),
+                (("dtype",), "invalid_value"),
+                (("order",), "invalid_value"),
+            ],
+        ),
+        (
+            ".zgroup",
+            {"zarr_format": 3},
+            [(("attributes",), "unknown_key"), (("zarr_format",), "invalid_value")],
+        ),
+    ],
+    ids=["array", "group"],
+)
+def test_error_a_node_file_that_holds_attributes_still_reports_its_other_problems(
+    name: str, document: dict[str, Any], found: list[tuple[tuple[str, ...], str]]
+) -> None:
+    """A `.zarray` or `.zgroup` that holds `attributes` does not hide its other problems: the rest of the file is still read, and its problems follow the one about `attributes`. `validate_node_metadata_v2`, `read_consolidated_metadata_v2` (at the entry) and the model's `from_key_value` report the same problems."""
+    held = {**document, "attributes": {}}
+    model = ZarrV2ArrayMetadata if name == ".zarray" else ZarrV2GroupMetadata
+    from_entries = read_consolidated_metadata_v2(
+        {
+            "zarr_consolidated_format": 1,
+            "metadata": {".zgroup": {"zarr_format": 2}, f"a/{name}": held},
+        }
+    ).problems
+    with pytest.raises(MetadataValidationError) as raised:
+        model.from_key_value({name: json.dumps(held).encode()})
+    assert [(p.loc, p.kind) for p in validate_node_metadata_v2({name: held})] == found
+    assert [(p.loc, p.kind) for p in from_entries] == [
+        (("metadata", f"a/{name}", *loc), kind) for loc, kind in found
+    ]
+    assert [(p.loc, p.kind) for p in raised.value.problems] == found
+
+
 def test_error_a_store_file_that_is_not_json_raises_when_building_a_node() -> None:
     """Decoding is the store's step: a store file whose bytes are not JSON makes `node_metadata_from_key_value_v2` raise with an `invalid_json` problem at the file."""
     with pytest.raises(MetadataValidationError) as raised:

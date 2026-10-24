@@ -411,22 +411,25 @@ def node_document_v2(
 ) -> tuple[object, tuple[ValidationProblem, ...]]:
     """The merged v2 document of the node whose file is `key` in `files` (each file's decoded JSON, keyed by its name): the file's JSON, with the attributes at `.zattrs` when `files` holds it.
 
-    Returns the document and no problems, or None and the problem: a
-    missing `key`, or a file that holds `attributes` itself (reported as
-    `beside_attributes`, since attributes belong in `.zattrs`). A file
-    that is not an object is returned as it is, for the document's reader
-    to report.
+    Returns the document and the problems found in merging. A missing
+    `key` gives None and that problem. A file that holds `attributes`
+    itself gives `beside_attributes`, since attributes belong in
+    `.zattrs`, and the document without that member, so that its reader
+    still reports every other problem. A file that is not an object is
+    returned as it is, for the document's reader to report.
     """
     if key not in files:
         return None, (ValidationProblem((key,), "missing store key", "missing_key"),)
     document = files[key]
     if not is_object(document):
         return document, ()
+    problems: tuple[ValidationProblem, ...] = ()
     if "attributes" in document:
-        return None, with_input((beside_attributes,), document)
+        problems = with_input((beside_attributes,), document)
+        document = {name: value for name, value in document.items() if name != "attributes"}
     if ZARR_V2_ATTRIBUTES_STORE_KEY not in files:
-        return document, ()
-    return {**document, "attributes": files[ZARR_V2_ATTRIBUTES_STORE_KEY]}, ()
+        return document, problems
+    return {**document, "attributes": files[ZARR_V2_ATTRIBUTES_STORE_KEY]}, problems
 
 
 ARRAY_FILE_ATTRIBUTES: Final = ValidationProblem(
@@ -831,8 +834,8 @@ class ZarrV2ArrayMetadata(Keyed):
 
         Raises `MetadataValidationError` when `.zarray` is missing, bytes
         are not JSON, `.zarray` holds `attributes`, or the document is not
-        valid. Raises `TypeError` for a scope of another format before
-        any bytes are decoded.
+        valid, with every problem the read finds. Raises `TypeError` for a
+        scope of another format before any bytes are decoded.
         """
         context = scoped(context, CORE_V2)
         files, problems = decoded_node_files_v2(
@@ -844,5 +847,7 @@ class ZarrV2ArrayMetadata(Keyed):
             files, ZARR_V2_ARRAY_METADATA_STORE_KEY, ARRAY_FILE_ATTRIBUTES
         )
         if len(problems) != 0:
+            if document is not None:
+                problems = (*problems, *read_array_metadata_v2(document, context=context).problems)
             raise MetadataValidationError(problems)
         return cls(document, context=context)

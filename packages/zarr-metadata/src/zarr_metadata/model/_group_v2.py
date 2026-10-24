@@ -209,7 +209,8 @@ def read_node_metadata_v2(
     attributes at `.zattrs` in either case. `files` with neither, or with
     both, give a `ZarrV2UnknownNodeMetadataReading` with the problem. A
     `.zarray` or `.zgroup` that writes `attributes` itself gives the
-    reading of its node type with the problem and no model. This is the
+    reading of its node type with no model, and with that problem
+    followed by the problems of the rest of the file. This is the
     v2 counterpart of `read_node_metadata_v3`, which reads one `zarr.json`
     and its `node_type`.
     """
@@ -227,16 +228,20 @@ def read_node_metadata_v2(
         document, problems = node_document_v2(
             files, ZARR_V2_ARRAY_METADATA_STORE_KEY, ARRAY_FILE_ATTRIBUTES
         )
+        reading = read_array_metadata_v2(document, context=context)
         if len(problems) != 0:
-            return ZarrV2ArrayMetadataReading(problems=problems)
-        return read_array_metadata_v2(document, context=context)
+            return dataclasses.replace(
+                reading, problems=(*problems, *reading.problems), metadata=None
+            )
+        return reading
     if is_group:
         document, problems = node_document_v2(
             files, ZARR_V2_GROUP_METADATA_STORE_KEY, _GROUP_FILE_ATTRIBUTES
         )
+        reading = read_group_metadata_v2(document, context=context)
         if len(problems) != 0:
-            return ZarrV2GroupMetadataReading(problems=problems)
-        return read_group_metadata_v2(document, context=context)
+            return ZarrV2GroupMetadataReading(problems=(*problems, *reading.problems))
+        return reading
     neither = ValidationProblem(
         (),
         f"expected a {ZARR_V2_ARRAY_METADATA_STORE_KEY} or a {ZARR_V2_GROUP_METADATA_STORE_KEY}",
@@ -433,8 +438,8 @@ class ZarrV2GroupMetadata(Keyed):
 
         Raises `MetadataValidationError` when `.zgroup` is missing, bytes
         are not JSON, `.zgroup` holds `attributes`, or the document is not
-        valid. Raises `TypeError` for a scope of another format before
-        any bytes are decoded.
+        valid, with every problem the read finds. Raises `TypeError` for a
+        scope of another format before any bytes are decoded.
         """
         context = scoped(context, CORE_V2)
         files, problems = decoded_node_files_v2(
@@ -446,6 +451,8 @@ class ZarrV2GroupMetadata(Keyed):
             files, ZARR_V2_GROUP_METADATA_STORE_KEY, _GROUP_FILE_ATTRIBUTES
         )
         if len(problems) != 0:
+            if document is not None:
+                problems = (*problems, *validate_group_metadata_v2(document, context=context))
             raise MetadataValidationError(problems)
         return cls(document, context=context)
 
@@ -839,10 +846,13 @@ def _read_node_v2(
             )
         ]
     merged = dict(document)
+    beside: list[ValidationProblem] = []
     if "attributes" in merged:
-        # The same problem the node reader reports for the file, at the entry.
-        beside = ARRAY_FILE_ATTRIBUTES if zarray is not None else _GROUP_FILE_ATTRIBUTES
-        return None, [dataclasses.replace(beside, loc=("metadata", key, *beside.loc))]
+        # The same problem the node reader reports for the file, at the
+        # entry. The rest of the entry is still read, for its own problems.
+        found = ARRAY_FILE_ATTRIBUTES if zarray is not None else _GROUP_FILE_ATTRIBUTES
+        beside.append(dataclasses.replace(found, loc=("metadata", key, *found.loc)))
+        del merged["attributes"]
     if zattrs is not None:
         merged["attributes"] = entries[zattrs]
 
@@ -859,12 +869,12 @@ def _read_node_v2(
 
     if zarray is not None:
         reading, members = read_array_v2(merged, context)
-        if members is None:
-            return None, located(reading.problems)
+        if members is None or len(beside) != 0:
+            return None, [*beside, *located(reading.problems)]
         return ZarrV2ArrayMetadata._of(members.document, context, reading, members), []  # pyright: ignore[reportPrivateUsage]
     found = validate_group_metadata_v2(merged, context=context)
-    if len(found) != 0:
-        return None, located(found)
+    if len(found) != 0 or len(beside) != 0:
+        return None, [*beside, *located(found)]
     document = refined_object(merged)
     attributes: dict[str, JSONValue] | UNSET = (
         object_at(document, "attributes") if "attributes" in document else UNSET
