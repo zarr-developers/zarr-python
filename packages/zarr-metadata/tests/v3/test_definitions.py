@@ -949,7 +949,24 @@ def test_configuration_of_types_what_its_definition_read() -> None:
     assert configuration_of(resolved, ACME_LEVEL) is None
 
 
-@pytest.mark.parametrize("context", [None, "CORE"], ids=["none", "a-string"])
+class _ClaimsWithNoFormat:
+    """A value with a `claimant` but no `zarr_format`."""
+
+    def claimant(self, kind: object, name: str) -> None:
+        return None
+
+
+class _BooleanFormatScope(_ClaimsWithNoFormat):
+    """A value whose `zarr_format` is a boolean, which no format is."""
+
+    zarr_format = True
+
+
+@pytest.mark.parametrize(
+    "context",
+    [None, "CORE", ZarrV3Context, _ClaimsWithNoFormat(), _BooleanFormatScope()],
+    ids=["none", "a-string", "the-scope-class", "no-format", "a-boolean-format"],
+)
 def test_error_resolve_refuses_what_is_not_a_scope(context: object) -> None:
     """`resolve` reads a field in a scope, which it takes with no default. `None`, which a model reader would take, or any other value that is not a scope raises `TypeError` naming it, rather than failing part way."""
     with pytest.raises(TypeError, match="a field is read in a scope"):

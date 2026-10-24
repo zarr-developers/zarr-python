@@ -223,6 +223,14 @@ class _Open(TypedDict, closed=False):
     tool: str
 
 
+class _FalseOrNo(TypedDict, closed=True):
+    must_understand: NotRequired[Literal[False, "no"]]
+
+
+class _BoolOrArray(TypedDict, closed=True):
+    must_understand: NotRequired[bool | tuple[int, ...]]
+
+
 class _ExtraBooleans(TypedDict, extra_items=bool):
     tool: str
 
@@ -240,8 +248,8 @@ def test_an_extra_field_configuration_takes_the_waiver(configuration: Any) -> No
 
 @pytest.mark.parametrize(
     "configuration",
-    [_Bare, _OnlyTrue, _AnyInt, _Open],
-    ids=["undeclared", "only-true", "any-int", "open"],
+    [_Bare, _OnlyTrue, _AnyInt, _Open, _FalseOrNo, _BoolOrArray],
+    ids=["undeclared", "only-true", "any-int", "open", "false-or-a-string", "bool-or-an-array"],
 )
 def test_error_an_extra_field_configuration_that_refuses_the_waiver(configuration: Any) -> None:  # noqa: ANN401 - a TypedDict
     """The spec lets every extension member carry `"must_understand": false`, so the configuration of an extra field takes it: the type it gives `must_understand` admits `false`, and only booleans. A definition whose configuration refuses the waiver, or takes values that are not booleans, is refused when it is built, rather than misreading the documents that carry it."""

@@ -256,6 +256,20 @@ def test_error_a_v3_model_updated_into_an_invalid_one_is_refused_at_the_change(
     [ZarrV3ArrayMetadata, ZarrV3GroupMetadata, ZarrV2ArrayMetadata],
     ids=["v3-array", "v3-group", "v2-array"],
 )
+def test_a_member_named_extra_fields_is_set_and_removed_through_extra_fields(
+    kind: Any,  # noqa: ANN401 - a model class
+) -> None:
+    """A document may hold a member that is itself named `extra_fields`. The spec does not define it, so `update` and `create_default` take it in the `extra_fields` mapping, as any other such member."""
+    added = kind.create_default(extra_fields={"extra_fields": {"must_understand": False}})
+    assert added.to_json()["extra_fields"] == {"must_understand": False}
+    assert "extra_fields" not in added.update(extra_fields={"extra_fields": UNSET}).to_json()
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [ZarrV3ArrayMetadata, ZarrV3GroupMetadata, ZarrV2ArrayMetadata],
+    ids=["v3-array", "v3-group", "v2-array"],
+)
 def test_members_the_spec_does_not_define_are_set_and_removed_through_extra_fields(
     kind: Any,  # noqa: ANN401 - a model class
 ) -> None:

@@ -19,7 +19,7 @@ from zarr_metadata._json import (
     within,
 )
 from zarr_metadata._typed_json import typeddict_keys
-from zarr_metadata.definition._definition import is_field
+from zarr_metadata.definition._definition import RefusedField, is_field
 from zarr_metadata.definition._scope import Conflict, claim_key
 
 if TYPE_CHECKING:
@@ -129,8 +129,13 @@ def member_changes(
                 f"extra_fields maps each member's key, a string, to its value, got the key {key!r}"
             )
             raise TypeError(msg)
-        if key in spec_members or key in declared:
+        # `extra_fields` itself is the mapping, so a member of that name is
+        # given in it like any other member the spec does not define.
+        if key in declared and key != "extra_fields":
             msg = f"{key!r} is a member that update takes by name; give it by name, not in extra_fields"
+            raise TypeError(msg)
+        if key in spec_members:
+            msg = f"{key!r} is a member the spec defines, which extra_fields does not hold"
             raise TypeError(msg)
         _refuse_fields(key, value)
         changes[key] = value
@@ -138,12 +143,18 @@ def member_changes(
 
 
 def _refuse_fields(key: str, value: object) -> None:
-    """Raise `TypeError` when `value`, given as the member at `key`, is a field or holds fields, rather than the JSON a document writes."""
-    if any(is_field(item) for item in (value if is_array(value) else (value,))):
-        msg = (
-            f"{key}: a member is given as a document writes it, got a field; give a field's "
-            f"JSON, field.to_json(), or for an extra field its value, field.to_json()[{key!r}]"
-        )
+    """Raise `TypeError` when `value`, given as the member at `key`, is a field or holds fields, rather than the JSON a document writes, with the JSON to give instead."""
+    for item in value if is_array(value) else (value,):
+        if not is_field(item):
+            continue
+        if isinstance(item, RefusedField):
+            advice = "a refused field has no JSON to write; give the member as JSON"
+        elif item.name == key:
+            # An extra field is read as the member alone, `{key: value}`.
+            advice = f"give the member's value, field.to_json()[{key!r}]"
+        else:
+            advice = "give the field as JSON, field.to_json()"
+        msg = f"{key}: a member is given as a document writes it, got a field; {advice}"
         raise TypeError(msg)
 
 

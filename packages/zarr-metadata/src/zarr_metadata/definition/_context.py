@@ -23,6 +23,7 @@ from zarr_metadata.definition._definition import (
     Context,
     Definition,
     as_kind,
+    described,
     filed_under,
     format_of,
     kind_of,
@@ -217,17 +218,6 @@ def scoped(context: object, default: C) -> C:
         )
         raise TypeError(msg)
     return context
-
-
-def described(context: object) -> str:
-    """`context`, a value given as a scope, as an error message names it: its class and the format it reads, or its repr when it reads none."""
-    try:
-        zarr_format = getattr(context, "zarr_format", None)
-    except Exception:  # noqa: BLE001 - any value may be given, and the message must still be built
-        zarr_format = None
-    if type(zarr_format) is int:
-        return f"a {type(context).__name__}, a v{zarr_format} scope"
-    return repr(context)
 
 
 __all__ = [

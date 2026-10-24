@@ -1289,18 +1289,34 @@ _PQ = TypeAliasType("_PQ", Literal["p", "q"])
             "invalid_value",
             ("p", "q"),
         ),
+        (
+            _PQ | Literal[3],
+            4,
+            'expected one of ["p", "q"] or 3, got 4',
+            "invalid_value",
+            ("p", "q", 3),
+        ),
+        (
+            _PQ | Literal[3],
+            None,
+            'expected one of ["p", "q"] or 3, got null',
+            "invalid_type",
+            ("p", "q", 3),
+        ),
     ],
     ids=[
         "string-outside-the-literal",
         "number-outside-the-literal",
         "mixed-literal",
         "literal-behind-an-alias",
+        "literals-of-two-types",
+        "a-shape-no-literal-has",
     ],
 )
 def test_error_a_value_outside_every_literal_of_a_union_names_the_whole_union(
     annotation: object, value: object, message: str, kind: str, expected: tuple[object, ...]
 ) -> None:
-    """A value whose shape only `Literal` branches of a union have, and that none of them holds, is reported against the whole union, as a value of no branch's shape is, also when a `Literal` is behind a type alias. The kind is the one the `Literal` reports: a wrong value when its JSON type matches an entry, and a wrong type otherwise. The `ctx` holds every value the `Literal` branches allow under `expected`, as one `Literal`'s problem does."""
+    """A value whose shape only `Literal` branches of a union have, and that none of them holds, is reported against the whole union, as a value of no branch's shape is, also when a `Literal` is behind a type alias. The kind is the one the `Literal` reports: a wrong value when its JSON type matches an entry, and a wrong type otherwise. The `ctx` holds every value the `Literal` branches allow under `expected`, as one `Literal`'s problem does, including the branches whose JSON type the value does not have."""
     (problem,) = parser(annotation, no_leaf)(value, ())[1]
     assert (problem.message, problem.kind) == (message, kind)
     assert problem.ctx == {"expected": expected}

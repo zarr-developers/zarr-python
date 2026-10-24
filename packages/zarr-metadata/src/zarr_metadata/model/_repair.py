@@ -156,7 +156,10 @@ def _repaired(value: object, at: Loc) -> tuple[object, tuple[Repair, ...]]:
     original = value
     repairs: list[Repair] = []
     document = _zero_chunk_length(original, at, repairs)
-    document = _non_finite_fill_value_v3(document, at, repairs)
+    if len(at) != 0:
+        # The writer bug is in the documents a listing holds only. Those
+        # versions wrote a node's own `zarr.json` correctly.
+        document = _non_finite_fill_value_v3(document, at, repairs)
     document = _null_consolidated_metadata(document, at, repairs)
     document = _consolidated(document, at, repairs)
     return (original if len(repairs) == 0 else dict(document)), tuple(repairs)
@@ -538,6 +541,7 @@ __all__ = [
     "ZarrV2RepairedConsolidatedMetadataReading",
     "ZarrV2RepairedNodeMetadataReading",
     "ZarrV2ZGroupWithConsolidatedMetadataJSON",
+    "ZarrV3NonFiniteFillValueArrayMetadataJSON",
     "ZarrV3NullConsolidatedGroupMetadataJSON",
     "ZarrV3RepairedNodeMetadataReading",
     "ZarrV3ZeroChunkArrayMetadataJSON",

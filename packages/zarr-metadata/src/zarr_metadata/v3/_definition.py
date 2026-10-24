@@ -25,6 +25,7 @@ from typing import (
     TypeGuard,
     cast,
     get_args,
+    get_origin,
 )
 
 from typing_extensions import TypeAliasType, is_typeddict
@@ -37,7 +38,15 @@ from zarr_metadata._json import (
     refine_user_data,
     with_input,
 )
-from zarr_metadata._typed_json import Loc, parser, problem, typeddict_keys
+from zarr_metadata._typed_json import (
+    Loc,
+    alias_value,
+    is_alias,
+    is_union,
+    problem,
+    strip_annotation,
+    typeddict_keys,
+)
 from zarr_metadata.definition._definition import (
     AcceptedField,
     C,
@@ -493,17 +502,30 @@ def _takes_the_waiver(configuration: type) -> bool:
     """Whether `configuration`, a TypedDict, takes the spec's `"must_understand": false`: the type it gives `must_understand`, declared or as another key, admits `false` and only booleans."""
     keys = typeddict_keys(configuration)
     declared = keys.members.get("must_understand")
-    try:
-        check = parser(keys.extra_items if declared is None else declared[0], _no_leaf)
-    except TypeError:
-        return False
-    if len(check(False, ())[1]) != 0:
-        return False
-    return all(len(check(value, ())[1]) != 0 for value in (0, 1, "false", None))
+    booleans = _booleans(keys.extra_items if declared is None else declared[0], frozenset())
+    return booleans is not None and False in booleans
 
 
-def _no_leaf(annotation: object) -> None:
-    """A leaf that declines every annotation, so the checker reads only plain JSON shapes."""
+def _booleans(annotation: object, seen: frozenset[object]) -> frozenset[bool] | None:
+    """The booleans `annotation` admits when it admits only booleans, read through its aliases, unions and `Literal`s; None when it admits anything else."""
+    inner = strip_annotation(annotation)[0]
+    if is_alias(inner):
+        # An alias that refers to itself adds nothing it has not already.
+        return frozenset() if inner in seen else _booleans(alias_value(inner), seen | {inner})
+    if inner is bool:
+        return frozenset({True, False})
+    if get_origin(inner) is Literal:
+        values = get_args(inner)
+        return frozenset(values) if all(isinstance(value, bool) for value in values) else None
+    if not is_union(inner):
+        return None
+    admitted: set[bool] = set()
+    for branch in get_args(inner):
+        found = _booleans(branch, seen)
+        if found is None:
+            return None
+        admitted |= found
+    return frozenset(admitted)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, repr=False)

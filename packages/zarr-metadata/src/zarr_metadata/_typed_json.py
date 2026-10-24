@@ -645,6 +645,7 @@ def any_of(
     description: str,
     tag: Tag | None = None,
     literals: frozenset[int] = frozenset(),
+    allowed: tuple[JSONValue, ...] = (),
 ) -> Parser:
     """A member whose type is a union of shapes, parsed by the matching branch.
 
@@ -662,8 +663,12 @@ def any_of(
     `literals` holds the index of each branch that is a `Literal`. When
     only such branches tried the value, and it is none of their values,
     it is reported once with the expected shapes, since naming one
-    `Literal` would leave out the other branches.
+    `Literal` would leave out the other branches. `allowed` holds the
+    values of every `Literal` branch. A value reported against the whole
+    union carries them under `expected` in the problem's `ctx`, as a
+    single `Literal`'s problem does.
     """
+    ctx: dict[str, JSONValue] = {} if len(allowed) == 0 else {"expected": listed(allowed)}
 
     def parse(value: object, loc: Loc) -> Parsed:
         present = _keys_of(value)
@@ -683,22 +688,14 @@ def any_of(
                 clean.append((-len(keys & present), index, result))
         if len(clean) != 0:
             return min(clean, key=lambda found: found[:2])[2]
+        message = f"expected {description}, got {shown(value)}"
         if len(failed) != 0 and all(index in literals for _, index, _ in failed):
-            # A `Literal` reports one problem, of the kind its own check
-            # decided, with the values it allows under `expected`.
+            # A `Literal` reports one problem, of the kind its own check decided.
             kind = min(failed, key=lambda found: found[:2])[2][1][0].kind
-            allowed = [
-                item
-                for _, _, (_, found) in failed
-                for refused in found
-                for item in _expected(refused)
-            ]
-            message = f"expected {description}, got {shown(value)}"
-            ctx: dict[str, JSONValue] = {"expected": listed(allowed)}
             return value, (ValidationProblem(loc, message, kind, ctx=ctx),)
         if len(failed) != 0:
             return min(failed, key=lambda found: found[:2])[2]
-        return value, problem(loc, f"expected {description}, got {shown(value)}")
+        return value, (ValidationProblem(loc, message, "invalid_type", ctx=ctx),)
 
     return parse
 
@@ -953,7 +950,10 @@ def _union(inner: object, leaf: Leaf, building: _Building) -> Parser | None:
     literals = frozenset(
         index for index, branch in enumerate(arguments) if get_origin(_unaliased(branch)) is Literal
     )
-    return any_of(branches, describe(inner), _tag(arguments), literals)
+    allowed: tuple[JSONValue, ...] = tuple(
+        value for index in sorted(literals) for value in get_args(_unaliased(arguments[index]))
+    )
+    return any_of(branches, describe(inner), _tag(arguments), literals, allowed)
 
 
 def _unaliased(annotation: object) -> object:
@@ -964,12 +964,6 @@ def _unaliased(annotation: object) -> object:
         seen.add(inner)
         inner = strip_annotation(alias_value(inner))[0]
     return inner
-
-
-def _expected(refused: ValidationProblem) -> tuple[JSONValue, ...]:
-    """The values that `refused`, a `Literal`'s problem, says it allows, from its `ctx`."""
-    expected = refused.ctx.get("expected")
-    return expected if isinstance(expected, tuple) else ()
 
 
 def _tag(arguments: Sequence[object]) -> Tag | None:

@@ -625,8 +625,7 @@ def _vet(configuration: type, zarr_format: int | None) -> None:
     vetting(configuration)
     unread = unread_in(configuration, vetting)
     if unread is not None:
-        msg = f"{unread}; a finer rule goes in the definition's `rules`"
-        raise TypeError(msg)
+        raise TypeError(unread)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1353,8 +1352,8 @@ def resolve(
     without type arguments, and `context` a scope of that format. Anything
     else raises `TypeError`.
     """
-    if not callable(getattr(context, "claimant", None)):
-        msg = f"a field is read in a scope, such as CORE_AND_EXTENSIONS, got {context!r}"
+    if not _is_scope(context):
+        msg = f"a field is read in a scope, such as CORE_AND_EXTENSIONS, got {described(context)}"
         raise TypeError(msg)
     asked = as_kind(kind)
     name = asked.named_configuration(data)[0]
@@ -1363,6 +1362,28 @@ def resolve(
     )
     refined, problems = asked.refined(data, loc, definition)
     return resolve_refined(data, refined, problems, kind, context, loc)
+
+
+def _is_scope(value: object) -> bool:
+    """Whether `value` has what `resolve` needs of a `Context`: an integer `zarr_format`, and a `claimant` it can call. A class does not, though it may declare both."""
+    if isinstance(value, type):
+        return False
+    try:
+        zarr_format = getattr(value, "zarr_format", None)
+    except Exception:  # noqa: BLE001 - any value may be given, and only its shape is asked
+        return False
+    return type(zarr_format) is int and callable(getattr(value, "claimant", None))
+
+
+def described(context: object) -> str:
+    """`context`, a value given as a scope, as an error message names it: its class and the format it reads, or its repr when it reads none."""
+    try:
+        zarr_format = getattr(context, "zarr_format", None)
+    except Exception:  # noqa: BLE001 - any value may be given, and the message must still be built
+        zarr_format = None
+    if type(zarr_format) is int:
+        return f"a {type(context).__name__}, a v{zarr_format} scope"
+    return repr(context)
 
 
 def resolve_refined(
