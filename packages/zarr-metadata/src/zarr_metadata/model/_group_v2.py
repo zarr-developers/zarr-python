@@ -382,7 +382,7 @@ class ZarrV2GroupMetadata(Keyed):
         return self.with_context(context)
 
     def refines(self, other: ZarrV2GroupMetadata) -> bool:
-        """Whether this group holds everything `other` holds, which means its attributes are written the same way. False when `other` is not a v2 group."""
+        """Whether this group holds everything `other` holds, which means its attributes are written the same way, no `.zattrs` counting as empty attributes. False when `other` is not a v2 group."""
         return type(other) is type(self) and self._model_key == other._model_key
 
     @classmethod

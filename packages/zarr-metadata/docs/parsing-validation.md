@@ -203,10 +203,11 @@ for problem in problems:
 # ('configuration', 'level') invalid_value
 ```
 
-A field with an unknown name is called **unclaimed**, because no definition in the scope claims that name. It is not reported as a problem: it is read as an `UnclaimedField`, and the checks that depend on it are skipped, as described above. So an empty `reading.problems` does not mean that every field is known. A program that decodes chunks should also check that no field is unclaimed. A model's `unclaimed_fields` lists each one, at any depth, by its location, and leaves out an extra member that says `"must_understand": false`, which a reader may ignore:
+A field with an unknown name is called **unclaimed**, because no definition in the scope claims that name. It is not reported as a problem: it is read as an `UnclaimedField`, and the checks that depend on it are skipped, as described above. So an empty `reading.problems` does not mean that every field is known. A program that decodes chunks should also check that no field is unclaimed. A model's `unclaimed_fields` lists each one, at any depth, by its location, and leaves out an extra member that says `"must_understand": false`, with everything in it, since a reader may ignore it. A reading with problems has no model, and a node with problems cannot be opened either:
 
 ```python
-unclaimed = reading.metadata.unclaimed_fields if reading.metadata is not None else {}
+unclaimed = None if reading.metadata is None else reading.metadata.unclaimed_fields
+can_open = unclaimed is not None and len(unclaimed) == 0
 ```
 
 To make an unknown data type or codec known, extend the scope with its definition and read the document again:

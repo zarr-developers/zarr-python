@@ -630,7 +630,7 @@ class ZarrV3ArrayMetadata(Keyed):
 
     @property
     def unclaimed_fields(self) -> dict[Loc, UnclaimedField]:
-        """Every field nothing in scope claims, at any depth, by its location in the document, except an extra member that says `"must_understand": false`.
+        """Every field nothing in scope claims, at any depth, by its location in the document, except an extra member that says `"must_understand": false` and every field inside it, claimed or not, since a reader may ignore such a member whole.
 
         This answers whether a reader can open the array: the spec requires
         a reader to refuse a node with a field it does not understand, and

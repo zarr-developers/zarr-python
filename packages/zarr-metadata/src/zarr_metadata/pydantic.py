@@ -134,7 +134,14 @@ from zarr_metadata.v3.definition import CORE_AND_EXTENSIONS, ZarrV3Context
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-_M = TypeVar("_M")
+
+class _Written(Protocol):
+    """A model, which writes its document."""
+
+    def to_json(self) -> object: ...
+
+
+_M = TypeVar("_M", bound=_Written)
 
 
 def _as_pydantic_raises(cls: type[_M], value: object, read: Callable[[], _M]) -> _M:
@@ -234,18 +241,25 @@ def _read_in(
 
 def _refined(cls: type[_M], value: _M, refine: Callable[[_M, _C], _M], context: _C) -> _M:
     """`value`, an instance of `cls`, read again in `context` with `refine` (its `refined_in`), or a `pydantic_core.ValidationError` with one line error for each problem the scope finds, as for a document, and one `scope_conflict` line error for each conflict or lost meaning, at the field it is in."""
+    document = value.to_json()
     try:
-        return _as_pydantic_raises(cls, value, lambda: refine(value, context))
+        return _as_pydantic_raises(cls, document, lambda: refine(value, context))
     except ScopeConflictError as error:
         line_errors = [
             InitErrorDetails(
                 type=PydanticCustomError("scope_conflict", "{message}", {"message": str(conflict)}),
                 loc=() if conflict.loc is None else conflict.loc,
-                input=value,
+                input=document if conflict.loc is None else _found_at(document, conflict.loc),
             )
             for conflict in error.conflicts
         ]
         raise ValidationError.from_exception_data(cls.__name__, line_errors) from error
+
+
+def _found_at(document: object, loc: tuple[str | int, ...]) -> object:
+    """The value at `loc` in `document`, or `document` itself when nothing is there."""
+    found = value_at(document, loc)
+    return document if found is UNSET else found
 
 
 def _is_context(value: object) -> TypeGuard[ZarrV3Context | ZarrV2Context]:

@@ -383,7 +383,7 @@ _READ_IN_SCOPE = [
 
 @pytest.mark.parametrize("validate", _READ_IN_SCOPE)
 def test_error_an_instance_a_scope_finds_problems_in_reports_each_one(validate: Any) -> None:  # noqa: ANN401 - a validating function
-    """An instance read again in a scope that claims more can show problems its own scope did not check. pydantic gets one line error per problem, with the problem's kind as its type, at its location, as for a document."""
+    """An instance read again in a scope that claims more can show problems its own scope did not check. pydantic gets one line error per problem, with the problem's kind as its type, at its location, and the value found there as its input, as for a document."""
     document: dict[str, Any] = dict(ZarrV3ArrayMetadata.create_default(shape=(4,)).to_json())
     document["codecs"] = (
         *document["codecs"],
@@ -393,20 +393,21 @@ def test_error_an_instance_a_scope_finds_problems_in_reports_each_one(validate: 
     instance = ZarrV3ArrayMetadata(document, context=ZarrV3Context())
     with pytest.raises(ValidationError) as raised:
         validate(instance, CORE_AND_EXTENSIONS)
-    assert [(line["type"], line["loc"]) for line in raised.value.errors()] == [
-        ("invalid_value", ("codecs", 1, "configuration", "level")),
-        ("invalid_type", ("codecs", 2, "configuration", "level")),
+    assert [(line["type"], line["loc"], line["input"]) for line in raised.value.errors()] == [
+        ("invalid_value", ("codecs", 1, "configuration", "level"), 99),
+        ("invalid_type", ("codecs", 2, "configuration", "level"), "x"),
     ]
 
 
 @pytest.mark.parametrize("validate", _READ_IN_SCOPE)
 def test_error_an_instance_a_scope_reads_differently_reports_each_conflict(validate: Any) -> None:  # noqa: ANN401 - a validating function
-    """An instance read where `zstd` is claimed would lose that meaning in `CORE`. pydantic gets one `scope_conflict` line error per conflict, at the field it is in, whose message names the codec."""
+    """An instance read where `zstd` is claimed would lose that meaning in `CORE`. pydantic gets one `scope_conflict` line error per conflict, at the field it is in, with that field as written as its input, and a message that names the codec."""
     instance = ZarrV3ArrayMetadata(_WITH_ZSTD, context=CORE_AND_EXTENSIONS)
     with pytest.raises(ValidationError) as raised:
         validate(instance, CORE)
     (line,) = raised.value.errors()
     assert (line["type"], line["loc"]) == ("scope_conflict", ("codecs", 1))
+    assert line["input"] == instance.to_json()["codecs"][1]
     assert "zstd" in line["msg"]
 
 
